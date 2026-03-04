@@ -25,7 +25,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
@@ -120,7 +119,8 @@ struct DMAInlineBDChainPattern : RewritePattern {
 };
 
 struct AIEMaterializeBDChainsPass
-    : xilinx::AIEX::impl::AIEMaterializeBDChainsBase<AIEMaterializeBDChainsPass> {
+    : xilinx::AIEX::impl::AIEMaterializeBDChainsBase<
+          AIEMaterializeBDChainsPass> {
 
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();

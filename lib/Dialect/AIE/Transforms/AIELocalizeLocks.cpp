@@ -20,14 +20,14 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 #define DEBUG_TYPE "aie-localize-locks"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct AIELocalizeLocksPass : xilinx::AIE::impl::AIELocalizeLocksBase<AIELocalizeLocksPass> {
+struct AIELocalizeLocksPass
+    : xilinx::AIE::impl::AIELocalizeLocksBase<AIELocalizeLocksPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithDialect>();
   }

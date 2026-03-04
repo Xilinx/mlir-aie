@@ -31,7 +31,6 @@ using namespace mlir; // For LLVM::LLVMDialect in generated getDependentDialects
 #include "aie/Conversion/Passes.h.inc"
 } // namespace xilinx
 
-
 using namespace mlir;
 
 namespace xilinx::aievec {

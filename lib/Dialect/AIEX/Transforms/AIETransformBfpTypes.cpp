@@ -29,7 +29,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 #define DEBUG_TYPE "transform-bfp-types"
 
 using namespace mlir;
@@ -212,7 +211,8 @@ private:
 };
 
 class AIETransformBfpTypesPass
-    : public xilinx::AIEX::impl::AIETransformBfpTypesBase<AIETransformBfpTypesPass> {
+    : public xilinx::AIEX::impl::AIETransformBfpTypesBase<
+          AIETransformBfpTypesPass> {
 public:
   void runOnOperation() override {
     DeviceOp device = getOperation();

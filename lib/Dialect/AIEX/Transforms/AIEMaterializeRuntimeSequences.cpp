@@ -29,7 +29,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 #define DEBUG_TYPE "aie-materialize-runtime-sequence"
 
 using namespace mlir;
@@ -508,7 +507,8 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 };
 
 struct AIEMaterializeRuntimeSequencesPass
-    : xilinx::AIEX::impl::AIEMaterializeRuntimeSequencesBase<AIEMaterializeRuntimeSequencesPass> {
+    : xilinx::AIEX::impl::AIEMaterializeRuntimeSequencesBase<
+          AIEMaterializeRuntimeSequencesPass> {
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 

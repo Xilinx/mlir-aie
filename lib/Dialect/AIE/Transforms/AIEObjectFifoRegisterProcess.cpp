@@ -29,7 +29,6 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -40,7 +39,8 @@ using namespace xilinx::AIE;
 // Register objectFifos Pass
 //===----------------------------------------------------------------------===//
 struct AIEObjectFifoRegisterProcessPass
-    : xilinx::AIE::impl::AIEObjectFifoRegisterProcessBase<AIEObjectFifoRegisterProcessPass> {
+    : xilinx::AIE::impl::AIEObjectFifoRegisterProcessBase<
+          AIEObjectFifoRegisterProcessPass> {
 
   scf::ForOp createForLoop(OpBuilder &builder, int length) {
     auto lowerBound = arith::ConstantOp::create(

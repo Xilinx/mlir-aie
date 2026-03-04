@@ -26,7 +26,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
@@ -68,7 +67,8 @@ struct DMAConfigureTaskForOpPattern
 };
 
 struct AIESubstituteShimDMAAllocationsPass
-    : xilinx::AIEX::impl::AIESubstituteShimDMAAllocationsBase<AIESubstituteShimDMAAllocationsPass> {
+    : xilinx::AIEX::impl::AIESubstituteShimDMAAllocationsBase<
+          AIESubstituteShimDMAAllocationsPass> {
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();

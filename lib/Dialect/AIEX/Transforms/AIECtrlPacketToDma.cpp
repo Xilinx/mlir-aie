@@ -25,7 +25,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 #define DEBUG_TYPE "aie-ctrl-packet-to-dma"
 
 using namespace mlir;
@@ -34,7 +33,8 @@ using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
 struct AIECtrlPacketInferTilesPass
-    : xilinx::AIEX::impl::AIECtrlPacketInferTilesBase<AIECtrlPacketInferTilesPass> {
+    : xilinx::AIEX::impl::AIECtrlPacketInferTilesBase<
+          AIECtrlPacketInferTilesPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();
@@ -60,7 +60,8 @@ struct AIECtrlPacketInferTilesPass
   }
 };
 
-struct AIECtrlPacketToDmaPass : xilinx::AIEX::impl::AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
+struct AIECtrlPacketToDmaPass
+    : xilinx::AIEX::impl::AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();

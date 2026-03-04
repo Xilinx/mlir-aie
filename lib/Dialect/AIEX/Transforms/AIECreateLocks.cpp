@@ -24,7 +24,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 #define DEBUG_TYPE "aie-create-locks"
 
 using namespace mlir;
@@ -137,7 +136,8 @@ static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks,
   return -1;
 }
 
-struct AIECreateLocksPass : public xilinx::AIEX::impl::AIECreateLocksBase<AIECreateLocksPass> {
+struct AIECreateLocksPass
+    : public xilinx::AIEX::impl::AIECreateLocksBase<AIECreateLocksPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();

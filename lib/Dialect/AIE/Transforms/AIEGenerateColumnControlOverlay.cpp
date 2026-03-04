@@ -23,7 +23,6 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 #define DEBUG_TYPE "aie-generate-column-control-overlay"
 
 using namespace mlir;
@@ -186,7 +185,8 @@ struct AIEAssignTileCtrlIDsPass
 };
 
 struct AIEGenerateColumnControlOverlayPass
-    : xilinx::AIE::impl::AIEGenerateColumnControlOverlayBase<AIEGenerateColumnControlOverlayPass> {
+    : xilinx::AIE::impl::AIEGenerateColumnControlOverlayBase<
+          AIEGenerateColumnControlOverlayPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
     registry.insert<memref::MemRefDialect>();

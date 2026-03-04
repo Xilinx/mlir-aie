@@ -19,7 +19,6 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 #define DEBUG_TYPE "aie-assign-bd-ids"
 
 using namespace mlir;
@@ -58,7 +57,8 @@ bool BdIdGenerator::bdIdAlreadyAssigned(uint32_t bdId) {
 void BdIdGenerator::freeBdId(uint32_t bdId) { alreadyAssigned.erase(bdId); }
 
 struct AIEAssignBufferDescriptorIDsPass
-    : xilinx::AIE::impl::AIEAssignBufferDescriptorIDsBase<AIEAssignBufferDescriptorIDsPass> {
+    : xilinx::AIE::impl::AIEAssignBufferDescriptorIDsBase<
+          AIEAssignBufferDescriptorIDsPass> {
   void runOnOperation() override {
     DeviceOp targetOp = getOperation();
     const AIETargetModel &targetModel = targetOp.getTargetModel();

@@ -20,7 +20,6 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 #define DEBUG_TYPE "aie-canonicalize-device"
 
 using namespace mlir;

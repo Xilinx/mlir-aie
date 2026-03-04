@@ -30,7 +30,6 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 #define DEBUG_TYPE "aie-vector-transfer-opt"
 
 using namespace mlir;
@@ -40,7 +39,8 @@ using namespace xilinx::AIE;
 namespace {
 
 struct AIEVectorTransferLoweringPass
-    : xilinx::AIE::impl::AIEVectorTransferLoweringBase<AIEVectorTransferLoweringPass> {
+    : xilinx::AIE::impl::AIEVectorTransferLoweringBase<
+          AIEVectorTransferLoweringPass> {
   AIEVectorTransferLoweringPass() = default;
   AIEVectorTransferLoweringPass(const AIEVectorTransferLoweringPass &pass)
       : AIEVectorTransferLoweringPass() {}

@@ -24,14 +24,14 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 #define DEBUG_TYPE "aie-vector-opt"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct AIEVectorOptPass : xilinx::AIE::impl::AIEVectorOptBase<AIEVectorOptPass> {
+struct AIEVectorOptPass
+    : xilinx::AIE::impl::AIEVectorOptBase<AIEVectorOptPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<memref::MemRefDialect>();

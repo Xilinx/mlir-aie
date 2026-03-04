@@ -35,7 +35,6 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 using namespace mlir;
 using namespace mlir::vector;
 using namespace xilinx;
@@ -684,7 +683,8 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
   }
 };
 
-struct AIECoreToStandardPass : xilinx::AIE::impl::AIECoreToStandardBase<AIECoreToStandardPass> {
+struct AIECoreToStandardPass
+    : xilinx::AIE::impl::AIECoreToStandardBase<AIECoreToStandardPass> {
   AIECoreToStandardPass() = default;
   AIECoreToStandardPass(const AIECoreToStandardOptions &options) {
     deviceName = options.deviceName;

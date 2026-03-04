@@ -35,7 +35,6 @@ namespace xilinx {
 #include "aie/Conversion/Passes.h.inc"
 } // namespace xilinx
 
-
 #define DEBUG_TYPE "aie-convert-to-config"
 
 using namespace mlir;
@@ -849,22 +848,26 @@ struct ConvertAIEToConfigurationPass : BaseClass {
 
 struct ConvertAIEToTransactionPass
     : ConvertAIEToConfigurationPass<
-          xilinx::impl::ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
+          xilinx::impl::ConvertAIEToTransactionBase<
+              ConvertAIEToTransactionPass>,
           AIE::AIEToConfigurationOutputType::Transaction> {
   ConvertAIEToTransactionPass()
       : ConvertAIEToConfigurationPass<
-            xilinx::impl::ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
+            xilinx::impl::ConvertAIEToTransactionBase<
+                ConvertAIEToTransactionPass>,
             AIE::AIEToConfigurationOutputType::Transaction>(clElfDir,
                                                             clDeviceName) {}
 };
 
 struct ConvertAIEToControlPacketsPass
     : ConvertAIEToConfigurationPass<
-          xilinx::impl::ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
+          xilinx::impl::ConvertAIEToControlPacketsBase<
+              ConvertAIEToControlPacketsPass>,
           AIE::AIEToConfigurationOutputType::ControlPacket> {
   ConvertAIEToControlPacketsPass()
       : ConvertAIEToConfigurationPass<
-            xilinx::impl::ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
+            xilinx::impl::ConvertAIEToControlPacketsBase<
+                ConvertAIEToControlPacketsPass>,
             AIE::AIEToConfigurationOutputType::ControlPacket>(clElfDir,
                                                               clDeviceName) {}
 };

@@ -36,7 +36,6 @@ namespace xilinx::AIE {
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 } // namespace xilinx::AIE
 
-
 #define DEBUG_TYPE "aie-hoist-vector-transfer-pointers"
 
 using namespace mlir;
@@ -563,7 +562,8 @@ struct HoistVectorTransferPointersPattern
 //===----------------------------------------------------------------------===//
 
 struct AIEHoistVectorTransferPointersPass
-    : xilinx::AIE::impl::AIEHoistVectorTransferPointersBase<AIEHoistVectorTransferPointersPass> {
+    : xilinx::AIE::impl::AIEHoistVectorTransferPointersBase<
+          AIEHoistVectorTransferPointersPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<affine::AffineDialect, arith::ArithDialect,
                     memref::MemRefDialect, scf::SCFDialect,

@@ -26,7 +26,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
@@ -85,7 +84,8 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   }
 };
 
-struct AIEDMATasksToNPUPass : xilinx::AIEX::impl::AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
+struct AIEDMATasksToNPUPass
+    : xilinx::AIEX::impl::AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   bool shouldSkipBlock(Block &block) {
     // Allow blocks in the input IR that contain nothing but a next_bd operation

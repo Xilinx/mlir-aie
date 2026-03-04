@@ -25,7 +25,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 #define DEBUG_TYPE "aie-create-lower-packet"
 
 using namespace mlir;
@@ -52,7 +51,8 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 };
 
 struct AIEBroadcastPacketPass
-    : public xilinx::AIEX::impl::AIEBroadcastPacketBase<AIEBroadcastPacketPass> {
+    : public xilinx::AIEX::impl::AIEBroadcastPacketBase<
+          AIEBroadcastPacketPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();

@@ -21,7 +21,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 #define DEBUG_TYPE "aie-lower-set-lock"
 
 using namespace mlir;
@@ -64,7 +63,8 @@ public:
   };
 };
 
-struct AIELowerSetLockPass : public xilinx::AIEX::impl::AIELowerSetLockBase<AIELowerSetLockPass> {
+struct AIELowerSetLockPass
+    : public xilinx::AIEX::impl::AIELowerSetLockBase<AIELowerSetLockPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();

@@ -25,7 +25,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 #define DEBUG_TYPE "aie-lower-multicast"
 
 using namespace mlir;
@@ -51,7 +50,8 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   }
 };
 
-struct AIELowerMulticastPass : public xilinx::AIEX::impl::AIEMulticastBase<AIELowerMulticastPass> {
+struct AIELowerMulticastPass
+    : public xilinx::AIEX::impl::AIEMulticastBase<AIELowerMulticastPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();

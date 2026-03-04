@@ -21,13 +21,13 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
 struct AIEAssignRuntimeSequenceBDIDsPass
-    : xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<AIEAssignRuntimeSequenceBDIDsPass> {
+    : xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<
+          AIEAssignRuntimeSequenceBDIDsPass> {
 
   BdIdGenerator &
   getGeneratorForTile(AIE::TileOp tile,

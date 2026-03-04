@@ -24,7 +24,6 @@ namespace xilinx::AIEX {
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 } // namespace xilinx::AIEX
 
-
 #define DEBUG_TYPE "aie-txn-to-control"
 
 using namespace mlir;
@@ -130,7 +129,8 @@ private:
 };
 
 struct AIETxnToControlPacketPass
-    : public xilinx::AIEX::impl::AIETxnToControlPacketBase<AIETxnToControlPacketPass> {
+    : public xilinx::AIEX::impl::AIETxnToControlPacketBase<
+          AIETxnToControlPacketPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
@@ -148,7 +148,8 @@ struct AIETxnToControlPacketPass
 };
 
 struct AIELegalizeControlPacketPass
-    : public xilinx::AIEX::impl::AIELegalizeControlPacketBase<AIELegalizeControlPacketPass> {
+    : public xilinx::AIEX::impl::AIELegalizeControlPacketBase<
+          AIELegalizeControlPacketPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
