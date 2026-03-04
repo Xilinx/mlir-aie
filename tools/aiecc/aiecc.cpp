@@ -84,6 +84,8 @@
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+
 #include "llvm/IR/Module.h"
 
 // Optional library integrations for direct calls instead of subprocess
@@ -1491,6 +1493,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
   // Register LLVM IR translation dialects
   mlir::registerBuiltinDialectTranslation(context);
   mlir::registerLLVMDialectTranslation(context);
+  xilinx::xllvm::registerXLLVMDialectTranslation(context);
 
   if (failed(runLLVMLoweringPipeline(*coreModule, deviceName, core.col,
                                      core.row, aieTarget))) {
@@ -1708,10 +1711,21 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     return success();
   }
 
-  SmallString<128> elfPath(tmpDirName);
-  sys::path::append(elfPath, deviceName.str() + "_core_" +
-                                 std::to_string(core.col) + "_" +
-                                 std::to_string(core.row) + ".elf");
+  // When elf_file is already set in the MLIR (e.g., elf_file = "custom_1_3.elf"),
+  // use that path as the output ELF. This matches the Python driver's behavior:
+  //   file_core_elf = elf_file if elf_file else corefile(...)
+  // The test flow compiles the core body to that path, then the test's RUN step
+  // overwrites it with the actual kernel. The aiesim artifacts reference this
+  // path, so they must point to the same file the test populates.
+  SmallString<128> elfPath;
+  if (!core.elfFile.empty()) {
+    elfPath = core.elfFile;
+  } else {
+    elfPath = tmpDirName;
+    sys::path::append(elfPath, deviceName.str() + "_core_" +
+                                   std::to_string(core.col) + "_" +
+                                   std::to_string(core.row) + ".elf");
+  }
 
   // Make the ELF path absolute so CDO generation can find it
   SmallString<256> absElfPath;
@@ -2128,6 +2142,7 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
           // Register LLVM IR translation dialects
           mlir::registerBuiltinDialectTranslation(threadContext);
           mlir::registerLLVMDialectTranslation(threadContext);
+          xilinx::xllvm::registerXLLVMDialectTranslation(threadContext);
 
           // Parse the module in this thread's context
           ParserConfig parseConfig(&threadContext);
@@ -2223,6 +2238,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
   // Register LLVM IR translation dialects
   mlir::registerBuiltinDialectTranslation(context);
   mlir::registerLLVMDialectTranslation(context);
+  xilinx::xllvm::registerXLLVMDialectTranslation(context);
 
   if (failed(runUnifiedLLVMLoweringPipeline(*unifiedModule, deviceName,
                                             aieTarget))) {
@@ -2418,10 +2434,18 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
                    << ") from unified object\n";
     }
 
-    SmallString<128> elfPath(tmpDirName);
-    sys::path::append(elfPath, deviceName.str() + "_core_" +
-                                   std::to_string(core.col) + "_" +
-                                   std::to_string(core.row) + ".elf");
+    // When elf_file is already set in the MLIR, use that path as the output
+    // ELF. This matches the Python driver's behavior. See compileCore() for
+    // the same fix and rationale.
+    SmallString<128> elfPath;
+    if (!core.elfFile.empty()) {
+      elfPath = core.elfFile;
+    } else {
+      elfPath = tmpDirName;
+      sys::path::append(elfPath, deviceName.str() + "_core_" +
+                                     std::to_string(core.col) + "_" +
+                                     std::to_string(core.row) + ".elf");
+    }
 
     // Make ELF path absolute
     SmallString<256> absElfPath;
@@ -3023,7 +3047,7 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   // Find device and generate instructions for each runtime sequence
   LogicalResult result = success();
   for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
-    if (!deviceName.empty() && devOp.getSymName() != devName) {
+    if (devOp.getSymName() != devName) {
       continue;
     }
 
@@ -3357,7 +3381,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   // Count runtime sequence arguments to determine ctrl_pkt buffer index
   int ctrlIdx = 0;
   for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
-    if (!deviceName.empty() && devOp.getSymName() != devName) {
+    if (devOp.getSymName() != devName) {
       continue;
     }
     for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
@@ -3616,7 +3640,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   LogicalResult result = success();
 
   for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
-    if (!deviceName.empty() && devOp.getSymName() != devName) {
+    if (devOp.getSymName() != devName) {
       continue;
     }
 
@@ -4433,6 +4457,49 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   // Collect device info for full ELF generation if requested
   std::vector<DeviceElfInfo> deviceElfInfos;
   int devicePdiId = 1; // Start PDI IDs from 1
+
+  // When generating a full ELF, assign numeric PDI IDs to NpuLoadPdiOp ops
+  // that reference a device via device_ref. This matches what the old Python
+  // driver's assign_load_pdi_ids() did: map each device name to a 1-based
+  // integer and write it back to the load_pdi id attribute so the NPU
+  // instruction binary encodes the correct ID that aiebu-asm will cross-
+  // reference against the PDIs listed in config.json.
+  if (generateFullElf) {
+    // Build device-name -> 1-based PDI id mapping (same order as the loop
+    // below so the IDs are consistent with what generateCdoArtifacts writes).
+    std::map<std::string, int> deviceToPdiId;
+    int nextId = 1;
+    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
+      if (!deviceName.empty() && deviceOp.getSymName() != deviceName)
+        continue;
+      deviceToPdiId[deviceOp.getSymName().str()] = nextId++;
+    }
+
+    // Walk every NpuLoadPdiOp that has a device_ref and patch its id.
+    // Use generic walk to avoid pulling in XLLVM translation dependencies
+    // through typed walk template instantiation.
+    moduleOp.walk([&](mlir::Operation *op) {
+      auto loadPdiOp = mlir::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op);
+      if (!loadPdiOp)
+        return;
+      auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
+      if (!deviceRefAttr)
+        return;
+      StringRef refName = deviceRefAttr.getValue();
+      auto it = deviceToPdiId.find(refName.str());
+      if (it == deviceToPdiId.end()) {
+        loadPdiOp.emitWarning()
+            << "load_pdi references unknown device '" << refName
+            << "'; PDI ID will remain 0";
+        return;
+      }
+      loadPdiOp.setId(static_cast<uint32_t>(it->second));
+      if (verbose) {
+        llvm::outs() << "Assigned PDI id=" << it->second
+                     << " to load_pdi referencing @" << refName << "\n";
+      }
+    });
+  }
 
   for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
     // Filter by device name if specified
