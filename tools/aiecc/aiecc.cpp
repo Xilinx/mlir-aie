@@ -1711,8 +1711,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     return success();
   }
 
-  // When elf_file is already set in the MLIR (e.g., elf_file = "custom_1_3.elf"),
-  // use that path as the output ELF. This matches the Python driver's behavior:
+  // When elf_file is already set in the MLIR (e.g., elf_file =
+  // "custom_1_3.elf"), use that path as the output ELF. This matches the Python
+  // driver's behavior:
   //   file_core_elf = elf_file if elf_file else corefile(...)
   // The test flow compiles the core body to that path, then the test's RUN step
   // overwrites it with the actual kernel. The aiesim artifacts reference this
@@ -4488,9 +4489,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       StringRef refName = deviceRefAttr.getValue();
       auto it = deviceToPdiId.find(refName.str());
       if (it == deviceToPdiId.end()) {
-        loadPdiOp.emitWarning()
-            << "load_pdi references unknown device '" << refName
-            << "'; PDI ID will remain 0";
+        loadPdiOp.emitWarning() << "load_pdi references unknown device '"
+                                << refName << "'; PDI ID will remain 0";
         return;
       }
       loadPdiOp.setId(static_cast<uint32_t>(it->second));
