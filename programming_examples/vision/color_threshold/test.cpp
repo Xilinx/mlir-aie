@@ -127,7 +127,7 @@ int main(int argc, const char *argv[]) {
   uint8_t *bufOut = bo_out.map<uint8_t *>();
 
   int errors = 0;
-  int max_errors = 64000;
+  int max_errors = 50;
 
   /*
    ****************************************************************************

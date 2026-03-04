@@ -220,14 +220,90 @@ def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
     return best_candidate
 
 
-def update_files(new_commit, commit_date, eudsl_version):
-    # Format dates
-    # DATETIME=YYYYMMDDHH
-    datetime_str = commit_date.strftime("%Y%m%d%H")
+MLIR_DISTRO_RELEASE_URL = (
+    "https://api.github.com/repos/Xilinx/mlir-aie/releases/tags/mlir-distro"
+)
+
+
+def find_wheel_in_distro(commit_hash):
+    """Query the mlir-distro GitHub release for a wheel matching this LLVM commit.
+
+    The mlirDistro.yml workflow stamps wheels with the CI runner's wall-clock
+    time (``date +"%Y%m%d%H"``), and reads the LLVM major.minor.patch version
+    from ``LLVMVersion.cmake``.  Both values are baked into the wheel filename.
+    Since neither can be derived from the LLVM commit metadata alone, we look
+    up the actual wheel to get the correct version string.
+
+    Uses the paginated release assets endpoint to handle releases with many
+    assets (the mlir-distro release accumulates wheels over time).
+
+    Returns (major_minor_patch, datetime_str) or None.
+    """
+    commit_short = commit_hash[:8]
+    # Match base 'mlir-' wheels (not mlir_no_rtti or mlir_native_tools).
+    pattern = re.compile(
+        rf"^mlir-(\d+\.\d+\.\d+)\.(\d{{10}})\+{re.escape(commit_short)}-"
+    )
+    try:
+        # First, get the release ID.
+        with get_request_simple(MLIR_DISTRO_RELEASE_URL) as response:
+            release_data = json.loads(response.read().decode("utf-8"))
+        release_id = release_data["id"]
+
+        # Paginate through the release assets endpoint.
+        page = 1
+        while True:
+            assets_url = (
+                f"https://api.github.com/repos/Xilinx/mlir-aie"
+                f"/releases/{release_id}/assets?per_page=100&page={page}"
+            )
+            with get_request_simple(assets_url) as response:
+                assets = json.loads(response.read().decode("utf-8"))
+            if not assets:
+                break
+            for asset in assets:
+                m = pattern.match(asset["name"])
+                if m:
+                    version, datetime_str = m.group(1), m.group(2)
+                    print(
+                        f"Found wheel in mlir-distro: "
+                        f"mlir-{version}.{datetime_str}+{commit_short}"
+                    )
+                    return version, datetime_str
+            if len(assets) < 100:
+                break
+            page += 1
+
+        print(
+            f"Warning: No wheel found in mlir-distro for commit {commit_short}.",
+            file=sys.stderr,
+        )
+    except Exception as e:
+        print(f"Error querying mlir-distro release: {e}", file=sys.stderr)
+    return None
+
+
+def update_files(
+    new_commit, commit_date, eudsl_version, wheel_version=None, wheel_datetime=None
+):
+    # Use wheel-derived values when available, fall back to commit date.
+    if wheel_datetime:
+        datetime_str = wheel_datetime
+    else:
+        # Fallback: derive from LLVM commit date (may not match the actual
+        # wheel, since mlirDistro.yml uses CI build time instead).
+        datetime_str = commit_date.strftime("%Y%m%d%H")
+        print(
+            "Warning: Using LLVM commit date as DATETIME fallback. "
+            "This may not match the actual wheel version.",
+            file=sys.stderr,
+        )
 
     print(f"Updating to LLVM commit: {new_commit}")
     print(f"Commit Date: {commit_date}")
     print(f"DATETIME: {datetime_str}")
+    if wheel_version:
+        print(f"WHEEL_VERSION prefix: {wheel_version}")
     print(f"EUDSL Version: {eudsl_version}")
 
     # Update utils/clone-llvm.sh
@@ -239,6 +315,13 @@ def update_files(new_commit, commit_date, eudsl_version):
             content,
         )
         content = re.sub(r"DATETIME=\d+", f"DATETIME={datetime_str}", content)
+        # Update the major.minor.patch prefix in WHEEL_VERSION (e.g. 22.0.0 -> 23.0.0).
+        if wheel_version:
+            content = re.sub(
+                r"(WHEEL_VERSION=)\d+\.\d+\.\d+",
+                rf"\g<1>{wheel_version}",
+                content,
+            )
         CLONE_LLVM_SH.write_text(content)
         print(f"Updated {CLONE_LLVM_SH}")
     else:
@@ -354,9 +437,25 @@ def main():
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(f"bump_reason={reason}\n")
 
-    # 5. Update files
+    # 5. Look up actual wheel in mlir-distro to get correct DATETIME and version
+    wheel_version = None
+    wheel_datetime = None
+    wheel_info = find_wheel_in_distro(target_commit)
+    if wheel_info:
+        wheel_version, wheel_datetime = wheel_info
+    else:
+        print(
+            "Wheel not found in mlir-distro. DATETIME will be derived from "
+            "commit date (may not match actual wheel) and WHEEL_VERSION "
+            "major.minor.patch will not be updated.",
+            file=sys.stderr,
+        )
+
+    # 6. Update files
     # Use target_commit (from Triton/Torch/User) instead of eudsl's LLVM commit
-    update_files(target_commit, target_date, new_eudsl_version)
+    update_files(
+        target_commit, target_date, new_eudsl_version, wheel_version, wheel_datetime
+    )
 
 
 if __name__ == "__main__":
