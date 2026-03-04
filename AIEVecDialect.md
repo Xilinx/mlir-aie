@@ -1460,7 +1460,20 @@ _Directions for cascade_
 | North | `5` | North |
 | East | `6` | East |
 
-### CoreEvent
+### ComboLogic
+
+_Combo event logic function_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| AND | `0` | AND |
+| AND_NOT | `1` | AND_NOT |
+| OR | `2` | OR |
+| OR_NOT | `3` | OR_NOT |
+
+### CoreEventAIE
 
 _Core module event enumeration for AIE_
 
@@ -1875,6 +1888,18 @@ _DMA Channel direction_
 | S2MM | `0` | S2MM |
 | MM2S | `1` | MM2S |
 
+### EdgeTrigger
+
+_Edge detection trigger mode_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| RISING | `1` | RISING |
+| FALLING | `2` | FALLING |
+| BOTH | `3` | BOTH |
+
 ### LockAction
 
 _Lock acquire/release_
@@ -1898,7 +1923,7 @@ _Lock operation is blocking_
 | NonBlocking | `0` | NonBlocking |
 | Blocking | `1` | Blocking |
 
-### MemEvent
+### MemEventAIE
 
 _Memory module event enumeration for AIE_
 
@@ -2283,7 +2308,7 @@ _Memory module event enumeration for AIE2P_
 | USER_EVENT_2 | `126` | USER_EVENT_2 |
 | USER_EVENT_3 | `127` | USER_EVENT_3 |
 
-### MemTileEvent
+### MemTileEventAIE
 
 _Memory tile event enumeration for AIE_
 
@@ -2643,7 +2668,7 @@ _Ports of an object FIFO_
 | Produce | `0` | Produce |
 | Consume | `1` | Consume |
 
-### ShimTileEvent
+### ShimTileEventAIE
 
 _Shim tile event enumeration for AIE_
 
@@ -3110,6 +3135,31 @@ _Shuffle mode for AIEVec shuffle operations_
 | T16_2X16 | `45` | t16_2x16 |
 | T8_8X4 | `46` | t8_8x4 |
 | T8_4X8 | `47` | t8_4x8 |
+
+### TraceMode
+
+_Trace capture mode_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| EventTime | `0` | Event-Time |
+| EventPC | `1` | Event-PC |
+| Execution | `2` | Execution |
+
+### TracePacketType
+
+_Packet type identifier for parsing_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Core | `0` | core |
+| Mem | `1` | mem |
+| ShimTile | `2` | shimtile |
+| MemTile | `3` | memtile |
 
 ### WireBundle
 

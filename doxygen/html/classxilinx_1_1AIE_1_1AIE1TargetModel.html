@@ -188,6 +188,9 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a80d325a2d5fef62cbe02060afc2594bf"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aded73bb148c711a4f945984654feabf7" id="r_aded73bb148c711a4f945984654feabf7"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#aded73bb148c711a4f945984654feabf7">isLegalTileConnection</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, WireBundle srcBundle, int srcChan, WireBundle dstBundle, int dstChan) const override</td></tr>
 <tr class="separator:aded73bb148c711a4f945984654feabf7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1622afddecb2c8b3ded6342b473b9e7b" id="r_a1622afddecb2c8b3ded6342b473b9e7b"><td class="memItemLeft" align="right" valign="top">std::optional&lt; uint32_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a1622afddecb2c8b3ded6342b473b9e7b">getStreamSwitchPortIndex</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, WireBundle bundle, uint32_t <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>, <a class="el" href="classbool.html">bool</a> master) const override</td></tr>
+<tr class="memdesc:a1622afddecb2c8b3ded6342b473b9e7b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Get stream switch port index for a given port specification Return port index for Stream_Switch_Event_Port_Selection register, or nullopt if invalid.  <br /></td></tr>
+<tr class="separator:a1622afddecb2c8b3ded6342b473b9e7b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8ddb185f2f7a3cbb32eed705a56e9483" id="r_a8ddb185f2f7a3cbb32eed705a56e9483"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a8ddb185f2f7a3cbb32eed705a56e9483">getColumnShift</a> () const override</td></tr>
 <tr class="separator:a8ddb185f2f7a3cbb32eed705a56e9483"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6bdcd84ee37d627331fa13e4fc4838ac" id="r_a6bdcd84ee37d627331fa13e4fc4838ac"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIE1TargetModel.html#a6bdcd84ee37d627331fa13e4fc4838ac">getRowShift</a> () const override</td></tr>
@@ -283,6 +286,12 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a3bcaf53d7d02fa6e4090787ea083fdf4 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel" id="r_a3bcaf53d7d02fa6e4090787ea083fdf4"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a3bcaf53d7d02fa6e4090787ea083fdf4">encodeFieldValue</a> (const <a class="el" href="structxilinx_1_1AIE_1_1BitFieldInfo.html">BitFieldInfo</a> &amp;field, uint32_t value) const</td></tr>
 <tr class="memdesc:a3bcaf53d7d02fa6e4090787ea083fdf4 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Encode a field value with proper bit shifting.  <br /></td></tr>
 <tr class="separator:a3bcaf53d7d02fa6e4090787ea083fdf4 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a36be48597246245c595776b64497f36b inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel" id="r_a36be48597246245c595776b64497f36b"><td class="memItemLeft" align="right" valign="top">std::optional&lt; uint32_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a36be48597246245c595776b64497f36b">getFieldMask</a> (const <a class="el" href="structxilinx_1_1AIE_1_1BitFieldInfo.html">BitFieldInfo</a> &amp;field) const</td></tr>
+<tr class="memdesc:a36be48597246245c595776b64497f36b inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Compute a 32-bit mask for a register field.  <br /></td></tr>
+<tr class="separator:a36be48597246245c595776b64497f36b inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0d20345bdee72e7f2fe16cda6bd1cacb inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel" id="r_a0d20345bdee72e7f2fe16cda6bd1cacb"><td class="memItemLeft" align="right" valign="top">std::optional&lt; uint32_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a0d20345bdee72e7f2fe16cda6bd1cacb">resolvePortValue</a> (llvm::StringRef value, <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tile, <a class="el" href="classbool.html">bool</a> master) const</td></tr>
+<tr class="memdesc:a0d20345bdee72e7f2fe16cda6bd1cacb inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Resolve stream switch port specification to port index.  <br /></td></tr>
+<tr class="separator:a0d20345bdee72e7f2fe16cda6bd1cacb inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
@@ -335,7 +344,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00388">388</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00404">404</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="aaacbc7b4cd91bce8c3ea449c359634ab" name="aaacbc7b4cd91bce8c3ea449c359634ab"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#aaacbc7b4cd91bce8c3ea449c359634ab">&#9670;&#160;</a></span>AIE1TargetModel()</h2>
@@ -361,7 +370,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00390">390</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00406">406</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -390,7 +399,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00469">469</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00490">490</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00119">xilinx::AIE::AIETargetModel::getKind()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00063">xilinx::AIE::AIETargetModel::TK_AIE1_Last</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00062">xilinx::AIE::AIETargetModel::TK_AIE1_VC1902</a>.</p>
 
@@ -423,7 +432,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a74cc29457af2b82b43947bedf43f985d">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00422">422</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00438">438</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -452,9 +461,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#acae8887d9d64be1a250a2f14eea3ec43">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00466">466</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00487">487</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00164">getDmaBdAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00189">getDmaControlAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00228">getDmaBdAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00253">getDmaControlAddress()</a>.</p>
 
 </div>
 </div>
@@ -515,9 +524,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a668ed6cb8d5024f4c78388b56d8c87a0">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00164">164</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00228">228</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00466">getColumnShift()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00467">getRowShift()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00147">xilinx::AIE::AIETargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00157">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00487">getColumnShift()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00488">getRowShift()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00147">xilinx::AIE::AIETargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00157">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
 </div>
 </div>
@@ -559,7 +568,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a729ed6f03e901d4370bae42be1996dc5">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00180">180</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00244">244</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00147">xilinx::AIE::AIETargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00157">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
@@ -615,9 +624,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a283376dddaecbdd539de6bac13d56401">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00189">189</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00253">253</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEDialect_8h_source.html#l00129">xilinx::AIE::channel</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00466">getColumnShift()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00467">getRowShift()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00147">xilinx::AIE::AIETargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00157">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
+<p class="reference">References <a class="el" href="AIEDialect_8h_source.html#l00129">xilinx::AIE::channel</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00487">getColumnShift()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00488">getRowShift()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00147">xilinx::AIE::AIETargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00157">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
 </div>
 </div>
@@ -657,7 +666,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a750f45e74df81af4733d809e97345326">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00396">396</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00460">460</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 </div>
 </div>
@@ -688,7 +697,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a354b79b620400901a8d1bb747823aed7">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00421">421</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00437">437</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -728,7 +737,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a79320bb455e9e38ba383033094bb2096">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00450">450</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00466">466</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -759,7 +768,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ab5080b24d7082590df8441ee7a6c39af">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00427">427</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00443">443</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -791,7 +800,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a9ae782c7048466cfc38d6998a0994124">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00096">96</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00160">160</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00173">xilinx::AIE::AIETargetModel::isValidTile()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
 
@@ -824,9 +833,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#adaca9b20c3b2b8b8975c905f5f3877a0">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00420">420</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00436">436</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00409">getMemInternalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00425">getMemInternalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -858,9 +867,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#af12611d5031b68d2888781ac5d69dbbb">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00409">409</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00425">425</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00420">getMemEastBaseAddress()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00418">getMemWestBaseAddress()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00436">getMemEastBaseAddress()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00434">getMemWestBaseAddress()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
 
 </div>
 </div>
@@ -892,7 +901,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a4624e533eed5b4c265709d88e9088ae2">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00109">109</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00173">173</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00173">xilinx::AIE::AIETargetModel::isValidTile()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
 
@@ -925,7 +934,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#acbb548b0c54ad75e8d04bf14be71f587">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00419">419</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00435">435</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -957,7 +966,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a932366bc7ffd17d20d536291c6c7bcf3">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00116">116</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00180">180</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00173">xilinx::AIE::AIETargetModel::isValidTile()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
 
@@ -990,7 +999,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a2cebef12915d657125c4a9adfc237ad5">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00417">417</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00433">433</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -1021,7 +1030,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afe68b1d7bd9a0e47dbbe503c901623d9">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00447">447</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00463">463</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -1053,7 +1062,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#aca8139195613c9f8181ea31d8c2a78b0">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00083">83</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00147">147</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00173">xilinx::AIE::AIETargetModel::isValidTile()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
 
@@ -1086,9 +1095,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a87adbb0899c65c3635dda84f7b439ac5">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00418">418</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00434">434</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00409">getMemInternalBaseAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8h_source.html#l00425">getMemInternalBaseAddress()</a>.</p>
 
 </div>
 </div>
@@ -1130,7 +1139,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5a95754a1eac89c4df9bda56b4f08d14">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00448">448</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00464">464</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -1162,7 +1171,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a9f5198a27b00318141559b90dd507887">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00430">430</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00446">446</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -1211,7 +1220,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae78ec297d20fc5f9aca1e93ba2a92777">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00323">323</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00387">387</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00167">xilinx::AIE::AIETargetModel::isShimNOCorPLTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
@@ -1262,11 +1271,11 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00208">208</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00272">272</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">xilinx::AIE::AIETargetModel::columns()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00157">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00162">xilinx::AIE::AIETargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8d6f3c31d960dbc32fcc569919b536aa">xilinx::AIE::AIETargetModel::rows()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00359">isLegalTileConnection()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00423">isLegalTileConnection()</a>.</p>
 
 </div>
 </div>
@@ -1298,7 +1307,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a3795e8f194a25756f164e4d7dccbab7f">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00424">424</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00440">440</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -1397,7 +1406,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae3dbb309666278a8166c8e9f29e5f0e1">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00446">446</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00462">462</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -1446,7 +1455,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a250ac542b01465f2fa67b07476b5b362">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00341">341</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00405">405</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00167">xilinx::AIE::AIETargetModel::isShimNOCorPLTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
@@ -1497,11 +1506,11 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00264">264</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00328">328</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">xilinx::AIE::AIETargetModel::columns()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00157">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00162">xilinx::AIE::AIETargetModel::isShimPLTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8d6f3c31d960dbc32fcc569919b536aa">xilinx::AIE::AIETargetModel::rows()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00359">isLegalTileConnection()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00423">isLegalTileConnection()</a>.</p>
 
 </div>
 </div>
@@ -1530,9 +1539,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#af656587d8e0fb2cdf6a313aa7d52d986">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00467">467</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00488">488</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00164">getDmaBdAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00189">getDmaControlAddress()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIETargetModel_8cpp_source.html#l00228">getDmaBdAddress()</a>, and <a class="el" href="AIETargetModel_8cpp_source.html#l00253">getDmaControlAddress()</a>.</p>
 
 </div>
 </div>
@@ -1561,7 +1570,69 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a55454c40f579e89bfb53a629c6d34ef9">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00391">391</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00455">455</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a1622afddecb2c8b3ded6342b473b9e7b" name="a1622afddecb2c8b3ded6342b473b9e7b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1622afddecb2c8b3ded6342b473b9e7b">&#9670;&#160;</a></span>getStreamSwitchPortIndex()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::optional&lt; uint32_t &gt; xilinx::AIE::AIE1TargetModel::getStreamSwitchPortIndex </td>
+          <td>(</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>col</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>row</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">WireBundle&#160;</td>
+          <td class="paramname"><em>bundle</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>channel</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
+          <td class="paramname"><em>master</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">override</span><span class="mlabel">virtual</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Get stream switch port index for a given port specification Return port index for Stream_Switch_Event_Port_Selection register, or nullopt if invalid. </p>
+
+<p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afed07487574854415b56044a77ea0b32">xilinx::AIE::AIETargetModel</a>.</p>
+
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00547">547</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00147">xilinx::AIE::AIETargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00167">xilinx::AIE::AIETargetModel::isShimNOCorPLTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
 </div>
 </div>
@@ -1592,7 +1663,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a23aafee7ea4a623e8df922cdc3d4e8a7">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00080">80</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00144">144</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 </div>
 </div>
@@ -1646,7 +1717,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a6f3cadede12bb82de32843522fa2b9f1">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00433">433</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00449">449</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -1700,7 +1771,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afa8ae188e00d23c5c57cba293521b729">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00148">148</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00212">212</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00202">xilinx::AIE::AIETargetModel::isEast()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00192">xilinx::AIE::AIETargetModel::isInternal()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00207">xilinx::AIE::AIETargetModel::isNorth()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00212">xilinx::AIE::AIETargetModel::isSouth()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00197">xilinx::AIE::AIETargetModel::isWest()</a>.</p>
 
@@ -1766,9 +1837,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5907560450a4177611806ceb3f5166fe">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00359">359</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00423">423</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00208">getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00264">getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00147">xilinx::AIE::AIETargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00152">xilinx::AIE::AIETargetModel::isMemTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00167">xilinx::AIE::AIETargetModel::isShimNOCorPLTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00272">getNumDestSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00328">getNumSourceSwitchboxConnections()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00147">xilinx::AIE::AIETargetModel::isCoreTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00152">xilinx::AIE::AIETargetModel::isMemTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00167">xilinx::AIE::AIETargetModel::isShimNOCorPLTile()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
 </div>
 </div>
@@ -1822,7 +1893,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5ef95632bca2efdb5dc7b3cfa70f5dec">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00131">131</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00195">195</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00202">xilinx::AIE::AIETargetModel::isEast()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00192">xilinx::AIE::AIETargetModel::isInternal()</a>.</p>
 
@@ -1878,7 +1949,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a24319458ca3795493bd25ce11ea9a747">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00138">138</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00202">202</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00207">xilinx::AIE::AIETargetModel::isNorth()</a>.</p>
 
@@ -1934,7 +2005,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a80738cbd40497b90fbf92d2a2da0ecf4">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00143">143</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00207">207</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00212">xilinx::AIE::AIETargetModel::isSouth()</a>.</p>
 
@@ -1990,7 +2061,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae8bf3235fffa05ac66779c74eba5b78c">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00124">124</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8cpp_source.html#l00188">188</a> of file <a class="el" href="AIETargetModel_8cpp_source.html">AIETargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00192">xilinx::AIE::AIETargetModel::isInternal()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00197">xilinx::AIE::AIETargetModel::isWest()</a>.</p>
 
@@ -2003,7 +2074,7 @@ Additional Inherited Members</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Mar 4 2026 20:24:45 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Mar 4 2026 22:24:33 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

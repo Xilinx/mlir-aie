@@ -2072,6 +2072,573 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `aie.trace` (::xilinx::AIE::TraceOp)
+
+_Declare a named trace configuration for a tile_
+
+Syntax:
+
+```
+operation ::= `aie.trace` $sym_name `(` $tile `)` (`buffer_size` `=` $buffer_size^)?
+              $body attr-dict
+```
+
+Declares a named trace configuration that can be invoked from a runtime
+sequence. The trace operation is a symbol that defines what events to
+monitor and how to configure the trace hardware, but does not actually
+apply the configuration. Configuration is applied via `aie.trace.start_config`
+within a `aie.runtime_sequence` block.
+
+Example:
+```mlir
+%tile02 = aie.tile(0, 2)
+
+aie.trace @trace_tile02(%tile02) {
+  aie.trace.mode "Event-Time"
+  aie.trace.packet id=1 type=core
+  aie.trace.event<"INSTR_EVENT_0">
+  aie.trace.event<"INSTR_VECTOR">
+  aie.trace.start broadcast=15
+  aie.trace.stop broadcast=14
+}
+```
+
+Traits: `HasParent<DeviceOp>`, `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
+
+Interfaces: `OpAsmOpInterface`, `Symbol`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>buffer_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index |
+
+
+
+### `aie.trace.combo_event` (::xilinx::AIE::TraceComboEventOp)
+
+_Configure a combo event for logical event combinations_
+
+Syntax:
+
+```
+operation ::= `aie.trace.combo_event` `<` $slot `>` $eventA $logic $eventB attr-dict
+```
+
+Configures a combo event that creates a derived event from logical
+combinations of other events. Combo events are evaluated by hardware
+Event Logic and produce new events (COMBO_EVENT_0/1/2/3) that can be
+traced using aie.trace.event operations.
+
+The combo event is configured with two input events and a logic function
+(AND, AND_NOT, OR, OR_NOT). AIE2 supports hierarchical combinations
+through slot 2 (combo of combo0 and combo1 results).
+
+Events can be specified as strings or typed enums.
+
+Slots:
+- Slot 0 (combo0): uses eventA, eventB
+- Slot 1 (combo1): uses eventC, eventD
+- Slot 2 (combo2): hierarchical, uses COMBO_EVENT_0 and COMBO_EVENT_1
+- Slot 3 (combo3): architecture-specific state machine (no configuration)
+
+Example:
+```mlir
+aie.trace @my_trace(%tile02) {
+  // Configure Combo 0: lock stalled AND NOT DMA active
+  aie.trace.combo_event<0> <"LOCK_STALL"> AND_NOT <"DMA_S2MM_0_STALLED">
+
+  // Configure Combo 1: instruction event OR vector operation
+  aie.trace.combo_event<1> <CoreEventAIE2::INSTR_EVENT_0> OR <CoreEventAIE2::INSTR_VECTOR>
+
+  // Configure Combo 2: (combo0) AND (combo1)
+  aie.trace.combo_event<2> <"COMBO_EVENT_0"> AND <"COMBO_EVENT_1">
+
+  // Trace the combo results
+  aie.trace.event<"COMBO_EVENT_0">
+  aie.trace.event<"COMBO_EVENT_1">
+  aie.trace.event<"COMBO_EVENT_2">
+  ...
+}
+```
+
+Traits: `HasParent<TraceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>slot</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>eventA</code></td><td>::xilinx::AIE::TraceEventAttr</td><td><details><summary>Reference to a trace event by name or enum</summary>{{% markdown %}}
+    References an event by name string or typed enum. Strings are used for
+    generic references that are resolved during lowering. Enums provide
+    compile-time type checking.
+
+    Validated against:
+    - Tile type (core events only valid for core tiles, etc.)
+    - Architecture (AIE/AIE2/AIE2P/AIE4)
+
+    Examples:
+      "INSTR_EVENT_0"                // String (resolved during lowering)
+      CoreEventAIE2::INSTR_EVENT_0   // Enum
+  {{% /markdown %}}</details></td></tr>
+<tr><td><code>logic</code></td><td>::xilinx::AIE::ComboLogicAttr</td><td><details><summary>Combo event logic function</summary>{{% markdown %}}
+    Logical operation for combining two events:
+    - AND (00): eventA AND eventB
+    - AND_NOT (01): eventA AND NOT eventB
+    - OR (10): eventA OR eventB
+    - OR_NOT (11): eventA OR NOT eventB
+  {{% /markdown %}}</details></td></tr>
+<tr><td><code>eventB</code></td><td>::xilinx::AIE::TraceEventAttr</td><td><details><summary>Reference to a trace event by name or enum</summary>{{% markdown %}}
+    References an event by name string or typed enum. Strings are used for
+    generic references that are resolved during lowering. Enums provide
+    compile-time type checking.
+
+    Validated against:
+    - Tile type (core events only valid for core tiles, etc.)
+    - Architecture (AIE/AIE2/AIE2P/AIE4)
+
+    Examples:
+      "INSTR_EVENT_0"                // String (resolved during lowering)
+      CoreEventAIE2::INSTR_EVENT_0   // Enum
+  {{% /markdown %}}</details></td></tr>
+</table>
+
+
+
+### `aie.trace.config` (::xilinx::AIE::TraceConfigOp)
+
+_Intermediate representation of lowered trace configuration_
+
+Syntax:
+
+```
+operation ::= `aie.trace.config` $sym_name `(` $tile `)` (`packet_type` `=` $packet_type^)? $body attr-dict
+```
+
+Generated by AIETraceToConfigPass. Contains calculated register
+addresses and values needed to configure trace hardware.
+
+This is an intermediate representation that makes it easier to perform
+optimizations before final lowering to NPU register writes.
+
+Example (generated, not user-written):
+```mlir
+aie.trace.config @trace_tile02_config(%tile02) {
+  aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15
+  aie.trace.reg register="Trace_Control0" field="Mode" value="Event-Time"
+}
+```
+
+Traits: `HasParent<DeviceOp>`, `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
+
+Interfaces: `Symbol`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>packet_type</code></td><td>::xilinx::AIE::TracePacketTypeAttr</td><td><details><summary>Packet type identifier for parsing</summary>{{% markdown %}}
+    Packet Type Convention:
+    - 0: Core tile (CORE_MODULE)
+    - 1: Core tile (MEMORY_MODULE)
+    - 2: Shim tile
+    - 3: Mem tile
+  {{% /markdown %}}</details></td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index |
+
+
+
+### `aie.trace.edge_event` (::xilinx::AIE::TraceEdgeEventOp)
+
+_Configure an edge detection event_
+
+Configures an edge detection event that triggers on signal transitions
+(rising edge, falling edge, or both) rather than signal levels.
+
+Edge detection is useful for counting event occurrences rather than
+measuring duration. For example, counting the number of lock stalls
+vs. the total cycles spent stalled.
+
+Events can be specified as strings or typed enums.
+
+Each module has 2 edge detectors producing EDGE_DETECTION_EVENT_0/1
+that can be traced using aie.trace.event operations.
+
+Example:
+```mlir
+aie.trace @my_trace(%tile02) {
+  // Configure Edge detector 0: count lock stalls (rising edges)
+  aie.trace.edge_event<0> event=<"LOCK_STALL"> trigger=RISING
+
+  // Configure Edge detector 1: count DMA transitions (both edges)
+  aie.trace.edge_event<1> event=<MemEventAIE2::DMA_MM2S_0_FINISHED_BD> trigger=BOTH
+
+  // Trace the edge-detected events
+  aie.trace.event<"EDGE_DETECTION_EVENT_0">
+  aie.trace.event<"EDGE_DETECTION_EVENT_1">
+  ...
+}
+```
+
+Traits: `HasParent<TraceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>slot</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>event</code></td><td>::xilinx::AIE::TraceEventAttr</td><td><details><summary>Reference to a trace event by name or enum</summary>{{% markdown %}}
+    References an event by name string or typed enum. Strings are used for
+    generic references that are resolved during lowering. Enums provide
+    compile-time type checking.
+
+    Validated against:
+    - Tile type (core events only valid for core tiles, etc.)
+    - Architecture (AIE/AIE2/AIE2P/AIE4)
+
+    Examples:
+      "INSTR_EVENT_0"                // String (resolved during lowering)
+      CoreEventAIE2::INSTR_EVENT_0   // Enum
+  {{% /markdown %}}</details></td></tr>
+<tr><td><code>trigger</code></td><td>::xilinx::AIE::EdgeTriggerAttr</td><td><details><summary>Edge detection trigger mode</summary>{{% markdown %}}
+    Edge detection trigger mode:
+    - RISING (01): Trigger on rising edge (0→1 transition)
+    - FALLING (10): Trigger on falling edge (1→0 transition)
+    - BOTH (11): Trigger on both edges
+  {{% /markdown %}}</details></td></tr>
+</table>
+
+
+
+### `aie.trace.event` (::xilinx::AIE::TraceEventOp)
+
+_Monitor a specific event in this trace unit_
+
+Syntax:
+
+```
+operation ::= `aie.trace.event` $event (`label` `=` $label^)? attr-dict
+```
+
+Adds an event to be monitored by the trace unit. Each tile type
+(core/mem/memtile/shimtile) has architecture-specific events.
+
+Events can be specified as strings or enum values.
+
+Maximum 8 events per trace unit (verified at compile time).
+
+Example:
+```mlir
+aie.trace.event<"INSTR_EVENT_0">  // String
+aie.trace.event<CoreEventAIE::COMBO_EVENT_0>    // Enum value
+```
+
+Traits: `HasParent<TraceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>event</code></td><td>::xilinx::AIE::TraceEventAttr</td><td><details><summary>Reference to a trace event by name or enum</summary>{{% markdown %}}
+    References an event by name string or typed enum. Strings are used for
+    generic references that are resolved during lowering. Enums provide
+    compile-time type checking.
+
+    Validated against:
+    - Tile type (core events only valid for core tiles, etc.)
+    - Architecture (AIE/AIE2/AIE2P/AIE4)
+
+    Examples:
+      "INSTR_EVENT_0"                // String (resolved during lowering)
+      CoreEventAIE2::INSTR_EVENT_0   // Enum
+  {{% /markdown %}}</details></td></tr>
+<tr><td><code>label</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+
+
+### `aie.trace.mode` (::xilinx::AIE::TraceModeOp)
+
+_Set trace mode (Event-Time, Event-PC, or Execution)_
+
+Syntax:
+
+```
+operation ::= `aie.trace.mode` $mode attr-dict
+```
+
+Specifies the trace mode. Default: "Event-Time"
+
+Example:
+```mlir
+aie.trace.mode "Event-Time"
+```
+
+Traits: `HasParent<TraceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>mode</code></td><td>::xilinx::AIE::TraceModeAttr</td><td><details><summary>Trace capture mode</summary>{{% markdown %}}
+    Specifies the trace mode:
+    - Event-Time (00): Captures event occurrence with timestamp
+    - Event-PC (01): Captures program counter when event occurs
+    - Execution (10): Instruction-level execution trace
+  {{% /markdown %}}</details></td></tr>
+</table>
+
+
+
+### `aie.trace.packet` (::xilinx::AIE::TracePacketOp)
+
+_Enable packet-switched trace routing_
+
+Syntax:
+
+```
+operation ::= `aie.trace.packet` `id` `=` $id `type` `=` $type attr-dict
+```
+
+Enables packet routing for trace data. Assigns packet ID (1-31) and
+packet type to differentiate tile sources during parsing.
+
+Example:
+```mlir
+aie.trace.packet id=1 type=core
+```
+
+Traits: `HasParent<TraceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1 whose maximum value is 31</td></tr>
+<tr><td><code>type</code></td><td>::xilinx::AIE::TracePacketTypeAttr</td><td><details><summary>Packet type identifier for parsing</summary>{{% markdown %}}
+    Packet Type Convention:
+    - 0: Core tile (CORE_MODULE)
+    - 1: Core tile (MEMORY_MODULE)
+    - 2: Shim tile
+    - 3: Mem tile
+  {{% /markdown %}}</details></td></tr>
+</table>
+
+
+
+### `aie.trace.port` (::xilinx::AIE::TracePortOp)
+
+_Configure stream switch port for event monitoring_
+
+Syntax:
+
+```
+operation ::= `aie.trace.port` `<` $slot `>` `port` `=` $port `channel` `=` $channel `direction` `=` $direction
+              attr-dict
+```
+
+Configures a stream switch port monitoring slot (0-7) to track events
+from a specific port. The port is specified by type (NORTH, DMA, etc.),
+channel number, and direction (S2MM=master, MM2S=slave).
+
+Direction semantics:
+- S2MM (Stream-to-Memory-Mapped) = master port (receiving from stream)
+- MM2S (Memory-Mapped-to-Stream) = slave port (sending to stream)
+
+After configuration, the port can be monitored using:
+- PORT_RUNNING_<slot>
+- PORT_IDLE_<slot>
+- PORT_STALLED_<slot>
+- PORT_TLAST_<slot>
+
+Example:
+```mlir
+aie.trace.port<0> port = North channel = 1 direction = S2MM
+aie.trace.port<1> port = DMA channel = 0 direction = MM2S
+aie.trace.event<"PORT_RUNNING_0">  // Monitor NORTH:1 (S2MM)
+aie.trace.event<"PORT_IDLE_1">     // Monitor DMA:0 (MM2S)
+```
+
+Traits: `HasParent<TraceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>slot</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0 whose maximum value is 7</td></tr>
+<tr><td><code>port</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>direction</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
+</table>
+
+
+
+### `aie.trace.reg` (::xilinx::AIE::TraceRegOp)
+
+_Specify a trace register field write by logical name_
+
+Syntax:
+
+```
+operation ::= `aie.trace.reg` `register` `=` $reg_name
+              (`field` `=` $field^)?
+              `value` `=` custom<TraceRegValue>($value)
+              (`mask` `=` $mask^)?
+              (`comment` `=` $comment^)?
+              attr-dict
+```
+
+Specifies a single register field write needed to configure trace hardware.
+Uses logical register names (e.g., "Trace_Control0"), field names
+(e.g., "Trace_Start_Event"), and values (integers or event names). If field
+is omitted, entire register is written.
+
+The mask field (optional) allows partial writes. When present, only the bits
+set in the mask are written, and the value is assumed to already be shifted.
+This enables combining multiple field writes into a single register write.
+
+Example:
+```mlir
+aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15
+aie.trace.reg register="Trace_Control0" field="Mode" value=0
+aie.trace.reg register="Trace_Control0" value=0x12345678 mask=0xFF00
+```
+
+Traits: `HasParent<TraceConfigOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>reg_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>field</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::Attribute</td><td>any attribute</td></tr>
+<tr><td><code>mask</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>comment</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+
+
+### `aie.trace.start` (::xilinx::AIE::TraceStartEventOp)
+
+_Configure trace start event_
+
+Specifies the event that triggers trace capture to begin.
+For multi-tile tracing, typically uses a broadcast event (default: 15).
+
+Example:
+```mlir
+aie.trace.start broadcast=15
+aie.trace.start event=<"TRUE">
+```
+
+Traits: `HasParent<TraceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>broadcast</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>event</code></td><td>::xilinx::AIE::TraceEventAttr</td><td><details><summary>Reference to a trace event by name or enum</summary>{{% markdown %}}
+    References an event by name string or typed enum. Strings are used for
+    generic references that are resolved during lowering. Enums provide
+    compile-time type checking.
+
+    Validated against:
+    - Tile type (core events only valid for core tiles, etc.)
+    - Architecture (AIE/AIE2/AIE2P/AIE4)
+
+    Examples:
+      "INSTR_EVENT_0"                // String (resolved during lowering)
+      CoreEventAIE2::INSTR_EVENT_0   // Enum
+  {{% /markdown %}}</details></td></tr>
+</table>
+
+
+
+### `aie.trace.start_config` (::xilinx::AIE::TraceStartConfigOp)
+
+_Apply a trace configuration in runtime sequence_
+
+Syntax:
+
+```
+operation ::= `aie.trace.start_config` $trace_config attr-dict
+```
+
+Invokes a named trace configuration within a runtime sequence.
+During lowering, this operation is replaced by the actual register
+writes (npu_write32) that implement the trace configuration.
+
+Example:
+```mlir
+aie.runtime_sequence @seq {
+  aie.trace.start_config @my_trace
+}
+```
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>trace_config</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
+
+
+
+### `aie.trace.stop` (::xilinx::AIE::TraceStopEventOp)
+
+_Configure trace stop event_
+
+Specifies the event that triggers trace capture to end.
+For multi-tile tracing, typically uses a broadcast event (default: 14).
+
+Example:
+```mlir
+aie.trace.stop broadcast=14
+aie.trace.stop event=<"USER_EVENT_0">
+```
+
+Traits: `HasParent<TraceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>broadcast</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>event</code></td><td>::xilinx::AIE::TraceEventAttr</td><td><details><summary>Reference to a trace event by name or enum</summary>{{% markdown %}}
+    References an event by name string or typed enum. Strings are used for
+    generic references that are resolved during lowering. Enums provide
+    compile-time type checking.
+
+    Validated against:
+    - Tile type (core events only valid for core tiles, etc.)
+    - Architecture (AIE/AIE2/AIE2P/AIE4)
+
+    Examples:
+      "INSTR_EVENT_0"                // String (resolved during lowering)
+      CoreEventAIE2::INSTR_EVENT_0   // Enum
+  {{% /markdown %}}</details></td></tr>
+</table>
+
+
+
 ### `aie.use_lock` (::xilinx::AIE::UseLockOp)
 
 _Acquire/release lock op_
@@ -2255,6 +2822,36 @@ Syntax:
 | pkt_type | `uint16_t` |  |
 | pkt_id | `uint16_t` |  |
 
+### TraceEventAttr
+
+_Reference to a trace event by name or enum_
+
+Syntax:
+
+```
+#aie.trace_event<
+  Attribute   # value
+>
+```
+
+References an event by name string or typed enum. Strings are used for
+generic references that are resolved during lowering. Enums provide
+compile-time type checking.
+
+Validated against:
+- Tile type (core events only valid for core tiles, etc.)
+- Architecture (AIE/AIE2/AIE2P/AIE4)
+
+Examples:
+  "INSTR_EVENT_0"                // String (resolved during lowering)
+  CoreEventAIE2::INSTR_EVENT_0   // Enum
+
+#### Parameters:
+
+| Parameter | C++ type | Description |
+| :-------: | :-------: | ----------- |
+| value | `Attribute` |  |
+
 ## Types
 
 ### AIEObjectFifoSubviewType
@@ -2357,7 +2954,20 @@ _Directions for cascade_
 | North | `5` | North |
 | East | `6` | East |
 
-### CoreEvent
+### ComboLogic
+
+_Combo event logic function_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| AND | `0` | AND |
+| AND_NOT | `1` | AND_NOT |
+| OR | `2` | OR |
+| OR_NOT | `3` | OR_NOT |
+
+### CoreEventAIE
 
 _Core module event enumeration for AIE_
 
@@ -2772,6 +3382,18 @@ _DMA Channel direction_
 | S2MM | `0` | S2MM |
 | MM2S | `1` | MM2S |
 
+### EdgeTrigger
+
+_Edge detection trigger mode_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| RISING | `1` | RISING |
+| FALLING | `2` | FALLING |
+| BOTH | `3` | BOTH |
+
 ### LockAction
 
 _Lock acquire/release_
@@ -2795,7 +3417,7 @@ _Lock operation is blocking_
 | NonBlocking | `0` | NonBlocking |
 | Blocking | `1` | Blocking |
 
-### MemEvent
+### MemEventAIE
 
 _Memory module event enumeration for AIE_
 
@@ -3180,7 +3802,7 @@ _Memory module event enumeration for AIE2P_
 | USER_EVENT_2 | `126` | USER_EVENT_2 |
 | USER_EVENT_3 | `127` | USER_EVENT_3 |
 
-### MemTileEvent
+### MemTileEventAIE
 
 _Memory tile event enumeration for AIE_
 
@@ -3540,7 +4162,7 @@ _Ports of an object FIFO_
 | Produce | `0` | Produce |
 | Consume | `1` | Consume |
 
-### ShimTileEvent
+### ShimTileEventAIE
 
 _Shim tile event enumeration for AIE_
 
@@ -3950,6 +4572,31 @@ _Shim tile event enumeration for AIE2P_
 | BROADCAST_A_15 | `125` | BROADCAST_A_15 |
 | USER_EVENT_0 | `126` | USER_EVENT_0 |
 | USER_EVENT_1 | `127` | USER_EVENT_1 |
+
+### TraceMode
+
+_Trace capture mode_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| EventTime | `0` | Event-Time |
+| EventPC | `1` | Event-PC |
+| Execution | `2` | Execution |
+
+### TracePacketType
+
+_Packet type identifier for parsing_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Core | `0` | core |
+| Mem | `1` | mem |
+| ShimTile | `2` | shimtile |
+| MemTile | `3` | memtile |
 
 ### WireBundle
 

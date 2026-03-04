@@ -199,6 +199,43 @@ Optionally, tileCol and tileRow can specify a single core to export
 -tilerow : Y coordinate of tile to generate code for
 ```
 
+### `-aie-trace-pack-reg-writes`
+
+_Pack multiple register field writes into single register writes_
+
+Packs multiple aie.trace.reg operations that write to the same register
+into a single aie.trace.reg operation with a combined mask and value.
+
+This pass operates in two phases:
+1. Convert field+value pairs to mask+shifted_value using register database
+2. Merge multiple writes to the same register with non-overlapping masks
+
+Example transformation:
+```mlir
+// Before:
+aie.trace.reg register="Trace_Event0" field="Trace_Event0" value=33
+aie.trace.reg register="Trace_Event0" field="Trace_Event1" value=34
+
+// After:
+aie.trace.reg register="Trace_Event0" value=0x22210000 mask=0xFFFF0000
+```
+
+It is an error for two aie.trace.reg in the same aie.trace block to have
+overlapping masks for the same register.
+
+### `-aie-trace-to-config`
+
+_Lower high-level trace ops to register configuration ops_
+
+Converts aie.trace operations to aie.trace.config operations containing
+aie.trace.reg operations that specify register field writes.
+
+This pass transforms declarative trace configurations into register-level
+specifications that can be further lowered to NPU register writes.
+
+Note: This pass only does semantic lowering. NPU write generation
+happens in aie-inline-trace-config (AIEX dialect).
+
 ### `-aie-vector-opt`
 
 _Optimize vector instructions for AIE_

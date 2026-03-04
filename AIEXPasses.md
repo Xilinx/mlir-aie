@@ -75,6 +75,17 @@ _Lowering herds with place and route ops to AIE cores, mems, and switchboxes_
 An experimental pass which elaborates herd operations (e.g. aie.herd, aie.iter, aie.select)
 into an explicit representation (e.g. aie.core, aie.mem, etc.).
 
+### `-aie-inline-trace-config`
+
+_Inline trace configuration and generate NPU writes_
+
+Replaces aie.trace.start_config operations by:
+1. Looking up the referenced trace.config symbol
+2. Resolving register/field names using RegisterDatabase
+3. Encoding bitfield values
+4. Merging multiple field writes to same register
+5. Generating aiex.npu.write32 operations with col/row preserved
+
 ### `-aie-legalize-ctrl-packet`
 
 _Legalize control packet operations for target_
