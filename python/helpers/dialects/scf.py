@@ -47,7 +47,7 @@ def _for(
             p = p.item()
         if isinstance(p, np.integer) or isinstance(p, int):
             p = constant(p, index=True)
-        elif not IndexType.isinstance(p.type):
+        elif not isinstance(p.type, IndexType):
             p = index_cast(p, to=T.index())
         params[i] = p
 
