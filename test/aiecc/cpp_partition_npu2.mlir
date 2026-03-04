@@ -1,4 +1,24 @@
-// Minimal npu2 (full 8-col) device for partition JSON testing
+//===- cpp_partition_npu2.mlir -----------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+// Tests that partition JSON has column_width=8 for npu2 (full 8-col).
+
+// REQUIRES: peano
+
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin -n %s
+// RUN: FileCheck %s --input-file=cpp_partition_npu2.mlir.prj/main_aie_partition.json
+
+// CHECK: "column_width": 8
+// CHECK: "start_columns": [
+// CHECK: 0
+
 module {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(0, 0)
