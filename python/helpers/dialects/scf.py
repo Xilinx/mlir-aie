@@ -71,7 +71,7 @@ def _for(
 def if_(cond, hasElse=True, insert_yield=True, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
-    if_op = IfOp(cond, hasElse=hasElse, loc=loc, ip=ip)
+    if_op = IfOp(cond, has_else=hasElse, loc=loc, ip=ip)
     with InsertionPoint(if_op.thenRegion.blocks[0]):
         yield if_op
         if insert_yield:
