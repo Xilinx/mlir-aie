@@ -38,7 +38,7 @@ build/final.xclbin: ${srcdir}/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 			--no-xchesscc --no-xbridge \
-			--aie-generate-npu-insts --npu-insts-name=insts.bin ${srcdir}/aie_trace.mlir
+			--aie-generate-npu-insts --npu-insts-name=insts.bin ../aie_trace.mlir
 
 build/insts.bin: build/final.xclbin
 
@@ -56,7 +56,7 @@ endif
 
 # Build and run with the new trace syntax
 run_trace: ${targetname}.exe build/final.xclbin build/insts.bin
-	@echo "Running with NEW declarative trace syntax..."
+	@echo "Running with declarative trace syntax..."
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir.prj/input_physical_with_elfs.mlir --output trace.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace.json

@@ -5,6 +5,8 @@
 //
 // RUN: mkdir -p test_npu1
 // RUN: cd test_npu1
+// RUN: cp %S/aie_trace.mlir aie_trace.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_trace.mlir
 // RUN: %run_on_npu1% make -f %S/Makefile clean
 // RUN: %run_on_npu1% make -f %S/Makefile run_trace
 // RUN: %run_on_npu1% make -f %S/Makefile run_trace_py

@@ -5,6 +5,8 @@
 //
 // RUN: mkdir -p test_npu2
 // RUN: cd test_npu2
+// RUN: cp %S/aie_trace.mlir aie_trace.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_trace.mlir
 // RUN: %run_on_npu2% make -f %S/Makefile clean devicename=npu2
 // RUN: %run_on_npu2% make -f %S/Makefile run_trace devicename=npu2
 // RUN: %run_on_npu2% make -f %S/Makefile run_trace_py devicename=npu2
