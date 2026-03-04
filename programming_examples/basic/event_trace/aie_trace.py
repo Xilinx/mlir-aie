@@ -202,9 +202,7 @@ def build_aie_trace():
             npu_address_patch(addr=119268, arg_idx=4, arg_plus=0)
 
             # Configure DMA channel for trace
-            npu_maskwrite32(
-                address=119304, column=0, mask=7936, row=0, value=3840
-            )
+            npu_maskwrite32(address=119304, column=0, mask=7936, row=0, value=3840)
             npu_write32(address=119308, column=0, row=0, value=2147483663)
 
             # Start trace control

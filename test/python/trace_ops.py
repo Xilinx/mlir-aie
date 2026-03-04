@@ -206,9 +206,7 @@ def traceComboEvent():
         def body():
             trace_combo_event(0, "LOCK_STALL", ComboLogic.AND, "STREAM_STALL")
             trace_combo_event(1, "INSTR_EVENT_0", ComboLogic.OR, "INSTR_VECTOR")
-            trace_combo_event(
-                2, "COMBO_EVENT_0", ComboLogic.AND_NOT, "COMBO_EVENT_1"
-            )
+            trace_combo_event(2, "COMBO_EVENT_0", ComboLogic.AND_NOT, "COMBO_EVENT_1")
             trace_start(event="TRUE")
             trace_stop(event="NONE")
 
