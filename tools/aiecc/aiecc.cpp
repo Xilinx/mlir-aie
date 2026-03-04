@@ -3331,7 +3331,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   // Clone the module since control packet generation is destructive
   OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
 
-  // Run control packet pipeline (Step 1: convert to control packets)
+  // Run control packet pipeline
   MLIRContext *ctx = clonedModule->getContext();
   {
     PassManager pm(ctx);
@@ -3339,14 +3339,16 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
       pm.enableVerifier(true);
     }
 
-    // Phase 1a: Run convert-aie-to-transaction at device level
-    // (nest<DeviceOp>() is needed for proper config generation)
+    // Phase 1a: Run convert-aie-to-transaction at device level.
+    // Must use nest<DeviceOp>() — the builtin.module(aie.device(...)) nesting
+    // doesn't properly generate config on in-memory modules.
     {
       PassManager txnPm(ctx);
       if (verbose)
         txnPm.enableVerifier(true);
       std::string txnPassStr =
-          "convert-aie-to-transaction{elf-dir=" + tmpDirName.str() + "}";
+          "convert-aie-to-transaction{elf-dir=" + tmpDirName.str() +
+          " device-name=" + devName.str() + "}";
       OpPassManager &txnDevicePm = txnPm.nest<xilinx::AIE::DeviceOp>();
       if (failed(parsePassPipeline(txnPassStr, txnDevicePm))) {
         llvm::errs() << "Error: Failed to parse transaction pipeline\n";
@@ -3358,8 +3360,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
       }
     }
 
-    // Phase 1b: Run ctrl-packet conversion using builtin.module nesting
-    // (these passes need access to module-level memref.global ops)
+    // Phase 1b: Run ctrl-packet passes with module nesting.
     {
       std::string pipelineStr =
           "builtin.module(aie.device(aie-txn-to-ctrl-packet,"
@@ -4640,26 +4641,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     llvm::outs() << "Detected AIE target: " << aieTarget << "\n";
   }
 
-  // If device filtering is requested, remove non-matching devices from the
-  // module before running passes. This prevents passes from running on devices
-  // that won't be compiled, which can cause issues in some environments.
-  if (!deviceName.empty()) {
-    SmallVector<xilinx::AIE::DeviceOp> toErase;
-    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-      if (deviceOp.getSymName() != deviceName) {
-        toErase.push_back(deviceOp);
-      }
-    }
-    for (auto deviceOp : toErase) {
-      if (verbose) {
-        llvm::outs() << "Removing non-matching device: "
-                     << deviceOp.getSymName() << "\n";
-      }
-      deviceOp.erase();
-    }
-  }
-
   // Step 1: Run resource allocation and lowering passes in-memory
+  // Run on ALL devices (matching legacy Python driver behavior).
   if (failed(runResourceAllocationPipeline(moduleOp, aieTarget))) {
     return failure();
   }
@@ -4685,7 +4668,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
-  // Step 2: Run routing in-memory
+  // Step 2: Run routing in-memory (on all devices, matching legacy behavior)
   if (failed(runRoutingPipeline(moduleOp))) {
     return failure();
   }
@@ -4694,6 +4677,32 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   SmallString<128> physicalPath(tmpDirName);
   sys::path::append(physicalPath, "input_physical.mlir");
   dumpModuleToFile(moduleOp, physicalPath, "physical module");
+
+  // Save unfiltered module for control packet generation (needs all devices
+  // present). The legacy Python driver keeps all devices and the
+  // convert-aie-to-transaction pass needs multi-device context.
+  OwningOpRef<ModuleOp> unfilteredModule;
+  if (generateCtrlPkt && !deviceName.empty()) {
+    unfilteredModule = moduleOp.clone();
+  }
+
+  // Filter devices AFTER resource allocation and routing (which need all
+  // devices). This prevents core compilation from processing unwanted devices.
+  if (!deviceName.empty()) {
+    SmallVector<xilinx::AIE::DeviceOp> toErase;
+    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
+      if (deviceOp.getSymName() != deviceName) {
+        toErase.push_back(deviceOp);
+      }
+    }
+    for (auto deviceOp : toErase) {
+      if (verbose) {
+        llvm::outs() << "Removing non-matching device: "
+                     << deviceOp.getSymName() << "\n";
+      }
+      deviceOp.erase();
+    }
+  }
 
   // Step 3: Compile cores and generate artifacts for each device
   // Collect device info for full ELF generation if requested
@@ -4736,6 +4745,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     if (failed(updateModuleWithElfs(moduleOp, devName, elfPaths))) {
       return failure();
     }
+    // Also update unfiltered module so ctrl packet generation can find ELFs
+    if (unfilteredModule) {
+      if (failed(updateModuleWithElfs(*unfilteredModule, devName, elfPaths))) {
+        return failure();
+      }
+    }
 
     // Dump module with ELFs if requested (for debugging only)
     SmallString<128> physicalWithElfsPath(tmpDirName);
@@ -4748,7 +4763,11 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     // needs the pre-NPU-lowered module state. NPU lowering destroys the ops
     // that the control packet passes need. This matches the legacy Python
     // driver's ordering where process_ctrlpkt() runs before NPU lowering.
-    if (failed(generateControlPacketOutput(moduleOp, tmpDirName, devName))) {
+    // Use unfiltered module for ctrl packet generation — the legacy Python
+    // driver passes the full multi-device module to process_ctrlpkt.
+    ModuleOp ctrlPktModule =
+        unfilteredModule ? *unfilteredModule : moduleOp;
+    if (failed(generateControlPacketOutput(ctrlPktModule, tmpDirName, devName))) {
       return failure();
     }
 
