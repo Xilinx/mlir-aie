@@ -1433,10 +1433,21 @@ LogicalResult PacketFlowOp::verify() {
   if (body.empty())
     return emitOpError("should have non-empty body");
 
+  int numSources = 0, numDests = 0;
   for (auto &ops : body.front()) {
     if (!isa<PacketSourceOp, PacketDestOp, EndOp>(ops))
       return ops.emitOpError("cannot be contained in a PacketFlow op");
+    if (isa<PacketSourceOp>(ops))
+      ++numSources;
+    if (isa<PacketDestOp>(ops))
+      ++numDests;
   }
+
+  if (numSources != 1)
+    return emitOpError("must have exactly one aie.packet_source (got ")
+           << numSources << ")";
+  if (numDests < 1)
+    return emitOpError("must have at least one aie.packet_dest");
 
   return success();
 }
