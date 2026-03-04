@@ -1211,44 +1211,64 @@ static LogicalResult runRoutingPipeline(ModuleOp moduleOp) {
   return success();
 }
 
+// Forward declaration
+static void assignPdiIds(ModuleOp moduleOp);
+
 /// Run the NPU lowering pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
-static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp) {
+static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
+                                             bool patchPdiIds = false) {
   MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
 
-  if (verbose) {
-    pm.enableVerifier(true);
+  // Phase 1: Core NPU lowering passes
+  {
+    PassManager pm(ctx);
+    if (verbose) {
+      pm.enableVerifier(true);
+    }
+
+    // Add materialize runtime sequences pass at module level (before device
+    // nesting) unless --no-materialize is specified
+    if (!noMaterialize) {
+      pm.addPass(xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass());
+    }
+
+    // Device-level passes
+    OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+    devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
+    devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
+    devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
+    devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
+    devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
+    devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
+
+    if (verbose) {
+      llvm::outs() << "Running NPU lowering pipeline in-memory\n";
+    }
+
+    if (failed(pm.run(moduleOp))) {
+      llvm::errs() << "Error: NPU lowering pipeline failed\n";
+      return failure();
+    }
   }
 
-  // Add materialize runtime sequences pass at module level (before device
-  // nesting) unless --no-materialize is specified
-  if (!noMaterialize) {
-    pm.addPass(xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass());
+  // Phase 2: Assign PDI IDs BEFORE expand-load-pdis (which copies IDs from
+  // original load_pdi ops to the new empty device load_pdi ops).
+  if (patchPdiIds) {
+    assignPdiIds(moduleOp);
   }
 
-  // Device-level passes
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
-  devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
-  devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
-  devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
-  devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
-  devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
-
-  // Add expand-load-pdi pass at module level (after device nesting)
-  // if --expand-load-pdis is specified
+  // Phase 3: Expand load_pdi operations if requested
   if (expandLoadPdis) {
+    PassManager pm(ctx);
+    if (verbose) {
+      pm.enableVerifier(true);
+    }
     pm.addPass(xilinx::AIEX::createAIEExpandLoadPdiPass());
-  }
-
-  if (verbose) {
-    llvm::outs() << "Running NPU lowering pipeline in-memory\n";
-  }
-
-  if (failed(pm.run(moduleOp))) {
-    llvm::errs() << "Error: NPU lowering pipeline failed\n";
-    return failure();
+    if (failed(pm.run(moduleOp))) {
+      llvm::errs() << "Error: expand-load-pdi pass failed\n";
+      return failure();
+    }
   }
 
   if (verbose) {
@@ -1270,12 +1290,13 @@ static LogicalResult runTransactionPipeline(ModuleOp moduleOp, StringRef elfDir,
     pm.enableVerifier(true);
   }
 
-  // Build pass pipeline string with options
+  // Build pass pipeline string with options.
+  // Use aie-opt compatible syntax: the pass runs at the aie.device level.
   std::string pipelineStr =
-      "builtin.module(aie.device(convert-aie-to-transaction{elf-dir=" +
-      elfDir.str() + " device-name=" + devName.str() + "}))";
-
-  if (failed(parsePassPipeline(pipelineStr, pm))) {
+      "convert-aie-to-transaction{elf-dir=" + elfDir.str() +
+      " device-name=" + devName.str() + "}";
+  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  if (failed(parsePassPipeline(pipelineStr, devicePm))) {
     llvm::errs() << "Error: Failed to parse transaction pipeline\n";
     return failure();
   }
@@ -1815,18 +1836,26 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       SmallString<256> destPath(tmpDirName);
       sys::path::append(destPath, sys::path::filename(linkWithFile));
 
-      sys::fs::remove(destPath);
-      std::error_code ec = sys::fs::copy_file(srcPath, destPath);
-      if (ec) {
-        llvm::errs() << "Error: Could not copy link_with file: " << srcPath
-                     << " to " << destPath << ": " << ec.message() << "\n";
-        return failure();
-      }
+      if (srcPath == destPath) {
+        if (verbose) {
+          std::lock_guard<std::mutex> lock(outputMutex);
+          llvm::outs() << "link_with file already in place: " << srcPath
+                       << "\n";
+        }
+      } else {
+        sys::fs::remove(destPath);
+        std::error_code ec = sys::fs::copy_file(srcPath, destPath);
+        if (ec) {
+          llvm::errs() << "Error: Could not copy link_with file: " << srcPath
+                       << " to " << destPath << ": " << ec.message() << "\n";
+          return failure();
+        }
 
-      if (verbose) {
-        std::lock_guard<std::mutex> lock(outputMutex);
-        llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
-                     << "\n";
+        if (verbose) {
+          std::lock_guard<std::mutex> lock(outputMutex);
+          llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
+                       << "\n";
+        }
       }
 
       if (!linkWithArgs.empty()) {
@@ -1959,21 +1988,29 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       SmallString<256> destLinkWith(tmpDirName);
       sys::path::append(destLinkWith, sys::path::filename(core.linkWith));
 
-      // Remove destination file first if it exists (to ensure overwrite)
-      sys::fs::remove(destLinkWith);
+      if (srcLinkWith == destLinkWith) {
+        if (verbose) {
+          std::lock_guard<std::mutex> lock(outputMutex);
+          llvm::outs() << "link_with file already in place: " << srcLinkWith
+                       << "\n";
+        }
+      } else {
+        // Remove destination file first if it exists (to ensure overwrite)
+        sys::fs::remove(destLinkWith);
 
-      std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
-      if (ec) {
-        llvm::errs() << "Error: Could not copy link_with file: " << srcLinkWith
-                     << " to " << destLinkWith << "\n";
-        llvm::errs() << "Error: " << ec.message() << "\n";
-        return failure();
-      }
+        std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
+        if (ec) {
+          llvm::errs() << "Error: Could not copy link_with file: "
+                       << srcLinkWith << " to " << destLinkWith << "\n";
+          llvm::errs() << "Error: " << ec.message() << "\n";
+          return failure();
+        }
 
-      if (verbose) {
-        std::lock_guard<std::mutex> lock(outputMutex);
-        llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
-                     << destLinkWith << "\n";
+        if (verbose) {
+          std::lock_guard<std::mutex> lock(outputMutex);
+          llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
+                       << destLinkWith << "\n";
+        }
       }
 
       // Note: We don't add the object file to linkStrs because the linker
@@ -2489,7 +2526,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
           extractInputFilesFromBCF(bcfPath);
 
       // Copy link_with files to .prj directory
-      // Search order: current working directory, then input file directory
+      // Search order: current working directory, tmpDirName, input file directory
       for (const auto &linkWithFile : linkWithFiles) {
         SmallString<256> srcPath;
         if (sys::path::is_absolute(linkWithFile)) {
@@ -2502,20 +2539,30 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
           if (sys::fs::exists(cwdPath)) {
             srcPath = cwdPath;
           } else {
-            // Fall back to input file directory
-            SmallString<256> inputDir =
-                sys::path::parent_path(getInputFilename());
-            if (inputDir.empty()) {
-              sys::fs::current_path(inputDir);
+            // Try tmpDirName (used in JIT where .o is pre-compiled there)
+            SmallString<256> tmpPath(tmpDirName);
+            sys::path::append(tmpPath, linkWithFile);
+            if (sys::fs::exists(tmpPath)) {
+              srcPath = tmpPath;
+            } else {
+              // Fall back to input file directory
+              SmallString<256> inputDir =
+                  sys::path::parent_path(getInputFilename());
+              if (inputDir.empty()) {
+                sys::fs::current_path(inputDir);
+              }
+              srcPath = inputDir;
+              sys::path::append(srcPath, linkWithFile);
+              sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
             }
-            srcPath = inputDir;
-            sys::path::append(srcPath, linkWithFile);
-            sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
           }
         }
 
         SmallString<256> destPath(tmpDirName);
         sys::path::append(destPath, sys::path::filename(linkWithFile));
+        if (srcPath == destPath) {
+          continue;
+        }
         sys::fs::remove(destPath);
         std::error_code ec = sys::fs::copy_file(srcPath, destPath);
         if (ec) {
@@ -2601,7 +2648,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       sys::path::append(peanoLld, "ld.lld");
 
       // Handle link_with if specified
-      // Search order: current working directory, then input file directory
+      // Search order: current working directory, tmpDirName, input file directory
       if (!core.linkWith.empty()) {
         SmallString<256> srcLinkWith;
         if (sys::path::is_absolute(core.linkWith)) {
@@ -2614,26 +2661,35 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
           if (sys::fs::exists(cwdPath)) {
             srcLinkWith = cwdPath;
           } else {
-            // Fall back to input file directory
-            SmallString<256> inputDir =
-                sys::path::parent_path(getInputFilename());
-            if (inputDir.empty()) {
-              sys::fs::current_path(inputDir);
+            // Try tmpDirName (used in JIT where .o is pre-compiled there)
+            SmallString<256> tmpPath(tmpDirName);
+            sys::path::append(tmpPath, core.linkWith);
+            if (sys::fs::exists(tmpPath)) {
+              srcLinkWith = tmpPath;
+            } else {
+              // Fall back to input file directory
+              SmallString<256> inputDir =
+                  sys::path::parent_path(getInputFilename());
+              if (inputDir.empty()) {
+                sys::fs::current_path(inputDir);
+              }
+              srcLinkWith = inputDir;
+              sys::path::append(srcLinkWith, core.linkWith);
+              sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
             }
-            srcLinkWith = inputDir;
-            sys::path::append(srcLinkWith, core.linkWith);
-            sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
           }
         }
 
         SmallString<256> destLinkWith(tmpDirName);
         sys::path::append(destLinkWith, sys::path::filename(core.linkWith));
-        sys::fs::remove(destLinkWith);
-        std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
-        if (ec) {
-          llvm::errs() << "Error copying link_with file: " << srcLinkWith
-                       << "\n";
-          return failure();
+        if (srcLinkWith != destLinkWith) {
+          sys::fs::remove(destLinkWith);
+          std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
+          if (ec) {
+            llvm::errs() << "Error copying link_with file: " << srcLinkWith
+                         << "\n";
+            return failure();
+          }
         }
       }
 
@@ -3004,6 +3060,48 @@ static LogicalResult extractAndMergePartition(StringRef inputXclbin,
 }
 
 //===----------------------------------------------------------------------===//
+// PDI ID Assignment
+//===----------------------------------------------------------------------===//
+
+/// Assign numeric PDI IDs to NpuLoadPdiOp ops that reference devices.
+/// Must be called AFTER NPU lowering (which lowers aiex.configure to
+/// npu.load_pdi). Maps each device to a 1-based ID (in device iteration
+/// order) and patches the load_pdi ops so the instruction binary encodes
+/// the correct IDs.
+static void assignPdiIds(ModuleOp moduleOp) {
+  // Build mapping in device iteration order (matching Python driver's
+  // enumerate() behavior). Use MapVector to preserve insertion order.
+  llvm::MapVector<StringRef, int> deviceToPdiId;
+  int nextId = 1;
+  for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
+    if (!deviceName.empty() && deviceOp.getSymName() != deviceName)
+      continue;
+    deviceToPdiId[deviceOp.getSymName()] = nextId++;
+  }
+
+  moduleOp.walk([&](mlir::Operation *op) {
+    auto loadPdiOp = mlir::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op);
+    if (!loadPdiOp)
+      return;
+    auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
+    if (!deviceRefAttr)
+      return;
+    StringRef refName = deviceRefAttr.getValue();
+    auto it = deviceToPdiId.find(refName);
+    if (it == deviceToPdiId.end()) {
+      loadPdiOp.emitWarning() << "load_pdi references unknown device '"
+                              << refName << "'; PDI ID will remain 0";
+      return;
+    }
+    loadPdiOp.setId(static_cast<uint32_t>(it->second));
+    if (verbose) {
+      llvm::outs() << "Assigned PDI id=" << it->second
+                   << " to load_pdi referencing @" << refName << "\n";
+    }
+  });
+}
+
+//===----------------------------------------------------------------------===//
 // NPU Instruction Generation
 //===----------------------------------------------------------------------===//
 
@@ -3034,8 +3132,12 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   // Clone the module since NPU lowering is destructive
   OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
 
-  // Run NPU lowering passes in-memory on the clone
-  if (failed(runNpuLoweringPipeline(*clonedModule))) {
+  // Run NPU lowering passes in-memory on the clone.
+  // When generating full ELF, patch PDI IDs between core NPU lowering and
+  // expand-load-pdis so the IDs are assigned to the original device refs
+  // before expand-load-pdis copies them to empty device load_pdi ops.
+  if (failed(runNpuLoweringPipeline(*clonedModule,
+                                    /*patchPdiIds=*/generateFullElf))) {
     return failure();
   }
 
@@ -3152,19 +3254,25 @@ static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
   // Clone the module since transaction generation is destructive
   OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
 
-  // Run transaction pipeline
+  // Run transaction pipeline on the original (pre-NPU-lowered) module.
+  // The convert-aie-to-transaction pass creates a @configure runtime
+  // sequence containing device configuration operations (write32,
+  // blockwrite, etc.) by reading the device's DMA, lock, and core
+  // configuration. This must happen BEFORE NPU lowering which destroys
+  // that state.
   if (failed(runTransactionPipeline(*clonedModule, tmpDirName, devName))) {
     return failure();
   }
 
   // Write the transaction MLIR to output file
+  // When --aie-generate-txn is set, write to CWD (matches Python behavior).
+  // Otherwise write to tmpDir for internal use.
   std::string outputFileName = formatString(txnName, devName);
   SmallString<128> outputPath;
   if (sys::path::is_absolute(outputFileName)) {
     outputPath = outputFileName;
   } else {
-    outputPath = tmpDirName;
-    sys::path::append(outputPath, outputFileName);
+    outputPath = outputFileName;
   }
 
   // Dump intermediate MLIR
@@ -3231,16 +3339,36 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
       pm.enableVerifier(true);
     }
 
-    // Build pass pipeline for control packet conversion
-    std::string pipelineStr =
-        "builtin.module(aie.device(convert-aie-to-transaction{elf-dir=" +
-        tmpDirName.str() +
-        "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))";
+    // Phase 1a: Run convert-aie-to-transaction at device level
+    // (nest<DeviceOp>() is needed for proper config generation)
+    {
+      PassManager txnPm(ctx);
+      if (verbose)
+        txnPm.enableVerifier(true);
+      std::string txnPassStr =
+          "convert-aie-to-transaction{elf-dir=" + tmpDirName.str() + "}";
+      OpPassManager &txnDevicePm = txnPm.nest<xilinx::AIE::DeviceOp>();
+      if (failed(parsePassPipeline(txnPassStr, txnDevicePm))) {
+        llvm::errs() << "Error: Failed to parse transaction pipeline\n";
+        return failure();
+      }
+      if (failed(txnPm.run(*clonedModule))) {
+        llvm::errs() << "Error: Transaction conversion failed\n";
+        return failure();
+      }
+    }
 
-    if (failed(parsePassPipeline(pipelineStr, pm))) {
-      llvm::errs()
-          << "Error: Failed to parse control packet conversion pipeline\n";
-      return failure();
+    // Phase 1b: Run ctrl-packet conversion using builtin.module nesting
+    // (these passes need access to module-level memref.global ops)
+    {
+      std::string pipelineStr =
+          "builtin.module(aie.device(aie-txn-to-ctrl-packet,"
+          "aie-legalize-ctrl-packet))";
+      if (failed(parsePassPipeline(pipelineStr, pm))) {
+        llvm::errs()
+            << "Error: Failed to parse ctrl packet pipeline\n";
+        return failure();
+      }
     }
 
     if (verbose) {
@@ -3259,9 +3387,13 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   dumpModuleToFile(*clonedModule, ctrlPktMlirPath, "Control packet MLIR");
 
   // Generate control packet binary using AIETranslateControlPacketsToUI32Vec
+  // When --aie-generate-ctrlpkt is set, write to CWD (matches Python behavior).
+  // Otherwise write to tmpDir for internal use.
   std::string ctrlPktBinFileName = formatString(ctrlPktName, devName);
   SmallString<128> ctrlPktBinPath;
   if (sys::path::is_absolute(ctrlPktBinFileName)) {
+    ctrlPktBinPath = ctrlPktBinFileName;
+  } else if (generateCtrlPkt) {
     ctrlPktBinPath = ctrlPktBinFileName;
   } else {
     ctrlPktBinPath = tmpDirName;
@@ -3316,6 +3448,13 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     }
   }
 
+  // After ctrl-packet-to-DMA-to-NPU lowering, assign PDI IDs so the
+  // instruction binary encodes the correct IDs (matching Python behavior
+  // where assign_load_pdi_ids runs before process_ctrlpkt).
+  if (generateFullElf || generateElf) {
+    assignPdiIds(*clonedModule);
+  }
+
   // Dump intermediate DMA sequence MLIR
   SmallString<128> dmaSeqMlirPath(tmpDirName);
   sys::path::append(dmaSeqMlirPath, devName.str() + "_ctrlpkt_dma_seq.mlir");
@@ -3323,9 +3462,12 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
                    "Control packet DMA sequence MLIR");
 
   // Generate DMA sequence binary using AIETranslateNpuToBinary
+  // When --aie-generate-ctrlpkt is set, write to CWD (matches Python behavior).
   std::string dmaSeqBinFileName = formatString(ctrlPktDmaSeqName, devName);
   SmallString<128> dmaSeqBinPath;
   if (sys::path::is_absolute(dmaSeqBinFileName)) {
+    dmaSeqBinPath = dmaSeqBinFileName;
+  } else if (generateCtrlPkt) {
     dmaSeqBinPath = dmaSeqBinFileName;
   } else {
     dmaSeqBinPath = tmpDirName;
@@ -3370,9 +3512,15 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     return success();
   }
 
-  std::string elfFileName = formatString(ctrlPktElfName, devName);
+  // When --aie-generate-elf is also set, use elfName for the output ELF
+  // so the user gets the combined ctrl packet ELF at their requested name.
+  std::string elfFileName =
+      generateElf ? formatString(elfName, devName.str(), "")
+                  : formatString(ctrlPktElfName, devName);
   SmallString<128> elfPath;
   if (sys::path::is_absolute(elfFileName)) {
+    elfPath = elfFileName;
+  } else if (generateElf) {
     elfPath = elfFileName;
   } else {
     elfPath = tmpDirName;
@@ -3631,6 +3779,13 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     return success();
   }
 
+  // When control packets are also being generated, the combined ELF is
+  // produced by generateControlPacketOutput() which includes both the DMA
+  // sequence and control packet data. Skip standalone ELF generation here.
+  if (generateCtrlPkt) {
+    return success();
+  }
+
   if (verbose) {
     llvm::outs() << "Generating ELF for device: " << devName << "\n";
   }
@@ -3821,10 +3976,18 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
   // Build config.json structure
   // Format: { "xrt-kernels": [ { "name": ..., "PDIs": [...], "instance": [...]
   // } ] }
+  //
+  // Filter out devices with no runtime sequences (matching Python behavior).
+  SmallVector<const DeviceElfInfo *> activeDevices;
+  for (const auto &info : deviceInfos) {
+    if (!info.sequences.empty())
+      activeDevices.push_back(&info);
+  }
+
   std::string configJson = "{\n  \"xrt-kernels\": [\n";
 
-  for (size_t i = 0; i < deviceInfos.size(); ++i) {
-    const auto &info = deviceInfos[i];
+  for (size_t i = 0; i < activeDevices.size(); ++i) {
+    const auto &info = *activeDevices[i];
 
     if (i > 0)
       configJson += ",\n";
@@ -3842,11 +4005,19 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
                   "\"offset\": \"0x10\"}\n";
     configJson += "      ],\n";
 
-    // PDIs
+    // PDIs - list ALL device PDIs in each kernel entry (matching Python driver
+    // behavior). aiebu-asm needs all PDI references available because the
+    // instruction binary may reference PDIs from any device.
     configJson += "      \"PDIs\": [\n";
-    configJson += "        {\"id\": " + std::to_string(info.pdiId) +
-                  ", \"PDI_file\": \"" + info.pdiPath + "\"}\n";
-    configJson += "      ],\n";
+    bool firstPdi = true;
+    for (const auto &di : deviceInfos) {
+      if (!firstPdi)
+        configJson += ",\n";
+      configJson += "        {\"id\": " + std::to_string(di.pdiId) +
+                    ", \"PDI_file\": \"" + di.pdiPath + "\"}";
+      firstPdi = false;
+    }
+    configJson += "\n      ],\n";
 
     // Instances (runtime sequences)
     configJson += "      \"instance\": [\n";
@@ -4529,47 +4700,9 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   std::vector<DeviceElfInfo> deviceElfInfos;
   int devicePdiId = 1; // Start PDI IDs from 1
 
-  // When generating a full ELF, assign numeric PDI IDs to NpuLoadPdiOp ops
-  // that reference a device via device_ref. This matches what the old Python
-  // driver's assign_load_pdi_ids() did: map each device name to a 1-based
-  // integer and write it back to the load_pdi id attribute so the NPU
-  // instruction binary encodes the correct ID that aiebu-asm will cross-
-  // reference against the PDIs listed in config.json.
-  if (generateFullElf) {
-    // Build device-name -> 1-based PDI id mapping (same order as the loop
-    // below so the IDs are consistent with what generateCdoArtifacts writes).
-    std::map<std::string, int> deviceToPdiId;
-    int nextId = 1;
-    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-      if (!deviceName.empty() && deviceOp.getSymName() != deviceName)
-        continue;
-      deviceToPdiId[deviceOp.getSymName().str()] = nextId++;
-    }
-
-    // Walk every NpuLoadPdiOp that has a device_ref and patch its id.
-    // Use generic walk to avoid pulling in XLLVM translation dependencies
-    // through typed walk template instantiation.
-    moduleOp.walk([&](mlir::Operation *op) {
-      auto loadPdiOp = mlir::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op);
-      if (!loadPdiOp)
-        return;
-      auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
-      if (!deviceRefAttr)
-        return;
-      StringRef refName = deviceRefAttr.getValue();
-      auto it = deviceToPdiId.find(refName.str());
-      if (it == deviceToPdiId.end()) {
-        loadPdiOp.emitWarning() << "load_pdi references unknown device '"
-                                << refName << "'; PDI ID will remain 0";
-        return;
-      }
-      loadPdiOp.setId(static_cast<uint32_t>(it->second));
-      if (verbose) {
-        llvm::outs() << "Assigned PDI id=" << it->second
-                     << " to load_pdi referencing @" << refName << "\n";
-      }
-    });
-  }
+  // Note: PDI ID assignment to NpuLoadPdiOp happens AFTER NPU lowering
+  // (which converts aiex.configure to npu.load_pdi). See assignPdiIds()
+  // called in generateNpuInstructions() after runNpuLoweringPipeline().
 
   for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
     // Filter by device name if specified
@@ -4610,18 +4743,26 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
                       devName.str() + "_physical_with_elfs.mlir");
     dumpModuleToFile(moduleOp, physicalWithElfsPath, "module with ELFs");
 
+    // Generate control packet output BEFORE NPU instructions, because the
+    // control packet pipeline (convert-aie-to-transaction, aie-txn-to-ctrl-packet)
+    // needs the pre-NPU-lowered module state. NPU lowering destroys the ops
+    // that the control packet passes need. This matches the legacy Python
+    // driver's ordering where process_ctrlpkt() runs before NPU lowering.
+    if (failed(generateControlPacketOutput(moduleOp, tmpDirName, devName))) {
+      return failure();
+    }
+
     // Generate NPU instructions from in-memory module
     if (failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
       return failure();
     }
 
-    // Generate transaction MLIR output if requested
+    // Generate transaction MLIR output if requested.
+    // This runs AFTER NPU instructions because the transaction pipeline
+    // needs the module to have gone through NPU lowering first (which
+    // generateNpuInstructions does on a clone). We clone again from the
+    // same original state and run NPU lowering + transaction pipeline.
     if (failed(generateTransactionOutput(moduleOp, tmpDirName, devName))) {
-      return failure();
-    }
-
-    // Generate control packet output if requested
-    if (failed(generateControlPacketOutput(moduleOp, tmpDirName, devName))) {
       return failure();
     }
 
