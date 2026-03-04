@@ -1,8 +1,7 @@
 import numpy as np
 from typing import Sequence
 
-from ...ir import InsertionPoint, Value
-from ...dialects.linalg.opdsl.lang.emitter import _is_index_type
+from ...ir import IndexType, InsertionPoint, Value
 from ...dialects.scf import IfOp, ForOp, yield_
 from ...extras.dialects.arith import constant, index_cast
 from ...extras.util import get_user_code_loc
@@ -48,7 +47,7 @@ def _for(
             p = p.item()
         if isinstance(p, np.integer) or isinstance(p, int):
             p = constant(p, index=True)
-        elif not _is_index_type(p.type):
+        elif not IndexType.isinstance(p.type):
             p = index_cast(p, to=T.index())
         params[i] = p
 
