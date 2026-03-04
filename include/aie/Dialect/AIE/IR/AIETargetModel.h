@@ -285,6 +285,17 @@ public:
     return getNumBDs(getTileType(col, row));
   }
 
+  /// Return the number of buffer descriptors accessible on channel `channel`
+  /// for the tile at (`col`, `row`). For tiles with no per-channel BD
+  /// partitioning this equals getNumBDs(col, row).
+  uint32_t getNumBDsForChannel(int col, int row, int channel) const {
+    uint32_t count = 0;
+    for (uint32_t bd = 0; bd < getNumBDs(col, row); ++bd)
+      if (isBdChannelAccessible(col, row, bd, channel))
+        ++count;
+    return count;
+  }
+
   /// Return true iff buffer descriptor `bd_id` on tile (`col`, `row`) can be
   /// submitted on channel `channel`.
   virtual bool isBdChannelAccessible(int col, int row, uint32_t bd_id,

@@ -85,9 +85,11 @@ struct AIEAssignBufferDescriptorIDsPass
               std::optional<int32_t> next_id =
                   gen.nextBdId(dmaOp.getChannelIndex());
               if (!next_id) {
+                int channelIndex = dmaOp.getChannelIndex();
                 bd.emitOpError()
                     << "Allocator exhausted available BD IDs (maximum "
-                    << targetModel.getNumBDs(col, row) << " available).";
+                    << targetModel.getNumBDsForChannel(col, row, channelIndex)
+                    << " available for channel " << channelIndex << ").";
                 return signalPassFailure();
               }
               bd.setBdId(*next_id);
@@ -125,9 +127,11 @@ struct AIEAssignBufferDescriptorIDsPass
             std::optional<int32_t> next_id =
                 gen.nextBdId(blockChannelMap[&block]);
             if (!next_id) {
+              int channelIndex = blockChannelMap[&block];
               bd.emitOpError()
                   << "Allocator exhausted available BD IDs (maximum "
-                  << targetModel.getNumBDs(col, row) << " available).";
+                  << targetModel.getNumBDsForChannel(col, row, channelIndex)
+                  << " available for channel " << channelIndex << ").";
               return signalPassFailure();
             }
             bd.setBdId(*next_id);
