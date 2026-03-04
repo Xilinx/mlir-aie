@@ -559,6 +559,48 @@ trace = region_op(
     ),
     terminator=lambda *_: EndOp(),
 )
+
+
+def trace_mode(mode, *, loc=None, ip=None):
+    return TraceModeOp(mode=mode, loc=loc, ip=ip)
+
+
+def trace_event(event, *, label=None, loc=None, ip=None):
+    return TraceEventOp(event=event, label=label, loc=loc, ip=ip)
+
+
+def trace_packet(id, type, *, loc=None, ip=None):
+    return TracePacketOp(id=id, type_=type, loc=loc, ip=ip)
+
+
+def trace_port(slot, port, channel, direction, *, loc=None, ip=None):
+    return TracePortOp(
+        slot=slot, port=port, channel=channel, direction=direction, loc=loc, ip=ip
+    )
+
+
+def trace_start(*, broadcast=None, event=None, loc=None, ip=None):
+    return TraceStartEventOp(broadcast=broadcast, event=event, loc=loc, ip=ip)
+
+
+def trace_stop(*, broadcast=None, event=None, loc=None, ip=None):
+    return TraceStopEventOp(broadcast=broadcast, event=event, loc=loc, ip=ip)
+
+
+def trace_combo_event(slot, eventA, logic, eventB, *, loc=None, ip=None):
+    return TraceComboEventOp(
+        slot=slot, eventA=eventA, logic=logic, eventB=eventB, loc=loc, ip=ip
+    )
+
+
+def trace_edge_event(slot, event, trigger, *, loc=None, ip=None):
+    return TraceEdgeEventOp(slot=slot, event=event, trigger=trigger, loc=loc, ip=ip)
+
+
+def trace_start_config(name, *, loc=None, ip=None):
+    return TraceStartConfigOp(trace_config=name, loc=loc, ip=ip)
+
+
 switchbox = region_op(
     lambda tile, *, loc=None, ip=None: SwitchboxOp(T.index(), tile, loc=loc, ip=ip)
 )

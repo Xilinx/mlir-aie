@@ -18,7 +18,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(NPUDEVICE) {
+  aie.device(npu1_1col) {
     // External kernel function declaration
     func.func private @vector_scalar_mul_aie_scalar(memref<1024xi32>, memref<1024xi32>, memref<1xi32>, i32)
 

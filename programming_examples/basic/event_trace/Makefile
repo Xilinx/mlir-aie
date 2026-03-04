@@ -39,12 +39,29 @@ else
 	echo "Device type not supported"
 endif
 
+# Preprocess the MLIR: substitute NPUDEVICE with the target device string
+build/aie_trace.mlir: ${srcdir}/aie_trace.mlir
+	mkdir -p ${@D}
+	sed 's/NPUDEVICE/${devicename}_1col/g' $< > $@
+
+# Generate MLIR from Python
+build/aie_trace_from_py.mlir: ${srcdir}/aie_trace.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
 # Build xclbin from the mlir
-build/final.xclbin: ${srcdir}/aie_trace.mlir build/scale.o
+build/final.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 			--no-xchesscc --no-xbridge \
-			--aie-generate-npu-insts --npu-insts-name=insts.bin ../aie_trace.mlir
+			--aie-generate-npu-insts --npu-insts-name=insts.bin aie_trace.mlir
+
+# Build xclbin from Python-generated mlir
+build/final_py.xclbin: build/aie_trace_from_py.mlir build/scale.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+			--no-xchesscc --no-xbridge \
+			--aie-generate-npu-insts --npu-insts-name=insts_py.bin aie_trace_from_py.mlir
 
 build/insts.bin: build/final.xclbin
 
@@ -83,10 +100,19 @@ run_trace_py: build/final.xclbin build/insts.bin
 	python3 ${srcdir}/visualize_trace.py -i trace.json -o trace_timeline.png -t "Declarative Trace (Python)"
 	@echo "Trace visualization saved to trace_timeline.png"
 
+# Generate MLIR from Python and build/run
+run_trace_from_py: ${targetname}.exe build/final_py.xclbin
+	@echo "Running with Python-generated declarative trace MLIR..."
+	${powershell} ./$< -x build/final_py.xclbin -i build/insts_py.bin -k MLIR_AIE -t ${trace_size}
+
+# Just generate and print the MLIR from the Python bindings
+generate_mlir_from_py: build/aie_trace_from_py.mlir
+	@cat $<
+
 clean_trace:
 	rm -rf tmpTrace trace.txt trace_timeline.png trace.json
 
 clean: clean_trace
 	rm -rf build _build ${targetname}*.exe
 
-.PHONY: all run_trace run_trace_py clean clean_trace
+.PHONY: all run_trace run_trace_py run_trace_from_py generate_mlir_from_py clean clean_trace
