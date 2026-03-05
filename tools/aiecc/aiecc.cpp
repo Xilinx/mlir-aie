@@ -43,6 +43,7 @@
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -100,6 +101,7 @@
 #endif
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -402,18 +404,18 @@ static cl::opt<bool>
 
 static cl::opt<bool> enableRepeaterScripts(
     "enable-repeater-scripts",
-    cl::desc("Enable repeater scripts (deprecated, ignored)"), cl::init(false),
-    cl::cat(aieCompilerOptions));
+    cl::desc("Generate repeater scripts on compilation failure"),
+    cl::init(true), cl::cat(aieCompilerOptions));
 
-static cl::opt<bool> disableRepeaterScripts(
-    "disable-repeater-scripts",
-    cl::desc("Disable repeater scripts (deprecated, ignored)"), cl::init(false),
-    cl::cat(aieCompilerOptions));
+static cl::opt<bool>
+    disableRepeaterScripts("disable-repeater-scripts",
+                           cl::desc("Disable repeater script generation"),
+                           cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<std::string> repeaterOutputDir(
     "repeater-output-dir",
-    cl::desc("Repeater output directory (deprecated, ignored)"), cl::init(""),
-    cl::cat(aieCompilerOptions));
+    cl::desc("Output directory for repeater scripts (default: .prj dir)"),
+    cl::init(""), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> linkAgainstHsa(
     "link_against_hsa",
@@ -1107,6 +1109,150 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// Repeater Script Generation
+//===----------------------------------------------------------------------===//
+
+/// Check if repeater script generation is enabled.
+static bool repeaterEnabled() {
+  if (disableRepeaterScripts)
+    return false;
+  return enableRepeaterScripts || !repeaterOutputDir.empty();
+}
+
+/// Generate a repeater script and save intermediate MLIR when a pipeline fails.
+/// If pipelineOverride is non-empty, use it as the PASS_PIPELINE string
+/// instead of pm.printAsTextualPipeline(). This allows callers to provide
+/// the exact pipeline string that matches the legacy Python format.
+static void handlePassFailure(StringRef preRunIR, PassManager &pm,
+                              StringRef description, StringRef outputDir,
+                              ArrayRef<std::string> diagnostics,
+                              StringRef pipelineOverride = "") {
+  // Generate a unique suffix from timestamp and PID
+  auto now = std::chrono::system_clock::now();
+  auto epoch = now.time_since_epoch();
+  auto secs = std::chrono::duration_cast<std::chrono::seconds>(epoch).count();
+  auto pid = llvm::sys::Process::getProcessId();
+  std::string suffix = std::to_string(secs) + "_" + std::to_string(pid);
+
+  // Ensure output directory exists
+  if (std::error_code ec = sys::fs::create_directories(outputDir)) {
+    llvm::errs() << "Warning: Could not create repeater output directory '"
+                 << outputDir << "': " << ec.message() << "\n";
+    return;
+  }
+
+  // Save pre-transformation MLIR
+  SmallString<256> mlirPath(outputDir);
+  sys::path::append(mlirPath, "aiecc_failure_" + suffix + ".mlir");
+
+  {
+    std::error_code ec;
+    raw_fd_ostream mlirFile(mlirPath, ec);
+    if (ec) {
+      llvm::errs() << "Warning: Could not write intermediate MLIR: "
+                   << ec.message() << "\n";
+      return;
+    }
+    mlirFile << preRunIR;
+  }
+
+  // Get the textual pipeline string
+  std::string pipelineStr;
+  if (!pipelineOverride.empty()) {
+    pipelineStr = pipelineOverride.str();
+  } else {
+    llvm::raw_string_ostream pipelineOS(pipelineStr);
+    pm.printAsTextualPipeline(pipelineOS);
+  }
+
+  // Generate the repeater shell script
+  SmallString<256> scriptPath(outputDir);
+  sys::path::append(scriptPath, "aiecc_repeater_" + suffix + ".sh");
+
+  {
+    std::error_code ec;
+    raw_fd_ostream scriptFile(scriptPath, ec);
+    if (ec) {
+      llvm::errs() << "Warning: Could not write repeater script: "
+                   << ec.message() << "\n";
+      return;
+    }
+    scriptFile << "#!/bin/bash\n";
+    scriptFile << "set -e\n";
+    scriptFile << "# Repeater script for: " << description << "\n";
+
+    // Include captured diagnostics for reference
+    if (!diagnostics.empty()) {
+      scriptFile << "echo \"Original MLIR Diagnostics:\"\n";
+      scriptFile << "cat << 'DIAGNOSTICS_EOF'\n";
+      for (const auto &diag : diagnostics) {
+        scriptFile << diag << "\n";
+      }
+      scriptFile << "DIAGNOSTICS_EOF\n";
+      scriptFile << "echo \"\"\n\n";
+    }
+
+    scriptFile << "MLIR_FILE='" << mlirPath << "'\n";
+    scriptFile << "PASS_PIPELINE='" << pipelineStr << "'\n";
+    scriptFile << "aie-opt --mlir-print-ir-after-all --mlir-disable-threading "
+                  "--pass-pipeline=\"$PASS_PIPELINE\" \"$MLIR_FILE\"\n";
+  }
+
+  // Make the script executable
+  sys::fs::setPermissions(scriptPath, sys::fs::perms::owner_all |
+                                          sys::fs::perms::group_read |
+                                          sys::fs::perms::group_exe);
+
+  // Print failure info to stderr
+  llvm::errs() << "AIECC COMPILATION FAILED\n";
+  llvm::errs() << "Intermediate MLIR saved to: " << mlirPath << "\n";
+  llvm::errs() << "Repeater script generated: " << scriptPath << "\n";
+}
+
+/// Run a PassManager with repeater script support. If the pipeline fails and
+/// repeater is enabled, generates a shell script to reproduce the failure.
+/// Captures MLIR diagnostics for inclusion in the repeater script.
+/// If pipelineOverride is provided, it is used as the PASS_PIPELINE string
+/// instead of the output of pm.printAsTextualPipeline().
+static LogicalResult runPipelineWithRepeater(PassManager &pm, ModuleOp moduleOp,
+                                             StringRef description,
+                                             StringRef outputDir,
+                                             StringRef pipelineOverride = "") {
+  // Capture IR before the pass runs (the pass may corrupt the module on
+  // failure)
+  std::string preRunIR;
+  if (repeaterEnabled()) {
+    llvm::raw_string_ostream os(preRunIR);
+    moduleOp->print(os);
+  }
+
+  // Install a diagnostic handler to capture diagnostics for the repeater script
+  std::vector<std::string> capturedDiagnostics;
+  MLIRContext *ctx = moduleOp.getContext();
+  ScopedDiagnosticHandler diagHandler(ctx, [&](Diagnostic &diag) {
+    std::string diagStr;
+    llvm::raw_string_ostream os(diagStr);
+    diag.print(os);
+    capturedDiagnostics.push_back(std::move(diagStr));
+    // Return failure to let the default handler also process the diagnostic
+    return failure();
+  });
+
+  if (succeeded(pm.run(moduleOp)))
+    return success();
+
+  if (repeaterEnabled()) {
+    // Use repeaterOutputDir if set, otherwise fall back to the provided dir
+    StringRef dir =
+        repeaterOutputDir.empty() ? outputDir : StringRef(repeaterOutputDir);
+    handlePassFailure(preRunIR, pm, description, dir, capturedDiagnostics,
+                      pipelineOverride);
+  }
+
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // In-Memory Pass Execution
 //===----------------------------------------------------------------------===//
 
@@ -1148,7 +1294,8 @@ static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp,
     llvm::outs().flush();
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "trace lowering",
+                                     tmpDirName))) {
     llvm::errs() << "Error: Trace lowering pipeline failed\n";
     return failure();
   }
@@ -1243,7 +1390,8 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
     llvm::outs().flush();
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "resource allocation",
+                                     tmpDirName))) {
     llvm::errs() << "Error: Resource allocation pipeline failed\n";
     return failure();
   }
@@ -1257,7 +1405,8 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
 /// Run the routing pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
-static LogicalResult runRoutingPipeline(ModuleOp moduleOp) {
+static LogicalResult runRoutingPipeline(ModuleOp moduleOp,
+                                        StringRef tmpDirName) {
   MLIRContext *ctx = moduleOp.getContext();
   PassManager pm(ctx);
 
@@ -1273,7 +1422,9 @@ static LogicalResult runRoutingPipeline(ModuleOp moduleOp) {
     llvm::outs() << "Running routing pipeline in-memory\n";
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(runPipelineWithRepeater(
+          pm, moduleOp, "routing", tmpDirName,
+          "builtin.module(aie.device(aie-create-pathfinder-flows))"))) {
     llvm::errs() << "Error: Routing pipeline failed\n";
     return failure();
   }
@@ -1291,6 +1442,7 @@ static void assignPdiIds(ModuleOp moduleOp);
 /// Run the NPU lowering pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
 static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
+                                            StringRef tmpDirName,
                                             bool patchPdiIds = false) {
   MLIRContext *ctx = moduleOp.getContext();
 
@@ -1320,7 +1472,8 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
       llvm::outs() << "Running NPU lowering pipeline in-memory\n";
     }
 
-    if (failed(pm.run(moduleOp))) {
+    if (failed(runPipelineWithRepeater(pm, moduleOp, "NPU lowering",
+                                       tmpDirName))) {
       llvm::errs() << "Error: NPU lowering pipeline failed\n";
       return failure();
     }
@@ -1339,7 +1492,8 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
       pm.enableVerifier(true);
     }
     pm.addPass(xilinx::AIEX::createAIEExpandLoadPdiPass());
-    if (failed(pm.run(moduleOp))) {
+    if (failed(runPipelineWithRepeater(pm, moduleOp, "expand-load-pdi",
+                                       tmpDirName))) {
       llvm::errs() << "Error: expand-load-pdi pass failed\n";
       return failure();
     }
@@ -1356,7 +1510,8 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
 /// This converts the AIE device to a sequence of transaction binary operations.
 /// The pipeline: convert-aie-to-transaction{elf-dir=... device-name=...}
 static LogicalResult runTransactionPipeline(ModuleOp moduleOp, StringRef elfDir,
-                                            StringRef devName) {
+                                            StringRef devName,
+                                            StringRef tmpDirName) {
   MLIRContext *ctx = moduleOp.getContext();
   PassManager pm(ctx);
 
@@ -1379,7 +1534,8 @@ static LogicalResult runTransactionPipeline(ModuleOp moduleOp, StringRef elfDir,
     llvm::outs() << "Running transaction generation pipeline in-memory\n";
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "transaction generation",
+                                     tmpDirName))) {
     llvm::errs() << "Error: Transaction generation pipeline failed\n";
     return failure();
   }
@@ -1396,7 +1552,8 @@ static LogicalResult runTransactionPipeline(ModuleOp moduleOp, StringRef elfDir,
 ///           → aie-txn-to-ctrl-packet → aie-legalize-ctrl-packet
 static LogicalResult runControlPacketPipeline(ModuleOp moduleOp,
                                               StringRef elfDir,
-                                              StringRef devName) {
+                                              StringRef devName,
+                                              StringRef tmpDirName) {
   MLIRContext *ctx = moduleOp.getContext();
   PassManager pm(ctx);
 
@@ -1421,7 +1578,8 @@ static LogicalResult runControlPacketPipeline(ModuleOp moduleOp,
     llvm::outs() << "Running control packet pipeline in-memory\n";
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "control packet",
+                                     tmpDirName))) {
     llvm::errs() << "Error: Control packet pipeline failed\n";
     return failure();
   }
@@ -1435,7 +1593,8 @@ static LogicalResult runControlPacketPipeline(ModuleOp moduleOp,
 
 /// Run the control packet DMA lowering pipeline in-memory using PassManager.
 /// Pipeline: aie-ctrl-packet-to-dma → aie-dma-to-npu
-static LogicalResult runControlPacketDmaPipeline(ModuleOp moduleOp) {
+static LogicalResult runControlPacketDmaPipeline(ModuleOp moduleOp,
+                                                 StringRef tmpDirName) {
   MLIRContext *ctx = moduleOp.getContext();
   PassManager pm(ctx);
 
@@ -1451,7 +1610,8 @@ static LogicalResult runControlPacketDmaPipeline(ModuleOp moduleOp) {
     llvm::outs() << "Running control packet DMA pipeline in-memory\n";
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "control packet DMA",
+                                     tmpDirName))) {
     llvm::errs() << "Error: Control packet DMA pipeline failed\n";
     return failure();
   }
@@ -1477,7 +1637,8 @@ static LogicalResult runControlPacketDmaPipeline(ModuleOp moduleOp) {
 static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
                                              StringRef deviceName, int col,
                                              int row,
-                                             StringRef aieTarget = "aie2") {
+                                             StringRef aieTarget = "aie2",
+                                             StringRef tmpDirName = "") {
   MLIRContext *ctx = moduleOp.getContext();
   PassManager pm(ctx);
 
@@ -1529,7 +1690,8 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
                  << ", " << row << ")\n";
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(
+          runPipelineWithRepeater(pm, moduleOp, "LLVM lowering", tmpDirName))) {
     llvm::errs() << "Error: LLVM lowering pipeline failed for core (" << col
                  << ", " << row << ")\n";
     return failure();
@@ -1552,7 +1714,8 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
 /// cloned module.
 static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
                                                     StringRef deviceName,
-                                                    StringRef aieTarget) {
+                                                    StringRef aieTarget,
+                                                    StringRef tmpDirName = "") {
   MLIRContext *ctx = moduleOp.getContext();
   PassManager pm(ctx);
 
@@ -1599,7 +1762,8 @@ static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
                     "cores\n";
   }
 
-  if (failed(pm.run(moduleOp))) {
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "unified LLVM lowering",
+                                     tmpDirName))) {
     llvm::errs() << "Error: Unified LLVM lowering pipeline failed\n";
     return failure();
   }
@@ -1663,7 +1827,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
   xilinx::xllvm::registerXLLVMDialectTranslation(context);
 
   if (failed(runLLVMLoweringPipeline(*coreModule, deviceName, core.col,
-                                     core.row, aieTarget))) {
+                                     core.row, aieTarget, tmpDirName))) {
     llvm::errs() << "Error lowering core to LLVM\n";
     return failure();
   }
@@ -2425,7 +2589,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
   xilinx::xllvm::registerXLLVMDialectTranslation(context);
 
   if (failed(runUnifiedLLVMLoweringPipeline(*unifiedModule, deviceName,
-                                            aieTarget))) {
+                                            aieTarget, tmpDirName))) {
     llvm::errs() << "Error: Unified LLVM lowering failed\n";
     return failure();
   }
@@ -3284,7 +3448,7 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   // When generating full ELF, patch PDI IDs between core NPU lowering and
   // expand-load-pdis so the IDs are assigned to the original device refs
   // before expand-load-pdis copies them to empty device load_pdi ops.
-  if (failed(runNpuLoweringPipeline(*clonedModule,
+  if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName,
                                     /*patchPdiIds=*/generateFullElf))) {
     return failure();
   }
@@ -3408,7 +3572,8 @@ static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
   // blockwrite, etc.) by reading the device's DMA, lock, and core
   // configuration. This must happen BEFORE NPU lowering which destroys
   // that state.
-  if (failed(runTransactionPipeline(*clonedModule, tmpDirName, devName))) {
+  if (failed(runTransactionPipeline(*clonedModule, tmpDirName, devName,
+                                    tmpDirName))) {
     return failure();
   }
 
@@ -3481,7 +3646,8 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   // Step 1: Run control packet pipeline in-memory.
   // Pipeline: convert-aie-to-transaction → aie-txn-to-ctrl-packet →
   //           aie-legalize-ctrl-packet
-  if (failed(runControlPacketPipeline(*clonedModule, tmpDirName, devName))) {
+  if (failed(runControlPacketPipeline(*clonedModule, tmpDirName, devName,
+                                      tmpDirName))) {
     return failure();
   }
 
@@ -3528,7 +3694,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
 
   // Step 2: Run control packet DMA lowering pipeline in-memory.
   // Pipeline: aie-ctrl-packet-to-dma → aie-dma-to-npu
-  if (failed(runControlPacketDmaPipeline(*clonedModule))) {
+  if (failed(runControlPacketDmaPipeline(*clonedModule, tmpDirName))) {
     return failure();
   }
 
@@ -3896,7 +4062,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   // Clone and run NPU lowering (same as generateNpuInstructions)
   OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
 
-  if (failed(runNpuLoweringPipeline(*clonedModule))) {
+  if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName))) {
     llvm::errs() << "Error running NPU lowering pipeline for ELF generation\n";
     return failure();
   }
@@ -4753,7 +4919,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   }
 
   // Step 2: Run routing in-memory (on all devices, matching legacy behavior)
-  if (failed(runRoutingPipeline(moduleOp))) {
+  if (failed(runRoutingPipeline(moduleOp, tmpDirName))) {
     return failure();
   }
 

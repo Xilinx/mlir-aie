@@ -7,11 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// UNSUPPORTED: true
-// The --repeater-output-dir flag is a legacy aiecc.py debugging feature
-// that generates a shell script to reproduce compilation failures.
-// This feature is not implemented in the C++ aiecc.
-//
 // RUN: not %python aiecc.py --compile --repeater-output-dir=. %s 2>&1 | FileCheck %s
 // RUN: cat ./aiecc_repeater_*.sh | FileCheck --check-prefix=DIAG %s
 // RUN: cat ./aiecc_failure_*.mlir | FileCheck --check-prefix=MLIR %s

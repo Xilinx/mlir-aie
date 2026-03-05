@@ -249,6 +249,7 @@ The C++ implementation provides **near-full feature parity**:
 - ✅ Control packet generation (`--aie-generate-ctrlpkt`)
 - ✅ AIE simulation (`--aiesim`)
 - ✅ Host compilation (`--compile-host`, `--host-target`)
+- ✅ Repeater scripts (`--enable-repeater-scripts`, `--repeater-output-dir`)
 
 ### Features Not Yet Implemented
 
@@ -256,7 +257,6 @@ The C++ implementation provides **near-full feature parity**:
 |------|--------|-------|
 | `--profile` | TODO | Command execution timing |
 | `--progress` | No-op | Rich progress bar (not planned for C++) |
-| `--enable-repeater-scripts` | TODO | Failure reproduction scripts |
 
 ### Optional Library Integration
 
