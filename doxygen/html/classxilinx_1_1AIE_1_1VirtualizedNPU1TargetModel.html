@@ -279,6 +279,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:afd823f31bbe12bfd2c6b063fa0383cb3 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel" id="r_afd823f31bbe12bfd2c6b063fa0383cb3"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afd823f31bbe12bfd2c6b063fa0383cb3">getNumBDs</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) const</td></tr>
 <tr class="memdesc:afd823f31bbe12bfd2c6b063fa0383cb3 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the number of buffer descriptors supported by the DMA in the given tile.  <br /></td></tr>
 <tr class="separator:afd823f31bbe12bfd2c6b063fa0383cb3 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad295d6b81c7d1be0bac1c31715edcb95 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel" id="r_ad295d6b81c7d1be0bac1c31715edcb95"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad295d6b81c7d1be0bac1c31715edcb95">getNumBDsForChannel</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>) const</td></tr>
+<tr class="memdesc:ad295d6b81c7d1be0bac1c31715edcb95 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the number of buffer descriptors accessible on channel <code>channel</code> for the tile at (<code>col</code>, <code>row</code>).  <br /></td></tr>
+<tr class="separator:ad295d6b81c7d1be0bac1c31715edcb95 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5f612df323310b3b638edf2e93d0731a inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel" id="r_a5f612df323310b3b638edf2e93d0731a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5f612df323310b3b638edf2e93d0731a">validate</a> () const</td></tr>
 <tr class="separator:a5f612df323310b3b638edf2e93d0731a inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a204fbb84f42e937cb22ecfcd6033f8a7 inherit pub_methods_classxilinx_1_1AIE_1_1AIETargetModel" id="r_a204fbb84f42e937cb22ecfcd6033f8a7"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a204fbb84f42e937cb22ecfcd6033f8a7">getModelProperties</a> () const</td></tr>
@@ -363,7 +366,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00719">719</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00730">730</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a05eaf19d0301234d6955077052fb5c77" name="a05eaf19d0301234d6955077052fb5c77"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a05eaf19d0301234d6955077052fb5c77">&#9670;&#160;</a></span>VirtualizedNPU1TargetModel()</h2>
@@ -389,9 +392,9 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00723">723</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00734">734</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00353">xilinx::AIE::AIETargetModel::addModelProperty()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00093">xilinx::AIE::AIETargetModel::IsVirtualized</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00364">xilinx::AIE::AIETargetModel::addModelProperty()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00093">xilinx::AIE::AIETargetModel::IsVirtualized</a>.</p>
 
 </div>
 </div>
@@ -420,7 +423,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00743">743</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00754">754</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00119">xilinx::AIE::AIETargetModel::getKind()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00066">xilinx::AIE::AIETargetModel::TK_AIE2_NPU1_1Col</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00071">xilinx::AIE::AIETargetModel::TK_AIE2_NPU1_Last</a>.</p>
 
@@ -453,7 +456,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00733">733</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00744">744</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 </div>
 </div>
@@ -501,7 +504,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a7978e72e26deb93cd9d05879f1bb8b95">xilinx::AIE::AIETargetModel</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00735">735</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetModel_8h_source.html#l00746">746</a> of file <a class="el" href="AIETargetModel_8h_source.html">AIETargetModel.h</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
@@ -513,7 +516,7 @@ Additional Inherited Members</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 5 2026 05:48:40 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Mar 5 2026 19:30:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
