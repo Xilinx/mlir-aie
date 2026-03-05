@@ -13,7 +13,6 @@ on:
     tags:
       - 'v*.*.*'
   merge_group:
-
   schedule:
     # At 04:00. (see https://crontab.guru)
     - cron: '0 4 * * *'

@@ -65,6 +65,9 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEGenerateColumnControlOverlayPass(
     const AIEGenerateColumnControlOverlayOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIETraceRegPackWritesPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

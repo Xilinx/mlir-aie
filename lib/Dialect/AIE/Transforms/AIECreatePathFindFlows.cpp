@@ -301,12 +301,19 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     TileOp srcTile, destTile;
     TileID srcCoords, destCoords;
 
+    // Pass 1: extract source (order-independent: dest may appear before source)
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
         srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
         srcPort = pktSource.port();
         srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-      } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
+      }
+    }
+    if (!srcTile)
+      return pktFlowOp.emitOpError("packet_flow has no packet_source");
+    // Pass 2: process each destination using the source extracted above
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
         destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
         destPort = pktDest.port();
         destCoords = {destTile.colIndex(), destTile.rowIndex()};
