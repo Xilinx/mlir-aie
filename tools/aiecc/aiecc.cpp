@@ -557,9 +557,7 @@ static std::string findAieTool(StringRef toolName) {
 static bool executeCommand(ArrayRef<StringRef> command,
                            bool verboseOutput = true) {
   if (verbose && verboseOutput) {
-    // Print command without prefix to match Python aiecc.py output format
-    // (tests check for command patterns like "llc" or "xchesscc_wrapper" at
-    // line start)
+    std::lock_guard<std::mutex> lock(outputMutex);
     bool first = true;
     for (const auto &arg : command) {
       if (!first)
@@ -573,6 +571,7 @@ static bool executeCommand(ArrayRef<StringRef> command,
 
   if (dryRun) {
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Dry run - command not executed\n";
       llvm::outs().flush();
     }
@@ -746,6 +745,7 @@ static std::string discoverPeanoInstallDir() {
 
 // Cached Peano install directory
 static std::optional<std::string> cachedPeanoDir;
+static std::once_flag peanoDirFlag;
 
 // Discover aietools installation directory by finding xchesscc in PATH
 static std::string discoverAietoolsDir() {
@@ -803,13 +803,14 @@ static StringRef getAietoolsDir() {
 }
 
 static StringRef getPeanoInstallDir() {
-  if (!cachedPeanoDir.has_value()) {
+  std::call_once(peanoDirFlag, [] {
     cachedPeanoDir = discoverPeanoInstallDir();
     if (verbose && !cachedPeanoDir->empty()) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Discovered Peano installation: " << *cachedPeanoDir
                    << "\n";
     }
-  }
+  });
   return *cachedPeanoDir;
 }
 
