@@ -88,7 +88,9 @@ class npu_write_rtp(NpuWriteRTPOp):
 
 
 class external_func(FuncOp):
-    def __init__(self, name: str, inputs, outputs=None, visibility="private"):
+    def __init__(
+        self, name: str, inputs, outputs=None, visibility="private", link_with=None
+    ):
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
@@ -102,6 +104,8 @@ class external_func(FuncOp):
         super().__init__(
             name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
         )
+        if link_with is not None:
+            self.operation.attributes["link_with"] = StringAttr.get(link_with)
 
     def __call__(self, *call_args):
         return call(self, call_args)
