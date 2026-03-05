@@ -506,6 +506,7 @@ static std::string getInputFilename() {
 static std::vector<std::string> getHostSourceFiles() {
   std::string mlirFile = getInputFilename();
   std::vector<std::string> hostFiles;
+  hostFiles.reserve(positionalArgs.size());
   for (const auto &arg : positionalArgs) {
     if (arg != mlirFile && isHostSourceFile(arg))
       hostFiles.push_back(arg);
@@ -2505,14 +2506,18 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
               parseSourceString<ModuleOp>(moduleStr, parseConfig);
 
           if (!threadModule) {
-            llvm::errs() << "Error: Failed to parse module for core ("
-                         << core.col << ", " << core.row << ")\n";
+            {
+              std::lock_guard<std::mutex> lock(resultsMutex);
+              llvm::errs() << "Error: Failed to parse module for core ("
+                           << core.col << ", " << core.row << ")\n";
+            }
             hasFailure.store(true);
             activeThreads--;
             return;
           }
 
-          // Compile the core
+          // Compile the core (note: compileCore may emit its own
+          // diagnostics to stderr which can interleave with other threads)
           std::string elfPath;
           if (failed(compileCore(threadContext, *threadModule, deviceName, core,
                                  tmpDirName, aieTarget, elfPath))) {
@@ -2536,6 +2541,8 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
     future.wait();
   }
 
+  // hasFailure is atomic — multiple threads may set it concurrently without
+  // a race. We report failure if any core compilation failed.
   if (hasFailure.load()) {
     return failure();
   }
