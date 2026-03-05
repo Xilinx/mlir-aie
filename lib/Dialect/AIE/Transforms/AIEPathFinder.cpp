@@ -40,12 +40,20 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     Port srcPort, dstPort;
     TileOp srcTile, dstTile;
     TileID srcCoords, dstCoords;
+    // Pass 1: extract source (order-independent: dest may appear before source)
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
         srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
         srcPort = pktSource.port();
         srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-      } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
+      }
+    }
+    if (!srcTile)
+      return pktFlowOp.emitOpError("packet_flow has no packet_source");
+
+    // Pass 2: process each destination using the source extracted above
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
         dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
         dstPort = pktDest.port();
         dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
