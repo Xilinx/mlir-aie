@@ -1,0 +1,31 @@
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess
+//
+// End-to-end test for func-level link_with with MULTIPLE .o files (Chess/xbridge).
+//
+// Two func.func declarations each carry a distinct link_with attribute:
+//   @add_one      → add_one_kernel.o
+//   @scale_by_two → scale_kernel.o
+// aie-assign-core-link-files traces both CallOps inside the core and
+// produces link_files = ["add_one_kernel.o", "scale_kernel.o"] on the
+// CoreOp.  The BCF emitter emits an _include _file directive for each,
+// and xbridge links both .o files into the core ELF.
+//
+// The kernel pipeline per tile iteration:
+//   1. add_one(in, out, n)   — out[i] = in[i] + 1
+//   2. scale_by_two(out, out, n)  — out[i] *= 2  (in-place, same buf for in and out)
+// Expected output: (input + 1) * 2.
+//
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu1% xchesscc_wrapper aie2  -I %aietools/include -c %S/add_one_kernel.cc -o ./add_one_kernel.o
+// RUN: %run_on_npu2% xchesscc_wrapper aie2p -I %aietools/include -c %S/add_one_kernel.cc -o ./add_one_kernel.o
+// RUN: %run_on_npu1% xchesscc_wrapper aie2  -I %aietools/include -c %S/scale_kernel.cc -o ./scale_kernel.o
+// RUN: %run_on_npu2% xchesscc_wrapper aie2p -I %aietools/include -c %S/scale_kernel.cc -o ./scale_kernel.o
+// RUN: aiecc --xchesscc --xbridge --aie-generate-xclbin --xclbin-name=aie.xclbin --aie-generate-npu-insts --npu-insts-name=insts.bin ./aie_arch.mlir
+// RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+// RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
+// RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
