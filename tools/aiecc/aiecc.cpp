@@ -758,7 +758,14 @@ static std::string discoverAietoolsDir() {
     }
   }
 
-  // 2. Find xchesscc in PATH and derive aietools from it
+  // 2. Check AIETOOLS_ROOT environment variable
+  if (const char *envRoot = std::getenv("AIETOOLS_ROOT")) {
+    if (sys::fs::is_directory(envRoot)) {
+      return envRoot;
+    }
+  }
+
+  // 3. Find xchesscc in PATH and derive aietools from it
   auto xchessccPath = sys::findProgramByName("xchesscc");
   if (xchessccPath) {
     // xchesscc is typically at <aietools>/bin/xchesscc or
@@ -3577,16 +3584,9 @@ static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
     return failure();
   }
 
-  // Write the transaction MLIR to output file
-  // When --aie-generate-txn is set, write to CWD (matches Python behavior).
-  // Otherwise write to tmpDir for internal use.
+  // Write the transaction MLIR to output file (CWD for relative paths).
   std::string outputFileName = formatString(txnName, devName);
-  SmallString<128> outputPath;
-  if (sys::path::is_absolute(outputFileName)) {
-    outputPath = outputFileName;
-  } else {
-    outputPath = outputFileName;
-  }
+  SmallString<128> outputPath(outputFileName);
 
   // Dump intermediate MLIR
   SmallString<128> txnMlirPath(tmpDirName);
@@ -3754,14 +3754,6 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   }
 
   // Step 3: Generate combined ELF using aiebu-asm (if available)
-  std::string aiebuAsmPath = findAiebuAsm();
-  if (aiebuAsmPath.empty()) {
-    if (verbose) {
-      llvm::outs() << "aiebu-asm not found, skipping control packet ELF "
-                      "generation\n";
-    }
-    return success();
-  }
 
   // When --aie-generate-elf is also set, use elfName for the output ELF
   // so the user gets the combined ctrl packet ELF at their requested name.
@@ -3854,6 +3846,15 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
 #endif // AIECC_HAS_AIEBU_LIBRARY
 
   // Subprocess fallback: run aiebu-asm to generate combined ELF
+  std::string aiebuAsmPath = findAiebuAsm();
+  if (aiebuAsmPath.empty()) {
+    if (verbose) {
+      llvm::outs() << "aiebu-asm not found, skipping control packet ELF "
+                      "generation\n";
+    }
+    return success();
+  }
+
   std::vector<StringRef> args;
   args.push_back(aiebuAsmPath);
   args.push_back("-t");
@@ -4046,19 +4047,6 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     return success();
   }
 
-  // Find aiebu-asm
-  std::string aiebuAsmBin = findAiebuAsm();
-  if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found in PATH or at known "
-                    "locations (/opt/xilinx/xrt/bin, /usr/bin, "
-                    "/opt/xilinx/aiebu/bin)\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Found aiebu-asm: " << aiebuAsmBin << "\n";
-  }
-
   // Clone and run NPU lowering (same as generateNpuInstructions)
   OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
 
@@ -4137,6 +4125,18 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
 #endif // AIECC_HAS_AIEBU_LIBRARY
 
   // Subprocess fallback: write instructions to temp file and run aiebu-asm
+  std::string aiebuAsmBin = findAiebuAsm();
+  if (aiebuAsmBin.empty()) {
+    llvm::errs() << "Error: aiebu-asm not found in PATH or at known "
+                    "locations (/opt/xilinx/xrt/bin, /usr/bin, "
+                    "/opt/xilinx/aiebu/bin)\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Found aiebu-asm: " << aiebuAsmBin << "\n";
+  }
+
   SmallString<128> tempBinPath(tmpDirName);
   sys::path::append(tempBinPath, devName.str() + "_elf_insts.bin");
 
@@ -4214,13 +4214,6 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
     return success();
   }
 
-  // Find aiebu-asm
-  std::string aiebuAsmBin = findAiebuAsm();
-  if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found for full ELF generation\n";
-    return failure();
-  }
-
   // Build config.json structure
   // Format: { "xrt-kernels": [ { "name": ..., "PDIs": [...], "instance": [...]
   // } ] }
@@ -4232,68 +4225,58 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
       activeDevices.push_back(&info);
   }
 
-  std::string configJson = "{\n  \"xrt-kernels\": [\n";
+  // Build config JSON using llvm::json for proper escaping.
+  llvm::json::Array xrtKernels;
 
-  for (size_t i = 0; i < activeDevices.size(); ++i) {
-    const auto &info = *activeDevices[i];
+  for (const auto *infoPtr : activeDevices) {
+    const auto &info = *infoPtr;
 
-    if (i > 0)
-      configJson += ",\n";
-    configJson += "    {\n";
-    configJson += "      \"name\": \"" + info.deviceName + "\",\n";
-
-    // Arguments - determine max arg count from sequences
-    // For now, use a default set of arguments
-    configJson += "      \"arguments\": [\n";
-    configJson += "        {\"name\": \"arg_0\", \"type\": \"char *\", "
-                  "\"offset\": \"0x0\"},\n";
-    configJson += "        {\"name\": \"arg_1\", \"type\": \"char *\", "
-                  "\"offset\": \"0x8\"},\n";
-    configJson += "        {\"name\": \"arg_2\", \"type\": \"char *\", "
-                  "\"offset\": \"0x10\"}\n";
-    configJson += "      ],\n";
+    // Arguments - default set of arguments
+    llvm::json::Array arguments;
+    arguments.push_back(llvm::json::Object{
+        {"name", "arg_0"}, {"type", "char *"}, {"offset", "0x0"}});
+    arguments.push_back(llvm::json::Object{
+        {"name", "arg_1"}, {"type", "char *"}, {"offset", "0x8"}});
+    arguments.push_back(llvm::json::Object{
+        {"name", "arg_2"}, {"type", "char *"}, {"offset", "0x10"}});
 
     // PDIs - list ALL device PDIs in each kernel entry (matching Python driver
     // behavior). aiebu-asm needs all PDI references available because the
     // instruction binary may reference PDIs from any device.
-    configJson += "      \"PDIs\": [\n";
-    bool firstPdi = true;
+    llvm::json::Array pdis;
     for (const auto &di : deviceInfos) {
-      if (!firstPdi)
-        configJson += ",\n";
-      configJson += "        {\"id\": " + std::to_string(di.pdiId) +
-                    ", \"PDI_file\": \"" + di.pdiPath + "\"}";
-      firstPdi = false;
+      pdis.push_back(
+          llvm::json::Object{{"id", di.pdiId}, {"PDI_file", di.pdiPath}});
     }
-    configJson += "\n      ],\n";
 
     // Instances (runtime sequences)
-    configJson += "      \"instance\": [\n";
-    for (size_t j = 0; j < info.sequences.size(); ++j) {
-      if (j > 0)
-        configJson += ",\n";
-      configJson += "        {\"id\": \"" + info.sequences[j].first +
-                    "\", \"TXN_ctrl_code_file\": \"" +
-                    info.sequences[j].second + "\"}";
+    llvm::json::Array instances;
+    for (const auto &seq : info.sequences) {
+      instances.push_back(llvm::json::Object{
+          {"id", seq.first}, {"TXN_ctrl_code_file", seq.second}});
     }
-    configJson += "\n      ]\n";
-    configJson += "    }";
+
+    xrtKernels.push_back(
+        llvm::json::Object{{"name", info.deviceName},
+                           {"arguments", std::move(arguments)},
+                           {"PDIs", std::move(pdis)},
+                           {"instance", std::move(instances)}});
   }
 
-  configJson += "\n  ]\n}\n";
+  llvm::json::Value configValue(
+      llvm::json::Object{{"xrt-kernels", std::move(xrtKernels)}});
+
+  // Serialize to string (needed for both file output and library path).
+  std::string configJson;
+  llvm::raw_string_ostream jsonStream(configJson);
+  jsonStream << llvm::formatv("{0:2}", configValue);
 
   // Write config.json
   SmallString<128> configPath(tmpDirName);
   sys::path::append(configPath, "full_elf_config.json");
 
-  {
-    std::error_code ec;
-    raw_fd_ostream configFile(configPath, ec);
-    if (ec) {
-      llvm::errs() << "Error writing config.json: " << ec.message() << "\n";
-      return failure();
-    }
-    configFile << configJson;
+  if (failed(writeJsonToFile(configPath, configValue))) {
+    return failure();
   }
 
   if (verbose) {
@@ -4324,6 +4307,12 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
 
   // Subprocess fallback: run aiebu-asm -t aie2_config -j config.json -o
   // output.elf
+  std::string aiebuAsmBin = findAiebuAsm();
+  if (aiebuAsmBin.empty()) {
+    llvm::errs() << "Error: aiebu-asm not found for full ELF generation\n";
+    return failure();
+  }
+
   SmallVector<std::string, 10> aiebuCmd = {aiebuAsmBin,
                                            "-t",
                                            "aie2_config",

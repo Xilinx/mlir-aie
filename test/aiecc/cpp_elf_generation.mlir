@@ -18,7 +18,6 @@
 // CHECK: Successfully parsed input file
 // CHECK: Found 1 AIE device
 // CHECK: Generating ELF for device
-// CHECK: Found aiebu-asm
 // CHECK: Generated ELF: test_insts.elf
 // CHECK: Compilation completed successfully
 
