@@ -79,65 +79,71 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span><span class="preprocessor">#include &quot;mlir/Pass/Pass.h&quot;</span></div>
 <div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="preprocessor">#include &quot;mlir/Transforms/DialectConversion.h&quot;</span></div>
 <div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span> </div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno"><a class="line" href="AIEVectorOpt_8cpp.html#ad78e062f62e0d6e453941fb4ca843e4d">   22</a></span><span class="preprocessor">#define DEBUG_TYPE &quot;aie-vector-opt&quot;</span></div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span> </div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacemlir.html">mlir</a>;</div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a>;</div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span> </div>
-<div class="foldopen" id="foldopen00028" data-start="{" data-end="};">
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno"><a class="line" href="structAIEVectorOptPass.html">   28</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structAIEVectorOptPass.html">AIEVectorOptPass</a> : <a class="code hl_class" href="classAIEVectorOptBase.html">AIEVectorOptBase</a>&lt;AIEVectorOptPass&gt; {</div>
-<div class="foldopen" id="foldopen00029" data-start="{" data-end="}">
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno"><a class="line" href="structAIEVectorOptPass.html#a117498a2ef0fae0b411fca45d97f5c29">   29</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structAIEVectorOptPass.html#a117498a2ef0fae0b411fca45d97f5c29">getDependentDialects</a>(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    registry.insert&lt;func::FuncDialect&gt;();</div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>    registry.insert&lt;memref::MemRefDialect&gt;();</div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>  }</div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="keyword">namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a> {</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno"><a class="line" href="AIEVectorOpt_8cpp.html#a5367cd9d9d1ee7b50fd9262a78168153">   23</a></span><span class="preprocessor">#define GEN_PASS_DEF_AIEVECTOROPT</span></div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/Transforms/AIEPasses.h.inc&quot;</span></div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno"><a class="line" href="AIEVectorOpt_8cpp.html#ad78e062f62e0d6e453941fb4ca843e4d">   27</a></span><span class="preprocessor">#define DEBUG_TYPE &quot;aie-vector-opt&quot;</span></div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span> </div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacemlir.html">mlir</a>;</div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a>;</div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span> </div>
+<div class="foldopen" id="foldopen00033" data-start="{" data-end="};">
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno"><a class="line" href="structAIEVectorOptPass.html">   33</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structAIEVectorOptPass.html">AIEVectorOptPass</a></div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>    : <a class="code hl_class" href="classxilinx_1_1AIE_1_1impl_1_1AIEVectorOptBase.html">xilinx::AIE::impl::AIEVectorOptBase</a>&lt;AIEVectorOptPass&gt; {</div>
+<div class="foldopen" id="foldopen00035" data-start="{" data-end="}">
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno"><a class="line" href="structAIEVectorOptPass.html#a117498a2ef0fae0b411fca45d97f5c29">   35</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structAIEVectorOptPass.html#a117498a2ef0fae0b411fca45d97f5c29">getDependentDialects</a>(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    registry.insert&lt;func::FuncDialect&gt;();</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    registry.insert&lt;memref::MemRefDialect&gt;();</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>  }</div>
 </div>
-<div class="foldopen" id="foldopen00033" data-start="{" data-end="}">
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno"><a class="line" href="structAIEVectorOptPass.html#a02bfd8c3819882a3a87530ac1b06f3d6">   33</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structAIEVectorOptPass.html#a02bfd8c3819882a3a87530ac1b06f3d6">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>    func::FuncOp f = getOperation();</div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span> </div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    <span class="comment">// Initial store-&gt;load forwarding</span></div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    IRRewriter rewriter(&amp;getContext());</div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    vector::transferOpflowOpt(rewriter, f);</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    ConversionTarget target(getContext());</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    target.addLegalDialect&lt;memref::MemRefDialect&gt;();</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    target.addLegalOp&lt;vector::BroadcastOp&gt;();</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    <span class="comment">// To start with, we&#39;re mainly interested in eliminating TransferRead ops</span></div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="comment">// that can be converted to load + broadcast</span></div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    target.addDynamicallyLegalOp&lt;vector::TransferReadOp&gt;(</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>        [](vector::TransferReadOp op) { <span class="keywordflow">return</span> <span class="keyword">false</span>; });</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    RewritePatternSet patterns(&amp;getContext());</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    vector::populateVectorTransferLoweringPatterns(patterns);</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    vector::populateVectorMaskMaterializationPatterns(patterns, <span class="keyword">true</span>);</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(f, target, std::move(patterns))))</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>      signalPassFailure();</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>  }</div>
+<div class="foldopen" id="foldopen00039" data-start="{" data-end="}">
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno"><a class="line" href="structAIEVectorOptPass.html#a02bfd8c3819882a3a87530ac1b06f3d6">   39</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structAIEVectorOptPass.html#a02bfd8c3819882a3a87530ac1b06f3d6">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    func::FuncOp f = getOperation();</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span> </div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <span class="comment">// Initial store-&gt;load forwarding</span></div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    IRRewriter rewriter(&amp;getContext());</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    vector::transferOpflowOpt(rewriter, f);</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span> </div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    ConversionTarget target(getContext());</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    target.addLegalDialect&lt;memref::MemRefDialect&gt;();</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    target.addLegalOp&lt;vector::BroadcastOp&gt;();</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    <span class="comment">// To start with, we&#39;re mainly interested in eliminating TransferRead ops</span></div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    <span class="comment">// that can be converted to load + broadcast</span></div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    target.addDynamicallyLegalOp&lt;vector::TransferReadOp&gt;(</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        [](vector::TransferReadOp op) { <span class="keywordflow">return</span> <span class="keyword">false</span>; });</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    RewritePatternSet patterns(&amp;getContext());</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    vector::populateVectorTransferLoweringPatterns(patterns);</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    vector::populateVectorMaskMaterializationPatterns(patterns, <span class="keyword">true</span>);</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(f, target, std::move(patterns))))</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>      signalPassFailure();</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>  }</div>
 </div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>};</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>};</div>
 </div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span> </div>
-<div class="foldopen" id="foldopen00056" data-start="{" data-end="}">
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a074b5916228e1ee9e0b6bb9efab24999">   56</a></span>std::unique_ptr&lt;OperationPass&lt;func::FuncOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a074b5916228e1ee9e0b6bb9efab24999">AIE::createAIEVectorOptPass</a>() {</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEVectorOptPass&gt;();</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>}</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
+<div class="foldopen" id="foldopen00062" data-start="{" data-end="}">
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a074b5916228e1ee9e0b6bb9efab24999">   62</a></span>std::unique_ptr&lt;OperationPass&lt;func::FuncOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a074b5916228e1ee9e0b6bb9efab24999">AIE::createAIEVectorOptPass</a>() {</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEVectorOptPass&gt;();</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
-<div class="ttc" id="aclassAIEVectorOptBase_html"><div class="ttname"><a href="classAIEVectorOptBase.html">AIEVectorOptBase</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1AIE_1_1impl_1_1AIEVectorOptBase_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1impl_1_1AIEVectorOptBase.html">xilinx::AIE::impl::AIEVectorOptBase</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a074b5916228e1ee9e0b6bb9efab24999"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a074b5916228e1ee9e0b6bb9efab24999">xilinx::AIE::createAIEVectorOptPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::func::FuncOp &gt; &gt; createAIEVectorOptPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEVectorOpt_8cpp_source.html#l00056">AIEVectorOpt.cpp:56</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a074b5916228e1ee9e0b6bb9efab24999"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a074b5916228e1ee9e0b6bb9efab24999">xilinx::AIE::createAIEVectorOptPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::func::FuncOp &gt; &gt; createAIEVectorOptPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEVectorOpt_8cpp_source.html#l00062">AIEVectorOpt.cpp:62</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="astructAIEVectorOptPass_html"><div class="ttname"><a href="structAIEVectorOptPass.html">AIEVectorOptPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVectorOpt_8cpp_source.html#l00028">AIEVectorOpt.cpp:28</a></div></div>
-<div class="ttc" id="astructAIEVectorOptPass_html_a02bfd8c3819882a3a87530ac1b06f3d6"><div class="ttname"><a href="structAIEVectorOptPass.html#a02bfd8c3819882a3a87530ac1b06f3d6">AIEVectorOptPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEVectorOpt_8cpp_source.html#l00033">AIEVectorOpt.cpp:33</a></div></div>
-<div class="ttc" id="astructAIEVectorOptPass_html_a117498a2ef0fae0b411fca45d97f5c29"><div class="ttname"><a href="structAIEVectorOptPass.html#a117498a2ef0fae0b411fca45d97f5c29">AIEVectorOptPass::getDependentDialects</a></div><div class="ttdeci">void getDependentDialects(DialectRegistry &amp;registry) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVectorOpt_8cpp_source.html#l00029">AIEVectorOpt.cpp:29</a></div></div>
+<div class="ttc" id="astructAIEVectorOptPass_html"><div class="ttname"><a href="structAIEVectorOptPass.html">AIEVectorOptPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVectorOpt_8cpp_source.html#l00033">AIEVectorOpt.cpp:34</a></div></div>
+<div class="ttc" id="astructAIEVectorOptPass_html_a02bfd8c3819882a3a87530ac1b06f3d6"><div class="ttname"><a href="structAIEVectorOptPass.html#a02bfd8c3819882a3a87530ac1b06f3d6">AIEVectorOptPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEVectorOpt_8cpp_source.html#l00039">AIEVectorOpt.cpp:39</a></div></div>
+<div class="ttc" id="astructAIEVectorOptPass_html_a117498a2ef0fae0b411fca45d97f5c29"><div class="ttname"><a href="structAIEVectorOptPass.html#a117498a2ef0fae0b411fca45d97f5c29">AIEVectorOptPass::getDependentDialects</a></div><div class="ttdeci">void getDependentDialects(DialectRegistry &amp;registry) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVectorOpt_8cpp_source.html#l00035">AIEVectorOpt.cpp:35</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 5 2026 01:11:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Mar 5 2026 05:48:39 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

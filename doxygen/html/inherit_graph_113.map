@@ -1,3 +1,5 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classxilinx_1_1AIE_1_1RegisterDatabase.html" title="Register and event database for a specific architecture." alt="" coords="5,5,216,31"/>
+<area shape="rect" id="Node000000" href="$classxilinx_1_1AIEX_1_1impl_1_1AIECtrlPacketInferTilesBase.html" title=" " alt="" coords="5,5,215,45"/>
+<area shape="rect" id="Node000001" href="$structAIECtrlPacketInferTilesPass.html" title=" " alt="" coords="263,13,461,38"/>
+<area shape="poly" id="edge216_Node000000_Node000001" title=" " alt="" coords="228,23,263,23,263,28,228,28"/>
 </map>

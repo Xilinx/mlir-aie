@@ -623,101 +623,102 @@ $(document).ready(function() { init_codefold(0); });
 </div>
 <div class="line"><a id="l00528" name="l00528"></a><span class="lineno">  528</span> </div>
 <div class="foldopen" id="foldopen00529" data-start="{" data-end="};">
-<div class="line"><a id="l00529" name="l00529"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html">  529</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html">AIEVecConvAnalysis</a> : <span class="keyword">public</span> <a class="code hl_class" href="classAIEVecConvAnalysisBase.html">AIEVecConvAnalysisBase</a>&lt;AIEVecConvAnalysis&gt; {</div>
-<div class="line"><a id="l00530" name="l00530"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a776a4ed9bbcb146a4be8813b287028e3">  530</a></span>  <a class="code hl_function" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a776a4ed9bbcb146a4be8813b287028e3">AIEVecConvAnalysis</a>() = <span class="keywordflow">default</span>;</div>
-<div class="line"><a id="l00531" name="l00531"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a447be33d38feab1446d22d5921c1ed92">  531</a></span>  <span class="keyword">using </span><a class="code hl_typedef" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a447be33d38feab1446d22d5921c1ed92">ConvMacChain</a> = <a class="code hl_typedef" href="structLongestConvMACChainAnalysis.html#a98ed0c3c4ea7d983f571e52df5f7b56d">LongestConvMACChainAnalysis::ConvMacChain</a>;</div>
-<div class="line"><a id="l00532" name="l00532"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#ad93ad64b3dfd31c52c7b09b653f05ffd">  532</a></span>  <span class="keyword">using </span><a class="code hl_typedef" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#ad93ad64b3dfd31c52c7b09b653f05ffd">ConvMacChainGroupList</a> =</div>
-<div class="line"><a id="l00533" name="l00533"></a><span class="lineno">  533</span>      <a class="code hl_typedef" href="structLongestConvMACChainAnalysis.html#a09845618abf0bee8a9c1c87c744598a3">LongestConvMACChainAnalysis::ConvMacChainGroupList</a>;</div>
-<div class="line"><a id="l00534" name="l00534"></a><span class="lineno">  534</span> </div>
-<div class="foldopen" id="foldopen00535" data-start="{" data-end="}">
-<div class="line"><a id="l00535" name="l00535"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a51670fce9819148c69637ed78e890e08">  535</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a51670fce9819148c69637ed78e890e08">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00536" name="l00536"></a><span class="lineno">  536</span>    markAllAnalysesPreserved();</div>
-<div class="line"><a id="l00537" name="l00537"></a><span class="lineno">  537</span>    AnalysisManager am = getAnalysisManager();</div>
-<div class="line"><a id="l00538" name="l00538"></a><span class="lineno">  538</span>    <a class="code hl_variable" href="structLongestConvMACChainAnalysis.html#a2caa82fb26494c13f5a2161a4dfb7885">LongestConvMACChainAnalysis::am</a> = &amp;am;</div>
-<div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span>    Operation *op = getOperation();</div>
-<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span> </div>
-<div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span>    <span class="comment">// Compute all the chains</span></div>
-<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>    op-&gt;walk([&amp;](arith::AddIOp addOp) {</div>
-<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>      <span class="keywordflow">if</span> (isa&lt;VectorType&gt;(addOp.getResult().getType()))</div>
-<div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span>        am.getChildAnalysis&lt;<a class="code hl_struct" href="structLongestConvMACChainAnalysis.html">LongestConvMACChainAnalysis</a>&gt;(addOp);</div>
-<div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>    });</div>
-<div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span> </div>
-<div class="line"><a id="l00547" name="l00547"></a><span class="lineno">  547</span>    <span class="comment">// Sort the chains, ready to split by group</span></div>
-<div class="line"><a id="l00548" name="l00548"></a><span class="lineno">  548</span>    op-&gt;walk([&amp;](arith::AddIOp addOp) {</div>
-<div class="line"><a id="l00549" name="l00549"></a><span class="lineno">  549</span>      <span class="keywordflow">if</span> (isa&lt;VectorType&gt;(addOp.getResult().getType())) {</div>
-<div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span>        <span class="keyword">auto</span> &amp;analysis =</div>
-<div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>            am.getChildAnalysis&lt;<a class="code hl_struct" href="structLongestConvMACChainAnalysis.html">LongestConvMACChainAnalysis</a>&gt;(addOp);</div>
-<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>        <span class="keywordflow">if</span> (analysis.convMacChain)</div>
-<div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span>          analysis.<a class="code hl_function" href="structLongestConvMACChainAnalysis.html#a28035f86ba8648f27c3ac4dce05c2b0b">sortChain</a>();</div>
-<div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span>      }</div>
-<div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span>    });</div>
-<div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span> </div>
-<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>    <span class="keywordflow">if</span> (printResult) {</div>
-<div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>      op-&gt;walk([&amp;](arith::AddIOp addOp) {</div>
-<div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>        <span class="keywordflow">if</span> (isa&lt;VectorType&gt;(addOp.getResult().getType())) {</div>
-<div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span>          <span class="keyword">auto</span> &amp;macChainAnalysis =</div>
-<div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span>              am.getChildAnalysis&lt;<a class="code hl_struct" href="structLongestConvMACChainAnalysis.html">LongestConvMACChainAnalysis</a>&gt;(addOp);</div>
-<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>          <span class="keywordflow">if</span> (macChainAnalysis.canChainBeReplacedWithConvOps()) {</div>
-<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span>            addOp.print(llvm::outs());</div>
-<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>            llvm::outs() &lt;&lt; <span class="stringliteral">&quot; is at the end of a convolution MAC Chain:\n&quot;</span>;</div>
-<div class="line"><a id="l00565" name="l00565"></a><span class="lineno">  565</span>            <a class="code hl_function" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a4fb24033921efbb3abd8a870d3ab86f5">listChain</a>(macChainAnalysis.convMacChain,</div>
-<div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span>                      macChainAnalysis.getGroupsInChain());</div>
-<div class="line"><a id="l00567" name="l00567"></a><span class="lineno">  567</span>          }</div>
-<div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span>        }</div>
-<div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span>      });</div>
-<div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>    }</div>
-<div class="line"><a id="l00571" name="l00571"></a><span class="lineno">  571</span>  }</div>
+<div class="line"><a id="l00529" name="l00529"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html">  529</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html">AIEVecConvAnalysis</a></div>
+<div class="line"><a id="l00530" name="l00530"></a><span class="lineno">  530</span>    : <span class="keyword">public</span> <a class="code hl_class" href="classxilinx_1_1aievec_1_1impl_1_1AIEVecConvAnalysisBase.html">xilinx::aievec::impl::AIEVecConvAnalysisBase</a>&lt;AIEVecConvAnalysis&gt; {</div>
+<div class="line"><a id="l00531" name="l00531"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a776a4ed9bbcb146a4be8813b287028e3">  531</a></span>  <a class="code hl_function" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a776a4ed9bbcb146a4be8813b287028e3">AIEVecConvAnalysis</a>() = <span class="keywordflow">default</span>;</div>
+<div class="line"><a id="l00532" name="l00532"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a447be33d38feab1446d22d5921c1ed92">  532</a></span>  <span class="keyword">using </span><a class="code hl_typedef" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a447be33d38feab1446d22d5921c1ed92">ConvMacChain</a> = <a class="code hl_typedef" href="structLongestConvMACChainAnalysis.html#a98ed0c3c4ea7d983f571e52df5f7b56d">LongestConvMACChainAnalysis::ConvMacChain</a>;</div>
+<div class="line"><a id="l00533" name="l00533"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#ad93ad64b3dfd31c52c7b09b653f05ffd">  533</a></span>  <span class="keyword">using </span><a class="code hl_typedef" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#ad93ad64b3dfd31c52c7b09b653f05ffd">ConvMacChainGroupList</a> =</div>
+<div class="line"><a id="l00534" name="l00534"></a><span class="lineno">  534</span>      <a class="code hl_typedef" href="structLongestConvMACChainAnalysis.html#a09845618abf0bee8a9c1c87c744598a3">LongestConvMACChainAnalysis::ConvMacChainGroupList</a>;</div>
+<div class="line"><a id="l00535" name="l00535"></a><span class="lineno">  535</span> </div>
+<div class="foldopen" id="foldopen00536" data-start="{" data-end="}">
+<div class="line"><a id="l00536" name="l00536"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a51670fce9819148c69637ed78e890e08">  536</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a51670fce9819148c69637ed78e890e08">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00537" name="l00537"></a><span class="lineno">  537</span>    markAllAnalysesPreserved();</div>
+<div class="line"><a id="l00538" name="l00538"></a><span class="lineno">  538</span>    AnalysisManager am = getAnalysisManager();</div>
+<div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span>    <a class="code hl_variable" href="structLongestConvMACChainAnalysis.html#a2caa82fb26494c13f5a2161a4dfb7885">LongestConvMACChainAnalysis::am</a> = &amp;am;</div>
+<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span>    Operation *op = getOperation();</div>
+<div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span> </div>
+<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>    <span class="comment">// Compute all the chains</span></div>
+<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>    op-&gt;walk([&amp;](arith::AddIOp addOp) {</div>
+<div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span>      <span class="keywordflow">if</span> (isa&lt;VectorType&gt;(addOp.getResult().getType()))</div>
+<div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>        am.getChildAnalysis&lt;<a class="code hl_struct" href="structLongestConvMACChainAnalysis.html">LongestConvMACChainAnalysis</a>&gt;(addOp);</div>
+<div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span>    });</div>
+<div class="line"><a id="l00547" name="l00547"></a><span class="lineno">  547</span> </div>
+<div class="line"><a id="l00548" name="l00548"></a><span class="lineno">  548</span>    <span class="comment">// Sort the chains, ready to split by group</span></div>
+<div class="line"><a id="l00549" name="l00549"></a><span class="lineno">  549</span>    op-&gt;walk([&amp;](arith::AddIOp addOp) {</div>
+<div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span>      <span class="keywordflow">if</span> (isa&lt;VectorType&gt;(addOp.getResult().getType())) {</div>
+<div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>        <span class="keyword">auto</span> &amp;analysis =</div>
+<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>            am.getChildAnalysis&lt;<a class="code hl_struct" href="structLongestConvMACChainAnalysis.html">LongestConvMACChainAnalysis</a>&gt;(addOp);</div>
+<div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span>        <span class="keywordflow">if</span> (analysis.convMacChain)</div>
+<div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span>          analysis.<a class="code hl_function" href="structLongestConvMACChainAnalysis.html#a28035f86ba8648f27c3ac4dce05c2b0b">sortChain</a>();</div>
+<div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span>      }</div>
+<div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span>    });</div>
+<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span> </div>
+<div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>    <span class="keywordflow">if</span> (printResult) {</div>
+<div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>      op-&gt;walk([&amp;](arith::AddIOp addOp) {</div>
+<div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span>        <span class="keywordflow">if</span> (isa&lt;VectorType&gt;(addOp.getResult().getType())) {</div>
+<div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span>          <span class="keyword">auto</span> &amp;macChainAnalysis =</div>
+<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>              am.getChildAnalysis&lt;<a class="code hl_struct" href="structLongestConvMACChainAnalysis.html">LongestConvMACChainAnalysis</a>&gt;(addOp);</div>
+<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span>          <span class="keywordflow">if</span> (macChainAnalysis.canChainBeReplacedWithConvOps()) {</div>
+<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>            addOp.print(llvm::outs());</div>
+<div class="line"><a id="l00565" name="l00565"></a><span class="lineno">  565</span>            llvm::outs() &lt;&lt; <span class="stringliteral">&quot; is at the end of a convolution MAC Chain:\n&quot;</span>;</div>
+<div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span>            <a class="code hl_function" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a4fb24033921efbb3abd8a870d3ab86f5">listChain</a>(macChainAnalysis.convMacChain,</div>
+<div class="line"><a id="l00567" name="l00567"></a><span class="lineno">  567</span>                      macChainAnalysis.getGroupsInChain());</div>
+<div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span>          }</div>
+<div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span>        }</div>
+<div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>      });</div>
+<div class="line"><a id="l00571" name="l00571"></a><span class="lineno">  571</span>    }</div>
+<div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span>  }</div>
 </div>
-<div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span> </div>
-<div class="foldopen" id="foldopen00573" data-start="{" data-end="}">
-<div class="line"><a id="l00573" name="l00573"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a4fb24033921efbb3abd8a870d3ab86f5">  573</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a4fb24033921efbb3abd8a870d3ab86f5">listChain</a>(<span class="keyword">const</span> std::unique_ptr&lt;ConvMacChain&gt; &amp;chain,</div>
-<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span>                 <span class="keyword">const</span> <a class="code hl_typedef" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#ad93ad64b3dfd31c52c7b09b653f05ffd">ConvMacChainGroupList</a> &amp;groups)<span class="keyword"> const </span>{</div>
-<div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span>    uint64_t gIdx = 0;</div>
-<div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span>    <span class="keywordflow">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp;group : groups) {</div>
-<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>      llvm::outs() &lt;&lt; <span class="stringliteral">&quot;-------------- GROUP &quot;</span> &lt;&lt; std::to_string(gIdx)</div>
-<div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>                   &lt;&lt; <span class="stringliteral">&quot; --------------\n&quot;</span>;</div>
-<div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span>      llvm::outs() &lt;&lt; <span class="stringliteral">&quot;  Signal Shift: &quot;</span> &lt;&lt; std::to_string(group.signalShift)</div>
-<div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>                   &lt;&lt; <span class="stringliteral">&quot;   Kernel Shift: &quot;</span> &lt;&lt; std::to_string(group.bcastShift)</div>
-<div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>                   &lt;&lt; <span class="stringliteral">&quot;   Kernel Duplication: &quot;</span></div>
-<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>                   &lt;&lt; std::to_string(group.bcastDist) &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
-<div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span>      <span class="keywordflow">for</span> (uint64_t i = group.fromIdx; i &lt; group.toIdx; i++) {</div>
-<div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span>        <span class="keyword">auto</span> shift = (*chain)[i]-&gt;shift;</div>
-<div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>        <span class="keyword">auto</span> bcastIdx = (*chain)[i]-&gt;bcastIdx;</div>
-<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>        <span class="keyword">auto</span> lhsOp = (*chain)[i]-&gt;lhs.getDefiningOp();</div>
-<div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>        <span class="keyword">auto</span> rhsOp = (*chain)[i]-&gt;rhs.getDefiningOp();</div>
-<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>        <span class="keywordflow">if</span> (!(*chain)[i]-&gt;acc)</div>
-<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>          llvm::outs() &lt;&lt; <span class="stringliteral">&quot;  [mul_conv]\n&quot;</span>;</div>
-<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>        llvm::outs() &lt;&lt; <span class="stringliteral">&quot;    [Shift: &quot;</span> &lt;&lt; std::to_string(shift) &lt;&lt; <span class="stringliteral">&quot;]: &quot;</span>;</div>
-<div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>        lhsOp-&gt;print(llvm::outs());</div>
-<div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>        llvm::outs() &lt;&lt; <span class="stringliteral">&quot;\n    [Bcast: &quot;</span> &lt;&lt; std::to_string(bcastIdx) &lt;&lt; <span class="stringliteral">&quot;]: &quot;</span>;</div>
-<div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>        rhsOp-&gt;print(llvm::outs());</div>
-<div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>        llvm::outs() &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
-<div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span>      }</div>
-<div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>      gIdx++;</div>
-<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>    }</div>
-<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>    llvm::outs() &lt;&lt; <span class="stringliteral">&quot;-------------------------------------\n&quot;</span>;</div>
-<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>  }</div>
+<div class="line"><a id="l00573" name="l00573"></a><span class="lineno">  573</span> </div>
+<div class="foldopen" id="foldopen00574" data-start="{" data-end="}">
+<div class="line"><a id="l00574" name="l00574"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a4fb24033921efbb3abd8a870d3ab86f5">  574</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a4fb24033921efbb3abd8a870d3ab86f5">listChain</a>(<span class="keyword">const</span> std::unique_ptr&lt;ConvMacChain&gt; &amp;chain,</div>
+<div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span>                 <span class="keyword">const</span> <a class="code hl_typedef" href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#ad93ad64b3dfd31c52c7b09b653f05ffd">ConvMacChainGroupList</a> &amp;groups)<span class="keyword"> const </span>{</div>
+<div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span>    uint64_t gIdx = 0;</div>
+<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>    <span class="keywordflow">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp;group : groups) {</div>
+<div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>      llvm::outs() &lt;&lt; <span class="stringliteral">&quot;-------------- GROUP &quot;</span> &lt;&lt; std::to_string(gIdx)</div>
+<div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span>                   &lt;&lt; <span class="stringliteral">&quot; --------------\n&quot;</span>;</div>
+<div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>      llvm::outs() &lt;&lt; <span class="stringliteral">&quot;  Signal Shift: &quot;</span> &lt;&lt; std::to_string(group.signalShift)</div>
+<div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>                   &lt;&lt; <span class="stringliteral">&quot;   Kernel Shift: &quot;</span> &lt;&lt; std::to_string(group.bcastShift)</div>
+<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>                   &lt;&lt; <span class="stringliteral">&quot;   Kernel Duplication: &quot;</span></div>
+<div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span>                   &lt;&lt; std::to_string(group.bcastDist) &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
+<div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span>      <span class="keywordflow">for</span> (uint64_t i = group.fromIdx; i &lt; group.toIdx; i++) {</div>
+<div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>        <span class="keyword">auto</span> shift = (*chain)[i]-&gt;shift;</div>
+<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>        <span class="keyword">auto</span> bcastIdx = (*chain)[i]-&gt;bcastIdx;</div>
+<div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>        <span class="keyword">auto</span> lhsOp = (*chain)[i]-&gt;lhs.getDefiningOp();</div>
+<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>        <span class="keyword">auto</span> rhsOp = (*chain)[i]-&gt;rhs.getDefiningOp();</div>
+<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>        <span class="keywordflow">if</span> (!(*chain)[i]-&gt;acc)</div>
+<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>          llvm::outs() &lt;&lt; <span class="stringliteral">&quot;  [mul_conv]\n&quot;</span>;</div>
+<div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>        llvm::outs() &lt;&lt; <span class="stringliteral">&quot;    [Shift: &quot;</span> &lt;&lt; std::to_string(shift) &lt;&lt; <span class="stringliteral">&quot;]: &quot;</span>;</div>
+<div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>        lhsOp-&gt;print(llvm::outs());</div>
+<div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>        llvm::outs() &lt;&lt; <span class="stringliteral">&quot;\n    [Bcast: &quot;</span> &lt;&lt; std::to_string(bcastIdx) &lt;&lt; <span class="stringliteral">&quot;]: &quot;</span>;</div>
+<div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>        rhsOp-&gt;print(llvm::outs());</div>
+<div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span>        llvm::outs() &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
+<div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>      }</div>
+<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>      gIdx++;</div>
+<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>    }</div>
+<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>    llvm::outs() &lt;&lt; <span class="stringliteral">&quot;-------------------------------------\n&quot;</span>;</div>
+<div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>  }</div>
 </div>
-<div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>};</div>
+<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>};</div>
 </div>
-<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span> </div>
-<div class="foldopen" id="foldopen00602" data-start="{" data-end="}">
-<div class="line"><a id="l00602" name="l00602"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a2e629d21a63c571641ec5fff25d2b566">  602</a></span>std::unique_ptr&lt;Pass&gt; <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a2e629d21a63c571641ec5fff25d2b566">createAIEVecConvolutionAnalysisPass</a>() {</div>
-<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEVecConvAnalysis&gt;();</div>
-<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>}</div>
+<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span> </div>
+<div class="foldopen" id="foldopen00603" data-start="{" data-end="}">
+<div class="line"><a id="l00603" name="l00603"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a2e629d21a63c571641ec5fff25d2b566">  603</a></span>std::unique_ptr&lt;Pass&gt; <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a2e629d21a63c571641ec5fff25d2b566">createAIEVecConvolutionAnalysisPass</a>() {</div>
+<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEVecConvAnalysis&gt;();</div>
+<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>}</div>
 </div>
-<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span> </div>
-<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>} <span class="comment">// namespace xilinx::aievec</span></div>
+<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span> </div>
+<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>} <span class="comment">// namespace xilinx::aievec</span></div>
 <div class="ttc" id="aAIEVecOps_8h_html"><div class="ttname"><a href="AIEVecOps_8h.html">AIEVecOps.h</a></div></div>
 <div class="ttc" id="aAIEVecUtils_8h_html"><div class="ttname"><a href="AIEVecUtils_8h.html">AIEVecUtils.h</a></div></div>
 <div class="ttc" id="aDialect_2AIEVec_2Analysis_2Passes_8h_html"><div class="ttname"><a href="Dialect_2AIEVec_2Analysis_2Passes_8h.html">Passes.h</a></div></div>
 <div class="ttc" id="aDialect_2AIEVec_2Pipelines_2Passes_8h_html"><div class="ttname"><a href="Dialect_2AIEVec_2Pipelines_2Passes_8h.html">Passes.h</a></div></div>
 <div class="ttc" id="aFoldMulAddChainToConvOp_8h_html"><div class="ttname"><a href="FoldMulAddChainToConvOp_8h.html">FoldMulAddChainToConvOp.h</a></div></div>
-<div class="ttc" id="aclassAIEVecConvAnalysisBase_html"><div class="ttname"><a href="classAIEVecConvAnalysisBase.html">AIEVecConvAnalysisBase</a></div></div>
 <div class="ttc" id="aclassOpConversionPattern_html"><div class="ttname"><a href="classOpConversionPattern.html">OpConversionPattern</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1impl_1_1AIEVecConvAnalysisBase_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1impl_1_1AIEVecConvAnalysisBase.html">xilinx::aievec::impl::AIEVecConvAnalysisBase</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html"><div class="ttname"><a href="namespacexilinx_1_1aievec.html">xilinx::aievec</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00025">AIEVecToLLVM.h:25</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1aievec_html_a2e629d21a63c571641ec5fff25d2b566"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a2e629d21a63c571641ec5fff25d2b566">xilinx::aievec::createAIEVecConvolutionAnalysisPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::Pass &gt; createAIEVecConvolutionAnalysisPass()</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00602">FoldMulAddChainToConvOp.cpp:602</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1aievec_html_a2e629d21a63c571641ec5fff25d2b566"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a2e629d21a63c571641ec5fff25d2b566">xilinx::aievec::createAIEVecConvolutionAnalysisPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::Pass &gt; createAIEVecConvolutionAnalysisPass()</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00603">FoldMulAddChainToConvOp.cpp:603</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a32fca04381544c972d4d29d5f3cd7b51"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a32fca04381544c972d4d29d5f3cd7b51">xilinx::aievec::populateAIEVecConvOpTransformationPatterns</a></div><div class="ttdeci">void populateAIEVecConvOpTransformationPatterns(RewritePatternSet &amp;patterns, AnalysisManager &amp;am, unsigned shiftParam, TargetBackend backend)</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00521">FoldMulAddChainToConvOp.cpp:521</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a54f5be063fa08846cc3e338485cfe1bd"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a54f5be063fa08846cc3e338485cfe1bd">xilinx::aievec::getElementSizeInBits</a></div><div class="ttdeci">int32_t getElementSizeInBits(mlir::VectorType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecUtils_8h_source.html#l00049">AIEVecUtils.h:49</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a777e37492ab4cdf5bcadef92575ca9e2"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a777e37492ab4cdf5bcadef92575ca9e2">xilinx::aievec::configureAIEVecConvOpTransformationLegalizations</a></div><div class="ttdeci">void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &amp;target, AnalysisManager &amp;am, TargetBackend backend)</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00508">FoldMulAddChainToConvOp.cpp:508</a></div></div>
@@ -757,16 +758,16 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructLongestConvMACChainAnalysis_html_abec72ba8042142c49e82d26b9cc86e01"><div class="ttname"><a href="structLongestConvMACChainAnalysis.html#abec72ba8042142c49e82d26b9cc86e01">LongestConvMACChainAnalysis::getConvMacFromMulOp</a></div><div class="ttdeci">std::unique_ptr&lt; ConvMac &gt; getConvMacFromMulOp(arith::MulIOp mulOp)</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00227">FoldMulAddChainToConvOp.cpp:227</a></div></div>
 <div class="ttc" id="astructLongestConvMACChainAnalysis_html_ac0f7c73dfb8fc3faa81dd9f329c7b73c"><div class="ttname"><a href="structLongestConvMACChainAnalysis.html#ac0f7c73dfb8fc3faa81dd9f329c7b73c">LongestConvMACChainAnalysis::getGroupBcastDist</a></div><div class="ttdeci">int64_t getGroupBcastDist(uint64_t fromIdx, uint64_t toIdx)</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00199">FoldMulAddChainToConvOp.cpp:199</a></div></div>
 <div class="ttc" id="astructLongestConvMACChainAnalysis_html_ae818bda62fd3f090b6104609b8ef2626"><div class="ttname"><a href="structLongestConvMACChainAnalysis.html#ae818bda62fd3f090b6104609b8ef2626">LongestConvMACChainAnalysis::canChainBeReplacedWithConvOps</a></div><div class="ttdeci">bool canChainBeReplacedWithConvOps()</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00216">FoldMulAddChainToConvOp.cpp:216</a></div></div>
-<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html">xilinx::aievec::AIEVecConvAnalysis</a></div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00529">FoldMulAddChainToConvOp.cpp:529</a></div></div>
-<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_a447be33d38feab1446d22d5921c1ed92"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a447be33d38feab1446d22d5921c1ed92">xilinx::aievec::AIEVecConvAnalysis::ConvMacChain</a></div><div class="ttdeci">LongestConvMACChainAnalysis::ConvMacChain ConvMacChain</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00531">FoldMulAddChainToConvOp.cpp:531</a></div></div>
-<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_a4fb24033921efbb3abd8a870d3ab86f5"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a4fb24033921efbb3abd8a870d3ab86f5">xilinx::aievec::AIEVecConvAnalysis::listChain</a></div><div class="ttdeci">void listChain(const std::unique_ptr&lt; ConvMacChain &gt; &amp;chain, const ConvMacChainGroupList &amp;groups) const</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00573">FoldMulAddChainToConvOp.cpp:573</a></div></div>
-<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_a51670fce9819148c69637ed78e890e08"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a51670fce9819148c69637ed78e890e08">xilinx::aievec::AIEVecConvAnalysis::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00535">FoldMulAddChainToConvOp.cpp:535</a></div></div>
+<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html">xilinx::aievec::AIEVecConvAnalysis</a></div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00529">FoldMulAddChainToConvOp.cpp:530</a></div></div>
+<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_a447be33d38feab1446d22d5921c1ed92"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a447be33d38feab1446d22d5921c1ed92">xilinx::aievec::AIEVecConvAnalysis::ConvMacChain</a></div><div class="ttdeci">LongestConvMACChainAnalysis::ConvMacChain ConvMacChain</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00532">FoldMulAddChainToConvOp.cpp:532</a></div></div>
+<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_a4fb24033921efbb3abd8a870d3ab86f5"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a4fb24033921efbb3abd8a870d3ab86f5">xilinx::aievec::AIEVecConvAnalysis::listChain</a></div><div class="ttdeci">void listChain(const std::unique_ptr&lt; ConvMacChain &gt; &amp;chain, const ConvMacChainGroupList &amp;groups) const</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00574">FoldMulAddChainToConvOp.cpp:574</a></div></div>
+<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_a51670fce9819148c69637ed78e890e08"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a51670fce9819148c69637ed78e890e08">xilinx::aievec::AIEVecConvAnalysis::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00536">FoldMulAddChainToConvOp.cpp:536</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_a776a4ed9bbcb146a4be8813b287028e3"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#a776a4ed9bbcb146a4be8813b287028e3">xilinx::aievec::AIEVecConvAnalysis::AIEVecConvAnalysis</a></div><div class="ttdeci">AIEVecConvAnalysis()=default</div></div>
-<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_ad93ad64b3dfd31c52c7b09b653f05ffd"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#ad93ad64b3dfd31c52c7b09b653f05ffd">xilinx::aievec::AIEVecConvAnalysis::ConvMacChainGroupList</a></div><div class="ttdeci">LongestConvMACChainAnalysis::ConvMacChainGroupList ConvMacChainGroupList</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00532">FoldMulAddChainToConvOp.cpp:533</a></div></div>
+<div class="ttc" id="astructxilinx_1_1aievec_1_1AIEVecConvAnalysis_html_ad93ad64b3dfd31c52c7b09b653f05ffd"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AIEVecConvAnalysis.html#ad93ad64b3dfd31c52c7b09b653f05ffd">xilinx::aievec::AIEVecConvAnalysis::ConvMacChainGroupList</a></div><div class="ttdeci">LongestConvMACChainAnalysis::ConvMacChainGroupList ConvMacChainGroupList</div><div class="ttdef"><b>Definition</b> <a href="FoldMulAddChainToConvOp_8cpp_source.html#l00533">FoldMulAddChainToConvOp.cpp:534</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 5 2026 01:11:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Mar 5 2026 05:48:39 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

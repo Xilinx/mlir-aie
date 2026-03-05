@@ -1,5 +1,5 @@
 <map id="AIEObjectFifoRegisterProcessPass" name="AIEObjectFifoRegisterProcessPass">
-<area shape="rect" id="Node000001" title=" " alt="" coords="14,108,257,133"/>
-<area shape="rect" id="Node000002" href="$classAIEObjectFifoRegisterProcessBase.html" title=" " alt="" coords="5,5,265,60"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="138,74,138,108,133,108,133,74"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="313,27,556,53"/>
+<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1impl_1_1AIEObjectFifoRegisterProcessBase.html" title=" " alt="" coords="5,5,265,75"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="279,37,313,37,313,43,279,43"/>
 </map>

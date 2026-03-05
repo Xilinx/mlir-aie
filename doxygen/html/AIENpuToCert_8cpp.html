@@ -51,6 +51,7 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
+<a href="#namespaces">Namespaces</a> &#124;
 <a href="#define-members">Macros</a>  </div>
   <div class="headertitle"><div class="title">AIENpuToCert.cpp File Reference</div></div>
 </div><!--header-->
@@ -64,6 +65,7 @@ $(function() {
 <code>#include &quot;mlir/Transforms/GreedyPatternRewriteDriver.h&quot;</code><br />
 <code>#include &lt;type_traits&gt;</code><br />
 <code>#include &lt;vector&gt;</code><br />
+<code>#include &quot;aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc&quot;</code><br />
 </div><div class="textblock"><div id="dynsection-0" onclick="return toggleVisibility(this)" class="dynheader closed" style="cursor:pointer;">
   <img id="dynsection-0-trigger" src="closed.png" alt="+"/> Include dependency graph for AIENpuToCert.cpp:</div>
 <div id="dynsection-0-summary" class="dynsummary" style="display:block;">
@@ -71,25 +73,27 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="AIENpuToCert_8cpp__incl.png" border="0" usemap="#alib_2Dialect_2AIEX_2Transforms_2AIENpuToCert_8cpp" alt=""/></div>
 <map name="alib_2Dialect_2AIEX_2Transforms_2AIENpuToCert_8cpp" id="alib_2Dialect_2AIEX_2Transforms_2AIENpuToCert_8cpp">
-<area shape="rect" title=" " alt="" coords="2987,5,3186,45"/>
+<area shape="rect" title=" " alt="" coords="2887,5,3086,45"/>
 <area shape="rect" href="AIEDialect_8h.html" title=" " alt="" coords="1238,269,1373,309"/>
-<area shape="poly" title=" " alt="" coords="2987,44,1387,279,1386,273,2987,39"/>
+<area shape="poly" title=" " alt="" coords="2888,45,1387,278,1386,273,2887,39"/>
 <area shape="rect" title=" " alt="" coords="2655,541,2718,566"/>
-<area shape="poly" title=" " alt="" coords="3091,45,3098,149,3103,288,3103,379,3100,407,3091,433,3077,455,3059,475,3013,506,2957,528,2896,542,2834,551,2732,556,2731,550,2834,545,2895,537,2955,523,3010,501,3056,471,3073,452,3086,431,3094,406,3097,379,3097,288,3093,149,3086,46"/>
-<area shape="rect" href="AIEXDialect_8h.html" title=" " alt="" coords="2505,181,2647,221"/>
-<area shape="poly" title=" " alt="" coords="2987,35,2926,43,2858,55,2789,72,2722,96,2690,113,2659,133,2607,174,2604,170,2656,128,2687,108,2720,91,2787,67,2857,49,2925,37,2987,30"/>
-<area shape="rect" href="AIEXPasses_8h.html" title=" " alt="" coords="2733,93,2936,133"/>
-<area shape="poly" title=" " alt="" coords="3032,48,2903,92,2902,86,3031,43"/>
-<area shape="rect" title=" " alt="" coords="2935,189,3062,214"/>
-<area shape="poly" title=" " alt="" coords="3079,47,3013,177,3008,175,3075,44"/>
-<area shape="rect" title=" " alt="" coords="3125,101,3275,126"/>
-<area shape="poly" title=" " alt="" coords="3113,43,3175,90,3172,94,3110,48"/>
-<area shape="rect" title=" " alt="" coords="3300,101,3559,126"/>
-<area shape="poly" title=" " alt="" coords="3163,43,3371,95,3370,100,3161,48"/>
-<area shape="rect" title=" " alt="" coords="3583,93,3804,133"/>
-<area shape="poly" title=" " alt="" coords="3187,37,3569,90,3568,96,3186,43"/>
-<area shape="rect" title=" " alt="" coords="3829,101,3921,126"/>
-<area shape="poly" title=" " alt="" coords="3186,26,3313,32,3471,43,3644,62,3817,91,3831,94,3830,99,3815,96,3643,68,3471,49,3313,37,3186,32"/>
+<area shape="poly" title=" " alt="" coords="2997,44,3015,85,3040,132,3059,155,3077,180,3098,232,3103,288,3103,379,3100,407,3091,433,3077,455,3059,475,3013,506,2957,528,2896,542,2834,551,2732,556,2731,550,2834,545,2895,537,2955,523,3010,501,3056,471,3073,452,3086,431,3094,406,3097,379,3097,288,3093,233,3072,183,3055,158,3035,135,3010,88,2992,46"/>
+<area shape="rect" href="AIEXDialect_8h.html" title=" " alt="" coords="2495,181,2638,221"/>
+<area shape="poly" title=" " alt="" coords="2887,33,2833,40,2774,51,2715,70,2660,96,2638,112,2618,131,2587,171,2583,168,2614,127,2634,108,2657,91,2713,65,2773,46,2832,34,2887,28"/>
+<area shape="rect" href="AIEXPasses_8h.html" title=" " alt="" coords="2671,93,2873,133"/>
+<area shape="poly" title=" " alt="" coords="2941,48,2833,91,2831,86,2939,43"/>
+<area shape="rect" title=" " alt="" coords="2709,189,2835,214"/>
+<area shape="poly" title=" " alt="" coords="2974,47,2936,90,2887,135,2848,163,2809,185,2807,180,2845,158,2884,131,2932,86,2970,44"/>
+<area shape="rect" title=" " alt="" coords="2860,181,3063,221"/>
+<area shape="poly" title=" " alt="" coords="2987,46,2969,168,2963,167,2981,45"/>
+<area shape="rect" title=" " alt="" coords="3050,101,3201,126"/>
+<area shape="poly" title=" " alt="" coords="3018,43,3096,91,3094,96,3016,48"/>
+<area shape="rect" title=" " alt="" coords="3225,101,3484,126"/>
+<area shape="poly" title=" " alt="" coords="3068,43,3293,95,3292,100,3067,48"/>
+<area shape="rect" title=" " alt="" coords="3508,93,3729,133"/>
+<area shape="poly" title=" " alt="" coords="3087,36,3494,90,3494,96,3086,42"/>
+<area shape="rect" title=" " alt="" coords="3754,101,3846,126"/>
+<area shape="poly" title=" " alt="" coords="3087,26,3218,31,3382,42,3562,62,3742,91,3756,94,3755,99,3741,96,3561,67,3381,48,3218,37,3086,31"/>
 <area shape="rect" href="AIEEnums_8h.html" title=" " alt="" coords="585,453,684,478"/>
 <area shape="poly" title=" " alt="" coords="1238,293,1157,296,1059,306,953,327,902,341,852,360,836,368,826,378,800,400,741,429,684,451,682,446,739,424,797,395,822,374,833,364,850,355,900,336,952,321,1058,301,1157,291,1238,287"/>
 <area shape="rect" href="AIETargetModel_8h.html" title=" " alt="" coords="863,357,1001,397"/>
@@ -148,29 +152,39 @@ $(function() {
 <area shape="rect" title=" " alt="" coords="1144,541,1203,566"/>
 <area shape="poly" title=" " alt="" coords="1267,488,1202,535,1199,530,1264,483"/>
 <area shape="poly" title=" " alt="" coords="1380,469,2642,547,2641,552,1380,475"/>
-<area shape="poly" title=" " alt="" coords="2505,210,1386,285,1386,280,2504,205"/>
-<area shape="poly" title=" " alt="" coords="2574,223,2562,261,2542,309,2512,358,2493,380,2471,400,2416,429,2339,455,2247,477,2145,497,1937,528,1765,547,1764,541,1936,522,2144,492,2245,472,2337,450,2414,424,2468,395,2489,377,2507,355,2537,306,2557,259,2569,221"/>
-<area shape="poly" title=" " alt="" coords="2577,222,2571,282,2559,361,2541,437,2529,467,2515,487,2495,501,2465,513,2389,532,2305,544,2231,551,2230,546,2304,539,2388,526,2463,508,2492,497,2511,483,2524,464,2536,436,2554,360,2565,281,2572,221"/>
-<area shape="poly" title=" " alt="" coords="2546,224,2478,271,2428,315,2387,356,2383,352,2424,312,2474,267,2543,219"/>
+<area shape="poly" title=" " alt="" coords="2495,210,1387,285,1386,280,2495,205"/>
+<area shape="poly" title=" " alt="" coords="2566,222,2556,260,2538,309,2510,358,2492,380,2471,400,2416,429,2340,456,2247,479,2146,498,1938,529,1765,547,1764,542,1937,523,2145,493,2246,473,2338,451,2414,425,2468,395,2488,377,2506,355,2533,306,2550,259,2560,221"/>
+<area shape="poly" title=" " alt="" coords="2568,222,2564,282,2555,361,2539,437,2529,467,2515,487,2495,501,2465,513,2389,532,2304,544,2230,551,2230,546,2304,539,2388,527,2464,508,2492,497,2511,483,2524,464,2534,436,2550,360,2559,281,2563,221"/>
+<area shape="poly" title=" " alt="" coords="2541,223,2478,271,2387,356,2383,353,2474,267,2538,219"/>
 <area shape="rect" title=" " alt="" coords="2583,269,2726,309"/>
-<area shape="poly" title=" " alt="" coords="2595,220,2630,257,2626,261,2591,223"/>
+<area shape="poly" title=" " alt="" coords="2588,220,2627,258,2624,262,2584,224"/>
 <area shape="rect" title=" " alt="" coords="2750,277,2895,302"/>
-<area shape="poly" title=" " alt="" coords="2631,219,2778,270,2776,275,2629,224"/>
+<area shape="poly" title=" " alt="" coords="2624,219,2777,270,2775,275,2622,224"/>
 <area shape="rect" title=" " alt="" coords="2919,269,3062,309"/>
-<area shape="poly" title=" " alt="" coords="2648,214,2907,267,2906,272,2647,219"/>
+<area shape="poly" title=" " alt="" coords="2639,214,2906,267,2905,272,2638,219"/>
 <area shape="rect" title=" " alt="" coords="2263,269,2406,309"/>
-<area shape="poly" title=" " alt="" coords="2524,224,2401,267,2399,262,2522,219"/>
-<area shape="poly" title=" " alt="" coords="2779,136,2647,180,2645,174,2777,131"/>
-<area shape="poly" title=" " alt="" coords="2872,131,2966,180,2963,185,2869,136"/>
-<area shape="rect" title=" " alt="" coords="2708,181,2911,221"/>
-<area shape="poly" title=" " alt="" coords="2832,134,2821,169,2816,167,2826,133"/>
+<area shape="poly" title=" " alt="" coords="2517,224,2399,267,2397,262,2515,219"/>
+<area shape="poly" title=" " alt="" coords="2728,136,2625,179,2623,174,2726,131"/>
+<area shape="poly" title=" " alt="" coords="2775,134,2775,175,2769,175,2769,134"/>
+<area shape="poly" title=" " alt="" coords="2815,131,2909,173,2906,178,2812,136"/>
 </map>
 </div>
 </div>
 <p><a href="AIENpuToCert_8cpp_source.html">Go to the source code of this file.</a></p>
 <table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="namespaces" name="namespaces"></a>
+Namespaces</h2></td></tr>
+<tr class="memitem:namespacexilinx" id="r_namespacexilinx"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx.html">xilinx</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:namespacexilinx_1_1AIEX" id="r_namespacexilinx_1_1AIEX"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="define-members" name="define-members"></a>
 Macros</h2></td></tr>
+<tr class="memitem:ac069db30c6d5b97a7690eed9d2ecb812" id="r_ac069db30c6d5b97a7690eed9d2ecb812"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIENpuToCert_8cpp.html#ac069db30c6d5b97a7690eed9d2ecb812">GEN_PASS_DEF_AIENPUTOCERT</a></td></tr>
+<tr class="separator:ac069db30c6d5b97a7690eed9d2ecb812"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a97e48a39507be1cc16a1faaed6396329" id="r_a97e48a39507be1cc16a1faaed6396329"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIENpuToCert_8cpp.html#a97e48a39507be1cc16a1faaed6396329">GEN_PASS_DEF_AIECERTPAGES</a></td></tr>
+<tr class="separator:a97e48a39507be1cc16a1faaed6396329"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad78e062f62e0d6e453941fb4ca843e4d" id="r_ad78e062f62e0d6e453941fb4ca843e4d"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIENpuToCert_8cpp.html#ad78e062f62e0d6e453941fb4ca843e4d">DEBUG_TYPE</a>&#160;&#160;&#160;&quot;npu-to-cert&quot;</td></tr>
 <tr class="separator:ad78e062f62e0d6e453941fb4ca843e4d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
@@ -187,14 +201,46 @@ Macros</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIENpuToCert_8cpp_source.html#l00026">26</a> of file <a class="el" href="AIENpuToCert_8cpp_source.html">AIENpuToCert.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIENpuToCert_8cpp_source.html#l00032">32</a> of file <a class="el" href="AIENpuToCert_8cpp_source.html">AIENpuToCert.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a97e48a39507be1cc16a1faaed6396329" name="a97e48a39507be1cc16a1faaed6396329"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a97e48a39507be1cc16a1faaed6396329">&#9670;&#160;</a></span>GEN_PASS_DEF_AIECERTPAGES</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define GEN_PASS_DEF_AIECERTPAGES</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIENpuToCert_8cpp_source.html#l00025">25</a> of file <a class="el" href="AIENpuToCert_8cpp_source.html">AIENpuToCert.cpp</a>.</p>
+
+</div>
+</div>
+<a id="ac069db30c6d5b97a7690eed9d2ecb812" name="ac069db30c6d5b97a7690eed9d2ecb812"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac069db30c6d5b97a7690eed9d2ecb812">&#9670;&#160;</a></span>GEN_PASS_DEF_AIENPUTOCERT</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define GEN_PASS_DEF_AIENPUTOCERT</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIENpuToCert_8cpp_source.html#l00024">24</a> of file <a class="el" href="AIENpuToCert_8cpp_source.html">AIENpuToCert.cpp</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 5 2026 01:11:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Mar 5 2026 05:48:39 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

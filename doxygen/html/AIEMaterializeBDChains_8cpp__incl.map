@@ -1,25 +1,27 @@
 <map id="lib/Dialect/AIEX/Transforms/AIEMaterializeBDChains.cpp" name="lib/Dialect/AIEX/Transforms/AIEMaterializeBDChains.cpp">
-<area shape="rect" id="Node000001" title=" " alt="" coords="2493,5,2704,45"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="2404,5,2615,45"/>
 <area shape="rect" id="Node000002" href="$AIEDialect_8h.html" title=" " alt="" coords="1393,269,1527,309"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="2493,37,2299,58,2187,75,2077,96,1918,136,1763,183,1522,267,1521,262,1761,178,1917,131,2075,91,2186,70,2298,53,2493,32"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="2404,39,2237,61,2143,77,2050,96,1899,137,1751,183,1521,267,1519,262,1749,178,1897,131,2049,91,2142,71,2236,56,2403,34"/>
 <area shape="rect" id="Node000031" href="$AIEXDialect_8h.html" title=" " alt="" coords="1979,181,2122,221"/>
-<area shape="poly" id="edge33_Node000001_Node000031" title=" " alt="" coords="2493,34,2392,41,2284,53,2187,71,2149,82,2121,96,2103,111,2087,130,2065,170,2060,167,2083,127,2099,107,2119,91,2147,77,2186,66,2283,48,2392,36,2493,29"/>
-<area shape="rect" id="Node000036" href="$AIEXPasses_8h.html" title=" " alt="" coords="2132,93,2335,133"/>
-<area shape="poly" id="edge42_Node000001_Node000036" title=" " alt="" coords="2519,48,2327,93,2326,88,2518,43"/>
-<area shape="rect" id="Node000037" title=" " alt="" coords="2374,189,2501,214"/>
-<area shape="poly" id="edge49_Node000001_Node000037" title=" " alt="" coords="2494,39,2467,47,2441,59,2418,75,2400,95,2393,115,2396,136,2406,157,2420,176,2415,179,2402,160,2391,138,2387,114,2395,92,2415,71,2439,54,2465,42,2492,34"/>
-<area shape="rect" id="Node000039" title=" " alt="" coords="2409,101,2596,126"/>
-<area shape="poly" id="edge46_Node000001_Node000039" title=" " alt="" coords="2579,48,2528,93,2525,89,2576,44"/>
-<area shape="rect" id="Node000040" title=" " alt="" coords="2621,101,2771,126"/>
-<area shape="poly" id="edge47_Node000001_Node000040" title=" " alt="" coords="2622,44,2674,89,2671,93,2619,48"/>
-<area shape="rect" id="Node000041" title=" " alt="" coords="2795,101,2962,126"/>
-<area shape="poly" id="edge48_Node000001_Node000041" title=" " alt="" coords="2661,43,2829,94,2827,99,2659,48"/>
-<area shape="rect" id="Node000042" title=" " alt="" coords="2986,101,3169,126"/>
-<area shape="poly" id="edge50_Node000001_Node000042" title=" " alt="" coords="2705,43,2975,91,3002,96,3001,101,2974,96,2704,48"/>
-<area shape="rect" id="Node000043" title=" " alt="" coords="3193,101,3452,126"/>
-<area shape="poly" id="edge51_Node000001_Node000043" title=" " alt="" coords="2705,36,3182,91,3226,96,3225,102,3181,96,2704,41"/>
-<area shape="rect" id="Node000044" title=" " alt="" coords="3476,93,3697,133"/>
-<area shape="poly" id="edge52_Node000001_Node000044" title=" " alt="" coords="2704,30,3038,52,3248,69,3463,91,3462,96,3247,74,3038,57,2704,35"/>
+<area shape="poly" id="edge33_Node000001_Node000031" title=" " alt="" coords="2404,32,2312,39,2215,50,2132,69,2100,81,2078,95,2066,111,2058,129,2052,168,2047,167,2053,128,2061,108,2074,91,2098,76,2130,64,2214,45,2311,33,2403,27"/>
+<area shape="rect" id="Node000036" href="$AIEXPasses_8h.html" title=" " alt="" coords="2088,93,2291,133"/>
+<area shape="poly" id="edge42_Node000001_Node000036" title=" " alt="" coords="2440,48,2274,92,2272,87,2438,43"/>
+<area shape="rect" id="Node000037" title=" " alt="" coords="2146,189,2273,214"/>
+<area shape="poly" id="edge49_Node000001_Node000037" title=" " alt="" coords="2475,48,2388,96,2241,184,2238,179,2385,91,2472,43"/>
+<area shape="rect" id="Node000038" title=" " alt="" coords="2297,181,2500,221"/>
+<area shape="poly" id="edge53_Node000001_Node000038" title=" " alt="" coords="2462,48,2431,67,2406,95,2399,112,2395,131,2396,168,2390,168,2390,130,2394,110,2402,92,2427,63,2459,43"/>
+<area shape="rect" id="Node000039" title=" " alt="" coords="2416,101,2603,126"/>
+<area shape="poly" id="edge46_Node000001_Node000039" title=" " alt="" coords="2512,46,2512,87,2507,87,2507,46"/>
+<area shape="rect" id="Node000040" title=" " alt="" coords="2627,101,2778,126"/>
+<area shape="poly" id="edge47_Node000001_Node000040" title=" " alt="" coords="2553,43,2665,93,2663,98,2551,48"/>
+<area shape="rect" id="Node000041" title=" " alt="" coords="2802,101,2969,126"/>
+<area shape="poly" id="edge48_Node000001_Node000041" title=" " alt="" coords="2592,43,2823,95,2821,100,2591,48"/>
+<area shape="rect" id="Node000042" title=" " alt="" coords="2993,101,3175,126"/>
+<area shape="poly" id="edge50_Node000001_Node000042" title=" " alt="" coords="2615,38,2982,91,3011,96,3010,101,2981,96,2615,43"/>
+<area shape="rect" id="Node000043" title=" " alt="" coords="3200,101,3459,126"/>
+<area shape="poly" id="edge51_Node000001_Node000043" title=" " alt="" coords="2615,33,2876,58,3188,91,3234,96,3233,102,3188,96,2876,63,2615,39"/>
+<area shape="rect" id="Node000044" title=" " alt="" coords="3483,93,3704,133"/>
+<area shape="poly" id="edge52_Node000001_Node000044" title=" " alt="" coords="2615,28,2988,50,3226,67,3469,91,3468,96,3225,73,2988,55,2615,34"/>
 <area shape="rect" id="Node000003" href="$AIEEnums_8h.html" title=" " alt="" coords="1308,453,1407,478"/>
 <area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="1462,310,1455,352,1448,376,1437,399,1415,426,1390,447,1386,443,1411,422,1432,396,1443,374,1450,351,1456,309"/>
 <area shape="rect" id="Node000007" href="$AIETargetModel_8h.html" title=" " alt="" coords="1497,357,1636,397"/>
@@ -41,7 +43,7 @@
 <area shape="rect" id="Node000025" title=" " alt="" coords="419,357,615,397"/>
 <area shape="poly" id="edge26_Node000002_Node000025" title=" " alt="" coords="1393,297,1068,318,852,336,629,360,629,355,852,331,1068,312,1392,291"/>
 <area shape="rect" id="Node000026" title=" " alt="" coords="640,357,787,397"/>
-<area shape="poly" id="edge28_Node000002_Node000026" title=" " alt="" coords="1392,298,1137,319,971,337,801,360,800,355,971,332,1136,314,1392,292"/>
+<area shape="poly" id="edge28_Node000002_Node000026" title=" " alt="" coords="1393,298,1137,319,971,336,801,360,800,355,970,331,1136,313,1392,292"/>
 <area shape="rect" id="Node000027" title=" " alt="" coords="811,357,946,397"/>
 <area shape="poly" id="edge29_Node000002_Node000027" title=" " alt="" coords="1393,300,1202,323,960,360,959,355,1201,318,1392,295"/>
 <area shape="rect" id="Node000028" title=" " alt="" coords="970,357,1105,397"/>
@@ -91,8 +93,7 @@
 <area shape="poly" id="edge38_Node000031_Node000034" title=" " alt="" coords="2089,219,2171,261,2169,266,2086,224"/>
 <area shape="rect" id="Node000035" title=" " alt="" coords="2314,269,2457,309"/>
 <area shape="poly" id="edge39_Node000031_Node000035" title=" " alt="" coords="2123,218,2301,264,2300,269,2121,223"/>
-<area shape="poly" id="edge43_Node000036_Node000031" title=" " alt="" coords="2194,136,2104,178,2102,173,2192,131"/>
-<area shape="poly" id="edge44_Node000036_Node000037" title=" " alt="" coords="2279,131,2399,181,2397,186,2277,136"/>
-<area shape="rect" id="Node000038" title=" " alt="" coords="2147,181,2349,221"/>
-<area shape="poly" id="edge45_Node000036_Node000038" title=" " alt="" coords="2239,133,2245,167,2240,168,2234,134"/>
+<area shape="poly" id="edge43_Node000036_Node000031" title=" " alt="" coords="2160,136,2094,177,2091,172,2158,131"/>
+<area shape="poly" id="edge44_Node000036_Node000037" title=" " alt="" coords="2196,133,2206,174,2201,175,2191,134"/>
+<area shape="poly" id="edge45_Node000036_Node000038" title=" " alt="" coords="2236,131,2341,174,2339,179,2234,136"/>
 </map>

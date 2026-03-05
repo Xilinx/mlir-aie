@@ -77,113 +77,118 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="preprocessor">#include &quot;mlir/IR/Attributes.h&quot;</span></div>
 <div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="preprocessor">#include &quot;mlir/Pass/Pass.h&quot;</span></div>
 <div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span> </div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacemlir.html">mlir</a>;</div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a>;</div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a>;</div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="keyword">namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a> {</div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno"><a class="line" href="AIEInlineTraceConfig_8cpp.html#a7421470b689b40d563bb3fab5e0a9412">   21</a></span><span class="preprocessor">#define GEN_PASS_DEF_AIEXINLINETRACECONFIG</span></div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="preprocessor">#include &quot;aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc&quot;</span></div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span>} <span class="comment">// namespace xilinx::AIEX</span></div>
 <div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span> </div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="keyword">namespace </span>{</div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span><span class="keyword">struct </span>AIEInlineTraceConfigPass</div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>    : AIEXInlineTraceConfigBase&lt;AIEInlineTraceConfigPass&gt; {</div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    AIE::DeviceOp device = getOperation();</div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>    <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = device.getTargetModel();</div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span> </div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    <span class="comment">// Collect all trace.start_config operations</span></div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>    SmallVector&lt;TraceStartConfigOp&gt; startConfigs;</div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>    device.walk([&amp;](TraceStartConfigOp startConfig) {</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>      startConfigs.push_back(startConfig);</div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    });</div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> startConfig : startConfigs) {</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>      OpBuilder builder(startConfig);</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span> </div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>      <span class="comment">// Lookup the trace config symbol</span></div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>      <span class="keyword">auto</span> configSymbolName = startConfig.getTraceConfig();</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>      <span class="keyword">auto</span> configOp =</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>          dyn_cast_or_null&lt;TraceConfigOp&gt;(SymbolTable::lookupNearestSymbolFrom(</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>              device, builder.getStringAttr(configSymbolName)));</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span> </div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>      <span class="keywordflow">if</span> (!configOp) {</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        startConfig.emitError(<span class="stringliteral">&quot;trace config symbol &#39;&quot;</span>)</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>            &lt;&lt; configSymbolName &lt;&lt; <span class="stringliteral">&quot;&#39; not found&quot;</span>;</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>      }</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>      <span class="comment">// Get tile and extract col/row</span></div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>      <span class="keyword">auto</span> tile = configOp.getTile();</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>      <span class="keyword">auto</span> tileOp = dyn_cast&lt;TileOp&gt;(tile.getDefiningOp());</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>      <span class="keywordflow">if</span> (!tileOp) {</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>        startConfig.emitError(<span class="stringliteral">&quot;tile operand must be a TileOp&quot;</span>);</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>        <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>      }</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.getCol();</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.getRow();</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>      <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tileID = {<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>};</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>      <span class="comment">// Determine if we&#39;re accessing memory module from packet type</span></div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>      <span class="keywordtype">bool</span> isMem = <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>      <span class="keywordflow">if</span> (configOp.getPacketType()) {</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>        isMem = (*configOp.getPacketType() == TracePacketType::Mem);</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>      }</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span> </div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>      <span class="comment">// Process all trace.reg operations in the config</span></div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;op : configOp.getBody().getOps()) {</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>        <span class="keyword">auto</span> regOp = dyn_cast&lt;TraceRegOp&gt;(op);</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>        <span class="keywordflow">if</span> (!regOp)</div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>          <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>        <span class="comment">// After packing, field should not be present</span></div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>        <span class="keywordflow">if</span> (regOp.getField()) {</div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>          regOp.emitError(<span class="stringliteral">&quot;aie.trace.reg still has field attribute - run &quot;</span></div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>                          <span class="stringliteral">&quot;-aie-trace-pack-reg-writes pass first&quot;</span>);</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>        }</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span> </div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>        <span class="comment">// Look up register to get offset</span></div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>        <span class="keyword">auto</span> regName = regOp.getRegName().str();</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *regInfo =</div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>            targetModel.lookupRegister(regName, tileID, isMem);</div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>        <span class="keywordflow">if</span> (!regInfo) {</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>          regOp.emitError(<span class="stringliteral">&quot;Register &#39;&quot;</span>) &lt;&lt; regName &lt;&lt; <span class="stringliteral">&quot;&#39; not found for tile (&quot;</span></div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>                                        &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;)&quot;</span>;</div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>        }</div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span> </div>
-<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>        <span class="comment">// Extract value (mask is discarded)</span></div>
-<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>        uint32_t <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> = 0;</div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> intAttr = llvm::dyn_cast&lt;IntegerAttr&gt;(regOp.getValue())) {</div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>          <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> = intAttr.getInt();</div>
-<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>          regOp.emitError(<span class="stringliteral">&quot;value must be an integer after packing&quot;</span>);</div>
-<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>        }</div>
-<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span> </div>
-<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>        <span class="comment">// Generate aiex.npu.write32 operation with col/row</span></div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>        builder.create&lt;AIEX::NpuWrite32Op&gt;(</div>
-<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>            regOp.getLoc(), builder.getUI32IntegerAttr(regInfo-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>),</div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>            builder.getUI32IntegerAttr(value),</div>
-<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>            <span class="keyword">nullptr</span>,                        <span class="comment">// buffer</span></div>
-<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>            builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>), <span class="comment">// column</span></div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>            builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)  <span class="comment">// row</span></div>
-<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>        );</div>
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>      }</div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span> </div>
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>      <span class="comment">// Remove the start_config invocation</span></div>
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>      startConfig.erase();</div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>    }</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>  }</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>};</div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span> </div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>} <span class="comment">// namespace</span></div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span> </div>
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>std::unique_ptr&lt;OperationPass&lt;AIE::DeviceOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00123" data-start="{" data-end="}">
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a64e67f6c2d1af3dcad7489bf06ef34a4">  123</a></span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a64e67f6c2d1af3dcad7489bf06ef34a4">xilinx::AIEX::createAIEXInlineTraceConfigPass</a>() {</div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEInlineTraceConfigPass&gt;();</div>
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>}</div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacemlir.html">mlir</a>;</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a>;</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a>;</div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span> </div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="keyword">namespace </span>{</div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span> </div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span><span class="keyword">struct </span>AIEInlineTraceConfigPass</div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    : xilinx::AIEX::impl::AIEXInlineTraceConfigBase&lt;AIEInlineTraceConfigPass&gt; {</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>    AIE::DeviceOp device = getOperation();</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = device.getTargetModel();</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span> </div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    <span class="comment">// Collect all trace.start_config operations</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    SmallVector&lt;TraceStartConfigOp&gt; startConfigs;</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    device.walk([&amp;](TraceStartConfigOp startConfig) {</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>      startConfigs.push_back(startConfig);</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    });</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span> </div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> startConfig : startConfigs) {</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>      OpBuilder builder(startConfig);</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>      <span class="comment">// Lookup the trace config symbol</span></div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>      <span class="keyword">auto</span> configSymbolName = startConfig.getTraceConfig();</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>      <span class="keyword">auto</span> configOp =</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>          dyn_cast_or_null&lt;TraceConfigOp&gt;(SymbolTable::lookupNearestSymbolFrom(</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>              device, builder.getStringAttr(configSymbolName)));</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span> </div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>      <span class="keywordflow">if</span> (!configOp) {</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        startConfig.emitError(<span class="stringliteral">&quot;trace config symbol &#39;&quot;</span>)</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>            &lt;&lt; configSymbolName &lt;&lt; <span class="stringliteral">&quot;&#39; not found&quot;</span>;</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>        <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>      }</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>      <span class="comment">// Get tile and extract col/row</span></div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>      <span class="keyword">auto</span> tile = configOp.getTile();</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>      <span class="keyword">auto</span> tileOp = dyn_cast&lt;TileOp&gt;(tile.getDefiningOp());</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>      <span class="keywordflow">if</span> (!tileOp) {</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>        startConfig.emitError(<span class="stringliteral">&quot;tile operand must be a TileOp&quot;</span>);</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>        <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>      }</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span> </div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.getCol();</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.getRow();</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>      <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tileID = {<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>};</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span> </div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>      <span class="comment">// Determine if we&#39;re accessing memory module from packet type</span></div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>      <span class="keywordtype">bool</span> isMem = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>      <span class="keywordflow">if</span> (configOp.getPacketType()) {</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>        isMem = (*configOp.getPacketType() == TracePacketType::Mem);</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>      }</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span> </div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>      <span class="comment">// Process all trace.reg operations in the config</span></div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;op : configOp.getBody().getOps()) {</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>        <span class="keyword">auto</span> regOp = dyn_cast&lt;TraceRegOp&gt;(op);</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>        <span class="keywordflow">if</span> (!regOp)</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>          <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span> </div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>        <span class="comment">// After packing, field should not be present</span></div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>        <span class="keywordflow">if</span> (regOp.getField()) {</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>          regOp.emitError(<span class="stringliteral">&quot;aie.trace.reg still has field attribute - run &quot;</span></div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>                          <span class="stringliteral">&quot;-aie-trace-pack-reg-writes pass first&quot;</span>);</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>        }</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span> </div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>        <span class="comment">// Look up register to get offset</span></div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>        <span class="keyword">auto</span> regName = regOp.getRegName().str();</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *regInfo =</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>            targetModel.lookupRegister(regName, tileID, isMem);</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>        <span class="keywordflow">if</span> (!regInfo) {</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>          regOp.emitError(<span class="stringliteral">&quot;Register &#39;&quot;</span>) &lt;&lt; regName &lt;&lt; <span class="stringliteral">&quot;&#39; not found for tile (&quot;</span></div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>                                        &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;)&quot;</span>;</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>        }</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span> </div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>        <span class="comment">// Extract value (mask is discarded)</span></div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>        uint32_t <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> = 0;</div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> intAttr = llvm::dyn_cast&lt;IntegerAttr&gt;(regOp.getValue())) {</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>          <a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a> = intAttr.getInt();</div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>        } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>          regOp.emitError(<span class="stringliteral">&quot;value must be an integer after packing&quot;</span>);</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>          <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>        }</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span> </div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>        <span class="comment">// Generate aiex.npu.write32 operation with col/row</span></div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>        builder.create&lt;AIEX::NpuWrite32Op&gt;(</div>
+<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>            regOp.getLoc(), builder.getUI32IntegerAttr(regInfo-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>),</div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>            builder.getUI32IntegerAttr(<a class="code hl_function" href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">value</a>),</div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>            <span class="keyword">nullptr</span>,                        <span class="comment">// buffer</span></div>
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>            builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>), <span class="comment">// column</span></div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>            builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)  <span class="comment">// row</span></div>
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>        );</div>
+<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>      }</div>
+<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span> </div>
+<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>      <span class="comment">// Remove the start_config invocation</span></div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>      startConfig.erase();</div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    }</div>
+<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>  }</div>
+<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>};</div>
+<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span> </div>
+<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>} <span class="comment">// namespace</span></div>
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span> </div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>std::unique_ptr&lt;OperationPass&lt;AIE::DeviceOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00128" data-start="{" data-end="}">
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a64e67f6c2d1af3dcad7489bf06ef34a4">  128</a></span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a64e67f6c2d1af3dcad7489bf06ef34a4">xilinx::AIEX::createAIEXInlineTraceConfigPass</a>() {</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEInlineTraceConfigPass&gt;();</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEXDialect_8h_html"><div class="ttname"><a href="AIEXDialect_8h.html">AIEXDialect.h</a></div></div>
@@ -191,7 +196,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacecxxopts_html_a6b58e451713ebbf12866c1cd8e0a66ab"><div class="ttname"><a href="namespacecxxopts.html#a6b58e451713ebbf12866c1cd8e0a66ab">cxxopts::value</a></div><div class="ttdeci">std::shared_ptr&lt; Value &gt; value()</div><div class="ttdef"><b>Definition</b> <a href="cxxopts_8hpp_source.html#l01026">cxxopts.hpp:1026</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a64e67f6c2d1af3dcad7489bf06ef34a4"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a64e67f6c2d1af3dcad7489bf06ef34a4">xilinx::AIEX::createAIEXInlineTraceConfigPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEXInlineTraceConfigPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEInlineTraceConfig_8cpp_source.html#l00123">AIEInlineTraceConfig.cpp:123</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a64e67f6c2d1af3dcad7489bf06ef34a4"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a64e67f6c2d1af3dcad7489bf06ef34a4">xilinx::AIEX::createAIEXInlineTraceConfigPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEXInlineTraceConfigPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEInlineTraceConfig_8cpp_source.html#l00128">AIEInlineTraceConfig.cpp:128</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a1e6006c1b4fccd997eba880457892eec"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">xilinx::AIE::row</a></div><div class="ttdeci">int row</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00055">AIETargetModel.h:55</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2e68be9ae4fa95fd84120dc8154599e6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">xilinx::AIE::col</a></div><div class="ttdeci">int col</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00055">AIETargetModel.h:55</a></div></div>
@@ -202,7 +207,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 5 2026 01:11:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Mar 5 2026 05:48:39 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

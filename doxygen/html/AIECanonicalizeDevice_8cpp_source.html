@@ -75,68 +75,73 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="preprocessor">#include &quot;mlir/IR/Location.h&quot;</span></div>
 <div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span><span class="preprocessor">#include &quot;mlir/Pass/Pass.h&quot;</span></div>
 <div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span> </div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno"><a class="line" href="AIECanonicalizeDevice_8cpp.html#ad78e062f62e0d6e453941fb4ca843e4d">   18</a></span><span class="preprocessor">#define DEBUG_TYPE &quot;aie-canonicalize-device&quot;</span></div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span> </div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacemlir.html">mlir</a>;</div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a>;</div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span> </div>
-<div class="foldopen" id="foldopen00024" data-start="{" data-end="};">
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno"><a class="line" href="structAIECanonicalizeDevicePass.html">   24</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structAIECanonicalizeDevicePass.html">AIECanonicalizeDevicePass</a></div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>    : <a class="code hl_class" href="classAIECanonicalizeDeviceBase.html">AIECanonicalizeDeviceBase</a>&lt;AIECanonicalizeDevicePass&gt; {</div>
-<div class="foldopen" id="foldopen00026" data-start="{" data-end="}">
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno"><a class="line" href="structAIECanonicalizeDevicePass.html#a6a6a8921f81881cb92da5f971979b600">   26</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structAIECanonicalizeDevicePass.html#a6a6a8921f81881cb92da5f971979b600">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span> </div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>    ModuleOp moduleOp = getOperation();</div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span> </div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> deviceOp : moduleOp.getOps&lt;AIETarget&gt;()) {</div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span>      (void)deviceOp;</div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span>      <span class="comment">// We have a device..  Nothing to do.</span></div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>      <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>    }</div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span> </div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    <span class="comment">// Builder with no insertion point, because we don&#39;t want to insert</span></div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    <span class="comment">// the new op quite yet.</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>    OpBuilder builder(moduleOp-&gt;getContext());</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    Location location = builder.getUnknownLoc();</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    <span class="keyword">auto</span> deviceOp = DeviceOp::create(</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>        builder, location,</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>        AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902),</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>        StringAttr::get(builder.getContext(),</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>                        DeviceOp::getDefaultDeviceName()));</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    deviceOp.getRegion().takeBody(moduleOp.getBodyRegion());</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="keyword">new</span> (&amp;moduleOp-&gt;getRegion(0)) Region(moduleOp);</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    moduleOp-&gt;getRegion(0).emplaceBlock();</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span> </div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    DeviceOp::ensureTerminator(deviceOp.getBodyRegion(), builder, location);</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    OpBuilder builder2 = OpBuilder::atBlockBegin(moduleOp.getBody());</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    builder2.insert(deviceOp);</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>  }</div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="keyword">namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a> {</div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno"><a class="line" href="AIECanonicalizeDevice_8cpp.html#a37ba7a22b55803df77b091b2a7e21264">   19</a></span><span class="preprocessor">#define GEN_PASS_DEF_AIECANONICALIZEDEVICE</span></div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/Transforms/AIEPasses.h.inc&quot;</span></div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span>} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span> </div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno"><a class="line" href="AIECanonicalizeDevice_8cpp.html#ad78e062f62e0d6e453941fb4ca843e4d">   23</a></span><span class="preprocessor">#define DEBUG_TYPE &quot;aie-canonicalize-device&quot;</span></div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span> </div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacemlir.html">mlir</a>;</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a>;</div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span> </div>
+<div class="foldopen" id="foldopen00029" data-start="{" data-end="};">
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno"><a class="line" href="structAIECanonicalizeDevicePass.html">   29</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structAIECanonicalizeDevicePass.html">AIECanonicalizeDevicePass</a></div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span>    : <a class="code hl_class" href="classxilinx_1_1AIE_1_1impl_1_1AIECanonicalizeDeviceBase.html">xilinx::AIE::impl::AIECanonicalizeDeviceBase</a>&lt;AIECanonicalizeDevicePass&gt; {</div>
+<div class="foldopen" id="foldopen00031" data-start="{" data-end="}">
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno"><a class="line" href="structAIECanonicalizeDevicePass.html#a6a6a8921f81881cb92da5f971979b600">   31</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structAIECanonicalizeDevicePass.html#a6a6a8921f81881cb92da5f971979b600">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span> </div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    ModuleOp moduleOp = getOperation();</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span> </div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> deviceOp : moduleOp.getOps&lt;AIETarget&gt;()) {</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>      (void)deviceOp;</div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>      <span class="comment">// We have a device..  Nothing to do.</span></div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>      <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    }</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span> </div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    <span class="comment">// Builder with no insertion point, because we don&#39;t want to insert</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <span class="comment">// the new op quite yet.</span></div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    OpBuilder builder(moduleOp-&gt;getContext());</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span> </div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    Location location = builder.getUnknownLoc();</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">auto</span> deviceOp = DeviceOp::create(</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        builder, location,</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902),</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        StringAttr::get(builder.getContext(),</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>                        DeviceOp::getDefaultDeviceName()));</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span> </div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    deviceOp.getRegion().takeBody(moduleOp.getBodyRegion());</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    <span class="keyword">new</span> (&amp;moduleOp-&gt;getRegion(0)) Region(moduleOp);</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    moduleOp-&gt;getRegion(0).emplaceBlock();</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span> </div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    DeviceOp::ensureTerminator(deviceOp.getBodyRegion(), builder, location);</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    OpBuilder builder2 = OpBuilder::atBlockBegin(moduleOp.getBody());</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    builder2.insert(deviceOp);</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>  }</div>
 </div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>};</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>};</div>
 </div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>std::unique_ptr&lt;OperationPass&lt;ModuleOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00058" data-start="{" data-end="}">
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aae72c634b59ad01f5ffcede68e68f0ba">   58</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#aae72c634b59ad01f5ffcede68e68f0ba">AIE::createAIECanonicalizeDevicePass</a>() {</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIECanonicalizeDevicePass&gt;();</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>}</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>std::unique_ptr&lt;OperationPass&lt;ModuleOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00063" data-start="{" data-end="}">
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aae72c634b59ad01f5ffcede68e68f0ba">   63</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#aae72c634b59ad01f5ffcede68e68f0ba">AIE::createAIECanonicalizeDevicePass</a>() {</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIECanonicalizeDevicePass&gt;();</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
-<div class="ttc" id="aclassAIECanonicalizeDeviceBase_html"><div class="ttname"><a href="classAIECanonicalizeDeviceBase.html">AIECanonicalizeDeviceBase</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1AIE_1_1impl_1_1AIECanonicalizeDeviceBase_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1impl_1_1AIECanonicalizeDeviceBase.html">xilinx::AIE::impl::AIECanonicalizeDeviceBase</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_aae72c634b59ad01f5ffcede68e68f0ba"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aae72c634b59ad01f5ffcede68e68f0ba">xilinx::AIE::createAIECanonicalizeDevicePass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt; createAIECanonicalizeDevicePass()</div><div class="ttdef"><b>Definition</b> <a href="AIECanonicalizeDevice_8cpp_source.html#l00058">AIECanonicalizeDevice.cpp:58</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_aae72c634b59ad01f5ffcede68e68f0ba"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aae72c634b59ad01f5ffcede68e68f0ba">xilinx::AIE::createAIECanonicalizeDevicePass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt; createAIECanonicalizeDevicePass()</div><div class="ttdef"><b>Definition</b> <a href="AIECanonicalizeDevice_8cpp_source.html#l00063">AIECanonicalizeDevice.cpp:63</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="astructAIECanonicalizeDevicePass_html"><div class="ttname"><a href="structAIECanonicalizeDevicePass.html">AIECanonicalizeDevicePass</a></div><div class="ttdef"><b>Definition</b> <a href="AIECanonicalizeDevice_8cpp_source.html#l00024">AIECanonicalizeDevice.cpp:25</a></div></div>
-<div class="ttc" id="astructAIECanonicalizeDevicePass_html_a6a6a8921f81881cb92da5f971979b600"><div class="ttname"><a href="structAIECanonicalizeDevicePass.html#a6a6a8921f81881cb92da5f971979b600">AIECanonicalizeDevicePass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIECanonicalizeDevice_8cpp_source.html#l00026">AIECanonicalizeDevice.cpp:26</a></div></div>
+<div class="ttc" id="astructAIECanonicalizeDevicePass_html"><div class="ttname"><a href="structAIECanonicalizeDevicePass.html">AIECanonicalizeDevicePass</a></div><div class="ttdef"><b>Definition</b> <a href="AIECanonicalizeDevice_8cpp_source.html#l00029">AIECanonicalizeDevice.cpp:30</a></div></div>
+<div class="ttc" id="astructAIECanonicalizeDevicePass_html_a6a6a8921f81881cb92da5f971979b600"><div class="ttname"><a href="structAIECanonicalizeDevicePass.html#a6a6a8921f81881cb92da5f971979b600">AIECanonicalizeDevicePass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIECanonicalizeDevice_8cpp_source.html#l00031">AIECanonicalizeDevice.cpp:31</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Mar 5 2026 01:11:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Mar 5 2026 05:48:39 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
