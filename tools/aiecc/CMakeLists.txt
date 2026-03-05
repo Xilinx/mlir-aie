@@ -49,6 +49,7 @@ set(LIBS
   MLIRAIEVecTransforms
   MLIRAIEVecToLLVM
   MLIRXLLVMDialect
+  MLIRXLLVMToLLVMIRTranslation
   ${llvm_libs}
   )
 

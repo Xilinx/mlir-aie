@@ -59,6 +59,9 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEGenerateColumnControlOverlayPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEGenerateColumnControlOverlayPass(
+    const AIEGenerateColumnControlOverlayOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
