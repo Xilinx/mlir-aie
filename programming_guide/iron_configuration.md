@@ -56,12 +56,12 @@ export XRT_CONTEXT_CACHE_SIZE=1
 ## Diagnostic Output and Log Level
 
 The `aie` library uses Python's standard `logging` module for all diagnostic output. Set
-`AIE_LOG_LEVEL` to control verbosity. Valid values: `TRACE`, `DEBUG`, `INFO`, `WARNING`
-(default), `ERROR`, `CRITICAL`. `TRACE` is the most verbose level, below `DEBUG`.
+`AIE_LOG_LEVEL` to control verbosity. Valid values: `DEBUG`, `INFO`, `WARNING`
+(default), `ERROR`, `CRITICAL`.
 
 ```bash
 AIE_LOG_LEVEL=DEBUG python my_script.py    # show debug messages
-AIE_LOG_LEVEL=TRACE python my_script.py    # show all messages including trace-level
+AIE_LOG_LEVEL=INFO python my_script.py     # show info and above
 AIE_LOG_LEVEL=ERROR python my_script.py    # errors only
 ```
 

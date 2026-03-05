@@ -28,7 +28,7 @@ if __name__ == "__main__":
     opts = parse_args()
     cycles = get_cycles_summary(opts.input)
 
-    logger.trace("cycles: %s", cycles)
+    logger.debug("cycles: %s", cycles)
     for i in range(len(cycles)):
         print(cycles[i][0])
         runs = len(cycles[i]) - 1

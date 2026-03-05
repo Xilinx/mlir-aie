@@ -415,6 +415,7 @@ class LitConfigHelper:
             logger.warning("Peano detection timed out at %s", peano_tools_dir)
         except FileNotFoundError:
             logger.warning("Peano not found, but expected at %s", peano_tools_dir)
+            return config
         except Exception as e:
             logger.warning("Peano detection failed: %s", e)
 

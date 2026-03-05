@@ -106,9 +106,9 @@ def lookupEventNameInStr(event, pid, pid_events):
     # TODO Expand to other pid for multiple cores? even/odd
     # For now, we assume a single trace event and key based on that
     # in the future, the pid will be used to match the right events
-    logger.trace("pid_events[0]: %s", pid_events[0])
-    logger.trace("event: %s", event)
-    logger.trace("pid_events[0][event]: %s", pid_events[0][int(event)])
+    logger.debug("pid_events[0]: %s", pid_events[0])
+    logger.debug("event: %s", event)
+    logger.debug("pid_events[0][event]: %s", pid_events[0][int(event)])
     return lookup_event_name_by_code(pid_events[0][int(event)])
 
     # if pid == 0 or pid == 2: # Core trace
@@ -448,7 +448,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             col = (address >> target_model.get_column_shift()) & 0x1F
             address = address & 0xFFFFF  # 20 bits address
 
-        logger.trace(
+        logger.debug(
             "write32: address=%s, row=%s, col=%s, value=%s",
             hex(address) if address is not None else None,
             row,
@@ -469,7 +469,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             if row == 0:  # shim
                 if pid_events[2].get(key) == None:
                     pid_events[2][key] = [0] * 8
-                logger.trace("Trace event 0 configured to be %s", hex(value))
+                logger.debug("Trace event 0 configured to be %s", hex(value))
                 pid_events[2][key][0] = value & 0xFF
                 pid_events[2][key][1] = (value >> 8) & 0xFF
                 pid_events[2][key][2] = (value >> 16) & 0xFF
@@ -477,7 +477,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             else:  # core
                 if pid_events[0].get(key) == None:
                     pid_events[0][key] = [0] * 8
-                logger.trace("Trace event 0 configured to be %s", hex(value))
+                logger.debug("Trace event 0 configured to be %s", hex(value))
                 pid_events[0][key][0] = value & 0xFF
                 pid_events[0][key][1] = (value >> 8) & 0xFF
                 pid_events[0][key][2] = (value >> 16) & 0xFF
@@ -502,7 +502,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         elif address == 0x140E0:  # 82144
             if pid_events[1].get(key) == None:
                 pid_events[1][key] = [0] * 8
-            logger.trace("Trace event 0 configured to be %s", hex(value))
+            logger.debug("Trace event 0 configured to be %s", hex(value))
             pid_events[1][key][0] = value & 0xFF
             pid_events[1][key][1] = (value >> 8) & 0xFF
             pid_events[1][key][2] = (value >> 16) & 0xFF
@@ -519,7 +519,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         elif address == 0x940E0:  # 606432
             if pid_events[3].get(key) == None:
                 pid_events[3][key] = [0] * 8
-            logger.trace("Trace event 0 configured to be %s", hex(value))
+            logger.debug("Trace event 0 configured to be %s", hex(value))
             pid_events[3][key][0] = value & 0xFF
             pid_events[3][key][1] = (value >> 8) & 0xFF
             pid_events[3][key][2] = (value >> 16) & 0xFF
@@ -534,7 +534,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             pid_events[3][key][7] = (value >> 24) & 0xFF
         # TODO shim event 0, 1 needs to also be defined
 
-    logger.trace("Found labels: %s", pid_events)
+    logger.debug("Found labels: %s", pid_events)
     return pid_events, events_module
 
 
@@ -766,10 +766,12 @@ def main():
     """Command-line interface entry point"""
     opts = parse_args()
 
+    logging.basicConfig(
+        level=logging.DEBUG if opts.debug else logging.WARNING,
+        format="%(message)s",
+        stream=sys.stderr,
+    )
     if opts.debug:
-        logging.basicConfig(
-            level=logging.DEBUG, format="%(message)s", stream=sys.stderr
-        )
         logging.getLogger("aie").setLevel(logging.DEBUG)
 
     # set colshift based on optional argument

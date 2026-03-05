@@ -823,6 +823,7 @@ Examples:
     )
 
     args = parser.parse_args()
+    logging.basicConfig(level=logging.WARNING, format="%(message)s", stream=sys.stderr)
 
     # MLIR annotation mode
     if args.annotate:
@@ -865,9 +866,9 @@ Examples:
                 )
             )
         else:
-            print(f"Error: Could not find register '{args.register}'")
+            logger.error("Could not find register '%s'", args.register)
             if args.module:
-                print(f"       in module '{args.module}'")
+                logger.error("       in module '%s'", args.module)
             return 1
 
     # Forward lookup mode
@@ -877,7 +878,7 @@ Examples:
             result = decoder.parse_address(address)
             print(decoder.format_result(result, show_bit_fields=args.show_bit_fields))
         except ValueError:
-            print(f"Error: Invalid address format: {args.address}")
+            logger.error("Invalid address format: %s", args.address)
             return 1
     else:
         parser.print_help()

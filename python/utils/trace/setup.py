@@ -1082,7 +1082,7 @@ def configure_packet_tracing_aie2(
     shim_burst_length=64,
 ):
 
-    logger.trace("trace_size: %s", trace_size)
+    logger.debug("trace_size: %s", trace_size)
     if coretile_events == None:
         coretile_events = [
             CoreEvent.INSTR_EVENT_0,

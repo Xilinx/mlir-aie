@@ -464,7 +464,6 @@ class HostRuntime(ABC):
         if not errors:
             return 0
         else:
-            if verbosity >= 1:
-                logger.error("Error count: %d", errors)
-                logger.error("Failed.")
+            logger.error("Error count: %d", errors)
+            logger.error("Failed.")
             return 1

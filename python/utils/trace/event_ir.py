@@ -608,7 +608,7 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
     errors = 0
     curr_time = 0
     for i, line in enumerate(lines):
-        logger.trace("%s: %s", i, line)
+        logger.debug("%s: %s", i, line)
         if check_time:
             result = re.search(time_pattern, line)
             if result:  # match found

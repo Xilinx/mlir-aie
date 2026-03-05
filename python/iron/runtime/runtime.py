@@ -311,7 +311,7 @@ class Runtime(Resolvable):
 
                 trace_shim_tile = self.get_first_cons_shimtile()
 
-                logger.trace("config_trace")
+                logger.debug("config_trace")
                 trace_utils.configure_packet_tracing_aie2(
                     # tiles_to_trace=[ tiles_to_trace[0] ],
                     tiles_to_trace=tiles_to_trace,

@@ -8,19 +8,7 @@
 import logging
 import os
 
-# Register a TRACE level (5) below DEBUG for very verbose diagnostic output.
-logging.TRACE = 5
-logging.addLevelName(logging.TRACE, "TRACE")
-
-
-def _trace(self, message, *args, **kwargs):
-    if self.isEnabledFor(logging.TRACE):
-        self._log(logging.TRACE, message, args, **kwargs)
-
-
-logging.Logger.trace = _trace
-
-# Honour AIE_LOG_LEVEL env var (e.g. TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL).
+# Honour AIE_LOG_LEVEL env var (e.g. DEBUG, INFO, WARNING, ERROR, CRITICAL).
 # This must be done before any aie submodule emits a log record.
 _log_level_str = os.environ.get("AIE_LOG_LEVEL", "").upper()
 if _log_level_str:
