@@ -1123,7 +1123,8 @@ static bool hasTraceOps(ModuleOp moduleOp) {
 /// Run trace lowering passes in-memory, only when trace ops exist.
 /// Separated from resource allocation to avoid crashes on Assert builds
 /// when no trace ops are present.
-static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp) {
+static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp,
+                                              StringRef tmpDirName) {
   if (!hasTraceOps(moduleOp))
     return success();
 
@@ -1132,7 +1133,9 @@ static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp) {
 
   if (verbose) {
     pm.enableVerifier(true);
-    pm.enableCrashReproducerGeneration("trace_lowering_crash.mlir");
+    SmallString<128> crashFile(tmpDirName);
+    sys::path::append(crashFile, "trace_lowering_crash.mlir");
+    pm.enableCrashReproducerGeneration(crashFile);
   }
 
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
@@ -1160,7 +1163,8 @@ static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp) {
 /// Run the resource allocation pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
 static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
-                                                   StringRef aieTarget) {
+                                                   StringRef aieTarget,
+                                                   StringRef tmpDirName) {
   MLIRContext *ctx = moduleOp.getContext();
   PassManager pm(ctx);
 
@@ -1168,7 +1172,9 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   if (verbose) {
     pm.enableVerifier(true);
     // Enable crash reproducer to help debug CI failures
-    pm.enableCrashReproducerGeneration("resource_alloc_crash.mlir");
+    SmallString<128> crashFile(tmpDirName);
+    sys::path::append(crashFile, "resource_alloc_crash.mlir");
+    pm.enableCrashReproducerGeneration(crashFile);
   }
 
   // Step 1: Convert vector to aievec (this is a pipeline, not a single pass)
@@ -4715,13 +4721,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   }
 
   // Step 1a: Run trace lowering (only when trace ops exist)
-  if (failed(runTraceLoweringPipeline(moduleOp))) {
+  if (failed(runTraceLoweringPipeline(moduleOp, tmpDirName))) {
     return failure();
   }
 
   // Step 1b: Run resource allocation and lowering passes in-memory
   // Run on ALL devices (matching legacy Python driver behavior).
-  if (failed(runResourceAllocationPipeline(moduleOp, aieTarget))) {
+  if (failed(runResourceAllocationPipeline(moduleOp, aieTarget, tmpDirName))) {
     return failure();
   }
 
