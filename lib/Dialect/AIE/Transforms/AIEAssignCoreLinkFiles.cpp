@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#define GEN_PASS_DEF_AIEASSIGNCORELINKFILES
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -38,7 +39,8 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 struct AIEAssignCoreLinkFilesPass
-    : AIEAssignCoreLinkFilesBase<AIEAssignCoreLinkFilesPass> {
+    : xilinx::AIE::impl::AIEAssignCoreLinkFilesBase<
+          AIEAssignCoreLinkFilesPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect, mlir::func::FuncDialect>();
   }
@@ -61,17 +63,12 @@ struct AIEAssignCoreLinkFilesPass
     llvm::DenseSet<StringRef> usedFuncs;
 
     // Walk each core, collect all .o files needed.
+    // NOTE: only *direct* calls (func.call) are traced; transitive calls
+    // through intermediate helpers are not followed.  If an intermediate
+    // helper carries its own link_with, attach link_with to the intermediate
+    // helper *and* call it directly from the core, or use the deprecated
+    // core-level link_with as a fallback.
     device.walk([&](CoreOp core) {
-      // Always walk CallOps first to keep usedFuncs accurate even when the
-      // idempotency guard fires below (prevents false "never called" warnings
-      // on a second pass invocation).
-      core.walk(
-          [&](mlir::func::CallOp call) { usedFuncs.insert(call.getCallee()); });
-
-      // Early-out: pass already ran on this core and migration is done.
-      if (core.getLinkFiles() && !core.getLinkWith())
-        return;
-
       // De-duplicate while preserving insertion order. StringRefs point into
       // the MLIRContext attribute storage and remain valid throughout the pass.
       llvm::SetVector<StringRef> needed;
@@ -85,21 +82,22 @@ struct AIEAssignCoreLinkFilesPass
         core->removeAttr("link_with");
       }
 
-      // Trace func::CallOp ops to accumulate needed .o files.
-      core.walk([&](mlir::func::CallOp call) {
-        auto it = funcToObjs.find(call.getCallee());
-        if (it != funcToObjs.end())
-          for (StringRef obj : it->second)
-            needed.insert(obj);
-      });
-
-      // Warn on indirect calls: link_with cannot be statically resolved.
-      core.walk([&](mlir::func::CallIndirectOp indCall) {
-        indCall.emitWarning(
-            "indirect call in core body — link_with attributes on "
-            "indirectly-called functions are not automatically resolved; "
-            "declare the required .o files via link_with on the aie.core "
-            "or on a directly-called func.func");
+      // Single walk: accumulate used funcs, collect .o files, warn on indirect
+      // calls — all in one pass over the core body.
+      core.walk([&](Operation *op) {
+        if (auto call = dyn_cast<mlir::func::CallOp>(op)) {
+          usedFuncs.insert(call.getCallee());
+          auto it = funcToObjs.find(call.getCallee());
+          if (it != funcToObjs.end())
+            for (StringRef obj : it->second)
+              needed.insert(obj);
+        } else if (auto indCall = dyn_cast<mlir::func::CallIndirectOp>(op)) {
+          indCall.emitWarning(
+              "indirect call in core body — link_with attributes on "
+              "indirectly-called functions are not automatically resolved; "
+              "add a direct func.call to the required func.func declaration "
+              "so that aie-assign-core-link-files can trace the dependency");
+        }
       });
 
       if (!needed.empty())
@@ -110,8 +108,8 @@ struct AIEAssignCoreLinkFilesPass
     for (auto &[funcName, objs] : funcToObjs) {
       if (!usedFuncs.count(funcName)) {
         if (auto funcOp = device.lookupSymbol<mlir::func::FuncOp>(funcName))
-          funcOp.emitWarning("func '")
-              << funcName
+          funcOp.emitWarning()
+              << "func '" << funcName
               << "' has link_with but is never called from any core; "
                  "its .o file will not be linked";
       }

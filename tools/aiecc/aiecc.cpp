@@ -115,6 +115,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include "aiecc_aiesim.h"
@@ -1083,8 +1084,8 @@ static std::string getAIETargetForDevice(ModuleOp moduleOp,
 struct CoreInfo {
   std::int32_t col;
   std::int32_t row;
-  std::string linkWith; // External object files to link
-  std::string elfFile;  // Generated ELF path (if already specified)
+  SmallVector<std::string> linkFiles; // External object files to link
+  std::string elfFile; // Generated ELF path (if already specified)
 };
 
 /// Check if a CoreOp has a non-empty body (more than just aie.end).
@@ -1105,8 +1106,15 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
     info.row = tileOp.getRow();
   }
 
-  if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
-    info.linkWith = linkWithAttr.getValue().str();
+  // Prefer canonical link_files ArrayAttr (populated by AIEAssignCoreLinkFiles,
+  // which runs as part of the resource-allocation pipeline above).
+  if (auto filesAttr = coreOp.getLinkFiles()) {
+    for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+      info.linkFiles.push_back(f.getValue().str());
+  } else if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
+    // Fallback: deprecated core-level link_with was not migrated by the pass
+    // (e.g., pipeline was not run). Treat it as a single-element list.
+    info.linkFiles.push_back(linkWithAttr.getValue().str());
   }
 
   if (auto elfAttr = coreOp.getElfFileAttr()) {
@@ -1386,6 +1394,9 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   xilinx::AIE::AIEAssignBufferAddressesOptions bufferOpts;
   bufferOpts.clAllocScheme = allocScheme.getValue();
   devicePm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
+
+  // Infer per-core link_files from func-level link_with attributes
+  devicePm.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
 
   devicePm.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
@@ -1783,6 +1794,48 @@ static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
   return success();
 }
 
+/// Copy \p src to \p destDir / \p destBasename atomically by writing to a
+/// sibling temp file first, then renaming.  On POSIX, rename(2) is atomic
+/// within the same filesystem, so parallel compilations sharing the same
+/// destination filename do not corrupt each other's copy.
+static LogicalResult atomicCopyFile(StringRef src, StringRef destDir,
+                                    StringRef destBasename) {
+  SmallString<256> dest(destDir);
+  sys::path::append(dest, destBasename);
+
+  // Write to a sibling temp file in destDir, then rename atomically.
+  // Keeping the temp in the same directory ensures they share a filesystem,
+  // so rename(2) is never cross-device (no EXDEV failure).
+  SmallString<256> tmpModel(destDir);
+  SmallString<64> tmpFilename;
+  tmpFilename += sys::path::stem(destBasename);
+  tmpFilename += "-%%%%%%";
+  tmpFilename += sys::path::extension(destBasename);
+  sys::path::append(tmpModel, tmpFilename);
+  SmallString<256> tmpPath;
+  int tmpFD;
+  if (sys::fs::createUniqueFile(tmpModel, tmpFD, tmpPath)) {
+    llvm::errs() << "Error: could not create temp file in " << destDir << "\n";
+    return failure();
+  }
+  ::close(tmpFD);
+
+  if (std::error_code ec = sys::fs::copy_file(src, tmpPath)) {
+    llvm::errs() << "Error: could not copy " << src << " to " << tmpPath << ": "
+                 << ec.message() << "\n";
+    sys::fs::remove(tmpPath);
+    return failure();
+  }
+
+  if (std::error_code ec = sys::fs::rename(tmpPath, dest)) {
+    llvm::errs() << "Error: could not rename " << tmpPath << " to " << dest
+                 << ": " << ec.message() << "\n";
+    sys::fs::remove(tmpPath);
+    return failure();
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Core Compilation
 //===----------------------------------------------------------------------===//
@@ -2165,32 +2218,17 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         }
       }
 
-      // Copy to .prj directory
+      // Copy to .prj directory atomically to avoid races between parallel
+      // cores.
       SmallString<256> destPath(tmpDirName);
       sys::path::append(destPath, sys::path::filename(linkWithFile));
+      if (failed(atomicCopyFile(srcPath, tmpDirName,
+                                sys::path::filename(linkWithFile))))
+        return failure();
 
-      if (srcPath == destPath) {
-        if (verbose) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "link_with file already in place: " << srcPath
-                       << "\n";
-        }
-      } else {
-        sys::fs::remove(destPath);
-        std::error_code ec = sys::fs::copy_file(srcPath, destPath);
-        if (ec) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::errs() << "Error: Could not copy link_with file: " << srcPath
-                       << " to " << destPath << ": " << ec.message() << "\n";
-          return failure();
-        }
-
-        if (verbose) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
-                       << "\n";
-        }
-      }
+      if (verbose)
+        llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
+                     << "\n";
 
       if (!linkWithArgs.empty()) {
         linkWithArgs += " ";
@@ -2281,29 +2319,25 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     linkCmd.push_back(std::string(objPath));
 
-    // Handle external object file if link_with attribute is specified
-    // The linker script generated by aie-translate will include an INPUT()
-    // directive for the link_with file, but it uses a relative path.
-    // We need to copy the file to the .prj directory so the linker can find it.
-    if (!core.linkWith.empty()) {
-      // Resolve the link_with path - check multiple locations:
-      // 1. If absolute, use as-is
-      // 2. Relative to current working directory (common for test cases)
-      // 3. Relative to input file directory (common for installed examples)
+    // Handle external object files specified via link_files (or deprecated
+    // link_with).  The linker script generated by aie-translate will include an
+    // INPUT() directive for each file, but uses a relative path.  We copy every
+    // file to the .prj directory so the linker can find them.
+    for (const auto &lf : core.linkFiles) {
       SmallString<256> srcLinkWith;
-      if (sys::path::is_absolute(core.linkWith)) {
-        srcLinkWith = core.linkWith;
+      if (sys::path::is_absolute(lf)) {
+        srcLinkWith = lf;
       } else {
         // First try current working directory
         SmallString<256> cwdPath;
         sys::fs::current_path(cwdPath);
-        sys::path::append(cwdPath, core.linkWith);
+        sys::path::append(cwdPath, lf);
         if (sys::fs::exists(cwdPath)) {
           srcLinkWith = cwdPath;
         } else {
           // Try tmpDirName (used in JIT where .o is pre-compiled there)
           SmallString<256> tmpPath(tmpDirName);
-          sys::path::append(tmpPath, core.linkWith);
+          sys::path::append(tmpPath, lf);
           if (sys::fs::exists(tmpPath)) {
             srcLinkWith = tmpPath;
           } else {
@@ -2314,45 +2348,27 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
               sys::fs::current_path(inputDir);
             }
             srcLinkWith = inputDir;
-            sys::path::append(srcLinkWith, core.linkWith);
+            sys::path::append(srcLinkWith, lf);
             sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
           }
         }
       }
 
       // Copy the object file to the .prj directory so the linker script's
-      // INPUT() directive can find it
+      // INPUT() directive can find it. Copy atomically to avoid races between
+      // parallel cores that share the same .o filename.
       SmallString<256> destLinkWith(tmpDirName);
-      sys::path::append(destLinkWith, sys::path::filename(core.linkWith));
+      sys::path::append(destLinkWith, sys::path::filename(lf));
+      if (failed(
+              atomicCopyFile(srcLinkWith, tmpDirName, sys::path::filename(lf))))
+        return failure();
 
-      if (srcLinkWith == destLinkWith) {
-        if (verbose) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "link_with file already in place: " << srcLinkWith
-                       << "\n";
-        }
-      } else {
-        // Remove destination file first if it exists (to ensure overwrite)
-        sys::fs::remove(destLinkWith);
+      if (verbose)
+        llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
+                     << destLinkWith << "\n";
 
-        std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
-        if (ec) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::errs() << "Error: Could not copy link_with file: "
-                       << srcLinkWith << " to " << destLinkWith << "\n";
-          llvm::errs() << "Error: " << ec.message() << "\n";
-          return failure();
-        }
-
-        if (verbose) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
-                       << destLinkWith << "\n";
-        }
-      }
-
-      // Note: We don't add the object file to linkStrs because the linker
-      // script already has an INPUT() directive for it
+      // Note: We don't add the object file to linkCmd because the linker
+      // script already has INPUT() directives for each file
     }
 
     // Make linker script path absolute
@@ -2412,10 +2428,10 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
 
   SmallVector<CoreInfo> cores;
   deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    // Skip cores with no elf_file, no link_with, and empty body
+    // Skip cores with no elf_file, no link_with/link_files, and empty body
     // (e.g., @empty device ops created by --expand-load-pdis)
     if (coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
-        coreHasNonemptyBody(coreOp)) {
+        coreOp.getLinkFiles() || coreHasNonemptyBody(coreOp)) {
       cores.push_back(getCoreInfo(coreOp));
     }
   });
@@ -2585,10 +2601,10 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
   SmallVector<CoreInfo> cores;
   deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    // Skip cores with no elf_file, no link_with, and empty body
+    // Skip cores with no elf_file, no link_with/link_files, and empty body
     // (e.g., @empty device ops created by --expand-load-pdis)
     if (coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
-        coreHasNonemptyBody(coreOp)) {
+        coreOp.getLinkFiles() || coreHasNonemptyBody(coreOp)) {
       cores.push_back(getCoreInfo(coreOp));
     }
   });
@@ -2906,15 +2922,9 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
         SmallString<256> destPath(tmpDirName);
         sys::path::append(destPath, sys::path::filename(linkWithFile));
-        if (srcPath == destPath) {
-          continue;
-        }
-        sys::fs::remove(destPath);
-        std::error_code ec = sys::fs::copy_file(srcPath, destPath);
-        if (ec) {
-          llvm::errs() << "Error copying link_with file: " << srcPath << "\n";
+        if (failed(atomicCopyFile(srcPath, tmpDirName,
+                                  sys::path::filename(linkWithFile))))
           return failure();
-        }
       }
 
       auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
@@ -2993,24 +3003,23 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       SmallString<256> peanoLld(peanoBinDir);
       sys::path::append(peanoLld, "ld.lld");
 
-      // Handle link_with if specified
-      // Search order: current working directory, tmpDirName, input file
-      // directory
-      if (!core.linkWith.empty()) {
+      // Handle external object files specified via link_files (or deprecated
+      // link_with). Search order: absolute, cwd, tmpDirName, input file dir.
+      for (const auto &lf : core.linkFiles) {
         SmallString<256> srcLinkWith;
-        if (sys::path::is_absolute(core.linkWith)) {
-          srcLinkWith = core.linkWith;
+        if (sys::path::is_absolute(lf)) {
+          srcLinkWith = lf;
         } else {
           // First try current working directory
           SmallString<256> cwdPath;
           sys::fs::current_path(cwdPath);
-          sys::path::append(cwdPath, core.linkWith);
+          sys::path::append(cwdPath, lf);
           if (sys::fs::exists(cwdPath)) {
             srcLinkWith = cwdPath;
           } else {
             // Try tmpDirName (used in JIT where .o is pre-compiled there)
             SmallString<256> tmpPath(tmpDirName);
-            sys::path::append(tmpPath, core.linkWith);
+            sys::path::append(tmpPath, lf);
             if (sys::fs::exists(tmpPath)) {
               srcLinkWith = tmpPath;
             } else {
@@ -3021,23 +3030,17 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
                 sys::fs::current_path(inputDir);
               }
               srcLinkWith = inputDir;
-              sys::path::append(srcLinkWith, core.linkWith);
+              sys::path::append(srcLinkWith, lf);
               sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
             }
           }
         }
 
         SmallString<256> destLinkWith(tmpDirName);
-        sys::path::append(destLinkWith, sys::path::filename(core.linkWith));
-        if (srcLinkWith != destLinkWith) {
-          sys::fs::remove(destLinkWith);
-          std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
-          if (ec) {
-            llvm::errs() << "Error copying link_with file: " << srcLinkWith
-                         << "\n";
-            return failure();
-          }
-        }
+        sys::path::append(destLinkWith, sys::path::filename(lf));
+        if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
+                                  sys::path::filename(lf))))
+          return failure();
       }
 
       SmallString<128> absLdScriptPath;
