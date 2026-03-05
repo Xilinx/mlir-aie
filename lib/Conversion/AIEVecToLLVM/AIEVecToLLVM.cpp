@@ -25,6 +25,12 @@
 #include "mlir/IR/TypeUtilities.h"
 #include <sstream>
 
+namespace xilinx {
+using namespace mlir; // For LLVM::LLVMDialect in generated getDependentDialects
+#define GEN_PASS_DEF_CONVERTAIEVECTOLLVM
+#include "aie/Conversion/Passes.h.inc"
+} // namespace xilinx
+
 using namespace mlir;
 
 namespace xilinx::aievec {
@@ -5669,7 +5675,7 @@ static void configureAIEVecToLLVMLegalizations(LLVMConversionTarget &target) {
 }
 
 struct ConvertAIEVecToLLVMPass
-    : ConvertAIEVecToLLVMBase<ConvertAIEVecToLLVMPass> {
+    : xilinx::impl::ConvertAIEVecToLLVMBase<ConvertAIEVecToLLVMPass> {
   ConvertAIEVecToLLVMPass() = default;
   ConvertAIEVecToLLVMPass(const xilinx::ConvertAIEVecToLLVMOptions &options) {
     aieTarget = options.aieTarget;

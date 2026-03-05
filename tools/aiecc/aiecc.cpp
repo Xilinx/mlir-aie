@@ -1157,10 +1157,13 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   devicePm.addPass(xilinx::AIEX::createAIELowerMulticastPass());
   devicePm.addPass(xilinx::AIE::createAIEAssignTileCtrlIDsPass());
   {
-    xilinx::AIE::AIEGenerateColumnControlOverlayOptions overlayOpts;
-    overlayOpts.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
-    devicePm.addPass(
-        xilinx::AIE::createAIEGenerateColumnControlOverlayPass(overlayOpts));
+    std::string overlayPipelineStr =
+        "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=" +
+        std::string(ctrlPktOverlay ? "true" : "false") + "}";
+    if (failed(parsePassPipeline(overlayPipelineStr, devicePm))) {
+      llvm::errs() << "Error: Failed to parse overlay pipeline\n";
+      return failure();
+    }
   }
 
   // Create buffer address assignment pass with alloc-scheme option

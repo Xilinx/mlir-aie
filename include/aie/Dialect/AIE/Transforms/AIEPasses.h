@@ -20,10 +20,8 @@
 
 namespace xilinx::AIE {
 
-#define GEN_PASS_DECL_AIECORETOSTANDARD
-#define GEN_PASS_DECL_AIEASSIGNBUFFERADDRESSES
-#define GEN_PASS_DECL_AIEGENERATECOLUMNCONTROLOVERLAY
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DECL
+#define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
@@ -82,7 +80,8 @@ createAIETraceRegPackWritesPass();
 /// 3. rewrite flows to stream-switches using 'weights' from analysis pass.
 /// 4. check a region is legal
 /// 5. rewrite stream-switches (within a bounding box) back to flows
-struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
+struct AIEPathfinderPass
+    : impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 
   AIEPathfinderPass() = default;
 

@@ -40,8 +40,14 @@ Type memRefToDefaultAddressSpace(Type t) {
 
 #include "aie/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.inc"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIENORMALIZEADDRESSSPACES
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
 struct AIENormalizeAddressSpacesPass
-    : AIENormalizeAddressSpacesBase<AIENormalizeAddressSpacesPass> {
+    : xilinx::AIE::impl::AIENormalizeAddressSpacesBase<
+          AIENormalizeAddressSpacesPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
   }

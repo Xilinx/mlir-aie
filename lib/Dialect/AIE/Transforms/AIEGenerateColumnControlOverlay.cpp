@@ -17,6 +17,12 @@
 
 #include "llvm/ADT/SmallSet.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEGENERATECOLUMNCONTROLOVERLAY
+#define GEN_PASS_DEF_AIEASSIGNTILECTRLIDS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
 #define DEBUG_TYPE "aie-generate-column-control-overlay"
 
 using namespace mlir;
@@ -135,7 +141,7 @@ DenseMap<int, int> getRowToShimChanMap(const AIETargetModel &targetModel,
 }
 
 struct AIEAssignTileCtrlIDsPass
-    : AIEAssignTileCtrlIDsBase<AIEAssignTileCtrlIDsPass> {
+    : xilinx::AIE::impl::AIEAssignTileCtrlIDsBase<AIEAssignTileCtrlIDsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
   }
@@ -179,16 +185,8 @@ struct AIEAssignTileCtrlIDsPass
 };
 
 struct AIEGenerateColumnControlOverlayPass
-    : AIEGenerateColumnControlOverlayBase<AIEGenerateColumnControlOverlayPass> {
-
-  AIEGenerateColumnControlOverlayPass() = default;
-
-  AIEGenerateColumnControlOverlayPass(
-      const AIEGenerateColumnControlOverlayOptions &options) {
-    clRouteShimCTRLToTCT = options.clRouteShimCTRLToTCT;
-    clRouteShimDmaToTileCTRL = options.clRouteShimDmaToTileCTRL;
-  }
-
+    : xilinx::AIE::impl::AIEGenerateColumnControlOverlayBase<
+          AIEGenerateColumnControlOverlayPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
     registry.insert<memref::MemRefDialect>();
@@ -414,12 +412,6 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignTileCtrlIDsPass() {
 std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEGenerateColumnControlOverlayPass() {
   return std::make_unique<AIEGenerateColumnControlOverlayPass>();
-}
-
-std::unique_ptr<OperationPass<DeviceOp>>
-AIE::createAIEGenerateColumnControlOverlayPass(
-    const AIEGenerateColumnControlOverlayOptions &options) {
-  return std::make_unique<AIEGenerateColumnControlOverlayPass>(options);
 }
 
 void populateAIEColumnControlOverlay(DeviceOp &device) {}

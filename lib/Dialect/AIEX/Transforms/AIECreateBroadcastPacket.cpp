@@ -20,6 +20,11 @@
 
 #include "llvm/ADT/Twine.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEBROADCASTPACKET
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
 #define DEBUG_TYPE "aie-create-lower-packet"
 
 using namespace mlir;
@@ -46,7 +51,8 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 };
 
 struct AIEBroadcastPacketPass
-    : public AIEBroadcastPacketBase<AIEBroadcastPacketPass> {
+    : public xilinx::AIEX::impl::AIEBroadcastPacketBase<
+          AIEBroadcastPacketPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
