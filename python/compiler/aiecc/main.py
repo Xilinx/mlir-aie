@@ -1016,12 +1016,21 @@ class FlowRunner:
             corecol, corerow, elf_file, link_files = core
 
             # Copy external .o files to tmpdir so linker can find them.
+            # Use a temp-then-rename pattern so parallel core compilations
+            # that share the same .o filename do not corrupt each other's copy.
             for lf in link_files:
                 src = lf if os.path.isabs(lf) else os.path.join(
                     os.path.dirname(opts.filename) or os.getcwd(), lf)
                 dst = os.path.join(self.tmpdirname, os.path.basename(lf))
                 if src != dst:
-                    shutil.copy2(src, dst)
+                    tmp_fd, tmp_path = tempfile.mkstemp(dir=self.tmpdirname)
+                    try:
+                        os.close(tmp_fd)
+                        shutil.copy2(src, tmp_path)
+                        os.replace(tmp_path, dst)
+                    except Exception:
+                        os.unlink(tmp_path)
+                        raise
 
             if not opts.unified:
                 file_opt_core = corefile(self.tmpdirname, device_name, core, "opt.mlir")

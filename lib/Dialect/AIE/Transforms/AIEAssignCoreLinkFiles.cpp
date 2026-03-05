@@ -41,10 +41,6 @@ using namespace xilinx::AIE;
 struct AIEAssignCoreLinkFilesPass
     : xilinx::AIE::impl::AIEAssignCoreLinkFilesBase<
           AIEAssignCoreLinkFilesPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<AIEDialect, mlir::func::FuncDialect>();
-  }
-
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder(device.getContext());
