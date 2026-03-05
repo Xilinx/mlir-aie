@@ -1,8 +1,7 @@
 import numpy as np
 from typing import Sequence
 
-from ...ir import InsertionPoint, Value
-from ...dialects.linalg.opdsl.lang.emitter import _is_index_type
+from ...ir import IndexType, InsertionPoint, Value
 from ...dialects.scf import IfOp, ForOp, yield_
 from ...extras.dialects.arith import constant, index_cast
 from ...extras.util import get_user_code_loc
@@ -48,7 +47,7 @@ def _for(
             p = p.item()
         if isinstance(p, np.integer) or isinstance(p, int):
             p = constant(p, index=True)
-        elif not _is_index_type(p.type):
+        elif not isinstance(p.type, IndexType):
             p = index_cast(p, to=T.index())
         params[i] = p
 
@@ -72,7 +71,7 @@ def _for(
 def if_(cond, hasElse=True, insert_yield=True, loc=None, ip=None):
     if loc is None:
         loc = get_user_code_loc()
-    if_op = IfOp(cond, hasElse=hasElse, loc=loc, ip=ip)
+    if_op = IfOp(cond, has_else=hasElse, loc=loc, ip=ip)
     with InsertionPoint(if_op.thenRegion.blocks[0]):
         yield if_op
         if insert_yield:
