@@ -1222,7 +1222,7 @@ static void assignPdiIds(ModuleOp moduleOp);
 /// Run the NPU lowering pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
 static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
-                                             bool patchPdiIds = false) {
+                                            bool patchPdiIds = false) {
   MLIRContext *ctx = moduleOp.getContext();
 
   // Phase 1: Core NPU lowering passes
@@ -2531,7 +2531,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
           extractInputFilesFromBCF(bcfPath);
 
       // Copy link_with files to .prj directory
-      // Search order: current working directory, tmpDirName, input file directory
+      // Search order: current working directory, tmpDirName, input file
+      // directory
       for (const auto &linkWithFile : linkWithFiles) {
         SmallString<256> srcPath;
         if (sys::path::is_absolute(linkWithFile)) {
@@ -2653,7 +2654,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       sys::path::append(peanoLld, "ld.lld");
 
       // Handle link_with if specified
-      // Search order: current working directory, tmpDirName, input file directory
+      // Search order: current working directory, tmpDirName, input file
+      // directory
       if (!core.linkWith.empty()) {
         SmallString<256> srcLinkWith;
         if (sys::path::is_absolute(core.linkWith)) {
@@ -3373,9 +3375,9 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
         tmpDirName.str() + " device-name=" + devName.str() +
         "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))";
 
-    SmallVector<StringRef, 8> cmd = {aieOptPath, "--pass-pipeline",  pipeline,
-                                     "-o",       ctrlPktMlirPath.str(),
-                                     inputMlirPath.str()};
+    SmallVector<StringRef, 8> cmd = {
+        aieOptPath, "--pass-pipeline",     pipeline,
+        "-o",       ctrlPktMlirPath.str(), inputMlirPath.str()};
 
     if (verbose) {
       llvm::outs() << "Running aie-opt for control packet conversion\n";
@@ -3449,9 +3451,9 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     std::string pipeline =
         "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))";
 
-    SmallVector<StringRef, 8> cmd = {aieOptPath,          "--pass-pipeline",
-                                     pipeline,            "-o",
-                                     dmaSeqMlirPath.str(), ctrlPktMlirPath.str()};
+    SmallVector<StringRef, 8> cmd = {
+        aieOptPath, "--pass-pipeline",    pipeline,
+        "-o",       dmaSeqMlirPath.str(), ctrlPktMlirPath.str()};
 
     if (verbose) {
       llvm::outs() << "Running aie-opt for control packet DMA lowering\n";
@@ -3536,9 +3538,9 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
 
   // When --aie-generate-elf is also set, use elfName for the output ELF
   // so the user gets the combined ctrl packet ELF at their requested name.
-  std::string elfFileName =
-      generateElf ? formatString(elfName, devName.str(), "")
-                  : formatString(ctrlPktElfName, devName);
+  std::string elfFileName = generateElf
+                                ? formatString(elfName, devName.str(), "")
+                                : formatString(ctrlPktElfName, devName);
   SmallString<128> elfPath;
   if (sys::path::is_absolute(elfFileName)) {
     elfPath = elfFileName;
@@ -3611,16 +3613,14 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
       if (elfData) {
         if (succeeded(writeElfFile(elfPath, *elfData))) {
           if (verbose) {
-            llvm::outs() << "Generated control packet ELF: "
-                         << elfPath << "\n";
+            llvm::outs() << "Generated control packet ELF: " << elfPath << "\n";
           }
           return success();
         }
       }
     }
     if (verbose) {
-      llvm::outs()
-          << "aiebu library call failed, falling back to subprocess\n";
+      llvm::outs() << "aiebu library call failed, falling back to subprocess\n";
     }
   }
 #endif // AIECC_HAS_AIEBU_LIBRARY
@@ -3670,8 +3670,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
 
 #ifdef AIECC_HAS_AIEBU_LIBRARY
 /// Helper to read a binary file into a vector of chars.
-static std::optional<std::vector<char>>
-readBinaryFile(StringRef path) {
+static std::optional<std::vector<char>> readBinaryFile(StringRef path) {
   auto bufferOrErr = llvm::MemoryBuffer::getFile(path);
   if (!bufferOrErr) {
     return std::nullopt;
@@ -3748,8 +3747,8 @@ generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson) {
 }
 
 /// Write ELF data to a file.
-static LogicalResult
-writeElfFile(StringRef path, const std::vector<char> &elfData) {
+static LogicalResult writeElfFile(StringRef path,
+                                  const std::vector<char> &elfData) {
   std::error_code ec;
   raw_fd_ostream elfFile(path, ec, sys::fs::OpenFlags::OF_None);
   if (ec) {
@@ -3898,8 +3897,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     if (elfData) {
       if (succeeded(writeElfFile(outputElfPath, *elfData))) {
         if (verbose) {
-          llvm::outs() << "Generated ELF: " << outputElfPath
-                       << "\n";
+          llvm::outs() << "Generated ELF: " << outputElfPath << "\n";
         }
         return success();
       }
@@ -4083,16 +4081,14 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
     if (elfData) {
       if (succeeded(writeElfFile(fullElfName.getValue(), *elfData))) {
         if (verbose) {
-          llvm::outs() << "Generated full ELF: " << fullElfName
-                       << "\n";
+          llvm::outs() << "Generated full ELF: " << fullElfName << "\n";
           llvm::outs().flush();
         }
         return success();
       }
     }
     if (verbose) {
-      llvm::outs()
-          << "aiebu library call failed, falling back to subprocess\n";
+      llvm::outs() << "aiebu library call failed, falling back to subprocess\n";
       llvm::outs().flush();
     }
   }
@@ -4780,15 +4776,16 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     dumpModuleToFile(moduleOp, physicalWithElfsPath, "module with ELFs");
 
     // Generate control packet output BEFORE NPU instructions, because the
-    // control packet pipeline (convert-aie-to-transaction, aie-txn-to-ctrl-packet)
-    // needs the pre-NPU-lowered module state. NPU lowering destroys the ops
-    // that the control packet passes need. This matches the legacy Python
-    // driver's ordering where process_ctrlpkt() runs before NPU lowering.
-    // Use unfiltered module for ctrl packet generation — the legacy Python
-    // driver passes the full multi-device module to process_ctrlpkt.
-    ModuleOp ctrlPktModule =
-        unfilteredModule ? *unfilteredModule : moduleOp;
-    if (failed(generateControlPacketOutput(ctrlPktModule, tmpDirName, devName))) {
+    // control packet pipeline (convert-aie-to-transaction,
+    // aie-txn-to-ctrl-packet) needs the pre-NPU-lowered module state. NPU
+    // lowering destroys the ops that the control packet passes need. This
+    // matches the legacy Python driver's ordering where process_ctrlpkt() runs
+    // before NPU lowering. Use unfiltered module for ctrl packet generation —
+    // the legacy Python driver passes the full multi-device module to
+    // process_ctrlpkt.
+    ModuleOp ctrlPktModule = unfilteredModule ? *unfilteredModule : moduleOp;
+    if (failed(
+            generateControlPacketOutput(ctrlPktModule, tmpDirName, devName))) {
       return failure();
     }
 
