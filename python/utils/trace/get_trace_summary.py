@@ -2,9 +2,12 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 import json
 import argparse
+import logging
 import sys
 import re
 from aie.utils.trace.utils import get_cycles_summary
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -14,7 +17,6 @@ def parse_args():
     # parser.add_argument(
     #    "--colshift", help="column shift adjustment to source mlir", required=False
     # )
-    parser.add_argument("--debug", help="debug mode", required=False)
     # TODO tracelabels removed since we can have multiple sets of labels for each pkt_type & loc combination
     # parser.add_argument('--tracelabels',
     #         nargs='+',
@@ -26,7 +28,7 @@ if __name__ == "__main__":
     opts = parse_args()
     cycles = get_cycles_summary(opts.input)
 
-    # print(cycles)
+    logger.trace("cycles: %s", cycles)
     for i in range(len(cycles)):
         print(cycles[i][0])
         runs = len(cycles[i]) - 1

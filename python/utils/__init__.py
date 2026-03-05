@@ -5,7 +5,31 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
-import sys
+import logging
+import os
+
+# Register a TRACE level (5) below DEBUG for very verbose diagnostic output.
+logging.TRACE = 5
+logging.addLevelName(logging.TRACE, "TRACE")
+
+
+def _trace(self, message, *args, **kwargs):
+    if self.isEnabledFor(logging.TRACE):
+        self._log(logging.TRACE, message, args, **kwargs)
+
+
+logging.Logger.trace = _trace
+
+# Honour AIE_LOG_LEVEL env var (e.g. TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL).
+# This must be done before any aie submodule emits a log record.
+_log_level_str = os.environ.get("AIE_LOG_LEVEL", "").upper()
+if _log_level_str:
+    _log_level = getattr(logging, _log_level_str, None)
+    if _log_level is not None:
+        logging.getLogger("aie").setLevel(_log_level)
+
+_logger = logging.getLogger(__name__)
+
 from .hostruntime.tensor_class import Tensor
 
 try:
@@ -13,9 +37,8 @@ try:
 
     has_xrt = True
 except ImportError as e:
-    print(
-        f"Failed to import PyXRT: {e}, proceeding without runtime libraries.",
-        file=sys.stderr,
+    _logger.warning(
+        "Failed to import PyXRT: %s, proceeding without runtime libraries.", e
     )
     has_xrt = False
 

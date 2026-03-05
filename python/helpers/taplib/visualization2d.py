@@ -3,7 +3,7 @@ import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import sys
+import warnings
 
 from .utils import ceildiv
 
@@ -89,9 +89,9 @@ def visualize_from_accesses(
     tensor_height, tensor_width = access_order_tensor.shape
     if tensor_height * tensor_width >= 1024:
         if show_arrows:
-            print(
-                f"show_arrows not recommended for tensor sizes > 1024 elements",
-                file=sys.stderr,
+            warnings.warn(
+                "show_arrows not recommended for tensor sizes > 1024 elements",
+                stacklevel=2,
             )
         if show_arrows is None:
             show_arrows = False
@@ -164,9 +164,9 @@ def visualize_from_accesses(
         plt.show()
     if file_path:
         if os.path.exists(file_path):
-            print(
+            warnings.warn(
                 f"Cannot save plot to {file_path}; file already exists",
-                file=sys.stderr,
+                stacklevel=2,
             )
         plt.savefig(file_path)
     plt.close()

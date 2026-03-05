@@ -9,8 +9,11 @@
 from __future__ import annotations
 from collections import defaultdict
 from contextlib import contextmanager
+import logging
 import numpy as np
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 from ...utils import trace as trace_utils
 
@@ -308,7 +311,7 @@ class Runtime(Resolvable):
 
                 trace_shim_tile = self.get_first_cons_shimtile()
 
-                # print("config_trace")
+                logger.trace("config_trace")
                 trace_utils.configure_packet_tracing_aie2(
                     # tiles_to_trace=[ tiles_to_trace[0] ],
                     tiles_to_trace=tiles_to_trace,

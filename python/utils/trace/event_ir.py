@@ -7,6 +7,9 @@ import re
 import subprocess
 import shutil
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .utils import (
     parse_pkt_hdr_in_stream,
@@ -25,9 +28,6 @@ from .trace.events import (
 NUM_EVENTS = 8  # number of events we can view per trace
 
 rowoffset = 1  # TODO tmeporary workaround to figure out row offset for AIE2 for tiles
-
-DEBUG = False
-verbose = True
 
 eventIRFile = "eventIR.txt"
 tmpTraceDirName = "tmpTrace"
@@ -86,9 +86,6 @@ def lookupEventNameInStr(event, pid, pid_events):
     # TODO Expand to other pid for multiple cores? even/odd
     # For now, we assume a single trace event and key based on that
     # in the future, the pid will be used to match the right events
-    # print("pid_events[0]: ",pid_events[0])
-    # print("event: ",event)
-    # print("pid_events[0][event]: ",pid_events[0][int(event)])
     return lookup_event_name_by_code(pid_events[0][int(event)])
 
     # if pid == 0 or pid == 2: # Core trace
@@ -189,8 +186,6 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                 active_events[i] = 0
 
             for c in command:
-                # for c in flat_commands:
-                # print(c)
                 t = c["type"]
                 # if 'Start' in t:
                 # timer = c['timer_value'] # TODO Turn off timer for now to test sync among tiles/type
@@ -428,7 +423,6 @@ def parse_mlir_trace_events(lines):
                         0,
                         0,
                     ]  # TODO no better way to init this?
-                # print("Trace event 0 configured to be ",hex(value))
                 pid_events[0][key][0] = value & 0xFF
                 pid_events[0][key][1] = (value >> 8) & 0xFF
                 pid_events[0][key][2] = (value >> 16) & 0xFF
@@ -463,7 +457,6 @@ def parse_mlir_trace_events(lines):
                         0,
                         0,
                     ]  # TODO no better way to init this?
-                # print("Trace event 0 configured to be ",hex(value))
                 pid_events[1][key][0] = value & 0xFF
                 pid_events[1][key][1] = (value >> 8) & 0xFF
                 pid_events[1][key][2] = (value >> 16) & 0xFF
@@ -488,11 +481,6 @@ def parse_mlir_trace_events(lines):
 
             # TODO intfc and memtile event 0, 1 needs to also be defined
 
-    # print("Found labels:\n")
-    # for j in pid_events:
-    #     print("row:",j['row'],", col: ",j['col'])
-    #     print("0: ", j[0], "1: ", j[1], "2: ", j[2], "3: ", j[3])
-    #     print("4: ", j[4], "5: ", j[5], "6: ", j[6], "7: ", j[7])
     return pid_events
 
 
@@ -620,29 +608,16 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
     errors = 0
     curr_time = 0
     for i, line in enumerate(lines):
-        # print(str(i)+":"+line)
+        logger.trace("%s: %s", i, line)
         if check_time:
             result = re.search(time_pattern, line)
             if result:  # match found
                 curr_time = result.group(1)
-                if DEBUG:
-                    print(
-                        "DEBUG: matching time line in "
-                        + str(i)
-                        + ". time value is "
-                        + str(curr_time)
-                    )
+                logger.debug("matching time line in %s, time value is %s", i, curr_time)
                 check_time = False
             else:
                 errors += 1
-                if DEBUG:
-                    print(
-                        "WARNING: Invalid time in line #"
-                        + str(i)
-                        + " expecting time ("
-                        + line
-                        + ")"
-                    )
+                logger.warning("Invalid time in line #%s expecting time (%s)", i, line)
         # checking signal
         else:
             result = re.search(signal_pattern, line)
@@ -653,17 +628,13 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
                 event = int(result.group(4))
                 tt = 0  # TODO set to 0 for now. What values in eventIR indicate type?
                 loc = str(row) + "," + str(col)
-                if DEBUG:
-                    print(
-                        "DEBUG: grp(1):"
-                        + str(asserted)
-                        + ",grp(2):"
-                        + str(col)
-                        + ",grp(3):"
-                        + str(row)
-                        + ",grp(4):"
-                        + str(event)
-                    )
+                logger.debug(
+                    "grp(1):%s, grp(2):%s, grp(3):%s, grp(4):%s",
+                    asserted,
+                    col,
+                    row,
+                    event,
+                )
                 try:  # TODO if matching event (how to deal with start even 161)
                     # trace_event = {'name':lookup_event_name_by_type(tt, pid_events[tt][loc][event])}
                     trace_event = {"name": lookup_event_name_by_type(tt, event)}
@@ -676,21 +647,13 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
                     trace_events.append(trace_event)
                 except ValueError:
                     # TODO Need to check this becuase we get this for event 161
-                    if DEBUG:
-                        print("ERROR: event " + str(event) + " not found.")
+                    logger.debug("event %s not found.", event)
                 check_time = True
             else:
                 error += 1
-                if DEBUG:
-                    print(
-                        "WARNING: Invalid signal in line #"
-                        + str(i)
-                        + " expecting time ("
-                        + line
-                        + ")"
-                    )
-    # if DEBUG:
-    #     print("Number of errors is "+errors)
+                logger.warning(
+                    "Invalid signal in line #%s expecting time (%s)", i, line
+                )
 
 
 def create_target():
@@ -698,7 +661,7 @@ def create_target():
         with open(".target", "wt") as f:
             f.write("hw\n")
     except Exception as e:
-        print(e)
+        logger.error("%s", e)
         sys.exit(1)
 
 
@@ -896,7 +859,7 @@ def print_config_json(pid_events):
             f.write("  ]\n")
             f.write("}\n")
     except Exception as e:
-        print(e)
+        logger.error("%s", e)
         sys.exit(1)
 
 
@@ -928,9 +891,8 @@ def run_hwfrontend(fileInName, fileOutName):
         capture_output=True,
         text=True,
     )
-    # print(result.stdout)
     if result.stderr:
-        print(result.stderr)
+        logger.error("%s", result.stderr)
         sys.exit(1)
     # subprocess.run("hwfrontend --trace "+str(opts.filename)+" --trace_config config.json --pkg-dir . --outfile eventIR.txt")
 
@@ -947,6 +909,12 @@ if __name__ == "__main__":
 
     opts = parse_args()
 
+    logging.basicConfig(
+        level=logging.DEBUG if opts.verbose else logging.WARNING,
+        format="%(message)s",
+        stream=sys.stdout,
+    )
+
     # set colshift based on optional argument
     colshift = int(opts.colshift) if opts.colshift else 0
 
@@ -954,8 +922,7 @@ if __name__ == "__main__":
         os.mkdir(tmpTraceDirName)
     except FileExistsError:
         pass
-    if opts.verbose:
-        print("created temporary directory", tmpTraceDirName)
+    logger.info("created temporary directory %s", tmpTraceDirName)
     tmpTraceDir = os.path.abspath(tmpTraceDirName)
 
     mlirFile = os.path.abspath(opts.mlir)
@@ -972,7 +939,7 @@ if __name__ == "__main__":
                 mlir_lines = mf.read().split("\n")
                 pid_events = parse_mlir_trace_events(mlir_lines)
         except Exception as e:
-            print(e)
+            logger.error("%s", e)
             sys.exit(1)
 
     os.chdir(tmpTraceDirName)
@@ -990,19 +957,13 @@ if __name__ == "__main__":
             ignore = [""]
             lines = [l for l in lines if not l in ignore]
     except Exception as e:
-        print(e)
+        logger.error("%s", e)
         sys.exit(1)
 
-    if DEBUG:
-        print("\nDEBUG: lines\n")
-        print(lines)
-        print("\n\n")
+    logger.debug("lines: %s", lines)
 
     setup_trace_metadata(trace_events, pid_events)
-    if DEBUG:
-        print("\nDEBUG: pid events\n")
-        print(pid_events)
-        print("\n\n")
+    logger.debug("pid events: %s", pid_events)
 
     convert_eventIR_to_json(trace_events, lines, pid_events)
 
