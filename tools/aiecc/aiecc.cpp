@@ -3485,13 +3485,20 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     assignPdiIds(*clonedModule);
   }
 
-  // Generate DMA sequence binary using AIETranslateNpuToBinary
-  // When --aie-generate-ctrlpkt is set, write to CWD (matches Python behavior).
-  std::string dmaSeqBinFileName = formatString(ctrlPktDmaSeqName, devName);
+  // Generate DMA sequence binary using AIETranslateNpuToBinary.
+  // When --aie-generate-npu-insts is also set, write the DMA sequence to
+  // instsName (e.g. aie_run_seq.bin) instead of ctrlPktDmaSeqName. This
+  // matches the legacy Python driver where process_ctrlpkt() overwrites
+  // opts.insts_name with the ctrl packet DMA sequence — the DMA sequence
+  // IS the NPU instruction stream the host loads.
+  std::string dmaSeqBinFileName =
+      generateNpuInsts
+          ? formatString(instsName, devName.str(), StringRef("seq"))
+          : formatString(ctrlPktDmaSeqName, devName);
   SmallString<128> dmaSeqBinPath;
   if (sys::path::is_absolute(dmaSeqBinFileName)) {
     dmaSeqBinPath = dmaSeqBinFileName;
-  } else if (generateCtrlPkt) {
+  } else if (generateCtrlPkt || generateNpuInsts) {
     dmaSeqBinPath = dmaSeqBinFileName;
   } else {
     dmaSeqBinPath = tmpDirName;
@@ -3551,9 +3558,15 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     sys::path::append(elfPath, elfFileName);
   }
 
-  // Count runtime sequence arguments to determine ctrl_pkt buffer index
+  // Count runtime sequence arguments from the ORIGINAL module to determine
+  // ctrl_pkt buffer index. Must use moduleOp (pre-lowered), not clonedModule
+  // (post ctrl-packet-to-DMA), because ctrl-packet-to-DMA adds an extra
+  // argument for the control packet buffer itself. The legacy Python driver
+  // counts args from device_op (the original), getting the user-facing arg
+  // count. The xrt_id in external_buffers.json must match this count so XRT
+  // knows which buffer slot holds the control packets.
   int ctrlIdx = 0;
-  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
+  for (auto devOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
     if (devOp.getSymName() != devName) {
       continue;
     }
@@ -4789,8 +4802,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Generate NPU instructions from in-memory module
-    if (failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
+    // Generate NPU instructions from in-memory module.
+    // Skip when ctrl packets are active — generateControlPacketOutput() already
+    // wrote the ctrl packet DMA sequence to instsName, which IS the NPU
+    // instruction stream. Running generateNpuInstructions() would overwrite it
+    // with regular NPU instructions that don't send the control packets.
+    if (!generateCtrlPkt &&
+        failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
       return failure();
     }
 
