@@ -1143,6 +1143,10 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
   // Step 4: Device-level passes - use nest<DeviceOp>()
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  // Trace lowering (before resource allocation)
+  devicePm.addPass(xilinx::AIE::createAIETraceToConfigPass());
+  devicePm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
+  devicePm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
   devicePm.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
   devicePm.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
   devicePm.addPass(xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
