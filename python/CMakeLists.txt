@@ -542,9 +542,8 @@ add_custom_command(
   TARGET AIEPythonModules PRE_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
   ${CMAKE_CURRENT_SOURCE_DIR}/compiler/aiecc.py
-  ${CMAKE_CURRENT_SOURCE_DIR}/compiler/aiecc_legacy.py
   ${CMAKE_CURRENT_SOURCE_DIR}/compiler/txn2mlir.py
   ${CMAKE_BINARY_DIR}/bin
 )
 # during install
-install(PROGRAMS compiler/aiecc.py compiler/aiecc_legacy.py compiler/txn2mlir.py DESTINATION bin)
+install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py DESTINATION bin)
