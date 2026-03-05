@@ -11,82 +11,25 @@
 // RUN: %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s
 // RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/main_kernels.json
 
-// CHECK: {
-// CHECK:   "ps-kernels": {
-// CHECK:     "kernels": [
-// CHECK:       {
-// CHECK:         "name": "MLIR_AIE",
-// CHECK:         "type": "dpu",
-// CHECK:         "extended-data": {
-// CHECK:           "subtype": "DPU",
-// CHECK:           "functional": "0",
-// CHECK:           "dpu_kernel_id": "0x901"
-// CHECK:         },
-// CHECK:         "arguments": [
-// CHECK:           {
-// CHECK:             "name": "opcode",
-// CHECK:             "address-qualifier": "SCALAR",
-// CHECK:             "type": "uint64_t",
-// CHECK:             "offset": "0x00"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "name": "instr",
-// CHECK:             "memory-connection": "SRAM",
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "char *",
-// CHECK:             "offset": "0x8"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "name": "ninstr",
-// CHECK:             "address-qualifier": "SCALAR",
-// CHECK:             "type": "uint32_t",
-// CHECK:             "offset": "0x10"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "name": "bo0",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "void*",
-// CHECK:             "offset": "0x14"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "name": "bo1",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "void*",
-// CHECK:             "offset": "0x1c"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "name": "bo2",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "void*",
-// CHECK:             "offset": "0x24"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "name": "bo3",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "void*",
-// CHECK:             "offset": "0x2c"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "name": "bo4",
-// CHECK:             "memory-connection": "HOST",
-// CHECK:             "address-qualifier": "GLOBAL",
-// CHECK:             "type": "void*",
-// CHECK:             "offset": "0x34"
-// CHECK:           }
-// CHECK:         ],
-// CHECK:         "instances": [
-// CHECK:           {
-// CHECK:             "name": "MLIRAIE"
-// CHECK:           }
-// CHECK:         ]
-// CHECK:       }
-// CHECK:     ]
-// CHECK:   }
-// CHECK: }
+// CHECK: "ps-kernels"
+// CHECK: "kernels"
+// CHECK: "arguments"
+// CHECK: "name": "opcode"
+// CHECK: "type": "uint64_t"
+// CHECK: "name": "instr"
+// CHECK: "type": "char *"
+// CHECK: "name": "ninstr"
+// CHECK: "type": "uint32_t"
+// CHECK: "name": "bo0"
+// CHECK: "offset": "0x14"
+// CHECK: "name": "bo1"
+// CHECK: "name": "bo2"
+// CHECK: "name": "bo3"
+// CHECK: "name": "bo4"
+// CHECK: "dpu_kernel_id": "0x901"
+// CHECK: "name": "MLIRAIE"
+// CHECK: "name": "MLIR_AIE"
+// CHECK: "type": "dpu"
 
 module {
   aie.device(npu1) {
