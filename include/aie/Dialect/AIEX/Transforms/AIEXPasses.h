@@ -17,7 +17,7 @@
 
 namespace xilinx::AIEX {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DECL
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECreateCoresPass();

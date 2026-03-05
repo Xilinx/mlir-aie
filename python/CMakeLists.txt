@@ -225,9 +225,6 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
     PRIVATE_LINK_LIBS
       ${_py_libs}
-
-    PYTHON_BINDINGS_LIBRARY
-      nanobind
   )
   target_include_directories(
     AIEPythonExtensions.MLIR
@@ -322,8 +319,6 @@ else ()
       AIECAPI
     PRIVATE_LINK_LIBS
       LLVMSupport
-    PYTHON_BINDINGS_LIBRARY
-      nanobind
   )
 
   if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -340,8 +335,6 @@ else ()
         LLVMSupport
         xrt_coreutil
         uuid
-      PYTHON_BINDINGS_LIBRARY
-        nanobind
     )
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})

@@ -19,6 +19,11 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIECREATELOCKS
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
 #define DEBUG_TYPE "aie-create-locks"
 
 using namespace mlir;
@@ -131,7 +136,8 @@ static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks,
   return -1;
 }
 
-struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
+struct AIECreateLocksPass
+    : public xilinx::AIEX::impl::AIECreateLocksBase<AIECreateLocksPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
