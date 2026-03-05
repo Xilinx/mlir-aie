@@ -22,6 +22,7 @@ namespace xilinx::AIE {
 
 #define GEN_PASS_DECL_AIECORETOSTANDARD
 #define GEN_PASS_DECL_AIEASSIGNBUFFERADDRESSES
+#define GEN_PASS_DECL_AIEGENERATECOLUMNCONTROLOVERLAY
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
@@ -60,6 +61,9 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEGenerateColumnControlOverlayPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEGenerateColumnControlOverlayPass(
+    const AIEGenerateColumnControlOverlayOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 
 /// Generate the code for registering passes.

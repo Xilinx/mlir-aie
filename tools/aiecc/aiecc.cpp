@@ -1151,7 +1151,12 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   devicePm.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
   devicePm.addPass(xilinx::AIEX::createAIELowerMulticastPass());
   devicePm.addPass(xilinx::AIE::createAIEAssignTileCtrlIDsPass());
-  devicePm.addPass(xilinx::AIE::createAIEGenerateColumnControlOverlayPass());
+  {
+    xilinx::AIE::AIEGenerateColumnControlOverlayOptions overlayOpts;
+    overlayOpts.clRouteShimDmaToTileCTRL = ctrlPktOverlay;
+    devicePm.addPass(
+        xilinx::AIE::createAIEGenerateColumnControlOverlayPass(overlayOpts));
+  }
 
   // Create buffer address assignment pass with alloc-scheme option
   xilinx::AIE::AIEAssignBufferAddressesOptions bufferOpts;
@@ -3328,64 +3333,72 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     return success();
   }
 
-  // Clone the module since control packet generation is destructive
-  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+  // Find aie-opt tool for subprocess pipeline execution.
+  // The in-memory PassManager approach produces empty control packets because
+  // the builtin.module(aie.device(...)) nesting behaves differently on
+  // in-memory modules vs. serialized/parsed modules. Using aie-opt subprocess
+  // matches the legacy Python driver behavior exactly.
+  std::string aieOptPath = findAieTool("aie-opt");
+  if (aieOptPath.empty()) {
+    llvm::errs() << "Error: aie-opt not found (needed for control packet "
+                    "generation)\n";
+    return failure();
+  }
 
-  // Run control packet pipeline
-  MLIRContext *ctx = clonedModule->getContext();
+  MLIRContext *ctx = moduleOp.getContext();
+
+  // Serialize the input module to a temp file for aie-opt
+  SmallString<128> inputMlirPath(tmpDirName);
+  sys::path::append(inputMlirPath, devName.str() + "_pre_ctrlpkt.mlir");
   {
-    PassManager pm(ctx);
-    if (verbose) {
-      pm.enableVerifier(true);
+    std::error_code ec;
+    raw_fd_ostream file(inputMlirPath, ec);
+    if (ec) {
+      llvm::errs() << "Error writing pre-ctrlpkt MLIR: " << ec.message()
+                   << "\n";
+      return failure();
     }
+    moduleOp->print(file);
+  }
 
-    // Phase 1a: Run convert-aie-to-transaction at device level.
-    // Must use nest<DeviceOp>() — the builtin.module(aie.device(...)) nesting
-    // doesn't properly generate config on in-memory modules.
-    {
-      PassManager txnPm(ctx);
-      if (verbose)
-        txnPm.enableVerifier(true);
-      std::string txnPassStr =
-          "convert-aie-to-transaction{elf-dir=" + tmpDirName.str() +
-          " device-name=" + devName.str() + "}";
-      OpPassManager &txnDevicePm = txnPm.nest<xilinx::AIE::DeviceOp>();
-      if (failed(parsePassPipeline(txnPassStr, txnDevicePm))) {
-        llvm::errs() << "Error: Failed to parse transaction pipeline\n";
-        return failure();
-      }
-      if (failed(txnPm.run(*clonedModule))) {
-        llvm::errs() << "Error: Transaction conversion failed\n";
-        return failure();
-      }
-    }
+  // Step 1: Run aie-opt subprocess for control packet conversion.
+  // Pipeline: convert-aie-to-transaction → aie-txn-to-ctrl-packet →
+  //           aie-legalize-ctrl-packet
+  SmallString<128> ctrlPktMlirPath(tmpDirName);
+  sys::path::append(ctrlPktMlirPath, devName.str() + "_ctrlpkt.mlir");
 
-    // Phase 1b: Run ctrl-packet passes with module nesting.
-    {
-      std::string pipelineStr =
-          "builtin.module(aie.device(aie-txn-to-ctrl-packet,"
-          "aie-legalize-ctrl-packet))";
-      if (failed(parsePassPipeline(pipelineStr, pm))) {
-        llvm::errs()
-            << "Error: Failed to parse ctrl packet pipeline\n";
-        return failure();
-      }
-    }
+  {
+    std::string pipeline =
+        "builtin.module(aie.device(convert-aie-to-transaction{elf-dir=" +
+        tmpDirName.str() + " device-name=" + devName.str() +
+        "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))";
+
+    SmallVector<StringRef, 8> cmd = {aieOptPath, "--pass-pipeline",  pipeline,
+                                     "-o",       ctrlPktMlirPath.str(),
+                                     inputMlirPath.str()};
 
     if (verbose) {
-      llvm::outs() << "Running control packet conversion pipeline in-memory\n";
+      llvm::outs() << "Running aie-opt for control packet conversion\n";
     }
 
-    if (failed(pm.run(*clonedModule))) {
-      llvm::errs() << "Error: Control packet conversion pipeline failed\n";
+    if (!executeCommand(cmd)) {
+      llvm::errs() << "Error: aie-opt control packet pipeline failed\n";
       return failure();
     }
   }
 
-  // Dump intermediate control packet MLIR
-  SmallString<128> ctrlPktMlirPath(tmpDirName);
-  sys::path::append(ctrlPktMlirPath, devName.str() + "_ctrlpkt.mlir");
-  dumpModuleToFile(*clonedModule, ctrlPktMlirPath, "Control packet MLIR");
+  // Parse the step 1 output back into an in-memory module
+  OwningOpRef<ModuleOp> clonedModule;
+  {
+    ParserConfig parseConfig(ctx);
+    SourceMgr srcMgr;
+    clonedModule =
+        parseSourceFile<ModuleOp>(ctrlPktMlirPath.str(), srcMgr, parseConfig);
+    if (!clonedModule) {
+      llvm::errs() << "Error: Failed to parse control packet MLIR output\n";
+      return failure();
+    }
+  }
 
   // Generate control packet binary using AIETranslateControlPacketsToUI32Vec
   // When --aie-generate-ctrlpkt is set, write to CWD (matches Python behavior).
@@ -3428,23 +3441,37 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
                  << "\n";
   }
 
-  // Step 2: Convert control packets to DMA and NPU for DMA sequence
+  // Step 2: Run aie-opt subprocess for ctrl-packet-to-DMA-to-NPU lowering.
+  SmallString<128> dmaSeqMlirPath(tmpDirName);
+  sys::path::append(dmaSeqMlirPath, devName.str() + "_ctrlpkt_dma_seq.mlir");
+
   {
-    PassManager pm(ctx);
-    if (verbose) {
-      pm.enableVerifier(true);
-    }
+    std::string pipeline =
+        "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))";
 
-    OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-    devicePm.addPass(xilinx::AIEX::createAIECtrlPacketToDmaPass());
-    devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
+    SmallVector<StringRef, 8> cmd = {aieOptPath,          "--pass-pipeline",
+                                     pipeline,            "-o",
+                                     dmaSeqMlirPath.str(), ctrlPktMlirPath.str()};
 
     if (verbose) {
-      llvm::outs() << "Running control packet to DMA pipeline in-memory\n";
+      llvm::outs() << "Running aie-opt for control packet DMA lowering\n";
     }
 
-    if (failed(pm.run(*clonedModule))) {
-      llvm::errs() << "Error: Control packet to DMA pipeline failed\n";
+    if (!executeCommand(cmd)) {
+      llvm::errs() << "Error: aie-opt control packet DMA pipeline failed\n";
+      return failure();
+    }
+  }
+
+  // Parse the step 2 output back into the in-memory module
+  {
+    ParserConfig parseConfig(ctx);
+    SourceMgr srcMgr;
+    clonedModule =
+        parseSourceFile<ModuleOp>(dmaSeqMlirPath.str(), srcMgr, parseConfig);
+    if (!clonedModule) {
+      llvm::errs()
+          << "Error: Failed to parse control packet DMA sequence output\n";
       return failure();
     }
   }
@@ -3455,12 +3482,6 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   if (generateFullElf || generateElf) {
     assignPdiIds(*clonedModule);
   }
-
-  // Dump intermediate DMA sequence MLIR
-  SmallString<128> dmaSeqMlirPath(tmpDirName);
-  sys::path::append(dmaSeqMlirPath, devName.str() + "_ctrlpkt_dma_seq.mlir");
-  dumpModuleToFile(*clonedModule, dmaSeqMlirPath,
-                   "Control packet DMA sequence MLIR");
 
   // Generate DMA sequence binary using AIETranslateNpuToBinary
   // When --aie-generate-ctrlpkt is set, write to CWD (matches Python behavior).
