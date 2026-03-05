@@ -15,9 +15,9 @@
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-ctrlpkt --verbose %t_overlay.mlir 2>&1 | FileCheck %s
 
 // CHECK: Generating control packets for device
-// CHECK: Running aie-opt for control packet conversion
+// CHECK: Running control packet pipeline in-memory
 // CHECK: Wrote {{[0-9]+}} control packet instructions to
-// CHECK: Running aie-opt for control packet DMA lowering
+// CHECK: Running control packet DMA pipeline in-memory
 // CHECK: Wrote {{[0-9]+}} DMA sequence instructions to
 // CHECK: Compilation completed successfully
 
