@@ -177,8 +177,13 @@ SECTIONS
       output << "  .bss : { *(.bss*) } > data\n";
       output << "}\n";
       if (auto coreOp = tile.getCoreOp()) {
-        if (auto fileAttr = coreOp.getLinkWith())
+        if (auto filesAttr = coreOp.getLinkFiles()) {
+          for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+            output << "INPUT(" << f.getValue() << ")\n";
+        } else if (auto fileAttr = coreOp.getLinkWith()) {
+          // deprecated fallback
           output << "INPUT(" << fileAttr.value().str() << ")\n";
+        }
 
         output << "PROVIDE(main = core_" << tile.getCol() << "_"
                << tile.getRow() << ");\n";
