@@ -1836,6 +1836,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   if (failed(runLLVMLoweringPipeline(*coreModule, deviceName, core.col,
                                      core.row, aieTarget, tmpDirName))) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::errs() << "Error lowering core to LLVM\n";
     return failure();
   }
@@ -1850,6 +1851,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
   std::unique_ptr<llvm::Module> llvmModule =
       translateModuleToLLVMIR(*coreModule, llvmCtx);
   if (!llvmModule) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::errs() << "Error translating to LLVM IR for core (" << core.col
                  << ", " << core.row << ")\n";
     return failure();
@@ -1860,6 +1862,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::error_code ec;
     raw_fd_ostream llvmIRFile(llvmIRPath, ec);
     if (ec) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error opening LLVM IR file: " << ec.message() << "\n";
       return failure();
     }
@@ -1882,6 +1885,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::error_code ec;
     raw_fd_ostream ldScriptFile(ldScriptPath, ec);
     if (ec) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error opening linker script file: " << ec.message()
                    << "\n";
       return failure();
@@ -1889,6 +1893,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     if (failed(xilinx::AIE::AIETranslateToLdScript(
             moduleOp, ldScriptFile, core.col, core.row, deviceName))) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error generating linker script\n";
       return failure();
     }
@@ -1911,6 +1916,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     // Step 4a: Read LLVM IR and apply downgrade for Chess compatibility
     auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
     if (!bufOrErr) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error reading LLVM IR file: "
                    << bufOrErr.getError().message() << "\n";
       return failure();
@@ -1921,11 +1927,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallString<128> chessHackPath(tmpDirName);
     sys::path::append(chessHackPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".chesshack.ll");
+                          "_" + std::to_string(core.col) + "_" +
+                          std::to_string(core.row) + ".chesshack.ll");
     {
       std::error_code ec;
       raw_fd_ostream chessHackFile(chessHackPath, ec);
       if (ec) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         llvm::errs() << "Error writing chesshack file: " << ec.message()
                      << "\n";
         return failure();
@@ -1961,6 +1969,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     // Find xchesscc_wrapper in PATH
     auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
     if (!xchessccWrapperPath) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error: Could not find xchesscc_wrapper in PATH\n";
       return failure();
     }
@@ -1984,6 +1993,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                               std::string(objPath)};
 
     if (!executeCommand(xchessCmd)) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error running xchesscc_wrapper\n";
       return failure();
     }
@@ -1998,6 +2008,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::string peanoLlc = findPeanoTool("llc");
 
     if (peanoOpt.empty() || peanoLlc.empty()) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error: Could not find Peano compiler tools (opt/llc)\n";
       llvm::errs() << "Set PEANO_INSTALL_DIR or use --peano option\n";
       return failure();
@@ -2024,6 +2035,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (!executeCommand(optCmd)) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error running Peano opt\n";
       return failure();
     }
@@ -2039,6 +2051,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                            std::string(objPath)};
 
     if (!executeCommand(llcCmd)) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error running Peano llc\n";
       return failure();
     }
@@ -2097,12 +2110,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       std::error_code ec;
       raw_fd_ostream bcfFile(bcfPath, ec);
       if (ec) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         llvm::errs() << "Error opening BCF file: " << ec.message() << "\n";
         return failure();
       }
 
       if (failed(xilinx::AIE::AIETranslateToBCF(moduleOp, bcfFile, core.col,
                                                 core.row, deviceName))) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         llvm::errs() << "Error generating BCF file\n";
         return failure();
       }
@@ -2164,6 +2179,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         sys::fs::remove(destPath);
         std::error_code ec = sys::fs::copy_file(srcPath, destPath);
         if (ec) {
+          std::lock_guard<std::mutex> lock(outputMutex);
           llvm::errs() << "Error: Could not copy link_with file: " << srcPath
                        << " to " << destPath << ": " << ec.message() << "\n";
           return failure();
@@ -2185,6 +2201,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     // Find xchesscc_wrapper
     auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
     if (!xchessccWrapperPath) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error: Could not find xchesscc_wrapper in PATH for "
                       "xbridge linking\n";
       return failure();
@@ -2214,6 +2231,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     linkCmd.push_back(std::string(elfPath));
 
     if (!executeCommand(linkCmd)) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error linking with xbridge\n";
       return failure();
     }
@@ -2226,6 +2244,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     // Link with Peano clang
     std::string peanoClang = findPeanoTool("clang");
     if (peanoClang.empty()) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error: Could not find Peano clang\n";
       return failure();
     }
@@ -2318,6 +2337,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
         std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
         if (ec) {
+          std::lock_guard<std::mutex> lock(outputMutex);
           llvm::errs() << "Error: Could not copy link_with file: "
                        << srcLinkWith << " to " << destLinkWith << "\n";
           llvm::errs() << "Error: " << ec.message() << "\n";
@@ -2367,6 +2387,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     linkCmd.push_back(std::string(elfPath));
 
     if (!executeCommand(linkCmd)) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error linking ELF file\n";
       return failure();
     }
