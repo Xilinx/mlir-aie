@@ -797,7 +797,7 @@ class FlowRunner:
                     g.write(mlir_module_str)
         return mlir_module
 
-    async def do_call(self, task_id, command, force=False):
+    async def do_call(self, task_id, command, force=False, cwd=None):
         if self.stopall:
             return
 
@@ -809,7 +809,10 @@ class FlowRunner:
             print(commandstr)
         if self.opts.execute or force:
             proc = await asyncio.create_subprocess_exec(
-                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
             )
             stdout, stderr = await proc.communicate()
             ret = proc.returncode
@@ -1064,7 +1067,7 @@ class FlowRunner:
                     elif self.opts.link:
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_core_llvmir_chesslinked, "-o", file_core_obj])
                         opt_level = opts.opt_level
-                        await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                        await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf], cwd=self.tmpdirname)
                 else:
                     file_core_obj = unified_file_core_obj
                     if opts.link and opts.xbridge:
@@ -1072,7 +1075,7 @@ class FlowRunner:
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif opts.link:
                         opt_level = opts.opt_level
-                        await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                        await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf], cwd=self.tmpdirname)
 
             elif opts.compile:
                 if not opts.unified:
@@ -1100,7 +1103,7 @@ class FlowRunner:
                     await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                 elif opts.link:
                     opt_level = opts.opt_level
-                    await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                    await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf], cwd=self.tmpdirname)
 
             self.progress_bar.update(parent_task_id, advance=1)
             self.progress_bar.update(task, advance=0, visible=False)
