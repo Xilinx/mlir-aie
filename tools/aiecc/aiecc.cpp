@@ -1110,6 +1110,53 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
 // In-Memory Pass Execution
 //===----------------------------------------------------------------------===//
 
+/// Check if the module contains any aie.trace ops.
+static bool hasTraceOps(ModuleOp moduleOp) {
+  bool found = false;
+  moduleOp.walk([&](xilinx::AIE::TraceOp) {
+    found = true;
+    return WalkResult::interrupt();
+  });
+  return found;
+}
+
+/// Run trace lowering passes in-memory, only when trace ops exist.
+/// Separated from resource allocation to avoid crashes on Assert builds
+/// when no trace ops are present.
+static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp) {
+  if (!hasTraceOps(moduleOp))
+    return success();
+
+  MLIRContext *ctx = moduleOp.getContext();
+  PassManager pm(ctx);
+
+  if (verbose) {
+    pm.enableVerifier(true);
+    pm.enableCrashReproducerGeneration("trace_lowering_crash.mlir");
+  }
+
+  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  devicePm.addPass(xilinx::AIE::createAIETraceToConfigPass());
+  devicePm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
+  devicePm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
+
+  if (verbose) {
+    llvm::outs() << "Running trace lowering pipeline in-memory\n";
+    llvm::outs().flush();
+  }
+
+  if (failed(pm.run(moduleOp))) {
+    llvm::errs() << "Error: Trace lowering pipeline failed\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Trace lowering pipeline completed successfully\n";
+  }
+
+  return success();
+}
+
 /// Run the resource allocation pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
 static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
@@ -1144,13 +1191,21 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
   // Step 4: Device-level passes - use nest<DeviceOp>()
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  // Trace lowering (before resource allocation)
-  devicePm.addPass(xilinx::AIE::createAIETraceToConfigPass());
-  devicePm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
-  devicePm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
+  // Note: Trace lowering runs in a separate guarded pipeline
+  // (runTraceLoweringPipeline) before this function is called.
   devicePm.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
   devicePm.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
-  devicePm.addPass(xilinx::AIE::createAIEObjectFifoStatefulTransformPass());
+  {
+    std::string objFifoPipelineStr =
+        "aie-objectFifo-stateful-transform{dynamic-objFifos=" +
+        std::string(dynamicObjFifos ? "true" : "false") +
+        " packet-sw-objFifos=" +
+        std::string(packetSwObjFifos ? "true" : "false") + "}";
+    if (failed(parsePassPipeline(objFifoPipelineStr, devicePm))) {
+      llvm::errs() << "Error: Failed to parse objectFifo pipeline\n";
+      return failure();
+    }
+  }
   devicePm.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
   devicePm.addPass(xilinx::AIE::createAIELowerCascadeFlowsPass());
   devicePm.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
@@ -4659,7 +4714,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     llvm::outs() << "Detected AIE target: " << aieTarget << "\n";
   }
 
-  // Step 1: Run resource allocation and lowering passes in-memory
+  // Step 1a: Run trace lowering (only when trace ops exist)
+  if (failed(runTraceLoweringPipeline(moduleOp))) {
+    return failure();
+  }
+
+  // Step 1b: Run resource allocation and lowering passes in-memory
   // Run on ALL devices (matching legacy Python driver behavior).
   if (failed(runResourceAllocationPipeline(moduleOp, aieTarget))) {
     return failure();
