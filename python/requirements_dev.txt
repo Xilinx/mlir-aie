@@ -1,7 +1,9 @@
-cmake>=3.29, <4.0
+cmake>=3.31, <4.0
 pybind11>=2.13.0
 setuptools>=61.0
 wheel
+ninja
+cibuildwheel
 pre-commit
 nanobind>=2.9
 lit

@@ -64,7 +64,7 @@ environment = { PIP_NO_BUILD_ISOLATION = "false" }
 before-build = [
     "pip install delvewheel",
     "pip install -r requirements.txt",
-    "bash {project}\\scripts\\download_mlir.sh",
+    'python "{project}/scripts/download_mlir.py"',
 ]
 
 [build-system]
