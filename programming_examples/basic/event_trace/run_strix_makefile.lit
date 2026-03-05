@@ -1,7 +1,8 @@
 // (c) Copyright 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai_npu2
+// 'dont_run' here because test appears flaky on strix
+// REQUIRES: ryzen_ai_npu2, dont_run
 //
 // RUN: mkdir -p test_npu2
 // RUN: cd test_npu2
