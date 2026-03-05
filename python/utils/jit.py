@@ -72,15 +72,6 @@ def jit(function=None, is_placed=True, use_cache=True):
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
         ExternalFunction._instances.clear()
 
-        # Find ExternalFunction instances in arguments and kwargs
-        external_kernels = []
-        for arg in args:
-            if isinstance(arg, ExternalFunction):
-                external_kernels.append(arg)
-        for value in kwargs.values():
-            if isinstance(value, ExternalFunction):
-                external_kernels.append(value)
-
         # Execute the function to generate MLIR
         if is_placed:
             with mlir_mod_ctx() as ctx:
@@ -92,12 +83,10 @@ def jit(function=None, is_placed=True, use_cache=True):
         else:
             mlir_module = function(*args, **kwargs)
 
-        # Compile all ExternalFunction instances that were created during this JIT compilation
-        for func in ExternalFunction._instances:
-            if (
-                not hasattr(func, "_compiled") or not func._compiled
-            ):  # Don't compile if already compiled
-                external_kernels.append(func)
+        # Collect ExternalFunction instances registered during this JIT compilation
+        external_kernels = [
+            func for func in ExternalFunction._instances if not func._compiled
+        ]
 
         # Determine target architecture based on device type
         current_device = DefaultNPURuntime.device()
