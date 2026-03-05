@@ -23,25 +23,10 @@ import subprocess
 import sys
 import tempfile
 import warnings
-from pathlib import Path
 
 
 def _find_aiecc_binary():
-    """
-    Find the C++ aiecc binary.
-
-    Search order:
-    1. Relative to this file (installed location: python/compiler/aiecc -> bin/aiecc)
-    2. In PATH
-    """
-    # Check relative to this file (installed location)
-    # python/compiler/aiecc/main.py -> bin/aiecc
-    bin_dir = Path(__file__).parent.parent.parent.parent / "bin"
-    aiecc_path = bin_dir / "aiecc"
-    if aiecc_path.exists() and os.access(aiecc_path, os.X_OK):
-        return str(aiecc_path)
-
-    # Check PATH
+    """Find the C++ aiecc binary in PATH."""
     path = shutil.which("aiecc")
     if path:
         return path
