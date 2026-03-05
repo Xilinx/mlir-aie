@@ -17,6 +17,11 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEXINLINETRACECONFIG
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -25,7 +30,7 @@ using namespace xilinx::AIEX;
 namespace {
 
 struct AIEInlineTraceConfigPass
-    : AIEXInlineTraceConfigBase<AIEInlineTraceConfigPass> {
+    : xilinx::AIEX::impl::AIEXInlineTraceConfigBase<AIEInlineTraceConfigPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();

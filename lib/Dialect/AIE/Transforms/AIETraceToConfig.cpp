@@ -16,13 +16,20 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIETRACETOCONFIG
+#define GEN_PASS_DEF_AIETRACEREGPACKWRITES
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
 namespace {
 
-struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
+struct AIETraceToConfigPass
+    : xilinx::AIE::impl::AIETraceToConfigBase<AIETraceToConfigPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder(device);
@@ -406,7 +413,7 @@ xilinx::AIE::createAIETraceToConfigPass() {
 namespace {
 
 struct AIETraceRegPackWritesPass
-    : AIETraceRegPackWritesBase<AIETraceRegPackWritesPass> {
+    : xilinx::AIE::impl::AIETraceRegPackWritesBase<AIETraceRegPackWritesPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();
