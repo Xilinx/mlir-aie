@@ -124,10 +124,14 @@ def compile_mlir_module(
         with open(mlir_file, "w") as f:
             f.write(str(mlir_module))
         aiecc_bin = aiecc._find_aiecc_binary()
-        result = subprocess.run([aiecc_bin, mlir_file] + args, capture_output=True, text=True)
+        result = subprocess.run(
+            [aiecc_bin, mlir_file] + args, capture_output=True, text=True
+        )
         if result.returncode != 0:
             error_msg = result.stderr if result.stderr else result.stdout
-            raise RuntimeError(f"[aiecc] Compilation failed with exit code {result.returncode}: {error_msg}")
+            raise RuntimeError(
+                f"[aiecc] Compilation failed with exit code {result.returncode}: {error_msg}"
+            )
     else:
         try:
             aiecc.run(mlir_module, args)
