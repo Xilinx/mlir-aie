@@ -1933,7 +1933,29 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                       std::to_string(core.row) + ".ld.script");
 
   if (!xbridge) {
-    // Generate linker script to file using the original (unmodified) module
+    // Before generating the linker script, patch the CoreOp's link_files
+    // attribute to use absolute paths so that ld.lld's INPUT() directives
+    // resolve correctly regardless of the linker's working directory.
+    moduleOp->walk([&](xilinx::AIE::CoreOp coreOp) {
+      auto tileOp =
+          dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+      if (!tileOp || tileOp.getCol() != core.col || tileOp.getRow() != core.row)
+        return;
+      if (auto filesAttr = coreOp.getLinkFiles()) {
+        SmallVector<mlir::Attribute> absFiles;
+        for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+          StringRef name = f.getValue();
+          SmallString<256> absPath(tmpDirName);
+          sys::path::append(absPath, sys::path::filename(name));
+          absFiles.push_back(
+              mlir::StringAttr::get(moduleOp->getContext(), absPath));
+        }
+        coreOp.setLinkFilesAttr(
+            mlir::ArrayAttr::get(moduleOp->getContext(), absFiles));
+      }
+    });
+
+    // Generate linker script to file using the module with absolute link paths
     std::error_code ec;
     raw_fd_ostream ldScriptFile(ldScriptPath, ec);
     if (ec) {
@@ -2358,13 +2380,18 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       // parallel cores that share the same .o filename.
       SmallString<256> destLinkWith(tmpDirName);
       sys::path::append(destLinkWith, sys::path::filename(lf));
-      if (failed(
-              atomicCopyFile(srcLinkWith, tmpDirName, sys::path::filename(lf))))
-        return failure();
+      if (srcLinkWith != destLinkWith) {
+        if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
+                                  sys::path::filename(lf))))
+          return failure();
 
-      if (verbose)
-        llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
-                     << destLinkWith << "\n";
+        if (verbose)
+          llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
+                       << destLinkWith << "\n";
+      } else if (verbose) {
+        llvm::outs() << "link_with object already in place: " << srcLinkWith
+                     << "\n";
+      }
 
       // Note: We don't add the object file to linkCmd because the linker
       // script already has INPUT() directives for each file
@@ -3037,9 +3064,11 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
         SmallString<256> destLinkWith(tmpDirName);
         sys::path::append(destLinkWith, sys::path::filename(lf));
-        if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
-                                  sys::path::filename(lf))))
-          return failure();
+        if (srcLinkWith != destLinkWith) {
+          if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
+                                    sys::path::filename(lf))))
+            return failure();
+        }
       }
 
       SmallString<128> absLdScriptPath;

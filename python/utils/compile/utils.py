@@ -115,10 +115,24 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
-    try:
-        aiecc.run(mlir_module, args)
-    except Exception as e:
-        raise RuntimeError("[aiecc] Compilation failed") from e
+    # Write the MLIR to a file co-located with the work_dir so that the C++
+    # aiecc binary resolves relative link_with paths (e.g. "add_one.o") against
+    # the same directory where compile_external_kernel placed the object files.
+    # If no work_dir is provided, fall back to a temporary file.
+    if work_dir:
+        mlir_file = os.path.join(work_dir, "aie.mlir")
+        with open(mlir_file, "w") as f:
+            f.write(str(mlir_module))
+        aiecc_bin = aiecc._find_aiecc_binary()
+        result = subprocess.run([aiecc_bin, mlir_file] + args, capture_output=True, text=True)
+        if result.returncode != 0:
+            error_msg = result.stderr if result.stderr else result.stdout
+            raise RuntimeError(f"[aiecc] Compilation failed with exit code {result.returncode}: {error_msg}")
+    else:
+        try:
+            aiecc.run(mlir_module, args)
+        except Exception as e:
+            raise RuntimeError("[aiecc] Compilation failed") from e
 
 
 def compile_external_kernel(func, kernel_dir, target_arch):
