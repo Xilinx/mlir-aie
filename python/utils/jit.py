@@ -11,6 +11,7 @@ import functools
 import hashlib
 import numpy as np
 
+from aie.extras.context import mlir_mod_ctx
 from .compile import compile_mlir_module, compile_external_kernel
 from .npukernel import NPUKernel
 from aie.dialects.aie import AIEDevice
@@ -83,13 +84,24 @@ def jit(function=None, is_placed=True, use_cache=True):
         ExternalFunction._instances.clear()
 
         # Execute the function to generate MLIR.
-        # resolve_program() opens its own mlir_mod_ctx() internally and returns
-        # its module.  Capturing ctx.module from an outer context would give an
-        # empty module, so we always use the function's return value.
-        mlir_module = function(*args, **kwargs)
-        assert (
-            mlir_module.operation.verify()
-        ), f"Verification failed for '{function.__name__}'"
+        # Placed designs use the raw @device(...) DSL and populate the context
+        # as a side effect (returning nothing), so we must provide an outer
+        # mlir_mod_ctx() and capture ctx.module.
+        # Non-placed designs use Program.resolve_program(), which opens its own
+        # mlir_mod_ctx() internally and returns the module directly; wrapping
+        # them in an outer context would give an empty module.
+        if is_placed:
+            with mlir_mod_ctx() as ctx:
+                function(*args, **kwargs)
+                assert (
+                    ctx.module.operation.verify()
+                ), f"Verification failed for '{function.__name__}'"
+                mlir_module = ctx.module
+        else:
+            mlir_module = function(*args, **kwargs)
+            assert (
+                mlir_module.operation.verify()
+            ), f"Verification failed for '{function.__name__}'"
 
         # Also collect ExternalFunction instances created during function()
         # execution (e.g. inside algorithm helpers that construct them internally).
