@@ -358,10 +358,15 @@ struct AIEDMATasksToNPUPass
         input_strides[i] = (*dims)[j].getStride();
       }
 
-      // Do not check input_sizes[3] because a repeat can still be considered a
-      // linear transfer
-      bool isLinearTransfer = (input_sizes[0] >= 1) && (input_sizes[1] == 1) &&
-                              (input_sizes[2] == 1);
+      // A transfer is linear (flat) when all three inner dimensions collapse to
+      // a single contiguous run: d1 and d2 sizes must be 1, and d0 stride must
+      // be 1 (the innermost-stride requirement already enforced by the
+      // verifier), d1 and d2 strides must be 0 (unused).  The repeat dimension
+      // (d3) is intentionally not tested here because a repeated linear
+      // transfer is still linear for hardware-encoding purposes.
+      bool isLinearTransfer = (input_sizes[1] == 1) && (input_sizes[2] == 1) &&
+                              (input_strides[0] == 1) &&
+                              (input_strides[1] == 0) && (input_strides[2] == 0);
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
