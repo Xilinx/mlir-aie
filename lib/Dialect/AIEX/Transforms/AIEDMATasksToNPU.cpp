@@ -365,10 +365,8 @@ struct AIEDMATasksToNPUPass
       // The repeat dimension (d3) is intentionally not tested here because a
       // repeated linear transfer is still linear for hardware-encoding
       // purposes.
-      bool isLinearTransfer = (input_sizes[1] == 1) && (input_sizes[2] == 1) &&
-                              (input_strides[0] == 1) &&
-                              (input_strides[1] == 0) &&
-                              (input_strides[2] == 0);
+      bool isLinearTransfer =
+          AIEX::isLinearTransfer(input_sizes, input_strides);
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))

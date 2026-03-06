@@ -347,6 +347,12 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
 // specify any data layout transformation, but simply express a contiguous
 // transfer of `len`. We exclude checks to 4th dimension, because repeat count
 // is still possible without a data layout transformation.
+bool AIEX::isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
+                            llvm::ArrayRef<int64_t> strides) {
+  return sizes[1] == 1 && sizes[2] == 1 && strides[0] == 1 && strides[1] == 0 &&
+         strides[2] == 0;
+}
+
 bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -356,8 +362,7 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  return (inputSizes[1] == 1 && inputSizes[2] == 1 && inputStrides[0] == 1 &&
-          inputStrides[1] == 0 && inputStrides[2] == 0);
+  return isLinearTransfer(inputSizes, inputStrides);
 }
 
 // Helper method to check if a requested burst length is supported by the target
@@ -778,9 +783,9 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
   }
   for (unsigned i = 0, n = expectedArgTypes.size(); i < n; i++) {
     if (actualArgTypes[i] != expectedArgTypes[i]) {
-      return emitOpError("Argument ") << (i + 1) << " types mismatch: "
-                                      << "expected " << expectedArgTypes[i]
-                                      << " but got " << actualArgTypes[i];
+      return emitOpError("Argument ")
+             << (i + 1) << " types mismatch: " << "expected "
+             << expectedArgTypes[i] << " but got " << actualArgTypes[i];
     }
   }
   return success();
@@ -1002,9 +1007,9 @@ LogicalResult AIEX::RunOp::verify() {
     Value val = values[i];
 
     if (arg.getType() != val.getType()) {
-      return emitOpError() << "argument " << i << " type mismatch: "
-                           << "expected " << arg.getType() << " but got "
-                           << val.getType();
+      return emitOpError() << "argument " << i
+                           << " type mismatch: " << "expected " << arg.getType()
+                           << " but got " << val.getType();
     }
   }
 
