@@ -30,6 +30,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -538,6 +539,9 @@ class LitConfigHelper:
             aie_obj_root: AIE object root directory
             vitis_aietools_dir: Vitis AIE tools directory
         """
+        # Ensure hardware discovery messages are visible during lit runs.
+        logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+
         # Python path for AIE Python bindings
         config_obj.environment["PYTHONPATH"] = os.path.join(aie_obj_root, "python")
 

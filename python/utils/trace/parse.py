@@ -771,8 +771,6 @@ def main():
         format="%(message)s",
         stream=sys.stderr,
     )
-    if opts.debug:
-        logging.getLogger("aie").setLevel(logging.DEBUG)
 
     # set colshift based on optional argument
     colshift = int(opts.colshift) if opts.colshift else None

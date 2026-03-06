@@ -8,6 +8,9 @@
 import logging
 import os
 
+# Prevent "No handlers could be found" warnings when aie is used as a library.
+logging.getLogger("aie").addHandler(logging.NullHandler())
+
 # Honour AIE_LOG_LEVEL env var (e.g. DEBUG, INFO, WARNING, ERROR, CRITICAL).
 # This must be done before any aie submodule emits a log record.
 _log_level_str = os.environ.get("AIE_LOG_LEVEL", "").upper()

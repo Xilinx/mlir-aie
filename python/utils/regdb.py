@@ -823,7 +823,7 @@ Examples:
     )
 
     args = parser.parse_args()
-    logging.basicConfig(level=logging.WARNING, format="%(message)s", stream=sys.stderr)
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
 
     # MLIR annotation mode
     if args.annotate:

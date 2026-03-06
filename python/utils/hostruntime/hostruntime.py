@@ -4,6 +4,7 @@
 from abc import ABC, abstractmethod
 import logging
 import numpy as np
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -359,16 +360,14 @@ class HostRuntime(ABC):
             trace_config (TraceConfig): Trace configuration.
             verbosity (int, optional): Verbosity level. Defaults to 0.
         """
-        if verbosity >= 1:
-            logger.debug("trace_buffer shape: %s", trace_buffer.shape)
-            logger.debug("trace_buffer dtype: %s", trace_buffer.dtype)
+        logger.debug("trace_buffer shape: %s", trace_buffer.shape)
+        logger.debug("trace_buffer dtype: %s", trace_buffer.dtype)
         trace_config.write_trace(trace_buffer)
 
         if trace_config.enable_ctrl_pkts:
-            if verbosity >= 1:
-                logger.debug("ctrl_buffer shape: %s", ctrl_buffer.shape)
-                logger.debug("ctrl_buffer dtype: %s", ctrl_buffer.dtype)
-                logger.debug("ctrl buffer: %s", [hex(d) for d in ctrl_buffer])
+            logger.debug("ctrl_buffer shape: %s", ctrl_buffer.shape)
+            logger.debug("ctrl_buffer dtype: %s", ctrl_buffer.dtype)
+            logger.debug("ctrl buffer: %s", [hex(d) for d in ctrl_buffer])
             for i in range(ctrl_buffer.size // 2):
                 col, row, pkt_type, pkt_id = extract_tile(ctrl_buffer[i * 2])
                 overflow = True if (ctrl_buffer[i * 2 + 1] >> 8) == 3 else False

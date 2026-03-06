@@ -650,7 +650,7 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
                     logger.debug("event %s not found.", event)
                 check_time = True
             else:
-                error += 1
+                errors += 1
                 logger.warning(
                     "Invalid signal in line #%s expecting time (%s)", i, line
                 )

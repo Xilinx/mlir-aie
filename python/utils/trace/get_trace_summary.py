@@ -26,6 +26,7 @@ def parse_args():
 
 if __name__ == "__main__":
     opts = parse_args()
+    logging.basicConfig(level=logging.WARNING, format="%(message)s", stream=sys.stderr)
     cycles = get_cycles_summary(opts.input)
 
     logger.debug("cycles: %s", cycles)

@@ -129,4 +129,4 @@ class Program:
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
         if verify != True:
-            logger.warning(str(verify))
+            logger.error(str(verify))
