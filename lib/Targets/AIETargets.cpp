@@ -104,9 +104,8 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
-  output << "_symbol " << bufName << " "
-         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
-         << '\n';
+  output << "_symbol " << bufName << " " << "0x"
+         << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes << '\n';
 }
 
 LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output,
@@ -327,6 +326,12 @@ void registerAIETranslations() {
       "aie-flows-to-json", "Translate AIE flows to JSON",
       [](ModuleOp module, raw_ostream &output) {
         return AIEFlowsToJSON(module, output, deviceName);
+      },
+      registerDialects);
+  TranslateFromMLIRRegistration registrationFlowsDOT(
+      "aie-flows-to-dot", "Translate AIE flows to GraphViz DOT format",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIEFlowsToDOT(module, output, deviceName);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationXPE(
