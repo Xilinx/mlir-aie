@@ -358,13 +358,7 @@ struct AIEDMATasksToNPUPass
         input_strides[i] = (*dims)[j].getStride();
       }
 
-      // A transfer is linear (flat) when all three inner dimensions collapse to
-      // a single contiguous unit-stride run: d1 and d2 sizes must be 1 (no
-      // outer looping), d0 stride must be 1 (innermost elements are
-      // contiguous), and d1/d2 strides must be 0 (unused when size == 1).
-      // The repeat dimension (d3) is intentionally not tested here because a
-      // repeated linear transfer is still linear for hardware-encoding
-      // purposes.
+      // d3 (repeat) is excluded; a repeated linear transfer is still linear.
       bool isLinearTransfer =
           AIEX::isLinearTransfer(input_sizes, input_strides);
 

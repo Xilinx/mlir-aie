@@ -8,26 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Regression test for the isLinearTransfer predicate in AIEDMATasksToNPU.cpp.
-//
-// The predicate must check strides in addition to sizes.  A BD where outer
-// dimensions have size=1 but non-zero strides was previously misclassified as
-// linear (the old predicate only checked sizes[1]==1 && sizes[2]==1).  The
-// corrected predicate additionally requires strides[0]==1 and
-// strides[1]==strides[2]==0, matching isLinearTransferWithoutTransformation()
-// used by NpuDmaMemcpyNdOp.
-//
-// Test 1: dimensions with sizes=[1,1,8] and non-zero outer strides.
-//   outermost-first: [<size=1,stride=4>, <size=1,stride=4>, <size=8,stride=1>]
-//   innermost-first: sizes=[8,1,1], strides=[1,4,4]
-//   Old predicate (sizes only): sizes[1]==1 && sizes[2]==1 -> isLinear=true
-//     -> d0_size=0 (flat path, d0 wrap limit check skipped — incorrect)
-//   New predicate (sizes+strides): strides[1]=4!=0 -> isLinear=false
-//     -> d0_size=8 (ND path — correct)
-//
-// Test 2: single truly-linear dimension [<size=8,stride=1>].
-//   innermost-first: sizes=[8,1,1], strides=[1,0,0]
-//   New predicate: isLinear=true -> d0_size=0 (flat path — correct)
+// Regression test: isLinearTransfer must check strides as well as sizes.
 //
 //===----------------------------------------------------------------------===//
 
