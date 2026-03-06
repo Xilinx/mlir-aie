@@ -115,22 +115,29 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
-    # Write the MLIR to a file co-located with the work_dir so that the C++
-    # aiecc binary resolves relative link_with paths (e.g. "add_one.o") against
-    # the same directory where compile_external_kernel placed the object files.
-    # If no work_dir is provided, fall back to a temporary file.
+    # Write the MLIR to a file co-located with work_dir so that the C++ aiecc
+    # binary resolves relative link_with paths (e.g. "add_one.o") against the
+    # same directory where compile_external_kernel placed the compiled objects.
+    # If no work_dir is provided, fall back to the aiecc.run() helper which
+    # writes to a temporary file internally.
     if work_dir:
+        aiecc_bin = shutil.which("aiecc")
+        if not aiecc_bin:
+            raise RuntimeError(
+                "Could not find 'aiecc' binary. Ensure mlir-aie is installed "
+                "and its bin directory is in PATH."
+            )
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
             f.write(str(mlir_module))
-        aiecc_bin = aiecc._find_aiecc_binary()
         result = subprocess.run(
             [aiecc_bin, mlir_file] + args, capture_output=True, text=True
         )
         if result.returncode != 0:
             error_msg = result.stderr if result.stderr else result.stdout
             raise RuntimeError(
-                f"[aiecc] Compilation failed with exit code {result.returncode}: {error_msg}"
+                f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
+                f"{error_msg}"
             )
     else:
         try:

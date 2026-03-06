@@ -1106,7 +1106,7 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
   }
 
   // Prefer canonical link_files ArrayAttr (populated by AIEAssignCoreLinkFiles,
-  // which runs as part of the resource-allocation pipeline above).
+  // which runs as part of the resource-allocation pipeline).
   if (auto filesAttr = coreOp.getLinkFiles()) {
     for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
       info.linkFiles.push_back(f.getValue().str());
@@ -1933,10 +1933,11 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                       std::to_string(core.row) + ".ld.script");
 
   if (!xbridge) {
-    // Before generating the linker script, patch the CoreOp's link_files
-    // attribute to use absolute paths so that ld.lld's INPUT() directives
-    // resolve correctly regardless of the linker's working directory.
-    moduleOp->walk([&](xilinx::AIE::CoreOp coreOp) {
+    // Rewrite link_files on this core's clone to use absolute paths so that
+    // ld.lld's INPUT() directives resolve correctly regardless of the linker's
+    // working directory.  We operate on coreModule (the per-thread clone), not
+    // on the shared moduleOp, to avoid data races with parallel core threads.
+    coreModule->walk([&](xilinx::AIE::CoreOp coreOp) {
       auto tileOp =
           dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
       if (!tileOp || tileOp.getCol() != core.col || tileOp.getRow() != core.row)
@@ -1944,18 +1945,17 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       if (auto filesAttr = coreOp.getLinkFiles()) {
         SmallVector<mlir::Attribute> absFiles;
         for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
-          StringRef name = f.getValue();
           SmallString<256> absPath(tmpDirName);
-          sys::path::append(absPath, sys::path::filename(name));
+          sys::path::append(absPath, sys::path::filename(f.getValue()));
           absFiles.push_back(
-              mlir::StringAttr::get(moduleOp->getContext(), absPath));
+              mlir::StringAttr::get(coreModule->getContext(), absPath));
         }
         coreOp.setLinkFilesAttr(
-            mlir::ArrayAttr::get(moduleOp->getContext(), absFiles));
+            mlir::ArrayAttr::get(coreModule->getContext(), absFiles));
       }
     });
 
-    // Generate linker script to file using the module with absolute link paths
+    // Generate linker script from the patched clone.
     std::error_code ec;
     raw_fd_ostream ldScriptFile(ldScriptPath, ec);
     if (ec) {
@@ -1966,7 +1966,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (failed(xilinx::AIE::AIETranslateToLdScript(
-            moduleOp, ldScriptFile, core.col, core.row, deviceName))) {
+            *coreModule, ldScriptFile, core.col, core.row, deviceName))) {
       std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error generating linker script\n";
       return failure();
@@ -3068,6 +3068,12 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
           if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
                                     sys::path::filename(lf))))
             return failure();
+          if (verbose)
+            llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
+                         << destLinkWith << "\n";
+        } else if (verbose) {
+          llvm::outs() << "link_with object already in place: " << srcLinkWith
+                       << "\n";
         }
       }
 

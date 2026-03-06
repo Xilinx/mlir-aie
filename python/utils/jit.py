@@ -69,19 +69,18 @@ def jit(function=None, is_placed=True, use_cache=True):
             tensor_args = _filter_tensor_args(args)
             return cached_kernel(*tensor_args, **kwargs)
 
-        # Collect ExternalFunction instances passed directly as arguments.
-        # These are captured before _instances.clear() since __init__ adds to
-        # _instances at construction time (outside the JIT call), so they would
-        # be lost after the clear below.
-        external_kernels = []
-        for arg in args:
-            if isinstance(arg, ExternalFunction):
-                external_kernels.append(arg)
-        for value in kwargs.values():
-            if isinstance(value, ExternalFunction):
-                external_kernels.append(value)
+        # Collect ExternalFunction instances passed as direct arguments first.
+        # ExternalFunction.__init__ registers to _instances at construction time
+        # (before this JIT call), so they must be captured before the clear below.
+        # Note: ExternalFunction instances nested inside containers are not
+        # collected here; top-level args cover all known call patterns.
+        external_kernels = [
+            arg for arg in args if isinstance(arg, ExternalFunction)
+        ] + [v for v in kwargs.values() if isinstance(v, ExternalFunction)]
+        seen = set(id(k) for k in external_kernels)
 
-        # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
+        # Clear stale instances from previous (possibly failed) runs so that a
+        # broken kernel doesn't prevent a corrected one from being recompiled.
         ExternalFunction._instances.clear()
 
         # Execute the function to generate MLIR
@@ -95,13 +94,13 @@ def jit(function=None, is_placed=True, use_cache=True):
         else:
             mlir_module = function(*args, **kwargs)
 
-        # Also collect any ExternalFunction instances created during function()
+        # Also collect ExternalFunction instances created during function()
         # execution (e.g. inside algorithm helpers that construct them internally).
         for func in ExternalFunction._instances:
-            if not func._compiled and func not in external_kernels:
+            if not func._compiled and id(func) not in seen:
                 external_kernels.append(func)
+                seen.add(id(func))
 
-        # Determine target architecture based on device type
         current_device = DefaultNPURuntime.device()
 
         # Determine target architecture based on device type
