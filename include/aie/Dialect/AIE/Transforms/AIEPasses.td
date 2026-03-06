@@ -13,6 +13,26 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
+  let summary =
+      "Infer per-core link_files from func-level link_with attributes";
+  let description = [{
+    Walks each aie.core and collects the set of external object files it needs
+    by tracing call edges to func.func declarations that carry a "link_with"
+    string attribute.  The result is stored in the CoreOp's "link_files"
+    StrArrayAttr (a typed array of strings).
+
+    Core-level "link_with" (deprecated) is also migrated: its value is
+    added to the set and the attribute is removed from the CoreOp.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignCoreLinkFilesPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{

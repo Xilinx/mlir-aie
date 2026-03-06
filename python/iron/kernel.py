@@ -58,7 +58,8 @@ class Kernel(BaseKernel):
 
         Args:
             name (str): The name of the function
-            bin_name (str): The name of the binary (used for linking to a compute core)
+            bin_name (str): The name of the object file (set as link_with on the func.func
+                declaration; also used as the output filename when compiling ExternalFunction sources)
             arg_types (list[type[np.ndarray]  |  np.dtype], optional): The type signature of the function. Defaults to [].
         """
         super().__init__(name, arg_types)
@@ -74,7 +75,9 @@ class Kernel(BaseKernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if not self._op:
-            self._op = external_func(self._name, inputs=self._arg_types)
+            self._op = external_func(
+                self._name, inputs=self._arg_types, link_with=self._bin_name
+            )
 
 
 class ExternalFunction(Kernel):

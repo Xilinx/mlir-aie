@@ -333,7 +333,8 @@ def AIE_CoreOp: AIE_Op<"core", [
   let arguments = (
     ins Index:$tile,
     DefaultValuedAttr<AIEI32Attr, "0x400">:$stack_size,
-    OptionalAttr<StrAttr>:$link_with,
+    OptionalAttr<StrAttr>:$link_with,   // deprecated: use link_with on func.func instead
+    OptionalAttr<StrArrayAttr>:$link_files, // canonical post-pass list of .o paths
     OptionalAttr<StrAttr>:$elf_file,
     OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering
   );

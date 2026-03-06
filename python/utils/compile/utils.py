@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
-from .link import merge_object_files
 
 
 def compile_cxx_core_function(
@@ -116,10 +115,35 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
-    try:
-        aiecc.run(mlir_module, args)
-    except Exception as e:
-        raise RuntimeError("[aiecc] Compilation failed") from e
+    # Write the MLIR to a file co-located with work_dir so that the C++ aiecc
+    # binary resolves relative link_with paths (e.g. "add_one.o") against the
+    # same directory where compile_external_kernel placed the compiled objects.
+    # If no work_dir is provided, fall back to the aiecc.run() helper which
+    # writes to a temporary file internally.
+    if work_dir:
+        aiecc_bin = shutil.which("aiecc")
+        if not aiecc_bin:
+            raise RuntimeError(
+                "Could not find 'aiecc' binary. Ensure mlir-aie is installed "
+                "and its bin directory is in PATH."
+            )
+        mlir_file = os.path.join(work_dir, "aie.mlir")
+        with open(mlir_file, "w") as f:
+            f.write(str(mlir_module))
+        result = subprocess.run(
+            [aiecc_bin, mlir_file] + args, capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            error_msg = result.stderr if result.stderr else result.stdout
+            raise RuntimeError(
+                f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
+                f"{error_msg}"
+            )
+    else:
+        try:
+            aiecc.run(mlir_module, args)
+        except Exception as e:
+            raise RuntimeError("[aiecc] Compilation failed") from e
 
 
 def compile_external_kernel(func, kernel_dir, target_arch):
@@ -146,36 +170,27 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     # Handle both source_string and source_file cases
     if func._source_string is not None:
         # Use source_string (write to file)
-        try:
-            with open(source_file, "w") as f:
-                f.write(func._source_string)
-        except Exception as e:
-            raise
+        with open(source_file, "w") as f:
+            f.write(func._source_string)
     elif func._source_file is not None:
         # Use source_file (copy existing file)
         # Check if source file exists before copying
         if os.path.exists(func._source_file):
-            try:
-                shutil.copy2(func._source_file, source_file)
-            except Exception as e:
-                raise
+            shutil.copy2(func._source_file, source_file)
         else:
             return
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    try:
-        compile_cxx_core_function(
-            source_path=source_file,
-            target_arch=target_arch,
-            output_path=output_file,
-            include_dirs=func._include_dirs,
-            compile_args=func._compile_flags,
-            cwd=kernel_dir,
-            verbose=False,
-        )
-    except Exception as e:
-        raise
+    compile_cxx_core_function(
+        source_path=source_file,
+        target_arch=target_arch,
+        output_path=output_file,
+        include_dirs=func._include_dirs,
+        compile_args=func._compile_flags,
+        cwd=kernel_dir,
+        verbose=False,
+    )
 
     # Mark the function as compiled
     func._compiled = True
