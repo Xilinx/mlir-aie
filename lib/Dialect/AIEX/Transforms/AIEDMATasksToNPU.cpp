@@ -359,11 +359,12 @@ struct AIEDMATasksToNPUPass
       }
 
       // A transfer is linear (flat) when all three inner dimensions collapse to
-      // a single contiguous run: d1 and d2 sizes must be 1, and d0 stride must
-      // be 1 (the innermost-stride requirement already enforced by the
-      // verifier), d1 and d2 strides must be 0 (unused).  The repeat dimension
-      // (d3) is intentionally not tested here because a repeated linear
-      // transfer is still linear for hardware-encoding purposes.
+      // a single contiguous unit-stride run: d1 and d2 sizes must be 1 (no
+      // outer looping), d0 stride must be 1 (innermost elements are
+      // contiguous), and d1/d2 strides must be 0 (unused when size == 1).
+      // The repeat dimension (d3) is intentionally not tested here because a
+      // repeated linear transfer is still linear for hardware-encoding
+      // purposes.
       bool isLinearTransfer = (input_sizes[1] == 1) && (input_sizes[2] == 1) &&
                               (input_strides[0] == 1) &&
                               (input_strides[1] == 0) &&

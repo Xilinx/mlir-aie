@@ -36,7 +36,8 @@
 // -----
 
 // Test 1: sizes=[1,1,8] with non-zero outer strides -> ND path (d0_size=8).
-// CHECK: d0_size = 8 : i32
+// CHECK-LABEL: aiex.npu.writebd
+// CHECK-SAME:  d0_size = 8 : i32
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
@@ -54,7 +55,8 @@ module {
 // -----
 
 // Test 2: single linear dimension [<size=8,stride=1>] -> linear path (d0_size=0).
-// CHECK: d0_size = 0 : i32
+// CHECK-LABEL: aiex.npu.writebd
+// CHECK-SAME:  d0_size = 0 : i32
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
