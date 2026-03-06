@@ -366,7 +366,8 @@ struct AIEDMATasksToNPUPass
       // transfer is still linear for hardware-encoding purposes.
       bool isLinearTransfer = (input_sizes[1] == 1) && (input_sizes[2] == 1) &&
                               (input_strides[0] == 1) &&
-                              (input_strides[1] == 0) && (input_strides[2] == 0);
+                              (input_strides[1] == 0) &&
+                              (input_strides[2] == 0);
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
