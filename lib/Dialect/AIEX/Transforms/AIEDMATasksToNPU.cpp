@@ -358,10 +358,9 @@ struct AIEDMATasksToNPUPass
         input_strides[i] = (*dims)[j].getStride();
       }
 
-      // Do not check input_sizes[3] because a repeat can still be considered a
-      // linear transfer
-      bool isLinearTransfer = (input_sizes[0] >= 1) && (input_sizes[1] == 1) &&
-                              (input_sizes[2] == 1);
+      // d3 (repeat) is excluded; a repeated linear transfer is still linear.
+      bool isLinearTransfer =
+          AIEX::isLinearTransfer(input_sizes, input_strides);
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
