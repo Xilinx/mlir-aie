@@ -1933,11 +1933,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                       std::to_string(core.row) + ".ld.script");
 
   if (!xbridge) {
-    // Rewrite link_files on this core's clone to use absolute paths so that
-    // ld.lld's INPUT() directives resolve correctly regardless of the linker's
-    // working directory.  We operate on coreModule (the per-thread clone), not
-    // on the shared moduleOp, to avoid data races with parallel core threads.
-    coreModule->walk([&](xilinx::AIE::CoreOp coreOp) {
+    // Clone the pre-lowering module for ldscript generation.  We need a
+    // separate clone here because coreModule will be destructively lowered to
+    // LLVM IR by runLLVMLoweringPipeline below, making it unsuitable for
+    // AIETranslateToLdScript.  We also cannot mutate the shared moduleOp
+    // (data race with parallel core threads), so this per-thread clone is the
+    // correct place to rewrite link_files to absolute paths.
+    OwningOpRef<ModuleOp> ldScriptModule = moduleOp.clone();
+    ldScriptModule->walk([&](xilinx::AIE::CoreOp coreOp) {
       auto tileOp =
           dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
       if (!tileOp || tileOp.getCol() != core.col || tileOp.getRow() != core.row)
@@ -1948,14 +1951,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
           SmallString<256> absPath(tmpDirName);
           sys::path::append(absPath, sys::path::filename(f.getValue()));
           absFiles.push_back(
-              mlir::StringAttr::get(coreModule->getContext(), absPath));
+              mlir::StringAttr::get(ldScriptModule->getContext(), absPath));
         }
         coreOp.setLinkFilesAttr(
-            mlir::ArrayAttr::get(coreModule->getContext(), absFiles));
+            mlir::ArrayAttr::get(ldScriptModule->getContext(), absFiles));
       }
     });
 
-    // Generate linker script from the patched clone.
+    // Generate linker script from the pre-lowering clone with absolute paths.
     std::error_code ec;
     raw_fd_ostream ldScriptFile(ldScriptPath, ec);
     if (ec) {
@@ -1966,7 +1969,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (failed(xilinx::AIE::AIETranslateToLdScript(
-            *coreModule, ldScriptFile, core.col, core.row, deviceName))) {
+            *ldScriptModule, ldScriptFile, core.col, core.row, deviceName))) {
       std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error generating linker script\n";
       return failure();
