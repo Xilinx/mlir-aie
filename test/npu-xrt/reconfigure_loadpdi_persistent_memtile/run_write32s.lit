@@ -5,4 +5,4 @@
 //
 // RUN: %PYTHON aiecc.py -v --generate-full-elf --expand-load-pdis --no-xchesscc --no-xbridge %S/aie.mlir
 // RUN: clang -o test %S/test.cpp -std=c++17 -lstdc++ %xrt_flags
-// RUN: ./test
+// RUN: %run_on_npu2% ./test

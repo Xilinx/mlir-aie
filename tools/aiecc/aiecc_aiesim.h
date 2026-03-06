@@ -21,6 +21,7 @@
 #include "llvm/Support/LogicalResult.h"
 
 #include <string>
+#include <vector>
 
 namespace xilinx {
 namespace aiecc {
@@ -36,6 +37,10 @@ struct AiesimConfig {
   std::string hostTarget = "x86_64-linux-gnu";
   std::string aietoolsPath;
   std::string installPath;
+  /// Host args for aiesim ps.so compilation (source files, -I, -L, -l flags).
+  /// Equivalent to Python's strip_host_args_for_aiesim(opts.host_args):
+  /// all host args except -o.
+  std::vector<std::string> hostArgs;
 };
 
 /// Generate aie_inc.cpp file for host compilation or aiesim.
