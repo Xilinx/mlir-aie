@@ -1812,12 +1812,10 @@ static LogicalResult atomicCopyFile(StringRef src, StringRef destDir,
   tmpFilename += sys::path::extension(destBasename);
   sys::path::append(tmpModel, tmpFilename);
   SmallString<256> tmpPath;
-  int tmpFD;
-  if (sys::fs::createUniqueFile(tmpModel, tmpFD, tmpPath)) {
+  if (sys::fs::createUniqueFile(tmpModel, tmpPath)) {
     llvm::errs() << "Error: could not create temp file in " << destDir << "\n";
     return failure();
   }
-  sys::fs::closeFile(tmpFD);
 
   if (std::error_code ec = sys::fs::copy_file(src, tmpPath)) {
     llvm::errs() << "Error: could not copy " << src << " to " << tmpPath << ": "
