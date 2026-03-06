@@ -87,7 +87,7 @@ void gelu_getaddr_relu(int16 *pd_in, int16 *pa_out) {
       v32acc32 c = sub(ups_to_v32acc32(b, 0), offset);
 
       // shift and save to memory
-      *pa++ = srs_to_v32uint8(c, GELU_ADDRSHFT);
+      *pa++ = to_v32uint8(c, GELU_ADDRSHFT);
     }
 
   // remaining 16 words
@@ -104,7 +104,7 @@ void gelu_getaddr_relu(int16 *pd_in, int16 *pa_out) {
   v32acc32 c = sub(ups_to_v32acc32(b, 0), offset);
 
   // shift and save to memory
-  *pa++ = srs_to_v32uint8(c, GELU_ADDRSHFT);
+  *pa++ = to_v32uint8(c, GELU_ADDRSHFT);
 }
 
 //---------------------------------------------------------

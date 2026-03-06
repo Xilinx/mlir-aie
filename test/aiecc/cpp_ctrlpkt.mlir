@@ -10,17 +10,19 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-ctrlpkt --verbose %s 2>&1 | FileCheck %s
+// Preprocess with overlay (matching ctrl_packet_reconfig test flow)
+// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t_overlay.mlir
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-ctrlpkt --verbose %t_overlay.mlir 2>&1 | FileCheck %s
 
 // CHECK: Generating control packets for device
-// CHECK: Running control packet conversion pipeline in-memory
+// CHECK: Running control packet pipeline in-memory
 // CHECK: Wrote {{[0-9]+}} control packet instructions to
-// CHECK: Running control packet to DMA pipeline in-memory
+// CHECK: Running control packet DMA pipeline in-memory
 // CHECK: Wrote {{[0-9]+}} DMA sequence instructions to
 // CHECK: Compilation completed successfully
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 

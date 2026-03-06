@@ -21,6 +21,11 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEDMATASKSTONPU
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
@@ -79,7 +84,8 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   }
 };
 
-struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
+struct AIEDMATasksToNPUPass
+    : xilinx::AIEX::impl::AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   bool shouldSkipBlock(Block &block) {
     // Allow blocks in the input IR that contain nothing but a next_bd operation

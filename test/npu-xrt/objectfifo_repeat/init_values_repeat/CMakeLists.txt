@@ -14,6 +14,8 @@ cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
+include(../../../../programming_examples/common.cmake)
+
 find_program(WSL NAMES powershell.exe)
 
 if (NOT WSL)
@@ -23,13 +25,7 @@ if (NOT WSL)
     if(NOT DEFINED CMAKE_CXX_COMPILER)
         set(CMAKE_CXX_COMPILER g++-13)
     endif()
-    set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT cloned repo")
-    set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to xrt_coreutil.lib")
-else()
-    set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
-    set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif()
-
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName proj_${TARGET_NAME})
@@ -54,7 +50,6 @@ target_include_directories (${currentTarget} PUBLIC
 target_link_directories(${currentTarget} PUBLIC
     ${XRT_LIB_DIR}
 )
-
 
 target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil
