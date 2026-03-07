@@ -18,7 +18,13 @@ from aie.helpers.taplib.tap import TensorAccessPattern
 
 
 def conv3dk3_spatial(
-    dev, depth: int, width: int, height: int, in_channels: int, out_channels: int, n_cores: int = 1
+    dev,
+    depth: int,
+    width: int,
+    height: int,
+    in_channels: int,
+    out_channels: int,
+    n_cores: int = 1,
 ):
     """
     Spatial parallelism: split height dimension across cores.
@@ -52,11 +58,21 @@ def conv3dk3_spatial(
         "conv3dk3_ui8",
         "conv3dk3_ui8.o",
         [
-            actIn_ty, actIn_ty, actIn_ty,  # 3 planes
-            weights_ty, actOut_ty,
-            np.int32, np.int32, np.int32, np.int32,  # w, h, ci, co
-            np.int32, np.int32, np.int32,  # kw, kh, kd
-            np.int32, np.int32, np.int32,  # check, scale, channel_offset
+            actIn_ty,
+            actIn_ty,
+            actIn_ty,  # 3 planes
+            weights_ty,
+            actOut_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,  # w, h, ci, co
+            np.int32,
+            np.int32,
+            np.int32,  # kw, kh, kd
+            np.int32,
+            np.int32,
+            np.int32,  # check, scale, channel_offset
         ],
     )
 
@@ -88,11 +104,21 @@ def conv3dk3_spatial(
 
             # Each core processes its height slice with 2D conv (kernel_depth=1)
             kernel(
-                plane, plane, plane,
-                elemWts, elemOut,
-                width, height_per_core, in_channels, out_channels,
-                3, 3, 1,  # 3x3x1 kernel (2D per plane)
-                1, 10, 0  # check=middle, scale=10, no channel_offset
+                plane,
+                plane,
+                plane,
+                elemWts,
+                elemOut,
+                width,
+                height_per_core,
+                in_channels,
+                out_channels,
+                3,
+                3,
+                1,  # 3x3x1 kernel (2D per plane)
+                1,
+                10,
+                0,  # check=middle, scale=10, no channel_offset
             )
 
             of_in.release(1)
@@ -124,23 +150,27 @@ def conv3dk3_spatial(
     for c in range(n_cores):
         # Offset: skip to this core's rows
         offset = c * (depth * height_per_core * width * in_channels)
-        in_taps.append(TensorAccessPattern(
-            (1, tensorInSize),
-            offset,
-            [1, 1, 1, actIn_per_core * depth],
-            [0, 0, 0, 1]
-        ))
+        in_taps.append(
+            TensorAccessPattern(
+                (1, tensorInSize),
+                offset,
+                [1, 1, 1, actIn_per_core * depth],
+                [0, 0, 0, 1],
+            )
+        )
 
     # Output: concatenate by height
     out_taps = []
     for c in range(n_cores):
         offset = c * (depth * height_per_core * width * out_channels)
-        out_taps.append(TensorAccessPattern(
-            (1, tensorOutSize),
-            offset,
-            [1, 1, 1, actOut_per_core * depth],
-            [0, 0, 0, 1]
-        ))
+        out_taps.append(
+            TensorAccessPattern(
+                (1, tensorOutSize),
+                offset,
+                [1, 1, 1, actOut_per_core * depth],
+                [0, 0, 0, 1],
+            )
+        )
 
     with rt.sequence(tensorIn_ty, tensorWts_ty, tensorOut_ty) as (I, W, O):
         # Start all workers
@@ -157,7 +187,7 @@ def conv3dk3_spatial(
 
         # Drain outputs (spatial slices)
         for c in range(n_cores):
-            wait = (c == n_cores - 1)
+            wait = c == n_cores - 1
             rt.drain(of_out_fifos[c].cons(), O, out_taps[c], wait=wait)
 
     return Program(dev, rt).resolve_program(SequentialPlacer())
@@ -176,6 +206,7 @@ elif device_name == "npu2_4col":
     n_cores = 4
 elif device_name == "npu2_8col":
     from aie.iron.device import NPU2Col7
+
     dev = NPU2Col7()
     n_cores = 8
 else:

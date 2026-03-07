@@ -39,8 +39,14 @@ from aie.iron import (
 )
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import (
-    NPU2Col1, NPU2Col2, NPU2Col3, NPU2Col4,
-    NPU2Col5, NPU2Col6, NPU2Col7, NPU2,
+    NPU2Col1,
+    NPU2Col2,
+    NPU2Col3,
+    NPU2Col4,
+    NPU2Col5,
+    NPU2Col6,
+    NPU2Col7,
+    NPU2,
     Tile,
 )
 from aie.iron.controlflow import range_
@@ -125,16 +131,22 @@ def conv3dk3_massively_parallel(
     # Get device configuration
     dev, n_cols, n_rows_per_col = get_device_for_cores(n_cores)
 
-    print(f"# Configuration: {n_cores} cores = {n_cols} columns x {n_rows_per_col} rows per column",
-          file=sys.stderr)
+    print(
+        f"# Configuration: {n_cores} cores = {n_cols} columns x {n_rows_per_col} rows per column",
+        file=sys.stderr,
+    )
 
     # Validate input dimensions
-    assert height % n_cores == 0, (
-        f"Height ({height}) must be divisible by n_cores ({n_cores})"
-    )
+    assert (
+        height % n_cores == 0
+    ), f"Height ({height}) must be divisible by n_cores ({n_cores})"
     assert width % 8 == 0, f"Width ({width}) must be divisible by 8"
-    assert in_channels % 8 == 0, f"Input channels ({in_channels}) must be divisible by 8"
-    assert out_channels % 8 == 0, f"Output channels ({out_channels}) must be divisible by 8"
+    assert (
+        in_channels % 8 == 0
+    ), f"Input channels ({in_channels}) must be divisible by 8"
+    assert (
+        out_channels % 8 == 0
+    ), f"Output channels ({out_channels}) must be divisible by 8"
 
     # Calculate per-core sizes (spatial split by height)
     height_per_core = height // n_cores
@@ -164,11 +176,21 @@ def conv3dk3_massively_parallel(
         "conv3dk3_ui8",
         "conv3dk3_ui8.o",
         [
-            actIn_ty, actIn_ty, actIn_ty,  # 3 planes (for 3D convolution depth)
-            weights_ty, actOut_ty,
-            np.int32, np.int32, np.int32, np.int32,  # w, h, ci, co
-            np.int32, np.int32, np.int32,  # kw, kh, kd
-            np.int32, np.int32, np.int32,  # check, scale, channel_offset
+            actIn_ty,
+            actIn_ty,
+            actIn_ty,  # 3 planes (for 3D convolution depth)
+            weights_ty,
+            actOut_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,  # w, h, ci, co
+            np.int32,
+            np.int32,
+            np.int32,  # kw, kh, kd
+            np.int32,
+            np.int32,
+            np.int32,  # check, scale, channel_offset
         ],
     )
 
@@ -186,21 +208,16 @@ def conv3dk3_massively_parallel(
             of_in_fifos[col][row] = ObjectFifo(
                 actIn_ty,
                 name=f"inOF_act_c{col}_r{row}",
-                depth=3  # Triple buffer for 3 depth planes
+                depth=3,  # Triple buffer for 3 depth planes
             )
 
             # Weights (broadcast to all cores)
             of_wts_fifos[col][row] = ObjectFifo(
-                weights_ty,
-                depth=1,
-                name=f"inOF_wts_c{col}_r{row}"
+                weights_ty, depth=1, name=f"inOF_wts_c{col}_r{row}"
             )
 
             # Output activations (spatial slice from this core)
-            of_out_fifos[col][row] = ObjectFifo(
-                actOut_ty,
-                name=f"outOF_c{col}_r{row}"
-            )
+            of_out_fifos[col][row] = ObjectFifo(actOut_ty, name=f"outOF_c{col}_r{row}")
 
     # Core function - simple, no conditionals!
     # Each core processes its height slice with 2D conv per depth plane
@@ -217,11 +234,21 @@ def conv3dk3_massively_parallel(
             # Note: We use kernel_depth=1 because we're processing plane-by-plane
             # The 3D effect comes from processing multiple depth planes
             kernel(
-                plane, plane, plane,  # Same plane for all 3 positions (2D conv)
-                elemWts, elemOut,
-                width, height_per_core, in_channels, out_channels,
-                3, 3, 1,  # 3x3x1 kernel (2D per plane)
-                1, 10, 0  # check=middle, scale=10, no channel_offset
+                plane,
+                plane,
+                plane,  # Same plane for all 3 positions (2D conv)
+                elemWts,
+                elemOut,
+                width,
+                height_per_core,
+                in_channels,
+                out_channels,
+                3,
+                3,
+                1,  # 3x3x1 kernel (2D per plane)
+                1,
+                10,
+                0,  # check=middle, scale=10, no channel_offset
             )
 
             of_in.release(1)
@@ -264,12 +291,19 @@ def conv3dk3_massively_parallel(
             # Layout: depth * height * width * in_channels
             offset = core_id * (depth * height_per_core * width * in_channels)
 
-            in_taps.append(TensorAccessPattern(
-                (1, tensorInSize),
-                offset,
-                [1, 1, 1, actIn_per_core * depth],  # Transfer all depth planes for this core's rows
-                [0, 0, 0, 1]
-            ))
+            in_taps.append(
+                TensorAccessPattern(
+                    (1, tensorInSize),
+                    offset,
+                    [
+                        1,
+                        1,
+                        1,
+                        actIn_per_core * depth,
+                    ],  # Transfer all depth planes for this core's rows
+                    [0, 0, 0, 1],
+                )
+            )
 
     # Output: concatenate by height (same pattern as input)
     out_taps = []
@@ -278,12 +312,14 @@ def conv3dk3_massively_parallel(
             core_id = col * n_rows_per_col + row
             offset = core_id * (depth * height_per_core * width * out_channels)
 
-            out_taps.append(TensorAccessPattern(
-                (1, tensorOutSize),
-                offset,
-                [1, 1, 1, actOut_per_core * depth],
-                [0, 0, 0, 1]
-            ))
+            out_taps.append(
+                TensorAccessPattern(
+                    (1, tensorOutSize),
+                    offset,
+                    [1, 1, 1, actOut_per_core * depth],
+                    [0, 0, 0, 1],
+                )
+            )
 
     with rt.sequence(tensorIn_ty, tensorWts_ty, tensorOut_ty) as (I, W, O):
         # Start all workers
@@ -299,30 +335,26 @@ def conv3dk3_massively_parallel(
                     of_in_fifos[col][row].prod(),
                     I,
                     in_taps[core_id],
-                    placement=Tile(col, 0)  # Use shim tile at column 'col'
+                    placement=Tile(col, 0),  # Use shim tile at column 'col'
                 )
 
         # Broadcast weights to all cores (can also use column-specific shims)
         for col in range(n_cols):
             for row in range(n_rows_per_col):
-                rt.fill(
-                    of_wts_fifos[col][row].prod(),
-                    W,
-                    placement=Tile(col, 0)
-                )
+                rt.fill(of_wts_fifos[col][row].prod(), W, placement=Tile(col, 0))
 
         # Drain outputs: use parallel shim DMAs (one per column)
         for col in range(n_cols):
             for row in range(n_rows_per_col):
                 core_id = col * n_rows_per_col + row
                 # Wait only on the very last core
-                wait = (col == n_cols - 1 and row == n_rows_per_col - 1)
+                wait = col == n_cols - 1 and row == n_rows_per_col - 1
                 rt.drain(
                     of_out_fifos[col][row].cons(),
                     O,
                     out_taps[core_id],
                     wait=wait,
-                    placement=Tile(col, 0)
+                    placement=Tile(col, 0),
                 )
 
     return Program(dev, rt).resolve_program(SequentialPlacer())
@@ -337,37 +369,38 @@ def main():
         type=int,
         choices=[1, 2, 4, 8, 16, 32],
         default=8,
-        help="Number of cores to use (default: 8)"
+        help="Number of cores to use (default: 8)",
     )
     parser.add_argument(
-        "--depth", "-d",
-        type=int,
-        default=8,
-        help="Depth of 3D volume (default: 8)"
+        "--depth", "-d", type=int, default=8, help="Depth of 3D volume (default: 8)"
     )
     parser.add_argument(
-        "--width", "-w",
+        "--width",
+        "-w",
         type=int,
         default=64,
-        help="Width of 3D volume, must be divisible by 8 (default: 64)"
+        help="Width of 3D volume, must be divisible by 8 (default: 64)",
     )
     parser.add_argument(
-        "--height", "-ht",
+        "--height",
+        "-ht",
         type=int,
         default=64,
-        help="Height of 3D volume, must be divisible by n_cores (default: 64)"
+        help="Height of 3D volume, must be divisible by n_cores (default: 64)",
     )
     parser.add_argument(
-        "--in_channels", "-ic",
+        "--in_channels",
+        "-ic",
         type=int,
         default=8,
-        help="Number of input channels, must be divisible by 8 (default: 8)"
+        help="Number of input channels, must be divisible by 8 (default: 8)",
     )
     parser.add_argument(
-        "--out_channels", "-oc",
+        "--out_channels",
+        "-oc",
         type=int,
         default=8,
-        help="Number of output channels, must be divisible by 8 (default: 8)"
+        help="Number of output channels, must be divisible by 8 (default: 8)",
     )
 
     args = parser.parse_args()
@@ -379,7 +412,7 @@ def main():
         args.height,
         args.in_channels,
         args.out_channels,
-        args.n_cores
+        args.n_cores,
     )
 
     print(module)

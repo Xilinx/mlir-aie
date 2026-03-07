@@ -99,15 +99,17 @@ def main(opts):
 
     # Apply replication padding to match NPU kernel border handling
     # Pad: (left, right, top, bottom, front, back) for (W, H, D)
-    int_inp_padded = torch.nn.functional.pad(int_inp, (1, 1, 1, 1, 1, 1), mode='replicate')
+    int_inp_padded = torch.nn.functional.pad(
+        int_inp, (1, 1, 1, 1, 1, 1), mode="replicate"
+    )
     golden_output = model(int_inp_padded)
 
     # Reorder input data layout
     ds = DataShaper()
-    before_input = int_inp.squeeze().data.numpy().astype(dtype_in)  # [ci, depth, height, width]
-    before_input.tofile(
-        log_folder + "/before_ifm_conv3d.txt", sep=",", format="%d"
-    )
+    before_input = (
+        int_inp.squeeze().data.numpy().astype(dtype_in)
+    )  # [ci, depth, height, width]
+    before_input.tofile(log_folder + "/before_ifm_conv3d.txt", sep=",", format="%d")
 
     # Reorder: CDHW → D{C/8}H{C8}W manually
     ci8 = ci // 8
@@ -122,9 +124,7 @@ def main(opts):
                         ]
 
     ifm_mem_fmt = ifm_mem_fmt.flatten()
-    ifm_mem_fmt.tofile(
-        log_folder + "/after_ifm_conv3d.txt", sep=",", format="%d"
-    )
+    ifm_mem_fmt.tofile(log_folder + "/after_ifm_conv3d.txt", sep=",", format="%d")
 
     # Reorder weights: OIKDHW → {O/8}{I/8}KDHW{I8}{O8}
     # Manual reordering since DataShaper doesn't support 3D pattern yet
@@ -258,6 +258,7 @@ def main(opts):
                 except Exception as trace_err:
                     print(f"Failed to extract trace: {trace_err}")
                     import traceback
+
                     traceback.print_exc()
             raise
 
@@ -271,12 +272,8 @@ def main(opts):
             for h in range(height):
                 for oc in range(8):
                     for w in range(width):
-                        ofm_mem_fmt[oc8 * 8 + oc, d, h, w] = temp_out[
-                            d, oc8, h, oc, w
-                        ]
-    ofm_mem_fmt.tofile(
-        log_folder + "/after_ofm_conv3d.txt", sep=",", format="%d"
-    )
+                        ofm_mem_fmt[oc8 * 8 + oc, d, h, w] = temp_out[d, oc8, h, oc, w]
+    ofm_mem_fmt.tofile(log_folder + "/after_ofm_conv3d.txt", sep=",", format="%d")
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 
     # Compare NPU output with golden reference
@@ -295,9 +292,7 @@ def main(opts):
         exit(0)
     else:
         max_diff = np.max(
-            np.abs(
-                ofm_mem_fmt_out.detach().numpy() - golden_output.detach().numpy()
-            )
+            np.abs(ofm_mem_fmt_out.detach().numpy() - golden_output.detach().numpy())
         )
         print(f"\nFailed. Max difference: {max_diff}\n")
         exit(-1)

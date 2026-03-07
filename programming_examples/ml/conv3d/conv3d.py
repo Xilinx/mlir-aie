@@ -22,11 +22,20 @@ from aie.iron.controlflow import range_
 
 
 def conv3dk3(
-    dev, depth: int, width: int, height: int, in_channels: int, out_channels: int, trace_size: int, n_cores: int = 1
+    dev,
+    depth: int,
+    width: int,
+    height: int,
+    in_channels: int,
+    out_channels: int,
+    trace_size: int,
+    n_cores: int = 1,
 ):
 
     # Output channel split across cores
-    assert out_channels % (n_cores * 8) == 0, f"out_channels must be divisible by {n_cores * 8}"
+    assert (
+        out_channels % (n_cores * 8) == 0
+    ), f"out_channels must be divisible by {n_cores * 8}"
     out_channels_per_core = out_channels // n_cores
 
     # Full depth plane size (height * width * channels)
@@ -61,28 +70,31 @@ def conv3dk3(
         tensorOut_ty = np.ndarray[(tensorOutSize,), np.dtype[np.uint8]]
     else:
         tensorWts_ty = [weights_ty for _ in range(n_cores)]
-        tensorOut_ty = [np.ndarray[(tensorOutSize // n_cores,), np.dtype[np.uint8]] for _ in range(n_cores)]
+        tensorOut_ty = [
+            np.ndarray[(tensorOutSize // n_cores,), np.dtype[np.uint8]]
+            for _ in range(n_cores)
+        ]
 
     # AIE Core Function declarations
     conv3dk3_kernel = Kernel(
         "conv3dk3_ui8",  # Vectorized kernel
         "conv3dk3_ui8.o",
         [
-            actIn_ty,   # plane0
-            actIn_ty,   # plane1
-            actIn_ty,   # plane2
-            weights_ty, # weights
-            out_ty,     # output
-            np.int32,   # width
-            np.int32,   # height
-            np.int32,   # in_channels
-            np.int32,   # out_channels
-            np.int32,   # kernel_width
-            np.int32,   # kernel_height
-            np.int32,   # kernel_depth
-            np.int32,   # check
-            np.int32,   # scale
-            np.int32,   # channel_offset
+            actIn_ty,  # plane0
+            actIn_ty,  # plane1
+            actIn_ty,  # plane2
+            weights_ty,  # weights
+            out_ty,  # output
+            np.int32,  # width
+            np.int32,  # height
+            np.int32,  # in_channels
+            np.int32,  # out_channels
+            np.int32,  # kernel_width
+            np.int32,  # kernel_height
+            np.int32,  # kernel_depth
+            np.int32,  # check
+            np.int32,  # scale
+            np.int32,  # channel_offset
         ],
     )
 
@@ -92,7 +104,9 @@ def conv3dk3(
     if n_cores == 1:
         # Single core path
         of_inOF_act_L3L2 = ObjectFifo(bufIn_ty, name="inOF_act_L3L2", depth=3)
-        of_act_L2_02 = of_inOF_act_L3L2.cons().forward(obj_type=actIn_ty, name="act_L2_02", depth=3)
+        of_act_L2_02 = of_inOF_act_L3L2.cons().forward(
+            obj_type=actIn_ty, name="act_L2_02", depth=3
+        )
 
         of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, depth=1, name="inOF_wts_0_L3L2")
 
@@ -116,7 +130,9 @@ def conv3dk3(
             # Separate input streams per core (duplicated data)
             of_in = ObjectFifo(bufIn_ty, name=f"inOF_act_{c}_L3L2", depth=3)
             of_inOF_act_L3L2_list.append(of_in)
-            of_act = of_in.cons().forward(obj_type=actIn_ty, name=f"act_{c}_L2", depth=3)
+            of_act = of_in.cons().forward(
+                obj_type=actIn_ty, name=f"act_{c}_L2", depth=3
+            )
             of_act_fifos.append(of_act)
 
             # Separate weights per core
@@ -127,7 +143,9 @@ def conv3dk3(
             of_out = ObjectFifo(out_ty, name=f"out_{c}_L2")
             of_out_fifos.append(of_out)
 
-            of_out_L3 = of_out.cons().forward(obj_type=bufOut_ty, name=f"outOF_{c}_L2L3")
+            of_out_L3 = of_out.cons().forward(
+                obj_type=bufOut_ty, name=f"outOF_{c}_L2L3"
+            )
             of_out_L3_fifos.append(of_out_L3)
 
     # Setup buffers to hold runtime parameters (one per core)
@@ -166,11 +184,21 @@ def conv3dk3(
             # Since we can't do that with current check values, use check=0 which skips kd=0
             # and kernel_depth=1 to process only middle position
             conv3dk3_kernel(
-                plane, plane, plane,
-                elemWts, elemOut,
-                x_dim, h_dim, ci, co,
-                3, 3, 1,  # Use kernel_depth=1 for single plane
-                1, scale, 0
+                plane,
+                plane,
+                plane,
+                elemWts,
+                elemOut,
+                x_dim,
+                h_dim,
+                ci,
+                co,
+                3,
+                3,
+                1,  # Use kernel_depth=1 for single plane
+                1,
+                scale,
+                0,
             )
             of_act.release(1)
             of_out.release(1)
@@ -183,22 +211,42 @@ def conv3dk3(
             # d=0: first plane
             elemOut = of_out.acquire(1)
             conv3dk3_kernel(
-                plane0, plane0, plane1,
-                elemWts, elemOut,
-                x_dim, h_dim, ci, co,
-                3, 3, 3,
-                0, scale, 0  # check=0 (skip z-1)
+                plane0,
+                plane0,
+                plane1,
+                elemWts,
+                elemOut,
+                x_dim,
+                h_dim,
+                ci,
+                co,
+                3,
+                3,
+                3,
+                0,
+                scale,
+                0,  # check=0 (skip z-1)
             )
             of_out.release(1)
 
             # d=1: last plane
             elemOut = of_out.acquire(1)
             conv3dk3_kernel(
-                plane0, plane1, plane1,
-                elemWts, elemOut,
-                x_dim, h_dim, ci, co,
-                3, 3, 3,
-                2, scale, 0  # check=2 (skip z+1)
+                plane0,
+                plane1,
+                plane1,
+                elemWts,
+                elemOut,
+                x_dim,
+                h_dim,
+                ci,
+                co,
+                3,
+                3,
+                3,
+                2,
+                scale,
+                0,  # check=2 (skip z+1)
             )
             of_out.release(1)
 
@@ -216,30 +264,63 @@ def conv3dk3(
                 if d == 0:
                     # First plane: check=0 (skip z-1)
                     conv3dk3_kernel(
-                        plane0, plane0, plane1,
-                        elemWts, elemOut,
-                        x_dim, h_dim, ci, co,
-                        3, 3, 3, 0, scale, ch_offset
+                        plane0,
+                        plane0,
+                        plane1,
+                        elemWts,
+                        elemOut,
+                        x_dim,
+                        h_dim,
+                        ci,
+                        co,
+                        3,
+                        3,
+                        3,
+                        0,
+                        scale,
+                        ch_offset,
                     )
 
                 elif d == d_dim - 1:
                     # Last plane: check=2 (skip z+1)
                     # At this point, plane0 and plane1 are the last two planes
                     conv3dk3_kernel(
-                        plane0, plane1, plane1,
-                        elemWts, elemOut,
-                        x_dim, h_dim, ci, co,
-                        3, 3, 3, 2, scale, ch_offset
+                        plane0,
+                        plane1,
+                        plane1,
+                        elemWts,
+                        elemOut,
+                        x_dim,
+                        h_dim,
+                        ci,
+                        co,
+                        3,
+                        3,
+                        3,
+                        2,
+                        scale,
+                        ch_offset,
                     )
 
                 else:
                     # Middle planes: sliding window
                     plane2 = of_act.acquire(1)
                     conv3dk3_kernel(
-                        plane0, plane1, plane2,
-                        elemWts, elemOut,
-                        x_dim, h_dim, ci, co,
-                        3, 3, 3, 1, scale, ch_offset
+                        plane0,
+                        plane1,
+                        plane2,
+                        elemWts,
+                        elemOut,
+                        x_dim,
+                        h_dim,
+                        ci,
+                        co,
+                        3,
+                        3,
+                        3,
+                        1,
+                        scale,
+                        ch_offset,
                     )
                     # Slide window
                     of_act.release(1)
@@ -280,9 +361,11 @@ def conv3dk3(
     if n_cores == 1:
         # Single core runtime sequence
         with rt.sequence(tensorIn_ty, tensorWts_ty, tensorOut_ty) as (I, W, O):
+
             def set_rtps(*my_rtps):
                 for rtp in my_rtps:
                     rtp[0] = 10
+
             rt.inline_ops(set_rtps, rtps)
             for c in range(n_cores):
                 rt.set_barrier(rtp_barriers[c], 1)
@@ -299,12 +382,13 @@ def conv3dk3(
         seq_outputs = tensorOut_ty
         with rt.sequence(*seq_inputs, *seq_outputs) as args:
             I_cores = args[0:n_cores]  # Duplicated inputs
-            W = args[n_cores:n_cores*2]
-            O = args[n_cores*2:]
+            W = args[n_cores : n_cores * 2]
+            O = args[n_cores * 2 :]
 
             def set_rtps(*my_rtps):
                 for rtp in my_rtps:
                     rtp[0] = 10
+
             rt.inline_ops(set_rtps, rtps)
             for c in range(n_cores):
                 rt.set_barrier(rtp_barriers[c], 1)
@@ -324,7 +408,7 @@ def conv3dk3(
 
             # Drain outputs (separate from each core)
             for c in range(n_cores):
-                wait = (c == n_cores - 1)  # Only wait on last core
+                wait = c == n_cores - 1  # Only wait on last core
                 rt.drain(of_out_L3_fifos[c].cons(), O[c], wait=wait)
 
     # Place components (assign them resources on the device) and generate an MLIR module
@@ -347,12 +431,12 @@ try:
         n_cores = 4
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    depth = int(sys.argv[2])     # Added depth parameter
-    width = int(sys.argv[3])     # Shifted from argv[2]
+    depth = int(sys.argv[2])  # Added depth parameter
+    width = int(sys.argv[3])  # Shifted from argv[2]
     if width % 8 != 0 or width < 8:
         print("Width size must be a multiple of 8 and greater than or equal to 8")
         raise ValueError
-    height = int(sys.argv[4])    # Shifted from argv[3]
+    height = int(sys.argv[4])  # Shifted from argv[3]
     if height < 2:
         print("Height needs to be > 1 at the moment (BUG)")
         raise ValueError
@@ -371,5 +455,7 @@ try:
     trace_size = 0 if (len(sys.argv) != 8) else int(sys.argv[7])
 except ValueError:
     print("Argument has inappropriate value")
-module = conv3dk3(dev, depth, width, height, in_channels, out_channels, trace_size, n_cores)
+module = conv3dk3(
+    dev, depth, width, height, in_channels, out_channels, trace_size, n_cores
+)
 print(module)

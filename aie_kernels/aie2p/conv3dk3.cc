@@ -49,7 +49,8 @@ void conv3dk3_ui8_scalar(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
                          const int32_t input_width, const int32_t input_height,
                          const int32_t input_channels,
                          const int32_t output_channels,
-                         const int32_t kernel_width, const int32_t kernel_height,
+                         const int32_t kernel_width,
+                         const int32_t kernel_height,
                          const int32_t kernel_depth, const int32_t check,
                          const int scale, const int channel_offset) {
   event0();
@@ -78,22 +79,19 @@ void conv3dk3_ui8_scalar(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
                   // Formula: (kd*KH*KW*64) + (kh*KW*64) + (kw*64) +
                   //          (ic*KD*KH*KW*64) + (ic8*8) +
                   //          (oc_ofst*(IC/8)*KD*KH*KW*64) + oc8
-                  int wts_indx = (kd * 3 * 3 * 64) + (kh * 3 * 64) +
-                                 (kw * 64) +
-                                 (ic * 3 * 3 * 3 * 64) + (ic8 * 8) +
-                                 (oc_ofst * (input_channels / 8) * 3 * 3 * 3 *
-                                  64) +
-                                 oc8;
+                  int wts_indx =
+                      (kd * 3 * 3 * 64) + (kh * 3 * 64) + (kw * 64) +
+                      (ic * 3 * 3 * 3 * 64) + (ic8 * 8) +
+                      (oc_ofst * (input_channels / 8) * 3 * 3 * 3 * 64) + oc8;
 
                   // Input index (with left border replication)
-                  int y_pos = (y - 1 + kh < 0)
-                                  ? 0
-                                  : ((y - 1 + kh >= input_height)
-                                         ? input_height - 1
-                                         : y - 1 + kh);
+                  int y_pos = (y - 1 + kh < 0) ? 0
+                                               : ((y - 1 + kh >= input_height)
+                                                      ? input_height - 1
+                                                      : y - 1 + kh);
                   int x_pos = (kw == 0) ? 0 : kw - 1;
-                  int in_indx =
-                      (y_pos * input_width + x_pos) * 8 + (ic * plane_size) + ic8;
+                  int in_indx = (y_pos * input_width + x_pos) * 8 +
+                                (ic * plane_size) + ic8;
 
                   // Accumulate from the three depth planes
                   if (kd == 0 && check != top_plane)
@@ -120,21 +118,19 @@ void conv3dk3_ui8_scalar(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
             for (kd = 0; kd < kernel_depth; kd++) {
               for (kh = 0; kh < kernel_height; kh++) {
                 for (kw = 0; kw < kernel_width - 1; kw++) {
-                  int wts_indx = (kd * 3 * 3 * 64) + (kh * 3 * 64) +
-                                 (kw * 64) +
-                                 (ic * 3 * 3 * 3 * 64) + (ic8 * 8) +
-                                 (oc_ofst * (input_channels / 8) * 3 * 3 * 3 *
-                                  64) +
-                                 oc8;
+                  int wts_indx =
+                      (kd * 3 * 3 * 64) + (kh * 3 * 64) + (kw * 64) +
+                      (ic * 3 * 3 * 3 * 64) + (ic8 * 8) +
+                      (oc_ofst * (input_channels / 8) * 3 * 3 * 3 * 64) + oc8;
 
-                  int y_pos = (y - 1 + kh < 0)
-                                  ? 0
-                                  : ((y - 1 + kh >= input_height)
-                                         ? input_height - 1
-                                         : y - 1 + kh);
-                  int x_pos = (kw == 2) ? input_width - 1 : input_width - 2 + kw;
-                  int in_indx =
-                      (y_pos * input_width + x_pos) * 8 + (ic * plane_size) + ic8;
+                  int y_pos = (y - 1 + kh < 0) ? 0
+                                               : ((y - 1 + kh >= input_height)
+                                                      ? input_height - 1
+                                                      : y - 1 + kh);
+                  int x_pos =
+                      (kw == 2) ? input_width - 1 : input_width - 2 + kw;
+                  int in_indx = (y_pos * input_width + x_pos) * 8 +
+                                (ic * plane_size) + ic8;
 
                   if (kd == 0 && check != top_plane)
                     sum += plane0[in_indx] * wts[wts_indx];
@@ -149,8 +145,8 @@ void conv3dk3_ui8_scalar(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
         }
         sum_srs = (sum + (1 << (scale - 1))) >> scale;
         sum_srs = (sum_srs > MAX) ? MAX : (sum_srs < 0) ? 0 : sum_srs;
-        output[(oc * input_height * input_width * 8) +
-               (y * input_width * 8) + (input_width - 1) * 8 + oc8] = sum_srs;
+        output[(oc * input_height * input_width * 8) + (y * input_width * 8) +
+               (input_width - 1) * 8 + oc8] = sum_srs;
 
         // Middle columns (x=1 to input_width-2)
         for (x = 1; x < input_width - 1; x++) {
@@ -162,19 +158,16 @@ void conv3dk3_ui8_scalar(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
                 for (kh = 0; kh < kernel_height; kh++) {
                   for (kw = 0; kw < kernel_width; kw++) {
                     // Weight index for 3D convolution
-                    int wts_indx = (kd * 3 * 3 * 64) + (kh * 3 * 64) +
-                                   (kw * 64) +
-                                   (ic * 3 * 3 * 3 * 64) + (ic8 * 8) +
-                                   (oc_ofst * (input_channels / 8) * 3 * 3 * 3 *
-                                    64) +
-                                   oc8;
+                    int wts_indx =
+                        (kd * 3 * 3 * 64) + (kh * 3 * 64) + (kw * 64) +
+                        (ic * 3 * 3 * 3 * 64) + (ic8 * 8) +
+                        (oc_ofst * (input_channels / 8) * 3 * 3 * 3 * 64) + oc8;
 
                     // Input index with height border handling
-                    int y_pos = (y - 1 + kh < 0)
-                                    ? 0
-                                    : ((y - 1 + kh >= input_height)
-                                           ? input_height - 1
-                                           : y - 1 + kh);
+                    int y_pos = (y - 1 + kh < 0) ? 0
+                                                 : ((y - 1 + kh >= input_height)
+                                                        ? input_height - 1
+                                                        : y - 1 + kh);
                     int x_pos = x - 1 + kw;
                     int in_indx = (y_pos * input_width + x_pos) * 8 +
                                   (ic * plane_size) + ic8;
@@ -193,8 +186,8 @@ void conv3dk3_ui8_scalar(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
           }
           sum_srs = (sum + (1 << (scale - 1))) >> scale;
           sum_srs = (sum_srs > MAX) ? MAX : (sum_srs < 0) ? 0 : sum_srs;
-          output[(oc * input_height * input_width * 8) +
-                 (y * input_width * 8) + x * 8 + oc8] = sum_srs;
+          output[(oc * input_height * input_width * 8) + (y * input_width * 8) +
+                 x * 8 + oc8] = sum_srs;
         }
       }
     }
@@ -224,9 +217,9 @@ void conv3dk3_ui8(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
                   const int channel_offset) {
   event0();
 
-  constexpr int MMUL_M = 4;  // Process 4 output pixels at a time
-  constexpr int MMUL_K = 8;  // Channel group size
-  constexpr int MMUL_N = 8;  // Output channel group size
+  constexpr int MMUL_M = 4; // Process 4 output pixels at a time
+  constexpr int MMUL_K = 8; // Channel group size
+  constexpr int MMUL_N = 8; // Output channel group size
   constexpr int MMUL_MK = MMUL_M * MMUL_K;
   constexpr int MMUL_KN = MMUL_K * MMUL_N;
   constexpr int MMUL_MN = MMUL_M * MMUL_N;
@@ -260,32 +253,41 @@ void conv3dk3_ui8(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
           // Accumulate over 3x3x3 kernel
           for (int kd = 0; kd < kernel_depth; kd++) {
             // Skip depth kernel positions based on check
-            if (kd == 0 && check == top_plane) continue;
-            if (kd == 2 && check == bottom_plane) continue;
+            if (kd == 0 && check == top_plane)
+              continue;
+            if (kd == 2 && check == bottom_plane)
+              continue;
 
             // Select the appropriate plane
             uint8_t *plane = (kd == 0) ? plane0 : (kd == 1) ? plane1 : plane2;
 
             for (int kh = 0; kh < kernel_height; kh++) {
               int y_pos = y_start + kh;
-              if (y_pos < 0) y_pos = 0;
-              if (y_pos >= input_height) y_pos = input_height - 1;
+              if (y_pos < 0)
+                y_pos = 0;
+              if (y_pos >= input_height)
+                y_pos = input_height - 1;
 
               for (int kw = 0; kw < kernel_width; kw++) {
                 // Load weights for this kernel position
                 int wts_idx = (kd * 3 * 3 * 64) + (kh * 3 * 64) + (kw * 64) +
-                             (ic * 3 * 3 * 3 * 64) + (oc_ofst * (input_channels / 8) * 3 * 3 * 3 * 64);
-                aie::vector<int8, MMUL_KN> w = aie::load_v<MMUL_KN>(wts + wts_idx);
+                              (ic * 3 * 3 * 3 * 64) +
+                              (oc_ofst * (input_channels / 8) * 3 * 3 * 3 * 64);
+                aie::vector<int8, MMUL_KN> w =
+                    aie::load_v<MMUL_KN>(wts + wts_idx);
 
                 // Load activations for this group of pixels
                 // Handle boundary conditions
                 alignas(32) uint8 act_buf[MMUL_MK];
                 for (int xx = 0; xx < x_valid && xx < MMUL_M; xx++) {
                   int x_pos = x + xx - 1 + kw;
-                  if (x_pos < 0) x_pos = 0;
-                  if (x_pos >= input_width) x_pos = input_width - 1;
+                  if (x_pos < 0)
+                    x_pos = 0;
+                  if (x_pos >= input_width)
+                    x_pos = input_width - 1;
 
-                  int in_idx = (y_pos * input_width + x_pos) * 8 + (ic * plane_size);
+                  int in_idx =
+                      (y_pos * input_width + x_pos) * 8 + (ic * plane_size);
                   for (int ch = 0; ch < 8; ch++) {
                     act_buf[xx * 8 + ch] = plane[in_idx + ch];
                   }
@@ -305,7 +307,7 @@ void conv3dk3_ui8(uint8_t *plane0, uint8_t *plane1, uint8_t *plane2,
         for (int xx = 0; xx < x_valid && x + xx < input_width; xx++) {
           for (int ch = 0; ch < 8; ch++) {
             int out_idx = (oc * input_height * input_width * 8) +
-                         (y * input_width * 8) + ((x + xx) * 8) + ch;
+                          (y * input_width * 8) + ((x + xx) * 8) + ch;
             output[out_idx] = o[xx * 8 + ch];
           }
         }
