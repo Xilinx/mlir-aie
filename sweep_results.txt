@@ -1,0 +1,71 @@
+================================================================================
+Conv3D Large Volume Sweep
+================================================================================
+
+Building and testing 10 configurations...
+
+
+[1/10] Small video (3 frames, 32×32)
+    Config: 3×32×32, 1 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[2/10] Small video (2-core)
+    Config: 3×32×32, 2 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[3/10] Small video (4-core)
+    Config: 3×32×32, 4 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[4/10] Medium video (3 frames, 64×64, 2-core)
+    Config: 3×64×64, 2 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[5/10] Medium video (4-core)
+    Config: 3×64×64, 4 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[6/10] Medium video (8-core)
+    Config: 3×64×64, 8 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[7/10] Large video (3 frames, 128×128, 4-core)
+    Config: 3×128×128, 4 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[8/10] Large video (8-core)
+    Config: 3×128×128, 8 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[9/10] HD video (3 frames, 256×256, 8-core)
+    Config: 3×256×256, 8 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+[10/10] HD video (16-core)
+    Config: 3×256×256, 16 cores
+    ❌ MLIR generation failed: python3: can't open file '/scratch/jmelber/mlir-aie/conv3d_massively_parallel.py': [Errno 2] No such
+
+================================================================================
+RESULTS SUMMARY
+================================================================================
+
+Configuration                             Cores    Time (µs) Status
+--------------------------------------------------------------------------------
+Small video (3 frames, 32×32)                 1          N/A MLIR gen failed
+Small video (2-core)                          2          N/A MLIR gen failed
+Small video (4-core)                          4          N/A MLIR gen failed
+Medium video (3 frames, 64×64, 2-core)        2          N/A MLIR gen failed
+Medium video (4-core)                         4          N/A MLIR gen failed
+Medium video (8-core)                         8          N/A MLIR gen failed
+Large video (3 frames, 128×128, 4-core)       4          N/A MLIR gen failed
+Large video (8-core)                          8          N/A MLIR gen failed
+HD video (3 frames, 256×256, 8-core)          8          N/A MLIR gen failed
+HD video (16-core)                           16          N/A MLIR gen failed
+
+================================================================================
+
+MULTI-CORE SPEEDUPS
+================================================================================
+
+================================================================================
+

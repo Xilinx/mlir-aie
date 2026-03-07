@@ -85,5 +85,14 @@ trace_py: build/final.xclbin
 		-d ${depth} -ht ${height} -wd ${width} -ic ${in_channels} -oc ${out_channels} \
 		-t ${trace_size}
 
+# OpenCV reference validation
+test_opencv: build/final.xclbin
+	python3 ${srcdir}/test_opencv_reference.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE \
+		-d ${depth} -ht ${height} -wd ${width} -ic ${in_channels} -oc ${out_channels}
+
+# Simple unit test (no NPU hardware required)
+test_opencv_unit:
+	python3 ${srcdir}/test_opencv_simple.py
+
 clean:
 	rm -rf build log *.elf *.xclbin *.bin *.mlir.prj
