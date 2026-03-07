@@ -75,9 +75,9 @@ def conv3dk3(
     )
 
     # AIE-array data movement with object fifos
-    # Input
-    of_inOF_act_L3L2 = ObjectFifo(bufIn_ty, name="inOF_act_L3L2")
-    of_act_L2_02 = of_inOF_act_L3L2.cons().forward(obj_type=actIn_ty, name="act_L2_02")
+    # Input: Use depth=3 for 3D sliding window (need to buffer 3 planes)
+    of_inOF_act_L3L2 = ObjectFifo(bufIn_ty, name="inOF_act_L3L2", depth=3)
+    of_act_L2_02 = of_inOF_act_L3L2.cons().forward(obj_type=actIn_ty, name="act_L2_02", depth=3)
 
     # wts
     of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, depth=1, name="inOF_wts_0_L3L2")
@@ -96,10 +96,7 @@ def conv3dk3(
     rtp_barrier = WorkerRuntimeBarrier()
 
     # Task for the core to perform
-    # NOTE: This is a simplified implementation that processes each depth plane
-    # with the same plane passed three times. For a true 3D convolution with
-    # sliding window (using planes z-1, z, z+1), would need more complex
-    # buffering logic with ObjectFIFO depth > 1 and manual plane management.
+    # True 3D convolution with sliding window over depth dimension
     def core_fn(of_wts, of_act, of_out, my_rtp, conv3dk3_kernel, barrier):
         d_dim = depth
         x_dim = width
@@ -112,28 +109,101 @@ def conv3dk3(
 
         elemWts = of_wts.acquire(1)
 
-        # Process each output depth plane
-        # Simplified: pass same plane 3 times, use check=1 (middle_plane) always
-        for d in range_(d_dim):
-            plane_curr = of_act.acquire(1)
+        # Handle different depth cases
+        if d_dim == 1:
+            # Special case: single depth plane
+            plane = of_act.acquire(1)
             elemOut = of_out.acquire(1)
-
-            # Call kernel with same plane repeated 3 times
-            # WORKAROUND: Set kernel_depth=1 to make it 2D convolution (3x3x1)
-            # This processes only kd=0 depth position, avoiding triple counting
-            # TODO: Implement proper 3D sliding window with distinct planes for true 3x3x3
+            # Use same plane for all 3 positions, but kernel won't use z-1 or z+1
+            # Set check to skip both kd=0 and kd=2 (only use kd=1)
+            # Since we can't do that with current check values, use check=0 which skips kd=0
+            # and kernel_depth=1 to process only middle position
             conv3dk3_kernel(
-                plane_curr, plane_curr, plane_curr,
+                plane, plane, plane,
                 elemWts, elemOut,
                 x_dim, h_dim, ci, co,
-                3, 3, 1,  # kernel_width=3, kernel_height=3, kernel_depth=1 (2D not 3D!)
-                1,        # check=1 (middle_plane)
-                scale,
-                0         # channel_offset
+                3, 3, 1,  # Use kernel_depth=1 for single plane
+                1, scale, 0
             )
-
             of_act.release(1)
             of_out.release(1)
+
+        elif d_dim == 2:
+            # Two depth planes
+            plane0 = of_act.acquire(1)
+            plane1 = of_act.acquire(1)
+
+            # d=0: first plane
+            elemOut = of_out.acquire(1)
+            conv3dk3_kernel(
+                plane0, plane0, plane1,
+                elemWts, elemOut,
+                x_dim, h_dim, ci, co,
+                3, 3, 3,
+                0, scale, 0  # check=0 (skip z-1)
+            )
+            of_out.release(1)
+
+            # d=1: last plane
+            elemOut = of_out.acquire(1)
+            conv3dk3_kernel(
+                plane0, plane1, plane1,
+                elemWts, elemOut,
+                x_dim, h_dim, ci, co,
+                3, 3, 3,
+                2, scale, 0  # check=2 (skip z+1)
+            )
+            of_out.release(1)
+
+            of_act.release(1)
+            of_act.release(1)
+
+        else:
+            # General case: 3 or more depth planes with sliding window
+            plane0 = of_act.acquire(1)
+            plane1 = of_act.acquire(1)
+
+            for d in range_(d_dim):
+                elemOut = of_out.acquire(1)
+
+                if d == 0:
+                    # First plane: check=0 (skip z-1)
+                    conv3dk3_kernel(
+                        plane0, plane0, plane1,
+                        elemWts, elemOut,
+                        x_dim, h_dim, ci, co,
+                        3, 3, 3, 0, scale, 0
+                    )
+
+                elif d == d_dim - 1:
+                    # Last plane: check=2 (skip z+1)
+                    # At this point, plane0 and plane1 are the last two planes
+                    conv3dk3_kernel(
+                        plane0, plane1, plane1,
+                        elemWts, elemOut,
+                        x_dim, h_dim, ci, co,
+                        3, 3, 3, 2, scale, 0
+                    )
+
+                else:
+                    # Middle planes: sliding window
+                    plane2 = of_act.acquire(1)
+                    conv3dk3_kernel(
+                        plane0, plane1, plane2,
+                        elemWts, elemOut,
+                        x_dim, h_dim, ci, co,
+                        3, 3, 3, 1, scale, 0
+                    )
+                    # Slide window
+                    of_act.release(1)
+                    plane0 = plane1
+                    plane1 = plane2
+
+                of_out.release(1)
+
+            # Release final two planes
+            of_act.release(1)
+            of_act.release(1)
 
         of_wts.release(1)
 

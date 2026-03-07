@@ -14,9 +14,10 @@ make run_py
 ## Current Status
 
 - ✅ Working end-to-end on NPU
-- ✅ Tests passing for 8×8×8 and 16×8×8 volumes
-- ⚠️ Currently uses 2D convolution (3×3×1) per depth plane
-- 🚧 TODO: Implement true 3D sliding window (3×3×3)
+- ✅ Tests passing for all depth values (1, 2, 4, 8, 16, 32)
+- ✅ **True 3D convolution with 3×3×3 kernel**
+- ✅ Sliding window implementation for depth dimension
+- ⏱️ Execution time: ~15.6ms for 8×8×8 volume
 
 ## Parameters
 

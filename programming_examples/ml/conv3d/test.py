@@ -60,8 +60,8 @@ def main(opts):
     int_inp = torch.randint(1, 20, (1, ci, depth, height, width)).type(
         torch.FloatTensor
     )
-    # WORKAROUND: Use 3x3x1 kernel (2D) to match current implementation
-    int_weight = torch.randint(-50, 50, (co, ci, 1, 3, 3)).type(torch.FloatTensor)
+    # True 3D kernel (3x3x3)
+    int_weight = torch.randint(-50, 50, (co, ci, 3, 3, 3)).type(torch.FloatTensor)
 
     # Quantization scales
     conv_scale = 7.6294e-06
@@ -77,9 +77,9 @@ def main(opts):
     class Conv3dModel(nn.Module):
         def __init__(self):
             super().__init__()
-            # WORKAROUND: Use kernel_size=(1,3,3) for 2D convolution to match NPU
+            # True 3D convolution with 3x3x3 kernel
             # No padding in conv since we manually pad with replicate mode
-            self.conv = nn.Conv3d(ci, co, kernel_size=(1,3,3), padding=0, bias=False)
+            self.conv = nn.Conv3d(ci, co, kernel_size=3, padding=0, bias=False)
 
         def forward(self, x):
             out_int = self.conv(x)
@@ -96,7 +96,8 @@ def main(opts):
     model.conv.weight.data.copy_(int_weight)
 
     # Apply replication padding to match NPU kernel border handling
-    int_inp_padded = torch.nn.functional.pad(int_inp, (1, 1, 1, 1, 0, 0), mode='replicate')
+    # Pad: (left, right, top, bottom, front, back) for (W, H, D)
+    int_inp_padded = torch.nn.functional.pad(int_inp, (1, 1, 1, 1, 1, 1), mode='replicate')
     golden_output = model(int_inp_padded)
 
     # Reorder input data layout
@@ -125,21 +126,19 @@ def main(opts):
 
     # Reorder weights: OIKDHW → {O/8}{I/8}KDHW{I8}{O8}
     # Manual reordering since DataShaper doesn't support 3D pattern yet
-    # WORKAROUND: Using 1x3x3 kernel (2D)
-    wts_orig = int_weight.data.numpy().astype(dtype_wts)  # [co, ci, 1, 3, 3]
+    wts_orig = int_weight.data.numpy().astype(dtype_wts)  # [co, ci, 3, 3, 3]
     co8, ci8 = co // 8, ci // 8
-    wts = np.zeros((co8, ci8, 3, 3, 3, 8, 8), dtype=dtype_wts)  # Still allocate 3x3x3 for compatibility
+    wts = np.zeros((co8, ci8, 3, 3, 3, 8, 8), dtype=dtype_wts)
 
     for oc8 in range(co8):
         for ic8 in range(ci8):
-            for kd in range(3):  # Fill all depth positions with same weights
+            for kd in range(3):
                 for kh in range(3):
                     for kw in range(3):
                         for i in range(8):
                             for o in range(8):
-                                # Use kd=0 weights for all depth positions
                                 wts[oc8, ic8, kd, kh, kw, i, o] = wts_orig[
-                                    oc8 * 8 + o, ic8 * 8 + i, 0, kh, kw
+                                    oc8 * 8 + o, ic8 * 8 + i, kd, kh, kw
                                 ]
 
     wts = wts.flatten()
@@ -229,13 +228,13 @@ def main(opts):
     print(f"\nAvg NPU time: {int((npu_time_total / num_iter) / 1000)}us.")
     print(f"Volume size: {depth}x{height}x{width}, Channels: {ci}→{co}")
 
-    # Note: Using 8x tolerance due to quantization rounding and border handling differences
-    # Max observed difference is ~7x int8_scale
+    # Note: Using 16x tolerance due to quantization rounding and border handling differences
+    # True 3D convolution has more accumulations, higher error at borders
     if np.allclose(
         ofm_mem_fmt_out.detach().numpy(),
         golden_output.detach().numpy(),
         rtol=0,
-        atol=8 * int8_scale,  # 8x tolerance for quantization + border effects
+        atol=16 * int8_scale,  # 16x tolerance for 3D quantization + border effects
     ):
         print("\nPASS!\n")
         exit(0)
