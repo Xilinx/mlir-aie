@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -62,6 +63,75 @@ class LitConfigHelper:
         "npu1": ["npu1", "Phoenix"],
         "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
     }
+
+    PATH_ENV_VARS = {"PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"}
+
+    @staticmethod
+    def _prepend_env_paths(current_value: str, new_value: str) -> str:
+        """Prepend path entries without overwriting the existing values."""
+        entries = []
+        for value in (new_value, current_value):
+            if not value:
+                continue
+            entries.extend([entry for entry in value.split(os.path.pathsep) if entry])
+
+        merged = []
+        seen = set()
+        for entry in entries:
+            normalized = os.path.normcase(os.path.normpath(entry))
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            merged.append(entry)
+        return os.path.pathsep.join(merged)
+
+    @staticmethod
+    def _quote_lit_arg(value: str) -> str:
+        """Quote arguments for lit's shell parser."""
+        return '"' + value.replace("\\", "/").replace('"', '\\"') + '"'
+
+    @staticmethod
+    def _run_on_npu_wrap(aie_src_root: str, npu_kind: str) -> str:
+        """Build the cross-platform run-on-NPU wrapper command."""
+        wrapper = os.path.join(aie_src_root, "utils", "run_on_npu.py")
+        return " ".join(
+            [
+                LitConfigHelper._quote_lit_arg(sys.executable),
+                LitConfigHelper._quote_lit_arg(wrapper),
+                LitConfigHelper._quote_lit_arg(npu_kind),
+            ]
+        )
+
+    @staticmethod
+    def _find_xrt_smi(xrt_bin_dir: str) -> Optional[str]:
+        """Find xrt-smi without assuming it exists under XRT_ROOT."""
+        candidates = []
+        if xrt_bin_dir:
+            candidates.extend(
+                [
+                    os.path.join(xrt_bin_dir, "xrt-smi"),
+                    os.path.join(xrt_bin_dir, "bin", "xrt-smi"),
+                ]
+            )
+            if os.name == "nt":
+                candidates.extend(
+                    [
+                        os.path.join(xrt_bin_dir, "xrt-smi.exe"),
+                        os.path.join(xrt_bin_dir, "bin", "xrt-smi.exe"),
+                    ]
+                )
+
+        if os.name == "nt":
+            system_root = os.environ.get("SystemRoot", r"C:\Windows")
+            candidates.append(
+                os.path.join(system_root, "System32", "AMD", "xrt-smi.exe")
+            )
+
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
+
+        return shutil.which("xrt-smi")
 
     @staticmethod
     def prepend_path(llvm_config, path: str) -> None:
@@ -186,7 +256,7 @@ class LitConfigHelper:
             xrt_lib_dir: Path to XRT library directory
             xrt_include_dir: Path to XRT include directory
             xrt_bin_dir: Path to XRT binary directory
-            aie_src_root: Path to AIE source root (for run_on_npu.sh script)
+            aie_src_root: Path to AIE source root (for the run_on_npu wrapper)
             vitis_components: List of available Vitis components for feature filtering
 
         Returns:
@@ -216,27 +286,50 @@ class LitConfigHelper:
 
         print(f"xrt found at {os.path.dirname(xrt_lib_dir)}")
         config.found = True
-        config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -luuid -lxrt_coreutil"
-        config.substitutions["%xrt_flags"] = config.flags
-        # Add XRT library directory to LD_LIBRARY_PATH for runtime linking,
-        # preserving any existing entries from the parent environment.
-        existing_ld_library_path = os.environ.get("LD_LIBRARY_PATH")
-        if existing_ld_library_path:
-            new_ld_library_path = existing_ld_library_path + os.pathsep + xrt_lib_dir
+        if os.name == "nt":
+            config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -lxrt_coreutil"
         else:
-            new_ld_library_path = xrt_lib_dir
-        config.environment["LD_LIBRARY_PATH"] = new_ld_library_path
+            config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -luuid -lxrt_coreutil"
+        config.substitutions["%xrt_flags"] = config.flags
 
-        # Detect NPU hardware
+        # Runtime library search path. Compose with the lit environment instead of
+        # rebuilding PATH/LD_LIBRARY_PATH from the process environment.
+        if os.name == "nt":
+            runtime_dirs = [path for path in (xrt_bin_dir, xrt_lib_dir) if path]
+            if runtime_dirs:
+                config.environment["PATH"] = os.path.pathsep.join(runtime_dirs)
+        elif xrt_lib_dir:
+            config.environment["LD_LIBRARY_PATH"] = xrt_lib_dir
+
+        # Detect NPU hardware. XRT installation layout and xrt-smi location are
+        # not always the same on Windows, so probe them independently.
         try:
-            xrtsmi = os.path.join(xrt_bin_dir, "xrt-smi")
+            xrtsmi = LitConfigHelper._find_xrt_smi(xrt_bin_dir)
+            if not xrtsmi:
+                raise FileNotFoundError("xrt-smi")
+
+            probe_env = os.environ.copy()
+            for key, value in config.environment.items():
+                if key in LitConfigHelper.PATH_ENV_VARS:
+                    probe_env[key] = LitConfigHelper._prepend_env_paths(
+                        probe_env.get(key, ""), value
+                    )
+                else:
+                    probe_env[key] = value
+
+            print(f"Using xrt-smi: {xrtsmi}")
             result = subprocess.run(
                 [xrtsmi, "examine"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=probe_env,
                 timeout=10,
             )
-            output = result.stdout.decode("utf-8", errors="ignore").split("\n")
+            output = (
+                result.stdout.decode("utf-8", errors="ignore")
+                + "\n"
+                + result.stderr.decode("utf-8", errors="ignore")
+            ).split("\n")
 
             # Pattern matches both old and new xrt-smi output formats:
             # Old: "|[0000:41:00.1]  ||RyzenAI-npu1  |"
@@ -262,13 +355,13 @@ class LitConfigHelper:
 
                 print(f"\tmodel: '{model}'")
 
-                run_on_npu = f"{aie_src_root}/utils/run_on_npu.sh"
-
                 # Map model to NPU generation and filter by available components
                 # Use substring matching so e.g. "Krackan" matches "Krackan 1"
                 if any(known in model for known in LitConfigHelper.NPU_MODELS["npu1"]):
                     if "AIE2" in vitis_components:
-                        run_on_npu1 = run_on_npu
+                        run_on_npu1 = LitConfigHelper._run_on_npu_wrap(
+                            aie_src_root, "npu1"
+                        )
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
                         config.substitutions["%run_on_npu1%"] = run_on_npu1
                         print(f"Running tests on NPU1 with command line: {run_on_npu1}")
@@ -278,7 +371,9 @@ class LitConfigHelper:
                     known in model for known in LitConfigHelper.NPU_MODELS["npu2"]
                 ):
                     if "AIE2P" in vitis_components:
-                        run_on_npu2 = run_on_npu
+                        run_on_npu2 = LitConfigHelper._run_on_npu_wrap(
+                            aie_src_root, "npu2"
+                        )
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
                         config.substitutions["%run_on_npu2%"] = run_on_npu2
                         print(f"Running tests on NPU2 with command line: {run_on_npu2}")
@@ -505,7 +600,13 @@ class LitConfigHelper:
 
             # Add environment variables
             for key, value in hw_config.environment.items():
-                config_obj.environment[key] = value
+                if key in LitConfigHelper.PATH_ENV_VARS:
+                    current_value = config_obj.environment.get(key, "")
+                    config_obj.environment[key] = LitConfigHelper._prepend_env_paths(
+                        current_value, value
+                    )
+                else:
+                    config_obj.environment[key] = value
 
     @staticmethod
     def setup_standard_environment(
