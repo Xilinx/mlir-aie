@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from aie.dialects.aie import packetflow, WireBundle
 from aie.dialects.aiex import (
     npu_write32,
@@ -23,7 +27,6 @@ from .events import (
     PortEventCodes,
 )
 from .utils import pack4bytes
-
 
 # Globally defined constants
 direction_s2mm = 0
@@ -1079,7 +1082,7 @@ def configure_packet_tracing_aie2(
     shim_burst_length=64,
 ):
 
-    # print("trace_size: ", trace_size)
+    logger.debug("trace_size: %s", trace_size)
     if coretile_events == None:
         coretile_events = [
             CoreEvent.INSTR_EVENT_0,
