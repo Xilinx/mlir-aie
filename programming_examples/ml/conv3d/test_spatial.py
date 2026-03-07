@@ -1,7 +1,7 @@
 # Quick test for spatial multi-core
 import sys
 import numpy as np
-from aie.utils.ml import DataShaper  
+from aie.utils.ml import DataShaper
 import aie.iron as iron
 from aie.utils import NPUKernel, DefaultNPURuntime
 
@@ -9,7 +9,14 @@ xclbin = sys.argv[1]
 insts = sys.argv[2]
 n_cores = int(sys.argv[3])
 
-depth, height, width = 8, 8, 8
+# Volume size can be passed as optional parameters
+if len(sys.argv) > 4:
+    width = int(sys.argv[4])
+    height = int(sys.argv[5])
+else:
+    width = height = 8
+
+depth = 8
 ci, co = 8, 8
 
 # Load kernel

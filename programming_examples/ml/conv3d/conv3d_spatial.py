@@ -174,6 +174,10 @@ elif device_name == "npu2_2col":
 elif device_name == "npu2_4col":
     dev = NPU2Col4()
     n_cores = 4
+elif device_name == "npu2_8col":
+    from aie.iron.device import NPU2Col7
+    dev = NPU2Col7()
+    n_cores = 8
 else:
     raise ValueError(f"Unknown device: {device_name}")
 

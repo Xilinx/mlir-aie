@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+
+"""
+Test for Massively Parallel Conv3D Design
+
+This test validates the massively parallel Conv3D implementation across
+different core counts (8, 16, 32 cores).
+"""
+
+import torch
+import torch.nn as nn
+import sys
+import os
+import numpy as np
+import argparse
+import aie.utils.test as test_utils
+import aie.iron as iron
+from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
+from aie.utils.ml import DataShaper
+
+torch.use_deterministic_algorithms(True)
+torch.manual_seed(0)
+
+
+def main(opts):
+    print("Starting massively parallel Conv3D test...")
+    design = f"conv3d_mp_{opts.n_cores}cores"
+    xclbin_path = opts.xclbin
+    insts_path = opts.instr
+
+    log_folder = "log/"
+    if not os.path.exists(log_folder):
+        os.makedirs(log_folder)
+
+    # Get configuration
+    n_cores = int(opts.n_cores)
+    depth = int(opts.depth)
+    height = int(opts.height)
+    width = int(opts.width)
+    ci = int(opts.in_channels)
+    co = int(opts.out_channels)
+
+    print(f"Configuration: {n_cores} cores")
+    print(f"Volume: d={depth}, h={height}, w={width}")
+    print(f"Channels: ci={ci}, co={co}")
+
+    # Validate configuration
+    assert height % n_cores == 0, f"Height {height} must be divisible by n_cores {n_cores}"
+    assert width % 8 == 0, f"Width {width} must be divisible by 8"
+    assert ci % 8 == 0, f"Input channels {ci} must be divisible by 8"
+    assert co % 8 == 0, f"Output channels {co} must be divisible by 8"
+
+    ci8 = ci // 8
+    co8 = co // 8
+
+    num_iter = 1
+    npu_time_total = 0
+    trace_size = opts.trace_size
+    enable_trace = False if not trace_size else True
+    trace_file = f"log/trace_{design}.txt"
+
+    # Data types
+    dtype_in = np.dtype("uint8")
+    dtype_wts = np.dtype("int8")
+    dtype_out = np.dtype("uint8")
+
+    # Data layout shapes
+    # Input: D{C/8}H{C8}W (depth, channel-groups, height, channels-per-group, width)
+    shape_in_act = (depth, ci8, height, 8, width)
+    # Weights: {O/8}{I/8}KDHW{I8}{O8}
+    shape_in_wts = (co8, ci8, 3, 3, 3, 8, 8)
+    # Output: D{C/8}H{C8}W
+    shape_out = (depth, co8, height, 8, width)
+
+    # Initialize random input and weights
+    int_inp = torch.randint(1, 20, (1, ci, depth, height, width)).type(
+        torch.FloatTensor
+    )
+    # True 3D kernel (3x3x3)
+    int_weight = torch.randint(-50, 50, (co, ci, 3, 3, 3)).type(torch.FloatTensor)
+
+    # Quantization scales
+    conv_scale = 7.6294e-06
+    int8_scale = 0.0078
+    min_val = 0
+    max_val = 255
+
+    # Load NPU kernel
+    npu_kernel = NPUKernel(xclbin_path, insts_path, kernel_name=opts.kernel)
+    kernel_handle = DefaultNPURuntime.load(npu_kernel)
+
+    # Define PyTorch reference model
+    class Conv3dModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            # True 3D convolution with 3x3x3 kernel
+            # No padding in conv since we manually pad with replicate mode
+            self.conv = nn.Conv3d(ci, co, kernel_size=3, padding=0, bias=False)
+
+        def forward(self, x):
+            out_int = self.conv(x)
+            # Quantization: match NPU behavior
+            out_quant = out_int * conv_scale
+            out_float = int8_scale * torch.clamp(
+                torch.round(out_quant / int8_scale), min_val, max_val
+            )
+            return out_float
+
+    # Generate golden output
+    model = Conv3dModel()
+    model.eval()
+    model.conv.weight.data.copy_(int_weight)
+
+    # Apply replication padding to match NPU kernel border handling
+    # Pad: (left, right, top, bottom, front, back) for (W, H, D)
+    int_inp_padded = torch.nn.functional.pad(int_inp, (1, 1, 1, 1, 1, 1), mode='replicate')
+    golden_output = model(int_inp_padded)
+
+    # Reorder input data layout
+    before_input = int_inp.squeeze().data.numpy().astype(dtype_in)  # [ci, depth, height, width]
+    before_input.tofile(
+        log_folder + f"/before_ifm_{design}.txt", sep=",", format="%d"
+    )
+
+    # Reorder: CDHW → D{C/8}H{C8}W manually
+    ifm_mem_fmt = np.zeros((depth, ci8, height, 8, width), dtype=dtype_in)
+    for d in range(depth):
+        for ic8 in range(ci8):
+            for h in range(height):
+                for ic in range(8):
+                    for w in range(width):
+                        ifm_mem_fmt[d, ic8, h, ic, w] = before_input[
+                            ic8 * 8 + ic, d, h, w
+                        ]
+
+    ifm_mem_fmt = ifm_mem_fmt.flatten()
+    ifm_mem_fmt.tofile(
+        log_folder + f"/after_ifm_{design}.txt", sep=",", format="%d"
+    )
+
+    # Reorder weights: OIKDHW → {O/8}{I/8}KDHW{I8}{O8}
+    wts_orig = int_weight.data.numpy().astype(dtype_wts)  # [co, ci, 3, 3, 3]
+    wts = np.zeros((co8, ci8, 3, 3, 3, 8, 8), dtype=dtype_wts)
+
+    for oc8 in range(co8):
+        for ic8 in range(ci8):
+            for kd in range(3):
+                for kh in range(3):
+                    for kw in range(3):
+                        for i in range(8):
+                            for o in range(8):
+                                wts[oc8, ic8, kd, kh, kw, i, o] = wts_orig[
+                                    oc8 * 8 + o, ic8 * 8 + i, kd, kh, kw
+                                ]
+
+    wts.tofile(log_folder + f"/weights_{design}.txt", sep=",", format="%d")
+
+    # Prepare NPU buffers (single input/output for spatial parallelism)
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(wts, dtype=dtype_wts)
+    out_size = np.prod(shape_out)
+    out = iron.zeros(out_size, dtype=dtype_out)
+    buffers = [in1, in2, out]
+
+    # Trace configuration
+    trace_config = None
+    if enable_trace:
+        last_tensor = buffers[-1]
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_file=trace_file,
+            trace_after_last_tensor=True,
+            enable_ctrl_pkts=False,
+            last_tensor_shape=last_tensor.shape,
+            last_tensor_dtype=last_tensor.dtype,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
+
+    # Run on NPU
+    print(f"Running on NPU with {len(buffers)} buffers...")
+    for i in range(num_iter):
+        try:
+            print(f"Iteration {i}, calling NPU...")
+            ret = DefaultNPURuntime.run(kernel_handle, buffers)
+            print(f"NPU returned successfully")
+
+            if enable_trace:
+                trace_buffer, _ = HostRuntime.extract_trace_from_args(
+                    buffers, trace_config
+                )
+                trace_buffer = trace_buffer.view(np.uint32)
+                trace_config.write_trace(trace_buffer)
+
+            # Collect output tensor
+            out_tensor = buffers[-1]
+            if not isinstance(out_tensor, np.ndarray):
+                out_tensor = out_tensor.numpy()
+            data_buffer = out_tensor * int8_scale
+
+            npu_time_total += ret.npu_time
+
+        except Exception as e:
+            print(f"\nNPU execution error: {e}")
+            if enable_trace:
+                print("Extracting trace buffer for debugging...")
+                try:
+                    trace_buffer, _ = HostRuntime.extract_trace_from_args(
+                        buffers, trace_config
+                    )
+                    trace_buffer = trace_buffer.view(np.uint32)
+
+                    # Save raw trace buffer
+                    raw_trace_file = f"log/trace_{design}_raw.bin"
+                    trace_buffer.tofile(raw_trace_file)
+                    print(f"Raw trace buffer saved to {raw_trace_file}")
+
+                    trace_config.write_trace(trace_buffer)
+                    print(f"Trace written to {trace_file}")
+                except Exception as trace_err:
+                    print(f"Failed to extract trace: {trace_err}")
+                    import traceback
+                    traceback.print_exc()
+            raise
+
+    # Reorder output data layout: D{C/8}H{C8}W → CDHW
+    temp_out = data_buffer.reshape(shape_out)  # [depth, co8, height, 8, width]
+    ofm_mem_fmt = np.zeros((co, depth, height, width), dtype=np.float32)
+
+    for d in range(depth):
+        for oc8 in range(co8):
+            for h in range(height):
+                for oc in range(8):
+                    for w in range(width):
+                        ofm_mem_fmt[oc8 * 8 + oc, d, h, w] = temp_out[
+                            d, oc8, h, oc, w
+                        ]
+
+    ofm_mem_fmt.tofile(
+        log_folder + f"/after_ofm_{design}.txt", sep=",", format="%d"
+    )
+    ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
+
+    # Compare NPU output with golden reference
+    print(f"\nAvg NPU time: {int((npu_time_total / num_iter) / 1000)}us.")
+    print(f"Configuration: {n_cores} cores, Volume: {depth}x{height}x{width}, Channels: {ci}→{co}")
+
+    # Use 16x tolerance due to quantization rounding
+    if np.allclose(
+        ofm_mem_fmt_out.detach().numpy(),
+        golden_output.detach().numpy(),
+        rtol=0,
+        atol=16 * int8_scale,
+    ):
+        print(f"\n✓ PASS! ({n_cores} cores)\n")
+        exit(0)
+    else:
+        max_diff = np.max(
+            np.abs(
+                ofm_mem_fmt_out.detach().numpy() - golden_output.detach().numpy()
+            )
+        )
+        print(f"\n✗ FAILED. Max difference: {max_diff}\n")
+        exit(-1)
+
+
+if __name__ == "__main__":
+    p = test_utils.create_default_argparser()
+    p.add_argument(
+        "--n_cores",
+        type=int,
+        choices=[1, 2, 4, 8, 16, 32],
+        default=8,
+        help="Number of cores"
+    )
+    p.add_argument(
+        "-d", "--depth",
+        dest="depth",
+        type=int,
+        default=8,
+        help="Depth of 3D convolution volume"
+    )
+    p.add_argument(
+        "-ht", "--height",
+        dest="height",
+        type=int,
+        default=64,
+        help="Height of 3D convolution volume (must be divisible by n_cores)"
+    )
+    p.add_argument(
+        "-wd", "--width",
+        dest="width",
+        type=int,
+        default=64,
+        help="Width of 3D convolution volume (must be divisible by 8)"
+    )
+    p.add_argument(
+        "-ic", "--in_channels",
+        dest="in_channels",
+        type=int,
+        default=8,
+        help="Number of input channels (must be divisible by 8)"
+    )
+    p.add_argument(
+        "-oc", "--out_channels",
+        dest="out_channels",
+        type=int,
+        default=8,
+        help="Number of output channels (must be divisible by 8)"
+    )
+    opts = p.parse_args(sys.argv[1:])
+    main(opts)

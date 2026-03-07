@@ -1,0 +1,165 @@
+##===- Makefile -----------------------------------------------------------===##
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
+##===----------------------------------------------------------------------===##
+#
+# Makefile for Massively Parallel Conv3D Design
+#
+##===----------------------------------------------------------------------===##
+
+include ../../makefile-common
+
+SHELL := /bin/bash
+
+# Default configuration: 8 cores, 64x64x8 volume
+N_CORES ?= 8
+DEPTH ?= 8
+WIDTH ?= 64
+HEIGHT ?= 64
+IN_CHANNELS ?= 8
+OUT_CHANNELS ?= 8
+
+# Design name based on configuration
+DESIGN = conv3d_mp_$(N_CORES)cores
+
+# Validate height is divisible by n_cores
+HEIGHT_CHECK := $(shell if [ $$(($(HEIGHT) % $(N_CORES))) -eq 0 ]; then echo "ok"; else echo "error"; fi)
+ifneq ($(HEIGHT_CHECK),ok)
+$(error HEIGHT ($(HEIGHT)) must be divisible by N_CORES ($(N_CORES)))
+endif
+
+# Kernel object
+KERNEL_OBJ = conv3dk3_ui8.o
+
+# Python script
+PYTHON_SCRIPT = conv3d_massively_parallel.py
+
+# Test script
+TEST_SCRIPT = test_massively_parallel.py
+
+# Build targets
+targetname = $(DESIGN)
+kernels = $(KERNEL_OBJ)
+
+.PHONY: all clean run_py
+
+all: ${targetname}.xclbin ${targetname}.insts.txt
+
+# Generate AIE design
+${targetname}.mlir: $(PYTHON_SCRIPT)
+	python3 $(PYTHON_SCRIPT) \
+		--n_cores $(N_CORES) \
+		--depth $(DEPTH) \
+		--width $(WIDTH) \
+		--height $(HEIGHT) \
+		--in_channels $(IN_CHANNELS) \
+		--out_channels $(OUT_CHANNELS) \
+		> $@
+
+# Compile kernel
+$(KERNEL_OBJ): ../../../aie_kernels/aie2/conv3dk3.cc
+	mkdir -p $(dir $@)
+	cd $(dir $@) && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} \
+		-DBIT_WIDTH=8 -c $< -o ${@F}
+
+# Run Python test
+run_py: ${targetname}.xclbin ${targetname}.insts.txt
+	${powershell} python3 $(TEST_SCRIPT) \
+		-x ${targetname}.xclbin \
+		-i ${targetname}.insts.txt \
+		-k MLIR_AIE \
+		--n_cores $(N_CORES) \
+		--depth $(DEPTH) \
+		--width $(WIDTH) \
+		--height $(HEIGHT) \
+		--in_channels $(IN_CHANNELS) \
+		--out_channels $(OUT_CHANNELS)
+
+# Clean build artifacts
+clean:
+	rm -rf conv3d_mp_*.mlir conv3d_mp_*.xclbin* conv3d_mp_*.insts.txt \
+		*.o *.elf *.lst *.bin log/
+
+# Test multiple configurations
+.PHONY: test_8cores test_16cores test_32cores test_all
+
+test_8cores:
+	$(MAKE) clean
+	$(MAKE) all N_CORES=8 HEIGHT=64 WIDTH=64 DEPTH=8
+	$(MAKE) run_py N_CORES=8 HEIGHT=64 WIDTH=64 DEPTH=8
+
+test_16cores:
+	$(MAKE) clean
+	$(MAKE) all N_CORES=16 HEIGHT=128 WIDTH=128 DEPTH=16
+	$(MAKE) run_py N_CORES=16 HEIGHT=128 WIDTH=128 DEPTH=16
+
+test_32cores:
+	$(MAKE) clean
+	$(MAKE) all N_CORES=32 HEIGHT=256 WIDTH=128 DEPTH=16
+	$(MAKE) run_py N_CORES=32 HEIGHT=256 WIDTH=128 DEPTH=16
+
+test_all: test_8cores test_16cores test_32cores
+	@echo "All configurations passed!"
+
+# Benchmark targets
+.PHONY: bench_8cores bench_16cores bench_32cores
+
+bench_8cores:
+	@echo "=== Benchmarking 8 cores (64x64x8) ==="
+	$(MAKE) clean
+	$(MAKE) all N_CORES=8 HEIGHT=64 WIDTH=64 DEPTH=8 IN_CHANNELS=16 OUT_CHANNELS=16
+	$(MAKE) run_py N_CORES=8 HEIGHT=64 WIDTH=64 DEPTH=8 IN_CHANNELS=16 OUT_CHANNELS=16
+
+bench_16cores:
+	@echo "=== Benchmarking 16 cores (128x128x16) ==="
+	$(MAKE) clean
+	$(MAKE) all N_CORES=16 HEIGHT=128 WIDTH=128 DEPTH=16 IN_CHANNELS=16 OUT_CHANNELS=16
+	$(MAKE) run_py N_CORES=16 HEIGHT=128 WIDTH=128 DEPTH=16 IN_CHANNELS=16 OUT_CHANNELS=16
+
+bench_32cores:
+	@echo "=== Benchmarking 32 cores (256x256x32) ==="
+	$(MAKE) clean
+	$(MAKE) all N_CORES=32 HEIGHT=256 WIDTH=256 DEPTH=32 IN_CHANNELS=32 OUT_CHANNELS=32
+	$(MAKE) run_py N_CORES=32 HEIGHT=256 WIDTH=256 DEPTH=32 IN_CHANNELS=32 OUT_CHANNELS=32
+
+# Help target
+.PHONY: help
+help:
+	@echo "Massively Parallel Conv3D Makefile"
+	@echo ""
+	@echo "Usage:"
+	@echo "  make [target] [OPTIONS]"
+	@echo ""
+	@echo "Targets:"
+	@echo "  all              - Build design with current configuration"
+	@echo "  run_py           - Run Python test"
+	@echo "  clean            - Remove build artifacts"
+	@echo "  test_8cores      - Test 8-core configuration"
+	@echo "  test_16cores     - Test 16-core configuration"
+	@echo "  test_32cores     - Test 32-core configuration"
+	@echo "  test_all         - Test all configurations"
+	@echo "  bench_8cores     - Benchmark 8-core configuration"
+	@echo "  bench_16cores    - Benchmark 16-core configuration"
+	@echo "  bench_32cores    - Benchmark 32-core configuration"
+	@echo "  help             - Show this help message"
+	@echo ""
+	@echo "Configuration Options:"
+	@echo "  N_CORES=<1,2,4,8,16,32>  - Number of cores (default: 8)"
+	@echo "  DEPTH=<int>              - Depth dimension (default: 8)"
+	@echo "  WIDTH=<int>              - Width dimension, must be divisible by 8 (default: 64)"
+	@echo "  HEIGHT=<int>             - Height dimension, must be divisible by N_CORES (default: 64)"
+	@echo "  IN_CHANNELS=<int>        - Input channels, must be divisible by 8 (default: 8)"
+	@echo "  OUT_CHANNELS=<int>       - Output channels, must be divisible by 8 (default: 8)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make all N_CORES=16 HEIGHT=128 WIDTH=128"
+	@echo "  make run_py N_CORES=8 HEIGHT=64 WIDTH=64 DEPTH=16"
+	@echo "  make test_all"
+
+# Include common rules
+include ../../makefile-common
