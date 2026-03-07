@@ -13,12 +13,13 @@ make run_py
 
 ## Current Status
 
-- ✅ Working end-to-end on NPU
+- ✅ Working end-to-end on single NPU core
 - ✅ Tests passing for all depth values (1, 2, 4, 8, 16, 32)
 - ✅ **True 3D convolution with 3×3×3 kernel**
-- ✅ **Vectorized implementation using AIE intrinsics**
+- ✅ **Vectorized implementation using AIE intrinsics (aie::mmul<4,8,8>)**
 - ✅ Sliding window implementation for depth dimension
-- ⚡ **Performance: ~500µs for 8×8×8 volume (30× faster than scalar)**
+- ⚡ **Performance: ~500µs for 8×8×8 volume (30× speedup vs scalar)**
+- 🚧 Multi-core framework implemented (WIP - needs ObjectFIFO debugging)
 
 ## Parameters
 

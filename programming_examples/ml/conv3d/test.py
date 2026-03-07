@@ -20,6 +20,7 @@ torch.manual_seed(0)
 
 
 def main(opts):
+    print("Starting main function...")
     design = "conv3d"
     xclbin_path = opts.xclbin
     insts_path = opts.instr
@@ -33,6 +34,7 @@ def main(opts):
     width = int(opts.width)
     ci = int(opts.in_channels)
     co = int(opts.out_channels)
+    print(f"Parameters: d={depth}, h={height}, w={width}, ci={ci}, co={co}")
 
     ci8 = ci // 8
     co8 = co // 8
@@ -141,34 +143,69 @@ def main(opts):
                                     oc8 * 8 + o, ic8 * 8 + i, kd, kh, kw
                                 ]
 
-    wts = wts.flatten()
     wts.tofile(log_folder + "/weights_conv3d.txt", sep=",", format="%d")
 
-    # Prepare NPU buffers
-    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-    in2 = iron.tensor(wts, dtype=dtype_wts)
-    out_size = np.prod(shape_out) * dtype_out.itemsize
-    out = iron.zeros(out_size, dtype=dtype_out)
+    # Determine number of cores from xclbin
+    # For now, detect from out_channels: if 16 or more, use 2 cores; if 32 or more, use 4 cores
+    if co >= 32:
+        n_cores = 4
+    elif co >= 16:
+        n_cores = 2
+    else:
+        n_cores = 1
 
-    buffers = [in1, in2, out]
+    print(f"Using {n_cores} cores for inference")
+    print(f"Output channels per core: {co // n_cores if n_cores > 1 else co}")
+
+    # Prepare NPU buffers
+    if n_cores == 1:
+        in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+        in2 = iron.tensor(wts, dtype=dtype_wts)
+        out_size = np.prod(shape_out)
+        out = iron.zeros(out_size, dtype=dtype_out)
+        buffers = [in1, in2, out]
+    else:
+        # Multi-core: duplicate inputs, split weights and outputs
+        buffers = []
+        # Duplicated inputs (one per core)
+        for c in range(n_cores):
+            buffers.append(iron.tensor(ifm_mem_fmt, dtype=dtype_in))
+        # Split weights per core
+        oc_per_core = co // n_cores
+        oc8_per_core = oc_per_core // 8
+        for c in range(n_cores):
+            # Extract weights for this core's output channels
+            # wts is already shaped as (co8, ci8, 3, 3, 3, 8, 8)
+            wts_start = c * oc8_per_core
+            wts_end = (c + 1) * oc8_per_core
+            wts_core = wts[wts_start:wts_end].flatten()
+            buffers.append(iron.tensor(wts_core, dtype=dtype_wts))
+        # Output buffers per core (in elements, not bytes)
+        out_size_per_core = np.prod(shape_out) // n_cores
+        for c in range(n_cores):
+            buffers.append(iron.zeros(out_size_per_core, dtype=dtype_out))
 
     # Trace configuration
     trace_config = None
     if enable_trace:
+        last_tensor = buffers[-1]
         trace_config = TraceConfig(
             trace_size=trace_size,
             trace_file=trace_file,
             trace_after_last_tensor=True,
             enable_ctrl_pkts=False,
-            last_tensor_shape=out.shape,
-            last_tensor_dtype=out.dtype,
+            last_tensor_shape=last_tensor.shape,
+            last_tensor_dtype=last_tensor.dtype,
         )
         HostRuntime.prepare_args_for_trace(buffers, trace_config)
 
     # Run on NPU
+    print(f"Running on NPU with {len(buffers)} buffers...")
     for i in range(num_iter):
         try:
+            print(f"Iteration {i}, calling NPU...")
             ret = DefaultNPURuntime.run(kernel_handle, buffers)
+            print(f"NPU returned successfully")
             if enable_trace:
                 trace_buffer, _ = HostRuntime.extract_trace_from_args(
                     buffers, trace_config
@@ -176,10 +213,28 @@ def main(opts):
                 trace_buffer = trace_buffer.view(np.uint32)
                 trace_config.write_trace(trace_buffer)
 
-            out_tensor = buffers[-1]
-            if not isinstance(out_tensor, np.ndarray):
-                out_tensor = out_tensor.numpy()
-            data_buffer = out_tensor * int8_scale
+            # Collect output tensors
+            if n_cores == 1:
+                out_tensor = buffers[-1]
+                if not isinstance(out_tensor, np.ndarray):
+                    out_tensor = out_tensor.numpy()
+                data_buffer = out_tensor * int8_scale
+            else:
+                # Multi-core: concatenate outputs from all cores
+                # Each core produces shape (depth, co8_per_core, height, 8, width)
+                oc8_per_core = (co // n_cores) // 8
+                out_shape_per_core = (depth, oc8_per_core, height, 8, width)
+                out_tensors = []
+                for c in range(n_cores):
+                    out_idx = n_cores * 2 + c  # After inputs and weights
+                    out_t = buffers[out_idx]
+                    if not isinstance(out_t, np.ndarray):
+                        out_t = out_t.numpy()
+                    # Reshape to proper layout
+                    out_t_reshaped = out_t.reshape(out_shape_per_core)
+                    out_tensors.append(out_t_reshaped)
+                # Concatenate along channel dimension (axis=1, the co8 dimension)
+                data_buffer = np.concatenate(out_tensors, axis=1).flatten() * int8_scale
             npu_time_total += ret.npu_time
         except Exception as e:
             print(f"\nNPU execution error: {e}")
