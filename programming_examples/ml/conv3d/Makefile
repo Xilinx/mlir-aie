@@ -23,7 +23,7 @@ height = 8
 width = 8
 in_channels = 8
 out_channels = 8
-vectorized ?= false  # Start with scalar, set to true for vectorized
+vectorized ?= true  # Use vectorized implementation by default
 trace_size = 0
 
 ifeq ($(devicename),npu2)
@@ -33,10 +33,10 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 endif
 
 # Compilation flags
-ifeq ($(vectorized),true)
-VECTORIZED_FLAGS = -DUINT8_ACT
-else
+ifeq ($(vectorized),false)
 VECTORIZED_FLAGS = -DSCALAR -DUINT8_ACT
+else
+VECTORIZED_FLAGS = -DUINT8_ACT
 endif
 
 all: build/conv3dk3_ui8.o build/final.xclbin

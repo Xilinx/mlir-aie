@@ -53,7 +53,7 @@ def conv3dk3(
 
     # AIE Core Function declarations
     conv3dk3_kernel = Kernel(
-        "conv3dk3_ui8_scalar",
+        "conv3dk3_ui8",  # Vectorized kernel
         "conv3dk3_ui8.o",
         [
             actIn_ty,   # plane0

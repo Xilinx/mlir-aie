@@ -16,8 +16,9 @@ make run_py
 - ✅ Working end-to-end on NPU
 - ✅ Tests passing for all depth values (1, 2, 4, 8, 16, 32)
 - ✅ **True 3D convolution with 3×3×3 kernel**
+- ✅ **Vectorized implementation using AIE intrinsics**
 - ✅ Sliding window implementation for depth dimension
-- ⏱️ Execution time: ~15.6ms for 8×8×8 volume
+- ⚡ **Performance: ~500µs for 8×8×8 volume (30× faster than scalar)**
 
 ## Parameters
 

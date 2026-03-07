@@ -1,0 +1,20 @@
+python3 /scratch/jmelber/mlir-aie/programming_examples/ml/conv3d/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE \
+	-d 8 -ht 8 -wd 8 -ic 8 -oc 8 \
+	-t 16384
+
+NPU execution error: Kernel returned ert_cmd_state.ERT_CMD_STATE_TIMEOUT
+Extracting trace buffer for debugging...
+Trace written to log/trace_conv3d.txt
+Traceback (most recent call last):
+  File "/scratch/jmelber/mlir-aie/programming_examples/ml/conv3d/test.py", line 271, in <module>
+    main(opts)
+  File "/scratch/jmelber/mlir-aie/programming_examples/ml/conv3d/test.py", line 165, in main
+    ret = DefaultNPURuntime.run(kernel_handle, buffers)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/jmelber/mlir-aie/ironenv/lib/python3.12/site-packages/mlir_aie/python/aie/utils/hostruntime/xrtruntime/hostruntime.py", line 457, in run
+    return super().run(kernel_handle, args, trace_config, fail_on_error, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/jmelber/mlir-aie/ironenv/lib/python3.12/site-packages/mlir_aie/python/aie/utils/hostruntime/xrtruntime/hostruntime.py", line 275, in run
+    raise HostRuntimeError(f"Kernel returned {str(r)}")
+aie.utils.hostruntime.hostruntime.HostRuntimeError: Kernel returned ert_cmd_state.ERT_CMD_STATE_TIMEOUT
+make: *** [Makefile:63: trace_py] Error 1
