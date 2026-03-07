@@ -96,3 +96,42 @@ test_opencv_unit:
 
 clean:
 	rm -rf build log *.elf *.xclbin *.bin *.mlir.prj
+
+# Multi-core spatial parallelism targets
+spatial_2core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_spatial.py npu2_2col ${depth} ${width} ${height} ${in_channels} ${out_channels} > build/spatial_2core.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=spatial_2core.xclbin --npu-insts-name=spatial_2core_insts.bin spatial_2core.mlir
+
+spatial_4core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_spatial.py npu2_4col ${depth} ${width} ${height} ${in_channels} ${out_channels} > build/spatial_4core.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=spatial_4core.xclbin --npu-insts-name=spatial_4core_insts.bin spatial_4core.mlir
+
+spatial_8core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_spatial.py npu2_8col ${depth} ${width} ${height} ${in_channels} ${out_channels} > build/spatial_8core.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=spatial_8core.xclbin --npu-insts-name=spatial_8core_insts.bin spatial_8core.mlir
+
+# Massively parallel targets
+massively_parallel_8core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_massively_parallel.py --n_cores 8 --depth ${depth} --width ${width} --height ${height} --in_channels ${in_channels} --out_channels ${out_channels} > build/mp_8core.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mp_8core.xclbin --npu-insts-name=mp_8core_insts.bin mp_8core.mlir
+
+massively_parallel_16core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_massively_parallel.py --n_cores 16 --depth ${depth} --width ${width} --height ${height} --in_channels ${in_channels} --out_channels ${out_channels} > build/mp_16core.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mp_16core.xclbin --npu-insts-name=mp_16core_insts.bin mp_16core.mlir
+
+.PHONY: all clean run run_py trace_py spatial_2core spatial_4core spatial_8core massively_parallel_8core massively_parallel_16core
