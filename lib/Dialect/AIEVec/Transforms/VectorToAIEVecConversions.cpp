@@ -25,11 +25,13 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
+#include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
 #include <bitset>
@@ -4888,7 +4890,14 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
                        xilinx::aievec::AIEVecDialect, arith::ArithDialect,
                        ub::UBDialect, emitc::EmitCDialect, func::FuncDialect>();
   if (backend == TargetBackend::CPP) {
-    target.addIllegalOp<vector::TransferReadOp>();
+    // Mark transfer_read as dynamically legal: illegal only when the vector
+    // rank is <= 4 (which the AIEVec patterns can lower). High-rank vectors
+    // with leading unit dims (e.g., vector<1x1x4x32x4x8xbf16>) from LLVM 23
+    // are left legal — they'll be handled by aie-vector-transfer-lowering.
+    target.addDynamicallyLegalOp<vector::TransferReadOp>(
+        [](vector::TransferReadOp op) {
+          return op.getVectorType().getRank() > 4;
+        });
   }
   target.addIllegalOp<vector::ExtractStridedSliceOp>();
   target.addLegalOp<vector::BitCastOp>();
