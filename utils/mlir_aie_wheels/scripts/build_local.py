@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import platform
 import re
@@ -31,6 +32,29 @@ from typing import Iterable, Optional
 
 
 DEFAULT_PIP_FIND_LINKS = "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+
+
+# --------------------------------------------------------------------------------------
+# Command line
+# --------------------------------------------------------------------------------------
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    python_group = parser.add_mutually_exclusive_group()
+    python_group.add_argument("--cp312", action="store_true", help="Build only cp312 wheels.")
+    python_group.add_argument("--cp313", action="store_true", help="Build only cp313 wheels.")
+    python_group.add_argument("--cp314", action="store_true", help="Build only cp314 wheels.")
+    return parser.parse_args(argv)
+
+
+def _apply_requested_python(args: argparse.Namespace) -> None:
+    if args.cp312:
+        os.environ["CIBW_BUILD"] = "cp312-*"
+    elif args.cp313:
+        os.environ["CIBW_BUILD"] = "cp313-*"
+    elif args.cp314:
+        os.environ["CIBW_BUILD"] = "cp314-*"
 
 
 # --------------------------------------------------------------------------------------
@@ -99,6 +123,8 @@ def _apply_env_for_machine(machine: str) -> None:
         os.environ.setdefault("MATRIX_OS", "windows-2022")
         os.environ.setdefault("CIBW_ARCHS", "AMD64")
         os.environ.setdefault("ARCH", "AMD64")
+        os.environ.setdefault("PARALLEL_LEVEL", "15")
+        os.environ.setdefault("AIE_WHEEL_BUILD_ROOT", "C:/tmp/aiewhls")
 
 
 # --------------------------------------------------------------------------------------
@@ -138,7 +164,8 @@ def _copy_ccache_from_wheelhouse(wheelhouse: Path, host_ccache_dir: Path) -> Non
 # --------------------------------------------------------------------------------------
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv or sys.argv[1:])
     here = Path(__file__).resolve().parent
     project_root = (here / "..").resolve()  # utils/mlir_aie_wheels
     wheelhouse = project_root / "wheelhouse"
@@ -161,6 +188,7 @@ def main() -> int:
     machine = _detect_machine()
     print(machine)
 
+    _apply_requested_python(args)
     _apply_env_for_machine(machine)
 
     # For local builds, default to the official mlir-distro unless the user overrides.

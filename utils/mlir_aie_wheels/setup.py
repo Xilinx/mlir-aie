@@ -29,6 +29,57 @@ def _cmake_path(p: object) -> str:
     return os.fspath(p).replace("\\", "/")
 
 
+def _windows_short_root() -> Path:
+    return Path(os.getenv("AIE_WHEEL_BUILD_ROOT", "C:/tmp/aiewhls")).absolute()
+
+
+def _windows_tree_alias_name(tree_name: str) -> str:
+    aliases = {
+        "mlir": "m",
+        "mlir_no_rtti": "mnr",
+        "mlir_aie": "a",
+        "mlir_aie_no_rtti": "anr",
+    }
+    return aliases.get(tree_name, tree_name)
+
+
+def _remove_tree(path: Path) -> None:
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def _windows_short_dir(name: str, *, clean: bool = False) -> Path:
+    path = _windows_short_root() / name
+    if clean and path.exists():
+        _remove_tree(path)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _windows_short_alias(name: str, target: Path) -> Path:
+    link = _windows_short_root() / name
+    target = target.absolute()
+    if link.exists():
+        try:
+            if link.resolve() == target.resolve():
+                return link
+        except OSError:
+            pass
+        subprocess.run(
+            ["cmd", "/c", "rmdir", str(link)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    link.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return link
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: Union[str, Path] = "") -> None:
         super().__init__(name, sources=[])
@@ -124,17 +175,21 @@ class CMakeBuild(build_ext):
                 / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti"),
             )
         ).absolute()
+        cmake_source_dir = Path(ext.sourcedir)
+        cmake_module_root = MLIR_AIE_SOURCE_DIR
 
         if platform.system() == "Windows":
-            # fatal error LNK1170: line in command file contains 131071 or more characters
-            if not Path("/tmp/m").exists():
-                shutil.move(MLIR_INSTALL_ABS_PATH, "/tmp/m")
-            MLIR_INSTALL_ABS_PATH = Path("/tmp/m").absolute()
+            # Keep source and dependency paths short without moving the installed trees.
+            cmake_source_dir = _windows_short_alias("src", cmake_source_dir).absolute()
+            cmake_module_root = cmake_source_dir
+            MLIR_INSTALL_ABS_PATH = _windows_short_alias(
+                _windows_tree_alias_name(MLIR_INSTALL_ABS_PATH.name), MLIR_INSTALL_ABS_PATH
+            ).absolute()
 
         cmake_args = [
             "-G",
             cmake_generator,
-            f"-DCMAKE_MODULE_PATH={_cmake_path(MLIR_AIE_SOURCE_DIR / 'cmake' / 'modulesXilinx')}",
+            f"-DCMAKE_MODULE_PATH={_cmake_path(cmake_module_root / 'cmake' / 'modulesXilinx')}",
             f"-DCMAKE_PREFIX_PATH={_cmake_path(MLIR_INSTALL_ABS_PATH)}",
             f"-DCMAKE_INSTALL_PREFIX={_cmake_path(install_dir)}",
             f"-DPython3_EXECUTABLE={_cmake_path(sys.executable)}",
@@ -186,19 +241,18 @@ class CMakeBuild(build_ext):
             cmake_args += [item for item in os.getenv("CMAKE_ARGS").split(" ") if item]
 
         build_args = []
-        if self.compiler.compiler_type != "msvc":
-            if not cmake_generator or cmake_generator == "Ninja":
-                try:
-                    import ninja
+        if not cmake_generator or cmake_generator == "Ninja":
+            try:
+                import ninja
 
-                    ninja_executable_path = Path(ninja.BIN_DIR) / "ninja"
-                    cmake_args += [
-                        f"-DCMAKE_MAKE_PROGRAM:FILEPATH={ninja_executable_path}",
-                    ]
-                except ImportError:
-                    pass
+                ninja_executable_path = Path(ninja.BIN_DIR) / "ninja"
+                cmake_args += [
+                    f"-DCMAKE_MAKE_PROGRAM:FILEPATH={_cmake_path(ninja_executable_path)}",
+                ]
+            except ImportError:
+                pass
 
-        else:
+        if self.compiler.compiler_type == "msvc":
             single_config = any(x in cmake_generator for x in {"NMake", "Ninja"})
             contains_arch = any(x in cmake_generator for x in {"ARM", "Win64"})
             if not single_config and not contains_arch:
@@ -223,28 +277,40 @@ class CMakeBuild(build_ext):
             if archs:
                 cmake_args += ["-DCMAKE_OSX_ARCHITECTURES={}".format(";".join(archs))]
 
-        build_args += [f"-j{os.getenv('PARALLEL_LEVEL', 2 * os.cpu_count())}"]
+        build_args += [f"-j{os.getenv('PARALLEL_LEVEL', os.cpu_count() or 2)}"]
+        cleanup_build_temp = False
         build_temp = Path(self.build_temp) / ext.name
-        if not build_temp.exists():
+        if platform.system() == "Windows":
+            build_temp = _windows_short_dir("main", clean=True)
+            cleanup_build_temp = True
+        elif not build_temp.exists():
             build_temp.mkdir(parents=True)
 
         print("ENV", pprint(os.environ), file=sys.stderr)
         print("cmake", " ".join(cmake_args), file=sys.stderr)
 
-        subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
-        )
-        subprocess.run(
-            ["cmake", "--build", ".", "--target", "install", *build_args],
-            cwd=build_temp,
-            check=True,
-        )
+        build_succeeded = False
+        try:
+            subprocess.run(
+                ["cmake", _cmake_path(cmake_source_dir), *cmake_args],
+                cwd=build_temp,
+                check=True,
+            )
+            subprocess.run(
+                ["cmake", "--build", ".", "--target", "install", *build_args],
+                cwd=build_temp,
+                check=True,
+            )
 
-        # Vendor eudsl-python-extras
-        # Install eudsl to install_dir/python so it merges with mlir-aie's package structure (aie/extras).
-        target_dir = Path(install_dir) / "python"
-        req_file = Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
-        install_eudsl(req_file, target_dir)
+            # Vendor eudsl-python-extras
+            # Install eudsl to install_dir/python so it merges with mlir-aie's package structure (aie/extras).
+            target_dir = Path(install_dir) / "python"
+            req_file = Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
+            install_eudsl(req_file, target_dir)
+            build_succeeded = True
+        finally:
+            if cleanup_build_temp and build_succeeded:
+                _remove_tree(build_temp)
 
 
 class DevelopWithPth(develop):

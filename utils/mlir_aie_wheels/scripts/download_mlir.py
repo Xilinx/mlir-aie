@@ -16,7 +16,6 @@
 # Optional:
 #   MLIR_AIE_WHEEL_VERSION: override wheel version (bypass clone-llvm.sh parsing)
 #   MLIR_AIE_SOURCE_DIR:    explicit repo root (for clone-llvm.sh lookup)
-#   VSWHERE_EXE:            explicit vswhere path (for diaguids.lib fixup)
 ##===------------------------------------------------------------------------------===##
 
 import os
@@ -102,31 +101,17 @@ def _wheel_version():
 # --------------------------------------------------------------------------------------
 
 
-def _vswhere_path():
-    explicit = (os.environ.get("VSWHERE_EXE") or "").strip()
-    if explicit and Path(explicit).is_file():
-        return Path(explicit)
+def _find_vs_install_dir():
+    vsinstalldir = (os.environ.get("VSINSTALLDIR") or "").strip()
+    if vsinstalldir:
+        return Path(vsinstalldir)
 
     pf86 = os.environ.get("ProgramFiles(x86)")
     if not pf86:
         return None
 
-    p = Path(pf86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
-    return p if p.is_file() else None
-
-
-def _detect_diaguids_lib():
-    if os.name != "nt":
-        return None
-
-    vsinstalldir = (os.environ.get("VSINSTALLDIR") or "").strip()
-    if vsinstalldir:
-        p = Path(vsinstalldir) / "DIA SDK" / "lib" / "amd64" / "diaguids.lib"
-        if p.is_file():
-            return p
-
-    vswhere = _vswhere_path()
-    if vswhere is None:
+    vswhere = Path(pf86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not vswhere.is_file():
         return None
 
     try:
@@ -147,15 +132,25 @@ def _detect_diaguids_lib():
     except Exception:
         return None
 
-    if not install:
+    return Path(install) if install else None
+
+
+def _find_diaguids_lib():
+    if os.name != "nt":
         return None
 
-    p = Path(install) / "DIA SDK" / "lib" / "amd64" / "diaguids.lib"
-    return p if p.is_file() else None
+    install_dir = _find_vs_install_dir()
+    if install_dir is None:
+        return None
+
+    diaguids = install_dir / "DIA SDK" / "lib" / "amd64" / "diaguids.lib"
+    return diaguids if diaguids.is_file() else None
 
 
 def _fixup_llvm_diaguids(mlir_prefix):
-    # The MLIR wheel's LLVM CMake exports can contain an absolute diaguids.lib path.
+    # The MLIR wheel's LLVM CMake exports can contain an absolute diaguids.lib path
+    # from the machine that built the wheel. Rewrite it to the current machine's
+    # DIA SDK path.
     if os.name != "nt":
         return
 
@@ -164,38 +159,38 @@ def _fixup_llvm_diaguids(mlir_prefix):
         return
 
     cmake_files = [llvm_dir / "LLVMExports.cmake", llvm_dir / "LLVMTargets.cmake"]
-    cmake_files = [p for p in cmake_files if p.is_file()]
+    cmake_files = [cmake_file for cmake_file in cmake_files if cmake_file.is_file()]
     if not cmake_files:
         return
 
-    repl_path = _detect_diaguids_lib()
-    repl = repl_path.as_posix() if repl_path else "diaguids.lib"
-
     pat = re.compile(r"([A-Za-z]:[\\/][^\n\"']*diaguids\.lib)", flags=re.IGNORECASE)
-    patched = 0
+    file_data = {}
+    found_reference = False
 
     for cmake_file in cmake_files:
         data = cmake_file.read_text(encoding="utf-8", errors="ignore")
+        file_data[cmake_file] = data
+        if pat.search(data):
+            found_reference = True
 
-        def _repl(m):
-            nonlocal patched
-            old = m.group(1)
-            try:
-                if Path(old).exists():
-                    return old
-            except Exception:
-                pass
-            patched += 1
-            return repl
+    if not found_reference:
+        return
 
-        new_data = pat.sub(_repl, data)
-        if new_data != data:
+    diaguids = _find_diaguids_lib()
+    if diaguids is None:
+        raise FileNotFoundError("Could not locate diaguids.lib for LLVM CMake export fixup")
+
+    replacement = diaguids.as_posix()
+    patched = 0
+
+    for cmake_file, data in file_data.items():
+        new_data, count = pat.subn(replacement, data)
+        if count:
             cmake_file.write_text(new_data, encoding="utf-8")
+            patched += count
 
     if patched:
-        print(
-            f"[fixup] Patched diaguids.lib path -> {repl_path if repl_path else 'diaguids.lib'}"
-        )
+        print(f"[fixup] Patched diaguids.lib path -> {replacement}")
 
 
 def main():
