@@ -48,6 +48,8 @@ verifyStridesWraps(mlir::Operation *forOp,
                    llvm::SmallVector<int64_t, 4> hardwareSizes,
                    llvm::SmallVector<int64_t, 4> hardwareStrides,
                    bool skipTransformationChecks = false);
+bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
+                      llvm::ArrayRef<int64_t> strides);
 
 } // namespace AIEX
 } // namespace xilinx
