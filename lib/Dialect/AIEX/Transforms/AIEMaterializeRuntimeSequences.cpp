@@ -24,6 +24,11 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEMATERIALIZERUNTIMESEQUENCES
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
 #define DEBUG_TYPE "aie-materialize-runtime-sequence"
 
 using namespace mlir;
@@ -502,7 +507,8 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 };
 
 struct AIEMaterializeRuntimeSequencesPass
-    : AIEMaterializeRuntimeSequencesBase<AIEMaterializeRuntimeSequencesPass> {
+    : xilinx::AIEX::impl::AIEMaterializeRuntimeSequencesBase<
+          AIEMaterializeRuntimeSequencesPass> {
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 

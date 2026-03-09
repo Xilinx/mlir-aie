@@ -31,6 +31,11 @@
 
 #include "llvm/ADT/SmallSet.h"
 
+namespace xilinx::aievec {
+#define GEN_PASS_DEF_AIEVECTORIZE
+#include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
+} // namespace xilinx::aievec
+
 using namespace llvm;
 using namespace mlir;
 using namespace arith;
@@ -2963,7 +2968,7 @@ static void reassociateOpsInFunc(func::FuncOp func, VectState *state) {
   reassociateAddOpInFunc(func, state);
 }
 
-struct AIEVectorize : AIEVectorizeBase<AIEVectorize> {
+struct AIEVectorize : xilinx::aievec::impl::AIEVectorizeBase<AIEVectorize> {
   AIEVectorize() = default;
   void runOnOperation() override;
 };

@@ -1433,10 +1433,21 @@ LogicalResult PacketFlowOp::verify() {
   if (body.empty())
     return emitOpError("should have non-empty body");
 
+  int numSources = 0, numDests = 0;
   for (auto &ops : body.front()) {
     if (!isa<PacketSourceOp, PacketDestOp, EndOp>(ops))
       return ops.emitOpError("cannot be contained in a PacketFlow op");
+    if (isa<PacketSourceOp>(ops))
+      ++numSources;
+    if (isa<PacketDestOp>(ops))
+      ++numDests;
   }
+
+  if (numSources != 1)
+    return emitOpError("must have exactly one aie.packet_source (got ")
+           << numSources << ")";
+  if (numDests < 1)
+    return emitOpError("must have at least one aie.packet_dest");
 
   return success();
 }
@@ -2337,6 +2348,45 @@ LogicalResult UseLockOp::verify() {
 
 #include "aie/Dialect/AIE/IR/AIEEnums.cpp.inc"
 #include "aie/Dialect/AIE/IR/AIEInterfaces.cpp.inc"
+
+//===----------------------------------------------------------------------===//
+// TraceEventAttr
+//===----------------------------------------------------------------------===//
+
+// Custom parser for TraceEventAttr value (uses shared helper)
+static ParseResult parseTraceEventValue(AsmParser &parser, Attribute &value) {
+  return xilinx::AIE::parseTraceEvent(parser, value);
+}
+
+// Custom printer for TraceEventAttr value (uses shared helper)
+static void printTraceEventValue(AsmPrinter &printer, Attribute value) {
+  xilinx::AIE::printTraceEventEnum(printer, value);
+}
+
+// Custom parser for TraceEventAttr value (uses shared helper)
+static ParseResult parseTraceRegValue(OpAsmParser &parser, Attribute &value) {
+
+  // Try to parse as number
+  int64_t intValue;
+  OptionalParseResult parseResult = parser.parseOptionalInteger(intValue);
+  if (parseResult.has_value() && succeeded(parseResult.value())) {
+    MLIRContext *ctx = parser.getContext();
+    value = IntegerAttr::get(IntegerType::get(ctx, 32), intValue);
+    return success();
+  }
+  return xilinx::AIE::parseTraceEvent(parser, value);
+}
+
+// Custom printer for TraceEventAttr value (uses shared helper)
+static void printTraceRegValue(OpAsmPrinter &printer, Operation *op,
+                               Attribute value) {
+  // if it's an intattr
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(value)) {
+    printer << intAttr.getInt();
+    return;
+  }
+  xilinx::AIE::printTraceEventEnum(printer, value);
+}
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"

@@ -21,6 +21,11 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIECREATECORES
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -65,7 +70,8 @@ struct RemoveAIECalls : public OpConversionPattern<func::CallOp> {
   }
 };
 
-struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
+struct AIECreateCoresPass
+    : public xilinx::AIEX::impl::AIECreateCoresBase<AIECreateCoresPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();

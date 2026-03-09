@@ -33,6 +33,51 @@ if(NOT MLIR_AIE_DIR)
 endif()
 
 # -----------------------------------------------------------------------------
+# XRT auto-detection (supports both Ubuntu packages and legacy /opt/xilinx/xrt)
+# -----------------------------------------------------------------------------
+if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
+    find_package(XRT QUIET)
+    if(XRT_FOUND)
+        # find_package(XRT) may resolve via the project's FindXRT.cmake (which
+        # sets XRT_INCLUDE_DIR / XRT_LIB_DIR, singular) or via XRT's own
+        # xrt-config.cmake (which sets XRT_INCLUDE_DIRS / XRT_LINK_DIRS,
+        # plural).  Accept whichever set is available.
+        if(NOT DEFINED XRT_INC_DIR)
+            if(XRT_INCLUDE_DIRS)
+                set(XRT_INC_DIR "${XRT_INCLUDE_DIRS}" CACHE STRING "Path to XRT headers")
+            elseif(XRT_INCLUDE_DIR)
+                set(XRT_INC_DIR "${XRT_INCLUDE_DIR}" CACHE STRING "Path to XRT headers")
+            endif()
+        endif()
+        if(NOT DEFINED XRT_LIB_DIR)
+            if(XRT_LINK_DIRS)
+                set(XRT_LIB_DIR "${XRT_LINK_DIRS}" CACHE STRING "Path to XRT libraries")
+            endif()
+        endif()
+    endif()
+
+    # Fall back to legacy/default paths if still unset
+    if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
+        find_program(WSL NAMES powershell.exe)
+        if(NOT WSL)
+            if(NOT DEFINED XRT_INC_DIR)
+                set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
+            endif()
+            if(NOT DEFINED XRT_LIB_DIR)
+                set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to XRT libraries")
+            endif()
+        else()
+            if(NOT DEFINED XRT_INC_DIR)
+                set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT headers")
+            endif()
+            if(NOT DEFINED XRT_LIB_DIR)
+                set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to XRT libraries")
+            endif()
+        endif()
+    endif()
+endif()
+
+# -----------------------------------------------------------------------------
 # test_utils discovery
 # -----------------------------------------------------------------------------
 # Preferred: installed layout (from cmake --install). Fallback: build from source.
@@ -63,12 +108,15 @@ function(target_link_test_utils target_name)
     add_library(test_utils STATIC "${TEST_UTILS_SRC_DIR}/test_utils.cpp")
     target_include_directories(test_utils PUBLIC "${TEST_UTILS_SRC_DIR}" "${TEST_UTILS_RUNTIME_LIB_DIR}")
 
-    # Enable XRT helpers if the example provided an XRT include dir
-    if(DEFINED XRT_INCLUDE_DIR)
-      target_include_directories(test_utils PUBLIC "${XRT_INCLUDE_DIR}")
-      target_compile_definitions(test_utils PRIVATE TEST_UTILS_USE_XRT)
-    elseif(DEFINED XRT_INC_DIR)
+    # Enable XRT helpers if an XRT include dir is available
+    if(DEFINED XRT_INC_DIR AND XRT_INC_DIR)
       target_include_directories(test_utils PUBLIC "${XRT_INC_DIR}")
+      target_compile_definitions(test_utils PRIVATE TEST_UTILS_USE_XRT)
+    elseif(DEFINED XRT_INCLUDE_DIRS AND XRT_INCLUDE_DIRS)
+      target_include_directories(test_utils PUBLIC "${XRT_INCLUDE_DIRS}")
+      target_compile_definitions(test_utils PRIVATE TEST_UTILS_USE_XRT)
+    elseif(DEFINED XRT_INCLUDE_DIR AND XRT_INCLUDE_DIR)
+      target_include_directories(test_utils PUBLIC "${XRT_INCLUDE_DIR}")
       target_compile_definitions(test_utils PRIVATE TEST_UTILS_USE_XRT)
     endif()
   endif()
