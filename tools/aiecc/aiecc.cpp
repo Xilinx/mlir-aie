@@ -4941,13 +4941,53 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     llvm::outs() << "Detected AIE target: " << aieTarget << "\n";
   }
 
+  // When --device-name is specified, filter out non-matching devices before
+  // running any passes. Resource allocation and routing passes use
+  // pm.nest<DeviceOp>() and operate independently per device, so there is no
+  // need to process devices that won't be compiled. Running passes on multiple
+  // devices with overlapping tile coordinates (e.g. two npu1_1col devices both
+  // using tile(0,2)) can cause crashes in address assignment passes.
+  //
+  // Control packet generation requires a post-resource-allocation snapshot of
+  // all devices (convert-aie-to-transaction needs shim_dma_allocation ops
+  // which are injected during resource allocation). When both --device-name and
+  // --aie-generate-ctrlpkt are active, we clone the full module, run the
+  // complete pipeline on the clone, and save it as unfilteredModule. The
+  // primary moduleOp then has non-matching devices erased before its own
+  // passes run. This is correct because resource allocation passes operate
+  // independently per DeviceOp and do not share state across devices.
+  OwningOpRef<ModuleOp> unfilteredModule;
+  if (!deviceName.empty()) {
+    if (generateCtrlPkt) {
+      unfilteredModule = moduleOp.clone();
+      if (failed(runTraceLoweringPipeline(*unfilteredModule, tmpDirName)) ||
+          failed(runResourceAllocationPipeline(*unfilteredModule, aieTarget,
+                                               tmpDirName)) ||
+          failed(runRoutingPipeline(*unfilteredModule, tmpDirName))) {
+        return failure();
+      }
+    }
+    SmallVector<xilinx::AIE::DeviceOp> toErase;
+    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
+      if (deviceOp.getSymName() != deviceName) {
+        toErase.push_back(deviceOp);
+      }
+    }
+    for (auto deviceOp : toErase) {
+      if (verbose) {
+        llvm::outs() << "Removing non-matching device: "
+                     << deviceOp.getSymName() << "\n";
+      }
+      deviceOp.erase();
+    }
+  }
+
   // Step 1a: Run trace lowering (only when trace ops exist)
   if (failed(runTraceLoweringPipeline(moduleOp, tmpDirName))) {
     return failure();
   }
 
   // Step 1b: Run resource allocation and lowering passes in-memory
-  // Run on ALL devices (matching legacy Python driver behavior).
   if (failed(runResourceAllocationPipeline(moduleOp, aieTarget, tmpDirName))) {
     return failure();
   }
@@ -4973,7 +5013,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
-  // Step 2: Run routing in-memory (on all devices, matching legacy behavior)
+  // Step 2: Run routing in-memory
   if (failed(runRoutingPipeline(moduleOp, tmpDirName))) {
     return failure();
   }
@@ -4982,32 +5022,6 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   SmallString<128> physicalPath(tmpDirName);
   sys::path::append(physicalPath, "input_physical.mlir");
   dumpModuleToFile(moduleOp, physicalPath, "physical module");
-
-  // Save unfiltered module for control packet generation (needs all devices
-  // present). The legacy Python driver keeps all devices and the
-  // convert-aie-to-transaction pass needs multi-device context.
-  OwningOpRef<ModuleOp> unfilteredModule;
-  if (generateCtrlPkt && !deviceName.empty()) {
-    unfilteredModule = moduleOp.clone();
-  }
-
-  // Filter devices AFTER resource allocation and routing (which need all
-  // devices). This prevents core compilation from processing unwanted devices.
-  if (!deviceName.empty()) {
-    SmallVector<xilinx::AIE::DeviceOp> toErase;
-    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-      if (deviceOp.getSymName() != deviceName) {
-        toErase.push_back(deviceOp);
-      }
-    }
-    for (auto deviceOp : toErase) {
-      if (verbose) {
-        llvm::outs() << "Removing non-matching device: "
-                     << deviceOp.getSymName() << "\n";
-      }
-      deviceOp.erase();
-    }
-  }
 
   // Step 3: Compile cores and generate artifacts for each device
   // Collect device info for full ELF generation if requested
@@ -5019,11 +5033,6 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   // called in generateNpuInstructions() after runNpuLoweringPipeline().
 
   for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-    // Filter by device name if specified
-    if (!deviceName.empty() && deviceOp.getSymName() != deviceName) {
-      continue;
-    }
-
     StringRef devName = deviceOp.getSymName();
 
     if (verbose) {
