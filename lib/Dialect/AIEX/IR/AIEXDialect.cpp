@@ -343,10 +343,19 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   return offset;
 }
 
+// Returns true when sizes/strides describe a plain contiguous transfer with
+// no data layout transformation (d1/d2 sizes == 1, d0 stride == 1).
+// d3 (repeat) is intentionally excluded.
+bool AIEX::isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
+                            llvm::ArrayRef<int64_t> strides) {
+  return sizes[1] == 1 && sizes[2] == 1 && strides[0] == 1 && strides[1] == 0 &&
+         strides[2] == 0;
+}
+
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
 // specify any data layout transformation, but simply express a contiguous
-// transfer of `len`. We exclude checks to 4th dimension, because repeat count
-// is still possible without a data layout transformation.
+// transfer of `len`. The 4th dimension is excluded because a repeat count
+// is still compatible with a linear transfer.
 bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -356,8 +365,7 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  return (inputSizes[1] == 1 && inputSizes[2] == 1 && inputStrides[0] == 1 &&
-          inputStrides[1] == 0 && inputStrides[2] == 0);
+  return isLinearTransfer(inputSizes, inputStrides);
 }
 
 // Canonicalization pattern: rewrite a contiguous row-major access pattern to
