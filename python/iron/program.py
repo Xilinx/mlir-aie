@@ -6,6 +6,10 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.func import FuncBase
 from ..dialects.aie import device
@@ -125,4 +129,4 @@ class Program:
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
         if verify != True:
-            print(verify)
+            logger.error(str(verify))
