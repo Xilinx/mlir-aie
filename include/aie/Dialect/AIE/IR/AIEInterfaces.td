@@ -28,10 +28,22 @@ def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
-def PredIsCoreTile : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isCoreTile()">;
-def PredIsMemTile : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isMemTile()">;
-def PredIsShimNOCTile : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isShimNOCTile()">;
-def PredIsShimPLTile : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isShimPLTile()">;
+def PredIsCoreTile : CPred<
+  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
+  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isCoreTile()"
+>;
+def PredIsMemTile : CPred<
+  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
+  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isMemTile()"
+>;
+def PredIsShimNOCTile : CPred<
+  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
+  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isShimNOCTile()"
+>;
+def PredIsShimPLTile : CPred<
+  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike() && "
+  "llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isShimPLTile()"
+>;
 
 def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
 def IsMemTile : PredOpTrait<"op exists in a MemTile", PredIsMemTile>;

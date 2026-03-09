@@ -314,7 +314,12 @@ template <typename ConcreteType>
 LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
   const auto &targetModel = getTargetModel(op);
-  int bdMax = targetModel.getNumBDs(element.getTileLike().getTileType());
+
+  TileLike tile = element.getTileLike();
+  if (!tile)
+    return op->emitOpError("tile must implement TileLike interface");
+
+  int bdMax = targetModel.getNumBDs(tile.getTileType());
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
