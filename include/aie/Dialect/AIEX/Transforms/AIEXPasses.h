@@ -17,7 +17,7 @@
 
 namespace xilinx::AIEX {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DECL
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECreateCoresPass();
@@ -29,6 +29,8 @@ createAIELowerMulticastPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEBroadcastPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEDmaToNpuPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIENpuToCertPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECertPagesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEMaterializeBDChainsPass();
@@ -54,6 +56,8 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELegalizeControlPacketPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEXInlineTraceConfigPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

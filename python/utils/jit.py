@@ -9,6 +9,7 @@
 import os
 import functools
 import hashlib
+import numpy as np
 
 from aie.extras.context import mlir_mod_ctx
 from .compile import compile_mlir_module, compile_external_kernel
@@ -18,7 +19,7 @@ from .compile.cache.circular_cache import CircularCache
 from .compile.cache.utils import _create_function_cache_key, file_lock
 from .compile import NPU_CACHE_HOME
 from .compile.utils import _cleanup_failed_compilation
-
+from aie.iron.kernel import ExternalFunction
 
 # Global cache for compiled kernels at the function level
 # Key: (function_name, args_signature) -> NPUKernel instance
@@ -44,7 +45,6 @@ def jit(function=None, is_placed=True, use_cache=True):
     @functools.wraps(function)
     def decorator(*args, **kwargs):
         from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
-        from aie.iron.kernel import ExternalFunction
         from . import DefaultNPURuntime
 
         if DefaultNPURuntime is None:
@@ -52,11 +52,22 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         trace_config = kwargs.get("trace_config")
 
+        # TODO: Functions referencing variables from outside its scope have stale cache
+        # issue if the variable is updated after the first run. For now we skip caching
+        # if we detect closures.
+        has_closures = any(_has_closure(arg) for arg in args) or any(
+            _has_closure(v) for v in kwargs.values()
+        )
+        effective_use_cache = use_cache and not has_closures
+
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
-        if cache_key in _compiled_kernels:
+        if effective_use_cache and cache_key in _compiled_kernels:
             cached_kernel = _compiled_kernels[cache_key]
-            return cached_kernel(*args, **kwargs)
+            # Filter out non-tensor arguments (ExternalFunction, scalars)
+            # Only tensor args should be passed to the kernel
+            tensor_args = _filter_tensor_args(args)
+            return cached_kernel(*tensor_args, **kwargs)
 
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
         ExternalFunction._instances.clear()
@@ -123,7 +134,7 @@ def jit(function=None, is_placed=True, use_cache=True):
             xclbin_exists = os.path.exists(xclbin_path)
             inst_exists = os.path.exists(inst_path)
 
-            if not use_cache or not xclbin_exists or not inst_exists:
+            if not effective_use_cache or not xclbin_exists or not inst_exists:
                 try:
                     with open(mlir_path, "w", encoding="utf-8") as f:
                         print(mlir_module, file=f)
@@ -144,15 +155,57 @@ def jit(function=None, is_placed=True, use_cache=True):
                     _cleanup_failed_compilation(kernel_dir)
                     raise e
 
-        _compiled_kernels[cache_key] = NPUKernel(
+        kernel = NPUKernel(
             xclbin_path,
             inst_path,
             kernel_name="MLIR_AIE",
             trace_config=trace_config,
         )
-        _compiled_kernels[cache_key](*args)
+        if effective_use_cache:
+            _compiled_kernels[cache_key] = kernel
+
+        # Filter out non-tensor arguments (ExternalFunction, scalars) before calling kernel
+        # Only tensor args should be passed to the kernel
+        tensor_args = _filter_tensor_args(args)
+        kernel(*tensor_args)
 
     return decorator
+
+
+def _filter_tensor_args(args):
+    """
+    Filter out non-tensor arguments from args. Required for Algorithms because
+    they pass ExternalFunction and scalar values in their signature that should
+    not be interpreted as runtime sequence arguments.
+
+    Removes:
+    - ExternalFunction instances
+    - Scalar values (int, float, np.integer, np.floating), embedded as MLIR constants
+    """
+    tensor_args = []
+    for arg in args:
+        # Skip ExternalFunction
+        if isinstance(arg, ExternalFunction):
+            continue
+        # Skip scalar types (MLIR constants)
+        if isinstance(arg, (int, float, np.integer, np.floating)):
+            continue
+        # Skip callables (lambda functions)
+        if callable(arg):
+            continue
+        tensor_args.append(arg)
+
+    return tensor_args
+
+
+def _has_closure(arg):
+    """Check if a callable has non-empty closures (captured variables)."""
+    return (
+        callable(arg)
+        and hasattr(arg, "__closure__")
+        and arg.__closure__ is not None
+        and len(arg.__closure__) > 0
+    )
 
 
 def hash_module(module, external_kernels=None, target_arch=None):

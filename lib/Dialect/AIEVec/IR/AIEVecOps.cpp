@@ -247,6 +247,12 @@ OpFoldResult SRSOp::fold(FoldAdaptor adaptor) {
   if (!constOp)
     return nullptr;
 
+  // Only fold srs(ups(x), 0) → x. Non-zero shift performs actual
+  // shift-round-saturate and must not be folded away.
+  auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue());
+  if (!intAttr || intAttr.getInt() != 0)
+    return nullptr;
+
   if (upsOp.getSource().getType() != getResult().getType())
     return nullptr;
 
@@ -260,6 +266,14 @@ void SRSOp::print(OpAsmPrinter &p) {
 
   // Print the shift
   p << getShift();
+
+  // Always print the attribute dict, but elide the sign attribute when it
+  // has the default value (1 = signed) to avoid breaking existing tests.
+  if (getSign() == 1) {
+    p.printOptionalAttrDict((*this)->getAttrs(), {"sign"});
+  } else {
+    p.printOptionalAttrDict((*this)->getAttrs());
+  }
 
   // And now print the types
   p << " : " << getSource().getType() << ", " << getShift().getType() << ", "
@@ -309,6 +323,10 @@ ParseResult SRSOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the source accumulator
   if (parser.parseOperand(source) || parser.parseComma() ||
       parser.parseOperand(shift))
+    return failure();
+
+  // Parse optional attributes (e.g., {sign = 0 : i32})
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   // Parse types

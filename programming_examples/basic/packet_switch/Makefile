@@ -16,7 +16,7 @@ include ${srcdir}/../../makefile-common
 
 # The following environment variables that point to the Xilinx runtime (XRT)
 # should be set up by an environment setup script already.
-XILINX_XRT?=/opt/xilinx/xrt
+XILINX_XRT ?= $(if $(wildcard /opt/xilinx/xrt/include),/opt/xilinx/xrt,/usr)
 
 # ---
 UTILS_INCLUDE := -I$(srcdir)/../../../runtime_lib/test_lib/

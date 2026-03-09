@@ -19,6 +19,15 @@ add_mlir_library(AIERT
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SRC_DIR}/../../../include/aie/Targets
+
+  DEPENDS
+  MLIRAIEAttrDefsIncGen
+  MLIRAIEEnumsIncGen
+  MLIRAIEIncGen
+  MLIRAIETypesIncGen
+  MLIRAIEInterfacesIncGen
+  MLIRAIEOpsIncGen
+  MLIRAIEXIncGen
 )
 
 target_link_libraries(AIERT PRIVATE xaienginecdo_static)
@@ -35,6 +44,7 @@ add_mlir_library(AIETargets
   AIETargetCDODirect.cpp
   AIETargetNPU.cpp
   AIETargetLdScript.cpp
+  AIETargetUcCert.cpp
   AIETargetXAIEV2.cpp
   AIETargetHSA.cpp
   AIETargetShared.cpp
@@ -49,6 +59,15 @@ add_mlir_library(AIETargets
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
   ${CMAKE_CURRENT_SRC_DIR}/../../../include/aie/Targets
+
+  DEPENDS
+  MLIRAIEAttrDefsIncGen
+  MLIRAIEEnumsIncGen
+  MLIRAIEIncGen
+  MLIRAIETypesIncGen
+  MLIRAIEInterfacesIncGen
+  MLIRAIEOpsIncGen
+  MLIRAIEXIncGen
 
   LINK_COMPONENTS
   BinaryFormat

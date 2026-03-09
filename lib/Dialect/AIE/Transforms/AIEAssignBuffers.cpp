@@ -13,6 +13,11 @@
 
 #include "mlir/IR/Attributes.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEASSIGNBUFFERADDRESSES
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
 #define DEBUG_TYPE "aie-assign-buffers"
 
 using namespace mlir;
@@ -467,7 +472,14 @@ LogicalResult checkBufferScope(BufferOp buffer, DeviceOp device) {
 }
 
 struct AIEAssignBufferAddressesPass
-    : AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
+    : xilinx::AIE::impl::AIEAssignBufferAddressesBase<
+          AIEAssignBufferAddressesPass> {
+
+  AIEAssignBufferAddressesPass() = default;
+
+  AIEAssignBufferAddressesPass(const AIEAssignBufferAddressesOptions &options) {
+    clAllocScheme = options.clAllocScheme;
+  }
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
@@ -527,4 +539,10 @@ struct AIEAssignBufferAddressesPass
 std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEAssignBufferAddressesPass() {
   return std::make_unique<AIEAssignBufferAddressesPass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+AIE::createAIEAssignBufferAddressesPass(
+    const AIEAssignBufferAddressesOptions &options) {
+  return std::make_unique<AIEAssignBufferAddressesPass>(options);
 }

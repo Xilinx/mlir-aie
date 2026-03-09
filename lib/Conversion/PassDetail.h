@@ -53,8 +53,6 @@ namespace LLVM {
 class LLVMDialect;
 } // namespace LLVM
 
-#define GEN_PASS_CLASSES
-#include "aie/Conversion/Passes.h.inc"
 } // namespace mlir
 
 #endif // AIE_CONVERSION_PASSDETAIL_H_

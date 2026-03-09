@@ -207,14 +207,17 @@ def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     Pure
   ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift)>,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift,
+          DefaultValuedAttr<ConfinedAttr<AIEI32Attr,
+                 [IntMinValue<0>, IntMaxValue<1>]>, "1">:$sign)>,
   Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE srs";
   let description = [{
     AMD-specific shift-round-saturate intrinsic. Moves values from
     accumulator data type to AIE vector data types. The adjustment in
-    precision is controlled by the shift parameter.
-    `$result = srs($source, $shift)`
+    precision is controlled by the shift parameter. The sign parameter
+    controls signed (1) vs unsigned (0) saturation.
+    `$result = srs($source, $shift, $sign)`
   }];
   let hasFolder = 1;
 }
@@ -511,6 +514,23 @@ def AIEVec_ExpOp:
     For AIE2P, this will be lowered to the exp2 intrinsic using the identity
     exp(x) = exp2(x * log2(e)).
     `$result = exp(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
+def AIEVec_TanhOp:
+  AIEVec_Op<"tanh", [
+    Pure,
+    AllTypesMatch<["source", "result"]>
+  ]>,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+  let summary = "AIE vector hyperbolic tangent";
+  let description = [{
+    AMD-specific intrinsic that computes the hyperbolic tangent of the input
+    vector. For AIE2P, this is lowered to the hardware tanh intrinsic.
+    `$result = tanh(`$source`).
   }];
   let assemblyFormat = "$source attr-dict `:` type($result)";
   let hasVerifier = 0;

@@ -51,45 +51,59 @@ If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+
 Turn off SecureBoot (Allows for unsigned drivers to be installed):
    ```BIOS → Security → Secure boot → Disable```
 
-### Build and install the XDNA™ Driver and XRT
+### Install the XDNA™ Driver and XRT
 
-1. Execute the scripted build process:
+#### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
 
-    > This script will install package dependencies, build the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
+> Ensure your system is running Linux kernel **6.17 or newer** before installing these packages. On Ubuntu 24.04 you can verify this with:
+>
+> ```bash
+> uname -r
+> ```
+>
+> If your kernel is older than 6.17, upgrade it using your distribution's kernel update mechanism or the kernel upgrade steps described in the [Initial Setup](#initial-setup) section above.
 
-    ```bash
-    bash ./utils/build_drivers.sh
-    ```
+Install the XDNA driver and XRT from the AMD PPA:
 
-1. Reboot as directed after the script exits.
+> The packaged XRT only supports Python 3.12 for `pyxrt`
 
-    ```bash
-    sudo reboot
-    ```
+```bash
+sudo add-apt-repository ppa:amd-team/xrt
+sudo apt update
+sudo apt install libxrt2 libxrt-npu2 libxrt-dev libxrt-utils libxrt-utils-npu amdxdna-dkms
+sudo reboot
+```
 
-1. Check that the NPU is working if the device appears with xrt-smi:
+> Make sure you are in the `render` group to access the NPU:
+>
+> ```bash
+> sudo usermod -aG render $USER
+> ```
+>
+> You may need to logout and log back in after modifying user groups.
 
-   ```bash
-   source /opt/xilinx/xrt/setup.sh
-   xrt-smi examine
-   ```
+> If you are on a different Linux distribution or kernel not supported by the upstream packages, see [Build from source](#alternative-build-xdna-driver-and-xrt-from-source) below.
 
-   > At the bottom of the output you should see:
-   >  ```
-   >  Devices present
-   >  BDF             :  Name
-   > ------------------------------------
-   >  [0000:66:00.1]  :  NPU Strix
-   >  ```
+Verify the NPU device is present:
 
-   IRON requires that `xrt-smi` and associated tools be in your path.
+```bash
+xrt-smi examine
+```
+
+> At the bottom of the output you should see:
+>  ```
+>  Devices present
+>  BDF             :  Name
+> ------------------------------------
+>  [0000:66:00.1]  :  NPU Strix
+>  ```
 
 ### Install IRON and MLIR-AIE Prerequisites
 
 1. Install the following packages needed for MLIR-AIE:
 
     ```bash
-    # Python versions 3.10, 3.12 and 3.13 are currently supported by our wheels
+    # Python versions 3.10, 3.11, 3.12, 3.13 and 3.14 are currently supported by our wheels
     sudo apt install \
     build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
     ```
@@ -162,6 +176,10 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
+
+   # Install pre-push hooks for formatting (clang-format, black)
+   # These run before push to catch formatting issues before CI
+   pre-commit install --hook-type pre-push
    ```
 
 1. Setup environment
@@ -257,6 +275,31 @@ For your design of interest, for instance from [programming_examples](../program
     export AIETOOLS_ROOT=/tools/ryzen_ai-1.3.0/vitis_aie_essentials
     export PATH=$PATH:${AIETOOLS_ROOT}/bin
     export LM_LICENSE_FILE=/opt/Xilinx.lic
+   ```
+
+## Alternative: Build XDNA™ Driver and XRT from source
+
+If the [upstream packages](#install-from-upstream-packages-ubuntu-2404) do not support your kernel or distribution, you can build the driver and XRT from source:
+
+1. Execute the scripted build process:
+
+    > This script will install package dependencies, build the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
+
+    ```bash
+    bash ./utils/build_drivers.sh
+    ```
+
+1. Reboot as directed after the script exits.
+
+    ```bash
+    sudo reboot
+    ```
+
+1. Check that the NPU is working if the device appears with xrt-smi:
+
+   ```bash
+   source /opt/xilinx/xrt/setup.sh
+   xrt-smi examine
    ```
 
 ## Troubleshooting:
