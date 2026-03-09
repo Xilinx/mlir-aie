@@ -2051,7 +2051,7 @@ the AIE array proper and the PL. The South-West/Lower Right most core exists in 
 
 Traits: `AlwaysSpeculatableImplTrait`, `IsFlowEndPoint`
 
-Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`, `TileLike`
 
 Effects: `MemoryEffects::Effect{}`
 
