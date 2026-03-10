@@ -1111,30 +1111,53 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CascadeFlowOp::verify() {
-  TileOp src = getSourceTileOp();
-  TileOp dst = getDestTileOp();
-  const auto &t = getTargetModel(src);
+  TileLike src = getSourceTileLike();
+  TileLike dst = getDestTileLike();
+
+  if (!src || !dst)
+    return emitOpError("source and dest must be tile-like operations");
 
   if (src.isShimTile() || dst.isShimTile())
     return emitOpError("shimTile row has no cascade stream interface");
   if (src.isMemTile() || dst.isMemTile())
     return emitOpError("memTile row has no cascade stream interface");
 
-  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
-    return emitOpError("tiles must be adjacent");
+  std::optional<int> srcCol = src.tryGetCol();
+  std::optional<int> srcRow = src.tryGetRow();
+  std::optional<int> dstCol = dst.tryGetCol();
+  std::optional<int> dstRow = dst.tryGetRow();
+
+  if (srcCol && srcRow && dstCol && dstRow) {
+    const auto &t = getTargetModel(*this);
+    if (!t.isSouth(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isWest(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isNorth(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isEast(*srcCol, *srcRow, *dstCol, *dstRow)) {
+      return emitOpError("tiles must be adjacent");
+    }
   }
+
   return success();
 }
 
+TileLike CascadeFlowOp::getSourceTileLike() {
+  return dyn_cast<TileLike>(getSourceTile().getDefiningOp());
+}
+
+TileLike CascadeFlowOp::getDestTileLike() {
+  return dyn_cast<TileLike>(getDestTile().getDefiningOp());
+}
+
 TileOp CascadeFlowOp::getSourceTileOp() {
-  return cast<TileOp>(getSourceTile().getDefiningOp());
+  if (auto tileOp = dyn_cast_or_null<TileOp>(getSourceTile().getDefiningOp()))
+    return tileOp;
+  llvm::report_fatal_error("Calling getSourceTileOp requires TileOp.");
 }
 
 TileOp CascadeFlowOp::getDestTileOp() {
-  return cast<TileOp>(getDestTile().getDefiningOp());
+  if (auto tileOp = dyn_cast_or_null<TileOp>(getDestTile().getDefiningOp()))
+    return tileOp;
+  llvm::report_fatal_error("Calling getDestTileOp requires TileOp.");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1142,6 +1165,9 @@ TileOp CascadeFlowOp::getDestTileOp() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConfigureCascadeOp::verify() {
+  if (!isa<TileOp>(getTile().getDefiningOp()))
+    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+
   const auto &t = getTargetModel(*this);
   TileOp tile = cast<TileOp>(getTile().getDefiningOp());
   CascadeDir inputDir = getInputDir();
@@ -1280,12 +1306,25 @@ LogicalResult LogicalTileOp::verify() {
              << rows << ")";
   }
 
+  // Check that the specified tile type exists on the target device
+  AIETileType tileType = getTileType();
+  bool tileTypeExists = false;
+  for (int col = 0; col < columns && !tileTypeExists; col++) {
+    for (int row = 0; row < rows && !tileTypeExists; row++) {
+      if (targetModel.getTileType(col, row) == tileType)
+        tileTypeExists = true;
+    }
+  }
+  if (!tileTypeExists) {
+    return emitOpError("tile type '")
+           << stringifyAIETileType(tileType)
+           << "' does not exist on the target device";
+  }
+
   // Check logical tile type matches coordinates on device
   // Only validate when both col and row are specified
   if (auto col = tryGetCol()) {
     if (auto row = tryGetRow()) {
-      AIETileType tileType = getTileType();
-
       if (targetModel.getTileType(*col, *row) != tileType) {
         return emitOpError("declared logical tile type does not match "
                            "the tile type at coordinates (")

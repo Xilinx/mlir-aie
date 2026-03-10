@@ -47,3 +47,13 @@ module @test_logical_tile_shim_allocation_scheme {
     aie.end
   }
 }
+
+// -----
+
+// CHECK: error{{.*}}'aie.logical_tile' op tile type 'MemTile' does not exist on the target device
+module @test_logical_tile_memtile_on_xcvc1902 {
+  aie.device(xcvc1902) {
+    %mem_tile = aie.logical_tile<MemTile>(?, ?)
+    aie.end
+  }
+}

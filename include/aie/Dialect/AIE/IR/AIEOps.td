@@ -103,11 +103,11 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
     a tile type to specify the kind of tile needed.
 
     The tile types are:
-    - `Core`: Maps to core tiles (tiles with a core, TileDMA, memory, 
+    - `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory, 
       and stream connections)
-    - `ShimNOC`: Maps to shim NOC tiles
-    - `ShimPL`: Maps to shim PL tiles
-    - `Mem`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory, 
+    - `ShimNOCTile`: Maps to shim NOC tiles
+    - `ShimPLTile`: Maps to shim PL tiles
+    - `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory, 
       but no core)
 
     Optional `col` and `row` can be provided as placement hints or constraints.
@@ -116,13 +116,13 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
     Examples:
     ```
     // Logical core tile without placement constraints
-    %core_tile = aie.logical_tile<Core>(?, ?)
+    %core_tile = aie.logical_tile<CoreTile>(?, ?)
     
     // Logical shim tile with column hint but unspecified row
-    %shim_tile = aie.logical_tile<ShimNOC>(0, ?)
+    %shim_tile = aie.logical_tile<ShimNOCTile>(0, ?)
     
     // Logical tile with full placement constraint (effectively fixed)
-    %fixed = aie.logical_tile<Core>(2, 3)
+    %fixed = aie.logical_tile<CoreTile>(2, 3)
     ```
   }];
 
@@ -1594,9 +1594,9 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   );
   let summary = "A cascade connection between tiles";
   let description = [{
-    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.
-    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on
-    their relative placement to one another.
+    The `aie.cascade_flow` operation represents a cascade connection between two tile operations
+    (`aie.tile` or `aie.logical_tile`). During lowering, this is replaced by `aie.configure_cascade`
+    operations for each tile based on their relative placement to one another.
 
     Example:
     ```
@@ -1604,12 +1604,21 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
       %tile13 = aie.tile(1, 3)
       aie.cascade_flow(%tile03, %tile13)
     ```
+
+    With logical tiles (placement pass will assign cascadable position):
+    ```
+      %core1 = aie.logical_tile<CoreTile>(?, ?)
+      %core2 = aie.logical_tile<CoreTile>(?, ?)
+      aie.cascade_flow(%core1, %core2)
+    ```
   }];
   let hasVerifier = 1;
   let assemblyFormat = [{
     `(` $source_tile `,` $dest_tile `)` attr-dict
   }];
   let extraClassDeclaration = [{
+    TileLike getSourceTileLike();
+    TileLike getDestTileLike();
     TileOp getSourceTileOp();
     TileOp getDestTileOp();
   }];

@@ -203,3 +203,54 @@ module @test_has_valid_bds {
     aie.end
   }
 }
+
+// -----
+
+// Test configure_cascade rejects logical_tile
+// CHECK: error{{.*}}'aie.configure_cascade' op requires a placed tile (aie.tile), not a logical tile
+module @test_configure_cascade_rejects_logical {
+  aie.device(npu2) {
+    %logical = aie.logical_tile<CoreTile>(?, ?)
+    aie.configure_cascade(%logical, West, East)
+    aie.end
+  }
+}
+
+// -----
+
+// Test cascade_flow rejects ShimTile
+// CHECK: error{{.*}}shimTile row has no cascade stream interface
+module @test_cascade_flow_rejects_shim {
+  aie.device(npu2) {
+    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    aie.cascade_flow(%shim, %core)
+    aie.end
+  }
+}
+
+// -----
+
+// Test cascade_flow rejects MemTile
+// CHECK: error{{.*}}memTile row has no cascade stream interface
+module @test_cascade_flow_rejects_memtile {
+  aie.device(npu2) {
+    %mem = aie.logical_tile<MemTile>(?, ?)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    aie.cascade_flow(%mem, %core)
+    aie.end
+  }
+}
+
+// -----
+
+// Test cascade_flow adjacency check still works with placed tiles
+// CHECK: error{{.*}}tiles must be adjacent
+module @test_cascade_flow_adjacency_placed {
+  aie.device(npu2) {
+    %tile1 = aie.tile(0, 2)
+    %tile2 = aie.tile(5, 5)
+    aie.cascade_flow(%tile1, %tile2)
+    aie.end
+  }
+}

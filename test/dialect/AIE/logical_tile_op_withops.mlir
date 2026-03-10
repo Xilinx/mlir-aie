@@ -181,3 +181,36 @@ module @test_dma_configure_task_memtile {
     aie.end
   }
 }
+
+// -----
+
+// Test CascadeFlowOp with LogicalTileOp
+// CHECK-LABEL: @test_cascade_flow_logical_tiles
+// CHECK: %[[CORE1:.*]] = aie.logical_tile<CoreTile>(?, ?)
+// CHECK: %[[CORE2:.*]] = aie.logical_tile<CoreTile>(?, ?)
+// CHECK: aie.cascade_flow(%[[CORE1]], %[[CORE2]])
+module @test_cascade_flow_logical_tiles {
+  aie.device(npu2) {
+    %core1 = aie.logical_tile<CoreTile>(?, ?)
+    %core2 = aie.logical_tile<CoreTile>(?, ?)
+    aie.cascade_flow(%core1, %core2)
+    aie.end
+  }
+}
+
+// -----
+
+// Test CascadeFlowOp with mixed tile types (placed and logical)
+// CHECK-LABEL: @test_cascade_flow_mixed
+// CHECK: %[[PLACED:.*]] = aie.tile(0, 2)
+// CHECK: %[[LOGICAL:.*]] = aie.logical_tile<CoreTile>(?, ?)
+// CHECK: aie.cascade_flow(%[[PLACED]], %[[LOGICAL]])
+module @test_cascade_flow_mixed {
+  aie.device(npu2) {
+    %placed = aie.tile(0, 2)
+    %logical = aie.logical_tile<CoreTile>(?, ?)
+    aie.cascade_flow(%placed, %logical)
+    aie.end
+  }
+}
+
