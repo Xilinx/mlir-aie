@@ -99,6 +99,28 @@ private:
       bool isConstrained);
 };
 
+// MIP-based placement algorithm using Google OR-Tools
+//
+// Uses mixed-integer programming (MIP) to find optimal placement that minimizes:
+// - Manhattan distance (wire length)
+// - Resource violations (locks, memory, DMA channels)
+// - Column congestion
+// - ObjectFifo link locality
+class MIPPlacer : public Placer {
+public:
+  MIPPlacer() = default;
+
+  void initialize(DeviceOp device, const AIETargetModel &targetModel) override;
+
+  mlir::LogicalResult place(DeviceOp device, PlacementResult &result) override;
+
+  llvm::StringRef getName() const override { return "mip_placer"; }
+
+private:
+  DeviceOp device;
+  const AIETargetModel *targetModel;
+};
+
 // PlacementAnalysis integrates the Placer class into the MLIR
 // environment.
 class PlacementAnalysis {

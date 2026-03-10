@@ -13,9 +13,14 @@
 
 #include <algorithm>
 #include <numeric>
+#include <memory>
+
+#include "ortools/math_opt/cpp/math_opt.h"
 
 using namespace mlir;
 using namespace xilinx::AIE;
+
+namespace math_opt = ::operations_research::math_opt;
 
 #define DEBUG_TYPE "aie-placer"
 
@@ -567,4 +572,190 @@ void TileAvailability::removeTile(TileID tile, AIETileType type) {
   default:
     break;
   }
+}
+
+//===----------------------------------------------------------------------===//
+// MIP Placer Implementation (OR-Tools based)
+//===----------------------------------------------------------------------===//
+
+void MIPPlacer::initialize(DeviceOp dev, const AIETargetModel &tm) {
+  this->device = dev;
+  this->targetModel = &tm;
+
+  llvm::outs() << "[MIP Placer] Initializing with device: "
+               << stringifyEnum(dev.getDevice()) << "\n";
+  llvm::outs() << "[MIP Placer] Device dimensions: " << tm.columns()
+               << " columns × " << tm.rows() << " rows\n";
+}
+
+LogicalResult MIPPlacer::place(DeviceOp dev, PlacementResult &result) {
+  llvm::outs() << "\n[MIP Placer] Starting placement...\n";
+
+  // Step 1: Collect logical tiles
+  SmallVector<Operation *> logicalTiles;
+  dev.walk([&](LogicalTileOp logicalTile) {
+    logicalTiles.push_back(logicalTile.getOperation());
+  });
+
+  if (logicalTiles.empty()) {
+    llvm::outs() << "[MIP Placer] No logical tiles to place\n";
+    return success();
+  }
+
+  llvm::outs() << "[MIP Placer] Found " << logicalTiles.size()
+               << " logical tiles\n";
+
+  // Step 2: Build compatible physical tiles for each logical tile
+  DenseMap<Operation *, SmallVector<TileID>> compatibleTiles;
+  int totalVariables = 0;
+
+  for (auto *logicalOp : logicalTiles) {
+    auto logicalTile = cast<LogicalTileOp>(logicalOp);
+    AIETileType tileType = logicalTile.getTileType();
+
+    SmallVector<TileID> compatible;
+    for (int col = 0; col < targetModel->columns(); col++) {
+      for (int row = 0; row < targetModel->rows(); row++) {
+        if (targetModel->getTileType(col, row) == tileType) {
+          compatible.push_back({col, row});
+        }
+      }
+    }
+
+    compatibleTiles[logicalOp] = compatible;
+    totalVariables += compatible.size();
+  }
+
+  llvm::outs() << "[MIP Placer] Total placement variables: " << totalVariables
+               << "\n";
+
+  // Step 3: Create math_opt model
+  math_opt::Model model("aie_placement");
+
+  // Step 4: Create decision variables d[logical][physical]
+  // Map from (logical_op, physical_tile) -> variable
+  std::map<std::pair<Operation *, TileID>, math_opt::Variable> placementVars;
+
+  for (auto *logicalOp : logicalTiles) {
+    for (TileID physTile : compatibleTiles[logicalOp]) {
+      std::string varName = "d_" + std::to_string((uint64_t)logicalOp) + "_" +
+                            std::to_string(physTile.col) + "_" +
+                            std::to_string(physTile.row);
+      placementVars.emplace(std::make_pair(logicalOp, physTile),
+                            model.AddBinaryVariable(varName));
+    }
+  }
+
+  llvm::outs() << "[MIP Placer] Created " << placementVars.size()
+               << " binary variables\n";
+
+  // Step 5: C1 - Placement uniqueness: each logical tile placed exactly once
+  for (auto *logicalOp : logicalTiles) {
+    math_opt::LinearExpression sum;
+    for (TileID physTile : compatibleTiles[logicalOp]) {
+      sum += placementVars.at(std::make_pair(logicalOp, physTile));
+    }
+    model.AddLinearConstraint(sum == 1.0);
+  }
+
+  llvm::outs() << "[MIP Placer] Added " << logicalTiles.size()
+               << " uniqueness constraints\n";
+
+  // Step 6: C2 - Type compatibility: compute tiles 1-to-1 mapping
+  int typeConstraints = 0;
+  for (int col = 0; col < targetModel->columns(); col++) {
+    for (int row = 0; row < targetModel->rows(); row++) {
+      if (targetModel->getTileType(col, row) == AIETileType::CoreTile) {
+        TileID physTile = {col, row};
+        math_opt::LinearExpression sum;
+
+        for (auto *logicalOp : logicalTiles) {
+          auto logicalTile = cast<LogicalTileOp>(logicalOp);
+          if (logicalTile.getTileType() == AIETileType::CoreTile) {
+            if (placementVars.count({logicalOp, physTile})) {
+              sum += placementVars.at(std::make_pair(logicalOp, physTile));
+            }
+          }
+        }
+
+        model.AddLinearConstraint(sum <= 1.0);
+        typeConstraints++;
+      }
+    }
+  }
+
+  llvm::outs() << "[MIP Placer] Added " << typeConstraints
+               << " compute tile uniqueness constraints\n";
+
+  // Step 7: C3 - Constrained placement (respect user constraints)
+  int constrainedCount = 0;
+  for (auto *logicalOp : logicalTiles) {
+    auto logicalTile = cast<LogicalTileOp>(logicalOp);
+    if (auto col = logicalTile.getCol()) {
+      if (auto row = logicalTile.getRow()) {
+        TileID fixedTile = {*col, *row};
+        // Force this placement
+        if (placementVars.count({logicalOp, fixedTile})) {
+          model.AddLinearConstraint(placementVars.at(std::make_pair(logicalOp, fixedTile)) == 1.0);
+          constrainedCount++;
+        }
+      }
+    }
+  }
+
+  llvm::outs() << "[MIP Placer] Added " << constrainedCount
+               << " constrained placement constraints\n";
+
+  // Step 8: Simple HPWL objective (for now, minimize sum of placements)
+  // TODO: Implement actual HPWL based on ObjectFifos
+  math_opt::LinearExpression objective;
+  for (auto &[key, var] : placementVars) {
+    TileID tile = key.second;
+    // Simple cost: minimize total column + row (encourages lower-left placement)
+    objective += (tile.col + tile.row) * var;
+  }
+
+  model.Minimize(objective);
+
+  llvm::outs() << "[MIP Placer] Set simple minimize objective\n";
+
+  // Step 9: Solve with GSCIP (supports binary variables)
+  llvm::outs() << "[MIP Placer] Solving with GSCIP (MIP solver)...\n";
+
+  math_opt::SolveArguments args;
+  const absl::StatusOr<math_opt::SolveResult> solve_result =
+      math_opt::Solve(model, math_opt::SolverType::kGscip, args);
+
+  if (!solve_result.ok()) {
+    return dev.emitError("MIP solver failed");
+  }
+
+  const math_opt::SolveResult &solve_data = *solve_result;
+
+  if (solve_data.termination.reason != math_opt::TerminationReason::kOptimal) {
+    return dev.emitError("MIP solver did not find optimal solution");
+  }
+
+  llvm::outs() << "[MIP Placer] Optimal solution found!\n";
+  llvm::outs() << "[MIP Placer] Objective value: "
+               << solve_data.objective_value() << "\n";
+
+  // Step 10: Extract placement from solution
+  for (auto *logicalOp : logicalTiles) {
+    for (TileID physTile : compatibleTiles[logicalOp]) {
+      auto var = placementVars.at(std::make_pair(logicalOp, physTile));
+      double value = solve_data.variable_values().at(var);
+      if (value > 0.5) { // Binary variable, should be 0 or 1
+        result[logicalOp] = physTile;
+        auto logicalTile = cast<LogicalTileOp>(logicalOp);
+        llvm::outs() << "[MIP Placer] Placed logical tile "
+                     << logicalTile.getTileType() << " at (" << physTile.col
+                     << ", " << physTile.row << ")\n";
+        break;
+      }
+    }
+  }
+
+  llvm::outs() << "[MIP Placer] Placement complete!\n";
+  return success();
 }
