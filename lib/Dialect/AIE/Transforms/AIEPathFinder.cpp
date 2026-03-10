@@ -379,13 +379,16 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
     bool found = false;
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
+      if (sb.srcPorts[i] != connectOp.sourcePort())
+        continue;
       for (size_t j = 0; j < sb.dstPorts.size(); j++) {
-        if (sb.srcPorts[i] == connectOp.sourcePort() &&
-            sb.dstPorts[j] == connectOp.destPort() &&
-            sb.connectivity[i][j] == Connectivity::AVAILABLE) {
-          sb.connectivity[i][j] = Connectivity::INVALID;
+        if (sb.dstPorts[j] == connectOp.destPort() &&
+            sb.connectivity[i][j] == Connectivity::AVAILABLE)
           found = true;
-        }
+        // A circuit-switched ConnectOp monopolizes the entire source port;
+        // mark all connectivity[i][*] as INVALID so the pathfinder cannot
+        // route any packet flow through this source port.
+        sb.connectivity[i][j] = Connectivity::INVALID;
       }
     }
     if (!found) {
