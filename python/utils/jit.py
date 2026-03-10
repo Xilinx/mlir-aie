@@ -224,11 +224,7 @@ def hash_module(module, external_kernels=None, target_arch=None):
 
     # Include ExternalFunction compiler options and source code in the hash
     if external_kernels:
-        running_hash = ""
-        for func in external_kernels:
-            running_hash += str(hash(func))
-
-        combined_str = mlir_str + "|" + "|".join(running_hash)
+        combined_str = mlir_str + "|" + "|".join(str(hash(f)) for f in external_kernels)
     else:
         combined_str = mlir_str
 

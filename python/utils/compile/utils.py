@@ -154,13 +154,11 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     elif func._source_file is not None:
         # Use source_file (copy existing file)
         # Check if source file exists before copying
-        if os.path.exists(func._source_file):
-            try:
-                shutil.copy2(func._source_file, source_file)
-            except Exception as e:
-                raise
-        else:
-            return
+        if not os.path.exists(func._source_file):
+            raise FileNotFoundError(
+                f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
+            )
+        shutil.copy2(func._source_file, source_file)
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
