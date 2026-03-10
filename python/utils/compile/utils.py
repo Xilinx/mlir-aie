@@ -5,11 +5,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+import logging
 import os
 import shutil
 import subprocess
 import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
+
+logger = logging.getLogger(__name__)
 
 
 def compile_cxx_core_function(
@@ -19,7 +22,6 @@ def compile_cxx_core_function(
     include_dirs: list[str] | None = None,
     compile_args: list[str] | None = None,
     cwd: str | None = None,
-    verbose=False,
 ):
     """
     Compile a C++ core function.
@@ -31,7 +33,6 @@ def compile_cxx_core_function(
         include_dirs (list[str], optional): List of include directories to add with -I.
         compile_args (list[str], optional): Additional compile arguments to peano.
         cwd (str, optional): Overrides the current working directory.
-        verbose (bool): If True, enable verbose output.
     """
     cmd = [
         config.peano_cxx_path(),
@@ -59,16 +60,15 @@ def compile_cxx_core_function(
     if compile_args:
         cmd.extend(compile_args)
 
-    if verbose:
-        print("Compiling with:", " ".join(cmd))
+    logger.debug("Compiling with: %s", " ".join(cmd))
     ret = subprocess.run(
         cmd,
         cwd=cwd,
         check=False,
         capture_output=True,
     )
-    if verbose and ret.stdout:
-        print(f"{ret.stdout.decode()}")
+    if ret.stdout:
+        logger.debug("%s", ret.stdout.decode())
     if ret.returncode != 0:
         if ret.stderr:
             raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
@@ -189,7 +189,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         include_dirs=func._include_dirs,
         compile_args=func._compile_flags,
         cwd=kernel_dir,
-        verbose=False,
     )
 
     # Mark the function as compiled

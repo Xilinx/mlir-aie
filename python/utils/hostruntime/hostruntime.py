@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from abc import ABC, abstractmethod
+import logging
 import numpy as np
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from .. import tensor
 
@@ -357,22 +360,22 @@ class HostRuntime(ABC):
             trace_config (TraceConfig): Trace configuration.
             verbosity (int, optional): Verbosity level. Defaults to 0.
         """
-        if verbosity >= 1:
-            print("trace_buffer shape: ", trace_buffer.shape)
-            print("trace_buffer dtype: ", trace_buffer.dtype)
+        logger.debug("trace_buffer shape: %s", trace_buffer.shape)
+        logger.debug("trace_buffer dtype: %s", trace_buffer.dtype)
         trace_config.write_trace(trace_buffer)
 
         if trace_config.enable_ctrl_pkts:
-            if verbosity >= 1:
-                print("ctrl_buffer shape: ", ctrl_buffer.shape)
-                print("ctrl_buffer dtype: ", ctrl_buffer.dtype)
-                print("ctrl buffer: ", [hex(d) for d in ctrl_buffer])
+            logger.debug("ctrl_buffer shape: %s", ctrl_buffer.shape)
+            logger.debug("ctrl_buffer dtype: %s", ctrl_buffer.dtype)
+            logger.debug("ctrl buffer: %s", [hex(d) for d in ctrl_buffer])
             for i in range(ctrl_buffer.size // 2):
                 col, row, pkt_type, pkt_id = extract_tile(ctrl_buffer[i * 2])
                 overflow = True if (ctrl_buffer[i * 2 + 1] >> 8) == 3 else False
                 if overflow:
-                    print(
-                        f"WARNING: Trace overflow detected in tile({row},{col}). Trace results may be invalid."
+                    logger.warning(
+                        "Trace overflow detected in tile(%d,%d). Trace results may be invalid.",
+                        row,
+                        col,
                     )
 
     @classmethod
@@ -393,7 +396,7 @@ class HostRuntime(ABC):
         """
         errors = 0
         if verbosity >= 1:
-            print("Verifying results ...")
+            logger.info("Verifying results ...")
 
         for idx, ref in refs.items():
             if idx >= len(io_args):
@@ -445,7 +448,7 @@ class HostRuntime(ABC):
         ret = self.run(kernel_handle, buffers)
 
         if verbosity >= 1:
-            print("npu_time: ", ret.npu_time / 1000.0, " us")
+            logger.info("npu_time: %s us", ret.npu_time / 1000.0)
 
         if trace_config:
             trace_buffer, ctrl_buffer = self.extract_trace_from_args(
@@ -460,7 +463,6 @@ class HostRuntime(ABC):
         if not errors:
             return 0
         else:
-            if verbosity >= 1:
-                print("\nError count: ", errors)
-                print("\nFailed.\n")
+            logger.error("Error count: %d", errors)
+            logger.error("Failed.")
             return 1

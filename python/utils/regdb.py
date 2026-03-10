@@ -29,11 +29,14 @@ CLI Usage:
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from aie.utils.config import root_path
+
+logger = logging.getLogger(__name__)
 
 
 class AIEAddressDecoder:
@@ -68,11 +71,13 @@ class AIEAddressDecoder:
             with open(db_path, "r") as f:
                 self.database = json.load(f)
         except FileNotFoundError:
-            print(f"Error: Database file '{db_path}' not found.")
-            print("Please run the appropriate parser script to generate the database.")
+            logger.error("Database file '%s' not found.", db_path)
+            logger.error(
+                "Please run the appropriate parser script to generate the database."
+            )
             raise
         except json.JSONDecodeError as e:
-            print(f"Error: Invalid JSON in database file: {e}")
+            logger.error("Invalid JSON in database file: %s", e)
             raise
 
     def parse_address(self, address: int) -> Optional[Dict]:
@@ -640,7 +645,7 @@ class MLIRModuleAnnotator:
         )
 
         if not devices:
-            print("Warning: No aie.device found, using default npu1 target model")
+            logger.warning("No aie.device found, using default npu1 target model")
             device = aiedialect.AIEDevice.npu1
         else:
             device = aiedialect.AIEDevice(int(devices[0].device))
@@ -729,11 +734,13 @@ class MLIRModuleAnnotator:
         if output_path:
             with open(output_path, "w") as f:
                 f.write(output_str)
-            print(f"Annotated {count} operations. Output written to: {output_path}")
+            logger.info(
+                "Annotated %d operations. Output written to: %s", count, output_path
+            )
         else:
             # Write to stdout
             sys.stdout.write(output_str)
-            print(f"\n// Annotated {count} operations", file=sys.stderr)
+            logger.info("Annotated %d operations", count)
 
         return count
 
@@ -816,6 +823,7 @@ Examples:
     )
 
     args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
 
     # MLIR annotation mode
     if args.annotate:
@@ -829,10 +837,10 @@ Examples:
             annotator = MLIRModuleAnnotator()
             annotator.annotate_file(args.annotate, output_path)
         except FileNotFoundError as e:
-            print(f"Error: {e}", file=sys.stderr)
+            logger.error("%s", e)
             return 1
         except Exception as e:
-            print(f"Error: {e}", file=sys.stderr)
+            logger.error("%s", e)
             import traceback
 
             traceback.print_exc()
@@ -858,9 +866,9 @@ Examples:
                 )
             )
         else:
-            print(f"Error: Could not find register '{args.register}'")
+            logger.error("Could not find register '%s'", args.register)
             if args.module:
-                print(f"       in module '{args.module}'")
+                logger.error("       in module '%s'", args.module)
             return 1
 
     # Forward lookup mode
@@ -870,7 +878,7 @@ Examples:
             result = decoder.parse_address(address)
             print(decoder.format_result(result, show_bit_fields=args.show_bit_fields))
         except ValueError:
-            print(f"Error: Invalid address format: {args.address}")
+            logger.error("Invalid address format: %s", args.address)
             return 1
     else:
         parser.print_help()

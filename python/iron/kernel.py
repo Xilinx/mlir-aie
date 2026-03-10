@@ -7,7 +7,10 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 import hashlib
+import logging
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 from .. import ir  # type: ignore
 from ..extras.dialects.func import FuncOp  # type: ignore
@@ -105,7 +108,7 @@ class ExternalFunction(Kernel):
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
             include_dirs (list[str], optional): Additional include directories. Defaults to [].
             compile_flags (list[str], optional): Additional compilation flags. Defaults to [].
-            debug (bool, optional): Enable debug logging. Defaults to True.
+            debug (bool, optional): Enable debug logging. Defaults to False.
         """
         if not object_file_name:
             object_file_name = f"{name}.o"
@@ -120,10 +123,10 @@ class ExternalFunction(Kernel):
         self._debug = debug
 
         if self._debug:
-            print(f"Initializing ExternalFunction: {name}")
-            print(f"Source file: {source_file}")
-            print(f"Include dirs: {include_dirs}")
-            print(f"Compile flags: {compile_flags}")
+            logger.debug("Initializing ExternalFunction: %s", name)
+            logger.debug("Source file: %s", source_file)
+            logger.debug("Include dirs: %s", include_dirs)
+            logger.debug("Compile flags: %s", compile_flags)
 
         # Track this instance for JIT compilation
         ExternalFunction._instances.add(self)
