@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: MIT
 
 # from CppHeaderParser import CppHeader
+import logging
 import numpy as np
 import json
 import re
 import os
 import sys
 from .events import NUM_TRACE_TYPES
+
+logger = logging.getLogger(__name__)
 
 
 # checks # of bits. Odd number returns a 1. Even returns 0.
@@ -54,7 +57,9 @@ def get_kernel_code(test: dict, solutions_path: str = None) -> str:
     ) as sol_file:
         solution = json.load(sol_file)
         if not solution.get("code"):
-            print(f"No code available in {solutions_path} for {test['kernel_name']}")
+            logger.warning(
+                "No code available in %s for %s", solutions_path, test["kernel_name"]
+            )
             return None
 
         srccode = solution["code"]
@@ -112,11 +117,9 @@ def get_cycles(trace_path):
             if (x["name"] == "INSTR_EVENT_0") and (x["ph"] == "B"):
                 event0.append(x["ts"])
                 tmp = x["ts"]
-                # print("event0 found at "+str(event0[0]))
 
             if x["name"] == "INSTR_EVENT_1" and x["ph"] == "B":
                 event1.append(x["ts"])
-                # print("event1 found at "+str(event1[0]))
 
         return event1[0] - event0[0]
     except:
@@ -147,18 +150,16 @@ def get_cycles_summary(trace_path):
             if (x["name"] == "INSTR_EVENT_0") and (x["ph"] == "B"):
                 if in_kernel[idx] == False:
                     event0[idx] = x["ts"]
-                    # print("event0 found at "+str(event0))
                     in_kernel[idx] = True
 
             if x["name"] == "INSTR_EVENT_1" and x["ph"] == "B":
                 if in_kernel[idx] == True:
-                    # print("event1 found at "+str(x['ts']))
                     deltas[idx].append(x["ts"] - event0[idx])
                     in_kernel[idx] = False
 
         return deltas
-    except Exception as e:
-        print("Exception found", e)
+    except Exception:
+        logger.exception("Exception found")
         return np.inf
 
 

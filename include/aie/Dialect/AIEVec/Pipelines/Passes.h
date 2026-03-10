@@ -50,6 +50,13 @@ struct CanonicalizeVectorForAIEVecOptions
                      "will determine the aievec operations used to convert "
                      "from vector dialect."),
       llvm::cl::init("cpp")};
+  PassOptions::Option<bool> enableBF16Emulation{
+      *this, "bf16-emulation",
+      llvm::cl::desc(
+          "Emulate f32 vector arithmetic using bf16 operations. Inserts "
+          "arith.truncf/arith.extf around f32 vector ops to compute in bf16. "
+          "Trades precision for performance."),
+      llvm::cl::init(false)};
 };
 
 /// Options for the "lower-vector-to-aievec" pipeline.
@@ -118,6 +125,13 @@ struct ConvertVectorToAIEVecOptions
                      "will determine the aievec operations used to convert "
                      "from vector dialect."),
       llvm::cl::init("cpp")};
+  PassOptions::Option<bool> enableBF16Emulation{
+      *this, "bf16-emulation",
+      llvm::cl::desc(
+          "Emulate f32 vector arithmetic using bf16 operations. Inserts "
+          "arith.truncf/arith.extf around f32 vector ops to compute in bf16. "
+          "Trades precision for performance."),
+      llvm::cl::init(false)};
 
   mlir::LogicalResult parseFromString(mlir::StringRef options) {
     auto res = PassPipelineOptions::parseFromString(options);
@@ -126,6 +140,7 @@ struct ConvertVectorToAIEVecOptions
       lowerOptions.targetBackend = targetBackend;
       canonicalizeOptions.aieTarget = aieTarget;
       canonicalizeOptions.targetBackend = targetBackend;
+      canonicalizeOptions.enableBF16Emulation = enableBF16Emulation;
       optimizeOptions.aieTarget = aieTarget;
       optimizeOptions.targetBackend = targetBackend;
       optimizeOptions.shiftParam = shiftParam;
@@ -189,6 +204,10 @@ void buildDynamicSizeNoImplicitBroadcastPass(mlir::OpPassManager &pm);
 /// Create a pass that splits vector.load + aievec.ups chains to reduce shuffle
 /// operations for AIE2p targets.
 std::unique_ptr<::mlir::Pass> createSplitVectorLoadUpsChainsPass();
+
+/// Create a pass that emulates f32 vector arithmetic using bf16 operations.
+/// Inserts arith.truncf/arith.extf around f32 vector ops to compute in bf16.
+std::unique_ptr<::mlir::Pass> createBF16EmulationPass();
 
 } // namespace aievec
 } // namespace xilinx
