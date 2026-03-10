@@ -18,12 +18,21 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
       "Infer per-core link_files from func-level link_with attributes";
   let description = [{
     Walks each aie.core and collects the set of external object files it needs
-    by tracing call edges to func.func declarations that carry a "link_with"
-    string attribute.  The result is stored in the CoreOp's "link_files"
-    StrArrayAttr (a typed array of strings).
+    by tracing direct func.call edges to func.func declarations that carry a
+    "link_with" string attribute.  The result is stored in the CoreOp's
+    "link_files" StrArrayAttr.
+
+    Only direct calls (func.call) are resolved.  Indirect calls
+    (func.call_indirect) inside a core body emit a warning and are not
+    resolved; add a direct func.call to the required func.func declaration
+    so the pass can trace the dependency.
 
     Core-level "link_with" (deprecated) is also migrated: its value is
-    added to the set and the attribute is removed from the CoreOp.
+    folded into the set and the attribute is removed from the CoreOp.
+
+    func.func declarations that carry "link_with" but are never called from
+    any core emit a warning; their object files will not appear in any
+    core's link_files.
   }];
 
   let constructor = "xilinx::AIE::createAIEAssignCoreLinkFilesPass()";

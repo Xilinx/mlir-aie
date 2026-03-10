@@ -56,14 +56,22 @@ class Kernel(BaseKernel):
         bin_name: str,
         arg_types: list[type[np.ndarray] | np.dtype] = [],
     ) -> None:
-        """A Kernel is an externally defined function that eventually resolves to a FuncOp. If it is called,
-        a CallOp will be generated.
+        """An externally pre-compiled AIE core function.
+
+        ``Kernel`` wraps a pre-built object file (``.o``).  Use
+        ``ExternalFunction`` instead when you want to compile from C/C++ source.
+
+        When the kernel is first called inside a core body, ``resolve()`` emits
+        a ``func.func`` declaration with a ``link_with`` attribute naming
+        ``bin_name``; the ``aie-assign-core-link-files`` pass later propagates
+        that into the CoreOp's ``link_files`` attribute for the linker.
 
         Args:
-            name (str): The name of the function
-            bin_name (str): The name of the object file (set as link_with on the func.func
-                declaration; also used as the output filename when compiling ExternalFunction sources)
-            arg_types (list[type[np.ndarray]  |  np.dtype], optional): The type signature of the function. Defaults to [].
+            name: Symbol name of the function as it appears in the object file.
+            bin_name: Filename of the pre-compiled object file (e.g.,
+                ``"add_one.o"``).  Must be available on the linker search path
+                at compile time.
+            arg_types: Type signature of the function arguments.  Defaults to [].
         """
         super().__init__(name, arg_types)
         self._bin_name = bin_name
@@ -84,6 +92,18 @@ class Kernel(BaseKernel):
 
 
 class ExternalFunction(Kernel):
+    """An AIE core function compiled from C/C++ source at JIT time.
+
+    Each instance is registered in ``_instances`` at construction time so that
+    the ``@jit`` decorator can discover and compile all source files before
+    invoking the MLIR compilation pipeline.  ``_instances`` is cleared at the
+    start of each ``@jit`` call to prevent stale registrations from a previous
+    (possibly failed) run.
+
+    Use the base ``Kernel`` class instead when you have a pre-built object file.
+    """
+
+    _instances: set  # Registry of all live ExternalFunction instances.
     _instances = set()
 
     def __init__(
@@ -97,18 +117,21 @@ class ExternalFunction(Kernel):
         compile_flags: list[str] = [],
         debug: bool = False,
     ) -> None:
-        """An ExternalFunction is a C/C++ source file that gets compiled to an object file and eventually resolves to a FuncOp.
-        If it is called, a CallOp will be generated.
-
+        """
         Args:
-            name (str): The name of the function
-            object_file_name (str, optional): The name of the object file. If None, it will be name.o.
-            source_file (str): Path to the C/C++ source file
-            source_string (str): C/C++ source code as a string
-            arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
-            include_dirs (list[str], optional): Additional include directories. Defaults to [].
-            compile_flags (list[str], optional): Additional compilation flags. Defaults to [].
-            debug (bool, optional): Enable debug logging. Defaults to False.
+            name: Symbol name of the function as it will appear in the object file.
+            object_file_name: Output object file name.  Defaults to ``<name>.o``.
+            source_file: Path to a C/C++ source file on disk.  Mutually
+                exclusive with ``source_string``.
+            source_string: Inline C/C++ source code.  Mutually exclusive with
+                ``source_file``.
+            arg_types: Type signature of the function arguments.  Defaults to [].
+            include_dirs: Additional ``-I`` directories passed to the Peano
+                compiler.  Defaults to [].
+            compile_flags: Additional flags passed verbatim to the Peano
+                compiler.  Defaults to [].
+            debug: If True, emit debug log messages during construction.
+                Defaults to False.
         """
         if not object_file_name:
             object_file_name = f"{name}.o"
@@ -128,7 +151,7 @@ class ExternalFunction(Kernel):
             logger.debug("Include dirs: %s", include_dirs)
             logger.debug("Compile flags: %s", compile_flags)
 
-        # Track this instance for JIT compilation
+        # Register this instance so the @jit decorator can compile it.
         ExternalFunction._instances.add(self)
 
     def _setup_source(self, source_file: str | None, source_string: str | None) -> None:
@@ -143,11 +166,11 @@ class ExternalFunction(Kernel):
             self._source_string = source_string
 
     def __enter__(self):
-        """Enter the context."""
+        """Support use as a context manager (``with ExternalFunction(...) as f``)."""
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        """Exit the context."""
+        """No cleanup is performed on exit; the context manager is purely syntactic."""
         pass
 
     def tile_size(self, arg_index: int = 0) -> int:

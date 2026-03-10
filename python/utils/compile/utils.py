@@ -85,16 +85,25 @@ def compile_mlir_module(
     options=None,
 ):
     """
-    Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module.
-    This function supports only the Peano compiler.
-    Parameters:
-        mlir_module (str): MLIR module to compile.
-        insts_path (str): Path to the instructions binary file.
-        pdi_path (str): Path to the PDI file.
-        xclbin_path (str): Path to the xclbin file.
-        verbose (bool): If True, enable verbose output.
-        work_dir (str): Compilation working directory.
-        options (list[str]): List of additional options.
+    Compile an MLIR module to instruction, PDI, and/or xclbin files using aiecc.
+
+    By default uses the Peano compiler backend (--no-xchesscc --no-xbridge).
+    Pass additional flags via ``options`` to override.
+
+    When ``work_dir`` is provided, the MLIR is written to a file inside that
+    directory so that the C++ aiecc binary resolves relative ``link_with``
+    paths on ``func.func`` declarations against the same directory where
+    ``compile_external_kernel`` placed the compiled object files.
+
+    Args:
+        mlir_module: MLIR module to compile.
+        insts_path: Output path for the NPU instruction binary.
+        pdi_path: Output path for the PDI file.
+        xclbin_path: Output path for the xclbin package.
+        verbose: If True, pass --verbose to aiecc.
+        work_dir: Compilation working directory; also determines where the
+            MLIR input file is written when invoking the C++ aiecc binary.
+        options: Additional aiecc command-line options.
     """
 
     args = [
@@ -150,26 +159,29 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     """
     Compile an ExternalFunction to an object file in the kernel directory.
 
+    The output file is named ``func.bin_name`` and placed in ``kernel_dir``.
+    If the object file already exists in ``kernel_dir``, compilation is skipped.
+
     Args:
-        func: ExternalFunction instance to compile
-        kernel_dir: Directory to place the compiled object file
-        target_arch: Target architecture (e.g., "aie2" or "aie2p")
+        func: ExternalFunction instance to compile.
+        kernel_dir: Directory where the compiled object file will be placed.
+            Must be the same directory passed as ``work_dir`` to
+            ``compile_mlir_module`` so that relative link_with paths resolve
+            correctly.
+        target_arch: Peano target architecture string (e.g., "aie2", "aie2p").
     """
-    # Skip if already compiled
+    # Skip if already compiled in this session.
     if hasattr(func, "_compiled") and func._compiled:
         return
 
-    # Check if object file already exists in kernel directory
+    # Skip if the object file already exists (cache hit).
     output_file = os.path.join(kernel_dir, func.bin_name)
     if os.path.exists(output_file):
         return
 
-    # Create source file in kernel directory
     source_file = os.path.join(kernel_dir, f"{func._name}.cc")
 
-    # Handle both source_string and source_file cases
     if func._source_string is not None:
-        # Use source_string (write to file)
         with open(source_file, "w") as f:
             f.write(func._source_string)
     elif func._source_file is not None:
@@ -190,8 +202,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         compile_args=func._compile_flags,
         cwd=kernel_dir,
     )
-
-    # Mark the function as compiled
     func._compiled = True
 
 

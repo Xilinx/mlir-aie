@@ -69,6 +69,9 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  // bo_inB corresponds to the unused %buf memref in the runtime_sequence; it
+  // is passed to satisfy the kernel argument count but is never read by the
+  // device kernel, so no initialization or sync is needed.
   auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),

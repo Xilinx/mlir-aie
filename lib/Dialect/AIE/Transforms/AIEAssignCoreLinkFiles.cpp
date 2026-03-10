@@ -1,5 +1,4 @@
-//===- AIEAssignCoreLinkFiles.cpp --------------------------------*- C++
-//-*-===//
+//===- AIEAssignCoreLinkFiles.cpp -------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -45,9 +44,10 @@ struct AIEAssignCoreLinkFilesPass
     DeviceOp device = getOperation();
     OpBuilder builder(device.getContext());
 
-    // Build map: func name -> list of .o files (from "link_with" attr on
-    // func.func). Keys and values are interned in the MLIRContext so the
-    // StringRefs remain valid for the lifetime of the pass.
+    // Build a map from func name to the object file(s) it requires, sourced
+    // from the "link_with" string attribute on func.func declarations.
+    // StringRefs are views into MLIRContext-owned storage and remain valid
+    // for the entire pass run.
     DenseMap<StringRef, SmallVector<StringRef, 2>> funcToObjs;
     for (auto funcOp : device.getOps<mlir::func::FuncOp>()) {
       if (auto attr = funcOp->getAttrOfType<mlir::StringAttr>("link_with")) {
@@ -55,18 +55,18 @@ struct AIEAssignCoreLinkFilesPass
       }
     }
 
-    // Track which funcs are actually called from any core.
+    // Tracks which func.func symbols are directly called from at least one
+    // core; used to warn about link_with-bearing functions that are never
+    // called and whose object files would otherwise be silently omitted.
     llvm::DenseSet<StringRef> usedFuncs;
 
-    // Walk each core, collect all .o files needed.
-    // NOTE: only *direct* calls (func.call) are traced; transitive calls
-    // through intermediate helpers are not followed.  If an intermediate
-    // helper carries its own link_with, attach link_with to the intermediate
-    // helper *and* call it directly from the core, or use the deprecated
-    // core-level link_with as a fallback.
+    // Only direct func.call edges are traced.  func.call_indirect ops and
+    // calls through intermediate wrapper functions are not followed.  To
+    // handle transitive dependencies, attach link_with directly to every
+    // func.func declaration that a core calls, even thin wrappers.
+    // TODO: extend to transitive call resolution.
     device.walk([&](CoreOp core) {
-      // De-duplicate while preserving insertion order. StringRefs point into
-      // the MLIRContext attribute storage and remain valid throughout the pass.
+      // De-duplicate while preserving insertion order.
       llvm::SetVector<StringRef> needed;
 
       // Migrate deprecated core-level attr: warn, consume it, and add to set.
@@ -78,8 +78,8 @@ struct AIEAssignCoreLinkFilesPass
         core->removeAttr("link_with");
       }
 
-      // Single walk: accumulate used funcs, collect .o files, warn on indirect
-      // calls — all in one pass over the core body.
+      // Single walk over the core body: collect required object files and
+      // record called symbols (for the unused-func warning below).
       core.walk([&](Operation *op) {
         if (auto call = dyn_cast<mlir::func::CallOp>(op)) {
           usedFuncs.insert(call.getCallee());
@@ -96,8 +96,11 @@ struct AIEAssignCoreLinkFilesPass
         }
       });
 
-      if (!needed.empty())
+      if (!needed.empty()) {
+        // builder is used only for attribute construction; its insertion
+        // point is irrelevant and no ops are inserted.
         core.setLinkFilesAttr(builder.getStrArrayAttr(needed.getArrayRef()));
+      }
     });
 
     // Warn about funcs with link_with that are never called from any core.

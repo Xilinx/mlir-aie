@@ -175,13 +175,17 @@ SECTIONS
                targetModel.getMemEastBaseAddress(), std::string("east"));
 
       output << "  .bss : { *(.bss*) } > data\n";
+      // INPUT() directives must follow the closing brace of SECTIONS; placing
+      // them inside SECTIONS is invalid linker script syntax.
       output << "}\n";
       if (auto coreOp = tile.getCoreOp()) {
         if (auto filesAttr = coreOp.getLinkFiles()) {
+          // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
             output << "INPUT(" << f.getValue() << ")\n";
         } else if (auto fileAttr = coreOp.getLinkWith()) {
-          // deprecated fallback
+          // Deprecated fallback: core-level link_with was not migrated by
+          // aie-assign-core-link-files (e.g., the pass was not run).
           output << "INPUT(" << fileAttr.value().str() << ")\n";
         }
 

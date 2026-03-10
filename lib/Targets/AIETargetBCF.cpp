@@ -141,10 +141,12 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
 
       if (auto coreOp = tile.getCoreOp()) {
         if (auto filesAttr = coreOp.getLinkFiles()) {
+          // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
             output << "_include _file " << f.getValue() << "\n";
         } else if (coreOp.getLinkWith()) {
-          // deprecated fallback
+          // Deprecated fallback: core-level link_with was not migrated by
+          // aie-assign-core-link-files (e.g., the pass was not run).
           output << "_include _file " << coreOp.getLinkWith().value().str()
                  << "\n";
         }

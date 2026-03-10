@@ -184,13 +184,16 @@ def jit(function=None, is_placed=True, use_cache=True):
 
 def _filter_tensor_args(args):
     """
-    Filter out non-tensor arguments from args. Required for Algorithms because
-    they pass ExternalFunction and scalar values in their signature that should
-    not be interpreted as runtime sequence arguments.
+    Filter out non-tensor arguments from args.
+
+    Algorithm functions may include ExternalFunction instances and scalar
+    compile-time constants in their Python signature that must not be forwarded
+    to the NPU kernel as runtime buffer arguments.
 
     Removes:
-    - ExternalFunction instances
-    - Scalar values (int, float, np.integer, np.floating), embedded as MLIR constants
+    - ExternalFunction instances (resolved at compile time via link_with)
+    - Scalar values (int, float, np.integer, np.floating) used as MLIR constants
+    - Callables (e.g. lambda configuration helpers)
     """
     tensor_args = []
     for arg in args:

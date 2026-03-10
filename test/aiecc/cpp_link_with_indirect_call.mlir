@@ -22,7 +22,7 @@ module {
 
     %core_0_2 = aie.core(%tile_0_2) {
       %fptr = func.constant @some_helper : () -> ()
-      // expected-warning@+1 {{indirect call in core body}}
+      // expected-warning@+1 {{indirect call in core body — link_with attributes on indirectly-called functions are not automatically resolved}}
       func.call_indirect %fptr() : () -> ()
       aie.end
     }

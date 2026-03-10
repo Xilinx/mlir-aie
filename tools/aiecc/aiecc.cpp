@@ -117,8 +117,6 @@
 #include <thread>
 #include <vector>
 
-#include "aiecc_aiesim.h"
-
 using namespace llvm;
 using namespace mlir;
 
@@ -1080,14 +1078,22 @@ static std::string getAIETargetForDevice(ModuleOp moduleOp,
 // AIE Device and Core Discovery
 //===----------------------------------------------------------------------===//
 
+/// Per-core metadata extracted from a CoreOp before the compilation pipeline
+/// begins.  All fields are populated by getCoreInfo().
 struct CoreInfo {
-  std::int32_t col;
-  std::int32_t row;
-  SmallVector<std::string> linkFiles; // External object files to link
-  std::string elfFile; // Generated ELF path (if already specified)
+  std::int32_t col = 0; ///< Tile column (from TileOp).
+  std::int32_t row = 0; ///< Tile row (from TileOp).
+  /// External object files to link into this core's ELF.  Populated from
+  /// CoreOp::getLinkFiles() (canonical) or CoreOp::getLinkWith() (deprecated
+  /// fallback when aie-assign-core-link-files was not run).
+  SmallVector<std::string> linkFiles;
+  /// If non-empty, the ELF was provided via the elf_file attribute; no
+  /// compilation is needed.
+  std::string elfFile;
 };
 
-/// Check if a CoreOp has a non-empty body (more than just aie.end).
+/// Returns true if the CoreOp has a non-empty body (i.e., anything beyond the
+/// mandatory aie.end terminator).
 static bool coreHasNonemptyBody(xilinx::AIE::CoreOp coreOp) {
   for (auto &block : coreOp.getBody()) {
     if (block.getOperations().size() > 1)
@@ -1096,7 +1102,20 @@ static bool coreHasNonemptyBody(xilinx::AIE::CoreOp coreOp) {
   return false;
 }
 
-// Helper to extract core info from a CoreOp
+/// Returns true if a CoreOp requires compilation or linking.
+///
+/// Skips hollow cores created by --expand-load-pdis (empty body, no elf_file,
+/// no link files), which exist only to satisfy structural constraints.
+static bool coreNeedsCompilation(xilinx::AIE::CoreOp coreOp) {
+  return coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
+         coreOp.getLinkFiles() || coreHasNonemptyBody(coreOp);
+}
+
+/// Extracts tile coordinates and link-file metadata from a CoreOp.
+///
+/// Prefers the canonical link_files attribute (set by
+/// aie-assign-core-link-files). Falls back to the deprecated core-level
+/// link_with attribute if link_files is absent (e.g., the pass was not run).
 static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
   CoreInfo info;
   auto tileOp = dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
@@ -2203,11 +2222,10 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       llvm::outs() << "Generated BCF: " << bcfPath << "\n";
     }
 
-    // Extract link_with files from BCF
+    // Extract external object files listed in the BCF's _include _file
+    // directives. Search order: current working directory, then tmpDirName (JIT
+    // cache), then the directory containing the input MLIR file.
     std::vector<std::string> linkWithFiles = extractInputFilesFromBCF(bcfPath);
-
-    // Handle link_with files: copy to .prj directory if needed
-    // Search order: current working directory, then input file directory
     std::string linkWithArgs;
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> srcPath;
@@ -2249,8 +2267,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         return failure();
 
       if (verbose)
-        llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
-                     << "\n";
+        llvm::outs() << "Copied external object: " << srcPath << " -> "
+                     << destPath << "\n";
 
       if (!linkWithArgs.empty()) {
         linkWithArgs += " ";
@@ -2278,7 +2296,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         std::string(workDir), "-d",           "-f",
         std::string(objPath)};
 
-    // Add link_with files if any
+    // Append external object files (previously copied to tmpDirName) to the
+    // xchesscc_wrapper link command.
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> localPath(tmpDirName);
       sys::path::append(localPath, sys::path::filename(linkWithFile));
@@ -2387,10 +2406,10 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
           return failure();
 
         if (verbose)
-          llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
+          llvm::outs() << "Copied external object: " << srcLinkWith << " -> "
                        << destLinkWith << "\n";
       } else if (verbose) {
-        llvm::outs() << "link_with object already in place: " << srcLinkWith
+        llvm::outs() << "External object already in place: " << srcLinkWith
                      << "\n";
       }
 
@@ -2455,12 +2474,8 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
 
   SmallVector<CoreInfo> cores;
   deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    // Skip cores with no elf_file, no link_with/link_files, and empty body
-    // (e.g., @empty device ops created by --expand-load-pdis)
-    if (coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
-        coreOp.getLinkFiles() || coreHasNonemptyBody(coreOp)) {
+    if (coreNeedsCompilation(coreOp))
       cores.push_back(getCoreInfo(coreOp));
-    }
   });
 
   if (cores.empty()) {
@@ -2628,12 +2643,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
   SmallVector<CoreInfo> cores;
   deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    // Skip cores with no elf_file, no link_with/link_files, and empty body
-    // (e.g., @empty device ops created by --expand-load-pdis)
-    if (coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
-        coreOp.getLinkFiles() || coreHasNonemptyBody(coreOp)) {
+    if (coreNeedsCompilation(coreOp))
       cores.push_back(getCoreInfo(coreOp));
-    }
   });
 
   if (cores.empty()) {
