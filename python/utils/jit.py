@@ -93,15 +93,17 @@ def jit(function=None, is_placed=True, use_cache=True):
         if is_placed:
             with mlir_mod_ctx() as ctx:
                 function(*args, **kwargs)
-                assert (
-                    ctx.module.operation.verify()
-                ), f"Verification failed for '{function.__name__}'"
+                if not ctx.module.operation.verify():
+                    raise RuntimeError(
+                        f"MLIR verification failed for '{function.__name__}'"
+                    )
                 mlir_module = ctx.module
         else:
             mlir_module = function(*args, **kwargs)
-            assert (
-                mlir_module.operation.verify()
-            ), f"Verification failed for '{function.__name__}'"
+            if not mlir_module.operation.verify():
+                raise RuntimeError(
+                    f"MLIR verification failed for '{function.__name__}'"
+                )
 
         # Also collect ExternalFunction instances created during function()
         # execution (e.g. inside algorithm helpers that construct them internally).

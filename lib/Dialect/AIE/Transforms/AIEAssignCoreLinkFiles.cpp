@@ -42,7 +42,8 @@ struct AIEAssignCoreLinkFilesPass
           AIEAssignCoreLinkFilesPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    OpBuilder builder(device.getContext());
+    // Builder is used only for attribute construction; no ops are inserted.
+    Builder builder(device.getContext());
 
     // Build a map from func name to the object file(s) it requires, sourced
     // from the "link_with" string attribute on func.func declarations.

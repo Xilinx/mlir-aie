@@ -2262,13 +2262,17 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       // cores.
       SmallString<256> destPath(tmpDirName);
       sys::path::append(destPath, sys::path::filename(linkWithFile));
-      if (failed(atomicCopyFile(srcPath, tmpDirName,
-                                sys::path::filename(linkWithFile))))
-        return failure();
+      if (srcPath != destPath) {
+        if (failed(atomicCopyFile(srcPath, tmpDirName,
+                                  sys::path::filename(linkWithFile))))
+          return failure();
 
-      if (verbose)
-        llvm::outs() << "Copied external object: " << srcPath << " -> "
-                     << destPath << "\n";
+        if (verbose) {
+          std::lock_guard<std::mutex> lock(outputMutex);
+          llvm::outs() << "Copied external object: " << srcPath << " -> "
+                       << destPath << "\n";
+        }
+      }
 
       if (!linkWithArgs.empty()) {
         linkWithArgs += " ";
@@ -2405,10 +2409,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                   sys::path::filename(lf))))
           return failure();
 
-        if (verbose)
+        if (verbose) {
+          std::lock_guard<std::mutex> lock(outputMutex);
           llvm::outs() << "Copied external object: " << srcLinkWith << " -> "
                        << destLinkWith << "\n";
+        }
       } else if (verbose) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         llvm::outs() << "External object already in place: " << srcLinkWith
                      << "\n";
       }

@@ -7,9 +7,9 @@
 
 add_mlir_dialect_library(
   AIETransforms
+  AIEAssignBufferDescriptorIDs.cpp
   AIEAssignBuffers.cpp
   AIEAssignCoreLinkFiles.cpp
-  AIEAssignBufferDescriptorIDs.cpp
   AIEAssignLockIDs.cpp
   AIEFindFlows.cpp
   AIEPathFinder.cpp

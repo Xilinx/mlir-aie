@@ -142,6 +142,10 @@ def compile_mlir_module(
         result = subprocess.run(
             [aiecc_bin, mlir_file] + args, capture_output=True, text=True
         )
+        if result.stdout:
+            logger.debug("%s", result.stdout)
+        if result.stderr:
+            logger.debug("%s", result.stderr)
         if result.returncode != 0:
             error_msg = result.stderr if result.stderr else result.stdout
             raise RuntimeError(
@@ -171,7 +175,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         target_arch: Peano target architecture string (e.g., "aie2", "aie2p").
     """
     # Skip if already compiled in this session.
-    if hasattr(func, "_compiled") and func._compiled:
+    if func._compiled:
         return
 
     # Skip if the object file already exists (cache hit).

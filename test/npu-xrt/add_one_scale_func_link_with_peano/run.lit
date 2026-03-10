@@ -15,7 +15,7 @@
 //
 // The kernel pipeline per tile iteration:
 //   1. add_one(in, out, n)   — out[i] = in[i] + 1
-//   2. scale_by_two(out, n)  — out[i] *= 2
+//   2. scale_by_two(out, out, n)  — out[i] *= 2  (in-place: same buffer for in and out)
 // Expected output: (input + 1) * 2.
 //
 // RUN: cp %S/aie.mlir aie_arch.mlir
