@@ -178,7 +178,9 @@ def _fixup_llvm_diaguids(mlir_prefix):
 
     diaguids = _find_diaguids_lib()
     if diaguids is None:
-        raise FileNotFoundError("Could not locate diaguids.lib for LLVM CMake export fixup")
+        raise FileNotFoundError(
+            "Could not locate diaguids.lib for LLVM CMake export fixup"
+        )
 
     replacement = diaguids.as_posix()
     patched = 0

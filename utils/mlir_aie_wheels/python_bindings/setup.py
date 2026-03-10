@@ -139,10 +139,12 @@ class CMakeBuild(build_ext):
             # Keep source and dependency paths short without moving the installed trees.
             cmake_src = _windows_short_alias("pb", cmake_src).absolute()
             MLIR_AIE_INSTALL_ABS_PATH = _windows_short_alias(
-                _windows_tree_alias_name(MLIR_AIE_INSTALL_ABS_PATH.name), MLIR_AIE_INSTALL_ABS_PATH
+                _windows_tree_alias_name(MLIR_AIE_INSTALL_ABS_PATH.name),
+                MLIR_AIE_INSTALL_ABS_PATH,
             ).absolute()
             MLIR_INSTALL_ABS_PATH = _windows_short_alias(
-                _windows_tree_alias_name(MLIR_INSTALL_ABS_PATH.name), MLIR_INSTALL_ABS_PATH
+                _windows_tree_alias_name(MLIR_INSTALL_ABS_PATH.name),
+                MLIR_INSTALL_ABS_PATH,
             ).absolute()
 
         cmake_args = [

@@ -1921,7 +1921,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                    << bufOrErr.getError().message() << "\n";
       return failure();
     }
-    std::string downgradedIR = downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
+    std::string downgradedIR =
+        downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
 
     // Write downgraded IR to .chesshack.ll
     SmallString<128> chessHackPath(tmpDirName);
@@ -2699,7 +2700,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
                    << bufOrErr.getError().message() << "\n";
       return failure();
     }
-    std::string downgradedIR = downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
+    std::string downgradedIR =
+        downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
 
     SmallString<128> chessHackPath(tmpDirName);
     sys::path::append(chessHackPath, deviceName.str() + "_input.chesshack.ll");
@@ -2778,8 +2780,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
         downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
 
     SmallString<128> peanohackPath(tmpDirName);
-    sys::path::append(peanohackPath,
-                      deviceName.str() + "_input.peanohack.ll");
+    sys::path::append(peanohackPath, deviceName.str() + "_input.peanohack.ll");
     {
       std::error_code ec;
       raw_fd_ostream peanohackFile(peanohackPath, ec);

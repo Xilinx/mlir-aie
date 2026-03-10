@@ -183,7 +183,8 @@ class CMakeBuild(build_ext):
             cmake_source_dir = _windows_short_alias("src", cmake_source_dir).absolute()
             cmake_module_root = cmake_source_dir
             MLIR_INSTALL_ABS_PATH = _windows_short_alias(
-                _windows_tree_alias_name(MLIR_INSTALL_ABS_PATH.name), MLIR_INSTALL_ABS_PATH
+                _windows_tree_alias_name(MLIR_INSTALL_ABS_PATH.name),
+                MLIR_INSTALL_ABS_PATH,
             ).absolute()
 
         cmake_args = [

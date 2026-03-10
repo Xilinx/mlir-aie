@@ -1,8 +1,7 @@
-cmake>=3.30
+cmake>=3.31
 dataclasses
 importlib-metadata
-ninja<1.13; platform_system=="Windows"
-ninja; platform_system!="Windows"
+ninja!=1.13.0; platform_system=="Windows"
 numpy
 pip
 pybind11[global]>=2.10.4
