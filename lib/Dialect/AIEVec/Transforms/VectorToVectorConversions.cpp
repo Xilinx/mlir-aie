@@ -1033,8 +1033,8 @@ struct EmulateUnaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
     auto bf16VecType =
         VectorType::get(resultType.getShape(), rewriter.getBF16Type());
 
-    Value inputBF16 = smartTruncF32ToBF16(rewriter, loc, op->getOperand(0),
-                                          bf16VecType);
+    Value inputBF16 =
+        smartTruncF32ToBF16(rewriter, loc, op->getOperand(0), bf16VecType);
 
     Value newResult = OpTy::create(rewriter, loc, bf16VecType, inputBF16);
     auto extOp = arith::ExtFOp::create(rewriter, loc, resultType, newResult);
@@ -1085,20 +1085,19 @@ struct BF16EmulationPass
     RewritePatternSet patterns(context);
 
     // Binary arithmetic ops
-    patterns
-        .add<EmulateBinaryF32InBF16Pattern<arith::AddFOp>,
-             EmulateBinaryF32InBF16Pattern<arith::SubFOp>,
-             EmulateBinaryF32InBF16Pattern<arith::MulFOp>,
-             EmulateBinaryF32InBF16Pattern<arith::MaximumFOp>,
-             EmulateBinaryF32InBF16Pattern<arith::MinimumFOp>>(context);
+    patterns.add<EmulateBinaryF32InBF16Pattern<arith::AddFOp>,
+                 EmulateBinaryF32InBF16Pattern<arith::SubFOp>,
+                 EmulateBinaryF32InBF16Pattern<arith::MulFOp>,
+                 EmulateBinaryF32InBF16Pattern<arith::MaximumFOp>,
+                 EmulateBinaryF32InBF16Pattern<arith::MinimumFOp>>(context);
 
     // Note: arith.divf is NOT demoted because bf16 vector divf is unsupported
     // on all AIE targets (Peano does not legalize G_FDIV on <16 x s16>).
 
     // Special-case ops
     patterns.add<EmulateCmpFF32InBF16Pattern, EmulateSelectF32InBF16Pattern,
-                 EmulateFMAF32InBF16Pattern,
-                 EmulateReductionF32InBF16Pattern>(context);
+                 EmulateFMAF32InBF16Pattern, EmulateReductionF32InBF16Pattern>(
+        context);
 
     // Unary ops
     patterns.add<EmulateUnaryF32InBF16Pattern<arith::NegFOp>>(context);
