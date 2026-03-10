@@ -13,7 +13,6 @@ import shutil
 import time
 import weakref
 import gc
-import sys
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,6 +24,8 @@ from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelRes
 if TYPE_CHECKING:
     from aie.iron.device import Device
 from .tensor import XRTTensor
+
+logger = logging.getLogger(__name__)
 
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
@@ -90,20 +91,22 @@ class XRTHostRuntime(HostRuntime):
                 self._device = pyxrt.device(0)
                 break
             except RuntimeError as e:
-                print(
-                    f"XRTHostRuntime: Failed to acquire device (attempt {attempt+1}/{max_retries}): {e}",
-                    file=sys.stderr,
+                logger.warning(
+                    "XRTHostRuntime: Failed to acquire device (attempt %d/%d): %s",
+                    attempt + 1,
+                    max_retries,
+                    e,
                 )
 
                 # Debugging info
                 try:
                     if os.path.exists("/dev/accel/accel0"):
-                        print("/dev/accel/accel0 exists", file=sys.stderr)
+                        logger.debug("/dev/accel/accel0 exists")
                         # Stat it
                         st = os.stat("/dev/accel/accel0")
-                        print(f"Stat: {st}", file=sys.stderr)
+                        logger.debug("Stat: %s", st)
                     else:
-                        print("/dev/accel/accel0 does not exist", file=sys.stderr)
+                        logger.debug("/dev/accel/accel0 does not exist")
 
                     # Try running xrt-smi examine
                     xrt_bin = shutil.which("xrt-smi")
@@ -111,17 +114,17 @@ class XRTHostRuntime(HostRuntime):
                         xrt_base = os.environ.get("XILINX_XRT", "/opt/xilinx/xrt")
                         xrt_bin = xrt_base + "/bin/xrt-smi"
                     if os.path.exists(xrt_bin):
-                        print(f"Running {xrt_bin} examine", file=sys.stderr)
+                        logger.debug("Running %s examine", xrt_bin)
                         result = subprocess.run(
                             [xrt_bin, "examine"],
                             timeout=5,
                             capture_output=True,
                             text=True,
                         )
-                        print(f"xrt-smi stdout:\n{result.stdout}", file=sys.stderr)
-                        print(f"xrt-smi stderr:\n{result.stderr}", file=sys.stderr)
+                        logger.debug("xrt-smi stdout:\n%s", result.stdout)
+                        logger.debug("xrt-smi stderr:\n%s", result.stderr)
                 except Exception as debug_e:
-                    print(f"Failed to run debug checks: {debug_e}", file=sys.stderr)
+                    logger.debug("Failed to run debug checks: %s", debug_e)
 
                 if attempt == max_retries - 1:
                     raise e
