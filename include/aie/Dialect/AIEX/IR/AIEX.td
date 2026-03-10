@@ -1050,7 +1050,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::Runt
   }];
 
   let extraClassDefinition = [{
-    AIE::TileOp DMAConfigureTaskOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+    AIE::TileOp DMAConfigureTaskOp::getTileOp() { return cast<AIE::TileElement>(this->getOperation()).getTileOp(); }
   }];
 
   let hasVerifier = 1;
@@ -1189,7 +1189,7 @@ def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"AIE::Runtim
   }];
 
   let extraClassDefinition = [{
-    AIE::TileOp DMAStartBdChainOp::getTileOp() { return cast<AIE::TileOp>(getTile().getDefiningOp()); }
+    AIE::TileOp DMAStartBdChainOp::getTileOp() { return cast<AIE::TileElement>(this->getOperation()).getTileOp(); }
   }];
 
 }
