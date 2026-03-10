@@ -824,11 +824,11 @@ static StringRef getPeanoInstallDir() {
   return *cachedPeanoDir;
 }
 
-// Downgrade LLVM IR for compatibility with Chess toolchain's older LLVM.
-// The Chess LLVM is based on an older version that doesn't support modern
-// memory/capture attributes. This function performs string replacements
+// Downgrade LLVM IR for compatibility with legacy LLVM-based toolchains.
+// Older Chess and Peano toolchains do not support some newer memory/capture
+// attributes and GEP spellings. This function performs string replacements
 // matching the Python downgrade_ir_for_chess() function.
-static std::string downgradeIRForChess(StringRef llvmIR) {
+static std::string downgradeIRForLegacyLLVM(StringRef llvmIR) {
   std::string result = llvmIR.str();
 
   // Replace memory attributes
@@ -1921,14 +1921,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                    << bufOrErr.getError().message() << "\n";
       return failure();
     }
-    std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
+    std::string downgradedIR = downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
 
     // Write downgraded IR to .chesshack.ll
     SmallString<128> chessHackPath(tmpDirName);
     sys::path::append(chessHackPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.col) + "_" +
-                          std::to_string(core.row) + ".chesshack.ll");
+                          "_" + std::to_string(core.row) + ".chesshack.ll");
     {
       std::error_code ec;
       raw_fd_ostream chessHackFile(chessHackPath, ec);
@@ -2014,6 +2013,38 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
+    auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
+    if (!bufOrErr) {
+      std::lock_guard<std::mutex> lock(outputMutex);
+      llvm::errs() << "Error reading LLVM IR file: "
+                   << bufOrErr.getError().message() << "\n";
+      return failure();
+    }
+    std::string downgradedIR =
+        downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
+
+    SmallString<128> peanoHackPath(tmpDirName);
+    sys::path::append(peanoHackPath,
+                      deviceName.str() + "_core_" + std::to_string(core.col) +
+                          "_" + std::to_string(core.row) + ".peanohack.ll");
+    {
+      std::error_code ec;
+      raw_fd_ostream peanoHackFile(peanoHackPath, ec);
+      if (ec) {
+        std::lock_guard<std::mutex> lock(outputMutex);
+        llvm::errs() << "Error writing peanohack file: " << ec.message()
+                     << "\n";
+        return failure();
+      }
+      peanoHackFile << downgradedIR;
+    }
+
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
+      llvm::outs() << "Applied IR downgrade for Peano: " << peanoHackPath
+                   << "\n";
+    }
+
     // Run opt
     SmallString<128> optPath(tmpDirName);
     sys::path::append(optPath, deviceName.str() + "_core_" +
@@ -2026,7 +2057,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                                ">,strip",
                                            "-inline-threshold=10",
                                            "-S",
-                                           std::string(llvmIRPath),
+                                           std::string(peanoHackPath),
                                            "-o",
                                            std::string(optPath)};
 
@@ -2668,7 +2699,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
                    << bufOrErr.getError().message() << "\n";
       return failure();
     }
-    std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
+    std::string downgradedIR = downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
 
     SmallString<128> chessHackPath(tmpDirName);
     sys::path::append(chessHackPath, deviceName.str() + "_input.chesshack.ll");
@@ -2735,7 +2766,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack (strip debug info for compatibility)
+    // Apply legacy LLVM IR downgrade for Peano compatibility.
     auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
     if (!bufOrErr) {
       llvm::errs() << "Error reading unified LLVM IR: "
@@ -2743,10 +2774,12 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Write peanohacked version
+    std::string downgradedIR =
+        downgradeIRForLegacyLLVM((*bufOrErr)->getBuffer());
+
     SmallString<128> peanohackPath(tmpDirName);
     sys::path::append(peanohackPath,
-                      deviceName.str() + "_input.llpeanohack.ll");
+                      deviceName.str() + "_input.peanohack.ll");
     {
       std::error_code ec;
       raw_fd_ostream peanohackFile(peanohackPath, ec);
@@ -2755,8 +2788,12 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
                      << "\n";
         return failure();
       }
-      // Simple peanohack: just copy for now (could add attribute stripping)
-      peanohackFile << (*bufOrErr)->getBuffer();
+      peanohackFile << downgradedIR;
+    }
+
+    if (verbose) {
+      llvm::outs() << "Applied IR downgrade for unified Peano input: "
+                   << peanohackPath << "\n";
     }
 
     // Run opt
