@@ -59,9 +59,9 @@ module @idct {
   aie.flow(%t74, DMA : 1, %t75, DMA : 0)
   aie.flow(%t75, DMA : 1, %t70, DMA : 0)
 
-  func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "dequant.o"}
+  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "idct_horizontal.o"}
+  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "idct_vertical.o"}
 
   %c13 = aie.core(%t73) {
     %lb = arith.constant 0 : index
@@ -83,7 +83,7 @@ module @idct {
     }
 
     aie.end
-  } { link_with="dequant.o" }
+  }
 
   %c74 = aie.core(%t74) {
     %lb = arith.constant 0 : index
@@ -105,7 +105,7 @@ module @idct {
     }
 
     aie.end
-  } { link_with="idct_horizontal.o" }
+  }
   
     %c75 = aie.core(%t75) {
     %lb = arith.constant 0 : index
@@ -127,7 +127,7 @@ module @idct {
     }
 
     aie.end
-  } { link_with="idct_vertical.o" }
+  }
 
   // Tile DMA
   %m73 = aie.mem(%t73) {

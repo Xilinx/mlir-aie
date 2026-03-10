@@ -62,7 +62,7 @@ aie.device(xcvc1902) {
   %buf63 = aie.buffer(%t63) {sym_name = "buf63"} : memref<1024xi32>  //Accumulator0
   %buf73 = aie.buffer(%t73) {sym_name = "buf73"} : memref<1024xi32>  //Accumulator1
 
-  func.func private @extern_kernel(%A: memref<1024xi32>, %B: memref<1024xi32>, %acc: memref<1024xi32>, %C: memref<1024xi32>) -> ()
+  func.func private @extern_kernel(%A: memref<1024xi32>, %B: memref<1024xi32>, %acc: memref<1024xi32>, %C: memref<1024xi32>) -> () attributes {link_with = "kernel.o"}
 
   %core63 = aie.core(%t63) {
     %LHS0Subview = aie.objectfifo.acquire @of_LHS0 (Consume, 1) : !aie.objectfifosubview<memref<1024xi32>>
@@ -81,7 +81,7 @@ aie.device(xcvc1902) {
     aie.objectfifo.release @of_acc0 (Produce, 1)
 
     aie.end
-  } { link_with="kernel.o" }
+  }
 
   %core64 = aie.core(%t64) {
     %LHS1Subview = aie.objectfifo.acquire @of_LHS1 (Consume, 1) : !aie.objectfifosubview<memref<1024xi32>>
@@ -104,7 +104,7 @@ aie.device(xcvc1902) {
     aie.objectfifo.release @of_out0 (Produce, 1)
 
     aie.end
-  } { link_with="kernel.o" }
+  }
 
   %core73 = aie.core(%t73) {
     %LHS0Subview = aie.objectfifo.acquire @of_LHS0 (Consume, 1) : !aie.objectfifosubview<memref<1024xi32>>
@@ -123,7 +123,7 @@ aie.device(xcvc1902) {
     aie.objectfifo.release @of_acc1 (Produce, 1)
 
     aie.end
-  } { link_with="kernel.o" }
+  }
 
   %core74 = aie.core(%t74) {
     %LHS1Subview = aie.objectfifo.acquire @of_LHS1 (Consume, 1) : !aie.objectfifosubview<memref<1024xi32>>
@@ -146,5 +146,5 @@ aie.device(xcvc1902) {
     aie.objectfifo.release @of_out1 (Produce, 1)
 
     aie.end
-  } { link_with="kernel.o" }
+  }
 }

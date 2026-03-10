@@ -11,7 +11,7 @@
 
 module {
   aie.device(npu1_1col) {
-    func.func private @scale_int32(memref<1024xi32>, memref<1024xi32>)
+    func.func private @scale_int32(memref<1024xi32>, memref<1024xi32>) attributes {link_with = "scale.o"}
 
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
@@ -56,7 +56,7 @@ module {
         }
       }
       aie.end
-    } {link_with = "scale.o"}
+    }
 
     aie.shim_dma_allocation @in (%tile_0_0, MM2S, 0)
 

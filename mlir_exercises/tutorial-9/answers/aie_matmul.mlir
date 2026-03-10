@@ -38,7 +38,7 @@ module @tutorial_9 {
 
     // declare kernel function name "extern_kernel" with one positional
     // function argument, in this case mapped to a memref
-    func.func private @extern_kernel(%a: memref<32xi32>, %b: memref<32xi32>, %acc: memref<32xi32>, %c: memref<32xi32>) -> ()
+    func.func private @extern_kernel(%a: memref<32xi32>, %b: memref<32xi32>, %acc: memref<32xi32>, %c: memref<32xi32>) -> () attributes {link_with = "kernel_matmul.o"}
 
     // Define the algorithm for the core of tile(1, 4)
     // buf[3] = 14
@@ -55,6 +55,6 @@ module @tutorial_9 {
         // by acquiring this lock (with value 1).
         aie.use_lock(%lock14_0, "Release", 1)
         aie.end
-    } { link_with="kernel_matmul.o" } // indicate kernel object name used by this core
+    } // indicate kernel object name used by this core
 
 }

@@ -37,11 +37,14 @@ def color_detect(dev, width, height):
 
         # AIE Core Function declarations
         rgba2hueLine = external_func(
-            "rgba2hueLine", inputs=[line_bytes_ty, line_ty, np.int32]
+            "rgba2hueLine",
+            inputs=[line_bytes_ty, line_ty, np.int32],
+            link_with="rgba2hue.cc.o",
         )
         thresholdLine = external_func(
             "thresholdLine",
             inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
+            link_with="threshold.cc.o",
         )
         bitwiseORLine = external_func(
             "bitwiseORLine", inputs=[line_ty, line_ty, line_ty, np.int32]
@@ -94,7 +97,7 @@ def color_detect(dev, width, height):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "rgba2hue.cc.o")
+        @core(ComputeTile2)
         def coreBody():
             for _ in range_(sys.maxsize):
                 elemIn = inOF_L3L2.acquire(ObjectFifoPort.Consume, 1)
@@ -104,7 +107,7 @@ def color_detect(dev, width, height):
                 OF_2to34.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 3
-        @core(ComputeTile3, "threshold.cc.o")
+        @core(ComputeTile3)
         def coreBody():
             thresholdValueUpper1 = 40
             thresholdValueLower1 = 30
@@ -138,7 +141,7 @@ def color_detect(dev, width, height):
                 OF_3to5.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 4
-        @core(ComputeTile4, "threshold.cc.o")
+        @core(ComputeTile4)
         def coreBody():
             thresholdValueUpper1 = 160
             thresholdValueLower1 = 90

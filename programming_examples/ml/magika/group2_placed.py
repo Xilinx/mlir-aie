@@ -91,13 +91,14 @@ class group2:
         group2_func = external_func(
             "group2_kernel",
             inputs=[din_ty, lut0_ty, lut1_ty, lut2_ty, lut3_ty],
+            link_with=_objectArchive,
         )
 
         output_lock = lock(
             self.computeTile, lock_id=8, init=0
         )  # chooose id=8, objfifo doesn't use it
 
-        @core(self.computeTile, self.objectArchive)
+        @core(self.computeTile)
         def core_body():
             for _ in range_(sys.maxsize):
                 di = self.din.acquire(ObjectFifoPort.Consume, 1)
