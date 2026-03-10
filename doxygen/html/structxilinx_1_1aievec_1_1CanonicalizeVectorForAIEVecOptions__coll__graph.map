@@ -1,7 +1,9 @@
 <map id="xilinx::aievec::CanonicalizeVectorForAIEVecOptions" name="xilinx::aievec::CanonicalizeVectorForAIEVecOptions">
-<area shape="rect" id="Node000001" title="Options for the &quot;canonicalize&#45;vector&#45;for&#45;aievec&quot; pipeline." alt="" coords="439,35,639,75"/>
+<area shape="rect" id="Node000001" title="Options for the &quot;canonicalize&#45;vector&#45;for&#45;aievec&quot; pipeline." alt="" coords="492,63,692,103"/>
 <area shape="rect" id="Node000002" title=" " alt="" coords="5,5,296,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="310,33,415,41,438,43,438,49,414,47,310,39"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="310,28,389,34,468,45,529,60,528,65,468,51,388,40,310,33"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="71,70,231,95"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="245,79,414,71,438,68,439,73,415,76,245,85"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="245,80,492,80,492,85,245,85"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="89,119,212,145"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="225,124,468,100,491,97,492,102,468,105,226,129"/>
 </map>

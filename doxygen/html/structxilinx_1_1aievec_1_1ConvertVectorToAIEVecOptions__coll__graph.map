@@ -1,9 +1,11 @@
 <map id="xilinx::aievec::ConvertVectorToAIEVecOptions" name="xilinx::aievec::ConvertVectorToAIEVecOptions">
-<area shape="rect" id="Node000001" title="Options for the &quot;convert&#45;vector&#45;to&#45;aievec&quot; pipeline." alt="" coords="400,69,609,109"/>
+<area shape="rect" id="Node000001" title="Options for the &quot;convert&#45;vector&#45;to&#45;aievec&quot; pipeline." alt="" coords="453,100,663,140"/>
 <area shape="rect" id="Node000002" title=" " alt="" coords="5,5,257,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="271,27,377,41,457,67,456,72,375,47,271,32"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="271,24,351,32,430,49,484,72,529,98,526,102,481,76,429,55,350,37,271,29"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="54,77,209,102"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="223,87,400,87,400,92,223,92"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="223,93,453,110,453,115,222,98"/>
 <area shape="rect" id="Node000004" title=" " alt="" coords="51,137,211,162"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="225,141,299,133,375,121,437,107,438,112,377,127,300,138,226,146"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="225,151,324,152,429,145,478,137,478,143,430,151,324,157,225,157"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="70,186,193,211"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="206,197,312,191,371,184,429,172,476,157,518,138,520,143,477,162,430,177,372,189,313,196,206,202"/>
 </map>

@@ -80,11 +80,13 @@ $(function() {
 <div id="dynsection-1-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions__coll__graph.png" border="0" usemap="#axilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions_coll__map" alt="Collaboration graph"/></div>
 <map name="axilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions_coll__map" id="axilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions_coll__map">
-<area shape="rect" title="Options for the &quot;canonicalize&#45;vector&#45;for&#45;aievec&quot; pipeline." alt="" coords="439,35,639,75"/>
+<area shape="rect" title="Options for the &quot;canonicalize&#45;vector&#45;for&#45;aievec&quot; pipeline." alt="" coords="492,63,692,103"/>
 <area shape="rect" title=" " alt="" coords="5,5,296,45"/>
-<area shape="poly" title=" " alt="" coords="310,33,415,41,438,43,438,49,414,47,310,39"/>
+<area shape="poly" title=" " alt="" coords="310,28,389,34,468,45,529,60,528,65,468,51,388,40,310,33"/>
 <area shape="rect" title=" " alt="" coords="71,70,231,95"/>
-<area shape="poly" title=" " alt="" coords="245,79,414,71,438,68,439,73,415,76,245,85"/>
+<area shape="poly" title=" " alt="" coords="245,80,492,80,492,85,245,85"/>
+<area shape="rect" title=" " alt="" coords="89,119,212,145"/>
+<area shape="poly" title=" " alt="" coords="225,124,468,100,491,97,492,102,468,105,226,129"/>
 </map>
 <center><span class="legend">[<a href="graph_legend.html">legend</a>]</span></center></div>
 <table class="memberdecls">
@@ -94,6 +96,8 @@ Public Attributes</h2></td></tr>
 <tr class="separator:ad9652e7a8b3a9fff05784b72d54f6908"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7717d0b5d44d692c696d9f49d9118af6" id="r_a7717d0b5d44d692c696d9f49d9118af6"><td class="memItemLeft" align="right" valign="top">PassOptions::Option&lt; std::string &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a7717d0b5d44d692c696d9f49d9118af6">targetBackend</a></td></tr>
 <tr class="separator:a7717d0b5d44d692c696d9f49d9118af6"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a73324380329f25174d160e24d468509d" id="r_a73324380329f25174d160e24d468509d"><td class="memItemLeft" align="right" valign="top">PassOptions::Option&lt; <a class="el" href="classbool.html">bool</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1aievec_1_1CanonicalizeVectorForAIEVecOptions.html#a73324380329f25174d160e24d468509d">enableBF16Emulation</a></td></tr>
+<tr class="separator:a73324380329f25174d160e24d468509d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Options for the "canonicalize-vector-for-aievec" pipeline. </p>
@@ -119,7 +123,32 @@ Public Attributes</h2></td></tr>
 </div><!-- fragment -->
 <p class="definition">Definition at line <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00042">42</a> of file <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html">Passes.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00910">CanonicalizeVectorForAIEVecPass::CanonicalizeVectorForAIEVecPass()</a>, and <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00122">xilinx::aievec::ConvertVectorToAIEVecOptions::parseFromString()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="VectorToVectorConversions_8cpp_source.html#l01147">CanonicalizeVectorForAIEVecPass::CanonicalizeVectorForAIEVecPass()</a>, and <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00136">xilinx::aievec::ConvertVectorToAIEVecOptions::parseFromString()</a>.</p>
+
+</div>
+</div>
+<a id="a73324380329f25174d160e24d468509d" name="a73324380329f25174d160e24d468509d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a73324380329f25174d160e24d468509d">&#9670;&#160;</a></span>enableBF16Emulation</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">PassOptions::Option&lt;<a class="el" href="classbool.html">bool</a>&gt; xilinx::aievec::CanonicalizeVectorForAIEVecOptions::enableBF16Emulation</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<b>Initial value:</b><div class="fragment"><div class="line">{</div>
+<div class="line">      *<span class="keyword">this</span>, <span class="stringliteral">&quot;bf16-emulation&quot;</span>,</div>
+<div class="line">      llvm::cl::desc(</div>
+<div class="line">          <span class="stringliteral">&quot;Emulate f32 vector arithmetic using bf16 operations. Inserts &quot;</span></div>
+<div class="line">          <span class="stringliteral">&quot;arith.truncf/arith.extf around f32 vector ops to compute in bf16. &quot;</span></div>
+<div class="line">          <span class="stringliteral">&quot;Trades precision for performance.&quot;</span>),</div>
+<div class="line">      llvm::cl::init(<span class="keyword">false</span>)}</div>
+</div><!-- fragment -->
+<p class="definition">Definition at line <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00053">53</a> of file <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html">Passes.h</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00136">xilinx::aievec::ConvertVectorToAIEVecOptions::parseFromString()</a>.</p>
 
 </div>
 </div>
@@ -143,7 +172,7 @@ Public Attributes</h2></td></tr>
 </div><!-- fragment -->
 <p class="definition">Definition at line <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00047">47</a> of file <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html">Passes.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00910">CanonicalizeVectorForAIEVecPass::CanonicalizeVectorForAIEVecPass()</a>, and <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00122">xilinx::aievec::ConvertVectorToAIEVecOptions::parseFromString()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="VectorToVectorConversions_8cpp_source.html#l01147">CanonicalizeVectorForAIEVecPass::CanonicalizeVectorForAIEVecPass()</a>, and <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00136">xilinx::aievec::ConvertVectorToAIEVecOptions::parseFromString()</a>.</p>
 
 </div>
 </div>
@@ -153,7 +182,7 @@ Public Attributes</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Mar 9 2026 23:46:07 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Mar 10 2026 04:43:59 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

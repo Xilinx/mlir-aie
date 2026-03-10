@@ -1,0 +1,5 @@
+<map id="EmulateReductionF32InBF16Pattern" name="EmulateReductionF32InBF16Pattern">
+<area shape="rect" id="Node000001" title="Pattern to emulate f32 vector.reduction in bf16." alt="" coords="5,93,216,133"/>
+<area shape="rect" id="Node000002" href="$classOpRewritePattern.html" title=" " alt="" coords="15,5,207,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="113,59,113,93,108,93,108,59"/>
+</map>
