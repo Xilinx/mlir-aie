@@ -49,7 +49,7 @@ def generate_trace_json(trace_buffer, mlir_file, verbosity=0):
             print(f"Parsing trace with MLIR configuration from {mlir_file}...")
 
         # Parse trace buffer using new API
-        return parse_trace(trace_buffer, mlir_str, debug=(verbosity >= 2))
+        return parse_trace(trace_buffer, mlir_str)
 
     except Exception as e:
         print(f"ERROR: Failed to generate trace JSON: {e}")
