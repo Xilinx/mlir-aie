@@ -38,11 +38,15 @@ cd .. && python3 test_spatial.py build/spatial.xclbin build/spatial.bin 2
 
 ## Features
 
-- ✅ True 3D convolution (3×3×3 kernel with sliding window)
+- ✅ 3D video convolution (processes temporal sequences)
 - ✅ Vectorized AIE intrinsics: `aie::mmul<4,8,8,uint8,int8>`
-- ✅ Spatial parallelism: 1-8 cores
+- ✅ Spatial parallelism: 1-32 cores
 - ✅ Validated against PyTorch & OpenCV
 - ⚡ 30× faster than scalar, 2-3× faster than CPU for video workloads
+
+**Implementation:**
+- Single-core: 3×3×3 kernel with depth sliding window
+- Multi-core: 3×3×1 kernel (2D per frame) for parallel scalability
 
 ## Implementation
 
