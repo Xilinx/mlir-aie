@@ -254,7 +254,8 @@ struct ConvertAIEXToEmitCPass
 
       // Emit: uint32_t op_count = 0;
       // Tracked purely via VerbatimOp - no SSA value needed since we only
-      // increment it (via VerbatimOp) and use it in the footer (via VerbatimOp).
+      // increment it (via VerbatimOp) and use it in the footer (via
+      // VerbatimOp).
       emitc::VerbatimOp::create(builder, loc, "uint32_t op_count = 0;");
       // Dummy value passed to helpers (unused since emitIncrementOpCount
       // emits VerbatimOp directly).

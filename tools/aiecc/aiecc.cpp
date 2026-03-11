@@ -219,15 +219,15 @@ static cl::opt<std::string>
               cl::desc("Output instructions filename for NPU target"),
               cl::init("{0}_{1}.bin"), cl::cat(aieCompilerOptions));
 
-static cl::opt<bool> generateCppTxn(
-    "aie-generate-txn-cpp",
-    cl::desc("Generate C++ code for runtime TXN generation"),
-    cl::init(false), cl::cat(aieCompilerOptions));
+static cl::opt<bool>
+    generateCppTxn("aie-generate-txn-cpp",
+                   cl::desc("Generate C++ code for runtime TXN generation"),
+                   cl::init(false), cl::cat(aieCompilerOptions));
 
-static cl::opt<std::string>
-    cppTxnName("txn-cpp-name",
-               cl::desc("Output C++ TXN filename"),
-               cl::init("generated_txn.h"), cl::cat(aieCompilerOptions));
+static cl::opt<std::string> cppTxnName("txn-cpp-name",
+                                       cl::desc("Output C++ TXN filename"),
+                                       cl::init("generated_txn.h"),
+                                       cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> generateElf(
     "aie-generate-elf",
@@ -1523,7 +1523,7 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
     }
 
     xilinx::AIE::populateNpuLoweringPipeline(pm,
-                                              /*skipMaterialize=*/noMaterialize);
+                                             /*skipMaterialize=*/noMaterialize);
 
     if (verbose) {
       llvm::outs() << "Running NPU lowering pipeline in-memory\n";
@@ -3799,8 +3799,7 @@ static LogicalResult generateCppTxnCode(ModuleOp moduleOp, StringRef tmpDirName,
     return failure();
   }
 
-  if (failed(
-          xilinx::AIE::AIETranslateToCppTxn(*clonedModule, outFile))) {
+  if (failed(xilinx::AIE::AIETranslateToCppTxn(*clonedModule, outFile))) {
     llvm::errs() << "Error generating C++ TXN code\n";
     return failure();
   }

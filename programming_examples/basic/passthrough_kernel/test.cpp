@@ -89,8 +89,7 @@ int main(int argc, const char *argv[]) {
   } else {
     myargs.generate_instr = []() {
       // Default: use compile-time size
-      return generate_txn_sequence(IN1_SIZE / 4, INPUT_BD_ADDR,
-                                   OUTPUT_BD_ADDR);
+      return generate_txn_sequence(IN1_SIZE / 4, INPUT_BD_ADDR, OUTPUT_BD_ADDR);
     };
   }
 #endif
