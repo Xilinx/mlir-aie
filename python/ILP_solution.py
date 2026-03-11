@@ -9,10 +9,14 @@
 # automatic tiling space exploration.
 # ===============================================================================#
 
+import logging
+import sys
 import gurobipy as gp
 from gurobipy import GRB
 import numpy as np
 import time
+
+logger = logging.getLogger(__name__)
 
 # -------------------------------------------------------------------------------#
 # Algorithmic parameters
@@ -309,11 +313,12 @@ def ILP_formulation(util_factor=0.5, compute_factor=1, traffic_factor=0.2):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(format="%(message)s", stream=sys.stdout)
     try:
         ILP_formulation()
 
     except gp.GurobiError as e:
-        print("Error code " + str(e.errno) + ": " + str(e))
+        logger.error("Error code %s: %s", e.errno, e)
 
     except AttributeError:
-        print("Encountered an attribute error")
+        logger.error("Encountered an attribute error")
