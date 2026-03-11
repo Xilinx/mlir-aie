@@ -227,7 +227,7 @@ dma_free_task(in_task, out_task)
 
 #### **Conclusion**
 
-Both the `npu_dma_memcpy_nd`/`dma_wait` interface and the `shim_dma_single_bd_task`/`dma_await_task`/`dma_free_task` interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. The `dma_task` operations are preferred for new designs as they handle BD allocation automatically. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
+Both the `npu_dma_memcpy_nd`/`dma_wait` interface and the `shim_dma_single_bd_task`/`dma_await_task`/`dma_free_task` interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 
 -----
 [[Up](./README.md)]
