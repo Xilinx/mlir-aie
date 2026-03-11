@@ -51,7 +51,7 @@ def edge_detect(dev, width, height):
         gray2rgba_line = external_func(
             "gray2rgbaLine",
             inputs=[line_ty, line_bytes_ty, np.int32],
-            link_with="combined_gray2rgba_addWeighted.a",
+            link_with="gray2rgba.cc.o",
         )
         add_weighted_line = external_func(
             "addWeightedLine",
@@ -64,7 +64,7 @@ def edge_detect(dev, width, height):
                 np.int16,
                 np.int8,
             ],
-            link_with="combined_gray2rgba_addWeighted.a",
+            link_with="addWeighted.cc.o",
         )
 
         # Tile declarations

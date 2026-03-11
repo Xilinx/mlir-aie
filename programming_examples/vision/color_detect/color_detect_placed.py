@@ -49,17 +49,17 @@ def color_detect(dev, width, height):
         bitwiseORLine = external_func(
             "bitwiseORLine",
             inputs=[line_ty, line_ty, line_ty, np.int32],
-            link_with="combined_bitwiseOR_gray2rgba_bitwiseAND.a",
+            link_with="bitwiseOR.cc.o",
         )
         gray2rgbaLine = external_func(
             "gray2rgbaLine",
             inputs=[line_ty, line_bytes_ty, np.int32],
-            link_with="combined_bitwiseOR_gray2rgba_bitwiseAND.a",
+            link_with="gray2rgba.cc.o",
         )
         bitwiseANDLine = external_func(
             "bitwiseANDLine",
             inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, np.int32],
-            link_with="combined_bitwiseOR_gray2rgba_bitwiseAND.a",
+            link_with="bitwiseAND.cc.o",
         )
 
         # Tile declarations
