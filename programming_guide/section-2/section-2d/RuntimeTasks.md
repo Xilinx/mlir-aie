@@ -196,7 +196,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
     rt.start(*workers)
 
     tg = rt.task_group() # start first task group
-    for groups in [0, 1]:
+    for _ in [0, 1]:
         rt.fill(of_in.prod(), a_in, task_group=tg)
         rt.drain(of_out.cons(), c_out, task_group=tg, wait=True)
         rt.finish_task_group(tg)

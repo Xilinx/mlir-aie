@@ -36,7 +36,7 @@ The compute core will run an external function: a kernel written in C++ that wil
 
 ```python
 tensor_size = 4096
-tile_size = data_size // 4
+tile_size = tensor_size // 4
 
 # Define tensor types
 tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int32]]
@@ -104,7 +104,7 @@ my_worker = Worker(core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scal
 We can program the AIE compute core using C++ code and compile it with the selected single-core AIE compiler into a kernel object file. For our local version of vector scalar multiply, we will use a generic implementation of the `scale.cc` source (called [vector_scalar_mul.cc](./vector_scalar_mul.cc)) that can run on the scalar processor part of the AIE. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
 
 ```c
-void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
+void vector_scalar_mul_aie_scalar(int32_t *a, int32_t *c,
                                   int32_t *factor, int32_t N) {
   for (int i = 0; i < N; i++) {
     c[i] = *factor * a[i];

@@ -50,7 +50,7 @@ line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(line_type, name="in", depth=3)
 ```
 
-Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being when an Object FIFO is filled from or drained to external memory at runtime (as explained in the Runtime Data Movement [section](../section-2d/README.md)). 
+Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also referred to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being when an Object FIFO is filled from or drained to external memory at runtime (as explained in the Runtime Data Movement [section](../section-2d/README.md)). 
 
 The code snippet below shows two Workers running processes defined by `core_fn` and `core_fn2` which take as input a producer or a consumer handle for `of_in` respectively:
 ```python
@@ -109,7 +109,7 @@ Some of the inputs are the same as they were at the higher level, while the othe
 
 Just like at the highest level of abstraction, the Object FIFO functions as an ordered buffer that has a count of `depth` objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). Unlike before, the `depth` can be defined as either an integer or an array of integers. The latter is explained further down in this section.
 
-An Object FIFO is created between a producer, or source tile, and a consumer, or destination tile. The tiles are where producer and consumer processes accessing the Object FIFO will be executed. These processes are also refered to as the "actors" of the Object FIFO, based on dataflow theory terminology. Below, you can see an example where `of_in` is created between producer tile A and consumer tile B with depth `3`:
+An Object FIFO is created between a producer, or source tile, and a consumer, or destination tile. The tiles are where producer and consumer processes accessing the Object FIFO will be executed. These processes are also referred to as the "actors" of the Object FIFO, based on dataflow theory terminology. Below, you can see an example where `of_in` is created between producer tile A and consumer tile B with depth `3`:
 ```python
 A = tile(1, 3)
 B = tile(2, 4)

@@ -1,5 +1,7 @@
 # <ins>IRON Mini Tutorial</ins>
 
+> **Prerequisites:** These exercises require a physical Ryzen AI NPU (Phoenix/npu1 or Strix/npu2) with XRT installed, and the mlir-aie environment set up (see [docs/Building.md](../../docs/Building.md)). The `@iron.jit` decorator automatically detects your hardware — no manual device selection is needed. Each exercise is run directly with `python3 <exercise>.py`.
+
 ## <ins>Key Components: Workers, ObjectFifos, Runtime</ins>
 
 IRON provides an unplaced (deferred placement) [API](../../python/iron/) for NPU programming. Below are examples describing AIE compute code and the Object FIFO data movement primitive:
@@ -36,7 +38,7 @@ of_in = ObjectFifo(data_ty, name="in") # default depth is 2
 ```
 More on the Object FIFO in [Section 2a](../section-2/section-2a/README.md) of the programming guide and in the [objectfifo.py](../../python/iron/dataflow/objectfifo.py).
 
-The IRON code [example](./aie2p.py) in this mini tutorial details the different parts of an IRON design. More information on the Runtime in particular can be found in [Section 2d](../section-2/section-2d/README.md) of the programming guide.
+The IRON code [example](./aie2.py) in this mini tutorial details the different parts of an IRON design. More information on the Runtime in particular can be found in [Section 2d](../section-2/section-2d/README.md) of the programming guide.
 
 ## <u>Exercises</u>
 1. Familiarize yourself with [exercise_1](./exercise_1/exercise_1.py). The code contains a single Worker which has an already instantiated local buffer that it sends out to external memory. Run `python3 exercise_1.py` to run the program and verify the output.

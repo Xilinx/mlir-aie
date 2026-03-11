@@ -41,7 +41,7 @@ class Worker(ObjectFifoEndpoint):
 ```
 In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a data buffer and initializes each entry to zero. The compute routine in this case has no inputs other than a handle to the buffer. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
-buffer = LocalBuffer(data_ty, name="buff")
+buffer = Buffer(data_ty, name="buff")
 
 # Task for the worker to perform
 def core_fn(buff):

@@ -181,17 +181,17 @@ Now that we have a better understanding of the architecture, let's take a closer
 This table tells us that for 16-bit x 16-bit compute, we have 64 MACs available per cycle. However, these MACs are targeting matrix multiplication (with its accompanying post-addition steps). In practice, we have 32 accumulator lanes available. That means for eltwise operations, we can only use 32 MACs per cycle. 
 
 #### <u>MAC efficiency</u>
-Using this information and our Vector Scalar Multiply example, we know that each call to the kernel passes in an array of 1024 16-bit data. With 32 MACs available, our `vector_factor` is 32 and therefore, we would ideally need 1024 / 32 = 32 cycles to process this amount of data given our 32 MACs-per-clock eltwise vector MAC configuration. Our final optimized cycle count for the kernel was 72 cycles or roughly 2x the ideal number of cycles.
+Using this information and our Vector Scalar Multiply example, we know that each call to the kernel passes in an array of 1024 16-bit data. With 32 MACs available, our `vector_factor` is 32 and therefore, we would ideally need 1024 / 32 = 32 cycles to process this amount of data given our 32 MACs-per-clock eltwise vector MAC configuration. Our final optimized cycle count for the kernel was 78 cycles or roughly 2x the ideal number of cycles.
 
 Total MAC efficiency is a product of the (MAC schedule efficiency) x (per clock MAC utilization efficiency). 
-* (MAC schedule efficiency or Ideal MAC cycles) / (Actual MAC cycles), e.g. 32/ 72 = 44%
+* (MAC schedule efficiency or Ideal MAC cycles) / (Actual MAC cycles), e.g. 32/ 78 = 41%
 * (per clock MAC utilization efficiency or # of MACs used)/ (total # of MACs available), e.g. 32/ 64 = 50%.
-Therefore, the total MAC efficiency is 44% x 50% = 22%.
+Therefore, the total MAC efficiency is 41% x 50% = 21%.
 
 Let's file that result away but look at our algorithm from load/store bandwidth perspective. 
 
 #### <u>Load/ Store Bandwidth efficiency</u>
-To process a vector of 32 int16 values times a scalar, let's ignore the scalar load and focus only on the vector one. 32 int16 = 512-bits which would take 2x 256-bit loads or 2 cycles. It might be possible to do it in a single cycle if the data is interleaved across banks. We also need to store 2x 256-bits which will take 2 cycles since we only have 1 Store Unit. This means that even if we could do a VMAC every cycle, we need 2 cycles to load the inputs and 2 cycles to store the outputs. This explains why our optimized vector results was 72, since based on this 2 cycle requirement, our minimum cycles for our data size is 64 cycles. The remaining 6 cycles is loop preamble, loop postamble and function initialization and cleanup overhead.
+To process a vector of 32 int16 values times a scalar, let's ignore the scalar load and focus only on the vector one. 32 int16 = 512-bits which would take 2x 256-bit loads or 2 cycles. It might be possible to do it in a single cycle if the data is interleaved across banks. We also need to store 2x 256-bits which will take 2 cycles since we only have 1 Store Unit. This means that even if we could do a VMAC every cycle, we need 2 cycles to load the inputs and 2 cycles to store the outputs. This explains why our optimized vector results was 78, since based on this 2 cycle requirement, our minimum cycles for our data size is 64 cycles. The remaining 14 cycles is loop preamble, loop postamble and function initialization and cleanup overhead.
 
 #### <u>Data routing efficiency</u>
 The load/store bandwidth is already a bottleneck in our 16-bit Vector Scalar Multiply example for the compute. But what about data movement via streams and DMAs. We need to process 1024 chunks of 16-bit data or 512 32-bit quantities. Because our stream switch moves data in 32-bit granularity, we need 512 cycles in order to load in the data to L1 and to move the data out of L1 to L2/L3.
@@ -200,7 +200,7 @@ The load/store bandwidth is already a bottleneck in our 16-bit Vector Scalar Mul
 
 | Component | # of Cycles | Efficiency |
 |-----------|-------------|------------|
-| MAC       | 72          | 22%        |
+| MAC       | 78          | 21%        |
 | Load/Store| 64          | 50% / 100% |
 | DMA       | 512         | 100%       |
 
@@ -213,7 +213,7 @@ Looking at this table, we quickly see that the data movement is the bottleneck f
 
     Mouse over the blocks of PortRuning0 and PortRunning1, what is the measured number of cycles per chunk? <img src="../../../mlir_exercises/images/answer1.jpg" title="512 cycles" height=25> This matches what we expected to see. But note how it's obvious from the waveform how dominant data movement is as compared to compute. 
 
-1. We can already see that our design is inbalanced between data movement and compute where we have 72 cycles for compute and 512 cycles for data movement. Let's take a look at the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and see if we can do better. In the description, it talks about how each iteration of the kernel is by default configured for MxKxN values of 64x64x64 giving us 262,144 MACs. Given that we're working with `int16_t` datatype which has 64 MACs per clock, how many cycles will the ideal case take?  <img src="../../../mlir_exercises/images/answer1.jpg" title="2048 cycles = 262,144/ 64" height=25> Given that the A and B matrix are each 64x64 x `int16_t` and our stream switch channels are 32-bits wide, how many cycles does it take to move data to the compute tile (bear in mind A and B can be moved in parallel via separate channels). <img src="../../../mlir_exercises/images/answer1.jpg" title="2048 cycles = 64x64/2" height=25>
+1. We can already see that our design is inbalanced between data movement and compute where we have 78 cycles for compute and 512 cycles for data movement. Let's take a look at the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and see if we can do better. In the description, it talks about how each iteration of the kernel is by default configured for MxKxN values of 64x64x64 giving us 262,144 MACs. Given that we're working with `int16_t` datatype which has 64 MACs per clock, how many cycles will the ideal case take?  <img src="../../../mlir_exercises/images/answer1.jpg" title="2048 cycles = 262,144/ 64" height=25> Given that the A and B matrix are each 64x64 x `int16_t` and our stream switch channels are 32-bits wide, how many cycles does it take to move data to the compute tile (bear in mind A and B can be moved in parallel via separate channels). <img src="../../../mlir_exercises/images/answer1.jpg" title="2048 cycles = 64x64/2" height=25>
 
 1. So this example should be perfectly balanced between compute and data movement! Navigate to the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and run the trace build (`make clean; make -f Makefile.chess use_placed=1 trace`). Then open the generated waveform json (`trace_mm.json`) and measure the delta between `event 0` and `event 1` in the first run. What value did you get and how close is it to ideal? <img src="../../../mlir_exercises/images/answer1.jpg" title="~2535 cycles which is 80% of 2048" height=25> You should now see that the compute cycles and the data movement cycles are much more closely matched!
 
