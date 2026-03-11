@@ -11,6 +11,10 @@
 #include "xrt_test_wrapper.h"
 #include <cstdint>
 
+#ifdef USE_DYNAMIC_TXN
+#include "generated_txn.h"
+#endif
+
 //*****************************************************************************
 // Modify this section to customize buffer datatypes, initialization functions,
 // and verify function. The other place to reconfigure your design is the
@@ -67,6 +71,10 @@ int main(int argc, const char *argv[]) {
   constexpr int OUT_VOLUME = OUT_SIZE / sizeof(DATATYPE_OUT);
 
   args myargs = parse_args(argc, argv);
+
+#ifdef USE_DYNAMIC_TXN
+  myargs.generate_instr = generate_txn_sequence;
+#endif
 
   int res = setup_and_run_aie<DATATYPE_IN1, DATATYPE_OUT, initialize_bufIn1,
                               initialize_bufOut, verify_passthrough_kernel>(

@@ -40,6 +40,7 @@ add_dependencies(obj.AIERT xaienginecdo_static xaienginecdo_static-headers)
 
 add_mlir_library(AIETargets
   AIETargets.cpp
+  AIENpuLowering.cpp
   AIETargetBCF.cpp
   AIETargetCDODirect.cpp
   AIETargetCppTxn.cpp

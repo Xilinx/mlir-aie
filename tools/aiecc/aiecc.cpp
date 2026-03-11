@@ -61,6 +61,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
+#include "aie/Targets/AIENpuLowering.h"
 #include "aie/Targets/AIETargets.h"
 #include "aie/version.h"
 
@@ -217,6 +218,16 @@ static cl::opt<std::string>
     instsName("npu-insts-name",
               cl::desc("Output instructions filename for NPU target"),
               cl::init("{0}_{1}.bin"), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> generateCppTxn(
+    "aie-generate-txn-cpp",
+    cl::desc("Generate C++ code for runtime TXN generation"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    cppTxnName("txn-cpp-name",
+               cl::desc("Output C++ TXN filename"),
+               cl::init("generated_txn.h"), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> generateElf(
     "aie-generate-elf",
@@ -1511,20 +1522,8 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
       pm.enableVerifier(true);
     }
 
-    // Add materialize runtime sequences pass at module level (before device
-    // nesting) unless --no-materialize is specified
-    if (!noMaterialize) {
-      pm.addPass(xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass());
-    }
-
-    // Device-level passes
-    OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-    devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
-    devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
-    devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
-    devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
-    devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
-    devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
+    xilinx::AIE::populateNpuLoweringPipeline(pm,
+                                              /*skipMaterialize=*/noMaterialize);
 
     if (verbose) {
       llvm::outs() << "Running NPU lowering pipeline in-memory\n";
@@ -3766,6 +3765,53 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 }
 
 //===----------------------------------------------------------------------===//
+// C++ TXN Generation
+//===----------------------------------------------------------------------===//
+
+/// Generate C++ code that builds TXN instruction binaries at runtime.
+/// This clones the module, runs NPU lowering + EmitC conversion, and emits C++.
+static LogicalResult generateCppTxnCode(ModuleOp moduleOp, StringRef tmpDirName,
+                                        StringRef devName) {
+  if (!generateCppTxn)
+    return success();
+
+  if (verbose)
+    llvm::outs() << "Generating C++ TXN code for device: " << devName << "\n";
+
+  if (dryRun) {
+    if (verbose)
+      llvm::outs() << "Would generate C++ TXN code for device: " << devName
+                   << "\n";
+    return success();
+  }
+
+  // Clone the module since the pipeline is destructive
+  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+
+  // Use AIETranslateToCppTxn which runs NPU lowering + EmitC conversion
+  std::string outputFileName = formatString(cppTxnName, devName);
+
+  std::error_code ec;
+  raw_fd_ostream outFile(outputFileName, ec, sys::fs::OpenFlags::OF_None);
+  if (ec) {
+    llvm::errs() << "Error opening C++ TXN output file: " << ec.message()
+                 << "\n";
+    return failure();
+  }
+
+  if (failed(
+          xilinx::AIE::AIETranslateToCppTxn(*clonedModule, outFile))) {
+    llvm::errs() << "Error generating C++ TXN code\n";
+    return failure();
+  }
+
+  if (verbose)
+    llvm::outs() << "Wrote C++ TXN code to: " << outputFileName << "\n";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Transaction Generation
 //===----------------------------------------------------------------------===//
 
@@ -5246,6 +5292,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     // Generate NPU instructions from in-memory module.
     if (!generateCtrlPkt &&
         failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
+      return failure();
+    }
+
+    // Generate C++ TXN code if requested. This clones the module internally,
+    // so moduleOp must still be in its pre-NPU-lowered state (which it is,
+    // because generateNpuInstructions also works on a clone).
+    if (failed(generateCppTxnCode(moduleOp, tmpDirName, devName))) {
       return failure();
     }
 
