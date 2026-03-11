@@ -25,7 +25,6 @@ from aie.iron.device import NPU2, NPU2Col1
 from aie.utils.jit import hash_module
 from aie.utils.compile.utils import compile_external_kernel
 
-
 # ---------------------------------------------------------------------------
 # Session-scoped helpers
 # ---------------------------------------------------------------------------
