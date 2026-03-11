@@ -246,6 +246,12 @@ namespace {
 struct UsesAreAccessible {
   static LogicalResult verifyTrait(Operation *op) {
     auto thisElement = cast<TileElement>(op);
+
+    // Skip accessibility checks for logical tiles as we cannot tell until tile
+    // is placed
+    if (!isa<TileOp>(thisElement.getTile().getDefiningOp()))
+      return success();
+
     auto thisID = thisElement.getTileID();
     auto users = op->getResult(0).getUsers();
     const auto &targetModel = getTargetModel(op);
@@ -1105,30 +1111,53 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CascadeFlowOp::verify() {
-  TileOp src = getSourceTileOp();
-  TileOp dst = getDestTileOp();
-  const auto &t = getTargetModel(src);
+  TileLike src = getSourceTileLike();
+  TileLike dst = getDestTileLike();
+
+  if (!src || !dst)
+    return emitOpError("source and dest must be tile-like operations");
 
   if (src.isShimTile() || dst.isShimTile())
     return emitOpError("shimTile row has no cascade stream interface");
   if (src.isMemTile() || dst.isMemTile())
     return emitOpError("memTile row has no cascade stream interface");
 
-  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
-    return emitOpError("tiles must be adjacent");
+  std::optional<int> srcCol = src.tryGetCol();
+  std::optional<int> srcRow = src.tryGetRow();
+  std::optional<int> dstCol = dst.tryGetCol();
+  std::optional<int> dstRow = dst.tryGetRow();
+
+  if (srcCol && srcRow && dstCol && dstRow) {
+    const auto &t = getTargetModel(*this);
+    if (!t.isSouth(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isWest(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isNorth(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isEast(*srcCol, *srcRow, *dstCol, *dstRow)) {
+      return emitOpError("tiles must be adjacent");
+    }
   }
+
   return success();
 }
 
+TileLike CascadeFlowOp::getSourceTileLike() {
+  return dyn_cast<TileLike>(getSourceTile().getDefiningOp());
+}
+
+TileLike CascadeFlowOp::getDestTileLike() {
+  return dyn_cast<TileLike>(getDestTile().getDefiningOp());
+}
+
 TileOp CascadeFlowOp::getSourceTileOp() {
-  return cast<TileOp>(getSourceTile().getDefiningOp());
+  if (auto tileOp = dyn_cast_or_null<TileOp>(getSourceTile().getDefiningOp()))
+    return tileOp;
+  llvm::report_fatal_error("Calling getSourceTileOp requires TileOp.");
 }
 
 TileOp CascadeFlowOp::getDestTileOp() {
-  return cast<TileOp>(getDestTile().getDefiningOp());
+  if (auto tileOp = dyn_cast_or_null<TileOp>(getDestTile().getDefiningOp()))
+    return tileOp;
+  llvm::report_fatal_error("Calling getDestTileOp requires TileOp.");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1136,6 +1165,9 @@ TileOp CascadeFlowOp::getDestTileOp() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConfigureCascadeOp::verify() {
+  if (!isa<TileOp>(getTile().getDefiningOp()))
+    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+
   const auto &t = getTargetModel(*this);
   TileOp tile = cast<TileOp>(getTile().getDefiningOp());
   CascadeDir inputDir = getInputDir();
@@ -1248,6 +1280,216 @@ TileOp TileElement::getTileOp() {
   if (auto tileOp = dyn_cast_or_null<TileOp>(definingOp))
     return tileOp;
   llvm::report_fatal_error("Calling getTileOp requires TileOp.");
+}
+
+//===----------------------------------------------------------------------===//
+// LogicalTileOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LogicalTileOp::verify() {
+  const auto &targetModel = getTargetModel(*this);
+  int columns = targetModel.columns();
+  int rows = targetModel.rows();
+
+  // Only verify col/row bounds if they are specified
+  if (auto col = getCol()) {
+    if (*col >= columns)
+      return emitOpError("column index (")
+             << *col
+             << ") must be less than the number of columns in the device ("
+             << columns << ")";
+  }
+  if (auto row = getRow()) {
+    if (*row >= rows)
+      return emitOpError("row index (")
+             << *row << ") must be less than the number of rows in the device ("
+             << rows << ")";
+  }
+
+  // Check that the specified tile type exists on the target device
+  AIETileType tileType = getTileType();
+  bool tileTypeExists = false;
+  for (int col = 0; col < columns && !tileTypeExists; col++) {
+    for (int row = 0; row < rows && !tileTypeExists; row++) {
+      if (targetModel.getTileType(col, row) == tileType)
+        tileTypeExists = true;
+    }
+  }
+  if (!tileTypeExists) {
+    return emitOpError("tile type '")
+           << stringifyAIETileType(tileType)
+           << "' does not exist on the target device";
+  }
+
+  // Check logical tile type matches coordinates on device
+  // Only validate when both col and row are specified
+  if (auto col = tryGetCol()) {
+    if (auto row = tryGetRow()) {
+      if (targetModel.getTileType(*col, *row) != tileType) {
+        return emitOpError("declared logical tile type does not match "
+                           "the tile type at coordinates (")
+               << *col << ", " << *row << ")";
+      }
+    }
+  }
+
+  if (isShimNOCorPLTile() && getAllocationScheme())
+    return emitOpError("Shim tiles cannot have an allocation scheme");
+
+  return success();
+}
+
+TileID LogicalTileOp::getCanonicalTileID() {
+  const auto &targetModel = getTargetModel(*this);
+
+  // If col and row are both specified, use them directly
+  if (getCol().has_value() && getRow().has_value()) {
+    return {getCol().value(), getRow().value()};
+  }
+
+  // Otherwise, find a representative tile of the given type
+  AIETileType tileType = getTileType();
+  for (int col = 0; col < targetModel.columns(); col++) {
+    for (int row = 0; row < targetModel.rows(); row++) {
+      if (targetModel.getTileType(col, row) == tileType) {
+        return {col, row};
+      }
+    }
+  }
+  llvm_unreachable("No tile of matching tile type found in AIE device");
+}
+
+size_t LogicalTileOp::getNumSourceConnections(WireBundle bundle) {
+  const auto &targetModel = getTargetModel(*this);
+  TileID tile = getCanonicalTileID();
+
+  if (bundle == WireBundle::Core || bundle == WireBundle::DMA) {
+    // Note dest is correct here, since direction is reversed.
+    if (isShimNOCorPLTile())
+      return targetModel.getNumDestShimMuxConnections(tile.col, tile.row,
+                                                      bundle);
+    return targetModel.getNumDestSwitchboxConnections(tile.col, tile.row,
+                                                      bundle);
+  }
+  return 0;
+}
+
+size_t LogicalTileOp::getNumDestConnections(WireBundle bundle) {
+  const auto &targetModel = getTargetModel(*this);
+  TileID tile = getCanonicalTileID();
+
+  if (bundle == WireBundle::Core || bundle == WireBundle::DMA) {
+    // Note source is correct here, since direction is reversed.
+    if (isShimNOCorPLTile())
+      return targetModel.getNumDestShimMuxConnections(tile.col, tile.row,
+                                                      bundle);
+    return targetModel.getNumSourceSwitchboxConnections(tile.col, tile.row,
+                                                        bundle);
+  }
+  return 0;
+}
+
+std::optional<int> LogicalTileOp::tryGetCol() {
+  if (auto col = getCol())
+    return col;
+  return std::nullopt;
+}
+
+std::optional<int> LogicalTileOp::tryGetRow() {
+  if (auto row = getRow())
+    return row;
+  return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
+// Custom Printer and Parser for LogicalTileOp
+//===----------------------------------------------------------------------===//
+
+ParseResult LogicalTileOp::parse(OpAsmParser &parser, OperationState &result) {
+  AIETileType tileType;
+  if (parser.parseLess())
+    return failure();
+
+  StringRef tileTypeStr;
+  if (parser.parseKeyword(&tileTypeStr))
+    return failure();
+
+  auto tileTypeOpt = symbolizeAIETileType(tileTypeStr);
+  if (!tileTypeOpt)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "unknown logical tile type: ")
+           << tileTypeStr;
+  tileType = *tileTypeOpt;
+
+  if (parser.parseGreater())
+    return failure();
+
+  if (parser.parseLParen())
+    return failure();
+
+  std::optional<int32_t> col;
+  if (succeeded(parser.parseOptionalQuestion())) {
+    // col is unspecified
+  } else {
+    int32_t colVal;
+    if (parser.parseInteger(colVal))
+      return failure();
+    col = colVal;
+  }
+
+  if (parser.parseComma())
+    return failure();
+
+  std::optional<int32_t> row;
+  if (succeeded(parser.parseOptionalQuestion())) {
+    // row is unspecified
+  } else {
+    int32_t rowVal;
+    if (parser.parseInteger(rowVal))
+      return failure();
+    row = rowVal;
+  }
+
+  if (parser.parseRParen())
+    return failure();
+
+  // Parse optional attributes
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  // Add the parsed attributes to the result
+  result.getOrAddProperties<LogicalTileOp::Properties>().tile_type =
+      AIETileTypeAttr::get(parser.getContext(), tileType);
+  if (col)
+    result.getOrAddProperties<LogicalTileOp::Properties>().col =
+        parser.getBuilder().getI32IntegerAttr(*col);
+  if (row)
+    result.getOrAddProperties<LogicalTileOp::Properties>().row =
+        parser.getBuilder().getI32IntegerAttr(*row);
+
+  // Add result type (index)
+  result.addTypes(parser.getBuilder().getIndexType());
+
+  return success();
+}
+
+void LogicalTileOp::print(OpAsmPrinter &printer) {
+  printer << "<" << stringifyAIETileType(getTileType()) << ">";
+
+  printer << "(";
+  if (auto col = getCol())
+    printer << *col;
+  else
+    printer << "?";
+  printer << ", ";
+  if (auto row = getRow())
+    printer << *row;
+  else
+    printer << "?";
+  printer << ")";
+
+  SmallVector<StringRef, 3> elidedAttrs = {"tile_type", "col", "row"};
+  printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1397,6 +1639,10 @@ LogicalResult ShimSwitchboxOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimMuxOp::verify() {
+  // ShimMux requires a placed tile (TileOp), not a logical tile
+  if (!isa<TileOp>(getTile().getDefiningOp()))
+    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+
   Region &body = getConnections();
   DenseSet<Port> destset;
   if (body.empty())
@@ -2122,6 +2368,10 @@ void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 //===----------------------------------------------------------------------===//
 
 LogicalResult SwitchboxOp::verify() {
+  // Switchbox requires a placed tile (TileOp), not a logical tile
+  if (!isa<TileOp>(getTile().getDefiningOp()))
+    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+
   Region &body = getConnections();
   DenseSet<Port> sourceset;
   DenseSet<Port> destset;
