@@ -90,8 +90,33 @@ trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
+# --- Dynamic TXN generation targets ---
+# Generate C++ TXN function from the same MLIR (different lowering path)
+build/generated_txn.h: build/aie2_lineBased_8b_${data_size}.mlir
+	mkdir -p ${@D}
+	aie-translate --aie-generate-txn-cpp $< > $@
+
+# Build the dynamic test executable
+${targetname}_dynamic_${data_size}.exe: ${srcdir}/test_dynamic.cpp build/generated_txn.h
+	rm -rf _build_dynamic
+	mkdir -p _build_dynamic
+	cd _build_dynamic && ${powershell} cmake `${getwslpath} ${srcdir}` \
+		-DTARGET_NAME=${targetname}_dynamic \
+		-DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} \
+		-DCMAKE_CXX_FLAGS="-include ${CURDIR}/build/generated_txn.h -I$(shell cd ${srcdir}/../../.. && pwd)/include"
+	cd _build_dynamic && ${powershell} cmake --build . --config Release
+ifeq "${powershell}" "powershell.exe"
+	cp _build_dynamic/${targetname}_dynamic.exe $@
+else
+	cp _build_dynamic/${targetname}_dynamic $@
+endif
+
+# Run with dynamically generated TXN (uses same XCLBIN)
+run_dynamic: ${targetname}_dynamic_${data_size}.exe build/final_${data_size}.xclbin
+	${powershell} ./$< -x build/final_${data_size}.xclbin -k MLIR_AIE
+
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json
 
 clean: clean_trace
-	rm -rf build _build ${targetname}*.exe
+	rm -rf build _build _build_dynamic ${targetname}*.exe

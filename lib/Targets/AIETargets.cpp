@@ -409,5 +409,13 @@ void registerAIETranslations() {
         return AIETranslateToUcDma(module, output);
       },
       registerDialects);
+
+  TranslateFromMLIRRegistration registrationCppTxn(
+      "aie-generate-txn-cpp",
+      "Generate C++ code for runtime TXN binary generation",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToCppTxn(module, output);
+      },
+      registerDialects);
 }
 } // namespace xilinx::AIE

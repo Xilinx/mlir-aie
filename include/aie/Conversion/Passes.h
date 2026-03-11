@@ -13,6 +13,7 @@
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
+#include "aie/Conversion/AIEXToEmitC/AIEXToEmitC.h"
 #include "aie/Conversion/PassesEnums.h.inc"
 
 namespace xilinx {
