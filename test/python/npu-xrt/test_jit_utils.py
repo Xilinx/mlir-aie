@@ -1,0 +1,240 @@
+# test_jit_utils.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+
+# RUN: %run_on_npu1% %pytest %s
+# RUN: %run_on_npu2% %pytest %s
+# REQUIRES: xrt_python_bindings
+
+# Unit tests for hash_module and compile_external_kernel.
+
+import os
+import tempfile
+import pytest
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
+from aie.iron.placers import SequentialPlacer
+from aie.iron.controlflow import range_
+from aie.iron.device import NPU2, NPU2Col1
+from aie.utils.jit import hash_module
+from aie.utils.compile.utils import compile_external_kernel
+
+
+# ---------------------------------------------------------------------------
+# Session-scoped helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def npu_target_arch():
+    """Return the target architecture string for the current NPU."""
+    device = iron.get_current_device()
+    if isinstance(device, (NPU2, NPU2Col1)):
+        return "aie2p"
+    return "aie2"
+
+
+def _build_module(add_value):
+    """Build a minimal real MLIR module via iron that adds add_value to each element."""
+    n = 16
+    num_elems = 1024
+    tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
+    tensor_ty = np.ndarray[(num_elems,), np.dtype[np.int32]]
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_out = ObjectFifo(tile_ty, name="out")
+
+    def core_body(of_in, of_out):
+        for _ in range_(num_elems // n):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            for i in range_(n):
+                elem_out[i] = elem_in[i] + add_value
+            of_in.release(1)
+            of_out.release(1)
+
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
+    rt = Runtime()
+    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
+        rt.start(worker)
+        rt.fill(of_in.prod(), A)
+        rt.drain(of_out.cons(), B, wait=True)
+    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+
+
+@pytest.fixture(scope="session")
+def mlir_module_add1():
+    return _build_module(1)
+
+
+@pytest.fixture(scope="session")
+def mlir_module_add2():
+    return _build_module(2)
+
+
+@pytest.fixture(autouse=True)
+def _clear_external_function_instances():
+    """Prevent ExternalFunction instances from leaking between tests."""
+    ExternalFunction._instances.clear()
+    yield
+    ExternalFunction._instances.clear()
+
+
+# ---------------------------------------------------------------------------
+# hash_module
+#
+# Regression: the original implementation used "|".join(running_hash), which
+# iterated over *characters* of a concatenated string rather than over
+# per-kernel hash values, causing false collisions (e.g. hashes "1"+"2"
+# produced the same key as hash "12").
+# ---------------------------------------------------------------------------
+
+
+def test_hash_module_distinct_kernels_produce_distinct_keys(mlir_module_add1):
+    """Two ExternalFunctions with different source must produce different cache keys."""
+    k1 = ExternalFunction("k", source_string='extern "C" void k() { int x = 1; }')
+    k2 = ExternalFunction("k", source_string='extern "C" void k() { int x = 2; }')
+    assert hash_module(mlir_module_add1, [k1]) != hash_module(mlir_module_add1, [k2])
+
+
+def test_hash_module_one_vs_two_kernels_differ(mlir_module_add1):
+    """Regression: a single kernel must not collide with two kernels whose
+    individual hash strings naively concatenate to the same value."""
+    k1 = ExternalFunction("a", source_string='extern "C" void a() {}')
+    k2 = ExternalFunction("b", source_string='extern "C" void b() {}')
+    k12 = ExternalFunction("ab", source_string='extern "C" void ab() {}')
+    assert hash_module(mlir_module_add1, [k12]) != hash_module(
+        mlir_module_add1, [k1, k2]
+    )
+
+
+def test_hash_module_same_inputs_are_stable(mlir_module_add1):
+    """Identical inputs must always produce the same cache key."""
+    k = ExternalFunction("k", source_string='extern "C" void k() {}')
+    assert hash_module(mlir_module_add1, [k]) == hash_module(mlir_module_add1, [k])
+
+
+def test_hash_module_no_kernels_differs_from_with_kernels(mlir_module_add1):
+    """A module with no external kernels must hash differently from one with kernels."""
+    k = ExternalFunction("k", source_string='extern "C" void k() {}')
+    assert hash_module(mlir_module_add1, None) != hash_module(mlir_module_add1, [k])
+
+
+def test_hash_module_different_target_arch_differ(mlir_module_add1):
+    """The same module and kernels under different target architectures must differ."""
+    k = ExternalFunction("k", source_string='extern "C" void k() {}')
+    assert hash_module(mlir_module_add1, [k], target_arch="aie2") != hash_module(
+        mlir_module_add1, [k], target_arch="aie2p"
+    )
+
+
+def test_hash_module_different_mlir_text_differ(mlir_module_add1, mlir_module_add2):
+    """Modules with different MLIR text must produce different cache keys."""
+    assert hash_module(mlir_module_add1) != hash_module(mlir_module_add2)
+
+
+# ---------------------------------------------------------------------------
+# compile_external_kernel
+#
+# Regression: the original implementation silently returned without compiling
+# or raising when source_file did not exist, leaving the caller to encounter
+# a confusing downstream linker error.
+# ---------------------------------------------------------------------------
+
+
+def test_compile_external_kernel_missing_source_file_raises(npu_target_arch):
+    """FileNotFoundError must be raised when source_file does not exist.
+
+    ExternalFunction reads source_file at construction time (for hashing), so
+    the error fires in __init__ before compile_external_kernel is even called.
+    """
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        with pytest.raises(FileNotFoundError):
+            func = ExternalFunction("my_kernel", source_file="/nonexistent/kernel.cc")
+            compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+
+
+def test_compile_external_kernel_source_string(npu_target_arch):
+    """source_string must be compiled to an object file."""
+    func = ExternalFunction(
+        "add_one",
+        source_string="""extern "C" {
+            void add_one(int* a, int* b, int n) {
+                for (int i = 0; i < n; i++) b[i] = a[i] + 1;
+            }
+        }""",
+    )
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        obj = os.path.join(kernel_dir, "add_one.o")
+        assert os.path.exists(obj)
+        assert os.path.getsize(obj) > 0
+
+
+def test_compile_external_kernel_source_file(npu_target_arch):
+    """source_file must be copied into kernel_dir and compiled to an object file."""
+    with (
+        tempfile.TemporaryDirectory() as src_dir,
+        tempfile.TemporaryDirectory() as kernel_dir,
+    ):
+        src = os.path.join(src_dir, "my_kernel.cc")
+        with open(src, "w") as f:
+            f.write(
+                """extern "C" {
+                void my_kernel(int* a, int* b, int n) {
+                    for (int i = 0; i < n; i++) b[i] = a[i] + 1;
+                }
+            }"""
+            )
+
+        func = ExternalFunction("my_kernel", source_file=src)
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+
+        assert os.path.exists(os.path.join(kernel_dir, "my_kernel.cc"))
+        obj = os.path.join(kernel_dir, "my_kernel.o")
+        assert os.path.exists(obj)
+        assert os.path.getsize(obj) > 0
+
+
+def test_compile_external_kernel_marks_compiled(npu_target_arch):
+    """compile_external_kernel must set func._compiled = True on success."""
+    func = ExternalFunction(
+        "add_one",
+        source_string='extern "C" void add_one(int* a, int* b, int n) {}',
+    )
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        assert not func._compiled
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        assert func._compiled
+
+
+def test_compile_external_kernel_skip_if_already_compiled(npu_target_arch):
+    """compile_external_kernel must be a no-op when func._compiled is already True."""
+    func = ExternalFunction(
+        "add_one",
+        source_string='extern "C" void add_one() {}',
+    )
+    func._compiled = True
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        assert not os.path.exists(os.path.join(kernel_dir, "add_one.o"))
+
+
+def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):
+    """compile_external_kernel must be a no-op when the output object file already exists."""
+    func = ExternalFunction(
+        "add_one",
+        source_string='extern "C" void add_one() {}',
+    )
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        obj = os.path.join(kernel_dir, func.bin_name)
+        with open(obj, "wb") as f:
+            f.write(b"placeholder")
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        with open(obj, "rb") as f:
+            assert f.read() == b"placeholder"

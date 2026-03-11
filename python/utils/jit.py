@@ -19,7 +19,6 @@ from .compile.cache.circular_cache import CircularCache
 from .compile.cache.utils import _create_function_cache_key, file_lock
 from .compile import NPU_CACHE_HOME
 from .compile.utils import _cleanup_failed_compilation
-from aie.iron.kernel import ExternalFunction
 
 # Global cache for compiled kernels at the function level
 # Key: (function_name, args_signature) -> NPUKernel instance
@@ -45,6 +44,7 @@ def jit(function=None, is_placed=True, use_cache=True):
     @functools.wraps(function)
     def decorator(*args, **kwargs):
         from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
+        from aie.iron.kernel import ExternalFunction
         from . import DefaultNPURuntime
 
         if DefaultNPURuntime is None:
@@ -182,6 +182,8 @@ def _filter_tensor_args(args):
     - ExternalFunction instances
     - Scalar values (int, float, np.integer, np.floating), embedded as MLIR constants
     """
+    from aie.iron.kernel import ExternalFunction
+
     tensor_args = []
     for arg in args:
         # Skip ExternalFunction
