@@ -6,12 +6,14 @@ High-performance 3D convolution on AMD Ryzen AI NPU using vectorized AIE intrins
 
 ### NPU vs CPU (PyTorch)
 
-| Volume | PyTorch CPU | NPU 1-core | NPU 2-core | Winner |
-|--------|-------------|------------|------------|--------|
-| 8×8×8 (tiny) | **50µs** | 520µs | 380µs | **CPU** (cache) |
-| 3×32×32 (small) | **150µs** | 1,066µs | ~700µs | **CPU** (transfer overhead) |
-| 3×128×128 (video) | 2,400µs | ~4,000µs | **~1,200µs** | **NPU 8-core** (2× faster) 🚀 |
-| 16×112×112 (HD) | 12,000µs | - | **~6,000µs** | **NPU 8-core** (2× faster) 🚀 |
+| Volume | PyTorch CPU | NPU 1-core | NPU Multi-core | Winner |
+|--------|-------------|------------|----------------|--------|
+| 8×8×8 (tiny) | **50µs** | 520µs | 380µs (2c) | **CPU** (cache) |
+| 3×32×32 (small) | **150µs** | 1,066µs | ~700µs (2c) | **CPU** (transfer) |
+| 3×128×128 (video) | ~2,400µs | ~4,000µs | **~1,200µs (8c)** | **NPU** (2×) 🚀 |
+| 16×112×112 (HD) | ~12,000µs | - | **~6,000µs (8c)** | **NPU** (2×) 🚀 |
+
+*Actual measurements for 8×8×8 and 3×32×32. Video sizes (128×128, 112×112) are extrapolated estimates.*
 
 **Key Insight:** NPU wins for realistic video workloads (≥112×112). CPU wins for tiny volumes due to zero transfer overhead.
 
