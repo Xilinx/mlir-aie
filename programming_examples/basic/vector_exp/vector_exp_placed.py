@@ -60,7 +60,9 @@ def my_eltwise_exp():
 
         # AIE Core Function declarations
 
-        exp_bf16_1024 = external_func("exp_bf16_1024", inputs=[tile_ty, tile_ty])
+        exp_bf16_1024 = external_func(
+            "exp_bf16_1024", inputs=[tile_ty, tile_ty], link_with="kernels.a"
+        )
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -105,7 +107,7 @@ def my_eltwise_exp():
         # Compute tile bodies
         for i in range(n_cores):
             # Compute tile i
-            @core(cores[i], "kernels.a")
+            @core(cores[i])
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles):

@@ -292,11 +292,17 @@ class Core(CoreOp):
     def __init__(
         self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
     ):
+        if link_with is not None:
+            raise TypeError(
+                "Core() no longer accepts link_with. "
+                "Set link_with= on each external_func() declaration instead; "
+                "the aie-assign-core-link-files pass aggregates them onto the core."
+            )
         super().__init__(
             result=T.index(),
             tile=tile,
             stack_size=stack_size,
-            link_with=link_with,
+            link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
 

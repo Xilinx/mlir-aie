@@ -49,7 +49,9 @@ def edge_detect(dev, width, height):
             link_with="threshold.cc.o",
         )
         gray2rgba_line = external_func(
-            "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, np.int32]
+            "gray2rgbaLine",
+            inputs=[line_ty, line_bytes_ty, np.int32],
+            link_with="combined_gray2rgba_addWeighted.a",
         )
         add_weighted_line = external_func(
             "addWeightedLine",
@@ -62,6 +64,7 @@ def edge_detect(dev, width, height):
                 np.int16,
                 np.int8,
             ],
+            link_with="combined_gray2rgba_addWeighted.a",
         )
 
         # Tile declarations
@@ -227,7 +230,7 @@ def edge_detect(dev, width, height):
                 OF_4to5.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 5
-        @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
+        @core(ComputeTile5)
         def core_body():
             for _ in range_(sys.maxsize):
                 elem_in = OF_4to5.acquire(ObjectFifoPort.Consume, 1)

@@ -47,14 +47,19 @@ def color_detect(dev, width, height):
             link_with="threshold.cc.o",
         )
         bitwiseORLine = external_func(
-            "bitwiseORLine", inputs=[line_ty, line_ty, line_ty, np.int32]
+            "bitwiseORLine",
+            inputs=[line_ty, line_ty, line_ty, np.int32],
+            link_with="combined_bitwiseOR_gray2rgba_bitwiseAND.a",
         )
         gray2rgbaLine = external_func(
-            "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, np.int32]
+            "gray2rgbaLine",
+            inputs=[line_ty, line_bytes_ty, np.int32],
+            link_with="combined_bitwiseOR_gray2rgba_bitwiseAND.a",
         )
         bitwiseANDLine = external_func(
             "bitwiseANDLine",
             inputs=[line_bytes_ty, line_bytes_ty, line_bytes_ty, np.int32],
+            link_with="combined_bitwiseOR_gray2rgba_bitwiseAND.a",
         )
 
         # Tile declarations
@@ -175,7 +180,7 @@ def color_detect(dev, width, height):
                 OF_4to5.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 5
-        @core(ComputeTile5, "combined_bitwiseOR_gray2rgba_bitwiseAND.a")
+        @core(ComputeTile5)
         def coreBody():
             for _ in range_(sys.maxsize):
                 # bitwise OR

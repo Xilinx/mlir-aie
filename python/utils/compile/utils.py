@@ -163,7 +163,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     """
     Compile an ExternalFunction to an object file in the kernel directory.
 
-    The output file is named ``func.bin_name`` and placed in ``kernel_dir``.
+    The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
     If the object file already exists in ``kernel_dir``, compilation is skipped.
 
     Args:
@@ -179,7 +179,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         return
 
     # Skip if the object file already exists (cache hit).
-    output_file = os.path.join(kernel_dir, func.bin_name)
+    output_file = os.path.join(kernel_dir, func.object_file_name)
     if os.path.exists(output_file):
         return
 

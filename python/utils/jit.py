@@ -19,7 +19,7 @@ from .compile.cache.circular_cache import CircularCache
 from .compile.cache.utils import _create_function_cache_key, file_lock
 from .compile import NPU_CACHE_HOME
 from .compile.utils import _cleanup_failed_compilation
-from aie.iron.kernel import ExternalFunction
+from aie.iron.kernel import ExternalFunction, Kernel
 
 # Global cache for compiled kernels at the function level
 # Key: (function_name, args_signature) -> NPUKernel instance
@@ -69,11 +69,13 @@ def jit(function=None, is_placed=True, use_cache=True):
             tensor_args = _filter_tensor_args(args)
             return cached_kernel(*tensor_args, **kwargs)
 
-        # Collect ExternalFunction instances passed as direct arguments first.
+        # Collect ExternalFunction instances that need JIT compilation.
+        # Note: bare Kernel instances (pre-compiled .o) are intentionally
+        # excluded here — they require no compilation step. Both Kernel and
+        # ExternalFunction are stripped from the tensor args passed to the NPU
+        # kernel (see _filter_tensor_args).
         # ExternalFunction.__init__ registers to _instances at construction time
         # (before this JIT call), so they must be captured before the clear below.
-        # Note: ExternalFunction instances nested inside containers are not
-        # collected here; top-level args cover all known call patterns.
         external_kernels = [
             arg for arg in args if isinstance(arg, ExternalFunction)
         ] + [v for v in kwargs.values() if isinstance(v, ExternalFunction)]
@@ -188,19 +190,19 @@ def _filter_tensor_args(args):
     """
     Filter out non-tensor arguments from args.
 
-    Algorithm functions may include ExternalFunction instances and scalar
+    Algorithm functions may include Kernel/ExternalFunction instances and scalar
     compile-time constants in their Python signature that must not be forwarded
     to the NPU kernel as runtime buffer arguments.
 
     Removes:
-    - ExternalFunction instances (resolved at compile time via link_with)
+    - Kernel and ExternalFunction instances (resolved at compile time via link_with)
     - Scalar values (int, float, np.integer, np.floating) used as MLIR constants
     - Callables (e.g. lambda configuration helpers)
     """
     tensor_args = []
     for arg in args:
-        # Skip ExternalFunction
-        if isinstance(arg, ExternalFunction):
+        # Skip any kernel handle (Kernel, ExternalFunction, or subclasses)
+        if isinstance(arg, Kernel):
             continue
         # Skip scalar types (MLIR constants)
         if isinstance(arg, (int, float, np.integer, np.floating)):
