@@ -45,10 +45,10 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 build/final.xclbin: build/aie.mlir build/kernel.o
 	mkdir -p ${@D}
 ifeq ($(use_chess),1)
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
