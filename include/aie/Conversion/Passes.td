@@ -104,4 +104,25 @@ def ConvertAIEToControlPackets : Pass<"convert-aie-to-control-packets",
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// AIEXToEmitC
+//===----------------------------------------------------------------------===//
+
+def ConvertAIEXToEmitC : Pass<"convert-aiex-to-emitc", "mlir::ModuleOp"> {
+  let summary = "Convert AIEX dynamic runtime sequence ops to EmitC dialect";
+  let description = [{
+    This pass converts AIEX dynamic runtime sequence operations (dyn_write32,
+    dyn_maskwrite32, dyn_sync) along with static NPU ops, SCF control flow,
+    and arith operations into EmitC dialect ops. The resulting EmitC IR can
+    be translated to C++ code via translateToCpp() that calls functions from
+    the standalone TxnEncoding.h library to generate TXN binaries at runtime.
+  }];
+  let constructor = "xilinx::createConvertAIEXToEmitCPass()";
+  let dependentDialects = ["mlir::emitc::EmitCDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::scf::SCFDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+}
+
 #endif // AIE_CONVERSION_PASSES

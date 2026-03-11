@@ -12,6 +12,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Runtime/TxnEncoding.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -23,42 +24,6 @@
 
 #include <vector>
 
-extern "C" {
-// #include "xaiengine/xaie_txn.h"
-// see aie-rt commit a6196eb, xaiengine/xaie_txn.h for source of this enum
-typedef enum {
-  XAIE_IO_WRITE,
-  XAIE_IO_BLOCKWRITE,
-  XAIE_IO_BLOCKSET,
-  XAIE_IO_MASKWRITE,
-  XAIE_IO_MASKPOLL,
-  XAIE_IO_NOOP,
-  XAIE_IO_PREEMPT,
-  XAIE_IO_MASKPOLL_BUSY,
-  XAIE_IO_LOADPDI,
-  XAIE_IO_LOAD_PM_START,
-  XAIE_IO_CREATE_SCRATCHPAD,
-  XAIE_IO_UPDATE_STATE_TABLE,
-  XAIE_IO_UPDATE_REG,
-  XAIE_IO_UPDATE_SCRATCH,
-  XAIE_CONFIG_SHIMDMA_BD,
-  XAIE_CONFIG_SHIMDMA_DMABUF_BD,
-  XAIE_IO_CUSTOM_OP_BEGIN = 1U << 7U,
-  XAIE_IO_CUSTOM_OP_TCT = XAIE_IO_CUSTOM_OP_BEGIN,
-  XAIE_IO_CUSTOM_OP_DDR_PATCH, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
-                               // 1
-  XAIE_IO_CUSTOM_OP_READ_REGS, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
-                               // 2
-  XAIE_IO_CUSTOM_OP_RECORD_TIMER, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN
-                                  // + 3
-  XAIE_IO_CUSTOM_OP_MERGE_SYNC, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
-                                // 4
-  XAIE_IO_CUSTOM_OP_NEXT,
-  XAIE_IO_LOAD_PM_END_INTERNAL = 200,
-  XAIE_IO_CUSTOM_OP_MAX = UCHAR_MAX,
-} XAie_TxnOpcode;
-}
-
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -66,11 +31,8 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-// Example:
-// - instructions = {3,4,5}
-// - tailSize = 2
-// instructions becomes {3,4,5,0,0} and
-// a mutable reference to the tail {0,0} is returned.
+// Helper function for reserving space in instruction vector (still used by
+// appendBlockWrite and control packet translation below).
 llvm::MutableArrayRef<uint32_t>
 reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
   auto oldSize = instructions.size();
@@ -80,123 +42,71 @@ reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
                                          tailSize);
 }
 
+// Thin wrappers that extract MLIR attributes and delegate to TxnEncoding.h.
+
 void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
-
-  auto words = reserveAndGetTail(instructions, 4);
-
-  // XAIE_IO_CUSTOM_OP_TCT
-  words[0] = XAIE_IO_CUSTOM_OP_TCT;
-
-  words[1] = words.size() * sizeof(uint32_t); // Operation Size
-
-  words[2] |= static_cast<uint32_t>(op.getDirection()) & 0xff;
-  words[2] |= (op.getRow() & 0xff) << 8;
-  words[2] |= (op.getColumn() & 0xff) << 16;
-
-  words[3] |= (op.getRowNum() & 0xff) << 8;
-  words[3] |= (op.getColumnNum() & 0xff) << 16;
-  words[3] |= (op.getChannel() & 0xff) << 24;
+  aie_runtime::txn_append_sync(instructions, op.getColumn(), op.getRow(),
+                               static_cast<uint32_t>(op.getDirection()),
+                               op.getChannel(), op.getColumnNum(),
+                               op.getRowNum());
 }
 
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
-
-  auto words = reserveAndGetTail(instructions, 6);
-
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
     return;
   }
-
-  // XAIE_IO_WRITE
-  words[0] = XAIE_IO_WRITE;
-  words[2] = *op.getAbsoluteAddress();
-  words[3] = 0;                               // Extra bits for Reg Offset
-  words[4] = op.getValue();                   // Value
-  words[5] = words.size() * sizeof(uint32_t); // Operation Size
+  aie_runtime::txn_append_write32(instructions, *op.getAbsoluteAddress(),
+                                  op.getValue());
 }
 
 void appendMaskWrite32(std::vector<uint32_t> &instructions,
                        NpuMaskWrite32Op op) {
-
-  auto words = reserveAndGetTail(instructions, 7);
-
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
     return;
   }
-
-  // XAIE_IO_MASKWRITE
-  words[0] = XAIE_IO_MASKWRITE;
-  words[2] = *op.getAbsoluteAddress();
-  words[3] = 0;
-  words[4] = op.getValue();                   // Value
-  words[5] = op.getMask();                    // Mask
-  words[6] = words.size() * sizeof(uint32_t); // Operation Size
+  aie_runtime::txn_append_maskwrite32(instructions, *op.getAbsoluteAddress(),
+                                      op.getValue(), op.getMask());
 }
 
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
-
-  auto words = reserveAndGetTail(instructions, 4);
-
-  // XAIE_IO_LOADPDI
-  words[0] = XAIE_IO_LOADPDI;
-  words[0] |= op.getId() << 16;
-  std::optional<uint32_t> size = op.getSize();
-  if (size)
-    words[1] = *size;
-  std::optional<uint64_t> address = op.getAddress();
-  if (address) {
-    words[2] = *address;
-    words[3] = *address >> 32;
-  }
+  aie_runtime::txn_append_loadpdi(instructions, op.getId(), op.getSize(),
+                                  op.getAddress());
 }
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
                         NpuAddressPatchOp op) {
-
-  auto words = reserveAndGetTail(instructions, 12);
-
-  // XAIE_IO_CUSTOM_OP_DDR_PATCH
-  words[0] = XAIE_IO_CUSTOM_OP_DDR_PATCH;
-  words[1] = words.size() * sizeof(uint32_t); // Operation Size
-
-  words[5] = 0; // Action
-
-  words[6] = op.getAddr();
-
-  words[8] = op.getArgIdx();
-
-  words[10] = op.getArgPlus();
+  aie_runtime::txn_append_address_patch(instructions, op.getAddr(),
+                                        op.getArgIdx(), op.getArgPlus());
 }
 
 void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
-  unsigned payload_start = 4;
-
   std::optional<uint32_t> address = op.getAbsoluteAddress();
   DenseIntElementsAttr data = op.getDataWords();
 
-  auto words = reserveAndGetTail(instructions, data.size() + payload_start);
+  // Extract payload into a temporary buffer.
+  std::vector<uint32_t> payload;
+  payload.reserve(data.size());
+  for (auto d : data)
+    payload.push_back(d.getZExtValue());
 
-  // XAIE_IO_BLOCKWRITE
-  words[0] = XAIE_IO_BLOCKWRITE;
-  words[2] = op.getAddress();
+  // Use encoding library for the core format, then fix up col/row field.
+  aie_runtime::txn_append_blockwrite(instructions, *address, payload.data(),
+                                     payload.size());
+
+  // The encoding library leaves word[1] as 0. If col/row are present, set it.
   auto col = op.getColumn();
   auto row = op.getRow();
   if (col && row) {
-    words[1] = (*col & 0xff) | ((*row & 0xff) << 8);
+    // word[1] is at position (current_size - headerSize - count + 1)
+    size_t headerPos = instructions.size() - 4 - payload.size();
+    instructions[headerPos + 1] = (*col & 0xff) | ((*row & 0xff) << 8);
   }
-  words[2] = *address;
-  words[3] = words.size() * sizeof(uint32_t); // Operation Size
-
-  unsigned i = payload_start;
-  for (auto d : data)
-    words[i++] = d.getZExtValue();
 }
 
 void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
-
-  auto words = reserveAndGetTail(instructions, 1);
-  words[0] = XAIE_IO_PREEMPT | (op.getLevel() << 8);
+  aie_runtime::txn_append_preempt(instructions, op.getLevel());
 }
 
 } // namespace
@@ -211,22 +121,16 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return failure();
   }
 
-  auto words = reserveAndGetTail(instructions, 4);
-
   const AIETargetModel &tm = deviceOp.getTargetModel();
 
-  // setup txn header
-  uint8_t major = 0;
-  uint8_t minor = 1;
-  uint8_t devGen = 3; // NPU (PHX HWK)
-  if (llvm::isa<AIE::BaseNPU2TargetModel>(tm))
-    devGen = 4; // NPU2 (STX KRK)
-  uint8_t numRows = tm.rows();
-  uint8_t numCols = tm.columns();
-  uint8_t numMemTileRows = tm.getNumMemTileRows();
-  uint32_t count = 0;
-  words[0] = (numRows << 24) | (devGen << 16) | (minor << 8) | major;
-  words[1] = (numMemTileRows << 8) | numCols;
+  // Build device info for the TXN header.
+  aie_runtime::TxnDeviceInfo devInfo;
+  devInfo.major = 0;
+  devInfo.minor = 1;
+  devInfo.devGen = llvm::isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
+  devInfo.numRows = tm.rows();
+  devInfo.numCols = tm.columns();
+  devInfo.numMemTileRows = tm.getNumMemTileRows();
 
   AIE::RuntimeSequenceOp seq =
       AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
@@ -234,6 +138,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   if (!seq) {
     return failure();
   }
+
+  uint32_t count = 0;
   for (Block &block : seq.getBody()) {
     for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
@@ -268,9 +174,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     }
   }
 
-  // write size fields of the txn header
-  instructions[2] = count;
-  instructions[3] = instructions.size() * sizeof(uint32_t); // size of the txn
+  // Prepend the TXN header (inserts 4 words at the front).
+  aie_runtime::txn_prepend_header(instructions, count, devInfo);
   return success();
 }
 

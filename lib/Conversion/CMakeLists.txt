@@ -5,3 +5,4 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 add_subdirectory(AIEToConfiguration)
 add_subdirectory(AIEVecToLLVM)
+add_subdirectory(AIEXToEmitC)

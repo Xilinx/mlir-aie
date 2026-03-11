@@ -42,6 +42,7 @@ add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetBCF.cpp
   AIETargetCDODirect.cpp
+  AIETargetCppTxn.cpp
   AIETargetNPU.cpp
   AIETargetLdScript.cpp
   AIETargetUcCert.cpp
@@ -85,8 +86,12 @@ add_mlir_library(AIETargets
   AIERT
   AIE
   AIEX
+  AIEXTransforms
   AIEXUtils
   ADF
+  MLIRAIEXToEmitC
+  MLIREmitCDialect
+  MLIRTargetCpp
 )
 
 target_link_libraries(AIETargets PRIVATE xaienginecdo_static)
