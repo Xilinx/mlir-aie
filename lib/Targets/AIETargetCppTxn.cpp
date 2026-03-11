@@ -23,8 +23,7 @@
 #include "aie/Targets/AIETargets.h"
 
 #include "aie/Conversion/AIEXToEmitC/AIEXToEmitC.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Targets/AIENpuLowering.h"
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
@@ -39,45 +38,31 @@ namespace AIE {
 
 LogicalResult AIETranslateToCppTxn(ModuleOp module, llvm::raw_ostream &output) {
   // Clone the module so we don't mutate the original.
-  auto clonedModule = module.clone();
-  auto *ctx = clonedModule.getContext();
+  OwningOpRef<ModuleOp> clonedModule = module.clone();
+  auto *ctx = clonedModule->getContext();
 
   // Step 1: Run NPU lowering pipeline to lower high-level DMA task ops
   // (dma_configure_task_for, dma_start_task, dma_await_task, etc.)
   // down to npu.write32/blockwrite/sync/address_patch.
-  // This mirrors the pipeline in aiecc.cpp.
   {
     PassManager pm(ctx);
-    pm.addPass(AIEX::createAIEMaterializeRuntimeSequencesPass());
-    OpPassManager &devicePm = pm.nest<AIE::DeviceOp>();
-    devicePm.addPass(AIEX::createAIEMaterializeBDChainsPass());
-    devicePm.addPass(AIEX::createAIESubstituteShimDMAAllocationsPass());
-    devicePm.addPass(AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
-    devicePm.addPass(AIEX::createAIEDMATasksToNPUPass());
-    devicePm.addPass(AIEX::createAIEDmaToNpuPass());
-    devicePm.addPass(AIEX::createAIELowerSetLockPass());
+    populateNpuLoweringPipeline(pm);
 
-    if (failed(pm.run(clonedModule))) {
-      clonedModule->erase();
+    if (failed(pm.run(*clonedModule)))
       return module.emitError("NPU lowering pipeline failed");
-    }
   }
 
   // Step 2: Run the AIEX-to-EmitC conversion pass.
   {
     PassManager pm(ctx);
     pm.addPass(createConvertAIEXToEmitCPass());
-    if (failed(pm.run(clonedModule))) {
-      clonedModule->erase();
+    if (failed(pm.run(*clonedModule)))
       return module.emitError("Failed to convert AIEX to EmitC");
-    }
   }
 
   // Step 3: Translate EmitC IR to C++.
-  auto result = emitc::translateToCpp(clonedModule, output,
-                                      /*declareVariablesAtTop=*/false);
-  clonedModule->erase();
-  return result;
+  return emitc::translateToCpp(*clonedModule, output,
+                               /*declareVariablesAtTop=*/false);
 }
 
 } // namespace AIE

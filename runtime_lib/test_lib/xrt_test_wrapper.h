@@ -7,6 +7,7 @@
 #include "xrt/xrt_kernel.h"
 
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <sstream>
 
@@ -20,6 +21,7 @@ struct args {
   std::string xclbin;
   std::string kernel;
   std::string trace_file;
+  std::function<std::vector<uint32_t>()> generate_instr; // optional
 };
 
 struct args parse_args(int argc, const char *argv[]) {
@@ -38,7 +40,8 @@ struct args parse_args(int argc, const char *argv[]) {
   myargs.n_iterations = vm["iters"].as<int>();
   myargs.n_warmup_iterations = vm["warmup"].as<int>();
   myargs.trace_size = vm["trace_sz"].as<int>();
-  myargs.instr = vm["instr"].as<std::string>();
+  if (vm.count("instr"))
+    myargs.instr = vm["instr"].as<std::string>();
   myargs.xclbin = vm["xclbin"].as<std::string>();
   myargs.kernel = vm["kernel"].as<std::string>();
   myargs.trace_file = vm["trace_file"].as<std::string>();
@@ -80,7 +83,11 @@ int setup_and_run_aie(int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME,
   srand(time(NULL));
 
   // Load instruction sequence
-  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(myargs.instr);
+  std::vector<uint32_t> instr_v;
+  if (myargs.generate_instr)
+    instr_v = myargs.generate_instr();
+  else
+    instr_v = test_utils::load_instr_binary(myargs.instr);
   if (myargs.verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -298,7 +305,11 @@ int setup_and_run_aie(int IN1_VOLUME, int OUT_VOLUME, struct args myargs,
   srand(time(NULL));
 
   // Load instruction sequence
-  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(myargs.instr);
+  std::vector<uint32_t> instr_v;
+  if (myargs.generate_instr)
+    instr_v = myargs.generate_instr();
+  else
+    instr_v = test_utils::load_instr_binary(myargs.instr);
   if (myargs.verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
