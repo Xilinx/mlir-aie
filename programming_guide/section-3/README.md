@@ -96,7 +96,7 @@ def core_fn(of_in, of_factor, of_out, scale_scalar):
 
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [of_in1.cons(), of_factor.cons() of_out1.prod(), scale_fn])
+my_worker = Worker(core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn])
 ```
 
 ## Kernel Code
@@ -187,7 +187,7 @@ The host code contains the following sections (with C/C++ code examples):
 
 1. *Initialize and synchronize*: host to device XRT buffer objects.
 
-    Here, we iniitliaze the values of our host buffer objects (including output) and call `sync` to synchronize that data to the device buffer object accessed by the kernel.
+    Here, we initialize the values of our host buffer objects (including output) and call `sync` to synchronize that data to the device buffer object accessed by the kernel.
 
     ```c
     // Copy instruction stream to xrt buffer object
@@ -281,7 +281,7 @@ Because our design is defined in several different files such as:
 * kernel source - vector_scalar_mul.cc
 * host code - test.cpp/test.py
 
-ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. To help with this, we will share example design templates in [section-4b](../section4/section-4b) which puts these top level parameters in the `Makefile` and passes them to the other design files. More details will be described in [section-4b](../section-4/section-4b) or can be directly seen in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
+ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. To help with this, we will share example design templates in [section-4b](../section-4/section-4b) which puts these top level parameters in the `Makefile` and passes them to the other design files. More details will be described in [section-4b](../section-4/section-4b) or can be directly seen in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
 
 -----
 [[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]

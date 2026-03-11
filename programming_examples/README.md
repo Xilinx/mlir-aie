@@ -18,11 +18,15 @@ Each IRON example has one or more implementations:
 
 They are organized into the following directories:
 
-## [getting_started](./getting_started) 
+## [getting_started](./getting_started)
 
 Designs tailored to the new user experience that span from basic applications such as SAXPY to more complicated ones such as tiled matrix multiplication, for the NPU in Ryzen™ AI.
 
-## [basic](./basic) 
+## [algorithms](./algorithms)
+
+Algorithm implementations for the NPU in Ryzen™ AI, including sorting, searching, and other common algorithmic patterns.
+
+## [basic](./basic)
 
 Basic building blocks to understand the NPU architecture and first steps towards building applications for the NPU in Ryzen™ AI. 
 

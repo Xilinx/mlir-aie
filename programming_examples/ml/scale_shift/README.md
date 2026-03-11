@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# Eltwise Multiplication
+# Scale Shift
 
 This design implements a `bfloat16` based element-wise multiplication followed by an element-wise addition of three vectors, performed in parallel on two cores in a single column.  Element-wise multiplication and addition usually is I/O bound due to the low compute intensity. In a practical ML implementation, this is an example of the type of simple kernel fusion passing intermediate results in DDR.
 

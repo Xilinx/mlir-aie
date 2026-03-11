@@ -24,7 +24,7 @@ The data movement of this pipeline is described using the OrderedObjectBuffer (O
 
 Each AIE tile applies a threshold kernel on its data and sends its result back to the Mem tile, this is represented by one OOB for each compute tile. The results are then joined back together in the Mem tile and sent back to the output through the Shim tile. This is again described using a Link operation in which the ordering of the input OOBs expresses how the different results should be joined together before being sent to the output OOB, to the Shim tile.
 
-To compile desing in Windows:
+To compile design in Windows:
 ```
 make
 make colorThreshold.exe

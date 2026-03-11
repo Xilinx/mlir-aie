@@ -42,7 +42,7 @@ of_in1 = of_in.cons().forward(obj_type=data_ty, name="in1")
 of_out1 = ObjectFifo(data_ty, name="out1")
 of_out = of_out1.cons().forward(obj_type=data_ty, name="out")
 ```
-For our scale out design we will keep using a single Mem tile, but we will increase the number of Workers to three. Now each Worker will receive objects of datatype `<16xi32>`. Data brought into the AIE array via `of_in` will be split into three Object FIFOs for each Worker. Similarly data produced by each Worker will be joined and sent to external memory through `of_out`. Please [see distribute and join patterns](../section-2b/03_Link_Distribute_Join/README.md) for more details. These changes result in the following code:
+For our scale out design we will keep using a single Mem tile, but we will increase the number of Workers to three. Now each Worker will receive objects of datatype `<16xi32>`. Data brought into the AIE array via `of_in` will be split into three Object FIFOs for each Worker. Similarly data produced by each Worker will be joined and sent to external memory through `of_out`. Please [see distribute and join patterns](../section-2b/03_Implicit_Copy/README.md) for more details. These changes result in the following code:
 ```python
 n_workers = 3
 data_size = 48
@@ -82,7 +82,7 @@ The Worker of this simple design acquires one object of each Object FIFO, adds `
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
     elem_out = of_out.acquire(1)
-    for _ in range_(data_size):
+    for i in range_(data_size):
         elem_out[i] = elem_in[i] + 1
     of_in.release(1)
     of_out.release(1)
