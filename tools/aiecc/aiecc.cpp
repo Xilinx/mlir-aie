@@ -1685,8 +1685,13 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(createConvertFuncToLLVMPass(
       ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
-  // convert-to-llvm - use the generic conversion pass
-  pm.addPass(createConvertToLLVMPass());
+  // convert-to-llvm with dynamic=true to use DataLayoutAnalysis for proper
+  // index type conversion (matches the old Python aiecc's convert-to-llvm)
+  {
+    ConvertToLLVMPassOptions llvmOpts;
+    llvmOpts.useDynamic = true;
+    pm.addPass(createConvertToLLVMPass(llvmOpts));
+  }
   pm.addPass(createConvertVectorToLLVMPass());
   pm.addPass(createUBToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
@@ -1761,7 +1766,11 @@ static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(createConvertFuncToLLVMPass(
       ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
-  pm.addPass(createConvertToLLVMPass());
+  {
+    ConvertToLLVMPassOptions llvmOpts;
+    llvmOpts.useDynamic = true;
+    pm.addPass(createConvertToLLVMPass(llvmOpts));
+  }
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
 
