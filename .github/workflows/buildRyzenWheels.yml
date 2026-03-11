@@ -335,7 +335,7 @@ jobs:
           mkdir -p "${WHEELHOUSE_DIR}"
           pushd utils/mlir_aie_wheels
   
-          pip install wheel importlib_metadata ninja
+          pip install wheel importlib_metadata "ninja!=1.13.0"
           CIBW_ARCHS=AMD64 pip wheel . -v -w "${WHEELHOUSE_DIR}" --no-build-isolation
   
           popd
