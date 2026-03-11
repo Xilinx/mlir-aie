@@ -184,8 +184,7 @@ def test_compile_external_kernel_source_file(npu_target_arch):
     ):
         src = os.path.join(src_dir, "my_kernel.cc")
         with open(src, "w") as f:
-            f.write(
-                """extern "C" {
+            f.write("""extern "C" {
                 void my_kernel(int* a, int* b, int n) {
                     for (int i = 0; i < n; i++) b[i] = a[i] + 1;
                 }
