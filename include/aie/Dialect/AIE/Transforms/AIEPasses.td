@@ -424,4 +424,48 @@ def AIETraceRegPackWrites : Pass<"aie-trace-pack-reg-writes", "DeviceOp"> {
   ];
 }
 
+def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
+  let summary = "Insert packet flows and runtime sequence trace setup";
+  let description = [{
+    For each aie.trace operation, this pass:
+    - Creates ONE packet flow from trace port to shim DMA
+    - Groups traces by target shim (minimizes shim usage, ideally 1)
+    - Inserts ONE shim buffer descriptor per shim tile for all traces
+    - Inserts per-tile timer control register writes
+    - Inserts per-shim broadcast and DMA control setup
+    
+    All trace configuration is injected at the beginning of the runtime
+    sequence, before user data transfer operations.
+    
+    Multiple trace streams (from different tiles or different trace units
+    on the same tile) are routed to the same shim DMA channel and drained
+    by a single buffer descriptor.
+  }];
+  
+  let constructor = "xilinx::AIE::createAIEInsertTraceFlowsPass()";
+  
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+  
+  let options = [
+    Option<"shimChannel", "shim-channel", "int", "1",
+           "S2MM DMA channel to use for trace (default: 1)">,
+    Option<"defaultBdId", "default-bd-id", "int", "15", 
+           "Buffer descriptor ID for trace (default: 15)">,
+    Option<"packetIdStart", "packet-id-start", "int", "1",
+           "Starting packet ID for trace flows (default: 1)">,
+    Option<"traceBufferSize", "trace-buffer-size", "int", "1048576",
+           "Default trace buffer size in bytes (default: 1MB)">,
+    Option<"traceBurstLength", "burst-length", "int", "64",
+           "DMA burst length for trace transfers (default: 64 bytes)">,
+    Option<"traceArgIdx", "trace-arg-idx", "int", "4",
+           "Runtime sequence argument index for trace buffer (default: 4)">,
+    Option<"minimizeShims", "minimize-shims", "bool", "true",
+           "Minimize number of shim tiles used (prefer one shim for all traces)">,
+    Option<"preferSameColumn", "prefer-same-column", "bool", "true",
+           "When choosing shim, prefer same column as trace sources">
+  ];
+}
+
 #endif
