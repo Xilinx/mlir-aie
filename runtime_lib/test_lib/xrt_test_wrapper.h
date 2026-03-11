@@ -22,6 +22,7 @@ struct args {
   std::string kernel;
   std::string trace_file;
   std::function<std::vector<uint32_t>()> generate_instr; // optional
+  int dynamic_size = 0; // runtime transfer size in bytes (0 = use compiled-in)
 };
 
 struct args parse_args(int argc, const char *argv[]) {
@@ -31,6 +32,9 @@ struct args parse_args(int argc, const char *argv[]) {
   cxxopts::Options options("XRT Test Wrapper");
   cxxopts::ParseResult vm;
   test_utils::add_default_options(options);
+  options.add_options()("dynamic-size",
+                        "Runtime transfer size in bytes (dynamic TXN only)",
+                        cxxopts::value<int>()->default_value("0"));
 
   struct args myargs;
 
@@ -45,6 +49,7 @@ struct args parse_args(int argc, const char *argv[]) {
   myargs.xclbin = vm["xclbin"].as<std::string>();
   myargs.kernel = vm["kernel"].as<std::string>();
   myargs.trace_file = vm["trace_file"].as<std::string>();
+  myargs.dynamic_size = vm["dynamic-size"].as<int>();
 
   return myargs;
 }
