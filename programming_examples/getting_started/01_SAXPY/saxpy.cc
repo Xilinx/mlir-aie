@@ -17,6 +17,9 @@
 
 #include <aie_api/aie.hpp>
 
+// NOTE: Both kernels below are hardcoded for N=4096 elements. The Python
+// design file (saxpy.py) must be called with a tensor of exactly this size.
+// Calling with any other size will produce silently incorrect results.
 extern "C" {
 void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, bfloat16 *restrict z) {
   event0();

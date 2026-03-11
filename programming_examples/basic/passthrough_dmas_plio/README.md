@@ -10,6 +10,8 @@
 
 # <ins>Passthrough DMAs with PLIO</ins>
 
+> **Hardware Note:** This design targets the **Xilinx VCK5000 Versal evaluation board**, not a Ryzen AI NPU. It will not build or run on Ryzen AI hardware.
+
 This reference design can be run on the VCK5000 Versal device. This design leverages the same data movement pattern as the [Passthrough DMAs](../passthrough-dmas) example design but it uses a soft DMA. Please see the [platforms repo](https://github.com/Xilinx/ROCm-air-platforms) for more information on how the programmable logic is integrated with the AIEs. This is meant to be an illustrative example to highlight how to integrate PL designs with AIE designs programmed using mlir-aie.
 
 In the platform, tile (26, 0) has PLIO connected to a DMA implemented in the programmable logic. There are two designs, `aie2-input-plio.py` uses the soft DMA to push data from DRAM into the AIEs, wheras `aie2-output-plio.py` uses the soft DMA to receive data from the AIEs and push it to DRAM. The soft DMA is programmed using the same mechanism as the ShimDMAs.

@@ -84,7 +84,9 @@ def saxpy(input0, input1, output):
 
 
 def main():
-    # Define tensor shapes and data types
+    # Define tensor shapes and data types.
+    # NOTE: saxpy.cc hardcodes the loop bound to 4096 elements. This value
+    # must match data_size or the kernel will produce silently wrong results.
     data_size = 4096
     element_type = bfloat16
 
