@@ -134,4 +134,63 @@ massively_parallel_16core: build/conv3dk3_ui8.o
 		--no-compile-host --no-xchesscc --no-xbridge \
 		--xclbin-name=mp_16core.xclbin --npu-insts-name=mp_16core_insts.bin mp_16core.mlir
 
-.PHONY: all clean run run_py trace_py spatial_2core spatial_4core spatial_8core massively_parallel_8core massively_parallel_16core
+massively_parallel_32core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_massively_parallel.py --n_cores 32 --depth ${depth} --width ${width} --height ${height} --in_channels ${in_channels} --out_channels ${out_channels} > build/mp_32core.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mp_32core.xclbin --npu-insts-name=mp_32core_insts.bin mp_32core.mlir
+
+# Memory tile hierarchy designs (for scalability)
+memtile_8core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_8core_memtile.py ${depth} ${width} ${height} ${in_channels} ${out_channels} > build/mt8.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mt8.xclbin --npu-insts-name=mt8_insts.bin mt8.mlir
+
+memtile_16core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_16core.py ${depth} ${width} ${height} ${in_channels} ${out_channels} > build/mt16.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mt16.xclbin --npu-insts-name=mt16_insts.bin mt16.mlir
+
+memtile_32core: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_32core.py ${depth} ${width} ${height} ${in_channels} ${out_channels} > build/mt32.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mt32.xclbin --npu-insts-name=mt32_insts.bin mt32.mlir
+
+# Tiled versions for large frames (512×512, 1024×1024)
+memtile_16core_tiled: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_16core_tiled.py ${depth} ${width} ${height} ${in_channels} ${out_channels} 2>&1 > build/mt16_tiled.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mt16_tiled.xclbin --npu-insts-name=mt16_tiled_insts.bin mt16_tiled.mlir
+
+memtile_32core_tiled: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_32core_tiled_fixed.py ${depth} ${width} ${height} ${in_channels} ${out_channels} 2>&1 > build/mt32_tiled.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mt32_tiled.xclbin --npu-insts-name=mt32_tiled_insts.bin mt32_tiled.mlir
+
+# Large-frame massively parallel targets (width tiling auto-calculated)
+massively_parallel_32core_512: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_massively_parallel.py --n_cores 32 --depth ${depth} --width 512 --height 512 --in_channels ${in_channels} --out_channels ${out_channels} > build/mp_32core_512.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mp_32core_512.xclbin --npu-insts-name=mp_32core_512_insts.bin mp_32core_512.mlir
+
+massively_parallel_32core_1024: build/conv3dk3_ui8.o
+	mkdir -p ${@D}
+	python3 ${srcdir}/conv3d_massively_parallel.py --n_cores 32 --depth ${depth} --width 1024 --height 1024 --in_channels ${in_channels} --out_channels ${out_channels} > build/mp_32core_1024.mlir
+	cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-compile-host --no-xchesscc --no-xbridge \
+		--xclbin-name=mp_32core_1024.xclbin --npu-insts-name=mp_32core_1024_insts.bin mp_32core_1024.mlir
+
+.PHONY: all clean run run_py trace_py spatial_2core spatial_4core spatial_8core massively_parallel_8core massively_parallel_16core massively_parallel_32core massively_parallel_32core_512 massively_parallel_32core_1024 memtile_8core memtile_16core memtile_32core memtile_16core_tiled memtile_32core_tiled

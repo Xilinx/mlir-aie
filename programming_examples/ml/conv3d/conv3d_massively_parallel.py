@@ -92,6 +92,36 @@ def get_device_for_cores(n_cores):
         )
 
 
+def compute_tile_width(height_per_core, width, in_channels, out_channels):
+    """
+    Auto-calculate the largest power-of-2 tile_width that fits in L1 memory.
+
+    L1 budget: ~48KB usable (out of 64KB total).
+    Memory per tile: 3 * h * tw * ic (input triple-buffer) +
+                     2 * h * tw * oc (output double-buffer) +
+                     ic * oc * 27 (weights)
+
+    Returns tile_width such that width % tile_width == 0.
+    """
+    weights_mem = in_channels * out_channels * 3 * 3 * 3
+    l1_budget = 48 * 1024 - weights_mem
+
+    # Try powers of 2 from largest to smallest
+    for tw in [width, 512, 256, 128, 64, 32, 16, 8]:
+        if tw > width:
+            continue
+        if width % tw != 0:
+            continue
+        tile_mem = (3 * in_channels + 2 * out_channels) * height_per_core * tw
+        if tile_mem <= l1_budget:
+            return tw
+
+    raise ValueError(
+        f"Cannot fit any tile width in L1: h_per_core={height_per_core}, "
+        f"ic={in_channels}, oc={out_channels}"
+    )
+
+
 def conv3dk3_massively_parallel(
     depth: int,
     width: int,
@@ -99,25 +129,22 @@ def conv3dk3_massively_parallel(
     in_channels: int,
     out_channels: int,
     n_cores: int = 8,
+    tile_width: int = 0,
 ):
     """
-    Massively parallel Conv3D with spatial parallelism across height dimension.
+    Massively parallel Conv3D with spatial parallelism across height dimension
+    and optional width tiling for large frames.
 
     Design pattern - "Stampable blocks":
         - For n_cores = 8: 8 columns x 1 row = 8 blocks (1 core each)
         - For n_cores = 16: 8 columns x 2 rows = 8 blocks (2 cores each)
         - For n_cores = 32: 8 columns x 4 rows = 8 blocks (4 cores each)
 
-    Each column:
-        - Has its own shim tile for parallel DMA
-        - Contains n_rows_per_col cores stacked vertically
-        - Processes height/(n_cores) rows per core
-
-    Benefits:
-        - Parallelizes DMA across up to 8 shim tiles
-        - Scalable from 1 to 32 cores
-        - Simple, predictable data distribution
-        - No conditional logic in core function
+    Width tiling:
+        - When tile_width < width, each core processes width in tiles
+        - Core loops: for w_tile in n_width_tiles: for d in depth: process_tile
+        - DMA uses 4D strided access to extract tiles from host memory
+        - When tile_width >= width (or auto-calculated as such), no tiling occurs
 
     Args:
         depth: Depth of 3D volume
@@ -126,15 +153,11 @@ def conv3dk3_massively_parallel(
         in_channels: Number of input channels
         out_channels: Number of output channels
         n_cores: Total number of cores to use (1, 2, 4, 8, 16, or 32)
+        tile_width: Width tile size (0 = auto-calculate)
     """
 
     # Get device configuration
     dev, n_cols, n_rows_per_col = get_device_for_cores(n_cores)
-
-    print(
-        f"# Configuration: {n_cores} cores = {n_cols} columns x {n_rows_per_col} rows per column",
-        file=sys.stderr,
-    )
 
     # Validate input dimensions
     assert (
@@ -151,9 +174,26 @@ def conv3dk3_massively_parallel(
     # Calculate per-core sizes (spatial split by height)
     height_per_core = height // n_cores
 
-    # Each core processes: (height_per_core rows) x (full width) x (all input channels)
-    actIn_per_core = height_per_core * width * in_channels
-    actOut_per_core = height_per_core * width * out_channels
+    # Auto-calculate tile_width if not specified
+    if tile_width == 0:
+        tile_width = compute_tile_width(
+            height_per_core, width, in_channels, out_channels
+        )
+
+    assert (
+        width % tile_width == 0
+    ), f"Width ({width}) must be divisible by tile_width ({tile_width})"
+    n_width_tiles = width // tile_width
+
+    print(
+        f"# Configuration: {n_cores} cores = {n_cols} columns x {n_rows_per_col} rows, "
+        f"tile_width={tile_width}, n_width_tiles={n_width_tiles}",
+        file=sys.stderr,
+    )
+
+    # Per-core per-tile sizes (what each core processes per acquire)
+    actIn_per_tile = height_per_core * tile_width * in_channels
+    actOut_per_tile = height_per_core * tile_width * out_channels
 
     # All cores share same weights (3x3x3 kernel)
     weights_size = in_channels * out_channels * 3 * 3 * 3
@@ -162,14 +202,20 @@ def conv3dk3_massively_parallel(
     tensorInSize = depth * height * width * in_channels
     tensorOutSize = depth * height * width * out_channels
 
-    # Type definitions
-    actIn_ty = np.ndarray[(actIn_per_core,), np.dtype[np.uint8]]
+    # Type definitions — tile-sized for FIFOs
+    actIn_ty = np.ndarray[(actIn_per_tile,), np.dtype[np.uint8]]
     weights_ty = np.ndarray[(weights_size,), np.dtype[np.int8]]
-    actOut_ty = np.ndarray[(actOut_per_core,), np.dtype[np.uint8]]
+    actOut_ty = np.ndarray[(actOut_per_tile,), np.dtype[np.uint8]]
 
     tensorIn_ty = np.ndarray[(tensorInSize,), np.dtype[np.uint8]]
     tensorWts_ty = weights_ty
     tensorOut_ty = np.ndarray[(tensorOutSize,), np.dtype[np.uint8]]
+
+    print(
+        f"# L1 tile: {actIn_per_tile}B in, {actOut_per_tile}B out, "
+        f"{weights_size}B wts",
+        file=sys.stderr,
+    )
 
     # Kernel definition
     conv3dk3_kernel = Kernel(
@@ -202,13 +248,11 @@ def conv3dk3_massively_parallel(
 
     for col in range(n_cols):
         for row in range(n_rows_per_col):
-            core_id = col * n_rows_per_col + row
-
-            # Input activations (spatial slice for this core)
+            # Input activations (tile-sized)
             of_in_fifos[col][row] = ObjectFifo(
                 actIn_ty,
                 name=f"inOF_act_c{col}_r{row}",
-                depth=3,  # Triple buffer for 3 depth planes
+                depth=3,  # Triple buffer
             )
 
             # Weights (broadcast to all cores)
@@ -216,52 +260,49 @@ def conv3dk3_massively_parallel(
                 weights_ty, depth=1, name=f"inOF_wts_c{col}_r{row}"
             )
 
-            # Output activations (spatial slice from this core)
-            of_out_fifos[col][row] = ObjectFifo(actOut_ty, name=f"outOF_c{col}_r{row}")
-
-    # Core function - simple, no conditionals!
-    # Each core processes its height slice with 2D conv per depth plane
-    def core_fn(of_wts, of_in, of_out, kernel):
-        # Acquire weights once (reused for all depth planes)
-        elemWts = of_wts.acquire(1)
-
-        # Process each depth plane
-        for d in range_(depth):
-            plane = of_in.acquire(1)
-            elemOut = of_out.acquire(1)
-
-            # Apply 2D convolution on this depth plane
-            # Note: We use kernel_depth=1 because we're processing plane-by-plane
-            # The 3D effect comes from processing multiple depth planes
-            kernel(
-                plane,
-                plane,
-                plane,  # Same plane for all 3 positions (2D conv)
-                elemWts,
-                elemOut,
-                width,
-                height_per_core,
-                in_channels,
-                out_channels,
-                3,
-                3,
-                1,  # 3x3x1 kernel (2D per plane)
-                1,
-                10,
-                0,  # check=middle, scale=10, no channel_offset
+            # Output activations (tile-sized)
+            of_out_fifos[col][row] = ObjectFifo(
+                actOut_ty, name=f"outOF_c{col}_r{row}"
             )
 
-            of_in.release(1)
-            of_out.release(1)
+    # Core function — loops over depth planes then width tiles
+    # Depth-outer ordering keeps DMA outermost dimension (depth) small,
+    # avoiding the 64-entry hardware limit on the wrap dimension.
+    def core_fn(of_wts, of_in, of_out, kernel):
+        elemWts = of_wts.acquire(1)
+
+        for _d in range_(depth):
+            for _w_tile in range_(n_width_tiles):
+                plane = of_in.acquire(1)
+                elemOut = of_out.acquire(1)
+
+                kernel(
+                    plane,
+                    plane,
+                    plane,
+                    elemWts,
+                    elemOut,
+                    tile_width,
+                    height_per_core,
+                    in_channels,
+                    out_channels,
+                    3,
+                    3,
+                    1,  # 3x3x1 kernel (2D per plane)
+                    1,
+                    10,
+                    0,  # check=middle, scale=10, no channel_offset
+                )
+
+                of_in.release(1)
+                of_out.release(1)
 
         of_wts.release(1)
 
     # Create workers with explicit placement
-    # Place cores in a column-major order: col0[row0, row1, ...], col1[row0, row1, ...], ...
     workers = []
     for col in range(n_cols):
         for row in range(n_rows_per_col):
-            # Place in compute tile (row 2+ in AIE array)
             tile_row = 2 + row
 
             worker = Worker(
@@ -280,44 +321,68 @@ def conv3dk3_massively_parallel(
     # Runtime sequence
     rt = Runtime()
 
-    # Create TensorAccessPatterns for spatial slicing
-    # Input: split by height (each core gets height_per_core rows)
+    # Data layout in host memory: D{CI/8}HW{8} (depth, ci_groups, height, width, 8)
+    # For ci=8 (ci8=1), this is effectively: D × H × W × 8
+    # Kernel expects (y*W+x)*8+ic indexing = H×W×{8}
+    #
+    # Row size in bytes: width * in_channels (= width * 8 for ci=8)
+    # Plane size (one depth plane): height * width * in_channels
+    row_bytes_in = width * in_channels
+    plane_bytes_in = height * row_bytes_in
+    row_bytes_out = width * out_channels
+    plane_bytes_out = height * row_bytes_out
+
+    # Create TensorAccessPatterns for spatial slicing with width tiling
+    # Core consumes in order: d0_tile0, d0_tile1, ..., d1_tile0, ...
+    # (depth-outer to keep outermost DMA dimension ≤ 63)
+    # TAP extracts tiles from the full tensor with 4D strided access:
+    #   sizes:   [depth, n_width_tiles, height_per_core, tile_width * in_channels]
+    #   strides: [plane_bytes_in, tile_width * in_channels, row_bytes_in, 1]
     in_taps = []
     for col in range(n_cols):
         for row in range(n_rows_per_col):
             core_id = col * n_rows_per_col + row
 
-            # Offset: skip to this core's rows
-            # Layout: depth * height * width * in_channels
-            offset = core_id * (depth * height_per_core * width * in_channels)
+            # Offset: skip to this core's first row
+            offset = core_id * height_per_core * row_bytes_in
 
             in_taps.append(
                 TensorAccessPattern(
                     (1, tensorInSize),
                     offset,
+                    [depth, n_width_tiles, height_per_core, tile_width * in_channels],
                     [
+                        plane_bytes_in,
+                        tile_width * in_channels,
+                        row_bytes_in,
                         1,
-                        1,
-                        1,
-                        actIn_per_core * depth,
-                    ],  # Transfer all depth planes for this core's rows
-                    [0, 0, 0, 1],
+                    ],
                 )
             )
 
-    # Output: concatenate by height (same pattern as input)
+    # Output TAPs: same pattern as input but with out_channels
     out_taps = []
     for col in range(n_cols):
         for row in range(n_rows_per_col):
             core_id = col * n_rows_per_col + row
-            offset = core_id * (depth * height_per_core * width * out_channels)
+            offset = core_id * height_per_core * row_bytes_out
 
             out_taps.append(
                 TensorAccessPattern(
                     (1, tensorOutSize),
                     offset,
-                    [1, 1, 1, actOut_per_core * depth],
-                    [0, 0, 0, 1],
+                    [
+                        depth,
+                        n_width_tiles,
+                        height_per_core,
+                        tile_width * out_channels,
+                    ],
+                    [
+                        plane_bytes_out,
+                        tile_width * out_channels,
+                        row_bytes_out,
+                        1,
+                    ],
                 )
             )
 
@@ -327,7 +392,6 @@ def conv3dk3_massively_parallel(
             rt.start(worker)
 
         # Fill inputs: use parallel shim DMAs (one per column)
-        # Each column handles its cores' data
         for col in range(n_cols):
             for row in range(n_rows_per_col):
                 core_id = col * n_rows_per_col + row
@@ -335,10 +399,10 @@ def conv3dk3_massively_parallel(
                     of_in_fifos[col][row].prod(),
                     I,
                     in_taps[core_id],
-                    placement=Tile(col, 0),  # Use shim tile at column 'col'
+                    placement=Tile(col, 0),
                 )
 
-        # Broadcast weights to all cores (can also use column-specific shims)
+        # Broadcast weights to all cores
         for col in range(n_cols):
             for row in range(n_rows_per_col):
                 rt.fill(of_wts_fifos[col][row].prod(), W, placement=Tile(col, 0))
@@ -347,7 +411,6 @@ def conv3dk3_massively_parallel(
         for col in range(n_cols):
             for row in range(n_rows_per_col):
                 core_id = col * n_rows_per_col + row
-                # Wait only on the very last core
                 wait = col == n_cols - 1 and row == n_rows_per_col - 1
                 rt.drain(
                     of_out_fifos[col][row].cons(),
@@ -402,6 +465,13 @@ def main():
         default=8,
         help="Number of output channels, must be divisible by 8 (default: 8)",
     )
+    parser.add_argument(
+        "--tile_width",
+        "-tw",
+        type=int,
+        default=0,
+        help="Width tile size, 0 = auto-calculate (default: 0)",
+    )
 
     args = parser.parse_args()
 
@@ -413,6 +483,7 @@ def main():
         args.in_channels,
         args.out_channels,
         args.n_cores,
+        args.tile_width,
     )
 
     print(module)
