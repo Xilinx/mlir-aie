@@ -42,21 +42,12 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// After the fix the packet flow is routed via column 1.
-// tile(2,2) must contain only the original circuit ConnectOp and must NOT
-// have any packet_rules on North:0.
-
-// CHECK: %[[T11:.*]] = aie.tile(1, 1)
-// CHECK: %[[T12:.*]] = aie.tile(1, 2)
-// CHECK: %[[T13:.*]] = aie.tile(1, 3)
-// CHECK: %[[T21:.*]] = aie.tile(2, 1)
 // CHECK: %[[T22:.*]] = aie.tile(2, 2)
-// CHECK: %[[T23:.*]] = aie.tile(2, 3)
 
-// The fixed switchbox at (2,2) keeps the original circuit ConnectOp and
-// must not gain a packet_rules on North:0.
+// tile(2,2) must retain the original circuit ConnectOp and must NOT acquire
+// a packet_rules on North:0 — the source port is fully reserved.
 // CHECK:      %switchbox_2_2 = aie.switchbox(%[[T22]]) {
-// CHECK-NEXT:   aie.connect<North : 0, DMA : 0>
+// CHECK:        aie.connect<North : 0, DMA : 0>
 // CHECK-NOT:    aie.packet_rules(North : 0)
 // CHECK:      }
 

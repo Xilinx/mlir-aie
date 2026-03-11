@@ -381,18 +381,19 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
       if (sb.srcPorts[i] != connectOp.sourcePort())
         continue;
+      // A circuit-switched ConnectOp monopolizes its entire source port;
+      // mark all connectivity[i][*] INVALID so the pathfinder cannot route
+      // any packet flow through this source port.
       for (size_t j = 0; j < sb.dstPorts.size(); j++) {
         if (sb.dstPorts[j] == connectOp.destPort() &&
             sb.connectivity[i][j] == Connectivity::AVAILABLE)
           found = true;
-        // A circuit-switched ConnectOp monopolizes the entire source port;
-        // mark all connectivity[i][*] as INVALID so the pathfinder cannot
-        // route any packet flow through this source port.
         sb.connectivity[i][j] = Connectivity::INVALID;
       }
     }
     if (!found) {
-      // could not add such a fixed connection
+      // ConnectOp references a (srcPort, dstPort) pair absent from or already
+      // fully invalidated in the switchbox model; IR/graph mismatch.
       return false;
     }
   }
