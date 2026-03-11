@@ -15,7 +15,6 @@ import shutil
 import tempfile
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Regression: hash_module must produce distinct cache keys for distinct
 # ExternalFunction configurations.
