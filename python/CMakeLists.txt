@@ -219,6 +219,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
     MODULE_NAME _aie
     ADD_TO_PARENT AIEPythonExtensions
     ROOT_DIR "/"
+    PYTHON_BINDINGS_LIBRARY nanobind
 
     SOURCES
       ${_py_srcs}
@@ -229,6 +230,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
   target_include_directories(
     AIEPythonExtensions.MLIR
     INTERFACE $<BUILD_INTERFACE:${PYBINDINGS_SRC}>
+    INTERFACE $<BUILD_INTERFACE:${NB_DIR}/include>
   )
   if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     target_include_directories(AIEPythonExtensions.MLIR INTERFACE ${XRT_INCLUDE_DIR})
@@ -311,6 +313,7 @@ else ()
     MODULE_NAME _aie
     ADD_TO_PARENT AIEPythonExtensions
     ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+    PYTHON_BINDINGS_LIBRARY nanobind
 
     PARTIAL_SOURCES_INTENDED
     SOURCES
@@ -326,6 +329,7 @@ else ()
       MODULE_NAME _xrt
       ADD_TO_PARENT AIEPythonExtensions
       ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+      PYTHON_BINDINGS_LIBRARY nanobind
 
       PARTIAL_SOURCES_INTENDED
       SOURCES
