@@ -26,7 +26,7 @@ build/aie-output-plio.mlir: ${srcdir}/aie2-output-plio.py
 	python3 $< ${LENGTH} > $@
 
 input: build/aie-input-plio.mlir
-	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie-input-plio.mlir \
+	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie-input-plio.mlir \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
 		-L/lib/x86_64-linux-gnu/ \
 		${srcdir}/test_vck5000.cpp \
@@ -34,7 +34,7 @@ input: build/aie-input-plio.mlir
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o input.elf
 
 output: build/aie-output-plio.mlir
-	aiecc.py --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie-output-plio.mlir \
+	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie-output-plio.mlir \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
 		-L/lib/x86_64-linux-gnu/ \
 		${srcdir}/test_vck5000.cpp \

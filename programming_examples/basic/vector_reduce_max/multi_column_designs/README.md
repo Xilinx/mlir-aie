@@ -16,7 +16,7 @@ Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_ma
 ## Source Files Overview
 
 ### Design Source Files
-1. `col_wise_vector_reduce_max.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). The Sequential placer is set to use a limited number of cores per column, thereby generating a design with reduction executed horizontally across the columns. 
+1. `col_wise_vector_reduce_max.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). The Sequential placer is set to use a limited number of cores per column, thereby generating a design with reduction executed horizontally across the columns. 
 
 <br><img src="assets/Multi-col.png" alt="Multi-column Design" width="1250"/>
 
