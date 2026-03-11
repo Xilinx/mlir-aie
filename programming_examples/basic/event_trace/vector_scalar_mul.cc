@@ -19,7 +19,7 @@ void vector_scalar_mul_aie_scalar(int32_t *a, int32_t *c, int32_t *factor,
                                   int32_t N) {
   event0(); // event to mark start of function
   for (int i = 0; i < N; i++) {
-    c[i] = *factor * a[i];
+    c[i] = a[i] * (*factor);
   }
   event1(); // event to mark end of function
 }
