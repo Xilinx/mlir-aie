@@ -144,15 +144,22 @@ Syntax:
 operation ::= `aie.cascade_flow` `(` $source_tile `,` $dest_tile `)` attr-dict
 ```
 
-The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.
-During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on
-their relative placement to one another.
+The `aie.cascade_flow` operation represents a cascade connection between two tile operations
+(`aie.tile` or `aie.logical_tile`). During lowering, this is replaced by `aie.configure_cascade`
+operations for each tile based on their relative placement to one another.
 
 Example:
 ```
   %tile03 = aie.tile(0, 3)
   %tile13 = aie.tile(1, 3)
   aie.cascade_flow(%tile03, %tile13)
+```
+
+With logical tiles (placement pass will assign cascadable position):
+```
+  %core1 = aie.logical_tile<CoreTile>(?, ?)
+  %core2 = aie.logical_tile<CoreTile>(?, ?)
+  aie.cascade_flow(%core1, %core2)
 ```
 
 #### Operands:
@@ -867,6 +874,62 @@ Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 | Result | Description |
 | :----: | ----------- |
 | &laquo;unnamed&raquo; | index |
+
+
+
+### `aie.logical_tile` (::xilinx::AIE::LogicalTileOp)
+
+_Declare a logical AIE tile to be placed_
+
+This operation creates a logical AIE tile that represents a tile to be 
+mapped to a `aie.tile` during placement. Unlike `aie.tile`, 
+this operation does not require absolute coordinates and instead uses
+a tile type to specify the kind of tile needed.
+
+The tile types are:
+- `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory, 
+  and stream connections)
+- `ShimNOCTile`: Maps to shim NOC tiles
+- `ShimPLTile`: Maps to shim PL tiles
+- `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory, 
+  but no core)
+
+Optional `col` and `row` can be provided as placement hints or constraints.
+Use `?` for unspecified coordinates.
+
+Examples:
+```
+// Logical core tile without placement constraints
+%core_tile = aie.logical_tile<CoreTile>(?, ?)
+
+// Logical shim tile with column hint but unspecified row
+%shim_tile = aie.logical_tile<ShimNOCTile>(0, ?)
+
+// Logical tile with full placement constraint (effectively fixed)
+%fixed = aie.logical_tile<CoreTile>(2, 3)
+```
+
+Traits: `AlwaysSpeculatableImplTrait`, `SkipAccessibilityCheckTrait`
+
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`, `TileLike`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>tile_type</code></td><td>xilinx::AIE::AIETileTypeAttr</td><td>Type of AIE Tile</td></tr>
+<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>allocation_scheme</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | index |
 
 
 
