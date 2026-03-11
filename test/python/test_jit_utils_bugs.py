@@ -120,8 +120,7 @@ def test_missing_source_file_raises_file_not_found():
 
 def test_existing_source_file_is_copied():
     """No error and the source is copied when source_file exists."""
-    with tempfile.TemporaryDirectory() as src_dir, \
-         tempfile.TemporaryDirectory() as kernel_dir:
+    with tempfile.TemporaryDirectory() as src_dir, tempfile.TemporaryDirectory() as kernel_dir:
         src = os.path.join(src_dir, "real_kernel.cc")
         with open(src, "w") as f:
             f.write('extern "C" void real_kernel() {}')
