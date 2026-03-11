@@ -187,8 +187,7 @@ def test_compile_external_kernel_source_file(npu_target_arch):
                 void my_kernel(int* a, int* b, int n) {
                     for (int i = 0; i < n; i++) b[i] = a[i] + 1;
                 }
-            }"""
-            )
+            }""")
 
         func = ExternalFunction("my_kernel", source_file=src)
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
