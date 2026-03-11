@@ -184,7 +184,9 @@ def main():
     out_size = 4
     element_type = bfloat16
 
-    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 2 bfloat16 elements)."
+    assert (
+        out_size == 4
+    ), "Output buffer must be size 4 (4 bytes = 2 bfloat16 elements)."
 
     in_tensor_size = in_size // element_type(0).nbytes
     out_tensor_size = out_size // element_type(0).nbytes
