@@ -40,26 +40,22 @@ def add_then_scale(input, output, add_func, scale_func):
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
 
     of_in = ObjectFifo(tile_ty, name="in")
-    of_tmp = ObjectFifo(tile_ty, name="tmp")
     of_out = ObjectFifo(tile_ty, name="out")
 
-    def core_body(of_in, of_tmp, of_out, add_fn, scale_fn):
+    def core_body(of_in, of_out, add_fn, scale_fn):
         for _ in range_(num_tiles):
             elem_in = of_in.acquire(1)
-            elem_tmp = of_tmp.acquire(1)
-            add_fn(elem_in, elem_tmp, tile_size)
-            of_in.release(1)
-            of_tmp.release(1)
-
-            elem_tmp2 = of_tmp.acquire(1)
             elem_out = of_out.acquire(1)
-            scale_fn(elem_tmp2, elem_out, tile_size)
-            of_tmp.release(1)
+            # Apply add_fn first, writing result into elem_out as a temporary,
+            # then apply scale_fn in-place on elem_out.
+            add_fn(elem_in, elem_out, tile_size)
+            scale_fn(elem_out, elem_out, tile_size)
+            of_in.release(1)
             of_out.release(1)
 
     worker = Worker(
         core_body,
-        fn_args=[of_in.cons(), of_tmp.prod(), of_out.prod(), add_func, scale_func],
+        fn_args=[of_in.cons(), of_out.prod(), add_func, scale_func],
     )
 
     rt = Runtime()
