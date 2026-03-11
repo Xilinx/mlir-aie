@@ -124,11 +124,13 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
-    # Write the MLIR to a file co-located with work_dir so that the C++ aiecc
-    # binary resolves relative link_with paths (e.g. "add_one.o") against the
+    # When work_dir is provided, invoke the aiecc binary as a subprocess so
+    # that it resolves relative link_with paths (e.g. "add_one.o") against the
     # same directory where compile_external_kernel placed the compiled objects.
-    # If no work_dir is provided, fall back to the aiecc.run() helper which
-    # writes to a temporary file internally.
+    # The MLIR file is written to work_dir/aie.mlir; callers (e.g. jit.py)
+    # may have already written it there, in which case this is a no-op write.
+    # If no work_dir is provided, fall back to aiecc.run() which writes to a
+    # temporary file internally.
     if work_dir:
         aiecc_bin = shutil.which("aiecc")
         if not aiecc_bin:

@@ -203,9 +203,6 @@ class ExternalFunction(Kernel):
             )
         for i, (arg, expected_ty) in enumerate(zip(args, self._arg_types)):
             self._validate_arg(i, arg, expected_ty)
-        # Delegate to BaseKernel for the actual MLIR func.call emission.
-        # BaseKernel also validates count, which is harmless redundancy but
-        # ensures the check holds even if this override is bypassed.
         super().__call__(*args, **kwargs)
 
     def _validate_arg(self, index: int, arg, expected_ty) -> None:
