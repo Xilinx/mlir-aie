@@ -45,11 +45,13 @@ def sliding_window():
 
             # AIE Core Function declarations
             add_10_i32 = external_func(
-                "add_10_i32", inputs=[subtensor_ty, subtensor_ty, subtensor_ty]
+                "add_10_i32",
+                inputs=[subtensor_ty, subtensor_ty, subtensor_ty],
+                link_with="kernel.o",
             )
 
             # Set up compute tiles
-            @core(ComputeTile, "kernel.o")
+            @core(ComputeTile)
             def core_body():
                 for i in range_(10):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)

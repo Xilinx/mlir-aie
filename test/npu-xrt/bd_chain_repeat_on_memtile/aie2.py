@@ -60,7 +60,9 @@ def my_passthrough_kernel(in1_size, out_size):
 
         # AIE Core Function declarations
         passThroughLine = external_func(
-            "passThroughLine", inputs=[core_chunk_ty, core_chunk_ty, np.int32]
+            "passThroughLine",
+            inputs=[core_chunk_ty, core_chunk_ty, np.int32],
+            link_with="kernel.cc.o",
         )
 
         ShimTile = tile(0, 0)
@@ -120,7 +122,7 @@ def my_passthrough_kernel(in1_size, out_size):
         for i, compute_tile in enumerate(compute_tiles):
 
             def make_core_fn(idx):
-                @core(compute_tile, "kernel.cc.o")
+                @core(compute_tile)
                 def core_body():
                     for _ in range_(sys.maxsize):
                         elemOut = of_join[idx].acquire(ObjectFifoPort.Produce, 1)
