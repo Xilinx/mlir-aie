@@ -98,6 +98,12 @@ build/generated_txn.h: build/aie2_lineBased_8b_${data_size}.mlir build/passThrou
 		--no-xchesscc --no-xbridge \
 		--txn-cpp-name=generated_txn.h $(<:%=../%)
 
+# Generate parameterized C++ TXN from dynamic MLIR.
+# The generated function takes buffer_length as a runtime parameter.
+build/dynsize/generated_txn.h: ${srcdir}/test_dynamic_size.mlir
+	mkdir -p ${@D}
+	aie-translate --aie-generate-txn-cpp $< > $@
+
 # Build the dynamic test executable (reuses test.cpp with USE_DYNAMIC_TXN)
 ${targetname}_dynamic_${data_size}.exe: ${srcdir}/test.cpp build/generated_txn.h
 	rm -rf _build_dynamic
@@ -113,9 +119,33 @@ else
 	cp _build_dynamic/${targetname}_dynamic $@
 endif
 
+# Build dynamic-size executable using parameterized TXN (takes --dynamic-size at runtime)
+max_size = 4096
+${targetname}_dynsize.exe: ${srcdir}/test.cpp build/dynsize/generated_txn.h
+	rm -rf _build_dynsize
+	mkdir -p _build_dynsize
+	cd _build_dynsize && ${powershell} cmake `${getwslpath} ${srcdir}` \
+		-DTARGET_NAME=${targetname}_dynsize \
+		-DIN1_SIZE=${max_size} -DOUT_SIZE=${max_size} \
+		-DCMAKE_CXX_FLAGS="-DUSE_DYNAMIC_TXN -I${CURDIR}/build/dynsize -I$(shell cd ${srcdir}/../../.. && pwd)/include"
+	cd _build_dynsize && ${powershell} cmake --build . --config Release
+ifeq "${powershell}" "powershell.exe"
+	cp _build_dynsize/${targetname}_dynsize.exe $@
+else
+	cp _build_dynsize/${targetname}_dynsize $@
+endif
+
 # Run with dynamically generated TXN (uses same XCLBIN)
 run_dynamic: ${targetname}_dynamic_${data_size}.exe build/final_${data_size}.xclbin
 	${powershell} ./$< -x build/final_${data_size}.xclbin -k MLIR_AIE
+
+# Build XCLBIN at max size, then run at multiple sizes without recompilation
+run_dynamic_sizes: ${targetname}_dynsize.exe build/final_${data_size}.xclbin
+	@for sz in 1024 4096 16384 ${in1_size}; do \
+		echo "=== Dynamic size: $$sz bytes ==="; \
+		${powershell} ./$< -x build/final_${data_size}.xclbin -k MLIR_AIE --dynamic-size $$sz; \
+		echo ""; \
+	done
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json
