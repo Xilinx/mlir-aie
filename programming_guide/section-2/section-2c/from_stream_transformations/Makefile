@@ -26,12 +26,12 @@ inst/insts.bin: ${srcdir}/${aie_py_src}
 	rm -rf inst
 	mkdir -p inst 
 	python3 $< ${LENGTH} > inst/aie.mlir
-	pushd inst && aiecc.py --aie-only-generate-npu --npu-insts-name=insts.bin aie.mlir && popd
+	pushd inst && aiecc --aie-only-generate-npu --npu-insts-name=insts.bin aie.mlir && popd
 	${powershell} ./build/${targetname}.exe -x build/final.xclbin -i inst/insts.bin -k MLIR_AIE -l ${LENGTH}
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 

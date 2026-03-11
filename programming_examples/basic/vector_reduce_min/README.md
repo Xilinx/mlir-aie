@@ -22,7 +22,7 @@ Input data is brought to the local memory of the Compute tile from a Shim tile. 
 
 ### Non-JIT Approach Files
 
-1. **`vector_reduce_min.py`**: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. **`vector_reduce_min.py`**: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. **`vector_reduce_min_placed.py`**: An alternative version of the design in `vector_reduce_min.py`, that is expressed in a lower-level version of IRON.
 
@@ -87,7 +87,7 @@ make run
 
 | Aspect | Non-JIT Approach | JIT Approach |
 |--------|------------------|--------------|
-| **Compilation** | Ahead-of-time via `aiecc.py` | Runtime compilation |
+| **Compilation** | Ahead-of-time via `aiecc` | Runtime compilation |
 | **Development Speed** | Slower (manual make/compilation) | Faster (compilation integrated) |
 | **Host Code** | C++ testbench (`test.cpp`) | Python script |
 | **Performance** | Baseline execution time | Microseconds overhead from JIT runtime |

@@ -52,14 +52,14 @@ build/aie_trace_from_py.mlir: ${srcdir}/aie_trace.py
 # Build xclbin from the mlir
 build/final.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 			--no-xchesscc --no-xbridge --dump-intermediates \
 			--aie-generate-npu-insts --npu-insts-name=insts.bin aie_trace.mlir
 
 # Build xclbin from Python-generated mlir
 build/final_py.xclbin: build/aie_trace_from_py.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 			--no-xchesscc --no-xbridge --dump-intermediates \
 			--aie-generate-npu-insts --npu-insts-name=insts_py.bin aie_trace_from_py.mlir
 
