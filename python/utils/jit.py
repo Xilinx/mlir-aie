@@ -93,7 +93,6 @@ def jit(function=None, is_placed=True, use_cache=True):
             ):  # Don't compile if already compiled
                 external_kernels.append(func)
 
-        # Determine target architecture based on device type
         current_device = DefaultNPURuntime.device()
 
         # Determine target architecture based on device type
@@ -144,10 +143,10 @@ def jit(function=None, is_placed=True, use_cache=True):
                         xclbin_path=xclbin_path,
                         work_dir=kernel_dir,
                     )
-                except Exception as e:
+                except Exception:
                     # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
                     _cleanup_failed_compilation(kernel_dir)
-                    raise e
+                    raise
 
         kernel = NPUKernel(
             xclbin_path,

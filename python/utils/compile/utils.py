@@ -146,11 +146,8 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     # Handle both source_string and source_file cases
     if func._source_string is not None:
         # Use source_string (write to file)
-        try:
-            with open(source_file, "w") as f:
-                f.write(func._source_string)
-        except Exception as e:
-            raise
+        with open(source_file, "w") as f:
+            f.write(func._source_string)
     elif func._source_file is not None:
         # Use source_file (copy existing file)
         # Check if source file exists before copying
@@ -162,17 +159,14 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    try:
-        compile_cxx_core_function(
-            source_path=source_file,
-            target_arch=target_arch,
-            output_path=output_file,
-            include_dirs=func._include_dirs,
-            compile_args=func._compile_flags,
-            cwd=kernel_dir,
-        )
-    except Exception as e:
-        raise
+    compile_cxx_core_function(
+        source_path=source_file,
+        target_arch=target_arch,
+        output_path=output_file,
+        include_dirs=func._include_dirs,
+        compile_args=func._compile_flags,
+        cwd=kernel_dir,
+    )
 
     # Mark the function as compiled
     func._compiled = True
