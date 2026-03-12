@@ -339,7 +339,7 @@ _tile_ty = np.ndarray[(_TILE_SIZE,), np.dtype[np.int32]]
 _tensor_ty = np.ndarray[(_NUM_ELEMS,), np.dtype[np.int32]]
 
 
-@iron.jit(is_placed=False)
+@iron.jit()
 def _transform(input_tensor, output_tensor, kernel_fn):
     """JIT-compiled element-wise transform using a caller-supplied lambda."""
     of_in = ObjectFifo(_tile_ty, name="in")
