@@ -131,8 +131,12 @@ add_aiert_headers(xaienginecdo_static
 )
 add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
+# Weak stubs for ess_* symbols (provided at runtime by aiesimulator via dlopen).
+# Must be linked into the static lib so aiecc resolves these at link time.
+target_sources(xaienginecdo_static PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ess_stubs.c)
+
 target_link_libraries(xaienginecdo_static PRIVATE cdo_driver_mlir_aie)
-target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__ -D__AIEDEBUG__)
+target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__ -D__AIEDEBUG__ -D__AIESIM__)
 
 # just to make cmake happy since AIETargets will need to re-export
 # make sure not abs path...
