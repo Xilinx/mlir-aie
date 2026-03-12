@@ -15,7 +15,7 @@ This design implements a `bfloat16` based element-wise multiplication followed b
 
 ## Source Files Overview
 
-1. `scale_shift.py`: A Python script that defines the AIE array structural design using IRON operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. `scale_shift.py`: A Python script that defines the AIE array structural design using IRON operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `scale_shift.cc`: A C++ implementation of a vectorized vector multiplication and addition operations for AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics.  The source can be found [here](../../../aie_kernels/aie2/scale_shift.cc). The parameter `is_mul` is used to switch between the two operations at runtime.
 

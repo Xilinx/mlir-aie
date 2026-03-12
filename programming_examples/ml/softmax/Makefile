@@ -258,14 +258,14 @@ build/aie_trace.mlir: ${srcdir}/${aie_py_src} build/.config_stamp
 # Build final xclbin
 build/final.xclbin: build/aie.mlir build/kernels.a
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 # Build xclbin with tracing enabled
 build/final_trace.xclbin: build/aie_trace.mlir build/kernels.a
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 

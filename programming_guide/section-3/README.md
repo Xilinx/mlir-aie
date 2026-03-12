@@ -129,7 +129,7 @@ The host code contains the following sections (with C/C++ code examples):
     * `-k` kernel name (with default name "MLIR_AIE")
     * `-i` the instruction sequence file as arguments 
     
-    This is because it is its task to load those files and set the kernel name. Both the XCLBIN and instruction sequence are generated when compiling the AIE-array structural description and kernel code with `aiecc.py`.
+    This is because it is its task to load those files and set the kernel name. Both the XCLBIN and instruction sequence are generated when compiling the AIE-array structural description and kernel code with `aiecc`.
 
     ```c
     // Program arguments parsing

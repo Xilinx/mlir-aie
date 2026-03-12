@@ -18,7 +18,7 @@ Other available datatypes can be consulted [here](https://xilinx.github.io/aie_a
 
 ## Source Files Overview
 
-1. `bfp_conversion.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `bfp_conversion.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
 1. `bfp_conversion_placed.py`: An alternative version of the design in `bfp_conversion.py`, that is expressed in a lower-level version of IRON.
 

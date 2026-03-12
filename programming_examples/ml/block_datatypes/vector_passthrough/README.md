@@ -14,7 +14,7 @@ A simple AIE implementation for a vectorized memcpy using block floating point. 
 
 ## Source Files Overview
 
-1. `vector_passthrough.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_passthrough.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
 
 1. `vector_passthrough_placed.py`: An alternative version of the design in `vector_passthrough.py`, that is expressed in a lower-level version of IRON.
 
