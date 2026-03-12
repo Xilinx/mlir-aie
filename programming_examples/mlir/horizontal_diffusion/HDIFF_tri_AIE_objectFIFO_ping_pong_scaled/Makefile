@@ -4,7 +4,7 @@
 # This file is licensed under the MIT License.
 # SPDX-License-Identifier: MIT
 
-include ../../../../mlir_tutorials/makefile-common
+include ../../../../mlir_exercises/makefile-common
 
 ACDC_AIE = $(dir $(shell which aie-opt))/..
 ACDC_AIR = $(dir $(shell which air-opt))/..

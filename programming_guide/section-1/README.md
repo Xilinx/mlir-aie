@@ -150,17 +150,17 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
 ## <u>Exercises</u>
 1. To run our Python program from the command line, we type `python3 aie2.py`, which converts our Python structural design into MLIR source code. This works from the command line if our design environment already contains the mlir-aie Python-bound dialect module. We included this in the [Makefile](./Makefile), so go ahead and run `make` now. Then take a look at the generated MLIR source under `build/aie.mlir`.
 
-2. Run `make clean` to remove the generated files. In the worker's code (the `core_fn`) replace `range_` with `range` (no underscore). What do you expect to happen? Investigate the generated code in `build/aie.mlir` and observe how the generated code changed. <img src="../../mlir_tutorials/images/answer1.jpg" title="The generated MLIR code does not contain a loop; instead, the same instructions are repeated many times." height=25>
+2. Run `make clean` to remove the generated files. In the worker's code (the `core_fn`) replace `range_` with `range` (no underscore). What do you expect to happen? Investigate the generated code in `build/aie.mlir` and observe how the generated code changed. <img src="../../mlir_exercises/images/answer1.jpg" title="The generated MLIR code does not contain a loop; instead, the same instructions are repeated many times." height=25>
 
-3. Run `make clean` again. Then introduce an error to the Python source, such as misspelling `sequence` to `sequenc`, and then run `make` again. What messages do you see? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is a Python error because sequenc is not recognized." height=25>
+3. Run `make clean` again. Then introduce an error to the Python source, such as misspelling `sequence` to `sequenc`, and then run `make` again. What messages do you see? <img src="../../mlir_exercises/images/answer1.jpg" title="There is a Python error because sequenc is not recognized." height=25>
 
-4. Run `make clean` again. Now change the error by renaming `sequenc` back to `sequence`, but place the Worker on a tile with coordinates (-1, 3), which is an invalid location. Run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is a partial placement error." height=25>
+4. Run `make clean` again. Now change the error by renaming `sequenc` back to `sequence`, but place the Worker on a tile with coordinates (-1, 3), which is an invalid location. Run `make` again. What message do you see now? <img src="../../mlir_exercises/images/answer1.jpg" title="There is a partial placement error." height=25>
 
-5. Run `make clean` again. Restore the Worker tile to its original coordinates. Remove the `while_true=False` attribute from the Worker and run `make` again. What do you observe? <img src="../../mlir_tutorials/images/answer1.jpg" title="The Worker task code is nested within a for loop." height=25>
+5. Run `make clean` again. Restore the Worker tile to its original coordinates. Remove the `while_true=False` attribute from the Worker and run `make` again. What do you observe? <img src="../../mlir_exercises/images/answer1.jpg" title="The Worker task code is nested within a for loop." height=25>
 
 6. Now let's take a look at the placed version of the code. Run `make placed` and look at the generated MLIR source under `build/aie_placed.mlir`.
 
-7. Run `make clean` to remove the generated files. Introduce the same error as above by changing the coordinates of `ComputeTile1` to (-1,3). Run `make placed` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is no error." height=25>
+7. Run `make clean` to remove the generated files. Introduce the same error as above by changing the coordinates of `ComputeTile1` to (-1,3). Run `make placed` again. What message do you see now? <img src="../../mlir_exercises/images/answer1.jpg" title="There is no error." height=25>
 
 8. No error is generated but our code is invalid. Take a look at the generated MLIR code under `build/aie_placed.mlir`. This generated output is invalid MLIR syntax and running our mlir-aie tools on this MLIR source will generate an error. We do, however, have some additional Python structural syntax checks that can be enabled if we use the function `ctx.module.operation.verify()`. This verifies that our Python-bound code has valid operation within the mlir-aie context. 
 
@@ -172,7 +172,7 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
     else:
         print(res)
     ```
-    Make this change and run `make placed` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="It now says 'column value fails to satisfy the constraint' because the minimum value is 0." height=25>
+    Make this change and run `make placed` again. What message do you see now? <img src="../../mlir_exercises/images/answer1.jpg" title="It now says 'column value fails to satisfy the constraint' because the minimum value is 0." height=25>
 
 -----
 [[Prev - Section 0](../section-0/)] [[Top](..)] [[Next - Section 2](../section-2/)]
