@@ -13,7 +13,7 @@
 // - aie.trace.event for specifying events to capture
 // - aie.trace.start_config in runtime sequence
 //
-// The passes aie-trace-to-config and aie-inline-trace-config will lower this.
+// This will be incrementally lowered by trace passes
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,12 +24,21 @@ module {
 
     // Tile declarations
     %shim_noc_tile_0_0 = aie.tile(0, 0)
+    %mem_tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
 
     // ObjectFIFOs for data movement
-    aie.objectfifo @in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
-    aie.objectfifo @infactor(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1xi32>>
-    aie.objectfifo @out(%tile_0_2, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @in(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @in_fwd(%mem_tile_0_1, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo.link [@in] -> [@in_fwd]([] [0])
+
+    aie.objectfifo @infactor(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1xi32>>
+    aie.objectfifo @infactor_fwd(%mem_tile_0_1, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1xi32>>
+    aie.objectfifo.link [@infactor] -> [@infactor_fwd]([] [0])
+
+    aie.objectfifo @out(%tile_0_2, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @out_fwd(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo.link [@out] -> [@out_fwd]([] [0])
 
     // Core computation
     %core_0_2 = aie.core(%tile_0_2) {
@@ -37,7 +46,7 @@ module {
       %c9223372036854775807 = arith.constant 9223372036854775807 : index
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c9223372036854775807 step %c1 {
-        %0 = aie.objectfifo.acquire @infactor(Consume, 1) : !aie.objectfifosubview<memref<1xi32>>
+        %0 = aie.objectfifo.acquire @infactor_fwd(Consume, 1) : !aie.objectfifosubview<memref<1xi32>>
         %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<1xi32>> -> memref<1xi32>
         %c0_0 = arith.constant 0 : index
         %c4 = arith.constant 4 : index
@@ -45,14 +54,14 @@ module {
         scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
           %2 = aie.objectfifo.acquire @out(Produce, 1) : !aie.objectfifosubview<memref<1024xi32>>
           %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
-          %4 = aie.objectfifo.acquire @in(Consume, 1) : !aie.objectfifosubview<memref<1024xi32>>
+          %4 = aie.objectfifo.acquire @in_fwd(Consume, 1) : !aie.objectfifosubview<memref<1024xi32>>
           %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<1024xi32>> -> memref<1024xi32>
           %c1024_i32 = arith.constant 1024 : i32
           func.call @vector_scalar_mul_aie_scalar(%5, %3, %1, %c1024_i32) : (memref<1024xi32>, memref<1024xi32>, memref<1xi32>, i32) -> ()
-          aie.objectfifo.release @in(Consume, 1)
+          aie.objectfifo.release @in_fwd(Consume, 1)
           aie.objectfifo.release @out(Produce, 1)
         }
-        aie.objectfifo.release @infactor(Consume, 1)
+        aie.objectfifo.release @infactor_fwd(Consume, 1)
       }
       aie.end
     }
@@ -63,35 +72,39 @@ module {
 
     // Trace configuration for compute tile (0,2) - core events
     aie.trace @core_trace(%tile_0_2) {
-      // Set trace mode (Event-Time captures timestamps)
+      // Core traces have a trace mode (Event-Time captures timestamps)
       aie.trace.mode "Event-Time"
 
-      // Configure packet routing (ID and type for packet-switched routing)
+      // Packet routing configuration:
+      // - id is optional; if omitted, auto-allocated by trace pass
+      // - type is inferred based on tile type except for core tiles, since both 
+      //   trace units exist; defaults to type=core for core tiles
       aie.trace.packet id=1 type=core
 
       // Specify which events to capture (up to 8 events)
-      aie.trace.event<"INSTR_EVENT_0">        // User event 0 (start marker)
-      aie.trace.event<"INSTR_EVENT_1">        // User event 1 (end marker)
-      aie.trace.event<"INSTR_VECTOR">         // Vector instructions
-      aie.trace.event<"MEMORY_STALL">         // Memory access stalls
-      aie.trace.event<"STREAM_STALL">         // Stream buffer stalls
-      aie.trace.event<"LOCK_STALL">           // Lock acquisition stalls
-      aie.trace.event<"PORT_RUNNING_1">       // DMA:0 slave port running
-      aie.trace.event<"PORT_IDLE_1">       // DMA:1 master port running
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.event<"INSTR_EVENT_1">
+      aie.trace.event<"INSTR_VECTOR">
+      aie.trace.event<"MEMORY_STALL">
+      aie.trace.event<"STREAM_STALL">
+      aie.trace.event<"LOCK_STALL">
+      aie.trace.event<"PORT_RUNNING_0">
+      aie.trace.event<"PORT_RUNNING_1">
+
+      // PORT_RUNNING/IDLE/STALLED events monitor stream switch ports, but the
+      // hardware needs to know which physical port to monitor for each slot.
+      // trace.port maps slot N to a specific port (bundle + channel + direction).
       aie.trace.port<0> port=DMA channel=0 direction=S2MM
       aie.trace.port<1> port=DMA channel=0 direction=MM2S
 
       // Specify start/stop control (broadcast events)
-      aie.trace.start event=<"BROADCAST_15">
-      aie.trace.stop event=<"BROADCAST_14">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
 
     // Trace configuration for compute tile (0,2) - memory events
     aie.trace @mem_trace(%tile_0_2) {
-      // Set trace mode (Event-Time captures timestamps)
-      aie.trace.mode "Event-Time"
-
-      // Configure packet routing (ID and type for packet-switched routing)
+      // For core tiles, type=mem selects the memory module trace unit
       aie.trace.packet id=3 type=mem
 
       // Specify which events to capture (up to 8 events)
@@ -109,12 +122,42 @@ module {
       aie.trace.stop event=<"BROADCAST_14">
     }
 
+    // Trace configuration for mem tile (0, 1)
+    aie.trace @memtile_trace(%mem_tile_0_1) {
+      // For memtiles, type=memtile is inferred but can be explicit
+      aie.trace.packet id=4 type=memtile
+
+      // Specify which events to capture (up to 8 events)
+      aie.trace.event<"PORT_RUNNING_0">
+      aie.trace.event<"PORT_RUNNING_1">
+      aie.trace.event<"PORT_RUNNING_2">
+      aie.trace.event<"PORT_RUNNING_3">
+      aie.trace.event<"PORT_RUNNING_4">
+      aie.trace.event<"PORT_RUNNING_5">
+      aie.trace.event<"PORT_RUNNING_6">
+      aie.trace.event<"PORT_RUNNING_7">
+
+      // Map each port event slot to a physical DMA port
+      aie.trace.port<0> port=DMA channel=0 direction=MM2S
+      aie.trace.port<1> port=DMA channel=1 direction=MM2S
+      aie.trace.port<2> port=DMA channel=0 direction=S2MM
+      aie.trace.port<3> port=DMA channel=1 direction=S2MM
+      aie.trace.port<4> port=DMA channel=2 direction=S2MM
+      aie.trace.port<5> port=DMA channel=3 direction=S2MM
+      aie.trace.port<6> port=DMA channel=4 direction=S2MM
+      aie.trace.port<7> port=DMA channel=5 direction=S2MM
+
+      // Specify start/stop control (broadcast events)
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
     // Trace configuration for shim tile (0,0)
-    // Captures DMA activity at the interface to DDR
     aie.trace @shim_trace(%shim_noc_tile_0_0) {
+      // For shim tiles, type=shimtile is inferred but can be explicit
       aie.trace.packet id=2 type=shimtile
 
-      // Shim DMA events
+      // Specify which events to capture (up to 8 events)
       aie.trace.event<"DMA_S2MM_0_START_TASK">
       aie.trace.event<"DMA_S2MM_1_START_TASK">
       aie.trace.event<"DMA_MM2S_0_START_TASK">
@@ -124,101 +167,33 @@ module {
       aie.trace.event<"DMA_S2MM_0_STREAM_STARVATION">
       aie.trace.event<"DMA_S2MM_1_STREAM_STARVATION">
 
+      // Specify start/stop control (broadcast events)
       aie.trace.start event=<"TRUE">
       aie.trace.stop event=<"NONE">
     }
-
-    // Packet flows to route trace data (same as before)
-    // These define the routing but the trace config is separate
-    aie.packet_flow(1) {
-      aie.packet_source<%tile_0_2, Trace : 0>
-      aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>
-    } {keep_pkt_header = true}
-    aie.packet_flow(3) {
-      aie.packet_source<%tile_0_2, Trace : 1>
-      aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>
-    } {keep_pkt_header = true}
-
-    aie.packet_flow(2) {
-      aie.packet_source<%shim_noc_tile_0_0, Trace : 0>
-      aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>
-    } {keep_pkt_header = true}
 
     // ========================================================================
     // RUNTIME SEQUENCE WITH TRACE ACTIVATION
     // ========================================================================
 
-    // Runtime sequence with trace configuration
+    // Runtime sequence
     aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<1xi32>, %arg2: memref<4096xi32>) {
 
       // ========================================================================
       // TRACE INITIALIZATION
       // ========================================================================
 
-      // Start trace configuration for core tile
-      // This will be lowered to the aiex.npu.write32 operations automatically
+      // Start trace configuration
       aie.trace.start_config @core_trace
       aie.trace.start_config @mem_trace
-
-      // Start trace configuration for shim tile
+      aie.trace.start_config @memtile_trace
       aie.trace.start_config @shim_trace
-
-      // Address 212992 (0x34000): Timer_Control
-      aiex.npu.write32 {address = 212992 : ui32, column = 0 : i32, row = 2 : i32, value = 31232 : ui32}
-
-      // Configure trace buffer descriptor (still manual for now)
-      aiex.npu.writebd {
-        bd_id = 15 : i32,
-        buffer_length = 8192 : i32,
-        buffer_offset = 0 : i32,
-        burst_length = 64 : i32,
-        column = 0 : i32,
-        d0_size = 0 : i32,
-        d0_stride = 0 : i32,
-        d0_zero_after = 0 : i32,
-        d0_zero_before = 0 : i32,
-        d1_size = 0 : i32,
-        d1_stride = 0 : i32,
-        d1_zero_after = 0 : i32,
-        d1_zero_before = 0 : i32,
-        d2_size = 0 : i32,
-        d2_stride = 0 : i32,
-        d2_zero_after = 0 : i32,
-        d2_zero_before = 0 : i32,
-        enable_packet = 1 : i32,
-        iteration_current = 0 : i32,
-        iteration_size = 0 : i32,
-        iteration_stride = 0 : i32,
-        lock_acq_enable = 0 : i32,
-        lock_acq_id = 0 : i32,
-        lock_acq_val = 0 : i32,
-        lock_rel_id = 0 : i32,
-        lock_rel_val = 0 : i32,
-        next_bd = 0 : i32,
-        out_of_order_id = 0 : i32,
-        packet_id = 0 : i32,
-        packet_type = 0 : i32,
-        row = 0 : i32,
-        use_next_bd = 0 : i32,
-        valid_bd = 1 : i32
-      }
-
-      // Patch trace buffer address
-      aiex.npu.address_patch {addr = 119268 : ui32, arg_idx = 4 : i32, arg_plus = 0 : i32}
-
-      // Configure DMA channel for trace
-      aiex.npu.maskwrite32 {address = 119304 : ui32, column = 0 : i32, mask = 7936 : ui32, row = 0 : i32, value = 3840 : ui32}
-      aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 2147483663 : ui32}
-
-      // Start trace control
-      aiex.npu.write32 {address = 212992 : ui32, column = 0 : i32, row = 0 : i32, value = 32512 : ui32}
-      aiex.npu.write32 {address = 213068 : ui32, column = 0 : i32, row = 0 : i32, value = 127 : ui32}
-      aiex.npu.write32 {address = 213000 : ui32, column = 0 : i32, row = 0 : i32, value = 127 : ui32}
 
       // ========================================================================
       // DATA TRANSFER CONFIGURATION
       // ========================================================================
 
+      // Configure DMA tasks for input, factor, and output
       %0 = aiex.dma_configure_task_for @in {
         aie.dma_bd(%arg0 : memref<4096xi32>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>]) {burst_length = 0 : i32}
         aie.end
@@ -229,24 +204,17 @@ module {
         aie.end
       } {issue_token = true}
 
-      %2 = aiex.dma_configure_task_for @out {
+      %2 = aiex.dma_configure_task_for @out_fwd {
         aie.dma_bd(%arg2 : memref<4096xi32>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
-
+      
       aiex.dma_start_task(%0)
       aiex.dma_start_task(%1)
       aiex.dma_start_task(%2)
       aiex.dma_await_task(%0)
       aiex.dma_await_task(%1)
       aiex.dma_await_task(%2)
-
-      // ========================================================================
-      // TRACE COMPLETION
-      // ========================================================================
-
-      aiex.npu.write32 {address = 213064 : ui32, column = 0 : i32, row = 0 : i32, value = 126 : ui32}
-      aiex.npu.write32 {address = 213000 : ui32, column = 0 : i32, row = 0 : i32, value = 126 : ui32}
     }
   }
 }

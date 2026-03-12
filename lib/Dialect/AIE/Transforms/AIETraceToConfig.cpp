@@ -231,7 +231,8 @@ struct AIETraceToConfigPass
             if (eventNum) {
               startEvent = *eventNum;
             } else {
-              startOp.emitError("unknown broadcast event '") << eventName << "'";
+              startOp.emitError("unknown broadcast event '")
+                  << eventName << "'";
               return signalPassFailure();
             }
           } else if (auto eventAttr = startOp.getEvent()) {
@@ -306,8 +307,10 @@ struct AIETraceToConfigPass
         }
 
         // Emit mode if present.
-        // Memory trace does not expose Trace_Control0.Mode in the register DB.
-        if (auto modeOp = dyn_cast<TraceModeOp>(op); modeOp && !isMem) {
+        // Only core traces expose Trace_Control0.Mode in the register DB.
+        // Memory, memory_tile, and shim modules do not have the Mode field.
+        bool isCore = (packetType == TracePacketType::Core);
+        if (auto modeOp = dyn_cast<TraceModeOp>(op); modeOp && isCore) {
           configBuilder.create<TraceRegOp>(
               trace.getLoc(), builder.getStringAttr("Trace_Control0"),
               builder.getStringAttr("Mode"),
