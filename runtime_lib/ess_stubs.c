@@ -35,6 +35,7 @@ __attribute__((weak)) uint ess_Read32(uint64_t Addr) {
   (void)Addr;
   fprintf(stderr, "FATAL: ess_Read32 called outside aiesimulator\n");
   abort();
+  __builtin_unreachable();
 }
 
 __attribute__((weak)) void
@@ -61,4 +62,5 @@ __attribute__((weak)) uint ess_NpiRead32(uint64_t Addr) {
   (void)Addr;
   fprintf(stderr, "FATAL: ess_NpiRead32 called outside aiesimulator\n");
   abort();
+  __builtin_unreachable();
 }
