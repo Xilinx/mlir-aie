@@ -6,4 +6,4 @@
 // RUN: mkdir -p test_dyn_iron_stx
 // RUN: cd test_dyn_iron_stx
 // RUN: make -f %S/../Makefile clean
-// RUN: env use_iron=1 make -f %S/../Makefile build/final_128x128x128.xclbin
+// RUN: %run_on_npu2% env use_iron=1 make -f %S/../Makefile run_dynamic

@@ -40,6 +40,8 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Dynamic GEMM Test");
   options.add_options()("help,h", "produce help message")(
       "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "instr,i", "static instructions file (for extracting RTP address)",
+      cxxopts::value<std::string>())(
       "kernel,k", "the kernel name in the XCLBIN",
       cxxopts::value<std::string>()->default_value("MLIR_AIE"))(
       "verbosity,v", "the verbosity of the output",
@@ -68,8 +70,9 @@ int main(int argc, const char *argv[]) {
     std::cout << options.help() << "\n";
     return 0;
   }
-  if (!vm.count("xclbin")) {
-    std::cerr << "Error: --xclbin is required\n" << options.help() << "\n";
+  if (!vm.count("xclbin") || !vm.count("instr")) {
+    std::cerr << "Error: --xclbin and --instr are required\n"
+              << options.help() << "\n";
     return 1;
   }
 
@@ -88,11 +91,19 @@ int main(int argc, const char *argv[]) {
 
   srand(1726250518); // fixed seed for reproducibility
 
+  // Extract design-specific constants from static instructions
+  auto static_insts =
+      dynamic_gemm::load_insts_binary(vm["instr"].as<std::string>());
+  auto dc = dynamic_gemm::extract_constants(static_insts);
+  if (verbosity >= 1)
+    std::cout << "RTP addr: 0x" << std::hex << dc.rtp_addr << std::dec << "\n";
+
   if (verbosity >= 1)
     std::cout << "Dynamic GEMM: " << M << "x" << K << "x" << N << std::endl;
 
-  // Generate TXN instructions for this M/K/N
-  std::vector<uint32_t> instr_v = dynamic_gemm::generate_gemm_txn(M, K, N);
+  // Generate TXN instructions for this M/K/N using discovered constants
+  std::vector<uint32_t> instr_v =
+      dynamic_gemm::generate_gemm_txn(M, K, N, dc);
   if (verbosity >= 1)
     std::cout << "Generated " << instr_v.size() << " instruction words\n";
 
