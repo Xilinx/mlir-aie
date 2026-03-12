@@ -20,6 +20,11 @@
 #include <map>
 #include <set>
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEINSERTTRACEFLOWS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -43,10 +48,8 @@ struct ShimInfo {
   std::vector<TraceInfo> traceSources; // All traces routed to this shim
 };
 
-} // namespace
-
 struct AIEInsertTraceFlowsPass
-    : AIEInsertTraceFlowsBase<AIEInsertTraceFlowsPass> {
+    : xilinx::AIE::impl::AIEInsertTraceFlowsBase<AIEInsertTraceFlowsPass> {
 
   void runOnOperation() override {
     DeviceOp device = getOperation();
@@ -71,12 +74,24 @@ struct AIEInsertTraceFlowsPass
 
       // Find packet ID and type from trace body
       std::optional<int> packetId;
-      TracePacketType packetType = TracePacketType::Core; // default
+      std::optional<TracePacketType> packetType;
       for (auto &op : trace.getBody().getOps()) {
         if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
           packetId = packetOp.getId();
           packetType = packetOp.getType();
           break;
+        }
+      }
+
+      // Determine packet type from tile type if not specified
+      if (!packetType) {
+        if (tile.isShimTile()) {
+          packetType = TracePacketType::ShimTile;
+        } else if (tile.isMemTile()) {
+          packetType = TracePacketType::MemTile;
+        } else {
+          // Core tile defaults to core type
+          packetType = TracePacketType::Core;
         }
       }
 
@@ -91,7 +106,7 @@ struct AIEInsertTraceFlowsPass
       // Determine trace port based on packet type
       WireBundle tracePort = WireBundle::Trace;
       int traceChannel = 0;
-      if (packetType == TracePacketType::Mem) {
+      if (*packetType == TracePacketType::Mem) {
         traceChannel = 1; // Mem trace uses port 1
       }
 
@@ -99,7 +114,7 @@ struct AIEInsertTraceFlowsPass
       info.traceOp = trace;
       info.tile = tile;
       info.packetId = *packetId;
-      info.packetType = packetType;
+      info.packetType = *packetType;
       info.tracePort = tracePort;
       info.traceChannel = traceChannel;
       traceInfos.push_back(info);
@@ -216,12 +231,27 @@ struct AIEInsertTraceFlowsPass
       return;
     }
 
-    // Insert trace infrastructure at the beginning of runtime sequence
-    // NOTE: trace.start_config insertion is NOT done here.
-    // The source MLIR should already contain aie.trace.start_config ops,
+    // Insert trace infrastructure AFTER aie.trace.start_config ops
+    // NOTE: The source MLIR should already contain aie.trace.start_config ops,
     // and --aie-inline-trace-config will expand them to register writes.
+    // We need to insert broadcast start writes AFTER the start_config ops
+    // so that trace configuration registers are written before trace starts.
     Block &seqBlock = runtimeSeq.getBody().front();
-    builder.setInsertionPointToStart(&seqBlock);
+
+    // Find the last TraceStartConfigOp in the runtime sequence
+    Operation *lastStartConfig = nullptr;
+    for (auto &op : seqBlock.getOperations()) {
+      if (isa<TraceStartConfigOp>(op)) {
+        lastStartConfig = &op;
+      }
+    }
+
+    // Insert after the last start_config op, or at start if none found
+    if (lastStartConfig) {
+      builder.setInsertionPointAfter(lastStartConfig);
+    } else {
+      builder.setInsertionPointToStart(&seqBlock);
+    }
 
     // 4b. Insert per-tile timer controls
     std::set<std::pair<int, int>> processedTiles; // (col, row)
@@ -414,6 +444,8 @@ private:
     return reg->offset;
   }
 };
+
+} // namespace
 
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEInsertTraceFlowsPass() {
