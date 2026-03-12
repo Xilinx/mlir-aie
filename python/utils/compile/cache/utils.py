@@ -13,6 +13,23 @@ import time
 from aie.utils.hostruntime.tensor_class import Tensor
 
 
+def _closure_key(fn):
+    """Return a hashable representation of a callable's closure cell contents."""
+    if not fn.__closure__:
+        return ()
+    parts = []
+    for cell in fn.__closure__:
+        try:
+            val = cell.cell_contents
+            hash(val)  # test hashability
+            parts.append(val)
+        except ValueError:
+            parts.append("<empty>")
+        except TypeError:
+            parts.append(repr(val))
+    return tuple(parts)
+
+
 def _create_function_cache_key(function, args, kwargs):
     """
     Create a cache key for a function call based on function name and argument types/shapes.
@@ -35,8 +52,15 @@ def _create_function_cache_key(function, args, kwargs):
                 # Use bytecode and constants hash for Python functions/lambdas
                 code = arg.__code__
                 defaults = arg.__defaults__ if hasattr(arg, "__defaults__") else None
+                closure_vals = _closure_key(arg)
                 func_hash = hash(
-                    (code.co_code, code.co_consts, code.co_names, defaults)
+                    (
+                        code.co_code,
+                        code.co_consts,
+                        code.co_names,
+                        defaults,
+                        closure_vals,
+                    )
                 )
                 signature_parts.append(f"function_{func_hash}")
             else:
@@ -59,8 +83,15 @@ def _create_function_cache_key(function, args, kwargs):
                 defaults = (
                     value.__defaults__ if hasattr(value, "__defaults__") else None
                 )
+                closure_vals = _closure_key(value)
                 func_hash = hash(
-                    (code.co_code, code.co_consts, code.co_names, defaults)
+                    (
+                        code.co_code,
+                        code.co_consts,
+                        code.co_names,
+                        defaults,
+                        closure_vals,
+                    )
                 )
                 signature_parts.append(f"{key}_function_{func_hash}")
             else:

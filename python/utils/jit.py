@@ -52,13 +52,7 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         trace_config = kwargs.get("trace_config")
 
-        # TODO: Functions referencing variables from outside its scope have stale cache
-        # issue if the variable is updated after the first run. For now we skip caching
-        # if we detect closures.
-        has_closures = any(_has_closure(arg) for arg in args) or any(
-            _has_closure(v) for v in kwargs.values()
-        )
-        effective_use_cache = use_cache and not has_closures
+        effective_use_cache = use_cache
 
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
@@ -198,16 +192,6 @@ def _filter_tensor_args(args):
         tensor_args.append(arg)
 
     return tensor_args
-
-
-def _has_closure(arg):
-    """Check if a callable has non-empty closures (captured variables)."""
-    return (
-        callable(arg)
-        and hasattr(arg, "__closure__")
-        and arg.__closure__ is not None
-        and len(arg.__closure__) > 0
-    )
 
 
 def hash_module(module, external_kernels=None, target_arch=None):

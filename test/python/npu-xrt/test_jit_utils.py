@@ -24,6 +24,7 @@ from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
 from aie.utils.jit import hash_module
 from aie.utils.compile.utils import compile_external_kernel
+from aie.utils.compile.cache.utils import _create_function_cache_key
 
 # ---------------------------------------------------------------------------
 # Session-scoped helpers
@@ -183,11 +184,13 @@ def test_compile_external_kernel_source_file(npu_target_arch):
     ):
         src = os.path.join(src_dir, "my_kernel.cc")
         with open(src, "w") as f:
-            f.write("""extern "C" {
+            f.write(
+                """extern "C" {
                 void my_kernel(int* a, int* b, int n) {
                     for (int i = 0; i < n; i++) b[i] = a[i] + 1;
                 }
-            }""")
+            }"""
+            )
 
         func = ExternalFunction("my_kernel", source_file=src)
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
@@ -235,3 +238,76 @@ def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
         with open(obj, "rb") as f:
             assert f.read() == b"placeholder"
+
+
+# ---------------------------------------------------------------------------
+# _create_function_cache_key: closure key collision fix
+#
+# Regression: closures differing only in captured value previously produced
+# identical keys because co_code/co_consts/co_names do not change when a
+# free variable changes.
+# ---------------------------------------------------------------------------
+
+
+def test_closure_cache_key_distinguishes_captured_values():
+    """_create_function_cache_key must produce different keys for closures
+    that capture different values."""
+
+    def make(v):
+        return lambda a: a + v
+
+    f1, f2 = make(1), make(2)
+    dummy_fn = lambda: None
+    key1 = _create_function_cache_key(dummy_fn, [f1], {})
+    key2 = _create_function_cache_key(dummy_fn, [f2], {})
+    assert key1 != key2
+
+
+# ---------------------------------------------------------------------------
+# End-to-end JIT closure test
+# ---------------------------------------------------------------------------
+
+_NUM_ELEMS = 1024
+_TILE_SIZE = 16
+_tile_ty = np.ndarray[(_TILE_SIZE,), np.dtype[np.int32]]
+_tensor_ty = np.ndarray[(_NUM_ELEMS,), np.dtype[np.int32]]
+
+
+@iron.jit(is_placed=False)
+def _transform(input_tensor, output_tensor, kernel_fn):
+    """JIT-compiled element-wise transform using a caller-supplied lambda."""
+    of_in = ObjectFifo(_tile_ty, name="in")
+    of_out = ObjectFifo(_tile_ty, name="out")
+
+    def core_body(of_in, of_out):
+        for _ in range_(_NUM_ELEMS // _TILE_SIZE):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            for i in range_(_TILE_SIZE):
+                elem_out[i] = kernel_fn(elem_in[i])
+            of_in.release(1)
+            of_out.release(1)
+
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
+    rt = Runtime()
+    with rt.sequence(_tensor_ty, _tensor_ty) as (A, B):
+        rt.start(worker)
+        rt.fill(of_in.prod(), A)
+        rt.drain(of_out.cons(), B, wait=True)
+    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+
+
+@pytest.mark.parametrize("add_value", [1, 2, 3])
+def test_jit_closure_parametrize(add_value):
+    """@jit must produce correct output for each distinct closure value.
+
+    Before the fix, all three parametrize cases shared the same in-memory
+    cache key (captured value was ignored), so only the first value ever
+    executed correctly.
+    """
+    input_tensor = iron.arange(_NUM_ELEMS, dtype=np.int32)
+    output_tensor = iron.zeros(_NUM_ELEMS, dtype=np.int32, device="npu")
+    _transform(input_tensor, output_tensor, lambda x: x + add_value)
+    np.testing.assert_array_equal(
+        output_tensor.numpy(), input_tensor.numpy() + add_value
+    )
