@@ -39,6 +39,7 @@ class Worker(ObjectFifoEndpoint):
         allocation_scheme: str = None,
         trace: int = None,
         trace_events: list = None,
+        dynamic_objfifo_lowering: bool = None,
     ):
         """Construct a Worker
 
@@ -52,6 +53,7 @@ class Worker(ObjectFifoEndpoint):
                 Will override any allocation scheme set on the tile given as placement.
             trace (int, optional): If >0, enable tracing for this worker.
             trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.
+            dynamic_objfifo_lowering (bool, optional): If True, enables dynamic ObjectFifo lowering for runtime-parameterized loop bounds. Defaults to None.
 
         Raises:
             ValueError: Parameters are validated.
@@ -59,6 +61,7 @@ class Worker(ObjectFifoEndpoint):
         self._tile = placement
         self._while_true = while_true
         self.stack_size = stack_size
+        self.dynamic_objfifo_lowering = dynamic_objfifo_lowering
         self.allocation_scheme = allocation_scheme
         if allocation_scheme:
             self._tile.allocation_scheme = allocation_scheme
@@ -143,7 +146,8 @@ class Worker(ObjectFifoEndpoint):
             l = lock(my_tile)
             barrier._add_worker_lock(l)
 
-        @core(my_tile, stack_size=self.stack_size)
+        @core(my_tile, stack_size=self.stack_size,
+              dynamic_objfifo_lowering=self.dynamic_objfifo_lowering)
         def core_body():
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)
