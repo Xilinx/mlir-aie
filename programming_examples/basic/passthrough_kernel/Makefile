@@ -98,9 +98,13 @@ build/generated_txn.h: build/aie2_lineBased_8b_${data_size}.mlir build/passThrou
 		--no-xchesscc --no-xbridge \
 		--txn-cpp-name=generated_txn.h $(<:%=../%)
 
-# Generate parameterized C++ TXN from dynamic MLIR.
+# Generate parameterized C++ TXN from dynamic Python design.
 # The generated function takes buffer_length as a runtime parameter.
-build/dynsize/generated_txn.h: ${srcdir}/test_dynamic_size.mlir
+build/dynsize/aie_dynamic.mlir: ${srcdir}/passthrough_kernel_dynamic.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+build/dynsize/generated_txn.h: build/dynsize/aie_dynamic.mlir
 	mkdir -p ${@D}
 	aie-translate --aie-generate-txn-cpp $< > $@
 
