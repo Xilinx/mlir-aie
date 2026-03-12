@@ -1,3 +1,5 @@
+"""High-level algorithm templates built on IRON (transform, for_each, etc.)."""
+
 # __init__.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.

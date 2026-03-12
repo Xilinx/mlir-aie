@@ -36,6 +36,7 @@ class NPUKernel:
         self._insts_path = insts_path
         self._kernel_name = kernel_name
         self._trace_config = trace_config
+        self._device_index = device_index
 
     @property
     def trace_config(self) -> TraceConfig | None:
@@ -88,7 +89,7 @@ class NPUKernel:
             **kwargs: Additional arguments passed to the runtime load_and_run method.
 
         Returns:
-            KernelResult: The result of the kernel execution.
+            The result returned by the runtime ``load_and_run`` call.
         """
         from . import DefaultNPURuntime
 

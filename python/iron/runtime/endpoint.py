@@ -17,7 +17,7 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     The placement of this Endpoint should be a Shim Tile.
     """
 
-    def __init__(self, placement: PlacementTile) -> RuntimeEndpoint:
+    def __init__(self, placement: PlacementTile) -> None:
         super().__init__(placement)
 
     def __eq__(self, other: object) -> bool:

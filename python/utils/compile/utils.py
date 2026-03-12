@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""Low-level helpers for compiling MLIR modules and external C++ kernels to NPU artifacts."""
+
 import logging
 import os
 import shutil
@@ -86,7 +88,7 @@ def compile_mlir_module(
     options=None,
 ):
     """
-    Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module.
+    Compile an MLIR module to instruction, PDI, and/or xclbin files using the aiecc module.
     This function supports only the Peano compiler.
     Parameters:
         mlir_module (str): MLIR module to compile.

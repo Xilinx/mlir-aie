@@ -1,3 +1,5 @@
+"""Device representations for supported AMD Ryzen AI NPU targets."""
+
 from .device import (
     Device,
     NPU1,

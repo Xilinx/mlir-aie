@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""Tensor factories, device helpers, and re-exports for the IRON runtime."""
+
 import logging
 import os
 

@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""Base class for objects that can be placed on a specific device tile."""
+
 from .device import Tile, PlacementTile
 
 
@@ -37,7 +39,7 @@ class Placeable:
         """Return the tile of the placeable object.
 
         Returns:
-            PlacementTile: The current placement of the object.
+            PlacementTile | None: The current placement of the object, or None if unplaced.
         """
         return self._tile
 
@@ -49,8 +51,9 @@ class AlreadyPlacedError(Exception):
         """Create an AlreadyPlacedError
 
         Args:
-            current_tile (Tile): The current placement tile
-            new_tile (Tile): The placement tile given for the second attempt to place the object.
+            cls (type): The class of the object that is already placed.
+            current_tile (Tile): The current placement tile.
+            new_tile (Tile): The placement tile given for the second attempt.
         """
         self.message = (
             f"{cls} already placed at {current_tile}; cannot place at {new_tile}"
