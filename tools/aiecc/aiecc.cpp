@@ -1334,14 +1334,23 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
   // Step 1: Convert vector to aievec (this is a pipeline, not a single pass)
   // Only add for AIE2 and later targets - AIE1 doesn't support
-  // target_backend=llvmir
+  // target-backend=llvmir
+  // NOTE: Use parsePassPipeline instead of buildConvertVectorToAIEVec because
+  // ConvertVectorToAIEVecOptions only propagates aie-target to its sub-pipeline
+  // options (canonicalize, lower, optimize) through parseFromString, not
+  // through direct member assignment. Without this, aie2p falls back to aie1
+  // patterns.
   std::string lowerTarget = aieTarget.lower();
   if (lowerTarget == "aie2" || lowerTarget == "aieml" ||
       lowerTarget == "aie2p") {
-    xilinx::aievec::ConvertVectorToAIEVecOptions vecOptions;
-    vecOptions.aieTarget = lowerTarget;
-    vecOptions.targetBackend = "llvmir";
-    xilinx::aievec::buildConvertVectorToAIEVec(pm, vecOptions);
+    std::string vecPipeline =
+        "convert-vector-to-aievec{aie-target=" + lowerTarget +
+        " target-backend=llvmir}";
+    if (failed(parsePassPipeline(vecPipeline, pm))) {
+      llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
+                      "pipeline\n";
+      return failure();
+    }
   }
 
   // Step 2: Lower affine
@@ -1685,8 +1694,13 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(createConvertFuncToLLVMPass(
       ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
-  // convert-to-llvm - use the generic conversion pass
-  pm.addPass(createConvertToLLVMPass());
+  // convert-to-llvm with dynamic=true to use DataLayoutAnalysis for proper
+  // index type conversion (matches the old Python aiecc's convert-to-llvm)
+  {
+    ConvertToLLVMPassOptions llvmOpts;
+    llvmOpts.useDynamic = true;
+    pm.addPass(createConvertToLLVMPass(llvmOpts));
+  }
   pm.addPass(createConvertVectorToLLVMPass());
   pm.addPass(createUBToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
@@ -1761,7 +1775,11 @@ static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(createFinalizeMemRefToLLVMConversionPass());
   pm.addPass(createConvertFuncToLLVMPass(
       ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
-  pm.addPass(createConvertToLLVMPass());
+  {
+    ConvertToLLVMPassOptions llvmOpts;
+    llvmOpts.useDynamic = true;
+    pm.addPass(createConvertToLLVMPass(llvmOpts));
+  }
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
 

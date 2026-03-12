@@ -16,7 +16,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-devicename ?= npu
+devicename ?= npu1
 targetname = mlir_trace_example
 
 in1_size = 16384 # in bytes
@@ -31,7 +31,7 @@ build/insts.bin: build/final.xclbin
 # Compile the AIE kernel
 build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
-ifeq ($(devicename),npu)
+ifeq ($(devicename),npu1)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 else ifeq ($(devicename),npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
@@ -52,14 +52,14 @@ build/aie_trace_from_py.mlir: ${srcdir}/aie_trace.py
 # Build xclbin from the mlir
 build/final.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 			--no-xchesscc --no-xbridge --dump-intermediates \
 			--aie-generate-npu-insts --npu-insts-name=insts.bin aie_trace.mlir
 
 # Build xclbin from Python-generated mlir
 build/final_py.xclbin: build/aie_trace_from_py.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 			--no-xchesscc --no-xbridge --dump-intermediates \
 			--aie-generate-npu-insts --npu-insts-name=insts_py.bin aie_trace_from_py.mlir
 

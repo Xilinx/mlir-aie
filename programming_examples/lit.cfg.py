@@ -139,7 +139,7 @@ LitConfigHelper.apply_config_to_lit(
 tools = [
     "aie-opt",
     "aie-translate",
-    "aiecc.py",
+    "aiecc",
     "ld.lld",
     "llc",
     "llvm-objdump",

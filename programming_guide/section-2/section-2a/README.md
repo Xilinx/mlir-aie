@@ -335,7 +335,7 @@ When an Object FIFO is initialized upon creation, the underlying synchronization
 
 **The remaining inputs of the Object FIFO are considered an advanced topic and are not required to understand the rest of this guide.**
 
-The `via_DMA` input of the Object FIFO is used mostly for debug or benchmarking purposes. It can be set to true to enforce that the lowered data movement configuration use the Direct Memory Access channels (or "DMAs") of the tiles. The DMAs are described further in the Advanced Topic section below. For further information about the Object FIFO lowering and how the `via_DMA` attribute influences it please see the sections of the MLIR-AIE [tutorials](../../../mlir_tutorials/) on communication using local memory or DMAs.
+The `via_DMA` input of the Object FIFO is used mostly for debug or benchmarking purposes. It can be set to true to enforce that the lowered data movement configuration use the Direct Memory Access channels (or "DMAs") of the tiles. The DMAs are described further in the Advanced Topic section below. For further information about the Object FIFO lowering and how the `via_DMA` attribute influences it please see the sections of the MLIR-AIE [tutorials](../../../mlir_exercises/) on communication using local memory or DMAs.
 
 The `plio` input is used to provide information about the data movement configuration to the Object FIFO lowering. When the Object FIFO is lowered the communication flows which are established between its tiles will be wired through a dedicated `plio` port.
 
@@ -343,15 +343,15 @@ The Object FIFO is a synchronized data movement primitive that couples dedicated
 
 ### Object FIFO Compiler Flags
 
-The Object FIFO lowering pass presents two compiler flags which are made available through the `aiecc.py` compiler pipeline. These flags enable the user to drive some of the lowering decisions which affect the complexity of the Worker code generated for object accesses, as well as what hardware capabilities will be leveraged for the data movement represented by the Object FIFOs.
+The Object FIFO lowering pass presents two compiler flags which are made available through the `aiecc` compiler pipeline. These flags enable the user to drive some of the lowering decisions which affect the complexity of the Worker code generated for object accesses, as well as what hardware capabilities will be leveraged for the data movement represented by the Object FIFOs.
 
 These flags are:
 - `dynamic-objFifos`: when enabled, the compiler will generated MLIR `scf.index_switch` operations to keep track of the number of acquired objects versus released ones during the execution of a Worker. This feature is particularly useful when these numbers differ between iterations of a Worker's execution, as it enables dynamic runtime resolution of the number of accessed objects.
 - `packet-sw-objFifos`: when enabled, the compiler will configure the AXI stream data movement using packet switched flows (instead of the default circuit switched flows). This feature is in the early stages of development and currently only supports Object FIFOs between Workers, and between Workers and external memory.
 
-These flags can be combined with calls to `aiecc.py`, or directly to the Object FIFO lowering pass, as follows:
+These flags can be combined with calls to `aiecc`, or directly to the Object FIFO lowering pass, as follows:
 ```
-aiecc.py --packet-sw-objFifos <path to MLIR design file>
+aiecc --packet-sw-objFifos <path to MLIR design file>
 aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos" <path to MLIR design file>
 ```
 
@@ -387,9 +387,9 @@ The intent of this high-level view showcases that the DMA is able to interact wi
 > **NOTE:**  It is possible to directly configure the DMAs without the use of the Object FIFO primitive to setup data movement between tiles. This is described in [Section 2g](../section-2g/README.md).
 
 ## <u>Exercises</u>
-1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[2, 3]`. With the advanced knowledge on the topic of DMAs, do you think those are the minimal depths required for the design to execute without deadlocking? <img src="../../../mlir_tutorials/images/answer1.jpg" title="No. In the case of producer A, only a single object needs to be allocated, in which case the compute core and the DMA will have to wait while the other party respectively computes or moves the data. This is similar for consumer B, where a depth of 2 would suffice. So the minimal depths for the design to run without deadlocking are [1, 2]." height=25>
+1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[2, 3]`. With the advanced knowledge on the topic of DMAs, do you think those are the minimal depths required for the design to execute without deadlocking? <img src="../../../mlir_exercises/images/answer1.jpg" title="No. In the case of producer A, only a single object needs to be allocated, in which case the compute core and the DMA will have to wait while the other party respectively computes or moves the data. This is similar for consumer B, where a depth of 2 would suffice. So the minimal depths for the design to run without deadlocking are [1, 2]." height=25>
 
-2. Do you think the depths `[2, 3]` are sufficient for both compute cores on A and B to execute concurrently with their DMAs? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
+2. Do you think the depths `[2, 3]` are sufficient for both compute cores on A and B to execute concurrently with their DMAs? <img src="../../../mlir_exercises/images/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
 
 -----
 [[Up](..)] [[Next - Section 2b](../section-2b/)]
