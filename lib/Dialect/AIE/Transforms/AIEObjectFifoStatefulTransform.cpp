@@ -626,8 +626,16 @@ struct AIEObjectFifoStatefulTransformPass
             if (op.name() != fifoIn.name())
               return;
           } else {
-            if (fifoOut.name() != op.name())
-              return;
+            // When output has padDimensions, MemTile buffer should use
+            // input (smaller) size — padding is applied on-the-fly by DMA
+            bool outHasPadding = fifoOut.getPadDimensions().has_value();
+            if (outHasPadding) {
+              if (op.name() != fifoIn.name())
+                return;
+            } else {
+              if (fifoOut.name() != op.name())
+                return;
+            }
           }
         }
       }
@@ -1142,7 +1150,12 @@ struct AIEObjectFifoStatefulTransformPass
                 llvm::cast<AIEObjectFifoType>(target.getElemType());
             auto targetElemType =
                 llvm::cast<MemRefType>(targetFifo.getElementType());
-            lenOut = targetElemType.getNumElements();
+            int targetLen = targetElemType.getNumElements();
+            // Only override when target is larger or equal. When target
+            // is smaller (padDimensions size mismatch after buffer
+            // ownership change), op's own element count is correct.
+            if (targetLen >= lenOut)
+              lenOut = targetLen;
           }
         }
 
