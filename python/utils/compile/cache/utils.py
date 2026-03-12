@@ -7,10 +7,78 @@
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 import contextlib
 import fcntl
+import hashlib
 import os
+import pickle
 import time
 
 from aie.utils.hostruntime.tensor_class import Tensor
+
+
+def _cell_val_to_key(val):
+    """Convert a single closure cell value to a stable, hashable key component.
+
+    Priority:
+    1. value-hash   — cheap O(1) path for types with a proper value-based
+                      __hash__ (int, str, float, tuple, frozenset, and any
+                      custom immutable type).
+    2. pickle       — serialises full object state (__dict__ / __getstate__)
+                      for mutable objects whose identity-based __hash__ would
+                      miss mutations.
+    3. pickle_dict  — for objects whose class is not picklable by name (e.g.
+                      locally-defined classes), pickle __dict__ directly; it
+                      is always a plain dict and therefore always picklable.
+    4. repr         — last resort for non-picklable, identity-hashable objects.
+    """
+    # 1. Value-based hash: object.__hash__ is identity-based (id >> 4), so any
+    #    override is contractually value-based and cheap.
+    h = type(val).__hash__
+    if h is not None and h is not object.__hash__:
+        try:
+            return ("hash", hash(val))
+        except Exception:
+            pass
+
+    # 2. pickle: captures __dict__ and custom __getstate__ regardless of whether
+    #    __eq__ / __hash__ / __repr__ are defined.  If the object itself is not
+    #    picklable (e.g. locally-defined class), fall back to pickling __dict__,
+    #    which is always a plain dict and therefore always picklable.
+    try:
+        return ("pickle", hashlib.sha256(pickle.dumps(val)).hexdigest())
+    except Exception:
+        pass
+    if hasattr(val, "__dict__"):
+        try:
+            return (
+                "pickle_dict",
+                hashlib.sha256(pickle.dumps(val.__dict__)).hexdigest(),
+            )
+        except Exception:
+            pass
+
+    # 3. repr fallback
+    return ("repr", repr(val))
+
+
+def _closure_key(fn):
+    """Return a hashable representation of a callable's closure cell contents.
+
+    Uses _cell_val_to_key so that mutable objects (including those with no
+    custom __eq__ / __hash__ / __repr__) produce distinct keys when their
+    state changes.
+    """
+    if not fn.__closure__:
+        return ()
+    names = fn.__code__.co_freevars
+    parts = []
+    for name, cell in zip(names, fn.__closure__):
+        try:
+            val = cell.cell_contents
+        except ValueError:
+            parts.append((name, "<empty>"))
+            continue
+        parts.append((name, _cell_val_to_key(val)))
+    return tuple(parts)
 
 
 def _create_function_cache_key(function, args, kwargs):
@@ -35,8 +103,15 @@ def _create_function_cache_key(function, args, kwargs):
                 # Use bytecode and constants hash for Python functions/lambdas
                 code = arg.__code__
                 defaults = arg.__defaults__ if hasattr(arg, "__defaults__") else None
+                closure_vals = _closure_key(arg)
                 func_hash = hash(
-                    (code.co_code, code.co_consts, code.co_names, defaults)
+                    (
+                        code.co_code,
+                        code.co_consts,
+                        code.co_names,
+                        defaults,
+                        closure_vals,
+                    )
                 )
                 signature_parts.append(f"function_{func_hash}")
             else:
@@ -59,8 +134,15 @@ def _create_function_cache_key(function, args, kwargs):
                 defaults = (
                     value.__defaults__ if hasattr(value, "__defaults__") else None
                 )
+                closure_vals = _closure_key(value)
                 func_hash = hash(
-                    (code.co_code, code.co_consts, code.co_names, defaults)
+                    (
+                        code.co_code,
+                        code.co_consts,
+                        code.co_names,
+                        defaults,
+                        closure_vals,
+                    )
                 )
                 signature_parts.append(f"{key}_function_{func_hash}")
             else:
