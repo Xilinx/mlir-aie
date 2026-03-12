@@ -45,12 +45,8 @@ def main():
     argparser.add_argument("-M", type=int, default=128)
     argparser.add_argument("-K", type=int, default=128)
     argparser.add_argument("-N", type=int, default=128)
-    argparser.add_argument(
-        "--dtype_in", type=str, choices=["bf16"], default="bf16"
-    )
-    argparser.add_argument(
-        "--dtype_out", type=str, choices=["f32"], default="f32"
-    )
+    argparser.add_argument("--dtype_in", type=str, choices=["bf16"], default="bf16")
+    argparser.add_argument("--dtype_out", type=str, choices=["f32"], default="f32")
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
@@ -178,9 +174,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
             # Set up tracing
             tiles_to_trace = [compute_tile2]
             if enable_tracing:
-                trace_utils.configure_packet_tracing_flow(
-                    tiles_to_trace, shim_tile
-                )
+                trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
             # Core body with dynamic loop bounds via RTP
             @core(
@@ -245,12 +239,8 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                         with InsertionPoint(k_after):
                             k_iter = k_after.arguments[0]
 
-                            elem_in_a = memA.acquire(
-                                ObjectFifoPort.Consume, 1
-                            )
-                            elem_in_b = memB.acquire(
-                                ObjectFifoPort.Consume, 1
-                            )
+                            elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
+                            elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
                             matmul(elem_in_a, elem_in_b, elem_out)
                             memA.release(ObjectFifoPort.Consume, 1)
                             memB.release(ObjectFifoPort.Consume, 1)
@@ -331,9 +321,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                             tile_row_block * rows_per_block
                             + pingpong * rows_per_block // 2
                         )
-                        num_tile_rows = min(
-                            [rows_per_block // 2, M_div_m - row_base]
-                        )
+                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
                         if num_tile_rows <= 0:
                             break
 
@@ -358,15 +346,11 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                             a_tasks.append(a_task)
 
                             # -- B --
-                            b_task = shim_dma_single_bd_task(
-                                inB, B, tap=b_tap
-                            )
+                            b_task = shim_dma_single_bd_task(inB, B, tap=b_tap)
                             dma_start_task(b_task)
                             b_tasks.append(b_task)
 
-                        if tile_row_block > 0 or (
-                            tile_row_block == 0 and pingpong > 0
-                        ):
+                        if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
                             dma_await_task(c_tasks[-2])
                             dma_free_task(a_tasks[-2])
                             dma_free_task(b_tasks[-2])

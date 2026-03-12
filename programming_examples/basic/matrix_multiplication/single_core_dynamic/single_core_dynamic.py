@@ -23,7 +23,13 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import ForOp, WhileOp, condition, yield_
-from aie.dialects.arith import constant as arith_constant, CmpIOp, CmpIPredicate, AddIOp, IndexCastOp
+from aie.dialects.arith import (
+    constant as arith_constant,
+    CmpIOp,
+    CmpIPredicate,
+    AddIOp,
+    IndexCastOp,
+)
 from aie.dialects.memref import LoadOp
 from aie.extras.dialects.arith import constant
 import aie.utils.trace as trace_utils
@@ -42,15 +48,13 @@ def main():
     argparser.add_argument("-M", type=int, default=128)
     argparser.add_argument("-K", type=int, default=128)
     argparser.add_argument("-N", type=int, default=128)
-    argparser.add_argument(
-        "--dtype_in", type=str, choices=["bf16"], default="bf16"
-    )
-    argparser.add_argument(
-        "--dtype_out", type=str, choices=["f32"], default="f32"
-    )
+    argparser.add_argument("--dtype_in", type=str, choices=["bf16"], default="bf16")
+    argparser.add_argument("--dtype_out", type=str, choices=["f32"], default="f32")
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
-    my_matmul(args.dev, args.M, args.K, args.N, args.dtype_in, args.dtype_out, args.trace_size)
+    my_matmul(
+        args.dev, args.M, args.K, args.N, args.dtype_in, args.dtype_out, args.trace_size
+    )
 
 
 def ceildiv(a, b):
@@ -171,8 +175,12 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                 trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
             # Core body with dynamic loop bounds via RTP
-            @core(compute_tile2, f"mm_{m}x{k}x{n}.o", stack_size=0xD00,
-                  dynamic_objfifo_lowering=True)
+            @core(
+                compute_tile2,
+                f"mm_{m}x{k}x{n}.o",
+                stack_size=0xD00,
+                dynamic_objfifo_lowering=True,
+            )
             def core_body():
                 i32_ty = IntegerType.get_signless(32)
                 idx_ty = IndexType.get()
@@ -258,15 +266,18 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                         coretile_events=[
                             trace_utils.events.PortEvent(
                                 trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                                port_number=1, master=True,
+                                port_number=1,
+                                master=True,
                             ),
                             trace_utils.events.PortEvent(
                                 trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                                port_number=2, master=True,
+                                port_number=2,
+                                master=True,
                             ),
                             trace_utils.events.PortEvent(
                                 trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                                port_number=1, master=False,
+                                port_number=1,
+                                master=False,
                             ),
                             trace_utils.events.CoreEvent.INSTR_EVENT_0,
                             trace_utils.events.CoreEvent.INSTR_EVENT_1,

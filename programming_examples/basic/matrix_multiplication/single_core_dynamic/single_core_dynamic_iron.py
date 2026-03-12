@@ -38,12 +38,8 @@ def main():
     argparser.add_argument("-M", type=int, default=128)
     argparser.add_argument("-K", type=int, default=128)
     argparser.add_argument("-N", type=int, default=128)
-    argparser.add_argument(
-        "--dtype_in", type=str, choices=["bf16"], default="bf16"
-    )
-    argparser.add_argument(
-        "--dtype_out", type=str, choices=["f32"], default="f32"
-    )
+    argparser.add_argument("--dtype_in", type=str, choices=["bf16"], default="bf16")
+    argparser.add_argument("--dtype_out", type=str, choices=["f32"], default="f32")
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     module = my_matmul(
