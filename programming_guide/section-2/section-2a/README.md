@@ -38,7 +38,7 @@ class ObjectFifo(Resolvable):
 ```
 The Object FIFO functions as an ordered buffer that has a count of `depth` objects; by default it is set to `2` which represents double or ping-pong buffering. All objects in an Object FIFO have to be of the same `obj_type` datatype. The datatype is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `np.ndarray[(16,), np.dtype[np.int32]]`). The `name` input must be unique and can either be given by the user or left empty for the compiler to complete. It is required for subsequent lowering steps in the compiler flow.
 
-As it traverses the AIE array, data can be restructured using the capabilities of Direct Memory Access channels (DMAs). These components are explained in more detail [here](./README.md#advanced-topic-data-movement-accelerators), however as a quick introduction, DMAs exist at every tile in the array and they are responsible for taking data arriving on the AXI stream interconnect and writing it into the tile's local memory, and inversely. DMAs can be given access patterns to express the order in which data should be sent onto the AXI stream by the Object FIFO's producer (using the `dims_to_stream` input) or read from it by each consumer (using the `dims_from_stream_per_cons` input). These inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)). The `plio` input can be used when one of the Object FIFO's endpoints is a Shim tile to indicate to the compiler that the communication should be wired through a dedicated `plio` port.
+As it traverses the AIE array, data can be restructured using the capabilities of Direct Memory Access channels (DMAs). These components are explained in more detail [here](./README.md#advanced-topic-direct-memory-access-channels), however as a quick introduction, DMAs exist at every tile in the array and they are responsible for taking data arriving on the AXI stream interconnect and writing it into the tile's local memory, and inversely. DMAs can be given access patterns to express the order in which data should be sent onto the AXI stream by the Object FIFO's producer (using the `dims_to_stream` input) or read from it by each consumer (using the `dims_from_stream_per_cons` input). These inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)). The `plio` input can be used when one of the Object FIFO's endpoints is a Shim tile to indicate to the compiler that the communication should be wired through a dedicated `plio` port.
 
 Below is an example of how to initialize an Object FIFO named `in` of datatype `<256xi32>` with depth `3`:
 ```python
@@ -229,7 +229,7 @@ def core_fn(of_in, of_out, test_func, test_func2):
         of_in.release(1)
 
         elemOut = of_out.acquire(1)
-        test_func2(elemIn, line_size)
+        test_func2(elemOut, line_size)
         of_out.release(1)
 
 # Create workers to perform the tasks
