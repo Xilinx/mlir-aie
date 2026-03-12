@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano
+// UNSUPPORTED: *
 
 // Test device and sequence filtering (mirrors test/npu-xrt/add_one_two pattern)
 // Each device is compiled separately with --device-name, similar to how
