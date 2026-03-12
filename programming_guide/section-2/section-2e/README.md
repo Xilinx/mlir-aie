@@ -82,7 +82,7 @@ The Worker of this simple design acquires one object of each Object FIFO, adds `
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
     elem_out = of_out.acquire(1)
-    for i in range_(data_size):
+    for i in range_(tile_size):
         elem_out[i] = elem_in[i] + 1
     of_in.release(1)
     of_out.release(1)

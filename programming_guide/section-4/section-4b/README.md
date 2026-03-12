@@ -56,7 +56,7 @@ An alternative to specifying the array of workers to trace would be to instead a
 ```
 Here, we add `trace=1` to indicate that worker should be traced. And we can omit the `workers` argument from the `enable_trace` call in the runtime sequence.
 
->**NOTE**: The `workers` argument in the runtime sequence `enable_trace` always takes precendence over the `trace=1` argument of the woker. So if you define both, we will go with the definition of the `enable_trace` argument.
+>**NOTE**: The `workers` argument in the runtime sequence `enable_trace` always takes precedence over the `trace=1` argument of the worker. So if you define both, we will go with the definition of the `enable_trace` argument.
 
 Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically. 
 

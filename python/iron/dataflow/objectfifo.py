@@ -177,7 +177,7 @@ class ObjectFifo(Resolvable):
         dims_from_stream: list[Sequence[int]] | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
-        will return a new consumer handle every time is it called.
+        will return a new consumer handle every time it is called.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
