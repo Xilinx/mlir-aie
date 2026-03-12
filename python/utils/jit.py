@@ -65,6 +65,7 @@ def jit(function=None, is_placed=True, use_cache=True):
         cache_key = _create_function_cache_key(function, args, kwargs)
         if effective_use_cache and cache_key in _compiled_kernels:
             cached_kernel = _compiled_kernels[cache_key]
+            assert cached_kernel is not None
             # Filter out non-tensor arguments (ExternalFunction, scalars)
             # Only tensor args should be passed to the kernel
             tensor_args = _filter_tensor_args(args)

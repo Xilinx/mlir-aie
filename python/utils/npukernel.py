@@ -93,6 +93,8 @@ class NPUKernel:
         """
         from . import DefaultNPURuntime
 
+        if DefaultNPURuntime is None:
+            raise Exception("Cannot run kernel; DefaultNPURuntime not set.")
         return DefaultNPURuntime.load_and_run(
             self,
             list(args),

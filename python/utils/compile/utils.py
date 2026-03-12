@@ -11,6 +11,7 @@ import logging
 import os
 import shutil
 import subprocess
+from pathlib import Path
 import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 from .link import merge_object_files
@@ -80,11 +81,11 @@ def compile_cxx_core_function(
 
 def compile_mlir_module(
     mlir_module: str,
-    insts_path: str | None = None,
-    pdi_path: str | None = None,
-    xclbin_path: str | None = None,
+    insts_path: str | Path | None = None,
+    pdi_path: str | Path | None = None,
+    xclbin_path: str | Path | None = None,
     verbose=False,
-    work_dir: str | None = None,
+    work_dir: str | Path | None = None,
     options=None,
 ):
     """
