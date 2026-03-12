@@ -60,6 +60,6 @@ dynamic_single_core.exe: ${srcdir}/test_dynamic.cpp ${srcdir}/dynamic_gemm_txn.h
 
 .PHONY: run_dynamic
 run_dynamic: dynamic_single_core.exe ${xclbin_target}
-	./$< -x ${xclbin_target} -k MLIR_AIE -M 32 -K 32 -N 32 -v 1
-	./$< -x ${xclbin_target} -k MLIR_AIE -M 64 -K 64 -N 64 -v 1
-	./$< -x ${xclbin_target} -k MLIR_AIE -M ${M} -K ${K} -N ${N} -v 1
+	./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M 32 -K 32 -N 32 -v 1
+	./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M 64 -K 64 -N 64 -v 1
+	./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M ${M} -K ${K} -N ${N} -v 1
