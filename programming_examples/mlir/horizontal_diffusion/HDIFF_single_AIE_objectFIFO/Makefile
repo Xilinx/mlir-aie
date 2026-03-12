@@ -28,11 +28,11 @@ f32_chess:
 
 
 i32.elf: 
-	aiecc.py --sysroot=$(SYSROOT) --host-target=aarch64-linux-gnu aie.mlir \
+	aiecc --sysroot=$(SYSROOT) --host-target=aarch64-linux-gnu aie.mlir \
 	-I$(AIE_RUNTIME_LIB) $(AIE_RUNTIME_LIB)/test_library.cpp ./test.cpp -o test.elf
 
 f32.elf: 
-	aiecc.py --sysroot=$(SYSROOT) --host-target=aarch64-linux-gnu aie_fp32.mlir \
+	aiecc --sysroot=$(SYSROOT) --host-target=aarch64-linux-gnu aie_fp32.mlir \
 	-I$(AIE_RUNTIME_LIB) $(AIE_RUNTIME_LIB)/test_library.cpp ./test.cpp -o test.elf
 
 
