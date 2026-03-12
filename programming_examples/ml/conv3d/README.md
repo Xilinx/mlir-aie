@@ -1,94 +1,73 @@
 # Conv3D - 3D Convolution for Video/Volumetric Data
 
-High-performance 3D convolution on AMD Ryzen AI NPU using vectorized AIE intrinsics and spatial parallelism.
+High-performance 3D convolution on AMD Ryzen AI NPU with width tiling for large frames (up to 1024×1024).
 
 ## Performance
 
-### NPU vs CPU (PyTorch)
+### NPU vs CPU — Steady-State (Ryzen AI 9 HX 370)
 
-| Volume | PyTorch CPU | NPU 1-core | NPU Multi-core | Winner |
-|--------|-------------|------------|----------------|--------|
-| 8×8×8 (tiny) | **50µs** | 520µs | 380µs (2c) | **CPU** (cache) |
-| 3×32×32 (small) | **150µs** | 1,066µs | ~700µs (2c) | **CPU** (transfer) |
-| 3×128×128 (video) | ~2,400µs | ~4,000µs | **~1,200µs (8c)** | **NPU** (2×) 🚀 |
-| 16×112×112 (HD) | ~12,000µs | - | **~6,000µs (8c)** | **NPU** (2×) 🚀 |
+| Volume (D×H×W) | CPU 12T (f32) | NPU 32-core (u8) | Speedup |
+|-----------------|---------------|-------------------|---------|
+| 8×256×256       | 108 ms        | **4.5 ms**        | **24×** |
+| 8×512×512       | 40 ms         | **16.8 ms**       | **2.4×** |
+| 8×1024×1024     | 148 ms        | **8.4 ms**        | **18×** |
 
-*Actual measurements for 8×8×8 and 3×32×32. Video sizes (128×128, 112×112) are extrapolated estimates.*
+NPU times are steady-state (warmup excluded). CPU uses PyTorch float32, 12 threads.
 
-**Key Insight:** NPU wins for realistic video workloads (≥112×112). CPU wins for tiny volumes due to zero transfer overhead.
+### Scaling (8-core IRON vs 32-core Memtile)
 
-### Multi-Core Scaling
-
-**32×32 volume:** 2-core = 1.56× speedup (78% efficiency) - sweet spot for medium volumes
+| Volume | 8-core | 32-core | Speedup |
+|--------|--------|---------|---------|
+| 8×256×256 | 17.7 ms | 4.5 ms | 3.9× |
+| 8×512×512 | 66.5 ms | 16.8 ms | 4.0× |
 
 ## Quick Start
 
 ```bash
 source ../../../ironenv/bin/activate
+source ../../../utils/env_setup.sh ../../../ /opt/xrt
 
-# Single-core (best for small volumes)
-make
-make run_py
+# 8-core, 64×64 (no tiling needed)
+make massively_parallel_8core depth=8 height=64 width=64
+python3 test.py -x build/mp_8core.xclbin -i build/mp_8core_insts.bin -k MLIR_AIE -d 8 -ht 64 -wd 64
 
-# 2-core spatial parallelism
-python3 conv3d_spatial.py npu2_2col 8 32 32 8 8 > build/spatial.mlir
-cd build && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts \
-    --no-compile-host --no-xchesscc --no-xbridge \
-    --xclbin-name=spatial.xclbin --npu-insts-name=spatial.bin spatial.mlir
-cd .. && python3 test_spatial.py build/spatial.xclbin build/spatial.bin 2
+# 32-core, 512×512 (width tiling, memtile split/join)
+make memtile_32core_tiled depth=8 width=512 height=512
+python3 test.py -x build/mt32_tiled.xclbin -i build/mt32_tiled_insts.bin -k MLIR_AIE -d 8 -ht 512 -wd 512
 ```
 
-## Features
+## Designs
 
-- ✅ 3D video convolution (processes temporal sequences)
-- ✅ Vectorized AIE intrinsics: `aie::mmul<4,8,8,uint8,int8>`
-- ✅ Spatial parallelism: 1-32 cores
-- ✅ Validated against PyTorch & OpenCV
-- ⚡ 30× faster than scalar, 2-3× faster than CPU for video workloads
+| File | Cores | Tiling | Best For |
+|------|-------|--------|----------|
+| `conv3d.py` | 1-4 | None | Small volumes (≤64×64) |
+| `conv3d_massively_parallel.py` | 1-8 | Auto width tiling | Medium frames (≤512×512) |
+| `conv3d_32core_tiled_fixed.py` | 32 | Width tiling + memtile split/join | Large frames (512-1024) |
 
-**Implementation:**
-- Single-core: 3×3×3 kernel with depth sliding window
-- Multi-core: 3×3×1 kernel (2D per frame) for parallel scalability
+### Width Tiling
 
-## Implementation
+For large frames, per-core buffers exceed L1 (64KB). Width tiling splits each row into tiles that fit:
 
-| File | Description | Best For |
-|------|-------------|----------|
-| `conv3d.py` | Single-core vectorized | Volumes ≤32×32 |
-| `conv3d_spatial.py` | 2-8 core spatial parallelism | Video processing (≥112×112) |
-| `test.py` | PyTorch validation | Development/testing |
+- `tile_width` auto-calculated as largest power-of-2 fitting L1
+- Core loop: `for depth: for tile:` with 4D strided DMA
+- Backward compatible: when `tile_width >= width`, no tiling occurs
 
-## Architecture
+### 32-Core Memtile Architecture
 
-**Data Layout:**
-- Input: `D{C/8}H{C8}W` (depth-major, channel-grouped)
+- 8 columns × 4 rows, memtile split/join for data distribution
+- Input: shim → memtile (combined) → split → 4 cores per column
+- Output: 4 cores → join → memtile (combined) → shim
+- Proper buffer sizing: L1 77%, memtile 37% at default config
+- Per-plane DMA BDs for frames >512×512 (shim stride limit)
+
+## Data Layout
+
+- Input/Output: `D{C/8}HW{C8}` — kernel expects `(y*W+x)*8+ic` indexing
 - Weights: `{O/8}{I/8}KDHW{I8}{O8}` (3×3×3 kernel)
-- Output: `D{C/8}H{C8}W`
 
-**Spatial Parallelism:**
-- Height dimension split across cores
-- Shared weights (broadcast)
-- Independent shim DMA per column
-- No complex conditionals (clean MLIR generation)
+## Technical Notes
 
-## Use Cases
-
-**When to use NPU:**
-- Video processing (16-32 frames, 112×112+)
-- Batch inference
-- Sustained throughput workloads
-- Power-constrained deployments
-
-**When to use CPU:**
-- Single-frame inference (small volumes)
-- Development/debugging
-- Volumes <128×128
-
-## Technical Details
-
-- **Kernel:** 3×3×1 (2D conv per depth plane for stability)
-- **Quantization:** Int8 with 16× tolerance
-- **Border:** Replication padding
-- **Cores:** Up to 8 cores with parallel DMA
-
-See test files for complete examples and validation.
+- **Kernel:** 3×3×1 per depth plane, 2D conv with replicate padding
+- **Quantization:** uint8 activations, int8 weights, scale=10
+- **DMA stride limit:** Shim supports 20-bit word strides (~4MB). Frames >512×512 use per-plane BD splits.
+- **BD limit:** Memtile has 24 BDs per channel. FIFO depth=2 with 4-way split/join uses 16 BDs.
