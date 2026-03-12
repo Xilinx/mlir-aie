@@ -1,4 +1,4 @@
-include ../../../../mlir_tutorials/makefile-common
+include ../../../../mlir_exercises/makefile-common
 
 .PHONY: all clean
 
