@@ -1,0 +1,259 @@
+//===- dynamic_gemm_txn.h - Dynamic GEMM TXN generation ---------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2025-2026 AMD Inc.
+//
+//===----------------------------------------------------------------------===//
+//
+// Generates NPU TXN instructions at runtime for a single-core bf16->f32 GEMM
+// with 32x32x32 tiles. M, K, N are runtime parameters (multiples of 32).
+//
+// The XCLBIN is compiled once (from single_core_dynamic.py) with
+// dynamic_objfifo_lowering=true and scf.while loops reading RTP.
+// This header generates the DMA instruction sequence for any M/K/N.
+//
+// Hardware constants are extracted from the static lowering of the design.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef DYNAMIC_GEMM_TXN_H
+#define DYNAMIC_GEMM_TXN_H
+
+#include "aie/Runtime/TxnEncoding.h"
+#include <cassert>
+#include <cstdint>
+#include <vector>
+
+namespace dynamic_gemm {
+
+// Fixed tile sizes
+static constexpr uint32_t m = 32, k = 32, n = 32;
+
+// Hardware constants from static lowering of single_core_dynamic.py (NPU2)
+static constexpr uint32_t RTP_ADDR_BASE = 2098688u; // tile(0,2) + 0x600
+static constexpr uint32_t BD_BASE = 118784u;         // 0x1D000, shim BD 0
+static constexpr uint32_t BD_STRIDE = 32u;            // 8 words * 4 bytes
+
+// DMA control/queue registers for shim tile (0,0)
+static constexpr uint32_t S2MM_CTRL = 119296u;        // S2MM ch0 control register
+static constexpr uint32_t S2MM_QUEUE = 119300u;       // S2MM ch0 task queue
+static constexpr uint32_t MM2S_QUEUE_CH0 = 119316u;   // MM2S ch0 task queue
+static constexpr uint32_t MM2S_QUEUE_CH1 = 119324u;   // MM2S ch1 task queue
+
+// S2MM control register values (controller_id=15, from XCLBIN PDI)
+static constexpr uint32_t S2MM_CTRL_VAL = 0x00000f00u;
+static constexpr uint32_t S2MM_CTRL_MASK = 0x00001f00u;
+
+static constexpr aie_runtime::TxnDeviceInfo NPU2_INFO = {0, 1, 4, 6, 8, 1};
+
+/// Encode 8 BD words for an NPU2 shim DMA 4D strided transfer.
+///
+/// sizes[4] and strides[4] follow the npu_dma_memcpy_nd convention:
+///   index 0 = outermost (iteration/D3), index 3 = innermost (D0)
+///   Values are in ELEMENT units.
+///
+/// elem_bits: element bit width (16 for bf16, 32 for f32).
+///
+/// BD word layout (NPU2 shim tile):
+///   [0] buffer_length  [1] base_addr  [2] packet_ctrl
+///   [3] D0 size|stride [4] burst|D1 size|stride
+///   [5] AXCache|D2 stride  [6] iter size|stride  [7] valid_bd|locks
+inline void encode_bd_words(uint32_t *words,
+                            const uint32_t sizes[4],
+                            const uint32_t strides[4],
+                            uint32_t elem_bits) {
+  constexpr uint32_t addr_gran = 32; // address granularity in bits
+
+  // D0 (innermost)
+  uint32_t d0_size = sizes[3] * elem_bits / addr_gran;
+  uint32_t d0_stride =
+      (strides[3] * elem_bits >= addr_gran)
+          ? (strides[3] * elem_bits / addr_gran - 1)
+          : 0;
+
+  // D1 (size always written; stride only when size > 1)
+  uint32_t d1_size = sizes[2];
+  uint32_t d1_stride =
+      (sizes[2] > 1) ? (strides[2] * elem_bits / addr_gran - 1) : 0;
+
+  // D2 (size not available on shim tiles, only stride)
+  uint32_t d2_stride =
+      (sizes[1] > 1) ? (strides[1] * elem_bits / addr_gran - 1) : 0;
+
+  // Iteration (D3/outermost)
+  // When stride == 0: "repeat" mode — iteration fields are 0,
+  // the repeat is encoded in the queue push repeat_count instead.
+  uint32_t iter_size = 0, iter_stride = 0;
+  if (sizes[0] > 1 && strides[0] > 0) {
+    iter_size = sizes[0] - 1;
+    iter_stride = strides[0] * elem_bits / addr_gran - 1;
+  }
+
+  // Buffer length = product of inner 3 dimensions in 32-bit words
+  uint32_t buf_len = d0_size;
+  if (sizes[2] > 0)
+    buf_len *= sizes[2];
+  if (sizes[1] > 0)
+    buf_len *= sizes[1];
+
+  constexpr uint32_t burst_len = 3; // NPU2 burst length encoding
+  constexpr uint32_t axcache = 2;   // NoC upsizing
+
+  words[0] = buf_len;
+  words[1] = 0; // patched by address_patch
+  words[2] = 0; // no packet
+  words[3] = ((d0_size & 0x3FFu) << 20) | (d0_stride & 0xFFFFFu);
+  words[4] = ((burst_len & 0x3u) << 30) | ((d1_size & 0x3FFu) << 20) |
+             (d1_stride & 0xFFFFFu);
+  words[5] = ((axcache & 0xFu) << 24) | (d2_stride & 0xFFFFFu);
+  words[6] = ((iter_size & 0x3Fu) << 20) | (iter_stride & 0xFFFFFu);
+  words[7] = (1u << 25); // valid_bd
+}
+
+/// Build queue push register value.
+/// repeat_count = outermost dimension size - 1 (hw convention).
+/// issue_token: set for S2MM output to get completion notification.
+inline uint32_t queue_push_val(uint32_t bd_id, uint32_t repeat_count,
+                               bool issue_token = false) {
+  uint32_t val = (bd_id & 0xFu) | ((repeat_count & 0xFFu) << 16);
+  if (issue_token)
+    val |= (1u << 31);
+  return val;
+}
+
+/// Generate TXN instructions for a dynamic single-core GEMM.
+/// M, K, N must be positive multiples of 32.
+///
+/// Follows the static compiler's pattern: process M tile rows in blocks of
+/// rows_per_block (4), with pingpong (2 rows per half-block). Each half-block
+/// gets its own C BD and S2MM push with token, plus a sync to wait for the
+/// previous half-block's completion.
+inline std::vector<uint32_t> generate_gemm_txn(int M, int K, int N) {
+  assert(M > 0 && K > 0 && N > 0);
+  assert(M % m == 0 && K % k == 0 && N % n == 0);
+
+  const uint32_t M_div_m = M / m;
+  const uint32_t K_div_k = K / k;
+  const uint32_t N_div_n = N / n;
+  const uint32_t tiles = M_div_m * N_div_n;
+
+  constexpr uint32_t rows_per_block = 4;
+
+  std::vector<uint32_t> txn;
+  uint32_t op_count = 0;
+
+  // 1. Write RTP values to core tile (0,2)
+  aie_runtime::txn_append_write32(txn, RTP_ADDR_BASE, K_div_k);
+  op_count++;
+  aie_runtime::txn_append_write32(txn, RTP_ADDR_BASE + 4, tiles);
+  op_count++;
+
+  // Process tile rows in blocks, matching the static compiler's pattern.
+  // BD allocation uses pingpong: even half-blocks use BDs 0-7,
+  // odd half-blocks use BDs 8-15.
+  bool first_batch = true;
+
+  auto ceildiv = [](uint32_t a, uint32_t b) { return (a + b - 1) / b; };
+
+  for (uint32_t tile_row_block = 0;
+       tile_row_block < ceildiv(M_div_m, rows_per_block); tile_row_block++) {
+    for (uint32_t pingpong = 0; pingpong < 2; pingpong++) {
+      uint32_t row_base =
+          tile_row_block * rows_per_block + pingpong * rows_per_block / 2;
+      uint32_t num_tile_rows = rows_per_block / 2;
+      if (row_base + num_tile_rows > M_div_m)
+        num_tile_rows = M_div_m - row_base;
+      if (row_base >= M_div_m)
+        break;
+
+      uint32_t bd_id_base = 8 * pingpong;
+
+      // -- C output BD --
+      uint32_t c_offset = row_base * m * N; // f32 elements
+      uint32_t c_sizes[4] = {num_tile_rows, N_div_n, m, n};
+      uint32_t c_strides[4] = {m * (uint32_t)N, n, (uint32_t)N, 1};
+      uint32_t c_bd[8];
+      encode_bd_words(c_bd, c_sizes, c_strides, 32);
+
+      uint32_t c_bd_addr = BD_BASE + bd_id_base * BD_STRIDE;
+      aie_runtime::txn_append_blockwrite(txn, c_bd_addr, c_bd, 8);
+      op_count++;
+      aie_runtime::txn_append_address_patch(txn, c_bd_addr + 4, 2,
+                                            c_offset * 4); // bytes
+      op_count++;
+
+      // MASKWRITE to set controller_id before S2MM push with token
+      aie_runtime::txn_append_maskwrite32(txn, S2MM_CTRL, S2MM_CTRL_VAL,
+                                          S2MM_CTRL_MASK);
+      op_count++;
+
+      aie_runtime::txn_append_write32(
+          txn, S2MM_QUEUE,
+          queue_push_val(bd_id_base, num_tile_rows - 1,
+                         /*issue_token=*/true));
+      op_count++;
+
+      // -- A and B input BDs --
+      for (uint32_t tile_row = 0; tile_row < num_tile_rows; tile_row++) {
+        uint32_t abs_row = row_base + tile_row;
+
+        // A BD
+        uint32_t a_sizes[4] = {N_div_n, K_div_k, m, k};
+        uint32_t a_strides[4] = {0, k, (uint32_t)K, 1};
+        uint32_t a_bd[8];
+        encode_bd_words(a_bd, a_sizes, a_strides, 16);
+
+        uint32_t a_bd_id = bd_id_base + 2 * tile_row + 1;
+        uint32_t a_bd_addr = BD_BASE + a_bd_id * BD_STRIDE;
+        aie_runtime::txn_append_blockwrite(txn, a_bd_addr, a_bd, 8);
+        op_count++;
+        uint32_t a_offset = abs_row * m * K * 2; // bf16 bytes
+        aie_runtime::txn_append_address_patch(txn, a_bd_addr + 4, 0,
+                                              a_offset);
+        op_count++;
+        aie_runtime::txn_append_write32(
+            txn, MM2S_QUEUE_CH0,
+            queue_push_val(a_bd_id, N_div_n - 1));
+        op_count++;
+
+        // B BD
+        uint32_t b_sizes[4] = {N_div_n, K_div_k, k, n};
+        uint32_t b_strides[4] = {n, k * (uint32_t)N, (uint32_t)N, 1};
+        uint32_t b_bd[8];
+        encode_bd_words(b_bd, b_sizes, b_strides, 16);
+
+        uint32_t b_bd_id = bd_id_base + 2 * tile_row + 2;
+        uint32_t b_bd_addr = BD_BASE + b_bd_id * BD_STRIDE;
+        aie_runtime::txn_append_blockwrite(txn, b_bd_addr, b_bd, 8);
+        op_count++;
+        aie_runtime::txn_append_address_patch(txn, b_bd_addr + 4, 1, 0);
+        op_count++;
+        aie_runtime::txn_append_write32(
+            txn, MM2S_QUEUE_CH1,
+            queue_push_val(b_bd_id, N_div_n - 1));
+        op_count++;
+      }
+
+      // Wait for previous batch before reusing its BDs
+      if (!first_batch) {
+        aie_runtime::txn_append_sync(txn, 0, 0, 0, 0, 1, 1);
+        op_count++;
+      }
+      first_batch = false;
+    }
+  }
+
+  // Final sync — wait for last batch
+  aie_runtime::txn_append_sync(txn, 0, 0, 0, 0, 1, 1);
+  op_count++;
+
+  aie_runtime::txn_prepend_header(txn, op_count, NPU2_INFO);
+  return txn;
+}
+
+} // namespace dynamic_gemm
+
+#endif // DYNAMIC_GEMM_TXN_H
