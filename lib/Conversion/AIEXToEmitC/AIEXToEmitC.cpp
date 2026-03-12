@@ -330,65 +330,62 @@ private:
                        Value txnVec, Value opCountLval, IRMapping &argMapping) {
     Location opLoc = op->getLoc();
 
-    // Dynamic AIEX ops.
-    if (auto dynWrite = dyn_cast<AIEX::NpuDynWrite32Op>(op)) {
-      Value addr = argMapping.lookupOrDefault(dynWrite.getAddress());
-      Value val = argMapping.lookupOrDefault(dynWrite.getValue());
-      emitTxnWrite32(builder, opLoc, txnVec, addr, val, opCountLval);
-      return success();
-    }
-
-    if (auto dynMask = dyn_cast<AIEX::NpuDynMaskWrite32Op>(op)) {
-      Value addr = argMapping.lookupOrDefault(dynMask.getAddress());
-      Value val = argMapping.lookupOrDefault(dynMask.getValue());
-      Value mask = argMapping.lookupOrDefault(dynMask.getMask());
-      emitTxnMaskWrite32(builder, opLoc, txnVec, addr, val, mask, opCountLval);
-      return success();
-    }
-
-    if (auto dynSync = dyn_cast<AIEX::NpuDynSyncOp>(op)) {
-      Value col = argMapping.lookupOrDefault(dynSync.getColumn());
-      Value row = argMapping.lookupOrDefault(dynSync.getRow());
-      Value dir = argMapping.lookupOrDefault(dynSync.getDirection());
-      Value chan = argMapping.lookupOrDefault(dynSync.getChannel());
-      Value ncol = argMapping.lookupOrDefault(dynSync.getColumnNum());
-      Value nrow = argMapping.lookupOrDefault(dynSync.getRowNum());
-      emitTxnSync(builder, opLoc, txnVec, col, row, dir, chan, ncol, nrow,
-                  opCountLval);
-      return success();
-    }
-
-    // Static AIEX ops - use constants for attribute values.
+    // AIEX write32 - handles both static and dynamic forms.
     if (auto write32 = dyn_cast<AIEX::NpuWrite32Op>(op)) {
-      uint32_t addr = write32.getAddress();
-      if (auto absAddr = write32.getAbsoluteAddress())
-        addr = *absAddr;
-      Value addrVal = createU32Constant(builder, opLoc, addr);
-      Value valVal = createU32Constant(builder, opLoc, write32.getValue());
+      Value addrVal, valVal;
+      if (write32.hasDynamicOperands()) {
+        addrVal = argMapping.lookupOrDefault(write32.getDynAddress());
+        valVal = argMapping.lookupOrDefault(write32.getDynValue());
+      } else {
+        uint32_t addr = write32.getAddress();
+        if (auto absAddr = write32.getAbsoluteAddress())
+          addr = *absAddr;
+        addrVal = createU32Constant(builder, opLoc, addr);
+        valVal = createU32Constant(builder, opLoc, write32.getValue());
+      }
       emitTxnWrite32(builder, opLoc, txnVec, addrVal, valVal, opCountLval);
       return success();
     }
 
+    // AIEX maskwrite32 - handles both static and dynamic forms.
     if (auto maskWrite = dyn_cast<AIEX::NpuMaskWrite32Op>(op)) {
-      uint32_t addr = maskWrite.getAddress();
-      if (auto absAddr = maskWrite.getAbsoluteAddress())
-        addr = *absAddr;
-      Value addrVal = createU32Constant(builder, opLoc, addr);
-      Value valVal = createU32Constant(builder, opLoc, maskWrite.getValue());
-      Value maskVal = createU32Constant(builder, opLoc, maskWrite.getMask());
+      Value addrVal, valVal, maskVal;
+      if (maskWrite.hasDynamicOperands()) {
+        addrVal = argMapping.lookupOrDefault(maskWrite.getDynAddress());
+        valVal = argMapping.lookupOrDefault(maskWrite.getDynValue());
+        maskVal = argMapping.lookupOrDefault(maskWrite.getDynMask());
+      } else {
+        uint32_t addr = maskWrite.getAddress();
+        if (auto absAddr = maskWrite.getAbsoluteAddress())
+          addr = *absAddr;
+        addrVal = createU32Constant(builder, opLoc, addr);
+        valVal = createU32Constant(builder, opLoc, maskWrite.getValue());
+        maskVal = createU32Constant(builder, opLoc, maskWrite.getMask());
+      }
       emitTxnMaskWrite32(builder, opLoc, txnVec, addrVal, valVal, maskVal,
                          opCountLval);
       return success();
     }
 
+    // AIEX sync - handles both static and dynamic forms.
     if (auto syncOp = dyn_cast<AIEX::NpuSyncOp>(op)) {
-      Value col = createU32Constant(builder, opLoc, syncOp.getColumn());
-      Value row = createU32Constant(builder, opLoc, syncOp.getRow());
-      Value dir = createU32Constant(
-          builder, opLoc, static_cast<uint32_t>(syncOp.getDirection()));
-      Value chan = createU32Constant(builder, opLoc, syncOp.getChannel());
-      Value ncol = createU32Constant(builder, opLoc, syncOp.getColumnNum());
-      Value nrow = createU32Constant(builder, opLoc, syncOp.getRowNum());
+      Value col, row, dir, chan, ncol, nrow;
+      if (syncOp.hasDynamicOperands()) {
+        col = argMapping.lookupOrDefault(syncOp.getDynColumn());
+        row = argMapping.lookupOrDefault(syncOp.getDynRow());
+        dir = argMapping.lookupOrDefault(syncOp.getDynDirection());
+        chan = argMapping.lookupOrDefault(syncOp.getDynChannel());
+        ncol = argMapping.lookupOrDefault(syncOp.getDynColumnNum());
+        nrow = argMapping.lookupOrDefault(syncOp.getDynRowNum());
+      } else {
+        col = createU32Constant(builder, opLoc, syncOp.getColumn());
+        row = createU32Constant(builder, opLoc, syncOp.getRow());
+        dir = createU32Constant(builder, opLoc,
+                                static_cast<uint32_t>(syncOp.getDirection()));
+        chan = createU32Constant(builder, opLoc, syncOp.getChannel());
+        ncol = createU32Constant(builder, opLoc, syncOp.getColumnNum());
+        nrow = createU32Constant(builder, opLoc, syncOp.getRowNum());
+      }
       emitTxnSync(builder, opLoc, txnVec, col, row, dir, chan, ncol, nrow,
                   opCountLval);
       return success();

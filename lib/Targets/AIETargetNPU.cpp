@@ -45,6 +45,11 @@ reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
 // Thin wrappers that extract MLIR attributes and delegate to TxnEncoding.h.
 
 void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
+  if (op.hasDynamicOperands()) {
+    op.emitOpError("cannot translate dynamic operands to binary; use "
+                   "--aie-generate-txn-cpp instead");
+    return;
+  }
   aie_runtime::txn_append_sync(instructions, op.getColumn(), op.getRow(),
                                static_cast<uint32_t>(op.getDirection()),
                                op.getChannel(), op.getColumnNum(),
@@ -52,6 +57,11 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 }
 
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
+  if (op.hasDynamicOperands()) {
+    op.emitOpError("cannot translate dynamic operands to binary; use "
+                   "--aie-generate-txn-cpp instead");
+    return;
+  }
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
     return;
@@ -62,6 +72,11 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
 void appendMaskWrite32(std::vector<uint32_t> &instructions,
                        NpuMaskWrite32Op op) {
+  if (op.hasDynamicOperands()) {
+    op.emitOpError("cannot translate dynamic operands to binary; use "
+                   "--aie-generate-txn-cpp instead");
+    return;
+  }
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
     return;

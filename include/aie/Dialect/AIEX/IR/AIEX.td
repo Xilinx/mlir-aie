@@ -781,19 +781,20 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
 }
 
 // WRITE32
-def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
+def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", [AttrSizedOperandSegments]> {
   let summary = "write32 operator";
   let arguments = (
     ins UI32Attr:$address,
         UI32Attr:$value,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
-        OptionalAttr<I32Attr>:$row
+        OptionalAttr<I32Attr>:$row,
+        Optional<AnySignlessInteger>:$dyn_address,
+        Optional<AnySignlessInteger>:$dyn_value
   );
   let results = (outs );
-  let assemblyFormat = [{
-    attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
   let description = [{
     NPU write32 operator writes a 32bit value to the AIE array.
     If 'buffer' is present then 'address' is interpreted as an offset into the
@@ -802,14 +803,42 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
     into the memory space of aie.tile(column, row).
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
+
+    Optionally, SSA values can be provided for 'dyn_address' and 'dyn_value'
+    to enable runtime-parameterized sequences. When dynamic operands are present,
+    the static attributes serve as placeholders (typically 0) and the SSA values
+    are used instead.
+
+    Static syntax (unchanged): `aiex.npu.write32 {address = 123 : ui32, value = 456 : ui32}`
+    Dynamic syntax: `aiex.npu.write32(%addr, %val) {address = 0 : ui32, value = 0 : ui32} : i32, i32`
   }];
   let extraClassDeclaration = [{
     std::optional<uint32_t> getAbsoluteAddress();
+    bool hasDynamicOperands() { return getDynAddress() != nullptr; }
   }];
+  let builders = [
+    OpBuilder<(ins "uint32_t":$address, "uint32_t":$value,
+               "mlir::FlatSymbolRefAttr":$buffer,
+               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row), [{
+      build($_builder, $_state,
+            $_builder.getUI32IntegerAttr(address),
+            $_builder.getUI32IntegerAttr(value),
+            buffer, column, row,
+            /*dyn_address=*/Value(), /*dyn_value=*/Value());
+    }]>,
+    OpBuilder<(ins "mlir::IntegerAttr":$address, "mlir::IntegerAttr":$value,
+               "mlir::FlatSymbolRefAttr":$buffer,
+               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row), [{
+      build($_builder, $_state,
+            address, value,
+            buffer, column, row,
+            /*dyn_address=*/Value(), /*dyn_value=*/Value());
+    }]>
+  ];
 }
 
 // MASKWRITE
-def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
+def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", [AttrSizedOperandSegments]> {
   let summary = "Write a masked 32-bit value to the AIE array";
   let arguments = (
     ins UI32Attr:$address,
@@ -817,12 +846,14 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
         UI32Attr:$mask,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
-        OptionalAttr<I32Attr>:$row
+        OptionalAttr<I32Attr>:$row,
+        Optional<AnySignlessInteger>:$dyn_address,
+        Optional<AnySignlessInteger>:$dyn_value,
+        Optional<AnySignlessInteger>:$dyn_mask
   );
   let results = (outs );
-  let assemblyFormat = [{
-    attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
   let description = [{
     NPU mask write32 operator writes a masked 32bit value to the AIE array.
     If 'buffer' is present then 'address' is interpreted as an offset into the
@@ -831,10 +862,38 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
     into the memory space of aie.tile(column, row).
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
+
+    Optionally, SSA values can be provided for 'dyn_address', 'dyn_value', and
+    'dyn_mask' to enable runtime-parameterized sequences.
+
+    Static syntax (unchanged): `aiex.npu.maskwrite32 {address = 123 : ui32, ...}`
+    Dynamic syntax: `aiex.npu.maskwrite32(%addr, %val, %mask) {address = 0 : ui32, ...} : i32, i32, i32`
   }];
   let extraClassDeclaration = [{
     std::optional<uint32_t> getAbsoluteAddress();
+    bool hasDynamicOperands() { return getDynAddress() != nullptr; }
   }];
+  let builders = [
+    OpBuilder<(ins "uint32_t":$address, "uint32_t":$value, "uint32_t":$mask,
+               "mlir::FlatSymbolRefAttr":$buffer,
+               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row), [{
+      build($_builder, $_state,
+            $_builder.getUI32IntegerAttr(address),
+            $_builder.getUI32IntegerAttr(value),
+            $_builder.getUI32IntegerAttr(mask),
+            buffer, column, row,
+            /*dyn_address=*/Value(), /*dyn_value=*/Value(), /*dyn_mask=*/Value());
+    }]>,
+    OpBuilder<(ins "mlir::IntegerAttr":$address, "mlir::IntegerAttr":$value,
+               "mlir::IntegerAttr":$mask,
+               "mlir::FlatSymbolRefAttr":$buffer,
+               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row), [{
+      build($_builder, $_state,
+            address, value, mask,
+            buffer, column, row,
+            /*dyn_address=*/Value(), /*dyn_value=*/Value(), /*dyn_mask=*/Value());
+    }]>
+  ];
 }
 
 // BLOCKWRITE
@@ -867,7 +926,7 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
 }
 
 // OP_SYNC
-def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
+def AIE_NpuSyncOp: AIEX_Op<"npu.sync", [AttrSizedOperandSegments]> {
   let summary = "sync operator";
   let arguments = (
     ins I32Attr:$column,
@@ -875,12 +934,17 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
         I32Attr:$direction,
         I32Attr:$channel,
         I32Attr:$column_num,
-        I32Attr:$row_num
+        I32Attr:$row_num,
+        Optional<AnySignlessInteger>:$dyn_column,
+        Optional<AnySignlessInteger>:$dyn_row,
+        Optional<AnySignlessInteger>:$dyn_direction,
+        Optional<AnySignlessInteger>:$dyn_channel,
+        Optional<AnySignlessInteger>:$dyn_column_num,
+        Optional<AnySignlessInteger>:$dyn_row_num
   );
   let results = (outs );
-  let assemblyFormat = [{
-    attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
   let description = [{
     The sync operation blocks execution of the instruction stream until a task-complete token (TCT) is received on `column`, `row`, channel `channel`, direction `direction` (where `0` is `S2MM` and `1` is `MM2S`).
 
@@ -888,7 +952,41 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
 
     If this operation appears to deadlock, ensure that at least one buffer descriptor is configured to issue a TCT on the channel you expect.
     By default, `dma_memcpy_nd` operations only issue tokens for `S2MM` channels, and `issue_token` must be set to `true` to issue tokens for `MM2S` channels.
+
+    Optionally, SSA values can be provided for all parameters to enable
+    runtime-parameterized sequences.
+
+    Static syntax (unchanged): `aiex.npu.sync {column = 0 : i32, ...}`
+    Dynamic syntax: `aiex.npu.sync(%col, %row, %dir, %chan, %ncol, %nrow) {column = 0 : i32, ...} : i32, i32, i32, i32, i32, i32`
   }];
+  let extraClassDeclaration = [{
+    bool hasDynamicOperands() { return getDynColumn() != nullptr; }
+  }];
+  let builders = [
+    OpBuilder<(ins "int32_t":$column, "int32_t":$row,
+               "int32_t":$direction, "int32_t":$channel,
+               "int32_t":$column_num, "int32_t":$row_num), [{
+      build($_builder, $_state,
+            $_builder.getI32IntegerAttr(column),
+            $_builder.getI32IntegerAttr(row),
+            $_builder.getI32IntegerAttr(direction),
+            $_builder.getI32IntegerAttr(channel),
+            $_builder.getI32IntegerAttr(column_num),
+            $_builder.getI32IntegerAttr(row_num),
+            /*dyn_column=*/Value(), /*dyn_row=*/Value(),
+            /*dyn_direction=*/Value(), /*dyn_channel=*/Value(),
+            /*dyn_column_num=*/Value(), /*dyn_row_num=*/Value());
+    }]>,
+    OpBuilder<(ins "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row,
+               "mlir::IntegerAttr":$direction, "mlir::IntegerAttr":$channel,
+               "mlir::IntegerAttr":$column_num, "mlir::IntegerAttr":$row_num), [{
+      build($_builder, $_state,
+            column, row, direction, channel, column_num, row_num,
+            /*dyn_column=*/Value(), /*dyn_row=*/Value(),
+            /*dyn_direction=*/Value(), /*dyn_channel=*/Value(),
+            /*dyn_column_num=*/Value(), /*dyn_row_num=*/Value());
+    }]>
+  ];
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
@@ -1015,128 +1113,6 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-//===----------------------------------------------------------------------===//
-// Dynamic Runtime Sequence Operations
-//===----------------------------------------------------------------------===//
-// These operations accept SSA values for parameters that were previously
-// static attributes, enabling runtime-parameterized sequences and lowering
-// to templated C++ code.
-
-def AIE_NpuDynWrite32Op: AIEX_Op<"npu.dyn_write32", [HasParent<"AIE::RuntimeSequenceOp">]> {
-  let summary = "Dynamic write32 operator with SSA value operands";
-  let arguments = (
-    ins AnySignlessInteger:$address,
-        AnySignlessInteger:$value,
-        OptionalAttr<FlatSymbolRefAttr>:$buffer,
-        OptionalAttr<I32Attr>:$column,
-        OptionalAttr<I32Attr>:$row
-  );
-  let results = (outs);
-  let assemblyFormat = [{
-    `(` $address `,` $value `)` attr-dict `:` type($address) `,` type($value)
-  }];
-  let description = [{
-    Dynamic NPU write32 operator that accepts SSA values for address and value,
-    enabling runtime parameterization. If 'buffer', 'column', or 'row' are present,
-    they function the same as in npu.write32. This operation can be lowered to
-    templated C++ code for runtime transaction generation.
-  }];
-  let hasVerifier = 1;
-}
-
-def AIE_NpuDynMaskWrite32Op: AIEX_Op<"npu.dyn_maskwrite32", [HasParent<"AIE::RuntimeSequenceOp">]> {
-  let summary = "Dynamic masked write32 operator with SSA value operands";
-  let arguments = (
-    ins AnySignlessInteger:$address,
-        AnySignlessInteger:$value,
-        AnySignlessInteger:$mask,
-        OptionalAttr<FlatSymbolRefAttr>:$buffer,
-        OptionalAttr<I32Attr>:$column,
-        OptionalAttr<I32Attr>:$row
-  );
-  let results = (outs);
-  let assemblyFormat = [{
-    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
-  }];
-  let description = [{
-    Dynamic NPU maskwrite32 operator that accepts SSA values for address, value,
-    and mask, enabling runtime parameterization.
-  }];
-  let hasVerifier = 1;
-}
-
-def AIE_NpuDynDmaMemcpyNdOp: AIEX_Op<"npu.dyn_dma_memcpy_nd", [
-    HasParent<"AIE::RuntimeSequenceOp">,
-    AttrSizedOperandSegments
-  ]> {
-  let summary = "Fully dynamic n-dimensional DMA operator with SSA values";
-
-  let description = [{
-    A fully dynamic n-dimensional half DMA operator where all sizes, strides,
-    and offsets are SSA values instead of attributes. This enables runtime
-    parameterization of the DMA configuration and lowering to templated C++
-    code for runtime transaction generation.
-
-    Unlike `npu.dma_memcpy_nd`, this operation requires all offsets, sizes,
-    and strides to be provided as SSA values. Static optimizations can be
-    applied via canonicalization if the values are constants.
-
-    The `metadata` symbol and `id` remain as attributes since they reference
-    compile-time device configuration.
-  }];
-
-  let arguments = (
-    ins AnyRankedOrUnrankedMemRef:$memref,
-        Variadic<Index>:$offsets,
-        Variadic<Index>:$sizes,
-        Variadic<Index>:$strides,
-        SymbolRefAttr:$metadata,
-        I64Attr:$id,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        OptionalAttr<PacketInfoAttr>:$packet
-  );
-
-  let assemblyFormat = [{
-    `(` $memref `,` $offsets `,` $sizes `,` $strides
-    (`,` `packet` `=` $packet^)? `)`
-    attr-dict `:` type($memref) `,` type($offsets) `,` type($sizes) `,` type($strides)
-  }];
-
-  let extraClassDeclaration = [{
-    uint64_t getElementTypeBitwidth();
-  }];
-
-  let extraClassDefinition = [{
-    uint64_t $cppClass::getElementTypeBitwidth() {
-      DataLayout dataLayout = DataLayout::closest(*this);
-      return dataLayout.getTypeSizeInBits(getMemref().getType().getElementType());
-    }
-  }];
-
-  let hasVerifier = 1;
-}
-
-def AIE_NpuDynSyncOp: AIEX_Op<"npu.dyn_sync", [HasParent<"AIE::RuntimeSequenceOp">]> {
-  let summary = "Dynamic synchronization operator with SSA value operands";
-  let arguments = (
-    ins AnySignlessInteger:$column,
-        AnySignlessInteger:$row,
-        AnySignlessInteger:$direction,
-        AnySignlessInteger:$channel,
-        AnySignlessInteger:$column_num,
-        AnySignlessInteger:$row_num
-  );
-  let results = (outs);
-  let assemblyFormat = [{
-    `(` $column `,` $row `,` $direction `,` $channel `,` $column_num `,` $row_num `)`
-    attr-dict `:` type($column) `,` type($row) `,` type($direction) `,` type($channel) `,` type($column_num) `,` type($row_num)
-  }];
-  let description = [{
-    Dynamic NPU synchronization operator that waits for a task completion token
-    with runtime-parameterized tile coordinates, direction, and channel.
-  }];
-  let hasVerifier = 1;
-}
 
 def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
