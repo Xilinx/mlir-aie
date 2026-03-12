@@ -244,13 +244,49 @@ with mlir_mod_ctx() as ctx:
             )
 
         # --- Core logic ---
+        # Single-BD designs: infinite loop for re-invocation (steady-state bench)
+        # Split-BD designs: single-shot (BDs consumed once, must reload)
         for col in range(n_cols):
             for row in range(n_rows_per_col):
 
-                @core(core_tiles[row][col], "conv3dk3_ui8.o")
-                def core_body():
-                    for _ in range_(0xFFFFFFFF):
-                        elem_wts = of_wts[col].acquire(ObjectFifoPort.Consume, 1)
+                if not need_split_dma:
+
+                    @core(core_tiles[row][col], "conv3dk3_ui8.o")
+                    def core_body():
+                        for _ in range_(0xFFFFFFFF):
+                            elem_wts = of_wts[col].acquire(
+                                ObjectFifoPort.Consume, 1
+                            )
+                            for d in range_(depth):
+                                for w_tile in range_(n_width_tiles):
+                                    elem_in = of_in_L2L1[row][col].acquire(
+                                        ObjectFifoPort.Consume, 1
+                                    )
+                                    elem_out = of_out_L1L2[row][col].acquire(
+                                        ObjectFifoPort.Produce, 1
+                                    )
+                                    conv3dk3_i8(
+                                        elem_in, elem_in, elem_in,
+                                        elem_wts, elem_out,
+                                        tile_width, height_per_core,
+                                        in_channels, out_channels,
+                                        3, 3, 1, 1, 10, 0,
+                                    )
+                                    of_in_L2L1[row][col].release(
+                                        ObjectFifoPort.Consume, 1
+                                    )
+                                    of_out_L1L2[row][col].release(
+                                        ObjectFifoPort.Produce, 1
+                                    )
+                            of_wts[col].release(ObjectFifoPort.Consume, 1)
+
+                else:
+
+                    @core(core_tiles[row][col], "conv3dk3_ui8.o")
+                    def core_body():
+                        elem_wts = of_wts[col].acquire(
+                            ObjectFifoPort.Consume, 1
+                        )
                         for d in range_(depth):
                             for w_tile in range_(n_width_tiles):
                                 elem_in = of_in_L2L1[row][col].acquire(
