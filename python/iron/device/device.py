@@ -191,7 +191,7 @@ class Device(Resolvable):
     def get_num_connections(self, tile: Tile, output: bool) -> int:
         """Returns number of DMA input or output "channels" available on the tile.
         Returns:
-            bool: True if the given endpoint tile has memory affinity with this tile.
+            int: Number of connections (channels) available on the tile.
         """
         if tile.row == 0:
             if output:
@@ -206,7 +206,7 @@ class Device(Resolvable):
     def is_mem_accessible(self, source_tile: Tile, tiles: list[Tile]) -> bool:
         """Returns whether there exists a memory region on source_tile which all destination tiles can access.
         Returns:
-            int: Number of connections (channels) available on the tile
+            bool: True if the given source tile has a memory region accessible by all destination tiles.
         """
         if not isinstance(source_tile, Tile):
             raise ValueError(f"Expected a source Tile, but got {source_tile}")

@@ -24,7 +24,7 @@ Designs tailored to the new user experience that span from basic applications su
 
 ## [algorithms](./algorithms)
 
-Algorithm implementations for the NPU in Ryzen™ AI, including sorting, searching, and other common algorithmic patterns.
+Higher-level algorithm templates (transform, for_each, and parallel variants) that handle Workers, ObjectFIFOs, and data movement automatically for common element-wise dataflow patterns on the NPU in Ryzen™ AI.
 
 ## [basic](./basic)
 
