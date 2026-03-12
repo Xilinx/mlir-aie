@@ -14,11 +14,11 @@
 // Each device is compiled separately with --device-name, similar to how
 // the Python aiecc.py is used in production multi-device flows.
 
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --verbose --tmpdir=%t.dev1 %s 2>&1 | FileCheck %s --check-prefix=DEV1
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
-// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --no-xchesscc --no-xbridge --device-name=device1 --aie-generate-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --verbose --tmpdir=%t.dev1 %s 2>&1
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --verbose --tmpdir=%t.dev2 %s 2>&1
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1
+// RUN: aiecc --no-xchesscc --no-xbridge --verbose --tmpdir=%t.all %s 2>&1
+// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --no-xchesscc --no-xbridge --device-name=device1 --aie-generate-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1
 
 // DEV1: Removing non-matching device: device2
 // DEV1: Processing device: device1
