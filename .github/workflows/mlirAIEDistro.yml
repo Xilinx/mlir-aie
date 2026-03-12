@@ -431,7 +431,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r python/requirements.txt
           pip install -r python/requirements_dev.txt
-          unzip -o -q dist/mlir_aie\*.whl
+          unzip -o -q dist/mlir_aie*py3-none*.whl
 
           export PYTHONPATH=mlir_aie/python
 
