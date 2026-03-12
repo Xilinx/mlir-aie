@@ -263,6 +263,72 @@ def test_closure_cache_key_distinguishes_captured_values():
     assert key1 != key2
 
 
+def test_closure_cache_key_mutable_object_no_repr():
+    """Cache key must change when a mutable object's attributes change,
+    even when it has no __eq__, __hash__, or __repr__ override."""
+
+    class Config:
+        def __init__(self, val):
+            self.val = val
+
+        # deliberately no __repr__, __eq__, or __hash__
+
+    def make_fn(c):
+        # cfg must be captured as a closure cell, not a global
+        return lambda a: a + c.val
+
+    cfg = Config(1)
+    fn = make_fn(cfg)
+    dummy_fn = lambda: None
+    key1 = _create_function_cache_key(dummy_fn, [fn], {})
+    cfg.val = 2  # mutate in-place — only deep state has changed
+    key2 = _create_function_cache_key(dummy_fn, [fn], {})
+    assert key1 != key2
+
+
+def test_closure_cache_key_list_mutation():
+    """Cache key must change when a list captured by a closure is mutated."""
+
+    def make_fn(items):
+        # items must be captured as a closure cell, not a global
+        return lambda a: a + items[0]
+
+    items = [1, 2, 3]
+    fn = make_fn(items)
+    dummy_fn = lambda: None
+    key1 = _create_function_cache_key(dummy_fn, [fn], {})
+    items[0] = 99
+    key2 = _create_function_cache_key(dummy_fn, [fn], {})
+    assert key1 != key2
+
+
+def test_closure_cache_key_is_stable_without_mutation():
+    """Cache key must be identical across repeated calls when nothing changes."""
+
+    class Config:
+        def __init__(self, val):
+            self.val = val
+
+    def make_fn(c):
+        return lambda a: a + c.val
+
+    cfg = Config(42)
+    fn = make_fn(cfg)
+    dummy_fn = lambda: None
+    key1 = _create_function_cache_key(dummy_fn, [fn], {})
+    key2 = _create_function_cache_key(dummy_fn, [fn], {})
+    assert key1 == key2
+
+
+def test_closure_cache_key_no_closure():
+    """A callable with no closure must produce a stable key."""
+    fn = lambda a: a + 1  # no captured variables
+    dummy_fn = lambda: None
+    key1 = _create_function_cache_key(dummy_fn, [fn], {})
+    key2 = _create_function_cache_key(dummy_fn, [fn], {})
+    assert key1 == key2
+
+
 # ---------------------------------------------------------------------------
 # End-to-end JIT closure test
 # ---------------------------------------------------------------------------
