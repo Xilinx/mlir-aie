@@ -116,9 +116,7 @@ def passthrough_kernel_dynamic():
                 )
                 npu_blockwrite(address=119264, data=trace_data)
                 npu_address_patch(addr=119268, arg_idx=4, arg_plus=0)
-                npu_maskwrite32(
-                    address=119304, value=3840, mask=7936, column=0, row=0
-                )
+                npu_maskwrite32(address=119304, value=3840, mask=7936, column=0, row=0)
                 npu_write32(address=119308, value=2147483663, column=0, row=0)
 
                 # DMA queue configuration (tile 0,0) - static

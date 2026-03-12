@@ -146,8 +146,11 @@ class Worker(ObjectFifoEndpoint):
             l = lock(my_tile)
             barrier._add_worker_lock(l)
 
-        @core(my_tile, stack_size=self.stack_size,
-              dynamic_objfifo_lowering=self.dynamic_objfifo_lowering)
+        @core(
+            my_tile,
+            stack_size=self.stack_size,
+            dynamic_objfifo_lowering=self.dynamic_objfifo_lowering,
+        )
         def core_body():
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)

@@ -35,8 +35,8 @@ namespace dynamic_gemm {
 static constexpr uint32_t m = 32, k = 32, n = 32;
 
 // Shim tile DMA constants (these are architecture-fixed for NPU2 shim tile 0)
-static constexpr uint32_t BD_BASE = 118784u;   // 0x1D000, shim BD 0
-static constexpr uint32_t BD_STRIDE = 32u;     // 8 words * 4 bytes
+static constexpr uint32_t BD_BASE = 118784u;    // 0x1D000, shim BD 0
+static constexpr uint32_t BD_STRIDE = 32u;      // 8 words * 4 bytes
 static constexpr uint32_t S2MM_QUEUE = 119300u; // S2MM ch0 task queue
 static constexpr uint32_t MM2S_QUEUE_CH0 = 119316u;
 static constexpr uint32_t MM2S_QUEUE_CH1 = 119324u;
@@ -47,8 +47,8 @@ static constexpr aie_runtime::TxnDeviceInfo NPU2_INFO = {0, 1, 4, 6, 8, 1};
 /// These vary depending on which Python design generated the XCLBIN
 /// (low-level, placed, or IRON) because buffer placement may differ.
 struct DesignConstants {
-  uint32_t rtp_addr;     // Absolute address of RTP buffer word 0
-  uint32_t s2mm_ctrl;    // S2MM ch0 control register address
+  uint32_t rtp_addr;       // Absolute address of RTP buffer word 0
+  uint32_t s2mm_ctrl;      // S2MM ch0 control register address
   uint32_t s2mm_ctrl_val;  // Value to write (controller_id)
   uint32_t s2mm_ctrl_mask; // Mask for the write
 };
@@ -138,18 +138,15 @@ inline DesignConstants extract_constants(const std::vector<uint32_t> &insts) {
 ///   [0] buffer_length  [1] base_addr  [2] packet_ctrl
 ///   [3] D0 size|stride [4] burst|D1 size|stride
 ///   [5] AXCache|D2 stride  [6] iter size|stride  [7] valid_bd|locks
-inline void encode_bd_words(uint32_t *words,
-                            const uint32_t sizes[4],
-                            const uint32_t strides[4],
-                            uint32_t elem_bits) {
+inline void encode_bd_words(uint32_t *words, const uint32_t sizes[4],
+                            const uint32_t strides[4], uint32_t elem_bits) {
   constexpr uint32_t addr_gran = 32; // address granularity in bits
 
   // D0 (innermost)
   uint32_t d0_size = sizes[3] * elem_bits / addr_gran;
-  uint32_t d0_stride =
-      (strides[3] * elem_bits >= addr_gran)
-          ? (strides[3] * elem_bits / addr_gran - 1)
-          : 0;
+  uint32_t d0_stride = (strides[3] * elem_bits >= addr_gran)
+                           ? (strides[3] * elem_bits / addr_gran - 1)
+                           : 0;
 
   // D1 (size always written; stride only when size > 1)
   uint32_t d1_size = sizes[2];
@@ -211,7 +208,7 @@ inline uint32_t queue_push_val(uint32_t bd_id, uint32_t repeat_count,
 /// gets its own C BD and S2MM push with token, plus a sync to wait for the
 /// previous half-block's completion.
 inline std::vector<uint32_t> generate_gemm_txn(int M, int K, int N,
-                                                const DesignConstants &dc) {
+                                               const DesignConstants &dc) {
   assert(M > 0 && K > 0 && N > 0);
   assert(M % m == 0 && K % k == 0 && N % n == 0);
 
@@ -270,10 +267,10 @@ inline std::vector<uint32_t> generate_gemm_txn(int M, int K, int N,
                                           dc.s2mm_ctrl_mask);
       op_count++;
 
-      aie_runtime::txn_append_write32(
-          txn, S2MM_QUEUE,
-          queue_push_val(bd_id_base, num_tile_rows - 1,
-                         /*issue_token=*/true));
+      aie_runtime::txn_append_write32(txn, S2MM_QUEUE,
+                                      queue_push_val(bd_id_base,
+                                                     num_tile_rows - 1,
+                                                     /*issue_token=*/true));
       op_count++;
 
       // -- A and B input BDs --
@@ -291,12 +288,10 @@ inline std::vector<uint32_t> generate_gemm_txn(int M, int K, int N,
         aie_runtime::txn_append_blockwrite(txn, a_bd_addr, a_bd, 8);
         op_count++;
         uint32_t a_offset = abs_row * m * K * 2; // bf16 bytes
-        aie_runtime::txn_append_address_patch(txn, a_bd_addr + 4, 0,
-                                              a_offset);
+        aie_runtime::txn_append_address_patch(txn, a_bd_addr + 4, 0, a_offset);
         op_count++;
-        aie_runtime::txn_append_write32(
-            txn, MM2S_QUEUE_CH0,
-            queue_push_val(a_bd_id, N_div_n - 1));
+        aie_runtime::txn_append_write32(txn, MM2S_QUEUE_CH0,
+                                        queue_push_val(a_bd_id, N_div_n - 1));
         op_count++;
 
         // B BD
@@ -311,9 +306,8 @@ inline std::vector<uint32_t> generate_gemm_txn(int M, int K, int N,
         op_count++;
         aie_runtime::txn_append_address_patch(txn, b_bd_addr + 4, 1, 0);
         op_count++;
-        aie_runtime::txn_append_write32(
-            txn, MM2S_QUEUE_CH1,
-            queue_push_val(b_bd_id, N_div_n - 1));
+        aie_runtime::txn_append_write32(txn, MM2S_QUEUE_CH1,
+                                        queue_push_val(b_bd_id, N_div_n - 1));
         op_count++;
       }
 

@@ -48,8 +48,7 @@ int main(int argc, const char *argv[]) {
       cxxopts::value<int>()->default_value("1"))(
       "verify", "whether to verify the AIE computed output",
       cxxopts::value<bool>()->default_value("true"))(
-      "rows,M", "Matrix rows M",
-      cxxopts::value<int>()->default_value("64"))(
+      "rows,M", "Matrix rows M", cxxopts::value<int>()->default_value("64"))(
       "inner,K", "Matrix inner dimension K",
       cxxopts::value<int>()->default_value("64"))(
       "columns,N", "Matrix columns N",
@@ -102,8 +101,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Dynamic GEMM: " << M << "x" << K << "x" << N << std::endl;
 
   // Generate TXN instructions for this M/K/N using discovered constants
-  std::vector<uint32_t> instr_v =
-      dynamic_gemm::generate_gemm_txn(M, K, N, dc);
+  std::vector<uint32_t> instr_v = dynamic_gemm::generate_gemm_txn(M, K, N, dc);
   if (verbosity >= 1)
     std::cout << "Generated " << instr_v.size() << " instruction words\n";
 
@@ -120,17 +118,17 @@ int main(int argc, const char *argv[]) {
   std::string node = vm["kernel"].as<std::string>();
 
   auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(
-      xkernels.begin(), xkernels.end(), [&node](xrt::xclbin::kernel &xk) {
-        return xk.get_name().rfind(node, 0) == 0;
-      });
+  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
+                               [&node](xrt::xclbin::kernel &xk) {
+                                 return xk.get_name().rfind(node, 0) == 0;
+                               });
 
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
   auto kernel = xrt::kernel(context, xkernel.get_name());
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(uint32_t),
-                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_a =
       xrt::bo(device, A_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_b =
