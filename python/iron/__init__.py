@@ -1,3 +1,4 @@
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """IRON: High-level Python API for programming AMD Ryzen AI NPUs.
 
 Provides the primary abstractions for describing NPU designs:
@@ -12,7 +13,6 @@ Provides the primary abstractions for describing NPU designs:
 - Tensor utilities (:func:`arange`, :func:`zeros`, :func:`ones`, etc.) for NPU-accessible buffers
 """
 
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 from .buffer import Buffer
 from .kernel import ExternalFunction, Kernel
 from .program import Program

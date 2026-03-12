@@ -1,5 +1,3 @@
-"""High-level algorithm templates built on IRON (transform, for_each, etc.)."""
-
 # __init__.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -7,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""High-level algorithm templates built on IRON (transform, for_each, etc.)."""
+
 from .for_each import for_each
 from .transform import (
     transform,

@@ -10,10 +10,6 @@
 
 # <ins>MLIR Examples</ins>
 
-> **Note:** These examples are written directly in the MLIR-AIE dialect intermediate representation rather than using the Python-based IRON API. They target earlier Xilinx Versal hardware (VCK5000, VCK190) using the Vitis toolchain and are provided as reference material. Most are **not runnable on Ryzen AI NPU hardware** without porting.
->
-> For NPU-targeted designs, see the [basic](../basic/), [ml](../ml/), and [getting_started](../getting_started/) examples instead.
-
 These examples illustrate how AIE designs are expressed at the MLIR level, which is the intermediate representation that the Python IRON API compiles down to. Reading these files alongside the [programming guide](../../programming_guide/) can provide insight into what the higher-level abstractions generate.
 
 ## Examples
