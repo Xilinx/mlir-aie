@@ -30,7 +30,7 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-elf --no-compile-host \
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-elf --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --elf-name=insts.elf ${<F}
 

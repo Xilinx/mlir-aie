@@ -102,10 +102,10 @@ endif
 build/final.xclbin: build/${mlirFileName}.mlir build/group0a.o build/group0b.o build/group2.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
     		--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%) 
 endif
@@ -113,10 +113,10 @@ endif
 build/final_trace.xclbin: build/${mlirFileName}_trace.mlir build/group0a.o build/group0b.o build/group2.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
     		--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%) 
 endif
