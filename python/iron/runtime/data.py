@@ -15,6 +15,7 @@ from ...helpers.util import (
     np_ndarray_type_get_shape,
 )
 from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
+from ...ir import Type as MlirType
 
 
 class RuntimeData:
@@ -59,4 +60,33 @@ class RuntimeData:
     def op(self, op: MemRefValue):
         if self._op:
             raise ValueError("Cannot set operation for RuntimeData more than once.")
+        self._op = op
+
+
+class RuntimeScalar:
+    """A handle to a scalar runtime parameter (e.g. T.i32()) in the Runtime sequence."""
+
+    def __init__(self, mlir_type: MlirType):
+        """Construct a handle to a scalar Runtime parameter.
+
+        Args:
+            mlir_type (MlirType): The MLIR type of the scalar (e.g. IntegerType.get_signless(32)).
+        """
+        self._mlir_type = mlir_type
+        self._op = None
+
+    @property
+    def mlir_type(self) -> MlirType:
+        """The MLIR type of this scalar."""
+        return self._mlir_type
+
+    @property
+    def op(self):
+        """The MLIR SSA value for this scalar, set during resolve."""
+        if self._op is None:
+            raise ValueError("Cannot get operation for RuntimeScalar before it is set.")
+        return self._op
+
+    @op.setter
+    def op(self, op):
         self._op = op
