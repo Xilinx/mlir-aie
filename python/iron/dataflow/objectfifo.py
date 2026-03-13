@@ -34,7 +34,7 @@ class ObjectFifo(Resolvable):
     user has a Placeable endpoint.
     """
 
-    """This is used to generate unique ObjectFifo names."""
+    # Used to generate unique ObjectFifo names when none is provided.
     __of_index = 0
 
     def __init__(
@@ -55,10 +55,10 @@ class ObjectFifo(Resolvable):
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
             dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
             dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
-            plio (bool, optional): _description_. Defaults to False.
+            plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
 
         Raises:
-            ValueError: _description_
+            ValueError: If ``depth`` is provided and is less than 1.
         """
         self._depth = depth
         if isinstance(self._depth, int) and self._depth < 1:
@@ -88,12 +88,12 @@ class ObjectFifo(Resolvable):
 
     @property
     def depth(self) -> int:
-        """The default depth of the ObjectFifo. This may be overriden by an ObjectFifoHandle upon construction."""
+        """The default depth of the ObjectFifo. This may be overridden by an ObjectFifoHandle upon construction."""
         return self._depth
 
     @property
     def dims_from_stream_per_cons(self) -> list[Sequence[int]]:
-        """The default dimensions from stream per consumer value. This may be overriden by an ObjectFifoHandle of type consumer."""
+        """The default dimensions from stream per consumer value. This may be overridden by an ObjectFifoHandle of type consumer."""
         return self._dims_from_stream_per_cons
 
     @property
@@ -179,7 +179,7 @@ class ObjectFifo(Resolvable):
         dims_from_stream: list[Sequence[int]] | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
-        will return a new consumer handle every time is it callled.
+        will return a new consumer handle every time it is called.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
@@ -246,7 +246,7 @@ class ObjectFifo(Resolvable):
     def _cons_tiles_ops(self) -> list[Tile]:
         if len(self._cons) < 1:
             raise ValueError(
-                f"Cannot return cons.tile.op for ObjectFifo {self.name} because no consumers were not created."
+                f"Cannot return cons.tile.op for ObjectFifo {self.name} because no consumers were created."
             )
         return [cons.endpoint.tile.op for cons in self._cons]
 
@@ -745,11 +745,11 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             )
         if len(self._src_offsets) > 0 and len(self._src_offsets) != len(self._srcs):
             raise ValueError(
-                "Then number of source offsets does not match the number of sources"
+                "The number of source offsets does not match the number of sources"
             )
         if len(self._dst_offsets) > 0 and len(self._dst_offsets) != len(self._dsts):
             raise ValueError(
-                "Then number of destination offsets does not match the number of destinations"
+                "The number of destination offsets does not match the number of destinations"
             )
         self._op = None
         for s in self._srcs:

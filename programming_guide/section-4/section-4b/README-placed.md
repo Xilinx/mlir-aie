@@ -26,7 +26,7 @@ In [section-4b](../section-4b), we introduced how trace is enabled in our high-l
 
 ## <u>1. Enable and configure AIE trace units for close-to-metal IRON Python ([aie2_placed.py](./aie2_placed.py))</u>
 
-Enabling tracing means (1a) configuring the trace units for a given tile and then (1b) routing the generated events packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. In close-to-metal IRON python, these steps require a more explicit declaration and descrbied below:
+Enabling tracing means (1a) configuring the trace units for a given tile and then (1b) routing the generated events packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. In close-to-metal IRON python, these steps require a more explicit declaration and are described below:
 
 ### <u>(1a) Configure trace units for an AIE tile</u>
 The first necessary component for trace configuration is setting the right values for the trace control registers for each tile that we want to enable tracing for. In addition, the generated trace packets will need to be routed to a shimDMA and then written to an inout buffers so the packet data can be written to DDR. We have abstracted these two steps with the python wrapper function `configure_packet_tracing_aie2` which is in [python/utils/trace.py](../../../python/utils/trace.py) and is described in more detail in the [README](../../../python/utils) under `python/utils`. An example of how this function is used is shown below for quick reference:
@@ -39,7 +39,7 @@ The arguments for this example are:
 * *opts.trace_size* - the trace buffer size in bytes
 
 This block is defined within the sequence definition for `@runtime_sequence` where we define the shimDMA data movement to the inout buffers.
-> **Note** This convenience python wrapper abtracts a number of sub-steps for configuring the trace unit in each tile and the shimDMA for writing to DDR. This uses packet switched routing to move the trace packets as opposed to circuit switched routing. More details on these sub-steps can be found in the [README](../../../python/utils) under `python/utils`.
+> **Note** This convenience python wrapper abstracts a number of sub-steps for configuring the trace unit in each tile and the shimDMA for writing to DDR. This uses packet switched routing to move the trace packets as opposed to circuit switched routing. More details on these sub-steps can be found in the [README](../../../python/utils) under `python/utils`.
 
 Configuring the trace units with `configure_packet_tracing_aie2` should be declared at the beginning of the `@runtime_sequence` so the trace mechanisms are in place prior to any data being transferred from/ to DDR. At the end of the `@runtime_sequence` we add the following convenience python function to end the trace collection.
 ```python
@@ -60,14 +60,14 @@ The arguments for this example are:
 
 
 ## <u>Exercises</u>
-1. We can try building our close-to-metal IRON python design now. Run `make clean; make use_placed=1 trace`. This compiles the placed design, generates a trace data file, and runs `prase_trace.py` to generate the `trace_4b.json` waveform file.
+1. We can try building our close-to-metal IRON python design now. Run `make clean; make use_placed=1 trace`. This compiles the placed design, generates a trace data file, and runs `parse_trace.py` to generate the `trace_4b.json` waveform file.
 
     Note that many of the designs under [programming_examples](../../../programming_examples/) have both an high-level IRON python version and a close-to-metal IRON python version, otherwise known as the placed version. Invoking make with the `use_placed=1` is a common way to build these versions of the design.
 
 ## <u>2. Customizing Trace Behavior</u>
 The wrapper python function `configure_packet_tracing_flow` abstracts much of the configuration of trace by making some assumptions of the desired trace behavior. Some of those assumptions are listed below along with how to customize them further.
 
-1. Additional configuration arguments for `configure_packet_tracing_flow` as descrbied in [utils/python](../../../python/utils)
+1. Additional configuration arguments for `configure_packet_tracing_flow` as described in [utils/python](../../../python/utils)
 
     * `tiles to trace` - array of tiles to trace
     * `shim tile` - Single shim tile to configure for writing trace packets to DDR
@@ -104,4 +104,4 @@ The wrapper python function `configure_packet_tracing_flow` abstracts much of th
     ```
 
 -----
-[[Prev]](../section-4a) [[Up]](../../section-4b) [[Next]](../section-4c)
+[[Prev]](../section-4a) [[Up]](../) [[Next]](../section-4c)

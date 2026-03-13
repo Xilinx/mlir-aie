@@ -1,4 +1,4 @@
-# section-2/section-2d/aie2_multi.py -*- Python -*-
+# section-2/section-2e/aie2_multi.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -52,7 +52,7 @@ of_outs = of_out.prod().join(
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
     elem_out = of_out.acquire(1)
-    for i in range_(data_size):
+    for i in range_(tile_size):
         elem_out[i] = elem_in[i] + 1
     of_in.release(1)
     of_out.release(1)

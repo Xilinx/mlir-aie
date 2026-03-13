@@ -42,7 +42,7 @@ of_in1 = of_in.cons().forward(obj_type=data_ty, name="in1")
 of_out1 = ObjectFifo(data_ty, name="out1")
 of_out = of_out1.cons().forward(obj_type=data_ty, name="out")
 ```
-For our scale out design we will keep using a single Mem tile, but we will increase the number of Workers to three. Now each Worker will receive objects of datatype `<16xi32>`. Data brought into the AIE array via `of_in` will be split into three Object FIFOs for each Worker. Similarly data produced by each Worker will be joined and sent to external memory through `of_out`. Please [see distribute and join patterns](../section-2b/03_Link_Distribute_Join/README.md) for more details. These changes result in the following code:
+For our scale out design we will keep using a single Mem tile, but we will increase the number of Workers to three. Now each Worker will receive objects of datatype `<16xi32>`. Data brought into the AIE array via `of_in` will be split into three Object FIFOs for each Worker. Similarly data produced by each Worker will be joined and sent to external memory through `of_out`. Please [see distribute and join patterns](../section-2b/03_Implicit_Copy/README.md) for more details. These changes result in the following code:
 ```python
 n_workers = 3
 data_size = 48
@@ -82,7 +82,7 @@ The Worker of this simple design acquires one object of each Object FIFO, adds `
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
     elem_out = of_out.acquire(1)
-    for _ in range_(data_size):
+    for i in range_(tile_size):
         elem_out[i] = elem_in[i] + 1
     of_in.release(1)
     of_out.release(1)
@@ -110,7 +110,7 @@ Finally, in our simple design we write a runtime sequence to bring data to/from 
 ```python
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
-with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
+with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_out, _):
     rt.start(my_worker)
     rt.fill(of_in.prod(), a_in)
     rt.drain(of_out.cons(), b_out, wait=True)
@@ -119,14 +119,14 @@ The runtime sequence remains largely unchanged for the larger design except that
 ```python
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
-with rt.sequence(data_size, data_size, data_size) as (a_in, b_out, _):
+with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_out, _):
     rt.start(*workers)
     rt.fill(of_in.prod(), a_in)
     rt.drain(of_out.cons(), b_out, wait=True)
 ```
 
 To compile the designs:
-```python
+```bash
 make all
 ```
 
@@ -235,14 +235,14 @@ for i in range(n_cores):
         for _ in range_(0xFFFFFFFF):
             elem_in = inX_fifos[i].acquire(ObjectFifoPort.Consume, 1)
             elem_out = outX_fifos[i].acquire(ObjectFifoPort.Produce, 1)
-            for i in range_(tile_size):
-                elem_out[i] = elem_in[i] + 1
+            for j in range_(tile_size):
+                elem_out[j] = elem_in[j] + 1
             inX_fifos[i].release(ObjectFifoPort.Consume, 1)
             outX_fifos[i].release(ObjectFifoPort.Produce, 1)
 ```
 
 To compile the designs:
-```python
+```bash
 make placed
 ```
 

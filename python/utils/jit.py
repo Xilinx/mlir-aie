@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""JIT decorator for compiling and running IRON-decorated functions on the NPU."""
 
 import os
 import functools
@@ -58,6 +59,10 @@ def jit(function=None, is_placed=True, use_cache=True):
         cache_key = _create_function_cache_key(function, args, kwargs)
         if effective_use_cache and cache_key in _compiled_kernels:
             cached_kernel = _compiled_kernels[cache_key]
+            if cached_kernel is None:
+                raise RuntimeError(
+                    f"Cached kernel for '{function.__name__}' is None; this is a bug."
+                )
             # Filter out non-tensor arguments (ExternalFunction, scalars)
             # Only tensor args should be passed to the kernel
             tensor_args = _filter_tensor_args(args)
