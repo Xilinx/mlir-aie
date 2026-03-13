@@ -10,11 +10,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-# Workaround: Peano -O2 miscompiles aie::lt/aie::select loop on AIE2P
-# (first vector iteration correct, subsequent iterations produce zeros).
-# Use -O1 until upstream llvm-aie fix is available.
-PEANOWRAP2P_FLAGS := $(subst -O2,-O1,$(PEANOWRAP2P_FLAGS))
-
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
