@@ -277,6 +277,18 @@ in other cores.
 This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
 objectfifos in this core should be lowered using the dynamic runtime lowering.
 
+**External object files.**  The preferred mechanism is to attach a `link_with`
+string attribute to each `func.func` declaration for an externally-defined
+function, then run the `aie-assign-core-link-files` pass.  That pass traces
+direct `func.call` edges from each core and writes the aggregated, de-duplicated
+list of object file paths into the `link_files` attribute on this op.  The
+BCF/ldscript emitters and the aiecc driver consume `link_files`.
+
+The core-level `link_with` attribute is deprecated and kept only for
+backward compatibility.  It is migrated by `aie-assign-core-link-files`
+(its value is folded into `link_files` and then removed).  Specifying both
+`link_with` and `link_files` on the same CoreOp is a verifier error.
+
 Examples:
 ```
 %tile = aie.tile(1, 1)
@@ -304,6 +316,7 @@ Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>link_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
 <tr><td><code>elf_file</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>dynamic_objfifo_lowering</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>

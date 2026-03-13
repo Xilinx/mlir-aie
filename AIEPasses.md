@@ -21,6 +21,27 @@ consistent view of the memory map of a system.
 -alloc-scheme : Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.
 ```
 
+### `-aie-assign-core-link-files`
+
+_Infer per-core link_files from func-level link_with attributes_
+
+Walks each aie.core and collects the set of external object files it needs
+by tracing direct func.call edges to func.func declarations that carry a
+"link_with" string attribute.  The result is stored in the CoreOp's
+"link_files" StrArrayAttr.
+
+Only direct calls (func.call) are resolved.  Indirect calls
+(func.call_indirect) inside a core body emit a warning and are not
+resolved; add a direct func.call to the required func.func declaration
+so the pass can trace the dependency.
+
+Core-level "link_with" (deprecated) is also migrated: its value is
+folded into the set and the attribute is removed from the CoreOp.
+
+func.func declarations that carry "link_with" but are never called from
+any core emit a warning; their object files will not appear in any
+core's link_files.
+
 ### `-aie-assign-lock-ids`
 
 _Assigns the lockIDs of locks that do not have IDs._

@@ -23,7 +23,7 @@ var searchData=
   ['tile_20',['tile',['../classiron_1_1device_1_1tile_1_1Tile.html',1,'iron.device.tile.Tile'],['../classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html#ac4ba26dacbeae15227be94efcc3ddc55',1,'iron.runtime.endpoint.RuntimeEndpoint.tile'],['../classiron_1_1placeable_1_1Placeable.html#a13bda709bf9b8fbd6ac31f83efc0ad32',1,'iron.placeable.Placeable.tile()']]],
   ['tile_2epy_21',['tile.py',['../tile_8py.html',1,'']]],
   ['tile_5fiterator_22',['tile_iterator',['../classiron_1_1device_1_1device_1_1Device.html#af46779b00c0d536d50d46bca86e039c5',1,'iron::device::device::Device']]],
-  ['tile_5fsize_23',['tile_size',['../classiron_1_1kernel_1_1ExternalFunction.html#aa69a930e34db02b692bf789be67e774d',1,'iron::kernel::ExternalFunction']]],
+  ['tile_5fsize_23',['tile_size',['../classiron_1_1kernel_1_1BaseKernel.html#af61103884ace3b3b9a1b11c0dc51be20',1,'iron::kernel::BaseKernel']]],
   ['tiles_24',['tiles',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#addaa438e03fde9d546e54fd042c3866c',1,'iron::dataflow::objectfifo::ObjectFifo']]],
   ['to_25',['to',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a68a260a707273a1ea7be69a101ebd014',1,'utils::hostruntime::tensor_class::Tensor']]],
   ['to_5ftorch_26',['to_torch',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a8ab2ca4ad7ccba19a936bbab041d252c',1,'utils::hostruntime::tensor_class::Tensor']]],

@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;b4934f0f5643220c51c238647e3da77fbeddfeda</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;9c1e32d7dd57a48fab1765d130a4238ab6546f9f</span>
    </div>
   </td>
  </tr>
@@ -120,13 +120,16 @@ Variables</h2></td></tr>
   </tr>
 </table>
 </div><div class="memdoc">
-<pre class="fragment">Filter out non-tensor arguments from args. Required for Algorithms because
-they pass ExternalFunction and scalar values in their signature that should
-not be interpreted as runtime sequence arguments.
+<pre class="fragment">Filter out non-tensor arguments from args.
+
+Algorithm functions may include Kernel/ExternalFunction instances and scalar
+compile-time constants in their Python signature that must not be forwarded
+to the NPU kernel as runtime buffer arguments.
 
 Removes:
-- ExternalFunction instances
-- Scalar values (int, float, np.integer, np.floating), embedded as MLIR constants
+- Kernel and ExternalFunction instances (resolved at compile time via link_with)
+- Scalar values (int, float, np.integer, np.floating) used as MLIR constants
+- Callables (e.g. lambda configuration helpers)
 </pre> 
 </div>
 </div>

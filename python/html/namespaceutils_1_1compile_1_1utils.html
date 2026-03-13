@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;b4934f0f5643220c51c238647e3da77fbeddfeda</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;9c1e32d7dd57a48fab1765d130a4238ab6546f9f</span>
    </div>
   </td>
  </tr>
@@ -217,10 +217,16 @@ Parameters:
 </div><div class="memdoc">
 <pre class="fragment">Compile an ExternalFunction to an object file in the kernel directory.
 
+The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
+If the object file already exists in ``kernel_dir``, compilation is skipped.
+
 Args:
-    func: ExternalFunction instance to compile
-    kernel_dir: Directory to place the compiled object file
-    target_arch: Target architecture (e.g., "aie2" or "aie2p")
+    func: ExternalFunction instance to compile.
+    kernel_dir: Directory where the compiled object file will be placed.
+        Must be the same directory passed as ``work_dir`` to
+        ``compile_mlir_module`` so that relative link_with paths resolve
+        correctly.
+    target_arch: Peano target architecture string (e.g., "aie2", "aie2p").
 </pre> 
 </div>
 </div>
@@ -279,16 +285,25 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module.
-This function supports only the Peano compiler.
-Parameters:
-    mlir_module (str): MLIR module to compile.
-    insts_path (str): Path to the instructions binary file.
-    pdi_path (str): Path to the PDI file.
-    xclbin_path (str): Path to the xclbin file.
-    verbose (bool): If True, enable verbose output.
-    work_dir (str): Compilation working directory.
-    options (list[str]): List of additional options.
+<pre class="fragment">Compile an MLIR module to instruction, PDI, and/or xclbin files using aiecc.
+
+By default uses the Peano compiler backend (--no-xchesscc --no-xbridge).
+Pass additional flags via ``options`` to override.
+
+When ``work_dir`` is provided, the MLIR is written to a file inside that
+directory so that the C++ aiecc binary resolves relative ``link_with``
+paths on ``func.func`` declarations against the same directory where
+``compile_external_kernel`` placed the compiled object files.
+
+Args:
+    mlir_module: MLIR module to compile.
+    insts_path: Output path for the NPU instruction binary.
+    pdi_path: Output path for the PDI file.
+    xclbin_path: Output path for the xclbin package.
+    verbose: If True, pass --verbose to aiecc.
+    work_dir: Compilation working directory; also determines where the
+        MLIR input file is written when invoking the C++ aiecc binary.
+    options: Additional aiecc command-line options.
 </pre> 
 </div>
 </div>

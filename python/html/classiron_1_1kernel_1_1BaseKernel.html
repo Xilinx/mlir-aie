@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;b4934f0f5643220c51c238647e3da77fbeddfeda</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;9c1e32d7dd57a48fab1765d130a4238ab6546f9f</span>
    </div>
   </td>
  </tr>
@@ -111,8 +111,12 @@ Collaboration diagram for iron.kernel.BaseKernel:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:afbb0471dbe7cdadddf7ed9f4c1ff59f7" id="r_afbb0471dbe7cdadddf7ed9f4c1ff59f7"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#afbb0471dbe7cdadddf7ed9f4c1ff59f7">__init__</a> (self, str name, list[type[np.ndarray]|np.dtype] arg_types=[])</td></tr>
+<tr class="memitem:afbb0471dbe7cdadddf7ed9f4c1ff59f7" id="r_afbb0471dbe7cdadddf7ed9f4c1ff59f7"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#afbb0471dbe7cdadddf7ed9f4c1ff59f7">__init__</a> (self, str name, list[type[np.ndarray]|np.dtype] <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#a2c43096f97c1f389cb593f24fe6a42d8">arg_types</a>=[])</td></tr>
 <tr class="separator:afbb0471dbe7cdadddf7ed9f4c1ff59f7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af61103884ace3b3b9a1b11c0dc51be20" id="r_af61103884ace3b3b9a1b11c0dc51be20"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#af61103884ace3b3b9a1b11c0dc51be20">tile_size</a> (self, int arg_index=0)</td></tr>
+<tr class="separator:af61103884ace3b3b9a1b11c0dc51be20"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2c43096f97c1f389cb593f24fe6a42d8" id="r_a2c43096f97c1f389cb593f24fe6a42d8"><td class="memItemLeft" align="right" valign="top">list&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#a2c43096f97c1f389cb593f24fe6a42d8">arg_types</a> (self)</td></tr>
+<tr class="separator:a2c43096f97c1f389cb593f24fe6a42d8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ada5a2a249ae2ba37701e90149bb99ca6" id="r_ada5a2a249ae2ba37701e90149bb99ca6"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#ada5a2a249ae2ba37701e90149bb99ca6">__call__</a> (self, *args, **kwargs)</td></tr>
 <tr class="separator:ada5a2a249ae2ba37701e90149bb99ca6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="inherit_header pub_methods_classiron_1_1resolvable_1_1Resolvable"><td colspan="2" onclick="javascript:toggleInherit('pub_methods_classiron_1_1resolvable_1_1Resolvable')"><img src="closed.png" alt="-"/>&#160;Public Member Functions inherited from <a class="el" href="classiron_1_1resolvable_1_1Resolvable.html">iron.resolvable.Resolvable</a></td></tr>
@@ -129,7 +133,12 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:aaa35f5cf405fa2513e6e23b914d154f3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><pre class="fragment">Base class for kernel-like objects that resolve to FuncOp.</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<div class="textblock"><pre class="fragment">Base class for AIE core functions that resolve to a func.func declaration.
+
+Subclasses:
+    Kernel: wraps a pre-compiled object file.
+    ExternalFunction: compiles C/C++ source at JIT time.
+</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="afbb0471dbe7cdadddf7ed9f4c1ff59f7" name="afbb0471dbe7cdadddf7ed9f4c1ff59f7"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#afbb0471dbe7cdadddf7ed9f4c1ff59f7">&#9670;&#160;</a></span>__init__()</h2>
 
@@ -161,13 +170,11 @@ Protected Attributes</h2></td></tr>
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Initialize base kernel.
-
-Args:
-    name (str): The name of the function
-    arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
+<pre class="fragment">Args:
+    name: Symbol name of the function.
+    arg_types: Type signature of the function arguments.  Defaults to [].
 </pre> 
-<p>Reimplemented in <a class="el" href="classiron_1_1kernel_1_1Kernel.html#a451f07bc2a8dc62bcbe791021527bfe1">iron.kernel.Kernel</a>, and <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a7ebe767ecd8134277ec231f6bc18243c">iron.kernel.ExternalFunction</a>.</p>
+<p>Reimplemented in <a class="el" href="classiron_1_1kernel_1_1Kernel.html#ac0a4ddefc55bf21871ce50233355f825">iron.kernel.Kernel</a>, and <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a1de5718fef3540afc05b82678d8f2d79">iron.kernel.ExternalFunction</a>.</p>
 
 </div>
 </div>
@@ -203,9 +210,59 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Call the kernel with the given arguments.</pre> 
+<pre class="fragment">Emit a func.call to this kernel, validating argument count.</pre> 
 <p>Reimplemented in <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a626dacbe657304d5cf7764fae7b6fbdb">iron.kernel.ExternalFunction</a>.</p>
 
+</div>
+</div>
+<a id="a2c43096f97c1f389cb593f24fe6a42d8" name="a2c43096f97c1f389cb593f24fe6a42d8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2c43096f97c1f389cb593f24fe6a42d8">&#9670;&#160;</a></span>arg_types()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> list iron.kernel.BaseKernel.arg_types </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Return a copy of the argument type list.</pre> 
+</div>
+</div>
+<a id="af61103884ace3b3b9a1b11c0dc51be20" name="af61103884ace3b3b9a1b11c0dc51be20"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af61103884ace3b3b9a1b11c0dc51be20">&#9670;&#160;</a></span>tile_size()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> int iron.kernel.BaseKernel.tile_size </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int &#160;</td>
+          <td class="paramname"><em>arg_index</em> = <code>0</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Return the first dimension of the array argument at ``arg_index``.
+
+Args:
+    arg_index: Index into ``arg_types``.  Defaults to 0.
+</pre> 
 </div>
 </div>
 <h2 class="groupheader">Member Data Documentation</h2>

@@ -1,5 +1,12 @@
 var searchData=
 [
-  ['resolvable_2epy_0',['resolvable.py',['../resolvable_8py.html',1,'']]],
-  ['runtime_2epy_1',['runtime.py',['../runtime_8py.html',1,'']]]
+  ['tap_2epy_0',['tap.py',['../tap_8py.html',1,'']]],
+  ['tas_2epy_1',['tas.py',['../tas_8py.html',1,'']]],
+  ['task_2epy_2',['task.py',['../task_8py.html',1,'']]],
+  ['taskgroup_2epy_3',['taskgroup.py',['../taskgroup_8py.html',1,'']]],
+  ['tensor_2epy_4',['tensor.py',['../tensor_8py.html',1,'']]],
+  ['tensor_5fclass_2epy_5',['tensor_class.py',['../tensor__class_8py.html',1,'']]],
+  ['tensortiler2d_2epy_6',['tensortiler2d.py',['../tensortiler2d_8py.html',1,'']]],
+  ['tile_2epy_7',['tile.py',['../tile_8py.html',1,'']]],
+  ['transform_2epy_8',['transform.py',['../transform_8py.html',1,'']]]
 ];
