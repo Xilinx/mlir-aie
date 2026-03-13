@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;b8208c22dee00ae28343922b7b592d925d543fd3</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;1d38a4c47b6f310c17f056fff5f96ffed66ee053</span>
    </div>
   </td>
  </tr>
@@ -94,7 +94,8 @@ Functions</h2></td></tr>
 <tr class="memitem:a3ed144ad36941a14679ce572b7f2492f" id="r_a3ed144ad36941a14679ce572b7f2492f"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1algorithms_1_1transform.html#a3ed144ad36941a14679ce572b7f2492f">transform_parallel_binary</a> (func, first, second, output, *params, tile_size=16)</td></tr>
 <tr class="separator:a3ed144ad36941a14679ce572b7f2492f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<h2 class="groupheader">Function Documentation</h2>
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><pre class="fragment">Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON.</pre> </div><h2 class="groupheader">Function Documentation</h2>
 <a id="ae12839d21d55b0bcb419437fa7bb244f" name="ae12839d21d55b0bcb419437fa7bb244f"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ae12839d21d55b0bcb419437fa7bb244f">&#9670;&#160;</a></span>_transform_gen()</h2>
 
@@ -270,7 +271,18 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Transform input to output using tiled processing.</pre> 
+<pre class="fragment">Apply ``func`` to ``input`` and write results to ``output`` using tiled processing on a single AIE core.
+
+Args:
+    func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+    input: Input tensor (NPU-accessible).
+    output: Output tensor (NPU-accessible, same shape and dtype as ``input``).
+    *params: Additional parameters forwarded to ``func``.
+    tile_size (int, optional): Number of elements per tile. Defaults to 16.
+
+Returns:
+    mlir.ir.Module: The compiled MLIR module.
+</pre> 
 </div>
 </div>
 <a id="ad95055250c1d15e5fb7b31207fceb641" name="ad95055250c1d15e5fb7b31207fceb641"></a>
@@ -322,7 +334,19 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Transform binary inputs to output using tiled processing.</pre> 
+<pre class="fragment">Apply ``func`` to ``first`` and ``second`` and write results to ``output`` using tiled processing on a single AIE core.
+
+Args:
+    func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+    first: First input tensor (NPU-accessible).
+    second: Second input tensor (NPU-accessible, same shape and dtype as ``first``).
+    output: Output tensor (NPU-accessible, same shape and dtype as inputs).
+    *params: Additional parameters forwarded to ``func``.
+    tile_size (int, optional): Number of elements per tile. Defaults to 16.
+
+Returns:
+    mlir.ir.Module: The compiled MLIR module.
+</pre> 
 </div>
 </div>
 <a id="a8cb2b332d9070f03b053a23bff68014b" name="a8cb2b332d9070f03b053a23bff68014b"></a>
@@ -368,7 +392,21 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Parallel unary transform across multiple AIE tiles.</pre> 
+<pre class="fragment">Apply ``func`` to ``input`` in parallel across all available NPU columns.
+
+Distributes the input tensor evenly across columns; each column processes
+``tile_size`` elements per iteration.
+
+Args:
+    func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+    input: Input tensor (NPU-accessible).
+    output: Output tensor (NPU-accessible, same shape and dtype as ``input``).
+    *params: Additional parameters forwarded to ``func``.
+    tile_size (int, optional): Number of elements per tile per column. Defaults to 16.
+
+Returns:
+    mlir.ir.Module: The compiled MLIR module.
+</pre> 
 </div>
 </div>
 <a id="a3ed144ad36941a14679ce572b7f2492f" name="a3ed144ad36941a14679ce572b7f2492f"></a>
@@ -420,7 +458,19 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Parallel binary transform across multiple AIE tiles.</pre> 
+<pre class="fragment">Apply ``func`` to ``first`` and ``second`` in parallel across all available NPU columns.
+
+Args:
+    func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+    first: First input tensor (NPU-accessible).
+    second: Second input tensor (NPU-accessible, same shape and dtype as ``first``).
+    output: Output tensor (NPU-accessible, same shape and dtype as inputs).
+    *params: Additional parameters forwarded to ``func``.
+    tile_size (int, optional): Number of elements per tile per column. Defaults to 16.
+
+Returns:
+    mlir.ir.Module: The compiled MLIR module.
+</pre> 
 </div>
 </div>
 </div><!-- contents -->

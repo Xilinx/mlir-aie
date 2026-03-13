@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;b8208c22dee00ae28343922b7b592d925d543fd3</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;1d38a4c47b6f310c17f056fff5f96ffed66ee053</span>
    </div>
   </td>
  </tr>
@@ -204,7 +204,7 @@ IRON program components such as Workers and the Runtime.
 Internally, it is a circular buffer with a given depth and type of buffer. The
 users of an ObjectFifo are explicitly either a Producer or a Consumer, and each
 user has a Placeable endpoint.
-</pre><pre class="fragment">This is used to generate unique ObjectFifo names.</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a08189024921bf95530cd64e0519723af" name="a08189024921bf95530cd64e0519723af"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a08189024921bf95530cd64e0519723af">&#9670;&#160;</a></span>__init__()</h2>
 
@@ -274,10 +274,10 @@ Args:
     name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
     dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
     dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
-    plio (bool, optional): _description_. Defaults to False.
+    plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
 
 Raises:
-    ValueError: _description_
+    ValueError: If ``depth`` is provided and is less than 1.
 </pre> 
 </div>
 </div>
@@ -590,7 +590,7 @@ Raises:
       </table>
 </div><div class="memdoc">
 <pre class="fragment">Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
-will return a new consumer handle every time is it callled.
+will return a new consumer handle every time it is called.
 
 Args:
     depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
@@ -619,7 +619,7 @@ Returns:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">The default depth of the ObjectFifo. This may be overriden by an ObjectFifoHandle upon construction.</pre> 
+<pre class="fragment">The default depth of the ObjectFifo. This may be overridden by an ObjectFifoHandle upon construction.</pre> 
 </div>
 </div>
 <a id="a52e9bb25690984482a2f0d43c7b37b04" name="a52e9bb25690984482a2f0d43c7b37b04"></a>
@@ -637,7 +637,7 @@ Returns:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">The default dimensions from stream per consumer value. This may be overriden by an ObjectFifoHandle of type consumer.</pre> 
+<pre class="fragment">The default dimensions from stream per consumer value. This may be overridden by an ObjectFifoHandle of type consumer.</pre> 
 </div>
 </div>
 <a id="a2ce8065bb36b6b51517ffee42d4bfd8b" name="a2ce8065bb36b6b51517ffee42d4bfd8b"></a>
@@ -762,7 +762,7 @@ Returns:
           <td class="memname"> None iron.dataflow.objectfifo.ObjectFifo.resolve </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>cls</em>, </td>
+          <td class="paramname"><em>self</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -790,7 +790,7 @@ Args:
     loc (ir.Location | None, optional): Location is used by MLIR object during construction in some cases. Defaults to None.
     ip (ir.InsertionPoint | None, optional): InsertionPoint is used by MLIR object during construction in some cases. Defaults to None.
 </pre> 
-<p>Reimplemented from <a class="el" href="classiron_1_1resolvable_1_1Resolvable.html#a9c07ee68915092d3fb53f75f8aa0ce53">iron.resolvable.Resolvable</a>.</p>
+<p>Reimplemented from <a class="el" href="classiron_1_1resolvable_1_1Resolvable.html#a802ce8ff9e6e34eb178b50592f50baa5">iron.resolvable.Resolvable</a>.</p>
 
 </div>
 </div>

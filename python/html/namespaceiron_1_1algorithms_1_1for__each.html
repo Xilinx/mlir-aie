@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;b8208c22dee00ae28343922b7b592d925d543fd3</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;1d38a4c47b6f310c17f056fff5f96ffed66ee053</span>
    </div>
   </td>
  </tr>
@@ -84,7 +84,8 @@ Functions</h2></td></tr>
 <tr class="memitem:a6011b5ac979cf618224754ff53843ade" id="r_a6011b5ac979cf618224754ff53843ade"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1algorithms_1_1for__each.html#a6011b5ac979cf618224754ff53843ade">for_each</a> (func, tensor, *params, tile_size=16)</td></tr>
 <tr class="separator:a6011b5ac979cf618224754ff53843ade"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<h2 class="groupheader">Function Documentation</h2>
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><pre class="fragment">``for_each``: apply a function in-place over a tiled tensor on an AIE core.</pre> </div><h2 class="groupheader">Function Documentation</h2>
 <a id="a6011b5ac979cf618224754ff53843ade" name="a6011b5ac979cf618224754ff53843ade"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6011b5ac979cf618224754ff53843ade">&#9670;&#160;</a></span>for_each()</h2>
 
@@ -134,10 +135,14 @@ Args:
              array types are transferred via ObjectFifos.
     tile_size: Size of each tile processed by a worker (default: 16)
 
-Example:
-    # kernel has separate in/out tile buffers, but only pass one tensor in
+Example::
+
+    # kernel has separate in/out tile buffers, but only one tensor is passed
     scale = ExternalFunction("scale", arg_types=[tile_ty, tile_ty, scalar_ty, np.int32], ...)
-    for_each(scale, tensor, factor, tile_size)
+    for_each(scale, tensor, factor, tile_size=16)
+
+Returns:
+    mlir.ir.Module: The compiled MLIR module ready for execution.
 </pre> 
 </div>
 </div>

@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;b8208c22dee00ae28343922b7b592d925d543fd3</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;1d38a4c47b6f310c17f056fff5f96ffed66ee053</span>
    </div>
   </td>
  </tr>
@@ -145,8 +145,6 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:a10e824bf88964a491582353d6e16f1e0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae38112a6eaf458ee20d32a96e9a3c350" id="r_ae38112a6eaf458ee20d32a96e9a3c350"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1buffer_1_1Buffer.html#ae38112a6eaf458ee20d32a96e9a3c350">_use_write_rtp</a></td></tr>
 <tr class="separator:ae38112a6eaf458ee20d32a96e9a3c350"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ad671fb2d1cc5ac18fab7b2a972d16949" id="r_ad671fb2d1cc5ac18fab7b2a972d16949"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1buffer_1_1Buffer.html#ad671fb2d1cc5ac18fab7b2a972d16949">_obj_type</a></td></tr>
-<tr class="separator:ad671fb2d1cc5ac18fab7b2a972d16949"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="inherit_header pro_attribs_classiron_1_1placeable_1_1Placeable"><td colspan="2" onclick="javascript:toggleInherit('pro_attribs_classiron_1_1placeable_1_1Placeable')"><img src="closed.png" alt="-"/>&#160;Protected Attributes inherited from <a class="el" href="classiron_1_1placeable_1_1Placeable.html">iron.placeable.Placeable</a></td></tr>
 <tr class="memitem:abe05dc9807f3d4efe490c95d0190aa9b inherit pro_attribs_classiron_1_1placeable_1_1Placeable" id="r_abe05dc9807f3d4efe490c95d0190aa9b"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placeable_1_1Placeable.html#abe05dc9807f3d4efe490c95d0190aa9b">_tile</a></td></tr>
 <tr class="separator:abe05dc9807f3d4efe490c95d0190aa9b inherit pro_attribs_classiron_1_1placeable_1_1Placeable"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -164,7 +162,7 @@ Static Private Attributes</h2></td></tr>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><pre class="fragment">A buffer that is available both to Workers and to the Runtime for operations.
 This is often used for Runtime Parameters.
-</pre><pre class="fragment">This is used to generate unique names if none is given during construction</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a0b1a6afb5315673fafa8953641d080ec" name="a0b1a6afb5315673fafa8953641d080ec"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a0b1a6afb5315673fafa8953641d080ec">&#9670;&#160;</a></span>__init__()</h2>
 
@@ -225,7 +223,7 @@ Args:
     use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations will be generated. Otherwise, traditional write/read operations will be used. Defaults to False.
 
 Raises:
-    ValueError: Arguments are validated.
+    ValueError: If neither ``type`` nor ``initial_value`` is provided.
 </pre> 
 <p>Reimplemented from <a class="el" href="classiron_1_1placeable_1_1Placeable.html#a34d534d363b33e78919d0acde9608835">iron.placeable.Placeable</a>.</p>
 
@@ -366,7 +364,7 @@ Raises:
           <td class="memname"> None iron.buffer.Buffer.resolve </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>cls</em>, </td>
+          <td class="paramname"><em>self</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -394,7 +392,7 @@ Args:
     loc (ir.Location | None, optional): Location is used by MLIR object during construction in some cases. Defaults to None.
     ip (ir.InsertionPoint | None, optional): InsertionPoint is used by MLIR object during construction in some cases. Defaults to None.
 </pre> 
-<p>Reimplemented from <a class="el" href="classiron_1_1resolvable_1_1Resolvable.html#a9c07ee68915092d3fb53f75f8aa0ce53">iron.resolvable.Resolvable</a>.</p>
+<p>Reimplemented from <a class="el" href="classiron_1_1resolvable_1_1Resolvable.html#a802ce8ff9e6e34eb178b50592f50baa5">iron.resolvable.Resolvable</a>.</p>
 
 </div>
 </div>
@@ -494,28 +492,6 @@ Args:
       <table class="memname">
         <tr>
           <td class="memname">iron.buffer.Buffer._name</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="ad671fb2d1cc5ac18fab7b2a972d16949" name="ad671fb2d1cc5ac18fab7b2a972d16949"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ad671fb2d1cc5ac18fab7b2a972d16949">&#9670;&#160;</a></span>_obj_type</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">iron.buffer.Buffer._obj_type</td>
         </tr>
       </table>
   </td>

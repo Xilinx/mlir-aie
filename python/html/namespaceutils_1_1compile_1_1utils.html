@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;b8208c22dee00ae28343922b7b592d925d543fd3</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;1d38a4c47b6f310c17f056fff5f96ffed66ee053</span>
    </div>
   </td>
  </tr>
@@ -84,8 +84,8 @@ $(function() {
 Functions</h2></td></tr>
 <tr class="memitem:a5eccdf9a88419ce0dcd81ed66fed542c" id="r_a5eccdf9a88419ce0dcd81ed66fed542c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a5eccdf9a88419ce0dcd81ed66fed542c">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, list[str]|None include_dirs=None, list[str]|None compile_args=None, str|None cwd=None)</td></tr>
 <tr class="separator:a5eccdf9a88419ce0dcd81ed66fed542c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a899661232c4a7700c29e476ad16c6bb0" id="r_a899661232c4a7700c29e476ad16c6bb0"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a899661232c4a7700c29e476ad16c6bb0">compile_mlir_module</a> (str mlir_module, str|None insts_path=None, str|None pdi_path=None, str|None xclbin_path=None, verbose=False, str|None work_dir=None, options=None)</td></tr>
-<tr class="separator:a899661232c4a7700c29e476ad16c6bb0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8fe36ca913e727468ae01c8c09aef774" id="r_a8fe36ca913e727468ae01c8c09aef774"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a8fe36ca913e727468ae01c8c09aef774">compile_mlir_module</a> (str mlir_module, str|Path|None insts_path=None, str|Path|None pdi_path=None, str|Path|None xclbin_path=None, verbose=False, str|Path|None work_dir=None, options=None)</td></tr>
+<tr class="separator:a8fe36ca913e727468ae01c8c09aef774"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a513d68013b69c23c55adc01c00de04f2" id="r_a513d68013b69c23c55adc01c00de04f2"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a513d68013b69c23c55adc01c00de04f2">compile_external_kernel</a> (func, kernel_dir, target_arch)</td></tr>
 <tr class="separator:a513d68013b69c23c55adc01c00de04f2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7f0589bae0c551479e57c9ce6719a539" id="r_a7f0589bae0c551479e57c9ce6719a539"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a7f0589bae0c551479e57c9ce6719a539">_cleanup_failed_compilation</a> (cache_dir)</td></tr>
@@ -96,7 +96,8 @@ Variables</h2></td></tr>
 <tr class="memitem:ac984da1eafaaf4ce0004c8713c1483c5" id="r_ac984da1eafaaf4ce0004c8713c1483c5"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#ac984da1eafaaf4ce0004c8713c1483c5">logger</a> = logging.getLogger(__name__)</td></tr>
 <tr class="separator:ac984da1eafaaf4ce0004c8713c1483c5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<h2 class="groupheader">Function Documentation</h2>
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><pre class="fragment">Low-level helpers for compiling MLIR modules and external C++ kernels to NPU artifacts.</pre> </div><h2 class="groupheader">Function Documentation</h2>
 <a id="a7f0589bae0c551479e57c9ce6719a539" name="a7f0589bae0c551479e57c9ce6719a539"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a7f0589bae0c551479e57c9ce6719a539">&#9670;&#160;</a></span>_cleanup_failed_compilation()</h2>
 
@@ -230,8 +231,8 @@ Args:
 </pre> 
 </div>
 </div>
-<a id="a899661232c4a7700c29e476ad16c6bb0" name="a899661232c4a7700c29e476ad16c6bb0"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a899661232c4a7700c29e476ad16c6bb0">&#9670;&#160;</a></span>compile_mlir_module()</h2>
+<a id="a8fe36ca913e727468ae01c8c09aef774" name="a8fe36ca913e727468ae01c8c09aef774"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8fe36ca913e727468ae01c8c09aef774">&#9670;&#160;</a></span>compile_mlir_module()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -245,19 +246,19 @@ Args:
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">str | None &#160;</td>
+          <td class="paramtype">str | Path | None &#160;</td>
           <td class="paramname"><em>insts_path</em> = <code>None</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">str | None &#160;</td>
+          <td class="paramtype">str | Path | None &#160;</td>
           <td class="paramname"><em>pdi_path</em> = <code>None</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">str | None &#160;</td>
+          <td class="paramtype">str | Path | None &#160;</td>
           <td class="paramname"><em>xclbin_path</em> = <code>None</code>, </td>
         </tr>
         <tr>
@@ -269,7 +270,7 @@ Args:
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">str | None &#160;</td>
+          <td class="paramtype">str | Path | None &#160;</td>
           <td class="paramname"><em>work_dir</em> = <code>None</code>, </td>
         </tr>
         <tr>
@@ -285,25 +286,16 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Compile an MLIR module to instruction, PDI, and/or xclbin files using aiecc.
-
-By default uses the Peano compiler backend (--no-xchesscc --no-xbridge).
-Pass additional flags via ``options`` to override.
-
-When ``work_dir`` is provided, the MLIR is written to a file inside that
-directory so that the C++ aiecc binary resolves relative ``link_with``
-paths on ``func.func`` declarations against the same directory where
-``compile_external_kernel`` placed the compiled object files.
-
-Args:
-    mlir_module: MLIR module to compile.
-    insts_path: Output path for the NPU instruction binary.
-    pdi_path: Output path for the PDI file.
-    xclbin_path: Output path for the xclbin package.
-    verbose: If True, pass --verbose to aiecc.
-    work_dir: Compilation working directory; also determines where the
-        MLIR input file is written when invoking the C++ aiecc binary.
-    options: Additional aiecc command-line options.
+<pre class="fragment">Compile an MLIR module to instruction, PDI, and/or xclbin files using the aiecc module.
+This function supports only the Peano compiler.
+Parameters:
+    mlir_module (str): MLIR module to compile.
+    insts_path (str): Path to the instructions binary file.
+    pdi_path (str): Path to the PDI file.
+    xclbin_path (str): Path to the xclbin file.
+    verbose (bool): If True, enable verbose output.
+    work_dir (str): Compilation working directory.
+    options (list[str]): List of additional options.
 </pre> 
 </div>
 </div>
