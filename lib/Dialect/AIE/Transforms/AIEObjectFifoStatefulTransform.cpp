@@ -350,7 +350,7 @@ struct AIEObjectFifoStatefulTransformPass
               state.splitBecauseLink.push_back(createOp);
           }
         } else {
-          splitBecauseLink.push_back(createOp);
+          state.splitBecauseLink.push_back(createOp);
         }
       }
     }
@@ -1804,8 +1804,8 @@ struct AIEObjectFifoStatefulTransformPass
       DMAChannelAnalysis &dmaAnalysis,
       const std::map<ObjectFifoCreateOp, bool> &crossTileInfos,
       std::map<ObjectFifoCreateOp, int> &fifo_dma_channel_index,
-      bool assignCrossTileOnly) {
-    for (auto &[producer, consumers] : splitFifos) {
+      bool assignCrossTileOnly, ObjectFifoState &state) {
+    for (auto &[producer, consumers] : state.splitFifos) {
       // Check if we should process this producer based on cross-tile condition
       bool shouldProcessProducer = assignCrossTileOnly
                                        ? crossTileInfos.at(producer)
@@ -2025,10 +2025,10 @@ struct AIEObjectFifoStatefulTransformPass
 
     // assign channel indices for FIFOs with cross-tile issues first
     assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
-                            true);
+                            true, state);
     // then assign channel indices for FIFOs without cross-tile issues
     assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
-                            false);
+                            false, state);
 
     int packetID = getStartPacketID(device);
     for (auto &[producer, consumers] : state.splitFifos) {
