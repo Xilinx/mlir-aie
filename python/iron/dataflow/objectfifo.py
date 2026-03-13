@@ -45,6 +45,7 @@ class ObjectFifo(Resolvable):
         dims_to_stream: list[Sequence[int]] | None = None,
         dims_from_stream_per_cons: list[Sequence[int]] | None = None,
         plio: bool = False,
+        pad_dimensions: list[Sequence[int]] | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -68,6 +69,7 @@ class ObjectFifo(Resolvable):
         self._dims_to_stream = dims_to_stream
         self._dims_from_stream_per_cons = dims_from_stream_per_cons
         self._plio = plio
+        self._pad_dimensions = pad_dimensions
         if name is None:
             self.name = f"of{ObjectFifo.__get_index()}"
         else:
@@ -294,6 +296,7 @@ class ObjectFifo(Resolvable):
                 dimensionsToStream=self._dims_to_stream,
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
+                padDimensions=self._pad_dimensions,
                 iter_count=self._iter_count,
             )
 

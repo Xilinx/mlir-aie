@@ -41,12 +41,14 @@ def sliding_window():
 
             # AIE Core Function declarations
             add_10_i32 = external_func(
-                "add_10_i32", inputs=[memRef_ty, memRef_ty, memRef_ty]
+                "add_10_i32",
+                inputs=[memRef_ty, memRef_ty, memRef_ty],
+                link_with="kernel.o",
             )
 
             # Set up compute tiles
 
-            @core(ComputeTile, "kernel.o")
+            @core(ComputeTile)
             def core_body():
                 elemOutPre = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)
