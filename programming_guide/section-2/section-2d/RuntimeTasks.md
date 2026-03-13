@@ -8,16 +8,16 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2g - Runtime Data Movement</ins>
+# <ins>Section 2d - Runtime Data Movement</ins>
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
     * [Section 2b - Key Object FIFO Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
-    * [Section 2d - Programming for multiple cores](../section-2d/)
-    * [Section 2e - Practical Examples](../section-2e/)
-    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
-    * Section 2g - Runtime Data Movement
+    * Section 2d - Runtime Data Movement
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
 
 -----
 
@@ -196,7 +196,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
     rt.start(*workers)
 
     tg = rt.task_group() # start first task group
-    for groups in [0, 1]:
+    for _ in [0, 1]:
         rt.fill(of_in.prod(), a_in, task_group=tg)
         rt.drain(of_out.cons(), c_out, task_group=tg, wait=True)
         rt.finish_task_group(tg)
