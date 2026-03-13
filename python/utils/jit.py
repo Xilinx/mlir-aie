@@ -198,7 +198,7 @@ def _filter_tensor_args(args):
     - Scalar values (int, float, np.integer, np.floating) used as MLIR constants
     - Callables (e.g. lambda configuration helpers)
     """
-    from aie.iron.kernel import ExternalFunction
+    from aie.iron.kernel import ExternalFunction, Kernel
 
     tensor_args = []
     for arg in args:

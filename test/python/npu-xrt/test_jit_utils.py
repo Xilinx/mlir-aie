@@ -230,7 +230,7 @@ def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):
         source_string='extern "C" void add_one() {}',
     )
     with tempfile.TemporaryDirectory() as kernel_dir:
-        obj = os.path.join(kernel_dir, func.bin_name)
+        obj = os.path.join(kernel_dir, func.object_file_name)
         with open(obj, "wb") as f:
             f.write(b"placeholder")
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
