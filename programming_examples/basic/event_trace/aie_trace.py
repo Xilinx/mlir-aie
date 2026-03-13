@@ -44,6 +44,7 @@ def build_aie_trace():
         scale = external_func(
             "vector_scalar_mul_aie_scalar",
             inputs=[tile_ty, tile_ty, scalar_ty, np.int32],
+            link_with="scale.o",
         )
 
         # Tile declarations
@@ -56,7 +57,7 @@ def build_aie_trace():
         of_out = object_fifo("out", tile_0_2, shim_noc_tile_0_0, 2, tile_ty)
 
         # Core computation
-        @core(tile_0_2, "scale.o")
+        @core(tile_0_2)
         def core_body():
             for _ in range_(sys.maxsize):
                 elem_factor = of_factor.acquire(ObjectFifoPort.Consume, 1)

@@ -15,7 +15,6 @@ from ..helpers.dialects.scf import _for as range_
 from .device import PlacementTile, AnyComputeTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
-from .kernel import Kernel, ExternalFunction
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -73,18 +72,14 @@ class Worker(ObjectFifoEndpoint):
             self.core_fn = do_nothing_core_fun
         else:
             self.core_fn = core_fn
-        self.link_with: str | None = None
         self.fn_args = fn_args
-        bin_names = set()
         self._fifos = []
         self._buffers = []
         self._barriers = []
 
         # Check arguments to the core. Some information is saved for resolution.
         for arg in self.fn_args:
-            if isinstance(arg, (Kernel, ExternalFunction)):
-                bin_names.add(arg.bin_name)
-            elif isinstance(arg, ObjectFifoHandle):
+            if isinstance(arg, ObjectFifoHandle):
                 arg.endpoint = self
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
@@ -98,17 +93,10 @@ class Worker(ObjectFifoEndpoint):
                 )
             elif isinstance(arg, WorkerRuntimeBarrier):
                 self._barriers.append(arg)
-            # We assume other arguments are metaprogramming (e.g, Python args)
-            # This could allow some errors to sink through, but we allow it for now.
-            # TODO: this could be cleaned up through creation of a MetaArgs struct, so you
-            # could access values through meta.my_var within the function.
-
-        if len(bin_names) > 1:
-            raise ValueError(
-                f"Currently, only one binary per works is supported. Found: {bin_names}"
-            )
-        if len(bin_names) == 1:
-            self.link_with = list(bin_names)[0]
+            # Kernel/ExternalFunction instances are valid fn_args — they resolve to
+            # func.call ops when invoked inside core_fn and carry link_with on their
+            # func.func declaration. Other unrecognized args are assumed to be
+            # metaprogramming values (Python scalars, etc.).
 
     def place(self, tile: Tile) -> None:
         """Set the placement of the Worker.
@@ -145,7 +133,6 @@ class Worker(ObjectFifoEndpoint):
         if not self._tile:
             raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
-        my_link = self.link_with
 
         # Create the necessary locks for the core operation to synchronize with the runtime sequence
         # and register them in the corresponding barriers.
@@ -153,7 +140,7 @@ class Worker(ObjectFifoEndpoint):
             l = lock(my_tile)
             barrier._add_worker_lock(l)
 
-        @core(my_tile, link_with=my_link, stack_size=self.stack_size)
+        @core(my_tile, stack_size=self.stack_size)
         def core_body():
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)

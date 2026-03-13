@@ -19,7 +19,6 @@ from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
 
-
 microkernel_mac_dim_map = {
     "npu": {
         "bf16": (4, 8, 4),
@@ -175,11 +174,16 @@ def my_matmul(
 
         # AIE Core Function declarations
         func_type = "" if vectorized else "scalar_"
-        zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
+        zero = external_func(
+            f"zero_{func_type}{dtype_out_str}",
+            inputs=[c_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
+        )
         matmul_func_name = f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
         matmul = external_func(
             matmul_func_name,
             inputs=[a_ty, b_ty, c_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
         )
 
         # Tile declarations
@@ -269,7 +273,7 @@ def my_matmul(
         # Set up compute tiles
 
         # Compute tile 2
-        @core(compute_tile2, f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
+        @core(compute_tile2, stack_size=0xD00)
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547

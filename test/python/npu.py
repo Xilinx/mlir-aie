@@ -46,7 +46,9 @@ def my_vector_scalar(module):
     def device_body():
         n_ty = np.ndarray[(n,), np.dtype[np.int32]]
         N_ty = np.ndarray[(N,), np.dtype[np.int32]]
-        scale_int32 = external_func("scale_int32", inputs=[n_ty, n_ty])
+        scale_int32 = external_func(
+            "scale_int32", inputs=[n_ty, n_ty], link_with="scale.o"
+        )
 
         S = tile(0, 0)
         M = tile(0, 2)
@@ -54,7 +56,7 @@ def my_vector_scalar(module):
         of_in = object_fifo("in", S, M, buffer_depth, n_ty)
         of_out = object_fifo("out", M, S, buffer_depth, n_ty)
 
-        @core(M, "scale.o")
+        @core(M)
         def core_body():
             # Effective while(1)
             for _ in range_(0xFFFFFFFF):
@@ -117,7 +119,9 @@ def my_matmul(module):
     def device_body():
         func_type = "" if vectorized else "scalar_"
         zero = external_func(
-            f"zero_{func_type}i16", inputs=[np.ndarray[(m, n), np.dtype[np.int16]]]
+            f"zero_{func_type}i16",
+            inputs=[np.ndarray[(m, n), np.dtype[np.int16]]],
+            link_with="mm.o",
         )
         matmul = external_func(
             f"matmul_{func_type}i16_i16",
@@ -126,6 +130,7 @@ def my_matmul(module):
                 np.ndarray[(k, n), np.dtype[np.int16]],
                 np.ndarray[(m, n), np.dtype[np.int16]],
             ],
+            link_with="mm.o",
         )
 
         S = tile(0, 0)
@@ -135,7 +140,7 @@ def my_matmul(module):
         of_inB = object_fifo("inB", S, M, 2, np.ndarray[(k, n), np.dtype[np.int16]])
         of_outC = object_fifo("outC", M, S, 2, np.ndarray[(m, n), np.dtype[np.int16]])
 
-        @core(M, "mm.o")
+        @core(M)
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles):
@@ -211,7 +216,9 @@ def edge_detect(module):
         vec64_ty = np.ndarray[(64,), np.dtype[np.uint8]]
         vec256_ty = np.ndarray[(256,), np.dtype[np.uint8]]
         rgba2gray_line = external_func(
-            "rgba2gray_line", inputs=[vec256_ty, vec64_ty, np.int32]
+            "rgba2gray_line",
+            inputs=[vec256_ty, vec64_ty, np.int32],
+            link_with="rgba2gray.cc.o",
         )
         filter2d_line = external_func(
             "filter2d_line",
@@ -223,6 +230,7 @@ def edge_detect(module):
                 np.int32,
                 np.ndarray[(3, 3), np.dtype[np.int16]],
             ],
+            link_with="filter2d.cc.o",
         )
         threshold_line = external_func(
             "threshold_line",
@@ -234,9 +242,12 @@ def edge_detect(module):
                 np.int16,
                 np.int8,
             ],
+            link_with="threshold.cc.o",
         )
         gray2rgba_line = external_func(
-            "gray2rgba_line", inputs=[vec64_ty, vec256_ty, np.int32]
+            "gray2rgba_line",
+            inputs=[vec64_ty, vec256_ty, np.int32],
+            link_with="gray2rgba.cc.o",
         )
         add_weighted_line = external_func(
             "add_weighted_line",
@@ -249,6 +260,7 @@ def edge_detect(module):
                 np.int16,
                 np.int8,
             ],
+            link_with="addWeighted.cc.o",
         )
 
         S = tile(0, 0)
@@ -271,7 +283,7 @@ def edge_detect(module):
         OF_4to5 = object_fifo("OF_4to5", T4, T5, 2, vec64_ty)
         OF_5to5 = object_fifo("OF_5to5", T5, T5, 1, vec256_ty)
 
-        @core(T2, "rgba2gray.cc.o")
+        @core(T2)
         def core_body():
             for _ in range_(36):
                 elem_in = inOF_L2L1.acquire(ObjectFifoPort.Consume, 1)
@@ -282,7 +294,7 @@ def edge_detect(module):
                 inOF_L2L1.release(ObjectFifoPort.Consume, 1)
                 OF_2to3.release(ObjectFifoPort.Produce, 1)
 
-        @core(T3, "filter2d.cc.o")
+        @core(T3)
         def core_body():
             kernel = memref.alloc((3, 3), T.i16())
             v0 = 0
@@ -335,7 +347,7 @@ def edge_detect(module):
             OF_2to3.release(ObjectFifoPort.Consume, 2)
             OF_3to4.release(ObjectFifoPort.Produce, 1)
 
-        @core(T4, "threshold.cc.o")
+        @core(T4)
         def core_body():
             v_thr = 10
             v_max = 255
@@ -348,7 +360,7 @@ def edge_detect(module):
                 OF_3to4.release(ObjectFifoPort.Consume, 1)
                 OF_4to5.release(ObjectFifoPort.Produce, 1)
 
-        @core(T5, "combined_gray2rgba_addWeighted.a")
+        @core(T5)
         def core_body():
             for _ in range_(36):
                 elem_in = OF_4to5.acquire(ObjectFifoPort.Consume, 1)

@@ -35,7 +35,7 @@ aie.device(xcvc1902) {
   %lock_b_ping = aie.lock(%t73, 5) // b_ping
   %lock_b_pong = aie.lock(%t73, 6) // b_pong
 
-  func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> ()
+  func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> () attributes {link_with = "kernel.o"}
 
   %c13 = aie.core(%t73) {
     
@@ -60,7 +60,7 @@ aie.device(xcvc1902) {
     }
 
     aie.end
-  } { link_with="kernel.o" }
+  }
 
   // Tile DMA
   %m73 = aie.mem(%t73) {

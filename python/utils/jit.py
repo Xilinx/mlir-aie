@@ -63,35 +63,50 @@ def jit(function=None, is_placed=True, use_cache=True):
             tensor_args = _filter_tensor_args(args)
             return cached_kernel(*tensor_args, **kwargs)
 
-        # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
+        # Collect ExternalFunction instances that need JIT compilation.
+        # Note: bare Kernel instances (pre-compiled .o) are intentionally
+        # excluded here — they require no compilation step. Both Kernel and
+        # ExternalFunction are stripped from the tensor args passed to the NPU
+        # kernel (see _filter_tensor_args).
+        # ExternalFunction.__init__ registers to _instances at construction time
+        # (before this JIT call), so they must be captured before the clear below.
+        external_kernels = [
+            arg for arg in args if isinstance(arg, ExternalFunction)
+        ] + [v for v in kwargs.values() if isinstance(v, ExternalFunction)]
+        seen = set(id(k) for k in external_kernels)
+
+        # Clear stale instances from previous (possibly failed) runs so that a
+        # broken kernel doesn't prevent a corrected one from being recompiled.
         ExternalFunction._instances.clear()
 
-        # Find ExternalFunction instances in arguments and kwargs
-        external_kernels = []
-        for arg in args:
-            if isinstance(arg, ExternalFunction):
-                external_kernels.append(arg)
-        for value in kwargs.values():
-            if isinstance(value, ExternalFunction):
-                external_kernels.append(value)
-
-        # Execute the function to generate MLIR
+        # Execute the function to generate MLIR.
+        # Placed designs use the raw @device(...) DSL and populate the context
+        # as a side effect (returning nothing), so we must provide an outer
+        # mlir_mod_ctx() and capture ctx.module.
+        # Non-placed designs use Program.resolve_program(), which opens its own
+        # mlir_mod_ctx() internally and returns the module directly; wrapping
+        # them in an outer context would give an empty module.
         if is_placed:
             with mlir_mod_ctx() as ctx:
                 function(*args, **kwargs)
-                assert (
-                    ctx.module.operation.verify()
-                ), f"Verification failed for '{function.__name__}'"
+                if not ctx.module.operation.verify():
+                    raise RuntimeError(
+                        f"MLIR verification failed for '{function.__name__}'"
+                    )
                 mlir_module = ctx.module
         else:
             mlir_module = function(*args, **kwargs)
+            if not mlir_module.operation.verify():
+                raise RuntimeError(
+                    f"MLIR verification failed for '{function.__name__}'"
+                )
 
-        # Compile all ExternalFunction instances that were created during this JIT compilation
+        # Also collect ExternalFunction instances created during function()
+        # execution (e.g. inside algorithm helpers that construct them internally).
         for func in ExternalFunction._instances:
-            if (
-                not hasattr(func, "_compiled") or not func._compiled
-            ):  # Don't compile if already compiled
+            if not func._compiled and id(func) not in seen:
                 external_kernels.append(func)
+                seen.add(id(func))
 
         current_device = DefaultNPURuntime.device()
 
@@ -167,20 +182,23 @@ def jit(function=None, is_placed=True, use_cache=True):
 
 def _filter_tensor_args(args):
     """
-    Filter out non-tensor arguments from args. Required for Algorithms because
-    they pass ExternalFunction and scalar values in their signature that should
-    not be interpreted as runtime sequence arguments.
+    Filter out non-tensor arguments from args.
+
+    Algorithm functions may include Kernel/ExternalFunction instances and scalar
+    compile-time constants in their Python signature that must not be forwarded
+    to the NPU kernel as runtime buffer arguments.
 
     Removes:
-    - ExternalFunction instances
-    - Scalar values (int, float, np.integer, np.floating), embedded as MLIR constants
+    - Kernel and ExternalFunction instances (resolved at compile time via link_with)
+    - Scalar values (int, float, np.integer, np.floating) used as MLIR constants
+    - Callables (e.g. lambda configuration helpers)
     """
     from aie.iron.kernel import ExternalFunction
 
     tensor_args = []
     for arg in args:
-        # Skip ExternalFunction
-        if isinstance(arg, ExternalFunction):
+        # Skip any kernel handle (Kernel, ExternalFunction, or subclasses)
+        if isinstance(arg, Kernel):
             continue
         # Skip scalar types (MLIR constants)
         if isinstance(arg, (int, float, np.integer, np.floating)):

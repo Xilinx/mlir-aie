@@ -147,6 +147,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_i8.o",
             )
             conv2dk3 = external_func(
                 "conv2dk3_ui8",
@@ -165,6 +166,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk3.o",
             )
             conv2dk1_skip_init_i8 = external_func(
                 "conv2dk1_skip_init_i8",
@@ -182,6 +184,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_skip_init.o",
             )
             conv2dk1_ui8 = external_func(
                 "conv2dk1_ui8",
@@ -194,6 +197,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_ui8.o",
             )
 
             conv2dk1_skip_ui8 = external_func(
@@ -210,6 +214,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_skip.o",
             )
 
             ShimTile00 = tile(0, 0)
@@ -579,7 +584,7 @@ def resnet_conv_x():
             # # 1x1 conv2d
             for i in range(n_cols):
 
-                @core(cores[i][0], conv1_kernels[i])
+                @core(cores[i][0])
                 def core_body():
                     for _ in range_(sys.maxsize):
 
@@ -623,7 +628,7 @@ def resnet_conv_x():
             # 3x3 conv2d OFM 0-31
             for i in range(n_cols):
 
-                @core(cores[i][1], "conv2dk3.o")
+                @core(cores[i][1])
                 def core_body():
                     scale = 1
                     for _ in range_(sys.maxsize):
@@ -715,7 +720,7 @@ def resnet_conv_x():
 
             for i in range(n_cols):
 
-                @core(cores[i][3], "conv2dk3.o")
+                @core(cores[i][3])
                 def core_body():
                     scale = 1
                     for _ in range_(sys.maxsize):
@@ -807,7 +812,7 @@ def resnet_conv_x():
             # # 1x1 conv2d and add skip
             for i in range(n_cols):
 
-                @core(cores[i][2], conv3_kernels[i], stack_size=0xA00)
+                @core(cores[i][2], stack_size=0xA00)
                 def core_body():
                     for _ in range_(sys.maxsize):
 
