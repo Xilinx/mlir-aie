@@ -49,16 +49,6 @@ build/aie_trace_from_py.mlir: ${srcdir}/aie_trace.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-# Preprocess the MLIR: substitute NPUDEVICE with the target device string
-build/aie_trace.mlir: ${srcdir}/aie_trace.mlir
-	mkdir -p ${@D}
-	sed 's/NPUDEVICE/${devicename}_1col/g' $< > $@
-
-# Generate MLIR from Python
-build/aie_trace_from_py.mlir: ${srcdir}/aie_trace.py
-	mkdir -p ${@D}
-	python3 $< > $@
-
 # Build xclbin from the mlir
 build/final.xclbin: build/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
