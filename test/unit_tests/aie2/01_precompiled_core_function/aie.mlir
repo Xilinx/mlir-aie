@@ -22,7 +22,7 @@ module @test_chesss_01_precompiled_core_function {
     %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" }
     %lock13_5 = aie.lock(%tile13, 5) { sym_name = "output_lock" }
 
-    func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> ()
+    func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> () attributes {link_with = "kernel.o"}
 
     %core13 = aie.core(%tile13) {
       aie.use_lock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
@@ -31,6 +31,6 @@ module @test_chesss_01_precompiled_core_function {
       aie.use_lock(%lock13_3, "Release", 0) // release for write
       aie.use_lock(%lock13_5, "Release", 1) // release for read
       aie.end
-    } { link_with="kernel.o" }
+    }
   }
 }

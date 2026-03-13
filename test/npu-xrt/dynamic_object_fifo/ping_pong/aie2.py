@@ -42,11 +42,13 @@ def ping_pong():
 
             # AIE Core Function declarations
             passthrough_64_i32 = external_func(
-                "passthrough_64_i32", inputs=[tensor_ty, tensor_ty]
+                "passthrough_64_i32",
+                inputs=[tensor_ty, tensor_ty],
+                link_with="kernel.o",
             )
 
             # Set up compute tiles
-            @core(ComputeTile, "kernel.o")
+            @core(ComputeTile)
             def core_body():
                 for _ in range_(sys.maxsize):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)

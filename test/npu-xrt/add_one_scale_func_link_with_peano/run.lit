@@ -1,0 +1,31 @@
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// End-to-end test for func-level link_with with MULTIPLE .o files (Peano/lld).
+//
+// Two func.func declarations each carry a distinct link_with attribute:
+//   @add_one    → add_one_kernel.o
+//   @scale_by_two → scale_kernel.o
+// aie-assign-core-link-files traces both CallOps inside the core and
+// produces link_files = ["add_one_kernel.o", "scale_kernel.o"] on the
+// CoreOp.  The Peano copy loop copies both .o files to the .prj tmpdir so
+// lld links them together.
+//
+// The kernel pipeline per tile iteration:
+//   1. add_one(in, out, n)   — out[i] = in[i] + 1
+//   2. scale_by_two(out, out, n)  — out[i] *= 2  (in-place: same buffer for in and out)
+// Expected output: (input + 1) * 2.
+//
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf  -O2 -c %S/add_one_kernel.cc -o ./add_one_kernel.o
+// RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang --target=aie2p-none-unknown-elf -O2 -c %S/add_one_kernel.cc -o ./add_one_kernel.o
+// RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf  -O2 -c %S/scale_kernel.cc -o ./scale_kernel.o
+// RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang --target=aie2p-none-unknown-elf -O2 -c %S/scale_kernel.cc -o ./scale_kernel.o
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --xclbin-name=aie.xclbin --aie-generate-npu-insts --npu-insts-name=insts.bin ./aie_arch.mlir
+// RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+// RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
+// RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin

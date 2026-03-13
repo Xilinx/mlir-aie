@@ -10,7 +10,7 @@
 
 module {
   aie.device(npu1_1col) {
-    func.func private @read_processor_bus(memref<8xi32>, i32, i32, i32)
+    func.func private @read_processor_bus(memref<8xi32>, i32, i32, i32) attributes {link_with = "kernel.o"}
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
     %t02 = aie.tile(0, 2)
@@ -51,7 +51,7 @@ module {
         aie.objectfifo.release @objFifo_out1(Produce, 1)
       }
       aie.end
-    } {link_with = "kernel.o"}
+    }
 
     aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
       %c0 = arith.constant 0 : i64

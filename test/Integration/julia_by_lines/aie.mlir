@@ -21,8 +21,8 @@ module @test {
 
   %lock13_3 = aie.lock(%tile13, 3)
 
-  func.func private @func(%A: memref<32x32xi32>, %MinRe : f32, %MaxRe : f32, %MinIm : f32, %MaxIm : f32) -> ()
-  func.func private @do_line(%A: memref<32x32xi32>, %MinRe : f32, %StepRe : f32, %Im : f32, %cols : i32) -> ()
+  func.func private @func(%A: memref<32x32xi32>, %MinRe : f32, %MaxRe : f32, %MinIm : f32, %MaxIm : f32) -> () attributes {link_with = "kernel.o"}
+  func.func private @do_line(%A: memref<32x32xi32>, %MinRe : f32, %StepRe : f32, %Im : f32, %cols : i32) -> () attributes {link_with = "kernel.o"}
 
   %core13 = aie.core(%tile13) {
     %MinRe = arith.constant -1.5 : f32
@@ -51,5 +51,5 @@ module @test {
       scf.yield %Im_next : f32
     }
     aie.end
-  } { link_with="kernel.o" }
+  }
 }
