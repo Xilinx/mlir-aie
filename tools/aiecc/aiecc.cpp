@@ -1886,6 +1886,53 @@ struct CoreCompilationResult {
   bool success;
 };
 
+/// Downgrade LLVM IR for Peano compatibility.
+/// Strips LLVM 23+ features that Peano 19's opt/llc can't parse:
+/// - 'nuw' flag on getelementptr (LLVM 23 feature)
+/// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
+static std::string downgradeIRForPeano(StringRef ir) {
+  std::string result = ir.str();
+  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds'
+  const std::string nuwFrom = "getelementptr inbounds nuw";
+  const std::string nuwTo = "getelementptr inbounds";
+  size_t pos = 0;
+  while ((pos = result.find(nuwFrom, pos)) != std::string::npos) {
+    result.erase(pos + nuwTo.size(), nuwFrom.size() - nuwTo.size());
+    pos += nuwTo.size();
+  }
+  // Strip 'nocreateundeforpoison' and any trailing whitespace
+  const std::string nocreate = "nocreateundeforpoison";
+  pos = 0;
+  while ((pos = result.find(nocreate, pos)) != std::string::npos) {
+    size_t end = pos + nocreate.size();
+    while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
+      ++end;
+    result.erase(pos, end - pos);
+  }
+  return result;
+}
+
+/// Apply peanohack: read LLVM IR, downgrade for Peano, write to output path.
+static LogicalResult applyPeanoHack(StringRef inputPath, StringRef outputPath) {
+  auto bufOrErr = llvm::MemoryBuffer::getFile(inputPath);
+  if (!bufOrErr) {
+    std::lock_guard<std::mutex> lock(outputMutex);
+    llvm::errs() << "Error reading LLVM IR for peanohack: "
+                 << bufOrErr.getError().message() << "\n";
+    return failure();
+  }
+  std::string hacked = downgradeIRForPeano((*bufOrErr)->getBuffer());
+  std::error_code ec;
+  llvm::raw_fd_ostream out(outputPath, ec);
+  if (ec) {
+    std::lock_guard<std::mutex> lock(outputMutex);
+    llvm::errs() << "Error writing peanohack file: " << ec.message() << "\n";
+    return failure();
+  }
+  out << hacked;
+  return success();
+}
+
 static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                  StringRef deviceName, const CoreInfo &core,
                                  StringRef tmpDirName, StringRef aieTarget,
@@ -2133,7 +2180,15 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Run opt
+    // Apply peanohack to downgrade IR for Peano compatibility
+    SmallString<128> peanohackPath(tmpDirName);
+    sys::path::append(peanohackPath,
+                      deviceName.str() + "_core_" + std::to_string(core.col) +
+                          "_" + std::to_string(core.row) + ".peanohack.ll");
+    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+      return failure();
+
+    // Run opt on peanohacked IR
     SmallString<128> optPath(tmpDirName);
     sys::path::append(optPath, deviceName.str() + "_core_" +
                                    std::to_string(core.col) + "_" +
@@ -2145,7 +2200,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                                ">,strip",
                                            "-inline-threshold=10",
                                            "-S",
-                                           std::string(llvmIRPath),
+                                           std::string(peanohackPath),
                                            "-o",
                                            std::string(optPath)};
 
@@ -2821,29 +2876,12 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack (strip debug info for compatibility)
-    auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
-    if (!bufOrErr) {
-      llvm::errs() << "Error reading unified LLVM IR: "
-                   << bufOrErr.getError().message() << "\n";
-      return failure();
-    }
-
-    // Write peanohacked version
+    // Apply peanohack to downgrade IR for Peano compatibility
     SmallString<128> peanohackPath(tmpDirName);
     sys::path::append(peanohackPath,
                       deviceName.str() + "_input.llpeanohack.ll");
-    {
-      std::error_code ec;
-      raw_fd_ostream peanohackFile(peanohackPath, ec);
-      if (ec) {
-        llvm::errs() << "Error writing peanohack file: " << ec.message()
-                     << "\n";
-        return failure();
-      }
-      // Simple peanohack: just copy for now (could add attribute stripping)
-      peanohackFile << (*bufOrErr)->getBuffer();
-    }
+    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+      return failure();
 
     // Run opt
     SmallString<128> optPath(tmpDirName);
