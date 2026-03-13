@@ -234,6 +234,8 @@ struct AIEObjectFifoStatefulTransformPass
   getOptionalAllocateOp(ObjectFifoCreateOp op) {
     ObjectFifoAllocateOp allocOp;
     auto device = op->getParentOfType<DeviceOp>();
+    if (!device)
+      return {};
     bool foundAlloc = false;
     for (ObjectFifoAllocateOp alloc : device.getOps<ObjectFifoAllocateOp>()) {
       if (alloc.getObjectFifo() == op) {
@@ -354,6 +356,43 @@ struct AIEObjectFifoStatefulTransformPass
   /// if it belongs to one.
   std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
     auto device = op->getParentOfType<DeviceOp>();
+
+    // DEBUG: Print detailed information about the operation and its context
+    llvm::errs() << "\n=== DEBUG getOptionalLinkOp ===\n";
+    llvm::errs() << "ObjectFifoCreateOp pointer: " << op.getOperation() << "\n";
+    llvm::errs() << "ObjectFifoCreateOp name: " << op.name() << "\n";
+    llvm::errs() << "DeviceOp pointer: " << (device ? device.getOperation() : nullptr) << "\n";
+
+    // Print parent chain
+    llvm::errs() << "Parent chain:\n";
+    Operation *parent = op->getParentOp();
+    int depth = 0;
+    while (parent && depth < 10) {
+      llvm::errs() << "  [" << depth << "] " << parent->getName() << " @ " << parent << "\n";
+      parent = parent->getParentOp();
+      depth++;
+    }
+
+    if (!device) {
+      llvm::errs() << "WARNING: DeviceOp is NULL!\n";
+
+      // Print the entire module IR to understand what's happening
+      if (auto moduleOp = op->getParentOfType<ModuleOp>()) {
+        llvm::errs() << "Module IR at this point:\n";
+        llvm::errs() << "========================================\n";
+        moduleOp.print(llvm::errs());
+        llvm::errs() << "\n========================================\n";
+      } else {
+        llvm::errs() << "ERROR: Cannot find parent ModuleOp either!\n";
+      }
+
+      llvm::errs() << "=== END DEBUG ===\n\n";
+      return {};
+    }
+
+    llvm::errs() << "DeviceOp symbol: " << device.getSymName() << "\n";
+    llvm::errs() << "=== END DEBUG ===\n\n";
+
     for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
       for (ObjectFifoCreateOp in : linkOp.getInputObjectFifos())
         if (in == op)
