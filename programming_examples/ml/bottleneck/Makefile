@@ -55,7 +55,7 @@ endif
 
 build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o build/conv2dk3.o build/conv2dk1_skip.o  
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%) 

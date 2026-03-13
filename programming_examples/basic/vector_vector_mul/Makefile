@@ -31,7 +31,7 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 
@@ -52,7 +52,7 @@ vck5000: devicename=xcvc1902
 vck5000: col=6
 
 vck5000: build/aie.mlir
-	aiecc.py --xchesscc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
+	aiecc --xchesscc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
 		-I/opt/xaiengine/include \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
 		-L/opt/xaiengine/lib \

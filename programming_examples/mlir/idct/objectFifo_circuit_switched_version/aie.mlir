@@ -10,7 +10,7 @@
 
 // REQUIRES: valid_xchess_license && jackl
 // RUN: xchesscc -p me -P %aietools/data/versal_prod/lib -c %S/../kernel.cc %S/../dequant.cc %S/../pass.cc
-// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: aiecc %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @idct {
@@ -34,9 +34,9 @@ module @idct {
   aie.objectfifo.register_external_buffers @of_in (%t70, {%buffer_in}) : (memref<512xi16>)
   aie.objectfifo.register_external_buffers @of_out (%t70, {%buffer_out}) : (memref<512xi16>)
 
-  func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "dequant.o"}
+  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "idct_horizontal.o"}
+  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "idct_vertical.o"}
   func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = aie.core(%t73) {
@@ -63,7 +63,7 @@ module @idct {
     }
 
     aie.end
-  } { link_with="dequant.o" }
+  }
 
   %c74 = aie.core(%t74) {
     %lb = arith.constant 0 : index
@@ -89,7 +89,7 @@ module @idct {
     }
 
     aie.end
-  } { link_with="idct_horizontal.o" }
+  }
 
   %c75 = aie.core(%t75) {
     %lb = arith.constant 0 : index
@@ -115,5 +115,5 @@ module @idct {
     }
 
     aie.end
-  } { link_with="idct_vertical.o" }
+  }
 }

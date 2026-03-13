@@ -81,6 +81,82 @@ def AIE_DeviceOp: AIE_Op<"device", [
   }];
 }
 
+def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
+    Pure,
+    SkipAccessibilityCheckTrait,
+    DeclareOpInterfaceMethods<TileLike>,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index:$result)> {
+  let arguments = (
+    ins AIETileType:$tile_type,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$col,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$row,
+        OptionalAttr<StrAttr>:$allocation_scheme
+  );
+
+  let summary = "Declare a logical AIE tile to be placed";
+  let description = [{
+    This operation creates a logical AIE tile that represents a tile to be 
+    mapped to a `aie.tile` during placement. Unlike `aie.tile`, 
+    this operation does not require absolute coordinates and instead uses
+    a tile type to specify the kind of tile needed.
+
+    The tile types are:
+    - `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory, 
+      and stream connections)
+    - `ShimNOCTile`: Maps to shim NOC tiles
+    - `ShimPLTile`: Maps to shim PL tiles
+    - `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory, 
+      but no core)
+
+    Optional `col` and `row` can be provided as placement hints or constraints.
+    Use `?` for unspecified coordinates.
+
+    Examples:
+    ```
+    // Logical core tile without placement constraints
+    %core_tile = aie.logical_tile<CoreTile>(?, ?)
+    
+    // Logical shim tile with column hint but unspecified row
+    %shim_tile = aie.logical_tile<ShimNOCTile>(0, ?)
+    
+    // Logical tile with full placement constraint (effectively fixed)
+    %fixed = aie.logical_tile<CoreTile>(2, 3)
+    ```
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    TileID getCanonicalTileID();
+  }];
+
+  let extraClassDefinition = [{
+    void $cppClass::getAsmResultNames(
+        function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
+       std::string tileName = "logical_";
+       switch (getTileType()) {
+         case AIETileType::CoreTile:
+           tileName += "core";
+           break;
+         case AIETileType::ShimNOCTile:
+           tileName += "shim_noc";
+           break;
+         case AIETileType::ShimPLTile:
+           tileName += "shim_pl";
+           break;
+         case AIETileType::MemTile:
+           tileName += "mem";
+           break;
+       }
+       setNameFn(getResult(), tileName);
+    }
+  }];
+}
+
 def AIE_TileOp: AIE_Op<"tile", [
     Pure,
     DeclareOpInterfaceMethods<TileLike>,
@@ -142,18 +218,18 @@ def AIE_TileOp: AIE_Op<"tile", [
   let extraClassDefinition = [{
     void $cppClass::getAsmResultNames(
         function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
-       std::string tileName =
-             getOperationName().str().substr(getOperationName().find('.') + 1);
-       // Specialize the SSA value name according to the tile kind
-       if (isMemTile())
-         tileName = "mem_" + tileName;
-       else if (isShimNOCTile())
-         tileName = "shim_noc_" + tileName;
-       else if (isShimPLTile())
-         tileName = "shim_pl_" + tileName;
-       else if (isShimTile())
-         tileName = "shim_" + tileName;
-       setNameFn(getResult(), tileName + "_" +
+      std::string tileName =
+            getOperationName().str().substr(getOperationName().find('.') + 1);
+      // Specialize the SSA value name according to the tile kind
+      if (isMemTile())
+        tileName = "mem_" + tileName;
+      else if (isShimNOCTile())
+        tileName = "shim_noc_" + tileName;
+      else if (isShimPLTile())
+        tileName = "shim_pl_" + tileName;
+      else if (isShimTile())
+        tileName = "shim_" + tileName;
+      setNameFn(getResult(), tileName + "_" +
                                   std::to_string(getCol()) + "_" +
                                   std::to_string(getRow()));
     }
@@ -322,7 +398,12 @@ def AIE_CoreOp: AIE_Op<"core", [
   let arguments = (
     ins Index:$tile,
     DefaultValuedAttr<AIEI32Attr, "0x400">:$stack_size,
+    // Deprecated: attach link_with to func.func declarations instead and run
+    // aie-assign-core-link-files to populate link_files.
     OptionalAttr<StrAttr>:$link_with,
+    // Populated by aie-assign-core-link-files; consumed by BCF/ldscript emitters
+    // and the aiecc driver.  Specifying both link_with and link_files is an error.
+    OptionalAttr<StrArrayAttr>:$link_files,
     OptionalAttr<StrAttr>:$elf_file,
     OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering
   );
@@ -346,6 +427,18 @@ def AIE_CoreOp: AIE_Op<"core", [
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.
+
+    **External object files.**  The preferred mechanism is to attach a `link_with`
+    string attribute to each `func.func` declaration for an externally-defined
+    function, then run the `aie-assign-core-link-files` pass.  That pass traces
+    direct `func.call` edges from each core and writes the aggregated, de-duplicated
+    list of object file paths into the `link_files` attribute on this op.  The
+    BCF/ldscript emitters and the aiecc driver consume `link_files`.
+
+    The core-level `link_with` attribute is deprecated and kept only for
+    backward compatibility.  It is migrated by `aie-assign-core-link-files`
+    (its value is folded into `link_files` and then removed).  Specifying both
+    `link_with` and `link_files` on the same CoreOp is a verifier error.
 
     Examples:
     ```
@@ -1252,11 +1345,15 @@ def AIE_LockOp: AIE_Op<"lock", [
       if (hasName())
         setNameFn(getResult(), name().str());
       else {
-        std::string nameWithoutDialect =
-            getOperation()->getName().stripDialect().str();
-        setNameFn(getResult(), nameWithoutDialect + "_" +
-              std::to_string(colIndex()) + "_" +
-              std::to_string(rowIndex()));
+        std::optional<int> col = getTileLike().tryGetCol();
+        std::optional<int> row = getTileLike().tryGetRow();
+        if (col && row) {
+          std::string nameWithoutDialect =
+              getOperation()->getName().stripDialect().str();
+          setNameFn(getResult(), nameWithoutDialect + "_" +
+                std::to_string(*col) + "_" +
+                std::to_string(*row));
+        }
       }
     }
   }];
@@ -1382,11 +1479,15 @@ def AIE_BufferOp: AIE_Op<"buffer", [
       if (hasName())
         setNameFn(getResult(), name().str());
       else {
-        std::string nameWithoutDialect =
-            getOperation()->getName().stripDialect().str();
-        setNameFn(getResult(), nameWithoutDialect + "_" +
-              std::to_string(colIndex()) + "_" +
-              std::to_string(rowIndex()));
+        std::optional<int> col = getTileLike().tryGetCol();
+        std::optional<int> row = getTileLike().tryGetRow();
+        if (col && row) {
+          std::string nameWithoutDialect =
+              getOperation()->getName().stripDialect().str();
+          setNameFn(getResult(), nameWithoutDialect + "_" +
+                std::to_string(*col) + "_" +
+                std::to_string(*row));
+        }
       }
     }
   }];
@@ -1510,9 +1611,9 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   );
   let summary = "A cascade connection between tiles";
   let description = [{
-    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.
-    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on
-    their relative placement to one another.
+    The `aie.cascade_flow` operation represents a cascade connection between two tile operations
+    (`aie.tile` or `aie.logical_tile`). During lowering, this is replaced by `aie.configure_cascade`
+    operations for each tile based on their relative placement to one another.
 
     Example:
     ```
@@ -1520,12 +1621,21 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
       %tile13 = aie.tile(1, 3)
       aie.cascade_flow(%tile03, %tile13)
     ```
+
+    With logical tiles (placement pass will assign cascadable position):
+    ```
+      %core1 = aie.logical_tile<CoreTile>(?, ?)
+      %core2 = aie.logical_tile<CoreTile>(?, ?)
+      aie.cascade_flow(%core1, %core2)
+    ```
   }];
   let hasVerifier = 1;
   let assemblyFormat = [{
     `(` $source_tile `,` $dest_tile `)` attr-dict
   }];
   let extraClassDeclaration = [{
+    TileLike getSourceTileLike();
+    TileLike getDestTileLike();
     TileOp getSourceTileOp();
     TileOp getDestTileOp();
   }];

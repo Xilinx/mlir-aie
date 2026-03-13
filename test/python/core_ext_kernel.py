@@ -23,7 +23,7 @@ from util import construct_and_print_module
 
 # CHECK:  module {
 # CHECK:    aie.device(xcve2802) {
-# CHECK:      func.func private @test_func(memref<8x8xi32>, i32) -> i32
+# CHECK:      func.func private @test_func(memref<8x8xi32>, i32) -> i32 attributes {link_with = "test.o"}
 # CHECK:      %{{.*}}tile_0_2 = aie.tile(0, 2)
 # CHECK:      %{{.*}}tile_1_2 = aie.tile(1, 2)
 # CHECK:      %{{.*}}tile_3_3 = aie.tile(3, 3)
@@ -42,7 +42,7 @@ from util import construct_and_print_module
 # CHECK:          aie.objectfifo.release @of1(Consume, 1)
 # CHECK:        }
 # CHECK:        aie.end
-# CHECK:      } {link_with = "test.o"}
+# CHECK:      }
 # CHECK:    }
 # CHECK:  }
 @construct_and_print_module
@@ -54,6 +54,7 @@ def core_ext_kernel():
             "test_func",
             inputs=[np.ndarray[(8, 8), np.dtype[np.int32]], np.int32],
             outputs=[T.i32()],
+            link_with="test.o",
         )
 
         S = tile(0, 2)
@@ -64,7 +65,7 @@ def core_ext_kernel():
         of1 = object_fifo("of1", M, N, 2, T.memref(8, 8, T.i32()))
         object_fifo_link(of0, of1)
 
-        C = Core(N, "test.o")
+        C = Core(N)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             for _ in range_(10):

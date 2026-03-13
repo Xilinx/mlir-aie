@@ -14,7 +14,7 @@ This design implements a `bfloat16`-based Rotary Position Embedding (RoPE) opera
 
 ## Files
 
-- `rope.py` : A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc.py to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI).
+- `rope.py` : A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI).
 
 - `rope.cc` : A C++ implementation of a RoPE kernel for AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics.  The source can be found [here](../../../aie_kernels/aie2p/rope.cc).
 

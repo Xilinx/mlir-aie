@@ -28,7 +28,9 @@ def vector_passthrough():
         tensor_ty = np.ndarray[(N,), np.dtype[v8bfp16ebs8]]
         tile_ty = np.ndarray[(n,), np.dtype[v8bfp16ebs8]]
 
-        kernel_func = external_func("bfp16_passthrough_vectorized", [tile_ty, tile_ty])
+        kernel_func = external_func(
+            "bfp16_passthrough_vectorized", [tile_ty, tile_ty], link_with="kernel.o"
+        )
 
         # Tile declarations
         ShimTile = tile(int(sys.argv[1]), 0)
@@ -41,7 +43,7 @@ def vector_passthrough():
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "kernel.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 elem_in1 = of_in1.acquire(ObjectFifoPort.Consume, 1)

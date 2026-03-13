@@ -29,7 +29,7 @@ module {
     aie.objectfifo @of_in(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-    func.func private @external_func(memref<16xi32>, memref<16xi32>)
+    func.func private @external_func(memref<16xi32>, memref<16xi32>) attributes {link_with = "external.o"}
 
     %core_0_2 = aie.core(%tile_0_2) {
       %subview_in = aie.objectfifo.acquire @of_in(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
@@ -43,7 +43,7 @@ module {
       aie.objectfifo.release @of_in(Consume, 1)
       aie.objectfifo.release @of_out(Produce, 1)
       aie.end
-    } {link_with = "external.o"}
+    }
 
     aie.runtime_sequence(%in : memref<16xi32>, %out : memref<16xi32>) {
       %c0 = arith.constant 0 : i64

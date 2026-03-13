@@ -45,22 +45,18 @@ else
 	echo "Device type not supported"
 endif
 
-build/combined_bitwiseOR_gray2rgba_bitwiseAND.a: build/bitwiseOR.cc.o build/gray2rgba.cc.o build/bitwiseAND.cc.o
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
-
 build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${device} ${COLORDETECT_WIDTH} ${COLORDETECT_HEIGHT} > $@
 
-build/final_${COLORDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir build/rgba2hue.cc.o build/threshold.cc.o build/combined_bitwiseOR_gray2rgba_bitwiseAND.a
+build/final_${COLORDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir build/rgba2hue.cc.o build/threshold.cc.o build/bitwiseOR.cc.o build/gray2rgba.cc.o build/bitwiseAND.cc.o
 	mkdir -p ${@D}
 ifeq ($(device),npu)
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
