@@ -1,26 +1,77 @@
-# filelock.py -*- Python -*-
+# utils.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""Cache key utilities and file locking for the JIT compilation cache."""
+
 import contextlib
 import fcntl
+import hashlib
 import os
+import pickle
 import time
 
 from aie.utils.hostruntime.tensor_class import Tensor
 
 
+def _cell_val_to_key(val):
+    """Convert a closure cell value to a stable, hashable key component.
+
+    Tries value-based hash first (for types with a proper __hash__), then
+    pickle (to capture full object state for mutable objects), then pickle
+    of __dict__ (for locally-defined classes), and finally repr as a fallback.
+    """
+    # Value-based hash: any __hash__ override is contractually value-based.
+    h = type(val).__hash__
+    if h is not None and h is not object.__hash__:
+        try:
+            return ("hash", hash(val))
+        except Exception:
+            pass
+
+    # pickle captures __dict__ and __getstate__ for mutable objects.
+    try:
+        return ("pickle", hashlib.sha256(pickle.dumps(val)).hexdigest())
+    except Exception:
+        pass
+    if hasattr(val, "__dict__"):
+        try:
+            return (
+                "pickle_dict",
+                hashlib.sha256(pickle.dumps(val.__dict__)).hexdigest(),
+            )
+        except Exception:
+            pass
+
+    return ("repr", repr(val))
+
+
+def _closure_key(fn):
+    """Return a hashable representation of a callable's closure cell contents.
+
+    Uses _cell_val_to_key so that mutable objects (including those with no
+    custom __eq__ / __hash__ / __repr__) produce distinct keys when their
+    state changes.
+    """
+    if not fn.__closure__:
+        return ()
+    names = fn.__code__.co_freevars
+    parts = []
+    for name, cell in zip(names, fn.__closure__):
+        try:
+            val = cell.cell_contents
+        except ValueError:
+            parts.append((name, "<empty>"))
+            continue
+        parts.append((name, _cell_val_to_key(val)))
+    return tuple(parts)
+
+
 def _create_function_cache_key(function, args, kwargs):
-    """
-    Create a cache key for a function call based on function name and argument types/shapes.
-    This allows us to cache compiled kernels at the function level.
-    Note that it is not necessary that we cache the tensor shapes since the kernel may be agonstic
-    to the shape changes but we are doing here for safety.
-    """
-    # Get function name
+    """Create a cache key for a function call based on function name and argument types/shapes."""
     func_name = function.__name__
 
     # Create signature from argument types and shapes
@@ -35,8 +86,15 @@ def _create_function_cache_key(function, args, kwargs):
                 # Use bytecode and constants hash for Python functions/lambdas
                 code = arg.__code__
                 defaults = arg.__defaults__ if hasattr(arg, "__defaults__") else None
+                closure_vals = _closure_key(arg)
                 func_hash = hash(
-                    (code.co_code, code.co_consts, code.co_names, defaults)
+                    (
+                        code.co_code,
+                        code.co_consts,
+                        code.co_names,
+                        defaults,
+                        closure_vals,
+                    )
                 )
                 signature_parts.append(f"function_{func_hash}")
             else:
@@ -59,8 +117,15 @@ def _create_function_cache_key(function, args, kwargs):
                 defaults = (
                     value.__defaults__ if hasattr(value, "__defaults__") else None
                 )
+                closure_vals = _closure_key(value)
                 func_hash = hash(
-                    (code.co_code, code.co_consts, code.co_names, defaults)
+                    (
+                        code.co_code,
+                        code.co_consts,
+                        code.co_names,
+                        defaults,
+                        closure_vals,
+                    )
                 )
                 signature_parts.append(f"{key}_function_{func_hash}")
             else:
