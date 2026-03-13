@@ -388,13 +388,11 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create objectFifo locks based on target architecture.
   /// Called by createObjectFifoElements().
-  std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
-                                            LockAnalysis &lockAnalysis,
-                                            ObjectFifoCreateOp op, int numElem,
-                                            int joinDistribFactor,
-                                            TileOp creation_tile,
-                                            int repeatCount,
-                                            ObjectFifoState &state) {
+  std::vector<LockOp>
+  createObjectFifoLocks(OpBuilder &builder, LockAnalysis &lockAnalysis,
+                        ObjectFifoCreateOp op, int numElem,
+                        int joinDistribFactor, TileOp creation_tile,
+                        int repeatCount, ObjectFifoState &state) {
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
@@ -502,7 +500,8 @@ struct AIEObjectFifoStatefulTransformPass
       ObjectFifoCreateOp target = producerFifo;
       auto linkOp = getOptionalLinkOp(producerFifo);
 
-      if (linkOp && state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end()) {
+      if (linkOp &&
+          state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end()) {
         target = state.objFifoLinks[*linkOp]; // Use the linked target FIFO
       }
 
@@ -755,8 +754,8 @@ struct AIEObjectFifoStatefulTransformPass
             if (!neighborTiles.empty()) {
               for (auto &tile : neighborTiles) {
                 // Try to allocate on this neighbor tile
-                int neighborUsedMemory =
-                    calculateCurrentUsedMemory(tile, state.buffersPerFifo, buffers);
+                int neighborUsedMemory = calculateCurrentUsedMemory(
+                    tile, state.buffersPerFifo, buffers);
                 if (static_cast<int>(neighborUsedMemory + totalSizeBytes) <=
                     maxDataMemorySize) {
                   // Allocate buffer on neighbor tile, change creation_tile to
@@ -793,10 +792,9 @@ struct AIEObjectFifoStatefulTransformPass
         joinDistribFactor *= linkOp->getFifoIns().size();
       state.objFifoLinks[*linkOp] = op;
     }
-    std::vector<LockOp> locks =
-        createObjectFifoLocks(builder, lockAnalysis, op, numElem,
-                              joinDistribFactor, creation_tile, repeatCount,
-                              state);
+    std::vector<LockOp> locks = createObjectFifoLocks(
+        builder, lockAnalysis, op, numElem, joinDistribFactor, creation_tile,
+        repeatCount, state);
     state.buffersPerFifo[op] = buffers;
     state.locksPerFifo[op] = locks;
   }
@@ -936,8 +934,7 @@ struct AIEObjectFifoStatefulTransformPass
     ObjectFifoCreateOp target = op;
     if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
         linkOp.has_value()) {
-      if (state.objFifoLinks.find(linkOp.value()) !=
-          state.objFifoLinks.end()) {
+      if (state.objFifoLinks.find(linkOp.value()) != state.objFifoLinks.end()) {
         target = state.objFifoLinks[linkOp.value()];
         if (target == op) {
           if (linkOp->getRepeatCount().has_value()) {
@@ -998,10 +995,10 @@ struct AIEObjectFifoStatefulTransformPass
           succ = builder.createBlock(endBlock);
 
         builder.setInsertionPointToStart(curr);
-        createBdBlock<BufferOp>(
-            builder, target, lockMode, acqNum, relNum,
-            state.buffersPerFifo[target][elemIndex], /*offset*/ 0, len,
-            channelDir, elemIndex, succ, dims, nullptr, bdPacket, state);
+        createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
+                                state.buffersPerFifo[target][elemIndex],
+                                /*offset*/ 0, len, channelDir, elemIndex, succ,
+                                dims, nullptr, bdPacket, state);
         curr = succ;
         totalBlocks++;
       }
@@ -1279,10 +1276,10 @@ struct AIEObjectFifoStatefulTransformPass
           lockIndex = elemIndex;
         }
 
-        createBdBlock<BufferOp>(
-            builder, target, lockMode, acqNum, relNum,
-            state.buffersPerFifo[target][elemIndex], offset, lenOut, channelDir,
-            lockIndex, succ, dims, padDimensions, bdPacket, state, distribOrJoin);
+        createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
+                                state.buffersPerFifo[target][elemIndex], offset,
+                                lenOut, channelDir, lockIndex, succ, dims,
+                                padDimensions, bdPacket, state, distribOrJoin);
         curr = succ;
         totalBlocks++;
       }
@@ -1842,8 +1839,6 @@ struct AIEObjectFifoStatefulTransformPass
 
   void runOnOperation() override {
 
-
-
     DeviceOp device = getOperation();
 
     // Create local state for this device operation - ensures thread and
@@ -2203,7 +2198,8 @@ struct AIEObjectFifoStatefulTransformPass
           }
         }
       }
-      if (failed(dynamicGlobalObjectFifos(device, builder, dynamicTiles, state)))
+      if (failed(
+              dynamicGlobalObjectFifos(device, builder, dynamicTiles, state)))
         return signalPassFailure();
       if (failed(unrollForLoops(device, builder, unrollTiles)))
         return signalPassFailure();
