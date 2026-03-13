@@ -368,6 +368,94 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
   return isLinearTransfer(inputSizes, inputStrides);
 }
 
+// Canonicalization pattern: rewrite a contiguous row-major access pattern to
+// the canonical linear form [s3, 1, 1, N][st3, 0, 0, 1].
+//
+// Using outermost-first index notation (matching the IR syntax), a 4D access
+// [s3, s2, s1, s0][st3, st2, st1, st0] is a contiguous linear scan when:
+//   st0 == 1
+//   s1 == 1  ||  st1 == s0          (stride irrelevant when size is 1)
+//   s2 == 1  ||  st2 == s0 * s1
+// yielding a total of N = s0 * s1 * s2 contiguous elements.  The repeat
+// dimension s3 / stride st3 is unchanged by the fold.
+//
+// This fold is always semantically valid and never introduces new hardware
+// limit violations: in the resulting linear form, isLinearTransferWithout-
+// Transformation() returns true, so verifyStridesWraps() skips the 10-bit
+// d0 wrap-size check.  The hardware uses a wider transfer-length register in
+// linear mode, so arbitrarily large N is supported.
+namespace {
+struct LinearizeContiguousTransfer
+    : public mlir::OpRewritePattern<AIEX::NpuDmaMemcpyNdOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(AIEX::NpuDmaMemcpyNdOp op,
+                  mlir::PatternRewriter &rewriter) const override {
+    // Only constant sizes/strides can be analysed statically.
+    if (!llvm::all_of(op.getMixedSizes(), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).has_value();
+        }))
+      return mlir::failure();
+    if (!llvm::all_of(op.getMixedStrides(), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).has_value();
+        }))
+      return mlir::failure();
+
+    // Skip ops that are already in canonical linear form.
+    if (op.isLinearTransferWithoutTransformation())
+      return mlir::failure();
+
+    // getMixedSizes/Strides return outermost-first; reverse to innermost-first
+    // so index 0 = d0 (innermost) and index 3 = repeat (outermost).
+    llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
+        llvm::reverse(op.getMixedSizes()), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).value();
+        });
+    llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
+        llvm::reverse(op.getMixedStrides()), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).value();
+        });
+
+    // Require a contiguous row-major scan.  A stride is only constrained when
+    // its corresponding size is > 1 (a never-applied stride is irrelevant).
+    if (strides[0] != 1)
+      return mlir::failure();
+    if (sizes[1] > 1 && strides[1] != sizes[0])
+      return mlir::failure();
+    if (sizes[2] > 1 && strides[2] != sizes[0] * sizes[1])
+      return mlir::failure();
+
+    // Fold d0/d1/d2 into one linear count; keep the repeat dimension intact.
+    // Build directly in outermost-first order for the replacement op.
+    int64_t N = sizes[0] * sizes[1] * sizes[2];
+    llvm::SmallVector<int64_t, 4> newSizesOuter = {sizes[3], 1, 1, N};
+    llvm::SmallVector<int64_t, 4> newStridesOuter = {strides[3], 0, 0, 1};
+
+    // Preserve all other attributes (offsets, packet, metadata, etc.) exactly.
+    rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
+        op, op.getMemref(),
+        /*offsets=*/op.getOffsets(),
+        /*sizes=*/mlir::ValueRange{},
+        /*strides=*/mlir::ValueRange{},
+        mlir::DenseI64ArrayAttr::get(op.getContext(), op.getStaticOffsets()),
+        mlir::DenseI64ArrayAttr::get(op.getContext(), newSizesOuter),
+        mlir::DenseI64ArrayAttr::get(op.getContext(), newStridesOuter),
+        op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
+        op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
+        op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
+        op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr());
+    return mlir::success();
+  }
+};
+} // namespace
+
+void AIEX::NpuDmaMemcpyNdOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &patterns, mlir::MLIRContext *context) {
+  patterns.add<LinearizeContiguousTransfer>(context);
+}
+
 // Helper method to check if a requested burst length is supported by the target
 // model. Returns an error message if the burst length is not supported or an
 // empty option otherwise.

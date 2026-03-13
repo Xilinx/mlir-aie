@@ -709,6 +709,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
