@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""Cache key utilities and file locking for the JIT compilation cache."""
 import contextlib
 import fcntl
 import hashlib
@@ -16,22 +17,13 @@ from aie.utils.hostruntime.tensor_class import Tensor
 
 
 def _cell_val_to_key(val):
-    """Convert a single closure cell value to a stable, hashable key component.
+    """Convert a closure cell value to a stable, hashable key component.
 
-    Priority:
-    1. value-hash   — cheap O(1) path for types with a proper value-based
-                      __hash__ (int, str, float, tuple, frozenset, and any
-                      custom immutable type).
-    2. pickle       — serialises full object state (__dict__ / __getstate__)
-                      for mutable objects whose identity-based __hash__ would
-                      miss mutations.
-    3. pickle_dict  — for objects whose class is not picklable by name (e.g.
-                      locally-defined classes), pickle __dict__ directly; it
-                      is always a plain dict and therefore always picklable.
-    4. repr         — last resort for non-picklable, identity-hashable objects.
+    Tries value-based hash first (for types with a proper __hash__), then
+    pickle (to capture full object state for mutable objects), then pickle
+    of __dict__ (for locally-defined classes), and finally repr as a fallback.
     """
-    # 1. Value-based hash: object.__hash__ is identity-based (id >> 4), so any
-    #    override is contractually value-based and cheap.
+    # Value-based hash: any __hash__ override is contractually value-based.
     h = type(val).__hash__
     if h is not None and h is not object.__hash__:
         try:
@@ -39,10 +31,7 @@ def _cell_val_to_key(val):
         except Exception:
             pass
 
-    # 2. pickle: captures __dict__ and custom __getstate__ regardless of whether
-    #    __eq__ / __hash__ / __repr__ are defined.  If the object itself is not
-    #    picklable (e.g. locally-defined class), fall back to pickling __dict__,
-    #    which is always a plain dict and therefore always picklable.
+    # pickle captures __dict__ and __getstate__ for mutable objects.
     try:
         return ("pickle", hashlib.sha256(pickle.dumps(val)).hexdigest())
     except Exception:
@@ -56,7 +45,6 @@ def _cell_val_to_key(val):
         except Exception:
             pass
 
-    # 3. repr fallback
     return ("repr", repr(val))
 
 
@@ -82,13 +70,7 @@ def _closure_key(fn):
 
 
 def _create_function_cache_key(function, args, kwargs):
-    """
-    Create a cache key for a function call based on function name and argument types/shapes.
-    This allows us to cache compiled kernels at the function level.
-    Note that it is not necessary that we cache the tensor shapes since the kernel may be agonstic
-    to the shape changes but we are doing here for safety.
-    """
-    # Get function name
+    """Create a cache key for a function call based on function name and argument types/shapes."""
     func_name = function.__name__
 
     # Create signature from argument types and shapes
