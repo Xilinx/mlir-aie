@@ -1,0 +1,17 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess
+//
+// Test 8-core massively parallel design
+// RUN: mkdir -p %t/conv3d_mp_8core && cd %t/conv3d_mp_8core
+// RUN: make -C %S clean
+// RUN: make -C %S massively_parallel_8core depth=8 height=64 width=64 in_channels=8 out_channels=8
+// RUN: %run_on_npu python3 %S/test.py -x %S/build/mp_8core.xclbin -i %S/build/mp_8core_insts.bin -k MLIR_AIE -d 8 -ht 64 -wd 64 -ic 8 -oc 8 | FileCheck %s
+// CHECK: PASS!
+
+// Test 16-core massively parallel design (larger volume)
+// RUN: mkdir -p %t/conv3d_mp_16core && cd %t/conv3d_mp_16core
+// RUN: make -C %S clean
+// RUN: make -C %S massively_parallel_16core depth=8 height=128 width=128 in_channels=8 out_channels=8
+// RUN: %run_on_npu python3 %S/test.py -x %S/build/mp_16core.xclbin -i %S/build/mp_16core_insts.bin -k MLIR_AIE -d 8 -ht 128 -wd 128 -ic 8 -oc 8 | FileCheck %s
