@@ -25,7 +25,7 @@ Not all data movement patterns can be described with Object FIFOs. This **advanc
 
 **Please note that this part of the guide is described at the explicitly placed IRON level.**
 
-The AIE architecture currently has three different types of tiles: compute tiles, referred to as "tile", memory tiles referred to as "Mem tiles", and external memory interface tiles referred to as "Shim tiles". Each of these tiles has its own attributes regarding compute capabilities and memory capacity, but the base design of their DMAs is the same. The different types of DMAs can be intialized using the constructors in [aie.py](../../../python/dialects/aie.py):
+The AIE architecture currently has three different types of tiles: compute tiles, referred to as "tile", memory tiles referred to as "Mem tiles", and external memory interface tiles referred to as "Shim tiles". Each of these tiles has its own attributes regarding compute capabilities and memory capacity, but the base design of their DMAs is the same. The different types of DMAs can be initialized using the constructors in [aie.py](../../../python/dialects/aie.py):
 ```python
 @mem(tile) # compute tile DMA
 @shim_dma(tile) # Shim tile DMA
@@ -49,7 +49,7 @@ def dma(
 )
 ```
 
-The data movement on each channel is described by a chain of Buffer Descriptors (or "BDs"), where each BD describes what data is being moved and configures its synchornization mechanism. The `dma` constructor already creates space for one such BD as can be seen by its `num_blocks=1` default valued input.
+The data movement on each channel is described by a chain of Buffer Descriptors (or "BDs"), where each BD describes what data is being moved and configures its synchronization mechanism. The `dma` constructor already creates space for one such BD as can be seen by its `num_blocks=1` default valued input.
 
 The code snippet below shows how to configure the DMA on `tile_a` such that data coming in on input channel 0 is written into `buff_in`:
 ```python
@@ -132,11 +132,11 @@ tile_b = tile(1, 3)
 
 prod_lock_a = lock(tile_a, lock_id=0, init=1)
 cons_lock_a = lock(tile_a, lock_id=1, init=0)
-buff_a = buffer(tile=tile_a, np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
+buff_a = buffer(tile=tile_a, datatype=np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
 
 prod_lock_b = lock(tile_b, lock_id=0, init=1)
 cons_lock_b = lock(tile_b, lock_id=1, init=0)
-buff_b = buffer(tile=tile_b, np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
+buff_b = buffer(tile=tile_b, datatype=np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
 
 aie.flow(tile_a, WireBundle.DMA, 0, tile_b, WireBundle.DMA, 1)
 
@@ -150,7 +150,7 @@ def mem_body():
 
 @mem(tile_b)
 def mem_body():
-    @dma(SS2M, 1) # input channel, port 1
+    @dma(S2MM, 1) # input channel, port 1
     def dma_in_0():
         use_lock(prod_lock_b, AcquireGreaterEqual)
         dma_bd(buff_b)

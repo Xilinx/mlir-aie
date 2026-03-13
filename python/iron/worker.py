@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""Worker and WorkerRuntimeBarrier: compute-core tasks and runtime synchronization primitives."""
+
 import sys
 from typing import Callable
 
@@ -20,12 +22,12 @@ from .resolvable import Resolvable
 
 
 class Worker(ObjectFifoEndpoint):
-    """_summary_
-    Worker is an object that takes a `core_fn` and a set of arguments.
-    A Worker must be placed on a Compute Core.
-    """
+    """A task to be run on an AIE compute core.
 
-    """This variable is the current core if resolving() within the Worker, or None otherwise."""
+    A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,
+    Buffers, Kernels, etc.). Each Worker must be placed on a single compute tile, either
+    explicitly via ``placement`` or automatically by a :class:`~aie.iron.placers.Placer`.
+    """
 
     def __init__(
         self,
@@ -49,6 +51,7 @@ class Worker(ObjectFifoEndpoint):
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
                 Will override any allocation scheme set on the tile given as placement.
             trace (int, optional): If >0, enable tracing for this worker.
+            trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.
 
         Raises:
             ValueError: Parameters are validated.
@@ -118,7 +121,7 @@ class Worker(ObjectFifoEndpoint):
 
     @property
     def buffers(self) -> list[Buffer]:
-        """Returns a list of Buffer given to the Worker via fn_args.
+        """Returns a list of Buffers given to the Worker via fn_args.
 
         Returns:
             list[Buffer]: Buffer used by the Worker.
@@ -150,6 +153,11 @@ class WorkerRuntimeBarrier:
     """A barrier allowing individual workers to synchronize with the runtime sequence."""
 
     def __init__(self, initial_value: int = 0):
+        """Initialize a WorkerRuntimeBarrier.
+
+        Args:
+            initial_value (int, optional): The initial lock value. Defaults to 0.
+        """
         self.initial_value = initial_value
         self.worker_locks = []
 
@@ -197,6 +205,12 @@ class _BarrierSetOp(Resolvable):
     """A resolvable instance of a WorkerRuntimeBarrier. This should not be used directly."""
 
     def __init__(self, barrier: WorkerRuntimeBarrier, value: int):
+        """Construct a _BarrierSetOp.
+
+        Args:
+            barrier (WorkerRuntimeBarrier): The barrier whose value will be set.
+            value (int): The value to set.
+        """
         self.barrier: WorkerRuntimeBarrier = barrier
         self.value: int = value
 
