@@ -38,11 +38,15 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # AIE Core Function declarations
         if dtype_str == "bf16":
             reduce_max_vector = external_func(
-                "reduce_max_vector_bfloat16", inputs=[in_ty, out_ty, np.int32]
+                "reduce_max_vector_bfloat16",
+                inputs=[in_ty, out_ty, np.int32],
+                link_with="reduce_max.cc.o",
             )
         else:
             reduce_max_vector = external_func(
-                "reduce_max_vector", inputs=[in_ty, out_ty, np.int32]
+                "reduce_max_vector",
+                inputs=[in_ty, out_ty, np.int32],
+                link_with="reduce_max.cc.o",
             )
 
         # Tile declarations
@@ -61,7 +65,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "reduce_max.cc.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)

@@ -49,7 +49,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
-    utils/compile/link.py
     utils/compile/utils.py
     utils/compile/cache/circular_cache.py
     utils/compile/cache/utils.py

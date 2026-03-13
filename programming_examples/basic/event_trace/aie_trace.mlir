@@ -20,7 +20,7 @@
 module {
   aie.device(NPUDEVICE) {
     // External kernel function declaration
-    func.func private @vector_scalar_mul_aie_scalar(memref<1024xi32>, memref<1024xi32>, memref<1xi32>, i32)
+    func.func private @vector_scalar_mul_aie_scalar(memref<1024xi32>, memref<1024xi32>, memref<1xi32>, i32) attributes {link_with = "scale.o"}
 
     // Tile declarations
     %shim_noc_tile_0_0 = aie.tile(0, 0)
@@ -55,7 +55,7 @@ module {
         aie.objectfifo.release @infactor(Consume, 1)
       }
       aie.end
-    } {link_with = "scale.o"}
+    }
 
     // ========================================================================
     // TRACE CONFIGURATION
