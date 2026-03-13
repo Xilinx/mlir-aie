@@ -4566,7 +4566,7 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                                     /*bigEndian=*/false,
                                                     /*emitUnified=*/false,
                                                     /*cdoDebug=*/false,
-                                                    /*aieSim=*/aiesim,
+                                                    /*aieSim=*/false,
                                                     /*xaieDebug=*/false,
                                                     /*enableCores=*/true))) {
       llvm::errs() << "Error generating CDO files\n";
