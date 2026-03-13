@@ -386,6 +386,12 @@ static cl::opt<bool> noUnified(
     cl::desc("Compile cores independently in separate processes (default)"),
     cl::init(false), cl::cat(aieCompilerOptions));
 
+static cl::opt<bool> bf16Emulation(
+    "bf16-emulation",
+    cl::desc("Emulate f32 vector arithmetic using bf16 operations in "
+             "convert-vector-to-aievec"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
 // Backward compatibility flags (no-ops in C++ aiecc)
 // These flags existed in Python aiecc.py but are not used in the core
 // compilation flow. They are kept for backward compatibility so that
@@ -1345,7 +1351,8 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
       lowerTarget == "aie2p") {
     std::string vecPipeline =
         "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        " target-backend=llvmir}";
+        " target-backend=llvmir" +
+        (bf16Emulation ? " bf16-emulation=true" : "") + "}";
     if (failed(parsePassPipeline(vecPipeline, pm))) {
       llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
                       "pipeline\n";
