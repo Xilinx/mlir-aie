@@ -34,8 +34,8 @@ aie.device(npu1_1col) {
   // Check trace control
   // CHECK: aie.trace.reg register = "Trace_Control0" field = "Mode" value = 0
   // CHECK: aie.trace.reg register = "Trace_Control1" field = "ID" value = 1
-  // CHECK: aie.trace.reg register = "Trace_Control0" field = "Trace_Start_Event" value = 15
-  // CHECK: aie.trace.reg register = "Trace_Control0" field = "Trace_Stop_Event" value = 14
+  // CHECK: aie.trace.reg register = "Trace_Control0" field = "Trace_Start_Event" value = 122
+  // CHECK: aie.trace.reg register = "Trace_Control0" field = "Trace_Stop_Event" value = 121
   // Check event slots
   // CHECK: aie.trace.reg register = "Trace_Event0" field = "Trace_Event0"
   // CHECK: aie.trace.reg register = "Trace_Event0" field = "Trace_Event1"

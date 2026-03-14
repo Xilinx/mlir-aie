@@ -1325,6 +1325,7 @@ static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp,
   }
 
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  devicePm.addPass(xilinx::AIE::createAIEInsertTraceFlowsPass());
   devicePm.addPass(xilinx::AIE::createAIETraceToConfigPass());
   devicePm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
   devicePm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
