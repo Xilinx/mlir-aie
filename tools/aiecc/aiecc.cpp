@@ -1490,13 +1490,15 @@ static LogicalResult runRoutingPipeline(ModuleOp moduleOp,
 }
 
 // Forward declaration
-static void assignPdiIds(ModuleOp moduleOp);
+static std::map<std::string, int> assignPdiIds(ModuleOp moduleOp,
+                                               bool allDevices = false);
 
 /// Run the NPU lowering pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
-static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
-                                            StringRef tmpDirName,
-                                            bool patchPdiIds = false) {
+static LogicalResult
+runNpuLoweringPipeline(ModuleOp moduleOp, StringRef tmpDirName,
+                       bool patchPdiIds = false,
+                       std::map<std::string, int> *outPdiIdMapping = nullptr) {
   MLIRContext *ctx = moduleOp.getContext();
 
   // Phase 1: Core NPU lowering passes
@@ -1549,6 +1551,12 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
                                        tmpDirName))) {
       llvm::errs() << "Error: expand-load-pdi pass failed\n";
       return failure();
+    }
+    // Re-assign PDI IDs with ALL devices (including new empties from expand)
+    if (patchPdiIds) {
+      auto mapping = assignPdiIds(moduleOp, /*allDevices=*/true);
+      if (outPdiIdMapping)
+        *outPdiIdMapping = std::move(mapping);
     }
   }
 
@@ -1909,6 +1917,19 @@ static std::string downgradeIRForPeano(StringRef ir) {
       ++end;
     result.erase(pos, end - pos);
   }
+  // Strip ', align <N>' attributes (matches old Python
+  // drop_alignment_for_peano)
+  const std::string alignPat = ", align ";
+  pos = 0;
+  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
+    size_t end = pos + alignPat.size();
+    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
+      ++end;
+    if (end > pos + alignPat.size())
+      result.erase(pos, end - pos);
+    else
+      pos = end;
+  }
   return result;
 }
 
@@ -2188,21 +2209,24 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
       return failure();
 
-    // Run opt on peanohacked IR
+    // Run opt on peanohacked IR.
+    // Cap opt level at O1 for Peano to match old Python aiecc behavior.
+    // Higher levels cause SLP vectorizer to create types that crash GlobalISel.
     SmallString<128> optPath(tmpDirName);
     sys::path::append(optPath, deviceName.str() + "_core_" +
                                    std::to_string(core.col) + "_" +
                                    std::to_string(core.row) + ".opt.ll");
 
+    unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
     std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optCmd = {peanoOpt,
-                                           "--passes=default<O" + optLevelStr +
-                                               ">,strip",
-                                           "-inline-threshold=10",
-                                           "-S",
-                                           std::string(peanohackPath),
-                                           "-o",
-                                           std::string(optPath)};
+    SmallVector<std::string, 12> optCmd = {
+        peanoOpt,
+        "--passes=default<O" + std::to_string(safeOptLevel) + ">,strip",
+        "-inline-threshold=10",
+        "-S",
+        std::string(peanohackPath),
+        "-o",
+        std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -2883,19 +2907,20 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
     if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
       return failure();
 
-    // Run opt
+    // Run opt (cap at O1 to match old Python aiecc, no strip for unified)
     SmallString<128> optPath(tmpDirName);
     sys::path::append(optPath, deviceName.str() + "_input.opt.ll");
 
+    unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
     std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optCmd = {peanoOpt,
-                                           "--passes=default<O" + optLevelStr +
-                                               ">,strip",
-                                           "-inline-threshold=10",
-                                           "-S",
-                                           std::string(peanohackPath),
-                                           "-o",
-                                           std::string(optPath)};
+    SmallVector<std::string, 12> optCmd = {
+        peanoOpt,
+        "--passes=default<O" + std::to_string(safeOptLevel) + ">",
+        "-inline-threshold=10",
+        "-S",
+        std::string(peanohackPath),
+        "-o",
+        std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -3534,13 +3559,15 @@ static LogicalResult extractAndMergePartition(StringRef inputXclbin,
 /// npu.load_pdi). Maps each device to a 1-based ID (in device iteration
 /// order) and patches the load_pdi ops so the instruction binary encodes
 /// the correct IDs.
-static void assignPdiIds(ModuleOp moduleOp) {
+static std::map<std::string, int> assignPdiIds(ModuleOp moduleOp,
+                                               bool allDevices) {
   // Build mapping in device iteration order (matching Python driver's
   // enumerate() behavior). Use MapVector to preserve insertion order.
   llvm::MapVector<StringRef, int> deviceToPdiId;
   int nextId = 1;
   for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-    if (!deviceName.empty() && deviceOp.getSymName() != deviceName)
+    if (!allDevices && !deviceName.empty() &&
+        deviceOp.getSymName() != deviceName)
       continue;
     deviceToPdiId[deviceOp.getSymName()] = nextId++;
   }
@@ -3565,17 +3592,29 @@ static void assignPdiIds(ModuleOp moduleOp) {
                    << " to load_pdi referencing @" << refName << "\n";
     }
   });
+  // Return mapping with std::string keys (StringRef may dangle)
+  std::map<std::string, int> result;
+  for (auto &kv : deviceToPdiId)
+    result[kv.first.str()] = kv.second;
+  return result;
 }
 
 //===----------------------------------------------------------------------===//
 // NPU Instruction Generation
 //===----------------------------------------------------------------------===//
 
+// Forward declaration
+static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
+                                          StringRef tmpDirName,
+                                          StringRef devName);
+
 /// Generate NPU instructions from an in-memory module.
 /// This clones the module since NPU lowering is destructive.
-static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
-                                             StringRef tmpDirName,
-                                             StringRef devName) {
+static LogicalResult
+generateNpuInstructions(ModuleOp moduleOp, StringRef tmpDirName,
+                        StringRef devName,
+                        SmallVectorImpl<std::string> *newDeviceNames = nullptr,
+                        std::map<std::string, int> *pdiIdMapping = nullptr) {
   // Full ELF requires NPU instructions
   if (!generateNpuInsts && !generateFullElf) {
     return success();
@@ -3602,8 +3641,11 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   // When generating full ELF, patch PDI IDs between core NPU lowering and
   // expand-load-pdis so the IDs are assigned to the original device refs
   // before expand-load-pdis copies them to empty device load_pdi ops.
+  std::map<std::string, int> clonePdiIdMapping;
   if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName,
-                                    /*patchPdiIds=*/generateFullElf))) {
+                                    /*patchPdiIds=*/generateFullElf,
+                                    pdiIdMapping ? &clonePdiIdMapping
+                                                 : nullptr))) {
     return failure();
   }
 
@@ -3611,6 +3653,26 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   SmallString<128> npuLoweredPath(tmpDirName);
   sys::path::append(npuLoweredPath, devName.str() + "_npu_lowered.mlir");
   dumpModuleToFile(*clonedModule, npuLoweredPath, "NPU lowered module");
+
+  // Pass back the PDI ID mapping from the clone
+  if (pdiIdMapping && !clonePdiIdMapping.empty())
+    *pdiIdMapping = std::move(clonePdiIdMapping);
+
+  // Collect new device names created by expand-load-pdis (e.g., @empty_0)
+  // and generate CDO/PDI artifacts for them from the clone.
+  if (newDeviceNames) {
+    for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
+      StringRef name = devOp.getSymName();
+      newDeviceNames->push_back(name.str());
+      // Generate CDO for new devices (those not matching devName)
+      if (name != devName) {
+        if (failed(generateCdoArtifacts(*clonedModule, tmpDirName, name))) {
+          llvm::errs() << "Warning: CDO generation failed for new device "
+                       << name << "\n";
+        }
+      }
+    }
+  }
 
   // Step 2: Translate to NPU binary
   // Find device and generate instructions for each runtime sequence
@@ -5172,9 +5234,57 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     // wrote the ctrl packet DMA sequence to instsName, which IS the NPU
     // instruction stream. Running generateNpuInstructions() would overwrite it
     // with regular NPU instructions that don't send the control packets.
+    SmallVector<std::string> npuDeviceNames;
+    std::map<std::string, int> npuPdiIdMapping;
     if (!generateCtrlPkt &&
-        failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
+        failed(generateNpuInstructions(
+            moduleOp, tmpDirName, devName,
+            generateFullElf ? &npuDeviceNames : nullptr,
+            generateFullElf ? &npuPdiIdMapping : nullptr))) {
       return failure();
+    }
+
+    // After NPU lowering (which includes expand-load-pdis), new devices
+    // (e.g., @empty_0) may have been created on the cloned module. Generate
+    // CDO artifacts for any new devices and collect their info for full ELF.
+    if (generateFullElf) {
+      for (const auto &newName : npuDeviceNames) {
+        bool found = false;
+        for (const auto &info : deviceElfInfos) {
+          if (info.deviceName == newName) {
+            found = true;
+            break;
+          }
+        }
+        // Also check if this device exists in the original module — if so,
+        // it will be processed later in the device loop (don't duplicate).
+        bool existsInOriginal = false;
+        for (auto origDev : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
+          if (origDev.getSymName() == newName) {
+            existsInOriginal = true;
+            break;
+          }
+        }
+        if (!found && newName != devName && !existsInOriginal) {
+          // Truly new device from expand-load-pdis (e.g., @empty_0)
+          // CDO was already generated from the clone in generateNpuInstructions
+          DeviceElfInfo info;
+          info.deviceName = newName;
+          auto it = npuPdiIdMapping.find(newName);
+          info.pdiId =
+              (it != npuPdiIdMapping.end()) ? it->second : devicePdiId++;
+          SmallString<256> absTmpDir;
+          if (auto ec = sys::fs::real_path(tmpDirName, absTmpDir)) {
+            sys::fs::current_path(absTmpDir);
+            sys::path::append(absTmpDir, tmpDirName);
+          }
+          std::string pdiFileName = formatString(pdiName, StringRef(newName));
+          SmallString<256> pdiFullPath(absTmpDir);
+          sys::path::append(pdiFullPath, pdiFileName);
+          info.pdiPath = std::string(pdiFullPath);
+          deviceElfInfos.push_back(std::move(info));
+        }
+      }
     }
 
     // Generate transaction MLIR output if requested.
@@ -5211,7 +5321,10 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     if (generateFullElf) {
       DeviceElfInfo info;
       info.deviceName = devName.str();
-      info.pdiId = devicePdiId++;
+      {
+        auto it = npuPdiIdMapping.find(devName.str());
+        info.pdiId = (it != npuPdiIdMapping.end()) ? it->second : devicePdiId++;
+      }
 
       // Get absolute path to tmpDir for aiebu-asm (it needs absolute paths)
       SmallString<256> absTmpDir;
