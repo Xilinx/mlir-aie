@@ -264,7 +264,7 @@ class Runtime(Resolvable):
             ddr_id (int | None, optional): XRT inout buffer index to write trace data into.
                 Defaults to None (treated as 4, the conventional last buffer slot).
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
-                See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available 
+                See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available
                 events under (type)EventAIE such as CoreEventAIE.
                 Defaults to None (uses hardware defaults).
             coremem_events (list | None, optional): List of up to 8 mem tile trace events.
