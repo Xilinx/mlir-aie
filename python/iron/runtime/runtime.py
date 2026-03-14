@@ -246,6 +246,7 @@ class Runtime(Resolvable):
         workers: list | None = None,
         ddr_id: int = None,
         coretile_events: list | None = None,
+        coremem_events: list | None = None,
         memtile_events: list | None = None,
         shimtile_events: list | None = None,
     ):
@@ -263,7 +264,10 @@ class Runtime(Resolvable):
             ddr_id (int | None, optional): XRT inout buffer index to write trace data into.
                 Defaults to None (treated as 4, the conventional last buffer slot).
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
-                See ``python/utils/trace_events_enum.py`` for available events.
+                See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available 
+                events under (type)EventAIE such as CoreEventAIE.
+                Defaults to None (uses hardware defaults).
+            coremem_events (list | None, optional): List of up to 8 mem tile trace events.
                 Defaults to None (uses hardware defaults).
             memtile_events (list | None, optional): List of up to 8 mem tile trace events.
                 Defaults to None (uses hardware defaults).
@@ -275,6 +279,7 @@ class Runtime(Resolvable):
         self._trace_workers = workers
         self._ddr_id = ddr_id
         self._coretile_events = coretile_events
+        self._coremem_events = coremem_events
         self._memtile_events = memtile_events
         self._shimtile_events = shimtile_events
 
@@ -343,6 +348,7 @@ class Runtime(Resolvable):
                     ),
                     ddr_id=self._ddr_id if self._ddr_id is not None else 4,
                     coretile_events=self._coretile_events,
+                    coremem_events=self._coremem_events,
                     memtile_events=self._memtile_events,
                     shimtile_events=self._shimtile_events,
                 )
