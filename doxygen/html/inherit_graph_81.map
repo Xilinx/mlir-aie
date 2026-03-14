@@ -1,5 +1,3 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classxilinx_1_1AIE_1_1impl_1_1AIEAssignBufferAddressesBase.html" title=" " alt="" coords="5,5,229,45"/>
-<area shape="rect" id="Node000001" href="$structAIEAssignBufferAddressesPass.html" title=" " alt="" coords="277,13,499,38"/>
-<area shape="poly" id="edge202_Node000000_Node000001" title=" " alt="" coords="243,23,277,23,277,28,243,28"/>
+<area shape="rect" id="Node000000" href="$structxilinx_1_1AIE_1_1EventInfo.html" title="Event information." alt="" coords="5,5,163,31"/>
 </map>

@@ -1,3 +1,23 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$structPacketConnection.html" title=" " alt="" coords="5,5,143,31"/>
+<area shape="rect" id="Node000000" href="$classOpRewritePattern.html" title=" " alt="" coords="5,287,141,313"/>
+<area shape="rect" id="Node000001" href="$structCanonicalizeTrivialReadAccessSubviewOpPattern.html" title="Pattern to canonicalize trivial vector.transfer_read operations on subviews." alt="" coords="195,5,417,45"/>
+<area shape="poly" id="edge145_Node000000_Node000001" title=" " alt="" coords="77,273,89,226,110,167,142,107,163,79,188,55,206,43,209,48,191,59,167,83,147,110,115,170,94,228,82,274"/>
+<area shape="rect" id="Node000002" href="$structCanonicalizeTrivialWriteAccessSubviewOpPattern.html" title="Pattern to canonicalize trivial vector.transfer_write operations on subviews." alt="" coords="213,69,399,109"/>
+<area shape="poly" id="edge146_Node000000_Node000002" title=" " alt="" coords="82,273,97,238,120,197,150,155,188,119,211,106,214,110,191,123,154,158,125,200,102,241,87,275"/>
+<area shape="rect" id="Node000003" href="$structConvertLeadingUnitDimInsertToReshapePattern.html" title=" " alt="" coords="199,133,413,173"/>
+<area shape="poly" id="edge147_Node000000_Node000003" title=" " alt="" coords="90,275,131,228,158,204,188,183,213,171,216,176,191,188,162,208,135,232,94,278"/>
+<area shape="rect" id="Node000004" href="$structEmulateBinaryF32InBF16Pattern.html" title="Pattern to emulate f32 binary vector arithmetic ops in bf16." alt="" coords="189,197,423,237"/>
+<area shape="poly" id="edge148_Node000000_Node000004" title=" " alt="" coords="112,279,188,247,225,235,227,240,190,252,114,284"/>
+<area shape="rect" id="Node000005" href="$structEmulateCmpFF32InBF16Pattern.html" title="Pattern to emulate f32 comparison ops in bf16." alt="" coords="191,262,421,287"/>
+<area shape="poly" id="edge149_Node000000_Node000005" title=" " alt="" coords="155,288,191,285,191,290,155,294"/>
+<area shape="rect" id="Node000006" href="$structEmulateFMAF32InBF16Pattern.html" title="Pattern to emulate f32 vector.fma in bf16." alt="" coords="196,311,416,337"/>
+<area shape="poly" id="edge150_Node000000_Node000006" title=" " alt="" coords="156,306,196,310,196,315,155,311"/>
+<area shape="rect" id="Node000007" href="$structEmulateReductionF32InBF16Pattern.html" title="Pattern to emulate f32 vector.reduction in bf16." alt="" coords="201,361,411,401"/>
+<area shape="poly" id="edge151_Node000000_Node000007" title=" " alt="" coords="116,316,190,345,231,359,230,364,188,351,114,321"/>
+<area shape="rect" id="Node000008" href="$structEmulateSelectF32InBF16Pattern.html" title="Pattern to emulate f32 select ops in bf16." alt="" coords="191,426,421,451"/>
+<area shape="poly" id="edge152_Node000000_Node000008" title=" " alt="" coords="94,322,135,368,161,391,191,411,221,423,219,428,188,416,158,396,131,372,90,325"/>
+<area shape="rect" id="Node000009" href="$structEmulateUnaryF32InBF16Pattern.html" title="Pattern to emulate f32 unary vector ops in bf16." alt="" coords="191,476,421,516"/>
+<area shape="poly" id="edge153_Node000000_Node000009" title=" " alt="" coords="88,324,127,392,156,429,191,460,214,474,212,478,188,465,152,433,123,395,83,326"/>
+<area shape="rect" id="Node000010" href="$structSwapUnaryOpsPattern.html" title=" " alt="" coords="210,540,402,580"/>
+<area shape="poly" id="edge154_Node000000_Node000010" title=" " alt="" coords="83,326,96,370,117,424,149,479,168,504,191,526,211,539,208,543,188,530,164,508,144,482,113,426,91,372,78,327"/>
 </map>

@@ -1,17 +1,5 @@
 <map id="AIEObjectFifoStatefulTransformPass" name="AIEObjectFifoStatefulTransformPass">
-<area shape="rect" id="Node000001" title=" " alt="" coords="519,236,773,261"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="369,20,624,45"/>
 <area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1impl_1_1AIEObjectFifoStatefulTransformBase.html" title=" " alt="" coords="5,5,321,60"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="333,61,416,86,496,121,539,148,578,180,635,234,631,238,575,184,536,153,493,126,414,91,331,66"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="54,85,273,125"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="284,125,388,150,496,182,562,208,619,233,616,238,560,213,494,187,387,155,283,130"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="51,149,276,204"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="290,193,560,233,560,239,290,198"/>
-<area shape="rect" id="Node000005" title=" " alt="" coords="56,229,271,269"/>
-<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="285,246,518,246,518,251,285,251"/>
-<area shape="rect" id="Node000006" title=" " alt="" coords="54,293,273,362"/>
-<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="286,305,567,259,568,264,287,310"/>
-<area shape="rect" id="Node000007" title=" " alt="" coords="64,386,263,426"/>
-<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="276,382,321,371,408,347,494,316,618,259,621,264,496,320,410,352,322,377,277,387"/>
-<area shape="rect" id="Node000008" title=" " alt="" coords="53,451,273,476"/>
-<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="286,450,391,427,444,409,493,385,538,355,577,320,633,260,636,263,581,324,541,359,496,390,446,414,392,432,287,455"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="335,30,369,30,369,35,335,35"/>
 </map>
