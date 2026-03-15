@@ -169,7 +169,7 @@ jobs:
       # We don't get OpenSSL for free on Windows. Manage the pain.
       # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
     - name: Enable vcpkg binary caching
-      if: ${{ matrix.OS == 'windows-2022' }}
+      if: ${{ runner.os == 'Windows' }}
       uses: actions/github-script@v7
       with:
         script: |
@@ -178,7 +178,7 @@ jobs:
 
     # Install OpenSSL so bootgen.exe can build against it.
     - name: Install OpenSSL
-      if: ${{ matrix.OS == 'windows-2022' }}
+      if: ${{ runner.os == 'Windows' }}
       shell: pwsh
       run: |
         $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
@@ -212,7 +212,7 @@ jobs:
 
         ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
 
-        if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
+        if [ x"${{ runner.os }}" == x"Windows" ]; then
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
         else
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
@@ -248,9 +248,12 @@ jobs:
 
         export PIP_NO_BUILD_ISOLATION=false
 
+        if [ x"${{ runner.os }}" == x"Windows" ]; then
+          export CMAKE_ARGS="-DOPENSSL_USE_STATIC_LIBS=TRUE"
+        fi
+
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
-        CMAKE_ARGS="-DOPENSSL_USE_STATIC_LIBS=TRUE" \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
         CIBW_CONTAINER_ENGINE_ARGS="-v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:/host${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}" \
@@ -260,7 +263,7 @@ jobs:
         cibuildwheel --output-dir wheelhouse
 
     - name: Repair wheels (Windows)
-      if: ${{ matrix.OS == 'windows-2022' }}
+      if: ${{ runner.os == 'Windows' }}
       shell: pwsh
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
@@ -371,7 +374,7 @@ jobs:
         fi
 
     - name: rename windows
-      if: ${{ matrix.OS == 'windows-2022' }}
+      if: ${{ runner.os == 'Windows' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp312-cp312', 'py3-none' }
