@@ -277,7 +277,7 @@ jobs:
           AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '' }}
           ENABLE_RTTI: ${{ matrix.ENABLE_RTTI }}
           CMAKE_GENERATOR: Ninja
-          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF
+          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF -DOPENSSL_USE_STATIC_LIBS=TRUE
         run: |
           set -euo pipefail
   

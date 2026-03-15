@@ -250,6 +250,7 @@ jobs:
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
+        CMAKE_ARGS="-DOPENSSL_USE_STATIC_LIBS=TRUE" \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
         CIBW_CONTAINER_ENGINE_ARGS="-v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:/host${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}" \
