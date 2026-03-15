@@ -1489,8 +1489,10 @@ static LogicalResult runRoutingPipeline(ModuleOp moduleOp,
   return success();
 }
 
-// Forward declaration
+// Forward declarations
 static void assignPdiIds(ModuleOp moduleOp);
+static void assignPdiIds(ModuleOp moduleOp,
+                         const std::map<std::string, int> &pdiIdMapping);
 
 /// Run the NPU lowering pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
@@ -1909,6 +1911,19 @@ static std::string downgradeIRForPeano(StringRef ir) {
       ++end;
     result.erase(pos, end - pos);
   }
+  // Strip ', align <N>' attributes (matches old Python
+  // drop_alignment_for_peano)
+  const std::string alignPat = ", align ";
+  pos = 0;
+  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
+    size_t end = pos + alignPat.size();
+    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
+      ++end;
+    if (end > pos + alignPat.size())
+      result.erase(pos, end - pos);
+    else
+      pos = end;
+  }
   return result;
 }
 
@@ -2188,21 +2203,24 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
       return failure();
 
-    // Run opt on peanohacked IR
+    // Run opt on peanohacked IR.
+    // Cap opt level at O1 for Peano to match old Python aiecc behavior.
+    // Higher levels cause SLP vectorizer to create types that crash GlobalISel.
     SmallString<128> optPath(tmpDirName);
     sys::path::append(optPath, deviceName.str() + "_core_" +
                                    std::to_string(core.col) + "_" +
                                    std::to_string(core.row) + ".opt.ll");
 
+    unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
     std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optCmd = {peanoOpt,
-                                           "--passes=default<O" + optLevelStr +
-                                               ">,strip",
-                                           "-inline-threshold=10",
-                                           "-S",
-                                           std::string(peanohackPath),
-                                           "-o",
-                                           std::string(optPath)};
+    SmallVector<std::string, 12> optCmd = {
+        peanoOpt,
+        "--passes=default<O" + std::to_string(safeOptLevel) + ">,strip",
+        "-inline-threshold=10",
+        "-S",
+        std::string(peanohackPath),
+        "-o",
+        std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -2883,19 +2901,21 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
     if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
       return failure();
 
-    // Run opt
+    // Run opt (cap at O1 to match old Python aiecc, prevent SLP vectorizer
+    // crashes)
     SmallString<128> optPath(tmpDirName);
     sys::path::append(optPath, deviceName.str() + "_input.opt.ll");
 
+    unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
     std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optCmd = {peanoOpt,
-                                           "--passes=default<O" + optLevelStr +
-                                               ">,strip",
-                                           "-inline-threshold=10",
-                                           "-S",
-                                           std::string(peanohackPath),
-                                           "-o",
-                                           std::string(optPath)};
+    SmallVector<std::string, 12> optCmd = {
+        peanoOpt,
+        "--passes=default<O" + std::to_string(safeOptLevel) + ">,strip",
+        "-inline-threshold=10",
+        "-S",
+        std::string(peanohackPath),
+        "-o",
+        std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -3555,6 +3575,32 @@ static void assignPdiIds(ModuleOp moduleOp) {
     StringRef refName = deviceRefAttr.getValue();
     auto it = deviceToPdiId.find(refName);
     if (it == deviceToPdiId.end()) {
+      loadPdiOp.emitWarning() << "load_pdi references unknown device '"
+                              << refName << "'; PDI ID will remain 0";
+      return;
+    }
+    loadPdiOp.setId(static_cast<uint32_t>(it->second));
+    if (verbose) {
+      llvm::outs() << "Assigned PDI id=" << it->second
+                   << " to load_pdi referencing @" << refName << "\n";
+    }
+  });
+}
+
+/// Assign PDI IDs using a pre-computed mapping (for full ELF + expand-load-pdis
+/// where a global mapping that includes empty devices is needed).
+static void assignPdiIds(ModuleOp moduleOp,
+                         const std::map<std::string, int> &pdiIdMapping) {
+  moduleOp.walk([&](mlir::Operation *op) {
+    auto loadPdiOp = mlir::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op);
+    if (!loadPdiOp)
+      return;
+    auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
+    if (!deviceRefAttr)
+      return;
+    std::string refName = deviceRefAttr.getValue().str();
+    auto it = pdiIdMapping.find(refName);
+    if (it == pdiIdMapping.end()) {
       loadPdiOp.emitWarning() << "load_pdi references unknown device '"
                               << refName << "'; PDI ID will remain 0";
       return;
@@ -4334,6 +4380,7 @@ struct DeviceElfInfo {
   std::vector<std::pair<std::string, std::string>>
       sequences; // (seqName, instsPath)
   int pdiId;
+  int argCount = 3; // Number of runtime sequence arguments
 };
 
 /// Generate full ELF containing PDIs and instruction sequences.
@@ -4378,14 +4425,16 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
   for (const auto *infoPtr : activeDevices) {
     const auto &info = *infoPtr;
 
-    // Arguments - default set of arguments
+    // Arguments - generate based on actual runtime sequence parameter count
     llvm::json::Array arguments;
-    arguments.push_back(llvm::json::Object{
-        {"name", "arg_0"}, {"type", "char *"}, {"offset", "0x0"}});
-    arguments.push_back(llvm::json::Object{
-        {"name", "arg_1"}, {"type", "char *"}, {"offset", "0x8"}});
-    arguments.push_back(llvm::json::Object{
-        {"name", "arg_2"}, {"type", "char *"}, {"offset", "0x10"}});
+    for (int i = 0; i < info.argCount; ++i) {
+      char offsetBuf[16];
+      snprintf(offsetBuf, sizeof(offsetBuf), "0x%x", i * 8);
+      arguments.push_back(
+          llvm::json::Object{{"name", ("arg_" + Twine(i)).str()},
+                             {"type", "char *"},
+                             {"offset", std::string(offsetBuf)}});
+    }
 
     // PDIs - list ALL device PDIs in each kernel entry (matching Python driver
     // behavior). aiebu-asm needs all PDI references available because the
@@ -5109,10 +5158,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   std::vector<DeviceElfInfo> deviceElfInfos;
   int devicePdiId = 1; // Start PDI IDs from 1
 
-  // Note: PDI ID assignment to NpuLoadPdiOp happens AFTER NPU lowering
-  // (which converts aiex.configure to npu.load_pdi). See assignPdiIds()
-  // called in generateNpuInstructions() after runNpuLoweringPipeline().
-
+  // Phase A: Compile cores for each original device and update ELF paths.
+  // This must happen on the original module before NPU lowering.
   for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
     StringRef devName = deviceOp.getSymName();
 
@@ -5153,35 +5200,27 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
                       devName.str() + "_physical_with_elfs.mlir");
     dumpModuleToFile(moduleOp, physicalWithElfsPath, "module with ELFs");
 
-    // Generate control packet output BEFORE NPU instructions, because the
-    // control packet pipeline (convert-aie-to-transaction,
-    // aie-txn-to-ctrl-packet) needs the pre-NPU-lowered module state. NPU
-    // lowering destroys the ops that the control packet passes need. This
-    // matches the legacy Python driver's ordering where process_ctrlpkt() runs
-    // before NPU lowering. Use unfiltered module for ctrl packet generation —
-    // the legacy Python driver passes the full multi-device module to
-    // process_ctrlpkt.
+    // Generate control packet output BEFORE NPU instructions
     ModuleOp ctrlPktModule = unfilteredModule ? *unfilteredModule : moduleOp;
     if (failed(
             generateControlPacketOutput(ctrlPktModule, tmpDirName, devName))) {
       return failure();
     }
 
+    // For the full ELF + expand-load-pdis path, skip per-device NPU/CDO
+    // generation here — Phase B below handles everything from a single
+    // expanded clone (matching the old Python FlowRunner behavior).
+    if (generateFullElf && expandLoadPdis) {
+      continue;
+    }
+
     // Generate NPU instructions from in-memory module.
-    // Skip when ctrl packets are active — generateControlPacketOutput() already
-    // wrote the ctrl packet DMA sequence to instsName, which IS the NPU
-    // instruction stream. Running generateNpuInstructions() would overwrite it
-    // with regular NPU instructions that don't send the control packets.
     if (!generateCtrlPkt &&
         failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
       return failure();
     }
 
     // Generate transaction MLIR output if requested.
-    // This runs AFTER NPU instructions because the transaction pipeline
-    // needs the module to have gone through NPU lowering first (which
-    // generateNpuInstructions does on a clone). We clone again from the
-    // same original state and run NPU lowering + transaction pipeline.
     if (failed(generateTransactionOutput(moduleOp, tmpDirName, devName))) {
       return failure();
     }
@@ -5216,17 +5255,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       // Get absolute path to tmpDir for aiebu-asm (it needs absolute paths)
       SmallString<256> absTmpDir;
       if (auto ec = sys::fs::real_path(tmpDirName, absTmpDir)) {
-        // Fall back to current dir + tmpDirName
         sys::fs::current_path(absTmpDir);
         sys::path::append(absTmpDir, tmpDirName);
       }
 
-      // PDI path (must match generateCdoArtifacts output)
-      // When --aie-generate-pdi is set, PDI is in CWD; otherwise in tmpDir.
       std::string pdiFileName = formatString(pdiName, devName);
       SmallString<256> pdiFullPath;
       if (generatePdi) {
-        // CWD-relative
         if (sys::path::is_absolute(pdiFileName)) {
           pdiFullPath = pdiFileName;
         } else {
@@ -5234,13 +5269,11 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
           sys::path::append(pdiFullPath, pdiFileName);
         }
       } else {
-        // Inside tmpDir
         pdiFullPath = absTmpDir;
         sys::path::append(pdiFullPath, pdiFileName);
       }
       info.pdiPath = std::string(pdiFullPath);
 
-      // Collect runtime sequence instruction paths (also absolute)
       for (auto seqOp : deviceOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
         StringRef seqName = seqOp.getSymName();
         std::string instsFileName =
@@ -5248,7 +5281,144 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
         SmallString<256> instsFullPath(absTmpDir);
         sys::path::append(instsFullPath, instsFileName);
         info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
+        // Get argument count from the runtime sequence body
+        if (!seqOp.getBody().empty()) {
+          int numArgs = seqOp.getBody().front().getNumArguments();
+          if (numArgs > info.argCount)
+            info.argCount = numArgs;
+        }
       }
+
+      deviceElfInfos.push_back(std::move(info));
+    }
+  }
+
+  // Phase B: Full ELF with expand-load-pdis — single expanded clone.
+  // This matches the old Python FlowRunner behavior: run NPU lowering +
+  // expand-load-pdis ONCE on a single module, then generate ALL artifacts
+  // (CDO/PDI + NPU instructions) from that same module.
+  if (generateFullElf && expandLoadPdis) {
+    // 1. Clone module (now has ELF paths from Phase A)
+    OwningOpRef<ModuleOp> expandedModule = moduleOp.clone();
+
+    // 2. Run NPU lowering + expand-load-pdis ONCE (no PDI IDs yet)
+    if (failed(runNpuLoweringPipeline(*expandedModule, tmpDirName,
+                                      /*patchPdiIds=*/false))) {
+      llvm::errs() << "Error: expanded NPU lowering pipeline failed\n";
+      return failure();
+    }
+
+    // 3. Enumerate ALL devices in module iteration order (includes empties)
+    std::vector<std::string> allDeviceNames;
+    for (auto devOp : expandedModule->getOps<xilinx::AIE::DeviceOp>()) {
+      std::string name = devOp.getSymName().str();
+      if (!deviceName.empty() && name != deviceName.getValue() &&
+          !StringRef(name).starts_with("empty_"))
+        continue;
+      allDeviceNames.push_back(name);
+    }
+
+    // 4. Build PDI ID mapping (module order, sequential from 1)
+    std::map<std::string, int> pdiMapping;
+    int nextId = 1;
+    for (auto &name : allDeviceNames)
+      pdiMapping[name] = nextId++;
+
+    if (verbose) {
+      llvm::outs() << "\nExpanded module PDI ID mapping:\n";
+      for (auto &name : allDeviceNames) {
+        llvm::outs() << "  @" << name << " -> PDI ID " << pdiMapping[name]
+                     << "\n";
+      }
+    }
+
+    // 5. Assign PDI IDs on the expanded module
+    assignPdiIds(*expandedModule, pdiMapping);
+
+    // 6. For each device: CDO/PDI + NPU instructions + collect info
+    SmallString<256> absTmpDir;
+    if (auto ec = sys::fs::real_path(tmpDirName, absTmpDir)) {
+      sys::fs::current_path(absTmpDir);
+      sys::path::append(absTmpDir, tmpDirName);
+    }
+
+    for (auto devOp : expandedModule->getOps<xilinx::AIE::DeviceOp>()) {
+      StringRef devName = devOp.getSymName();
+
+      if (verbose) {
+        llvm::outs() << "\nGenerating artifacts for device: " << devName
+                     << " (from expanded module)\n";
+      }
+
+      // Generate CDO/PDI
+      if (failed(generateCdoArtifacts(*expandedModule, tmpDirName, devName))) {
+        return failure();
+      }
+
+      // Collect DeviceElfInfo
+      DeviceElfInfo info;
+      info.deviceName = devName.str();
+      info.pdiId = pdiMapping[devName.str()];
+
+      std::string pdiFileName = formatString(pdiName, devName);
+      SmallString<256> pdiFullPath;
+      if (generatePdi) {
+        if (sys::path::is_absolute(pdiFileName)) {
+          pdiFullPath = pdiFileName;
+        } else {
+          sys::fs::current_path(pdiFullPath);
+          sys::path::append(pdiFullPath, pdiFileName);
+        }
+      } else {
+        pdiFullPath = absTmpDir;
+        sys::path::append(pdiFullPath, pdiFileName);
+      }
+      info.pdiPath = std::string(pdiFullPath);
+
+      // Generate NPU instructions for devices with runtime sequences
+      devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
+        StringRef seqName = seq.getSymName();
+        if (!sequenceName.empty() && seqName != sequenceName)
+          return;
+
+        std::string outputFileName =
+            formatString(instsName, devName.str(), seqName);
+        SmallString<128> outputPath(tmpDirName);
+        sys::path::append(outputPath, outputFileName);
+
+        std::vector<uint32_t> instructions;
+        if (failed(xilinx::AIE::AIETranslateNpuToBinary(
+                *expandedModule, instructions, devName, seqName))) {
+          llvm::errs() << "Error generating NPU instructions for sequence: "
+                       << seqName << "\n";
+          return;
+        }
+
+        std::error_code ec;
+        raw_fd_ostream binFile(outputPath, ec, sys::fs::OpenFlags::OF_None);
+        if (ec) {
+          llvm::errs() << "Error opening NPU instructions file: "
+                       << ec.message() << "\n";
+          return;
+        }
+        binFile.write(reinterpret_cast<const char *>(instructions.data()),
+                      instructions.size() * sizeof(uint32_t));
+
+        if (verbose) {
+          llvm::outs() << "Wrote " << instructions.size()
+                       << " instructions to: " << outputPath << "\n";
+        }
+
+        SmallString<256> instsFullPath(absTmpDir);
+        sys::path::append(instsFullPath, outputFileName);
+        info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
+        // Get argument count from the runtime sequence body
+        if (!seq.getBody().empty()) {
+          int numArgs = seq.getBody().front().getNumArguments();
+          if (numArgs > info.argCount)
+            info.argCount = numArgs;
+        }
+      });
 
       deviceElfInfos.push_back(std::move(info));
     }
