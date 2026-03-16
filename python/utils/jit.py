@@ -53,6 +53,10 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         trace_config = kwargs.get("trace_config")
 
+        # Strip compile-time-only kwargs that must not be forwarded to the NPU
+        # kernel at runtime (e.g. trace_config is consumed by NPUKernel.__init__).
+        runtime_kwargs = {k: v for k, v in kwargs.items() if k != "trace_config"}
+
         effective_use_cache = use_cache
 
         # Check if we already have a compiled kernel for this function signature
@@ -66,7 +70,7 @@ def jit(function=None, is_placed=True, use_cache=True):
             # Filter out non-tensor arguments (ExternalFunction, scalars)
             # Only tensor args should be passed to the kernel
             tensor_args = _filter_tensor_args(args)
-            return cached_kernel(*tensor_args, **kwargs)
+            return cached_kernel(*tensor_args, **runtime_kwargs)
 
         # Collect ExternalFunction instances that need JIT compilation.
         # Note: bare Kernel instances (pre-compiled .o) are intentionally
@@ -180,7 +184,7 @@ def jit(function=None, is_placed=True, use_cache=True):
         # Filter out non-tensor arguments (ExternalFunction, scalars) before calling kernel
         # Only tensor args should be passed to the kernel
         tensor_args = _filter_tensor_args(args)
-        kernel(*tensor_args)
+        kernel(*tensor_args, **runtime_kwargs)
 
     return decorator
 
@@ -232,7 +236,9 @@ def hash_module(module, external_kernels=None, target_arch=None):
 
     # Include ExternalFunction compiler options and source code in the hash
     if external_kernels:
-        combined_str = mlir_str + "|" + "|".join(str(hash(f)) for f in external_kernels)
+        combined_str = (
+            mlir_str + "|" + "|".join(sorted(str(hash(f)) for f in external_kernels))
+        )
     else:
         combined_str = mlir_str
 

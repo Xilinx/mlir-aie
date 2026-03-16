@@ -150,8 +150,9 @@ def test_hash_module_different_mlir_text_differ(mlir_module_add1, mlir_module_ad
 def test_compile_external_kernel_missing_source_file_raises(npu_target_arch):
     """FileNotFoundError must be raised when source_file does not exist.
 
-    ExternalFunction reads source_file at construction time (for hashing), so
-    the error fires in __init__ before compile_external_kernel is even called.
+    ExternalFunction construction succeeds (source_file is stored but not read
+    until hash time). The FileNotFoundError is raised inside
+    compile_external_kernel when it checks that the file exists before copying.
     """
     with tempfile.TemporaryDirectory() as kernel_dir:
         with pytest.raises(FileNotFoundError):
