@@ -36,7 +36,7 @@ include ${srcdir}/../../makefile-common
 #------------------------------------------------------------------------------
 
 # Target device: npu (AIE2) or npu2 (AIE2P)
-devicename ?= npu
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 # Runtime library path (for npu/AIE2 only)
 aie2_runtime_dir = ${MLIR_AIE_DIR}/aie_runtime_lib/AIE2
