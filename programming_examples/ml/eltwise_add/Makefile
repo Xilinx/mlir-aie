@@ -42,13 +42,13 @@ build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir build/add.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 
 build/final_trace.xclbin: build/aie_trace.mlir build/add.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 

@@ -12,7 +12,7 @@
 
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc -p me -P %aietools/data/versal_prod/lib -c %S/../kernel.cc
-// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: aiecc %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @MM_2x2 {
@@ -205,7 +205,7 @@ module @MM_2x2 {
     aie.end
   }
 
-  func.func private @extern_kernel(%A: memref<1024xi32>, %B: memref<1024xi32>, %acc: memref<1024xi32>, %C: memref<1024xi32>) -> ()
+  func.func private @extern_kernel(%A: memref<1024xi32>, %B: memref<1024xi32>, %acc: memref<1024xi32>, %C: memref<1024xi32>) -> () attributes {link_with = "kernel.o"}
 
   %core63 = aie.core(%t63) {
     aie.use_lock(%lock63_0, "Acquire", 1)
@@ -216,7 +216,7 @@ module @MM_2x2 {
     aie.use_lock(%lock63_1, "Release", 0)
     aie.use_lock(%lock63_0, "Release", 0)
     aie.end
-  } { link_with="kernel.o" }
+  }
 
   %core64 = aie.core(%t64) {
     aie.use_lock(%lock63_3, "Acquire", 1)
@@ -229,7 +229,7 @@ module @MM_2x2 {
     aie.use_lock(%lock64_0, "Release", 0)
     aie.use_lock(%lock63_3, "Release", 0)
     aie.end
-  } { link_with="kernel.o" }
+  }
 
   %m73 = aie.mem(%t73)  {
     aie.dma_start("S2MM", 0, ^bd0, ^dma0)
@@ -283,7 +283,7 @@ module @MM_2x2 {
     aie.use_lock(%lock73_1, "Release", 0)
     aie.use_lock(%lock73_0, "Release", 0)
     aie.end
-  } { link_with="kernel.o" }
+  }
 
   %core74 = aie.core(%t74) {
     aie.use_lock(%lock73_2, "Acquire", 1)
@@ -296,5 +296,5 @@ module @MM_2x2 {
     aie.use_lock(%lock74_0, "Release", 0)
     aie.use_lock(%lock73_2, "Release", 0)
     aie.end
-  } { link_with="kernel.o" }
+  }
 }

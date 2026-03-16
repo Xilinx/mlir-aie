@@ -36,7 +36,9 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
 
         # AIE Core Function declarations
         passThroughLine = external_func(
-            "passThroughLine", inputs=[line_ty, line_ty, np.int32]
+            "passThroughLine",
+            inputs=[line_ty, line_ty, np.int32],
+            link_with="passThrough.cc.o",
         )
 
         # Tile declarations
@@ -55,7 +57,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "passThrough.cc.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)

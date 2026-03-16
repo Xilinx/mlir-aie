@@ -18,7 +18,7 @@ The [programming examples](../../programming_examples) are a number of sample de
 
 The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only really 4 important files here.
 1. [`passthrough_kernel.py`](../../programming_examples/basic/passthrough_kernel/passthrough_kernel.py) The AIE structural design which includes the shim tile connected to the external memory, and a single AIE core for performing the copy.  It also shows a simple use of the Object FIFOs described in [section 2](../section-2).
-1. [`passthrough.cc`](../../aie_kernels/generic/passThrough.cc)  This is a C++ file which performs the vectorized copy operation.
+1. [`passThrough.cc`](../../aie_kernels/generic/passThrough.cc)  This is a C++ file which performs the vectorized copy operation.
 1. [`test.cpp`](../../programming_examples/basic/passthrough_kernel/test.cpp) or [`test.py`](../../programming_examples/basic/passthrough_kernel/test.py) A C++ or Python main application for exercising the design, and comparing against a CPU reference
 1. [`Makefile`](../../programming_examples/basic/passthrough_kernel/Makefile) A Makefile documenting (and implementing) the build process for the various artifacts.
 
@@ -56,13 +56,13 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 ## Exercises
 
-1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../../mlir_tutorials/images/answer1.jpg" title="Check the Makefile...in1_size and out_size" height=25>
+1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../../mlir_exercises/images/answer1.jpg" title="Check the Makefile...in1_size and out_size" height=25>
 
-1. Take a look at the testbench in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [test.cpp](../../programming_examples/basic/vector_exp/test.cpp). Take note of the data type and the size of the test vector. What do you notice? <img src="../../mlir_tutorials/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
+1. Take a look at the testbench in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [test.cpp](../../programming_examples/basic/vector_exp/test.cpp). Take note of the data type and the size of the test vector. What do you notice? <img src="../../mlir_exercises/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
 
-1. What is the communication-to-computation  ratio in [ReLU](../../programming_examples/ml/relu/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candiate for kernel fusion with Conv2D or GEMMs for ML." height=25>
+1. What is the communication-to-computation  ratio in [ReLU](../../programming_examples/ml/relu/)? <img src="../../mlir_exercises/images/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candidate for kernel fusion with Conv2D or GEMMs for ML." height=25>
 
-1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../../mlir_tutorials/images/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
+1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../../mlir_exercises/images/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
 
 -----
 [[Prev - Section 4](../section-4/)] [[Top](..)] [[Next - Section 6](../section-6/)]

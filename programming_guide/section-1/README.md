@@ -41,7 +41,7 @@ class Worker(ObjectFifoEndpoint):
 ```
 In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a data buffer and initializes each entry to zero. The compute routine in this case has no inputs other than a handle to the buffer. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
-buffer = LocalBuffer(data_ty, name="buff")
+buffer = Buffer(data_ty, name="buff")
 
 # Task for the worker to perform
 def core_fn(buff):
@@ -94,11 +94,11 @@ Then we declare a structural design function that will expand into MLIR code whe
 def mlir_aie_design():
     <... AI Engine device, blocks, and connections ...>
 ```
-Let's look at how we declare the AI Engine device, blocks, and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu1_1col)` or `@device(AIEDevice.npu2)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which are AIE compute tiles in this first example.
+Let's look at how we declare the AI Engine device, blocks, and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu1)` or `@device(AIEDevice.npu2)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which are AIE compute tiles in this first example.
 
 The arguments for the tile declaration are the tile coordinates (column, row). We assign each declared tile to a variable in our Python program.
 
-> **NOTE:**  The actual tile coordinates used on the device when the program is run may deviate from the ones declared here. For example, on the NPU on Ryzen™ AI (`@device(AIEDevice.npu)`), these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column during runtime.
+> **NOTE:**  The actual tile coordinates used on the device when the program is run may deviate from the ones declared here. For example, on the NPU on Ryzen™ AI (`@device(AIEDevice.npu1)`), these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column during runtime.
 
 ```python
     # Device declaration - here using aie2 device NPU
@@ -150,17 +150,17 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
 ## <u>Exercises</u>
 1. To run our Python program from the command line, we type `python3 aie2.py`, which converts our Python structural design into MLIR source code. This works from the command line if our design environment already contains the mlir-aie Python-bound dialect module. We included this in the [Makefile](./Makefile), so go ahead and run `make` now. Then take a look at the generated MLIR source under `build/aie.mlir`.
 
-2. Run `make clean` to remove the generated files. In the worker's code (the `core_fn`) replace `range_` with `range` (no underscore). What do you expect to happen? Investigate the generated code in `build/aie.mlir` and observe how the generated code changed. <img src="../../mlir_tutorials/images/answer1.jpg" title="The generated MLIR code does not contain a loop; instead, the same instructions are repeated many times." height=25>
+2. Run `make clean` to remove the generated files. In the worker's code (the `core_fn`) replace `range_` with `range` (no underscore). What do you expect to happen? Investigate the generated code in `build/aie.mlir` and observe how the generated code changed. <img src="../../mlir_exercises/images/answer1.jpg" title="The generated MLIR code does not contain a loop; instead, the same instructions are repeated many times." height=25>
 
-3. Run `make clean` again. Then introduce an error to the Python source, such as misspelling `sequence` to `sequenc`, and then run `make` again. What messages do you see? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is a Python error because sequenc is not recognized." height=25>
+3. Run `make clean` again. Then introduce an error to the Python source, such as misspelling `sequence` to `sequenc`, and then run `make` again. What messages do you see? <img src="../../mlir_exercises/images/answer1.jpg" title="There is a Python error because sequenc is not recognized." height=25>
 
-4. Run `make clean` again. Now change the error by renaming `sequenc` back to `sequence`, but place the Worker on a tile with coordinates (-1, 3), which is an invalid location. Run `make` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is a partial placement error." height=25>
+4. Run `make clean` again. Now change the error by renaming `sequenc` back to `sequence`, but place the Worker on a tile with coordinates (-1, 3), which is an invalid location. Run `make` again. What message do you see now? <img src="../../mlir_exercises/images/answer1.jpg" title="There is a partial placement error." height=25>
 
-5. Run `make clean` again. Restore the Worker tile to its original coordinates. Remove the `while_true=False` attribute from the Worker and run `make` again. What do you observe? <img src="../../mlir_tutorials/images/answer1.jpg" title="The Worker task code is nested within a for loop." height=25>
+5. Run `make clean` again. Restore the Worker tile to its original coordinates. Remove the `while_true=False` attribute from the Worker and run `make` again. What do you observe? <img src="../../mlir_exercises/images/answer1.jpg" title="The Worker task code is nested within a for loop." height=25>
 
 6. Now let's take a look at the placed version of the code. Run `make placed` and look at the generated MLIR source under `build/aie_placed.mlir`.
 
-7. Run `make clean` to remove the generated files. Introduce the same error as above by changing the coordinates of `ComputeTile1` to (-1,3). Run `make placed` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="There is no error." height=25>
+7. Run `make clean` to remove the generated files. Introduce the same error as above by changing the coordinates of `ComputeTile1` to (-1,3). Run `make placed` again. What message do you see now? <img src="../../mlir_exercises/images/answer1.jpg" title="There is no error." height=25>
 
 8. No error is generated but our code is invalid. Take a look at the generated MLIR code under `build/aie_placed.mlir`. This generated output is invalid MLIR syntax and running our mlir-aie tools on this MLIR source will generate an error. We do, however, have some additional Python structural syntax checks that can be enabled if we use the function `ctx.module.operation.verify()`. This verifies that our Python-bound code has valid operation within the mlir-aie context. 
 
@@ -172,7 +172,7 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
     else:
         print(res)
     ```
-    Make this change and run `make placed` again. What message do you see now? <img src="../../mlir_tutorials/images/answer1.jpg" title="It now says 'column value fails to satisfy the constraint' because the minimum value is 0." height=25>
+    Make this change and run `make placed` again. What message do you see now? <img src="../../mlir_exercises/images/answer1.jpg" title="It now says 'column value fails to satisfy the constraint' because the minimum value is 0." height=25>
 
 -----
 [[Prev - Section 0](../section-0/)] [[Top](..)] [[Next - Section 2](../section-2/)]

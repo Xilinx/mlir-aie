@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""Placement algorithms that assign IRON program components to physical device tiles."""
 
 from abc import ABCMeta, abstractmethod
 from typing import Optional
@@ -30,7 +31,7 @@ class Placer(metaclass=ABCMeta):
         workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
     ):
-        """Assign placement informatio to a program.
+        """Assign placement information to a program.
 
         Args:
             device (Device): The device to use for placement.
@@ -56,6 +57,12 @@ class SequentialPlacer(Placer):
     """
 
     def __init__(self, cores_per_col: Optional[int] = None):
+        """Initialize a SequentialPlacer.
+
+        Args:
+            cores_per_col (int | None, optional): Maximum number of workers to place per
+                column. If None, all available compute tiles are used. Defaults to None.
+        """
         super().__init__()
         self.cores_per_col = cores_per_col
 
@@ -66,6 +73,17 @@ class SequentialPlacer(Placer):
         workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
     ):
+        """Assign placement to all unplaced Workers and ObjectFIFO endpoints.
+
+        Args:
+            device (Device): The device to use for placement.
+            rt (Runtime): The runtime information for the program.
+            workers (list[Worker]): The workers included in the program.
+            object_fifos (list[ObjectFifoHandle]): The object fifo handles used by the program.
+
+        Raises:
+            ValueError: If there are not enough tiles available for placement.
+        """
         # Keep track of tiles available for placement based
         # on number of available input / output DMA channels
         shims_in = device.get_shim_tiles()

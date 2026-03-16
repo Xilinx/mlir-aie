@@ -21,7 +21,7 @@ chess:
 	xchesscc -p me -P $AIETOOLS_ROOT/data/versal_prod/lib/ -L $AIETOOLS_ROOT/data/versal_prod/lib/ -c hdiff.cc
 
 test.elf: 
-	aiecc.py --sysroot=$SYSROOT --host-target=aarch64-linux-gnu aie.mlir \
+	aiecc --sysroot=$SYSROOT --host-target=aarch64-linux-gnu aie.mlir \
 	-I$RUNTIME_LIB $RUNTIME_LIB/test_library.cpp ./test.cpp -o test.elf
 
 clean:

@@ -20,7 +20,7 @@
 We begin by first looking at timers for measuring application performance and what that tells us. The performance of an accelerated AI Engine application involves a number of components on the software stack, from invoking the application at the OS level, to passing control on to the kernel drivers, moving and dispatching work to the AIE array, running the accelerated application on AIE cores, and finally returning the data to the application for next-step processing. The most straightforward way to capture the performance of this entire stack of communication and processing is with an application timer, also known as the "wall clock" time. This gives us the upper bounds for how long an AIE accelerated application takes but adds to it the OS and kernel driver overhead. This is something that can be minimized when running multiple iterations of an acclerated program or running a sufficiently compute intensive application. Let's take a look at how we add the "wall clock" timer to an example program.
 
 ## <ins>Application timer - Modifying [test.cpp](./test.cpp)</ins>
-Adding the application timer is as simple as noting a start and stop time surrounding the calling of the kernel function. We can use the clock timer from the chrono library which is imported via `import <chrono>` but this may already be imported by other libraries (this is the case in our `test.cpp`). Then we record the start and stop time of our chrono timer with timer function calls surrounding our kernel function as follows:
+Adding the application timer is as simple as noting a start and stop time surrounding the calling of the kernel function. We can use the clock timer from the chrono library which is included via `#include <chrono>` but this may already be imported by other libraries (this is the case in our `test.cpp`). Then we record the start and stop time of our chrono timer with timer function calls surrounding our kernel function as follows:
 
 ```c++
     auto start = std::chrono::high_resolution_clock::now();
@@ -75,13 +75,13 @@ We can then compute and print the actual average, minimum and maximum run times 
 In addition, if you have an estimate of the number of MACs each kernel execution takes, you can report additional performance data such as GFLOPs as can be seen in the matrix multiplication example [test.cpp](../../../programming_examples/basic/matrix_multiplication/test.cpp#L170).
 
 ## <u>Exercises</u>
-1. Take a look at the timer code in our example [test.cpp](./test.cpp). Then build and run the design by calling `make run` and note the reported average "wall clock" time. What value did you see? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Answer can be anywhere from 300-600us" height=25>
+1. Take a look at the timer code in our example [test.cpp](./test.cpp). Then build and run the design by calling `make run` and note the reported average "wall clock" time. What value did you see? <img src="../../../mlir_exercises/images/answer1.jpg" title="Answer can be anywhere from 300-600us" height=25>
 
-1. Our design was run once with a single iteration and no warmup. Let's run our design again by calling `make run` again. What reported Avg NPU time did you see this time? <img src="../../../mlir_tutorials/images/answer1.jpg" title="Answer can still be anywhere from 300-600us but is likely different than before" height=25>
+1. Our design was run once with a single iteration and no warmup. Let's run our design again by calling `make run` again. What reported Avg NPU time did you see this time? <img src="../../../mlir_exercises/images/answer1.jpg" title="Answer can still be anywhere from 300-600us but is likely different than before" height=25>
 
-1. Let's set our iterations to 10 and run again with `make run-10` which passes in the argument `--iters 10` to our executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_tutorials/images/answer1.jpg" title="This time, we see a narrower range between 300-400 us" height=25>
+1. Let's set our iterations to 10 and run again with `make run-10` which passes in the argument `--iters 10` to our executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_exercises/images/answer1.jpg" title="This time, we see a narrower range between 300-400 us" height=25>
 
-1. Finally, let's add 4 warmup iterations to cut higher outliers when the application is first run by calling `make run-10-warmup`. This passes in the `--warmup 4` to our executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_tutorials/images/answer1.jpg" title="This time, we see an lower average range between 200-300 us" height=25>
+1. Finally, let's add 4 warmup iterations to cut higher outliers when the application is first run by calling `make run-10-warmup`. This passes in the `--warmup 4` to our executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_exercises/images/answer1.jpg" title="This time, we see an lower average range between 200-300 us" height=25>
 
 -----
 [[Up]](../../section-4) [[Next]](../section-4b)

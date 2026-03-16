@@ -1,10 +1,12 @@
-# globalbuffer.py -*- Python -*-
+# buffer.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""Named memory region accessible by both Workers and the Runtime."""
+
 import numpy as np
 from typing import Sequence
 
@@ -24,7 +26,7 @@ class Buffer(Resolvable, Placeable):
     This is often used for Runtime Parameters.
     """
 
-    """This is used to generate unique names if none is given during construction"""
+    # Used to generate unique names when none is provided during construction.
     __gbuf_index = 0
 
     def __init__(
@@ -46,7 +48,7 @@ class Buffer(Resolvable, Placeable):
             use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations will be generated. Otherwise, traditional write/read operations will be used. Defaults to False.
 
         Raises:
-            ValueError: Arguments are validated.
+            ValueError: If neither ``type`` nor ``initial_value`` is provided.
         """
         if type is None and initial_value is None:
             raise ValueError("Must provide either type, initial value, or both.")
@@ -70,12 +72,12 @@ class Buffer(Resolvable, Placeable):
     @property
     def shape(self) -> Sequence[int]:
         """The shape of the buffer"""
-        return np_ndarray_type_get_shape(self._obj_type)
+        return np_ndarray_type_get_shape(self._arr_type)
 
     @property
     def dtype(self) -> np.dtype:
         """The per-element datatype of the buffer."""
-        return np_ndarray_type_get_dtype(self._obj_type)
+        return np_ndarray_type_get_dtype(self._arr_type)
 
     @property
     def op(self):
@@ -85,14 +87,14 @@ class Buffer(Resolvable, Placeable):
 
     def __getitem__(self, idx):
         if self._op is None:
-            return AttributeError(
+            raise AttributeError(
                 "Cannot index into Buffer before it has been resolved."
             )
         return self._op[idx]
 
     def __setitem__(self, idx, source):
         if self._op is None:
-            return AttributeError(
+            raise AttributeError(
                 "Cannot index into Buffer before it has been resolved."
             )
         else:

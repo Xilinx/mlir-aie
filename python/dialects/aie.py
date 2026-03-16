@@ -88,7 +88,23 @@ class npu_write_rtp(NpuWriteRTPOp):
 
 
 class external_func(FuncOp):
-    def __init__(self, name: str, inputs, outputs=None, visibility="private"):
+    """A ``func.func`` declaration for an externally-defined AIE core function.
+
+    Args:
+        name: Symbol name of the function.
+        inputs: List of input types (numpy dtypes or MLIR types).
+        outputs: List of output types.  Defaults to [].
+        visibility: MLIR symbol visibility.  Defaults to ``"private"``.
+        link_with: Optional path to the object file (``.o``) that implements
+            this function.  Sets the ``link_with`` string attribute on the
+            generated ``func.func`` op; the ``aie-assign-core-link-files`` pass
+            reads this attribute and propagates it into the CoreOp's
+            ``link_files`` attribute for the linker.
+    """
+
+    def __init__(
+        self, name: str, inputs, outputs=None, visibility="private", link_with=None
+    ):
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
@@ -102,6 +118,8 @@ class external_func(FuncOp):
         super().__init__(
             name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
         )
+        if link_with is not None:
+            self.operation.attributes["link_with"] = StringAttr.get(link_with)
 
     def __call__(self, *call_args):
         return call(self, call_args)
@@ -274,11 +292,17 @@ class Core(CoreOp):
     def __init__(
         self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
     ):
+        if link_with is not None:
+            raise TypeError(
+                "Core() no longer accepts link_with. "
+                "Set link_with= on each external_func() declaration instead; "
+                "the aie-assign-core-link-files pass aggregates them onto the core."
+            )
         super().__init__(
             result=T.index(),
             tile=tile,
             stack_size=stack_size,
-            link_with=link_with,
+            link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
 

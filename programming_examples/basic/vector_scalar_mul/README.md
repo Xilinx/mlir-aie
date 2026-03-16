@@ -14,7 +14,7 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 
 ## Source Files Overview
 
-1. `vector_scalar_mul.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. `vector_scalar_mul.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `vector_scalar_mul_placed.py`: An alternative version of the design in `vector_scalar_mul.py`, that is expressed in a lower-level version of IRON.
 
@@ -22,9 +22,9 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 
 1. `vector_scalar_mul_jit.py`: A JIT version that passes `scale.cc` to the transform algorithm. JIT compilation allows combining the host code with AIE design into one file.
 
-1. `test.cpp`: This C++ code is a testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
+1. `test.cpp`: This C++ code is a testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the testbench verifies the vector scalar multiply results against a CPU reference and optionally outputs trace data.
 
-1. `test.py`: This Python code is a testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
+1. `test.py`: This Python code is a testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the testbench verifies the vector scalar multiply results against a CPU reference and optionally outputs trace data.
 
 ## Design Overview
 

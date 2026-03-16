@@ -29,16 +29,16 @@ aie.device(xcvc1902) {
   %lock13_3 = aie.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
   %lock23_7 = aie.lock(%tile23, 7) { sym_name = "output_lock" } // output buffer lock
   
-  func.func private @do_mul(%A: memref<256xi32>) -> ()
-  func.func private @do_mac(%A: memref<256xi32>) -> ()
-  
+  func.func private @do_mul(%A: memref<256xi32>) -> () attributes {link_with = "kernel.o"}
+  func.func private @do_mac(%A: memref<256xi32>) -> () attributes {link_with = "kernel.o"}
+
   %core13 = aie.core(%tile13) {
     aie.use_lock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
     func.call @do_mul(%buf13_0) : (memref<256xi32>) -> ()
     aie.use_lock(%lock13_3, "Release", 0) // release for write
     aie.end
-  } { link_with="kernel.o" }
-  
+  }
+
   %core23 = aie.core(%tile23) {
 //    %val1 = arith.constant 7 : i32
 //    %idx1 = arith.constant 0 : index
@@ -47,7 +47,7 @@ aie.device(xcvc1902) {
     func.call @do_mac(%buf23_0) : (memref<256xi32>) -> ()
      aie.use_lock(%lock23_7, "Release", 1) // release for read
     aie.end
-  } { link_with="kernel.o" }
+  }
   
 }
 }
