@@ -9,8 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano
-// REQUIRES: dont_run
-// Disabled: this test is temporarily not run in the current configuration.
+
 // Test device and sequence filtering (mirrors test/npu-xrt/add_one_two pattern)
 // Each device is compiled separately with --device-name, similar to how
 // the Python aiecc.py is used in production multi-device flows.
