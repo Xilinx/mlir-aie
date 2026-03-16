@@ -9,6 +9,42 @@ import shutil
 from pathlib import Path
 
 
+def _parse_requirements(req_file):
+    """Parse eudsl-specific fields from a requirements.txt.
+
+    Returns (version, find_links, config_setting).
+    """
+    with open(req_file) as f:
+        content = f.read()
+
+    version_match = re.search(r"eudsl-python-extras==(\S+)", content)
+    if not version_match:
+        print(
+            "Could not find eudsl-python-extras version in requirements.txt",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    version = version_match.group(1)
+
+    # Handle both quoted and unquoted forms:
+    #   --config-settings="KEY=VALUE"
+    #   --config-settings=KEY=VALUE
+    config_match = re.search(r'--config-settings=(?:"([^"]+)"|(\S+))', content)
+    if config_match:
+        config_setting = config_match.group(1) or config_match.group(2)
+    else:
+        config_setting = "EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie"
+
+    find_links_match = re.search(r"-f\s+(\S+)", content)
+    find_links = (
+        find_links_match.group(1)
+        if find_links_match
+        else "https://llvm.github.io/eudsl"
+    )
+
+    return version, find_links, config_setting
+
+
 def _pip_download_with_retry(cmd, max_attempts=5):
     """Run a pip download command with exponential backoff on failure."""
     for attempt in range(1, max_attempts + 1):
@@ -32,31 +68,7 @@ def _pip_download_with_retry(cmd, max_attempts=5):
 
 def install_eudsl(req_file, target_dir):
     print(f"Reading requirements from: {req_file}")
-    with open(req_file) as f:
-        content = f.read()
-
-    version_match = re.search(r"eudsl-python-extras==(\S+)", content)
-    if not version_match:
-        print(
-            "Could not find eudsl-python-extras version in requirements.txt",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    version = version_match.group(1)
-
-    config_match = re.search(r'--config-settings="([^"]+)"', content)
-    config_setting = (
-        config_match.group(1)
-        if config_match
-        else "EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie"
-    )
-
-    find_links_match = re.search(r"-f\s+(\S+)", content)
-    find_links = (
-        find_links_match.group(1)
-        if find_links_match
-        else "https://llvm.github.io/eudsl"
-    )
+    version, find_links, config_setting = _parse_requirements(req_file)
 
     os.makedirs(target_dir, exist_ok=True)
     print(f"Vendoring eudsl-python-extras=={version} to {target_dir}", file=sys.stderr)
@@ -141,16 +153,68 @@ def install_eudsl(req_file, target_dir):
         print(f"Patched np.bool -> np.bool_ in {util_path}", file=sys.stderr)
 
 
+def install_non_eudsl_deps(req_file):
+    """Install all non-eudsl packages from req_file via a plain pip install.
+
+    Strips the eudsl-python-extras entry (and its find-links line) before
+    passing the requirements to pip. Used in test environments where eudsl is
+    already vendored inside the installed wheel and does not need to be fetched.
+    """
+    with open(req_file) as f:
+        lines = f.readlines()
+
+    # Strip the -f find-links line for the eudsl index and the
+    # eudsl-python-extras entry (which may span multiple lines via backslash
+    # continuation) along with its --config-settings continuation line.
+    filtered = []
+    skip_continuation = False
+    for line in lines:
+        stripped = line.rstrip()
+        if skip_continuation:
+            skip_continuation = stripped.endswith("\\")
+            continue
+        if re.match(r"\s*-f\s+\S*eudsl", stripped):
+            continue
+        if re.match(r"\s*eudsl-python-extras", stripped):
+            skip_continuation = stripped.endswith("\\")
+            continue
+        filtered.append(line)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+        tmp.writelines(filtered)
+        tmp_path = tmp.name
+
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", tmp_path],
+            check=True,
+        )
+    finally:
+        os.unlink(tmp_path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Vendor eudsl-python-extras")
     parser.add_argument(
         "--requirements", required=True, help="Path to requirements.txt"
     )
-    parser.add_argument(
-        "--target", required=True, help="Target directory for installation"
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--target", help="Target directory for vendoring installation")
+    group.add_argument(
+        "--install-non-eudsl",
+        action="store_true",
+        help=(
+            "Install all non-eudsl packages from requirements into the active "
+            "environment. Use when eudsl is already vendored inside an installed "
+            "wheel and does not need to be fetched."
+        ),
     )
     args = parser.parse_args()
-    install_eudsl(args.requirements, args.target)
+
+    if args.install_non_eudsl:
+        install_non_eudsl_deps(args.requirements)
+    else:
+        install_eudsl(args.requirements, args.target)
 
 
 if __name__ == "__main__":

@@ -130,7 +130,6 @@ jobs:
             popd
 
             pip install --upgrade pip
-            pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
             pip install -r python/requirements_dev.txt
 
@@ -292,7 +291,6 @@ jobs:
           source aie-venv/Scripts/activate
   
           python -m pip install --upgrade pip
-          pip install -r python/requirements.txt
           pip install -r python/requirements_ml.txt
           pip install -r python/requirements_dev.txt
   
