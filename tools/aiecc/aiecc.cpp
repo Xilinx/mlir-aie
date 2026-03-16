@@ -2215,7 +2215,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::string optLevelStr = std::to_string(optLevel);
     SmallVector<std::string, 12> optCmd = {
         peanoOpt,
-        "--passes=default<O" + std::to_string(safeOptLevel) + ">,strip",
+        "--passes=default<O" + std::to_string(safeOptLevel) + ">",
         "-inline-threshold=10",
         "-S",
         std::string(peanohackPath),
@@ -2910,7 +2910,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
     std::string optLevelStr = std::to_string(optLevel);
     SmallVector<std::string, 12> optCmd = {
         peanoOpt,
-        "--passes=default<O" + std::to_string(safeOptLevel) + ">,strip",
+        "--passes=default<O" + std::to_string(safeOptLevel) + ">",
         "-inline-threshold=10",
         "-S",
         std::string(peanohackPath),

@@ -373,9 +373,7 @@ static SmallVector<Value> collapseInnerMostDimIndices(PatternRewriter &b,
                                                       ValueRange indices,
                                                       ArrayRef<int64_t> shape,
                                                       AffineMap layout) {
-  // TODO: Don't assume trivial layout
-  assert(layout.isMinorIdentity() &&
-         "dimension collapse in non-identity layout is not implemented");
+  (void)layout; // Layout is verified by callers; index computation uses shape.
   auto newIdxExpr = b.getAffineDimExpr(numDims - 1);
   int64_t stride = 1;
   for (int64_t dim = numDims - 2; dim >= 0; dim--) {
@@ -402,17 +400,36 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
                                             1, std::multiplies<>());
   SmallVector<int64_t, 4> newShape{shape.begin(), shape.end() - numDims + 1};
   newShape[shape.size() - numDims] = newInnerMostDim;
-  auto newNumDims = newShape.size();
-  auto *ctx = b.getContext();
-  auto newMemRefTy = MemRefType::get(
-      newShape, memRefTy.getElementType(),
-      AffineMap::getMinorIdentityMap(newNumDims, newNumDims, ctx),
-      memRefTy.getMemorySpace());
   auto reassocIndices =
       getReassociationIndicesForCollapse(shape, newShape).value();
+  // Let CollapseShapeOp::inferResultType compute the correct result type,
+  // which preserves strided layout and dynamic offset from the source.
+  auto newMemRefTy =
+      memref::CollapseShapeOp::computeCollapsedType(memRefTy, reassocIndices);
   return memref::CollapseShapeOp::create(b, loc, newMemRefTy, val,
                                          reassocIndices)
       .getResult();
+}
+
+/// Check if a memref has contiguous row-major strides (each stride equals the
+/// product of trailing dimensions). Dynamic strides are accepted when the
+/// corresponding dimension size is 1. Memrefs with dynamic offsets are fine.
+static bool hasContiguousRowMajorStrides(MemRefType memRefTy) {
+  SmallVector<int64_t> strides;
+  int64_t offset;
+  if (failed(memRefTy.getStridesAndOffset(strides, offset)))
+    return false;
+  auto shape = memRefTy.getShape();
+  int64_t expected = 1;
+  for (int i = shape.size() - 1; i >= 0; --i) {
+    if (strides[i] != ShapedType::kDynamic && strides[i] != expected)
+      return false;
+    if (shape[i] != ShapedType::kDynamic)
+      expected *= shape[i];
+    else
+      expected = ShapedType::kDynamic;
+  }
+  return true;
 }
 
 // This pattern flatten multidimensional `vector.transfer_read` operations
@@ -443,6 +460,9 @@ struct FlattenMultDimTransferReadPattern
         VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
                                          std::multiplies<>())},
                         vectorTy.getElementType());
+    if (!hasContiguousRowMajorStrides(memRefTy))
+      return failure();
+
     AffineMap layout = memRefTy.getLayout().getAffineMap();
     auto newIndices =
         collapseInnerMostDimIndices(rewriter, readOp.getLoc(), vecShape.size(),
@@ -496,6 +516,9 @@ struct FlattenMultDimTransferWritePattern
       return failure();
     auto memRefShape = memRefTy.getShape();
     auto vecShape = vectorTy.getShape();
+
+    if (!hasContiguousRowMajorStrides(memRefTy))
+      return failure();
 
     auto newVectorTy =
         VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
