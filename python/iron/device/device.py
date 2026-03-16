@@ -88,10 +88,12 @@ class Device(Resolvable):
 
     @property
     def rows(self) -> int:
+        """Number of rows in the device tile array."""
         return self._tm.rows()
 
     @property
     def cols(self) -> int:
+        """Number of columns in the device tile array."""
         return self._tm.columns()
 
     def get_shim_tiles(self) -> list[Tile]:
@@ -133,6 +135,9 @@ class Device(Resolvable):
     def get_num_source_switchbox_connections(self, t: Tile) -> int:
         """Returns number of DMA source ports in the switchbox for the given tile on the device.
 
+        Args:
+            t (Tile): The tile to query.
+
         Returns:
             int: Number of DMA source ports.
         """
@@ -143,6 +148,9 @@ class Device(Resolvable):
 
     def get_num_dest_switchbox_connections(self, t: Tile) -> int:
         """Returns number of DMA dest ports in the switchbox for the given tile on the device.
+
+        Args:
+            t (Tile): The tile to query.
 
         Returns:
             int: Number of DMA dest ports.
@@ -155,6 +163,9 @@ class Device(Resolvable):
     def get_num_source_shim_mux_connections(self, t: Tile) -> int:
         """Returns number of DMA source ports in the shim mux for the given tile on the device.
 
+        Args:
+            t (Tile): The tile to query.
+
         Returns:
             int: Number of DMA source ports.
         """
@@ -165,6 +176,9 @@ class Device(Resolvable):
 
     def get_num_dest_shim_mux_connections(self, t: Tile) -> int:
         """Returns number of DMA dest ports in the shim mux for the given tile on the device.
+
+        Args:
+            t (Tile): The tile to query.
 
         Returns:
             int: Number of DMA dest ports.
@@ -177,7 +191,7 @@ class Device(Resolvable):
     def get_num_connections(self, tile: Tile, output: bool) -> int:
         """Returns number of DMA input or output "channels" available on the tile.
         Returns:
-            int: Number of connections (channels) available on the tile
+            int: Number of connections (channels) available on the tile.
         """
         if tile.row == 0:
             if output:
@@ -192,7 +206,7 @@ class Device(Resolvable):
     def is_mem_accessible(self, source_tile: Tile, tiles: list[Tile]) -> bool:
         """Returns whether there exists a memory region on source_tile which all destination tiles can access.
         Returns:
-            int: Number of connections (channels) available on the tile
+            bool: True if the given source tile has a memory region accessible by all destination tiles.
         """
         if not isinstance(source_tile, Tile):
             raise ValueError(f"Expected a source Tile, but got {source_tile}")

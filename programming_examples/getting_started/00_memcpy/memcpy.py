@@ -122,6 +122,16 @@ def my_memcpy(input0, output):
     # Create a TensorAccessPattern for each channel to describe the data movement.
     # The pattern chops the data in equal chunks and moves them in parallel across
     # the columns and channels.
+    #
+    # TensorAccessPattern arguments (see programming_guide/section-2/section-2c/
+    # for a full explanation of data layout transformations):
+    #   tensor_dims : logical shape of the full transfer buffer — (1, size)
+    #   offset      : starting element index into that buffer for this chunk
+    #   sizes       : [dim3, dim2, dim1, dim0] — number of elements in each
+    #                 dimension. [1, 1, 1, chunk] means a single 1-D transfer
+    #                 of `chunk` elements (the higher dimensions are unused).
+    #   strides     : [dim3, dim2, dim1, dim0] — step between elements in each
+    #                 dimension. [0, 0, 0, 1] means contiguous (stride-1) access.
     taps = [
         TensorAccessPattern(
             (1, size),

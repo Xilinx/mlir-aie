@@ -46,10 +46,14 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # AIE Core Function declarations
         suffix = "_bfloat16" if dtype_str == "bf16" else ""
         reduce_max_vector = external_func(
-            f"reduce_max_vector{suffix}", inputs=[op_ty, out_ty, np.int32]
+            f"reduce_max_vector{suffix}",
+            inputs=[op_ty, out_ty, np.int32],
+            link_with="reduce_max.cc.o",
         )
         compute_max = external_func(
-            f"compute_max{suffix}", inputs=[out_ty, out_ty, out_ty]
+            f"compute_max{suffix}",
+            inputs=[out_ty, out_ty, out_ty],
+            link_with="reduce_max.cc.o",
         )
         min_val = (
             np.array([bfloat16(float("-inf"))], dtype=dtype)
@@ -116,7 +120,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             )
             if i == n_cores - 1:
 
-                @core(cores[i], "reduce_max.cc.o")
+                @core(cores[i])
                 def core_body():
                     elem_out = out_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                     for _ in range_(num_iter):
@@ -129,7 +133,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
             else:
 
-                @core(cores[i], "reduce_max.cc.o")
+                @core(cores[i])
                 def core_body():
                     for _ in range_(num_iter):
                         elem_in = in_fifos[i].acquire(ObjectFifoPort.Consume, 1)

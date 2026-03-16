@@ -301,6 +301,26 @@ class LitConfigHelper:
             config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -luuid -lxrt_coreutil"
         config.substitutions["%xrt_flags"] = config.flags
 
+        # Runtime library search path.
+        if os.name == "nt":
+            # Windows: ensure XRT DLLs can be resolved at runtime.
+            existing_path = os.environ.get("PATH", "")
+            config.environment["PATH"] = (
+                xrt_bin_dir + os.pathsep + existing_path
+                if existing_path
+                else xrt_bin_dir
+            )
+        else:
+            # Linux: add XRT library directory to LD_LIBRARY_PATH.
+            existing_ld_library_path = os.environ.get("LD_LIBRARY_PATH")
+            if existing_ld_library_path:
+                new_ld_library_path = (
+                    existing_ld_library_path + os.pathsep + xrt_lib_dir
+                )
+            else:
+                new_ld_library_path = xrt_lib_dir
+            config.environment["LD_LIBRARY_PATH"] = new_ld_library_path
+
         # Runtime library search path. Compose with the lit environment instead of
         # rebuilding PATH/LD_LIBRARY_PATH from the process environment.
         if os.name == "nt":

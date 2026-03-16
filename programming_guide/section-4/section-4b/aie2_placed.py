@@ -39,6 +39,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
         scale_scalar = external_func(
             "vector_scalar_mul_aie_scalar",
             inputs=[tile_ty, tile_ty, scalar_ty, in2_dtype],
+            link_with="scale.o",
         )
 
         # Tile declarations
@@ -52,7 +53,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
 
         # Set up compute tiles
         # Compute tile 2
-        @core(ComputeTile2, "scale.o")
+        @core(ComputeTile2)
         def core_body():
             # Effective while(1)
             for _ in range_(sys.maxsize):

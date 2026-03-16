@@ -1,0 +1,23 @@
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// End-to-end test for func-level link_with using the Peano/lld backend.
+//
+// The kernel is compiled to a .o by peano clang (target derived from the
+// device), then linked via func-level link_with on the func.func declaration.
+// aiecc (C++ driver) runs the aie-assign-core-link-files pass, which traces
+// the func::CallOp inside the core and populates link_files on the CoreOp,
+// which the ldscript emitter turns into an INPUT() directive.  The Peano
+// copy loop copies the .o to the .prj tmpdir so lld can find it.
+//
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf -O2 -c %S/add_one_kernel.cc -o ./add_one_kernel.o
+// RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang --target=aie2p-none-unknown-elf -O2 -c %S/add_one_kernel.cc -o ./add_one_kernel.o
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --xclbin-name=aie.xclbin --aie-generate-npu-insts --npu-insts-name=insts.bin ./aie_arch.mlir
+// RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+// RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
+// RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin

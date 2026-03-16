@@ -57,10 +57,15 @@ def my_matmul(dev):
 
             # AIE Core Function declarations
             func_type = "vectorized" if vectorized else "scalar"
-            zero = external_func(f"zero_{func_type}_{dtype_out_str}", inputs=[outC_ty])
+            zero = external_func(
+                f"zero_{func_type}_{dtype_out_str}",
+                inputs=[outC_ty],
+                link_with=f"mv_{m}x{k}.o",
+            )
             matvec = external_func(
                 f"matvec_{func_type}_{dtype_in_str}_{dtype_out_str}",
                 inputs=[A_ty, inB_ty, outC_ty],
+                link_with=f"mv_{m}x{k}.o",
             )
 
             # Tile declarations
@@ -122,7 +127,7 @@ def my_matmul(dev):
             # Set up compute tiles
             for i in range(n_cores):
                 # Compute tile i
-                @core(cores[i], f"mv_{m}x{k}.o")
+                @core(cores[i])
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         elem_out = outC_fifos[i].acquire(

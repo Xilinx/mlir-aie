@@ -44,11 +44,13 @@ def nested_loops():
 
             # AIE Core Function declarations
             passthrough_10_i32 = external_func(
-                "passthrough_10_i32", inputs=[tensor_ty, tensor_ty]
+                "passthrough_10_i32",
+                inputs=[tensor_ty, tensor_ty],
+                link_with="kernel.o",
             )
 
             # Set up compute tiles
-            @core(ComputeTile, "kernel.o")
+            @core(ComputeTile)
             def core_body():
                 for _ in range_(5):
                     elemIn = of_in.acquire(ObjectFifoPort.Consume, 1)

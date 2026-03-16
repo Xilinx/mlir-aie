@@ -60,9 +60,10 @@ class group0a:
         group0a_func = external_func(
             "group0a_kernel",
             inputs=[din_ty, dout_ty, lut0a_ty, scalar_ty, scalar_ty],
+            link_with=_objectArchive,
         )
 
-        @core(self.computeTile, self.objectArchive, stack_size=4096)
+        @core(self.computeTile, stack_size=4096)
         def core_body():
             for _ in range_(sys.maxsize):
                 di = self.din.acquire(ObjectFifoPort.Consume, 1)
@@ -123,9 +124,10 @@ class group0b:
         group0b_func = external_func(
             "group0b_kernel",
             inputs=[din_ty, dout_ty, lut0b_a_ty, lut0b_b_ty],
+            link_with=_objectArchive,
         )
 
-        @core(self.computeTile, self.objectArchive)
+        @core(self.computeTile)
         def core_body():
             for _ in range_(sys.maxsize):
                 for ite in range_(32):  # 256/8

@@ -43,10 +43,12 @@ def reduction():
             of_out = object_fifo("out", ComputeTile, ShimTile, 2, tile_ty)
 
             # AIE Core Function declarations
-            add_10_i32 = external_func("add_10_i32", inputs=[tile_ty, tile_ty, tile_ty])
+            add_10_i32 = external_func(
+                "add_10_i32", inputs=[tile_ty, tile_ty, tile_ty], link_with="kernel.o"
+            )
 
             # Set up compute tiles
-            @core(ComputeTile, "kernel.o")
+            @core(ComputeTile)
             def core_body():
                 for _ in range_(sys.maxsize):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)

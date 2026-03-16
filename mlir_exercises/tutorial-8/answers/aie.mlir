@@ -30,8 +30,8 @@ module @tutorial_8 {
 
     // declare 2 kernel functions name "extern_kernel1" and "extern_kernel2"
     // with one positional function argument, in this case mapped to a memref
-    func.func private @extern_kernel1() -> ()
-    func.func private @extern_kernel2(%b: memref<256xi32>) -> ()
+    func.func private @extern_kernel1() -> () attributes {link_with = "kernel1.o"}
+    func.func private @extern_kernel2(%b: memref<256xi32>) -> () attributes {link_with = "kernel2.o"}
 
     // Declare shared lock (belonging to tile(2,4), lock ID=1), do not change symbolic name to allow reuse of test.cpp
 
@@ -52,7 +52,7 @@ module @tutorial_8 {
 
         // aie.use_lock(%lock23_1, "Release", 1)
         aie.end
-    } { link_with="kernel2.o" }
+    }
 
     // Define core algorithm for tile(2,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
@@ -73,6 +73,6 @@ module @tutorial_8 {
 
         // aie.use_lock(%lock24_1, "Release", 0)
         aie.end
-    } { link_with="kernel1.o" }
+    }
 
 }

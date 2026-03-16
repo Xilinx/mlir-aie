@@ -275,7 +275,7 @@ Generated Code Documentation
 - [ADF Dialect](ADFDialect.md) - [ADF Passes](ADFPasses.md)
 
 MLIR Tutorials
-- [Step-by-step Tutorial](../mlir_tutorials/README.md)
+- [Step-by-step Tutorial](../mlir_exercises/README.md)
 - [AIE Design Patterns](AIEDesignPatterns)
 - [AIE Routing](AIERouting)
 - [AIE Vectorization of Scalar Code](AIEVectorization)

@@ -38,7 +38,9 @@ def my_reduce_min():
 
         # AIE Core Function declarations
         reduce_min_vector = external_func(
-            "reduce_min_vector", inputs=[in_ty, out_ty, np.int32]
+            "reduce_min_vector",
+            inputs=[in_ty, out_ty, np.int32],
+            link_with="reduce_min.cc.o",
         )
 
         # Tile declarations
@@ -52,7 +54,7 @@ def my_reduce_min():
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "reduce_min.cc.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
