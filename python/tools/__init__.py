@@ -16,6 +16,7 @@ from pathlib import Path
 
 __all__ = [
     "MLIR_AIE_BIN_DIR",
+    "aiecc",
     "aie_lsp_server",
     "aie_opt",
     "aie_reset",
@@ -45,6 +46,10 @@ def _program_exit(name: str, *args: str) -> NoReturn:
         raise SystemExit(_program(name, args))
     cmake_exe = os.path.join(MLIR_AIE_BIN_DIR, name)
     os.execl(cmake_exe, cmake_exe, *args)
+
+
+def aiecc() -> NoReturn:
+    _program_exit("aiecc", *sys.argv[1:])
 
 
 def aie_lsp_server() -> NoReturn:

@@ -8,6 +8,7 @@
 add_mlir_dialect_library(AIE
   AIETargetModel.cpp
   AIEDialect.cpp
+  AIETraceOps.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
@@ -20,6 +21,7 @@ add_mlir_dialect_library(AIE
   MLIRAIEOpsIncGen
 
   LINK_LIBS PUBLIC
+  MLIRAIEUtil
   MLIRIR
   MLIRSupport
 )

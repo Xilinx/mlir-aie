@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-XILINX_XRT=/opt/xilinx/xrt/
+XILINX_XRT ?= $(if $(wildcard /opt/xilinx/xrt/include),/opt/xilinx/xrt,/usr)
 XILINX_XRT_INCLUDE?=${XILINX_XRT}/include
 XILINX_XRT_LIB?=${XILINX_XRT}/lib
 
@@ -56,7 +56,7 @@ build/aie.mlir: ${srcdir}/combined_transpose.py
 
 build/final.xclbin: build/aie.mlir build/transpose.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin ${<:%=../%}
 

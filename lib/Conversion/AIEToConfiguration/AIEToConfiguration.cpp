@@ -29,6 +29,12 @@ extern "C" {
 #include <utility>
 #include <vector>
 
+namespace xilinx {
+#define GEN_PASS_DEF_CONVERTAIETOCONTROLPACKETS
+#define GEN_PASS_DEF_CONVERTAIETOTRANSACTION
+#include "aie/Conversion/Passes.h.inc"
+} // namespace xilinx
+
 #define DEBUG_TYPE "aie-convert-to-config"
 
 using namespace mlir;
@@ -627,7 +633,8 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
 // of the supplied builder.
 static LogicalResult convertTransactionOpsToMLIR(
     OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
-    std::vector<TransactionBinaryOperation> &operations) {
+    std::vector<TransactionBinaryOperation> &operations,
+    std::string blockwrite_prefix = "config_blockwrite_data_") {
 
   auto loc = builder.getUnknownLoc();
 
@@ -642,6 +649,7 @@ static LogicalResult convertTransactionOpsToMLIR(
     }
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(device.getBody());
+    int id = 0;
     for (auto &op : operations) {
       if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
         global_data.push_back(nullptr);
@@ -651,10 +659,10 @@ static LogicalResult convertTransactionOpsToMLIR(
       const uint32_t *d = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
       std::vector<uint32_t> data32(d, d + size);
 
-      int id = 0;
-      std::string name = "config_blockwrite_data";
-      while (device.lookupSymbol(name))
-        name = "config_blockwrite_data_" + std::to_string(id++);
+      std::string name = blockwrite_prefix;
+      do {
+        name = blockwrite_prefix + std::to_string(id++);
+      } while (device.lookupSymbol(name));
 
       MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
       TensorType tensorType =
@@ -711,7 +719,7 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
                                  AIEDevice::npu1_3col, AIEDevice::npu1};
   auto device = DeviceOp::create(builder, loc, devices[columns - 1],
-                                 StringAttr::get(builder.getContext()));
+                                 DeviceOp::getDefaultDeviceName());
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
   builder.setInsertionPointToStart(device.getBody());
@@ -726,7 +734,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
-    AIE::AIEToConfigurationOutputType outputType) {
+    AIE::AIEToConfigurationOutputType outputType,
+    std::string blockwrite_prefix) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -758,7 +767,8 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     return failure();
   }
 
-  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations))) {
+  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
+                                         blockwrite_prefix))) {
     return failure();
   }
 
@@ -838,22 +848,26 @@ struct ConvertAIEToConfigurationPass : BaseClass {
 
 struct ConvertAIEToTransactionPass
     : ConvertAIEToConfigurationPass<
-          ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
+          xilinx::impl::ConvertAIEToTransactionBase<
+              ConvertAIEToTransactionPass>,
           AIE::AIEToConfigurationOutputType::Transaction> {
   ConvertAIEToTransactionPass()
       : ConvertAIEToConfigurationPass<
-            ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
+            xilinx::impl::ConvertAIEToTransactionBase<
+                ConvertAIEToTransactionPass>,
             AIE::AIEToConfigurationOutputType::Transaction>(clElfDir,
                                                             clDeviceName) {}
 };
 
 struct ConvertAIEToControlPacketsPass
     : ConvertAIEToConfigurationPass<
-          ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
+          xilinx::impl::ConvertAIEToControlPacketsBase<
+              ConvertAIEToControlPacketsPass>,
           AIE::AIEToConfigurationOutputType::ControlPacket> {
   ConvertAIEToControlPacketsPass()
       : ConvertAIEToConfigurationPass<
-            ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
+            xilinx::impl::ConvertAIEToControlPacketsBase<
+                ConvertAIEToControlPacketsPass>,
             AIE::AIEToConfigurationOutputType::ControlPacket>(clElfDir,
                                                               clDeviceName) {}
 };

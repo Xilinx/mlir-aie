@@ -93,7 +93,8 @@ fi
 
 echo "Setting up XDNA driver repository..."
 # Clone or update the XDNA driver repository and initialize submodules
-XDNA_TAG=1.6
+XDNA_TAG=beb9e450fe123ecdf395453971576179cedcf1dd
+# (1.7 tag as of 2026/02/17) 
 if [ -d "xdna-driver" ]; then
     echo "xdna-driver directory already exists. Removing and re-cloning to ensure clean state..."
     rm -rf xdna-driver
@@ -124,7 +125,7 @@ sudo ./tools/amdxdna_deps.sh
 echo "Building XRT..."
 # Build XRT
 cd "$XDNA_SRC_DIR/xrt/build"
-run_build ./build.sh -npu -opt
+run_build ./build.sh -npu -opt -noctest
 
 echo "Removing any existing XRT and XDNA-driver packages..."
 # Find and remove any installed packages that start with "xrt"
@@ -194,7 +195,6 @@ echo "Building XDNA Driver..."
 # Build XDNA Driver
 cd "$XDNA_SRC_DIR/build"
 run_build ./build.sh -release
-run_build ./build.sh -package
 
 echo "Installing XDNA plugin..."
 # Install XDNA plugin based on Ubuntu version
@@ -233,4 +233,3 @@ echo "Installing plugin package: $plugin_pkg"
 sudo apt reinstall -y "./$plugin_pkg"
 
 echo "xdna-driver and XRT built and installed successfully."
-echo "Please reboot to apply changes."

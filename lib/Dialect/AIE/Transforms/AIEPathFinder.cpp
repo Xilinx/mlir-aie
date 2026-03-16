@@ -40,12 +40,20 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     Port srcPort, dstPort;
     TileOp srcTile, dstTile;
     TileID srcCoords, dstCoords;
+    // Pass 1: extract source (order-independent: dest may appear before source)
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
         srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
         srcPort = pktSource.port();
         srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-      } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
+      }
+    }
+    if (!srcTile)
+      return pktFlowOp.emitOpError("packet_flow has no packet_source");
+
+    // Pass 2: process each destination using the source extracted above
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
         dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
         dstPort = pktDest.port();
         dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
@@ -371,17 +379,21 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
     bool found = false;
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
+      if (sb.srcPorts[i] != connectOp.sourcePort())
+        continue;
+      // A circuit-switched ConnectOp monopolizes its entire source port;
+      // mark all connectivity[i][*] INVALID so the pathfinder cannot route
+      // any packet flow through this source port.
       for (size_t j = 0; j < sb.dstPorts.size(); j++) {
-        if (sb.srcPorts[i] == connectOp.sourcePort() &&
-            sb.dstPorts[j] == connectOp.destPort() &&
-            sb.connectivity[i][j] == Connectivity::AVAILABLE) {
-          sb.connectivity[i][j] = Connectivity::INVALID;
+        if (sb.dstPorts[j] == connectOp.destPort() &&
+            sb.connectivity[i][j] == Connectivity::AVAILABLE)
           found = true;
-        }
+        sb.connectivity[i][j] = Connectivity::INVALID;
       }
     }
     if (!found) {
-      // could not add such a fixed connection
+      // ConnectOp references a (srcPort, dstPort) pair absent from or already
+      // fully invalidated in the switchbox model; IR/graph mismatch.
       return false;
     }
   }

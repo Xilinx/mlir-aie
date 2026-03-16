@@ -272,16 +272,14 @@ def test_include_directories():
         # Create a header file
         header_file = os.path.join(temp_dir, "math_ops.h")
         with open(header_file, "w") as f:
-            f.write(
-                """
+            f.write("""
 #ifndef MATH_OPS_H
 #define MATH_OPS_H
 
 #define ADD_VALUE 42
 
 #endif
-"""
-            )
+""")
 
         # Create input and output tensors
         input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
@@ -415,18 +413,16 @@ def test_caching_same_source():
     np.testing.assert_array_equal(result1, result2)
 
 
-def test_context_manager():
-    """Test ExternalFunction with context manager syntax."""
-    # Create input and output tensors
+def test_inline_source_string():
+    """Test ExternalFunction constructed inline with a source string."""
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalFunction and use it with context manager
-    with ExternalFunction(
-        "add_one_context",
+    add_one = ExternalFunction(
+        "add_one_inline",
         source_string="""extern "C" {
-            void add_one_context(int* input, int* output, int tile_size) {
+            void add_one_inline(int* input, int* output, int tile_size) {
                 for (int i = 0; i < tile_size; i++) {
                     output[i] = input[i] + 1;
                 }
@@ -437,28 +433,23 @@ def test_context_manager():
             np.ndarray[(16,), np.dtype[np.int32]],
             np.int32,
         ],
-    ) as add_one:
-        # Apply the transform
-        transform(input_tensor, output_tensor, add_one)
+    )
+    transform(input_tensor, output_tensor, add_one)
 
-    # Verify results
     expected = initial_tensor + 1
-    actual = output_tensor.numpy()
-    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(output_tensor.numpy(), expected)
 
 
-def test_context_manager_with_compiler_options():
-    """Test ExternalFunction with context manager and compiler options."""
-    # Create input and output tensors
+def test_inline_source_string_with_compiler_options():
+    """Test ExternalFunction constructed inline with compile flags."""
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalFunction with compiler options using context manager
-    with ExternalFunction(
-        "add_value_context",
+    add_value = ExternalFunction(
+        "add_value_inline",
         source_string="""extern "C" {
-            void add_value_context(int* input, int* output, int tile_size) {
+            void add_value_inline(int* input, int* output, int tile_size) {
                 for (int i = 0; i < tile_size; i++) {
                     output[i] = input[i] + ADD_VALUE;
                 }
@@ -470,14 +461,11 @@ def test_context_manager_with_compiler_options():
             np.int32,
         ],
         compile_flags=["-DADD_VALUE=42"],
-    ) as add_value:
-        # Apply the transform
-        transform(input_tensor, output_tensor, add_value)
+    )
+    transform(input_tensor, output_tensor, add_value)
 
-    # Verify results
     expected = initial_tensor + 42
-    actual = output_tensor.numpy()
-    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(output_tensor.numpy(), expected)
 
 
 def test_source_file():
@@ -747,6 +735,58 @@ def test_mismatched_tile_sizes(input_tile_size, output_tile_size):
     # Should raise an assertion error
     with pytest.raises(AssertionError, match="Input and output tile sizes must match"):
         transform(input_tensor, output_tensor, mismatched_func)
+
+
+def test_external_function_wrong_args_count():
+    """Test error handling for wrong argument count"""
+    add_one = ExternalFunction(
+        "add_one",
+        source_string="""extern "C" {
+            void add_one(int* input, int* output, int tile_size) {
+                for (int i = 0; i < tile_size; i++) {
+                    output[i] = input[i] + 1;
+                }
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input)
+
+    with pytest.raises(ValueError, match="expects 3 argument"):
+        # Only passing 2 args when 3 are expected
+        add_one(input, output)
+
+
+def test_external_function_wrong_arg_type():
+    """Test error handling for wrong argument type"""
+    add_one = ExternalFunction(
+        "add_one",
+        source_string="""extern "C" {
+            void add_one(int* input, int* output, int tile_size) {
+                for (int i = 0; i < tile_size; i++) {
+                    output[i] = input[i] + 1;
+                }
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    input = iron.randint(0, 100, (16,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input)
+
+    with pytest.raises(ValueError, match="expected scalar"):
+        # Passing a string where np.int32 is expected
+        add_one(input, output, "not_a_number")
 
 
 @pytest.mark.parametrize(

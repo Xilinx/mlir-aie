@@ -87,6 +87,7 @@ def conv2dk14(
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk14.o",
             )
 
             # Tile declarations
@@ -225,7 +226,7 @@ def conv2dk14(
             for i in range(n_aie_cols):
                 for j in range(n_aie_rows):
 
-                    @core(core_tiles[j][i], "conv2dk14.o", stack_size=0xC00)
+                    @core(core_tiles[j][i], stack_size=0xC00)
                     def core_body():
                         y_dim = height // (kernel_size * 4)
                         x_blocks = 4

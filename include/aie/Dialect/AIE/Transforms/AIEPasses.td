@@ -13,6 +13,35 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
+  let summary =
+      "Infer per-core link_files from func-level link_with attributes";
+  let description = [{
+    Walks each aie.core and collects the set of external object files it needs
+    by tracing direct func.call edges to func.func declarations that carry a
+    "link_with" string attribute.  The result is stored in the CoreOp's
+    "link_files" StrArrayAttr.
+
+    Only direct calls (func.call) are resolved.  Indirect calls
+    (func.call_indirect) inside a core body emit a warning and are not
+    resolved; add a direct func.call to the required func.func declaration
+    so the pass can trace the dependency.
+
+    Core-level "link_with" (deprecated) is also migrated: its value is
+    folded into the set and the attribute is removed from the CoreOp.
+
+    func.func declarations that carry "link_with" but are never called from
+    any core emit a warning; their object files will not appear in any
+    core's link_files.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignCoreLinkFilesPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{
@@ -343,6 +372,55 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
             "Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,      
     Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
             "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,  
+  ];
+}
+
+def AIETraceToConfig : Pass<"aie-trace-to-config", "DeviceOp"> {
+  let summary = "Lower high-level trace ops to register configuration ops";
+  let description = [{
+    Converts aie.trace operations to aie.trace.config operations containing
+    aie.trace.reg operations that specify register field writes.
+
+    This pass transforms declarative trace configurations into register-level
+    specifications that can be further lowered to NPU register writes.
+
+    Note: This pass only does semantic lowering. NPU write generation
+    happens in aie-inline-trace-config (AIEX dialect).
+  }];
+
+  let constructor = "xilinx::AIE::createAIETraceToConfigPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIETraceRegPackWrites : Pass<"aie-trace-pack-reg-writes", "DeviceOp"> {
+  let summary = "Pack multiple register field writes into single register writes";
+  let description = [{
+    Packs multiple aie.trace.reg operations that write to the same register
+    into a single aie.trace.reg operation with a combined mask and value.
+
+    This pass operates in two phases:
+    1. Convert field+value pairs to mask+shifted_value using register database
+    2. Merge multiple writes to the same register with non-overlapping masks
+
+    Example transformation:
+    ```mlir
+    // Before:
+    aie.trace.reg register="Trace_Event0" field="Trace_Event0" value=33
+    aie.trace.reg register="Trace_Event0" field="Trace_Event1" value=34
+
+    // After:
+    aie.trace.reg register="Trace_Event0" value=0x22210000 mask=0xFFFF0000
+    ```
+
+    It is an error for two aie.trace.reg in the same aie.trace block to have
+    overlapping masks for the same register.
+  }];
+
+  let constructor = "xilinx::AIE::createAIETraceRegPackWritesPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
   ];
 }
 

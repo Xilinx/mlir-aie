@@ -48,4 +48,6 @@ Location: Pittsburgh, PA, USA
 
 *Joseph Melber* is a Senior Member of Technical Staff in AMD’s Research and Advanced Development group. At AMD, he is working on hardware architectures and compiler technologies for current and future AMD devices. He received a BS in electrical engineering from the University Buffalo, as well as MS and PhD degrees from the electrical and computer engineering department at Carnegie Mellon University. His research interests include runtime systems, compiler abstractions for data movement, and hardware prototypes for future adaptive heterogeneous computing architectures.
 
+*Erika Hunhoff* is a Senior Member of Technical Staff in AMD’s Research and Advanced Development group. At AMD, she is working on compiler technologies for current and future AMD devices. She received a BS in Computer Science and Mathematics from George Fox University, as well as MS and PhD degrees from the computer science department at the University of Colorado, Boulder. Her research interests include programming abstractions for complex systems and compiler abstractions for heterogeneous computing architectures.
+
 *Additional organizers to be added later*

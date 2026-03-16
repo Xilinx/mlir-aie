@@ -6,6 +6,10 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.func import FuncBase
 from ..dialects.aie import device
@@ -25,8 +29,8 @@ class Program:
     ):
         """A Program represents all design information needed to run the design on a device.
 
-        ctx.module.operation.verify() is called within this function to verify the correctness
-        of the MLIR module.
+        Note: MLIR verification (``ctx.module.operation.verify()``) is performed inside
+        :meth:`resolve_program`, not during construction.
 
         Args:
             device (Device): The device used to generate the final MLIR for the design.
@@ -125,4 +129,4 @@ class Program:
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
         if verify != True:
-            print(verify)
+            logger.error(str(verify))

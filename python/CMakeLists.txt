@@ -36,11 +36,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     utils/__init__.py
-    utils/test.py
-    utils/ml.py
     utils/config.py
+    utils/test.py
     utils/jit.py
+    utils/ml.py
     utils/npukernel.py
+    utils/regdb.py
     utils/hostruntime/__init__.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py
@@ -48,7 +49,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
-    utils/compile/link.py
     utils/compile/utils.py
     utils/compile/cache/circular_cache.py
     utils/compile/cache/utils.py
@@ -210,7 +210,10 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
   if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
-    list(APPEND _py_libs xrt_coreutil uuid)
+    list(APPEND _py_libs xrt_coreutil)
+    if(NOT WIN32)
+      list(APPEND _py_libs uuid)
+    endif()
   endif()
   list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
 
@@ -224,9 +227,6 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
     PRIVATE_LINK_LIBS
       ${_py_libs}
-
-    PYTHON_BINDINGS_LIBRARY
-      nanobind
   )
   target_include_directories(
     AIEPythonExtensions.MLIR
@@ -321,8 +321,6 @@ else ()
       AIECAPI
     PRIVATE_LINK_LIBS
       LLVMSupport
-    PYTHON_BINDINGS_LIBRARY
-      nanobind
   )
 
   if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -338,10 +336,10 @@ else ()
       PRIVATE_LINK_LIBS
         LLVMSupport
         xrt_coreutil
-        uuid
-      PYTHON_BINDINGS_LIBRARY
-        nanobind
     )
+    if(NOT WIN32)
+      target_link_libraries(AIEPythonExtensions.XRT INTERFACE uuid)
+    endif()
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()
@@ -402,7 +400,7 @@ else ()
   )
 
   # Output directory for generated files in build directory
-  set(GENERATED_EVENTS_DIR "${CMAKE_CURRENT_BINARY_DIR}/regdb")
+  set(GENERATED_EVENTS_DIR "${CMAKE_BINARY_DIR}/lib/regdb")
 
   # Generated Python enum files in the build directory
   set(GENERATED_EVENTS_ENUM_FILES
@@ -412,7 +410,7 @@ else ()
   )
 
   # Generated JSON database in the build directory
-  set(GENERATED_EVENTS_JSON_FILENAME "events.json")
+  set(GENERATED_EVENTS_JSON_FILENAME "events_database.json")
   set(GENERATED_EVENTS_JSON "${GENERATED_EVENTS_DIR}/${GENERATED_EVENTS_JSON_FILENAME}")
 
   # Add custom command to generate the event enum files
@@ -430,6 +428,14 @@ else ()
       ${EVENTS_HEADER_FILES}
     COMMENT "Generating trace events enum files from aie-rt headers"
     VERBATIM
+  )
+
+  # Install the generated json to the lib dir
+  install(
+    FILES 
+      ${GENERATED_EVENTS_JSON}
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/regdb
+    COMPONENT aie-python
   )
 
   # Create a custom target for the generated files

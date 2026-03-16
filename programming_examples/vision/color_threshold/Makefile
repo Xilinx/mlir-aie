@@ -10,6 +10,11 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
+# Workaround: Peano -O2 miscompiles aie::lt/aie::select loop on AIE2P
+# (first vector iteration correct, subsequent iterations produce zeros).
+# Use -O1 until upstream llvm-aie fix is available.
+PEANOWRAP2P_FLAGS := $(subst -O2,-O1,$(PEANOWRAP2P_FLAGS))
+
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
@@ -48,7 +53,7 @@ build/aie2_${COLORTHRESHOLD_WIDTH}.mlir: ${srcdir}/${aie_py_src}
 
 build/final_${COLORTHRESHOLD_WIDTH}.xclbin: build/aie2_${COLORTHRESHOLD_WIDTH}.mlir build/threshold.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 

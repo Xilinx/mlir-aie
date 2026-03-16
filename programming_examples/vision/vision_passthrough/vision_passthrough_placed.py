@@ -29,7 +29,9 @@ def passThroughAIE2(dev, width, height):
 
         # AIE Core Function declarations
         passThroughLine = external_func(
-            "passThroughLine", inputs=[line_ty, line_ty, np.int32]
+            "passThroughLine",
+            inputs=[line_ty, line_ty, np.int32],
+            link_with="passThrough.cc.o",
         )
 
         # Tile declarations
@@ -46,7 +48,7 @@ def passThroughAIE2(dev, width, height):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "passThrough.cc.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 for _ in range_(height):

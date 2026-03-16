@@ -21,6 +21,11 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEDMATASKSTONPU
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
@@ -79,7 +84,8 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   }
 };
 
-struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
+struct AIEDMATasksToNPUPass
+    : xilinx::AIEX::impl::AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   bool shouldSkipBlock(Block &block) {
     // Allow blocks in the input IR that contain nothing but a next_bd operation
@@ -127,13 +133,14 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   LogicalResult verifyOptionalLocksInBlock(Block &block) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
-    // Exactly 0 or 2 lock ops
     int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-    if (n_lock_ops > 0) {
-      // TODO: Not yet implemented
+    // Allow exactly 0 or 2 lock ops (acquire and release)
+    if (n_lock_ops != 0 && n_lock_ops != 2) {
       AIE::UseLockOp lock_op = *lock_ops.begin();
-      lock_op.emitOpError("Lowering for lock operations in NPU runtime "
-                          "configuration is not yet implemented.");
+      lock_op.emitOpError(
+          "BD blocks must have either 0 or 2 lock operations (acquire and "
+          "release). Found ")
+          << n_lock_ops << " lock operations.";
       return failure();
     }
     return success();
@@ -172,10 +179,30 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     return bd_op;
   }
 
+  // Returns pair of (acquire_lock_op, release_lock_op) if present
   std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
   getOptionalLockOpsForBlock(Block &block) {
-    // auto lock_ops = block.getOps<AIE::UseLockOp>();
-    return std::nullopt; // Not yet implemented
+    auto lock_ops = block.getOps<AIE::UseLockOp>();
+    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
+    if (n_lock_ops != 2) {
+      return std::nullopt;
+    }
+
+    AIE::UseLockOp acquire_op = nullptr;
+    AIE::UseLockOp release_op = nullptr;
+
+    for (auto lock_op : lock_ops) {
+      if (lock_op.acquire() || lock_op.acquireGE()) {
+        acquire_op = lock_op;
+      } else if (lock_op.release()) {
+        release_op = lock_op;
+      }
+    }
+
+    if (acquire_op && release_op) {
+      return std::make_pair(acquire_op, release_op);
+    }
+    return std::nullopt;
   }
 
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
@@ -183,9 +210,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint32_t bd_id = bd_op.getBdId().value();
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
-    uint64_t register_addr =
-        target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id) +
-        target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
+    auto col = tile.getCol();
+    auto row = tile.getRow();
+    uint64_t register_addr = target_model.getDmaBdAddress(col, row, bd_id) +
+                             target_model.getDmaBdAddressOffset(col, row);
 
     // A buffer descriptor can refer to a statically allocated aie.buffer, or to
     // a DDR buffer which will be passed as a runtime argument (block
@@ -224,8 +252,31 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
             "address.");
       }
       buf_addr = *buffer.getAddress();
-      NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
-                           nullptr, nullptr, nullptr);
+      buf_addr += bd_op.getOffsetInBytes();
+      if (target_model.isCoreTile(col, row)) {
+        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
+                                 (buf_addr / 4) << 14, 0x0fffc000, nullptr,
+                                 nullptr, nullptr);
+      } else if (target_model.isMemTile(col, row)) {
+        // On AIE2p (NPU2), memtile DMAs use an offset-based address
+        // space where the base depends on the relative position of the
+        // buffer's tile (west=0, internal=getMemTileSize, east=2x).
+        // On AIE2 (NPU1), memtile DMAs address local memory directly
+        // starting at 0. Only add the offset for AIE2p.
+        if (target_model.getTargetArch() == AIE::AIEArch::AIE2p) {
+          auto addrOffset = target_model.getMemLocalBaseAddress(
+              col, row, buffer.getTileOp().getCol(),
+              buffer.getTileOp().getRow());
+          if (addrOffset)
+            buf_addr += addrOffset.value();
+        }
+        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
+                                 buf_addr / 4, 0x0007FFFF, nullptr, nullptr,
+                                 nullptr);
+      } else {
+        NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
+                             nullptr, nullptr, nullptr);
+      }
     } else {
       return bd_op->emitOpError(
           "Buffer argument must be a constant aie.buffer, a runtime sequence "
@@ -307,10 +358,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         input_strides[i] = (*dims)[j].getStride();
       }
 
-      // Do not check input_sizes[3] because a repeat can still be considered a
-      // linear transfer
-      bool isLinearTransfer = (input_sizes[0] >= 1) && (input_sizes[1] == 1) &&
-                              (input_sizes[2] == 1);
+      // d3 (repeat) is excluded; a repeated linear transfer is still linear.
+      bool isLinearTransfer =
+          AIEX::isLinearTransfer(input_sizes, input_strides);
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
@@ -423,6 +473,49 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       packet_id = info.getPktId();
     }
 
+    // Extract lock information if present
+    int32_t lock_rel_val = 0;
+    int32_t lock_rel_id = 0;
+    int32_t lock_acq_enable = 0;
+    int32_t lock_acq_val = 0;
+    int32_t lock_acq_id = 0;
+
+    auto lock_ops = getOptionalLockOpsForBlock(block);
+    if (lock_ops) {
+      auto [acquire_op, release_op] = *lock_ops;
+
+      // Get lock IDs from the lock operations
+      AIE::LockOp acq_lock = acquire_op.getLockOp();
+      AIE::LockOp rel_lock = release_op.getLockOp();
+
+      if (acq_lock.getLockID().has_value()) {
+        lock_acq_id = acq_lock.getLockID().value();
+        lock_acq_val = acquire_op.getLockValue();
+        // For AcquireGreaterEqual, negate the value to signal the hardware
+        // to use >= comparison instead of == comparison.
+        if (acquire_op.acquireGE())
+          lock_acq_val = -lock_acq_val;
+        lock_acq_enable = 1;
+      }
+
+      if (rel_lock.getLockID().has_value()) {
+        lock_rel_id = rel_lock.getLockID().value();
+        lock_rel_val = release_op.getLockValue();
+      }
+
+      // For memtile, add lock offset using getLockLocalBaseIndex.
+      // This matches AIERT.cpp implementation.
+      if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
+        auto lockOffset = target_model.getLockLocalBaseIndex(
+            tile.getCol(), tile.getRow(), acq_lock.colIndex(),
+            acq_lock.rowIndex());
+        if (lockOffset && acq_lock.getLockID().has_value())
+          lock_acq_id += lockOffset.value();
+        if (lockOffset && rel_lock.getLockID().has_value())
+          lock_rel_id += lockOffset.value();
+      }
+    }
+
     NpuWriteBdOp::create(
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
         offset,
@@ -430,20 +523,19 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /*out_of_order_id=*/out_of_order_id,
         /*packet_id=*/packet_id,
         /*packet_type=*/packet_type,
-        /* TODO: Strides/Wraps */
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
         /*iteration_current=*/0, /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
-        /* TODO: Next BD */
         /*next_bd=*/next_bd_id,
         /*row=*/tile.getRow(),
         /*use_next_bd=*/use_next_bd,
         /*valid_bd=*/1,
-        /* TODO: Locks */
-        /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0,
-        /*lock_acq_val=*/0, /*lock_ackq_id=*/0, /*d0_zero_before=*/padBefore[0],
+        /*lock_rel_val=*/lock_rel_val, /*lock_rel_id=*/lock_rel_id,
+        /*lock_acq_enable=*/lock_acq_enable,
+        /*lock_acq_val=*/lock_acq_val, /*lock_acq_id=*/lock_acq_id,
+        /*d0_zero_before=*/padBefore[0],
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
         /*d2_zero_after=*/padAfter[2],

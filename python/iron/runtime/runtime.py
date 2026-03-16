@@ -5,12 +5,16 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+"""Runtime: orchestrates host-side data movement and worker execution for an IRON program."""
 
 from __future__ import annotations
 from collections import defaultdict
 from contextlib import contextmanager
+import logging
 import numpy as np
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 from ...utils import trace as trace_utils
 
@@ -41,17 +45,17 @@ class Runtime(Resolvable):
     need to be taken care of by the host/runtime in order to run a program.
     """
 
-    """This is used to generate unique task group ids"""
+    # Used to generate unique task group IDs within this Runtime.
     __task_group_index = 0
 
     def __init__(
         self,
         strict_task_groups: bool = True,
-    ) -> Runtime:
+    ) -> None:
         """Initialize a runtime object.
 
         Args:
-            check_task_groups: Disallows mixing the default group and explicit task groups during resolution.
+            strict_task_groups (bool): Disallows mixing the default group and explicit task groups during resolution.
                 This can catch common errors, but can be set to False to disable the checks.
 
         """
@@ -76,7 +80,7 @@ class Runtime(Resolvable):
             ValueError: If task groups are not finished within the sequence() context, and error will be raised.
 
         Yields:
-            _type_: Handles to the buffers matching the input types.
+            RuntimeData | tuple[RuntimeData, ...]: Handles to the runtime buffers matching the declared input types.
         """
         try:
             self._rt_data = list(map(RuntimeData, input_types))
@@ -130,7 +134,7 @@ class Runtime(Resolvable):
         This should be called within a Runtime.sequence() context.
 
         Args:
-            task_group (RuntimeTaskGroup): _description_
+            task_group (RuntimeTaskGroup): The task group to close. All associated tasks will be awaited or freed.
         """
         self._open_task_groups.remove(task_group)
         self._tasks.append(FinishTaskGroupTask(task_group))
@@ -187,9 +191,9 @@ class Runtime(Resolvable):
         Args:
             out_fifo (ObjectFifoHandle): The consumer ObjectFifoHandle.
             dest (RuntimeData): The output Runtime data buffer.
-            tap (TensorAccessPattern | None, optional): A way of specifying how data in the buffer is accessed when sending it to the in_fifo.
-                If None is given, this will default to a linear transfer containing all data in the source buffer. Defaults to None.
-            task_group (RuntimeTaskGroup | None, optional):  A TaskGroup to associate this task with. Defaults to None. Defaults to None.
+            tap (TensorAccessPattern | None, optional): A way of specifying how data in the buffer is accessed when reading from the out_fifo.
+                If None is given, this will default to a linear transfer containing all data in the destination buffer. Defaults to None.
+            task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             placement (PlacementTile, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
 
@@ -239,13 +243,33 @@ class Runtime(Resolvable):
         self,
         trace_size: int = None,
         trace_offset: int = None,
-        workers: [] = None,
+        workers: list | None = None,
         ddr_id: int = None,
-        coretile_events: [] = None,
-        memtile_events: [] = None,
-        shimtile_events: [] = None,
+        coretile_events: list | None = None,
+        memtile_events: list | None = None,
+        shimtile_events: list | None = None,
     ):
-        """Enable trace."""
+        """Enable hardware tracing for this program.
+
+        Configures the AIE trace units and routes trace packets to DDR via the shim DMA.
+        Should be called within a :meth:`sequence` context before data movement operations.
+
+        Args:
+            trace_size (int): Size of the trace buffer in bytes.
+            trace_offset (int | None, optional): Byte offset into the DDR buffer where trace
+                data should begin. Defaults to None (treated as 0).
+            workers (list[Worker] | None, optional): Specific workers to trace. If None,
+                all workers with ``trace`` set will be traced. Defaults to None.
+            ddr_id (int | None, optional): XRT inout buffer index to write trace data into.
+                Defaults to None (treated as 4, the conventional last buffer slot).
+            coretile_events (list | None, optional): List of up to 8 core tile trace events.
+                See ``python/utils/trace_events_enum.py`` for available events.
+                Defaults to None (uses hardware defaults).
+            memtile_events (list | None, optional): List of up to 8 mem tile trace events.
+                Defaults to None (uses hardware defaults).
+            shimtile_events (list | None, optional): List of up to 8 shim tile trace events.
+                Defaults to None (uses hardware defaults).
+        """
         self._trace_size = trace_size
         self._trace_offset = trace_offset
         self._trace_workers = workers
@@ -308,7 +332,7 @@ class Runtime(Resolvable):
 
                 trace_shim_tile = self.get_first_cons_shimtile()
 
-                # print("config_trace")
+                logger.debug("config_trace")
                 trace_utils.configure_packet_tracing_aie2(
                     # tiles_to_trace=[ tiles_to_trace[0] ],
                     tiles_to_trace=tiles_to_trace,

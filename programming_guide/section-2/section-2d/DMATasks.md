@@ -8,16 +8,16 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2g - Runtime Data Movement</ins>
+# <ins>Section 2d - Runtime Data Movement</ins>
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
     * [Section 2b - Key Object FIFO Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
-    * [Section 2d - Programming for multiple cores](../section-2d/)
-    * [Section 2e - Practical Examples](../section-2e/)
-    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
-    * Section 2g - Runtime Data Movement
+    * Section 2d - Runtime Data Movement
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
 
 -----
 
@@ -153,7 +153,7 @@ def shim_dma_single_bd_task(
     issue_token: bool = False,
 )
 ```
-- **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFIFO. This argument is called `alloc` becuase the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
+- **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFIFO. This argument is called `alloc` because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
 - **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
 - **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
 - **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
@@ -162,7 +162,7 @@ def shim_dma_single_bd_task(
 - **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
 - **`burst_length`** (optional): The configuration of the burst length for the DMA task. If `0`, defaults to the highest available value.
 
-The strides and strides express data transformations analogously to those described in [Section 2C](../section-2c).
+The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c).
 
 **Example Usage**:
 ```python
@@ -227,7 +227,7 @@ dma_free_task(in_task, out_task)
 
 #### **Conclusion**
 
-The `npu_dma_memcpy_nd` and `dma_wait` functions are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
+Both the `npu_dma_memcpy_nd`/`dma_wait` interface and the `shim_dma_single_bd_task`/`dma_await_task`/`dma_free_task` interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 
 -----
 [[Up](./README.md)]

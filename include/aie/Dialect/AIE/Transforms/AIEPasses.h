@@ -20,16 +20,24 @@
 
 namespace xilinx::AIE {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DECL
+#define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferAddressesPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEAssignBufferAddressesPass(
+    const AIEAssignBufferAddressesOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEAssignCoreLinkFilesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECanonicalizeDevicePass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECoreToStandardPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIECoreToStandardPass(const AIECoreToStandardOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEFindFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELocalizeLocksPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
@@ -53,7 +61,13 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEGenerateColumnControlOverlayPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEGenerateColumnControlOverlayPass(
+    const AIEGenerateColumnControlOverlayOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIETraceRegPackWritesPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
@@ -68,7 +82,8 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 /// 3. rewrite flows to stream-switches using 'weights' from analysis pass.
 /// 4. check a region is legal
 /// 5. rewrite stream-switches (within a bounding box) back to flows
-struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
+struct AIEPathfinderPass
+    : impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 
   AIEPathfinderPass() = default;
 

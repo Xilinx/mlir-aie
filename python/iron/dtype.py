@@ -1,14 +1,16 @@
-# config.py -*- Python -*-
+# dtype.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
+"""Utilities for converting between short string names and numpy dtype objects."""
 
 import numpy as np
 from ml_dtypes import bfloat16
 
+# Mapping from short string names (e.g. 'bf16', 'i32') to numpy/ml_dtypes dtype objects.
 dtype_map = {
     "bf16": bfloat16,
     "i8": np.int8,

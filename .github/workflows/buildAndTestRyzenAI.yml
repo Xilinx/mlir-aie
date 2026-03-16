@@ -7,6 +7,9 @@ on:
       - test-ryzen-ai
   pull_request:
   merge_group:
+  schedule:
+    # Runs at midnight (00:00) every day
+    - cron: '0 0 * * *'
 
   # Allows you to run this workflow manually from the Actions tab by
   # selecting CI and then "Run workflow" menu on the right branch
@@ -133,7 +136,7 @@ jobs:
           mkdir $NPU_CACHE_HOME
 
           # Set number of contexts to maintain in cache per process
-          export XRT_CONTEXT_CACHE_SIZE=3
+          export XRT_CONTEXT_CACHE_SIZE=2
 
           ninja install
           ninja check-aie
@@ -203,7 +206,7 @@ jobs:
           fi
 
           # Set number of contexts to maintain in cache per process
-          export XRT_CONTEXT_CACHE_SIZE=3
+          export XRT_CONTEXT_CACHE_SIZE=2
 
           # Create runner-specific cache directory
           rm -rf $NPU_CACHE_HOME

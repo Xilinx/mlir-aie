@@ -90,6 +90,15 @@ def install_eudsl(req_file, target_dir):
         print(f"ERROR: {util_path} not found!", file=sys.stderr)
         sys.exit(1)
 
+    # Fix np.bool deprecation (removed in numpy 1.24)
+    with open(util_path) as f:
+        util_content = f.read()
+    if "np.bool:" in util_content:
+        util_content = util_content.replace("np.bool:", "np.bool_:")
+        with open(util_path, "w") as f:
+            f.write(util_content)
+        print(f"Patched np.bool -> np.bool_ in {util_path}", file=sys.stderr)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Vendor eudsl-python-extras")
