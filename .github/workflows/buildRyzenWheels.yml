@@ -32,6 +32,10 @@ env:
   DEBIAN_FRONTEND: noninteractive
   VITIS: /opt/ryzen_ai-1.3.0/vitis_aie_essentials
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+  PIP_RETRIES: "3"
+  PIP_RESUME_RETRIES: "3"
+  PIP_TIMEOUT: "60"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
   build-repo:
@@ -106,6 +110,10 @@ jobs:
           env: |
             VITIS: ${{ env.VITIS }}
             XILINXD_LICENSE_FILE: ${{ env.XILINXD_LICENSE_FILE }}
+            PIP_RETRIES: ${{ env.PIP_RETRIES }}
+            PIP_RESUME_RETRIES: ${{ env.PIP_RESUME_RETRIES }}
+            PIP_TIMEOUT: ${{ env.PIP_TIMEOUT }}
+            PIP_DISABLE_PIP_VERSION_CHECK: ${{ env.PIP_DISABLE_PIP_VERSION_CHECK }}
             AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '""' }}
           run: |
             git config --global --add safe.directory $PWD
@@ -143,8 +151,18 @@ jobs:
               NO_RTTI_UNDERSCORE="_no_rtti"
             fi
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-            pip -q download mlir$NO_RTTI==$VERSION \
-              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            for attempt in 1 2 3; do
+              rm -f mlir*.whl
+              if pip -q download mlir$NO_RTTI==$VERSION \
+                -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+                exit 1
+              fi
+              sleep $((attempt * 5))
+            done
             unzip -q mlir*.whl
             # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
             # That means wheels have file with time stamps in the future which makes ninja loop
@@ -308,7 +326,17 @@ jobs:
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
   
           # Grab the MLIR distro wheel and extract
-          pip -q download "mlir${NO_RTTI}==${VERSION}" -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          for attempt in 1 2 3; do
+            rm -f mlir*.whl
+            if pip -q download "mlir${NO_RTTI}==${VERSION}" -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
           python -m zipfile -e mlir*.whl .
   
           # Linux-style timestamp magic should work fine on Windows.
