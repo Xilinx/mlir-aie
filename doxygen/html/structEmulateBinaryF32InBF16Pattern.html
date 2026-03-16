@@ -90,7 +90,7 @@ Public Member Functions</h2></td></tr>
 struct EmulateBinaryF32InBF16Pattern&lt; OpTy &gt;</div><p>Pattern to emulate f32 binary vector arithmetic ops in bf16. </p>
 <p>For an op like: r = arith.addf a, b : vector&lt;16xf32&gt; Produces: a_bf16 = arith.truncf a : vector&lt;16xf32&gt; to vector&lt;16xbf16&gt; b_bf16 = arith.truncf b : vector&lt;16xf32&gt; to vector&lt;16xbf16&gt; r_bf16 = arith.addf a_bf16, b_bf16 : vector&lt;16xbf16&gt; r = arith.extf r_bf16 : vector&lt;16xbf16&gt; to vector&lt;16xf32&gt; </p>
 
-<p class="definition">Definition at line <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00910">910</a> of file <a class="el" href="VectorToVectorConversions_8cpp_source.html">VectorToVectorConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00933">933</a> of file <a class="el" href="VectorToVectorConversions_8cpp_source.html">VectorToVectorConversions.cpp</a>.</p>
 </div><h2 class="groupheader">Member Function Documentation</h2>
 <a id="a0dfe40ff270ceb6e0dd999d846f712a4" name="a0dfe40ff270ceb6e0dd999d846f712a4"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a0dfe40ff270ceb6e0dd999d846f712a4">&#9670;&#160;</a></span>matchAndRewrite()</h2>
@@ -128,7 +128,7 @@ template&lt;typename OpTy &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00913">913</a> of file <a class="el" href="VectorToVectorConversions_8cpp_source.html">VectorToVectorConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00936">936</a> of file <a class="el" href="VectorToVectorConversions_8cpp_source.html">VectorToVectorConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -138,7 +138,7 @@ template&lt;typename OpTy &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sun Mar 15 2026 22:49:38 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Mar 16 2026 06:53:45 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
