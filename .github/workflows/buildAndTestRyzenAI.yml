@@ -32,11 +32,15 @@ defaults:
     shell: bash
 
 concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
-  group: ci-build-test-ryzenai-${{ github.event.number || github.sha }}-${{ github.event_name }}
-  cancel-in-progress: true
+  # Merge queue runs share a single group key (serialized, never cancelled).
+  # PR runs use a per-PR key (cancelled when the same PR gets a new push).
+  # Push/schedule/workflow_dispatch runs use the SHA-based key.
+  group: >-
+    ci-build-test-ryzenai-${{
+    github.event_name == 'merge_group' && 'merge-queue' ||
+    github.event.number || github.sha
+    }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 env:
   DEBIAN_FRONTEND: noninteractive
