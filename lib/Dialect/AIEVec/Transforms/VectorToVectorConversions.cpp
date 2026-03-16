@@ -911,17 +911,6 @@ static Value smartTruncF32ToBF16(PatternRewriter &rewriter, Location loc,
   return arith::TruncFOp::create(rewriter, loc, bf16Type, val);
 }
 
-// Smart truncation for scalar values (used by reduction patterns).
-static Value smartTruncScalarF32ToBF16(PatternRewriter &rewriter, Location loc,
-                                       Value val) {
-  Type bf16Ty = rewriter.getBF16Type();
-  if (auto extfOp = val.getDefiningOp<arith::ExtFOp>()) {
-    if (extfOp.getIn().getType() == bf16Ty)
-      return extfOp.getIn();
-  }
-  return arith::TruncFOp::create(rewriter, loc, bf16Ty, val);
-}
-
 /// Pattern to emulate f32 binary vector arithmetic ops in bf16.
 /// For an op like: %r = arith.addf %a, %b : vector<16xf32>
 /// Produces:
@@ -1066,39 +1055,6 @@ struct EmulateUnaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
   }
 };
 
-/// Pattern to emulate f32 vector.reduction in bf16.
-struct EmulateReductionF32InBF16Pattern
-    : public OpRewritePattern<vector::ReductionOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(vector::ReductionOp op,
-                                PatternRewriter &rewriter) const override {
-    if (!op.getType().isF32())
-      return failure();
-    auto vectorType = dyn_cast<VectorType>(op.getVector().getType());
-    if (!vectorType || !vectorType.getElementType().isF32())
-      return failure();
-
-    Location loc = op.getLoc();
-    auto bf16VecType =
-        VectorType::get(vectorType.getShape(), rewriter.getBF16Type());
-
-    Value vectorBF16 =
-        smartTruncF32ToBF16(rewriter, loc, op.getVector(), bf16VecType);
-
-    Value accBF16 = nullptr;
-    if (op.getAcc())
-      accBF16 = smartTruncScalarF32ToBF16(rewriter, loc, op.getAcc());
-
-    Value newResult = vector::ReductionOp::create(rewriter, loc, op.getKind(),
-                                                  vectorBF16, accBF16);
-    auto extOp =
-        arith::ExtFOp::create(rewriter, loc, rewriter.getF32Type(), newResult);
-    rewriter.replaceOp(op, extOp);
-    return success();
-  }
-};
-
 struct BF16EmulationPass
     : public PassWrapper<BF16EmulationPass, OperationPass<>> {
 
@@ -1117,10 +1073,12 @@ struct BF16EmulationPass
     // Note: arith.divf is NOT demoted because bf16 vector divf is unsupported
     // on all AIE targets (Peano does not legalize G_FDIV on <16 x s16>).
 
-    // Special-case ops
+    // Special-case ops (excluding ReductionOp — its scalar accumulator
+    // and result lower to fp_to_bf16/bf16_to_fp which older Peano versions
+    // cannot select on AIE2P; reductions are intentionally left in f32
+    // to avoid these scalar bf16 conversions)
     patterns.add<EmulateCmpFF32InBF16Pattern, EmulateSelectF32InBF16Pattern,
-                 EmulateFMAF32InBF16Pattern, EmulateReductionF32InBF16Pattern>(
-        context);
+                 EmulateFMAF32InBF16Pattern>(context);
 
     // Unary ops
     patterns.add<EmulateUnaryF32InBF16Pattern<arith::NegFOp>>(context);
