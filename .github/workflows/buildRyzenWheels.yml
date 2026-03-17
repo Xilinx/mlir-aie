@@ -264,9 +264,9 @@ jobs:
           Remove-Item Env:VCPKG_ROOT -ErrorAction SilentlyContinue
 
           $env:VCPKG_BINARY_SOURCES = "clear;x-gha,readwrite"
-          & $vcpkg install openssl:x64-windows
+          & $vcpkg install openssl:x64-windows-static
 
-          "OPENSSL_ROOT_DIR=$($vcpkgRoot.Replace('\','/'))/installed/x64-windows" |
+          "OPENSSL_ROOT_DIR=$($vcpkgRoot.Replace('\','/'))/installed/x64-windows-static" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build mlir-aie wheel
@@ -277,7 +277,7 @@ jobs:
           AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '' }}
           ENABLE_RTTI: ${{ matrix.ENABLE_RTTI }}
           CMAKE_GENERATOR: Ninja
-          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF
+          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF -DOPENSSL_USE_STATIC_LIBS=TRUE
         run: |
           set -euo pipefail
   
@@ -342,9 +342,7 @@ jobs:
   
           # Try to repair the wheel on Windows using delvewheel (closest auditwheel equivalent).
           pip install delvewheel
-
-          OPENSSL_BIN=$(python -c "import os, pathlib; print(pathlib.Path(os.environ['OPENSSL_ROOT_DIR']).joinpath('bin').as_posix())")
-          python -m delvewheel repair --ignore-existing --analyze-existing-exes --add-path "${OPENSSL_BIN}" -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
+          python -m delvewheel repair --ignore-existing --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
   
       - name: Upload mlir_aie
         uses: actions/upload-artifact@v4
