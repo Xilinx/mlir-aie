@@ -50,4 +50,4 @@ Location: Pittsburgh, PA, USA
 
 *Erika Hunhoff* is a Senior Member of Technical Staff in AMD’s Research and Advanced Development group. At AMD, she is working on compiler technologies for current and future AMD devices. She received a BS in Computer Science and Mathematics from George Fox University, as well as MS and PhD degrees from the computer science department at the University of Colorado, Boulder. Her research interests include programming abstractions for complex systems and compiler abstractions for heterogeneous computing architectures.
 
-*Additional organizers to be added later*
+*Jack Lo* is a Senior Member of Technical Staff in AMD’s Research and Advanced Development group. At AMD, he is focused on developing tool frameworks and optimizing applications for current and future AMD devices, particularly in the area of adaptive computing and AI processing. 
