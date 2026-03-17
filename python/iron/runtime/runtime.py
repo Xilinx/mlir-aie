@@ -335,23 +335,8 @@ class Runtime(Resolvable):
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
 
-                trace_shim_tile = self.get_first_cons_shimtile()
-
-                logger.debug("config_trace")
-                trace_utils.configure_packet_tracing_aie2(
-                    # tiles_to_trace=[ tiles_to_trace[0] ],
-                    tiles_to_trace=tiles_to_trace,
-                    shim=trace_shim_tile,
-                    trace_size=self._trace_size // 4,
-                    trace_offset=(
-                        self._trace_offset if self._trace_offset is not None else 0
-                    ),
-                    ddr_id=self._ddr_id if self._ddr_id is not None else 4,
-                    coretile_events=self._coretile_events,
-                    coremem_events=self._coremem_events,
-                    memtile_events=self._memtile_events,
-                    shimtile_events=self._shimtile_events,
-                )
+                logger.debug("start_trace")
+                trace_utils.start_trace()
 
             for rt_data, rt_data_val in zip(self._rt_data, args):
                 rt_data.op = rt_data_val
@@ -414,6 +399,3 @@ class Runtime(Resolvable):
 
             if task_group_actions[default_task_group]:
                 finish_task_group(default_task_group, task_group_actions)
-
-            if self._trace_size is not None:
-                trace_utils.gen_trace_done_aie2(trace_shim_tile)
