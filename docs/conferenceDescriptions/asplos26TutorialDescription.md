@@ -15,7 +15,7 @@ This tutorial will cover the following key topics:
 
 Date: Monday, March 23, 2026
 
-Start time: TBD
+Start time: 8 AM
 
 Location: Pittsburgh, PA, USA  
 
