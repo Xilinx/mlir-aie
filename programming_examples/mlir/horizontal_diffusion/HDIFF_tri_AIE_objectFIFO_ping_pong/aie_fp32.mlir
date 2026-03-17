@@ -33,9 +33,9 @@ module @hdiff_tri_AIE{
   aie.objectfifo.register_external_buffers @obj_out_flux (%t70, {%ext_buffer_out}) : (memref<512xf32>)
 
 
-  func.func private @hdiff_lap_fp32(%AL: memref<256xf32>,%BL: memref<256xf32>, %CL:  memref<256xf32>, %DL: memref<256xf32>, %EL:  memref<256xf32>,  %OLL1: memref<256xf32>,  %OLL2: memref<256xf32>,  %OLL3: memref<256xf32>,  %OLL4: memref<256xf32>) -> ()
-  func.func private @hdiff_flux1_fp32(%AF: memref<256xf32>,%BF: memref<256xf32>, %CF:  memref<256xf32>,   %OLF1: memref<256xf32>,  %OLF2: memref<256xf32>,  %OLF3: memref<256xf32>,  %OLF4: memref<256xf32>,  %OFI1: memref<512xf32>,  %OFI2: memref<512xf32>,  %OFI3: memref<512xf32>,  %OFI4: memref<512xf32>,  %OFI5: memref<512xf32>) -> ()
-  func.func private @hdiff_flux2_fp32( %Inter1: memref<512xf32>,%Inter2: memref<512xf32>, %Inter3: memref<512xf32>,%Inter4: memref<512xf32>,%Inter5: memref<512xf32>,  %Out: memref<256xf32>) -> ()
+  func.func private @hdiff_lap_fp32(%AL: memref<256xf32>,%BL: memref<256xf32>, %CL:  memref<256xf32>, %DL: memref<256xf32>, %EL:  memref<256xf32>,  %OLL1: memref<256xf32>,  %OLL2: memref<256xf32>,  %OLL3: memref<256xf32>,  %OLL4: memref<256xf32>) -> () attributes {link_with = "hdiff_lap_fp32.o"}
+  func.func private @hdiff_flux1_fp32(%AF: memref<256xf32>,%BF: memref<256xf32>, %CF:  memref<256xf32>,   %OLF1: memref<256xf32>,  %OLF2: memref<256xf32>,  %OLF3: memref<256xf32>,  %OLF4: memref<256xf32>,  %OFI1: memref<512xf32>,  %OFI2: memref<512xf32>,  %OFI3: memref<512xf32>,  %OFI4: memref<512xf32>,  %OFI5: memref<512xf32>) -> () attributes {link_with = "hdiff_flux1_fp32.o"}
+  func.func private @hdiff_flux2_fp32( %Inter1: memref<512xf32>,%Inter2: memref<512xf32>, %Inter3: memref<512xf32>,%Inter4: memref<512xf32>,%Inter5: memref<512xf32>,  %Out: memref<256xf32>) -> () attributes {link_with = "hdiff_flux2_fp32.o"}
 
   %c13 = aie.core(%t71) {
     
@@ -66,7 +66,7 @@ module @hdiff_tri_AIE{
     aie.objectfifo.release @obj_in (Consume, 4)
 
     aie.end
-  } { link_with="hdiff_lap_fp32.o" }
+  }
 
 
   %c14 = aie.core(%t72) {
@@ -103,7 +103,7 @@ module @hdiff_tri_AIE{
     aie.objectfifo.release @obj_in (Consume, 4)
 
     aie.end
-  } { link_with="hdiff_flux1_fp32.o" }
+  }
 
   %c15 = aie.core(%t73) {
     %lb = arith.constant 0 : index
@@ -131,7 +131,7 @@ module @hdiff_tri_AIE{
     aie.use_lock(%lock73_14, "Acquire", 0) // stop the timer
 
     aie.end
-  } { link_with="hdiff_flux2_fp32.o" }
+  }
 
 
 

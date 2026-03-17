@@ -13,7 +13,7 @@
 This design implements a `bfloat16`-based Layer Normalization (LayerNorm) operation, a widely used technique in deep learning models, especially in transformer architectures. LayerNorm normalizes the activations of each input across the features (columns) for every row, stabilizing and accelerating the training process by reducing internal covariate shift. 
 ## Files
 
-- `layernorm.py` : A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc.py to produce design binaries (i.e., XCLBIN and inst.bin for the NPU in Ryzen™ AI).
+- `layernorm.py` : A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc to produce design binaries (i.e., XCLBIN and inst.bin for the NPU in Ryzen™ AI).
 
 - `layernorm.cc` : A C++ implementation of a LayerNorm kernel for AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics. The source can be found [here](../../../aie_kernels/aie2p/layer_norm.cc).
 

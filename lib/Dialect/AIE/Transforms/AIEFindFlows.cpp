@@ -14,6 +14,11 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEFINDFLOWS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
 #define DEBUG_TYPE "aie-find-flows"
 
 using namespace mlir;
@@ -182,7 +187,7 @@ public:
       MaskValue maskValue = t.mv;
       Operation *other = portConnection.op;
       Port otherPort = portConnection.port;
-      if (isa<FlowEndPoint>(other)) {
+      if (other && other->hasTrait<IsFlowEndPoint>()) {
         // If we got to a tile, then add it to the result.
         connectedTiles.push_back(t);
       } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
@@ -265,7 +270,8 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
   }
 }
 
-struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
+struct AIEFindFlowsPass
+    : public xilinx::AIE::impl::AIEFindFlowsBase<AIEFindFlowsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<AIEDialect>();

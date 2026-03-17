@@ -256,7 +256,7 @@ class Tensor(ABC):
 
     def to_torch(self):
         """
-        Returns a torch tensor with a copy of the data in this tensor.
+        Returns a torch tensor sharing the data in this tensor if possible.
 
         Returns:
             torch.Tensor: A torch tensor containing the data.
@@ -271,9 +271,15 @@ class Tensor(ABC):
             raise ImportError(
                 "torch is not installed. Please install it with 'pip install torch'"
             )
-        if self.dtype == bfloat16:
-            return torch.from_numpy(self.numpy().astype(np.float16))
-        return torch.from_numpy(self.numpy().copy())
+
+        array = self.numpy()
+
+        if array.dtype == bfloat16:
+            # reinterpret the same memory as int16, then view as torch.bfloat16
+            t_u16 = torch.from_numpy(array.view(np.uint16))
+            return t_u16.view(torch.bfloat16)
+
+        return torch.from_numpy(array)
 
     @classmethod
     def from_torch(cls, torch_tensor, device=None, **kwargs):
@@ -298,10 +304,23 @@ class Tensor(ABC):
             raise ImportError(
                 "torch is not installed. Please install it with 'pip install torch'"
             )
-        if torch_tensor.dtype == torch.bfloat16:
-            np_array = torch_tensor.to(torch.float32).numpy().astype(bfloat16)
+
+        # Detach (to drop grad) and ensure on CPU
+        t = torch_tensor.detach()
+        if t.device.type != "cpu":
+            t = t.cpu()
+        # Ensure contiguous for safe view operations
+        if not t.is_contiguous():
+            t = t.contiguous()
+
+        if t.dtype == torch.bfloat16:
+            # View the same memory as int16, then as NumPy bfloat16
+            # This avoids numeric conversion and extra passes over memory.
+            u16_np = t.view(torch.uint16).numpy()  # shares memory
+            np_array = u16_np.view(bfloat16)  # reinterpret
         else:
-            np_array = torch_tensor.numpy()
+            np_array = t.numpy()
+
         return cls(
             np_array,
             dtype=np_array.dtype,

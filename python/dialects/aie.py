@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
+from enum import IntEnum
 
 import numpy as np
 
@@ -62,6 +63,7 @@ from ..ir import (
     IntegerAttr,
     IntegerType,
     MemRefType,
+    StringAttr,
     TypeAttr,
     UnitAttr,
     Value,
@@ -86,7 +88,23 @@ class npu_write_rtp(NpuWriteRTPOp):
 
 
 class external_func(FuncOp):
-    def __init__(self, name: str, inputs, outputs=None, visibility="private"):
+    """A ``func.func`` declaration for an externally-defined AIE core function.
+
+    Args:
+        name: Symbol name of the function.
+        inputs: List of input types (numpy dtypes or MLIR types).
+        outputs: List of output types.  Defaults to [].
+        visibility: MLIR symbol visibility.  Defaults to ``"private"``.
+        link_with: Optional path to the object file (``.o``) that implements
+            this function.  Sets the ``link_with`` string attribute on the
+            generated ``func.func`` op; the ``aie-assign-core-link-files`` pass
+            reads this attribute and propagates it into the CoreOp's
+            ``link_files`` attribute for the linker.
+    """
+
+    def __init__(
+        self, name: str, inputs, outputs=None, visibility="private", link_with=None
+    ):
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
@@ -100,6 +118,8 @@ class external_func(FuncOp):
         super().__init__(
             name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
         )
+        if link_with is not None:
+            self.operation.attributes["link_with"] = StringAttr.get(link_with)
 
     def __call__(self, *call_args):
         return call(self, call_args)
@@ -186,6 +206,20 @@ def _objectFifo_depth_attr(x, context):
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
 
 
+@register_attribute_builder("TraceEventAttr")
+def _trace_event_attr(x, context):
+    """Build TraceEventAttr from string or StringAttr."""
+    if isinstance(x, str):
+        return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
+    elif isinstance(x, StringAttr):
+        return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
+    elif isinstance(x, IntEnum):
+        return Attribute.parse(f'#aie.trace_event<"{str(x)}">', context=context)
+    else:
+        # Assume it's already an Attribute (could be an enum)
+        return x
+
+
 #### MLIR Helpers ####
 
 """
@@ -258,11 +292,17 @@ class Core(CoreOp):
     def __init__(
         self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
     ):
+        if link_with is not None:
+            raise TypeError(
+                "Core() no longer accepts link_with. "
+                "Set link_with= on each external_func() declaration instead; "
+                "the aie-assign-core-link-files pass aggregates them onto the core."
+            )
         super().__init__(
             result=T.index(),
             tile=tile,
             stack_size=stack_size,
-            link_with=link_with,
+            link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
 
@@ -537,6 +577,54 @@ class packetflow(PacketFlowOp):
 
 core = region_op(Core, terminator=lambda *_: EndOp())
 device = region_op(Device, terminator=lambda *_: EndOp())
+trace = region_op(
+    lambda tile, sym_name, *, buffer_size=None, loc=None, ip=None: TraceOp(
+        tile, sym_name, buffer_size=buffer_size, loc=loc, ip=ip
+    ),
+    terminator=lambda *_: EndOp(),
+)
+
+
+def trace_mode(mode, *, loc=None, ip=None):
+    return TraceModeOp(mode=mode, loc=loc, ip=ip)
+
+
+def trace_event(event, *, label=None, loc=None, ip=None):
+    return TraceEventOp(event=event, label=label, loc=loc, ip=ip)
+
+
+def trace_packet(id, type, *, loc=None, ip=None):
+    return TracePacketOp(id=id, type_=type, loc=loc, ip=ip)
+
+
+def trace_port(slot, port, channel, direction, *, loc=None, ip=None):
+    return TracePortOp(
+        slot=slot, port=port, channel=channel, direction=direction, loc=loc, ip=ip
+    )
+
+
+def trace_start(*, broadcast=None, event=None, loc=None, ip=None):
+    return TraceStartEventOp(broadcast=broadcast, event=event, loc=loc, ip=ip)
+
+
+def trace_stop(*, broadcast=None, event=None, loc=None, ip=None):
+    return TraceStopEventOp(broadcast=broadcast, event=event, loc=loc, ip=ip)
+
+
+def trace_combo_event(slot, eventA, logic, eventB, *, loc=None, ip=None):
+    return TraceComboEventOp(
+        slot=slot, eventA=eventA, logic=logic, eventB=eventB, loc=loc, ip=ip
+    )
+
+
+def trace_edge_event(slot, event, trigger, *, loc=None, ip=None):
+    return TraceEdgeEventOp(slot=slot, event=event, trigger=trigger, loc=loc, ip=ip)
+
+
+def trace_start_config(name, *, loc=None, ip=None):
+    return TraceStartConfigOp(trace_config=name, loc=loc, ip=ip)
+
+
 switchbox = region_op(
     lambda tile, *, loc=None, ip=None: SwitchboxOp(T.index(), tile, loc=loc, ip=ip)
 )
@@ -662,13 +750,20 @@ def dma_start(
     *,
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
+    repeat_count: int = 0,
     loc=None,
     ip=None,
 ):
     chain_block = chain.block if isinstance(chain, ContextManagedBlock) else chain
     dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
     op = DMAStartOp(
-        channel_dir, channel_index, dest=dest_block, chain=chain_block, loc=loc, ip=ip
+        channel_dir,
+        channel_index,
+        dest=dest_block,
+        chain=chain_block,
+        loc=loc,
+        ip=ip,
+        repeat_count=repeat_count,
     )
     return op.dest, op.chain
 

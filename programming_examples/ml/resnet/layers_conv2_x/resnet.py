@@ -537,23 +537,23 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
 
     # Set runtime parameters
     def set_rtps(rtp):
+        # Only set RTPs for tiles that actually read them (conv1_fn and conv1_skip_fn
+        # workers). conv2_fn workers use a hardcoded scale=1 and have no RTP arg,
+        # so their corresponding buffers are never placed/resolved.
 
+        # col 0: conv1_fn at Tile(0,2) → rtp[0][0]; conv1_skip_fn at Tile(0,4) → rtp[0][3]
         rtp[0][0][0] = 1
-        rtp[0][1][0] = 1
-        rtp[0][2][0] = 1
         rtp[0][3][0] = 1
         rtp[0][3][1] = 0
         rtp[0][3][2] = 1
 
+        # col 1: conv1_fn at Tile(1,5) → rtp[1][3]; conv1_skip_fn at Tile(1,3) → rtp[1][1]
         rtp[1][3][0] = 1
-        rtp[1][2][0] = 1
-        rtp[1][0][0] = 1
         rtp[1][1][0] = 1
         rtp[1][1][1] = 0
 
+        # col 2: conv1_fn at Tile(2,2) → rtp[2][0]; conv1_skip_fn at Tile(2,4) → rtp[2][2]
         rtp[2][0][0] = 1
-        rtp[2][1][0] = 1
-        rtp[2][3][0] = 1
         rtp[2][2][0] = 1
         rtp[2][2][1] = 0
 

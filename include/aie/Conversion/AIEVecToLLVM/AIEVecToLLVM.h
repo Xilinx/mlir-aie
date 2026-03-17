@@ -42,6 +42,15 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertAIEVecToLLVMPass();
 } // namespace aievec
+
+// Forward declare options struct from generated code (in xilinx:: namespace)
+struct ConvertAIEVecToLLVMOptions;
+
+namespace aievec {
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertAIEVecToLLVMPass(
+    const xilinx::ConvertAIEVecToLLVMOptions &options);
+} // namespace aievec
 } // namespace xilinx
 
 #endif // AIE_CONVERSION_AIEVECTOLLVM_AIEVECTOLLVM_H

@@ -134,27 +134,40 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
-  /// Return true if the given tile is a 'Core' tile.  These tiles
-  /// include a Core, TileDMA, tile memory, and stream connections.
-  virtual bool isCoreTile(int col, int row) const = 0;
+  /// Return the tile type for the given tile coordinates.
+  /// - CoreTile: tiles with a Core, TileDMA, tile memory, and stream
+  /// connections.
+  /// - MemTile: tiles with TileDMA, tile memory, and stream connections,
+  /// but no core.
+  /// - ShimNOCTile: tiles with ShimDMA and connection to the memory-mapped NOC.
+  /// - ShimPLTile: tiles with connections to the PL, no ShimDMA.
+  virtual AIETileType getTileType(int col, int row) const = 0;
 
-  /// Return true if the given tile is an AIE2 'Memory' tile.  These tiles
-  /// include a TileDMA, tile memory, and stream connections, but no core.
-  virtual bool isMemTile(int col, int row) const = 0;
+  /// Return true if the given tile is a Core tile.
+  bool isCoreTile(int col, int row) const {
+    return getTileType(col, row) == AIETileType::CoreTile;
+  }
 
-  /// Return true if the given tile is a Shim NOC tile.  These tiles include a
-  /// ShimDMA and a connection to the memory-mapped NOC.  They do not contain
-  /// any memory.
-  virtual bool isShimNOCTile(int col, int row) const = 0;
+  /// Return true if the given tile is a Mem tile.
+  bool isMemTile(int col, int row) const {
+    return getTileType(col, row) == AIETileType::MemTile;
+  }
 
-  /// Return true if the given tile is a Shim PL interface tile.  These
-  /// tiles do not include a ShimDMA and instead include connections to the PL.
-  /// They do not contain any memory.
-  virtual bool isShimPLTile(int col, int row) const = 0;
+  /// Return true if the given tile is a ShimNOC tile.
+  bool isShimNOCTile(int col, int row) const {
+    return getTileType(col, row) == AIETileType::ShimNOCTile;
+  }
 
-  /// Return true if the given tile is either a Shim NOC or a Shim PL interface
-  /// tile.
-  virtual bool isShimNOCorPLTile(int col, int row) const = 0;
+  /// Return true if the given tile is a ShimPL tile.
+  bool isShimPLTile(int col, int row) const {
+    return getTileType(col, row) == AIETileType::ShimPLTile;
+  }
+
+  /// Return true if the given tile is either a ShimNOC or ShimPL tile.
+  bool isShimNOCorPLTile(int col, int row) const {
+    AIETileType t = getTileType(col, row);
+    return t == AIETileType::ShimNOCTile || t == AIETileType::ShimPLTile;
+  }
 
   /// Return true if the given tile ID is valid.
   virtual bool isValidTile(TileID src) const {
@@ -247,8 +260,13 @@ public:
   /// Return the size (in bits) of the accumulator/cascade.
   virtual uint32_t getAccumulatorCascadeSize() const = 0;
 
-  /// Return the number of lock objects
-  virtual uint32_t getNumLocks(int col, int row) const = 0;
+  /// Return the number of lock objects for a given tile type.
+  virtual uint32_t getNumLocks(AIETileType tileType) const = 0;
+
+  /// Return the number of lock objects for a tile at the given coordinates.
+  uint32_t getNumLocks(int col, int row) const {
+    return getNumLocks(getTileType(col, row));
+  }
 
   /// Return the maximum value that can be stored in a lock register
   virtual uint32_t getMaxLockValue() const = 0;
@@ -258,9 +276,32 @@ public:
   virtual std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
                                                       TileID tile) const = 0;
 
+  /// Return the number of buffer descriptors for a given tile type.
+  virtual uint32_t getNumBDs(AIETileType tileType) const = 0;
+
+  /// Get stream switch port index for a given port specification
+  /// Return port index for Stream_Switch_Event_Port_Selection register, or
+  /// nullopt if invalid
+  virtual std::optional<uint32_t>
+  getStreamSwitchPortIndex(int col, int row, WireBundle bundle,
+                           uint32_t channel, bool master) const = 0;
+
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
-  virtual uint32_t getNumBDs(int col, int row) const = 0;
+  uint32_t getNumBDs(int col, int row) const {
+    return getNumBDs(getTileType(col, row));
+  }
+
+  /// Return the number of buffer descriptors accessible on channel `channel`
+  /// for the tile at (`col`, `row`). For tiles with no per-channel BD
+  /// partitioning this equals getNumBDs(col, row).
+  uint32_t getNumBDsForChannel(int col, int row, int channel) const {
+    uint32_t count = 0;
+    for (uint32_t bd = 0; bd < getNumBDs(col, row); ++bd)
+      if (isBdChannelAccessible(col, row, bd, channel))
+        ++count;
+    return count;
+  }
 
   /// Return true iff buffer descriptor `bd_id` on tile (`col`, `row`) can be
   /// submitted on channel `channel`.
@@ -360,14 +401,20 @@ public:
   /// Encode a field value with proper bit shifting.
   /// Return Value shifted to correct bit position
   uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
+
+  /// Compute a 32-bit mask for a register field.
+  /// Return nullopt if the field does not fit in a 32-bit register.
+  std::optional<uint32_t> getFieldMask(const BitFieldInfo &field) const;
+
+  /// Resolve stream switch port specification to port index.
+  /// Return Port index for stream switch register, or nullopt if invalid
+  std::optional<uint32_t> resolvePortValue(llvm::StringRef value, TileID tile,
+                                           bool master) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
 public:
   AIE1TargetModel(TargetModelKind k) : AIETargetModel(k) {}
-
-  bool isCoreTile(int col, int row) const override { return row > 0; }
-  bool isMemTile(int col, int row) const override { return false; }
 
   AIEArch getTargetArch() const override;
 
@@ -400,11 +447,16 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
-  uint32_t getNumLocks(int col, int row) const override { return 16; }
+  using AIETargetModel::getNumLocks;
+  uint32_t getNumLocks(AIETileType tileType) const override {
+    return 16; // AIE1 has no MemTiles, always 16
+  }
   uint32_t getMaxLockValue() const override { return 1; }
   std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
                                               TileID tile) const override;
-  uint32_t getNumBDs(int col, int row) const override { return 16; }
+  uint32_t getNumBDs(AIETileType tileType) const override {
+    return 16; // AIE1 has no MemTiles, always 16
+  }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
@@ -437,6 +489,11 @@ public:
   bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
                              int srcChan, WireBundle dstBundle,
                              int dstChan) const override;
+
+  std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
+                                                   WireBundle bundle,
+                                                   uint32_t channel,
+                                                   bool master) const override;
 
   uint32_t getColumnShift() const override { return 23; }
   uint32_t getRowShift() const override { return 18; }
@@ -491,8 +548,9 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
 
-  uint32_t getNumLocks(int col, int row) const override {
-    return isMemTile(col, row) ? 64 : 16;
+  using AIETargetModel::getNumLocks;
+  uint32_t getNumLocks(AIETileType tileType) const override {
+    return tileType == AIETileType::MemTile ? 64 : 16;
   }
 
   uint32_t getMaxLockValue() const override { return 0x3F; }
@@ -500,13 +558,13 @@ public:
   std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
                                               TileID tile) const override;
 
-  uint32_t getNumBDs(int col, int row) const override {
-    return isMemTile(col, row) ? 48 : 16;
+  uint32_t getNumBDs(AIETileType tileType) const override {
+    return tileType == AIETileType::MemTile ? 48 : 16;
   }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
-    if (!isMemTile(col, row)) {
+    if (getTileType(col, row) != AIETileType::MemTile) {
       return true;
     } else {
       if ((channel & 1) == 0) { // even channel number
@@ -528,7 +586,7 @@ public:
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
   uint32_t getNumBanks(int col, int row) const override {
-    return isMemTile(col, row) ? 8 : 4;
+    return getTileType(col, row) == AIETileType::MemTile ? 8 : 4;
   }
 
   uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
@@ -546,6 +604,11 @@ public:
   bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
                              int srcChan, WireBundle dstBundle,
                              int dstChan) const override;
+
+  std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
+                                                   WireBundle bundle,
+                                                   uint32_t channel,
+                                                   bool master) const override;
 
   uint32_t getColumnShift() const override { return 25; }
   uint32_t getRowShift() const override { return 20; }
@@ -572,16 +635,12 @@ public:
 
   int rows() const override { return 9; /* One Shim row and 8 Core rows. */ }
 
-  bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && nocColumns.contains(col);
-  }
-
-  bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !nocColumns.contains(col);
-  }
-
-  bool isShimNOCorPLTile(int col, int row) const override {
-    return isShimNOCTile(col, row) || isShimPLTile(col, row);
+  AIETileType getTileType(int col, int row) const override {
+    if (row == 0) {
+      return nocColumns.contains(col) ? AIETileType::ShimNOCTile
+                                      : AIETileType::ShimPLTile;
+    }
+    return AIETileType::CoreTile; // AIE1 has no MemTiles
   }
 
   static bool classof(const AIETargetModel *model) {
@@ -601,19 +660,14 @@ public:
     return 4; /* One Shim row, 1 memtile rows, and 2 Core rows. */
   }
 
-  bool isCoreTile(int col, int row) const override { return row > 1; }
-  bool isMemTile(int col, int row) const override { return row == 1; }
-
-  bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && nocColumns.contains(col);
-  }
-
-  bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !nocColumns.contains(col);
-  }
-
-  bool isShimNOCorPLTile(int col, int row) const override {
-    return isShimNOCTile(col, row) || isShimPLTile(col, row);
+  AIETileType getTileType(int col, int row) const override {
+    if (row == 0) {
+      return nocColumns.contains(col) ? AIETileType::ShimNOCTile
+                                      : AIETileType::ShimPLTile;
+    }
+    if (row == 1)
+      return AIETileType::MemTile;
+    return AIETileType::CoreTile;
   }
 
   uint32_t getNumMemTileRows() const override { return 1; }
@@ -636,22 +690,14 @@ public:
     return 11; /* One Shim row, 2 memtile rows, and 8 Core rows. */
   }
 
-  bool isCoreTile(int col, int row) const override { return row > 2; }
-
-  bool isMemTile(int col, int row) const override {
-    return row == 1 || row == 2;
-  }
-
-  bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && nocColumns.contains(col);
-  }
-
-  bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !nocColumns.contains(col);
-  }
-
-  bool isShimNOCorPLTile(int col, int row) const override {
-    return isShimNOCTile(col, row) || isShimPLTile(col, row);
+  AIETileType getTileType(int col, int row) const override {
+    if (row == 0) {
+      return nocColumns.contains(col) ? AIETileType::ShimNOCTile
+                                      : AIETileType::ShimPLTile;
+    }
+    if (row == 1 || row == 2)
+      return AIETileType::MemTile;
+    return AIETileType::CoreTile;
   }
 
   uint32_t getNumMemTileRows() const override { return 2; }
@@ -670,17 +716,6 @@ public:
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
-  }
-
-  bool isCoreTile(int col, int row) const override { return row > 1; }
-  bool isMemTile(int col, int row) const override { return row == 1; }
-
-  bool isShimPLTile(int col, int row) const override {
-    return false; // No PL
-  }
-
-  bool isShimNOCorPLTile(int col, int row) const override {
-    return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
 
   uint32_t getNumMemTileRows() const override { return 1; }
@@ -708,7 +743,13 @@ public:
 
   int columns() const override { return cols; }
 
-  bool isShimNOCTile(int col, int row) const override { return row == 0; }
+  AIETileType getTileType(int col, int row) const override {
+    if (row == 0)
+      return AIETileType::ShimNOCTile; // NPU1 has no ShimPL tiles
+    if (row == 1)
+      return AIETileType::MemTile;
+    return AIETileType::CoreTile;
+  }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1_1Col &&
@@ -729,17 +770,12 @@ public:
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
   }
 
-  bool isCoreTile(int col, int row) const override { return row > 1; }
-  bool isMemTile(int col, int row) const override { return row == 1; }
-
-  bool isShimPLTile(int col, int row) const override {
-    return false; // No PL tiles
-  }
-
-  bool isShimNOCTile(int col, int row) const override { return row == 0; }
-
-  bool isShimNOCorPLTile(int col, int row) const override {
-    return isShimNOCTile(col, row);
+  AIETileType getTileType(int col, int row) const override {
+    if (row == 0)
+      return AIETileType::ShimNOCTile;
+    if (row == 1)
+      return AIETileType::MemTile;
+    return AIETileType::CoreTile;
   }
 
   uint32_t getNumMemTileRows() const override { return 1; }

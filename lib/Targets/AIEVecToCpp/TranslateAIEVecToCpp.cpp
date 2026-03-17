@@ -2124,10 +2124,13 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
 
   raw_indented_ostream &os = emitter.ostream();
 
+  // Chess sel(a, b, mask): bit=0 selects a, bit=1 selects b.
+  // aievec.sel(lhs, rhs, mask): bit=0 selects lhs, bit=1 selects rhs.
+  // Pass lhs as first arg and rhs as second to preserve semantics.
   os << "sel(";
-  os << emitter.getOrCreateName(rhs);
-  os << ", ";
   os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(rhs);
   os << ", ";
   os << emitter.getOrCreateName(sel);
   os << ")";

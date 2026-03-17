@@ -14,6 +14,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerMulticast.cpp
   AIELowerMemcpy.cpp
   AIEDmaToNpu.cpp
+  AIENpuToCert.cpp
   AIEMaterializeBDChains.cpp
   AIEMaterializeRuntimeSequences.cpp
   AIEAssignRuntimeSequenceBDIDs.cpp
@@ -24,6 +25,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIETransformBfpTypes.cpp
   AIETxnToControlPacket.cpp
   AIEExpandLoadPdi.cpp
+  AIEInlineTraceConfig.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 

@@ -246,6 +246,12 @@ namespace {
 struct UsesAreAccessible {
   static LogicalResult verifyTrait(Operation *op) {
     auto thisElement = cast<TileElement>(op);
+
+    // Skip accessibility checks for logical tiles as we cannot tell until tile
+    // is placed
+    if (!isa<TileOp>(thisElement.getTile().getDefiningOp()))
+      return success();
+
     auto thisID = thisElement.getTileID();
     auto users = op->getResult(0).getUsers();
     const auto &targetModel = getTargetModel(op);
@@ -314,8 +320,12 @@ template <typename ConcreteType>
 LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
   const auto &targetModel = getTargetModel(op);
-  int bdMax =
-      targetModel.getNumBDs(element.getTileID().col, element.getTileID().row);
+
+  TileLike tile = element.getTileLike();
+  if (!tile)
+    return op->emitOpError("tile must implement TileLike interface");
+
+  int bdMax = targetModel.getNumBDs(tile.getTileType());
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
@@ -395,13 +405,15 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
     }
   }
 
-  if (inputChannels.size() >
-      element.getTileOp().getNumSourceConnections(WireBundle::DMA))
+  TileLike tile = element.getTileLike();
+  if (!tile)
+    return op->emitOpError("tile must implement TileLike interface");
+
+  if (inputChannels.size() > tile.getNumSourceConnections(WireBundle::DMA))
     return op->emitOpError(
         "uses more input channels than available on this tile");
 
-  if (outputChannels.size() >
-      element.getTileOp().getNumDestConnections(WireBundle::DMA))
+  if (outputChannels.size() > tile.getNumDestConnections(WireBundle::DMA))
     return op->emitOpError(
         "uses more output channels than available on this tile");
   return success();
@@ -419,15 +431,27 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
+  // Helper to get tile interface from Value
+  auto getTileLikeFromValue = [](Value v) -> TileLike {
+    return llvm::dyn_cast<TileLike>(v.getDefiningOp());
+  };
+
+  TileLike producerTile = getTileLikeFromValue(getProducerTile());
+  if (!producerTile)
+    return emitError("producer tile must implement TileLike interface");
+
   // data layout transformations on shim tiles are handled by runtime operations
-  if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
+  if (producerTile.isShimTile() && !getDimensionsToStream().empty()) {
     return emitError(
         "`dimensionsToStream` data layout transformations are not supported "
         "on shim tile producers");
   }
-  for (auto consTile : getConsumerTiles()) {
-    if (cast<TileOp>(consTile.getDefiningOp()).isShimTile() &&
-        !getDimensionsFromStream(consTile).empty()) {
+  for (auto consTileVal : getConsumerTiles()) {
+    TileLike consTile = getTileLikeFromValue(consTileVal);
+    if (!consTile)
+      return emitError("consumer tile must implement TileLike interface");
+    if (consTile.isShimTile() &&
+        !getDimensionsFromStream(consTileVal).empty()) {
       return emitError(
           "`dimensionsFromStreamPerConsumer` data layout transformations are "
           "not supported on shim tile consumers");
@@ -435,7 +459,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
   }
 
   if (getRepeatCount().has_value()) {
-    if (getProducerTileOp().isShimTile())
+    if (producerTile.isShimTile())
       return emitError("`repeat_count` unavailable for shim tiles");
   }
 
@@ -452,7 +476,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`aie_stream_port` must be defined");
 
     if (getAieStream().value() == 0 || getAieStream().value() == 2) {
-      if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
+      if (producerTile.isShimTile() || producerTile.isMemTile())
         return emitError(
             "`aie_stream` is not available for shim and mem tiles");
 
@@ -470,11 +494,12 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "unavailable on stream end");
     }
 
-    if (getAieStream().value() == 1 || getAieStream().value() == 2)
-      if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile() ||
-          getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
+    if (getAieStream().value() == 1 || getAieStream().value() == 2) {
+      TileLike consTile = getTileLikeFromValue(getConsumerTiles()[0]);
+      if (consTile && (consTile.isShimTile() || consTile.isMemTile()))
         return emitError(
             "`aie_stream` is not available for shim and mem tiles");
+    }
 
     if (!getDimensionsFromStreamPerConsumer()[0].empty())
       return emitError("`dimensionsFromStreamPerConsumer` data layout "
@@ -482,7 +507,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
   }
 
   if (getInitValues().has_value()) {
-    if (getProducerTileOp().isShimTile())
+    if (producerTile.isShimTile())
       return emitError("`init_values` unavailable for shim tiles");
   }
 
@@ -497,10 +522,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`iter_count` must be between 1 and 256");
 
     // Check that either producer or at least one consumer is a MemTile
-    bool hasMemTile = getProducerTileOp().isMemTile();
+    bool hasMemTile = producerTile.isMemTile();
     if (!hasMemTile) {
-      for (auto consumerTile : getConsumerTiles()) {
-        if (cast<TileOp>(consumerTile.getDefiningOp()).isMemTile()) {
+      for (auto consTileVal : getConsumerTiles()) {
+        TileLike consTile = getTileLikeFromValue(consTileVal);
+        if (consTile && consTile.isMemTile()) {
           hasMemTile = true;
           break;
         }
@@ -719,7 +745,9 @@ LogicalResult ObjectFifoLinkOp::verify() {
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
 
-  TileOp tile = cast<TileOp>(sharedTile.value().getDefiningOp());
+  TileLike tile = llvm::dyn_cast<TileLike>(sharedTile.value().getDefiningOp());
+  if (!tile)
+    return emitError("shared tile must implement TileLike interface");
   if (!tile.isMemTile()) {
     if (isJoin() || isDistribute())
       return emitError("ObjectFifoLinkOp join and distribute are "
@@ -907,13 +935,6 @@ std::optional<int> ObjectFifoLinkOp::getRepeatCount() {
 // ObjectFifoRegisterExternalBuffersOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ObjectFifoRegisterExternalBuffersOp::verify() {
-  if (!getTileOp().isShimTile())
-    return emitOpError("tile is not a shim tile");
-
-  return success();
-}
-
 TileOp ObjectFifoRegisterExternalBuffersOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
@@ -1090,31 +1111,53 @@ ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult CascadeFlowOp::verify() {
-  TileOp src = getSourceTileOp();
-  TileOp dst = getDestTileOp();
-  const auto &t = getTargetModel(src);
+  TileLike src = getSourceTileLike();
+  TileLike dst = getDestTileLike();
+
+  if (!src || !dst)
+    return emitOpError("source and dest must be tile-like operations");
 
   if (src.isShimTile() || dst.isShimTile())
     return emitOpError("shimTile row has no cascade stream interface");
-  if (t.isMemTile(src.colIndex(), src.rowIndex()) ||
-      t.isMemTile(dst.colIndex(), dst.rowIndex()))
+  if (src.isMemTile() || dst.isMemTile())
     return emitOpError("memTile row has no cascade stream interface");
 
-  if (!t.isSouth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isWest(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isNorth(src.getCol(), src.getRow(), dst.getCol(), dst.getRow()) &&
-      !t.isEast(src.getCol(), src.getRow(), dst.getCol(), dst.getRow())) {
-    return emitOpError("tiles must be adjacent");
+  std::optional<int> srcCol = src.tryGetCol();
+  std::optional<int> srcRow = src.tryGetRow();
+  std::optional<int> dstCol = dst.tryGetCol();
+  std::optional<int> dstRow = dst.tryGetRow();
+
+  if (srcCol && srcRow && dstCol && dstRow) {
+    const auto &t = getTargetModel(*this);
+    if (!t.isSouth(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isWest(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isNorth(*srcCol, *srcRow, *dstCol, *dstRow) &&
+        !t.isEast(*srcCol, *srcRow, *dstCol, *dstRow)) {
+      return emitOpError("tiles must be adjacent");
+    }
   }
+
   return success();
 }
 
+TileLike CascadeFlowOp::getSourceTileLike() {
+  return dyn_cast<TileLike>(getSourceTile().getDefiningOp());
+}
+
+TileLike CascadeFlowOp::getDestTileLike() {
+  return dyn_cast<TileLike>(getDestTile().getDefiningOp());
+}
+
 TileOp CascadeFlowOp::getSourceTileOp() {
-  return cast<TileOp>(getSourceTile().getDefiningOp());
+  if (auto tileOp = dyn_cast_or_null<TileOp>(getSourceTile().getDefiningOp()))
+    return tileOp;
+  llvm::report_fatal_error("Calling getSourceTileOp requires TileOp.");
 }
 
 TileOp CascadeFlowOp::getDestTileOp() {
-  return cast<TileOp>(getDestTile().getDefiningOp());
+  if (auto tileOp = dyn_cast_or_null<TileOp>(getDestTile().getDefiningOp()))
+    return tileOp;
+  llvm::report_fatal_error("Calling getDestTileOp requires TileOp.");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1122,6 +1165,9 @@ TileOp CascadeFlowOp::getDestTileOp() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ConfigureCascadeOp::verify() {
+  if (!isa<TileOp>(getTile().getDefiningOp()))
+    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+
   const auto &t = getTargetModel(*this);
   TileOp tile = cast<TileOp>(getTile().getDefiningOp());
   CascadeDir inputDir = getInputDir();
@@ -1129,7 +1175,7 @@ LogicalResult ConfigureCascadeOp::verify() {
 
   if (tile.isShimTile())
     return emitOpError("shimTile row has no cascade stream interface");
-  if (t.isMemTile(tile.colIndex(), tile.rowIndex()))
+  if (tile.isMemTile())
     return emitOpError("memTile row has no cascade stream interface");
 
   if (isa<AIE2TargetModel>(t)) {
@@ -1225,6 +1271,228 @@ DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module,
 }
 
 //===----------------------------------------------------------------------===//
+// TileElement
+//===----------------------------------------------------------------------===//
+
+TileOp TileElement::getTileOp() {
+  auto element = cast<TileElement>(this->getOperation());
+  Operation *definingOp = element.getTile().getDefiningOp();
+  if (auto tileOp = dyn_cast_or_null<TileOp>(definingOp))
+    return tileOp;
+  llvm::report_fatal_error("Calling getTileOp requires TileOp.");
+}
+
+//===----------------------------------------------------------------------===//
+// LogicalTileOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult LogicalTileOp::verify() {
+  const auto &targetModel = getTargetModel(*this);
+  int columns = targetModel.columns();
+  int rows = targetModel.rows();
+
+  // Only verify col/row bounds if they are specified
+  if (auto col = getCol()) {
+    if (*col >= columns)
+      return emitOpError("column index (")
+             << *col
+             << ") must be less than the number of columns in the device ("
+             << columns << ")";
+  }
+  if (auto row = getRow()) {
+    if (*row >= rows)
+      return emitOpError("row index (")
+             << *row << ") must be less than the number of rows in the device ("
+             << rows << ")";
+  }
+
+  // Check that the specified tile type exists on the target device
+  AIETileType tileType = getTileType();
+  bool tileTypeExists = false;
+  for (int col = 0; col < columns && !tileTypeExists; col++) {
+    for (int row = 0; row < rows && !tileTypeExists; row++) {
+      if (targetModel.getTileType(col, row) == tileType)
+        tileTypeExists = true;
+    }
+  }
+  if (!tileTypeExists) {
+    return emitOpError("tile type '")
+           << stringifyAIETileType(tileType)
+           << "' does not exist on the target device";
+  }
+
+  // Check logical tile type matches coordinates on device
+  // Only validate when both col and row are specified
+  if (auto col = tryGetCol()) {
+    if (auto row = tryGetRow()) {
+      if (targetModel.getTileType(*col, *row) != tileType) {
+        return emitOpError("declared logical tile type does not match "
+                           "the tile type at coordinates (")
+               << *col << ", " << *row << ")";
+      }
+    }
+  }
+
+  if (isShimNOCorPLTile() && getAllocationScheme())
+    return emitOpError("Shim tiles cannot have an allocation scheme");
+
+  return success();
+}
+
+TileID LogicalTileOp::getCanonicalTileID() {
+  const auto &targetModel = getTargetModel(*this);
+
+  // If col and row are both specified, use them directly
+  if (getCol().has_value() && getRow().has_value()) {
+    return {getCol().value(), getRow().value()};
+  }
+
+  // Otherwise, find a representative tile of the given type
+  AIETileType tileType = getTileType();
+  for (int col = 0; col < targetModel.columns(); col++) {
+    for (int row = 0; row < targetModel.rows(); row++) {
+      if (targetModel.getTileType(col, row) == tileType) {
+        return {col, row};
+      }
+    }
+  }
+  llvm_unreachable("No tile of matching tile type found in AIE device");
+}
+
+size_t LogicalTileOp::getNumSourceConnections(WireBundle bundle) {
+  const auto &targetModel = getTargetModel(*this);
+  TileID tile = getCanonicalTileID();
+
+  if (bundle == WireBundle::Core || bundle == WireBundle::DMA) {
+    // Note dest is correct here, since direction is reversed.
+    if (isShimNOCorPLTile())
+      return targetModel.getNumDestShimMuxConnections(tile.col, tile.row,
+                                                      bundle);
+    return targetModel.getNumDestSwitchboxConnections(tile.col, tile.row,
+                                                      bundle);
+  }
+  return 0;
+}
+
+size_t LogicalTileOp::getNumDestConnections(WireBundle bundle) {
+  const auto &targetModel = getTargetModel(*this);
+  TileID tile = getCanonicalTileID();
+
+  if (bundle == WireBundle::Core || bundle == WireBundle::DMA) {
+    // Note source is correct here, since direction is reversed.
+    if (isShimNOCorPLTile())
+      return targetModel.getNumDestShimMuxConnections(tile.col, tile.row,
+                                                      bundle);
+    return targetModel.getNumSourceSwitchboxConnections(tile.col, tile.row,
+                                                        bundle);
+  }
+  return 0;
+}
+
+std::optional<int> LogicalTileOp::tryGetCol() {
+  if (auto col = getCol())
+    return col;
+  return std::nullopt;
+}
+
+std::optional<int> LogicalTileOp::tryGetRow() {
+  if (auto row = getRow())
+    return row;
+  return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
+// Custom Printer and Parser for LogicalTileOp
+//===----------------------------------------------------------------------===//
+
+ParseResult LogicalTileOp::parse(OpAsmParser &parser, OperationState &result) {
+  AIETileType tileType;
+  if (parser.parseLess())
+    return failure();
+
+  StringRef tileTypeStr;
+  if (parser.parseKeyword(&tileTypeStr))
+    return failure();
+
+  auto tileTypeOpt = symbolizeAIETileType(tileTypeStr);
+  if (!tileTypeOpt)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "unknown logical tile type: ")
+           << tileTypeStr;
+  tileType = *tileTypeOpt;
+
+  if (parser.parseGreater())
+    return failure();
+
+  if (parser.parseLParen())
+    return failure();
+
+  std::optional<int32_t> col;
+  if (succeeded(parser.parseOptionalQuestion())) {
+    // col is unspecified
+  } else {
+    int32_t colVal;
+    if (parser.parseInteger(colVal))
+      return failure();
+    col = colVal;
+  }
+
+  if (parser.parseComma())
+    return failure();
+
+  std::optional<int32_t> row;
+  if (succeeded(parser.parseOptionalQuestion())) {
+    // row is unspecified
+  } else {
+    int32_t rowVal;
+    if (parser.parseInteger(rowVal))
+      return failure();
+    row = rowVal;
+  }
+
+  if (parser.parseRParen())
+    return failure();
+
+  // Parse optional attributes
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  // Add the parsed attributes to the result
+  result.getOrAddProperties<LogicalTileOp::Properties>().tile_type =
+      AIETileTypeAttr::get(parser.getContext(), tileType);
+  if (col)
+    result.getOrAddProperties<LogicalTileOp::Properties>().col =
+        parser.getBuilder().getI32IntegerAttr(*col);
+  if (row)
+    result.getOrAddProperties<LogicalTileOp::Properties>().row =
+        parser.getBuilder().getI32IntegerAttr(*row);
+
+  // Add result type (index)
+  result.addTypes(parser.getBuilder().getIndexType());
+
+  return success();
+}
+
+void LogicalTileOp::print(OpAsmPrinter &printer) {
+  printer << "<" << stringifyAIETileType(getTileType()) << ">";
+
+  printer << "(";
+  if (auto col = getCol())
+    printer << *col;
+  else
+    printer << "?";
+  printer << ", ";
+  if (auto row = getRow())
+    printer << *row;
+  else
+    printer << "?";
+  printer << ")";
+
+  SmallVector<StringRef, 3> elidedAttrs = {"tile_type", "col", "row"};
+  printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+}
+
+//===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//
 
@@ -1253,7 +1521,7 @@ LogicalResult TileOp::verify() {
     }
   }
 
-  if (isShimTile() && getAllocationScheme())
+  if (isShimNOCorPLTile() && getAllocationScheme())
     return emitOpError("Shim tiles cannot have an allocation scheme");
 
   return success();
@@ -1265,8 +1533,7 @@ size_t TileOp::getNumSourceConnections(WireBundle bundle) {
   // Note dest is correct here, since direction is reversed.
   {
     // Note dest is correct here, since direction is reversed.
-    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
-        targetModel.isShimPLTile(getCol(), getRow()))
+    if (isShimNOCorPLTile())
       return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
                                                       bundle);
     return targetModel.getNumDestSwitchboxConnections(getCol(), getRow(),
@@ -1281,8 +1548,7 @@ size_t TileOp::getNumDestConnections(WireBundle bundle) {
   // Note source is correct here, since direction is reversed.
   {
     // Note source is correct here, since direction is reversed.
-    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
-        targetModel.isShimPLTile(getCol(), getRow()))
+    if (isShimNOCorPLTile())
       return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
                                                       bundle);
     return targetModel.getNumSourceSwitchboxConnections(getCol(), getRow(),
@@ -1291,24 +1557,12 @@ size_t TileOp::getNumDestConnections(WireBundle bundle) {
   return 0;
 }
 
-bool TileOp::isMemTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isMemTile(getCol(), getRow());
-}
+std::optional<int> TileOp::tryGetCol() { return getCol(); }
+std::optional<int> TileOp::tryGetRow() { return getRow(); }
 
-bool TileOp::isShimNOCTile() {
+AIETileType TileOp::getTileType() {
   const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimNOCTile(getCol(), getRow());
-}
-
-bool TileOp::isShimPLTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimPLTile(getCol(), getRow());
-}
-
-bool TileOp::isShimNOCorPLTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimNOCorPLTile(getCol(), getRow());
+  return targetModel.getTileType(getCol(), getRow());
 }
 
 bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
@@ -1385,6 +1639,10 @@ LogicalResult ShimSwitchboxOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimMuxOp::verify() {
+  // ShimMux requires a placed tile (TileOp), not a logical tile
+  if (!isa<TileOp>(getTile().getDefiningOp()))
+    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+
   Region &body = getConnections();
   DenseSet<Port> destset;
   if (body.empty())
@@ -1421,22 +1679,11 @@ size_t ShimMuxOp::getNumDestConnections(WireBundle bundle) {
                                                   bundle);
 }
 
-TileOp ShimMuxOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
-}
-
-int ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
-
-int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
-
 //===----------------------------------------------------------------------===//
 // ShimDMAOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimDMAOp::verify() {
-  if (!getTileOp().isShimNOCTile())
-    return emitOpError("must be in a ShimTile with a NOC connection");
-
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
@@ -1444,12 +1691,8 @@ LogicalResult ShimDMAOp::verify() {
 }
 
 TileOp ShimDMAOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
+  return cast<TileElement>(this->getOperation()).getTileOp();
 }
-
-int ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
-
-int ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult PacketRulesOp::verify() {
   if (Region &body = getRules(); body.empty())
@@ -1462,10 +1705,21 @@ LogicalResult PacketFlowOp::verify() {
   if (body.empty())
     return emitOpError("should have non-empty body");
 
+  int numSources = 0, numDests = 0;
   for (auto &ops : body.front()) {
     if (!isa<PacketSourceOp, PacketDestOp, EndOp>(ops))
       return ops.emitOpError("cannot be contained in a PacketFlow op");
+    if (isa<PacketSourceOp>(ops))
+      ++numSources;
+    if (isa<PacketDestOp>(ops))
+      ++numDests;
   }
+
+  if (numSources != 1)
+    return emitOpError("must have exactly one aie.packet_source (got ")
+           << numSources << ")";
+  if (numDests < 1)
+    return emitOpError("must have at least one aie.packet_dest");
 
   return success();
 }
@@ -1477,10 +1731,6 @@ LogicalResult PacketFlowOp::verify() {
 LogicalResult CoreOp::verify() {
   if (getBody().empty())
     return emitOpError("should have non-empty body");
-  if (getTileOp().isShimTile())
-    return emitOpError("CoreOp cannot be created on shim tile, i.e. row == 0");
-  if (getTileOp().isMemTile())
-    return emitOpError("CoreOp cannot be created on mem tile");
   if (getElfFile()) {
     // If an ELF file is specified, no MLIR body is allowed (to remove
     // ambiguity); the ELF file will fully dictate what runs on the
@@ -1491,20 +1741,22 @@ LogicalResult CoreOp::verify() {
           "(consist of exactly one `aie.end` op).");
     }
   }
+  if (getLinkWith() && getLinkFiles())
+    return emitOpError(
+        "cannot specify both 'link_with' (deprecated) and 'link_files' "
+        "on the same core; run aie-assign-core-link-files to migrate");
   return success();
 }
-
-int CoreOp::colIndex() { return getTileOp().colIndex(); }
-
-int CoreOp::rowIndex() { return getTileOp().rowIndex(); }
-
-TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 bool CoreOp::isEmpty() {
   Region &body = getBody();
   // Return iff. core body contains exactly one block with exactly one AIE.EndOp
   return (body.hasOneBlock() && body.front().getOperations().size() == 1 &&
           llvm::isa<AIE::EndOp>(body.front().front()));
+}
+
+TileOp CoreOp::getTileOp() {
+  return cast<TileElement>(this->getOperation()).getTileOp();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1516,8 +1768,6 @@ int64_t BufferOp::getAllocationSize() {
   DataLayout dataLayout = DataLayout::closest(getOperation());
   return type.getNumElements() * dataLayout.getTypeSize(type.getElementType());
 }
-
-TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 LogicalResult BufferOp::verify() {
   if (UsesAreAccessible::verifyTrait(*this).failed())
@@ -1541,9 +1791,7 @@ int32_t xilinx::AIE::getBufferBaseAddress(Operation *bufOp) {
 void xilinx::AIE::collectTiles(DeviceOp &device,
                                DenseMap<TileID, Operation *> &tiles) {
   for (auto tile : device.getOps<TileOp>()) {
-    int colIndex = tile.colIndex();
-    int rowIndex = tile.rowIndex();
-    tiles[{colIndex, rowIndex}] = tile;
+    tiles[tile.getTileID()] = tile;
   }
 }
 
@@ -1583,6 +1831,10 @@ static ParseResult parseBufferInitialValue(OpAsmParser &parser, Type &type,
   return success();
 }
 
+TileOp BufferOp::getTileOp() {
+  return cast<TileElement>(this->getOperation()).getTileOp();
+}
+
 //===----------------------------------------------------------------------===//
 // MemOp
 //===----------------------------------------------------------------------===//
@@ -1602,11 +1854,9 @@ LogicalResult MemOp::verify() {
   return success();
 }
 
-TileOp MemOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
-
-int MemOp::colIndex() { return getTileOp().colIndex(); }
-
-int MemOp::rowIndex() { return getTileOp().rowIndex(); }
+TileOp MemOp::getTileOp() {
+  return cast<TileElement>(this->getOperation()).getTileOp();
+}
 
 //===----------------------------------------------------------------------===//
 // MemTileDMAOp
@@ -1653,8 +1903,7 @@ LogicalResult MemTileDMAOp::verify() {
         for (Block *b : reachable) {
           for (DMABDOp bd : b->getOps<DMABDOp>()) {
             if (auto bufferOp = bd.getBufferOp();
-                bufferOp.getTileOp().colIndex() != colIndex() ||
-                bufferOp.getTileOp().rowIndex() != rowIndex()) {
+                bufferOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   bd.emitOpError()
                   << "is reachable from DMA channel "
@@ -1667,8 +1916,7 @@ LogicalResult MemTileDMAOp::verify() {
           }
           for (auto useLock : b->getOps<UseLockOp>()) {
             if (auto lockOp = useLock.getLockOp();
-                lockOp.getTileOp().colIndex() != colIndex() ||
-                lockOp.getTileOp().rowIndex() != rowIndex()) {
+                lockOp.getTile() != getTile()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
                   << "is reachable from DMA channel "
@@ -1685,6 +1933,10 @@ LogicalResult MemTileDMAOp::verify() {
   }
 
   return success();
+}
+
+TileOp MemTileDMAOp::getTileOp() {
+  return cast<TileElement>(this->getOperation()).getTileOp();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1909,17 +2161,19 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("transfer length must be multiple of 4 (i.e., represent "
                        "4 byte aligned address)");
 
-  TileID parentTileId = getParentTileElement(getOperation()).getTileID();
+  TileElement parentTileElement = getParentTileElement(getOperation());
+  TileLike parentTile = parentTileElement.getTileLike();
+  if (!parentTile)
+    return emitOpError("parent tile must implement TileLike interface");
 
   if (!isUnrankedMemRef && getOperation()->getParentOfType<MemOp>() &&
-      (getBufferOp().getTileOp().colIndex() != parentTileId.col ||
-       getBufferOp().getTileOp().rowIndex() != parentTileId.row))
+      getBufferOp().getTile() != parentTileElement.getTile())
     return emitOpError(
         "Core tile DMAs can only access a buffer in the same tile.");
 
   const AIETargetModel &targetModel = getTargetModel(getOperation());
 
-  uint32_t maxBds = targetModel.getNumBDs(parentTileId.col, parentTileId.row);
+  uint32_t maxBds = targetModel.getNumBDs(parentTile.getTileType());
   if (std::optional<int32_t> bdId = getBdId();
       bdId.has_value() && static_cast<uint32_t>(*bdId) >= maxBds)
     return emitOpError("bdId attribute exceeds max: ") << maxBds - 1;
@@ -1978,7 +2232,7 @@ LogicalResult DMABDOp::verify() {
     if (!dims.has_value())
       return emitOpError() << "Padding requires n-d data layouts expressed as"
                            << " wrap(s) and stride(s).";
-    if (!targetModel.isMemTile(parentTileId.col, parentTileId.row))
+    if (!parentTile.isMemTile())
       return emitOpError() << "Padding is only supported by memtile dma bds.";
     if (dims->size() != paddims->size())
       return emitOpError() << "Mismatch number of dimensions between padding(s)"
@@ -2004,8 +2258,7 @@ LogicalResult DMABDOp::verify() {
                            << " padding in 32-bit words.";
   }
   if (!isUnrankedMemRef &&
-      (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
-       targetModel.isCoreTile(parentTileId.col, parentTileId.row))) {
+      (parentTile.isMemTile() || parentTile.isCoreTile())) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
       int offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
@@ -2024,21 +2277,12 @@ LogicalResult DMABDOp::verify() {
   if (!getLen() && !getBuffer().getType().hasStaticShape())
     return emitOpError() << "buffer with dynamic shape requires static length.";
 
-  if (getBurstLength() != 0 &&
-      !targetModel.isShimNOCTile(parentTileId.col, parentTileId.row))
+  if (getBurstLength() != 0 && !parentTile.isShimNOCTile())
     return emitOpError("Burst length is only supported in Shim NOC tiles that "
                        "are connected to the memory-mapped NOC.");
 
   return success();
 }
-
-TileOp MemTileDMAOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
-}
-
-int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
-
-int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 //===----------------------------------------------------------------------===//
 // DMAStartOp
@@ -2124,6 +2368,10 @@ void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 //===----------------------------------------------------------------------===//
 
 LogicalResult SwitchboxOp::verify() {
+  // Switchbox requires a placed tile (TileOp), not a logical tile
+  if (!isa<TileOp>(getTile().getDefiningOp()))
+    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+
   Region &body = getConnections();
   DenseSet<Port> sourceset;
   DenseSet<Port> destset;
@@ -2247,14 +2495,6 @@ LogicalResult SwitchboxOp::verify() {
   return success();
 }
 
-TileOp SwitchboxOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
-}
-
-int SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
-
-int SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
-
 template <typename... ParentOpTypes>
 struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
@@ -2268,21 +2508,21 @@ struct HasSomeParent {
   }
 };
 
-TileOp LockOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
-
-int LockOp::colIndex() { return getTileOp().colIndex(); }
-
-int LockOp::rowIndex() { return getTileOp().rowIndex(); }
+TileOp LockOp::getTileOp() {
+  return cast<TileElement>(this->getOperation()).getTileOp();
+}
 
 LogicalResult LockOp::verify() {
   if (auto result = UsesAreAccessible::verifyTrait(*this); result.failed())
     return result;
 
   if (getLockID().has_value()) {
-    const auto &targetModel = getTargetModel(getTileOp());
-    auto tileOp = getTileOp();
-    if (int numLocks =
-            targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
+    TileLike tileLike = getTileLike();
+    if (!tileLike)
+      return emitOpError("tile operand must implement TileLike interface");
+    const auto &targetModel = getTargetModel(*this);
+    auto tileType = tileLike.getTileType();
+    if (int numLocks = targetModel.getNumLocks(tileType);
         getLockID().value() >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
              << numLocks - 1 << ")";
@@ -2332,9 +2572,7 @@ struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
     if (auto memOp = op->getParentOfType<MemOp>()) {
       auto useLock = dyn_cast<UseLockOp>(op);
-      if (auto lock = useLock.getLockOp();
-          lock.getTileOp().colIndex() != memOp.colIndex() ||
-          lock.getTileOp().rowIndex() != memOp.rowIndex())
+      if (auto lock = useLock.getLockOp(); lock.getTile() != memOp.getTile())
         return failure();
     }
     return success();
@@ -2396,8 +2634,51 @@ LogicalResult UseLockOp::verify() {
 #include "aie/Dialect/AIE/IR/AIEEnums.cpp.inc"
 #include "aie/Dialect/AIE/IR/AIEInterfaces.cpp.inc"
 
+//===----------------------------------------------------------------------===//
+// TraceEventAttr
+//===----------------------------------------------------------------------===//
+
+// Custom parser for TraceEventAttr value (uses shared helper)
+static ParseResult parseTraceEventValue(AsmParser &parser, Attribute &value) {
+  return xilinx::AIE::parseTraceEvent(parser, value);
+}
+
+// Custom printer for TraceEventAttr value (uses shared helper)
+static void printTraceEventValue(AsmPrinter &printer, Attribute value) {
+  xilinx::AIE::printTraceEventEnum(printer, value);
+}
+
+// Custom parser for TraceEventAttr value (uses shared helper)
+static ParseResult parseTraceRegValue(OpAsmParser &parser, Attribute &value) {
+
+  // Try to parse as number
+  int64_t intValue;
+  OptionalParseResult parseResult = parser.parseOptionalInteger(intValue);
+  if (parseResult.has_value() && succeeded(parseResult.value())) {
+    MLIRContext *ctx = parser.getContext();
+    value = IntegerAttr::get(IntegerType::get(ctx, 32), intValue);
+    return success();
+  }
+  return xilinx::AIE::parseTraceEvent(parser, value);
+}
+
+// Custom printer for TraceEventAttr value (uses shared helper)
+static void printTraceRegValue(OpAsmPrinter &printer, Operation *op,
+                               Attribute value) {
+  // if it's an intattr
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(value)) {
+    printer << intAttr.getInt();
+    return;
+  }
+  xilinx::AIE::printTraceEventEnum(printer, value);
+}
+
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
+
+TileOp SwitchboxOp::getTileOp() {
+  return cast<TileElement>(this->getOperation()).getTileOp();
+}
 
 size_t SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
@@ -2411,6 +2692,10 @@ size_t SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumDestSwitchboxConnections(tile.getCol(),
                                                     tile.getRow(), bundle);
+}
+
+TileOp ShimMuxOp::getTileOp() {
+  return cast<TileElement>(this->getOperation()).getTileOp();
 }
 
 WireBundle xilinx::AIE::getConnectingBundle(WireBundle dir) {
@@ -2494,18 +2779,20 @@ void BDChainOp::print(OpAsmPrinter &printer) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimDMAAllocationOp::verify() {
-  TileOp tileOp = getTileOp();
-  if (!tileOp) {
-    return emitOpError("tile operand must be a TileOp");
+  TileLike tileLike = llvm::dyn_cast<TileLike>(getTile().getDefiningOp());
+  if (!tileLike) {
+    return emitOpError("tile operand must implement TileLike interface");
   }
 
-  const auto &targetModel = getTargetModel(*this);
-  int col = tileOp.getCol();
-  int row = tileOp.getRow();
-
-  if (!targetModel.isShimNOCorPLTile(col, row)) {
-    return emitOpError("tile must be a shim tile, but got tile(")
-           << col << ", " << row << ")";
+  if (!tileLike.isShimNOCorPLTile()) {
+    // if placed, provide detailed error message
+    auto col = tileLike.tryGetCol();
+    auto row = tileLike.tryGetRow();
+    if (col && row) {
+      return emitOpError("tile must be a shim tile, but got tile(")
+             << *col << ", " << *row << ")";
+    }
+    return emitOpError("tile must be a shim tile");
   }
 
   return success();

@@ -28,7 +28,6 @@ export n=64
 export dtype_in=i16
 export dtype_out=i16
 export n_aie_cols=4
-export XRT_HACK_UNSECURE_LOADING_XCLBIN=1
 
 # Print configuration used to run for reproducibility
 env >>$log_out

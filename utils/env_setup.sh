@@ -43,7 +43,7 @@ fi
 
 # If force install or an install dir isn't passed
 if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 1 && -z "$(pip show mlir_aie | grep '^Location:')" ) ]]; then
-  python3 -m pip install -I mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
+  python3 -m pip install -I mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3
   export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep '^Location:' | awk '{print $2}')/mlir_aie"
 fi
 
@@ -73,6 +73,22 @@ if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456
     export NPU2=1
 else
     export NPU2=0
+fi
+
+# Ensure pyxrt is discoverable in the current Python environment.
+# Legacy XRT installs put it under $XILINX_XRT/python (handled by setup.sh).
+# Ubuntu packages install it to /usr/lib/python3/dist-packages/.
+if ! python3 -c "import pyxrt" 2>/dev/null; then
+    PYXRT_DIR=$(python3 -c "
+import glob, sys, os
+for p in glob.glob('/usr/lib/python3*/dist-packages/pyxrt*.so'):
+    print(os.path.dirname(p)); sys.exit(0)
+for p in glob.glob('/usr/lib/python3/dist-packages/pyxrt*.so'):
+    print(os.path.dirname(p)); sys.exit(0)
+" 2>/dev/null)
+    if [ -n "$PYXRT_DIR" ]; then
+        export PYTHONPATH=${PYXRT_DIR}:${PYTHONPATH}
+    fi
 fi
 
 echo ""

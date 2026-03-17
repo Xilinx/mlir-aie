@@ -8,28 +8,31 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --verify-diagnostics --aie-expand-load-pdi %s
+// Cores without elf_file are gracefully skipped during PDI expansion.
+// This supports lightweight "reset-only" devices that have CoreOps for
+// lock/core initialization but no ELF to load.
 
-// This test should error as load_pdi operations can only be inlined after the
-// code in each core has been lowered to an ELF file and linked to the core
-// with the `elf_file` attribute.
+// RUN: aie-opt --aie-expand-load-pdi %s | FileCheck %s
 
 module {
 
     aie.device(npu2_1col) @my_core_device {
         %tile = aie.tile(0, 2)
-        // expected-error @+1 {{Expected lowered ELF file}}
+        %lock = aie.lock(%tile, 0) {init = 1 : i32}
+        // CoreOp without elf_file — should be skipped by addAieElfs
+        // but still trigger core reset/enable in initLocks/addCoreEnable
         aie.core(%tile) {
             aie.end
         }
     }
 
     aie.device(npu2_1col) @main {
+        // CHECK: aie.runtime_sequence
         aie.runtime_sequence (%arg0: memref<1xi32>) {
-            // expected-error @+1 {{Failed to generate configuration operations}}
+            // CHECK: aiex.npu.load_pdi
+            // CHECK: aiex.npu.write32
             aiex.npu.load_pdi { device_ref = @my_core_device }
         }
     }
-
 
 }

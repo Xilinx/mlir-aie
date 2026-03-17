@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""ObjectFifoEndpoint: base class for placeable endpoints of an ObjectFIFO."""
+
 from ..placeable import Placeable
 
 

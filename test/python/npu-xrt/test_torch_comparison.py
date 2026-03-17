@@ -291,3 +291,38 @@ def test_torch_iron_torch_float(shape, dtype, torch_dtype, tensorclass):
     iron_t = tensorclass.from_torch(torch_t_orig)
     torch_t_new = iron_t.to_torch()
     assert bfloat16_safe_allclose(dtype, torch_t_orig, torch_t_new)
+
+
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_to_torch_bfloat16(tensorclass):
+    data = np.array([1.0, 2.0, 3.0], dtype=bfloat16)
+    tensor = tensorclass(data, dtype=bfloat16)
+    torch_tensor = tensor.to_torch()
+    assert (
+        torch_tensor.dtype == torch.bfloat16
+    ), f"Expected torch.bfloat16, got {torch_tensor.dtype}"
+    assert torch.allclose(
+        torch_tensor.float(), torch.tensor([1.0, 2.0, 3.0]).float()
+    ), "Values mismatch in to_torch"
+
+
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_from_torch_bfloat16(tensorclass):
+    data = torch.tensor([1.0, 2.0, 3.0], dtype=torch.bfloat16)
+    tensor = tensorclass.from_torch(data, device="cpu")
+    assert tensor.dtype == bfloat16, f"Expected bfloat16, got {tensor.dtype}"
+    np_data = tensor.numpy()
+    expected = np.array([1.0, 2.0, 3.0], dtype=bfloat16)
+    assert np.array_equal(np_data, expected), "Values mismatch in from_torch"
+
+
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_roundtrip_bfloat16(tensorclass):
+    # Round trip: numpy(bfloat16) -> Tensor -> torch(bfloat16) -> Tensor -> numpy(bfloat16)
+    data = np.array([1.5, 2.5, 3.5], dtype=bfloat16)
+    tensor = tensorclass(data, dtype=bfloat16)
+    torch_tensor = tensor.to_torch()
+    assert torch_tensor.dtype == torch.bfloat16
+    tensor_back = tensorclass.from_torch(torch_tensor, device="cpu")
+    assert tensor_back.dtype == bfloat16
+    assert np.array_equal(tensor.numpy(), tensor_back.numpy())

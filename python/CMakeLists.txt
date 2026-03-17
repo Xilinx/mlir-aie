@@ -49,7 +49,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
-    utils/compile/link.py
     utils/compile/utils.py
     utils/compile/cache/circular_cache.py
     utils/compile/cache/utils.py
@@ -211,7 +210,10 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
   if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
-    list(APPEND _py_libs xrt_coreutil uuid)
+    list(APPEND _py_libs xrt_coreutil)
+    if(NOT WIN32)
+      list(APPEND _py_libs uuid)
+    endif()
   endif()
   list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
 
@@ -225,9 +227,6 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
     PRIVATE_LINK_LIBS
       ${_py_libs}
-
-    PYTHON_BINDINGS_LIBRARY
-      nanobind
   )
   target_include_directories(
     AIEPythonExtensions.MLIR
@@ -322,8 +321,6 @@ else ()
       AIECAPI
     PRIVATE_LINK_LIBS
       LLVMSupport
-    PYTHON_BINDINGS_LIBRARY
-      nanobind
   )
 
   if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -339,10 +336,10 @@ else ()
       PRIVATE_LINK_LIBS
         LLVMSupport
         xrt_coreutil
-        uuid
-      PYTHON_BINDINGS_LIBRARY
-        nanobind
     )
+    if(NOT WIN32)
+      target_link_libraries(AIEPythonExtensions.XRT INTERFACE uuid)
+    endif()
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()

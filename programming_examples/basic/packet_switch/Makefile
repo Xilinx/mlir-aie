@@ -16,7 +16,7 @@ include ${srcdir}/../../makefile-common
 
 # The following environment variables that point to the Xilinx runtime (XRT)
 # should be set up by an environment setup script already.
-XILINX_XRT?=/opt/xilinx/xrt
+XILINX_XRT ?= $(if $(wildcard /opt/xilinx/xrt/include),/opt/xilinx/xrt,/usr)
 
 # ---
 UTILS_INCLUDE := -I$(srcdir)/../../../runtime_lib/test_lib/
@@ -65,13 +65,13 @@ ${mlir_aie_mul}: ${srcdir}/${aie_mul_placed_py}
 
 ${add_xclbin_target}: ${mlir_aie_add}  build/add_mul.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=${add_insts_target:build/%=%} ${<:%=../%}
 
 ${mult_xclbin_target}: ${mlir_aie_mul} build/add_mul.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=${mult_insts_target:build/%=%} ${<:%=../%}
 

@@ -36,17 +36,17 @@ def color_detect(dev, width, height):
     )
     bitwiseORLine = Kernel(
         "bitwiseORLine",
-        "combined_bitwiseOR_gray2rgba_bitwiseAND.a",
+        "bitwiseOR.cc.o",
         [line_ty, line_ty, line_ty, np.int32],
     )
     gray2rgbaLine = Kernel(
         "gray2rgbaLine",
-        "combined_bitwiseOR_gray2rgba_bitwiseAND.a",
+        "gray2rgba.cc.o",
         [line_ty, line_bytes_ty, np.int32],
     )
     bitwiseANDLine = Kernel(
         "bitwiseANDLine",
-        "combined_bitwiseOR_gray2rgba_bitwiseAND.a",
+        "bitwiseAND.cc.o",
         [line_bytes_ty, line_bytes_ty, line_bytes_ty, np.int32],
     )
 

@@ -10,11 +10,9 @@ import sys
 import os
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, jit
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import ExternalFunction
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.config import cxx_header_path
 
 
@@ -86,8 +84,10 @@ def saxpy(input0, input1, output):
 
 
 def main():
-    # Define tensor shapes and data types
-    data_size = 2048
+    # Define tensor shapes and data types.
+    # NOTE: saxpy.cc hardcodes the loop bound to 4096 elements. This value
+    # must match data_size or the kernel will produce silently wrong results.
+    data_size = 4096
     element_type = bfloat16
 
     # Construct an input tensor and an output zeroed tensor
@@ -100,21 +100,14 @@ def main():
     # to the kernel will use the same compiled kernel and loaded code objects
     saxpy(input0, input1, output)
 
-    # Check the correctness of the result and print
+    # Check the correctness of the result and print any mismatches
     ref_vec = [3 * input0[i] + input1[i] for i in range(data_size)]
 
     errors = 0
-    for index, (actual, ref) in enumerate(
-        zip(
-            output,
-            ref_vec,
-        )
-    ):
+    for index, (actual, ref) in enumerate(zip(output, ref_vec)):
         if actual != ref:
             print(f"Error at {index}: {actual} != {ref}")
             errors += 1
-        else:
-            print(f"Correct output at {index}: {actual} == {ref}")
 
     # If the result is correct, exit with a success code
     # Otherwise, exit with a failure code

@@ -46,6 +46,12 @@ template <typename ConcreteType>
 struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
+// Marker trait for operations that can be flow endpoints (e.g., TileOp, CoreOp,
+// MemOp)
+template <typename ConcreteType>
+struct IsFlowEndPoint : mlir::OpTrait::TraitBase<ConcreteType, IsFlowEndPoint> {
+};
+
 class TileOp;
 
 uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
@@ -194,6 +200,11 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   BDDimLayoutArrayArrayAttr dimensions);
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
+
+// Trace Event Value Parsing/Printing (handles both string and typed enums)
+mlir::ParseResult parseTraceEvent(mlir::AsmParser &parser,
+                                  mlir::Attribute &result);
+void printTraceEventEnum(mlir::AsmPrinter &printer, mlir::Attribute attr);
 
 } // namespace xilinx::AIE
 

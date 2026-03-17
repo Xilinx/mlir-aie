@@ -155,9 +155,6 @@ MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumDestShimMuxConnections(
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumSourceShimMuxConnections(
     AieTargetModel targetModel, int col, int row, uint32_t bundle);
 
-/// Returns true if this is an NPU target model.
-MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
-
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetColumnShift(AieTargetModel targetModel);
 

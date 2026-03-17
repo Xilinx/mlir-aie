@@ -12,6 +12,7 @@
 #define AIE_ATTRS
 
 include "aie/Dialect/AIE/IR/AIE.td"
+include "aie/Dialect/AIE/IR/AIETraceAttrs.td"
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
@@ -92,6 +93,17 @@ def AIEArch: I32EnumAttr<"AIEArch", "AIE Architecture",
     I32EnumAttrCase<"AIE1", 1>,
     I32EnumAttrCase<"AIE2", 2>,
     I32EnumAttrCase<"AIE2p", 3>,
+  ]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
+def AIETileType: I32EnumAttr<"AIETileType", "Type of AIE Tile",
+  [
+    I32EnumAttrCase<"CoreTile", 0>,
+    I32EnumAttrCase<"MemTile", 1>,
+    I32EnumAttrCase<"ShimNOCTile", 2>,
+    I32EnumAttrCase<"ShimPLTile", 3>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -210,7 +222,7 @@ def InitValuesArrayAttr
 // Generated AIE event enumerations
 //===----------------------------------------------------------------------===//
 
-include "AIEEvents.td.inc"
+include "AIEEventsAIE.td.inc"
 include "AIEEventsAIE2.td.inc"
 include "AIEEventsAIE2P.td.inc"
 

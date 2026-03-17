@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -48,7 +48,7 @@ The compilation process is different from the other design examples, and is show
 
 This is a slightly more complex process than the rest of the examples, which typically only use a single object file containing the wrapped C++ function call, but is provided to show how a library-based flow can also be used.
 
-1. `softmax.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc.py to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI).
+1. `softmax.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI).
 
 2. `softmax_placed.py`: An alternative version of the design in softmax.py, that is expressed in a lower-level version of IRON.
 
@@ -56,29 +56,71 @@ This is a slightly more complex process than the rest of the examples, which typ
 
 ## Usage
 
-### C++ Testbench
-
-To compile the design and C++ testbench:
+For a quick reference of all available options, run:
 ```shell
-make
+make help
 ```
 
-To compile the placed design:
-```shell
-env use_placed=1 make
-```
+### Build and Run
 
-To compile the design on whole array:
-```shell
-env use_whole_array=1 make
-```
-
-To run the design:
+Build and run with default settings:
 ```shell
 make run
 ```
 
+Build and run with custom runtime parameters:
+```shell
+make run size=524288 n_iterations=100 n_warmup=20
+```
+
+### Placement Modes
+
+There are three placement modes available:
+
+**Default mode** - Uses `softmax.py`:
+```shell
+make run
+```
+
+**Manual placement mode** - Uses `softmax_placed.py`:
+```shell
+make run use_placed=1
+```
+
+**Whole array placement mode** - Uses `softmax_whole_array_placed.py`:
+```shell
+make run use_whole_array=1
+make run use_whole_array=1 whole_array_cols=4 whole_array_rows=4
+make run use_whole_array=1 whole_array_cols=2 whole_array_rows=2
+```
+
+### Configuration Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `size` | 262144 | Input data size (number of elements) |
+| `n_iterations` | 20 | Number of benchmark iterations |
+| `n_warmup` | 10 | Number of warmup iterations |
+| `use_placed` | 0 | Enable manual placement mode |
+| `use_whole_array` | 0 | Enable whole array placement mode |
+| `whole_array_cols` | 1 | Number of columns (when `use_whole_array=1`) |
+| `whole_array_rows` | 4 | Number of cores per column (when `use_whole_array=1`) |
+| `devicename` | npu | Target device (`npu` or `npu2`) |
+
+> **Note:** Configuration changes are automatically detected. No need to run `make clean` when changing parameters.
+
+### Profiling
+
+To run with profiling (outputs to `results.csv`):
+```shell
+make profile
+```
+
+### Hardware Tracing
+
 To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
 ```shell
-env use_placed=1 make trace
+make use_placed=1 trace
 ```
+
+> **Note:** Tracing is currently supported with the `use_placed=1` mode.

@@ -42,12 +42,12 @@ def edge_detect(dev, width, height):
     )
     gray2rgba_line_kernel = Kernel(
         "gray2rgbaLine",
-        "combined_gray2rgba_addWeighted.a",
+        "gray2rgba.cc.o",
         [line_ty, line_bytes_ty, np.int32],
     )
     add_weighted_line_kernel = Kernel(
         "addWeightedLine",
-        "combined_gray2rgba_addWeighted.a",
+        "addWeighted.cc.o",
         [
             line_bytes_ty,
             line_bytes_ty,
