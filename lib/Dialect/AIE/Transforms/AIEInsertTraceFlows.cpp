@@ -4,10 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
-//===----------------------------------------------------------------------===//
-// Pass to insert packet flows and runtime sequence trace setup
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -65,18 +63,18 @@ struct AIEInsertTraceFlowsPass
 
     // Phase 2: Analyze traces and allocate resources
     std::vector<TraceInfo> traceInfos;
-    std::map<int, int> usedPacketIds; // col -> next available packet ID
-    int nextPacketId = packetIdStart;
+    int nextPacketId = clPacketIdStart;
 
     for (auto trace : traces) {
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
-      int col = tile.getCol();
 
       // Find packet ID and type from trace body
       std::optional<int> packetId;
       std::optional<TracePacketType> packetType;
+      TracePacketOp existingPacketOp = nullptr;
       for (auto &op : trace.getBody().getOps()) {
         if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
+          existingPacketOp = packetOp;
           packetId = packetOp.getId();
           packetType = packetOp.getType();
           break;
@@ -97,10 +95,16 @@ struct AIEInsertTraceFlowsPass
 
       // Allocate packet ID if not specified
       if (!packetId) {
-        if (usedPacketIds.find(col) == usedPacketIds.end()) {
-          usedPacketIds[col] = nextPacketId;
-        }
-        packetId = usedPacketIds[col]++;
+        packetId = nextPacketId++;
+      }
+
+      // If there was no explicit TracePacketOp, materialize one so that
+      // downstream passes (e.g., -aie-trace-to-config) see consistent info.
+      if (!existingPacketOp) {
+        OpBuilder traceBuilder(&trace.getBody().front(),
+                               trace.getBody().front().begin());
+        TracePacketOp::create(traceBuilder, trace.getLoc(), *packetId,
+                              *packetType);
       }
 
       // Determine trace port based on packet type
@@ -120,20 +124,24 @@ struct AIEInsertTraceFlowsPass
       traceInfos.push_back(info);
     }
 
-    // Phase 2b: Select shim tiles (minimize usage)
+    // Phase 2b: Select shim tiles
+    // - Default: all traces route to column 0 shim
+    // - per-column-shim=true: each column's traces route to that
+    //   column's shim
     std::map<int, ShimInfo> shimInfos; // col -> ShimInfo
 
-    if (minimizeShims && preferSameColumn) {
-      // Strategy: Group all traces by column, use one shim per column
+    if (clPerColumnShim) {
+      // Per-column mode: each column gets its own shim
       std::map<int, std::vector<TraceInfo>> tracesByCol;
       for (auto &info : traceInfos) {
         int col = info.tile.getCol();
         tracesByCol[col].push_back(info);
       }
 
-      // For each column with traces, allocate a shim
+      // Each shim needs distinct argIdx to write to different host buffers.
+      int nextArgIdx = clTraceArgIdx;
+
       for (auto &[col, colTraces] : tracesByCol) {
-        // Find shim tile for this column
         TileOp shimTile = nullptr;
         for (auto tile : device.getOps<TileOp>()) {
           if (tile.getCol() == col && tile.getRow() == 0) {
@@ -143,21 +151,20 @@ struct AIEInsertTraceFlowsPass
         }
 
         if (!shimTile) {
-          // Create shim tile if it doesn't exist
           builder.setInsertionPointToStart(&device.getRegion().front());
-          shimTile = builder.create<TileOp>(device.getLoc(), col, 0);
+          shimTile = TileOp::create(builder, device.getLoc(), col, 0);
         }
 
         ShimInfo shimInfo;
         shimInfo.shimTile = shimTile;
-        shimInfo.channel = shimChannel;
-        shimInfo.bdId = defaultBdId;
-        shimInfo.argIdx = traceArgIdx;
+        shimInfo.channel = clShimChannel;
+        shimInfo.bdId = clDefaultBdId;
+        shimInfo.argIdx = nextArgIdx++;
         shimInfo.traceSources = colTraces;
         shimInfos[col] = shimInfo;
       }
     } else {
-      // Fallback: Use one shim for all traces (column 0)
+      // Default: all traces route to column 0 shim
       int targetCol = 0;
       TileOp shimTile = nullptr;
       for (auto tile : device.getOps<TileOp>()) {
@@ -169,16 +176,26 @@ struct AIEInsertTraceFlowsPass
 
       if (!shimTile) {
         builder.setInsertionPointToStart(&device.getRegion().front());
-        shimTile = builder.create<TileOp>(device.getLoc(), targetCol, 0);
+        shimTile = TileOp::create(builder, device.getLoc(), targetCol, 0);
       }
 
       ShimInfo shimInfo;
       shimInfo.shimTile = shimTile;
-      shimInfo.channel = shimChannel;
-      shimInfo.bdId = defaultBdId;
-      shimInfo.argIdx = traceArgIdx;
+      shimInfo.channel = clShimChannel;
+      shimInfo.bdId = clDefaultBdId;
+      shimInfo.argIdx = clTraceArgIdx;
       shimInfo.traceSources = traceInfos;
-      shimInfos[targetCol] = shimInfo;
+
+      // Map all source columns to the single shim
+      for (auto &info : traceInfos) {
+        int col = info.tile.getCol();
+        if (shimInfos.find(col) == shimInfos.end()) {
+          shimInfos[col] = shimInfo;
+        }
+      }
+      if (shimInfos.find(targetCol) == shimInfos.end()) {
+        shimInfos[targetCol] = shimInfo;
+      }
     }
 
     // Phase 3: Insert packet flows
@@ -192,28 +209,24 @@ struct AIEInsertTraceFlowsPass
       ShimInfo &shimInfo = shimInfos[col];
 
       // Create packet flow
-      auto packetFlowOp = builder.create<PacketFlowOp>(
-          device.getLoc(), builder.getI8IntegerAttr(info.packetId), nullptr,
-          nullptr);
+      auto packetFlowOp = PacketFlowOp::create(
+          builder, device.getLoc(), builder.getI8IntegerAttr(info.packetId),
+          nullptr, nullptr);
 
       Block *flowBody = new Block();
       packetFlowOp.getPorts().push_back(flowBody);
       OpBuilder flowBuilder = OpBuilder::atBlockEnd(flowBody);
 
-      // Add source
-      flowBuilder.create<PacketSourceOp>(device.getLoc(),
-                                         Value(info.tile.getResult()),
-                                         info.tracePort, info.traceChannel);
+      PacketSourceOp::create(flowBuilder, device.getLoc(),
+                             Value(info.tile.getResult()), info.tracePort,
+                             info.traceChannel);
 
-      // Add destination
-      flowBuilder.create<PacketDestOp>(device.getLoc(),
-                                       Value(shimInfo.shimTile.getResult()),
-                                       WireBundle::DMA, shimInfo.channel);
+      PacketDestOp::create(flowBuilder, device.getLoc(),
+                           Value(shimInfo.shimTile.getResult()),
+                           WireBundle::DMA, shimInfo.channel);
 
-      // Add terminator
-      flowBuilder.create<EndOp>(device.getLoc());
+      EndOp::create(flowBuilder, device.getLoc());
 
-      // Add keep_pkt_header attribute
       packetFlowOp->setAttr("keep_pkt_header", builder.getBoolAttr(true));
     }
 
@@ -227,8 +240,10 @@ struct AIEInsertTraceFlowsPass
     });
 
     if (!runtimeSeq) {
-      // No runtime sequence found, nothing to insert
-      return;
+      device.emitError()
+          << "aie.trace ops found but no runtime_sequence to insert "
+             "trace configuration.";
+      return signalPassFailure();
     }
 
     // Insert trace infrastructure AFTER aie.trace.start_config ops
@@ -254,24 +269,36 @@ struct AIEInsertTraceFlowsPass
     }
 
     // 4b. Insert per-tile timer controls
-    std::set<std::pair<int, int>> processedTiles; // (col, row)
+    // Key includes isMemTrace because core and mem modules have different
+    // timer control registers.
+    std::set<std::tuple<int, int, bool>>
+        processedTiles; // (col, row, isMemTrace)
     for (auto &info : traceInfos) {
+      // Shim tiles don't use BROADCAST_15 for timer sync
+      if (info.tile.isShimTile())
+        continue;
+
       int col = info.tile.getCol();
       int row = info.tile.getRow();
+      bool isMemTrace = info.packetType == TracePacketType::Mem;
 
-      if (processedTiles.find({col, row}) != processedTiles.end())
+      if (processedTiles.count({col, row, isMemTrace}))
         continue;
-      processedTiles.insert({col, row});
+      processedTiles.insert({col, row, isMemTrace});
 
       // Compute timer control address
-      uint32_t timerCtrlAddr = computeTimerCtrlAddress(
-          info.tile, targetModel, info.packetType == TracePacketType::Mem);
+      uint32_t timerCtrlAddr =
+          computeTimerCtrlAddress(info.tile, targetModel, isMemTrace);
 
-      // Timer control value: BROADCAST_15 event (122 << 8 = 31232)
-      uint32_t timerCtrlValue = 31232; // Event 122 (BROADCAST_15) << 8
+      // Look up BROADCAST_15 event value from target model
+      auto broadcast15Event = targetModel.lookupEvent(
+          "BROADCAST_15", info.tile.getTileID(), isMemTrace);
+      if (!broadcast15Event)
+        llvm::report_fatal_error("Failed to lookup BROADCAST_15 event");
+      uint32_t timerCtrlValue = *broadcast15Event << 8;
 
-      builder.create<xilinx::AIEX::NpuWrite32Op>(
-          runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, nullptr,
+      xilinx::AIEX::NpuWrite32Op::create(
+          builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, nullptr,
           builder.getI32IntegerAttr(col), builder.getI32IntegerAttr(row));
     }
 
@@ -279,17 +306,26 @@ struct AIEInsertTraceFlowsPass
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
 
+      // Determine buffer size: use trace's buffer_size attr if present,
+      // otherwise use pass option default
+      int bufferSize = clTraceBufferSize;
+      if (!shimInfo.traceSources.empty()) {
+        auto firstTrace = shimInfo.traceSources[0].traceOp;
+        if (auto traceBufSize = firstTrace.getBufferSize())
+          bufferSize = *traceBufSize;
+      }
+
       // 4c. Write buffer descriptor
-      builder.create<xilinx::AIEX::NpuWriteBdOp>(
-          runtimeSeq.getLoc(),
-          shimCol,         // column
-          shimInfo.bdId,   // bd_id
-          traceBufferSize, // buffer_length
-          0,               // buffer_offset
-          1,               // enable_packet
-          0,               // out_of_order_id
-          0,               // packet_id (not used for reception)
-          0,               // packet_type (not used for reception)
+      xilinx::AIEX::NpuWriteBdOp::create(
+          builder, runtimeSeq.getLoc(),
+          shimCol,       // column
+          shimInfo.bdId, // bd_id
+          bufferSize,    // buffer_length
+          0,             // buffer_offset
+          1,             // enable_packet
+          0,             // out_of_order_id
+          0,             // packet_id (not used for reception)
+          0,             // packet_type (not used for reception)
           0, 0, 0, 0, 0,
           0,       // d0_size, d0_stride, d1_size, d1_stride, d2_size, d2_stride
           0, 0, 0, // iteration_current, iteration_size, iteration_stride
@@ -297,25 +333,25 @@ struct AIEInsertTraceFlowsPass
           0,       // row
           0,       // use_next_bd
           1,       // valid_bd
-          0, 0, 0, 0, 0,    // lock_rel_val, lock_rel_id, lock_acq_enable,
-                            // lock_acq_val, lock_acq_id
-          0, 0, 0, 0, 0, 0, // d0_zero_before, d1_zero_before, d2_zero_before,
-                            // d0_zero_after, d1_zero_after, d2_zero_after
-          traceBurstLength  // burst_length
+          0, 0, 0, 0, 0,     // lock_rel_val, lock_rel_id, lock_acq_enable,
+                             // lock_acq_val, lock_acq_id
+          0, 0, 0, 0, 0, 0,  // d0_zero_before, d1_zero_before, d2_zero_before,
+                             // d0_zero_after, d1_zero_after, d2_zero_after
+          clTraceBurstLength // burst_length
       );
 
       // 4d. Address patch
       uint32_t bdAddress = computeBDAddress(shimCol, shimInfo.bdId,
                                             shimInfo.shimTile, targetModel);
-      builder.create<xilinx::AIEX::NpuAddressPatchOp>(
-          runtimeSeq.getLoc(), bdAddress, shimInfo.argIdx, 0);
+      xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
+                                              bdAddress, shimInfo.argIdx, 0);
 
       // 4e. DMA channel configuration
       uint32_t ctrlAddr =
           computeCtrlAddress(DMAChannelDir::S2MM, shimInfo.channel,
                              shimInfo.shimTile, targetModel);
-      builder.create<xilinx::AIEX::NpuMaskWrite32Op>(
-          runtimeSeq.getLoc(), ctrlAddr, 3840, 7936, // value, mask
+      xilinx::AIEX::NpuMaskWrite32Op::create(
+          builder, runtimeSeq.getLoc(), ctrlAddr, 3840, 7936, // value, mask
           nullptr, builder.getI32IntegerAttr(shimCol),
           builder.getI32IntegerAttr(0));
 
@@ -324,17 +360,23 @@ struct AIEInsertTraceFlowsPass
           computeTaskQueueAddress(DMAChannelDir::S2MM, shimInfo.channel,
                                   shimInfo.shimTile, targetModel);
       uint32_t bdIdWithToken = (1U << 31) | shimInfo.bdId; // enable_token = 1
-      builder.create<xilinx::AIEX::NpuWrite32Op>(
-          runtimeSeq.getLoc(), taskQueueAddr, bdIdWithToken, nullptr,
+      xilinx::AIEX::NpuWrite32Op::create(
+          builder, runtimeSeq.getLoc(), taskQueueAddr, bdIdWithToken, nullptr,
           builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
 
       // 4f. Shim timer and broadcast control
-      // Shim timer control (USER_EVENT_1 = 127 << 8 = 32512)
+      // Look up USER_EVENT_1 from target model
+      auto userEvent1 = targetModel.lookupEvent(
+          "USER_EVENT_1", shimInfo.shimTile.getTileID(), false);
+      if (!userEvent1)
+        llvm::report_fatal_error("Failed to lookup USER_EVENT_1 event");
+
       uint32_t shimTimerCtrlAddr =
           computeTimerCtrlAddress(shimInfo.shimTile, targetModel, false);
-      builder.create<xilinx::AIEX::NpuWrite32Op>(
-          runtimeSeq.getLoc(), shimTimerCtrlAddr, 32512, nullptr,
-          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+      xilinx::AIEX::NpuWrite32Op::create(
+          builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, *userEvent1 << 8,
+          nullptr, builder.getI32IntegerAttr(shimCol),
+          builder.getI32IntegerAttr(0));
 
       // Trigger broadcast (Event_Broadcast15_A)
       const RegisterInfo *broadcast15Reg = targetModel.lookupRegister(
@@ -342,18 +384,20 @@ struct AIEInsertTraceFlowsPass
       if (!broadcast15Reg)
         llvm::report_fatal_error(
             "Failed to lookup Event_Broadcast15_A register");
-      builder.create<xilinx::AIEX::NpuWrite32Op>(
-          runtimeSeq.getLoc(), broadcast15Reg->offset, 127, nullptr,
-          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+      xilinx::AIEX::NpuWrite32Op::create(
+          builder, runtimeSeq.getLoc(), broadcast15Reg->offset, *userEvent1,
+          nullptr, builder.getI32IntegerAttr(shimCol),
+          builder.getI32IntegerAttr(0));
 
       // Generate USER_EVENT_1
       const RegisterInfo *eventGenReg = targetModel.lookupRegister(
           "Event_Generate", shimInfo.shimTile.getTileID());
       if (!eventGenReg)
         llvm::report_fatal_error("Failed to lookup Event_Generate register");
-      builder.create<xilinx::AIEX::NpuWrite32Op>(
-          runtimeSeq.getLoc(), eventGenReg->offset, 127, nullptr,
-          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+      xilinx::AIEX::NpuWrite32Op::create(
+          builder, runtimeSeq.getLoc(), eventGenReg->offset, *userEvent1,
+          nullptr, builder.getI32IntegerAttr(shimCol),
+          builder.getI32IntegerAttr(0));
     }
 
     // Phase 4g: Insert trace stop/flush at the END of runtime sequence
@@ -364,24 +408,32 @@ struct AIEInsertTraceFlowsPass
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
 
+      // Look up USER_EVENT_0 from target model
+      auto userEvent0 = targetModel.lookupEvent(
+          "USER_EVENT_0", shimInfo.shimTile.getTileID(), false);
+      if (!userEvent0)
+        llvm::report_fatal_error("Failed to lookup USER_EVENT_0 event");
+
       // Configure broadcast 14 to forward USER_EVENT_0
       const RegisterInfo *broadcast14Reg = targetModel.lookupRegister(
           "Event_Broadcast14_A", shimInfo.shimTile.getTileID());
       if (!broadcast14Reg)
         llvm::report_fatal_error(
             "Failed to lookup Event_Broadcast14_A register");
-      builder.create<xilinx::AIEX::NpuWrite32Op>(
-          runtimeSeq.getLoc(), broadcast14Reg->offset, 126, nullptr,
-          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+      xilinx::AIEX::NpuWrite32Op::create(
+          builder, runtimeSeq.getLoc(), broadcast14Reg->offset, *userEvent0,
+          nullptr, builder.getI32IntegerAttr(shimCol),
+          builder.getI32IntegerAttr(0));
 
       // Generate USER_EVENT_0 to trigger broadcast 14 (trace stop event)
       const RegisterInfo *stopEventGenReg = targetModel.lookupRegister(
           "Event_Generate", shimInfo.shimTile.getTileID());
       if (!stopEventGenReg)
         llvm::report_fatal_error("Failed to lookup Event_Generate register");
-      builder.create<xilinx::AIEX::NpuWrite32Op>(
-          runtimeSeq.getLoc(), stopEventGenReg->offset, 126, nullptr,
-          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+      xilinx::AIEX::NpuWrite32Op::create(
+          builder, runtimeSeq.getLoc(), stopEventGenReg->offset, *userEvent0,
+          nullptr, builder.getI32IntegerAttr(shimCol),
+          builder.getI32IntegerAttr(0));
     }
   }
 

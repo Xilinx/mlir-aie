@@ -443,28 +443,27 @@ def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
   }];
   
   let constructor = "xilinx::AIE::createAIEInsertTraceFlowsPass()";
-  
+
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
   ];
-  
+
   let options = [
-    Option<"shimChannel", "shim-channel", "int", "1",
+    Option<"clShimChannel", "shim-channel", "int", "1",
            "S2MM DMA channel to use for trace (default: 1)">,
-    Option<"defaultBdId", "default-bd-id", "int", "15", 
+    Option<"clDefaultBdId", "default-bd-id", "int", "15",
            "Buffer descriptor ID for trace (default: 15)">,
-    Option<"packetIdStart", "packet-id-start", "int", "1",
+    Option<"clPacketIdStart", "packet-id-start", "int", "1",
            "Starting packet ID for trace flows (default: 1)">,
-    Option<"traceBufferSize", "trace-buffer-size", "int", "1048576",
+    Option<"clTraceBufferSize", "trace-buffer-size", "int", "1048576",
            "Default trace buffer size in bytes (default: 1MB)">,
-    Option<"traceBurstLength", "burst-length", "int", "64",
+    Option<"clTraceBurstLength", "burst-length", "int", "64",
            "DMA burst length for trace transfers (default: 64 bytes)">,
-    Option<"traceArgIdx", "trace-arg-idx", "int", "4",
+    Option<"clTraceArgIdx", "trace-arg-idx", "int", "4",
            "Runtime sequence argument index for trace buffer (default: 4)">,
-    Option<"minimizeShims", "minimize-shims", "bool", "true",
-           "Minimize number of shim tiles used (prefer one shim for all traces)">,
-    Option<"preferSameColumn", "prefer-same-column", "bool", "true",
-           "When choosing shim, prefer same column as trace sources">
+    Option<"clPerColumnShim", "per-column-shim", "bool", "false",
+           "Route traces to same-column shim (true) or all to column 0 (false)">
   ];
 }
 
