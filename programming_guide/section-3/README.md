@@ -116,7 +116,7 @@ void vector_scalar_mul_aie_scalar(int32_t *a, int32_t *c,
 
 Note that since the scalar factor is communicated through an object, it is provided as an array of size one to the C++ kernel code and hence needs to be dereferenced.
 
-## Host Code
+## Host Code 
 
 The host code acts as an environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution of the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data (to be covered in [section-4b](../section-4/section-4b/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants of this code are available.
 
@@ -246,6 +246,49 @@ The host code contains the following sections (with C/C++ code examples):
         }
     }
     ```
+
+## Python Host code ([test.py](./test.py))
+
+The same configuration steps in the C++ host code is also required for the python version. However, the python version is able to leverage python classes built into IRON which simplifies the is designed to abstract away the lower level parameters.
+
+1. *Parse program arguments*: Functions the same way as the C++ via the python argument parser. The parser functions under `test_utils` are defined under [aie.utils.test](../../python/utils/test.py).
+
+    ```python
+    p = test_utils.create_default_argparser()
+    opts = p.parse_args(sys.argv[1:])
+    main(opts)
+    ```
+
+1. *Read instruction sequence + Create XRT environment*: These are all part of `NPUKernel` class under [aie.utils.npukernel](../../python/utils/npukernel.py). Passing in the file name of the XCLBIN file and instruction sequence file initializes the kernel object. The runtime is then loaded with this kernel object.
+
+    ```python
+    npu_kernel = NPUKernel(opts.xclbin, opts.instr)
+    kernel_handle = aie.utils.DefaultNPURuntime.load(npu_kernel)
+    ```
+
+1. *Create XRT buffer objects*: This step is simplified with the IRON python classes where IRON tensors can be created from numpy data arrays and a datatype. These objects interacts with the NPU runtime so that the objects are properly initalized and synced.
+
+    ```python
+    ref_buffer = np.arange(1, 4096 + 1, dtype=np.int32)
+    in_buffer = iron.tensor(ref_buffer, dtype=np.int32)
+    scale_factor = 3
+    in_factor = iron.tensor([scale_factor], dtype=np.int32)
+    out = iron.zeros(4096, dtype=np.int32)
+    ref_buffer = ref_buffer * scale_factor
+    ```
+
+1. *Run on AIE and synchronize*: Execute the program, waits for it to finish, synchronizes the data buffers and returns the runtime in milliseconds.
+
+    ```python
+    npu_time = aie.utils.DefaultNPURuntime.run(kernel_handle, [in_buffer, in_factor, out])
+     ```
+
+1. *Run testbench checks*: Compare device results to reference.
+
+    ```python
+    e = np.equal(out, ref_buffer)
+    errors = errors + np.size(e) - np.count_nonzero(e)
+     ```
 
 ## Running the Program
 
