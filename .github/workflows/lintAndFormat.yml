@@ -38,7 +38,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 2
           submodules: "true"
@@ -131,7 +131,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
           submodules: "true"
@@ -224,7 +224,7 @@ jobs:
           swap-storage: false
 
       - name: Get the project repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
           submodules: "true"

@@ -94,11 +94,11 @@ jobs:
           large-packages: true
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "true"
 
-      - uses: uraimo/run-on-arch-action@v2.7.0
+      - uses: uraimo/run-on-arch-action@v3
         name: Build mlir-aie
         id: runcmd
         with:
@@ -231,7 +231,7 @@ jobs:
             ENABLE_RTTI: OFF
   
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "true"
   
