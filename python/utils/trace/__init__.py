@@ -537,6 +537,9 @@ from .setup import (
     configure_simple_tracing_aie2,
     configure_packet_ctrl_flow,
     config_ctrl_pkts_aie,
+    # New declarative trace API
+    configure_trace,
+    start_trace,
 )
 from .utils import (
     parity,

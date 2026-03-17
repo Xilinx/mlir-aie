@@ -41,6 +41,17 @@ MLIR_CAPI_EXPORTED bool aieTypeIsBlockFloatType(MlirType type);
 MLIR_CAPI_EXPORTED MlirType aieBlockFloatTypeGet(MlirContext ctx,
                                                  const std::string &blockType);
 
+//===---------------------------------------------------------------------===//
+// TileLike Interface
+//===---------------------------------------------------------------------===//
+
+MLIR_CAPI_EXPORTED bool aieOpImplementsTileLike(MlirOperation op);
+MLIR_CAPI_EXPORTED bool aieTileLikeIsCoreTile(MlirOperation op);
+MLIR_CAPI_EXPORTED bool aieTileLikeIsMemTile(MlirOperation op);
+MLIR_CAPI_EXPORTED bool aieTileLikeIsShimNOCTile(MlirOperation op);
+MLIR_CAPI_EXPORTED bool aieTileLikeIsShimPLTile(MlirOperation op);
+MLIR_CAPI_EXPORTED bool aieTileLikeIsShimNOCorPLTile(MlirOperation op);
+
 #ifdef __cplusplus
 }
 #endif

@@ -5,7 +5,21 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from aie.dialects.aie import packetflow, WireBundle
+from aie.dialects.aie import (
+    packetflow,
+    WireBundle,
+    trace,
+    trace_mode,
+    trace_event,
+    trace_packet,
+    trace_port,
+    trace_start,
+    trace_stop,
+    trace_start_config,
+    TraceMode,
+    TracePacketType,
+    DMAChannelDir,
+)
 from aie.dialects.aiex import (
     npu_write32,
     npu_writebd,
@@ -16,6 +30,7 @@ from aie.dialects.aiex import (
 from aie.dialects.aie import get_target_model
 from .events import (
     GenericEvent,
+    BasePortEvent,
     PortEvent,
     CoreEvent,
     MemEvent,
@@ -1421,3 +1436,195 @@ def config_ctrl_pkts_aie(
             direction=direction_s2mm,
             channel=channel,
         )  # output
+
+
+# ============================================================================
+# New Declarative Trace API
+# ============================================================================
+
+
+def _get_packet_type_for_tile(tile_op, is_mem_trace=False):
+    """Determine the TracePacketType based on tile type."""
+    if tile_op.is_core_tile():
+        return TracePacketType.Mem if is_mem_trace else TracePacketType.Core
+    elif tile_op.is_mem_tile():
+        return TracePacketType.MemTile
+    elif tile_op.is_shim_tile():
+        return TracePacketType.ShimTile
+    else:
+        raise ValueError(f"Unknown tile type for {tile_op}")
+
+
+def _get_default_events_for_tile(tile_op, is_mem_trace=False):
+    """Get default trace events for a tile type."""
+    if tile_op.is_core_tile():
+        if is_mem_trace:
+            # Core memory trace defaults
+            return [
+                MemEvent.DMA_S2MM_0_START_TASK,
+                MemEvent.DMA_MM2S_0_START_TASK,
+                MemEvent.CONFLICT_DM_BANK_0,
+                MemEvent.CONFLICT_DM_BANK_1,
+                MemEvent.CONFLICT_DM_BANK_2,
+                MemEvent.CONFLICT_DM_BANK_3,
+                MemEvent.EDGE_DETECTION_EVENT_0,
+                MemEvent.EDGE_DETECTION_EVENT_1,
+            ]
+        else:
+            # Core tile trace defaults
+            return [
+                CoreEvent.INSTR_EVENT_0,
+                CoreEvent.INSTR_EVENT_1,
+                CoreEvent.INSTR_VECTOR,
+                CoreEvent.MEMORY_STALL,
+                CoreEvent.STREAM_STALL,
+                CoreEvent.LOCK_STALL,
+                PortEvent(CoreEvent.PORT_RUNNING_0, 0, master=False),  # S2MM ch0
+                PortEvent(CoreEvent.PORT_RUNNING_1, 0, master=True),   # MM2S ch0
+            ]
+    elif tile_op.is_mem_tile():
+        return [
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, 0, master=False),  # S2MM ch0
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, 1, master=False),  # S2MM ch1
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, 2, master=False),  # S2MM ch2
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_3, 3, master=False),  # S2MM ch3
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, 0, master=True),   # MM2S ch0
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_5, 1, master=True),   # MM2S ch1
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, 2, master=True),   # MM2S ch2
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, 3, master=True),   # MM2S ch3
+        ]
+    elif tile_op.is_shim_tile():
+        return [
+            ShimTileEvent.DMA_S2MM_0_START_TASK,
+            ShimTileEvent.DMA_S2MM_1_START_TASK,
+            ShimTileEvent.DMA_MM2S_0_START_TASK,
+            ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+            ShimTileEvent.DMA_S2MM_1_FINISHED_TASK,
+            ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+            ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
+            ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
+        ]
+    else:
+        return []
+
+
+# Module-level storage for trace names configured by configure_trace()
+_configured_trace_names = []
+
+
+def configure_trace(
+    tiles_to_trace,
+    buffer_size=None,
+    start_broadcast=15,
+    stop_broadcast=14,
+    coretile_events=None,
+    coremem_events=None,
+    memtile_events=None,
+    shimtile_events=None,
+):
+    """Generate aie.trace ops for a list of tiles.
+
+    This function emits declarative aie.trace operations that will be lowered
+    by compiler passes to create packet flows, configure trace registers,
+    and set up shim DMAs.
+
+    Call start_trace() at the beginning of runtime_sequence to activate tracing.
+
+    Args:
+        tiles_to_trace: List of tile operations to configure tracing for.
+        buffer_size: Optional buffer size hint for trace data (in bytes).
+        start_broadcast: Broadcast channel for trace start event (default: 15).
+        stop_broadcast: Broadcast channel for trace stop event (default: 14).
+        coretile_events: List of events for core tile tracing (max 8).
+        coremem_events: List of events for core memory tracing (max 8).
+        memtile_events: List of events for mem tile tracing (max 8).
+        shimtile_events: List of events for shim tile tracing (max 8).
+    """
+    global _configured_trace_names
+    _configured_trace_names = []
+
+    if not tiles_to_trace:
+        return
+
+    packet_id = 1
+    seen_core_tiles = set()
+
+    for tile_op in tiles_to_trace:
+        # Determine if this is a core tile memory trace (second occurrence)
+        is_mem_trace = False
+        if tile_op.is_core_tile():
+            tile_key = id(tile_op)  # Use object identity for tracking
+            if tile_key in seen_core_tiles:
+                is_mem_trace = True
+            else:
+                seen_core_tiles.add(tile_key)
+
+        # Generate unique trace name based on tile type
+        if tile_op.is_core_tile():
+            trace_type = "mem" if is_mem_trace else "core"
+        elif tile_op.is_mem_tile():
+            trace_type = "memtile"
+        elif tile_op.is_shim_tile():
+            trace_type = "shim"
+        else:
+            raise ValueError(f"Unknown tile type for tracing: {tile_op}")
+
+        trace_name = f"trace_{trace_type}_{packet_id}"
+
+        # Get events for this tile type
+        if tile_op.is_core_tile():
+            events = coremem_events if is_mem_trace else coretile_events
+            if events is None:
+                events = _get_default_events_for_tile(tile_op, is_mem_trace)
+        elif tile_op.is_mem_tile():
+            events = memtile_events
+            if events is None:
+                events = _get_default_events_for_tile(tile_op)
+        elif tile_op.is_shim_tile():
+            events = shimtile_events
+            if events is None:
+                events = _get_default_events_for_tile(tile_op)
+        else:
+            raise ValueError(f"Unknown tile type for tracing: {tile_op}")
+
+        # Get packet type
+        packet_type = _get_packet_type_for_tile(tile_op, is_mem_trace)
+        is_core_trace = tile_op.is_core_tile() and not is_mem_trace
+
+        # Generate the aie.trace op using a helper to create proper closure
+        def make_trace_body(events, pkt_id, pkt_type, is_core, start_bc, stop_bc):
+            @trace(tile_op, trace_name, buffer_size=buffer_size)
+            def trace_body():
+                # trace_mode only applies to core tile's core trace (not mem trace)
+                if is_core:
+                    trace_mode(TraceMode.EventTime)
+                trace_packet(pkt_id, pkt_type)
+
+                # Emit trace events and port configs (max 8 per trace unit)
+                for event in events[:8]:
+                    trace_event(event)
+
+                    # If it's a PortEvent, also emit trace_port
+                    if isinstance(event, BasePortEvent):
+                        direction = DMAChannelDir.MM2S if event.master else DMAChannelDir.S2MM
+                        trace_port(event.event_number, WireBundle.DMA, event.port_number, direction)
+
+                # Configure start/stop events using broadcast
+                trace_start(broadcast=start_bc)
+                trace_stop(broadcast=stop_bc)
+
+        make_trace_body(events, packet_id, packet_type, is_core_trace, start_broadcast, stop_broadcast)
+        _configured_trace_names.append(trace_name)
+        packet_id += 1
+
+
+def start_trace():
+    """Emit aie.trace.start_config ops to activate tracing.
+
+    This function should be called at the start of a runtime_sequence context
+    to activate tracing. It emits start_config ops for all traces configured
+    by the most recent configure_trace() call.
+    """
+    for trace_name in _configured_trace_names:
+        trace_start_config(trace_name)
+
