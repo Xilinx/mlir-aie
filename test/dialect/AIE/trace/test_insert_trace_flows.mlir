@@ -239,6 +239,35 @@ module @shimtile {
 // -----
 
 //===----------------------------------------------------------------------===//
+// Test: Shim tile trace with broadcast (destination shim being traced)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: module @shimtile_broadcast
+// CHECK: aie.runtime_sequence
+// CHECK: aiex.npu.writebd
+// Shim timer configured with USER_EVENT_1 (value 32512 = 127 << 8) in 4f
+// CHECK: aiex.npu.write32 {address = 212992{{.*}}value = 32512
+// CHECK: aie.packet_flow(1)
+// CHECK: aie.packet_source<%shim_noc_tile_0_0, Trace : 0>
+module @shimtile_broadcast {
+  aie.device(npu1_1col) {
+    %tile00 = aie.tile(0, 0)
+
+    aie.trace @shim_trace(%tile00) {
+      aie.trace.packet id=1 type=shimtile
+      aie.trace.event<"DMA_S2MM_0_START_TASK">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.start_config @shim_trace
+    }
+  }
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // Test: buffer_size attribute on trace op
 //===----------------------------------------------------------------------===//
 

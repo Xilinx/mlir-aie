@@ -318,10 +318,8 @@ struct AIEInsertTraceFlowsPass
     }
 
     // 4b. Insert per-tile timer controls
-    // Only configure timer sync for tiles that use broadcast-based start.
-    // Tiles with event-based start (e.g., shim tiles using TRUE) skip this.
-    // Key includes isMemTrace because core and mem modules have different
-    // timer control registers.
+    // Configure timer sync for tiles using broadcast-based start.
+    // Destination shim tiles are configured in 4f with USER_EVENT_1 directly.
     std::set<std::tuple<int, int, bool>>
         processedTiles; // (col, row, isMemTrace)
     for (auto &info : traceInfos) {
@@ -336,6 +334,18 @@ struct AIEInsertTraceFlowsPass
       if (processedTiles.count({col, row, isMemTrace}))
         continue;
       processedTiles.insert({col, row, isMemTrace});
+
+      // Skip destination shim tiles - configured in 4f with USER_EVENT_1.
+      // When the destination shim is also being traced with broadcast start/stop,
+      // its timer control should use USER_EVENT_1 directly (configured in 4f),
+      // not the broadcast event (which would be redundant self-listening).
+      if (info.tile.isShimTile()) {
+        auto shimIt = shimInfos.find(col);
+        if (shimIt != shimInfos.end() &&
+            shimIt->second.shimTile.getTileID() == info.tile.getTileID()) {
+          continue;
+        }
+      }
 
       // Compute timer control address
       uint32_t timerCtrlAddr =
