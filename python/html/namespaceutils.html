@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;f2273a1ce59ce2a149cbc413409f8c8dc0c1cc7b</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;252fb7c911ce7cdbb2e35a280118e807d550ea48</span>
    </div>
   </td>
  </tr>
@@ -90,6 +90,10 @@ Namespaces</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:a63a2026f44d862f498bc28e7375c8045" id="r_a63a2026f44d862f498bc28e7375c8045"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a63a2026f44d862f498bc28e7375c8045">_cell_val_to_key</a> (val)</td></tr>
+<tr class="separator:a63a2026f44d862f498bc28e7375c8045"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae7d580bd9e502c780a79274d30a2fa65" id="r_ae7d580bd9e502c780a79274d30a2fa65"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#ae7d580bd9e502c780a79274d30a2fa65">_closure_key</a> (fn)</td></tr>
+<tr class="separator:ae7d580bd9e502c780a79274d30a2fa65"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afa46d2a2909ba63b9e05041456e01174" id="r_afa46d2a2909ba63b9e05041456e01174"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#afa46d2a2909ba63b9e05041456e01174">_try_acquire_lock</a> (lock_file)</td></tr>
 <tr class="separator:afa46d2a2909ba63b9e05041456e01174"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a706dcb75be873d16f0ac021169c08d4d" id="r_a706dcb75be873d16f0ac021169c08d4d"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a706dcb75be873d16f0ac021169c08d4d">_release_lock</a> (lock_file)</td></tr>
@@ -137,7 +141,7 @@ Variables</h2></td></tr>
 <tr class="separator:add9c44a330fabce2249506eed58872ac"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><pre class="fragment">Tensor factories, device helpers, and re-exports for the IRON runtime.</pre> </div><h2 class="groupheader">Function Documentation</h2>
+<div class="textblock"><pre class="fragment">Cache key utilities and file locking for the JIT compilation cache.</pre><pre class="fragment">Tensor factories, device helpers, and re-exports for the IRON runtime.</pre> </div><h2 class="groupheader">Function Documentation</h2>
 <a id="a400c67767648db59d132ef8d4d4aab7c" name="a400c67767648db59d132ef8d4d4aab7c"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a400c67767648db59d132ef8d4d4aab7c">&#9670;&#160;</a></span>__getattr__()</h2>
 
@@ -154,6 +158,68 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
+</div>
+</div>
+<a id="a63a2026f44d862f498bc28e7375c8045" name="a63a2026f44d862f498bc28e7375c8045"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a63a2026f44d862f498bc28e7375c8045">&#9670;&#160;</a></span>_cell_val_to_key()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils._cell_val_to_key </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>val</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Convert a closure cell value to a stable, hashable key component.
+
+Tries value-based hash first (for types with a proper __hash__), then
+pickle (to capture full object state for mutable objects), then pickle
+of __dict__ (for locally-defined classes), and finally repr as a fallback.
+</pre> 
+</div>
+</div>
+<a id="ae7d580bd9e502c780a79274d30a2fa65" name="ae7d580bd9e502c780a79274d30a2fa65"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae7d580bd9e502c780a79274d30a2fa65">&#9670;&#160;</a></span>_closure_key()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils._closure_key </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>fn</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Return a hashable representation of a callable's closure cell contents.
+
+Uses _cell_val_to_key so that mutable objects (including those with no
+custom __eq__ / __hash__ / __repr__) produce distinct keys when their
+state changes.
+</pre> 
 </div>
 </div>
 <a id="acb53d4eefbc892f63cef3714083d6133" name="acb53d4eefbc892f63cef3714083d6133"></a>
@@ -195,11 +261,7 @@ Variables</h2></td></tr>
   </tr>
 </table>
 </div><div class="memdoc">
-<pre class="fragment">Create a cache key for a function call based on function name and argument types/shapes.
-This allows us to cache compiled kernels at the function level.
-Note that it is not necessary that we cache the tensor shapes since the kernel may be agonstic
-to the shape changes but we are doing here for safety.
-</pre> 
+<pre class="fragment">Create a cache key for a function call based on function name and argument types/shapes.</pre> 
 </div>
 </div>
 <a id="a52658c3883acb3a04c33a9c533751c53" name="a52658c3883acb3a04c33a9c533751c53"></a>
