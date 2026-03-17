@@ -28,7 +28,7 @@ from aie.utils.config import cxx_header_path
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit()
+@iron.jit
 def my_memcpy(input0, output):
     # --------------------------------------------------------------------------
     # Configuration

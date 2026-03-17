@@ -20,7 +20,7 @@ from aie.utils.config import cxx_header_path
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit()
+@iron.jit
 def saxpy(input0, input1, output):
     N = input0.shape[0]  # Tensor size
     element_type = output.dtype

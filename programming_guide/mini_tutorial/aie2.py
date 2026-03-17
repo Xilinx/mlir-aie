@@ -27,7 +27,7 @@ tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit()
+@iron.jit
 def aie2p(input0, output):
     # Dataflow with ObjectFifos
     # ObjectFifos represent a dataflow connection between endpoints in the AIE array.

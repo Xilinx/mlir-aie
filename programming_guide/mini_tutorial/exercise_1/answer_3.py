@@ -15,7 +15,7 @@ from aie.iron.placers import SequentialPlacer
 import aie.iron as iron
 
 
-@iron.jit()
+@iron.jit
 def exercise_1(input0, output):
     data_size = output.numel()
     element_type = output.dtype
