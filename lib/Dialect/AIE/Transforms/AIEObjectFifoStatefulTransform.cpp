@@ -1726,8 +1726,6 @@ struct AIEObjectFifoStatefulTransformPass
         });
 
     if (maxAcquire > 0) {
-      if (maxAcquire == 1 && objFifo.size() == 1)
-        return 1;
       return maxAcquire + 1;
       // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
       // for prefetching: simplest case scenario is at least a ping-pong buffer
