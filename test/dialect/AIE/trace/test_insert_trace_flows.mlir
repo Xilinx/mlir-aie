@@ -27,6 +27,8 @@ module @shim_create {
     aie.trace @core_trace(%tile02) {
       aie.trace.packet id=1 type=core
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @core_trace
@@ -52,10 +54,14 @@ module @multiple_traces {
     aie.trace @trace1(%tile02) {
       aie.trace.packet id=1 type=core
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.trace @trace2(%tile03) {
       aie.trace.packet id=2 type=core
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @trace1
@@ -83,9 +89,13 @@ module @auto_packet_id {
     // No packet id specified - auto-allocate
     aie.trace @trace1(%tile02) {
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.trace @trace2(%tile03) {
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @trace1
@@ -114,9 +124,13 @@ module @auto_packet_type {
 
     aie.trace @core_trace(%tile02) {
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.trace @memtile_trace(%tile01) {
       aie.trace.event<"DMA_S2MM_0_START_TASK">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @core_trace
@@ -148,10 +162,14 @@ module @core_and_mem {
     aie.trace @core_trace(%tile02) {
       aie.trace.packet id=1 type=core
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.trace @mem_trace(%tile02) {
       aie.trace.packet id=2 type=mem
       aie.trace.event<"DMA_S2MM_0_START_TASK">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @core_trace
@@ -183,6 +201,8 @@ module @memtile {
     aie.trace @memtile_trace(%tile01) {
       aie.trace.packet id=1 type=memtile
       aie.trace.event<"DMA_S2MM_0_START_TASK">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @memtile_trace
@@ -207,6 +227,8 @@ module @shimtile {
     aie.trace @shim_trace(%tile00) {
       aie.trace.packet id=1 type=shimtile
       aie.trace.event<"DMA_S2MM_0_START_TASK">
+      aie.trace.start event=<"TRUE">
+      aie.trace.stop event=<"NONE">
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @shim_trace
@@ -230,6 +252,8 @@ module @buffer_size_attr {
     aie.trace @core_trace(%tile02) buffer_size = 8192 {
       aie.trace.packet id=1 type=core
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @core_trace

@@ -31,6 +31,8 @@ module @options_single {
 
     aie.trace @core_trace(%tile02) {
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @core_trace
@@ -65,10 +67,14 @@ module @multi_column {
     aie.trace @trace_col0(%tile02) {
       aie.trace.packet id=1 type=core
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.trace @trace_col1(%tile12) {
       aie.trace.packet id=2 type=core
       aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.start_config @trace_col0

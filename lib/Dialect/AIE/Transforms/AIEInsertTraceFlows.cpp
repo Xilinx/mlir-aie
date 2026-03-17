@@ -34,8 +34,10 @@ struct TraceInfo {
   TileOp tile;
   int packetId;
   TracePacketType packetType;
-  WireBundle tracePort; // Trace:0 (core) or Trace:1 (mem)
-  int traceChannel;     // Port number (0 for core, 1 for mem)
+  WireBundle tracePort;              // Trace:0 (core) or Trace:1 (mem)
+  int traceChannel;                  // Port number (0 for core, 1 for mem)
+  std::optional<int> startBroadcast; // Broadcast channel for timer sync (if any)
+  std::optional<int> stopBroadcast;  // Broadcast channel for trace stop (if any)
 };
 
 struct ShimInfo {
@@ -44,6 +46,8 @@ struct ShimInfo {
   int bdId;                            // Buffer descriptor ID
   int argIdx;                          // Runtime sequence argument index
   std::vector<TraceInfo> traceSources; // All traces routed to this shim
+  std::optional<int> startBroadcast;   // Broadcast to trigger for start
+  std::optional<int> stopBroadcast;    // Broadcast to trigger for stop
 };
 
 struct AIEInsertTraceFlowsPass
@@ -114,6 +118,34 @@ struct AIEInsertTraceFlowsPass
         traceChannel = 1; // Mem trace uses port 1
       }
 
+      // Find start/stop configuration (broadcast or event)
+      std::optional<int> startBroadcast;
+      std::optional<int> stopBroadcast;
+      bool hasStartConfig = false;
+      bool hasStopConfig = false;
+      for (auto &op : trace.getBody().getOps()) {
+        if (auto startOp = dyn_cast<TraceStartEventOp>(op)) {
+          hasStartConfig = true;
+          if (startOp.getBroadcast())
+            startBroadcast = *startOp.getBroadcast();
+        }
+        if (auto stopOp = dyn_cast<TraceStopEventOp>(op)) {
+          hasStopConfig = true;
+          if (stopOp.getBroadcast())
+            stopBroadcast = *stopOp.getBroadcast();
+        }
+      }
+
+      // Require explicit start/stop configuration
+      if (!hasStartConfig) {
+        trace.emitError() << "trace is missing 'aie.trace.start'";
+        return signalPassFailure();
+      }
+      if (!hasStopConfig) {
+        trace.emitError() << "trace is missing 'aie.trace.stop'";
+        return signalPassFailure();
+      }
+
       TraceInfo info;
       info.traceOp = trace;
       info.tile = tile;
@@ -121,6 +153,8 @@ struct AIEInsertTraceFlowsPass
       info.packetType = *packetType;
       info.tracePort = tracePort;
       info.traceChannel = traceChannel;
+      info.startBroadcast = startBroadcast;
+      info.stopBroadcast = stopBroadcast;
       traceInfos.push_back(info);
     }
 
@@ -161,6 +195,13 @@ struct AIEInsertTraceFlowsPass
         shimInfo.bdId = clDefaultBdId;
         shimInfo.argIdx = nextArgIdx++;
         shimInfo.traceSources = colTraces;
+        // Collect broadcast channels from traces that use them
+        for (auto &trace : colTraces) {
+          if (trace.startBroadcast && !shimInfo.startBroadcast)
+            shimInfo.startBroadcast = trace.startBroadcast;
+          if (trace.stopBroadcast && !shimInfo.stopBroadcast)
+            shimInfo.stopBroadcast = trace.stopBroadcast;
+        }
         shimInfos[col] = shimInfo;
       }
     } else {
@@ -185,6 +226,13 @@ struct AIEInsertTraceFlowsPass
       shimInfo.bdId = clDefaultBdId;
       shimInfo.argIdx = clTraceArgIdx;
       shimInfo.traceSources = traceInfos;
+      // Collect broadcast channels from traces that use them
+      for (auto &trace : traceInfos) {
+        if (trace.startBroadcast && !shimInfo.startBroadcast)
+          shimInfo.startBroadcast = trace.startBroadcast;
+        if (trace.stopBroadcast && !shimInfo.stopBroadcast)
+          shimInfo.stopBroadcast = trace.stopBroadcast;
+      }
 
       // Map all source columns to the single shim
       for (auto &info : traceInfos) {
@@ -269,13 +317,15 @@ struct AIEInsertTraceFlowsPass
     }
 
     // 4b. Insert per-tile timer controls
+    // Only configure timer sync for tiles that use broadcast-based start.
+    // Tiles with event-based start (e.g., shim tiles using TRUE) skip this.
     // Key includes isMemTrace because core and mem modules have different
     // timer control registers.
     std::set<std::tuple<int, int, bool>>
         processedTiles; // (col, row, isMemTrace)
     for (auto &info : traceInfos) {
-      // Shim tiles don't use BROADCAST_15 for timer sync
-      if (info.tile.isShimTile())
+      // Skip if no broadcast channel specified (e.g., using event=<"TRUE">)
+      if (!info.startBroadcast)
         continue;
 
       int col = info.tile.getCol();
@@ -290,12 +340,23 @@ struct AIEInsertTraceFlowsPass
       uint32_t timerCtrlAddr =
           computeTimerCtrlAddress(info.tile, targetModel, isMemTrace);
 
-      // Look up BROADCAST_15 event value from target model
-      auto broadcast15Event = targetModel.lookupEvent(
-          "BROADCAST_15", info.tile.getTileID(), isMemTrace);
-      if (!broadcast15Event)
-        llvm::report_fatal_error("Failed to lookup BROADCAST_15 event");
-      uint32_t timerCtrlValue = *broadcast15Event << 8;
+      // Build broadcast event name based on tile type
+      // Shim tiles use BROADCAST_A_N, core/mem tiles use BROADCAST_N
+      std::string broadcastEventName;
+      if (info.tile.isShimTile()) {
+        broadcastEventName = "BROADCAST_A_" + std::to_string(*info.startBroadcast);
+      } else {
+        broadcastEventName = "BROADCAST_" + std::to_string(*info.startBroadcast);
+      }
+
+      auto broadcastEvent = targetModel.lookupEvent(
+          broadcastEventName, info.tile.getTileID(), isMemTrace);
+      if (!broadcastEvent) {
+        info.traceOp.emitError()
+            << "Failed to lookup broadcast event '" << broadcastEventName << "'";
+        return signalPassFailure();
+      }
+      uint32_t timerCtrlValue = *broadcastEvent << 8;
 
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, nullptr,
@@ -364,68 +425,78 @@ struct AIEInsertTraceFlowsPass
           builder, runtimeSeq.getLoc(), taskQueueAddr, bdIdWithToken, nullptr,
           builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
 
-      // 4f. Shim timer and broadcast control
-      // Look up USER_EVENT_1 from target model
-      auto userEvent1 = targetModel.lookupEvent(
-          "USER_EVENT_1", shimInfo.shimTile.getTileID(), false);
-      if (!userEvent1)
-        llvm::report_fatal_error("Failed to lookup USER_EVENT_1 event");
+      // 4f. Shim timer and broadcast control (only if start broadcast is used)
+      if (shimInfo.startBroadcast) {
+        // Look up USER_EVENT_1 from target model (trigger event)
+        auto userEvent1 = targetModel.lookupEvent(
+            "USER_EVENT_1", shimInfo.shimTile.getTileID(), false);
+        if (!userEvent1)
+          llvm::report_fatal_error("Failed to lookup USER_EVENT_1 event");
 
-      uint32_t shimTimerCtrlAddr =
-          computeTimerCtrlAddress(shimInfo.shimTile, targetModel, false);
-      xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, *userEvent1 << 8,
-          nullptr, builder.getI32IntegerAttr(shimCol),
-          builder.getI32IntegerAttr(0));
+        uint32_t shimTimerCtrlAddr =
+            computeTimerCtrlAddress(shimInfo.shimTile, targetModel, false);
+        xilinx::AIEX::NpuWrite32Op::create(
+            builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, *userEvent1 << 8,
+            nullptr, builder.getI32IntegerAttr(shimCol),
+            builder.getI32IntegerAttr(0));
 
-      // Trigger broadcast (Event_Broadcast15_A)
-      const RegisterInfo *broadcast15Reg = targetModel.lookupRegister(
-          "Event_Broadcast15_A", shimInfo.shimTile.getTileID());
-      if (!broadcast15Reg)
-        llvm::report_fatal_error(
-            "Failed to lookup Event_Broadcast15_A register");
-      xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), broadcast15Reg->offset, *userEvent1,
-          nullptr, builder.getI32IntegerAttr(shimCol),
-          builder.getI32IntegerAttr(0));
+        // Configure broadcast register with USER_EVENT_1
+        std::string broadcastRegName =
+            "Event_Broadcast" + std::to_string(*shimInfo.startBroadcast) + "_A";
+        const RegisterInfo *broadcastReg = targetModel.lookupRegister(
+            broadcastRegName, shimInfo.shimTile.getTileID());
+        if (!broadcastReg)
+          llvm::report_fatal_error(
+              llvm::Twine("Failed to lookup ") + broadcastRegName);
+        xilinx::AIEX::NpuWrite32Op::create(
+            builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent1,
+            nullptr, builder.getI32IntegerAttr(shimCol),
+            builder.getI32IntegerAttr(0));
 
-      // Generate USER_EVENT_1
-      const RegisterInfo *eventGenReg = targetModel.lookupRegister(
-          "Event_Generate", shimInfo.shimTile.getTileID());
-      if (!eventGenReg)
-        llvm::report_fatal_error("Failed to lookup Event_Generate register");
-      xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), eventGenReg->offset, *userEvent1,
-          nullptr, builder.getI32IntegerAttr(shimCol),
-          builder.getI32IntegerAttr(0));
+        // Generate USER_EVENT_1 to trigger the broadcast
+        const RegisterInfo *eventGenReg = targetModel.lookupRegister(
+            "Event_Generate", shimInfo.shimTile.getTileID());
+        if (!eventGenReg)
+          llvm::report_fatal_error("Failed to lookup Event_Generate register");
+        xilinx::AIEX::NpuWrite32Op::create(
+            builder, runtimeSeq.getLoc(), eventGenReg->offset, *userEvent1,
+            nullptr, builder.getI32IntegerAttr(shimCol),
+            builder.getI32IntegerAttr(0));
+      }
     }
 
     // Phase 4g: Insert trace stop/flush at the END of runtime sequence
     // Trace stop must happen AFTER all data DMA tasks complete so that
     // the trace captures events during the entire kernel execution.
+    // Only needed if stop broadcast is used.
     builder.setInsertionPointToEnd(&seqBlock);
 
     for (auto &[col, shimInfo] : shimInfos) {
+      if (!shimInfo.stopBroadcast)
+        continue;
+
       int shimCol = shimInfo.shimTile.getCol();
 
-      // Look up USER_EVENT_0 from target model
+      // Look up USER_EVENT_0 from target model (stop trigger event)
       auto userEvent0 = targetModel.lookupEvent(
           "USER_EVENT_0", shimInfo.shimTile.getTileID(), false);
       if (!userEvent0)
         llvm::report_fatal_error("Failed to lookup USER_EVENT_0 event");
 
-      // Configure broadcast 14 to forward USER_EVENT_0
-      const RegisterInfo *broadcast14Reg = targetModel.lookupRegister(
-          "Event_Broadcast14_A", shimInfo.shimTile.getTileID());
-      if (!broadcast14Reg)
+      // Configure broadcast register with USER_EVENT_0
+      std::string broadcastRegName =
+          "Event_Broadcast" + std::to_string(*shimInfo.stopBroadcast) + "_A";
+      const RegisterInfo *broadcastReg = targetModel.lookupRegister(
+          broadcastRegName, shimInfo.shimTile.getTileID());
+      if (!broadcastReg)
         llvm::report_fatal_error(
-            "Failed to lookup Event_Broadcast14_A register");
+            llvm::Twine("Failed to lookup ") + broadcastRegName);
       xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), broadcast14Reg->offset, *userEvent0,
+          builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent0,
           nullptr, builder.getI32IntegerAttr(shimCol),
           builder.getI32IntegerAttr(0));
 
-      // Generate USER_EVENT_0 to trigger broadcast 14 (trace stop event)
+      // Generate USER_EVENT_0 to trigger the stop broadcast
       const RegisterInfo *stopEventGenReg = targetModel.lookupRegister(
           "Event_Generate", shimInfo.shimTile.getTileID());
       if (!stopEventGenReg)
