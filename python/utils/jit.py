@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""JIT decorator for compiling and running IRON-decorated functions on the NPU."""
 
 import os
 import functools
@@ -19,7 +20,6 @@ from .compile.cache.circular_cache import CircularCache
 from .compile.cache.utils import _create_function_cache_key, file_lock
 from .compile import NPU_CACHE_HOME
 from .compile.utils import _cleanup_failed_compilation
-from aie.iron.kernel import ExternalFunction, Kernel
 
 # Global cache for compiled kernels at the function level
 # Key: (function_name, args_signature) -> NPUKernel instance
@@ -45,6 +45,7 @@ def jit(function=None, is_placed=True, use_cache=True):
     @functools.wraps(function)
     def decorator(*args, **kwargs):
         from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
+        from aie.iron.kernel import ExternalFunction
         from . import DefaultNPURuntime
 
         if DefaultNPURuntime is None:
@@ -52,22 +53,24 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         trace_config = kwargs.get("trace_config")
 
-        # TODO: Functions referencing variables from outside its scope have stale cache
-        # issue if the variable is updated after the first run. For now we skip caching
-        # if we detect closures.
-        has_closures = any(_has_closure(arg) for arg in args) or any(
-            _has_closure(v) for v in kwargs.values()
-        )
-        effective_use_cache = use_cache and not has_closures
+        # Strip compile-time-only kwargs that must not be forwarded to the NPU
+        # kernel at runtime (e.g. trace_config is consumed by NPUKernel.__init__).
+        runtime_kwargs = {k: v for k, v in kwargs.items() if k != "trace_config"}
+
+        effective_use_cache = use_cache
 
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
         if effective_use_cache and cache_key in _compiled_kernels:
             cached_kernel = _compiled_kernels[cache_key]
+            if cached_kernel is None:
+                raise RuntimeError(
+                    f"Cached kernel for '{function.__name__}' is None; this is a bug."
+                )
             # Filter out non-tensor arguments (ExternalFunction, scalars)
             # Only tensor args should be passed to the kernel
             tensor_args = _filter_tensor_args(args)
-            return cached_kernel(*tensor_args, **kwargs)
+            return cached_kernel(*tensor_args, **runtime_kwargs)
 
         # Collect ExternalFunction instances that need JIT compilation.
         # Note: bare Kernel instances (pre-compiled .o) are intentionally
@@ -164,10 +167,10 @@ def jit(function=None, is_placed=True, use_cache=True):
                         xclbin_path=xclbin_path,
                         work_dir=kernel_dir,
                     )
-                except Exception as e:
+                except Exception:
                     # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
                     _cleanup_failed_compilation(kernel_dir)
-                    raise e
+                    raise
 
         kernel = NPUKernel(
             xclbin_path,
@@ -181,7 +184,7 @@ def jit(function=None, is_placed=True, use_cache=True):
         # Filter out non-tensor arguments (ExternalFunction, scalars) before calling kernel
         # Only tensor args should be passed to the kernel
         tensor_args = _filter_tensor_args(args)
-        kernel(*tensor_args)
+        kernel(*tensor_args, **runtime_kwargs)
 
     return decorator
 
@@ -199,6 +202,8 @@ def _filter_tensor_args(args):
     - Scalar values (int, float, np.integer, np.floating) used as MLIR constants
     - Callables (e.g. lambda configuration helpers)
     """
+    from aie.iron.kernel import ExternalFunction, Kernel
+
     tensor_args = []
     for arg in args:
         # Skip any kernel handle (Kernel, ExternalFunction, or subclasses)
@@ -213,16 +218,6 @@ def _filter_tensor_args(args):
         tensor_args.append(arg)
 
     return tensor_args
-
-
-def _has_closure(arg):
-    """Check if a callable has non-empty closures (captured variables)."""
-    return (
-        callable(arg)
-        and hasattr(arg, "__closure__")
-        and arg.__closure__ is not None
-        and len(arg.__closure__) > 0
-    )
 
 
 def hash_module(module, external_kernels=None, target_arch=None):
@@ -241,11 +236,9 @@ def hash_module(module, external_kernels=None, target_arch=None):
 
     # Include ExternalFunction compiler options and source code in the hash
     if external_kernels:
-        running_hash = ""
-        for func in external_kernels:
-            running_hash += str(hash(func))
-
-        combined_str = mlir_str + "|" + "|".join(running_hash)
+        combined_str = (
+            mlir_str + "|" + "|".join(sorted(str(hash(f)) for f in external_kernels))
+        )
     else:
         combined_str = mlir_str
 

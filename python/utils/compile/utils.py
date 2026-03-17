@@ -5,10 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""Low-level helpers for compiling MLIR modules and external C++ kernels to NPU artifacts."""
+
 import logging
 import os
 import shutil
 import subprocess
+from pathlib import Path
 import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 
@@ -77,33 +80,24 @@ def compile_cxx_core_function(
 
 def compile_mlir_module(
     mlir_module: str,
-    insts_path: str | None = None,
-    pdi_path: str | None = None,
-    xclbin_path: str | None = None,
+    insts_path: str | Path | None = None,
+    pdi_path: str | Path | None = None,
+    xclbin_path: str | Path | None = None,
     verbose=False,
-    work_dir: str | None = None,
+    work_dir: str | Path | None = None,
     options=None,
 ):
     """
-    Compile an MLIR module to instruction, PDI, and/or xclbin files using aiecc.
-
-    By default uses the Peano compiler backend (--no-xchesscc --no-xbridge).
-    Pass additional flags via ``options`` to override.
-
-    When ``work_dir`` is provided, the MLIR is written to a file inside that
-    directory so that the C++ aiecc binary resolves relative ``link_with``
-    paths on ``func.func`` declarations against the same directory where
-    ``compile_external_kernel`` placed the compiled object files.
-
-    Args:
-        mlir_module: MLIR module to compile.
-        insts_path: Output path for the NPU instruction binary.
-        pdi_path: Output path for the PDI file.
-        xclbin_path: Output path for the xclbin package.
-        verbose: If True, pass --verbose to aiecc.
-        work_dir: Compilation working directory; also determines where the
-            MLIR input file is written when invoking the C++ aiecc binary.
-        options: Additional aiecc command-line options.
+    Compile an MLIR module to instruction, PDI, and/or xclbin files using the aiecc module.
+    This function supports only the Peano compiler.
+    Parameters:
+        mlir_module (str): MLIR module to compile.
+        insts_path (str): Path to the instructions binary file.
+        pdi_path (str): Path to the PDI file.
+        xclbin_path (str): Path to the xclbin file.
+        verbose (bool): If True, enable verbose output.
+        work_dir (str): Compilation working directory.
+        options (list[str]): List of additional options.
     """
 
     args = [
@@ -193,10 +187,11 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     elif func._source_file is not None:
         # Use source_file (copy existing file)
         # Check if source file exists before copying
-        if os.path.exists(func._source_file):
-            shutil.copy2(func._source_file, source_file)
-        else:
-            return
+        if not os.path.exists(func._source_file):
+            raise FileNotFoundError(
+                f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
+            )
+        shutil.copy2(func._source_file, source_file)
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 

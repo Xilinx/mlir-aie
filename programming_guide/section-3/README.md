@@ -36,7 +36,7 @@ The compute core will run an external function: a kernel written in C++ that wil
 
 ```python
 tensor_size = 4096
-tile_size = data_size // 4
+tile_size = tensor_size // 4
 
 # Define tensor types
 tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int32]]
@@ -96,7 +96,7 @@ def core_fn(of_in, of_factor, of_out, scale_scalar):
 
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [of_in1.cons(), of_factor.cons() of_out1.prod(), scale_fn])
+my_worker = Worker(core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn])
 ```
 
 ## Kernel Code
@@ -104,7 +104,7 @@ my_worker = Worker(core_fn, [of_in1.cons(), of_factor.cons() of_out1.prod(), sca
 We can program the AIE compute core using C++ code and compile it with the selected single-core AIE compiler into a kernel object file. For our local version of vector scalar multiply, we will use a generic implementation of the `scale.cc` source (called [vector_scalar_mul.cc](./vector_scalar_mul.cc)) that can run on the scalar processor part of the AIE. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
 
 ```c
-void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
+void vector_scalar_mul_aie_scalar(int32_t *a, int32_t *c,
                                   int32_t *factor, int32_t N) {
   for (int i = 0; i < N; i++) {
     c[i] = *factor * a[i];
@@ -116,7 +116,7 @@ void vector_scalar_mul_aie_scalar(int32_t *a_in, int32_t *c_out,
 
 Note that since the scalar factor is communicated through an object, it is provided as an array of size one to the C++ kernel code and hence needs to be dereferenced.
 
-## Host Code
+## Host Code 
 
 The host code acts as an environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution of the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data (to be covered in [section-4b](../section-4/section-4b/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants of this code are available.
 
@@ -187,7 +187,7 @@ The host code contains the following sections (with C/C++ code examples):
 
 1. *Initialize and synchronize*: host to device XRT buffer objects.
 
-    Here, we iniitliaze the values of our host buffer objects (including output) and call `sync` to synchronize that data to the device buffer object accessed by the kernel.
+    Here, we initialize the values of our host buffer objects (including output) and call `sync` to synchronize that data to the device buffer object accessed by the kernel.
 
     ```c
     // Copy instruction stream to xrt buffer object
@@ -247,6 +247,49 @@ The host code contains the following sections (with C/C++ code examples):
     }
     ```
 
+## Python Host code ([test.py](./test.py))
+
+The same configuration steps in the C++ host code is also required for the python version. However, the python version is able to leverage python classes built into IRON which simplifies the is designed to abstract away the lower level parameters.
+
+1. *Parse program arguments*: Functions the same way as the C++ via the python argument parser. The parser functions under `test_utils` are defined under [aie.utils.test](../../python/utils/test.py).
+
+    ```python
+    p = test_utils.create_default_argparser()
+    opts = p.parse_args(sys.argv[1:])
+    main(opts)
+    ```
+
+1. *Read instruction sequence + Create XRT environment*: These are all part of `NPUKernel` class under [aie.utils.npukernel](../../python/utils/npukernel.py). Passing in the file name of the XCLBIN file and instruction sequence file initializes the kernel object. The runtime is then loaded with this kernel object.
+
+    ```python
+    npu_kernel = NPUKernel(opts.xclbin, opts.instr)
+    kernel_handle = aie.utils.DefaultNPURuntime.load(npu_kernel)
+    ```
+
+1. *Create XRT buffer objects*: This step is simplified with the IRON python classes where IRON tensors can be created from numpy data arrays and a datatype. These objects interacts with the NPU runtime so that the objects are properly initalized and synced.
+
+    ```python
+    ref_buffer = np.arange(1, 4096 + 1, dtype=np.int32)
+    in_buffer = iron.tensor(ref_buffer, dtype=np.int32)
+    scale_factor = 3
+    in_factor = iron.tensor([scale_factor], dtype=np.int32)
+    out = iron.zeros(4096, dtype=np.int32)
+    ref_buffer = ref_buffer * scale_factor
+    ```
+
+1. *Run on AIE and synchronize*: Execute the program, waits for it to finish, synchronizes the data buffers and returns the runtime in milliseconds.
+
+    ```python
+    npu_time = aie.utils.DefaultNPURuntime.run(kernel_handle, [in_buffer, in_factor, out])
+     ```
+
+1. *Run testbench checks*: Compare device results to reference.
+
+    ```python
+    e = np.equal(out, ref_buffer)
+    errors = errors + np.size(e) - np.count_nonzero(e)
+     ```
+
 ## Running the Program
 
 To compile the design and C/C++ host code:
@@ -281,7 +324,7 @@ Because our design is defined in several different files such as:
 * kernel source - vector_scalar_mul.cc
 * host code - test.cpp/test.py
 
-ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. To help with this, we will share example design templates in [section-4b](../section4/section-4b) which puts these top level parameters in the `Makefile` and passes them to the other design files. More details will be described in [section-4b](../section-4/section-4b) or can be directly seen in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
+ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. To help with this, we will share example design templates in [section-4b](../section-4/section-4b) which puts these top level parameters in the `Makefile` and passes them to the other design files. More details will be described in [section-4b](../section-4/section-4b) or can be directly seen in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
 
 -----
 [[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]

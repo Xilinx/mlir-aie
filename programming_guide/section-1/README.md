@@ -41,7 +41,7 @@ class Worker(ObjectFifoEndpoint):
 ```
 In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a data buffer and initializes each entry to zero. The compute routine in this case has no inputs other than a handle to the buffer. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
-buffer = LocalBuffer(data_ty, name="buff")
+buffer = Buffer(data_ty, name="buff")
 
 # Task for the worker to perform
 def core_fn(buff):
@@ -94,11 +94,11 @@ Then we declare a structural design function that will expand into MLIR code whe
 def mlir_aie_design():
     <... AI Engine device, blocks, and connections ...>
 ```
-Let's look at how we declare the AI Engine device, blocks, and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu1_1col)` or `@device(AIEDevice.npu2)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which are AIE compute tiles in this first example.
+Let's look at how we declare the AI Engine device, blocks, and connections. We start off by declaring our AIE device via `@device(AIEDevice.npu1)` or `@device(AIEDevice.npu2)`. The blocks and connections themselves will then be declared inside the `def device_body():`. Here, we instantiate our AI Engine blocks, which are AIE compute tiles in this first example.
 
 The arguments for the tile declaration are the tile coordinates (column, row). We assign each declared tile to a variable in our Python program.
 
-> **NOTE:**  The actual tile coordinates used on the device when the program is run may deviate from the ones declared here. For example, on the NPU on Ryzen™ AI (`@device(AIEDevice.npu)`), these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column during runtime.
+> **NOTE:**  The actual tile coordinates used on the device when the program is run may deviate from the ones declared here. For example, on the NPU on Ryzen™ AI (`@device(AIEDevice.npu1)`), these coordinates tend to be relative coordinates as the runtime scheduler may assign it to a different available column during runtime.
 
 ```python
     # Device declaration - here using aie2 device NPU

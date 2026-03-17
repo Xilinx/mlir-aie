@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""``for_each``: apply a function in-place over a tiled tensor on an AIE core."""
+
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
@@ -27,10 +29,14 @@ def for_each(func, tensor, *params, tile_size=16):
                  array types are transferred via ObjectFifos.
         tile_size: Size of each tile processed by a worker (default: 16)
 
-    Example:
-        # kernel has separate in/out tile buffers, but only pass one tensor in
+    Example::
+
+        # kernel has separate in/out tile buffers, but only one tensor is passed
         scale = ExternalFunction("scale", arg_types=[tile_ty, tile_ty, scalar_ty, np.int32], ...)
-        for_each(scale, tensor, factor, tile_size)
+        for_each(scale, tensor, factor, tile_size=16)
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module ready for execution.
     """
     is_external_func = isinstance(func, iron.ExternalFunction)
     num_elements = np.size(tensor)

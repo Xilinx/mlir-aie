@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""Host runtime utilities: device selection, tensor allocation, and numerical helpers."""
+
 from typing import TYPE_CHECKING
 from ml_dtypes import bfloat16
 import numpy as np

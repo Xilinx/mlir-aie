@@ -373,9 +373,7 @@ static SmallVector<Value> collapseInnerMostDimIndices(PatternRewriter &b,
                                                       ValueRange indices,
                                                       ArrayRef<int64_t> shape,
                                                       AffineMap layout) {
-  // TODO: Don't assume trivial layout
-  assert(layout.isMinorIdentity() &&
-         "dimension collapse in non-identity layout is not implemented");
+  (void)layout; // Layout is verified by callers; index computation uses shape.
   auto newIdxExpr = b.getAffineDimExpr(numDims - 1);
   int64_t stride = 1;
   for (int64_t dim = numDims - 2; dim >= 0; dim--) {
@@ -402,17 +400,36 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
                                             1, std::multiplies<>());
   SmallVector<int64_t, 4> newShape{shape.begin(), shape.end() - numDims + 1};
   newShape[shape.size() - numDims] = newInnerMostDim;
-  auto newNumDims = newShape.size();
-  auto *ctx = b.getContext();
-  auto newMemRefTy = MemRefType::get(
-      newShape, memRefTy.getElementType(),
-      AffineMap::getMinorIdentityMap(newNumDims, newNumDims, ctx),
-      memRefTy.getMemorySpace());
   auto reassocIndices =
       getReassociationIndicesForCollapse(shape, newShape).value();
+  // Let CollapseShapeOp::inferResultType compute the correct result type,
+  // which preserves strided layout and dynamic offset from the source.
+  auto newMemRefTy =
+      memref::CollapseShapeOp::computeCollapsedType(memRefTy, reassocIndices);
   return memref::CollapseShapeOp::create(b, loc, newMemRefTy, val,
                                          reassocIndices)
       .getResult();
+}
+
+/// Check if a memref has contiguous row-major strides (each stride equals the
+/// product of trailing dimensions). Dynamic strides are accepted when the
+/// corresponding dimension size is 1. Memrefs with dynamic offsets are fine.
+static bool hasContiguousRowMajorStrides(MemRefType memRefTy) {
+  SmallVector<int64_t> strides;
+  int64_t offset;
+  if (failed(memRefTy.getStridesAndOffset(strides, offset)))
+    return false;
+  auto shape = memRefTy.getShape();
+  int64_t expected = 1;
+  for (int i = shape.size() - 1; i >= 0; --i) {
+    if (strides[i] != ShapedType::kDynamic && strides[i] != expected)
+      return false;
+    if (shape[i] != ShapedType::kDynamic)
+      expected *= shape[i];
+    else
+      expected = ShapedType::kDynamic;
+  }
+  return true;
 }
 
 // This pattern flatten multidimensional `vector.transfer_read` operations
@@ -443,6 +460,9 @@ struct FlattenMultDimTransferReadPattern
         VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
                                          std::multiplies<>())},
                         vectorTy.getElementType());
+    if (!hasContiguousRowMajorStrides(memRefTy))
+      return failure();
+
     AffineMap layout = memRefTy.getLayout().getAffineMap();
     auto newIndices =
         collapseInnerMostDimIndices(rewriter, readOp.getLoc(), vecShape.size(),
@@ -496,6 +516,9 @@ struct FlattenMultDimTransferWritePattern
       return failure();
     auto memRefShape = memRefTy.getShape();
     auto vecShape = vectorTy.getShape();
+
+    if (!hasContiguousRowMajorStrides(memRefTy))
+      return failure();
 
     auto newVectorTy =
         VectorType::get({std::accumulate(vecShape.begin(), vecShape.end(), 1,
@@ -888,17 +911,6 @@ static Value smartTruncF32ToBF16(PatternRewriter &rewriter, Location loc,
   return arith::TruncFOp::create(rewriter, loc, bf16Type, val);
 }
 
-// Smart truncation for scalar values (used by reduction patterns).
-static Value smartTruncScalarF32ToBF16(PatternRewriter &rewriter, Location loc,
-                                       Value val) {
-  Type bf16Ty = rewriter.getBF16Type();
-  if (auto extfOp = val.getDefiningOp<arith::ExtFOp>()) {
-    if (extfOp.getIn().getType() == bf16Ty)
-      return extfOp.getIn();
-  }
-  return arith::TruncFOp::create(rewriter, loc, bf16Ty, val);
-}
-
 /// Pattern to emulate f32 binary vector arithmetic ops in bf16.
 /// For an op like: %r = arith.addf %a, %b : vector<16xf32>
 /// Produces:
@@ -1043,39 +1055,6 @@ struct EmulateUnaryF32InBF16Pattern : public OpRewritePattern<OpTy> {
   }
 };
 
-/// Pattern to emulate f32 vector.reduction in bf16.
-struct EmulateReductionF32InBF16Pattern
-    : public OpRewritePattern<vector::ReductionOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(vector::ReductionOp op,
-                                PatternRewriter &rewriter) const override {
-    if (!op.getType().isF32())
-      return failure();
-    auto vectorType = dyn_cast<VectorType>(op.getVector().getType());
-    if (!vectorType || !vectorType.getElementType().isF32())
-      return failure();
-
-    Location loc = op.getLoc();
-    auto bf16VecType =
-        VectorType::get(vectorType.getShape(), rewriter.getBF16Type());
-
-    Value vectorBF16 =
-        smartTruncF32ToBF16(rewriter, loc, op.getVector(), bf16VecType);
-
-    Value accBF16 = nullptr;
-    if (op.getAcc())
-      accBF16 = smartTruncScalarF32ToBF16(rewriter, loc, op.getAcc());
-
-    Value newResult = vector::ReductionOp::create(rewriter, loc, op.getKind(),
-                                                  vectorBF16, accBF16);
-    auto extOp =
-        arith::ExtFOp::create(rewriter, loc, rewriter.getF32Type(), newResult);
-    rewriter.replaceOp(op, extOp);
-    return success();
-  }
-};
-
 struct BF16EmulationPass
     : public PassWrapper<BF16EmulationPass, OperationPass<>> {
 
@@ -1094,10 +1073,12 @@ struct BF16EmulationPass
     // Note: arith.divf is NOT demoted because bf16 vector divf is unsupported
     // on all AIE targets (Peano does not legalize G_FDIV on <16 x s16>).
 
-    // Special-case ops
+    // Special-case ops (excluding ReductionOp — its scalar accumulator
+    // and result lower to fp_to_bf16/bf16_to_fp which older Peano versions
+    // cannot select on AIE2P; reductions are intentionally left in f32
+    // to avoid these scalar bf16 conversions)
     patterns.add<EmulateCmpFF32InBF16Pattern, EmulateSelectF32InBF16Pattern,
-                 EmulateFMAF32InBF16Pattern, EmulateReductionF32InBF16Pattern>(
-        context);
+                 EmulateFMAF32InBF16Pattern>(context);
 
     // Unary ops
     patterns.add<EmulateUnaryF32InBF16Pattern<arith::NegFOp>>(context);
