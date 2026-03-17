@@ -59,6 +59,9 @@ def vector_reduce_max(input0, output):
     else:
         of_a_offsets = [0]
 
+    # split() distributes one large ObjectFIFO into n_cores smaller ones,
+    # each starting at the given offset. See programming_guide/section-2/section-2b/
+    # for more detail on ObjectFIFO distribute and join patterns.
     in_fifos = of_in.cons().split(
         of_a_offsets,
         obj_types=[op_ty] * n_cores,
@@ -93,7 +96,10 @@ def vector_reduce_max(input0, output):
         include_dirs=[cxx_header_path()],
     )
 
-    def start_core_body(of_in, of_out, reduce_fn, nextC_buffer, tmp_buffer):
+    # final_core_body: runs on the last core in the cascade. This core does not
+    # read results from a downstream neighbor — it is the terminal node that
+    # writes the final maximum value to the output ObjectFIFO.
+    def final_core_body(of_in, of_out, reduce_fn, nextC_buffer, tmp_buffer):
         elem_out = of_out.acquire(1)
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
@@ -141,7 +147,7 @@ def vector_reduce_max(input0, output):
         else:
             workers.append(
                 Worker(
-                    start_core_body,
+                    final_core_body,
                     fn_args=[
                         in_fifos[i].cons(),
                         out_fifos[i].prod(),
@@ -177,7 +183,9 @@ def main():
     out_size = 4
     element_type = bfloat16
 
-    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
+    assert (
+        out_size == 4
+    ), "Output buffer must be size 4 (4 bytes = 2 bfloat16 elements)."
 
     in_tensor_size = in_size // element_type(0).nbytes
     out_tensor_size = out_size // element_type(0).nbytes
@@ -191,8 +199,9 @@ def main():
     # to the kernel will use the same compiled kernel and loaded code objects
     vector_reduce_max(input0, output)
 
-    # Check the correctness of the result and print
-    ref_max = 0
+    # Check the correctness of the result and print.
+    # Initialize to -inf so the reference is correct for all-negative inputs.
+    ref_max = bfloat16(float("-inf"))
     for i in input0:
         if i > ref_max:
             ref_max = i

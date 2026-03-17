@@ -150,8 +150,9 @@ def test_hash_module_different_mlir_text_differ(mlir_module_add1, mlir_module_ad
 def test_compile_external_kernel_missing_source_file_raises(npu_target_arch):
     """FileNotFoundError must be raised when source_file does not exist.
 
-    ExternalFunction reads source_file at construction time (for hashing), so
-    the error fires in __init__ before compile_external_kernel is even called.
+    ExternalFunction construction succeeds (source_file is stored but not read
+    until hash time). The FileNotFoundError is raised inside
+    compile_external_kernel when it checks that the file exists before copying.
     """
     with tempfile.TemporaryDirectory() as kernel_dir:
         with pytest.raises(FileNotFoundError):
@@ -184,13 +185,11 @@ def test_compile_external_kernel_source_file(npu_target_arch):
     ):
         src = os.path.join(src_dir, "my_kernel.cc")
         with open(src, "w") as f:
-            f.write(
-                """extern "C" {
+            f.write("""extern "C" {
                 void my_kernel(int* a, int* b, int n) {
                     for (int i = 0; i < n; i++) b[i] = a[i] + 1;
                 }
-            }"""
-            )
+            }""")
 
         func = ExternalFunction("my_kernel", source_file=src)
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
@@ -232,7 +231,7 @@ def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):
         source_string='extern "C" void add_one() {}',
     )
     with tempfile.TemporaryDirectory() as kernel_dir:
-        obj = os.path.join(kernel_dir, func.bin_name)
+        obj = os.path.join(kernel_dir, func.object_file_name)
         with open(obj, "wb") as f:
             f.write(b"placeholder")
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)

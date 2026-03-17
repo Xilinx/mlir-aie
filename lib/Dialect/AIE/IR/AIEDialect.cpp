@@ -1741,6 +1741,10 @@ LogicalResult CoreOp::verify() {
           "(consist of exactly one `aie.end` op).");
     }
   }
+  if (getLinkWith() && getLinkFiles())
+    return emitOpError(
+        "cannot specify both 'link_with' (deprecated) and 'link_files' "
+        "on the same core; run aie-assign-core-link-files to migrate");
   return success();
 }
 

@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""JIT decorator for compiling and running IRON-decorated functions on the NPU."""
 
 import os
 import functools
@@ -56,28 +57,40 @@ def jit(function=None, use_cache=True):
 
         trace_config = kwargs.get("trace_config")
 
+        # Strip compile-time-only kwargs that must not be forwarded to the NPU
+        # kernel at runtime (e.g. trace_config is consumed by NPUKernel.__init__).
+        runtime_kwargs = {k: v for k, v in kwargs.items() if k != "trace_config"}
+
         effective_use_cache = use_cache
 
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
         if effective_use_cache and cache_key in _compiled_kernels:
             cached_kernel = _compiled_kernels[cache_key]
+            if cached_kernel is None:
+                raise RuntimeError(
+                    f"Cached kernel for '{function.__name__}' is None; this is a bug."
+                )
             # Filter out non-tensor arguments (ExternalFunction, scalars)
             # Only tensor args should be passed to the kernel
             tensor_args = _filter_tensor_args(args)
-            return cached_kernel(*tensor_args, **kwargs)
+            return cached_kernel(*tensor_args, **runtime_kwargs)
 
-        # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
+        # Collect ExternalFunction instances that need JIT compilation.
+        # Note: bare Kernel instances (pre-compiled .o) are intentionally
+        # excluded here — they require no compilation step. Both Kernel and
+        # ExternalFunction are stripped from the tensor args passed to the NPU
+        # kernel (see _filter_tensor_args).
+        # ExternalFunction.__init__ registers to _instances at construction time
+        # (before this JIT call), so they must be captured before the clear below.
+        external_kernels = [
+            arg for arg in args if isinstance(arg, ExternalFunction)
+        ] + [v for v in kwargs.values() if isinstance(v, ExternalFunction)]
+        seen = set(id(k) for k in external_kernels)
+
+        # Clear stale instances from previous (possibly failed) runs so that a
+        # broken kernel doesn't prevent a corrected one from being recompiled.
         ExternalFunction._instances.clear()
-
-        # Find ExternalFunction instances in arguments and kwargs
-        external_kernels = []
-        for arg in args:
-            if isinstance(arg, ExternalFunction):
-                external_kernels.append(arg)
-        for value in kwargs.values():
-            if isinstance(value, ExternalFunction):
-                external_kernels.append(value)
 
         # Execute the function to generate MLIR.
         # Always wrap in mlir_mod_ctx so that placed-style functions (which
@@ -96,14 +109,13 @@ def jit(function=None, use_cache=True):
             # Unplaced style: function returned the module directly.
             mlir_module = result
 
-        # Compile all ExternalFunction instances that were created during this JIT compilation
+        # Also collect ExternalFunction instances created during function()
+        # execution (e.g. inside algorithm helpers that construct them internally).
         for func in ExternalFunction._instances:
-            if (
-                not hasattr(func, "_compiled") or not func._compiled
-            ):  # Don't compile if already compiled
+            if not func._compiled and id(func) not in seen:
                 external_kernels.append(func)
+                seen.add(id(func))
 
-        # Determine target architecture based on device type
         current_device = DefaultNPURuntime.device()
 
         # Determine target architecture based on device type
@@ -154,10 +166,10 @@ def jit(function=None, use_cache=True):
                         xclbin_path=xclbin_path,
                         work_dir=kernel_dir,
                     )
-                except Exception as e:
+                except Exception:
                     # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
                     _cleanup_failed_compilation(kernel_dir)
-                    raise e
+                    raise
 
         kernel = NPUKernel(
             xclbin_path,
@@ -171,27 +183,30 @@ def jit(function=None, use_cache=True):
         # Filter out non-tensor arguments (ExternalFunction, scalars) before calling kernel
         # Only tensor args should be passed to the kernel
         tensor_args = _filter_tensor_args(args)
-        kernel(*tensor_args)
+        kernel(*tensor_args, **runtime_kwargs)
 
     return decorator
 
 
 def _filter_tensor_args(args):
     """
-    Filter out non-tensor arguments from args. Required for Algorithms because
-    they pass ExternalFunction and scalar values in their signature that should
-    not be interpreted as runtime sequence arguments.
+    Filter out non-tensor arguments from args.
+
+    Algorithm functions may include Kernel/ExternalFunction instances and scalar
+    compile-time constants in their Python signature that must not be forwarded
+    to the NPU kernel as runtime buffer arguments.
 
     Removes:
-    - ExternalFunction instances
-    - Scalar values (int, float, np.integer, np.floating), embedded as MLIR constants
+    - Kernel and ExternalFunction instances (resolved at compile time via link_with)
+    - Scalar values (int, float, np.integer, np.floating) used as MLIR constants
+    - Callables (e.g. lambda configuration helpers)
     """
-    from aie.iron.kernel import ExternalFunction
+    from aie.iron.kernel import ExternalFunction, Kernel
 
     tensor_args = []
     for arg in args:
-        # Skip ExternalFunction
-        if isinstance(arg, ExternalFunction):
+        # Skip any kernel handle (Kernel, ExternalFunction, or subclasses)
+        if isinstance(arg, Kernel):
             continue
         # Skip scalar types (MLIR constants)
         if isinstance(arg, (int, float, np.integer, np.floating)):
@@ -220,7 +235,9 @@ def hash_module(module, external_kernels=None, target_arch=None):
 
     # Include ExternalFunction compiler options and source code in the hash
     if external_kernels:
-        combined_str = mlir_str + "|" + "|".join(str(hash(f)) for f in external_kernels)
+        combined_str = (
+            mlir_str + "|" + "|".join(sorted(str(hash(f)) for f in external_kernels))
+        )
     else:
         combined_str = mlir_str
 

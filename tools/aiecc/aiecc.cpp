@@ -117,8 +117,6 @@
 #include <thread>
 #include <vector>
 
-#include "aiecc_aiesim.h"
-
 using namespace llvm;
 using namespace mlir;
 
@@ -384,6 +382,12 @@ static cl::opt<bool> unified(
 static cl::opt<bool> noUnified(
     "no-unified",
     cl::desc("Compile cores independently in separate processes (default)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> bf16Emulation(
+    "bf16-emulation",
+    cl::desc("Emulate f32 vector arithmetic using bf16 operations in "
+             "convert-vector-to-aievec"),
     cl::init(false), cl::cat(aieCompilerOptions));
 
 // Backward compatibility flags (no-ops in C++ aiecc)
@@ -1080,14 +1084,22 @@ static std::string getAIETargetForDevice(ModuleOp moduleOp,
 // AIE Device and Core Discovery
 //===----------------------------------------------------------------------===//
 
+/// Per-core metadata extracted from a CoreOp before the compilation pipeline
+/// begins.  All fields are populated by getCoreInfo().
 struct CoreInfo {
-  std::int32_t col;
-  std::int32_t row;
-  std::string linkWith; // External object files to link
-  std::string elfFile;  // Generated ELF path (if already specified)
+  std::int32_t col = 0; ///< Tile column (from TileOp).
+  std::int32_t row = 0; ///< Tile row (from TileOp).
+  /// External object files to link into this core's ELF.  Populated from
+  /// CoreOp::getLinkFiles() (canonical) or CoreOp::getLinkWith() (deprecated
+  /// fallback when aie-assign-core-link-files was not run).
+  SmallVector<std::string> linkFiles;
+  /// If non-empty, the ELF was provided via the elf_file attribute; no
+  /// compilation is needed.
+  std::string elfFile;
 };
 
-/// Check if a CoreOp has a non-empty body (more than just aie.end).
+/// Returns true if the CoreOp has a non-empty body (i.e., anything beyond the
+/// mandatory aie.end terminator).
 static bool coreHasNonemptyBody(xilinx::AIE::CoreOp coreOp) {
   for (auto &block : coreOp.getBody()) {
     if (block.getOperations().size() > 1)
@@ -1096,7 +1108,20 @@ static bool coreHasNonemptyBody(xilinx::AIE::CoreOp coreOp) {
   return false;
 }
 
-// Helper to extract core info from a CoreOp
+/// Returns true if a CoreOp requires compilation or linking.
+///
+/// Skips hollow cores created by --expand-load-pdis (empty body, no elf_file,
+/// no link files), which exist only to satisfy structural constraints.
+static bool coreNeedsCompilation(xilinx::AIE::CoreOp coreOp) {
+  return coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
+         coreOp.getLinkFiles() || coreHasNonemptyBody(coreOp);
+}
+
+/// Extracts tile coordinates and link-file metadata from a CoreOp.
+///
+/// Prefers the canonical link_files attribute (set by
+/// aie-assign-core-link-files). Falls back to the deprecated core-level
+/// link_with attribute if link_files is absent (e.g., the pass was not run).
 static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
   CoreInfo info;
   auto tileOp = dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
@@ -1105,8 +1130,15 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
     info.row = tileOp.getRow();
   }
 
-  if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
-    info.linkWith = linkWithAttr.getValue().str();
+  // Prefer canonical link_files ArrayAttr (populated by AIEAssignCoreLinkFiles,
+  // which runs as part of the resource-allocation pipeline).
+  if (auto filesAttr = coreOp.getLinkFiles()) {
+    for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+      info.linkFiles.push_back(f.getValue().str());
+  } else if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
+    // Fallback: deprecated core-level link_with was not migrated by the pass
+    // (e.g., pipeline was not run). Treat it as a single-element list.
+    info.linkFiles.push_back(linkWithAttr.getValue().str());
   }
 
   if (auto elfAttr = coreOp.getElfFileAttr()) {
@@ -1345,7 +1377,8 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
       lowerTarget == "aie2p") {
     std::string vecPipeline =
         "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        " target-backend=llvmir}";
+        " target-backend=llvmir" +
+        (bf16Emulation ? " bf16-emulation=true" : "") + "}";
     if (failed(parsePassPipeline(vecPipeline, pm))) {
       llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
                       "pipeline\n";
@@ -1395,6 +1428,9 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   xilinx::AIE::AIEAssignBufferAddressesOptions bufferOpts;
   bufferOpts.clAllocScheme = allocScheme.getValue();
   devicePm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
+
+  // Infer per-core link_files from func-level link_with attributes
+  devicePm.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
 
   devicePm.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
@@ -1453,8 +1489,10 @@ static LogicalResult runRoutingPipeline(ModuleOp moduleOp,
   return success();
 }
 
-// Forward declaration
+// Forward declarations
 static void assignPdiIds(ModuleOp moduleOp);
+static void assignPdiIds(ModuleOp moduleOp,
+                         const std::map<std::string, int> &pdiIdMapping);
 
 /// Run the NPU lowering pipeline in-memory using PassManager.
 /// This replaces the subprocess call to aie-opt with direct API calls.
@@ -1801,6 +1839,46 @@ static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
   return success();
 }
 
+/// Copy \p src to \p destDir / \p destBasename atomically by writing to a
+/// sibling temp file first, then renaming.  On POSIX, rename(2) is atomic
+/// within the same filesystem, so parallel compilations sharing the same
+/// destination filename do not corrupt each other's copy.
+static LogicalResult atomicCopyFile(StringRef src, StringRef destDir,
+                                    StringRef destBasename) {
+  SmallString<256> dest(destDir);
+  sys::path::append(dest, destBasename);
+
+  // Write to a sibling temp file in destDir, then rename atomically.
+  // Keeping the temp in the same directory ensures they share a filesystem,
+  // so rename(2) is never cross-device (no EXDEV failure).
+  SmallString<256> tmpModel(destDir);
+  SmallString<64> tmpFilename;
+  tmpFilename += sys::path::stem(destBasename);
+  tmpFilename += "-%%%%%%";
+  tmpFilename += sys::path::extension(destBasename);
+  sys::path::append(tmpModel, tmpFilename);
+  SmallString<256> tmpPath;
+  if (sys::fs::createUniqueFile(tmpModel, tmpPath)) {
+    llvm::errs() << "Error: could not create temp file in " << destDir << "\n";
+    return failure();
+  }
+
+  if (std::error_code ec = sys::fs::copy_file(src, tmpPath)) {
+    llvm::errs() << "Error: could not copy " << src << " to " << tmpPath << ": "
+                 << ec.message() << "\n";
+    sys::fs::remove(tmpPath);
+    return failure();
+  }
+
+  if (std::error_code ec = sys::fs::rename(tmpPath, dest)) {
+    llvm::errs() << "Error: could not rename " << tmpPath << " to " << dest
+                 << ": " << ec.message() << "\n";
+    sys::fs::remove(tmpPath);
+    return failure();
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Core Compilation
 //===----------------------------------------------------------------------===//
@@ -1809,6 +1887,66 @@ struct CoreCompilationResult {
   std::string elfPath;
   bool success;
 };
+
+/// Downgrade LLVM IR for Peano compatibility.
+/// Strips LLVM 23+ features that Peano 19's opt/llc can't parse:
+/// - 'nuw' flag on getelementptr (LLVM 23 feature)
+/// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
+static std::string downgradeIRForPeano(StringRef ir) {
+  std::string result = ir.str();
+  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds'
+  const std::string nuwFrom = "getelementptr inbounds nuw";
+  const std::string nuwTo = "getelementptr inbounds";
+  size_t pos = 0;
+  while ((pos = result.find(nuwFrom, pos)) != std::string::npos) {
+    result.erase(pos + nuwTo.size(), nuwFrom.size() - nuwTo.size());
+    pos += nuwTo.size();
+  }
+  // Strip 'nocreateundeforpoison' and any trailing whitespace
+  const std::string nocreate = "nocreateundeforpoison";
+  pos = 0;
+  while ((pos = result.find(nocreate, pos)) != std::string::npos) {
+    size_t end = pos + nocreate.size();
+    while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
+      ++end;
+    result.erase(pos, end - pos);
+  }
+  // Strip ', align <N>' attributes (matches old Python
+  // drop_alignment_for_peano)
+  const std::string alignPat = ", align ";
+  pos = 0;
+  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
+    size_t end = pos + alignPat.size();
+    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
+      ++end;
+    if (end > pos + alignPat.size())
+      result.erase(pos, end - pos);
+    else
+      pos = end;
+  }
+  return result;
+}
+
+/// Apply peanohack: read LLVM IR, downgrade for Peano, write to output path.
+static LogicalResult applyPeanoHack(StringRef inputPath, StringRef outputPath) {
+  auto bufOrErr = llvm::MemoryBuffer::getFile(inputPath);
+  if (!bufOrErr) {
+    std::lock_guard<std::mutex> lock(outputMutex);
+    llvm::errs() << "Error reading LLVM IR for peanohack: "
+                 << bufOrErr.getError().message() << "\n";
+    return failure();
+  }
+  std::string hacked = downgradeIRForPeano((*bufOrErr)->getBuffer());
+  std::error_code ec;
+  llvm::raw_fd_ostream out(outputPath, ec);
+  if (ec) {
+    std::lock_guard<std::mutex> lock(outputMutex);
+    llvm::errs() << "Error writing peanohack file: " << ec.message() << "\n";
+    return failure();
+  }
+  out << hacked;
+  return success();
+}
 
 static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                  StringRef deviceName, const CoreInfo &core,
@@ -1899,7 +2037,32 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                       std::to_string(core.row) + ".ld.script");
 
   if (!xbridge) {
-    // Generate linker script to file using the original (unmodified) module
+    // Clone the pre-lowering module for ldscript generation.  We need a
+    // separate clone here because coreModule will be destructively lowered to
+    // LLVM IR by runLLVMLoweringPipeline below, making it unsuitable for
+    // AIETranslateToLdScript.  We also cannot mutate the shared moduleOp
+    // (data race with parallel core threads), so this per-thread clone is the
+    // correct place to rewrite link_files to absolute paths.
+    OwningOpRef<ModuleOp> ldScriptModule = moduleOp.clone();
+    ldScriptModule->walk([&](xilinx::AIE::CoreOp coreOp) {
+      auto tileOp =
+          dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+      if (!tileOp || tileOp.getCol() != core.col || tileOp.getRow() != core.row)
+        return;
+      if (auto filesAttr = coreOp.getLinkFiles()) {
+        SmallVector<mlir::Attribute> absFiles;
+        for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+          SmallString<256> absPath(tmpDirName);
+          sys::path::append(absPath, sys::path::filename(f.getValue()));
+          absFiles.push_back(
+              mlir::StringAttr::get(ldScriptModule->getContext(), absPath));
+        }
+        coreOp.setLinkFilesAttr(
+            mlir::ArrayAttr::get(ldScriptModule->getContext(), absFiles));
+      }
+    });
+
+    // Generate linker script from the pre-lowering clone with absolute paths.
     std::error_code ec;
     raw_fd_ostream ldScriptFile(ldScriptPath, ec);
     if (ec) {
@@ -1910,7 +2073,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (failed(xilinx::AIE::AIETranslateToLdScript(
-            moduleOp, ldScriptFile, core.col, core.row, deviceName))) {
+            *ldScriptModule, ldScriptFile, core.col, core.row, deviceName))) {
       std::lock_guard<std::mutex> lock(outputMutex);
       llvm::errs() << "Error generating linker script\n";
       return failure();
@@ -2032,21 +2195,32 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Run opt
+    // Apply peanohack to downgrade IR for Peano compatibility
+    SmallString<128> peanohackPath(tmpDirName);
+    sys::path::append(peanohackPath,
+                      deviceName.str() + "_core_" + std::to_string(core.col) +
+                          "_" + std::to_string(core.row) + ".peanohack.ll");
+    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+      return failure();
+
+    // Run opt on peanohacked IR.
+    // Cap opt level at O1 for Peano to match old Python aiecc behavior.
+    // Higher levels cause SLP vectorizer to create types that crash GlobalISel.
     SmallString<128> optPath(tmpDirName);
     sys::path::append(optPath, deviceName.str() + "_core_" +
                                    std::to_string(core.col) + "_" +
                                    std::to_string(core.row) + ".opt.ll");
 
+    unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
     std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optCmd = {peanoOpt,
-                                           "--passes=default<O" + optLevelStr +
-                                               ">,strip",
-                                           "-inline-threshold=10",
-                                           "-S",
-                                           std::string(llvmIRPath),
-                                           "-o",
-                                           std::string(optPath)};
+    SmallVector<std::string, 12> optCmd = {
+        peanoOpt,
+        "--passes=default<O" + std::to_string(safeOptLevel) + ">",
+        "-inline-threshold=10",
+        "-S",
+        std::string(peanohackPath),
+        "-o",
+        std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -2146,11 +2320,10 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       llvm::outs() << "Generated BCF: " << bcfPath << "\n";
     }
 
-    // Extract link_with files from BCF
+    // Extract external object files listed in the BCF's _include _file
+    // directives. Search order: current working directory, then tmpDirName (JIT
+    // cache), then the directory containing the input MLIR file.
     std::vector<std::string> linkWithFiles = extractInputFilesFromBCF(bcfPath);
-
-    // Handle link_with files: copy to .prj directory if needed
-    // Search order: current working directory, then input file directory
     std::string linkWithArgs;
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> srcPath;
@@ -2183,30 +2356,19 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         }
       }
 
-      // Copy to .prj directory
+      // Copy to .prj directory atomically to avoid races between parallel
+      // cores.
       SmallString<256> destPath(tmpDirName);
       sys::path::append(destPath, sys::path::filename(linkWithFile));
-
-      if (srcPath == destPath) {
-        if (verbose) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "link_with file already in place: " << srcPath
-                       << "\n";
-        }
-      } else {
-        sys::fs::remove(destPath);
-        std::error_code ec = sys::fs::copy_file(srcPath, destPath);
-        if (ec) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::errs() << "Error: Could not copy link_with file: " << srcPath
-                       << " to " << destPath << ": " << ec.message() << "\n";
+      if (srcPath != destPath) {
+        if (failed(atomicCopyFile(srcPath, tmpDirName,
+                                  sys::path::filename(linkWithFile))))
           return failure();
-        }
 
         if (verbose) {
           std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
-                       << "\n";
+          llvm::outs() << "Copied external object: " << srcPath << " -> "
+                       << destPath << "\n";
         }
       }
 
@@ -2236,7 +2398,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         std::string(workDir), "-d",           "-f",
         std::string(objPath)};
 
-    // Add link_with files if any
+    // Append external object files (previously copied to tmpDirName) to the
+    // xchesscc_wrapper link command.
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> localPath(tmpDirName);
       sys::path::append(localPath, sys::path::filename(linkWithFile));
@@ -2299,29 +2462,25 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     linkCmd.push_back(std::string(objPath));
 
-    // Handle external object file if link_with attribute is specified
-    // The linker script generated by aie-translate will include an INPUT()
-    // directive for the link_with file, but it uses a relative path.
-    // We need to copy the file to the .prj directory so the linker can find it.
-    if (!core.linkWith.empty()) {
-      // Resolve the link_with path - check multiple locations:
-      // 1. If absolute, use as-is
-      // 2. Relative to current working directory (common for test cases)
-      // 3. Relative to input file directory (common for installed examples)
+    // Handle external object files specified via link_files (or deprecated
+    // link_with).  The linker script generated by aie-translate will include an
+    // INPUT() directive for each file, but uses a relative path.  We copy every
+    // file to the .prj directory so the linker can find them.
+    for (const auto &lf : core.linkFiles) {
       SmallString<256> srcLinkWith;
-      if (sys::path::is_absolute(core.linkWith)) {
-        srcLinkWith = core.linkWith;
+      if (sys::path::is_absolute(lf)) {
+        srcLinkWith = lf;
       } else {
         // First try current working directory
         SmallString<256> cwdPath;
         sys::fs::current_path(cwdPath);
-        sys::path::append(cwdPath, core.linkWith);
+        sys::path::append(cwdPath, lf);
         if (sys::fs::exists(cwdPath)) {
           srcLinkWith = cwdPath;
         } else {
           // Try tmpDirName (used in JIT where .o is pre-compiled there)
           SmallString<256> tmpPath(tmpDirName);
-          sys::path::append(tmpPath, core.linkWith);
+          sys::path::append(tmpPath, lf);
           if (sys::fs::exists(tmpPath)) {
             srcLinkWith = tmpPath;
           } else {
@@ -2332,45 +2491,35 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
               sys::fs::current_path(inputDir);
             }
             srcLinkWith = inputDir;
-            sys::path::append(srcLinkWith, core.linkWith);
+            sys::path::append(srcLinkWith, lf);
             sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
           }
         }
       }
 
       // Copy the object file to the .prj directory so the linker script's
-      // INPUT() directive can find it
+      // INPUT() directive can find it. Copy atomically to avoid races between
+      // parallel cores that share the same .o filename.
       SmallString<256> destLinkWith(tmpDirName);
-      sys::path::append(destLinkWith, sys::path::filename(core.linkWith));
-
-      if (srcLinkWith == destLinkWith) {
-        if (verbose) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "link_with file already in place: " << srcLinkWith
-                       << "\n";
-        }
-      } else {
-        // Remove destination file first if it exists (to ensure overwrite)
-        sys::fs::remove(destLinkWith);
-
-        std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
-        if (ec) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::errs() << "Error: Could not copy link_with file: "
-                       << srcLinkWith << " to " << destLinkWith << "\n";
-          llvm::errs() << "Error: " << ec.message() << "\n";
+      sys::path::append(destLinkWith, sys::path::filename(lf));
+      if (srcLinkWith != destLinkWith) {
+        if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
+                                  sys::path::filename(lf))))
           return failure();
-        }
 
         if (verbose) {
           std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
+          llvm::outs() << "Copied external object: " << srcLinkWith << " -> "
                        << destLinkWith << "\n";
         }
+      } else if (verbose) {
+        std::lock_guard<std::mutex> lock(outputMutex);
+        llvm::outs() << "External object already in place: " << srcLinkWith
+                     << "\n";
       }
 
-      // Note: We don't add the object file to linkStrs because the linker
-      // script already has an INPUT() directive for it
+      // Note: We don't add the object file to linkCmd because the linker
+      // script already has INPUT() directives for each file
     }
 
     // Make linker script path absolute
@@ -2430,12 +2579,8 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
 
   SmallVector<CoreInfo> cores;
   deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    // Skip cores with no elf_file, no link_with, and empty body
-    // (e.g., @empty device ops created by --expand-load-pdis)
-    if (coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
-        coreHasNonemptyBody(coreOp)) {
+    if (coreNeedsCompilation(coreOp))
       cores.push_back(getCoreInfo(coreOp));
-    }
   });
 
   if (cores.empty()) {
@@ -2603,12 +2748,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
   SmallVector<CoreInfo> cores;
   deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    // Skip cores with no elf_file, no link_with, and empty body
-    // (e.g., @empty device ops created by --expand-load-pdis)
-    if (coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
-        coreHasNonemptyBody(coreOp)) {
+    if (coreNeedsCompilation(coreOp))
       cores.push_back(getCoreInfo(coreOp));
-    }
   });
 
   if (cores.empty()) {
@@ -2753,43 +2894,28 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack (strip debug info for compatibility)
-    auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
-    if (!bufOrErr) {
-      llvm::errs() << "Error reading unified LLVM IR: "
-                   << bufOrErr.getError().message() << "\n";
-      return failure();
-    }
-
-    // Write peanohacked version
+    // Apply peanohack to downgrade IR for Peano compatibility
     SmallString<128> peanohackPath(tmpDirName);
     sys::path::append(peanohackPath,
                       deviceName.str() + "_input.llpeanohack.ll");
-    {
-      std::error_code ec;
-      raw_fd_ostream peanohackFile(peanohackPath, ec);
-      if (ec) {
-        llvm::errs() << "Error writing peanohack file: " << ec.message()
-                     << "\n";
-        return failure();
-      }
-      // Simple peanohack: just copy for now (could add attribute stripping)
-      peanohackFile << (*bufOrErr)->getBuffer();
-    }
+    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+      return failure();
 
-    // Run opt
+    // Run opt (cap at O1 to match old Python aiecc, prevent SLP vectorizer
+    // crashes)
     SmallString<128> optPath(tmpDirName);
     sys::path::append(optPath, deviceName.str() + "_input.opt.ll");
 
+    unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
     std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optCmd = {peanoOpt,
-                                           "--passes=default<O" + optLevelStr +
-                                               ">,strip",
-                                           "-inline-threshold=10",
-                                           "-S",
-                                           std::string(peanohackPath),
-                                           "-o",
-                                           std::string(optPath)};
+    SmallVector<std::string, 12> optCmd = {
+        peanoOpt,
+        "--passes=default<O" + std::to_string(safeOptLevel) + ">",
+        "-inline-threshold=10",
+        "-S",
+        std::string(peanohackPath),
+        "-o",
+        std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -2924,15 +3050,9 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
         SmallString<256> destPath(tmpDirName);
         sys::path::append(destPath, sys::path::filename(linkWithFile));
-        if (srcPath == destPath) {
-          continue;
-        }
-        sys::fs::remove(destPath);
-        std::error_code ec = sys::fs::copy_file(srcPath, destPath);
-        if (ec) {
-          llvm::errs() << "Error copying link_with file: " << srcPath << "\n";
+        if (failed(atomicCopyFile(srcPath, tmpDirName,
+                                  sys::path::filename(linkWithFile))))
           return failure();
-        }
       }
 
       auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
@@ -3011,24 +3131,23 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       SmallString<256> peanoLld(peanoBinDir);
       sys::path::append(peanoLld, "ld.lld");
 
-      // Handle link_with if specified
-      // Search order: current working directory, tmpDirName, input file
-      // directory
-      if (!core.linkWith.empty()) {
+      // Handle external object files specified via link_files (or deprecated
+      // link_with). Search order: absolute, cwd, tmpDirName, input file dir.
+      for (const auto &lf : core.linkFiles) {
         SmallString<256> srcLinkWith;
-        if (sys::path::is_absolute(core.linkWith)) {
-          srcLinkWith = core.linkWith;
+        if (sys::path::is_absolute(lf)) {
+          srcLinkWith = lf;
         } else {
           // First try current working directory
           SmallString<256> cwdPath;
           sys::fs::current_path(cwdPath);
-          sys::path::append(cwdPath, core.linkWith);
+          sys::path::append(cwdPath, lf);
           if (sys::fs::exists(cwdPath)) {
             srcLinkWith = cwdPath;
           } else {
             // Try tmpDirName (used in JIT where .o is pre-compiled there)
             SmallString<256> tmpPath(tmpDirName);
-            sys::path::append(tmpPath, core.linkWith);
+            sys::path::append(tmpPath, lf);
             if (sys::fs::exists(tmpPath)) {
               srcLinkWith = tmpPath;
             } else {
@@ -3039,22 +3158,24 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
                 sys::fs::current_path(inputDir);
               }
               srcLinkWith = inputDir;
-              sys::path::append(srcLinkWith, core.linkWith);
+              sys::path::append(srcLinkWith, lf);
               sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
             }
           }
         }
 
         SmallString<256> destLinkWith(tmpDirName);
-        sys::path::append(destLinkWith, sys::path::filename(core.linkWith));
+        sys::path::append(destLinkWith, sys::path::filename(lf));
         if (srcLinkWith != destLinkWith) {
-          sys::fs::remove(destLinkWith);
-          std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
-          if (ec) {
-            llvm::errs() << "Error copying link_with file: " << srcLinkWith
-                         << "\n";
+          if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
+                                    sys::path::filename(lf))))
             return failure();
-          }
+          if (verbose)
+            llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
+                         << destLinkWith << "\n";
+        } else if (verbose) {
+          llvm::outs() << "link_with object already in place: " << srcLinkWith
+                       << "\n";
         }
       }
 
@@ -3454,6 +3575,32 @@ static void assignPdiIds(ModuleOp moduleOp) {
     StringRef refName = deviceRefAttr.getValue();
     auto it = deviceToPdiId.find(refName);
     if (it == deviceToPdiId.end()) {
+      loadPdiOp.emitWarning() << "load_pdi references unknown device '"
+                              << refName << "'; PDI ID will remain 0";
+      return;
+    }
+    loadPdiOp.setId(static_cast<uint32_t>(it->second));
+    if (verbose) {
+      llvm::outs() << "Assigned PDI id=" << it->second
+                   << " to load_pdi referencing @" << refName << "\n";
+    }
+  });
+}
+
+/// Assign PDI IDs using a pre-computed mapping (for full ELF + expand-load-pdis
+/// where a global mapping that includes empty devices is needed).
+static void assignPdiIds(ModuleOp moduleOp,
+                         const std::map<std::string, int> &pdiIdMapping) {
+  moduleOp.walk([&](mlir::Operation *op) {
+    auto loadPdiOp = mlir::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op);
+    if (!loadPdiOp)
+      return;
+    auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
+    if (!deviceRefAttr)
+      return;
+    std::string refName = deviceRefAttr.getValue().str();
+    auto it = pdiIdMapping.find(refName);
+    if (it == pdiIdMapping.end()) {
       loadPdiOp.emitWarning() << "load_pdi references unknown device '"
                               << refName << "'; PDI ID will remain 0";
       return;
@@ -4233,6 +4380,7 @@ struct DeviceElfInfo {
   std::vector<std::pair<std::string, std::string>>
       sequences; // (seqName, instsPath)
   int pdiId;
+  int argCount = 3; // Number of runtime sequence arguments
 };
 
 /// Generate full ELF containing PDIs and instruction sequences.
@@ -4277,14 +4425,16 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
   for (const auto *infoPtr : activeDevices) {
     const auto &info = *infoPtr;
 
-    // Arguments - default set of arguments
+    // Arguments - generate based on actual runtime sequence parameter count
     llvm::json::Array arguments;
-    arguments.push_back(llvm::json::Object{
-        {"name", "arg_0"}, {"type", "char *"}, {"offset", "0x0"}});
-    arguments.push_back(llvm::json::Object{
-        {"name", "arg_1"}, {"type", "char *"}, {"offset", "0x8"}});
-    arguments.push_back(llvm::json::Object{
-        {"name", "arg_2"}, {"type", "char *"}, {"offset", "0x10"}});
+    for (int i = 0; i < info.argCount; ++i) {
+      char offsetBuf[16];
+      snprintf(offsetBuf, sizeof(offsetBuf), "0x%x", i * 8);
+      arguments.push_back(
+          llvm::json::Object{{"name", ("arg_" + Twine(i)).str()},
+                             {"type", "char *"},
+                             {"offset", std::string(offsetBuf)}});
+    }
 
     // PDIs - list ALL device PDIs in each kernel entry (matching Python driver
     // behavior). aiebu-asm needs all PDI references available because the
@@ -4465,7 +4615,7 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                                     /*bigEndian=*/false,
                                                     /*emitUnified=*/false,
                                                     /*cdoDebug=*/false,
-                                                    /*aieSim=*/aiesim,
+                                                    /*aieSim=*/false,
                                                     /*xaieDebug=*/false,
                                                     /*enableCores=*/true))) {
       llvm::errs() << "Error generating CDO files\n";
@@ -5008,10 +5158,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   std::vector<DeviceElfInfo> deviceElfInfos;
   int devicePdiId = 1; // Start PDI IDs from 1
 
-  // Note: PDI ID assignment to NpuLoadPdiOp happens AFTER NPU lowering
-  // (which converts aiex.configure to npu.load_pdi). See assignPdiIds()
-  // called in generateNpuInstructions() after runNpuLoweringPipeline().
-
+  // Phase A: Compile cores for each original device and update ELF paths.
+  // This must happen on the original module before NPU lowering.
   for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
     StringRef devName = deviceOp.getSymName();
 
@@ -5052,35 +5200,27 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
                       devName.str() + "_physical_with_elfs.mlir");
     dumpModuleToFile(moduleOp, physicalWithElfsPath, "module with ELFs");
 
-    // Generate control packet output BEFORE NPU instructions, because the
-    // control packet pipeline (convert-aie-to-transaction,
-    // aie-txn-to-ctrl-packet) needs the pre-NPU-lowered module state. NPU
-    // lowering destroys the ops that the control packet passes need. This
-    // matches the legacy Python driver's ordering where process_ctrlpkt() runs
-    // before NPU lowering. Use unfiltered module for ctrl packet generation —
-    // the legacy Python driver passes the full multi-device module to
-    // process_ctrlpkt.
+    // Generate control packet output BEFORE NPU instructions
     ModuleOp ctrlPktModule = unfilteredModule ? *unfilteredModule : moduleOp;
     if (failed(
             generateControlPacketOutput(ctrlPktModule, tmpDirName, devName))) {
       return failure();
     }
 
+    // For the full ELF + expand-load-pdis path, skip per-device NPU/CDO
+    // generation here — Phase B below handles everything from a single
+    // expanded clone (matching the old Python FlowRunner behavior).
+    if (generateFullElf && expandLoadPdis) {
+      continue;
+    }
+
     // Generate NPU instructions from in-memory module.
-    // Skip when ctrl packets are active — generateControlPacketOutput() already
-    // wrote the ctrl packet DMA sequence to instsName, which IS the NPU
-    // instruction stream. Running generateNpuInstructions() would overwrite it
-    // with regular NPU instructions that don't send the control packets.
     if (!generateCtrlPkt &&
         failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
       return failure();
     }
 
     // Generate transaction MLIR output if requested.
-    // This runs AFTER NPU instructions because the transaction pipeline
-    // needs the module to have gone through NPU lowering first (which
-    // generateNpuInstructions does on a clone). We clone again from the
-    // same original state and run NPU lowering + transaction pipeline.
     if (failed(generateTransactionOutput(moduleOp, tmpDirName, devName))) {
       return failure();
     }
@@ -5115,17 +5255,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       // Get absolute path to tmpDir for aiebu-asm (it needs absolute paths)
       SmallString<256> absTmpDir;
       if (auto ec = sys::fs::real_path(tmpDirName, absTmpDir)) {
-        // Fall back to current dir + tmpDirName
         sys::fs::current_path(absTmpDir);
         sys::path::append(absTmpDir, tmpDirName);
       }
 
-      // PDI path (must match generateCdoArtifacts output)
-      // When --aie-generate-pdi is set, PDI is in CWD; otherwise in tmpDir.
       std::string pdiFileName = formatString(pdiName, devName);
       SmallString<256> pdiFullPath;
       if (generatePdi) {
-        // CWD-relative
         if (sys::path::is_absolute(pdiFileName)) {
           pdiFullPath = pdiFileName;
         } else {
@@ -5133,13 +5269,11 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
           sys::path::append(pdiFullPath, pdiFileName);
         }
       } else {
-        // Inside tmpDir
         pdiFullPath = absTmpDir;
         sys::path::append(pdiFullPath, pdiFileName);
       }
       info.pdiPath = std::string(pdiFullPath);
 
-      // Collect runtime sequence instruction paths (also absolute)
       for (auto seqOp : deviceOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
         StringRef seqName = seqOp.getSymName();
         std::string instsFileName =
@@ -5147,7 +5281,144 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
         SmallString<256> instsFullPath(absTmpDir);
         sys::path::append(instsFullPath, instsFileName);
         info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
+        // Get argument count from the runtime sequence body
+        if (!seqOp.getBody().empty()) {
+          int numArgs = seqOp.getBody().front().getNumArguments();
+          if (numArgs > info.argCount)
+            info.argCount = numArgs;
+        }
       }
+
+      deviceElfInfos.push_back(std::move(info));
+    }
+  }
+
+  // Phase B: Full ELF with expand-load-pdis — single expanded clone.
+  // This matches the old Python FlowRunner behavior: run NPU lowering +
+  // expand-load-pdis ONCE on a single module, then generate ALL artifacts
+  // (CDO/PDI + NPU instructions) from that same module.
+  if (generateFullElf && expandLoadPdis) {
+    // 1. Clone module (now has ELF paths from Phase A)
+    OwningOpRef<ModuleOp> expandedModule = moduleOp.clone();
+
+    // 2. Run NPU lowering + expand-load-pdis ONCE (no PDI IDs yet)
+    if (failed(runNpuLoweringPipeline(*expandedModule, tmpDirName,
+                                      /*patchPdiIds=*/false))) {
+      llvm::errs() << "Error: expanded NPU lowering pipeline failed\n";
+      return failure();
+    }
+
+    // 3. Enumerate ALL devices in module iteration order (includes empties)
+    std::vector<std::string> allDeviceNames;
+    for (auto devOp : expandedModule->getOps<xilinx::AIE::DeviceOp>()) {
+      std::string name = devOp.getSymName().str();
+      if (!deviceName.empty() && name != deviceName.getValue() &&
+          !StringRef(name).starts_with("empty_"))
+        continue;
+      allDeviceNames.push_back(name);
+    }
+
+    // 4. Build PDI ID mapping (module order, sequential from 1)
+    std::map<std::string, int> pdiMapping;
+    int nextId = 1;
+    for (auto &name : allDeviceNames)
+      pdiMapping[name] = nextId++;
+
+    if (verbose) {
+      llvm::outs() << "\nExpanded module PDI ID mapping:\n";
+      for (auto &name : allDeviceNames) {
+        llvm::outs() << "  @" << name << " -> PDI ID " << pdiMapping[name]
+                     << "\n";
+      }
+    }
+
+    // 5. Assign PDI IDs on the expanded module
+    assignPdiIds(*expandedModule, pdiMapping);
+
+    // 6. For each device: CDO/PDI + NPU instructions + collect info
+    SmallString<256> absTmpDir;
+    if (auto ec = sys::fs::real_path(tmpDirName, absTmpDir)) {
+      sys::fs::current_path(absTmpDir);
+      sys::path::append(absTmpDir, tmpDirName);
+    }
+
+    for (auto devOp : expandedModule->getOps<xilinx::AIE::DeviceOp>()) {
+      StringRef devName = devOp.getSymName();
+
+      if (verbose) {
+        llvm::outs() << "\nGenerating artifacts for device: " << devName
+                     << " (from expanded module)\n";
+      }
+
+      // Generate CDO/PDI
+      if (failed(generateCdoArtifacts(*expandedModule, tmpDirName, devName))) {
+        return failure();
+      }
+
+      // Collect DeviceElfInfo
+      DeviceElfInfo info;
+      info.deviceName = devName.str();
+      info.pdiId = pdiMapping[devName.str()];
+
+      std::string pdiFileName = formatString(pdiName, devName);
+      SmallString<256> pdiFullPath;
+      if (generatePdi) {
+        if (sys::path::is_absolute(pdiFileName)) {
+          pdiFullPath = pdiFileName;
+        } else {
+          sys::fs::current_path(pdiFullPath);
+          sys::path::append(pdiFullPath, pdiFileName);
+        }
+      } else {
+        pdiFullPath = absTmpDir;
+        sys::path::append(pdiFullPath, pdiFileName);
+      }
+      info.pdiPath = std::string(pdiFullPath);
+
+      // Generate NPU instructions for devices with runtime sequences
+      devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
+        StringRef seqName = seq.getSymName();
+        if (!sequenceName.empty() && seqName != sequenceName)
+          return;
+
+        std::string outputFileName =
+            formatString(instsName, devName.str(), seqName);
+        SmallString<128> outputPath(tmpDirName);
+        sys::path::append(outputPath, outputFileName);
+
+        std::vector<uint32_t> instructions;
+        if (failed(xilinx::AIE::AIETranslateNpuToBinary(
+                *expandedModule, instructions, devName, seqName))) {
+          llvm::errs() << "Error generating NPU instructions for sequence: "
+                       << seqName << "\n";
+          return;
+        }
+
+        std::error_code ec;
+        raw_fd_ostream binFile(outputPath, ec, sys::fs::OpenFlags::OF_None);
+        if (ec) {
+          llvm::errs() << "Error opening NPU instructions file: "
+                       << ec.message() << "\n";
+          return;
+        }
+        binFile.write(reinterpret_cast<const char *>(instructions.data()),
+                      instructions.size() * sizeof(uint32_t));
+
+        if (verbose) {
+          llvm::outs() << "Wrote " << instructions.size()
+                       << " instructions to: " << outputPath << "\n";
+        }
+
+        SmallString<256> instsFullPath(absTmpDir);
+        sys::path::append(instsFullPath, outputFileName);
+        info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
+        // Get argument count from the runtime sequence body
+        if (!seq.getBody().empty()) {
+          int numArgs = seq.getBody().front().getNumArguments();
+          if (numArgs > info.argCount)
+            info.argCount = numArgs;
+        }
+      });
 
       deviceElfInfos.push_back(std::move(info));
     }

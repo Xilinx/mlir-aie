@@ -1,37 +1,37 @@
-# filelock.py -*- Python -*-
+# utils.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""Cache key utilities and file locking for the JIT compilation cache."""
+
 import contextlib
-import fcntl
 import hashlib
 import os
 import pickle
 import time
 
+# Cross-platform file locking:
+# - POSIX: fcntl.flock
+# - Windows: msvcrt.locking
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
+
 from aie.utils.hostruntime.tensor_class import Tensor
 
 
 def _cell_val_to_key(val):
-    """Convert a single closure cell value to a stable, hashable key component.
+    """Convert a closure cell value to a stable, hashable key component.
 
-    Priority:
-    1. value-hash   — cheap O(1) path for types with a proper value-based
-                      __hash__ (int, str, float, tuple, frozenset, and any
-                      custom immutable type).
-    2. pickle       — serialises full object state (__dict__ / __getstate__)
-                      for mutable objects whose identity-based __hash__ would
-                      miss mutations.
-    3. pickle_dict  — for objects whose class is not picklable by name (e.g.
-                      locally-defined classes), pickle __dict__ directly; it
-                      is always a plain dict and therefore always picklable.
-    4. repr         — last resort for non-picklable, identity-hashable objects.
+    Tries value-based hash first (for types with a proper __hash__), then
+    pickle (to capture full object state for mutable objects), then pickle
+    of __dict__ (for locally-defined classes), and finally repr as a fallback.
     """
-    # 1. Value-based hash: object.__hash__ is identity-based (id >> 4), so any
-    #    override is contractually value-based and cheap.
+    # Value-based hash: any __hash__ override is contractually value-based.
     h = type(val).__hash__
     if h is not None and h is not object.__hash__:
         try:
@@ -39,10 +39,7 @@ def _cell_val_to_key(val):
         except Exception:
             pass
 
-    # 2. pickle: captures __dict__ and custom __getstate__ regardless of whether
-    #    __eq__ / __hash__ / __repr__ are defined.  If the object itself is not
-    #    picklable (e.g. locally-defined class), fall back to pickling __dict__,
-    #    which is always a plain dict and therefore always picklable.
+    # pickle captures __dict__ and __getstate__ for mutable objects.
     try:
         return ("pickle", hashlib.sha256(pickle.dumps(val)).hexdigest())
     except Exception:
@@ -56,7 +53,6 @@ def _cell_val_to_key(val):
         except Exception:
             pass
 
-    # 3. repr fallback
     return ("repr", repr(val))
 
 
@@ -81,14 +77,41 @@ def _closure_key(fn):
     return tuple(parts)
 
 
+def _try_acquire_lock(lock_file) -> bool:
+    if os.name == "nt":
+        # msvcrt.locking locks a byte-range starting at the current file position.
+        # Try to use the first byte to provide a process-wide lock.
+        # Hacky and brittle, but works well enough to prevent a race.
+        try:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            return False
+    else:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+
+
+def _release_lock(lock_file) -> None:
+    if os.name == "nt":
+        try:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+    else:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+
+
 def _create_function_cache_key(function, args, kwargs):
-    """
-    Create a cache key for a function call based on function name and argument types/shapes.
-    This allows us to cache compiled kernels at the function level.
-    Note that it is not necessary that we cache the tensor shapes since the kernel may be agonstic
-    to the shape changes but we are doing here for safety.
-    """
-    # Get function name
+    """Create a cache key for a function call based on function name and argument types/shapes."""
     func_name = function.__name__
 
     # Create signature from argument types and shapes
@@ -150,8 +173,13 @@ def _create_function_cache_key(function, args, kwargs):
                 func_hash = hash(value)
                 signature_parts.append(f"{key}_function_{func_hash}")
         else:
-            # Unsupported type - use type name
-            signature_parts.append(f"{key}_{type(value).__name__}")
+            # Include the value in the key so that different scalar/immutable
+            # values (e.g. tile_size=4 vs tile_size=8) produce different keys.
+            try:
+                val_hash = hash(value)
+            except TypeError:
+                val_hash = hashlib.sha256(pickle.dumps(value)).hexdigest()
+            signature_parts.append(f"{key}_{type(value).__name__}_{val_hash}")
 
     signature = "_".join(signature_parts)
     return (func_name, signature)
@@ -170,18 +198,18 @@ def file_lock(lock_file_path, timeout_seconds=60):
         # Create lock file if it doesn't exist
         os.makedirs(os.path.dirname(lock_file_path), exist_ok=True)
         try:
-            f = os.open(lock_file_path, os.O_CREAT | os.O_EXCL)
+            f = os.open(lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.close(f)
         except FileExistsError:
             pass  # File already exists
-        lock_file = open(lock_file_path, "a")
+        lock_file = open(lock_file_path, "a+")
 
         # Try to acquire exclusive lock with timeout
         start_time = time.time()
         while True:
             try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
+                if _try_acquire_lock(lock_file):
+                    break
             except OSError:
                 # Lock is held by another process
                 if time.time() - start_time > timeout_seconds:
@@ -195,7 +223,7 @@ def file_lock(lock_file_path, timeout_seconds=60):
     finally:
         if lock_file is not None:
             try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                _release_lock(lock_file)
             except OSError:
                 pass  # Ignore errors when releasing lock
             lock_file.close()

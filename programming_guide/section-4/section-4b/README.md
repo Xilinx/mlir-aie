@@ -54,20 +54,21 @@ An alternative to specifying the array of workers to trace would be to instead a
         rt.enable_trace(trace_size)
         ...
 ```
-Here, we addd `trace=1` to indicate that worker should be traced. And we can omit the `workers` argument from the `enable_trace` call in the runtime sequence.
+Here, we add `trace=1` to indicate that worker should be traced. And we can omit the `workers` argument from the `enable_trace` call in the runtime sequence.
 
->**NOTE**: The `workers` argument in the runtime sequence `enable_trace` always takes precendence over the `trace=1` argument of the woker. So if you define both, we will go with the definition of the `enable_trace` argument.
+>**NOTE**: The `workers` argument in the runtime sequence `enable_trace` always takes precedence over the `trace=1` argument of the worker. So if you define both, we will go with the definition of the `enable_trace` argument.
 
 Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically. 
 
 ### <u>Customizing Trace Behavior</u>
 
-The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you have more control over some of these configuration, additional arguments are available in the runtime `enable_trace` function, such as customizing the trace buffer offset, which XRT buffer you want to use and the events you wish to trace for all core tiles, mem tiles and shim tiles. These are passed in as additionl arguments as descrbied belows:
+The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you have more control over some of these configuration, additional arguments are available in the runtime `enable_trace` function, such as customizing the trace buffer offset, which XRT buffer you want to use and the events you wish to trace for all core tiles, mem tiles and shim tiles. These are passed in as additional arguments as described below:
 * `trace_offset` - offest (in bytes) where trace buffer data should begin. This is 0 by default but if you wish to share XRT buffer with an output buffer, you can use offsets to control where the trace data is written to.
 * `ddr_id` - XRT buffer we want to write to. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers. 
-* `coretile_events` - which 8 events do we use for all coretiles in array. Check [python/utils/trace_events_enum.py](../../../python/utils/trace_events_enum.py) for the full list.
-* `memtile_events` - which 8 events do we use for all memtiles in array. See [python/utils/trace_events_enum.py](../../../python/utils/trace_events_enum.py)
-* `shimtile_events` - which 8 events do we use for all shimtiles in array. See [python/utils/trace_events_enum.py](../../../python/utils/trace_events_enum.py)
+* `coretile_events` - which 8 events do we use for all coretiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for CoreEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
+* `coremem_events` - which 8 events do we use for all core mem in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
+* `memtile_events` - which 8 events do we use for all memtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2p)]
+* `shimtile_events` - which 8 events do we use for all shimtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for ShimTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2p)]
 
     ```python
     ...
@@ -89,14 +90,14 @@ The trace configuration chooses helpful default settings so you can trace your d
         )
     ```
 
-Additional customizations are available in the closer-to-metal IRON and is descrbied more in [README-placed](./README-placed.md). 
+Additional customizations are available in the closer-to-metal IRON and is described more in [README-placed](./README-placed.md). 
 
 ## <u>2. Configure host code to read trace data and write it to a text file</u>
 
 Once the trace units are configured and routed, we want the host code to read the trace data from DDR and write it out to a text file for post-run processing. To give a better sense of how this comes together, this section provides an example design that is again a simplifed version of the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/).
 
 ### <u>AIE structural design code ([aie2.py](./aie2.py))</u>
-In order to write the DDR data to a text file, we need to know where in DDR the trace data is stored and then read from that location. This starts inside the [aie2.py](./aie2.py) file where the `enable_trace` function under the hood expands to calls to configure the trace units and program the shimDMA to write to one of XRT inout buffers. This requires a more in-depth understanding about the *XRT buffer objects* described in [section 3](../../section-3). There we had described that our XRT supports up to 5 inout buffer objects. Common patterns include 1 input/ 1 output and 2 input/ 1 output. These patterns then map in the following way where the *group_id* is listed next to each XRT buffer object, `inoutN (group_id)`.
+In order to write the DDR data to a text file, we need to know where in DDR the trace data is stored and then read from that location. This starts inside the [aie2.py](./aie2.py) file where the `enable_trace` function under the hood expands to calls to configure the trace units and program the shimDMA to write to one of XRT inout buffers. It is helpful to have a more in-depth understanding about the *XRT buffer objects* described in [section 3](../../section-3). There we had described that our XRT supports up to 5 inout buffer objects. Common usage patterns include 1 input/ 1 output and 2 input/ 1 output. These patterns then map in the following way where the *group_id* is listed next to each XRT buffer object, `inoutN (group_id)`.
 
 | inout0 (3) | inout1 (4) | 
 |--------|--------|
@@ -106,7 +107,7 @@ In order to write the DDR data to a text file, we need to know where in DDR the 
 |--------|--------|--------|
 | input A  | input B | output C  |
 
-To support trace, we will configure a shim tile to move the trace packet data to DDR through one of these XRT buffer objects. For simplicity, we choose `inout4 (7)` such that the new trace enabled mapping is:
+To support trace, we will configure a shim tile to move the trace packet data to DDR through one of these XRT buffer objects. For simplicity, we choose `inout4 (7)` as the default case such that the new trace enabled mapping is:
 
 | inout0 (3)| inout1 (4) | inout2 (5) | inout3 (6)| inout4 (7)|
 |--------|--------|--------|--------|--------|
@@ -122,13 +123,13 @@ In some designs, we have also used a pattern where we share an XRT buffer object
 |--------|--------|--------|
 | input A  | input B | (output C + trace) |
 
-When using the convenience python wrappers, where 1 input/ 1 output and 2 inputs/ 1 output patterns are supported, we choose to map the trace data to `inout4(7)`. More details are described in [python/utils/xrt.py](../../../python/utils/xrt.py) including the option to map trace to a different XRT buffer object with a specified offset. 
+By specifying `inout4 (7)` as the default case, we can leave the parameters for `rt.enable_trace()` to their default values other that `trace_size`. However, if we do decide to customize the XRT buffer object used, we can do so through a combination of `ddr_id` (to specify the buffer to use) and `trace_offset` (to indicate offset if the buffer is being shared).
 
-Once [aie2.py](./aie2.py) is configured to output trace data to the 5th inout buffer, we turn our attention to the host code to read the DDR data and write it to a file.
+Once [aie2.py](./aie2.py) is configured to a XRT buffer object, we turn our attention to the host code to read the DDR data and write it to a file.
 
 > **NOTE** In our example design ([aie2.py](./aie2.py)), we provide a [Makefile](./Makefile) target `run` for standard build and `trace` for trace-enabled build. The trace-enabled build passes the trace buffer size as an argument to [aie2.py](./aie2.py) which is used under the hood to conditionally enable tracing as long as `trace_size` is > 0. This is also true for the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul).
 
-### <u>(2a) C/C++ Host code ([test.cpp](./test.cpp), [../../../runtime_lib/test_lib/xrt_test_wrapper_.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h))</u>
+### <u>(2a) C/C++ Host code ([test.cpp](./test.cpp), [../../../runtime_lib/test_lib/xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h))</u>
 The main changes needed for the host code is declare a buffer object for trace data and pass that buffer object to the XRT kernel function call. This looks like the following snippets of code:
 
 ```c
@@ -152,7 +153,7 @@ Once the design has been executed. We can then use the convenience function `wri
 ```
 
 #### Templated host code (test.cpp) 
-Because the code patterns for measuring host code timing and configuring trace are so often repeated, they have been further wrapped into the convenience function `setup_and_run_aie` in [xrt_test_wrapper_.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h) which then allows us to create a simpler top level host code [test.cpp](./test.cpp). 
+Because the code patterns for measuring host code timing and configuring trace are so often repeated, they have been further wrapped into the convenience function `setup_and_run_aie` in [xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h) which then allows us to create a simpler top level host code [test.cpp](./test.cpp). 
 
 In our template host code [test.cpp](./test.cpp) for 2 inputs and 1 output, we cusotmize the following:
 * Input and output buffer size (in bytes) - Specified in the [Makefile](./Makefile) and [CMakeLists.txt](./CMakeLists.txt) and then passed into the [aie2.py](./aie2.py) and [test.cpp](./test.cpp)
@@ -214,35 +215,49 @@ In our template host code [test.cpp](./test.cpp) for 2 inputs and 1 output, we c
     }
     ```
 
+* Setup and run program - The function wrapper `setup_and_run_aie` then sets up the device and XRT buffers and runs the program as defined within [../../../runtime_lib/test_lib/xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h). Here, we see that `setup_and_run_aie` also handles the trace configuration, trace buffer setup and synchronization, and writing trace data to an output file.
+
 In the example simplified `vector_scalar_mul` design, we can build the complete design, including the C/C++ host code [test.cpp](./test.cpp) by running:
 ```bash
 make trace
 ```
 
+
 ### <u>(2b) Python Host code ([test.py](./test.py), [../../../python/utils/xrt.py](../../../python/utils/xrt.py))</u>
 In the [Makefile](./Makefile), we also have a `trace_py` target which calls the python host code `test.py` instead of the C/C++ host code `test.cpp`. 
 
-The python equivalent host code performs the same steps as the C/C++ host code as shown below:
+In the python case, we have wrapped up the trace specific configuration within `DefaultNPURuntime` which is the default definition of the [HostRuntime](../../../python/utils/hostruntime/hostruntime.py) class which can be imported with `from aie.utils import DefaultRuntime`. The usage of this class was introduced in [Section-3](../../section-3/) but here, we point out that trace configuration is managed through the definition of the [TraceConfig](../../../python/utils/trace/config.py) class that is part of the [NPUKernel](../../../python/utils/npukernel.py) class. Trace configuratons are specified in the program arguments and passed to the `DefaultNPURuntime` as shown below:
+
 ```python
-    app.register_buffer(7, shape=trace_buf_shape, dtype=trace_buf_dtype)
-    full_output, trace_buffer = execute(
-        app, in1_data, in2_data, enable_trace, trace_after_output
-    )
+import aie.utils.test as test_utils
+...
+npu_opts = test_utils.create_npu_kernel(opts)
+res = DefaultNPURuntime.run_test(npu_opts.npu_kernel, ...)
 ```
-These convenience python wrappers perform the `sync` steps under the hood when the buffers are being written to and read from. Once the trace data has been written to DDR and read into the trace buffer, we can write it out to a file with the following functions:
+Some basic trace configuration arguments are:
+- *trace_size*: size of trace buffer in bytes
+- *trace_file*: name of file to write raw trace data to (default: trace.txt)
+- *trace_after_last_tensor*: boolean that indicates whether we're sharing an XRT buffer to store trace results
+
+
+Under the hood, the [HostRuntime](../../../python/utils/hostruntime/hostruntime.py) class initializes the trace XRT buffer and manages it so that trace data is written to it during program execution. This occurs when we call the  `DefaultNPURuntime.run_test` function as shown below:
+
 ```python
-    trace_buffer = trace_buffer.view(np.uint32)
-    write_out_trace(trace_buffer, str(opts.trace_file))
+res = DefaultNPURuntime.run_test(
+    npu_opts.npu_kernel,
+    [in1, in2, out],
+    {2: ref},
+    verify=npu_opts.verify,
+    verbosity=npu_opts.verbosity,
+)
 ```
-Just like the C/C++ host code wrapper `setup_and_run_aie` found in [../../../runtime_lib/test_lib/xrt_test_wrapper_.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h), for python, we have a similar wrapper `setup_and_run_aie` in [../../../python/utils/xrt.py](../../../python/utils/xrt.py). This likewise simplifies the `test.py` and can be used as a template for design patterns.
+In addition to executing the program, the [HostRuntime](../../../python/utils/hostruntime/hostruntime.py) class also synchronizes the XRT data buffers before writing the trace data out to a text file (`trace.txt`) in much the same way as the C++ function `write_out_trace` does. As such, the `DefaultNPURuntime` operates like the C/C++ host code wrapper `setup_and_run_aie` found in [../../../runtime_lib/test_lib/xrt_test_wrapper.h]. Both serve to reduce the verbosity of the top level host code so such things as trace configuration is hidden underneath.
 
 ## <u>3. Parse text file to generate a waveform json file</u>
-Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_trace.py](../../../python/utils/trace/parse.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
+Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse.py](../../../python/utils/trace/parse.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
 ```Makefile
 	../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
 ```
-This leverages the python parse scripts under [python/utils](../../../python/utils/). See the [README.md](../../../python/utils/README.md) to get more details about how to use the python parse scripts.
-
 In our example [Makefile](./Makefile), we also run [get_trace_summary.py](../../../python/utils/trace/get_trace_summary.py) to analyze the generated JSON trace file to count the number of invocations of the kernel and the cycle count of those invocations. This depends on the kernel having an `event0` and `event1` function call at the beginning and end of the kernel, which our example does. `event0` and `event1` are functions that generate an internal event and is helpful for us to mark the boundaries of a function call.
 
 ## <u>4. Open json file in a visualization tool like Perfetto</u>
@@ -254,18 +269,18 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * It's possible that a simple core may have too few events to create a valid trace packet. To work around this in closer-to-metal IRON python, you can either (1) add a ShimTile to the array of `[tiles_to_trace]` as well to add more trace data or (2) reduce the shim dma burst length by adding the parameter `shim_burst_length=64` to the call `configure_packet_tracing_aie2`. Valid burst shim burst length for aie2 is 64B, 128B, 256B, 512B. The default burst length for regular data buffers is 256-Bytes, but for the trace buffer, it is 64-Bytes instead, which means you only need to define it if it was overwritten elsewhere. This also means that if the trace data is less than 64B, it will not be written out to DDR. Another scenario is that some trace data packets can be missing at the end if it's not am multiple of 64-Bytes.
     * If you're sharing a buffer object for both output and trace, ensure the offset for the trace configuration is the right size (based on output buffer size). Check both size and datatype. Offsets are usually in terms of bytes.
     * Check that the correct tile is being routed to the correct shim DMA. It's not uncommon in a multi core design to route the wrong tile if you're routing these manually, espeically if the tile names might be very similar. Using the convenience python wrappers should automatically handle this correctly.
-    * You may get an invalid tile error if the `colshift` doesn't match the actually starting column of the design. This should automatically be set by the `parse_trace.py` script but can also be specified manually, and you can specify the `colshift` value in the evnet the automatic value is incorect. Phoenix (npu) devices should have `colshift=1` while Strix (npu2) should have `colshift=0`when allocated to an unused NPU.
+    * You may get an invalid tile error if the `colshift` doesn't match the actually starting column of the design. This should automatically be set by the `parse.py` script but can also be specified manually, and you can specify the `colshift` value in the event the automatic value is incorrect. Phoenix (npu) devices should have `colshift=1` while Strix (npu2) should have `colshift=0` when allocated to an unused NPU.
     * For designs with packet-routing flows, check for correctly matching packet flow IDs. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed. Using the convenience python wrappers should again automatically handle this correctly. However, if your design uses its own packet-routing flows, the default flow IDs may conflict with the trace ones (to be improved in future release)
     * At the moment, there is a ongoing bug where you may see intermittent seg faults or functional errors for some designs when trace is enabled. The current workaround is to allocate XRT buffer size much larger than the trace size (currently 4x). This may need to be bigger still as this size was experimentally determined.
      
 ## <u>Exercises</u>
-1. Let's give tracing a try. In this directory, we will be examining a simplified version of the `vector scalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and runs `prase_trace.py` to generate the `trace_4b.json` waveform file.
+1. Let's give tracing a try. In this directory, we will be examining a simplified version of the `vector scalar multiply` example. Run `make trace`. This compiles the design, generates a trace data file, and runs `parse.py` to generate the `trace_4b.json` waveform file.
 
     Open this waveform json in http://ui.perfetto.dev. If you zoom into the region of interest with the keyboard shortcut keys W and S to zoom in and out respectively and A and D to pan left and right. You should see a wave like the following:
 
     <img src="../../assets/trace_vector_scalar_mul1.png" title="AIE-ML Vector Unit." height=250>
 
-    Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../../mlir_tutorials/images/answer1.jpg" title="1024" height=25> How many input and output chunks are there? <img src="../../../mlir_tutorials/images/answer1.jpg" title="4 inputs and 4 outputs (last output might be truncated in viewer)" height=25> This should match iteration loop bounds in our example design.
+    Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../../mlir_exercises/images/answer1.jpg" title="1024" height=25> How many input and output chunks are there? <img src="../../../mlir_exercises/images/answer1.jpg" title="4 inputs and 4 outputs (last output might be truncated in viewer)" height=25> This should match iteration loop bounds in our example design.
 
     There are a few common events in our waveform that are described below:
     * `INSTR_EVENT_0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.

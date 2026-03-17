@@ -61,7 +61,7 @@ def vector_softmax(dev, trace_size, n_col, n_cores_per_col, N):
         # AIE Core Function declarations
 
         softmax_bf16_vector = external_func(
-            "softmax_bf16", inputs=[tile_ty, tile_ty, np.int32]
+            "softmax_bf16", inputs=[tile_ty, tile_ty, np.int32], link_with="kernels.a"
         )
 
         # Tile declarations
@@ -168,7 +168,7 @@ def vector_softmax(dev, trace_size, n_col, n_cores_per_col, N):
         # Set up compute tiles
         for i in range(n_cores):
             # Compute tile i
-            @core(cores[i], "kernels.a")
+            @core(cores[i])
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles):
