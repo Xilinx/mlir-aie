@@ -34,10 +34,11 @@ struct TraceInfo {
   TileOp tile;
   int packetId;
   TracePacketType packetType;
-  WireBundle tracePort;              // Trace:0 (core) or Trace:1 (mem)
-  int traceChannel;                  // Port number (0 for core, 1 for mem)
-  std::optional<int> startBroadcast; // Broadcast channel for timer sync (if any)
-  std::optional<int> stopBroadcast;  // Broadcast channel for trace stop (if any)
+  WireBundle tracePort; // Trace:0 (core) or Trace:1 (mem)
+  int traceChannel;     // Port number (0 for core, 1 for mem)
+  std::optional<int>
+      startBroadcast;               // Broadcast channel for timer sync (if any)
+  std::optional<int> stopBroadcast; // Broadcast channel for trace stop (if any)
 };
 
 struct ShimInfo {
@@ -344,16 +345,18 @@ struct AIEInsertTraceFlowsPass
       // Shim tiles use BROADCAST_A_N, core/mem tiles use BROADCAST_N
       std::string broadcastEventName;
       if (info.tile.isShimTile()) {
-        broadcastEventName = "BROADCAST_A_" + std::to_string(*info.startBroadcast);
+        broadcastEventName =
+            "BROADCAST_A_" + std::to_string(*info.startBroadcast);
       } else {
-        broadcastEventName = "BROADCAST_" + std::to_string(*info.startBroadcast);
+        broadcastEventName =
+            "BROADCAST_" + std::to_string(*info.startBroadcast);
       }
 
       auto broadcastEvent = targetModel.lookupEvent(
           broadcastEventName, info.tile.getTileID(), isMemTrace);
       if (!broadcastEvent) {
-        info.traceOp.emitError()
-            << "Failed to lookup broadcast event '" << broadcastEventName << "'";
+        info.traceOp.emitError() << "Failed to lookup broadcast event '"
+                                 << broadcastEventName << "'";
         return signalPassFailure();
       }
       uint32_t timerCtrlValue = *broadcastEvent << 8;
@@ -446,8 +449,8 @@ struct AIEInsertTraceFlowsPass
         const RegisterInfo *broadcastReg = targetModel.lookupRegister(
             broadcastRegName, shimInfo.shimTile.getTileID());
         if (!broadcastReg)
-          llvm::report_fatal_error(
-              llvm::Twine("Failed to lookup ") + broadcastRegName);
+          llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
+                                   broadcastRegName);
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent1,
             nullptr, builder.getI32IntegerAttr(shimCol),
@@ -489,8 +492,8 @@ struct AIEInsertTraceFlowsPass
       const RegisterInfo *broadcastReg = targetModel.lookupRegister(
           broadcastRegName, shimInfo.shimTile.getTileID());
       if (!broadcastReg)
-        llvm::report_fatal_error(
-            llvm::Twine("Failed to lookup ") + broadcastRegName);
+        llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
+                                 broadcastRegName);
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent0,
           nullptr, builder.getI32IntegerAttr(shimCol),
