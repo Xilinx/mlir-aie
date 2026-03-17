@@ -107,15 +107,13 @@ def transform_with_internal_func_from_file(input, output):
 
     # Create a temporary file with the source code inside the function
     with tempfile.NamedTemporaryFile(mode="w", suffix=".cc", delete=False) as f:
-        f.write(
-            """extern "C" {
+        f.write("""extern "C" {
             void internal_add_from_file(int* input, int* output, int tile_size) {
                 for (int i = 0; i < tile_size; i++) {
                     output[i] = input[i] + 42;
                 }
             }
-        }"""
-        )
+        }""")
         temp_file_path = f.name
 
     # Create ExternalFunction inside the transform from a file
