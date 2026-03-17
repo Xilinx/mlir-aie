@@ -43,7 +43,7 @@ struct AIETraceToConfigPass
       // Create config symbol name
       std::string configName = (trace.getSymName().str() + "_config");
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
-      TileID tileID = {tile.getCol(), tile.getRow()};
+      TileID tileID = tile.getTileID();
 
       // Find packet type (if any)
       TracePacketType packetType = TracePacketType::Core; // default
@@ -221,8 +221,7 @@ struct AIETraceToConfigPass
             uint32_t broadcastNum = *startOp.getBroadcast();
             // Resolve broadcast channel to hardware event ID
             std::string eventName;
-            if (targetModel.isShimNOCTile(tileID.col, tileID.row) ||
-                targetModel.isShimPLTile(tileID.col, tileID.row)) {
+            if (tile.isShimTile()) {
               eventName = "BROADCAST_A_" + std::to_string(broadcastNum);
             } else {
               eventName = "BROADCAST_" + std::to_string(broadcastNum);
@@ -267,8 +266,7 @@ struct AIETraceToConfigPass
             uint32_t broadcastNum = *stopOp.getBroadcast();
             // Resolve broadcast channel to hardware event ID
             std::string eventName;
-            if (targetModel.isShimNOCTile(tileID.col, tileID.row) ||
-                targetModel.isShimPLTile(tileID.col, tileID.row)) {
+            if (tile.isShimTile()) {
               eventName = "BROADCAST_A_" + std::to_string(broadcastNum);
             } else {
               eventName = "BROADCAST_" + std::to_string(broadcastNum);
@@ -475,9 +473,9 @@ struct AIETraceRegPackWritesPass
       OpBuilder builder(&configOp.getBody().front(),
                         configOp.getBody().front().begin());
 
+      TileID tileID = tile.getTileID();
       for (auto regOp : regsToConvert) {
         // Look up register and field information
-        TileID tileID = {tile.getCol(), tile.getRow()};
         const RegisterInfo *regInfo =
             targetModel.lookupRegister(regOp.getRegName(), tileID, isMem);
 
