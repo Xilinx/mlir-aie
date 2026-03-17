@@ -23,11 +23,15 @@ env:
   DEBIAN_FRONTEND: noninteractive
 
 concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
-  group: ci-build-test-multi-cpp-linux-${{ github.event.number || github.sha }}-${{ github.event_name }}
-  cancel-in-progress: true
+  # Merge queue runs share a single group key (serialized, never cancelled).
+  # PR runs use a per-PR key (cancelled when the same PR gets a new push).
+  # Push/schedule/workflow_dispatch runs use the SHA-based key.
+  group: >-
+    ci-build-test-multi-cpp-linux-${{
+    github.event_name == 'merge_group' && 'merge-queue' ||
+    github.event.number || github.sha
+    }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   build-repo:
@@ -81,7 +85,9 @@ jobs:
       - name: Install Python packages
         run: |
           python -m pip install --upgrade pip
-          pip install -r python/requirements.txt
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_dev.txt
 

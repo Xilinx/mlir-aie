@@ -94,7 +94,9 @@ jobs:
 
             pip install --upgrade pip
             pip install onnxruntime==1.17.0
-            pip install -r python/requirements.txt
+            python utils/mlir_aie_wheels/vendor_eudsl.py \
+                --requirements python/requirements.txt \
+                --install-non-eudsl
             pip install -r python/requirements_ml.txt
             pip install -r python/requirements_dev.txt
 

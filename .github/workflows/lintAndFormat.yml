@@ -9,6 +9,17 @@ on:
     # Runs at midnight (00:00) every day
     - cron: '0 0 * * *'
 
+concurrency:
+  # Merge queue runs share a single group key (serialized, never cancelled).
+  # PR runs use a per-PR key (cancelled when the same PR gets a new push).
+  # Push/schedule/workflow_dispatch runs use the SHA-based key.
+  group: >-
+    ci-lint-and-format-${{
+    github.event_name == 'merge_group' && 'merge-queue' ||
+    github.event.number || github.sha
+    }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+
 env:
   # Run apt package manager in the CI in non-interactive mode.
   # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
@@ -44,7 +55,9 @@ jobs:
       - name: Install Python packages
         run: |
           pip install --upgrade pip
-          pip install -r python/requirements.txt
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
           pip install -r python/requirements_dev.txt
 
       - name: Get MLIR
@@ -223,7 +236,9 @@ jobs:
       - name: Install Python and other packages
         run: |
           pip install --upgrade pip
-          pip install -r python/requirements.txt
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
           pip install -r python/requirements_dev.txt
 
       - name: Install packages
@@ -259,7 +274,9 @@ jobs:
         if: steps.changed-files.outputs.changed-files != ''
         run: |
           pip install --upgrade pip
-          pip install -r python/requirements.txt
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
           pip install -r python/requirements_dev.txt
 
       - name: Build and generate coverage (Release)
