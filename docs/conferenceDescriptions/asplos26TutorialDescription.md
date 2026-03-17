@@ -31,16 +31,16 @@ Location: Pittsburgh, PA, USA
 | 08:00am | Intro to spatial compute and explicit data movement | Joe | [Programming Guide](../../programming_guide/) |
 | 08:15am | "Hello World" from Ryzen™ AI | Joe | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
 | 08:35am | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
-| 08:50am | Data movement on Ryzen™ AI with objectFIFOs | Joe | [Data Movement](../../programming_guide/section-2/) |
+| 08:50am | Data movement on Ryzen™ AI with objectFIFOs | Erika | [Data Movement](../../programming_guide/section-2/) |
 | 09:10am | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
-| 09:20am | Your First Program | Joe | [My First Program](../../programming_guide/section-3) |
+| 09:20am | Your First Program | Erika | [My First Program](../../programming_guide/section-3) |
 | 09:50am | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 10:00am | Coffee Break | | |
-| 10:30am | Tracing and performance analysis | Gagan | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
+| 10:30am | Tracing and performance analysis | Jack | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
 | 10:50am | Exercise 4: Tracing vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 11:00am | Vectorizing on AIE | Joe/Phil | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
+| 11:00am | Vectorizing on AIE | Jack | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
 | 11:20am | Exercise 5: Tracing vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 11:30pm | Dataflow and larger designs | Gagan | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
+| 11:30pm | Dataflow and larger designs | Erika | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
 | 11:40pm | Exercise 6: More examples | All | [Programming Examples](../../programming_examples/) |
 | 11:50pm | Close Tutorial | All | |
 
