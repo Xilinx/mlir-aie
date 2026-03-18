@@ -208,10 +208,22 @@ def conv2dk14(
                     [],
                 )
 
-            # Set up a packet-switched flow from core to shim for tracing information
+            # Set up tracing
             tiles_to_trace = [core_tiles[0][0]]
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tiles[0])
+                trace_utils.configure_trace(
+                    tiles_to_trace,
+                    coretile_events=[
+                        CoreEvent.INSTR_EVENT_0,
+                        CoreEvent.INSTR_EVENT_1,
+                        CoreEvent.INSTR_VECTOR,
+                        PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+                        PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 1, True),
+                        PortEvent(CoreEvent.PORT_RUNNING_2, WireBundle.DMA, 0, False),
+                        CoreEvent.MEMORY_STALL,
+                        CoreEvent.LOCK_STALL,
+                    ],
+                )
 
             # Set up compute tiles
 
@@ -270,23 +282,7 @@ def conv2dk14(
             def sequence(I, W, O):
 
                 if trace_size > 0:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace=tiles_to_trace,
-                        shim=shim_tiles[0],
-                        trace_size=trace_size,
-                        # trace_offset=N_in_bytes,
-                        # ddr_id=2,
-                        coretile_events=[
-                            CoreEvent.INSTR_EVENT_0,
-                            CoreEvent.INSTR_EVENT_1,
-                            CoreEvent.INSTR_VECTOR,
-                            PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                            PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
-                            PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
-                            CoreEvent.MEMORY_STALL,
-                            CoreEvent.LOCK_STALL,
-                        ],
-                    )
+                    trace_utils.start_trace()
 
                 # rtp2[0] = 14
 
@@ -328,8 +324,6 @@ def conv2dk14(
 
                 for i in range(n_aie_cols):
                     dma_await_task(out_task[i])
-
-                trace_utils.gen_trace_done_aie2(shim_tiles[0])
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

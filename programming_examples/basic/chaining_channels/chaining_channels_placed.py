@@ -119,46 +119,44 @@ def my_chaining_channels():
             # Configure tracing on ShimTile (if enabled)
             if enable_trace:
                 tiles_to_trace = [ShimTile, MemTile, ComputeTile2]
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+                trace_utils.configure_trace(
+                    tiles_to_trace,
+                    memtile_events=[
+                        MemTileEvent.LOCK_SEL0_ACQ_GE,
+                        MemTilePortEvent(
+                            MemTileEvent.PORT_RUNNING_0, WireBundle.South, 3, True
+                        ),
+                        MemTilePortEvent(
+                            MemTileEvent.PORT_TLAST_0, WireBundle.South, 3, True
+                        ),
+                        MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
+                        MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
+                        MemTileEvent.DMA_MM2S_SEL0_START_TASK,
+                        MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
+                        MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
+                    ],
+                    shimtile_events=[
+                        ShimTileEvent.DMA_S2MM_0_START_TASK,
+                        ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+                        ShimTileEvent.DMA_MM2S_0_START_TASK,
+                        ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+                        ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
+                        ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
+                        ShimTilePortEvent(
+                            ShimTileEvent.PORT_RUNNING_0, 4, True
+                        ),  # master(2)
+                        ShimTilePortEvent(
+                            ShimTileEvent.PORT_RUNNING_1, 5, False
+                        ),  # slave(3)
+                    ],
+                )
 
             # Runtime sequence
             @runtime_sequence(vector_ty, vector_ty_read)
             def sequence(A, B):
                 # Setup trace buffer (if enabled)
                 if enable_trace:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace=tiles_to_trace,
-                        shim=ShimTile,
-                        trace_size=trace_size,
-                        memtile_events=[
-                            MemTileEvent.LOCK_SEL0_ACQ_GE,
-                            MemTilePortEvent(
-                                MemTileEvent.PORT_RUNNING_0, 10, True
-                            ),  # master(0)
-                            MemTilePortEvent(
-                                MemTileEvent.PORT_TLAST_0, 10, True
-                            ),  # master(0)
-                            MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
-                            MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
-                            MemTileEvent.DMA_MM2S_SEL0_START_TASK,
-                            MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
-                            MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
-                        ],
-                        shimtile_events=[
-                            ShimTileEvent.DMA_S2MM_0_START_TASK,
-                            ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
-                            ShimTileEvent.DMA_MM2S_0_START_TASK,
-                            ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
-                            ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
-                            ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
-                            ShimTilePortEvent(
-                                ShimTileEvent.PORT_RUNNING_0, 4, True
-                            ),  # master(2)
-                            ShimTilePortEvent(
-                                ShimTileEvent.PORT_RUNNING_1, 5, False
-                            ),  # slave(3)
-                        ],
-                    )
+                    trace_utils.start_trace()
 
                 # Release MemTile lock to trigger DMA
                 npu_write32(column=col, row=1, address=0xC0000, value=1)
@@ -264,9 +262,6 @@ def my_chaining_channels():
                 npu_sync(
                     column=col, row=0, direction=1, channel=0, column_num=1, row_num=1
                 )
-
-                if enable_trace:
-                    trace_utils.gen_trace_done_aie2(ShimTile)
 
     print(ctx.module)
 

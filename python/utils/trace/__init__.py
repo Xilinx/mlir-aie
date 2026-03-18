@@ -136,8 +136,8 @@ Trace utilities are designed to take the low level tile cofigurations need to co
                     CoreEvent.INSTR_LOCK_RELEASE_REQ,
                     CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
                     CoreEvent.LOCK_STALL,
-                    PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                    PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
+                    PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),   # DMA ch0 in
+                    PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False),  # DMA ch0 out
                    ]
            ```
 
@@ -184,19 +184,25 @@ There is a set of events that fire on certain activity on data memory ports.
 These are `PORT_IDLE_0` through `PORT_IDLE_7`, `PORT_RUNNING_0` through `PORT_RUNNING_7`, `PORT_STALLED_0` throught `PORT_STALLED_7` and finally `PORT_TLAST_0` through `PORT_TLAST_7`.
 You have to specify on which port the tracing engine should listen for each those events.
 In hardware, this is done by configuring registers `0x3FF00` and `0x3FF04` in the core tile (this is different in memtile and shimtile).
-The Python tracing utilities abstract this in `configure_packet_tracing_aie2`; you only have to specify the event as a `PortEvent` along with the corresponding port as follows:
+The Python tracing utilities abstract this in `configure_trace`; you only have to specify the event as a `PortEvent` along with the corresponding port as follows:
 
-```
-configure_packet_tracing_aie2(
-    ...,
-    events=[
-        PortEvent(CoreEvent.PORT_RUNNING_0, 1, master=True)
-        # This will emit an event whenever master port 1 is running.
+```python
+configure_trace(
+    tiles_to_trace,
+    coretile_events=[
+        PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True)
+        # This will emit an event whenever DMA channel 0 input is running.
     ]
 )
 ```
 
-`PortEvent` is defined in [trace.py](../../python/utils/trace.py) and `CoreEvent` is defined in [trace_events_enum.py](../../python/utils/trace_events_enum.py). Likewise for memtiles and shimtiles, we have `MemTilePortEvent` and `ShimTilePortEvent` in [trace.py](../../python/utils/trace.py) and `MemTileEvent` and `ShimTileEvent` are in [trace_events_enum.py](../../python/utils/trace_events_enum.py).
+`PortEvent` takes the following arguments:
+- `code`: The PORT_RUNNING_N event (determines which monitor slot 0-7 to use)
+- `port`: The port bundle type (WireBundle.DMA, WireBundle.North, etc.)
+- `channel`: Channel number within the bundle
+- `master`: True for input to tile (S2MM), False for output from tile (MM2S)
+
+`PortEvent` is defined in [events/__init__.py](events/__init__.py) and `CoreEvent` is defined in [events/aie2.py](events/aie2.py) (generated during build). Likewise for memtiles and shimtiles, we have `MemTilePortEvent` and `ShimTilePortEvent`.
 
 ### Configure tile trace settings
 Under the hood of `configure_coretile_tracing_aie2`/ `configure_memtile_tracing_aie2`/ `configure_shimtile_tracing_aie2`, we perform trace configurations by writing specific values to trace configuration registers. This is done within the `aiex.runtime_sequence` block, where we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd`) to configure the shimDMA.
@@ -526,18 +532,8 @@ which reduces the timer from 11,091,042 cycles to 381,175 seems to fix it.
 from .config import TraceConfig
 from .parse import parse_trace
 from .setup import (
-    configure_coremem_tracing_aie2,
-    configure_coretile_tracing_aie2,
-    configure_memtile_tracing_aie2,
-    configure_shimtile_tracing_aie2,
-    configure_packet_tracing_flow,
-    configure_shim_trace_start_aie2,
-    gen_trace_done_aie2,
-    configure_packet_tracing_aie2,
-    configure_simple_tracing_aie2,
     configure_packet_ctrl_flow,
     config_ctrl_pkts_aie,
-    # New declarative trace API
     configure_trace,
     start_trace,
 )

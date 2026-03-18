@@ -85,10 +85,10 @@ def conv2dk1(
             of_outOFL2L3 = object_fifo("outOFL2L3", MemTile, [ShimTile], 2, bufOut_ty)
             object_fifo_link(of_out_02_L2, of_outOFL2L3)
 
-            # Set up a packet-switched flow from core to shim for tracing information
+            # Set up tracing
             tiles_to_trace = [ComputeTile2]
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+                trace_utils.configure_trace(tiles_to_trace)
 
             # Set up compute tiles
 
@@ -127,9 +127,7 @@ def conv2dk1(
             def sequence(I, W, O):
 
                 if trace_size > 0:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace, ShimTile, trace_size, N_in_bytes, ddr_id=2
-                    )
+                    trace_utils.start_trace()
 
                 rtp2[0] = 10
 
@@ -156,8 +154,6 @@ def conv2dk1(
 
                 dma_start_task(in_act_task, in_wts_task, out_task)
                 dma_await_task(in_act_task, in_wts_task, out_task)
-
-                trace_utils.gen_trace_done_aie2(ShimTile)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

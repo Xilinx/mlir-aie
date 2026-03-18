@@ -144,33 +144,31 @@ def group2_impl(dev, trace_size):
 
         group2("group2", ComputeTile2, objectArchive, of_din_L2L1)
 
-        # Set up a packet-switched flow from core to shim for tracing information
+        # Set up tracing
         tiles_to_trace = [ComputeTile2, ShimTile]
         if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_trace(
+                tiles_to_trace,
+                coretile_events=[
+                    CoreEvent.INSTR_EVENT_0,
+                    CoreEvent.INSTR_EVENT_1,
+                    CoreEvent.INSTR_VECTOR,
+                    PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+                    PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 1, True),
+                    PortEvent(CoreEvent.PORT_RUNNING_2, WireBundle.DMA, 0, False),
+                    # CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+                    # CoreEvent.LOCK_STALL,
+                    CoreEvent.INSTR_STREAM_PUT,
+                    CoreEvent.STREAM_STALL,
+                ],
+            )
 
         # instruction stream generation
         @runtime_sequence(tensorIn_ty, scalar_ty, tensorOut_ty)
         def sequence(A, B, C):
 
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
-                    trace_size=trace_size,
-                    coretile_events=[
-                        CoreEvent.INSTR_EVENT_0,
-                        CoreEvent.INSTR_EVENT_1,
-                        CoreEvent.INSTR_VECTOR,
-                        PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                        PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
-                        PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
-                        # CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-                        # CoreEvent.LOCK_STALL,
-                        CoreEvent.INSTR_STREAM_PUT,
-                        CoreEvent.STREAM_STALL,
-                    ],
-                )
+                trace_utils.start_trace()
 
             din_task = shim_dma_single_bd_task(
                 of_din_L3L2, A, sizes=[1, 1, 1, din_size]
@@ -186,8 +184,6 @@ def group2_impl(dev, trace_size):
 
             dma_await_task(dout_task)
             # dma_free_task(din_task)
-
-            trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 if len(sys.argv) < 3:

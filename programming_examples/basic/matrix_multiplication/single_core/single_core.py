@@ -240,7 +240,34 @@ def my_matmul(
             # Set up a packet-switched flow from core to shim for tracing information
             tiles_to_trace = [compute_tile2]
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
+                trace_utils.configure_trace(
+                    tiles_to_trace,
+                    coretile_events=[
+                        # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
+                        trace_utils.events.PortEvent(
+                            trace_utils.events.CoreEvent.PORT_RUNNING_0,
+                            port_number=1,
+                            master=True,
+                        ),
+                        # captures input B (PORT_RUNNING_1, at port number 2, master for inputs)
+                        trace_utils.events.PortEvent(
+                            trace_utils.events.CoreEvent.PORT_RUNNING_1,
+                            port_number=2,
+                            master=True,
+                        ),
+                        # captures output C (PORT_RUNNING_2, at port number 1, slave for outputs)
+                        trace_utils.events.PortEvent(
+                            trace_utils.events.CoreEvent.PORT_RUNNING_2,
+                            port_number=1,
+                            master=False,
+                        ),
+                        trace_utils.events.CoreEvent.INSTR_EVENT_0,
+                        trace_utils.events.CoreEvent.INSTR_EVENT_1,
+                        trace_utils.events.CoreEvent.MEMORY_STALL,
+                        trace_utils.events.CoreEvent.LOCK_STALL,
+                        trace_utils.events.CoreEvent.INSTR_VECTOR,
+                    ],
+                )
 
             # The stack size choice is an important choice!
             # The Peano compiler uses a stack size in this kernel greater than the default one
@@ -277,36 +304,7 @@ def my_matmul(
             def sequence(A, B, C):
 
                 if enable_tracing:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace=tiles_to_trace,
-                        shim=shim_tile,
-                        trace_size=trace_size,
-                        coretile_events=[
-                            # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
-                            trace_utils.events.PortEvent(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                                port_number=1,
-                                master=True,
-                            ),
-                            # captures input B (PORT_RUNNING_1, at port number 2, master for inputs)
-                            trace_utils.events.PortEvent(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                                port_number=2,
-                                master=True,
-                            ),
-                            # captures output C (PORT_RUNNING_2, at port number 1, slave for outputs)
-                            trace_utils.events.PortEvent(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                                port_number=1,
-                                master=False,
-                            ),
-                            trace_utils.events.CoreEvent.INSTR_EVENT_0,
-                            trace_utils.events.CoreEvent.INSTR_EVENT_1,
-                            trace_utils.events.CoreEvent.MEMORY_STALL,
-                            trace_utils.events.CoreEvent.LOCK_STALL,
-                            trace_utils.events.CoreEvent.INSTR_VECTOR,
-                        ],
-                    )
+                    trace_utils.start_trace()
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 4
