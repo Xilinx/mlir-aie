@@ -218,6 +218,7 @@ if (AIE_ENABLE_PYTHON_PASSES)
   list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
 
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
+    PYTHON_BINDINGS_LIBRARY nanobind
     MODULE_NAME _aie
     ADD_TO_PARENT AIEPythonExtensions
     ROOT_DIR "/"
@@ -310,6 +311,7 @@ else ()
 
   # Standard Python C extension bindings.
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
+    PYTHON_BINDINGS_LIBRARY nanobind
     MODULE_NAME _aie
     ADD_TO_PARENT AIEPythonExtensions
     ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
@@ -325,6 +327,7 @@ else ()
 
   if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
     declare_mlir_python_extension(AIEPythonExtensions.XRT
+      PYTHON_BINDINGS_LIBRARY nanobind
       MODULE_NAME _xrt
       ADD_TO_PARENT AIEPythonExtensions
       ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
