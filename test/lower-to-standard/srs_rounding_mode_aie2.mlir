@@ -11,8 +11,7 @@
 //  - floor (0) for cores with only float SRS (f32→bf16)
 //  - positive_inf (9) for cores with integer SRS (i32→i8)
 //  - conv_even (12) for cores with bf16 matmul
-//  - conv_even (12) takes precedence when both bf16 matmul and SRS are present
-//  - integer matmul (i8) does NOT trigger conv_even
+//  - conv_even (12) takes precedence when both bf16 matmul and integer SRS
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-standard-lowering="tilecol=0 tilerow=2" %s | FileCheck --check-prefix=CHECK-FLOAT %s

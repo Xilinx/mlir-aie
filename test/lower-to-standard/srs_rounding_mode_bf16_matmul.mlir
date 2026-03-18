@@ -10,7 +10,7 @@
 // Additional rounding mode tests for bf16 matmul (issue #2983):
 //  - Integer matmul (i8) does NOT trigger conv_even
 //  - BF16 matmul + float SRS: conv_even (12) takes precedence over floor (0)
-//  - BF16 matmul_aie2p on AIE2P device
+//  - No matmul/no SRS core does not emit ctrl_reg calls
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-standard-lowering="tilecol=0 tilerow=2" %s | FileCheck --check-prefix=CHECK-INT-MATMUL %s
