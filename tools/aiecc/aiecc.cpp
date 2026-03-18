@@ -3403,11 +3403,8 @@ static std::string generateUUID() {
   // Set variant to RFC 4122
   data[2] = (data[2] & 0x3FFFFFFF) | 0x80000000;
 
-  return llvm::formatv("{0:x-8}-{1:x-4}-{2:x-4}-{3:x-4}-{4:x-12}",
-                       data[0],
-                       data[1] >> 16,
-                       data[1] & 0xFFFF,
-                       data[2] >> 16,
+  return llvm::formatv("{0:x-8}-{1:x-4}-{2:x-4}-{3:x-4}-{4:x-12}", data[0],
+                       data[1] >> 16, data[1] & 0xFFFF, data[2] >> 16,
                        ((uint64_t)(data[2] & 0xFFFF) << 32) | data[3]);
 }
 
@@ -3551,7 +3548,8 @@ static LogicalResult extractAndMergePartition(StringRef inputXclbin,
     return failure();
   }
 
-  // Append only the first PDI from new partition (matches Python aiecc behavior)
+  // Append only the first PDI from new partition (matches Python aiecc
+  // behavior)
   if (newPDIs->size() == 0) {
     llvm::errs() << "Error: New partition has no PDIs\n";
     return failure();
