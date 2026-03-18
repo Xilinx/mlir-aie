@@ -103,7 +103,7 @@ xrt-smi examine
     ```bash
     # Python versions 3.10, 3.12 and 3.13 are currently supported by our wheels
     sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
+    build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip nanobind-dev
     ```
 
 ## Build and Install mlir-aie and IRON
