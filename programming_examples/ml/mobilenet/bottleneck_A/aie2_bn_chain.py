@@ -542,6 +542,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn0_conv2dk3_dw_stride1.o",
         )
 
         bn0_conv2dk1_skip_ui8_ui8_i8 = external_func(
@@ -557,10 +558,11 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn0_conv2dk1_skipui8.o",
         )
 
         # Compute tile bn0_combined_conv2dk3dwstride1_conv2dk1skipui8
-        bn0_objectArchiveName = "bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a"
+        # bn0_objectArchiveName = "bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a"
 
         bn0_tensorLayer2Out_ty = MemRefType.get(
             (tensorL0_3InW, 1, tensorL0_3InC), uint8_ty
@@ -582,7 +584,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn0_wts_OF_L3L1,
             act_bn0_bn1,
             rtpComputeTile03,
-            bn0_objectArchiveName,
             bn0_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn0_conv2dk1_skip_ui8_ui8_i8,
             bn0_tensorLayer2Out_ty,
@@ -635,6 +636,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn1_conv2dk1_fused_relu.o",
         )
         bn1_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
             "bn1_conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -653,6 +655,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn1_conv2dk3_dw_stride2.o",
         )
         bn1_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn1_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -671,6 +674,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn1_conv2dk3_dw_stride1.o",
         )
         bn1_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn1_conv2dk1_skip_ui8_i8_i8",
@@ -685,6 +689,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn1_conv2dk1_skip.o",
         )
 
         bn1_conv2dk1_ui8_i8 = external_func(
@@ -698,13 +703,14 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn1_conv2dk1_i8.o",
         )
 
         # Compute tile
-        bn1_objectArchiveName = (
-            "bn1_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-            % (bn1_depthWiseStride, "skip" if (bn1_withSkip) else "")
-        )
+        # bn1_objectArchiveName = (
+        #     "bn1_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn1_depthWiseStride, "skip" if (bn1_withSkip) else "")
+        # )
         bn1_tensorLayer1Out_ty = MemRefType.get(
             (tensorL1_2InW, 1, tensorL1_2InC), uint8_ty
         )
@@ -728,7 +734,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn1_wts_OF_L3L1,
             act_bn1_bn2,
             rtpComputeTile04,
-            bn1_objectArchiveName,
             bn1_conv2dk1_relu_i8_ui8,
             bn1_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn1_conv2dk3_dw_stride2_relu_ui8_ui8,
@@ -787,6 +792,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn2_conv2dk1_fused_relu.o",
         )
         bn2_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
             "bn2_conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -805,6 +811,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn2_conv2dk3_dw_stride2.o",
         )
         bn2_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn2_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -823,6 +830,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn2_conv2dk3_dw_stride1.o",
         )
         bn2_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn2_conv2dk1_skip_ui8_i8_i8",
@@ -837,6 +845,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn2_conv2dk1_skip.o",
         )
 
         bn2_conv2dk1_ui8_i8 = external_func(
@@ -850,13 +859,14 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn2_conv2dk1_i8.o",
         )
 
         # Compute tile
-        bn2_objectArchiveName = (
-            "bn2_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-            % (bn2_depthWiseStride, "skip" if (bn2_withSkip) else "")
-        )
+        # bn2_objectArchiveName = (
+        #     "bn2_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn2_depthWiseStride, "skip" if (bn2_withSkip) else "")
+        # )
         bn2_tensorLayer1Out_ty = MemRefType.get(
             (tensorL2_2InW, 1, tensorL2_2InC), uint8_ty
         )
@@ -880,7 +890,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn2_wts_OF_L3L1,
             act_bn2_bn3,
             rtpComputeTile05,
-            bn2_objectArchiveName,
             bn2_conv2dk1_relu_i8_ui8,
             bn2_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn2_conv2dk3_dw_stride2_relu_ui8_ui8,
@@ -939,6 +948,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn3_conv2dk1_fused_relu.o",
         )
         bn3_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
             "bn3_conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -957,6 +967,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn3_conv2dk3_dw_stride2.o",
         )
         bn3_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn3_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -975,6 +986,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn3_conv2dk3_dw_stride1.o",
         )
         bn3_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn3_conv2dk1_skip_ui8_i8_i8",
@@ -989,6 +1001,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn3_conv2dk1_skip.o",
         )
         bn3_conv2dk1_ui8_i8 = external_func(
             "bn3_conv2dk1_ui8_i8",
@@ -1001,13 +1014,14 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn3_conv2dk1_i8.o",
         )
 
         # Compute tile
-        bn3_objectArchiveName = (
-            "bn3_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-            % (bn3_depthWiseStride, "skip" if (bn3_withSkip) else "")
-        )
+        # bn3_objectArchiveName = (
+        #     "bn3_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn3_depthWiseStride, "skip" if (bn3_withSkip) else "")
+        # )
         bn3_tensorLayer1Out_ty = MemRefType.get(
             (tensorL3_2InW, 1, tensorL3_2InC), uint8_ty
         )
@@ -1030,7 +1044,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn3_wts_OF_L3L1,
             act_bn3_bn4,
             rtpComputeTile15,
-            bn3_objectArchiveName,
             bn3_conv2dk1_relu_i8_ui8,
             bn3_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn3_conv2dk3_dw_stride2_relu_ui8_ui8,
@@ -1090,6 +1103,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn4_conv2dk1_fused_relu.o",
         )
         bn4_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
             "bn4_conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -1108,6 +1122,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn4_conv2dk3_dw_stride2.o",
         )
         bn4_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn4_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -1126,6 +1141,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn4_conv2dk3_dw_stride1.o",
         )
         bn4_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn4_conv2dk1_skip_ui8_i8_i8",
@@ -1140,6 +1156,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn4_conv2dk1_skip.o",
         )
         bn4_conv2dk1_ui8_i8 = external_func(
             "bn4_conv2dk1_ui8_i8",
@@ -1152,13 +1169,14 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn4_conv2dk1_i8.o",
         )
 
         # Compute tile 6
-        bn4_objectArchiveName = (
-            "bn4_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-            % (bn4_depthWiseStride, "skip" if (bn4_withSkip) else "")
-        )
+        # bn4_objectArchiveName = (
+        #     "bn4_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn4_depthWiseStride, "skip" if (bn4_withSkip) else "")
+        # )
         bn4_tensorLayer1Out_ty = MemRefType.get(
             (tensorL4_2InW, 1, tensorL4_2InC), uint8_ty
         )
@@ -1181,7 +1199,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn4_wts_OF_L3L1,
             act_bn4_bn5,
             rtpComputeTile14,
-            bn4_objectArchiveName,
             bn4_conv2dk1_relu_i8_ui8,
             bn4_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn4_conv2dk3_dw_stride2_relu_ui8_ui8,
@@ -1237,6 +1254,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn5_conv2dk1_fused_relu.o",
         )
         bn5_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
             "bn5_conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -1255,6 +1273,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn5_conv2dk3_dw_stride2.o",
         )
         bn5_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn5_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -1273,6 +1292,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn5_conv2dk3_dw_stride1.o",
         )
         bn5_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn5_conv2dk1_skip_ui8_i8_i8",
@@ -1287,6 +1307,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn5_conv2dk1_skip.o",
         )
         bn5_conv2dk1_ui8_i8 = external_func(
             "bn5_conv2dk1_ui8_i8",
@@ -1299,13 +1320,14 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn5_conv2dk1_i8.o",
         )
 
         # Compute tile 6
-        bn5_objectArchiveName = (
-            "bn5_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-            % (bn5_depthWiseStride, "skip" if (bn5_withSkip) else "")
-        )
+        # bn5_objectArchiveName = (
+        #     "bn5_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn5_depthWiseStride, "skip" if (bn5_withSkip) else "")
+        # )
         bn5_tensorLayer1Out_ty = MemRefType.get(
             (tensorL5_2InW, 1, tensorL5_2InC), uint8_ty
         )
@@ -1328,7 +1350,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn5_wts_OF_L3L1,
             act_bn5_bn6,
             rtpComputeTile13,
-            bn5_objectArchiveName,
             bn5_conv2dk1_relu_i8_ui8,
             bn5_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn5_conv2dk3_dw_stride2_relu_ui8_ui8,
@@ -1380,6 +1401,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn6_conv2dk1_fused_relu.o",
         )
         bn6_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
             "bn6_conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -1398,6 +1420,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn6_conv2dk3_dw_stride2.o",
         )
         bn6_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn6_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -1416,6 +1439,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn6_conv2dk3_dw_stride1.o",
         )
         bn6_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn6_conv2dk1_skip_ui8_i8_i8",
@@ -1430,6 +1454,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn6_conv2dk1_skip.o",
         )
         bn6_conv2dk1_ui8_i8 = external_func(
             "bn6_conv2dk1_ui8_i8",
@@ -1442,13 +1467,14 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn6_conv2dk1_i8.o",
         )
 
         # # Compute tile 6
-        bn6_objectArchiveName = (
-            "bn6_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-            % (bn6_depthWiseStride, "skip" if (bn6_withSkip) else "")
-        )
+        # bn6_objectArchiveName = (
+        #     "bn6_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn6_depthWiseStride, "skip" if (bn6_withSkip) else "")
+        # )
         bn6_tensorLayer1Out_ty = MemRefType.get(
             (tensorL6_2InW, 1, tensorL6_2InC), uint8_ty
         )
@@ -1472,7 +1498,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn6_wts_OF_L3L1,
             act_bn6_bn7,
             rtpComputeTile12,
-            bn6_objectArchiveName,
             bn6_conv2dk1_relu_i8_ui8,
             bn6_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn6_conv2dk3_dw_stride2_relu_ui8_ui8,
@@ -1524,6 +1549,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn7_conv2dk1_fused_relu.o",
         )
         bn7_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
             "bn7_conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -1542,6 +1568,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn7_conv2dk3_dw_stride2.o",
         )
         bn7_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn7_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -1560,6 +1587,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn7_conv2dk3_dw_stride1.o",
         )
         bn7_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn7_conv2dk1_skip_ui8_i8_i8",
@@ -1574,6 +1602,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn7_conv2dk1_skip.o",
         )
         bn7_conv2dk1_ui8_i8 = external_func(
             "bn7_conv2dk1_ui8_i8",
@@ -1586,12 +1615,13 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn7_conv2dk1_i8.o",
         )
 
-        bn7_objectArchiveName = (
-            "bn7_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-            % (bn7_depthWiseStride, "skip" if (bn7_withSkip) else "")
-        )
+        # bn7_objectArchiveName = (
+        #     "bn7_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn7_depthWiseStride, "skip" if (bn7_withSkip) else "")
+        # )
 
         # between compute tiles
         act_bn7_bn8 = object_fifo(
@@ -1605,7 +1635,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn7_wts_OF_L3L1,
             act_bn7_bn8,
             rtpComputeTile22,
-            bn7_objectArchiveName,
             bn7_conv2dk1_relu_i8_ui8,
             bn7_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn7_conv2dk3_dw_stride2_relu_ui8_ui8,
@@ -1680,6 +1709,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn8_conv2dk1_fused_relu.o",
         )
         bn8_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn8_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -1698,6 +1728,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn8_conv2dk3_dw_stride1.o",
         )
         bn8_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn8_conv2dk1_skip_ui8_i8_i8",
@@ -1712,6 +1743,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn8_conv2dk1_skip.o",
         )
 
         bn9_conv2dk1_relu_i8_ui8 = external_func(
@@ -1725,6 +1757,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn9_conv2dk1_fused_relu.o",
         )
         bn9_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn9_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -1743,6 +1776,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn9_conv2dk3_dw_stride1.o",
         )
         bn9_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn9_conv2dk1_skip_ui8_i8_i8",
@@ -1757,6 +1791,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn9_conv2dk1_skip.o",
         )
 
         act_out = object_fifo(
@@ -1771,7 +1806,6 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn8_9_wts_OF_L3L1,
             act_out,
             rtpComputeTile23,
-            "combined_bn_8_9.a",
             bn8_conv2dk1_relu_i8_ui8,
             bn8_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn8_conv2dk1_skip_ui8_i8_i8,

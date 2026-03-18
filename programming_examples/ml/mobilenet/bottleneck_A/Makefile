@@ -99,21 +99,21 @@ else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DREGULAR -DSCALAR -DUNSIGNED_SKIP -c $< -o ${@F}
 endif
 
-build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk1_i8.o  
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk1_i8.o  
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride1.o build/conv2dk1_i8.o  
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride1.o build/conv2dk1_i8.o  
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a:  build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride1.o build/conv2dk1_skip.o
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a:  build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride1.o build/conv2dk1_skip.o
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/combined_conv2dk3dwstride1_conv2dk1skip.a: build/conv2dk3_dw_stride1.o build/conv2dk1_skipui8.o 
-	mkdir -p ${@D}
-	ar rvs $@ $^
+# build/combined_conv2dk3dwstride1_conv2dk1skip.a: build/conv2dk3_dw_stride1.o build/conv2dk1_skipui8.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $^
 
 # build/combined_bn0_bn1.a: build/conv2dk3_dw_stride1.o build/conv2dk1_skipui8.o build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk1_i8.o 
 # 	mkdir -p ${@D}
@@ -153,9 +153,9 @@ else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DSCALAR -DBN8 -c $< -o ${@F}
 endif
 
-build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_i8.o 
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_i8.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
 # bn9
 build/bn9_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
@@ -182,24 +182,24 @@ else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBN9 -DSCALAR -c $< -o ${@F}
 endif
 
-build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o 
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 # ****************************************************************************************
 
-build/combined_bn_4_5.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o
-	mkdir -p ${@D}
-	ar rvs $@ $^
+# build/combined_bn_4_5.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $^
 
-build/combined_bn_8_9.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
-	mkdir -p ${@D}
-	ar rvs $@ $^
+# build/combined_bn_8_9.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $^
 
 # ****************************************************************************************
 
 # build/final_%.xclbin build/inst_%.bin &: build/aie2_%.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a build/combined_conv2dk3dwstride1_conv2dk1skip.a build/combined_bn0_bn1.a  build/combined_bn2_bn3.a
-build/final_%.xclbin build/inst_%.bin &: build/aie2_%.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a build/combined_conv2dk3dwstride1_conv2dk1skip.a build/combined_bn_8_9.a  build/combined_bn_4_5.a
-
+# build/final_%.xclbin build/inst_%.bin &: build/aie2_%.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a build/combined_conv2dk3dwstride1_conv2dk1skip.a build/combined_bn_8_9.a  build/combined_bn_4_5.a
+build/final_%.xclbin build/inst_%.bin &: build/aie2_%.mlir build/conv2dk1_i8.o build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk3_dw_stride1.o build/conv2dk1_skip.o build/conv2dk1_skipui8.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \

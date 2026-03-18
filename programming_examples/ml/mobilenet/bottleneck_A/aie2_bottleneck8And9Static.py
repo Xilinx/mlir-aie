@@ -30,7 +30,6 @@ class bottleneckAFused_8and9Static:
         _weightsIn,
         _actOut,
         _rtpsIn,
-        _objectArchive,
         _f1x1Relu8,
         _f3x3dwStrideRelu8,
         _f1x1Skip8,
@@ -70,7 +69,6 @@ class bottleneckAFused_8and9Static:
         self.actOut = _actOut
         self.rtpsIn = _rtpsIn
 
-        self.objectArchiveName = _objectArchive
         self.f1x1Relu8 = _f1x1Relu8
         self.f3x3dwStrideRelu8 = _f3x3dwStrideRelu8
         self.f1x1Skip8 = _f1x1Skip8
@@ -166,7 +164,8 @@ class bottleneckAFused_8and9Static:
         self.of_act_bn9_2_3.allocate(self.L1Tile)  # TODO
 
         # Compute tile
-        @core(self.computeTile, self.objectArchiveName, False)
+        # @core(self.computeTile, False)
+        @core(self.computeTile)
         def core_body():
 
             for _ in for_(1):  # for _ in for_(sys.maxsize):
@@ -921,6 +920,7 @@ def mobilenetV3Bottleneck8And9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk1_fused_relu.o",
         )
         bn8_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn8_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -939,6 +939,7 @@ def mobilenetV3Bottleneck8And9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk3_dw_stride1.o",
         )
         bn8_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn8_conv2dk1_skip_ui8_i8_i8",
@@ -953,6 +954,7 @@ def mobilenetV3Bottleneck8And9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk1_skip.o",
         )
 
         bn9_conv2dk1_relu_i8_ui8 = external_func(
@@ -966,6 +968,7 @@ def mobilenetV3Bottleneck8And9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk1_fused_relu.o",
         )
         bn9_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "bn9_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -984,6 +987,7 @@ def mobilenetV3Bottleneck8And9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk3_dw_stride1.o",
         )
         bn9_conv2dk1_skip_ui8_i8_i8 = external_func(
             "bn9_conv2dk1_skip_ui8_i8_i8",
@@ -998,6 +1002,7 @@ def mobilenetV3Bottleneck8And9(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk1_skip.o",
         )
 
         # Tile declarations
@@ -1090,7 +1095,6 @@ def mobilenetV3Bottleneck8And9(
             wts_OF_L3L2,
             act_out,
             rtpComputeTile,
-            "combined_bn_8_9.a",
             bn8_conv2dk1_relu_i8_ui8,
             bn8_conv2dk3_dw_stride1_relu_ui8_ui8,
             bn8_conv2dk1_skip_ui8_i8_i8,

@@ -35,7 +35,6 @@ class bottleneckACoreStatic:
         _weightsIn,
         _actOut,
         _rtpsIn,
-        _objectArchive,
         _f1x1Relu,
         _f3x3dwStride1Relu,
         _f3x3dwStride2Relu,
@@ -65,7 +64,6 @@ class bottleneckACoreStatic:
         self.actOut = _actOut
         self.rtpsIn = _rtpsIn
 
-        self.objectArchive = _objectArchive
         self.f1x1Relu = _f1x1Relu
         self.f3x3dwRelu = (
             _f3x3dwStride2Relu if (_depthWiseStride == 2) else _f3x3dwStride1Relu
@@ -118,7 +116,7 @@ class bottleneckACoreStatic:
         )
 
         # Compute tile
-        @core(self.computeTile, self.objectArchive)
+        @core(self.computeTile)
         def core_body():
             for _ in for_(1):  # for _ in for_(sys.maxsize):
 
@@ -524,6 +522,7 @@ def mobilenetV3BottleneckA(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk1_fused_relu.o",
         )
         conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
             "conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -542,6 +541,7 @@ def mobilenetV3BottleneckA(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk3_dw_stride2.o",
         )
         conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
             "conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -560,6 +560,7 @@ def mobilenetV3BottleneckA(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk3_dw_stride1.o",
         )
         conv2dk1_skip_ui8_i8_i8 = external_func(
             "conv2dk1_skip_ui8_i8_i8",
@@ -574,6 +575,7 @@ def mobilenetV3BottleneckA(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk1_skip.o",
         )
         conv2dk1_ui8_i8 = external_func(
             "conv2dk1_ui8_i8",
@@ -586,6 +588,7 @@ def mobilenetV3BottleneckA(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk1_i8.o",
         )
 
         # Tile declarations
@@ -622,10 +625,10 @@ def mobilenetV3BottleneckA(
         )
 
         # Compute tile
-        objectArchiveName = (
-            "combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-            % (depthWiseStride, "skip" if (withSkip) else "")
-        )
+        # objectArchiveName = (
+        #     "combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (depthWiseStride, "skip" if (withSkip) else "")
+        # )
 
         bottleneckACoreStatic(
             bottleneckName,
@@ -635,7 +638,6 @@ def mobilenetV3BottleneckA(
             weightsAllLayers,
             act_out,
             rtpComputeTile,
-            objectArchiveName,
             conv2dk1_relu_i8_ui8,
             conv2dk3_dw_stride1_relu_ui8_ui8,
             conv2dk3_dw_stride2_relu_ui8_ui8,

@@ -382,6 +382,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn10_conv2dk1_fused_relu.o",
         )
         bn10_conv2dk3_dw = external_func(
             "bn10_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -400,6 +401,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn10_conv2dk3_dw.o",
         )
         bn10_conv2dk1_ui8 = external_func(
             "bn10_conv2dk1_ui8_i8",
@@ -412,6 +414,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn10_conv2dk1_ui8.o",
         )
         # ************************ bneck11 ************************
         bn11_conv2dk1_fused_relu = external_func(
@@ -425,6 +428,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn11_conv2dk1_fused_relu.o",
         )
         bn11_conv2dk3_dw = external_func(
             "bn11_conv2dk3_dw_stride1_relu_ui8_ui8",
@@ -443,6 +447,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn11_conv2dk3_dw.o",
         )
         bn11_conv2dk1_skip = external_func(
             "bn11_conv2dk1_skip_ui8_i8_i8",
@@ -457,6 +462,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn11_conv2dk1_skip.o",
         )
 
         # ************************ bneck12 ************************
@@ -471,6 +477,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn12_conv2dk1_fused_relu.o",
         )
         bn12_conv2dk3_dw = external_func(
             "bn12_conv2dk3_dw_stride2_relu_ui8_ui8",
@@ -489,6 +496,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn12_conv2dk3_dw_stride2.o",
         )
         bn12_conv2dk1_ui8 = external_func(
             "bn12_conv2dk1_ui8_i8",
@@ -501,6 +509,7 @@ class bottleneckBCoreStatic:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn12_conv2dk1_ui8.o",
         )
 
         # Tile declarations
@@ -597,11 +606,11 @@ class bottleneckBCoreStatic:
         # OF_outOFL2L3 = object_fifo("outOFL2L3", MemTile21, [ShimTile10], 2, b12_layer3_out)
         # object_fifo_link(self.actOut, OF_outOFL2L3)
         # Set up compute tiles
-        objectArchiveName = "fused_bn12_layer2_3.a"
+        # objectArchiveName = "fused_bn12_layer2_3.a"
 
         # ************************ bneck10 ************************
         # 1x1 conv2d
-        @core(self.computeTileBN10_1, "bn10_conv2dk1_fused_relu.o")
+        @core(self.computeTileBN10_1)
         def core_body():
             for _ in for_(sys.maxsize):
 
@@ -638,7 +647,7 @@ class bottleneckBCoreStatic:
                 yield_([])
 
         # # # Compute tile 3
-        @core(self.computeTileBN10_2, "bn10_conv2dk3_dw.o")
+        @core(self.computeTileBN10_2)
         def core_body():
             scale = bn10_scaleFactor2
             for _ in for_(sys.maxsize):
@@ -743,7 +752,7 @@ class bottleneckBCoreStatic:
                 yield_([])
 
         # Compute tile 4
-        @core(self.computeTileBN10_3, "bn10_conv2dk1_ui8.o")
+        @core(self.computeTileBN10_3)
         def core_body():
             for _ in for_(0xFFFFFFFF):
                 # elemWts = self.weightsInBN10_layer3.acquire(ObjectFifoPort.Consume, 1)
@@ -779,7 +788,7 @@ class bottleneckBCoreStatic:
 
         # # # ************************ bneck11 ************************
         # #     #     # 1x1 conv2d
-        @core(self.computeTileBN11_1, "bn11_conv2dk1_fused_relu.o")
+        @core(self.computeTileBN11_1)
         def core_body():
             for _ in for_(sys.maxsize):
 
@@ -816,7 +825,7 @@ class bottleneckBCoreStatic:
                 yield_([])
 
         # # # # # # Compute tile 3
-        @core(self.computeTileBN11_2, "bn11_conv2dk3_dw.o")
+        @core(self.computeTileBN11_2)
         def core_body():
             scale = bn11_scaleFactor2
             for _ in for_(sys.maxsize):
@@ -920,7 +929,7 @@ class bottleneckBCoreStatic:
                 yield_([])
 
         # # Compute tile 4
-        @core(self.computeTileBN11_3, "bn11_conv2dk1_skip.o")
+        @core(self.computeTileBN11_3)
         def core_body():
 
             for _ in for_(0xFFFFFFFF):
@@ -962,7 +971,7 @@ class bottleneckBCoreStatic:
 
         # # # ************************ bneck12 ************************
         #     # 1x1 conv2d
-        @core(self.computeTileBN12_1, "bn12_conv2dk1_fused_relu.o")
+        @core(self.computeTileBN12_1)
         def core_body():
             for _ in for_(sys.maxsize):
 
@@ -999,7 +1008,7 @@ class bottleneckBCoreStatic:
                 yield_([])
 
         # @core(self.computeTileBN12_2, "bn12_conv2dk3_dw_stride2.o")
-        @core(self.computeTileBN12_2, objectArchiveName)
+        @core(self.computeTileBN12_2)
         def core_body():
             scale2 = bn12_scaleFactor2
             scale3 = bn12_scaleFactor3

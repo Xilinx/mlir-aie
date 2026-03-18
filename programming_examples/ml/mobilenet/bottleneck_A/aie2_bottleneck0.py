@@ -28,7 +28,6 @@ class bottleneckBN0:
         _weightsIn,
         _actOut,
         _rtpsIn,
-        _objectArchive,
         _f3x3dwStride1Relu,
         _f1x1Skip,
         _layer2OutType,
@@ -49,8 +48,6 @@ class bottleneckBN0:
         self.weightsIn = _weightsIn
         self.actOut = _actOut
         self.rtpsIn = _rtpsIn
-
-        self.objectArchive = _objectArchive
 
         self.f3x3dwRelu = _f3x3dwStride1Relu
         self.f1x1Skip = _f1x1Skip
@@ -90,7 +87,7 @@ class bottleneckBN0:
         # self.buf_act_2_3 = buffer(self.computeTile, self.layer2OutType.shape, self.layer2OutType.element_type)
 
         #  Compute tile
-        @core(self.computeTile, self.objectArchive)
+        @core(self.computeTile)
         def core_body():
 
             for _ in for_(1):  # for _ in for_(sys.maxsize):
@@ -319,6 +316,7 @@ def mobilenetV3Bottleneck0(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk3_dw_stride1.o",
         )
         conv2dk1_skip_ui8_ui8_i8 = external_func(
             "bn0_conv2dk1_skip_ui8_ui8_i8",
@@ -333,6 +331,7 @@ def mobilenetV3Bottleneck0(
                 int32_ty,
                 int32_ty,
             ],
+            link_with="conv2dk1_skipui8.o",
         )
 
         # Tile declarations
@@ -366,9 +365,9 @@ def mobilenetV3Bottleneck0(
 
         # Compute tile
         # objectArchiveName = "combined_conv2dk3dwstride1_conv2dk1skip.a"
-        objectArchiveName = "bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a"
+        # objectArchiveName = "bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a"
 
-        @core(ComputeTile, objectArchiveName)
+        @core(ComputeTile)
         def core_body():
 
             for _ in for_(1):  # for _ in for_(sys.maxsize):

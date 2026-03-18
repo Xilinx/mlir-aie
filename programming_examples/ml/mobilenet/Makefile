@@ -254,21 +254,35 @@ else ifeq ($(DESIGN_RUN), final)
   MLIR_FILE = aie2_mobilenet
   TEST_FILE = test_mobilenet
   OBJ = build/init_conv2dk3.o \
-		build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a \
-		build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
-		build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
-		build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
-		build/combined_bn_4_5.a \
-		build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
-		build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
-		build/combined_bn_8_9.a \
-		build/bn10_conv2dk1_fused_relu.o build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o\
+		build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o \
+		build/bn1_conv2dk1_fused_relu.o build/bn1_conv2dk3_dw_stride2.o build/bn1_conv2dk1_i8.o \
+		build/bn2_conv2dk1_fused_relu.o build/bn2_conv2dk3_dw_stride1.o build/bn2_conv2dk1_skip.o \
+		build/bn3_conv2dk1_fused_relu.o build/bn3_conv2dk3_dw_stride2.o build/bn3_conv2dk1_i8.o \
+		build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o \
+		build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o build/bn5_conv2dk1_i8.o \
+		build/bn6_conv2dk1_fused_relu.o build/bn6_conv2dk3_dw_stride2.o build/bn6_conv2dk1_i8.o \
+		build/bn7_conv2dk1_fused_relu.o build/bn7_conv2dk3_dw_stride1.o build/bn7_conv2dk1_skip.o \
+		build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn8_conv2dk1_i8.o \
+		build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o \
+		build/bn10_conv2dk1_fused_relu.o build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o \
 		build/bn11_conv2dk1_fused_relu.o build/bn11_conv2dk3_dw.o build/bn11_conv2dk1_skip.o \
-		build/bn12_conv2dk1_fused_relu.o build/fused_bn12_layer2_3.a \
-		build/bn13_1_conv2dk1_put.o build/bn13_1_conv2dk1_get.o build/bn13_conv2dk3_dw.o build/bn13_conv2dk1_put.o build/bn13_conv2dk1_skip_get.o\
+		build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o \
+		build/bn13_1_conv2dk1_put.o build/bn13_1_conv2dk1_get.o build/bn13_conv2dk3_dw.o build/bn13_conv2dk1_put.o build/bn13_conv2dk1_skip_get.o \
 		build/bn14_1_conv2dk1_put.o build/bn14_1_conv2dk1_get.o build/bn14_conv2dk3_dw.o build/bn14_conv2dk1_put.o build/bn14_conv2dk1_skip_get.o \
 		build/post_conv2dk1_relu_xy_pool_padded_i8_ui8.o \
 		build/post_L2_conv2dk1_relu_ui16_ui16_pad.o
+
+#		build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a \
+# 		build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+# 		build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+# 		build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+# 		build/combined_bn_4_5.a \
+# 		build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+# 		build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+# 		build/combined_bn_8_9.a \
+# 		build/bn10_conv2dk1_fused_relu.o build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o\
+# 		build/bn11_conv2dk1_fused_relu.o build/bn11_conv2dk3_dw.o build/bn11_conv2dk1_skip.o \
+# 		build/bn12_conv2dk1_fused_relu.o build/fused_bn12_layer2_3.a \
 
 
 else ifeq ($(DESIGN_RUN), v9.3)
@@ -418,9 +432,9 @@ build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a: build/bn0_conv2dk3_dw_st
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a: build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a: build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
 build/bn1_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
 	mkdir -p ${@D}
@@ -438,9 +452,9 @@ build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/bn1_conv
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/fused_bn0_bn1.a: build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o build/bn1_conv2dk1_fused_relu.o build/bn1_conv2dk3_dw_stride2.o build/bn1_conv2dk1_i8.o 
-	mkdir -p ${@D}
-	ar rvs $@ $^ $(word 2,$^) $(word 3,$^) $(word 4,$^) $(word 5,$^)
+# build/fused_bn0_bn1.a: build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o build/bn1_conv2dk1_fused_relu.o build/bn1_conv2dk3_dw_stride2.o build/bn1_conv2dk1_i8.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $^ $(word 2,$^) $(word 3,$^) $(word 4,$^) $(word 5,$^)
 
 # bn2
 build/bn2_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
@@ -454,9 +468,9 @@ build/bn2_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN2 -DSCALAR -c $< -o ${@F}
 
-build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn2_conv2dk1_fused_relu.o build/bn2_conv2dk3_dw_stride1.o build/bn2_conv2dk1_skip.o 
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn2_conv2dk1_fused_relu.o build/bn2_conv2dk3_dw_stride1.o build/bn2_conv2dk1_skip.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
 # bn3
 build/bn3_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
@@ -469,9 +483,9 @@ build/bn3_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN3 -c $< -o ${@F}
 
-build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/bn3_conv2dk1_fused_relu.o build/bn3_conv2dk3_dw_stride2.o build/bn3_conv2dk1_i8.o 
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/bn3_conv2dk1_fused_relu.o build/bn3_conv2dk3_dw_stride2.o build/bn3_conv2dk1_i8.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
 # bn4
 build/bn4_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
@@ -485,9 +499,9 @@ build/bn4_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN4 -DSCALAR -c $< -o ${@F}
 
-build/bn4_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o 
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn4_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
 # bn5
 build/bn5_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
@@ -510,9 +524,9 @@ build/bn5_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn5_conv
 	mkdir -p ${@D}
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
-build/combined_bn_4_5.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o
-	mkdir -p ${@D}
-	ar rvs $@ $^
+# build/combined_bn_4_5.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $^
 
 # bn6
 build/bn6_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
@@ -525,9 +539,10 @@ build/bn6_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN6 -c $< -o ${@F}
 
-build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/bn6_conv2dk1_fused_relu.o build/bn6_conv2dk3_dw_stride2.o build/bn6_conv2dk1_i8.o 
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/bn6_conv2dk1_fused_relu.o build/bn6_conv2dk3_dw_stride2.o build/bn6_conv2dk1_i8.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
 # bn7
 build/bn7_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
 	mkdir -p ${@D}
@@ -540,9 +555,9 @@ build/bn7_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN7 -DSCALAR -c $< -o ${@F}
 
-build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn7_conv2dk1_fused_relu.o build/bn7_conv2dk3_dw_stride1.o build/bn7_conv2dk1_skip.o 
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn7_conv2dk1_fused_relu.o build/bn7_conv2dk3_dw_stride1.o build/bn7_conv2dk1_skip.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
 # bn8
 build/bn8_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
@@ -561,9 +576,9 @@ build/bn8_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN8 -c $< -o ${@F}
 
-build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_i8.o 
-	mkdir -p ${@D}
-	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_i8.o 
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 
 # bn9
 build/bn9_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
@@ -582,9 +597,9 @@ build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn9_
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 # ****************************************************************************************
 
-build/combined_bn_8_9.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
-	mkdir -p ${@D}
-	ar rvs $@ $^
+# build/combined_bn_8_9.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $^
 
 # bn10
 build/bn10_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc

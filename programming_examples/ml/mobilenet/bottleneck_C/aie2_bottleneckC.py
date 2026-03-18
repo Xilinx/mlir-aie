@@ -366,6 +366,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn13_1_conv2dk1_get.o",
         )
         bn13_conv2dk1_fused_relu_put = external_func(
             "bn13_1_conv2dk1_i8_ui8_partial_width_put_new",
@@ -380,6 +381,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn13_1_conv2dk1_put.o",
         )
         bn13_conv2dk3_dw = external_func(
             "bn13_conv2dk3_ui8_out_split",
@@ -399,6 +401,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn13_conv2dk3_dw.o",
         )
 
         bn13_layer3_conv2dk1_put = external_func(
@@ -414,6 +417,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn13_conv2dk1_put.o",
         )
 
         bn13_layer3_conv2dk1_skip_get = external_func(
@@ -434,6 +438,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn13_conv2dk1_skip_get.o",
         )
         bn14_conv2dk1_fused_relu_get = external_func(
             "bn14_1_conv2dk1_i8_ui8_partial_width_get_new",
@@ -451,6 +456,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn14_1_conv2dk1_get.o",
         )
         bn14_conv2dk1_fused_relu_put = external_func(
             "bn14_1_conv2dk1_i8_ui8_partial_width_put_new",
@@ -465,6 +471,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn14_1_conv2dk1_put.o",
         )
         bn14_conv2dk3_dw = external_func(
             "bn14_conv2dk3_ui8_out_split",
@@ -484,6 +491,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn14_conv2dk3_dw.o",
         )
 
         bn14_layer3_conv2dk1_put = external_func(
@@ -499,6 +507,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn14_conv2dk1_put.o",
         )
 
         bn14_layer3_conv2dk1_skip_get = external_func(
@@ -519,6 +528,7 @@ class bottleneckCCore:
                 int32_ty,
                 int32_ty,
             ],
+            link_with="bn14_conv2dk1_skip_get.o",
         )
 
         # AIE-array data movement with object fifos
@@ -602,7 +612,7 @@ class bottleneckCCore:
 
         # ************************ bneck13 ************************
         # conv1x1_first put
-        @core(self.computeTileBN13_layer1_put, "bn13_1_conv2dk1_put.o")
+        @core(self.computeTileBN13_layer1_put)
         def core_body():
             for _ in for_(0xFFFFFFFF):
                 for _ in for_(bneck_13_InH1):
@@ -640,7 +650,7 @@ class bottleneckCCore:
                 yield_([])
 
         # conv1x1_first get
-        @core(self.computeTileBN13_layer1_get, "bn13_1_conv2dk1_get.o")
+        @core(self.computeTileBN13_layer1_get)
         def core_body():
             for _ in for_(0xFFFFFFFF):
                 for _ in for_(bneck_13_InH1):
@@ -684,7 +694,7 @@ class bottleneckCCore:
                 yield_([])
 
         # conv3x3
-        @core(self.computeTileBN13_layer2, "bn13_conv2dk3_dw.o")
+        @core(self.computeTileBN13_layer2)
         def core_body():
             scale = self.bn13_scaleFactor2
             for _ in for_(sys.maxsize):
@@ -795,7 +805,7 @@ class bottleneckCCore:
                 yield_([])
 
         # conv1x1_second put
-        @core(self.computeTileBN13_layer3_put, "bn13_conv2dk1_put.o")
+        @core(self.computeTileBN13_layer3_put)
         def core_body():
             for _ in for_(0xFFFFFFFF):
 
@@ -838,7 +848,7 @@ class bottleneckCCore:
                 yield_([])
 
         # conv1x1_second get
-        @core(self.computeTileBN13_layer3_get, "bn13_conv2dk1_skip_get.o")
+        @core(self.computeTileBN13_layer3_get)
         def core_body():
             for _ in for_(0xFFFFFFFF):
 
@@ -897,7 +907,7 @@ class bottleneckCCore:
 
         # ************************ bneck14 ************************
         # conv1x1_first put
-        @core(self.computeTileBN14_layer1_put, "bn14_1_conv2dk1_put.o")
+        @core(self.computeTileBN14_layer1_put)
         def core_body():
             for _ in for_(0xFFFFFFFF):
                 for _ in for_(bneck_13_InH1):
@@ -935,7 +945,7 @@ class bottleneckCCore:
                 yield_([])
 
         # conv1x1_first get
-        @core(self.computeTileBN14_layer1_get, "bn14_1_conv2dk1_get.o")
+        @core(self.computeTileBN14_layer1_get)
         def core_body():
             for _ in for_(0xFFFFFFFF):
 
@@ -983,7 +993,7 @@ class bottleneckCCore:
                 yield_([])
 
         # conv3x3
-        @core(self.computeTileBN14_layer2, "bn14_conv2dk3_dw.o")
+        @core(self.computeTileBN14_layer2)
         def core_body():
             scale = self.bn14_scaleFactor2
             for _ in for_(sys.maxsize):
@@ -1097,7 +1107,7 @@ class bottleneckCCore:
                 yield_([])
 
         # conv1x1_second put
-        @core(self.computeTileBN14_layer3_put, "bn14_conv2dk1_put.o")
+        @core(self.computeTileBN14_layer3_put)
         def core_body():
             for _ in for_(0xFFFFFFFF):
 
@@ -1138,7 +1148,9 @@ class bottleneckCCore:
                 yield_([])
 
         # conv1x1_second get
-        @core(self.computeTileBN14_layer3_get, "bn14_conv2dk1_skip_get.o")
+        @core(
+            self.computeTileBN14_layer3_get,
+        )
         def core_body():
             for _ in for_(0xFFFFFFFF):
 
