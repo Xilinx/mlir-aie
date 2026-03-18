@@ -1,6 +1,0 @@
-torch
-tqdm
-torchvision
-Pillow
-brevitas
-onnx

@@ -179,7 +179,7 @@ class postBlock:
         self.scaleFactor = _post_scaleFactor
         PostOutputSplit = 8  # split output channels based on your preference
 
-        @core(self.computeTile)  # True
+        @core(self.computeTile, dynamic_objfifo_lowering=True)
         def core_body():
             for _ in for_(0xFFFFFFFE):
 
