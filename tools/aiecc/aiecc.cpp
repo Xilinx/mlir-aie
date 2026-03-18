@@ -49,6 +49,8 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <random>
+
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
@@ -3386,6 +3388,29 @@ static LogicalResult generateKernelsJson(StringRef jsonPath,
   return writeJsonToFile(jsonPath, llvm::json::Value(std::move(kernelsData)));
 }
 
+/// Generate a UUID v4 string (matches Python's uuid.uuid4())
+static std::string generateUUID() {
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
+
+  uint32_t data[4];
+  for (int i = 0; i < 4; i++)
+    data[i] = dis(gen);
+
+  // Set version to 4 (random UUID)
+  data[1] = (data[1] & 0xFFFF0FFF) | 0x4000;
+  // Set variant to RFC 4122
+  data[2] = (data[2] & 0x3FFFFFFF) | 0x80000000;
+
+  return llvm::formatv("{0:x-8}-{1:x-4}-{2:x-4}-{3:x-4}-{4:x-12}",
+                       data[0],
+                       data[1] >> 16,
+                       data[1] & 0xFFFF,
+                       data[2] >> 16,
+                       ((uint64_t)(data[2] & 0xFFFF) << 32) | data[3]);
+}
+
 static LogicalResult generatePartitionJson(StringRef jsonPath,
                                            StringRef devName, StringRef pdiPath,
                                            xilinx::AIE::DeviceOp deviceOp) {
@@ -3413,8 +3438,11 @@ static LogicalResult generatePartitionJson(StringRef jsonPath,
        {"dpu_kernel_ids", llvm::json::Array{xclbinKernelId.getValue()}},
        {"pre_cdo_groups", llvm::json::Array{std::string("0xC1")}}});
 
+  // Generate unique UUID for this PDI (matches Python aiecc behavior)
+  std::string pdiUUID = generateUUID();
+
   llvm::json::Object pdiEntry(
-      {{"uuid", "00000000-0000-0000-0000-000000000000"},
+      {{"uuid", pdiUUID},
        {"file_name", pdiPath.str()},
        {"cdo_groups", llvm::json::Array{std::move(cdoGroup)}}});
 
@@ -3523,10 +3551,12 @@ static LogicalResult extractAndMergePartition(StringRef inputXclbin,
     return failure();
   }
 
-  // Append new PDIs to input PDIs
-  for (auto &pdi : *newPDIs) {
-    inputPDIs->push_back(std::move(pdi));
+  // Append only the first PDI from new partition (matches Python aiecc behavior)
+  if (newPDIs->size() == 0) {
+    llvm::errs() << "Error: New partition has no PDIs\n";
+    return failure();
   }
+  inputPDIs->push_back(std::move((*newPDIs)[0]));
 
   // Write merged partition JSON
   std::error_code ec;
