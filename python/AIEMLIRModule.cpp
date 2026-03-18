@@ -363,19 +363,24 @@ NB_MODULE(_aie, m) {
       });
 
   // TileLike interface bindings
-  m.def("tile_like_is_core_tile",
-        [](MlirOperation op) { return aieTileLikeIsCoreTile(op); },
-        "Returns true if the tile operation is a core tile.");
-  m.def("tile_like_is_mem_tile",
-        [](MlirOperation op) { return aieTileLikeIsMemTile(op); },
-        "Returns true if the tile operation is a mem tile.");
-  m.def("tile_like_is_shim_noc_tile",
-        [](MlirOperation op) { return aieTileLikeIsShimNOCTile(op); },
-        "Returns true if the tile operation is a shim NOC tile.");
-  m.def("tile_like_is_shim_pl_tile",
-        [](MlirOperation op) { return aieTileLikeIsShimPLTile(op); },
-        "Returns true if the tile operation is a shim PL tile.");
-  m.def("tile_like_is_shim_tile",
-        [](MlirOperation op) { return aieTileLikeIsShimNOCorPLTile(op); },
-        "Returns true if the tile operation is a shim tile (NOC or PL).");
+  m.def(
+      "tile_like_is_core_tile",
+      [](MlirOperation op) { return aieTileLikeIsCoreTile(op); },
+      "Returns true if the tile operation is a core tile.");
+  m.def(
+      "tile_like_is_mem_tile",
+      [](MlirOperation op) { return aieTileLikeIsMemTile(op); },
+      "Returns true if the tile operation is a mem tile.");
+  m.def(
+      "tile_like_is_shim_noc_tile",
+      [](MlirOperation op) { return aieTileLikeIsShimNOCTile(op); },
+      "Returns true if the tile operation is a shim NOC tile.");
+  m.def(
+      "tile_like_is_shim_pl_tile",
+      [](MlirOperation op) { return aieTileLikeIsShimPLTile(op); },
+      "Returns true if the tile operation is a shim PL tile.");
+  m.def(
+      "tile_like_is_shim_tile",
+      [](MlirOperation op) { return aieTileLikeIsShimNOCorPLTile(op); },
+      "Returns true if the tile operation is a shim tile (NOC or PL).");
 }

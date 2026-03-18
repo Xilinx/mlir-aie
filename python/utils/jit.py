@@ -172,6 +172,12 @@ def jit(function=None, is_placed=True, use_cache=True):
                     _cleanup_failed_compilation(kernel_dir)
                     raise
 
+        # Set physical MLIR path for trace parsing (contains lowered npu_write32 ops)
+        if trace_config is not None:
+            physical_mlir = kernel_dir / "input_with_addresses.mlir"
+            if physical_mlir.exists():
+                trace_config.physical_mlir_path = str(physical_mlir)
+
         kernel = NPUKernel(
             xclbin_path,
             inst_path,

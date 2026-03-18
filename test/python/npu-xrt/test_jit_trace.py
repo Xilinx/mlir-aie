@@ -79,11 +79,16 @@ def test_jit_trace(trace_size):
     # Verify trace file exists
     assert os.path.exists(trace_config.trace_file)
 
-    # Parse trace
-    # Get MLIR module from the wrapped function
-    mlir_module = design.__wrapped__(a, c, trace_config=trace_config)
+    # Parse trace using physical MLIR (contains lowered npu_write32 ops)
+    assert (
+        trace_config.physical_mlir_path is not None
+    ), "physical_mlir_path not set - trace parsing requires lowered MLIR"
+    assert os.path.exists(trace_config.physical_mlir_path)
+
+    with open(trace_config.physical_mlir_path, "r") as f:
+        physical_mlir_str = f.read()
 
     trace_buffer = trace_config.read_trace()
-    trace_events = parse_trace(trace_buffer, str(mlir_module))
+    trace_events = parse_trace(trace_buffer, physical_mlir_str)
 
     assert len(trace_events) > 0

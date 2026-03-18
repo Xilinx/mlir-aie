@@ -27,6 +27,8 @@ class TraceConfig:
         self.enable_ctrl_pkts = enable_ctrl_pkts
         self.last_tensor_shape = last_tensor_shape
         self.last_tensor_dtype = last_tensor_dtype
+        # Path to physical MLIR with lowered trace ops (set by NPUKernel)
+        self.physical_mlir_path = None
 
     def write_trace(self, trace):
         out_str = "\n".join(f"{i:0{8}x}" for i in trace if i != 0)
