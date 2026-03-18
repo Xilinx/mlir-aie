@@ -34,7 +34,9 @@ jobs:
       - name: Install Python packages
         run: |
           pip install --upgrade pip
-          pip install -r python/requirements.txt
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
           pip install -r python/requirements_dev.txt
 
       - name: Install Ninja
