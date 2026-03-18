@@ -15,6 +15,11 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEPLACETILES
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
 #define DEBUG_TYPE "aie-place-tiles"
 
 using namespace mlir;
@@ -55,9 +60,8 @@ private:
   PlacementAnalysis &analyzer;
 };
 
-} // namespace
-
-struct AIEPlaceTilesPass : AIEPlaceTilesBase<AIEPlaceTilesPass> {
+struct AIEPlaceTilesPass
+    : xilinx::AIE::impl::AIEPlaceTilesBase<AIEPlaceTilesPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -95,6 +99,8 @@ struct AIEPlaceTilesPass : AIEPlaceTilesBase<AIEPlaceTilesPass> {
       return signalPassFailure();
   }
 };
+
+} // namespace
 
 std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEPlaceTilesPass() {
   return std::make_unique<AIEPlaceTilesPass>();

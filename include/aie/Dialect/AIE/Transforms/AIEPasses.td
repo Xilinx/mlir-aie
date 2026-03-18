@@ -99,7 +99,7 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "mlir::ModuleOp"> {
   let description = [{
     This pass inserts a toplevel device operation in designs that do not have one.
     This allows us to support backwards compatability for older models targetting the VC1902
-    device without explicit device operations.
+    device without explicit device operations. 
   }];
 
   let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
@@ -183,10 +183,10 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp">
 
 def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
   let summary = "Route aie.flow and aie.packetflow operations through switchboxes";
-  let description = [{
-    Uses Pathfinder congestion-aware algorithm.
+  let description = [{    
+    Uses Pathfinder congestion-aware algorithm. 
     Each aie.flow is replaced with aie.connect operation.
-    Each aie.packetflow is replace with the set of aie.amsel, aie.masterset
+    Each aie.packetflow is replace with the set of aie.amsel, aie.masterset 
     and aie.packet_rules operations.
   }];
 
@@ -197,9 +197,9 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
 
   let options = [
     Option<"clRouteCircuit", "route-circuit", "bool", /*default=*/"true",
-            "Flag to enable aie.flow lowering.">,
+            "Flag to enable aie.flow lowering.">,      
     Option<"clRoutePacket", "route-packet", "bool", /*default=*/"true",
-            "Flag to enable aie.packetflow lowering.">,
+            "Flag to enable aie.packetflow lowering.">,     
   ];
 }
 
@@ -236,7 +236,7 @@ def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp">
     This pass lowers vector.transfer_read operations to vector.load + vector.broadcast
     and vector.transfer_write operations to vector.store, when applicable.
     It's a wrapper for the upstream `populateVectorTransferLoweringPatterns`.
-    TODO: Deprecate this pass once `populateVectorTransferLoweringPatterns` is included in
+    TODO: Deprecate this pass once `populateVectorTransferLoweringPatterns` is included in 
     `convert-to-llvm`.
   }];
 
@@ -252,10 +252,10 @@ def AIEVectorToPointerLoops : Pass<"aie-vector-to-pointer-loops", "DeviceOp"> {
   let description = [{
     This pass transforms scf.for loops containing vector.load/store operations
     with loop-carried index arguments to use ptr dialect operations.
-
+    
     The transformation makes pointer increment patterns explicit to help the
     LLVM backend generate efficient post-increment addressing modes (GEP fusion).
-
+    
     Example transformation:
       Before:
         scf.for iter_args(%idx = %0) {
@@ -263,7 +263,7 @@ def AIEVectorToPointerLoops : Pass<"aie-vector-to-pointer-loops", "DeviceOp"> {
           %next = arith.addi %idx, %stride
           scf.yield %next
         }
-
+      
       After:
         %ptr = ptr.to_ptr %memref
         %init_ptr = ptr.ptr_add %ptr, %0
@@ -284,16 +284,16 @@ def AIEHoistVectorTransferPointers : Pass<"aie-hoist-vector-transfer-pointers", 
     pointer computations. It operates on aie.core regions within aie.device operations.
     When vector transfer operations have indices that depend on the loop induction variable,
     the pass:
-
+    
     1. Flattens multi-dimensional memrefs to 1D
     2. Computes a base pointer before the loop
     3. Adds the pointer as a loop iter_arg
     4. Updates the pointer by a constant stride each iteration
     5. Replaces the transfer operations to use the iter_arg pointer
-
+    
     This eliminates redundant index computation and affine.apply operations within
     the loop body, replacing them with simple pointer arithmetic.
-
+    
     This pass must run before scf-to-cf conversion and before cores are outlined
     to functions, since it operates on scf.for loops within aie.core regions.
   }];
@@ -304,16 +304,16 @@ def AIEHoistVectorTransferPointers : Pass<"aie-hoist-vector-transfer-pointers", 
 def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {
   let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
   let description = [{
-    Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the
+    Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the 
     producer tile. Convert aie.objectFifo.acquire, aie.objectFifo.release and aie.objectFifo.subviewAccess
     operations into useLock operations by keeping track of acquire/release operations on each objectFifo by
     each process.
 
-    If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the
+    If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
     pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
     Extend the body of each loop that contains operations on objectFifos such that it is unrolled
-    based on the number of elements in the objectFifos. If the number of iterations of the loop
-    cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after
+    based on the number of elements in the objectFifos. If the number of iterations of the loop 
+    cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
     the original loop.
   }];
 
@@ -327,17 +327,17 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
   ];
 
   let options = [
-    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false",
-           "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">,
+    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false", 
+           "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">,      
     Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool", /*default=*/"false",
-           "Flag to enable aie.packetflow lowering from objectfifos.">,
+           "Flag to enable aie.packetflow lowering from objectfifos.">, 
   ];
 }
 
 def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> {
   let summary = "Generate acquire/release patterns for producer/consumer processes registered to an objectFifo";
   let description = [{
-    Generate acquire/release patterns in the CoreOps of associated cores for each
+    Generate acquire/release patterns in the CoreOps of associated cores for each 
     aie.objectfifo.register_process operation. Patterns are generated as for loops
     of different sizes depending on input patterns.
   }];
@@ -354,8 +354,8 @@ def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> 
 def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   let summary = "Lower aie.cascade_flow operations through `aie.configure_cascade` operations";
   let description = [{
-    Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade`
-    operations.
+    Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade` 
+    operations. 
   }];
 
   let constructor = "xilinx::AIE::createAIELowerCascadeFlowsPass()";
@@ -393,9 +393,9 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
   ];
   let options = [
     Option<"clRouteShimCTRLToTCT", "route-shim-to-tct", "std::string", /*default=*/"\"shim-only\"",
-            "Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,
+            "Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,      
     Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
-            "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,
+            "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,  
   ];
 }
 

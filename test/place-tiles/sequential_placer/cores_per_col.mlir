@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-place-tiles='cores-per-col=2' %s | FileCheck %s
+// RUN: aie-opt -split-input-file --aie-place-tiles='cores-per-col=2' %s | FileCheck %s
 
 // Test: cores_per_col=2 should spread 4 cores across 2 columns
 // CHECK-LABEL: @cores_per_col_limit
@@ -32,7 +32,7 @@ module @cores_per_col_limit {
 // -----
 
 // Test: Without cores_per_col (default), all cores go in column 0
-// RUN: aie-opt --aie-place-tiles %s | FileCheck %s --check-prefix=NO-LIMIT
+// RUN: aie-opt -split-input-file --aie-place-tiles %s | FileCheck %s --check-prefix=NO-LIMIT
 
 // NO-LIMIT-LABEL: @no_cores_per_col_limit
 module @no_cores_per_col_limit {

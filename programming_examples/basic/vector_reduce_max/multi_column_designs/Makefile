@@ -21,7 +21,6 @@ out_size = 4 # in bytes
 trace_size = 524288
 
 dtype?=i32
-cores_per_col?=2
 
 use_placed?=0
 use_row_wise?=0
@@ -32,20 +31,12 @@ use_row_wise?=0
 # 3. Column-wise unplaced design (default)
 ifeq (${use_row_wise}, 0)
 	aie_py_src=col_wise_${targetname}.py
-	# Col-wise design uses cores_per_col for both topology and placement
-	ifneq ($(cores_per_col),)
-		AIECC_PLACE_FLAGS=--aie-place-tiles-options='cores-per-col=$(cores_per_col)'
-	else
-		AIECC_PLACE_FLAGS=
-	endif
-else
+else 
 	ifeq (${use_placed}, 1)
 		aie_py_src=row_wise_${targetname}_placed.py
 	else
 		aie_py_src=row_wise_${targetname}.py
 	endif
-	# Row-wise doesn't use cores_per_col
-	AIECC_PLACE_FLAGS=
 endif
 
 ifeq ($(dtype),bf16)
@@ -56,7 +47,6 @@ ifeq ($(dtype),i32)
 endif
 
 aieargs+=--dtype ${dtype}
-aieargs+=--cores_per_col ${cores_per_col}
 
 .PHONY: all template clean
 
@@ -82,15 +72,12 @@ build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin \
-		$(AIECC_PLACE_FLAGS) \
-		$(<:%=../%)
+		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-		$(AIECC_PLACE_FLAGS) \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 ${targetname}.exe: ${srcdir}/../test.cpp
 	rm -rf _build
