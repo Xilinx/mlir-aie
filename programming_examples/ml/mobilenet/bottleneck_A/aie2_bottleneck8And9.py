@@ -20,7 +20,7 @@ from aie.extras.dialects import memref
 import aie.utils.trace as trace_utils
 
 
-class bottleneckAFused_8and9Static:
+class bottleneckAFused_8and9:
     def __init__(
         self,
         _bottleneckName,
@@ -64,8 +64,7 @@ class bottleneckAFused_8and9Static:
         self.L1Tile = _L1Tile
 
         self.actIn = _actIn
-        # self.weightsIn = _weightsIn
-        weightsAllLayers = _weightsIn
+        self.weightsIn = _weightsIn
         self.actOut = _actOut
         self.rtpsIn = _rtpsIn
 
@@ -125,7 +124,7 @@ class bottleneckAFused_8and9Static:
             self.tensorLayer8_1Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn8_1_2.allocate(self.L1Tile)  # TODO
+        self.of_act_bn8_1_2.allocate(self.L1Tile)
         self.of_act_bn8_2_3 = object_fifo(
             self.bottleneckName + "_" + "act_bn8_2_3",
             self.computeTile,
@@ -134,7 +133,7 @@ class bottleneckAFused_8and9Static:
             self.tensorLayer8_2Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn8_2_3.allocate(self.L1Tile)  # TODO
+        self.of_act_bn8_2_3.allocate(self.L1Tile)
         self.of_act_bn8_bn9 = object_fifo(
             self.bottleneckName + "_" + "act_bn8_bn9",
             self.computeTile,
@@ -143,7 +142,7 @@ class bottleneckAFused_8and9Static:
             self.tensorLayer8_3Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn8_bn9.allocate(self.L1Tile)  # TODO
+        self.of_act_bn8_bn9.allocate(self.L1Tile)
         self.of_act_bn9_1_2 = object_fifo(
             self.bottleneckName + "_" + "act_bn9_1_2",
             self.computeTile,
@@ -152,7 +151,7 @@ class bottleneckAFused_8and9Static:
             self.tensorLayer9_1Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn9_1_2.allocate(self.L1Tile)  # TODO
+        self.of_act_bn9_1_2.allocate(self.L1Tile)
         self.of_act_bn9_2_3 = object_fifo(
             self.bottleneckName + "_" + "act_bn9_2_3",
             self.computeTile,
@@ -161,17 +160,16 @@ class bottleneckAFused_8and9Static:
             self.tensorLayer9_2Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn9_2_3.allocate(self.L1Tile)  # TODO
+        self.of_act_bn9_2_3.allocate(self.L1Tile)
 
         # Compute tile
-        # @core(self.computeTile, False)
-        @core(self.computeTile)
+        @core(self.computeTile)  # True
         def core_body():
 
             for _ in for_(1):  # for _ in for_(sys.maxsize):
 
                 # acquire weights and rtps NOTE: needs to become once so outside for loop
-                # weightsAllLayers = self.weightsIn.acquire(ObjectFifoPort.Consume, 1)
+                weightsAllLayers = self.weightsIn.acquire(ObjectFifoPort.Consume, 1)
                 weightsLayer8_1 = memref_view(
                     weightsAllLayers,
                     [self.tensorL8_1InC * self.tensorL8_1OutC],
@@ -221,23 +219,23 @@ class bottleneckAFused_8and9Static:
                     ),
                 )
 
-                scaleLayer8_1 = _scaleLayer8_1  # bn8 scaleFactor1
-                scaleLayer8_2 = _scaleLayer8_2  # bn8 scaleFactor2
-                scaleLayer8_3 = _scaleLayer8_3  # bn8 scaleFactor3
-                skipScaleLayer8_3 = _skipScaleLayer8_3  # bn8 scaleFactorAdd
-                scaleLayer9_1 = _scaleLayer9_1
-                scaleLayer9_2 = _scaleLayer9_2
-                scaleLayer9_3 = _scaleLayer9_3  # bn9 scaleFactor3
-                skipScaleLayer9_3 = _skipScaleLayer9_3  # bn9 scaleFactorAdd
+                # scaleLayer8_1 = 10 #memref.load(rtpComputeTile, [0]) # bn8 scaleFactor1
+                # scaleLayer8_2 = 7 #memref.load(rtpComputeTile, [1]) # bn8 scaleFactor2
+                # scaleLayer8_3 = 11 #memref.load(rtpComputeTile, [2]) # bn8 scaleFactor3
+                # skipScaleLayer8_3 = 0 #memref.load(rtpComputeTile, [3]) # bn8 scaleFactorAdd
+                # scaleLayer9_1 = 9 # bn9 scaleFactor1
+                # scaleLayer9_2 = 8 # bn9 scaleFactor2
+                # scaleLayer9_3 = 11 #memref.load(rtpComputeTile, [6]) # bn9 scaleFactor3
+                # skipScaleLayer9_3 = 1 #memref.load(rtpComputeTile, [7]) # bn9 scaleFactorAdd
 
-                # scaleLayer8_1 = memref.load(self.rtpsIn, [0]) # bn8 scaleFactor1
-                # scaleLayer8_2 = memref.load(self.rtpsIn, [1]) # bn8 scaleFactor2
-                # scaleLayer8_3 = memref.load(self.rtpsIn, [2]) # bn8 scaleFactor3
-                # skipScaleLayer8_3 = memref.load(self.rtpsIn, [3]) # bn8 scaleFactorAdd
-                # scaleLayer9_1 = memref.load(self.rtpsIn, [4])
-                # scaleLayer9_2 = memref.load(self.rtpsIn, [5])
-                # scaleLayer9_3 = memref.load(self.rtpsIn, [6]) # bn9 scaleFactor3
-                # skipScaleLayer9_3 = memref.load(self.rtpsIn, [7]) # bn9 scaleFactorAdd
+                scaleLayer8_1 = memref.load(self.rtpsIn, [0])  # bn8 scaleFactor1
+                scaleLayer8_2 = memref.load(self.rtpsIn, [1])  # bn8 scaleFactor2
+                scaleLayer8_3 = memref.load(self.rtpsIn, [2])  # bn8 scaleFactor3
+                skipScaleLayer8_3 = memref.load(self.rtpsIn, [3])  # bn8 scaleFactorAdd
+                scaleLayer9_1 = memref.load(self.rtpsIn, [4])
+                scaleLayer9_2 = memref.load(self.rtpsIn, [5])
+                scaleLayer9_3 = memref.load(self.rtpsIn, [6])  # bn9 scaleFactor3
+                skipScaleLayer9_3 = memref.load(self.rtpsIn, [7])  # bn9 scaleFactorAdd
 
                 # pre-amble 0: rows 0, 1 in layer 0_1 1x1 conv; row 0 in layer 0_2 3x3 dw; row 0 in layer 0_3 1x1 conv; row 0 on layer 1_1 1x1 conv
                 actInLayer8_1Rows = self.actIn.acquire(ObjectFifoPort.Consume, 2)
@@ -800,7 +798,7 @@ class bottleneckAFused_8and9Static:
                 self.of_act_bn8_bn9.release(ObjectFifoPort.Consume, 1)
                 self.actOut.release(ObjectFifoPort.Produce, 1)
 
-                # self.weightsIn.release(ObjectFifoPort.Consume, 1)
+                self.weightsIn.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 
 
@@ -886,15 +884,6 @@ def mobilenetV3Bottleneck8And9(
             (1 * 1 * tensorL9_3OutC * tensorL9_3InC,), int8_ty
         )
         tensorLayer9_3Out_ty = MemRefType.get((tensorOutW, 1, tensorL9_3OutC), int8_ty)
-
-        weightsAllLayers = (
-            tensorL8_1OutC * tensorL8_1InC
-            + 3 * 3 * tensorL8_2OutC * 1
-            + 1 * 1 * tensorL8_3OutC * tensorL8_3InC
-            + 1 * 1 * tensorL9_1OutC * tensorL9_1InC
-            + 3 * 3 * tensorL9_2OutC * 1
-            + 1 * 1 * tensorL9_3OutC * tensorL9_3InC
-        )
 
         weightsAllLayers_ty = MemRefType.get(
             (
@@ -1014,54 +1003,29 @@ def mobilenetV3Bottleneck8And9(
         # AIE-array data movement with object fifos
 
         # Input
-        # act_in_tmp = object_fifo(
-        #     "act_in_tmp", ShimTile, ComputeTileForL1, 3, tensorLayer8_1In_ty
-        # )
-        # act_in = object_fifo(
-        #     "act_in",
-        #     ComputeTileForL1,
-        #     ComputeTile,
-        #     3,
-        #     tensorLayer8_1In_ty,
-        #     via_DMA=False,
-        # )
-        # act_in.allocate(ComputeTileForL1)
+        act_in_tmp = object_fifo(
+            "act_in_tmp", ShimTile, ComputeTileForL1, 3, tensorLayer8_1In_ty
+        )
         act_in = object_fifo(
             "act_in",
-            ShimTile,
+            ComputeTileForL1,
             ComputeTile,
-            2,
+            3,
             tensorLayer8_1In_ty,
+            via_DMA=False,
         )
         # act_in.set_via_shared_mem(ObjectFifoPort.Produce)
+        act_in.allocate(ComputeTileForL1)
         # object_fifo_link(act_in_tmp, act_in)
 
         # wts
-        # wts_OF_L3L2 = object_fifo(
-        #     "wts_OF_L3L2", ShimTile, ComputeTile, 1, weightsAllLayers_ty
-        # )
-
-        file_path = "weights/"
-        wts_ary = np.fromfile(file_path + "bn8_9_chain.txt", sep=",", dtype=np.int8)
-
-        wts_OF_L3L2 = buffer(
-            ComputeTile,
-            np.ndarray[(weightsAllLayers,), np.dtype[np.int8]],
-            "wts_OF_L3L2",
-            initial_value=wts_ary,
+        wts_OF_L3L2 = object_fifo(
+            "wts_OF_L3L2", ShimTile, ComputeTile, 1, weightsAllLayers_ty
         )
 
         # Output
-        # act_out = object_fifo(
-        #     "act_out", ComputeTile, ComputeTileForL1, 2, tensorLayer9_3Out_ty
-        # )
-        # act_out.set_via_shared_mem(ObjectFifoPort.Consume)
-        # act_out.allocate(ComputeTileForL1)
-        # act_out_tmp = object_fifo(
-        #     "act_out_tmp", ComputeTileForL1, [ShimTile], 2, tensorLayer9_3Out_ty
-        # )
         act_out = object_fifo(
-            "act_out", ComputeTile, [ShimTile], 2, tensorLayer9_3Out_ty
+            "act_out", ComputeTile, [ShimTile], 1, tensorLayer9_3Out_ty
         )
 
         # Set up compute tiles
@@ -1069,25 +1033,25 @@ def mobilenetV3Bottleneck8And9(
             ComputeTile, np.ndarray[(16,), np.dtype[np.int32]], "rtp"
         )
 
-        # @core(ComputeTileForL1)
-        # def core_body():
-        #     for _ in for_(tensorInH):
-        #         elem_in = act_in_tmp.acquire(ObjectFifoPort.Consume, 1)
-        #         elem_out = act_in.acquire(ObjectFifoPort.Produce, 1)
-        #         for i in for_(tensorInW):
-        #             for j in for_(tensorInC):
-        #                 v0 = memref.load(elem_in, [i, 1, j])
-        #                 memref.store(v0, elem_out, [i, 1, j])
-        #                 yield_([])
+        @core(ComputeTileForL1)
+        def core_body():
+            for _ in for_(tensorInH):
+                elem_in = act_in_tmp.acquire(ObjectFifoPort.Consume, 1)
+                elem_out = act_in.acquire(ObjectFifoPort.Produce, 1)
+                for i in for_(tensorInW):
+                    for j in for_(tensorInC):
+                        v0 = memref.load(elem_in, [i, 1, j])
+                        memref.store(v0, elem_out, [i, 1, j])
+                        yield_([])
 
-        #             yield_([])
+                    yield_([])
 
-        #         act_in.release(ObjectFifoPort.Produce, 1)
-        #         act_in_tmp.release(ObjectFifoPort.Consume, 1)
+                act_in.release(ObjectFifoPort.Produce, 1)
+                act_in_tmp.release(ObjectFifoPort.Consume, 1)
 
-        #         yield_([])
+                yield_([])
 
-        bottleneckAFused_8and9Static(
+        bottleneckAFused_8and9(
             "bn8_bn9",
             ComputeTile,
             ComputeTileForL1,
@@ -1114,14 +1078,6 @@ def mobilenetV3Bottleneck8And9(
             bn9_depthWiseStride,
             bn9_depthWiseChannels,
             tensorOutC,
-            scaleFactor8_1,
-            scaleFactor8_2,
-            scaleFactor8_3,
-            scaleFactorAdd8,
-            scaleFactor9_1,
-            scaleFactor9_2,
-            scaleFactor9_3,
-            scaleFactorAdd9,
         )
 
         # instruction stream generation
@@ -1152,23 +1108,21 @@ def mobilenetV3Bottleneck8And9(
             NpuWriteRTPOp("rtp", index=7, value=scaleFactorAdd9)
 
             npu_dma_memcpy_nd(
-                # metadata="act_in_tmp",
-                metadata="act_in",
+                metadata="act_in_tmp",
                 bd_id=0,
                 mem=inputFromL3,
                 sizes=[1, 1, 1, activationsInSize32b],
             )
             npu_dma_memcpy_nd(
-                # metadata="act_out_tmp",
                 metadata="act_out",
                 bd_id=2,
                 mem=outputToL3,
                 sizes=[1, 1, 1, activationsOutSize32b],
             )
-            # npu_dma_memcpy_nd(
-            #     metadata="wts_OF_L3L2",
-            #     bd_id=1,
-            #     mem=weightsFromL3,
-            #     sizes=[1, 1, 1, totalWeightsSize32b],
-            # )
+            npu_dma_memcpy_nd(
+                metadata="wts_OF_L3L2",
+                bd_id=1,
+                mem=weightsFromL3,
+                sizes=[1, 1, 1, totalWeightsSize32b],
+            )
             npu_sync(column=0, row=0, direction=0, channel=0)
