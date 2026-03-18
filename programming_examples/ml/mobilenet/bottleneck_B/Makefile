@@ -9,8 +9,8 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../../makefile-common
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
-mlirFileName = aie2_bottleneckB
-testSource = test_bottleneckB
+MLIR_FILE = aie2_bottleneckB
+TEST_FILE = test_bottleneckB
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 ifeq (${devicename}, npu)
@@ -22,91 +22,62 @@ else
 endif 
 
 CHESS ?= false
+
+ifeq ($(CHESS), true)
+	COMPILE_WRAPPER := xchesscc_wrapper ${LOCAL_CHESS_FLAGS}
+else
+	COMPILE_WRAPPER := ${PEANO_INSTALL_DIR}/bin/clang++ ${LOCAL_PEANO_FLAGS}
+endif
+
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
 all: build/final.xclbin
 
-build/${mlirFileName}.mlir: ${srcdir}/${mlirFileName}.py
+build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
 # ************************************** bottlneck 10 **************************************
 build/bn10_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DSCALAR -DBN10 -DINT8_ACT -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS} -DSCALAR -DBN10 -DINT8_ACT -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DSCALAR -DBN10 -DINT8_ACT -c $< -o ${@F}
 
 build/bn10_conv2dk3_dw.o: bottleneck/bn_conv2dk3_dw.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DSCALAR -DBN10 -DSTRIDE1   -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS}  -DSCALAR -DBN10 -DSTRIDE1 -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DSCALAR -DBN10 -DSTRIDE1   -c $< -o ${@F}
 
 build/bn10_conv2dk1_ui8.o: bottleneck/bn_conv2dk1_i8.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DBN10 -DSCALAR  -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS} -DBN10 -DSCALAR -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DBN10 -DSCALAR  -c $< -o ${@F}
 
 # ************************************** bottlneck 11 **************************************
 build/bn11_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DSCALAR -DBN11 -DINT8_ACT -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS} -DSCALAR -DBN11 -DINT8_ACT -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DSCALAR -DBN11 -DINT8_ACT -c $< -o ${@F}
 
 build/bn11_conv2dk3_dw.o: bottleneck/bn_conv2dk3_dw.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DSCALAR -DBN11 -DSTRIDE1  -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS} -DSCALAR -DBN11 -DSTRIDE1 -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DSCALAR -DBN11 -DSTRIDE1  -c $< -o ${@F}
 
 build/bn11_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DBN11 -DSCALAR  -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS} -DBN11 -DSCALAR -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DBN11 -DSCALAR  -c $< -o ${@F}
 
 # ************************************** bottlneck 12 **************************************
 build/bn12_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DSCALAR -DBN12 -DINT8_ACT -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS} -DSCALAR -DBN12 -DINT8_ACT -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DSCALAR -DBN12 -DINT8_ACT -c $< -o ${@F}
 
 build/bn12_conv2dk3_dw_stride2.o: bottleneck/bn_conv2dk3_dw.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DSCALAR -DSTRIDE2  -DBN12 -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS} -DSCALAR -DSTRIDE2  -DBN12 -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DSCALAR -DSTRIDE2  -DBN12 -c $< -o ${@F}
 
 build/bn12_conv2dk1_ui8.o: bottleneck/bn_conv2dk1_i8.cc
 	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${LOCAL_CHESS_FLAGS}  -DBN12 -DSCALAR  -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${LOCAL_PEANO_FLAGS} -DBN12 -DSCALAR -c $< -o ${@F}
-endif 
+	cd ${@D} && ${COMPILE_WRAPPER}  -DBN12 -DSCALAR  -c $< -o ${@F}
 
 # ************************************** bottleneck C **************************************
-build/final.xclbin: build/${mlirFileName}.mlir build/bn10_conv2dk1_fused_relu.o  build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o \
+build/final.xclbin: build/${MLIR_FILE}.mlir build/bn10_conv2dk1_fused_relu.o  build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o \
 						build/bn11_conv2dk1_fused_relu.o build/bn11_conv2dk3_dw.o build/bn11_conv2dk1_skip.o \
 						build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o 
 ifeq ($(CHESS), true)
@@ -124,5 +95,5 @@ shallow_clean:
 clean:
 	rm -rf build __pycache__
 
-run_py: build/final.xclbin ${srcdir}/${mlirFileName}.py
-	${powershell} python3 ${srcdir}/${testSource}.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+run_py: build/final.xclbin ${srcdir}/${MLIR_FILE}.py
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
