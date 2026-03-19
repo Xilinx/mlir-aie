@@ -10,12 +10,11 @@ import subprocess
 import sys
 import time
 
-
 # Retry configuration
 TRANSIENT_FAILURE_TEXT = "No such device with index"
 MAX_ATTEMPTS = 3
-RETRY_DELAYS_SECONDS = (2.0, 5.0)
 TAIL_LINES = 200
+
 
 # Logging and diagnostics helpers
 # TODO: update or disable for a future Windows NPU runner.
@@ -128,7 +127,12 @@ def main() -> int:
     # Mimic the existing %run_on_npu*% bash functionality, broadening OS support.
     # "NPU kind" is currently unused, but keep the argument for interface parity.
     command = sys.argv[2:]
-    xrt_dir = os.environ.get("XRT_DIR") or os.environ.get("XRT_ROOT") or "/opt/xilinx/xrt"
+    xrt_dir = (
+        os.environ.get("XRT_DIR")
+        or os.environ.get("XRT_ROOT")
+        or os.environ.get("XILINX_XRT")
+        or "/opt/xilinx/xrt"
+    )
     launched_command = wrapped_command(xrt_dir, command)
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -140,7 +144,7 @@ def main() -> int:
         emit_failure_diagnostics(xrt_dir, attempt)
         if attempt == MAX_ATTEMPTS:
             return returncode
-        delay = RETRY_DELAYS_SECONDS[attempt - 1]
+        delay = attempt * 3
         log(f"Retrying in {delay:g}s.")
         time.sleep(delay)
 
