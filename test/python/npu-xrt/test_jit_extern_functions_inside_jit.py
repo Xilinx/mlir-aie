@@ -113,8 +113,7 @@ def transform_with_internal_func_from_file(input, output):
                     output[i] = input[i] + 42;
                 }
             }
-        }"""
-        )
+        }""")
         temp_file_path = f.name
 
     # Create ExternalFunction inside the transform from a file
