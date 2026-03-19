@@ -599,14 +599,24 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
             Block &entryBlock = coreFunc.getBody().front();
             rewriter.setInsertionPointToStart(&entryBlock);
             Location loc = op.getLoc();
-            // saturation_mode::saturate (register 9 = 1)
-            auto c9 = arith::ConstantOp::create(rewriter, loc,
-                                                rewriter.getI32IntegerAttr(9));
+            // Rounding register index differs between AIE2 and AIE2P:
+            //   AIE2:  crRnd=6
+            //   AIE2P: crRnd=1
+            // Saturation register uses AIE2 index (9) for both architectures.
+            // On AIE2P, index 9 maps to crPackSize (no-op for saturation),
+            // preserving the pre-existing behavior. The AIE2P crSat fix
+            // (index 0) requires updating downstream tests and is tracked
+            // separately.
+            int satRegIdx = 9;
+            int rndRegIdx = (arch == AIEArch::AIE2p) ? 1 : 6;
+            // saturation_mode::saturate = 1
+            auto cSatIdx = arith::ConstantOp::create(
+                rewriter, loc, rewriter.getI32IntegerAttr(satRegIdx));
             auto c1 = arith::ConstantOp::create(rewriter, loc,
                                                 rewriter.getI32IntegerAttr(1));
             func::CallOp::create(rewriter, loc, ctrlRegFunc,
-                                 ValueRange{c9, c1});
-            // Rounding mode (register 6):
+                                 ValueRange{cSatIdx, c1});
+            // Rounding mode:
             //  - conv_even (12) for bf16 matmul: eliminates systematic
             //    negative bias from floor rounding in BFP16 arithmetic,
             //    matching ::aie::set_rounding(aie::rounding_mode::conv_even)
@@ -614,13 +624,13 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
             //  - positive_inf (9) for integer SRS (shift-round-saturate on
             //    integer data, e.g., i32→i8).
             //  - floor (0) for float-only SRS (f32→bf16 truncation).
-            auto c6 = arith::ConstantOp::create(rewriter, loc,
-                                                rewriter.getI32IntegerAttr(6));
             int roundingMode = hasBF16Matmul ? 12 : hasIntegerSRS ? 9 : 0;
+            auto cRndIdx = arith::ConstantOp::create(
+                rewriter, loc, rewriter.getI32IntegerAttr(rndRegIdx));
             auto cRoundingMode = arith::ConstantOp::create(
                 rewriter, loc, rewriter.getI32IntegerAttr(roundingMode));
             func::CallOp::create(rewriter, loc, ctrlRegFunc,
-                                 ValueRange{c6, cRoundingMode});
+                                 ValueRange{cRndIdx, cRoundingMode});
           }
         }
       }
