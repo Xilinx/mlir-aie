@@ -377,7 +377,7 @@ def _get_default_events_for_tile(tile_op, is_mem_trace=False):
 
 def configure_trace(
     tiles_to_trace,
-    buffer_size=None,
+    trace_size=None,
     start_broadcast=15,
     stop_broadcast=14,
     coretile_events=None,
@@ -395,7 +395,7 @@ def configure_trace(
 
     Args:
         tiles_to_trace: List of tile operations to configure tracing for.
-        buffer_size: Optional buffer size hint for trace data (in bytes).
+        trace_size: Optional trace buffer size (in bytes).
         start_broadcast: Broadcast channel for trace start event (default: 15).
         stop_broadcast: Broadcast channel for trace stop event (default: 14).
         coretile_events: List of events for core tile tracing (max 8).
@@ -471,8 +471,28 @@ def configure_trace(
             none_event = CoreEvent.NONE
         padded_events = (list(events) + [none_event] * 8)[:8]
 
+        # Collect and validate port events - multiple events can share a slot
+        # (e.g., PORT_RUNNING_0 and PORT_TLAST_0 both use slot 0) but must have
+        # the same port configuration.
+        port_configs = {}  # slot -> (port, channel, direction, event_name)
+        for event in padded_events:
+            if isinstance(event, BasePortEvent):
+                slot = event.slot
+                config = (event.port, event.channel, event.direction)
+                if slot in port_configs:
+                    prev_config, prev_name = port_configs[slot]
+                    if prev_config != config:
+                        raise ValueError(
+                            f"Conflicting port configurations for slot {slot}: "
+                            f"{prev_name} uses {prev_config}, but "
+                            f"{event.code.name} uses {config}. "
+                            f"Events sharing a slot must monitor the same port."
+                        )
+                else:
+                    port_configs[slot] = (config, event.code.name)
+
         # Generate the aie.trace op
-        @trace(tile_op, trace_name, buffer_size=buffer_size)
+        @trace(tile_op, trace_name, buffer_size=trace_size)
         def trace_body():
             if is_core_trace:
                 trace_mode(TraceMode.EventTime)
@@ -480,8 +500,11 @@ def configure_trace(
 
             for event in padded_events:
                 trace_event(event)
-                if isinstance(event, BasePortEvent):
-                    trace_port(event.slot, event.port, event.channel, event.direction)
+
+            # Emit one trace_port per unique slot (deduplicated above)
+            for slot, (config, _) in port_configs.items():
+                port, channel, direction = config
+                trace_port(slot, port, channel, direction)
 
             # All tiles use broadcast start/stop. AIEInsertTraceFlows pass
             # handles the special case where a shim tile is both being traced

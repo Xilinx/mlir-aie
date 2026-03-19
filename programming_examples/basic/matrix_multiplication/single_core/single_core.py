@@ -12,6 +12,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
+from aie.utils.trace.events import WireBundle
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
 
@@ -242,24 +243,28 @@ def my_matmul(
             if trace_size > 0:
                 trace_utils.configure_trace(
                     tiles_to_trace,
+                    trace_size=trace_size,
                     coretile_events=[
-                        # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
+                        # captures input A (PORT_RUNNING_0, DMA channel 0, master for inputs)
                         trace_utils.events.PortEvent(
                             trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                            port_number=1,
-                            master=True,
+                            trace_utils.events.WireBundle.DMA,
+                            0,
+                            True,
                         ),
-                        # captures input B (PORT_RUNNING_1, at port number 2, master for inputs)
+                        # captures input B (PORT_RUNNING_1, DMA channel 1, master for inputs)
                         trace_utils.events.PortEvent(
                             trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                            port_number=2,
-                            master=True,
+                            trace_utils.events.WireBundle.DMA,
+                            1,
+                            True,
                         ),
-                        # captures output C (PORT_RUNNING_2, at port number 1, slave for outputs)
+                        # captures output C (PORT_RUNNING_2, DMA channel 0, slave for outputs)
                         trace_utils.events.PortEvent(
                             trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                            port_number=1,
-                            master=False,
+                            trace_utils.events.WireBundle.DMA,
+                            0,
+                            False,
                         ),
                         trace_utils.events.CoreEvent.INSTR_EVENT_0,
                         trace_utils.events.CoreEvent.INSTR_EVENT_1,

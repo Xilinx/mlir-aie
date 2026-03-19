@@ -88,7 +88,7 @@ def conv2dk1(
             # Set up tracing
             tiles_to_trace = [ComputeTile2]
             if trace_size > 0:
-                trace_utils.configure_trace(tiles_to_trace)
+                trace_utils.configure_trace(tiles_to_trace, trace_size=trace_size)
 
             # Set up compute tiles
 

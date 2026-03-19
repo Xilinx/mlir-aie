@@ -160,6 +160,7 @@ def conv2dk14(
             if trace_size > 0:
                 trace_utils.configure_trace(
                     tiles_to_trace,
+                    trace_size=trace_size,
                     coretile_events=[
                         CoreEvent.INSTR_EVENT_0,
                         CoreEvent.INSTR_EVENT_1,

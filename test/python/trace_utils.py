@@ -76,12 +76,12 @@ def passthroughKernel():
             # CHECK:   aie.trace.event <"INSTR_EVENT_0">
             # CHECK:   aie.trace.event <"INSTR_VECTOR">
             # CHECK:   aie.trace.event <"PORT_RUNNING_0">
-            # CHECK:   aie.trace.port<0> port = DMA channel = 0 direction = S2MM
             # CHECK:   aie.trace.event <"PORT_RUNNING_1">
-            # CHECK:   aie.trace.port<1> port = DMA channel = 0 direction = MM2S
             # CHECK:   aie.trace.event <"INSTR_LOCK_ACQUIRE_REQ">
             # CHECK:   aie.trace.event <"LOCK_STALL">
             # CHECK:   aie.trace.event <"MEMORY_STALL">
+            # CHECK:   aie.trace.port<0> port = DMA channel = 0 direction = S2MM
+            # CHECK:   aie.trace.port<1> port = DMA channel = 0 direction = MM2S
             # CHECK:   aie.trace.start broadcast = 15
             # CHECK:   aie.trace.stop broadcast = 14
             # CHECK: }

@@ -98,8 +98,10 @@ def build_aie_trace():
         tiles_to_trace = [tile_0_2, tile_0_2, mem_tile_0_1, shim_noc_tile_0_0]
 
         # Event settings are optional; defaults are used if not specified.
+        # Buffer size should match the trace_size used by the test harness (see Makefile).
         trace_utils.configure_trace(
             tiles_to_trace,
+            trace_size=8192,
             coretile_events=[
                 CoreEvent.INSTR_EVENT_0,
                 CoreEvent.INSTR_EVENT_1,

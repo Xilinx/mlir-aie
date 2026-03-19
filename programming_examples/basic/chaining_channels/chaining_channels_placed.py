@@ -18,6 +18,7 @@ from aie.utils.trace.events import (
     ShimTileEvent,
     MemTilePortEvent,
     ShimTilePortEvent,
+    WireBundle,
 )
 
 N = 1024  # 1kB buffer (256 int32 elements = 1024 bytes)
@@ -121,6 +122,7 @@ def my_chaining_channels():
                 tiles_to_trace = [ShimTile, MemTile, ComputeTile2]
                 trace_utils.configure_trace(
                     tiles_to_trace,
+                    trace_size=trace_size,
                     memtile_events=[
                         MemTileEvent.LOCK_SEL0_ACQ_GE,
                         MemTilePortEvent(
@@ -143,11 +145,11 @@ def my_chaining_channels():
                         ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
                         ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
                         ShimTilePortEvent(
-                            ShimTileEvent.PORT_RUNNING_0, 4, True
-                        ),  # master(2)
+                            ShimTileEvent.PORT_RUNNING_0, WireBundle.South, 2, True
+                        ),
                         ShimTilePortEvent(
-                            ShimTileEvent.PORT_RUNNING_1, 5, False
-                        ),  # slave(3)
+                            ShimTileEvent.PORT_RUNNING_1, WireBundle.South, 3, False
+                        ),
                     ],
                 )
 

@@ -268,7 +268,7 @@ def my_matmul(
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [compute_tile2]
         if enable_tracing:
-            trace_utils.configure_trace(tiles_to_trace)
+            trace_utils.configure_trace(tiles_to_trace, trace_size=trace_size)
 
         # Set up compute tiles
 
