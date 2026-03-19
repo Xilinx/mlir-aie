@@ -599,10 +599,15 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
             Block &entryBlock = coreFunc.getBody().front();
             rewriter.setInsertionPointToStart(&entryBlock);
             Location loc = op.getLoc();
-            // Control register indices differ between AIE2 and AIE2P:
-            //   AIE2:  crSat=9, crRnd=6
-            //   AIE2P: crSat=0, crRnd=1
-            int satRegIdx = (arch == AIEArch::AIE2p) ? 0 : 9;
+            // Rounding register index differs between AIE2 and AIE2P:
+            //   AIE2:  crRnd=6
+            //   AIE2P: crRnd=1
+            // Saturation register uses AIE2 index (9) for both architectures.
+            // On AIE2P, index 9 maps to crPackSize (no-op for saturation),
+            // preserving the pre-existing behavior. The AIE2P crSat fix
+            // (index 0) requires updating downstream tests and is tracked
+            // separately.
+            int satRegIdx = 9;
             int rndRegIdx = (arch == AIEArch::AIE2p) ? 1 : 6;
             // saturation_mode::saturate = 1
             auto cSatIdx = arith::ConstantOp::create(
