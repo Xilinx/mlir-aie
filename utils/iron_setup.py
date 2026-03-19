@@ -465,7 +465,19 @@ def install_plan(
     # Repo requirements + optional extras.
     req_specs = [
         ("repo_reqs", "python/requirements.txt", None, None),
-        ("dev", "python/requirements_dev.txt", ["pre_commit", "install", "--hook-type", "pre-commit", "--hook-type", "pre-push"], repo_root),
+        (
+            "dev",
+            "python/requirements_dev.txt",
+            [
+                "pre_commit",
+                "install",
+                "--hook-type",
+                "pre-commit",
+                "--hook-type",
+                "pre-push",
+            ],
+            repo_root,
+        ),
         ("ml", "python/requirements_ml.txt", None, None),
         (
             "notebook",
