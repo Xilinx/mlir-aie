@@ -59,7 +59,7 @@ my_kernel = ExternalFunction(
 
 # Pass in full size tensors, algorithm will tile it to tile_size
 # tile_size must be passed as a keyword argument
-iron.jit(transform)(
+iron.jit(is_placed=False)(transform)(
     my_kernel, input, output, factor, tile_size=TILE_SIZE
 )
 ```
