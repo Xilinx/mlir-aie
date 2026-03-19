@@ -19,8 +19,9 @@ from aie.utils.config import cxx_header_path
 # JIT decorator for IRON
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
+#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit
+@iron.jit(is_placed=False)
 def saxpy(input0, input1, output):
     N = input0.shape[0]  # Tensor size
     element_type = output.dtype

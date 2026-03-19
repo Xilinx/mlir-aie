@@ -32,7 +32,7 @@ def scale_scalar(of_in, of_out, factor, N):
     of_out.release(1)
 
 
-@jit
+@jit(is_placed=False)
 def design(a_in, c_out, trace_config=None):
     N = 1024
     # Construct types for sequence

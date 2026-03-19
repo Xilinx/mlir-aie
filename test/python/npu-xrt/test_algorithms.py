@@ -36,7 +36,7 @@ def test_transform_add():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     original = input.numpy().copy()
-    iron.jit(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
 
     assert np.allclose(original + 1, output.numpy())
 
@@ -47,7 +47,7 @@ def test_transform_add_parametrized(add_value):
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     original = input.numpy().copy()
-    iron.jit(transform)(lambda a: a + add_value, input, output, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(transform)(lambda a: a + add_value, input, output, tile_size=TILE_SIZE)
 
     assert np.allclose(original + add_value, output.numpy())
 
@@ -81,7 +81,7 @@ def test_transform_different_datatypes_extern(dtype, c_type):
     else:
         input = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
     output = iron.zeros_like(input)
-    iron.jit(transform)(add_one, input, output, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(transform)(add_one, input, output, tile_size=TILE_SIZE)
     assert np.allclose(input.numpy() + 1, output.numpy())
 
 
@@ -90,7 +90,7 @@ def test_transform_different_num_elements(num_elements):
     """Test transform algorithm with different input size."""
     input = iron.randint(0, 100, (num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
-    iron.jit(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
     assert np.allclose(input.numpy() + 1, output.numpy())
 
 
@@ -99,7 +99,7 @@ def test_transform_shape_mismatch():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros((512,), dtype=np.int32, device="npu")
     with pytest.raises(ValueError, match="shape.*doesn't match"):
-        iron.jit(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
+        iron.jit(is_placed=False)(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
 
 
 def test_transform_dtype_mismatch():
@@ -107,7 +107,7 @@ def test_transform_dtype_mismatch():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros((1024,), dtype=np.float32, device="npu")
     with pytest.raises(ValueError, match="dtype.*doesn't match"):
-        iron.jit(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
+        iron.jit(is_placed=False)(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
 
 
 def test_transform_tile_size_mismatch():
@@ -116,7 +116,7 @@ def test_transform_tile_size_mismatch():
     input = iron.randint(0, 100, (1000,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     with pytest.raises(ValueError, match="must be a multiple of tile size"):
-        iron.jit(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
+        iron.jit(is_placed=False)(transform)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
 
 
 def test_transform_tile_arg_type_mismatch():
@@ -140,7 +140,7 @@ def test_transform_tile_arg_type_mismatch():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     with pytest.raises(ValueError, match="tile_size.*does not match"):
-        iron.jit(transform)(add_one, input, output, tile_size=TILE_SIZE)
+        iron.jit(is_placed=False)(transform)(add_one, input, output, tile_size=TILE_SIZE)
 
 
 # =============================================================================
@@ -153,7 +153,7 @@ def test_transform_binary_add():
     first = iron.randint(0, 50, (1024,), dtype=np.int32, device="npu")
     second = iron.randint(0, 50, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(first)
-    iron.jit(transform_binary)(
+    iron.jit(is_placed=False)(transform_binary)(
         lambda a, b: a + b, first, second, output, tile_size=TILE_SIZE
     )
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
@@ -169,7 +169,7 @@ def test_transform_binary_different_datatypes(dtype):
         first = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
         second = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
     output = iron.zeros_like(first)
-    iron.jit(transform_binary)(
+    iron.jit(is_placed=False)(transform_binary)(
         lambda a, b: a + b, first, second, output, tile_size=TILE_SIZE
     )
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
@@ -181,7 +181,7 @@ def test_transform_binary_different_num_elements(num_elements):
     first = iron.randint(0, 50, (num_elements,), dtype=np.int32, device="npu")
     second = iron.randint(0, 50, (num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(first)
-    iron.jit(transform_binary)(
+    iron.jit(is_placed=False)(transform_binary)(
         lambda a, b: a + b, first, second, output, tile_size=TILE_SIZE
     )
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
@@ -196,7 +196,7 @@ def test_transform_parallel_add():
     """Test transform_parallel algorithm with simple add_one operation."""
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
-    iron.jit(transform_parallel)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(transform_parallel)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
     assert np.allclose(input.numpy() + 1, output.numpy())
 
 
@@ -206,7 +206,7 @@ def test_transform_parallel_add_parametrized(add_value):
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     original = input.numpy().copy()
-    iron.jit(transform_parallel)(
+    iron.jit(is_placed=False)(transform_parallel)(
         lambda a: a + add_value, input, output, tile_size=TILE_SIZE
     )
 
@@ -221,7 +221,7 @@ def test_transform_parallel_different_datatypes(dtype):
     else:
         input = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
     output = iron.zeros_like(input)
-    iron.jit(transform_parallel)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(transform_parallel)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
     assert np.allclose(input.numpy() + 1, output.numpy())
 
 
@@ -230,7 +230,7 @@ def test_transform_parallel_different_num_elements(num_elements):
     """Test transform_parallel algorithm with different input size."""
     input = iron.randint(0, 100, (num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
-    iron.jit(transform_parallel)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(transform_parallel)(lambda a: a + 1, input, output, tile_size=TILE_SIZE)
     assert np.allclose(input.numpy() + 1, output.numpy())
 
 
@@ -255,7 +255,7 @@ def test_transform_parallel_extern():
     )
     input = iron.randint(1, 10, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
-    iron.jit(transform_parallel)(
+    iron.jit(is_placed=False)(transform_parallel)(
         scale, input, output, scale_factor, tile_size=TILE_SIZE
     )
     assert np.allclose(input.numpy() * scale_factor, output.numpy())
@@ -266,7 +266,7 @@ def test_transform_parallel_shape_mismatch():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros((512,), dtype=np.int32, device="npu")
     with pytest.raises(ValueError, match="shape.*doesn't match"):
-        iron.jit(transform_parallel)(
+        iron.jit(is_placed=False)(transform_parallel)(
             lambda a: a + 1, input, output, tile_size=TILE_SIZE
         )
 
@@ -276,7 +276,7 @@ def test_transform_parallel_dtype_mismatch():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros((1024,), dtype=np.float32, device="npu")
     with pytest.raises(ValueError, match="dtype.*doesn't match"):
-        iron.jit(transform_parallel)(
+        iron.jit(is_placed=False)(transform_parallel)(
             lambda a: a + 1, input, output, tile_size=TILE_SIZE
         )
 
@@ -287,7 +287,7 @@ def test_transform_parallel_tile_size_mismatch():
     input = iron.randint(0, 100, (1000,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     with pytest.raises(ValueError, match="must be a multiple of tile size"):
-        iron.jit(transform_parallel)(
+        iron.jit(is_placed=False)(transform_parallel)(
             lambda a: a + 1, input, output, tile_size=TILE_SIZE
         )
 
@@ -313,7 +313,7 @@ def test_transform_parallel_tile_arg_type_mismatch():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     with pytest.raises(ValueError, match="tile_size.*does not match"):
-        iron.jit(transform_parallel)(add_one, input, output, tile_size=TILE_SIZE)
+        iron.jit(is_placed=False)(transform_parallel)(add_one, input, output, tile_size=TILE_SIZE)
 
 
 # =============================================================================
@@ -326,7 +326,7 @@ def test_transform_parallel_binary_add():
     first = iron.randint(0, 50, (1024,), dtype=np.int32, device="npu")
     second = iron.randint(0, 50, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(first)
-    iron.jit(transform_parallel_binary)(
+    iron.jit(is_placed=False)(transform_parallel_binary)(
         lambda a, b: a + b, first, second, output, tile_size=TILE_SIZE
     )
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
@@ -342,7 +342,7 @@ def test_transform_parallel_binary_different_datatypes(dtype):
         first = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
         second = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
     output = iron.zeros_like(first)
-    iron.jit(transform_parallel_binary)(
+    iron.jit(is_placed=False)(transform_parallel_binary)(
         lambda a, b: a + b, first, second, output, tile_size=TILE_SIZE
     )
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
@@ -354,7 +354,7 @@ def test_transform_parallel_binary_different_num_elements(num_elements):
     first = iron.randint(0, 50, (num_elements,), dtype=np.int32, device="npu")
     second = iron.randint(0, 50, (num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(first)
-    iron.jit(transform_parallel_binary)(
+    iron.jit(is_placed=False)(transform_parallel_binary)(
         lambda a, b: a + b, first, second, output, tile_size=TILE_SIZE
     )
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
@@ -369,7 +369,7 @@ def test_for_each_add():
     """Test for_each algorithm with simple add_one operation."""
     data = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     original = data.numpy().copy()
-    iron.jit(for_each)(lambda a: a + 1, data, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, data, tile_size=TILE_SIZE)
     assert np.allclose(original + 1, data.numpy())
 
 
@@ -381,7 +381,7 @@ def test_for_each_different_datatypes(dtype):
     else:
         data = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
     original = data.numpy().copy()
-    iron.jit(for_each)(lambda a: a + 1, data, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, data, tile_size=TILE_SIZE)
     assert np.allclose(original + 1, data.numpy())
 
 
@@ -414,7 +414,7 @@ def test_for_each_different_datatypes_extern(dtype, c_type):
     else:
         data = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
     original = data.numpy().copy()
-    iron.jit(for_each)(add_one, data, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(for_each)(add_one, data, tile_size=TILE_SIZE)
     assert np.allclose(original + 1, data.numpy())
 
 
@@ -423,7 +423,7 @@ def test_for_each_different_num_elements(num_elements):
     """Test for_each algorithm with different input sizes."""
     data = iron.randint(0, 100, (num_elements,), dtype=np.int32, device="npu")
     original = data.numpy().copy()
-    iron.jit(for_each)(lambda a: a + 1, data, tile_size=TILE_SIZE)
+    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, data, tile_size=TILE_SIZE)
     assert np.allclose(original + 1, data.numpy())
 
 
@@ -447,4 +447,4 @@ def test_for_each_tile_arg_type_mismatch():
     )
     data = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     with pytest.raises(ValueError, match="tile_size.*does not match"):
-        iron.jit(for_each)(add_one, data, tile_size=TILE_SIZE)
+        iron.jit(is_placed=False)(for_each)(add_one, data, tile_size=TILE_SIZE)
