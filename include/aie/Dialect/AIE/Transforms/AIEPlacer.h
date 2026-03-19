@@ -48,8 +48,8 @@ public:
 // Sequential placement algorithm
 //
 // Places logical tiles to physical tiles using a simple strategy:
-// - Compute tiles: Sequential row-major placement
-// - Memory/shim tiles: Channel capacity placement near common column
+// - Compute tiles: Sequential column-major placement (fill column before next)
+// - Memory/shim tiles: DMA Channel capacity placement near common column
 //
 // Core-to-core connections are NOT validated because SequentialPlacer
 // doesn't account for shared memory optimization.

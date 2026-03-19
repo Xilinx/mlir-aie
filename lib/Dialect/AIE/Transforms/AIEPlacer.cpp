@@ -255,6 +255,12 @@ LogicalResult SequentialPlacer::place(DeviceOp device,
 
       result[logicalTile] = tile;
     }
+
+    if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
+      return logicalTile.emitError(
+          "DMA channel-based SequentialPlacer does not support unplaced "
+          "ShimPLTiles (no DMAs).");
+    }
   }
 
   // Place mem/shim tiles by ObjectFifo groups to enable efficient merging
@@ -266,7 +272,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device,
   // Process each group's logical tiles together
   llvm::DenseSet<int> processedGroups;
 
-  // Process each group
   for (auto &[groupId, logicalTiles] : groupToLogicalTiles) {
     if (processedGroups.count(groupId))
       continue;
@@ -308,6 +313,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device,
       }
     }
 
+    // Rounded average of core columns
     if (totalCoreEndpoints > 0) {
       groupCommonCol = (sumCols + totalCoreEndpoints / 2) / totalCoreEndpoints;
     }
@@ -344,6 +350,29 @@ LogicalResult SequentialPlacer::place(DeviceOp device,
       if (numOutputChannels > 0)
         updateChannelUsage(*maybeTile, true, numOutputChannels);
     }
+  }
+
+  // Fallback: place any remaining unplaced non-core tiles (not in ObjectFifos)
+  for (auto logicalTile : logicalTiles) {
+    // Skip already placed tiles
+    if (result.count(logicalTile.getOperation()))
+      continue;
+
+    // Skip core tiles (handled above) and ShimPLTile (unsupported)
+    AIETileType tileType = logicalTile.getTileType();
+    if (tileType == AIETileType::CoreTile ||
+        tileType == AIETileType::ShimPLTile)
+      continue;
+
+    // Find first available tile of matching type (no DMA requirements)
+    auto maybeTile =
+        findTileWithCapacity(0, availability.nonCompTiles, 0, 0, tileType);
+
+    if (!maybeTile)
+      return logicalTile.emitError()
+             << "no " << stringifyAIETileType(tileType) << " available";
+
+    result[logicalTile] = *maybeTile;
   }
 
   return success();
@@ -418,22 +447,19 @@ void SequentialPlacer::buildObjectFifoGroups(
   }
 
   // Build maps: group ID -> logical tiles and fifos
-  // Linked fifos share a group, unlinked fifos get individual entries
   int unlinkedGroupId = nextGroupId;
 
   for (auto ofOp : objectFifos) {
-    // Determine which group this fifo belongs to
     int groupId;
     auto groupIt = fifoToGroup.find(ofOp.getSymName());
+
+    // Linked fifos share a group, unlinked fifos get individual entries
     if (groupIt != fifoToGroup.end()) {
-      // This fifo is part of a link
       groupId = groupIt->second;
     } else {
-      // Unlinked fifo gets its own group
       groupId = unlinkedGroupId++;
     }
 
-    // Add to groupToFifos
     groupToFifos[groupId].push_back(ofOp);
 
     // Collect non-core tiles from this fifo
@@ -473,27 +499,18 @@ PlacementAnalysis::getPlacement(Operation *logicalTile) const {
   return std::nullopt;
 }
 
-// Find tile with available DMA capacity near target column
-// This function checks capacity for BOTH input and output channels
-// simultaneously. For unidirectional tiles, pass 0 for the unused direction:
-//   - Input-only:  findTileWithCapacity(..., numInCh, 0, type)
-//   - Output-only: findTileWithCapacity(..., 0, numOutCh, type)
-//   - Both: findTileWithCapacity(..., numInCh, numOutCh, type)
-// The requestedType parameter filters tiles to only consider matching types
-// (e.g., only MemTiles for MemTile logical tiles, only ShimNOCTiles for shims).
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     int targetCol, std::vector<TileID> &tiles, int requiredInputChannels,
     int requiredOutputChannels, AIETileType requestedType) {
-  // Search starting from target column, expanding outward
   int maxCol = targetModel->columns();
 
+  // Search columns rightward
   for (int offset = 0; offset < maxCol; ++offset) {
     int searchCol = targetCol + offset;
     if (searchCol >= maxCol)
       continue;
 
     for (auto &tile : tiles) {
-      // Filter by tile type - only consider tiles of the requested type
       AIETileType tileType = targetModel->getTileType(tile.col, tile.row);
       if (tileType != requestedType)
         continue;
@@ -519,9 +536,7 @@ void SequentialPlacer::updateChannelUsage(TileID tile, bool isOutput,
     availability.inputChannelsUsed[tile] += numChannels;
   }
 
-  // Check if tile is now exhausted and should be removed
   if (!hasAvailableChannels(tile, 0, 0)) {
-    // Determine tile type to remove from appropriate list
     AIETileType type = targetModel->getTileType(tile.col, tile.row);
     availability.removeTile(tile, type);
   }

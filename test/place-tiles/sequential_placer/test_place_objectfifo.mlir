@@ -1,4 +1,4 @@
-//===- place_tiles_objectfifo.mlir -----------------------------*- MLIR -*-===//
+//===- test_place_objectfifo.mlir ------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,16 +10,12 @@
 
 // RUN: aie-opt --split-input-file --aie-place-tiles %s | FileCheck %s
 
-// Test: Multiple ObjectFifos with separate logical MemTiles that map to same physical tile
+// Multiple logical MemTiles merge to same physical tile
 // CHECK-LABEL: @multi_fifo_same_tile
 module @multi_fifo_same_tile {
   aie.device(npu1) {
     // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
     %core = aie.logical_tile<CoreTile>(?, ?)
-
-    // Two separate logical MemTiles
-    // Both should be placed at the same physical tile (0, 1)
-    // because it can fit and is common column
     // CHECK-DAG: %[[MEM:.*]] = aie.tile(0, 1)
     %mem1 = aie.logical_tile<MemTile>(?, ?)
     %mem2 = aie.logical_tile<MemTile>(?, ?)
@@ -28,14 +24,13 @@ module @multi_fifo_same_tile {
     aie.objectfifo @of1 (%mem1, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     // CHECK: aie.objectfifo @of2(%[[MEM]], {%[[CORE]]}, 2 : i32)
     aie.objectfifo @of2 (%mem2, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-
     // CHECK-NOT: aie.logical_tile
   }
 }
 
 // -----
 
-// Test: Worker with multiple input ObjectFifos
+// Worker with multiple input ObjectFifos
 // CHECK-LABEL: @worker_multiple_inputs
 module @worker_multiple_inputs {
   aie.device(npu1) {
@@ -44,21 +39,17 @@ module @worker_multiple_inputs {
     // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
     %core = aie.logical_tile<CoreTile>(?, ?)
 
-    // Core receives from multiple producers (same shim, needs 2 output channels)
     aie.objectfifo @in1 (%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @in2 (%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-    aie.core(%core) {
-      aie.end
-    }
-
+    aie.core(%core) { aie.end }
     // CHECK-NOT: aie.logical_tile
   }
 }
 
 // -----
 
-// Test: ObjectFifo with multiple consumers
+// ObjectFifo with multiple consumers (broadcast)
 // CHECK-LABEL: @multi_consumer
 module @multi_consumer {
   aie.device(npu1) {
@@ -69,12 +60,37 @@ module @multi_consumer {
     // CHECK-DAG: %[[CORE2:.*]] = aie.tile(0, 3)
     %core2 = aie.logical_tile<CoreTile>(?, ?)
 
-    // One producer, multiple consumers (needs 2 output channels from shim)
     aie.objectfifo @broadcast (%shim, {%core1, %core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
     aie.core(%core1) { aie.end }
     aie.core(%core2) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
 
+// -----
+
+// Linked fifos grouped to same column
+// CHECK-LABEL: @objectfifo_link
+module @objectfifo_link {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[SHIM:.*]] = aie.tile(0, 0)
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(0, 1)
+    // CHECK-DAG: %[[CORE0:.*]] = aie.tile(0, 2)
+    // CHECK-DAG: %[[CORE1:.*]] = aie.tile(0, 3)
+
+    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
+    %mem = aie.logical_tile<MemTile>(?, ?)
+    %core0 = aie.logical_tile<CoreTile>(?, ?)
+    %core1 = aie.logical_tile<CoreTile>(?, ?)
+
+    // shim -> mem (splits to 2 outputs)
+    aie.objectfifo @inA (%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<1024xbf16>>
+    aie.objectfifo @memA0 (%mem, {%core0}, 2 : i32) : !aie.objectfifo<memref<1024xbf16>>
+    aie.objectfifo @memA1 (%mem, {%core1}, 2 : i32) : !aie.objectfifo<memref<1024xbf16>>
+
+    // Link: 1 input, 2 outputs
+    aie.objectfifo.link [@inA] -> [@memA0, @memA1] ([] [0, 1024])
     // CHECK-NOT: aie.logical_tile
   }
 }
