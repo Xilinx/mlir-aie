@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;43252db66137297e72e9555078e6ec410f4cf346</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;450499dc6d29a85a3313b7bbf6f49889a29c036f</span>
    </div>
   </td>
  </tr>
@@ -82,8 +82,8 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a3a560442168821cdbf12b9dbfd820076" id="r_a3a560442168821cdbf12b9dbfd820076"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a3a560442168821cdbf12b9dbfd820076">jit</a> (function=None, is_placed=True, use_cache=True)</td></tr>
-<tr class="separator:a3a560442168821cdbf12b9dbfd820076"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3ce948b82456ce00160e343877e04971" id="r_a3ce948b82456ce00160e343877e04971"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a3ce948b82456ce00160e343877e04971">jit</a> (function=None, use_cache=True)</td></tr>
+<tr class="separator:a3ce948b82456ce00160e343877e04971"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afe76838a07fbc8ee0e692cdbd3f4b20e" id="r_afe76838a07fbc8ee0e692cdbd3f4b20e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#afe76838a07fbc8ee0e692cdbd3f4b20e">_filter_tensor_args</a> (args)</td></tr>
 <tr class="separator:afe76838a07fbc8ee0e692cdbd3f4b20e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a669fbdff6cbb64841a02c98956f5bf5d" id="r_a669fbdff6cbb64841a02c98956f5bf5d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a669fbdff6cbb64841a02c98956f5bf5d">hash_module</a> (module, external_kernels=None, target_arch=None)</td></tr>
@@ -175,8 +175,8 @@ Returns:
 </pre> 
 </div>
 </div>
-<a id="a3a560442168821cdbf12b9dbfd820076" name="a3a560442168821cdbf12b9dbfd820076"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3a560442168821cdbf12b9dbfd820076">&#9670;&#160;</a></span>jit()</h2>
+<a id="a3ce948b82456ce00160e343877e04971" name="a3ce948b82456ce00160e343877e04971"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3ce948b82456ce00160e343877e04971">&#9670;&#160;</a></span>jit()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -186,12 +186,6 @@ Returns:
           <td>(</td>
           <td class="paramtype">&#160;</td>
           <td class="paramname"><em>function</em> = <code>None</code>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>is_placed</em> = <code>True</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -208,9 +202,13 @@ Returns:
 </div><div class="memdoc">
 <pre class="fragment">Decorator to compile an NPU kernel into a binary to run on the NPU.
 
+The decorated function may either return an MLIR module directly (unplaced
+style, using the IRON API) or return None and populate the module implicitly
+through the active ``mlir_mod_ctx`` context (placed style, using low-level
+dialects).  The mode is detected automatically from the return value.
+
 Args:
     function (callable, optional): The function to compile.
-    is_placed (bool, optional): Whether the kernel is using explicit or implicit placement. Defaults to True.
     use_cache (bool, optional): Use cached MLIR module if available. Defaults to True.
 
 Returns:
