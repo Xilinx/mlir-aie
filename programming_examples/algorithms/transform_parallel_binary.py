@@ -36,7 +36,7 @@ def main():
     output = iron.zeros_like(input0)
 
     # JIT compile the algorithm
-    iron.jit(transform_parallel_binary)(
+    iron.jit(is_placed=False)(transform_parallel_binary)(
         lambda a, b: a + b, input0, input1, output, tile_size=16
     )
 

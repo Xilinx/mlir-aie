@@ -27,24 +27,20 @@ from .compile.utils import _cleanup_failed_compilation
 _compiled_kernels = CircularCache(max_size=1)
 
 
-def jit(function=None, use_cache=True):
+def jit(function=None, is_placed=True, use_cache=True):
     """
     Decorator to compile an NPU kernel into a binary to run on the NPU.
 
-    The decorated function may either return an MLIR module directly (unplaced
-    style, using the IRON API) or return None and populate the module implicitly
-    through the active ``mlir_mod_ctx`` context (placed style, using low-level
-    dialects).  The mode is detected automatically from the return value.
-
     Args:
         function (callable, optional): The function to compile.
+        is_placed (bool, optional): Whether the kernel is using explicit or implicit placement. Defaults to True.
         use_cache (bool, optional): Use cached MLIR module if available. Defaults to True.
 
     Returns:
         callable: The decorated function.
     """
     if function is None:
-        return functools.partial(jit, use_cache=use_cache)
+        return functools.partial(jit, is_placed=is_placed, use_cache=use_cache)
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
@@ -93,21 +89,26 @@ def jit(function=None, use_cache=True):
         ExternalFunction._instances.clear()
 
         # Execute the function to generate MLIR.
-        # Always wrap in mlir_mod_ctx so that placed-style functions (which
-        # populate the module implicitly) work correctly.  If the function
-        # returns a module directly (unplaced style) we use that instead.
-        with mlir_mod_ctx() as ctx:
-            result = function(*args, **kwargs)
-
-        if result is None:
-            # Placed style: module was built implicitly via the context.
-            assert (
-                ctx.module.operation.verify()
-            ), f"Verification failed for '{function.__name__}'"
-            mlir_module = ctx.module
+        # Placed designs use the raw @device(...) DSL and populate the context
+        # as a side effect (returning nothing), so we must provide an outer
+        # mlir_mod_ctx() and capture ctx.module.
+        # Non-placed designs use Program.resolve_program(), which opens its own
+        # mlir_mod_ctx() internally and returns the module directly; wrapping
+        # them in an outer context would give an empty module.
+        if is_placed:
+            with mlir_mod_ctx() as ctx:
+                function(*args, **kwargs)
+                if not ctx.module.operation.verify():
+                    raise RuntimeError(
+                        f"MLIR verification failed for '{function.__name__}'"
+                    )
+                mlir_module = ctx.module
         else:
-            # Unplaced style: function returned the module directly.
-            mlir_module = result
+            mlir_module = function(*args, **kwargs)
+            if not mlir_module.operation.verify():
+                raise RuntimeError(
+                    f"MLIR verification failed for '{function.__name__}'"
+                )
 
         # Also collect ExternalFunction instances created during function()
         # execution (e.g. inside algorithm helpers that construct them internally).
