@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -332,7 +332,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device,
           numOutputChannels, logicalTile.getTileType());
 
       if (!maybeTile)
-        return logicalTile.emitError("no tile with sufficient DMA capacity");
+        return logicalTile.emitError()
+               << "no " << stringifyAIETileType(logicalTile.getTileType())
+               << " with sufficient DMA capacity";
 
       result[logicalTile] = *maybeTile;
 

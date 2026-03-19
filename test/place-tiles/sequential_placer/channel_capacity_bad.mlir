@@ -47,3 +47,42 @@ module @three_outputs_exceeds_capacity {
     aie.core(%core) { aie.end }
   }
 }
+
+// -----
+
+// Test: MemTile DMA exhaustion with single-column device
+// npu1_1col has only 1 MemTile at (0,1) with 6 DMA channels total
+// We exhaust the MemTile's output channels so the second logical MemTile
+// cannot be placed, triggering "no MemTile with sufficient DMA capacity"
+module @memtile_dma_exhaustion {
+  aie.device(npu1_1col) {
+    // 4 cores, each receiving 1-2 inputs (within core's 2-input limit)
+    %core1 = aie.logical_tile<CoreTile>(?, ?)
+    %core2 = aie.logical_tile<CoreTile>(?, ?)
+    %core3 = aie.logical_tile<CoreTile>(?, ?)
+    %core4 = aie.logical_tile<CoreTile>(?, ?)
+
+    // First logical MemTile - uses all 6 output channels of physical (0,1)
+    %mem1 = aie.logical_tile<MemTile>(?, ?)
+
+    // Second logical MemTile - no capacity left on (0,1), and no other MemTile exists
+    // CHECK: error: no MemTile with sufficient DMA capacity
+    %mem2 = aie.logical_tile<MemTile>(?, ?)
+
+    // mem1 outputs to 4 different cores (6 total outputs, exhausts MemTile)
+    aie.objectfifo @of1 (%mem1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of2 (%mem1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of3 (%mem1, {%core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of4 (%mem1, {%core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of5 (%mem1, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of6 (%mem1, {%core4}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    // mem2 needs at least 1 output channel, but MemTile (0,1) is exhausted
+    aie.objectfifo @of7 (%mem2, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    aie.core(%core1) { aie.end }
+    aie.core(%core2) { aie.end }
+    aie.core(%core3) { aie.end }
+    aie.core(%core4) { aie.end }
+  }
+}
