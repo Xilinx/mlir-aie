@@ -93,7 +93,7 @@ shallow_clean:
 	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
 
 clean:
-	rm -rf build __pycache__
+	rm -rf build __pycache__ log
 
 run_py: build/final.xclbin ${srcdir}/${MLIR_FILE}.py
 	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE

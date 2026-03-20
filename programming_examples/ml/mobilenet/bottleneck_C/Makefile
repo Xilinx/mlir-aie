@@ -124,7 +124,7 @@ shallow_clean:
 	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
 
 clean:
-	rm -rf build __pycache__
+	rm -rf build __pycache__ log
 
 
 run_py: build/final.xclbin build/${MLIR_FILE}.mlir

@@ -5,13 +5,7 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 import sys
-import onnx
-import torchvision
-from torchvision.io import read_image
-from torchvision.models import resnet50, ResNet50_Weights
 import torch
-from torchvision import transforms
-from PIL import Image
 import torch.nn as nn
 import sys
 import math
