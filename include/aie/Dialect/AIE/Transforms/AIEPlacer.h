@@ -39,10 +39,19 @@ public:
   virtual void initialize(DeviceOp device,
                           const AIETargetModel &targetModel) = 0;
 
-  virtual mlir::LogicalResult place(DeviceOp device,
-                                    PlacementResult &result) = 0;
+  virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
   virtual llvm::StringRef getName() const = 0;
+
+  std::optional<TileID> getPlacement(mlir::Operation *logicalTile) const {
+    auto it = result.find(logicalTile);
+    if (it != result.end())
+      return it->second;
+    return std::nullopt;
+  }
+
+protected:
+  PlacementResult result;
 };
 
 // Sequential placement algorithm
@@ -63,7 +72,7 @@ public:
 
   void initialize(DeviceOp device, const AIETargetModel &targetModel) override;
 
-  mlir::LogicalResult place(DeviceOp device, PlacementResult &result) override;
+  mlir::LogicalResult place(DeviceOp device) override;
 
   llvm::StringRef getName() const override { return "sequential_placer"; }
 
@@ -97,25 +106,6 @@ private:
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements,
       bool isConstrained);
-};
-
-// PlacementAnalysis integrates the Placer class into the MLIR
-// environment.
-class PlacementAnalysis {
-public:
-  PlacementAnalysis() : placer(std::make_shared<SequentialPlacer>()) {}
-  explicit PlacementAnalysis(std::shared_ptr<Placer> p)
-      : placer(std::move(p)) {}
-
-  mlir::LogicalResult runAnalysis(DeviceOp &device);
-
-  std::optional<TileID> getPlacement(mlir::Operation *logicalTile) const;
-
-  Placer &getPlacer() { return *placer; }
-
-private:
-  std::shared_ptr<Placer> placer;
-  PlacementResult result;
 };
 
 } // namespace xilinx::AIE

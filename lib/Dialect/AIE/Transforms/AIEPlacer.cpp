@@ -109,8 +109,7 @@ void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
                           << limitedTiles.size() << "\n");
 }
 
-LogicalResult SequentialPlacer::place(DeviceOp device,
-                                      PlacementResult &result) {
+LogicalResult SequentialPlacer::place(DeviceOp device) {
   // Collect operations needed for placement
   SmallVector<LogicalTileOp> logicalTiles;
   SmallVector<ObjectFifoCreateOp> objectFifos;
@@ -237,7 +236,11 @@ LogicalResult SequentialPlacer::place(DeviceOp device,
         return failure();
 
       result[logicalTile] = tile;
-      availability.removeTile(tile, logicalTile.getTileType());
+      // Only remove fully constrained compute tiles from availability.
+      // Mem/Shim may still host additional logical tiles as long as
+      // channel/DMA capacity permits.
+      if (logicalTile.getTileType() == AIETileType::CoreTile)
+        availability.removeTile(tile, logicalTile.getTileType());
       continue;
     }
 
@@ -484,19 +487,6 @@ void SequentialPlacer::buildObjectFifoGroups(
       }
     }
   }
-}
-
-LogicalResult PlacementAnalysis::runAnalysis(DeviceOp &device) {
-  placer->initialize(device, device.getTargetModel());
-  return placer->place(device, result);
-}
-
-std::optional<TileID>
-PlacementAnalysis::getPlacement(Operation *logicalTile) const {
-  auto it = result.find(logicalTile);
-  if (it != result.end())
-    return it->second;
-  return std::nullopt;
 }
 
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(

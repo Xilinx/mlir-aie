@@ -81,7 +81,7 @@ module @memtile_exhaustion {
 // ShimPLTile has no DMA, unconstrained placement not supported
 module @shimpl_unsupported {
   aie.device(xcvc1902) {
-    // CHECK: error: unconstrained ShimPLTile placement not supported
+    // CHECK: error: DMA channel-based SequentialPlacer does not support unplaced ShimPLTiles
     %shim = aie.logical_tile<ShimPLTile>(?, ?)
   }
 }

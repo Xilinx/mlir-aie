@@ -29,35 +29,31 @@ using namespace xilinx::AIE;
 namespace {
 
 struct ConvertLogicalTileToTile : OpConversionPattern<LogicalTileOp> {
-  ConvertLogicalTileToTile(MLIRContext *context, DeviceOp &d,
-                           PlacementAnalysis &a, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
+  ConvertLogicalTileToTile(MLIRContext *context, DeviceOp &d, Placer &p,
+                           PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), device(d), placer(p) {}
 
   LogicalResult
   matchAndRewrite(LogicalTileOp logicalTile, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // Get pre-computed placement from analysis
-    auto placement = analyzer.getPlacement(logicalTile);
-    if (!placement) {
+    auto placement = placer.getPlacement(logicalTile);
+    if (!placement)
       return logicalTile.emitError("no placement found for logical tile");
-    }
 
-    // handle merging multiple logical tiles to same physical tile
+    // Handle merging multiple logical tiles to same physical tile
     TileOp tileOp =
         TileOp::getOrCreate(rewriter, device, placement->col, placement->row);
 
-    // Copy allocation_scheme if present
     if (auto scheme = logicalTile.getAllocationScheme())
       tileOp.setAllocationScheme(scheme);
 
-    // Replace all uses and erase logical tile
     rewriter.replaceOp(logicalTile, tileOp.getResult());
     return success();
   }
 
 private:
   DeviceOp device;
-  PlacementAnalysis &analyzer;
+  Placer &placer;
 };
 
 struct AIEPlaceTilesPass
@@ -78,22 +74,18 @@ struct AIEPlaceTilesPass
       return signalPassFailure();
     }
 
-    // Run placement analysis
-    PlacementAnalysis analyzer(placer);
-    if (failed(analyzer.runAnalysis(device)))
+    placer->initialize(device, device.getTargetModel());
+    if (failed(placer->place(device)))
       return signalPassFailure();
 
-    // Apply placement using conversion pattern
     ConversionTarget target(getContext());
     target.addLegalOp<TileOp>();
     target.addIllegalOp<LogicalTileOp>();
-
-    // Mark all other AIE dialect operations as legal
     target.addLegalDialect<AIEDialect>();
 
     RewritePatternSet patterns(&getContext());
     patterns.add<ConvertLogicalTileToTile>(device.getContext(), device,
-                                           analyzer);
+                                           *placer);
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       return signalPassFailure();
