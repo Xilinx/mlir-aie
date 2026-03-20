@@ -1198,7 +1198,7 @@ class bottleneckBCoreStatic:
                 yield_([])
 
 
-weights_path = "weights/"
+weights_path = "data/"
 
 
 def mobilenetV3_bn_10_11_12(

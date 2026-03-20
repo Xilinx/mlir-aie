@@ -20,15 +20,12 @@ from brevitas.quant.fixed_point import (
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
 )
-
+import json
 
 from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
-
-
-import json
 
 
 # Function to read scale factors from JSON file

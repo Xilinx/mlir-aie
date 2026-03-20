@@ -17,6 +17,7 @@ import aie.iron as iron
 from aie.utils import DefaultNPURuntime
 from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 import aie.utils.test as test_utils
+import json
 
 
 def convert_to_numpy(array):
@@ -26,13 +27,6 @@ def convert_to_numpy(array):
         return array.cpu().numpy()
     else:
         raise TypeError("Unsupported array type")
-
-
-torch.use_deterministic_algorithms(True)
-torch.manual_seed(0)
-
-
-import json
 
 
 # Function to read scale factors from JSON file
