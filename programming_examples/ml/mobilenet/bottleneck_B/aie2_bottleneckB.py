@@ -23,8 +23,9 @@ def read_scale_factors(file_path):
 
 
 # Read the existing scale factors
-file_path = "scale_factors.json"
-scale_factors = read_scale_factors(file_path)
+scale_factor_file = "scale_factors.json"
+data_dir = "data/"
+scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 
 def create_tile(col, row):

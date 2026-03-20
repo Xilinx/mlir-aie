@@ -27,9 +27,9 @@ def read_scale_factors(file_path):
 
 
 # Read the existing scale factors
-file_path = "scale_factors.json"
-weights_path = "weights/"
-scale_factors = read_scale_factors(file_path)
+scale_factor_file = "scale_factors.json"
+data_dir = "data/"
+scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 
 def create_tile(col, row):
@@ -1500,7 +1500,7 @@ def mobilenetV3_bn_13_14(
         # object_fifo_link(bn13_wts_L3L2_layer2, [bn13_wts_memtile_layer2],[],[0])
 
         bn13_2_wts_ary = np.fromfile(
-            weights_path + "bn13_2_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn13_2_chain.txt", sep=",", dtype=np.int8
         )
         bn13_2_wts_static = buffer(
             bn13_tile_layer2,
@@ -1576,7 +1576,7 @@ def mobilenetV3_bn_13_14(
         # bn14_wts_memtile_layer2 = object_fifo("bn14_wts_memtile_layer2", MemTile11, bn14_tile_layer2, 1, ty_bneck_14_layer2_wts)
         # object_fifo_link(bn14_wts_L3L2_layer2, bn14_wts_memtile_layer2, [], [0])
         bn14_2_wts_ary = np.fromfile(
-            weights_path + "bn14_2_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn14_2_chain.txt", sep=",", dtype=np.int8
         )
         bn14_2_wts_static = buffer(
             bn14_tile_layer2,

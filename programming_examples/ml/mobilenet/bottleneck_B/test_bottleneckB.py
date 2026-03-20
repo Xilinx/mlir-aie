@@ -41,9 +41,12 @@ def write_scale_factors(file_path, scale_factors):
         json.dump(scale_factors, file, indent=4)
 
 
+log_dir = "log/"
+data_dir = "data/"
+
 # Read the existing scale factors
-file_path = "scale_factors.json"
-scale_factors = read_scale_factors(file_path)
+scale_factor_file = "scale_factors.json"
+scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 vectorSize = 8
 
@@ -103,9 +106,6 @@ def main(opts):
     design = "mobilenet_bottleneck_B"
     xclbin_path = opts.xclbin
     insts_path = opts.instr
-
-    log_folder = "log/"
-    data_dir = "data/"
 
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)

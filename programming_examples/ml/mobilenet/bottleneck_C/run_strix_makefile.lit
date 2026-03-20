@@ -7,6 +7,6 @@
 // RUN: cd test_stx
 // RUN: cp %S/scale_factors.json .
 // RUN: cp %S/../mb_utils.py ..
-// RUN: cp -r %S/weights .
+// RUN: cp -r %S/data .
 // RUN: make -f %S/Makefile clean
 // RUN: %run_on_npu2% make -f %S/Makefile run_py devicename=npu2

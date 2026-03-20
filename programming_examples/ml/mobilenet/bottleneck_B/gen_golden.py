@@ -40,9 +40,12 @@ def write_scale_factors(file_path, scale_factors):
         json.dump(scale_factors, file, indent=4)
 
 
+log_dir = "log/"
+data_dir = "data/"
+
 # Read the existing scale factors
-file_path = "scale_factors.json"
-scale_factors = read_scale_factors(file_path)
+scale_factor_file = "scale_factors.json"
+scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 vectorSize = 8
 
@@ -102,17 +105,9 @@ def main():
 
     print("Running torch reference model for bottleneck_B ...")
 
-    log_folder = "log/"
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-    # num_iter = 1
-    # npu_time_total = 0
-    # npu_time_min = 9999999
-    # npu_time_max = 0
-    # trace_size = 16384
-    # enable_trace = False
-    # trace_file = "log/trace_" + design + ".txt"
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
     # ------------------------------------------------------
@@ -512,7 +507,7 @@ def main():
     scale_factors["BN12"]["conv3x3"] = int(block_12_combined_scale2.item())
     scale_factors["BN12"]["conv1x1_2"] = int(block_12_combined_scale3.item())
 
-    # write_scale_factors(file_path, scale_factors)
+    write_scale_factors(log_dir + scale_factor_file, scale_factors)
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------
@@ -547,13 +542,11 @@ def main():
     )
 
     print("Writing golden output txt file.")
-    golden_output.tofile(log_folder + "/golden_output.txt", sep=",", format="%d")
+    golden_output.tofile(log_dir + "/golden_output.txt", sep=",", format="%d")
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)  # JL
     print("Writing input txt file.")
-    before_input.tofile(
-        log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
-    )
+    before_input.tofile(log_dir + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
 
     # **************************** bn10 ****************************
@@ -591,18 +584,18 @@ def main():
     bn12_wts2_3 = np.concatenate((bn12_wts2, bn12_wts3), axis=None)
 
     print("Writing weights txt files.")
-    bn10_wts1.tofile(log_folder + "/bn10_1_chain.txt", sep=",", format="%d")
-    bn10_wts2.tofile(log_folder + "/bn10_2_chain.txt", sep=",", format="%d")
-    bn10_wts3.tofile(log_folder + "/bn10_3_chain.txt", sep=",", format="%d")
+    bn10_wts1.tofile(log_dir + "/bn10_1_chain.txt", sep=",", format="%d")
+    bn10_wts2.tofile(log_dir + "/bn10_2_chain.txt", sep=",", format="%d")
+    bn10_wts3.tofile(log_dir + "/bn10_3_chain.txt", sep=",", format="%d")
 
-    bn11_wts1.tofile(log_folder + "/bn11_1_chain.txt", sep=",", format="%d")
-    bn11_wts2.tofile(log_folder + "/bn11_2_chain.txt", sep=",", format="%d")
-    bn11_wts3.tofile(log_folder + "/bn11_3_chain.txt", sep=",", format="%d")
+    bn11_wts1.tofile(log_dir + "/bn11_1_chain.txt", sep=",", format="%d")
+    bn11_wts2.tofile(log_dir + "/bn11_2_chain.txt", sep=",", format="%d")
+    bn11_wts3.tofile(log_dir + "/bn11_3_chain.txt", sep=",", format="%d")
 
-    bn12_wts1.tofile(log_folder + "/bn12_1_chain.txt", sep=",", format="%d")
-    bn12_wts2.tofile(log_folder + "/bn12_2_chain.txt", sep=",", format="%d")
-    bn12_wts3.tofile(log_folder + "/bn12_3_chain.txt", sep=",", format="%d")
-    bn12_wts2_3.tofile(log_folder + "/bn12_2_3_chain.txt", sep=",", format="%d")
+    bn12_wts1.tofile(log_dir + "/bn12_1_chain.txt", sep=",", format="%d")
+    bn12_wts2.tofile(log_dir + "/bn12_2_chain.txt", sep=",", format="%d")
+    bn12_wts3.tofile(log_dir + "/bn12_3_chain.txt", sep=",", format="%d")
+    bn12_wts2_3.tofile(log_dir + "/bn12_2_3_chain.txt", sep=",", format="%d")
 
     bn10_total_wts = np.concatenate((bn10_wts1, bn10_wts2, bn10_wts3), axis=None)
     bn11_total_wts = np.concatenate((bn11_wts1, bn11_wts2, bn11_wts3), axis=None)
