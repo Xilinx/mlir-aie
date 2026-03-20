@@ -13,11 +13,14 @@
 // Verify that a scalar depth-2 objectFifo with a max acquire of 1 lowers to
 // two buffers (maxAcquire + 1 = 2), not three (declared depth + 1 = 3). The
 // buffer count is driven by the maximum acquire count in the core, not the
-// declared objectFifo depth.
+// declared objectFifo depth. Since the consumer is a shim tile (which has no
+// local memory), buffers are only created on the producer side; the shim tile
+// side only gets locks.
 
-// CHECK: %[[BUFF0:.*]] = aie.buffer(%{{.*}}tile_1_0) {sym_name = "of_cons_buff_0"} : memref<16xi32>
-// CHECK: %[[BUFF1:.*]] = aie.buffer(%{{.*}}tile_1_0) {sym_name = "of_cons_buff_1"} : memref<16xi32>
-// CHECK-NOT: sym_name = "of_cons_buff_2"
+// CHECK: %[[BUFF0:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_buff_0"} : memref<16xi32>
+// CHECK: %[[BUFF1:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_buff_1"} : memref<16xi32>
+// CHECK-NOT: sym_name = "of_buff_2"
+// CHECK-NOT: sym_name = "of_cons_buff_0"
 
 module @depth_two_scalar {
     aie.device(xcve2302) {

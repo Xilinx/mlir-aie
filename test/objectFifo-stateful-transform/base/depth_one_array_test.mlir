@@ -10,12 +10,13 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// Verify that an objectFifo with array depth [1, 1] lowers to a single buffer.
-// The array-depth form explicitly enforces per-endpoint depths, bypassing the
-// prefetch increment that the scalar depth form applies.
+// Verify that an objectFifo with array depth [1, 1] lowers to a single buffer
+// on the producer side. Since the consumer is a shim tile (which has no local
+// memory), no consumer buffer is created; the shim tile side only gets locks.
 
-// CHECK: %[[BUFF0:.*]] = aie.buffer(%{{.*}}tile_1_0) {sym_name = "of_cons_buff_0"} : memref<16xi32>
-// CHECK-NOT: sym_name = "of_cons_buff_1"
+// CHECK: %[[BUFF0:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_buff_0"} : memref<16xi32>
+// CHECK-NOT: sym_name = "of_buff_1"
+// CHECK-NOT: sym_name = "of_cons_buff_0"
 
 module @depth_one_array {
     aie.device(xcve2302) {

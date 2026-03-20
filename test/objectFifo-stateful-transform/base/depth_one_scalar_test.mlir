@@ -11,11 +11,13 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // Verify that a scalar depth-1 objectFifo with a max acquire of 1 lowers to
-// two buffers (ping-pong). The depth-1 scalar form does not enforce a single
-// buffer; use array depth [1, 1] to explicitly enforce a single buffer.
+// two buffers (ping-pong) on the producer side. Since the consumer is a shim
+// tile (which has no local memory), no consumer buffer is created; the shim
+// tile side only gets locks.
 
-// CHECK: %[[BUFF0:.*]] = aie.buffer(%{{.*}}tile_1_0) {sym_name = "of_cons_buff_0"} : memref<16xi32>
-// CHECK: %[[BUFF1:.*]] = aie.buffer(%{{.*}}tile_1_0) {sym_name = "of_cons_buff_1"} : memref<16xi32>
+// CHECK: %[[BUFF0:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_buff_0"} : memref<16xi32>
+// CHECK: %[[BUFF1:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_buff_1"} : memref<16xi32>
+// CHECK-NOT: sym_name = "of_cons_buff_0"
 
 module @depth_one_scalar {
     aie.device(xcve2302) {
