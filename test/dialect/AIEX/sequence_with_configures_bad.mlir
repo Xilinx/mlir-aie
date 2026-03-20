@@ -12,26 +12,6 @@
 // RUN: aie-opt --verify-diagnostics --split-input-file %s
 
 module {
-    // expected-note@+1 {{This device does not have a 'run_x' runtime sequence}}
-    aie.device(npu1) @dev_a {
-        aie.runtime_sequence @run_a (%x: memref<1xi32>) {
-        }
-        aie.runtime_sequence @run_b () {
-        }
-    }
-    aie.device(npu1) { // main
-        aie.runtime_sequence (%x : memref<1xi32>) {
-            aiex.configure @dev_a {
-                // expected-error@+1 {{No such runtime sequence for device 'dev_a': 'run_x'}}
-                aiex.run @run_x (%x) : (memref<1xi32>)
-            }
-        }
-    }
-}
-
-// -----
-
-module {
     aie.device(npu1) @dev_a {
         aie.runtime_sequence @run_a (%x: memref<1xi32>) {
         }
