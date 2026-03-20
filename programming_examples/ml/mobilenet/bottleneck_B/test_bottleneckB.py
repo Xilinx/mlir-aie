@@ -107,8 +107,8 @@ def main(opts):
     xclbin_path = opts.xclbin
     insts_path = opts.instr
 
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
     num_iter = 1
     npu_time_total = 0
@@ -178,9 +178,7 @@ def main(opts):
         (bn10_total_wts, bn11_total_wts, bn12_total_wts), axis=None
     )
 
-    total_wts.tofile(
-        log_folder + "after_weights_mem_fmt_final.txt", sep=",", format="%d"
-    )
+    total_wts.tofile(log_dir + "after_weights_mem_fmt_final.txt", sep=",", format="%d")
     print(total_wts.shape)
 
     # ------------------------------------------------------
@@ -223,7 +221,7 @@ def main(opts):
         temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
         ofm_mem_fmt = temp_out.reshape(shape_out_final)
         ofm_mem_fmt.tofile(
-            log_folder + "after_ofm_mem_fmt_final.txt", sep=",", format="%d"
+            log_dir + "after_ofm_mem_fmt_final.txt", sep=",", format="%d"
         )
         ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
         # print("\nIter:{}, NPU time: {}us.".format(i,int((npu_time) / 1000)))
