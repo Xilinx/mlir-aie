@@ -269,7 +269,6 @@ def main():
 
     ds = DataShaper()
 
-    log_dir = "log/"
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 

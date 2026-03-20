@@ -27,8 +27,8 @@ endif
 
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
-all: build/final_mobilenet.xclbin run_py_mobilenet
-trace: build/trace_mobilenet.xclbin trace_py_mobilenet
+all: build/final_mobilenet.xclbin run_py
+trace: build/trace_mobilenet.xclbin trace_py
 
 MLIR_FILE=aie_mobilenet
 TEST_FILE=test_mobilenet
@@ -318,10 +318,10 @@ else
 		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
 endif
 
-run_py_mobilenet: build/final_mobilenet.xclbin build/${MLIR_FILE}.mlir
+run_py: build/final_mobilenet.xclbin build/${MLIR_FILE}.mlir
 	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE
 
-trace_py_mobilenet: build/trace_mobilenet.xclbin build/${MLIR_FILE}_trace.mlir
+trace_py: build/trace_mobilenet.xclbin build/${MLIR_FILE}_trace.mlir
 	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift 1 > trace_mbv4_full.json
 

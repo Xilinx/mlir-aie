@@ -480,7 +480,7 @@ def main(opts):
     different_indices = np.argwhere(np.abs(golden - ofm_mem_fmt_out) > tolerance)
 
     print(
-        "***WARNING**** Temporary check where we accept atol=14, whereas it should be 1"
+        "\n***WARNING**** Temporary check where we accept atol=14, whereas it should be 1"
     )
     if np.allclose(
         ofm_mem_fmt_out,

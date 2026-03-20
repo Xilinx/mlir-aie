@@ -2,7 +2,7 @@
 
 ## Overview
 
-MobileNet V3 is a highly efficient model for mobile and edge devices, designed to provide a good balance between latency and accuracy.
+MobileNet V3 is a highly efficient model for mobile and edge devices, designed to provide a good balance between latency and accuracy and targeting a device with 4x8 core tiles and 1 row of mem tiles (Strix).
 This project implements MobileNet V3 on AI Engine with three different mappings of bottleneck blocks:
 
 1. **Bottleneck A**: Each bottleneck block is implemented on a single AI core.

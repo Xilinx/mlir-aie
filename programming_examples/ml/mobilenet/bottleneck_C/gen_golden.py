@@ -448,7 +448,9 @@ def main():
 
     print("Writing golden output txt file.")
     golden_output.tofile(log_dir + "golden_output.txt", sep=",", format="%d")
+
     ds = DataShaper()
+
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
     print("Writing input txt file.")
     before_input.tofile(log_dir + "before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
