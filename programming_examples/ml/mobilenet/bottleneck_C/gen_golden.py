@@ -14,7 +14,6 @@ import time
 import os
 import numpy as np
 
-
 from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
 from brevitas.quant.fixed_point import (
     Int8ActPerTensorFixedPoint,

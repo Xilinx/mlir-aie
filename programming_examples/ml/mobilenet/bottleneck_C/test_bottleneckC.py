@@ -166,7 +166,7 @@ def main(opts):
         data_dir + "golden_output.txt", delimiter=",", dtype="int8"
     )
     golden_output = golden_output.reshape(
-        1, bneck_13_InC1, bneck_13_InH1, bneck_13_InW1  # TODO
+        1, bneck_13_InC1, bneck_13_InH1, bneck_13_InW1
     )
 
     ds = DataShaper()

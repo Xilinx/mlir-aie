@@ -34,10 +34,9 @@ def read_scale_factors(file_path):
 
 
 # Read the existing scale factors
-file_path = "scale_factors_fused.json"
-scale_factors = read_scale_factors(file_path)
-
-weights_path = "weights/"
+scale_factor_file = "scale_factors_fused.json"
+data_dir = "data/"
+scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 
 def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
@@ -519,29 +518,17 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
         # )
 
         # wts
-        bn0_wts_ary = np.fromfile(
-            weights_path + "bn0_chain.txt", sep=",", dtype=np.int8
-        )
-        bn1_wts_ary = np.fromfile(
-            weights_path + "bn1_chain.txt", sep=",", dtype=np.int8
-        )
-        bn2_wts_ary = np.fromfile(
-            weights_path + "bn2_chain.txt", sep=",", dtype=np.int8
-        )
-        bn3_wts_ary = np.fromfile(
-            weights_path + "bn3_chain.txt", sep=",", dtype=np.int8
-        )
+        bn0_wts_ary = np.fromfile(data_dir + "bn0_chain.txt", sep=",", dtype=np.int8)
+        bn1_wts_ary = np.fromfile(data_dir + "bn1_chain.txt", sep=",", dtype=np.int8)
+        bn2_wts_ary = np.fromfile(data_dir + "bn2_chain.txt", sep=",", dtype=np.int8)
+        bn3_wts_ary = np.fromfile(data_dir + "bn3_chain.txt", sep=",", dtype=np.int8)
         bn4_5_wts_ary = np.fromfile(
-            weights_path + "bn4_5_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn4_5_chain.txt", sep=",", dtype=np.int8
         )
-        bn6_wts_ary = np.fromfile(
-            weights_path + "bn6_chain.txt", sep=",", dtype=np.int8
-        )
-        bn7_wts_ary = np.fromfile(
-            weights_path + "bn7_chain.txt", sep=",", dtype=np.int8
-        )
+        bn6_wts_ary = np.fromfile(data_dir + "bn6_chain.txt", sep=",", dtype=np.int8)
+        bn7_wts_ary = np.fromfile(data_dir + "bn7_chain.txt", sep=",", dtype=np.int8)
         bn8_9_wts_ary = np.fromfile(
-            weights_path + "bn8_9_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn8_9_chain.txt", sep=",", dtype=np.int8
         )
 
         bn0_wts_static = buffer(
