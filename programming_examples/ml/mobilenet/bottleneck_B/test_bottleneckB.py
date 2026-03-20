@@ -27,6 +27,7 @@ def convert_to_numpy(array):
     else:
         raise TypeError("Unsupported array type")
 
+
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
@@ -144,29 +145,37 @@ def main(opts):
     npu_kernel = NPUKernel(xclbin_path, insts_path)
     kernel_handle = DefaultNPURuntime.load(npu_kernel)
 
-    golden_output = np.loadtxt(data_dir + "golden_output.txt", delimiter=",", dtype='int8')
-    golden_output = golden_output.reshape(1,bneck_12_OutC3,bneck_12_InH3,bneck_12_InW3)
+    golden_output = np.loadtxt(
+        data_dir + "golden_output.txt", delimiter=",", dtype="int8"
+    )
+    golden_output = golden_output.reshape(
+        1, bneck_12_OutC3, bneck_12_InH3, bneck_12_InW3
+    )
     ds = DataShaper()
 
-    before_input = np.loadtxt(data_dir + "before_ifm_mem_fmt_1x1.txt", delimiter=",", dtype='int8')
-    before_input = before_input.reshape(bneck_10_InC1,bneck_10_InH1,bneck_10_InW1)
+    before_input = np.loadtxt(
+        data_dir + "before_ifm_mem_fmt_1x1.txt", delimiter=",", dtype="int8"
+    )
+    before_input = before_input.reshape(bneck_10_InC1, bneck_10_InH1, bneck_10_InW1)
     # print("JL: before_input shape:", before_input.shape)
     # print("JL: before_input type:", type(before_input))
     # print("JL: before_input dtype:", before_input.dtype)
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
 
-    bn10_wts1 = np.loadtxt(data_dir + "bn10_1_chain.txt", delimiter=",", dtype='int32')
-    bn10_wts2 = np.loadtxt(data_dir + "bn10_2_chain.txt", delimiter=",", dtype='int32')
-    bn10_wts3 = np.loadtxt(data_dir + "bn10_3_chain.txt", delimiter=",", dtype='int32')
+    bn10_wts1 = np.loadtxt(data_dir + "bn10_1_chain.txt", delimiter=",", dtype="int32")
+    bn10_wts2 = np.loadtxt(data_dir + "bn10_2_chain.txt", delimiter=",", dtype="int32")
+    bn10_wts3 = np.loadtxt(data_dir + "bn10_3_chain.txt", delimiter=",", dtype="int32")
 
-    bn11_wts1 = np.loadtxt(data_dir + "bn11_1_chain.txt", delimiter=",", dtype='int32')
-    bn11_wts2 = np.loadtxt(data_dir + "bn11_2_chain.txt", delimiter=",", dtype='int32')
-    bn11_wts3 = np.loadtxt(data_dir + "bn11_3_chain.txt", delimiter=",", dtype='int32')
+    bn11_wts1 = np.loadtxt(data_dir + "bn11_1_chain.txt", delimiter=",", dtype="int32")
+    bn11_wts2 = np.loadtxt(data_dir + "bn11_2_chain.txt", delimiter=",", dtype="int32")
+    bn11_wts3 = np.loadtxt(data_dir + "bn11_3_chain.txt", delimiter=",", dtype="int32")
 
-    bn12_wts1 = np.loadtxt(data_dir + "bn12_1_chain.txt", delimiter=",", dtype='int32')
-    bn12_wts2 = np.loadtxt(data_dir + "bn12_2_chain.txt", delimiter=",", dtype='int32')
-    bn12_wts3 = np.loadtxt(data_dir + "bn12_3_chain.txt", delimiter=",", dtype='int32')
-    bn12_wts2_3 = np.loadtxt(data_dir + "bn12_2_3_chain.txt", delimiter=",", dtype='int32')
+    bn12_wts1 = np.loadtxt(data_dir + "bn12_1_chain.txt", delimiter=",", dtype="int32")
+    bn12_wts2 = np.loadtxt(data_dir + "bn12_2_chain.txt", delimiter=",", dtype="int32")
+    bn12_wts3 = np.loadtxt(data_dir + "bn12_3_chain.txt", delimiter=",", dtype="int32")
+    bn12_wts2_3 = np.loadtxt(
+        data_dir + "bn12_2_3_chain.txt", delimiter=",", dtype="int32"
+    )
 
     bn10_total_wts = np.concatenate((bn10_wts1, bn10_wts2, bn10_wts3), axis=None)
     bn11_total_wts = np.concatenate((bn11_wts1, bn11_wts2, bn11_wts3), axis=None)
