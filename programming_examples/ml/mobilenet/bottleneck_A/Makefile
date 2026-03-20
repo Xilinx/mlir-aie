@@ -232,10 +232,10 @@ OBJ = build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o \
 build/final_bn_4_5.xclbin build/inst_bn_4_5.bin &: build/aie2_bn_8_9.mlir build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts_bn_4_5.bin ${<F}
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 			--aie-generate-npu-insts --npu-insts-name=insts_bn_4_5.bin $(<F)
 endif
@@ -243,10 +243,10 @@ endif
 build/final_bn_8_9.xclbin build/inst_bn_8_9.bin &: build/aie2_bn_8_9.mlir build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts_bn_8_9.bin ${<F}
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 			--aie-generate-npu-insts --npu-insts-name=insts_bn_8_9.bin $(<F)
 endif
@@ -254,10 +254,10 @@ endif
 build/final_%.xclbin build/inst_%.bin &: build/aie2_%.mlir build/conv2dk1_i8.o build/conv2dk1_fused_relu.o build/conv2dk3_dw_stride2.o build/conv2dk3_dw_stride1.o build/conv2dk1_skip.o build/conv2dk1_skip.o build/conv2dk1_skipui8.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts_$*.bin ${<F}
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 			--aie-generate-npu-insts --npu-insts-name=insts_$*.bin $(<F)
 endif
@@ -265,10 +265,10 @@ endif
 build/final_bn_chain.xclbin: build/${MLIR_FILE}.mlir  $(OBJ)
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts_bn_chain.bin ${<F}
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts_bn_chain.bin ${<F}
 endif
@@ -276,10 +276,10 @@ endif
 build/trace_bn_chain.xclbin: build/${MLIR_FILE}_trace.mlir  $(OBJ)
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts_bn_chain.bin ${<F}
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts_bn_chain.bin ${<F}
 endif

@@ -36,9 +36,9 @@ def read_scale_factors(file_path):
 
 
 # Read the existing scale factors
-file_path = "scale_factors_final.json"
-weights_path = "weights/"
-scale_factors = read_scale_factors(file_path)
+scale_factor_file = "scale_factors_final.json"
+data_dir = "data/"
+scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 
 class initConv:
@@ -3495,32 +3495,32 @@ def mobilenetV3_A_B(
         # ******************************************************************* WTS B block *******************************************************************
 
         bn10_1_wts_ary = np.fromfile(
-            weights_path + "bn10_1_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn10_1_chain.txt", sep=",", dtype=np.int8
         )
         bn10_2_wts_ary = np.fromfile(
-            weights_path + "bn10_2_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn10_2_chain.txt", sep=",", dtype=np.int8
         )
         bn10_3_wts_ary = np.fromfile(
-            weights_path + "bn10_3_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn10_3_chain.txt", sep=",", dtype=np.int8
         )
 
         bn11_1_wts_ary = np.fromfile(
-            weights_path + "bn11_1_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn11_1_chain.txt", sep=",", dtype=np.int8
         )
         bn11_2_wts_ary = np.fromfile(
-            weights_path + "bn11_2_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn11_2_chain.txt", sep=",", dtype=np.int8
         )
         bn11_3_wts_ary = np.fromfile(
-            weights_path + "bn11_3_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn11_3_chain.txt", sep=",", dtype=np.int8
         )
 
         bn12_1_wts_ary = np.fromfile(
-            weights_path + "bn12_1_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn12_1_chain.txt", sep=",", dtype=np.int8
         )
-        # bn12_2_wts_ary=np.fromfile(weights_path+"bn12_2_chain.txt", sep=",", dtype=np.int8)
-        # bn12_3_wts_ary=np.fromfile(weights_path+"bn12_3_chain.txt", sep=",", dtype=np.int8)
+        # bn12_2_wts_ary=np.fromfile(data_dir+"bn12_2_chain.txt", sep=",", dtype=np.int8)
+        # bn12_3_wts_ary=np.fromfile(data_dir+"bn12_3_chain.txt", sep=",", dtype=np.int8)
         bn12_2_3_wts_ary = np.fromfile(
-            weights_path + "bn12_2_3_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn12_2_3_chain.txt", sep=",", dtype=np.int8
         )
 
         bn10_1_wts_static = buffer(
@@ -3792,7 +3792,7 @@ def mobilenetV3_A_B(
         bn13_wts_memtile_layer1_get.set_repeat_count(RepeatChannels)
         # LAYER2
         bn13_2_wts_ary = np.fromfile(
-            weights_path + "bn13_2_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn13_2_chain.txt", sep=",", dtype=np.int8
         )
         bn13_2_wts_static = buffer(
             bn13_tile_layer2,
@@ -3865,7 +3865,7 @@ def mobilenetV3_A_B(
         bn14_wts_memtile_layer1_get.set_repeat_count(RepeatChannels)
         # LAYER2
         bn14_2_wts_ary = np.fromfile(
-            weights_path + "bn14_2_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn14_2_chain.txt", sep=",", dtype=np.int8
         )
         bn14_2_wts_static = buffer(
             bn14_tile_layer2,
@@ -3943,7 +3943,7 @@ def mobilenetV3_A_B(
         # object_fifo_link(post_L1_wts_L3_L2, [post_L1_wts_L2_L1],[],[0])
         # post_L1_wts_L2_L1.set_repeat_count(PostRepeatChannels)
         post_L1_wts_ary = np.fromfile(
-            weights_path + "post_conv_chain.txt", sep=",", dtype=np.int8
+            data_dir + "post_conv_chain.txt", sep=",", dtype=np.int8
         )
         post_L1_wts_prod_lock = lock(MemTile41, lock_id=2, init=0)
         post_L1_wts_cons_lock = lock(MemTile41, lock_id=3, init=PostRepeatChannels)
@@ -3990,31 +3990,15 @@ def mobilenetV3_A_B(
             uint8_ty,
         )
 
-        wts_ary_01 = np.fromfile(
-            weights_path + "FC1_0_chain.txt", sep=",", dtype=np.int8
-        )
-        wts_ary_21 = np.fromfile(
-            weights_path + "FC1_1_chain.txt", sep=",", dtype=np.int8
-        )
-        wts_ary_41 = np.fromfile(
-            weights_path + "FC1_2_chain.txt", sep=",", dtype=np.int8
-        )
-        wts_ary_61 = np.fromfile(
-            weights_path + "FC1_3_chain.txt", sep=",", dtype=np.int8
-        )
+        wts_ary_01 = np.fromfile(data_dir + "FC1_0_chain.txt", sep=",", dtype=np.int8)
+        wts_ary_21 = np.fromfile(data_dir + "FC1_1_chain.txt", sep=",", dtype=np.int8)
+        wts_ary_41 = np.fromfile(data_dir + "FC1_2_chain.txt", sep=",", dtype=np.int8)
+        wts_ary_61 = np.fromfile(data_dir + "FC1_3_chain.txt", sep=",", dtype=np.int8)
 
-        wts_ary_11 = np.fromfile(
-            weights_path + "FC2_0_chain.txt", sep=",", dtype=np.int8
-        )
-        wts_ary_31 = np.fromfile(
-            weights_path + "FC2_1_chain.txt", sep=",", dtype=np.int8
-        )
-        wts_ary_51 = np.fromfile(
-            weights_path + "FC2_2_chain.txt", sep=",", dtype=np.int8
-        )
-        wts_ary_71 = np.fromfile(
-            weights_path + "FC2_3_chain.txt", sep=",", dtype=np.int8
-        )
+        wts_ary_11 = np.fromfile(data_dir + "FC2_0_chain.txt", sep=",", dtype=np.int8)
+        wts_ary_31 = np.fromfile(data_dir + "FC2_1_chain.txt", sep=",", dtype=np.int8)
+        wts_ary_51 = np.fromfile(data_dir + "FC2_2_chain.txt", sep=",", dtype=np.int8)
+        wts_ary_71 = np.fromfile(data_dir + "FC2_3_chain.txt", sep=",", dtype=np.int8)
 
         PostL2Tile_1_cons_prod_lock = lock(PostL2Tile_1, lock_id=2, init=1)
         PostL2Tile_1_cons_cons_lock = lock(PostL2Tile_1, lock_id=3, init=0)
@@ -4289,35 +4273,21 @@ def mobilenetV3_A_B(
         # Input
         act_in = object_fifo("act_in", ShimTile00, init_tile, [1, 5], tensorLayerIn_ty)
 
-        init_wts_ary = np.fromfile(
-            weights_path + "init_chain.txt", sep=",", dtype=np.int8
-        )
-        bn0_wts_ary = np.fromfile(
-            weights_path + "bn0_chain.txt", sep=",", dtype=np.int8
-        )
-        bn1_wts_ary = np.fromfile(
-            weights_path + "bn1_chain.txt", sep=",", dtype=np.int8
-        )
-        # bn0_1_wts_ary=np.fromfile(weights_path+"bn0_1_chain.txt", sep=",", dtype=np.int8)
-        bn2_wts_ary = np.fromfile(
-            weights_path + "bn2_chain.txt", sep=",", dtype=np.int8
-        )
-        bn3_wts_ary = np.fromfile(
-            weights_path + "bn3_chain.txt", sep=",", dtype=np.int8
-        )
-        # bn4_wts_ary=np.fromfile(weights_path+"bn4_chain.txt", sep=",", dtype=np.int8)
-        # bn5_wts_ary=np.fromfile(weights_path+"bn5_chain.txt", sep=",", dtype=np.int8)
+        init_wts_ary = np.fromfile(data_dir + "init_chain.txt", sep=",", dtype=np.int8)
+        bn0_wts_ary = np.fromfile(data_dir + "bn0_chain.txt", sep=",", dtype=np.int8)
+        bn1_wts_ary = np.fromfile(data_dir + "bn1_chain.txt", sep=",", dtype=np.int8)
+        # bn0_1_wts_ary=np.fromfile(data_dir+"bn0_1_chain.txt", sep=",", dtype=np.int8)
+        bn2_wts_ary = np.fromfile(data_dir + "bn2_chain.txt", sep=",", dtype=np.int8)
+        bn3_wts_ary = np.fromfile(data_dir + "bn3_chain.txt", sep=",", dtype=np.int8)
+        # bn4_wts_ary=np.fromfile(data_dir+"bn4_chain.txt", sep=",", dtype=np.int8)
+        # bn5_wts_ary=np.fromfile(data_dir+"bn5_chain.txt", sep=",", dtype=np.int8)
         bn4_5_wts_ary = np.fromfile(
-            weights_path + "bn4_5_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn4_5_chain.txt", sep=",", dtype=np.int8
         )
-        bn6_wts_ary = np.fromfile(
-            weights_path + "bn6_chain.txt", sep=",", dtype=np.int8
-        )
-        bn7_wts_ary = np.fromfile(
-            weights_path + "bn7_chain.txt", sep=",", dtype=np.int8
-        )
+        bn6_wts_ary = np.fromfile(data_dir + "bn6_chain.txt", sep=",", dtype=np.int8)
+        bn7_wts_ary = np.fromfile(data_dir + "bn7_chain.txt", sep=",", dtype=np.int8)
         bn8_9_wts_ary = np.fromfile(
-            weights_path + "bn8_9_chain.txt", sep=",", dtype=np.int8
+            data_dir + "bn8_9_chain.txt", sep=",", dtype=np.int8
         )
 
         init_wts_static = buffer(

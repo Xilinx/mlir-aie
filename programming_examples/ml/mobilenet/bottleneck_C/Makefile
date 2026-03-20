@@ -102,20 +102,20 @@ build/bn14_conv2dk1_skip_get.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
 # ************************************** bottleneck B **************************************
 build/final.xclbin build/insts.bin &: build/${MLIR_FILE}.mlir $(OBJ)
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<F)
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<F)
 endif
 
 build/trace.xclbin build/insts_trace.bin &: build/${MLIR_FILE}_trace.mlir $(OBJ)
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts_trace.bin $(<F)
 else
-	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts_trace.bin $(<F)
 endif
