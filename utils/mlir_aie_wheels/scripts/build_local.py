@@ -31,7 +31,9 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 
-DEFAULT_PIP_FIND_LINKS = "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+DEFAULT_PIP_FIND_LINKS = (
+    "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+)
 
 
 # --------------------------------------------------------------------------------------
@@ -42,9 +44,15 @@ DEFAULT_PIP_FIND_LINKS = "https://github.com/Xilinx/mlir-aie/releases/expanded_a
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     python_group = parser.add_mutually_exclusive_group()
-    python_group.add_argument("--cp312", action="store_true", help="Build only cp312 wheels.")
-    python_group.add_argument("--cp313", action="store_true", help="Build only cp313 wheels.")
-    python_group.add_argument("--cp314", action="store_true", help="Build only cp314 wheels.")
+    python_group.add_argument(
+        "--cp312", action="store_true", help="Build only cp312 wheels."
+    )
+    python_group.add_argument(
+        "--cp313", action="store_true", help="Build only cp313 wheels."
+    )
+    python_group.add_argument(
+        "--cp314", action="store_true", help="Build only cp314 wheels."
+    )
     return parser.parse_args(argv)
 
 
@@ -62,7 +70,9 @@ def _apply_requested_python(args: argparse.Namespace) -> None:
 # --------------------------------------------------------------------------------------
 
 
-def _run(cmd: list[str], *, cwd: Optional[Path] = None, env: Optional[dict[str, str]] = None) -> None:
+def _run(
+    cmd: list[str], *, cwd: Optional[Path] = None, env: Optional[dict[str, str]] = None
+) -> None:
     pretty = " ".join(cmd)
     print(f"[run] $ {pretty}")
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env, check=True)
@@ -83,6 +93,7 @@ def _copy_tree_merge(src: Path, dst: Path) -> None:
 
 def _unzip_overwrite(zip_path: Path, dst_dir: Path) -> None:
     import zipfile
+
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(dst_dir)
 
@@ -236,11 +247,16 @@ def main(argv: list[str] | None = None) -> int:
         _copy_ccache_from_wheelhouse(wheelhouse, host_ccache_dir)
 
     # Stage inputs into python_bindings
-    shutil.copy2(project_root / "requirements.txt", python_bindings / "requirements.txt")
+    shutil.copy2(
+        project_root / "requirements.txt", python_bindings / "requirements.txt"
+    )
 
     # Prefer a wheel-local requirements_dev.txt if present, fallback to repo_root/python/.
     dev_req_dst = python_bindings / "requirements_dev.txt"
-    for src in [project_root / "requirements_dev.txt", repo_root / "python" / "requirements_dev.txt"]:
+    for src in [
+        project_root / "requirements_dev.txt",
+        repo_root / "python" / "requirements_dev.txt",
+    ]:
         if src.is_file():
             shutil.copy2(src, dev_req_dst)
             break
@@ -258,9 +274,13 @@ def main(argv: list[str] | None = None) -> int:
         whl.unlink()
 
     # cibuildwheel --platform "$machine" --output-dir ../wheelhouse
-    _run(_cibuildwheel_cmd() + ["--platform", machine, "--output-dir", "../wheelhouse"], cwd=python_bindings)
+    _run(
+        _cibuildwheel_cmd() + ["--platform", machine, "--output-dir", "../wheelhouse"],
+        cwd=python_bindings,
+    )
 
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
