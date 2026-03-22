@@ -33,6 +33,7 @@ class ExpandChannels(object):
                 img = torch.cat([img, img[:remainder, :, :]], dim=0)
             return img
 
+
 # Function to read scale factors from JSON file
 def read_scale_factors(file_path):
     with open(file_path, "r") as file:
@@ -43,4 +44,3 @@ def read_scale_factors(file_path):
 def write_scale_factors(file_path, scale_factors):
     with open(file_path, "w") as file:
         json.dump(scale_factors, file, indent=4)
-
