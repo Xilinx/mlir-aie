@@ -47,12 +47,17 @@ In this mapping, each bottleneck block is distributed across five AI cores. This
 
 ### Building the Project
 
-Prerequisites:
-```
-pip3 install torch brevitas tdqm torchvision onnx
-```
-
 To compile and run the chained design:
 ```
-make run_py_mobilenet
+make run_py
 ```
+
+We have separated the generation of the golden data, weights and scale factors to a separate python program `gen_golden.py`. This writes the data to the `log` folder which should match the ones stored under `data` that the test uses as input stimulus, golden reference, weights, and scale factors. In order to run `gen_golden.py`, we need additional python packages (e.g. torchvision, brevitas) as well as a set of imagenet calibration images. Those calibration images are not part of this repo (details to be shared soon) but the remaining package requirements can be satisfied via:
+```
+python3 -m pip install -r requirements_gen_golden.txt
+```
+To generate the input stimulus, golden reference, weights and scale factors:
+```
+python3 ./gen_golden.py
+```
+
