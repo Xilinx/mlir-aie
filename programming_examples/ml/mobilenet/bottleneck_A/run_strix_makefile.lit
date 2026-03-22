@@ -8,4 +8,4 @@
 // RUN: cp %S/../mb_utils.py ..
 // RUN: cp -r %S/data .
 // RUN: make -f %S/Makefile clean
-// RUN: %run_on_npu2% make -f %S/Makefile run_py_bn_chain devicename=npu2
+// RUN: %run_on_npu2% make -f %S/Makefile run_py devicename=npu2
