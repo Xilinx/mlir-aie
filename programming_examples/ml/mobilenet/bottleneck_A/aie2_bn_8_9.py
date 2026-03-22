@@ -5,8 +5,9 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-# from aie2_bottleneck8And9Static import mobilenetV3Bottleneck8And9
-from aie2_bottleneck8And9 import mobilenetV3Bottleneck8And9
+from aie2_bottleneckA_subblock_fused2 import mobilenetV3BottleneckASubblockFused2
+
+# from aie2_bottleneckA_subblock_fused2Static import mobilenetV3BottleneckASubblockFused2
 
 from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx
@@ -14,7 +15,8 @@ from aie.extras.context import mlir_mod_ctx
 # NOLF: set tensorInH=6 to avoid PM overflow and need for dynamic objFIFO during debug and reduced channels with //2
 
 with mlir_mod_ctx() as ctx:
-    mobilenetV3Bottleneck8And9(
+    mobilenetV3BottleneckASubblockFused2(
+        # weights_file = "data/bn8_9_chain.txt",
         tensorInW=14,
         tensorInH=14,
         tensorInC=80,

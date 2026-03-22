@@ -248,7 +248,7 @@ class bottleneckASubblockBN0Static:
                 yield_([])
 
 
-def mobilenetV3BottleneckSubblockBN0Static(
+def mobilenetV3BottleneckSubblockBN0(
     weights_file="data/bn0_chain.txt",
     tileRowIndex=2,
     tileColIndex=0,

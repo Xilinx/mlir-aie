@@ -804,7 +804,8 @@ class bottleneckASubblockFused2Static:
                 yield_([])
 
 
-def mobilenetV3BottleneckASubblockFused2Static(
+def mobilenetV3BottleneckASubblockFused2(
+    weights_file="data/bn8_9_chain.txt",
     tileRowIndex=2,
     tileColIndex=2,
     tensorInW=56,
@@ -1041,8 +1042,7 @@ def mobilenetV3BottleneckASubblockFused2Static(
         #     "wts_OF_L3L2", ShimTile, ComputeTile, 1, weightsAllLayers_ty
         # )
 
-        file_path = "weights/"
-        wts_ary = np.fromfile(file_path + "bn8_9_chain.txt", sep=",", dtype=np.int8)
+        wts_ary = np.fromfile(weights_file, sep=",", dtype=np.int8)
 
         wts_OF_L3L2 = buffer(
             ComputeTile,
