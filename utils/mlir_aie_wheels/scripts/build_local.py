@@ -125,6 +125,7 @@ def _apply_env_for_machine(machine: str) -> None:
         os.environ.setdefault("ARCH", "AMD64")
         os.environ.setdefault("PARALLEL_LEVEL", "15")
         os.environ.setdefault("AIE_WHEEL_BUILD_ROOT", "C:/tmp/aiewhls")
+        os.environ.setdefault("AIE_VITIS_COMPONENTS", "AIE2;AIE2P")
 
 
 # --------------------------------------------------------------------------------------
