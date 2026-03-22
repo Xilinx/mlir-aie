@@ -29,7 +29,6 @@ torch.manual_seed(0)
 sys.path.append("..")
 import mb_utils
 
-
 log_dir = "log/"
 data_dir = "data/"
 
