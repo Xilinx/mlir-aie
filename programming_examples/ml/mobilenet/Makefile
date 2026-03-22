@@ -302,7 +302,7 @@ ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
 else
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --verbose --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
    		--no-xchesscc --no-xbridge \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
 endif

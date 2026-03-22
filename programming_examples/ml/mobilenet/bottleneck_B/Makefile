@@ -9,7 +9,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../../makefile-common
 VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
-MLIR_FILE = aie2_bottleneckB
+MLIR_FILE = aie2_bn_10_11_12
 TEST_FILE = test_bottleneckB
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)

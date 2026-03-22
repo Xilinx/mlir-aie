@@ -19,7 +19,7 @@ from aie.extras.dialects.memref import view as memref_view
 import aie.utils.trace as trace_utils
 
 
-class bottleneckBN0:
+class bottleneckASubblockBN0:
     def __init__(
         self,
         _bottleneckName,
@@ -253,7 +253,7 @@ class bottleneckBN0:
                 yield_([])
 
 
-def mobilenetV3Bottleneck0(
+def mobilenetV3BottleneckASubblockBN0(
     tileRowIndex=2,
     tileColIndex=0,
     tensorInW=112,

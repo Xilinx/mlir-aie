@@ -19,14 +19,14 @@ from aie.extras.dialects.memref import view as memref_view
 import aie.utils.trace as trace_utils
 
 
-class bottleneckACoreClass:
+class bottleneckASubblockClass:
     def __init__(self, bottleneckName, computeTile, tensorLayer_ty):
         self.testOF = object_fifo(
             bottleneckName + "_act_1_2", computeTile, computeTile, 3, tensorLayer_ty
         )
 
 
-class bottleneckACore:
+class bottleneckASubblockStatic:
     def __init__(
         self,
         _bottleneckName,
@@ -59,7 +59,8 @@ class bottleneckACore:
         self.computeTile = _computeTile
 
         self.actIn = _actIn
-        self.weightsIn = _weightsIn
+        # self.weightsIn = _weightsIn
+        weightsAllLayers = _weightsIn
         self.actOut = _actOut
         self.rtpsIn = _rtpsIn
 
@@ -105,21 +106,14 @@ class bottleneckACore:
             self.computeTile,
             3,
             self.layer1OutType,
-            disable_synchronization=True,
         )
-        # buf_act_1_2 = buffer(self.computeTile, [3], self.layer1OutType)
         self.of_act_2_3 = object_fifo(
             self.bottleneckName + "_act_2_3",
             self.computeTile,
             self.computeTile,
             1,
             self.layer2OutType,
-            disable_synchronization=True,
         )
-        # buf_act_2_3 = buffer(self.computeTile, (14,1,184), T.ui8())
-        # buf_act_2_3 = buffer(self.computeTile, self.layer2OutType.shape, self.layer2OutType.element_type)
-        # buf_act_2_3 = self.layer2OutType
-        # buf_act_2_3 = memref.load(buf_act_2_3_obj, [0])
 
         # Compute tile
         @core(self.computeTile)
@@ -127,12 +121,8 @@ class bottleneckACore:
             for _ in for_(1):  # for _ in for_(sys.maxsize):
 
                 # acquire weights and rtps NOTE: needs to become once so outside for loop
-                weightsAllLayers = self.weightsIn.acquire(ObjectFifoPort.Consume, 1)
+                # weightsAllLayers = self.weightsIn.acquire(ObjectFifoPort.Consume, 1)
 
-                # weightsLayer1 = memref_view(weightsAllLayers.output, [1 * 1 * self.tensorL1OutC * self.tensorL1InC], shift=0)
-                # weightsLayer2 = memref_view(weightsAllLayers.output, [3 * 3 * self.tensorL2OutC * 1], shift=1 * 1 * self.tensorL1OutC * self.tensorL1InC)
-                # weightsLayer3 = memref_view(weightsAllLayers.output, [1 * 1 * self.tensorL3OutC * self.tensorL3InC], shift=(1 * 1 * self.tensorL1OutC * self.tensorL1InC + 3 * 3 * self.tensorL2OutC * 1))
-                # JL
                 weightsLayer1 = memref_view(
                     weightsAllLayers,
                     [1 * 1 * self.tensorL1OutC * self.tensorL1InC],
@@ -151,11 +141,15 @@ class bottleneckACore:
                         + 3 * 3 * self.tensorL2OutC * 1
                     ),
                 )
-                scaleLayer1 = memref.load(self.rtpsIn, [0])  # scaleFactor1
-                scaleLayer2 = memref.load(self.rtpsIn, [1])  # scaleFactor2
-                scaleLayer3 = memref.load(self.rtpsIn, [2])  # scaleFactor3
+                # scaleLayer1 = memref.load(self.rtpsIn, [0]) # scaleFactor1
+                # scaleLayer2 = memref.load(self.rtpsIn, [1]) # scaleFactor2
+                # scaleLayer3 = memref.load(self.rtpsIn, [2]) # scaleFactor3
+                scaleLayer1 = self.scaleFactor1
+                scaleLayer2 = self.scaleFactor2
+                scaleLayer3 = self.scaleFactor3
                 if self.withSkip:
-                    skipScaleLayer3 = memref.load(self.rtpsIn, [3])  # scaleFactorAdd
+                    # skipScaleLayer3 = memref.load(self.rtpsIn, [3]) # scaleFactorAdd
+                    skipScaleLayer3 = self.scaleFactorAdd
 
                 # pre-amble 0: rows 0, 1 in layer 1 1x1 conv; row 0 in layer 2 3x3 dw; row 0 in layer 3 1x1 conv
                 actInLayer1Rows = self.actIn.acquire(ObjectFifoPort.Consume, 2)
@@ -184,8 +178,6 @@ class bottleneckACore:
                         scaleLayer1,
                     ],
                 )
-                # call(self.f1x1Relu, [actInLayer1Rows[0], weightsLayer1, buf_act_1_2[0], self.tensorInW, self.tensorL1InC, self.tensorL1OutC,scaleLayer1])
-                # call(self.f1x1Relu, [actInLayer1Rows[1], weightsLayer1, buf_act_1_2[1], self.tensorInW, self.tensorL1InC, self.tensorL1OutC,scaleLayer1])
                 self.of_act_1_2.release(ObjectFifoPort.Produce, 2)
                 if not (self.withSkip):
                     self.actIn.release(ObjectFifoPort.Consume, 2)
@@ -210,8 +202,6 @@ class bottleneckACore:
                         0,
                     ],
                 )  # where do we plug in stride
-                # call(self.f3x3dwRelu, [actInLayer2Rows[0], actInLayer2Rows[0], actInLayer2Rows[1], weightsLayer2, buf_act_2_3, self.tensorInW, 1, self.tensorL2OutC, 3, 3, 0, scaleLayer2, 0]) # where do we plug in stride
-                # call(self.f3x3dwRelu, [buf_act_1_2[0], buf_act_1_2[0], buf_act_1_2[1], weightsLayer2, buf_act_2_3, self.tensorInW, 1, self.tensorL2OutC, 3, 3, 0, scaleLayer2, 0]) # where do we plug in stride
                 if self.depthWiseStride == 2:
                     self.of_act_1_2.release(
                         ObjectFifoPort.Consume, 1
@@ -235,7 +225,6 @@ class bottleneckACore:
                             skipScaleLayer3,
                         ],
                     )
-                    # call(self.f1x1Skip, [buf_act_2_3, weightsLayer3, actOutLayer3Row, actInLayer1Rows[0], self.tensorOutW, self.tensorL3InC, self.tensorL3OutC, scaleLayer3, skipScaleLayer3])
                     self.actIn.release(ObjectFifoPort.Consume, self.depthWiseStride)
                 else:
                     call(
@@ -250,7 +239,6 @@ class bottleneckACore:
                             scaleLayer3,
                         ],
                     )
-                    # call(self.f1x1, [buf_act_2_3, weightsLayer3, actOutLayer3Row, self.tensorOutW, self.tensorL3InC, self.tensorL3OutC, scaleLayer3])
                 self.of_act_2_3.release(ObjectFifoPort.Consume, 1)
                 self.actOut.release(ObjectFifoPort.Produce, 1)
 
@@ -275,7 +263,6 @@ class bottleneckACore:
                                 scaleLayer1,
                             ],
                         )
-                        # call(self.f1x1Relu, [actInLayer1Rows[1], weightsLayer1, buf_act_1_2[0], self.tensorInW, self.tensorL1InC, self.tensorL1OutC, scaleLayer1])
                         self.of_act_1_2.release(ObjectFifoPort.Produce, 1)
                     else:
                         actInLayer1Rows = self.actIn.acquire(
@@ -297,7 +284,6 @@ class bottleneckACore:
                                     scaleLayer1,
                                 ],
                             )
-                            # call(self.f1x1Relu, [actInLayer1Rows, weightsLayer1, buf_act_1_2[0], self.tensorInW, self.tensorL1InC, self.tensorL1OutC, scaleLayer1])
                         if self.depthWiseStride == 2:
                             call(
                                 self.f1x1Relu,
@@ -323,8 +309,6 @@ class bottleneckACore:
                                     scaleLayer1,
                                 ],
                             )
-                            # call(self.f1x1Relu, [actInLayer1Rows[0], weightsLayer1, buf_act_1_2[0], self.tensorInW, self.tensorL1InC, self.tensorL1OutC, scaleLayer1])
-                            # call(self.f1x1Relu, [actInLayer1Rows[1], weightsLayer1, buf_act_1_2[1], self.tensorInW, self.tensorL1InC, self.tensorL1OutC, scaleLayer1])
                         self.of_act_1_2.release(
                             ObjectFifoPort.Produce, self.depthWiseStride
                         )
@@ -350,8 +334,6 @@ class bottleneckACore:
                             0,
                         ],
                     )  # where do we plug in stride
-                    # call(self.f3x3dwRelu, [actInLayer2Rows[0], actInLayer2Rows[1], actInLayer2Rows[2], weightsLayer2, buf_act_2_3, self.tensorInW, 1, self.tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
-                    # call(self.f3x3dwRelu, [buf_act_1_2[0], buf_act_1_2[1], buf_act_1_2[2], weightsLayer2, buf_act_2_3, self.tensorInW, 1, self.tensorL2OutC, 3, 3, 1, scaleLayer2, 0]) # where do we plug in stride
                     self.of_act_1_2.release(
                         ObjectFifoPort.Consume, 2 if (self.depthWiseStride == 2) else 1
                     )  # if (depthWiseStride == 2) : 2 else 1
@@ -374,7 +356,6 @@ class bottleneckACore:
                                 skipScaleLayer3,
                             ],
                         )
-                        # call(self.f1x1Skip, [buf_act_2_3, weightsLayer3, actOutLayer3Row, actInLayer1Rows[0], self.tensorOutW, self.tensorL3InC, self.tensorL3OutC, scaleLayer3, skipScaleLayer3])
                         self.actIn.release(ObjectFifoPort.Consume, self.depthWiseStride)
                     else:
                         call(
@@ -389,7 +370,6 @@ class bottleneckACore:
                                 scaleLayer3,
                             ],
                         )
-                        # call(self.f1x1, [buf_act_2_3, weightsLayer3, actOutLayer3Row, self.tensorOutW, self.tensorL3InC, self.tensorL3OutC, scaleLayer3])
                     self.of_act_2_3.release(ObjectFifoPort.Consume, 1)
                     self.actOut.release(ObjectFifoPort.Produce, 1)
 
@@ -417,8 +397,6 @@ class bottleneckACore:
                             0,
                         ],
                     )  # where do we plug in stride
-                    # call(self.f3x3dwRelu, [actInLayer2Rows[0], actInLayer2Rows[1], actInLayer2Rows[1], weightsLayer2, buf_act_2_3, self.tensorInW, 1, self.tensorL2OutC, 3, 3, 2, scaleLayer2, 0]) # where do we plug in stride
-                    # call(self.f3x3dwRelu, [buf_act_1_2[0], buf_act_1_2[1], buf_act_1_2[1], weightsLayer2, buf_act_2_3, self.tensorInW, 1, self.tensorL2OutC, 3, 3, 2, scaleLayer2, 0]) # where do we plug in stride
                     self.of_act_1_2.release(
                         ObjectFifoPort.Consume, 3 if (self.depthWiseStride == 2) else 2
                     )  # if (depthWiseStride == 2) : 2 else 1
@@ -442,7 +420,6 @@ class bottleneckACore:
                                 skipScaleLayer3,
                             ],
                         )
-                        # call(self.f1x1Skip, [buf_act_2_3, weightsLayer3, actOutLayer3Row, actInLayer1Row, self.tensorOutW, self.tensorL3InC, self.tensorL3OutC, scaleLayer3, skipScaleLayer3])
                         self.actIn.release(ObjectFifoPort.Consume, 1)
                     else:
                         call(
@@ -457,16 +434,16 @@ class bottleneckACore:
                                 scaleLayer3,
                             ],
                         )
-                        # call(self.f1x1, [buf_act_2_3, weightsLayer3, actOutLayer3Row, self.tensorOutW, self.tensorL3InC, self.tensorL3OutC, scaleLayer3])
                     self.of_act_2_3.release(ObjectFifoPort.Consume, 1)
                     self.actOut.release(ObjectFifoPort.Produce, 1)
 
-                self.weightsIn.release(ObjectFifoPort.Consume, 1)
+                # self.weightsIn.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 
 
-def mobilenetV3BottleneckA(
+def mobilenetV3BottleneckASubblockStatic(
     bottleneckName,
+    weights_file="bn1_chain.txt",
     tileRowIndex=2,
     tileColIndex=0,
     tensorInW=112,
@@ -519,6 +496,11 @@ def mobilenetV3BottleneckA(
         )
         tensorLayer3Out_ty = MemRefType.get((tensorOutW, 1, tensorL3OutC), int8_ty)
 
+        weightsAllLayers_size = (
+            1 * 1 * tensorL1OutC * tensorL1InC
+            + 3 * 3 * tensorL2OutC * 1
+            + 1 * 1 * tensorL3OutC * tensorL3InC
+        )
         weightsAllLayers_ty = MemRefType.get(
             (
                 1 * 1 * tensorL1OutC * tensorL1InC
@@ -620,8 +602,18 @@ def mobilenetV3BottleneckA(
         act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
 
         # wts
-        wts_OF_L3L1 = object_fifo(
-            "wts_OF_L3L1", ShimTile, ComputeTile, 1, weightsAllLayers_ty
+        # wts_OF_L3L1 = object_fifo(
+        #     "wts_OF_L3L1", ShimTile, ComputeTile, 1, weightsAllLayers_ty
+        # )
+
+        file_path = "weights/"
+        wts_ary = np.fromfile(file_path + weights_file, sep=",", dtype=np.int8)
+
+        weightsAllLayers = buffer(
+            ComputeTile,
+            np.ndarray[(weightsAllLayers_size,), np.dtype[np.int8]],
+            "weights",
+            initial_value=wts_ary,
         )
 
         # Output
@@ -638,11 +630,12 @@ def mobilenetV3BottleneckA(
         #     % (depthWiseStride, "skip" if (withSkip) else "")
         # )
 
-        bottleneckACore(
+        bottleneckASubblockStatic(
             bottleneckName,
             ComputeTile,
             act_in,
-            wts_OF_L3L1,
+            # wts_OF_L3L1,
+            weightsAllLayers,
             act_out,
             rtpComputeTile,
             conv2dk1_relu_i8_ui8,
@@ -659,6 +652,10 @@ def mobilenetV3BottleneckA(
             depthWiseChannels,
             tensorOutC,
             withSkip,
+            scaleFactor1,
+            scaleFactor2,
+            scaleFactor3,
+            scaleFactorAdd,
         )
 
         # instruction stream generation
@@ -673,13 +670,8 @@ def mobilenetV3BottleneckA(
         weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
         activationsOutL3_ty = MemRefType.get((activationsOutSize32b,), int32_ty)
 
-        # @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         def sequence(inputFromL3, weightsFromL3, outputToL3):
-            # NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=0, value=scaleFactor1)
-            # NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=1, value=scaleFactor2)
-            # NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=2, value=scaleFactor3)
-            # NpuWriteRTPOp("rtp", col=tileColIndex, row=tileRowIndex, index=3, value=scaleFactorAdd)
             NpuWriteRTPOp("rtp", index=0, value=scaleFactor1)
             NpuWriteRTPOp("rtp", index=1, value=scaleFactor2)
             NpuWriteRTPOp("rtp", index=2, value=scaleFactor3)
@@ -697,10 +689,10 @@ def mobilenetV3BottleneckA(
                 mem=outputToL3,
                 sizes=[1, 1, 1, activationsOutSize32b],
             )
-            npu_dma_memcpy_nd(
-                metadata="wts_OF_L3L1",
-                bd_id=1,
-                mem=weightsFromL3,
-                sizes=[1, 1, 1, totalWeightsSize32b],
-            )
+            # npu_dma_memcpy_nd(
+            #     metadata="wts_OF_L3L1",
+            #     bd_id=1,
+            #     mem=weightsFromL3,
+            #     sizes=[1, 1, 1, totalWeightsSize32b],
+            # )
             npu_sync(column=0, row=0, direction=0, channel=0)

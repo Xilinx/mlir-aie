@@ -19,28 +19,11 @@ from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 import aie.utils.test as test_utils
 import json
 
-
-def convert_to_numpy(array):
-    if isinstance(array, np.ndarray):
-        return array
-    elif isinstance(array, torch.Tensor):
-        return array.cpu().numpy()
-    else:
-        raise TypeError("Unsupported array type")
-
-
-# Function to read scale factors from JSON file
-def read_scale_factors(file_path):
-    with open(file_path, "r") as file:
-        return json.load(file)
-
+sys.path.append("..")
+import mb_utils
 
 log_dir = "log/"
 data_dir = "data/"
-
-# Read the existing scale factors
-scale_factor_file = "scale_factors.json"
-scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
@@ -275,8 +258,8 @@ def main(opts):
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
-    golden = convert_to_numpy(golden_output)
-    ofm_mem_fmt_out = convert_to_numpy(ofm_mem_fmt_out)
+    golden = mb_utils.convert_to_numpy(golden_output)
+    ofm_mem_fmt_out = mb_utils.convert_to_numpy(ofm_mem_fmt_out)
     max_difference = np.max((golden) - (ofm_mem_fmt_out))
     print("max_difference:", max_difference)
     if enable_trace:

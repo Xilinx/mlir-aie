@@ -28,16 +28,17 @@ endif
 
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
-all: build/final_bn_chain.xclbin run_py_bn_chain
-trace: build/trace_bn_chain.xclbin trace_py_bn_chain
+all: build/final_bn_chain.xclbin run_py
+trace: build/trace_bn_chain.xclbin trace_py
 
-MLIR_FILE = aie2_bottleneckA_chain
+MLIR_FILE = aie2_bn_0_1_2_3_4_5_6_7_8_9
 TEST_FILE = test_bottleneckA
 
 # OBJS_PY = ${srcdir}/aie2_bottleneckA.py ${srcdir}/aie2_bottleneck0.py ${srcdir}/aie2_bottleneck0And1.py ${srcdir}/aie2_bottleneck2And3.py
 # OBJS_PY = ${srcdir}/aie2_bottleneckA.py ${srcdir}/aie2_bottleneck0Static.py ${srcdir}/aie2_bottleneck0And1.py ${srcdir}/aie2_bottleneck2And3.py
-OBJS_PY = ${srcdir}/aie2_bottleneckA.py ${srcdir}/aie2_bottleneck0.py ${srcdir}/aie2_bottleneck8And9.py
+# OBJS_PY = ${srcdir}/aie2_bottleneckA.py ${srcdir}/aie2_bottleneck0.py ${srcdir}/aie2_bottleneck8And9.py
 # OBJS_PY = ${srcdir}/aie2_bottleneckAStatic.py ${srcdir}/aie2_bottleneck0Static.py ${srcdir}/aie2_bottleneck8And9Static.py
+OBJS_PY = ${srcdir}/aie2_bottleneckA_subblockStatic.py ${srcdir}/aie2_bottleneckA_subblock0Static.py ${srcdir}/aie2_bottleneckA_subblock_fused2Static.py
 
 # build/aie2_%.mlir: ${srcdir}/aie2_%.py ${OBJS_PY}
 build/aie2_%.mlir: ${srcdir}/aie2_%.py
@@ -290,14 +291,14 @@ shallow_clean:
 	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
 
 clean:
-	rm -rf build __pycache__
+	rm -rf build __pycache__ log
 
 # ******************************************************************************************
 
-run_py_bn_chain: build/final_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}.mlir
+run_py: build/final_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}.mlir
 	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE
 
-trace_py_bn_chain: build/trace_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}_trace.mlir
+trace_py: build/trace_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}_trace.mlir
 	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift ${colshift}  > trace_mbv4_A_chain.json
 

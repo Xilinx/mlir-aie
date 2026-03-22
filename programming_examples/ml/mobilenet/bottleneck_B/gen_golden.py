@@ -20,24 +20,14 @@ from brevitas.quant.fixed_point import (
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
 )
-import json
 
 from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
-
-# Function to read scale factors from JSON file
-def read_scale_factors(file_path):
-    with open(file_path, "r") as file:
-        return json.load(file)
-
-
-# Function to write scale factors to JSON file
-def write_scale_factors(file_path, scale_factors):
-    with open(file_path, "w") as file:
-        json.dump(scale_factors, file, indent=4)
+sys.path.append("..")
+import mb_utils
 
 
 log_dir = "log/"
@@ -45,7 +35,7 @@ data_dir = "data/"
 
 # Read the existing scale factors
 scale_factor_file = "scale_factors.json"
-scale_factors = read_scale_factors(data_dir + scale_factor_file)
+scale_factors = mb_utils.read_scale_factors(data_dir + scale_factor_file)
 
 vectorSize = 8
 
@@ -345,8 +335,6 @@ def main():
     )
     quant_bottleneck_model.eval()
 
-    sys.path.append("..")
-    from mb_utils import ExpandChannels
     from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
     import torchvision
     import torch.utils.data as data_utils
@@ -359,7 +347,9 @@ def main():
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ExpandChannels(target_channels=bneck_10_InC1),  # Expand to 80 channels
+            mb_utils.ExpandChannels(
+                target_channels=bneck_10_InC1
+            ),  # Expand to 80 channels
         ]
     )
     data_dir = "data"
@@ -507,7 +497,7 @@ def main():
     scale_factors["BN12"]["conv3x3"] = int(block_12_combined_scale2.item())
     scale_factors["BN12"]["conv1x1_2"] = int(block_12_combined_scale3.item())
 
-    write_scale_factors(log_dir + scale_factor_file, scale_factors)
+    mb_utils.write_scale_factors(log_dir + scale_factor_file, scale_factors)
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------

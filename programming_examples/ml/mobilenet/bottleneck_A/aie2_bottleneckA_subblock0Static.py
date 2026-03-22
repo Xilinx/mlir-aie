@@ -21,7 +21,7 @@ from aie.extras.dialects.memref import view as memref_view
 import aie.utils.trace as trace_utils
 
 
-class bottleneckBN0Static:
+class bottleneckASubblockBN0Static:
     def __init__(
         self,
         _bottleneckName,
@@ -248,8 +248,8 @@ class bottleneckBN0Static:
                 yield_([])
 
 
-def mobilenetV3Bottleneck0(
-    weights_file="bn0_chain.txt",
+def mobilenetV3BottleneckSubblockBN0Static(
+    weights_file="data/bn0_chain.txt",
     tileRowIndex=2,
     tileColIndex=0,
     tensorInW=112,
@@ -346,7 +346,6 @@ def mobilenetV3Bottleneck0(
         # wts
         # wts_OF_L3L1 = object_fifo("wts_OF_L3L1", ShimTile, ComputeTile, 1, weightsAllLayers_ty)
 
-        file_path = "weights/"
         # with open(file_path+"bn0_layer2_after_weights_mem_fmt_final.txt", newline="") as f:
         #         reader = csv.reader(f)
         #         wts = list(reader)
@@ -362,7 +361,7 @@ def mobilenetV3Bottleneck0(
         #         wts = list(reader)
         # wts_ary = numpy.array(wts, dtype=np.int8)
 
-        wts_ary = np.fromfile(file_path + weights_file, sep=",", dtype=np.int8)
+        wts_ary = np.fromfile(weights_file, sep=",", dtype=np.int8)
 
         # file_path = "weights/bn0_layer2_after_weights_mem_fmt_final.txt"
         # wts_ary2 = np.fromfile(file_path, sep=",", dtype=np.int8)

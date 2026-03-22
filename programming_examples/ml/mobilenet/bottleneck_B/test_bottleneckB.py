@@ -19,34 +19,11 @@ from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 import aie.utils.test as test_utils
 import json
 
-
-def convert_to_numpy(array):
-    if isinstance(array, np.ndarray):
-        return array
-    elif isinstance(array, torch.Tensor):
-        return array.cpu().numpy()
-    else:
-        raise TypeError("Unsupported array type")
-
-
-# Function to read scale factors from JSON file
-def read_scale_factors(file_path):
-    with open(file_path, "r") as file:
-        return json.load(file)
-
-
-# Function to write scale factors to JSON file
-def write_scale_factors(file_path, scale_factors):
-    with open(file_path, "w") as file:
-        json.dump(scale_factors, file, indent=4)
-
+sys.path.append("..")
+import mb_utils
 
 log_dir = "log/"
 data_dir = "data/"
-
-# Read the existing scale factors
-scale_factor_file = "scale_factors.json"
-scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 vectorSize = 8
 
@@ -235,11 +212,12 @@ def main(opts):
 
         # print("Golden  (float): ",q_bottleneck_out.value.detach())
 
-        golden = convert_to_numpy(golden_output)
-        ofm_mem_fmt_out = convert_to_numpy(ofm_mem_fmt_out)
+        golden = mb_utils.convert_to_numpy(golden_output)
+        ofm_mem_fmt_out = mb_utils.convert_to_numpy(ofm_mem_fmt_out)
         max_diff_int = np.max((golden) - (ofm_mem_fmt_out))
         # print("atol: {} max difference (float/int): {} / {}".format(atol,max_diff,max_diff_int))
         print("max difference (int): {}".format(max_diff_int))
+
     average_time = sum(times) / num_iter
     best_time = min(times)
     print(

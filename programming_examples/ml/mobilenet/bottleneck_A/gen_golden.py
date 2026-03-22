@@ -20,34 +20,18 @@ from brevitas.quant.fixed_point import (
     Uint8ActPerTensorFixedPoint,
 )
 
-sys.path.append("..")
-from mb_utils import convert_to_numpy
-
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
-
-import json
-
-
-# Function to read scale factors from JSON file
-def read_scale_factors(file_path):
-    with open(file_path, "r") as file:
-        return json.load(file)
-
-
-# Function to write scale factors to JSON file
-def write_scale_factors(file_path, scale_factors):
-    with open(file_path, "w") as file:
-        json.dump(scale_factors, file, indent=4)
-
+sys.path.append("..")
+import mb_utils
 
 log_dir = "log/"
 data_dir = "data/"
 
 # Read the existing scale factors
 scale_factor_file = "scale_factors_fused.json"
-scale_factors = read_scale_factors(data_dir + scale_factor_file)
+scale_factors = mb_utils.read_scale_factors(data_dir + scale_factor_file)
 
 vectorSize = 8
 
@@ -1395,7 +1379,7 @@ def main():
 
     # print("combined_scale after conv1x1:", ( block_0_relu_2 * block_0_weight_scale3).item())
     # Write the updated scale factors back to the file
-    write_scale_factors(log_dir + scale_factor_file, scale_factors)
+    mb_utils.write_scale_factors(log_dir + scale_factor_file, scale_factors)
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------

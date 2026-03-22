@@ -5,533 +5,371 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
+import argparse
 import sys
+
+from aie2_bottleneckA_subblockStatic import bottleneckASubblockStatic
+from aie2_bottleneckA_subblock_fused2Static import bottleneckASubblockFused2Static
+from aie2_bottleneckA_subblock0Static import bottleneckASubblockBN0Static
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
-
-# from aie.dialects.memref import *
 from aie.extras.dialects import *
 from aie.extras.dialects.memref import view as memref_view
 
 import aie.utils.trace as trace_utils
 
-
-class bottleneckACoreClass:
-    def __init__(self, bottleneckName, computeTile, tensorLayer_ty):
-        self.testOF = object_fifo(
-            bottleneckName + "_act_1_2", computeTile, computeTile, 3, tensorLayer_ty
-        )
+import json
 
 
 class bottleneckACoreStatic:
     def __init__(
         self,
         _bottleneckName,
-        _computeTile,
+        _computeTileBN0,
+        _computeTileBN1,
+        _computeTileBN2,
+        _computeTileBN3,
+        _computeTileBN45,
+        _computeTileBN6,
+        _computeTileBN7,
+        _computeTileBN89,
+        _L1_tile_for_bn4_5,
+        _L1_tile_for_bn8_9,
+        _bn0_wts_static,
+        _bn1_wts_static,
+        _bn2_wts_static,
+        _bn3_wts_static,
+        _bn4_5_wts_static,
+        _bn6_wts_static,
+        _bn7_wts_static,
+        _bn8_9_wts_static,
+        _rtp_bn0_tile,
+        _rtp_bn1_tile,
+        _rtp_bn2_tile,
+        _rtp_bn3_tile,
+        _rtp_bn4_5_tile,
+        _rtp_bn6_tile,
+        _rtp_bn7_tile,
+        _rtp_bn8_9_tile,
         _actIn,
-        _weightsIn,
         _actOut,
-        _rtpsIn,
-        _f1x1Relu,
-        _f3x3dwStride1Relu,
-        _f3x3dwStride2Relu,
-        _f1x1,
-        _f1x1Skip,
-        _layer1OutType,
-        _layer2OutType,
-        _tensorInW=112,
-        _tensorInH=112,
-        _tensorInC=16,
-        _depthWiseStride=2,
-        _depthWiseChannels=64,
-        _tensorOutC=24,
-        _withSkip=False,
-        _scaleFactor1=8,
-        _scaleFactor2=8,
-        _scaleFactor3=8,
-        _scaleFactorAdd=0,
+        bn0_scaleFactor2,
+        bn0_scaleFactor3,
+        bn0_scaleFactorAdd,
+        bn1_scaleFactor1,
+        bn1_scaleFactor2,
+        bn1_scaleFactor3,
+        bn1_scaleFactorAdd,
+        bn2_scaleFactor1,
+        bn2_scaleFactor2,
+        bn2_scaleFactor3,
+        bn2_scaleFactorAdd,
+        bn3_scaleFactor1,
+        bn3_scaleFactor2,
+        bn3_scaleFactor3,
+        bn3_scaleFactorAdd,
+        bn4_scaleFactor1,
+        bn4_scaleFactor2,
+        bn4_scaleFactor3,
+        bn4_scaleFactorAdd,
+        bn5_scaleFactor1,
+        bn5_scaleFactor2,
+        bn5_scaleFactor3,
+        bn5_scaleFactorAdd,
+        bn6_scaleFactor1,
+        bn6_scaleFactor2,
+        bn6_scaleFactor3,
+        bn6_scaleFactorAdd,
+        bn7_scaleFactor1,
+        bn7_scaleFactor2,
+        bn7_scaleFactor3,
+        bn7_scaleFactorAdd,
+        bn8_scaleFactor1,
+        bn8_scaleFactor2,
+        bn8_scaleFactor3,
+        bn8_scaleFactorAdd,
+        bn9_scaleFactor1,
+        bn9_scaleFactor2,
+        bn9_scaleFactor3,
+        bn9_scaleFactorAdd,
     ):
-
         self.bottleneckName = _bottleneckName
-        self.computeTile = _computeTile
+        self.bn0_tile = _computeTileBN0
+        self.bn1_tile = _computeTileBN1
+        self.bn2_tile = _computeTileBN2
+        self.bn3_tile = _computeTileBN3
+        self.bn4_5_tile = _computeTileBN45
+        self.bn6_tile = _computeTileBN6
+        self.bn7_tile = _computeTileBN7
+        self.bn8_9_tile = _computeTileBN89
 
-        self.actIn = _actIn
-        # self.weightsIn = _weightsIn
-        weightsAllLayers = _weightsIn
-        self.actOut = _actOut
-        self.rtpsIn = _rtpsIn
+        self.L1_tile_for_bn4_5 = _L1_tile_for_bn4_5
+        self.L1_tile_for_bn8_9 = _L1_tile_for_bn8_9
 
-        self.f1x1Relu = _f1x1Relu
-        self.f3x3dwRelu = (
-            _f3x3dwStride2Relu if (_depthWiseStride == 2) else _f3x3dwStride1Relu
-        )
-        self.f1x1 = _f1x1
-        self.f1x1Skip = _f1x1Skip
+        self.bn0_wts_static = _bn0_wts_static
+        self.bn1_wts_static = _bn1_wts_static
+        self.bn2_wts_static = _bn2_wts_static
+        self.bn3_wts_static = _bn3_wts_static
+        self.bn4_5_wts_static = _bn4_5_wts_static
+        self.bn6_wts_static = _bn6_wts_static
+        self.bn7_wts_static = _bn7_wts_static
+        self.bn8_9_wts_static = _bn8_9_wts_static
 
-        self.layer1OutType = _layer1OutType
-        self.layer2OutType = _layer2OutType
+        self.bn0_wts_static = _bn0_wts_static
+        self.bn1_wts_static = _bn1_wts_static
+        self.bn2_wts_static = _bn2_wts_static
+        self.bn3_wts_static = _bn3_wts_static
+        self.bn4_5_wts_static = _bn4_5_wts_static
+        self.bn6_wts_static = _bn6_wts_static
+        self.bn7_wts_static = _bn7_wts_static
+        self.bn8_9_wts_static = _bn8_9_wts_static
 
-        self.tensorInW = _tensorInW
-        self.tensorInH = _tensorInH
-        self.tensorInC = _tensorInC
-        self.depthWiseStride = _depthWiseStride
-        self.depthWiseChannels = _depthWiseChannels
-        self.tensorOutC = _tensorOutC
-        self.withSkip = _withSkip
+        self.rtp_bn0_tile = _rtp_bn0_tile
+        self.rtp_bn1_tile = _rtp_bn1_tile
+        self.rtp_bn2_tile = _rtp_bn2_tile
+        self.rtp_bn3_tile = _rtp_bn3_tile
+        self.rtp_bn4_5_tile = _rtp_bn4_5_tile
+        self.rtp_bn6_tile = _rtp_bn6_tile
+        self.rtp_bn7_tile = _rtp_bn7_tile
+        self.rtp_bn8_9_tile = _rtp_bn8_9_tile
 
-        self.tensorOutH = self.tensorInH // self.depthWiseStride
-        self.tensorOutW = self.tensorInW // self.depthWiseStride
+        self.act_in = _actIn
+        self.act_out = _actOut
 
-        self.tensorL1InC = self.tensorInC
-        self.tensorL1OutC = self.depthWiseChannels
+        tensorInC = 16
+        tensorInW = 112
+        tensorInH = 112
 
-        self.tensorL2InC = self.tensorL1OutC
-        self.tensorL2OutC = self.tensorL2InC
+        bn0_depthWiseStride = 1
+        bn0_withSkip = True
 
-        self.tensorL3InC = self.tensorL2InC
-        self.tensorL3OutC = self.tensorOutC
+        bn1_depthWiseStride = 2
+        bn1_depthWiseChannels = 64
+        bn1_withSkip = False
+        bn1_tensorOutC = 24
 
-        self.scaleFactor1 = _scaleFactor1
-        self.scaleFactor2 = _scaleFactor2
-        self.scaleFactor3 = _scaleFactor3
-        self.scaleFactorAdd = _scaleFactorAdd
+        bn2_depthWiseStride = 1
+        bn2_depthWiseChannels = 72
+        bn2_withSkip = True
+        bn2_tensorOutC = 24
 
-        # Intermediate
-        self.of_act_1_2 = object_fifo(
-            self.bottleneckName + "_act_1_2",
-            self.computeTile,
-            self.computeTile,
-            3,
-            self.layer1OutType,
-        )
-        self.of_act_2_3 = object_fifo(
-            self.bottleneckName + "_act_2_3",
-            self.computeTile,
-            self.computeTile,
-            1,
-            self.layer2OutType,
-        )
+        bn3_depthWiseStride = 2
+        bn3_depthWiseChannels = 72
+        bn3_withSkip = False
+        bn3_tensorOutC = 40
 
-        # Compute tile
-        @core(self.computeTile)
-        def core_body():
-            for _ in for_(1):  # for _ in for_(sys.maxsize):
+        bn4_depthWiseStride = 1
+        bn4_depthWiseChannels = 120
+        bn4_withSkip = True
+        bn4_tensorOutC = 40
 
-                # acquire weights and rtps NOTE: needs to become once so outside for loop
-                # weightsAllLayers = self.weightsIn.acquire(ObjectFifoPort.Consume, 1)
+        bn5_depthWiseStride = 1
+        bn5_depthWiseChannels = 120
+        bn5_withSkip = False
+        bn5_tensorOutC = 40
 
-                weightsLayer1 = memref_view(
-                    weightsAllLayers,
-                    [1 * 1 * self.tensorL1OutC * self.tensorL1InC],
-                    shift=0,
-                )
-                weightsLayer2 = memref_view(
-                    weightsAllLayers,
-                    [3 * 3 * self.tensorL2OutC * 1],
-                    shift=1 * 1 * self.tensorL1OutC * self.tensorL1InC,
-                )
-                weightsLayer3 = memref_view(
-                    weightsAllLayers,
-                    [1 * 1 * self.tensorL3OutC * self.tensorL3InC],
-                    shift=(
-                        1 * 1 * self.tensorL1OutC * self.tensorL1InC
-                        + 3 * 3 * self.tensorL2OutC * 1
-                    ),
-                )
-                # scaleLayer1 = memref.load(self.rtpsIn, [0]) # scaleFactor1
-                # scaleLayer2 = memref.load(self.rtpsIn, [1]) # scaleFactor2
-                # scaleLayer3 = memref.load(self.rtpsIn, [2]) # scaleFactor3
-                scaleLayer1 = self.scaleFactor1
-                scaleLayer2 = self.scaleFactor2
-                scaleLayer3 = self.scaleFactor3
-                if self.withSkip:
-                    # skipScaleLayer3 = memref.load(self.rtpsIn, [3]) # scaleFactorAdd
-                    skipScaleLayer3 = self.scaleFactorAdd
+        bn6_depthWiseStride = 2
+        bn6_depthWiseChannels = 240
+        bn6_withSkip = False
+        bn6_tensorOutC = 80
 
-                # pre-amble 0: rows 0, 1 in layer 1 1x1 conv; row 0 in layer 2 3x3 dw; row 0 in layer 3 1x1 conv
-                actInLayer1Rows = self.actIn.acquire(ObjectFifoPort.Consume, 2)
-                actOutLayer1Rows = self.of_act_1_2.acquire(ObjectFifoPort.Produce, 2)
-                call(
-                    self.f1x1Relu,
-                    [
-                        actInLayer1Rows[0],
-                        weightsLayer1,
-                        actOutLayer1Rows[0],
-                        self.tensorInW,
-                        self.tensorL1InC,
-                        self.tensorL1OutC,
-                        scaleLayer1,
-                    ],
-                )
-                call(
-                    self.f1x1Relu,
-                    [
-                        actInLayer1Rows[1],
-                        weightsLayer1,
-                        actOutLayer1Rows[1],
-                        self.tensorInW,
-                        self.tensorL1InC,
-                        self.tensorL1OutC,
-                        scaleLayer1,
-                    ],
-                )
-                self.of_act_1_2.release(ObjectFifoPort.Produce, 2)
-                if not (self.withSkip):
-                    self.actIn.release(ObjectFifoPort.Consume, 2)
+        bn7_depthWiseStride = 1
+        bn7_depthWiseChannels = 200
+        bn7_withSkip = True
+        bn7_tensorOutC = 80
 
-                actInLayer2Rows = self.of_act_1_2.acquire(ObjectFifoPort.Consume, 2)
-                actOutLayer2Row = self.of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
-                call(
-                    self.f3x3dwRelu,
-                    [
-                        actInLayer2Rows[0],
-                        actInLayer2Rows[0],
-                        actInLayer2Rows[1],
-                        weightsLayer2,
-                        actOutLayer2Row,
-                        self.tensorInW,
-                        1,
-                        self.tensorL2OutC,
-                        3,
-                        3,
-                        0,
-                        scaleLayer2,
-                        0,
-                    ],
-                )  # where do we plug in stride
-                if self.depthWiseStride == 2:
-                    self.of_act_1_2.release(
-                        ObjectFifoPort.Consume, 1
-                    )  # if (depthWiseStride == 2) : 1 else 0
-                self.of_act_2_3.release(ObjectFifoPort.Produce, 1)
+        bn8_depthWiseStride = 1
+        bn8_depthWiseChannels = 184
+        bn8_withSkip = True
+        bn8_tensorOutC = 80
 
-                actInLayer3Row = self.of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
-                actOutLayer3Row = self.actOut.acquire(ObjectFifoPort.Produce, 1)
-                if self.withSkip:
-                    call(
-                        self.f1x1Skip,
-                        [
-                            actInLayer3Row,
-                            weightsLayer3,
-                            actOutLayer3Row,
-                            actInLayer1Rows[0],
-                            self.tensorOutW,
-                            self.tensorL3InC,
-                            self.tensorL3OutC,
-                            scaleLayer3,
-                            skipScaleLayer3,
-                        ],
-                    )
-                    self.actIn.release(ObjectFifoPort.Consume, self.depthWiseStride)
-                else:
-                    call(
-                        self.f1x1,
-                        [
-                            actInLayer3Row,
-                            weightsLayer3,
-                            actOutLayer3Row,
-                            self.tensorOutW,
-                            self.tensorL3InC,
-                            self.tensorL3OutC,
-                            scaleLayer3,
-                        ],
-                    )
-                self.of_act_2_3.release(ObjectFifoPort.Consume, 1)
-                self.actOut.release(ObjectFifoPort.Produce, 1)
+        bn9_depthWiseStride = 1
+        bn9_depthWiseChannels = 184
+        # bn9_withSkip=True
+        bn9_tensorOutC = 80
 
-                # middle: layer 3 1x1 conv and layer 2 3x3 dw and layer 1 1x1 conv
-                for _ in for_(
-                    self.tensorOutH - (2 if (self.depthWiseStride == 1) else 1)
-                ):
-                    if self.withSkip:
-                        actInLayer1Rows = self.actIn.acquire(ObjectFifoPort.Consume, 2)
-                        actOutLayer1Row = self.of_act_1_2.acquire(
-                            ObjectFifoPort.Produce, 1
-                        )
-                        call(
-                            self.f1x1Relu,
-                            [
-                                actInLayer1Rows[1],
-                                weightsLayer1,
-                                actOutLayer1Row,
-                                self.tensorInW,
-                                self.tensorL1InC,
-                                self.tensorL1OutC,
-                                scaleLayer1,
-                            ],
-                        )
-                        self.of_act_1_2.release(ObjectFifoPort.Produce, 1)
-                    else:
-                        actInLayer1Rows = self.actIn.acquire(
-                            ObjectFifoPort.Consume, self.depthWiseStride
-                        )
-                        actOutLayer1Rows = self.of_act_1_2.acquire(
-                            ObjectFifoPort.Produce, self.depthWiseStride
-                        )
-                        if self.depthWiseStride == 1:
-                            call(
-                                self.f1x1Relu,
-                                [
-                                    actInLayer1Rows,
-                                    weightsLayer1,
-                                    actOutLayer1Rows,
-                                    self.tensorInW,
-                                    self.tensorL1InC,
-                                    self.tensorL1OutC,
-                                    scaleLayer1,
-                                ],
-                            )
-                        if self.depthWiseStride == 2:
-                            call(
-                                self.f1x1Relu,
-                                [
-                                    actInLayer1Rows[0],
-                                    weightsLayer1,
-                                    actOutLayer1Rows[0],
-                                    self.tensorInW,
-                                    self.tensorL1InC,
-                                    self.tensorL1OutC,
-                                    scaleLayer1,
-                                ],
-                            )
-                            call(
-                                self.f1x1Relu,
-                                [
-                                    actInLayer1Rows[1],
-                                    weightsLayer1,
-                                    actOutLayer1Rows[1],
-                                    self.tensorInW,
-                                    self.tensorL1InC,
-                                    self.tensorL1OutC,
-                                    scaleLayer1,
-                                ],
-                            )
-                        self.of_act_1_2.release(
-                            ObjectFifoPort.Produce, self.depthWiseStride
-                        )
-                        self.actIn.release(ObjectFifoPort.Consume, self.depthWiseStride)
+        # bn0
+        tensorL0_2InC = tensorInC
+        tensorL0_2InW = tensorInW
+        tensorL0_2InH = tensorInH
+        tensorL0_2OutC = tensorL0_2InC
 
-                    actInLayer2Rows = self.of_act_1_2.acquire(ObjectFifoPort.Consume, 3)
-                    actOutLayer2Row = self.of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
-                    call(
-                        self.f3x3dwRelu,
-                        [
-                            actInLayer2Rows[0],
-                            actInLayer2Rows[1],
-                            actInLayer2Rows[2],
-                            weightsLayer2,
-                            actOutLayer2Row,
-                            self.tensorInW,
-                            1,
-                            self.tensorL2OutC,
-                            3,
-                            3,
-                            1,
-                            scaleLayer2,
-                            0,
-                        ],
-                    )  # where do we plug in stride
-                    self.of_act_1_2.release(
-                        ObjectFifoPort.Consume, 2 if (self.depthWiseStride == 2) else 1
-                    )  # if (depthWiseStride == 2) : 2 else 1
-                    self.of_act_2_3.release(ObjectFifoPort.Produce, 1)
+        tensorL0_3InC = tensorL0_2OutC
+        tensorL0_3InW = tensorL0_2InW
+        tensorL0_3InH = tensorL0_2InH
+        tensorL0_3OutC = tensorL0_3InC
 
-                    actInLayer3Row = self.of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
-                    actOutLayer3Row = self.actOut.acquire(ObjectFifoPort.Produce, 1)
-                    if self.withSkip:
-                        call(
-                            self.f1x1Skip,
-                            [
-                                actInLayer3Row,
-                                weightsLayer3,
-                                actOutLayer3Row,
-                                actInLayer1Rows[0],
-                                self.tensorOutW,
-                                self.tensorL3InC,
-                                self.tensorL3OutC,
-                                scaleLayer3,
-                                skipScaleLayer3,
-                            ],
-                        )
-                        self.actIn.release(ObjectFifoPort.Consume, self.depthWiseStride)
-                    else:
-                        call(
-                            self.f1x1,
-                            [
-                                actInLayer3Row,
-                                weightsLayer3,
-                                actOutLayer3Row,
-                                self.tensorOutW,
-                                self.tensorL3InC,
-                                self.tensorL3OutC,
-                                scaleLayer3,
-                            ],
-                        )
-                    self.of_act_2_3.release(ObjectFifoPort.Consume, 1)
-                    self.actOut.release(ObjectFifoPort.Produce, 1)
+        # bn1
+        tensorL1_1InC = tensorL0_3OutC
+        tensorL1_1InW = tensorL0_3InW
+        tensorL1_1InH = tensorL0_3InH
+        tensorL1_1OutC = bn1_depthWiseChannels
 
-                    yield_([])
+        tensorL1_2InC = tensorL1_1OutC
+        tensorL1_2InW = tensorL1_1InW
+        tensorL1_2InH = tensorL1_1InH
+        tensorL1_2OutC = tensorL1_2InC
 
-                # last part
-                if self.depthWiseStride == 1:
-                    actInLayer2Rows = self.of_act_1_2.acquire(ObjectFifoPort.Consume, 2)
-                    actOutLayer2Row = self.of_act_2_3.acquire(ObjectFifoPort.Produce, 1)
-                    call(
-                        self.f3x3dwRelu,
-                        [
-                            actInLayer2Rows[0],
-                            actInLayer2Rows[1],
-                            actInLayer2Rows[1],
-                            weightsLayer2,
-                            actOutLayer2Row,
-                            self.tensorInW,
-                            1,
-                            self.tensorL2OutC,
-                            3,
-                            3,
-                            2,
-                            scaleLayer2,
-                            0,
-                        ],
-                    )  # where do we plug in stride
-                    self.of_act_1_2.release(
-                        ObjectFifoPort.Consume, 3 if (self.depthWiseStride == 2) else 2
-                    )  # if (depthWiseStride == 2) : 2 else 1
-                    self.of_act_2_3.release(ObjectFifoPort.Produce, 1)
+        tensorL1_3InC = tensorL1_2OutC
+        tensorL1_3InW = tensorL1_2InW // bn1_depthWiseStride
+        tensorL1_3InH = tensorL1_2InH // bn1_depthWiseStride
+        tensorL1_3OutC = bn1_tensorOutC
+        #
 
-                    actInLayer3Row = self.of_act_2_3.acquire(ObjectFifoPort.Consume, 1)
-                    actOutLayer3Row = self.actOut.acquire(ObjectFifoPort.Produce, 1)
-                    if self.withSkip:
-                        actInLayer1Row = self.actIn.acquire(ObjectFifoPort.Consume, 1)
-                        call(
-                            self.f1x1Skip,
-                            [
-                                actInLayer3Row,
-                                weightsLayer3,
-                                actOutLayer3Row,
-                                actInLayer1Row,
-                                self.tensorOutW,
-                                self.tensorL3InC,
-                                self.tensorL3OutC,
-                                scaleLayer3,
-                                skipScaleLayer3,
-                            ],
-                        )
-                        self.actIn.release(ObjectFifoPort.Consume, 1)
-                    else:
-                        call(
-                            self.f1x1,
-                            [
-                                actInLayer3Row,
-                                weightsLayer3,
-                                actOutLayer3Row,
-                                self.tensorOutW,
-                                self.tensorL3InC,
-                                self.tensorL3OutC,
-                                scaleLayer3,
-                            ],
-                        )
-                    self.of_act_2_3.release(ObjectFifoPort.Consume, 1)
-                    self.actOut.release(ObjectFifoPort.Produce, 1)
+        tensorL2_1InC = tensorL1_3OutC
+        tensorL2_1InW = tensorL1_3InW
+        tensorL2_1InH = tensorL1_3InH
 
-                # self.weightsIn.release(ObjectFifoPort.Consume, 1)
-                yield_([])
+        tensorL2_2InC = bn2_depthWiseChannels
+        tensorL2_2InW = tensorL2_1InW
+        tensorL2_2InH = tensorL2_1InH
 
+        tensorL2_3InC = tensorL2_2InC
+        tensorL2_3InW = tensorL2_2InW // bn2_depthWiseStride
+        tensorL2_3InH = tensorL2_2InH // bn2_depthWiseStride
+        tensorL2_3OutC = bn2_tensorOutC
 
-def mobilenetV3BottleneckA(
-    bottleneckName,
-    weights_file="bn1_chain.txt",
-    tileRowIndex=2,
-    tileColIndex=0,
-    tensorInW=112,
-    tensorInH=112,
-    tensorInC=16,
-    depthWiseStride=2,
-    depthWiseChannels=64,
-    tensorOutC=24,
-    withSkip=False,
-    scaleFactor1=8,
-    scaleFactor2=9,
-    scaleFactor3=11,
-    scaleFactorAdd=0,
-    enableTrace=False,
-    trace_size=16384,
-    traceSizeInInt32s=4096,
-):
+        #
 
-    tensorOutW = tensorInW // depthWiseStride
-    tensorOutH = tensorInH // depthWiseStride
+        tensorL3_1InC = tensorL2_3OutC
+        tensorL3_1InW = tensorL2_3InW
+        tensorL3_1InH = tensorL2_3InH
 
-    tensorL1InC = tensorInC
-    tensorL1OutC = depthWiseChannels
+        tensorL3_2InC = bn3_depthWiseChannels
+        tensorL3_2InW = tensorL3_1InW
+        tensorL3_2InH = tensorL3_1InH
 
-    tensorL2InC = tensorL1OutC
-    tensorL2OutC = tensorL2InC
+        tensorL3_3InC = tensorL3_2InC
+        tensorL3_3InW = tensorL3_2InW // bn3_depthWiseStride
+        tensorL3_3InH = tensorL3_2InH // bn3_depthWiseStride
+        tensorL3_3OutC = bn3_tensorOutC
 
-    tensorL3InC = tensorL2InC
-    tensorL3OutC = tensorOutC
+        #
 
-    @device(AIEDevice.npu2)
-    def device_body():
+        tensorL4_1InC = tensorL3_3OutC
+        tensorL4_1InW = tensorL3_3InW
+        tensorL4_1InH = tensorL3_3InH
+
+        tensorL4_2InC = bn4_depthWiseChannels
+        tensorL4_2InW = tensorL4_1InW
+        tensorL4_2InH = tensorL4_1InH
+
+        tensorL4_3InC = tensorL4_2InC
+        tensorL4_3InW = tensorL4_2InW // bn4_depthWiseStride
+        tensorL4_3InH = tensorL4_2InH // bn4_depthWiseStride
+        tensorL4_3OutC = bn4_tensorOutC
+
+        #
+
+        tensorL5_1InC = tensorL4_3OutC
+        tensorL5_1InW = tensorL4_3InW
+        tensorL5_1InH = tensorL4_3InH
+
+        tensorL5_2InC = bn5_depthWiseChannels
+        tensorL5_2InW = tensorL5_1InW
+        tensorL5_2InH = tensorL5_1InH
+
+        tensorL5_3InC = tensorL5_2InC
+        tensorL5_3InW = tensorL5_2InW // bn5_depthWiseStride
+        tensorL5_3InH = tensorL5_2InH // bn5_depthWiseStride
+        tensorL5_3OutC = bn5_tensorOutC
+        #
+        tensorL6_1InC = tensorL5_3OutC
+        tensorL6_1InW = tensorL5_3InW
+        tensorL6_1InH = tensorL5_3InH
+
+        tensorL6_2InC = bn6_depthWiseChannels
+        tensorL6_2InW = tensorL6_1InW
+        tensorL6_2InH = tensorL6_1InH
+
+        tensorL6_3InC = tensorL6_2InC
+        tensorL6_3InW = tensorL6_2InW // bn6_depthWiseStride
+        tensorL6_3InH = tensorL6_2InH // bn6_depthWiseStride
+        tensorL6_3OutC = bn6_tensorOutC
+        #
+        tensorL7_1InC = tensorL6_3OutC
+        tensorL7_1InW = tensorL6_3InW
+        tensorL7_1InH = tensorL6_3InH
+
+        tensorL7_2InC = bn7_depthWiseChannels
+        tensorL7_2InW = tensorL7_1InW
+        tensorL7_2InH = tensorL7_1InH
+
+        tensorL7_3InC = tensorL7_2InC
+        tensorL7_3InW = tensorL7_2InW // bn7_depthWiseStride
+        tensorL7_3InH = tensorL7_2InH // bn7_depthWiseStride
+        tensorL7_3OutC = bn7_tensorOutC
+        #
+        tensorL8_1InC = tensorL7_3OutC
+        tensorL8_1InW = tensorL7_3InW
+        tensorL8_1InH = tensorL7_3InH
+
+        tensorL8_2InC = bn8_depthWiseChannels
+        tensorL8_2InW = tensorL8_1InW
+        tensorL8_2InH = tensorL8_1InH
+
+        tensorL8_3InC = tensorL8_2InC
+        tensorL8_3InW = tensorL8_2InW // bn8_depthWiseStride
+        tensorL8_3InH = tensorL8_2InH // bn8_depthWiseStride
+        tensorL8_3OutC = bn8_tensorOutC
+        #
+        tensorL9_1InC = tensorL8_3OutC
+        tensorL9_1InW = tensorL8_3InW
+        tensorL9_1InH = tensorL8_3InH
+
+        tensorL9_2InC = bn9_depthWiseChannels
+        tensorL9_2InW = tensorL9_1InW
+        tensorL9_2InH = tensorL9_1InH
+
+        tensorL9_3InC = tensorL9_2InC
+        tensorL9_3InW = tensorL9_2InW // bn9_depthWiseStride
+        tensorL9_3InH = tensorL9_2InH // bn9_depthWiseStride
+        tensorL9_3OutC = bn9_tensorOutC
+        # final output
+
+        # tensorInC=tensorL0_1InC
+        # tensorInW=tensorL0_1InW
+        # tensorInH=tensorL0_1InH
+
+        tensorOutW = tensorL9_3InW
+        tensorOutH = tensorL9_3InH
+        tensorOutC = tensorL9_3OutC
 
         # define types
         uint8_ty = IntegerType.get_unsigned(8)
         int8_ty = IntegerType.get_signless(8)
         int16_ty = IntegerType.get_signless(16)
         int32_ty = IntegerType.get_signless(32)
-        tensorLayer1In_ty = MemRefType.get((tensorInW, 1, tensorL1InC), int8_ty)
-        weightsLayer1_ty = MemRefType.get(
-            (1 * 1 * tensorL1OutC * tensorL1InC,), int8_ty
-        )
-        tensorLayer1Out_ty = MemRefType.get((tensorInW, 1, tensorL1OutC), uint8_ty)
-        tensorLayer2In_ty = MemRefType.get((tensorInW, 1, tensorL2InC), uint8_ty)
-        weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL2OutC * 1,), int8_ty)
-        tensorLayer2Out_ty = MemRefType.get((tensorOutW, 1, tensorL2OutC), uint8_ty)
-        tensorLayer3In_ty = MemRefType.get((tensorOutW, 1, tensorL3InC), uint8_ty)
-        weightsLayer3_ty = MemRefType.get(
-            (1 * 1 * tensorL3OutC * tensorL3InC,), int8_ty
-        )
-        tensorLayer3Out_ty = MemRefType.get((tensorOutW, 1, tensorL3OutC), int8_ty)
 
-        weightsAllLayers_size = (
-            1 * 1 * tensorL1OutC * tensorL1InC
-            + 3 * 3 * tensorL2OutC * 1
-            + 1 * 1 * tensorL3OutC * tensorL3InC
+        # # # ******************************************************************bn0******************************************************************
+        bn0_tensorLayer2In_ty = MemRefType.get(
+            (tensorL0_2InW, 1, tensorL0_2InC), uint8_ty
         )
-        weightsAllLayers_ty = MemRefType.get(
-            (
-                1 * 1 * tensorL1OutC * tensorL1InC
-                + 3 * 3 * tensorL2OutC * 1
-                + 1 * 1 * tensorL3OutC * tensorL3InC,
-            ),
-            int8_ty,
+        bn0_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL0_3InC * 1,), int8_ty)
+        bn0_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL0_3InW, 1, tensorL0_3InC), uint8_ty
+        )
+
+        bn0_tensorLayer3In_ty = bn0_tensorLayer2Out_ty
+        bn0_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL0_3InC * tensorL0_3OutC,), int8_ty
+        )
+        bn0_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL0_3InW, 1, tensorL0_3OutC), int8_ty
         )
 
         # AIE Core Function declarations
-        conv2dk1_relu_i8_ui8 = external_func(
-            "conv2dk1_relu_i8_ui8",
+        bn0_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn0_conv2dk3_dw_stride1_relu_ui8_ui8",
             inputs=[
-                tensorLayer1In_ty,
-                weightsLayer1_ty,
-                tensorLayer1Out_ty,
-                int32_ty,
-                int32_ty,
-                int32_ty,
-                int32_ty,
-            ],
-            link_with="conv2dk1_fused_relu.o",
-        )
-        conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
-            "conv2dk3_dw_stride2_relu_ui8_ui8",
-            inputs=[
-                tensorLayer2In_ty,
-                tensorLayer2In_ty,
-                tensorLayer2In_ty,
-                weightsLayer2_ty,
-                tensorLayer2Out_ty,
+                bn0_tensorLayer2In_ty,
+                bn0_tensorLayer2In_ty,
+                bn0_tensorLayer2In_ty,
+                bn0_weightsLayer2_ty,
+                bn0_tensorLayer2Out_ty,
                 int32_ty,
                 int32_ty,
                 int32_ty,
@@ -541,16 +379,111 @@ def mobilenetV3BottleneckA(
                 int32_ty,
                 int32_ty,
             ],
-            link_with="conv2dk3_dw_stride2.o",
+            link_with="bn0_conv2dk3_dw_stride1.o",
         )
-        conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
-            "conv2dk3_dw_stride1_relu_ui8_ui8",
+
+        bn0_conv2dk1_skip_ui8_ui8_i8 = external_func(
+            "bn0_conv2dk1_skip_ui8_ui8_i8",
             inputs=[
-                tensorLayer2In_ty,
-                tensorLayer2In_ty,
-                tensorLayer2In_ty,
-                weightsLayer2_ty,
-                tensorLayer2Out_ty,
+                bn0_tensorLayer3In_ty,
+                bn0_weightsLayer3_ty,
+                bn0_tensorLayer3Out_ty,
+                bn0_tensorLayer2In_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn0_conv2dk1_skipui8.o",
+        )
+
+        # Compute tile bn0_combined_conv2dk3dwstride1_conv2dk1skipui8
+        # bn0_objectArchiveName = "bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a"
+
+        bn0_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL0_3InW, 1, tensorL0_3InC), uint8_ty
+        )
+        bn0_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL0_3InW, 1, tensorL0_3OutC), int8_ty
+        )
+
+        # between compute tiles
+        act_bn0_bn1 = object_fifo(
+            "act_bn0_bn1", self.bn0_tile, self.bn1_tile, 2, bn0_tensorLayer3Out_ty
+        )
+        # act_bn0_bn1 = object_fifo("act_out", bn0_tile, ShimTile10, 2, bn0_tensorLayer3Out_ty)
+
+        bottleneckASubblockBN0Static(
+            "bn0",
+            self.bn0_tile,
+            self.act_in,
+            # bn0_wts_OF_L3L1,
+            self.bn0_wts_static,
+            act_bn0_bn1,
+            self.rtp_bn0_tile,
+            bn0_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn0_conv2dk1_skip_ui8_ui8_i8,
+            bn0_tensorLayer2Out_ty,
+            tensorL0_2InW,
+            tensorL0_2InH,
+            tensorL0_2InC,
+            bn0_depthWiseStride,
+            tensorL0_3OutC,
+            bn0_withSkip,
+            bn0_scaleFactor2,
+            bn0_scaleFactor3,
+            bn0_scaleFactorAdd,
+        )
+
+        # # # # # ******************************************************************bn2******************************************************************
+        #  # temporary types for tensor to enable intial test
+        bn1_tensorLayer1In_ty = MemRefType.get(
+            (tensorL1_1InW, 1, tensorL1_1InC), int8_ty
+        )
+        bn1_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL1_1InC * tensorL1_2InC,), int8_ty
+        )
+        bn1_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL1_2InW, 1, tensorL1_2InC), uint8_ty
+        )
+
+        bn1_tensorLayer2In_ty = bn1_tensorLayer1Out_ty
+        bn1_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL1_3InC * 1,), int8_ty)
+        bn1_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL1_3InW, 1, tensorL1_3InC), uint8_ty
+        )
+
+        bn1_tensorLayer3In_ty = bn1_tensorLayer2Out_ty
+        bn1_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL1_3InC * tensorL1_3OutC,), int8_ty
+        )
+        bn1_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL1_3InW, 1, tensorL1_3OutC), int8_ty
+        )
+
+        # AIE Core Function declarations
+        bn1_conv2dk1_relu_i8_ui8 = external_func(
+            "bn1_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn1_tensorLayer1In_ty,
+                bn1_weightsLayer1_ty,
+                bn1_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn1_conv2dk1_fused_relu.o",
+        )
+        bn1_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
+            "bn1_conv2dk3_dw_stride2_relu_ui8_ui8",
+            inputs=[
+                bn1_tensorLayer2In_ty,
+                bn1_tensorLayer2In_ty,
+                bn1_tensorLayer2In_ty,
+                bn1_weightsLayer2_ty,
+                bn1_tensorLayer2Out_ty,
                 int32_ty,
                 int32_ty,
                 int32_ty,
@@ -560,139 +493,1210 @@ def mobilenetV3BottleneckA(
                 int32_ty,
                 int32_ty,
             ],
-            link_with="conv2dk3_dw_stride1.o",
+            link_with="bn1_conv2dk3_dw_stride2.o",
         )
-        conv2dk1_skip_ui8_i8_i8 = external_func(
-            "conv2dk1_skip_ui8_i8_i8",
+        bn1_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn1_conv2dk3_dw_stride1_relu_ui8_ui8",
             inputs=[
-                tensorLayer3In_ty,
-                weightsLayer3_ty,
-                tensorLayer3Out_ty,
-                tensorLayer3Out_ty,
+                bn1_tensorLayer2In_ty,
+                bn1_tensorLayer2In_ty,
+                bn1_tensorLayer2In_ty,
+                bn1_weightsLayer2_ty,
+                bn1_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
                 int32_ty,
                 int32_ty,
                 int32_ty,
                 int32_ty,
                 int32_ty,
             ],
-            link_with="conv2dk1_skip.o",
+            link_with="bn1_conv2dk3_dw_stride1.o",
         )
-        conv2dk1_ui8_i8 = external_func(
-            "conv2dk1_ui8_i8",
+        bn1_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn1_conv2dk1_skip_ui8_i8_i8",
             inputs=[
-                tensorLayer3In_ty,
-                weightsLayer3_ty,
-                tensorLayer3Out_ty,
+                bn1_tensorLayer3In_ty,
+                bn1_weightsLayer3_ty,
+                bn1_tensorLayer3Out_ty,
+                bn1_tensorLayer3Out_ty,
+                int32_ty,
                 int32_ty,
                 int32_ty,
                 int32_ty,
                 int32_ty,
             ],
-            link_with="conv2dk1_i8.o",
+            link_with="bn1_conv2dk1_skip.o",
         )
 
-        # Tile declarations
-        ShimTile = tile(tileColIndex, 0)
-        # MemTile = tile(tileColIndex, 1)
-        ComputeTile = tile(tileColIndex, tileRowIndex)
-
-        # AIE-array data movement with object fifos
-
-        # Input
-        act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
-
-        # wts
-        # wts_OF_L3L1 = object_fifo(
-        #     "wts_OF_L3L1", ShimTile, ComputeTile, 1, weightsAllLayers_ty
-        # )
-
-        file_path = "weights/"
-        wts_ary = np.fromfile(file_path + weights_file, sep=",", dtype=np.int8)
-
-        weightsAllLayers = buffer(
-            ComputeTile,
-            np.ndarray[(weightsAllLayers_size,), np.dtype[np.int8]],
-            "weights",
-            initial_value=wts_ary,
-        )
-
-        # Output
-        act_out = object_fifo("act_out", ComputeTile, [ShimTile], 1, tensorLayer3Out_ty)
-
-        # Set up compute tiles
-        rtpComputeTile = buffer(
-            ComputeTile, np.ndarray[(16,), np.dtype[np.int32]], "rtp"
+        bn1_conv2dk1_ui8_i8 = external_func(
+            "bn1_conv2dk1_ui8_i8",
+            inputs=[
+                bn1_tensorLayer3In_ty,
+                bn1_weightsLayer3_ty,
+                bn1_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn1_conv2dk1_i8.o",
         )
 
         # Compute tile
-        # objectArchiveName = (
-        #     "combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
-        #     % (depthWiseStride, "skip" if (withSkip) else "")
+        # bn1_objectArchiveName = (
+        #     "bn1_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn1_depthWiseStride, "skip" if (bn1_withSkip) else "")
         # )
-
-        bottleneckACoreStatic(
-            bottleneckName,
-            ComputeTile,
-            act_in,
-            # wts_OF_L3L1,
-            weightsAllLayers,
-            act_out,
-            rtpComputeTile,
-            conv2dk1_relu_i8_ui8,
-            conv2dk3_dw_stride1_relu_ui8_ui8,
-            conv2dk3_dw_stride2_relu_ui8_ui8,
-            conv2dk1_ui8_i8,
-            conv2dk1_skip_ui8_i8_i8,
-            tensorLayer1Out_ty,
-            tensorLayer2Out_ty,
-            tensorInW,
-            tensorInH,
-            tensorInC,
-            depthWiseStride,
-            depthWiseChannels,
-            tensorOutC,
-            withSkip,
-            scaleFactor1,
-            scaleFactor2,
-            scaleFactor3,
-            scaleFactorAdd,
+        bn1_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL1_2InW, 1, tensorL1_2InC), uint8_ty
+        )
+        bn1_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL1_3InW, 1, tensorL1_3InC), uint8_ty
+        )
+        bn1_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL1_3InW, 1, tensorL1_3OutC), int8_ty
         )
 
-        # instruction stream generation
-        activationsInSize32b = (tensorInW * tensorInH * tensorInC) // 4
-        activationsOutSize32b = (tensorOutW * tensorOutH * tensorOutC) // 4
-        totalWeightsSize32b = (
-            1 * 1 * tensorL1InC * tensorL1OutC
-            + 3 * 3 * tensorL2OutC * 1
-            + 1 * 1 * tensorL3InC * tensorL3OutC
-        ) // 4
-        activationsInL3_ty = MemRefType.get((activationsInSize32b,), int32_ty)
-        weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
-        activationsOutL3_ty = MemRefType.get((activationsOutSize32b,), int32_ty)
+        # between compute tiles
+        act_bn1_bn2 = object_fifo(
+            "act_bn1_bn2", self.bn1_tile, self.bn2_tile, 2, bn1_tensorLayer3Out_ty
+        )
+        # act_bn1_bn2 = object_fifo("act_out", bn1_tile, ShimTile10, 2, bn1_tensorLayer3Out_ty)
 
-        @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
-        def sequence(inputFromL3, weightsFromL3, outputToL3):
-            NpuWriteRTPOp("rtp", index=0, value=scaleFactor1)
-            NpuWriteRTPOp("rtp", index=1, value=scaleFactor2)
-            NpuWriteRTPOp("rtp", index=2, value=scaleFactor3)
-            NpuWriteRTPOp("rtp", index=3, value=scaleFactorAdd)
+        bottleneckASubblockStatic(
+            "bn1",
+            self.bn1_tile,
+            act_bn0_bn1,
+            # bn1_wts_OF_L3L1,
+            self.bn1_wts_static,
+            act_bn1_bn2,
+            self.rtp_bn1_tile,
+            bn1_conv2dk1_relu_i8_ui8,
+            bn1_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn1_conv2dk3_dw_stride2_relu_ui8_ui8,
+            bn1_conv2dk1_ui8_i8,
+            bn1_conv2dk1_skip_ui8_i8_i8,
+            bn1_tensorLayer1Out_ty,
+            bn1_tensorLayer2Out_ty,
+            tensorL1_1InW,
+            tensorL1_1InH,
+            tensorL1_1InC,
+            bn1_depthWiseStride,
+            bn1_depthWiseChannels,
+            tensorL1_3OutC,
+            bn1_withSkip,
+            bn1_scaleFactor1,
+            bn1_scaleFactor2,
+            bn1_scaleFactor3,
+            bn1_scaleFactorAdd,
+        )
 
-            npu_dma_memcpy_nd(
-                metadata="act_in",
-                bd_id=0,
-                mem=inputFromL3,
-                sizes=[1, 1, 1, activationsInSize32b],
-            )
-            npu_dma_memcpy_nd(
-                metadata="act_out",
-                bd_id=2,
-                mem=outputToL3,
-                sizes=[1, 1, 1, activationsOutSize32b],
-            )
-            # npu_dma_memcpy_nd(
-            #     metadata="wts_OF_L3L1",
-            #     bd_id=1,
-            #     mem=weightsFromL3,
-            #     sizes=[1, 1, 1, totalWeightsSize32b],
-            # )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+        # # # # # ******************************************************************bn2******************************************************************
+        #  # temporary types for tensor to enable intial test
+        bn2_tensorLayer1In_ty = MemRefType.get(
+            (tensorL2_1InW, 1, tensorL2_1InC), int8_ty
+        )
+        bn2_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL2_1InC * tensorL2_2InC,), int8_ty
+        )
+        bn2_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL2_2InW, 1, tensorL2_2InC), uint8_ty
+        )
+
+        bn2_tensorLayer2In_ty = bn2_tensorLayer1Out_ty
+        bn2_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL2_3InC * 1,), int8_ty)
+        bn2_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL2_3InW, 1, tensorL2_3InC), uint8_ty
+        )
+
+        bn2_tensorLayer3In_ty = bn2_tensorLayer2Out_ty
+        bn2_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL2_3InC * tensorL2_3OutC,), int8_ty
+        )
+        bn2_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL2_3InW, 1, tensorL2_3OutC), int8_ty
+        )
+
+        # AIE Core Function declarations
+        bn2_conv2dk1_relu_i8_ui8 = external_func(
+            "bn2_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn2_tensorLayer1In_ty,
+                bn2_weightsLayer1_ty,
+                bn2_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn2_conv2dk1_fused_relu.o",
+        )
+        bn2_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
+            "bn2_conv2dk3_dw_stride2_relu_ui8_ui8",
+            inputs=[
+                bn2_tensorLayer2In_ty,
+                bn2_tensorLayer2In_ty,
+                bn2_tensorLayer2In_ty,
+                bn2_weightsLayer2_ty,
+                bn2_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn2_conv2dk3_dw_stride2.o",
+        )
+        bn2_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn2_conv2dk3_dw_stride1_relu_ui8_ui8",
+            inputs=[
+                bn2_tensorLayer2In_ty,
+                bn2_tensorLayer2In_ty,
+                bn2_tensorLayer2In_ty,
+                bn2_weightsLayer2_ty,
+                bn2_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn2_conv2dk3_dw_stride1.o",
+        )
+        bn2_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn2_conv2dk1_skip_ui8_i8_i8",
+            inputs=[
+                bn2_tensorLayer3In_ty,
+                bn2_weightsLayer3_ty,
+                bn2_tensorLayer3Out_ty,
+                bn2_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn2_conv2dk1_skip.o",
+        )
+
+        bn2_conv2dk1_ui8_i8 = external_func(
+            "bn2_conv2dk1_ui8_i8",
+            inputs=[
+                bn2_tensorLayer3In_ty,
+                bn2_weightsLayer3_ty,
+                bn2_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn2_conv2dk1_i8.o",
+        )
+
+        # Compute tile
+        # bn2_objectArchiveName = (
+        #     "bn2_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn2_depthWiseStride, "skip" if (bn2_withSkip) else "")
+        # )
+        bn2_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL2_2InW, 1, tensorL2_2InC), uint8_ty
+        )
+        bn2_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL2_3InW, 1, tensorL2_3InC), uint8_ty
+        )
+        bn2_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL2_3InW, 1, tensorL2_3OutC), int8_ty
+        )
+
+        # between compute tiles
+        act_bn2_bn3 = object_fifo(
+            "act_bn2_bn3", self.bn2_tile, self.bn3_tile, 2, bn2_tensorLayer3Out_ty
+        )
+        # act_out = object_fifo("act_out", bn2_tile, [ShimTile10], 1, bn2_tensorLayer3Out_ty)
+
+        bottleneckASubblockStatic(
+            "bn2",
+            self.bn2_tile,
+            act_bn1_bn2,
+            # bn2_wts_OF_L3L1,
+            self.bn2_wts_static,
+            act_bn2_bn3,
+            self.rtp_bn2_tile,
+            bn2_conv2dk1_relu_i8_ui8,
+            bn2_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn2_conv2dk3_dw_stride2_relu_ui8_ui8,
+            bn2_conv2dk1_ui8_i8,
+            bn2_conv2dk1_skip_ui8_i8_i8,
+            bn2_tensorLayer1Out_ty,
+            bn2_tensorLayer2Out_ty,
+            tensorL2_1InW,
+            tensorL2_1InH,
+            tensorL2_1InC,
+            bn2_depthWiseStride,
+            bn2_depthWiseChannels,
+            tensorL2_3OutC,
+            bn2_withSkip,
+            bn2_scaleFactor1,
+            bn2_scaleFactor2,
+            bn2_scaleFactor3,
+            bn2_scaleFactorAdd,
+        )
+
+        # # # # # ******************************************************************bn3******************************************************************
+        # #  # temporary types for tensor to enable intial test
+        bn3_tensorLayer1In_ty = MemRefType.get(
+            (tensorL3_1InW, 1, tensorL3_1InC), int8_ty
+        )
+        bn3_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL3_1InC * tensorL3_2InC,), int8_ty
+        )
+        bn3_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL3_2InW, 1, tensorL3_2InC), uint8_ty
+        )
+
+        bn3_tensorLayer2In_ty = bn3_tensorLayer1Out_ty
+        bn3_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL3_3InC * 1,), int8_ty)
+        bn3_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL3_3InW, 1, tensorL3_3InC), uint8_ty
+        )
+
+        bn3_tensorLayer3In_ty = bn3_tensorLayer2Out_ty
+        bn3_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL3_3InC * tensorL3_3OutC,), int8_ty
+        )
+        bn3_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL3_3InW, 1, tensorL3_3OutC), int8_ty
+        )
+
+        # AIE Core Function declarations
+        bn3_conv2dk1_relu_i8_ui8 = external_func(
+            "bn3_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn3_tensorLayer1In_ty,
+                bn3_weightsLayer1_ty,
+                bn3_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn3_conv2dk1_fused_relu.o",
+        )
+        bn3_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
+            "bn3_conv2dk3_dw_stride2_relu_ui8_ui8",
+            inputs=[
+                bn3_tensorLayer2In_ty,
+                bn3_tensorLayer2In_ty,
+                bn3_tensorLayer2In_ty,
+                bn3_weightsLayer2_ty,
+                bn3_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn3_conv2dk3_dw_stride2.o",
+        )
+        bn3_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn3_conv2dk3_dw_stride1_relu_ui8_ui8",
+            inputs=[
+                bn3_tensorLayer2In_ty,
+                bn3_tensorLayer2In_ty,
+                bn3_tensorLayer2In_ty,
+                bn3_weightsLayer2_ty,
+                bn3_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn3_conv2dk3_dw_stride1.o",
+        )
+        bn3_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn3_conv2dk1_skip_ui8_i8_i8",
+            inputs=[
+                bn3_tensorLayer3In_ty,
+                bn3_weightsLayer3_ty,
+                bn3_tensorLayer3Out_ty,
+                bn3_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn3_conv2dk1_skip.o",
+        )
+        bn3_conv2dk1_ui8_i8 = external_func(
+            "bn3_conv2dk1_ui8_i8",
+            inputs=[
+                bn3_tensorLayer3In_ty,
+                bn3_weightsLayer3_ty,
+                bn3_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn3_conv2dk1_i8.o",
+        )
+
+        # Compute tile
+        # bn3_objectArchiveName = (
+        #     "bn3_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn3_depthWiseStride, "skip" if (bn3_withSkip) else "")
+        # )
+        bn3_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL3_2InW, 1, tensorL3_2InC), uint8_ty
+        )
+        bn3_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL3_3InW, 1, tensorL3_3InC), uint8_ty
+        )
+        bn3_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL3_3InW, 1, tensorL3_3OutC), int8_ty
+        )
+
+        # # # between compute tiles
+        act_bn3_bn4 = object_fifo(
+            "act_bn3_bn4", self.bn3_tile, self.bn4_5_tile, 2, bn3_tensorLayer3Out_ty
+        )
+        # act_out = object_fifo("act_out", bn3_tile, [ShimTile10], 1, bn3_tensorLayer3Out_ty)
+        bottleneckASubblockStatic(
+            "bn3",
+            self.bn3_tile,
+            act_bn2_bn3,
+            # bn3_wts_OF_L3L1,
+            self.bn3_wts_static,
+            act_bn3_bn4,
+            self.rtp_bn3_tile,
+            bn3_conv2dk1_relu_i8_ui8,
+            bn3_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn3_conv2dk3_dw_stride2_relu_ui8_ui8,
+            bn3_conv2dk1_ui8_i8,
+            bn3_conv2dk1_skip_ui8_i8_i8,
+            bn3_tensorLayer1Out_ty,
+            bn3_tensorLayer2Out_ty,
+            tensorL3_1InW,
+            tensorL3_1InH,
+            tensorL3_1InC,
+            bn3_depthWiseStride,
+            bn3_depthWiseChannels,
+            tensorL3_3OutC,
+            bn3_withSkip,
+            bn3_scaleFactor1,
+            bn3_scaleFactor2,
+            bn3_scaleFactor3,
+            bn3_scaleFactorAdd,
+        )
+
+        # # # # # ******************************************************************bn4******************************************************************
+
+        # temporary types for tensor to enable intial test
+        bn4_tensorLayer1In_ty = MemRefType.get(
+            (tensorL4_1InW, 1, tensorL4_1InC), int8_ty
+        )
+        bn4_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL4_1InC * tensorL4_2InC,), int8_ty
+        )
+        bn4_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL4_2InW, 1, tensorL4_2InC), uint8_ty
+        )
+
+        bn4_tensorLayer2In_ty = bn4_tensorLayer1Out_ty
+        bn4_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL4_3InC * 1,), int8_ty)
+        bn4_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL4_3InW, 1, tensorL4_3InC), uint8_ty
+        )
+
+        bn4_tensorLayer3In_ty = bn4_tensorLayer2Out_ty
+        bn4_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL4_3InC * tensorL4_3OutC,), int8_ty
+        )
+        bn4_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL4_3InW, 1, tensorL4_3OutC), int8_ty
+        )
+
+        # AIE Core Function declarations
+        bn4_conv2dk1_relu_i8_ui8 = external_func(
+            "bn4_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn4_tensorLayer1In_ty,
+                bn4_weightsLayer1_ty,
+                bn4_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn4_conv2dk1_fused_relu.o",
+        )
+        bn4_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
+            "bn4_conv2dk3_dw_stride2_relu_ui8_ui8",
+            inputs=[
+                bn4_tensorLayer2In_ty,
+                bn4_tensorLayer2In_ty,
+                bn4_tensorLayer2In_ty,
+                bn4_weightsLayer2_ty,
+                bn4_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn4_conv2dk3_dw_stride2.o",
+        )
+        bn4_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn4_conv2dk3_dw_stride1_relu_ui8_ui8",
+            inputs=[
+                bn4_tensorLayer2In_ty,
+                bn4_tensorLayer2In_ty,
+                bn4_tensorLayer2In_ty,
+                bn4_weightsLayer2_ty,
+                bn4_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn4_conv2dk3_dw_stride1.o",
+        )
+        bn4_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn4_conv2dk1_skip_ui8_i8_i8",
+            inputs=[
+                bn4_tensorLayer3In_ty,
+                bn4_weightsLayer3_ty,
+                bn4_tensorLayer3Out_ty,
+                bn4_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn4_conv2dk1_skip.o",
+        )
+        bn4_conv2dk1_ui8_i8 = external_func(
+            "bn4_conv2dk1_ui8_i8",
+            inputs=[
+                bn4_tensorLayer3In_ty,
+                bn4_weightsLayer3_ty,
+                bn4_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn4_conv2dk1_i8.o",
+        )
+
+        # Compute tile 6
+        # bn4_objectArchiveName = (
+        #     "bn4_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn4_depthWiseStride, "skip" if (bn4_withSkip) else "")
+        # )
+        bn4_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL4_2InW, 1, tensorL4_2InC), uint8_ty
+        )
+        bn4_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL4_3InW, 1, tensorL4_3InC), uint8_ty
+        )
+        bn4_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL4_3InW, 1, tensorL4_3OutC), int8_ty
+        )
+
+        # # # between compute tiles
+        # act_bn4_bn5 = object_fifo(
+        #     "act_bn4_bn5", bn4_tile, bn5_tile, 2, bn4_tensorLayer3Out_ty
+        # )
+        # # act_out = object_fifo("act_out", bn4_tile, [ShimTile10], 1, bn4_tensorLayer3Out_ty)
+        # bottleneckACore(
+        #     "bn4",
+        #     bn4_tile,
+        #     act_bn3_bn4,
+        #     bn4_wts_OF_L3L1,
+        #     act_bn4_bn5,
+        #     rtpbn4_tile,
+        #     bn4_objectArchiveName,
+        #     bn4_conv2dk1_relu_i8_ui8,
+        #     bn4_conv2dk3_dw_stride1_relu_ui8_ui8,
+        #     bn4_conv2dk3_dw_stride2_relu_ui8_ui8,
+        #     bn4_conv2dk1_ui8_i8,
+        #     bn4_conv2dk1_skip_ui8_i8_i8,
+        #     bn4_tensorLayer1Out_ty,
+        #     bn4_tensorLayer2Out_ty,
+        #     tensorL4_1InW,
+        #     tensorL4_1InH,
+        #     tensorL4_1InC,
+        #     bn4_depthWiseStride,
+        #     bn4_depthWiseChannels,
+        #     tensorL4_3OutC,
+        #     bn4_withSkip,
+        # )
+
+        # # # # # # ******************************************************************bn5******************************************************************
+
+        # temporary types for tensor to enable intial test
+        bn5_tensorLayer1In_ty = MemRefType.get(
+            (tensorL5_1InW, 1, tensorL5_1InC), int8_ty
+        )
+        bn5_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL5_1InC * tensorL5_2InC,), int8_ty
+        )
+        bn5_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL5_2InW, 1, tensorL5_2InC), uint8_ty
+        )
+
+        bn5_tensorLayer2In_ty = bn5_tensorLayer1Out_ty
+        bn5_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL5_3InC * 1,), int8_ty)
+        bn5_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL5_3InW, 1, tensorL5_3InC), uint8_ty
+        )
+
+        bn5_tensorLayer3In_ty = bn5_tensorLayer2Out_ty
+        bn5_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL5_3InC * tensorL5_3OutC,), int8_ty
+        )
+        bn5_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL5_3InW, 1, tensorL5_3OutC), int8_ty
+        )
+
+        # AIE Core Function declarations
+        bn5_conv2dk1_relu_i8_ui8 = external_func(
+            "bn5_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn5_tensorLayer1In_ty,
+                bn5_weightsLayer1_ty,
+                bn5_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn5_conv2dk1_fused_relu.o",
+        )
+        bn5_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
+            "bn5_conv2dk3_dw_stride2_relu_ui8_ui8",
+            inputs=[
+                bn5_tensorLayer2In_ty,
+                bn5_tensorLayer2In_ty,
+                bn5_tensorLayer2In_ty,
+                bn5_weightsLayer2_ty,
+                bn5_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn5_conv2dk3_dw_stride2.o",
+        )
+        bn5_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn5_conv2dk3_dw_stride1_relu_ui8_ui8",
+            inputs=[
+                bn5_tensorLayer2In_ty,
+                bn5_tensorLayer2In_ty,
+                bn5_tensorLayer2In_ty,
+                bn5_weightsLayer2_ty,
+                bn5_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn5_conv2dk3_dw_stride1.o",
+        )
+        bn5_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn5_conv2dk1_skip_ui8_i8_i8",
+            inputs=[
+                bn5_tensorLayer3In_ty,
+                bn5_weightsLayer3_ty,
+                bn5_tensorLayer3Out_ty,
+                bn5_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn5_conv2dk1_skip.o",
+        )
+        bn5_conv2dk1_ui8_i8 = external_func(
+            "bn5_conv2dk1_ui8_i8",
+            inputs=[
+                bn5_tensorLayer3In_ty,
+                bn5_weightsLayer3_ty,
+                bn5_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn5_conv2dk1_i8.o",
+        )
+
+        # Compute tile 6
+        # bn5_objectArchiveName = (
+        #     "bn5_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn5_depthWiseStride, "skip" if (bn5_withSkip) else "")
+        # )
+        bn5_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL5_2InW, 1, tensorL5_2InC), uint8_ty
+        )
+        bn5_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL5_3InW, 1, tensorL5_3InC), uint8_ty
+        )
+        bn5_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL5_3InW, 1, tensorL5_3OutC), int8_ty
+        )
+
+        # between compute tiles
+        act_bn5_bn6 = object_fifo(
+            "act_bn5_bn6", self.bn4_5_tile, self.bn6_tile, 2, bn5_tensorLayer3Out_ty
+        )
+        # act_out = object_fifo("act_out", bn5_tile, [ShimTile10], 1, bn5_tensorLayer3Out_ty)
+        bottleneckASubblockFused2Static(  # TODO Static?
+            "bn4_bn5",
+            self.bn4_5_tile,
+            self.L1_tile_for_bn4_5,
+            act_bn3_bn4,
+            self.bn4_5_wts_static,
+            act_bn5_bn6,
+            self.rtp_bn4_5_tile,
+            bn4_conv2dk1_relu_i8_ui8,
+            bn4_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn4_conv2dk1_skip_ui8_i8_i8,
+            bn5_conv2dk1_relu_i8_ui8,
+            bn5_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn5_conv2dk1_skip_ui8_i8_i8,
+            bn4_tensorLayer1Out_ty,
+            bn4_tensorLayer2Out_ty,
+            bn4_tensorLayer3Out_ty,
+            bn5_tensorLayer1Out_ty,
+            bn5_tensorLayer2Out_ty,
+            tensorL4_1InW,
+            tensorL4_1InH,
+            tensorL4_1InC,
+            bn4_depthWiseStride,
+            bn4_depthWiseChannels,
+            bn5_depthWiseStride,
+            bn5_depthWiseChannels,
+            tensorL5_3OutC,
+            bn4_scaleFactor1,
+            bn4_scaleFactor2,
+            bn4_scaleFactor3,
+            bn4_scaleFactorAdd,
+            bn5_scaleFactor1,
+            bn5_scaleFactor2,
+            bn5_scaleFactor3,
+            bn5_scaleFactorAdd,
+        )
+
+        # # temporary types for tensor to enable intial test
+        bn6_tensorLayer1In_ty = MemRefType.get(
+            (tensorL6_1InW, 1, tensorL6_1InC), int8_ty
+        )
+        bn6_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL6_1InC * tensorL6_2InC,), int8_ty
+        )
+        bn6_tensorLayer2In_ty = MemRefType.get(
+            (tensorL6_2InW, 1, tensorL6_2InC), uint8_ty
+        )
+        bn6_tensorLayer1Out_ty = bn6_tensorLayer2In_ty
+        bn6_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL6_3InC * 1,), int8_ty)
+        bn6_tensorLayer3In_ty = MemRefType.get(
+            (tensorL6_3InW, 1, tensorL6_3InC), uint8_ty
+        )
+        bn6_tensorLayer2Out_ty = bn6_tensorLayer3In_ty
+        bn6_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL6_3InC * tensorL6_3OutC,), int8_ty
+        )
+        bn6_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL6_3InW, 1, tensorL6_3OutC), int8_ty
+        )
+
+        # AIE Core Function declarations
+        bn6_conv2dk1_relu_i8_ui8 = external_func(
+            "bn6_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn6_tensorLayer1In_ty,
+                bn6_weightsLayer1_ty,
+                bn6_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn6_conv2dk1_fused_relu.o",
+        )
+        bn6_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
+            "bn6_conv2dk3_dw_stride2_relu_ui8_ui8",
+            inputs=[
+                bn6_tensorLayer2In_ty,
+                bn6_tensorLayer2In_ty,
+                bn6_tensorLayer2In_ty,
+                bn6_weightsLayer2_ty,
+                bn6_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn6_conv2dk3_dw_stride2.o",
+        )
+        bn6_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn6_conv2dk3_dw_stride1_relu_ui8_ui8",
+            inputs=[
+                bn6_tensorLayer2In_ty,
+                bn6_tensorLayer2In_ty,
+                bn6_tensorLayer2In_ty,
+                bn6_weightsLayer2_ty,
+                bn6_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn6_conv2dk3_dw_stride1.o",
+        )
+        bn6_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn6_conv2dk1_skip_ui8_i8_i8",
+            inputs=[
+                bn6_tensorLayer3In_ty,
+                bn6_weightsLayer3_ty,
+                bn6_tensorLayer3Out_ty,
+                bn6_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn6_conv2dk1_skip.o",
+        )
+        bn6_conv2dk1_ui8_i8 = external_func(
+            "bn6_conv2dk1_ui8_i8",
+            inputs=[
+                bn6_tensorLayer3In_ty,
+                bn6_weightsLayer3_ty,
+                bn6_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn6_conv2dk1_i8.o",
+        )
+
+        # # Compute tile 6
+        # bn6_objectArchiveName = (
+        #     "bn6_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn6_depthWiseStride, "skip" if (bn6_withSkip) else "")
+        # )
+        bn6_tensorLayer1Out_ty = MemRefType.get(
+            (tensorL6_2InW, 1, tensorL6_2InC), uint8_ty
+        )
+        bn6_tensorLayer2Out_ty = MemRefType.get(
+            (tensorL6_3InW, 1, tensorL6_3InC), uint8_ty
+        )
+        bn6_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL6_3InW, 1, tensorL6_3OutC), int8_ty
+        )
+
+        # between compute tiles
+        act_bn6_bn7 = object_fifo(
+            "act_bn6_bn7", self.bn6_tile, self.bn7_tile, 2, bn6_tensorLayer3Out_ty
+        )
+
+        # act_out = object_fifo("act_out", bn6_tile, [ShimTile10], 1, bn6_tensorLayer3Out_ty)
+        bottleneckASubblockStatic(
+            "bn6",
+            self.bn6_tile,
+            act_bn5_bn6,
+            # bn6_wts_OF_L3L1,
+            self.bn6_wts_static,
+            act_bn6_bn7,
+            self.rtp_bn6_tile,
+            bn6_conv2dk1_relu_i8_ui8,
+            bn6_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn6_conv2dk3_dw_stride2_relu_ui8_ui8,
+            bn6_conv2dk1_ui8_i8,
+            bn6_conv2dk1_skip_ui8_i8_i8,
+            bn6_tensorLayer1Out_ty,
+            bn6_tensorLayer2Out_ty,
+            tensorL6_1InW,
+            tensorL6_1InH,
+            tensorL6_1InC,
+            bn6_depthWiseStride,
+            bn6_depthWiseChannels,
+            tensorL6_3OutC,
+            bn6_withSkip,
+            bn6_scaleFactor1,
+            bn6_scaleFactor2,
+            bn6_scaleFactor3,
+            bn6_scaleFactorAdd,
+        )
+
+        # ##### ******************************************************************************************************************************
+        bn7_tensorLayer1In_ty = MemRefType.get(
+            (tensorL7_1InW, 1, tensorL7_1InC), int8_ty
+        )
+        bn7_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL7_1InC * tensorL7_2InC,), int8_ty
+        )
+        bn7_tensorLayer2In_ty = MemRefType.get(
+            (tensorL7_2InW, 1, tensorL7_2InC), uint8_ty
+        )
+        bn7_tensorLayer1Out_ty = bn7_tensorLayer2In_ty
+        bn7_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL7_3InC * 1,), int8_ty)
+        bn7_tensorLayer3In_ty = MemRefType.get(
+            (tensorL7_3InW, 1, tensorL7_3InC), uint8_ty
+        )
+        bn7_tensorLayer2Out_ty = bn7_tensorLayer3In_ty
+        bn7_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL7_3InC * tensorL7_3OutC,), int8_ty
+        )
+        bn7_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL7_3InW, 1, tensorL7_3OutC), int8_ty
+        )
+
+        # AIE Core Function declarations
+        bn7_conv2dk1_relu_i8_ui8 = external_func(
+            "bn7_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn7_tensorLayer1In_ty,
+                bn7_weightsLayer1_ty,
+                bn7_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn7_conv2dk1_fused_relu.o",
+        )
+        bn7_conv2dk3_dw_stride2_relu_ui8_ui8 = external_func(
+            "bn7_conv2dk3_dw_stride2_relu_ui8_ui8",
+            inputs=[
+                bn7_tensorLayer2In_ty,
+                bn7_tensorLayer2In_ty,
+                bn7_tensorLayer2In_ty,
+                bn7_weightsLayer2_ty,
+                bn7_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn7_conv2dk3_dw_stride2.o",
+        )
+        bn7_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn7_conv2dk3_dw_stride1_relu_ui8_ui8",
+            inputs=[
+                bn7_tensorLayer2In_ty,
+                bn7_tensorLayer2In_ty,
+                bn7_tensorLayer2In_ty,
+                bn7_weightsLayer2_ty,
+                bn7_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn7_conv2dk3_dw_stride1.o",
+        )
+        bn7_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn7_conv2dk1_skip_ui8_i8_i8",
+            inputs=[
+                bn7_tensorLayer3In_ty,
+                bn7_weightsLayer3_ty,
+                bn7_tensorLayer3Out_ty,
+                bn7_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn7_conv2dk1_skip.o",
+        )
+        bn7_conv2dk1_ui8_i8 = external_func(
+            "bn7_conv2dk1_ui8_i8",
+            inputs=[
+                bn7_tensorLayer3In_ty,
+                bn7_weightsLayer3_ty,
+                bn7_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn7_conv2dk1_i8.o",
+        )
+
+        # bn7_objectArchiveName = (
+        #     "bn7_combined_con2dk1fusedrelu_conv2dk3dwstride%s_conv2dk1%s.a"
+        #     % (bn7_depthWiseStride, "skip" if (bn7_withSkip) else "")
+        # )
+
+        # between compute tiles
+        act_bn7_bn8 = object_fifo(
+            "act_bn7_bn8", self.bn7_tile, self.bn8_9_tile, 2, bn7_tensorLayer3Out_ty
+        )
+        # act_bn7_bn8 = object_fifo("act_out", bn7_tile, [ShimTile10], 1, bn7_tensorLayer3Out_ty)
+        bottleneckASubblockStatic(
+            "bn7",
+            self.bn7_tile,
+            act_bn6_bn7,
+            # bn7_wts_OF_L3L1,
+            self.bn7_wts_static,
+            act_bn7_bn8,
+            self.rtp_bn7_tile,
+            bn7_conv2dk1_relu_i8_ui8,
+            bn7_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn7_conv2dk3_dw_stride2_relu_ui8_ui8,
+            bn7_conv2dk1_ui8_i8,
+            bn7_conv2dk1_skip_ui8_i8_i8,
+            bn7_tensorLayer1Out_ty,
+            bn7_tensorLayer2Out_ty,
+            tensorL7_1InW,
+            tensorL7_1InH,
+            tensorL7_1InC,
+            bn7_depthWiseStride,
+            bn7_depthWiseChannels,
+            tensorL7_3OutC,
+            bn7_withSkip,
+            bn7_scaleFactor1,
+            bn7_scaleFactor2,
+            bn7_scaleFactor3,
+            bn7_scaleFactorAdd,
+        )
+
+        # # ##### ******************************************************************************************************************************
+
+        bn8_tensorLayer1In_ty = MemRefType.get(
+            (tensorL8_1InW, 1, tensorL8_1InC), int8_ty
+        )
+        bn8_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL8_1InC * tensorL8_2InC,), int8_ty
+        )
+        bn8_tensorLayer2In_ty = MemRefType.get(
+            (tensorL8_2InW, 1, tensorL8_2InC), uint8_ty
+        )
+        bn8_tensorLayer1Out_ty = bn8_tensorLayer2In_ty
+        bn8_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL8_3InC * 1,), int8_ty)
+        bn8_tensorLayer3In_ty = MemRefType.get(
+            (tensorL8_3InW, 1, tensorL8_3InC), uint8_ty
+        )
+        bn8_tensorLayer2Out_ty = bn8_tensorLayer3In_ty
+        bn8_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL8_3InC * tensorL8_3OutC,), int8_ty
+        )
+        bn8_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL8_3InW, 1, tensorL8_3OutC), int8_ty
+        )
+
+        bn9_tensorLayer1In_ty = MemRefType.get(
+            (tensorL9_1InW, 1, tensorL9_1InC), int8_ty
+        )
+        bn9_weightsLayer1_ty = MemRefType.get(
+            (1 * 1 * tensorL9_1InC * tensorL9_2InC,), int8_ty
+        )
+        bn9_tensorLayer2In_ty = MemRefType.get(
+            (tensorL9_2InW, 1, tensorL9_2InC), uint8_ty
+        )
+        bn9_tensorLayer1Out_ty = bn9_tensorLayer2In_ty
+        bn9_weightsLayer2_ty = MemRefType.get((3 * 3 * tensorL9_3InC * 1,), int8_ty)
+        bn9_tensorLayer3In_ty = MemRefType.get(
+            (tensorL9_3InW, 1, tensorL9_3InC), uint8_ty
+        )
+        bn9_tensorLayer2Out_ty = bn9_tensorLayer3In_ty
+        bn9_weightsLayer3_ty = MemRefType.get(
+            (1 * 1 * tensorL9_3InC * tensorL9_3OutC,), int8_ty
+        )
+        bn9_tensorLayer3Out_ty = MemRefType.get(
+            (tensorL9_3InW, 1, tensorL9_3OutC), int8_ty
+        )
+
+        # # AIE Core Function declarations
+        bn8_conv2dk1_relu_i8_ui8 = external_func(
+            "bn8_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn8_tensorLayer1In_ty,
+                bn8_weightsLayer1_ty,
+                bn8_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn8_conv2dk1_fused_relu.o",
+        )
+        bn8_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn8_conv2dk3_dw_stride1_relu_ui8_ui8",
+            inputs=[
+                bn8_tensorLayer2In_ty,
+                bn8_tensorLayer2In_ty,
+                bn8_tensorLayer2In_ty,
+                bn8_weightsLayer2_ty,
+                bn8_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn8_conv2dk3_dw_stride1.o",
+        )
+        bn8_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn8_conv2dk1_skip_ui8_i8_i8",
+            inputs=[
+                bn8_tensorLayer3In_ty,
+                bn8_weightsLayer3_ty,
+                bn8_tensorLayer3Out_ty,
+                bn8_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn8_conv2dk1_skip.o",
+        )
+
+        bn9_conv2dk1_relu_i8_ui8 = external_func(
+            "bn9_conv2dk1_relu_i8_ui8",
+            inputs=[
+                bn9_tensorLayer1In_ty,
+                bn9_weightsLayer1_ty,
+                bn9_tensorLayer1Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn9_conv2dk1_fused_relu.o",
+        )
+        bn9_conv2dk3_dw_stride1_relu_ui8_ui8 = external_func(
+            "bn9_conv2dk3_dw_stride1_relu_ui8_ui8",
+            inputs=[
+                bn9_tensorLayer2In_ty,
+                bn9_tensorLayer2In_ty,
+                bn9_tensorLayer2In_ty,
+                bn9_weightsLayer2_ty,
+                bn9_tensorLayer2Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn9_conv2dk3_dw_stride1.o",
+        )
+        bn9_conv2dk1_skip_ui8_i8_i8 = external_func(
+            "bn9_conv2dk1_skip_ui8_i8_i8",
+            inputs=[
+                bn9_tensorLayer3In_ty,
+                bn9_weightsLayer3_ty,
+                bn9_tensorLayer3Out_ty,
+                bn9_tensorLayer3Out_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+                int32_ty,
+            ],
+            link_with="bn9_conv2dk1_skip.o",
+        )
+
+        # TODO
+        # act_out = object_fifo("act_out", bn8_9_tile, [ShimTile10], 1, tensorLayerOut_ty)
+
+        bottleneckASubblockFused2Static(
+            "bn8_bn9",
+            self.bn8_9_tile,
+            self.L1_tile_for_bn8_9,
+            act_bn7_bn8,
+            # bn8_9_wts_OF_L3L1,
+            self.bn8_9_wts_static,
+            self.act_out,
+            self.rtp_bn8_9_tile,
+            bn8_conv2dk1_relu_i8_ui8,
+            bn8_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn8_conv2dk1_skip_ui8_i8_i8,
+            bn9_conv2dk1_relu_i8_ui8,
+            bn9_conv2dk3_dw_stride1_relu_ui8_ui8,
+            bn9_conv2dk1_skip_ui8_i8_i8,
+            bn8_tensorLayer1Out_ty,
+            bn8_tensorLayer2Out_ty,
+            bn8_tensorLayer3Out_ty,
+            bn9_tensorLayer1Out_ty,
+            bn9_tensorLayer2Out_ty,
+            tensorL8_1InW,
+            tensorL8_1InH,
+            tensorL8_1InC,
+            bn8_depthWiseStride,
+            bn8_depthWiseChannels,
+            bn9_depthWiseStride,
+            bn9_depthWiseChannels,
+            tensorL9_3OutC,
+            bn8_scaleFactor1,
+            bn8_scaleFactor2,
+            bn8_scaleFactor3,
+            bn8_scaleFactorAdd,
+            bn9_scaleFactor1,
+            bn9_scaleFactor2,
+            bn9_scaleFactor3,
+            bn9_scaleFactorAdd,
+        )

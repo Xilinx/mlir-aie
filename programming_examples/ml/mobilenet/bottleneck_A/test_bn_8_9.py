@@ -43,9 +43,12 @@ def write_scale_factors(file_path, scale_factors):
         json.dump(scale_factors, file, indent=4)
 
 
+log_dir = "log/"
+data_dir = "data/"
+
 # Read the existing scale factors
-file_path = "scale_factors_fused_bn8+bn9.json"
-scale_factors = read_scale_factors(file_path)
+scale_factor_file = "scale_factors_fused_bn8+bn9.json"
+scale_factors = read_scale_factors(data_dir + scale_factor_file)
 
 torch.manual_seed(0)
 vectorSize = 8
@@ -428,7 +431,7 @@ def main(opts):
     scale_factors["BN9"]["conv1x1_2"] = int(block_9_combined_scale3.item())
     scale_factors["BN9"]["skip_add"] = int(block_9_combined_scale_skip.item())
 
-    write_scale_factors(file_path, scale_factors)
+    write_scale_factors(log_dir + scale_factor_file, scale_factors)
 
     atol = block_9_skip_add
     # ------------------------------------------------------
