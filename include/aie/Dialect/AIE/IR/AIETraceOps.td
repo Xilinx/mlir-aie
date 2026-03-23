@@ -54,15 +54,13 @@ def AIE_TraceOp : AIE_Op<"trace", [
 
   let arguments = (ins
     Index:$tile,
-    SymbolNameAttr:$sym_name,
-    OptionalAttr<AIEI32Attr>:$buffer_size
+    SymbolNameAttr:$sym_name
   );
 
   let regions = (region SizedRegion<1>:$body);
 
   let assemblyFormat = [{
-    $sym_name `(` $tile `)` (`buffer_size` `=` $buffer_size^)?
-    $body attr-dict
+    $sym_name `(` $tile `)` $body attr-dict
   }];
 
   let hasVerifier = 1;
@@ -461,6 +459,48 @@ def AIE_TraceEdgeEventOp : AIE_Op<"trace.edge_event", [
 
   let hasCustomAssemblyFormat = 1;
 
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// AIE_TraceHostConfigOp - Host Buffer Configuration
+//===----------------------------------------------------------------------===//
+
+def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
+    HasParent<"RuntimeSequenceOp">
+  ]> {
+  let summary = "Configure host buffer for trace data collection";
+
+  let description = [{
+    Configures host-side trace buffer.
+
+    Attributes:
+    - buffer_size: Trace buffer size in bytes
+    - arg_idx (default=4): XRT argument index for trace buffer
+    - routing (default=single): 'single' routes all traces to column 0's shim;
+      'per_column' routes each column's traces to that column's shim,
+      incrementing arg_idx for each column.
+    - trace_after_last_tensor (default=false): Append trace data to the last
+      tensor argument in the runtime_sequence. When true, buffer_offset is computed
+      from the tensor size. Only valid with routing=single.
+
+    Example:
+    ```mlir
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size=65536
+      aie.trace.start_config @trace1
+    }
+    ```
+  }];
+
+  let arguments = (ins
+    AIEI32Attr:$buffer_size,
+    DefaultValuedAttr<AIEI32Attr, "4">:$arg_idx,
+    DefaultValuedAttr<TraceShimRoutingAttr, "TraceShimRouting::Single">:$routing,
+    DefaultValuedAttr<BoolAttr, "false">:$trace_after_last_tensor
+  );
+
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
 

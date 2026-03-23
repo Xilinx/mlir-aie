@@ -8,19 +8,39 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt %s --split-input-file -aie-insert-trace-flows 2>&1 | FileCheck %s
+// RUN: aie-opt %s -split-input-file -verify-diagnostics -aie-insert-trace-flows
 
-// CHECK: error: trace is missing 'aie.trace.start'
+// Test: Missing host_config in runtime_sequence with traces
+module @missing_host_config {
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    aie.trace @core_trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    // expected-error@+1 {{runtime_sequence with traces requires aie.trace.host_config}}
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.start_config @core_trace
+    }
+  }
+}
+
+// -----
+
+// Test: Trace missing aie.trace.start
 module @missing_start {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0, 2)
+    // expected-error@+1 {{trace is missing 'aie.trace.start'}}
     aie.trace @core_trace(%tile02) {
       aie.trace.packet id=1 type=core
       aie.trace.event<"INSTR_EVENT_0">
-      // Missing aie.trace.start - should error
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 65536
       aie.trace.start_config @core_trace
     }
   }
@@ -28,17 +48,18 @@ module @missing_start {
 
 // -----
 
-// CHECK: error: trace is missing 'aie.trace.stop'
+// Test: Trace missing aie.trace.stop
 module @missing_stop {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0, 2)
+    // expected-error@+1 {{trace is missing 'aie.trace.stop'}}
     aie.trace @core_trace(%tile02) {
       aie.trace.packet id=1 type=core
       aie.trace.event<"INSTR_EVENT_0">
       aie.trace.start broadcast=15
-      // Missing aie.trace.stop - should error
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 65536
       aie.trace.start_config @core_trace
     }
   }
@@ -46,8 +67,9 @@ module @missing_stop {
 
 // -----
 
-// CHECK: error: aie.trace ops found but no runtime_sequence
+// Test: Trace ops without runtime_sequence
 module @no_runtime_seq {
+  // expected-error@+1 {{aie.trace ops found but no runtime_sequence defined}}
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0, 2)
     aie.trace @core_trace(%tile02) {
@@ -56,6 +78,5 @@ module @no_runtime_seq {
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
     }
-    // Missing runtime_sequence - should error
   }
 }

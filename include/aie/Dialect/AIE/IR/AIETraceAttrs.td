@@ -159,4 +159,25 @@ def EdgeTriggerAttr : I32EnumAttr<"EdgeTrigger",
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Trace Shim Routing Strategy Enumeration
+//===----------------------------------------------------------------------===//
+
+def TraceShimRoutingSingle    : I32EnumAttrCase<"Single", 0, "single">;
+def TraceShimRoutingPerColumn : I32EnumAttrCase<"PerColumn", 1, "per_column">;
+
+def TraceShimRoutingAttr : I32EnumAttr<"TraceShimRouting",
+    "Shim tile routing strategy for trace collection",
+    [
+      TraceShimRoutingSingle,
+      TraceShimRoutingPerColumn
+    ]> {
+  let cppNamespace = "::xilinx::AIE";
+  let description = [{
+    Determines how traces are routed to shim tiles:
+    - single: All traces route to a single shim tile (column 0)
+    - per_column: Each column's traces route to that column's shim tile
+  }];
+}
+
 #endif // AIE_TRACE_ATTRS

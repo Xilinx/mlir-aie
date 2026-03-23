@@ -456,14 +456,8 @@ def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
            "Buffer descriptor ID for trace (default: 15)">,
     Option<"clPacketIdStart", "packet-id-start", "int", "1",
            "Starting packet ID for trace flows (default: 1)">,
-    Option<"clTraceBufferSize", "trace-buffer-size", "int", "1048576",
-           "Default trace buffer size in bytes (default: 1MB)">,
     Option<"clTraceBurstLength", "burst-length", "int", "64",
-           "DMA burst length for trace transfers (default: 64 bytes)">,
-    Option<"clTraceArgIdx", "trace-arg-idx", "int", "4",
-           "Runtime sequence argument index for trace buffer (default: 4)">,
-    Option<"clPerColumnShim", "per-column-shim", "bool", "false",
-           "Route traces to same-column shim (true) or all to column 0 (false)">
+           "DMA burst length for trace transfers (default: 64 bytes)">
   ];
 }
 

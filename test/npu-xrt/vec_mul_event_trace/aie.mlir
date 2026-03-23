@@ -160,6 +160,9 @@ module {
       // TRACE INITIALIZATION
       // ========================================================================
 
+      // Configure trace output buffer (8192 bytes, default arg_idx=4)
+      aie.trace.host_config buffer_size = 8192
+
       aie.trace.start_config @core_trace
       aie.trace.start_config @mem_trace
       aie.trace.start_config @memtile_trace

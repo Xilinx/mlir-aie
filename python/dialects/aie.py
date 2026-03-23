@@ -208,15 +208,17 @@ def _objectFifo_depth_attr(x, context):
 
 @register_attribute_builder("TraceEventAttr")
 def _trace_event_attr(x, context):
-    """Build TraceEventAttr from string or StringAttr."""
+    """Build TraceEventAttr from string, Enum, or GenericEvent."""
     if isinstance(x, str):
         return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
     elif isinstance(x, StringAttr):
         return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
-    elif isinstance(x, IntEnum):
-        return Attribute.parse(f'#aie.trace_event<"{str(x)}">', context=context)
+    elif hasattr(x, "code"):  # GenericEvent, PortEvent, etc. - check before Enum
+        return Attribute.parse(f'#aie.trace_event<"{x.code.name}">', context=context)
+    elif hasattr(x, "name") and hasattr(x, "value"):  # Enum (CoreEvent, MemEvent, etc.)
+        return Attribute.parse(f'#aie.trace_event<"{x.name}">', context=context)
     else:
-        # Assume it's already an Attribute (could be an enum)
+        # Assume it's already an Attribute
         return x
 
 
@@ -578,8 +580,8 @@ class packetflow(PacketFlowOp):
 core = region_op(Core, terminator=lambda *_: EndOp())
 device = region_op(Device, terminator=lambda *_: EndOp())
 trace = region_op(
-    lambda tile, sym_name, *, buffer_size=None, loc=None, ip=None: TraceOp(
-        tile, sym_name, buffer_size=buffer_size, loc=loc, ip=ip
+    lambda tile, sym_name, *, loc=None, ip=None: TraceOp(
+        tile, sym_name, loc=loc, ip=ip
     ),
     terminator=lambda *_: EndOp(),
 )
@@ -623,6 +625,33 @@ def trace_edge_event(slot, event, trigger, *, loc=None, ip=None):
 
 def trace_start_config(name, *, loc=None, ip=None):
     return TraceStartConfigOp(trace_config=name, loc=loc, ip=ip)
+
+
+def trace_host_config(
+    buffer_size,
+    *,
+    arg_idx=None,
+    routing=None,
+    trace_after_last_tensor=None,
+    loc=None,
+    ip=None
+):
+    kwargs = {"buffer_size": buffer_size, "loc": loc, "ip": ip}
+    if arg_idx is not None:
+        kwargs["arg_idx"] = arg_idx
+    if routing is not None:
+        # Accept string or enum
+        if isinstance(routing, str):
+            if routing == "single":
+                routing = TraceShimRouting.Single
+            elif routing == "per_column":
+                routing = TraceShimRouting.PerColumn
+            else:
+                raise ValueError(f"Unknown routing: {routing}. Use 'single' or 'per_column'.")
+        kwargs["routing"] = routing
+    if trace_after_last_tensor is not None:
+        kwargs["trace_after_last_tensor"] = trace_after_last_tensor
+    return TraceHostConfigOp(**kwargs)
 
 
 switchbox = region_op(
@@ -1030,6 +1059,27 @@ class TileOp(TileOp):
         return find_matching_locks(
             [self], sym_name=sym_name, annot=annot, device=device
         )
+
+    # TileLike interface methods
+    def is_core_tile(self):
+        """Returns True if this is a core tile."""
+        return tile_like_is_core_tile(self.operation)
+
+    def is_mem_tile(self):
+        """Returns True if this is a mem tile."""
+        return tile_like_is_mem_tile(self.operation)
+
+    def is_shim_noc_tile(self):
+        """Returns True if this is a shim NOC tile."""
+        return tile_like_is_shim_noc_tile(self.operation)
+
+    def is_shim_pl_tile(self):
+        """Returns True if this is a shim PL tile."""
+        return tile_like_is_shim_pl_tile(self.operation)
+
+    def is_shim_tile(self):
+        """Returns True if this is a shim tile (NOC or PL)."""
+        return tile_like_is_shim_tile(self.operation)
 
 
 def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
