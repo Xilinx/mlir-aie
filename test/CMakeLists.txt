@@ -115,14 +115,6 @@ set(TEST_DEPENDS
   aie-translate
 )
 
-if(TARGET xchesscc_wrapper)
-  list(APPEND TEST_DEPENDS xchesscc_wrapper)
-endif()
-
-if(TARGET aie-runtime-libs)
-  list(APPEND TEST_DEPENDS aie-runtime-libs)
-endif()
-
 add_lit_testsuite(check-aie "Running the aie regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}

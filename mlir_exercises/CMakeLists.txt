@@ -129,15 +129,7 @@ set(TEST_DEPENDS
   AIEPythonModules
   aie-opt
   aie-translate
-)
-
-if(TARGET xchesscc_wrapper)
-  list(APPEND TEST_DEPENDS xchesscc_wrapper)
-endif()
-
-if(TARGET aie-runtime-libs)
-  list(APPEND TEST_DEPENDS aie-runtime-libs)
-endif()
+  )
 
 add_lit_testsuite(check-tutorials "Running the aie tutorials tests"
   ${CMAKE_CURRENT_BINARY_DIR}
