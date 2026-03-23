@@ -137,16 +137,37 @@ LitConfigHelper.apply_config_to_lit(
 tools = [
     "aie-opt",
     "aie-translate",
-    "aiecc.py",
     "ld.lld",
     "llc",
     "llvm-objdump",
     "opt",
     "xchesscc_wrapper",
-    "txn2mlir.py",
 ]
 
+if os.name != "nt":
+    tools.extend(["aiecc.py", "txn2mlir.py"])
+
 llvm_config.add_tool_substitutions(tools, tool_dirs)
+
+if os.name == "nt":
+    # Lit on Windows struggles with substituting tools with a .py extension.
+    # Add these manually and quote them so paths with spaces survive.
+    config.substitutions.append(
+        (
+            "aiecc.py",
+            LitConfigHelper._quote_lit_arg(
+                os.path.join(config.aie_tools_dir, "aiecc.py")
+            ),
+        )
+    )
+    config.substitutions.append(
+        (
+            "txn2mlir.py",
+            LitConfigHelper._quote_lit_arg(
+                os.path.join(config.aie_tools_dir, "txn2mlir.py")
+            ),
+        )
+    )
 
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
