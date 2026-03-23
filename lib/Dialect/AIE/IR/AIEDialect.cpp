@@ -642,7 +642,14 @@ static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
                                       Attribute initValues) {
   if (op.getInitValues()) {
     p << "= [";
-    int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    int depth;
+    if (isa<ArrayAttr>(numElem)) {
+      depth = llvm::dyn_cast<mlir::IntegerAttr>(
+                  llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0])
+                  .getInt();
+    } else {
+      depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    }
     for (int i = 0; i < depth; i++) {
       p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
       if (i < depth - 1) {

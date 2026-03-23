@@ -521,14 +521,16 @@ def resnet_conv_x():
             for i in range(n_cols):
 
                 wts_fifos.append(
-                    object_fifo(f"wts_{i}_L3L2", shims[i], mems[i], 1, wts_sizes[i])
+                    object_fifo(
+                        f"wts_{i}_L3L2", shims[i], mems[i], [1, 1], wts_sizes[i]
+                    )
                 )
                 wts_sub_fifos[i].append(
                     object_fifo(
                         f"wts_buf_{i}0",
                         mems[i],
                         cores[i][0],
-                        1,
+                        [1, 1],
                         layer1_wts_sizes[i],
                     )
                 )
@@ -538,7 +540,7 @@ def resnet_conv_x():
                             f"wts_buf_{i}1",
                             mems[i],
                             [cores[i][3], cores[i][1]],
-                            1,
+                            [1, 1, 1],
                             weightsLayer2_ty,
                         )
                     )
@@ -548,7 +550,7 @@ def resnet_conv_x():
                             f"wts_buf_{i}1",
                             mems[i],
                             [cores[i][1], cores[i][3]],
-                            1,
+                            [1, 1, 1],
                             weightsLayer2_ty,
                         )
                     )
@@ -557,7 +559,7 @@ def resnet_conv_x():
                         f"wts_buf_{i}2",
                         mems[i],
                         cores[i][2],
-                        1,
+                        [1, 1],
                         layer3_wts_sizes[i],
                     )
                 )

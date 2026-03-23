@@ -77,7 +77,7 @@ def conv2dk1(
 
             # wts
             of_inOF_wts_0_L3L2 = object_fifo(
-                "inOF_wts_0_L3L2", ShimTile, [ComputeTile2], 1, weights_ty
+                "inOF_wts_0_L3L2", ShimTile, [ComputeTile2], [1, 1], weights_ty
             )
 
             # Output

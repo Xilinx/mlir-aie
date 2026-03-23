@@ -260,7 +260,7 @@ class ObjectFifo(Resolvable):
                 "Cannot return depths since no cons ObjectFifoHandles are created."
             )
         depths = [self._prod.depth] + [con.depth for con in self._cons]
-        if len(set(depths)) == 1:
+        if len(set(depths)) == 1 and depths[0] != 1:
             return depths[0]
         return depths
 
