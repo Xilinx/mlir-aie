@@ -305,7 +305,7 @@ static cl::opt<bool> dryRun("n",
 
 static cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Use dynamic object FIFOs"),
-                                     cl::init(false),
+                                     cl::init(true),
                                      cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> packetSwObjFifos("packet-sw-objFifos",
