@@ -10,6 +10,7 @@
 
 // RUN: aie-opt -split-input-file --aie-place-tiles='cores-per-col=2' %s | FileCheck %s
 // RUN: aie-opt -split-input-file --aie-place-tiles %s | FileCheck %s --check-prefix=NO-LIMIT
+// RUN: not aie-opt -split-input-file --aie-place-tiles='cores-per-col=99' %s 2>&1 | FileCheck %s --check-prefix=EXCEEDS
 
 // cores-per-col=2 spreads 4 cores across 2 columns
 // CHECK-LABEL: @cores_per_col_limit
@@ -34,5 +35,16 @@ module @cores_per_col_limit {
     %c3 = aie.logical_tile<CoreTile>(?, ?)
     // CHECK-NOT: aie.logical_tile
     // NO-LIMIT-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// cores-per-col option exceeds device capacity
+// EXCEEDS: error: requested cores-per-col (99) exceeds device capacity (4 cores per column)
+module @cores_per_col_exceeds_device {
+  aie.device(npu1) {
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c1) { aie.end }
   }
 }

@@ -11,7 +11,7 @@
 // RUN: not aie-opt --aie-place-tiles='placer=unknown_placer' %s 2>&1 | FileCheck %s
 
 // Test: Unknown placer name should emit error
-// CHECK: error: Unknown placer: unknown_placer
+// CHECK: for the --placer option: Cannot find option named 'unknown_placer'!
 module @unknown_placer_error {
   aie.device(npu1) {
     %core = aie.logical_tile<CoreTile>(?, ?)

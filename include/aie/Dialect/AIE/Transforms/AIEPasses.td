@@ -56,9 +56,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 
   let options = [
-    Option<"clPlacerName", "placer", "std::string",
-           /*default=*/"\"sequential_placer\"",
-           "Placement algorithm to use (currently only 'sequential_placer')">,
+    Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
+           /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
+           "Placement algorithm to use (default: sequential_placer)",
+           "llvm::cl::values("
+             "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
+                        "\"sequential_placer\", \"Sequential column-major placement\"))">,
     Option<"clCoresPerCol", "cores-per-col", "int",
            /*default=*/"-1",
            "Limit number of cores per column (-1 = no limit). "

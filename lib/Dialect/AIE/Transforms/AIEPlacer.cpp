@@ -19,15 +19,14 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-placer"
 
-void SequentialPlacer::initialize(DeviceOp dev, const AIETargetModel &tm) {
-  device = dev;
-  targetModel = &tm;
+void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
+  this->targetModel = &targetModel;
 
   // Collect all available physical tiles from device
-  for (int col = 0; col < tm.columns(); col++) {
-    for (int row = 0; row < tm.rows(); row++) {
+  for (int col = 0; col < targetModel.columns(); col++) {
+    for (int row = 0; row < targetModel.rows(); row++) {
       TileID id = {col, row};
-      AIETileType type = tm.getTileType(col, row);
+      AIETileType type = targetModel.getTileType(col, row);
 
       switch (type) {
       case AIETileType::CoreTile:
@@ -65,7 +64,18 @@ void SequentialPlacer::initialize(DeviceOp dev, const AIETargetModel &tm) {
 
   // Limit cores per column if specified
   if (coresPerCol.has_value()) {
-    limitCoresPerColumn(*coresPerCol, tm.columns());
+    // Calculate max cores per column in the device
+    std::map<int, int> coresInColumn;
+    for (const auto &tile : availability.compTiles) {
+      coresInColumn[tile.col]++;
+    }
+    int maxDeviceCoresPerCol = 0;
+    for (const auto &[col, count] : coresInColumn) {
+      maxDeviceCoresPerCol = std::max(maxDeviceCoresPerCol, count);
+    }
+    deviceCoresPerCol = maxDeviceCoresPerCol;
+
+    limitCoresPerColumn(*coresPerCol, targetModel.columns());
   }
 }
 
@@ -92,25 +102,21 @@ void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
     // Take first N tiles from this column (already sorted within column)
     limitedTiles.insert(limitedTiles.end(), tilesInCol.begin(),
                         tilesInCol.begin() + numToTake);
-
-    LLVM_DEBUG({
-      if (tilesInCol.size() < static_cast<size_t>(maxCoresPerCol)) {
-        llvm::dbgs() << "Column " << col << " has only " << tilesInCol.size()
-                     << " cores (requested " << maxCoresPerCol << ")\n";
-      }
-    });
   }
 
   // Replace availability.compTiles with limited list
   availability.compTiles = limitedTiles;
-
-  LLVM_DEBUG(llvm::dbgs() << "Limited to " << maxCoresPerCol
-                          << " cores per column, total available: "
-                          << limitedTiles.size() << "\n");
 }
 
 LogicalResult SequentialPlacer::place(DeviceOp device) {
-  // Collect operations needed for placement
+  // Phase 0: Validate options
+  if (coresPerCol.has_value() && *coresPerCol > deviceCoresPerCol) {
+    return device.emitError() << "requested cores-per-col (" << *coresPerCol
+                              << ") exceeds device capacity ("
+                              << deviceCoresPerCol << " cores per column)";
+  }
+
+  // Phase 1: Collect operations needed for placement
   SmallVector<LogicalTileOp> logicalTiles;
   SmallVector<ObjectFifoCreateOp> objectFifos;
   SmallVector<ObjectFifoLinkOp> objectFifoLinks;
@@ -124,7 +130,246 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       objectFifoLinks.push_back(link);
   });
 
-  // Build channel requirements map by analyzing ObjectFifo connectivity
+  // Phase 2: Build channel requirements from ObjectFifo connectivity
+  auto channelRequirements =
+      buildChannelRequirements(objectFifos, objectFifoLinks);
+
+  // Phase 3: Place constrained tiles then compute tiles
+  size_t nextCompIdx = 0;
+  for (auto logicalTile : logicalTiles) {
+    // Place fully constrained tiles at their specified coordinates
+    auto col = logicalTile.tryGetCol();
+    auto row = logicalTile.tryGetRow();
+    if (col && row) {
+      TileID tile{*col, *row};
+      if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
+                                               channelRequirements, true)))
+        return failure();
+
+      result[logicalTile] = tile;
+      // Only remove fully constrained compute tiles from availability.
+      // Mem/Shim may still host additional logical tiles as long as
+      // channel/DMA capacity permits.
+      if (logicalTile.getTileType() == AIETileType::CoreTile)
+        availability.removeTile(tile, logicalTile.getTileType());
+      continue;
+    }
+
+    // Place compute tiles with partial constraint support
+    if (logicalTile.getTileType() == AIETileType::CoreTile) {
+      std::optional<TileID> placement = std::nullopt;
+
+      for (size_t i = nextCompIdx; i < availability.compTiles.size(); ++i) {
+        TileID candidate = availability.compTiles[i];
+
+        // Check partial constraints
+        if (col && candidate.col != *col)
+          continue;
+        if (row && candidate.row != *row)
+          continue;
+
+        // Found valid tile - swap to nextCompIdx position and use
+        std::swap(availability.compTiles[i],
+                  availability.compTiles[nextCompIdx]);
+        placement = availability.compTiles[nextCompIdx++];
+        break;
+      }
+
+      if (!placement) {
+        if (col || row) {
+          return logicalTile.emitError()
+                 << "no compute tile available matching constraint ("
+                 << (col ? std::to_string(*col) : "?") << ", "
+                 << (row ? std::to_string(*row) : "?") << ")";
+        }
+        return logicalTile.emitError(
+            "no available compute tiles for placement");
+      }
+
+      if (failed(validateAndUpdateChannelUsage(logicalTile, *placement,
+                                               channelRequirements, false)))
+        return failure();
+
+      result[logicalTile] = *placement;
+    }
+
+    if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
+      return logicalTile.emitError(
+          "DMA channel-based SequentialPlacer does not support unplaced "
+          "ShimPLTiles (no DMAs).");
+    }
+  }
+
+  // Phase 4: Place mem/shim tiles by ObjectFifo groups
+  llvm::DenseMap<int, SmallVector<ObjectFifoCreateOp>> groupToFifos;
+  llvm::DenseMap<int, SmallVector<LogicalTileOp>> groupToLogicalTiles;
+  buildObjectFifoGroups(objectFifos, objectFifoLinks, groupToFifos,
+                        groupToLogicalTiles);
+
+  // Process each group's logical tiles together
+  llvm::DenseSet<int> processedGroups;
+
+  for (auto &[groupId, logicalTiles] : groupToLogicalTiles) {
+    if (processedGroups.count(groupId))
+      continue;
+    processedGroups.insert(groupId);
+
+    // Compute common column from ALL fifos in this group
+    int groupCommonCol = 0;
+    int totalCoreEndpoints = 0;
+    int sumCols = 0;
+
+    auto fifosIt = groupToFifos.find(groupId);
+    if (fifosIt != groupToFifos.end()) {
+      for (auto ofOp : fifosIt->second) {
+        // Get core tile endpoints for this fifo
+        Value producerTile = ofOp.getProducerTile();
+        if (auto *producerOp = producerTile.getDefiningOp()) {
+          if (auto prodLogical = dyn_cast<LogicalTileOp>(producerOp)) {
+            if (prodLogical.getTileType() == AIETileType::CoreTile) {
+              if (result.count(prodLogical.getOperation())) {
+                sumCols += result[prodLogical.getOperation()].col;
+                totalCoreEndpoints++;
+              }
+            }
+          }
+        }
+
+        for (Value consumerTile : ofOp.getConsumerTiles()) {
+          if (auto *consumerOp = consumerTile.getDefiningOp()) {
+            if (auto consLogical = dyn_cast<LogicalTileOp>(consumerOp)) {
+              if (consLogical.getTileType() == AIETileType::CoreTile) {
+                if (result.count(consLogical.getOperation())) {
+                  sumCols += result[consLogical.getOperation()].col;
+                  totalCoreEndpoints++;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Compute common column as rounded average of all core tile endpoints.
+    // This places mem/shim tiles near the center of their connected cores
+    // to minimize routing distance.
+    if (totalCoreEndpoints > 0) {
+      groupCommonCol = (sumCols + totalCoreEndpoints / 2) / totalCoreEndpoints;
+    }
+
+    // Place each logical tile from this group
+    for (auto logicalTile : logicalTiles) {
+      // Skip if already placed (e.g., constrained)
+      if (result.count(logicalTile.getOperation()))
+        continue;
+
+      // Get channel requirements for this tile
+      auto it = channelRequirements.find(logicalTile.getOperation());
+      int numInputChannels = 0, numOutputChannels = 0;
+      if (it != channelRequirements.end()) {
+        numInputChannels = it->second.first;
+        numOutputChannels = it->second.second;
+      }
+
+      // Use column constraint if specified, otherwise use group's common column
+      auto colConstraint = logicalTile.tryGetCol();
+      int targetCol = colConstraint ? *colConstraint : groupCommonCol;
+
+      // Find tile with capacity near target column
+      auto maybeTile = findTileWithCapacity(
+          targetCol, availability.nonCompTiles, numInputChannels,
+          numOutputChannels, logicalTile.getTileType());
+
+      if (!maybeTile)
+        return logicalTile.emitError()
+               << "no " << stringifyAIETileType(logicalTile.getTileType())
+               << " with sufficient DMA capacity";
+
+      result[logicalTile] = *maybeTile;
+
+      // Update channel usage
+      if (numInputChannels > 0)
+        updateChannelUsage(*maybeTile, false, numInputChannels);
+      if (numOutputChannels > 0)
+        updateChannelUsage(*maybeTile, true, numOutputChannels);
+    }
+  }
+
+  // Phase 5: Fallback for remaining unplaced non-core tiles
+  for (auto logicalTile : logicalTiles) {
+    // Skip already placed tiles
+    if (result.count(logicalTile.getOperation()))
+      continue;
+
+    // Skip core tiles (handled above) and ShimPLTile (unsupported)
+    AIETileType tileType = logicalTile.getTileType();
+    if (tileType == AIETileType::CoreTile ||
+        tileType == AIETileType::ShimPLTile)
+      continue;
+
+    // Use column constraint if specified, otherwise start from column 0
+    auto colConstraint = logicalTile.tryGetCol();
+    int targetCol = colConstraint ? *colConstraint : 0;
+
+    // Find first available tile of matching type (no DMA requirements)
+    auto maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
+                                          0, 0, tileType);
+
+    if (!maybeTile)
+      return logicalTile.emitError()
+             << "no " << stringifyAIETileType(tileType) << " available";
+
+    result[logicalTile] = *maybeTile;
+  }
+
+  return success();
+}
+
+LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
+    LogicalTileOp logicalTile, TileID tile,
+    const llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements,
+    bool isConstrained) {
+
+  // Get channel requirements
+  auto it = channelRequirements.find(logicalTile.getOperation());
+  int inChannels = 0, outChannels = 0;
+  if (it != channelRequirements.end()) {
+    inChannels = it->second.first;
+    outChannels = it->second.second;
+  }
+
+  // Validate capacity
+  if (!hasAvailableChannels(tile, inChannels, outChannels)) {
+    // Get max channels
+    int maxIn = logicalTile.getNumDestConnections(WireBundle::DMA);
+    int maxOut = logicalTile.getNumSourceConnections(WireBundle::DMA);
+    int availIn = maxIn - availability.inputChannelsUsed[tile];
+    int availOut = maxOut - availability.outputChannelsUsed[tile];
+
+    auto diag = logicalTile.emitError();
+    if (isConstrained)
+      diag << "tile (" << tile.col << ", " << tile.row << ") requires ";
+    else
+      diag << "tile requires ";
+    diag << inChannels << " input/" << outChannels
+         << " output DMA channels, but only " << availIn << " input/"
+         << availOut << " output available";
+    return failure();
+  }
+
+  // Update channel usage
+  if (inChannels > 0)
+    updateChannelUsage(tile, false, inChannels);
+  if (outChannels > 0)
+    updateChannelUsage(tile, true, outChannels);
+
+  return success();
+}
+
+llvm::DenseMap<Operation *, std::pair<int, int>>
+SequentialPlacer::buildChannelRequirements(
+    SmallVector<ObjectFifoCreateOp> &objectFifos,
+    SmallVector<ObjectFifoLinkOp> &objectFifoLinks) {
   llvm::DenseMap<Operation *, std::pair<int, int>> channelRequirements;
 
   // Build map of ObjectFifo name -> CreateOp for link processing
@@ -223,203 +468,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     channelRequirements[linkTileOp].second += numOutputChannels;
   }
 
-  // Place constrained tiles then compute tiles
-  size_t nextCompIdx = 0;
-  for (auto logicalTile : logicalTiles) {
-    // Place fully constrained tiles at their specified coordinates
-    auto col = logicalTile.tryGetCol();
-    auto row = logicalTile.tryGetRow();
-    if (col && row) {
-      TileID tile{*col, *row};
-      if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
-                                               channelRequirements, true)))
-        return failure();
-
-      result[logicalTile] = tile;
-      // Only remove fully constrained compute tiles from availability.
-      // Mem/Shim may still host additional logical tiles as long as
-      // channel/DMA capacity permits.
-      if (logicalTile.getTileType() == AIETileType::CoreTile)
-        availability.removeTile(tile, logicalTile.getTileType());
-      continue;
-    }
-
-    // Place unconstrained compute tiles sequentially
-    // NOTE: Partial constraints (col-only or row-only) are currently ignored
-    if (logicalTile.getTileType() == AIETileType::CoreTile) {
-      if (nextCompIdx >= availability.compTiles.size())
-        return logicalTile.emitError(
-            "no available compute tiles for placement");
-
-      TileID tile = availability.compTiles[nextCompIdx++];
-      if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
-                                               channelRequirements, false)))
-        return failure();
-
-      result[logicalTile] = tile;
-    }
-
-    if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
-      return logicalTile.emitError(
-          "DMA channel-based SequentialPlacer does not support unplaced "
-          "ShimPLTiles (no DMAs).");
-    }
-  }
-
-  // Place mem/shim tiles by ObjectFifo groups to enable efficient merging
-  llvm::DenseMap<int, SmallVector<ObjectFifoCreateOp>> groupToFifos;
-  llvm::DenseMap<int, SmallVector<LogicalTileOp>> groupToLogicalTiles;
-  buildObjectFifoGroups(objectFifos, objectFifoLinks, groupToFifos,
-                        groupToLogicalTiles);
-
-  // Process each group's logical tiles together
-  llvm::DenseSet<int> processedGroups;
-
-  for (auto &[groupId, logicalTiles] : groupToLogicalTiles) {
-    if (processedGroups.count(groupId))
-      continue;
-    processedGroups.insert(groupId);
-
-    // Compute common column from ALL fifos in this group
-    int groupCommonCol = 0;
-    int totalCoreEndpoints = 0;
-    int sumCols = 0;
-
-    auto fifosIt = groupToFifos.find(groupId);
-    if (fifosIt != groupToFifos.end()) {
-      for (auto ofOp : fifosIt->second) {
-        // Get core tile endpoints for this fifo
-        Value producerTile = ofOp.getProducerTile();
-        if (auto *producerOp = producerTile.getDefiningOp()) {
-          if (auto prodLogical = dyn_cast<LogicalTileOp>(producerOp)) {
-            if (prodLogical.getTileType() == AIETileType::CoreTile) {
-              if (result.count(prodLogical.getOperation())) {
-                sumCols += result[prodLogical.getOperation()].col;
-                totalCoreEndpoints++;
-              }
-            }
-          }
-        }
-
-        for (Value consumerTile : ofOp.getConsumerTiles()) {
-          if (auto *consumerOp = consumerTile.getDefiningOp()) {
-            if (auto consLogical = dyn_cast<LogicalTileOp>(consumerOp)) {
-              if (consLogical.getTileType() == AIETileType::CoreTile) {
-                if (result.count(consLogical.getOperation())) {
-                  sumCols += result[consLogical.getOperation()].col;
-                  totalCoreEndpoints++;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Rounded average of core columns
-    if (totalCoreEndpoints > 0) {
-      groupCommonCol = (sumCols + totalCoreEndpoints / 2) / totalCoreEndpoints;
-    }
-
-    // Place each logical tile from this group
-    for (auto logicalTile : logicalTiles) {
-      // Skip if already placed (e.g., constrained)
-      if (result.count(logicalTile.getOperation()))
-        continue;
-
-      // Get channel requirements for this tile
-      auto it = channelRequirements.find(logicalTile.getOperation());
-      int numInputChannels = 0, numOutputChannels = 0;
-      if (it != channelRequirements.end()) {
-        numInputChannels = it->second.first;
-        numOutputChannels = it->second.second;
-      }
-
-      // Find tile with capacity near this group's common column
-      auto maybeTile = findTileWithCapacity(
-          groupCommonCol, availability.nonCompTiles, numInputChannels,
-          numOutputChannels, logicalTile.getTileType());
-
-      if (!maybeTile)
-        return logicalTile.emitError()
-               << "no " << stringifyAIETileType(logicalTile.getTileType())
-               << " with sufficient DMA capacity";
-
-      result[logicalTile] = *maybeTile;
-
-      // Update channel usage
-      if (numInputChannels > 0)
-        updateChannelUsage(*maybeTile, false, numInputChannels);
-      if (numOutputChannels > 0)
-        updateChannelUsage(*maybeTile, true, numOutputChannels);
-    }
-  }
-
-  // Fallback: place any remaining unplaced non-core tiles (not in ObjectFifos)
-  for (auto logicalTile : logicalTiles) {
-    // Skip already placed tiles
-    if (result.count(logicalTile.getOperation()))
-      continue;
-
-    // Skip core tiles (handled above) and ShimPLTile (unsupported)
-    AIETileType tileType = logicalTile.getTileType();
-    if (tileType == AIETileType::CoreTile ||
-        tileType == AIETileType::ShimPLTile)
-      continue;
-
-    // Find first available tile of matching type (no DMA requirements)
-    auto maybeTile =
-        findTileWithCapacity(0, availability.nonCompTiles, 0, 0, tileType);
-
-    if (!maybeTile)
-      return logicalTile.emitError()
-             << "no " << stringifyAIETileType(tileType) << " available";
-
-    result[logicalTile] = *maybeTile;
-  }
-
-  return success();
-}
-
-LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
-    LogicalTileOp logicalTile, TileID tile,
-    const llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements,
-    bool isConstrained) {
-
-  // Get channel requirements
-  auto it = channelRequirements.find(logicalTile.getOperation());
-  int inChannels = 0, outChannels = 0;
-  if (it != channelRequirements.end()) {
-    inChannels = it->second.first;
-    outChannels = it->second.second;
-  }
-
-  // Validate capacity
-  if (!hasAvailableChannels(tile, inChannels, outChannels)) {
-    // Get max channels
-    int maxIn = logicalTile.getNumDestConnections(WireBundle::DMA);
-    int maxOut = logicalTile.getNumSourceConnections(WireBundle::DMA);
-    int availIn = maxIn - availability.inputChannelsUsed[tile];
-    int availOut = maxOut - availability.outputChannelsUsed[tile];
-
-    auto diag = logicalTile.emitError();
-    if (isConstrained)
-      diag << "tile (" << tile.col << ", " << tile.row << ") requires ";
-    else
-      diag << "tile requires ";
-    diag << inChannels << " input/" << outChannels
-         << " output DMA channels, but only " << availIn << " input/"
-         << availOut << " output available";
-    return failure();
-  }
-
-  // Update channel usage
-  if (inChannels > 0)
-    updateChannelUsage(tile, false, inChannels);
-  if (outChannels > 0)
-    updateChannelUsage(tile, true, outChannels);
-
-  return success();
+  return channelRequirements;
 }
 
 void SequentialPlacer::buildObjectFifoGroups(

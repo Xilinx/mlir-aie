@@ -16,6 +16,9 @@
 
 namespace xilinx::AIE {
 
+/// Placement algorithm type for pass option
+enum class PlacerType { SequentialPlacer };
+
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
 
@@ -36,8 +39,7 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(DeviceOp device,
-                          const AIETargetModel &targetModel) = 0;
+  virtual void initialize(const AIETargetModel &targetModel) = 0;
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -70,7 +72,7 @@ public:
   SequentialPlacer(std::optional<int> coresPerCol = std::nullopt)
       : coresPerCol(coresPerCol) {}
 
-  void initialize(DeviceOp device, const AIETargetModel &targetModel) override;
+  void initialize(const AIETargetModel &targetModel) override;
 
   mlir::LogicalResult place(DeviceOp device) override;
 
@@ -78,9 +80,9 @@ public:
 
 private:
   std::optional<int> coresPerCol;
+  int deviceCoresPerCol = 0; // Actual cores per column in device
   TileAvailability availability;
-  const AIETargetModel *targetModel;
-  DeviceOp device;
+  const AIETargetModel *targetModel = nullptr;
 
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
@@ -106,6 +108,11 @@ private:
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements,
       bool isConstrained);
+
+  llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
+  buildChannelRequirements(
+      llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
+      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 };
 
 } // namespace xilinx::AIE

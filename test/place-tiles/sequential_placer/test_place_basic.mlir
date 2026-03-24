@@ -107,14 +107,12 @@ module @constrained_mem_shim {
 
 // -----
 
-// Partial constraints are currently ignored by sequential placer
-
-// Column-only constraint ignored
-// CHECK-LABEL: @partial_col_ignored
-module @partial_col_ignored {
+// Column constraint is honored
+// CHECK-LABEL: @partial_col
+module @partial_col {
   aie.device(npu1) {
-    // Constrained to column 1, but placed at (0, 2)
-    // CHECK: %[[TILE:.*]] = aie.tile(0, 2)
+    // Constrained to column 1
+    // CHECK: %[[TILE:.*]] = aie.tile(1, 2)
     %tile = aie.logical_tile<CoreTile>(1, ?)
     // CHECK: aie.core(%[[TILE]])
     aie.core(%tile) { aie.end }
@@ -124,12 +122,12 @@ module @partial_col_ignored {
 
 // -----
 
-// Row-only constraint ignored
-// CHECK-LABEL: @partial_row_ignored
-module @partial_row_ignored {
+// Row constraint is honored
+// CHECK-LABEL: @partial_row
+module @partial_row {
   aie.device(npu1) {
-    // Constrained to row 3, but placed at (0, 2)
-    // CHECK: %[[TILE:.*]] = aie.tile(0, 2)
+    // Constrained to row 3
+    // CHECK: %[[TILE:.*]] = aie.tile(0, 3)
     %tile = aie.logical_tile<CoreTile>(?, 3)
     // CHECK: aie.core(%[[TILE]])
     aie.core(%tile) { aie.end }
@@ -139,17 +137,70 @@ module @partial_row_ignored {
 
 // -----
 
-// MemTile column constraint ignored (uses commonCol)
-// CHECK-LABEL: @partial_memtile_col
-module @partial_memtile_col {
+// Multiple tiles with same column constraint
+// CHECK-LABEL: @multiple_same_col_constraint
+module @multiple_same_col_constraint {
+  aie.device(npu1) {
+    // Both constrained to column 1, should get rows 2 and 3
+    // CHECK-DAG: %[[T1:.*]] = aie.tile(1, 2)
+    %t1 = aie.logical_tile<CoreTile>(1, ?)
+    // CHECK-DAG: %[[T2:.*]] = aie.tile(1, 3)
+    %t2 = aie.logical_tile<CoreTile>(1, ?)
+
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// MemTile placement uses commonCol from connected cores
+// CHECK-LABEL: @memtile_near_core
+module @memtile_near_core {
   aie.device(npu1) {
     // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
     %core = aie.logical_tile<CoreTile>(?, ?)
-    // Constrained to column 2, but placed at (0, 1)
+    // MemTile placed near core's column
     // CHECK-DAG: %[[MEM:.*]] = aie.tile(0, 1)
+    %mem = aie.logical_tile<MemTile>(?, ?)
+    // CHECK: aie.objectfifo @of1(%[[MEM]], {%[[CORE]]}, 2 : i32)
+    aie.objectfifo @of1 (%mem, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// MemTile column constraint overrides commonCol
+// CHECK-LABEL: @memtile_col_constraint
+module @memtile_col_constraint {
+  aie.device(npu1) {
+    // Core in column 0
+    // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(2, 1)
     %mem = aie.logical_tile<MemTile>(2, ?)
     // CHECK: aie.objectfifo @of1(%[[MEM]], {%[[CORE]]}, 2 : i32)
     aie.objectfifo @of1 (%mem, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// ShimTile column constraint overrides commonCol
+// CHECK-LABEL: @shimtile_col_constraint
+module @shimtile_col_constraint {
+  aie.device(npu1) {
+    // Core in column 0
+    // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[SHIM:.*]] = aie.tile(3, 0)
+    %shim = aie.logical_tile<ShimNOCTile>(3, ?)
+    // CHECK: aie.objectfifo @of1(%[[SHIM]], {%[[CORE]]}, 2 : i32)
+    aie.objectfifo @of1 (%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.core(%core) { aie.end }
     // CHECK-NOT: aie.logical_tile
   }
 }

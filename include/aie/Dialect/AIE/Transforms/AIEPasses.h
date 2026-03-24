@@ -13,6 +13,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+#include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
