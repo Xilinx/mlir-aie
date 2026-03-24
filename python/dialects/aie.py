@@ -634,7 +634,7 @@ def trace_host_config(
     routing=None,
     trace_after_last_tensor=None,
     loc=None,
-    ip=None
+    ip=None,
 ):
     kwargs = {"buffer_size": buffer_size, "loc": loc, "ip": ip}
     if arg_idx is not None:
@@ -647,7 +647,9 @@ def trace_host_config(
             elif routing == "per_column":
                 routing = TraceShimRouting.PerColumn
             else:
-                raise ValueError(f"Unknown routing: {routing}. Use 'single' or 'per_column'.")
+                raise ValueError(
+                    f"Unknown routing: {routing}. Use 'single' or 'per_column'."
+                )
         kwargs["routing"] = routing
     if trace_after_last_tensor is not None:
         kwargs["trace_after_last_tensor"] = trace_after_last_tensor

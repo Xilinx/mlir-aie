@@ -33,3 +33,27 @@ module @invalid_buffer_size {
     }
   }
 }
+
+// -----
+
+// Test: unknown routing strategy parse error
+module @invalid_routing {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence() {
+      aie.trace.host_config buffer_size = 8192 routing = invalid_routing
+    // expected-error@+1 {{custom op 'aie.trace.host_config' unknown routing strategy: invalid_routing}}
+    }
+  }
+}
+
+// -----
+
+// Test: invalid trace_after_last_tensor value parse error
+module @invalid_trace_after_value {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence() {
+      aie.trace.host_config buffer_size = 8192 trace_after_last_tensor = maybe
+    // expected-error@+1 {{custom op 'aie.trace.host_config' expected 'true' or 'false'}}
+    }
+  }
+}
