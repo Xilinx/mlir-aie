@@ -339,7 +339,7 @@ run_py_7: build/final_bn_7.xclbin build/insts_bn_7.bin build/aie2_bn_7.mlir
 #	${powershell} python3 ${srcdir}/test_bn_2_3.py -x build/final_bn_2_3.xclbin -i build/insts_bn_2_3.bin -k MLIR_AIE
 
 run_py_4_5: build/final_bn_4_5.xclbin build/insts_bn_4_5.bin build/aie2_bn_4_5.mlir
-	${powershell} python3 ${srcdir}/test_bn_fused.py -bn 4_5 -x build/final_bn_4_5.xclbin -i build/insts_bn_4_5.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_fused2.py -bn 4_5 -x build/final_bn_4_5.xclbin -i build/insts_bn_4_5.bin -k MLIR_AIE
 
 run_py_8_9: build/final_bn_8_9.xclbin build/insts_bn_8_9.bin build/aie2_bn_8_9.mlir
-	${powershell} python3 ${srcdir}/test_bn_fused.py -bn 8_9 -x build/final_bn_8_9.xclbin -i build/insts_bn_8_9.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_fused2.py -bn 8_9 -x build/final_bn_8_9.xclbin -i build/insts_bn_8_9.bin -k MLIR_AIE
