@@ -16,8 +16,10 @@ from aie.dialects.aie import (
     trace_start,
     trace_stop,
     trace_start_config,
+    trace_host_config,
     TraceMode,
     TracePacketType,
+    TraceShimRouting,
     DMAChannelDir,
     get_target_model,
 )
@@ -377,7 +379,6 @@ def _get_default_events_for_tile(tile_op, is_mem_trace=False):
 
 def configure_trace(
     tiles_to_trace,
-    trace_size=None,
     start_broadcast=15,
     stop_broadcast=14,
     coretile_events=None,
@@ -387,15 +388,11 @@ def configure_trace(
 ):
     """Generate aie.trace ops for a list of tiles.
 
-    This function emits declarative aie.trace operations that will be lowered
-    by compiler passes to create packet flows, configure trace registers,
-    and set up shim DMAs.
-
-    Call start_trace() at the beginning of runtime_sequence to activate tracing.
+    This function emits declarative aie.trace operations that define what
+    events to trace.
 
     Args:
         tiles_to_trace: List of tile operations to configure tracing for.
-        trace_size: Optional trace buffer size (in bytes).
         start_broadcast: Broadcast channel for trace start event (default: 15).
         stop_broadcast: Broadcast channel for trace stop event (default: 14).
         coretile_events: List of events for core tile tracing (max 8).
@@ -492,7 +489,7 @@ def configure_trace(
                     port_configs[slot] = (config, event.code.name)
 
         # Generate the aie.trace op
-        @trace(tile_op, trace_name, buffer_size=trace_size)
+        @trace(tile_op, trace_name)
         def trace_body():
             if is_core_trace:
                 trace_mode(TraceMode.EventTime)
@@ -501,16 +498,15 @@ def configure_trace(
             for event in padded_events:
                 trace_event(event)
 
-            # Emit one trace_port per unique slot (deduplicated above)
+            # Emit one trace_port per unique slot
             for slot, (config, _) in port_configs.items():
                 port, channel, direction = config
                 trace_port(slot, port, channel, direction)
 
-            # All tiles use broadcast start/stop. AIEInsertTraceFlows pass
-            # handles the special case where a shim tile is both being traced
-            # AND is the destination for trace data: destination shims have their
-            # timer control configured with USER_EVENT_1 directly instead of
-            # listening on the broadcast (which would be redundant self-listening).
+            # All tiles use broadcast start/stop. Trace lowering pass
+            # handles special case where a traced shim tile is also
+            # the trace destination and configures timer control with
+            # USER_EVENT_1
             trace_start(broadcast=start_broadcast)
             trace_stop(broadcast=stop_broadcast)
 
@@ -518,12 +514,43 @@ def configure_trace(
         packet_id += 1
 
 
-def start_trace():
-    """Emit aie.trace.start_config ops to activate tracing.
+def configure_trace_output(
+    trace_size=8192,
+    ddr_id=4,
+    routing="single",
+    trace_after_last_tensor=False,
+):
+    """Configure trace output buffer and emit start_config ops.
 
-    This function should be called at the start of a runtime_sequence context
-    to activate tracing. It emits start_config ops for all traces configured
-    by the most recent configure_trace() call.
+    This function should be called inside a runtime_sequence context
+    to configure how trace data is collected and routed to host memory.
+
+    Args:
+        trace_size: Trace buffer size in bytes. Default is 8192.
+        ddr_id: DDR buffer index (0-4) mapping to XRT group_id (3-7).
+                Default is 4 (group_id 7).
+        routing: Shim routing strategy - "single" (all to column 0) or
+                 "per_column" (each column to its own shim).
+        trace_after_last_tensor: If True, append trace data after the last
+                                 runtime_sequence tensor argument. Only valid
+                                 with routing="single".
     """
+    # Map string routing to enum
+    if routing == "single":
+        routing_attr = TraceShimRouting.Single
+    elif routing == "per_column":
+        routing_attr = TraceShimRouting.PerColumn
+    else:
+        raise ValueError(f"Unknown routing strategy: {routing}.")
+
+    # Emit host_config op
+    trace_host_config(
+        buffer_size=trace_size,
+        arg_idx=ddr_id,
+        routing=routing_attr,
+        trace_after_last_tensor=trace_after_last_tensor,
+    )
+
+    # Emit start_config for each configured trace
     for trace_name in _configured_trace_names:
         trace_start_config(trace_name)

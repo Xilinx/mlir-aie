@@ -325,7 +325,7 @@ class Runtime(Resolvable):
         @runtime_sequence(*rt_dtypes)
         def sequence(*args):
 
-            if self._trace_size is not None:
+            if self._trace_size is not None and self._trace_size > 0:
                 tiles_to_trace = []
                 if self._trace_workers is not None:
                     for w in self._trace_workers:
@@ -335,8 +335,8 @@ class Runtime(Resolvable):
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
 
-                logger.debug("start_trace")
-                trace_utils.start_trace()
+                logger.debug("configure_trace_output")
+                trace_utils.configure_trace_output(trace_size=self._trace_size)
 
             for rt_data, rt_data_val in zip(self._rt_data, args):
                 rt_data.op = rt_data_val

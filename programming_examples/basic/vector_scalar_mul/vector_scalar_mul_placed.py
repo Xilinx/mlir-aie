@@ -86,7 +86,6 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
         if trace_size > 0:
             trace_utils.configure_trace(
                 tiles_to_trace,
-                trace_size=trace_size,
                 coretile_events=[
                     CoreEvent.INSTR_EVENT_0,
                     CoreEvent.INSTR_EVENT_1,
@@ -114,7 +113,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             if trace_size > 0:
-                trace_utils.start_trace()
+                trace_utils.configure_trace_output(trace_size=trace_size)
 
             in_task = shim_dma_single_bd_task(
                 of_in, A, sizes=[1, 1, 1, tensor_size], issue_token=True

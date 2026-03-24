@@ -268,7 +268,7 @@ def my_matmul(
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [compute_tile2]
         if enable_tracing:
-            trace_utils.configure_trace(tiles_to_trace, trace_size=trace_size)
+            trace_utils.configure_trace(tiles_to_trace)
 
         # Set up compute tiles
 
@@ -300,7 +300,7 @@ def my_matmul(
         def sequence(A, B, C):
 
             if enable_tracing:
-                trace_utils.start_trace()
+                trace_utils.configure_trace_output(trace_size=trace_size)
 
             # This example uses only does 2 tile rows to prevent exhaustion of BDs.
             # In general, we do 2-4 at a time to reuse BDs.

@@ -122,7 +122,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             tiles_to_trace = [cores[0]]
 
         if trace_size > 0:
-            trace_utils.configure_trace(tiles_to_trace, trace_size=trace_size)
+            trace_utils.configure_trace(tiles_to_trace)
 
         # AIE-array data movement with object fifos
         of_out = object_fifo("out", cores[0], ShimTile, buffer_depth, out_ty)
@@ -163,7 +163,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         @runtime_sequence(in_ty, out_ty)
         def sequence(A, C):
             if n_cores > 1 and trace_size > 0:
-                trace_utils.start_trace()
+                trace_utils.configure_trace_output(trace_size=trace_size)
 
             in_task = shim_dma_single_bd_task(inA, A, sizes=[1, 1, 1, N])
             out_task = shim_dma_single_bd_task(

@@ -88,7 +88,7 @@ def conv2dk1(
             # Set up tracing
             tiles_to_trace = [ComputeTile2]
             if trace_size > 0:
-                trace_utils.configure_trace(tiles_to_trace, trace_size=trace_size)
+                trace_utils.configure_trace(tiles_to_trace)
 
             # Set up compute tiles
 
@@ -127,7 +127,9 @@ def conv2dk1(
             def sequence(I, W, O):
 
                 if trace_size > 0:
-                    trace_utils.start_trace()
+                    trace_utils.configure_trace_output(
+                        trace_size=trace_size, trace_after_last_tensor=True
+                    )
 
                 rtp2[0] = 10
 

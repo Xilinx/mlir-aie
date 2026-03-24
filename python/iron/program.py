@@ -114,10 +114,9 @@ class Program:
                     for w in self._rt._workers:
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
-                if self._rt._trace_size is not None:
+                if self._rt._trace_size is not None and self._rt._trace_size > 0:
                     trace_utils.configure_trace(
                         tiles_to_trace,
-                        trace_size=self._rt._trace_size,
                         coretile_events=self._rt._coretile_events,
                         coremem_events=self._rt._coremem_events,
                         memtile_events=self._rt._memtile_events,

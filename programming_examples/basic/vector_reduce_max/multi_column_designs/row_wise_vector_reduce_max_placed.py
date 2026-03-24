@@ -144,7 +144,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [core for core in cores]
         if trace_size > 0:
-            trace_utils.configure_trace(tiles_to_trace, trace_size=trace_size)
+            trace_utils.configure_trace(tiles_to_trace)
 
         # Set up compute tiles
         for i in range(n_cores):
@@ -222,7 +222,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         @runtime_sequence(in_ty, out_ty)
         def sequence(A, C):
             if trace_size > 0:
-                trace_utils.start_trace()
+                trace_utils.configure_trace_output(trace_size=trace_size)
             in_task = []
             for i in range(n_channels):
                 in_task.append(

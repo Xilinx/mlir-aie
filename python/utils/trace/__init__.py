@@ -535,7 +535,7 @@ from .setup import (
     configure_packet_ctrl_flow,
     config_ctrl_pkts_aie,
     configure_trace,
-    start_trace,
+    configure_trace_output,
 )
 from .utils import (
     parity,
