@@ -7,7 +7,7 @@
 
 # RUN: %python %s | FileCheck %s
 
-# Test that configure_trace() and configure_trace_output() generate correct aie.trace ops
+# Test that configure_trace() and start_trace() generate correct aie.trace ops
 
 import sys
 
@@ -116,14 +116,14 @@ def passthroughKernel():
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(lineWidthInInt32s, T.i32())
 
-            # Verify configure_trace_output() generates host_config and start_config ops
+            # Verify start_trace() generates host_config and start_config ops
             # CHECK: aie.runtime_sequence
             # CHECK:   aie.trace.host_config buffer_size = 8192
             # CHECK:   aie.trace.start_config @trace_core_1
             # CHECK:   aie.trace.start_config @trace_shim_2
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
-                trace_utils.configure_trace_output(trace_size=8192, ddr_id=4)
+                trace_utils.start_trace(trace_size=8192, ddr_id=4)
 
                 npu_dma_memcpy_nd(
                     metadata=of_in,

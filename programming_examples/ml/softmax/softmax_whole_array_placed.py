@@ -187,7 +187,7 @@ def vector_softmax(dev, trace_size, n_col, n_cores_per_col, N):
         def sequence(A, C):
 
             if trace_size > 0:
-                trace_utils.configure_trace_output(trace_size=trace_size)
+                trace_utils.start_trace(trace_size=trace_size)
 
             in_tasks = []
             out_tasks = []

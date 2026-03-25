@@ -241,7 +241,7 @@ def group0_impl(dev, trace_size):
         def sequence(A, C, notUsed):
 
             if trace_size > 0:
-                trace_utils.configure_trace_output(trace_size=trace_size)
+                trace_utils.start_trace(trace_size=trace_size)
 
             din_task = shim_dma_single_bd_task(
                 of_din_L3L2, A, sizes=[1, 1, 1, din_size]

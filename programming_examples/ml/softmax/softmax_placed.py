@@ -113,7 +113,7 @@ def vector_softmax(dev, trace_size, N):
         def sequence(A, C):
 
             if trace_size > 0:
-                trace_utils.configure_trace_output(trace_size=trace_size)
+                trace_utils.start_trace(trace_size=trace_size)
 
             in_task = shim_dma_single_bd_task(inA, A, sizes=[1, 1, 1, N])
             out_task = shim_dma_single_bd_task(

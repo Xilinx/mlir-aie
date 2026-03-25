@@ -65,10 +65,10 @@ class Runtime(Resolvable):
         self._workers = []
         self._open_task_groups = []
         self._trace_size = None
-        self._trace_offset = None
         self._trace_workers = None
+        self._trace_after_last_tensor = False
         self._strict_task_groups = strict_task_groups
-        self.ddr_id = None
+        self._ddr_id = 4
 
     @contextmanager
     def sequence(self, *input_types: type[np.ndarray]):
@@ -242,9 +242,9 @@ class Runtime(Resolvable):
     def enable_trace(
         self,
         trace_size: int = None,
-        trace_offset: int = None,
         workers: list | None = None,
-        ddr_id: int = None,
+        ddr_id: int = 4,
+        trace_after_last_tensor: bool = False,
         coretile_events: list | None = None,
         coremem_events: list | None = None,
         memtile_events: list | None = None,
@@ -257,17 +257,19 @@ class Runtime(Resolvable):
 
         Args:
             trace_size (int): Size of the trace buffer in bytes.
-            trace_offset (int | None, optional): Byte offset into the DDR buffer where trace
-                data should begin. Defaults to None (treated as 0).
             workers (list[Worker] | None, optional): Specific workers to trace. If None,
                 all workers with ``trace`` set will be traced. Defaults to None.
-            ddr_id (int | None, optional): XRT inout buffer index to write trace data into.
-                Defaults to None (treated as 4, the conventional last buffer slot).
+            ddr_id (int, optional): XRT inout buffer index to write trace data into.
+                Defaults to 4 (the conventional last buffer slot).
+                Ignored when ``trace_after_last_tensor`` is True.
+            trace_after_last_tensor (bool, optional): If True, append trace data after the
+                last runtime_sequence tensor argument. The compiler automatically determines
+                the buffer index and offset. Defaults to False.
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
                 See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available
                 events under (type)EventAIE such as CoreEventAIE.
                 Defaults to None (uses hardware defaults).
-            coremem_events (list | None, optional): List of up to 8 mem tile trace events.
+            coremem_events (list | None, optional): List of up to 8 core memory trace events.
                 Defaults to None (uses hardware defaults).
             memtile_events (list | None, optional): List of up to 8 mem tile trace events.
                 Defaults to None (uses hardware defaults).
@@ -275,9 +277,9 @@ class Runtime(Resolvable):
                 Defaults to None (uses hardware defaults).
         """
         self._trace_size = trace_size
-        self._trace_offset = trace_offset
         self._trace_workers = workers
         self._ddr_id = ddr_id
+        self._trace_after_last_tensor = trace_after_last_tensor
         self._coretile_events = coretile_events
         self._coremem_events = coremem_events
         self._memtile_events = memtile_events
@@ -335,8 +337,13 @@ class Runtime(Resolvable):
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
 
-                logger.debug("configure_trace_output")
-                trace_utils.configure_trace_output(trace_size=self._trace_size)
+                # TODO: Add support for other shim trace routing options
+                trace_utils.start_trace(
+                    trace_size=self._trace_size,
+                    ddr_id=self._ddr_id,
+                    routing="single",
+                    trace_after_last_tensor=self._trace_after_last_tensor,
+                )
 
             for rt_data, rt_data_val in zip(self._rt_data, args):
                 rt_data.op = rt_data_val

@@ -308,7 +308,7 @@ def my_matmul(
             def sequence(A, B, C):
 
                 if enable_tracing:
-                    trace_utils.configure_trace_output(trace_size=trace_size)
+                    trace_utils.start_trace(trace_size=trace_size)
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 4

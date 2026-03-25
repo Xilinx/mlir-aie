@@ -282,7 +282,7 @@ def conv2dk14(
             def sequence(I, W, O):
 
                 if trace_size > 0:
-                    trace_utils.configure_trace_output(trace_size=trace_size)
+                    trace_utils.start_trace(trace_size=trace_size)
 
                 # rtp2[0] = 14
 

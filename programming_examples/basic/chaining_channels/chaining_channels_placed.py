@@ -157,7 +157,7 @@ def my_chaining_channels():
             def sequence(A, B):
                 # Setup trace buffer (if enabled)
                 if enable_trace:
-                    trace_utils.configure_trace_output(trace_size=trace_size)
+                    trace_utils.start_trace(trace_size=trace_size)
 
                 # Release MemTile lock to trigger DMA
                 npu_write32(column=col, row=1, address=0xC0000, value=1)

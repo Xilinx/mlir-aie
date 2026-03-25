@@ -34,7 +34,7 @@ After `make run_trace` or `make run_trace_py`:
 
 ### Python API (`aie_trace.py`)
 
-The recommended approach uses `configure_trace()` and `configure_trace_output()`:
+The recommended approach uses `configure_trace()` and `start_trace()`:
 
 ```python
 import aie.utils.trace as trace_utils
@@ -55,7 +55,7 @@ trace_utils.configure_trace(
 # Inside runtime_sequence - activate tracing
 @runtime_sequence(...)
 def sequence(...):
-    trace_utils.configure_trace_output()
+    trace_utils.start_trace()
     # ... data transfers
 ```
 

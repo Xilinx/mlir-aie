@@ -300,7 +300,7 @@ def my_matmul(
         def sequence(A, B, C):
 
             if enable_tracing:
-                trace_utils.configure_trace_output(trace_size=trace_size)
+                trace_utils.start_trace(trace_size=trace_size)
 
             # This example uses only does 2 tile rows to prevent exhaustion of BDs.
             # In general, we do 2-4 at a time to reuse BDs.

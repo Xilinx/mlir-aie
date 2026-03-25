@@ -10,7 +10,7 @@
 #
 # Python example using the declarative trace API:
 # - configure_trace() outside runtime_sequence to set up trace ops
-# - configure_trace_output() inside runtime_sequence to activate tracing
+# - start_trace() inside runtime_sequence to activate tracing
 #
 # Usage:
 #   python3 aie_trace.py > aie_trace_from_py.mlir
@@ -149,7 +149,7 @@ def build_aie_trace():
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             # Start trace configuration
-            trace_utils.configure_trace_output(trace_size=8192)
+            trace_utils.start_trace(trace_size=8192)
 
             # Configure DMA tasks for input, factor, and output
             in_task = shim_dma_single_bd_task(

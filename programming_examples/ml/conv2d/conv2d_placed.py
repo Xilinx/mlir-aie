@@ -127,7 +127,7 @@ def conv2dk1(
             def sequence(I, W, O):
 
                 if trace_size > 0:
-                    trace_utils.configure_trace_output(
+                    trace_utils.start_trace(
                         trace_size=trace_size, trace_after_last_tensor=True
                     )
 

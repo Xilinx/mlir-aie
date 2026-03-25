@@ -514,16 +514,16 @@ def configure_trace(
         packet_id += 1
 
 
-def configure_trace_output(
+def start_trace(
     trace_size=8192,
     ddr_id=4,
     routing="single",
     trace_after_last_tensor=False,
 ):
-    """Configure trace output buffer and emit start_config ops.
+    """Start tracing and configure trace output buffer.
 
     This function should be called inside a runtime_sequence context
-    to configure how trace data is collected and routed to host memory.
+    to activate tracing and configure how trace data is routed to host memory.
 
     Args:
         trace_size: Trace buffer size in bytes. Default is 8192.

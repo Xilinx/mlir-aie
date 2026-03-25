@@ -69,7 +69,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
-                trace_utils.configure_trace_output(trace_size=trace_size)
+                trace_utils.start_trace(trace_size=trace_size)
 
             in_task = shim_dma_single_bd_task(
                 of_in, inTensor, sizes=[1, 1, 1, N], issue_token=True
