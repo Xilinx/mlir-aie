@@ -5,9 +5,9 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-from aie2_bottleneckA_subblock_fused2 import mobilenetV3BottleneckASubblockFused2
+# from aie2_bottleneckA_subblock_fused2 import mobilenetV3BottleneckASubblockFused2
 
-# from aie2_bottleneckA_subblock_fused2Static import mobilenetV3BottleneckASubblockFused2
+from aie2_bottleneckA_subblock_fused2Static import mobilenetV3BottleneckASubblockFused2
 
 from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx
