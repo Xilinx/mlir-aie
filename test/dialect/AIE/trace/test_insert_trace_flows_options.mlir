@@ -66,37 +66,3 @@ module @multi_column_single {
   }
 }
 
-// -----
-
-// Test: routing=per_column routes each column to its own shim with distinct arg_idx
-// CHECK-LABEL: module @multi_column_per_column
-module @multi_column_per_column {
-  aie.device(npu1_2col) {
-    %tile02 = aie.tile(0, 2)
-    %tile12 = aie.tile(1, 2)
-    %tile00 = aie.tile(0, 0)
-    %tile10 = aie.tile(1, 0)
-    aie.trace @trace_col0(%tile02) {
-      aie.trace.packet id=1 type=core
-      aie.trace.event<"INSTR_EVENT_0">
-      aie.trace.start broadcast=15
-      aie.trace.stop broadcast=14
-    }
-    aie.trace @trace_col1(%tile12) {
-      aie.trace.packet id=2 type=core
-      aie.trace.event<"INSTR_EVENT_0">
-      aie.trace.start broadcast=15
-      aie.trace.stop broadcast=14
-    }
-    aie.runtime_sequence(%arg0: memref<16xi32>) {
-      // Different arg_idx for each column's trace buffer
-      // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4{{.*}}}
-      // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 5{{.*}}}
-      aie.trace.host_config buffer_size = 65536 routing = per_column
-      aie.trace.start_config @trace_col0
-    }
-    // Each column routes to its own shim
-    // CHECK-DAG: aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>
-    // CHECK-DAG: aie.packet_dest<%shim_noc_tile_1_0, DMA : 1>
-  }
-}

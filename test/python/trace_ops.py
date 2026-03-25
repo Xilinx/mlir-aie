@@ -14,7 +14,6 @@ from aie.dialects.aie import (
     EdgeTrigger,
     TraceMode,
     TracePacketType,
-    TraceShimRouting,
     WireBundle,
     device,
     tile,
@@ -316,24 +315,6 @@ def traceHostConfig():
         @runtime_sequence()
         def seq():
             trace_host_config(buffer_size=8192)
-
-
-# CHECK-LABEL: traceHostConfigWithOptions
-# CHECK: aie.runtime_sequence @seq() {
-# CHECK:   aie.trace.host_config buffer_size = 65536 arg_idx = 3 routing = per_column
-# CHECK: }
-@construct_and_print_module
-def traceHostConfigWithOptions():
-    @device(AIEDevice.npu1_1col)
-    def device_body():
-        @runtime_sequence()
-        def seq():
-            # Can use string "per_column" or enum TraceShimRouting.PerColumn
-            trace_host_config(
-                buffer_size=65536,
-                arg_idx=3,
-                routing="per_column",
-            )
 
 
 # CHECK-LABEL: traceHostConfigAfterTensor

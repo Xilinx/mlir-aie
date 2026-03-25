@@ -100,8 +100,7 @@ struct AIEInsertTraceFlowsPass
     // Get configuration from host_config
     int bufferSizeBytes = hostConfig.getBufferSize();
     int traceArgIdx = hostConfig.getArgIdx();
-    bool perColumnShim =
-        (hostConfig.getRouting() == TraceShimRouting::PerColumn);
+    auto routing = hostConfig.getRouting();
     bool traceAfterLastTensor = hostConfig.getTraceAfterLastTensor();
 
     // Compute offset for trace_after_last_tensor mode
@@ -215,55 +214,11 @@ struct AIEInsertTraceFlowsPass
       traceInfos.push_back(info);
     }
 
-    // Phase 2b: Select shim tiles
-    // - Default: all traces route to column 0 shim
-    // - per-column-shim=true: each column's traces route to that
-    //   column's shim
+    // Phase 2b: Select shim tiles based on routing strategy
     std::map<int, ShimInfo> shimInfos; // col -> ShimInfo
 
-    if (perColumnShim) {
-      // Per-column mode: each column gets its own shim
-      std::map<int, std::vector<TraceInfo>> tracesByCol;
-      for (auto &info : traceInfos) {
-        int col = info.tile.getCol();
-        tracesByCol[col].push_back(info);
-      }
-
-      // Each shim needs distinct argIdx to write to different host buffers.
-      int nextArgIdx = traceArgIdx;
-
-      for (auto &[col, colTraces] : tracesByCol) {
-        TileOp shimTile = nullptr;
-        for (auto tile : device.getOps<TileOp>()) {
-          if (tile.getCol() == col && tile.getRow() == 0) {
-            shimTile = tile;
-            break;
-          }
-        }
-
-        if (!shimTile) {
-          builder.setInsertionPointToStart(&device.getRegion().front());
-          shimTile = TileOp::create(builder, device.getLoc(), col, 0);
-        }
-
-        ShimInfo shimInfo;
-        shimInfo.shimTile = shimTile;
-        shimInfo.channel = clShimChannel;
-        shimInfo.bdId = clDefaultBdId;
-        shimInfo.argIdx = nextArgIdx++;
-        shimInfo.bufferOffset = traceBufferOffset;
-        shimInfo.traceSources = colTraces;
-        // Collect broadcast channels from traces that use them
-        for (auto &trace : colTraces) {
-          if (trace.startBroadcast && !shimInfo.startBroadcast)
-            shimInfo.startBroadcast = trace.startBroadcast;
-          if (trace.stopBroadcast && !shimInfo.stopBroadcast)
-            shimInfo.stopBroadcast = trace.stopBroadcast;
-        }
-        shimInfos[col] = shimInfo;
-      }
-    } else {
-      // Default: all traces route to column 0 shim
+    if (routing == TraceShimRouting::Single) {
+      // All traces route to column 0 shim
       int targetCol = 0;
       TileOp shimTile = nullptr;
       for (auto tile : device.getOps<TileOp>()) {

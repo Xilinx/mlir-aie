@@ -10,19 +10,6 @@
 
 // RUN: aie-opt %s -split-input-file -verify-diagnostics
 
-// Test: trace_after_last_tensor requires routing = single
-module @trace_after_with_per_column {
-  aie.device(npu1_1col) {
-    %tile02 = aie.tile(0, 2)
-    aie.runtime_sequence(%arg0: memref<16xi32>) {
-      // expected-error@+1 {{'aie.trace.host_config' op appending trace data to the last tensor argument only works with single shim destination strategy (routing=single)}}
-      aie.trace.host_config buffer_size = 65536 routing = per_column trace_after_last_tensor = true
-    }
-  }
-}
-
-// -----
-
 // Test: buffer_size must be positive
 module @invalid_buffer_size {
   aie.device(npu1_1col) {

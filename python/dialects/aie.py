@@ -630,30 +630,25 @@ def trace_start_config(name, *, loc=None, ip=None):
 def trace_host_config(
     buffer_size,
     *,
-    arg_idx=None,
-    routing=None,
-    trace_after_last_tensor=None,
+    arg_idx=4,
+    routing=TraceShimRouting.Single,
+    trace_after_last_tensor=False,
     loc=None,
     ip=None,
 ):
-    kwargs = {"buffer_size": buffer_size, "loc": loc, "ip": ip}
-    if arg_idx is not None:
-        kwargs["arg_idx"] = arg_idx
-    if routing is not None:
-        # Accept string or enum
-        if isinstance(routing, str):
-            if routing == "single":
-                routing = TraceShimRouting.Single
-            elif routing == "per_column":
-                routing = TraceShimRouting.PerColumn
-            else:
-                raise ValueError(
-                    f"Unknown routing: {routing}. Use 'single' or 'per_column'."
-                )
-        kwargs["routing"] = routing
-    if trace_after_last_tensor is not None:
-        kwargs["trace_after_last_tensor"] = trace_after_last_tensor
-    return TraceHostConfigOp(**kwargs)
+    if isinstance(routing, str):
+        if routing == "single":
+            routing = TraceShimRouting.Single
+        else:
+            raise ValueError(f"Unknown routing strategy: {routing}.")
+    return TraceHostConfigOp(
+        buffer_size=buffer_size,
+        arg_idx=arg_idx,
+        routing=routing,
+        trace_after_last_tensor=trace_after_last_tensor,
+        loc=loc,
+        ip=ip,
+    )
 
 
 switchbox = region_op(
