@@ -9,5 +9,5 @@ rich
 ml_dtypes
 cloudpickle # required by eudsl when it is vendored instead of installed
 -f https://llvm.github.io/eudsl
-eudsl-python-extras==0.1.0.20260308.1929+09d24cd \
+eudsl-python-extras==0.1.0.20260310.642+a6ab724 \
   --config-settings=EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie

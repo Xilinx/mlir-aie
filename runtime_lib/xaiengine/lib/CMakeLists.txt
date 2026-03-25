@@ -46,8 +46,17 @@ else()
                         ${CMAKE_CURRENT_BINARY_DIR}/../include
                         ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
 
-    add_aiert_library(xaienginecdo ${XAIE_SOURCE_DIR})
-    target_compile_definitions(xaienginecdo PRIVATE __AIECDO__ __AIESIM__)
+    if(WIN32)
+        add_aiert_library(xaienginecdo ${XAIE_SOURCE_DIR} STATIC)
+        set_target_properties(xaienginecdo PROPERTIES OUTPUT_NAME xaiengine)
+        target_compile_definitions(xaienginecdo PRIVATE __AIECDO__)
+    else()
+        add_aiert_library(xaienginecdo ${XAIE_SOURCE_DIR})
+        target_compile_definitions(xaienginecdo PRIVATE __AIECDO__ __AIESIM__)
+    endif()
     target_include_directories(xaienginecdo SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR}/cdo-driver)
-    install(TARGETS xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
+    install(TARGETS xaienginecdo
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib
+            LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib
+            RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/bin)
 endif()
