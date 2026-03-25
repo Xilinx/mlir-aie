@@ -19,7 +19,6 @@ from aie.dialects.aie import (
     trace_host_config,
     TraceMode,
     TracePacketType,
-    TraceShimRouting,
     DMAChannelDir,
     get_target_model,
 )
@@ -529,25 +528,17 @@ def start_trace(
         trace_size: Trace buffer size in bytes. Default is 8192.
         ddr_id: DDR buffer index (0-4) mapping to XRT group_id (3-7).
                 Default is 4 (group_id 7).
-        routing: Shim routing strategy - "single" (all to column 0) or
-                 "per_column" (each column to its own shim).
+        routing: Shim routing strategy. Currently only "single" is supported,
+                 which routes all traces to column 0's shim.
         trace_after_last_tensor: If True, append trace data after the last
                                  runtime_sequence tensor argument. Only valid
                                  with routing="single".
     """
-    # Map string routing to enum
-    if routing == "single":
-        routing_attr = TraceShimRouting.Single
-    elif routing == "per_column":
-        routing_attr = TraceShimRouting.PerColumn
-    else:
-        raise ValueError(f"Unknown routing strategy: {routing}.")
-
-    # Emit host_config op
+    # Emit host_config op (handles string-to-enum conversion for routing)
     trace_host_config(
         buffer_size=trace_size,
         arg_idx=ddr_id,
-        routing=routing_attr,
+        routing=routing,
         trace_after_last_tensor=trace_after_last_tensor,
     )
 
