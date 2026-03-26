@@ -10,6 +10,7 @@
 
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows="lateral-routing=true" | FileCheck %s
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows | FileCheck %s --check-prefix=NOLATRL
+// RUN: aie-opt %s --split-input-file -aie-insert-trace-flows="lateral-routing=true lateral-target-col=1" | FileCheck %s --check-prefix=FORCED
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows="lateral-routing=true distribute-channels=true" | FileCheck %s --check-prefix=COMBO
 
 // -----
@@ -46,6 +47,9 @@ module @lateral_basic {
 
     // Without lateral routing, trace stays on column 0
     // NOLATRL: aie.packet_dest<%{{.*}}0_0{{.*}}, DMA : 1>
+
+    // With forced target column 1, routes to column 1
+    // FORCED: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 1>
   }
 }
 
@@ -77,6 +81,9 @@ module @lateral_no_spare {
 
     // No spare column, falls back to column 0
     // CHECK: aie.packet_dest<%{{.*}}0_0{{.*}}, DMA : 1>
+
+    // With forced target, overrides even when target column has active cores
+    // FORCED: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 1>
   }
 }
 

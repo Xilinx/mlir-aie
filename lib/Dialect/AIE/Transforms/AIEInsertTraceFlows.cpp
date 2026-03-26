@@ -298,8 +298,8 @@ struct AIEInsertTraceFlowsPass
           continue; // already computed
         if (activeColumns.count(curTarget) == 0)
           continue; // already spare, no redirect needed
-        int spare = findNearestSpareColumn(curTarget, activeColumns,
-                                           targetModel);
+        int spare =
+            findNearestSpareColumn(curTarget, activeColumns, targetModel);
         if (spare >= 0)
           redirects[curTarget] = spare;
       }
@@ -323,12 +323,11 @@ struct AIEInsertTraceFlowsPass
     // Build channel descriptors and trace-to-channel assignments
     for (auto &[col, shimInfo] : shimInfos) {
       shimInfo.channels = buildChannelDescriptors(
-          shimInfo.traceSources.size(), shimInfo.channel,
-          shimInfo.bdId, shimInfo.argIdx);
+          shimInfo.traceSources.size(), shimInfo.channel, shimInfo.bdId,
+          shimInfo.argIdx);
       // Round-robin assignment of traces to channels
       for (size_t i = 0; i < shimInfo.traceSources.size(); i++) {
-        shimInfo.traceChannelAssignment.push_back(
-            i % shimInfo.channels.size());
+        shimInfo.traceChannelAssignment.push_back(i % shimInfo.channels.size());
       }
     }
 
@@ -507,16 +506,16 @@ struct AIEInsertTraceFlowsPass
             0,                 // packet_id (not used for reception)
             0,                 // packet_type (not used for reception)
             0, 0, 0, 0, 0,
-            0,       // d0_size, d0_stride, d1_size, d1_stride, d2_size, d2_stride
+            0, // d0_size, d0_stride, d1_size, d1_stride, d2_size, d2_stride
             0, 0, 0, // iteration_current, iteration_size, iteration_stride
             0,       // next_bd
             0,       // row
             0,       // use_next_bd
             1,       // valid_bd
-            0, 0, 0, 0, 0,     // lock_rel_val, lock_rel_id, lock_acq_enable,
-                               // lock_acq_val, lock_acq_id
-            0, 0, 0, 0, 0, 0,  // d0_zero_before, d1_zero_before, d2_zero_before,
-                               // d0_zero_after, d1_zero_after, d2_zero_after
+            0, 0, 0, 0, 0,    // lock_rel_val, lock_rel_id, lock_acq_enable,
+                              // lock_acq_val, lock_acq_id
+            0, 0, 0, 0, 0, 0, // d0_zero_before, d1_zero_before, d2_zero_before,
+                              // d0_zero_after, d1_zero_after, d2_zero_after
             clTraceBurstLength // burst_length
         );
 
@@ -686,14 +685,15 @@ private:
   }
 
   /// Build channel descriptors. Always includes the primary channel.
-  /// Adds a secondary channel when distribute-channels is enabled
-  /// and there are multiple traces.
-  std::vector<ChannelDescriptor>
-  buildChannelDescriptors(size_t numTraces, int primaryChannel,
-                          int primaryBdId, int primaryArgIdx) {
+  /// Adds a secondary channel when distribute-channels is enabled and there
+  /// are multiple traces. AIE2 shim tiles have exactly 2 S2MM DMA channels.
+  std::vector<ChannelDescriptor> buildChannelDescriptors(size_t numTraces,
+                                                         int primaryChannel,
+                                                         int primaryBdId,
+                                                         int primaryArgIdx) {
     std::vector<ChannelDescriptor> chans;
     chans.push_back({primaryChannel, primaryBdId, primaryArgIdx});
-    if (clDistributeChannels && numTraces > 1) {
+    if (clDistributeChannels && numTraces > 1 && primaryBdId > 0) {
       int ch2 = (primaryChannel == 1) ? 0 : 1;
       chans.push_back({ch2, primaryBdId - 1, primaryArgIdx + 1});
     }
