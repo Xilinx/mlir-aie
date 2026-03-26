@@ -56,7 +56,9 @@ Here, we add `trace=1` to indicate that worker should be traced. And we can omit
 
 >**NOTE**: The `workers` argument in the runtime sequence `enable_trace` always takes precedence over the `trace=1` argument of the worker. So if you define both, we will go with the definition of the `enable_trace` argument.
 
-Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically. 
+Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically.
+
+>**NOTE**: The unplaced `enable_trace` API can only trace workers (core tiles). To trace mem tiles, shim tiles, or use the full `PortEvent` API, use the placed design API described in [README-placed](./README-placed.md).
 
 ### <u>Customizing Trace Behavior</u>
 
@@ -224,7 +226,9 @@ make trace
 ### <u>(2b) Python Host code ([test.py](./test.py), [../../../python/utils/xrt.py](../../../python/utils/xrt.py))</u>
 In the [Makefile](./Makefile), we also have a `trace_py` target which calls the python host code `test.py` instead of the C/C++ host code `test.cpp`.
 
-In the python case, we have wrapped up the trace specific configuration within `DefaultNPURuntime` which is the default definition of the [HostRuntime](../../../python/utils/hostruntime/hostruntime.py) class which can be imported with `from aie.utils import DefaultRuntime`. The usage of this class was introduced in [Section-3](../../section-3/) but here, we point out that trace configuration is managed through the definition of the [TraceConfig](../../../python/utils/trace/config.py) class that is part of the [NPUKernel](../../../python/utils/npukernel.py) class. Trace configuratons are specified in the program arguments and passed to the `DefaultNPURuntime` as shown below:
+#### test_utils (recommended)
+
+The recommended approach is to use `test_utils.create_npu_kernel`, which creates both a [`TraceConfig`](../../../python/utils/trace/config.py) and an [`NPUKernel`](../../../python/utils/npukernel.py) from command-line arguments:
 
 ```python
 import aie.utils.test as test_utils
@@ -232,31 +236,43 @@ import aie.utils.test as test_utils
 npu_opts = test_utils.create_npu_kernel(opts)
 res = DefaultNPURuntime.run_test(npu_opts.npu_kernel, ...)
 ```
-Some basic trace configuration arguments are:
-- *trace_size*: size of trace buffer in bytes
-- *trace_file*: name of file to write raw trace data to (default: trace.txt)
-- *trace_after_last_tensor*: boolean that indicates whether we're sharing an XRT buffer to store trace results. Please make sure this boolean matches
-the `trace_after_last_tensor` in IRON Python `enable_trace`.
 
+The relevant CLI arguments (from `test_utils.create_default_args()`) are:
+- `--trace-sz` (`-t`): Trace buffer size in bytes. Tracing is enabled when this is > 0.
+- `--trace-file`: Path to write raw trace data (default: `trace.txt`).
+- `--trace-after-output`: Sets `trace_after_last_tensor=True` in `TraceConfig`.
 
-Under the hood, the [HostRuntime](../../../python/utils/hostruntime/hostruntime.py) class initializes the trace XRT buffer and manages it so that trace data is written to it during program execution. This occurs when we call the  `DefaultNPURuntime.run_test` function as shown below:
+> **IMPORTANT**: `trace_after_last_tensor` (set via `--trace-after-output`) **must match** the `trace_after_last_tensor` parameter in your IRON `enable_trace()` (unplaced) / `start_trace()` (placed) call, or buffer allocation will be incorrect.
+
+#### TraceConfig (manual setup)
+
+For custom host code, you can create a [`TraceConfig`](../../../python/utils/trace/config.py) directly and pass it to [`NPUKernel`](../../../python/utils/npukernel.py):
 
 ```python
-res = DefaultNPURuntime.run_test(
-    npu_opts.npu_kernel,
-    [in1, in2, out],
-    {2: ref},
-    verify=npu_opts.verify,
-    verbosity=npu_opts.verbosity,
+from aie.utils.trace import TraceConfig
+from aie.utils.npukernel import NPUKernel
+
+trace_config = TraceConfig(
+    trace_size=8192,                # Buffer size in bytes
+    trace_file="trace.txt",         # Output file for raw trace data (default)
+    trace_after_last_tensor=False,  # Share output buffer for trace (default: False)
+)
+
+npu_kernel = NPUKernel(
+    xclbin_path="build/final.xclbin",
+    insts_path="build/insts.txt",
+    trace_config=trace_config,
 )
 ```
-In addition to executing the program, the [HostRuntime](../../../python/utils/hostruntime/hostruntime.py) class also synchronizes the XRT data buffers before writing the trace data out to a text file (`trace.txt`) in much the same way as the C++ function `write_out_trace` does. As such, the `DefaultNPURuntime` operates like the C/C++ host code wrapper `setup_and_run_aie` found in [../../../runtime_lib/test_lib/xrt_test_wrapper.h]. Both serve to reduce the verbosity of the top level host code so such things as trace configuration is hidden underneath.
+
+Under the hood, the [DefaultNPURuntime](../../../python/utils/hostruntime/hostruntime.py) uses `TraceConfig` to allocate the trace XRT buffer, synchronize it after execution, and write the trace data to the output file -- similar to the C++ `write_out_trace` function and `setup_and_run_aie` wrapper in [xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h).
 
 ## <u>3. Parse text file to generate a waveform json file</u>
 Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse.py](../../../python/utils/trace/parse.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
 
+The `--mlir` argument should point to `input_with_addresses.mlir` from the `.prj` work directory, not the original source MLIR. This file contains the lowered register writes produced by the trace passes, which the parser uses to map raw trace packets back to named events.
+
 ```bash
-# Use input_with_addresses.mlir from the .prj directory for correct trace event parsing
 python ../../../python/utils/trace/parse.py \
     --input trace.txt \
     --mlir build/aie.mlir.prj/input_with_addresses.mlir \
@@ -271,9 +287,9 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 ## <u>Additional Debug Hints</u>
 * If you are not getting valid trace data out (e.g. empty `trace.txt` or just 0's), then trace packets were not written to a file successfully. There could be a number of reasons for this but some things to check are:
     * Did you write to the correct XRT buffer object that your host code is reading from? The default is `ddr_id=4` (`group_id=7`), which means trace data is written to a dedicated XRT buffer.
-        * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically — both `ddr_id` and `trace_after_last_tensor` modes work without manual buffer setup.
-        * If using a **C/C++ host** with `trace_after_last_tensor=True` in your Python design, be aware that the compiler routes trace data into the *last `runtime_sequence` argument's buffer* (typically the output buffer) at an offset equal to the output size. Your C++ host code must allocate that buffer large enough to hold both the output data and the trace data, then read the trace from the appropriate offset. Do **not** create a separate `bo_trace` at `group_id(7)` in this case — the trace data lives inside `bo_out` (or whichever buffer corresponds to the last `runtime_sequence` argument). See the [Conv2d example](../../../programming_examples/ml/conv2d/) for a design using `trace_after_last_tensor=True`.
-    * It's possible that a simple core may have too few events to create a valid trace packet. To work around this, add a ShimTile to the array of `tiles_to_trace` to add more trace data.
+        * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically. However, `trace_after_last_tensor` in `TraceConfig` must match the corresponding parameter in your IRON `enable_trace()` / `start_trace()` call.
+        * If using a **C/C++ host** with `trace_after_last_tensor=True`, trace data is appended to the last `runtime_sequence` argument's buffer at an offset equal to the output size. Allocate that buffer large enough for both output and trace data, and do **not** create a separate `bo_trace` at `group_id(7)`.
+    * It's possible that a simple core may have too few events to create a valid trace packet. For placed designs, you can work around this by adding a ShimTile to the `tiles_to_trace` array in `configure_trace()` to generate additional trace data.
     * Check that the correct tile is being routed to the correct shim DMA. Using the declarative trace API handles this automatically.
     * You may get an invalid tile error if the `colshift` doesn't match the actually starting column of the design. This should automatically be set by the `parse.py` script but can also be specified manually. Phoenix (npu) devices should have `colshift=1` while Strix (npu2) should have `colshift=0` when allocated to an unused NPU.
     * For designs with packet-routing flows, check for correctly matching packet flow IDs. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed. Using the declarative trace API handles this automatically.
@@ -291,20 +307,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * `INSTR_EVENT_0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.
     * `INSTR_EVENT_1` - The event marking the end of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event1()` after the loop. Much like event0, attaching event1 to the end of our kernel is also helpful.
     * `INSTR_VECTOR` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
-    * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 8 ports. To select which port to listen to, use the `PortEvent` Python class:
-        ```python
-        from aie.utils.trace.events import PortEvent, CoreEvent
-        from aie.dialects.aie import WireBundle
-
-        trace_utils.configure_trace(
-            tiles_to_trace,
-            coretile_events=[
-                PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),  # DMA S2MM ch0
-                PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False), # DMA MM2S ch0
-                # ...
-            ]
-        )
-        ```
+    * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 8 ports. To select which port to listen to, use the `PortEvent` Python class. See [README-placed](./README-placed.md#portevent-api) for the full `PortEvent` API and examples.
     * `PORT_RUNNING_1` - Mapped to Port 1 which is configured to the MM2S0 output (DMA from local memory to stream) in this example. This is usually the first output based on routing algorithm.
     * `LOCK_STALL` - Any locks stalls.
     * `INSTR_LOCK_ACQUIRE_REQ` - Any lock acquire requests.
