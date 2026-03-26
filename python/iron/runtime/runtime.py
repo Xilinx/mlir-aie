@@ -328,16 +328,6 @@ class Runtime(Resolvable):
         def sequence(*args):
 
             if self._trace_size is not None and self._trace_size > 0:
-                tiles_to_trace = []
-                if self._trace_workers is not None:
-                    for w in self._trace_workers:
-                        tiles_to_trace.append(w.tile.op)
-                else:
-                    for w in self._workers:
-                        if w.trace is not None:
-                            tiles_to_trace.append(w.tile.op)
-
-                # TODO: Add support for other shim trace routing options
                 trace_utils.start_trace(
                     trace_size=self._trace_size,
                     ddr_id=self._ddr_id,

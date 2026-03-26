@@ -411,11 +411,10 @@ def configure_trace(
         # Determine if this is a core tile memory trace (second occurrence)
         is_mem_trace = False
         if tile_op.is_core_tile():
-            tile_key = id(tile_op)  # Use object identity for tracking
-            if tile_key in seen_core_tiles:
+            if tile_op in seen_core_tiles:
                 is_mem_trace = True
             else:
-                seen_core_tiles.add(tile_key)
+                seen_core_tiles.add(tile_op)
 
         # Generate unique trace name based on tile type
         if tile_op.is_core_tile():
