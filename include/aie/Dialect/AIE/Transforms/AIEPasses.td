@@ -484,7 +484,13 @@ def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
     Option<"clPacketIdStart", "packet-id-start", "int", "1",
            "Starting packet ID for trace flows (default: 1)">,
     Option<"clTraceBurstLength", "burst-length", "int", "64",
-           "DMA burst length for trace transfers (default: 64 bytes)">
+           "DMA burst length for trace transfers (default: 64 bytes)">,
+    Option<"clDistributeChannels", "distribute-channels", "bool", "false",
+           "Distribute traces across multiple S2MM channels per shim tile">,
+    Option<"clLateralRouting", "lateral-routing", "bool", "false",
+           "Route traces to spare columns to minimize data path perturbation">,
+    Option<"clLateralTargetCol", "lateral-target-col", "int", "-1",
+           "Force lateral routing target column (-1 = auto-detect nearest spare)">
   ];
 }
 
