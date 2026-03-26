@@ -11,6 +11,7 @@ Available modules:
 - aie2: AIE2/AIEML architecture events
 - aie2p: AIE2P architecture events
 """
+
 from enum import IntEnum
 import typing
 

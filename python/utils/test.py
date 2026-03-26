@@ -15,6 +15,7 @@ Test/ Host code utilities.
     * Calls create_default_argparser and returns the parsed results
     * Useful if you don't need additional custom args
 """
+
 import argparse
 from aie.utils import TraceConfig, NPUKernel
 
