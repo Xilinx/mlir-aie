@@ -86,6 +86,7 @@ add_mlir_library(AIETargets
   LINK_LIBS PUBLIC
   AIERT
   AIE
+  AIETransforms
   AIEX
   AIEXTransforms
   AIEXUtils
