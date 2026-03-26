@@ -15,6 +15,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
+#include <climits>
 #include <map>
 #include <set>
 
@@ -266,6 +267,47 @@ struct AIEInsertTraceFlowsPass
       }
       if (shimInfos.find(targetCol) == shimInfos.end()) {
         shimInfos[targetCol] = shimInfo;
+      }
+    }
+
+    // Phase 2b-lateral: Optionally redirect shim targets to spare columns.
+    // This is a post-processing step that works with ANY routing strategy.
+    // When per-column routing returns, lateral routing will compose with it
+    // (each column's shim redirects to its nearest spare).
+    if (clLateralRouting) {
+      std::set<int> activeColumns;
+      device.walk([&](CoreOp core) {
+        auto coreTile = cast<TileOp>(core.getTile().getDefiningOp());
+        activeColumns.insert(coreTile.getCol());
+      });
+
+      // Collect all unique shim target columns and find redirects
+      std::map<int, int> redirects; // old target col -> new target col
+      for (auto &[col, shimInfo] : shimInfos) {
+        int curTarget = shimInfo.shimTile.getCol();
+        if (redirects.count(curTarget))
+          continue; // already computed
+        if (activeColumns.count(curTarget) == 0)
+          continue; // already spare, no redirect needed
+        int spare = findNearestSpareColumn(curTarget, activeColumns,
+                                           targetModel);
+        if (spare >= 0)
+          redirects[curTarget] = spare;
+      }
+
+      // Apply redirects: rebuild shimInfos with new target columns
+      if (!redirects.empty()) {
+        std::map<int, ShimInfo> newShimInfos;
+        for (auto &[col, shimInfo] : shimInfos) {
+          int curTarget = shimInfo.shimTile.getCol();
+          auto it = redirects.find(curTarget);
+          if (it != redirects.end()) {
+            int newTarget = it->second;
+            shimInfo.shimTile = getOrCreateShim(device, builder, newTarget);
+          }
+          newShimInfos[col] = shimInfo;
+        }
+        shimInfos = std::move(newShimInfos);
       }
     }
 
@@ -608,6 +650,38 @@ private:
     if (!reg)
       llvm::report_fatal_error("Failed to lookup Timer_Control register");
     return reg->offset;
+  }
+
+  /// Find or create a shim tile at the given column.
+  TileOp getOrCreateShim(DeviceOp device, OpBuilder &builder, int col) {
+    for (auto tile : device.getOps<TileOp>()) {
+      if (tile.getCol() == col && tile.getRow() == 0)
+        return tile;
+    }
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&device.getRegion().front());
+    return TileOp::create(builder, device.getLoc(), col, 0);
+  }
+
+  /// Find the nearest NOC shim column without active cores.
+  /// Returns -1 if no spare column exists.
+  int findNearestSpareColumn(int sourceCol, const std::set<int> &activeColumns,
+                             const AIETargetModel &targetModel) {
+    if (clLateralTargetCol >= 0)
+      return clLateralTargetCol;
+    int bestCol = -1;
+    int bestDist = INT_MAX;
+    int numCols = targetModel.columns();
+    for (int c = 0; c < numCols; c++) {
+      if (activeColumns.count(c) == 0 && targetModel.isShimNOCTile(c, 0)) {
+        int dist = std::abs(c - sourceCol);
+        if (dist > 0 && dist < bestDist) {
+          bestDist = dist;
+          bestCol = c;
+        }
+      }
+    }
+    return bestCol;
   }
 };
 
