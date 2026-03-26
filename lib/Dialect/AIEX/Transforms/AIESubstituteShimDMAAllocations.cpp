@@ -79,12 +79,6 @@ struct AIESubstituteShimDMAAllocationsPass
     patterns.insert<DMAConfigureTaskForOpPattern>(&getContext());
 
     (void)applyPatternsGreedily(device, std::move(patterns));
-    // Also apply inside RuntimeSequenceOps (IsolatedFromAbove)
-    device.walk([&](AIE::RuntimeSequenceOp seqOp) {
-      RewritePatternSet seqPatterns(&getContext());
-      seqPatterns.insert<DMAConfigureTaskForOpPattern>(&getContext());
-      (void)applyPatternsGreedily(seqOp, std::move(seqPatterns));
-    });
   }
 };
 

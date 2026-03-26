@@ -2029,6 +2029,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
   // The pipeline is destructive (removes other cores), so we clone first.
   OwningOpRef<ModuleOp> coreModule = moduleOp.clone();
 
+  // Remove runtime_sequences from the clone — they're not needed for
+  // core compilation and their presence causes the canonicalizer (in
+  // convert-vector-to-aievec) to hoist constants from the sequence to
+  // device scope, creating cross-region references that crash during
+  // core extraction.
+  coreModule->walk([](xilinx::AIE::RuntimeSequenceOp seqOp) { seqOp.erase(); });
+
   // Register LLVM IR translation dialects
   mlir::registerBuiltinDialectTranslation(context);
   mlir::registerLLVMDialectTranslation(context);
@@ -2820,6 +2827,10 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
   // Step 1: Clone module and run unified LLVM lowering pipeline
   OwningOpRef<ModuleOp> unifiedModule = moduleOp.clone();
+
+  // Remove runtime_sequences from the clone (not needed for core compilation).
+  unifiedModule->walk(
+      [](xilinx::AIE::RuntimeSequenceOp seqOp) { seqOp.erase(); });
 
   // Register LLVM IR translation dialects
   mlir::registerBuiltinDialectTranslation(context);

@@ -1,4 +1,4 @@
-//===- runtime_sequence_isolated.mlir - IsolatedFromAbove --------*- MLIR -*-===//
+//===- runtime_sequence_isolated.mlir - SCF in runtime_sequence --*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,18 +8,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests that aie.runtime_sequence has the IsolatedFromAbove trait.
-// Values defined inside the runtime_sequence and symbol references work fine.
-// SCF ops inside runtime_sequence are preserved (not lowered by SCF→CF).
+// Tests that aie.runtime_sequence supports SCF ops (scf.for with iter_args,
+// scf.if with results) which are needed for dynamic TXN generation.
+// SCF ops are preserved through the compilation pipeline via
+// markOpRecursivelyLegal in aiecc's SCF→CF conversion.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -split-input-file -verify-diagnostics | FileCheck %s
+// RUN: aie-opt %s | FileCheck %s
 
 // CHECK: aie.runtime_sequence
+// CHECK: arith.divui
 // CHECK: scf.for
 // CHECK: scf.if
-// CHECK: arith.divui
 // CHECK: aiex.npu.sync
 module {
   aie.device(npu2) {
@@ -31,8 +32,7 @@ module {
 
     %rtp = aie.buffer(%tile_0_2) {sym_name = "rtp"} : memref<16xi32>
 
-    // Runtime sequence with SSA params, SCF loops — all legal because
-    // everything is defined INSIDE the IsolatedFromAbove region.
+    // Runtime sequence with SSA params and SCF loops.
     aie.runtime_sequence(%in : memref<16xi32>, %out : memref<16xi32>, %n : i32) {
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32
@@ -58,26 +58,6 @@ module {
       }
 
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
-    }
-  }
-}
-
-// -----
-
-// Negative test: using a value defined outside the runtime_sequence
-// should be rejected because runtime_sequence is IsolatedFromAbove.
-module {
-  aie.device(npu2) {
-    %tile_0_0 = aie.tile(0, 0)
-    %tile_0_2 = aie.tile(0, 2)
-
-    aie.objectfifo @of_in(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-
-    %outside_val = arith.constant 42 : i32
-
-    aie.runtime_sequence(%in : memref<16xi32>) {
-      // expected-error @below {{using value defined outside the region}}
-      %use = arith.addi %outside_val, %outside_val : i32
     }
   }
 }

@@ -658,16 +658,10 @@ struct AIEDMATasksToNPUPass
     RewritePatternSet patterns(&getContext());
     patterns.insert<DMAStartTaskOpPattern>(&getContext());
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
-    FrozenRewritePatternSet frozenPat(std::move(patterns));
-    if (failed(applyPartialConversion(device, target, frozenPat))) {
+    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
       return;
     }
-    // Also apply inside IsolatedFromAbove RuntimeSequenceOps
-    device.walk([&](AIE::RuntimeSequenceOp seqOp) {
-      if (failed(applyPartialConversion(seqOp, target, frozenPat)))
-        signalPassFailure();
-    });
 
     // Lower the configuration for the BDs
     if (failed(rewriteDMAConfigureTaskOp(device))) {

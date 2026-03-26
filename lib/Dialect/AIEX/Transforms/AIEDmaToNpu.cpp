@@ -1241,18 +1241,10 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
     FrozenRewritePatternSet frozenPatterns(std::move(patterns));
 
-    // Apply to the device op first (handles non-isolated ops)
     if (failed(applyPartialConversion(device, target, frozenPatterns))) {
       signalPassFailure();
       return;
     }
-
-    // Also apply inside RuntimeSequenceOps which are IsolatedFromAbove
-    // (applyPartialConversion on the device won't descend into them).
-    device.walk([&](AIE::RuntimeSequenceOp seqOp) {
-      if (failed(applyPartialConversion(seqOp, target, frozenPatterns)))
-        signalPassFailure();
-    });
   }
 };
 
