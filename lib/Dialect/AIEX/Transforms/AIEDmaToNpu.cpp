@@ -223,8 +223,14 @@ static Value getAsValue(OpBuilder &builder, Location loc, OpFoldResult ofr,
     return arith::ConstantOp::create(builder, loc,
                                      IntegerAttr::get(intType, *constVal));
   Value val = cast<Value>(ofr);
-  if (val.getType() != intType)
-    val = arith::TruncIOp::create(builder, loc, intType, val);
+  if (val.getType() != intType) {
+    unsigned valBits = val.getType().getIntOrFloatBitWidth();
+    unsigned tgtBits = intType.getIntOrFloatBitWidth();
+    if (valBits > tgtBits)
+      val = arith::TruncIOp::create(builder, loc, intType, val);
+    else
+      val = arith::ExtUIOp::create(builder, loc, intType, val);
+  }
   return val;
 }
 
@@ -691,6 +697,11 @@ public:
     // Hardware d0_stride: if elemWidth < addrGran or elemWidth > addrGran,
     // stride = 0 (encoded as 1). Otherwise stride = inStride0 * elemWidth /
     // addrGran - 1.
+    // For bf16 (elemWidth=16 < addrGran=32), hardware requires d0_stride=0
+    // because the address granularity exceeds the element width; the DMA
+    // always transfers full 32-bit words and cannot stride at sub-word level.
+    // The static verifier in NpuDmaMemcpyNdOp::verify() enforces this for
+    // constant strides; here in the dynamic path we set it unconditionally.
     Value hwD0Stride;
     if (elemWidth < addrGran || elemWidth > addrGran) {
       hwD0Stride = cst(0);
@@ -918,7 +929,7 @@ public:
       Value rcShifted = buildBdWord(rewriter, loc, {{repeatCount, 0xFF, 16}});
       Value cmd = arith::OrIOp::create(rewriter, loc, bdIdVal, rcShifted);
       if (issueTokenVal) {
-        Value tokenBit = cst(static_cast<int64_t>(0x80000000u));
+        Value tokenBit = cst(static_cast<int32_t>(0x80000000u));
         cmd = arith::OrIOp::create(rewriter, loc, cmd, tokenBit);
       }
       Value queueAddrSSA = cst(queueOffset);

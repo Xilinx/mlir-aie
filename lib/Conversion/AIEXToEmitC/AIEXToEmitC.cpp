@@ -179,8 +179,6 @@ struct ConvertAIEXToEmitCPass
   // results, the parent pushes mutable variable Values here, and the
   // scf.yield handler assigns into them.
   SmallVector<SmallVector<Value>> yieldTargetStack;
-  // Current yield targets (top of stack, or empty).
-  ArrayRef<Value> yieldTargets;
 
   void runOnOperation() override {
     auto moduleOp = getOperation();
@@ -827,7 +825,7 @@ private:
     // (set up by emitScfFor/emitScfIf).
     if (auto yieldOp = dyn_cast<scf::YieldOp>(op)) {
       for (auto [yieldVal, resultVar] :
-           llvm::zip(yieldOp.getOperands(), yieldTargets)) {
+           llvm::zip(yieldOp.getOperands(), yieldTargetStack.back())) {
         Value mapped = argMapping.lookupOrDefault(yieldVal);
         // Cast if types differ (e.g., i32 vs !emitc.opaque<"uint32_t">)
         auto varInnerType =
@@ -842,11 +840,8 @@ private:
     if (isa<AIE::EndOp>(op))
       return success();
 
-    // Ignore unknown ops with a comment.
-    emitc::VerbatimOp::create(
-        builder, opLoc,
-        "/* unsupported: " + op->getName().getStringRef().str() + " */");
-    return success();
+    return op->emitOpError(
+        "unsupported op in EmitC conversion for TXN C++ generation");
   }
 
   /// Emit an scf.for as emitc.for.
@@ -885,9 +880,7 @@ private:
     argMapping.map(forOp.getInductionVar(), emitcFor.getInductionVar());
 
     // Push yield targets for the loop body.
-    auto savedTargets = yieldTargets;
     yieldTargetStack.push_back(iterVars);
-    yieldTargets = yieldTargetStack.back();
 
     // Emit body.
     {
@@ -912,7 +905,6 @@ private:
 
     // Pop yield targets.
     yieldTargetStack.pop_back();
-    yieldTargets = savedTargets;
 
     // Map the for-op results to loaded values from the mutable variables.
     for (auto [result, var] : llvm::zip(forOp.getResults(), iterVars)) {
@@ -949,9 +941,7 @@ private:
     auto emitcIf = emitc::IfOp::create(builder, loc, cond, hasElse);
 
     // Push yield targets for the if body.
-    auto savedTargets = yieldTargets;
     yieldTargetStack.push_back(resultVars);
-    yieldTargets = yieldTargetStack.back();
 
     // Emit then body.
     {
@@ -981,7 +971,6 @@ private:
 
     // Pop yield targets.
     yieldTargetStack.pop_back();
-    yieldTargets = savedTargets;
 
     // Map the if-op results to loaded values from the mutable variables.
     for (auto [result, var] : llvm::zip(ifOp.getResults(), resultVars)) {

@@ -14,7 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s | FileCheck %s
+// RUN: aie-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK: aie.runtime_sequence
 // CHECK: scf.for
@@ -58,6 +58,26 @@ module {
       }
 
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+    }
+  }
+}
+
+// -----
+
+// Negative test: using a value defined outside the runtime_sequence
+// should be rejected because runtime_sequence is IsolatedFromAbove.
+module {
+  aie.device(npu2) {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_2 = aie.tile(0, 2)
+
+    aie.objectfifo @of_in(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    %outside_val = arith.constant 42 : i32
+
+    aie.runtime_sequence(%in : memref<16xi32>) {
+      // expected-error @below {{using value defined outside the region}}
+      %use = arith.addi %outside_val, %outside_val : i32
     }
   }
 }

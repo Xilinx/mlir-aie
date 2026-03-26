@@ -26,6 +26,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <stdfloat>
 #include <vector>
 
@@ -183,7 +184,8 @@ int main(int argc, const char *argv[]) {
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   unsigned num_iter = n_iterations + n_warmup;
-  float npu_time_total = 0, npu_time_min = 9999999, npu_time_max = 0;
+  float npu_time_total = 0, npu_time_min = std::numeric_limits<float>::max(),
+        npu_time_max = 0;
   int errors = 0;
   float macs = 2.0f * M * K * N;
 

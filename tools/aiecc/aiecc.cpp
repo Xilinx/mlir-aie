@@ -226,9 +226,6 @@ static cl::opt<bool>
                    cl::desc("Generate C++ code for runtime TXN generation"),
                    cl::init(false), cl::cat(aieCompilerOptions));
 
-// Module clone saved before SCF→CF for the TXN C++ path.
-static OwningOpRef<ModuleOp> preSCFModule;
-
 static cl::opt<std::string> cppTxnName("txn-cpp-name",
                                        cl::desc("Output C++ TXN filename"),
                                        cl::init("generated_txn.h"),

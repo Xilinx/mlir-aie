@@ -46,6 +46,35 @@ from aie.iron.dtype import str_to_dtype
 from aie.ir import IndexType, IntegerType, InsertionPoint, Block
 from aie.extras import types as T
 
+# Number of tile rows per BD-group block. Limited by the 16-BD budget
+# per channel (8 BDs per pingpong half, 2 halves per block).
+ROWS_PER_BLOCK = 4
+
+# Trace events for performance profiling. Used by both the dynamic and
+# static runtime_sequence paths.
+TRACE_EVENTS = [
+    trace_utils.events.PortEvent(
+        trace_utils.events.CoreEvent.PORT_RUNNING_0,
+        port_number=1,
+        master=True,
+    ),
+    trace_utils.events.PortEvent(
+        trace_utils.events.CoreEvent.PORT_RUNNING_1,
+        port_number=2,
+        master=True,
+    ),
+    trace_utils.events.PortEvent(
+        trace_utils.events.CoreEvent.PORT_RUNNING_2,
+        port_number=1,
+        master=False,
+    ),
+    trace_utils.events.CoreEvent.INSTR_EVENT_0,
+    trace_utils.events.CoreEvent.INSTR_EVENT_1,
+    trace_utils.events.CoreEvent.MEMORY_STALL,
+    trace_utils.events.CoreEvent.LOCK_STALL,
+    trace_utils.events.CoreEvent.INSTR_VECTOR,
+]
+
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -110,7 +139,7 @@ def _emit_dynamic_sequence(
     synchronization should be added for robustness if the design is used
     with overlapping invocations.
     """
-    rows_per_block = 4
+    rows_per_block = ROWS_PER_BLOCK
 
     @runtime_sequence(
         np.ndarray[(A_sz,), np.dtype[dtype_in]],
@@ -134,28 +163,7 @@ def _emit_dynamic_sequence(
                 tiles_to_trace=tiles_to_trace,
                 shim=shim_tile,
                 trace_size=trace_size,
-                coretile_events=[
-                    trace_utils.events.PortEvent(
-                        trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                        port_number=1,
-                        master=True,
-                    ),
-                    trace_utils.events.PortEvent(
-                        trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                        port_number=2,
-                        master=True,
-                    ),
-                    trace_utils.events.PortEvent(
-                        trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                        port_number=1,
-                        master=False,
-                    ),
-                    trace_utils.events.CoreEvent.INSTR_EVENT_0,
-                    trace_utils.events.CoreEvent.INSTR_EVENT_1,
-                    trace_utils.events.CoreEvent.MEMORY_STALL,
-                    trace_utils.events.CoreEvent.LOCK_STALL,
-                    trace_utils.events.CoreEvent.INSTR_VECTOR,
-                ],
+                coretile_events=TRACE_EVENTS,
             )
 
         # Static tile-size constants
@@ -344,7 +352,6 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size, dynamic_txn
     N_div_n = N // n
     tiles = M_div_m * N_div_n
 
-    vectorized = True
     enable_tracing = trace_size > 0
 
     with mlir_mod_ctx() as ctx:
@@ -545,28 +552,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size, dynamic_txn
                             tiles_to_trace=tiles_to_trace,
                             shim=shim_tile,
                             trace_size=trace_size,
-                            coretile_events=[
-                                trace_utils.events.PortEvent(
-                                    trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                                    port_number=1,
-                                    master=True,
-                                ),
-                                trace_utils.events.PortEvent(
-                                    trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                                    port_number=2,
-                                    master=True,
-                                ),
-                                trace_utils.events.PortEvent(
-                                    trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                                    port_number=1,
-                                    master=False,
-                                ),
-                                trace_utils.events.CoreEvent.INSTR_EVENT_0,
-                                trace_utils.events.CoreEvent.INSTR_EVENT_1,
-                                trace_utils.events.CoreEvent.MEMORY_STALL,
-                                trace_utils.events.CoreEvent.LOCK_STALL,
-                                trace_utils.events.CoreEvent.INSTR_VECTOR,
-                            ],
+                            coretile_events=TRACE_EVENTS,
                         )
 
                     # Write RTP values for the static compilation size
@@ -575,7 +561,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size, dynamic_txn
 
                     # Simple DMA sequence for the static case
                     # Issue all tile rows at once (simplified from single_core.py)
-                    rows_per_block = 4
+                    rows_per_block = ROWS_PER_BLOCK
                     for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
                         for pingpong in [0, 1]:
                             C_row_offset = (
