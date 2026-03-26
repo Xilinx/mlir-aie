@@ -748,13 +748,19 @@ def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
   let arguments = (
     ins FlatSymbolRefAttr:$buffer,
         UI32Attr:$index,
-        I32Attr:$value
+        OptionalAttr<I32Attr>:$value,
+        Optional<I32>:$dyn_value
   );
   let results = (outs );
-  let assemblyFormat = [{ `(` $buffer `,` $index `,` $value `)` attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
   let description = [{
-    rtp write operator
+    rtp write operator.
+    When `dyn_value` is provided, it supplies the RTP value at runtime
+    instead of the static `value` attribute.
+  }];
+  let extraClassDeclaration = [{
+    bool hasDynamicValue() { return getDynValue() != nullptr; }
   }];
 }
 
@@ -995,14 +1001,17 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   let arguments = (
     ins UI32Attr:$addr,
         I32Attr:$arg_idx,
-        I32Attr:$arg_plus
+        I32Attr:$arg_plus,
+        Optional<I32>:$dyn_arg_plus
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    (`(` $dyn_arg_plus^ `:` type($dyn_arg_plus) `)`)? attr-dict
   }];
   let description = [{
-    address patch operator
+    address patch operator.
+    When `dyn_arg_plus` is provided, it is used instead of the static
+    `arg_plus` attribute. This enables runtime-parameterized buffer offsets.
   }];
 }
 

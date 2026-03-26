@@ -13,7 +13,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifdef USE_GENERATED_TXN
+#include "generated_gemm_txn.h"
+#else
 #include "dynamic_gemm_txn.h"
+#endif
 
 #include "cxxopts.hpp"
 #include <chrono>
@@ -41,7 +45,7 @@ int main(int argc, const char *argv[]) {
   options.add_options()("help,h", "produce help message")(
       "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
       "instr,i", "static instructions file (for extracting RTP address)",
-      cxxopts::value<std::string>())(
+      cxxopts::value<std::string>()->default_value(""))(
       "kernel,k", "the kernel name in the XCLBIN",
       cxxopts::value<std::string>()->default_value("MLIR_AIE"))(
       "verbosity,v", "the verbosity of the output",
@@ -69,11 +73,17 @@ int main(int argc, const char *argv[]) {
     std::cout << options.help() << "\n";
     return 0;
   }
-  if (!vm.count("xclbin") || !vm.count("instr")) {
-    std::cerr << "Error: --xclbin and --instr are required\n"
+  if (!vm.count("xclbin")) {
+    std::cerr << "Error: --xclbin is required\n" << options.help() << "\n";
+    return 1;
+  }
+#ifndef USE_GENERATED_TXN
+  if (vm["instr"].as<std::string>().empty()) {
+    std::cerr << "Error: --instr is required (hand-written TXN mode)\n"
               << options.help() << "\n";
     return 1;
   }
+#endif
 
   int verbosity = vm["verbosity"].as<int>();
   bool do_verify = vm["verify"].as<bool>();
@@ -90,20 +100,29 @@ int main(int argc, const char *argv[]) {
 
   srand(1726250518); // fixed seed for reproducibility
 
-  // Extract design-specific constants from static instructions
+  if (verbosity >= 1)
+    std::cout << "Dynamic GEMM: " << M << "x" << K << "x" << N << std::endl;
+
+#ifdef USE_GENERATED_TXN
+  // Auto-generated TXN from aie-translate --aie-generate-txn-cpp
+  std::vector<uint32_t> instr_v =
+      generate_txn_sequence(static_cast<uint32_t>(M), static_cast<uint32_t>(K),
+                            static_cast<uint32_t>(N));
+  if (verbosity >= 1)
+    std::cout << "Generated " << instr_v.size()
+              << " instruction words (auto-generated)\n";
+#else
+  // Hand-written TXN: extract constants from static instructions
   auto static_insts =
       dynamic_gemm::load_insts_binary(vm["instr"].as<std::string>());
   auto dc = dynamic_gemm::extract_constants(static_insts);
   if (verbosity >= 1)
     std::cout << "RTP addr: 0x" << std::hex << dc.rtp_addr << std::dec << "\n";
-
-  if (verbosity >= 1)
-    std::cout << "Dynamic GEMM: " << M << "x" << K << "x" << N << std::endl;
-
-  // Generate TXN instructions for this M/K/N using discovered constants
   std::vector<uint32_t> instr_v = dynamic_gemm::generate_gemm_txn(M, K, N, dc);
   if (verbosity >= 1)
-    std::cout << "Generated " << instr_v.size() << " instruction words\n";
+    std::cout << "Generated " << instr_v.size()
+              << " instruction words (hand-written)\n";
+#endif
 
   int A_VOLUME = M * K;
   int B_VOLUME = K * N;

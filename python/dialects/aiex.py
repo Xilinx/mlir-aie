@@ -26,6 +26,7 @@ from ..ir import (
     IntegerAttr,
     UnitAttr,
     Type,
+    Value,
     InsertionPoint,
     Attribute,
     AttrBuilder,
@@ -189,6 +190,24 @@ def npu_sync_dynamic(
         dyn_column_num=dyn_column_num,
         dyn_row_num=dyn_row_num,
     )
+
+
+# Override auto-generated npu_rtp_write to support SSA values
+_orig_npu_rtp_write = npu_rtp_write
+
+
+def npu_rtp_write(buffer, index, value, *, loc=None, ip=None):
+    """RTP write supporting both static int and dynamic SSA Value.
+
+    When value is a Python int, it is passed as a static I32Attr.
+    When value is an SSA Value (i32), it is passed as the dyn_value operand.
+    """
+    if isinstance(value, Value):
+        return NpuWriteRTPOp(
+            buffer=buffer, index=index, dyn_value=value, loc=loc, ip=ip
+        )
+    else:
+        return NpuWriteRTPOp(buffer=buffer, index=index, value=value, loc=loc, ip=ip)
 
 
 # Runtime sequence

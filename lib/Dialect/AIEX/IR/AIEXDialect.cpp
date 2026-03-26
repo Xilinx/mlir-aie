@@ -414,18 +414,22 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Minimum data transfer size required is ")
            << addressGranularity << "bits. ";
   }
-  if (!llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
-        return getConstantIntValue(s).has_value();
-      }))
-    return emitOpError("Only constant strides currently supported.");
-  if (!llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
-        return getConstantIntValue(s).has_value();
-      }))
-    return emitOpError("Only constant sizes currently supported.");
-  if (!llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
-        return getConstantIntValue(s).has_value();
-      }))
-    return emitOpError("Only constant offsets currently supported.");
+  // Check if all sizes, strides, and offsets are compile-time constants.
+  // When any are SSA values (dynamic), skip the constant-only verification
+  // since those checks cannot be performed at compile time.
+  bool allSizesConstant = llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allStridesConstant = llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allOffsetsConstant = llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+
+  // Skip detailed stride/size/offset verification when values are dynamic.
+  if (!allSizesConstant || !allStridesConstant || !allOffsetsConstant)
+    return success();
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -696,6 +700,114 @@ LogicalResult AIEX::NpuWrite32Op::verify() {
         return emitOpError("dynamic value must be 32-bit or 64-bit integer");
     }
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuWriteRTPOp parse/print/verify
+//===----------------------------------------------------------------------===//
+
+/// Parse: `aiex.npu.rtp_write(@buffer, 0 : ui32, 42 : i32)` (static)
+/// or:    `aiex.npu.rtp_write(@buffer, 0 : ui32, %val) : i32` (dynamic)
+ParseResult AIEX::NpuWriteRTPOp::parse(OpAsmParser &parser,
+                                       OperationState &result) {
+  if (parser.parseLParen())
+    return failure();
+
+  // Parse buffer symbol ref
+  FlatSymbolRefAttr bufferAttr;
+  if (parser.parseAttribute(bufferAttr))
+    return failure();
+  result.addAttribute("buffer", bufferAttr);
+
+  if (parser.parseComma())
+    return failure();
+
+  // Parse index attribute (ui32). Accepts both bare (0) and typed (0 : ui32).
+  IntegerAttr indexAttr;
+  if (parser.parseAttribute(indexAttr))
+    return failure();
+  auto ui32Type = parser.getBuilder().getIntegerType(32, /*isSigned=*/false);
+  if (indexAttr.getType() != ui32Type)
+    indexAttr = IntegerAttr::get(ui32Type, indexAttr.getInt());
+  result.addAttribute("index", indexAttr);
+
+  if (parser.parseComma())
+    return failure();
+
+  // Try to parse dynamic value (SSA operand %val), else parse static attr.
+  OpAsmParser::UnresolvedOperand dynVal;
+  bool hasDynamic = false;
+
+  auto optResult = parser.parseOptionalOperand(dynVal);
+  if (optResult.has_value()) {
+    if (failed(*optResult))
+      return failure();
+    hasDynamic = true;
+  } else {
+    // Static value. Accepts both bare (42) and typed (42 : i32).
+    IntegerAttr valueAttr;
+    if (parser.parseAttribute(valueAttr))
+      return failure();
+    auto i32Type = parser.getBuilder().getIntegerType(32);
+    if (valueAttr.getType() != i32Type)
+      valueAttr = IntegerAttr::get(i32Type, valueAttr.getInt());
+    result.addAttribute("value", valueAttr);
+  }
+
+  if (parser.parseRParen())
+    return failure();
+
+  if (hasDynamic) {
+    Type dynType;
+    if (parser.parseColon() || parser.parseType(dynType))
+      return failure();
+    if (parser.resolveOperand(dynVal, dynType, result.operands))
+      return failure();
+  }
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  return success();
+}
+
+void AIEX::NpuWriteRTPOp::print(OpAsmPrinter &p) {
+  p << "(";
+  p.printAttribute(getBufferAttr());
+  p << ", ";
+  p.printAttribute(getIndexAttr());
+  p << ", ";
+  if (hasDynamicValue()) {
+    p.printOperand(getDynValue());
+    p << ")";
+  } else {
+    p.printAttribute(getValueAttr());
+    p << ")";
+  }
+
+  // Print type annotation for dynamic case (before attr-dict, matching parser)
+  if (hasDynamicValue()) {
+    p << " : " << getDynValue().getType();
+  }
+
+  // Elide attributes that are printed inline or handled by traits
+  SmallVector<StringRef> elidedAttrs = {"buffer", "index",
+                                        "operandSegmentSizes"};
+  if (!hasDynamicValue())
+    elidedAttrs.push_back("value");
+  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+}
+
+LogicalResult AIEX::NpuWriteRTPOp::verify() {
+  bool hasStaticVal = getValueAttr() != nullptr;
+  bool hasDynVal = getDynValue() != nullptr;
+
+  if (hasStaticVal == hasDynVal)
+    return emitOpError(
+        "exactly one of 'value' (static) or 'dyn_value' (dynamic) "
+        "must be provided");
+
   return success();
 }
 

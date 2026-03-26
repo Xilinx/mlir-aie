@@ -55,6 +55,19 @@ static Value createU32Constant(OpBuilder &builder, Location loc, uint32_t val) {
       emitc::OpaqueAttr::get(builder.getContext(), std::to_string(val) + "u"));
 }
 
+// Shared helper: get the emitc opaque type for int32_t
+static emitc::OpaqueType getI32Type(MLIRContext *ctx) {
+  return emitc::OpaqueType::get(ctx, "int32_t");
+}
+
+// Shared helper: cast an SSA value to int32_t for signed operations
+static Value castToI32(OpBuilder &builder, Location loc, Value val) {
+  auto i32Type = getI32Type(builder.getContext());
+  if (val.getType() == i32Type)
+    return val;
+  return emitc::CastOp::create(builder, loc, i32Type, val);
+}
+
 // Shared helper: cast an SSA value to uint32_t using static_cast
 static Value castToU32(OpBuilder &builder, Location loc, Value val) {
   auto u32Type = getU32Type(builder.getContext());
@@ -112,11 +125,15 @@ static void emitTxnSync(OpBuilder &builder, Location loc, Value txnVec,
 // Emit: aie_runtime::txn_append_address_patch(txn, addr, arg_idx, arg_plus)
 static void emitTxnAddressPatch(OpBuilder &builder, Location loc, Value txnVec,
                                 uint32_t addr, int32_t argIdx, int32_t argPlus,
-                                Value opCountLval) {
+                                Value dynArgPlus, Value opCountLval) {
   auto addrVal = createU32Constant(builder, loc, addr);
   auto idxVal = createU32Constant(builder, loc, static_cast<uint32_t>(argIdx));
-  auto plusVal =
-      createU32Constant(builder, loc, static_cast<uint32_t>(argPlus));
+  Value plusVal;
+  if (dynArgPlus) {
+    plusVal = dynArgPlus;
+  } else {
+    plusVal = createU32Constant(builder, loc, static_cast<uint32_t>(argPlus));
+  }
   emitc::CallOpaqueOp::create(builder, loc, TypeRange{},
                               "aie_runtime::txn_append_address_patch",
                               ValueRange{txnVec, addrVal, idxVal, plusVal});
@@ -157,6 +174,13 @@ static void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
 /// structurally different (RuntimeSequenceOp → emitc.func with TXN calls).
 struct ConvertAIEXToEmitCPass
     : xilinx::impl::ConvertAIEXToEmitCBase<ConvertAIEXToEmitCPass> {
+
+  // Stack of yield target variables. When processing an scf.for/scf.if with
+  // results, the parent pushes mutable variable Values here, and the
+  // scf.yield handler assigns into them.
+  SmallVector<SmallVector<Value>> yieldTargetStack;
+  // Current yield targets (top of stack, or empty).
+  ArrayRef<Value> yieldTargets;
 
   void runOnOperation() override {
     auto moduleOp = getOperation();
@@ -270,6 +294,28 @@ struct ConvertAIEXToEmitCPass
         argMapping.map(arg, funcBlock->getArgument(paramIdx++));
       }
 
+      // Pre-scan: find values used inside the runtime_sequence but defined
+      // outside it (e.g., constants hoisted to the device region by
+      // canonicalization). Create EmitC equivalents for them.
+      seqOp.walk([&](Operation *innerOp) {
+        for (Value operand : innerOp->getOperands()) {
+          if (argMapping.contains(operand))
+            continue;
+          Operation *defOp = operand.getDefiningOp();
+          if (!defOp)
+            continue;
+          // Check if defOp is outside the runtime_sequence.
+          if (!seqOp->isAncestor(defOp)) {
+            // Create EmitC equivalent for this external value.
+            if (auto constOp = dyn_cast<arith::ConstantOp>(defOp)) {
+              auto emitResult = emitOp(builder, constOp, loc, txnVec,
+                                       opCountLval, argMapping);
+              (void)emitResult;
+            }
+          }
+        }
+      });
+
       // Walk the runtime sequence body and emit corresponding emitc ops.
       auto result = emitOpsForBlock(builder, entryBlock, loc, txnVec,
                                     opCountLval, argMapping);
@@ -292,6 +338,74 @@ struct ConvertAIEXToEmitCPass
 
     // Remove the original runtime sequences and their parent device ops.
     // We keep the emitc.func ops and remove everything else.
+    // Note: translateToCpp only emits emitc ops inside emitc.func, so
+    // leftover aie.device/runtime_sequence ops are harmless. However,
+    // leaving them causes verifier issues, so we need to erase them.
+    //
+    // To safely erase, we must ensure no cross-references from EmitC ops
+    // back to old Values. Walk all EmitC funcs and clone any operands
+    // that point to ops defined outside the func (i.e., in the old IR).
+    // Fix cross-references: EmitC ops may reference Values defined in the
+    // old IR (e.g., arith.constant values that weren't mapped through
+    // argMapping). For each such reference, create an EmitC constant
+    // with the same value directly in the EmitC function.
+    for (auto funcOp : moduleOp.getOps<emitc::FuncOp>()) {
+      // Cache: old Value -> new EmitC Value, to avoid duplicates.
+      DenseMap<Value, Value> fixupCache;
+      funcOp.walk([&](Operation *emitcOp) {
+        for (auto &operand : emitcOp->getOpOperands()) {
+          Value val = operand.get();
+          if (!val)
+            continue;
+          Operation *defOp = val.getDefiningOp();
+          if (!defOp)
+            continue;
+          if (defOp->getParentOfType<emitc::FuncOp>())
+            continue;
+          // Value is defined outside EmitC. Replace with EmitC equivalent.
+          auto it = fixupCache.find(val);
+          if (it != fixupCache.end()) {
+            operand.set(it->second);
+            continue;
+          }
+          OpBuilder localBuilder(emitcOp);
+          Value replacement;
+          if (auto constOp = dyn_cast<arith::ConstantOp>(defOp)) {
+            if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue())) {
+              auto *ctx = localBuilder.getContext();
+              int64_t intVal = intAttr.getInt();
+              Type origType = constOp.getType();
+              Type emitcType;
+              if (origType.isIndex())
+                emitcType = emitc::OpaqueType::get(ctx, "size_t");
+              else if (auto iType = dyn_cast<IntegerType>(origType))
+                emitcType = iType.getWidth() <= 32
+                                ? emitc::OpaqueType::get(ctx, "uint32_t")
+                                : emitc::OpaqueType::get(ctx, "uint64_t");
+              else
+                emitcType = emitc::OpaqueType::get(ctx, "uint32_t");
+              std::string valStr =
+                  std::to_string(static_cast<uint64_t>(intVal));
+              if (emitcType == emitc::OpaqueType::get(ctx, "uint32_t"))
+                valStr += "u";
+              replacement = emitc::ConstantOp::create(
+                  localBuilder, defOp->getLoc(), emitcType,
+                  emitc::OpaqueAttr::get(ctx, valStr));
+            }
+          }
+          if (!replacement) {
+            // Fallback: just create a 0u constant.
+            replacement = emitc::ConstantOp::create(
+                localBuilder, defOp->getLoc(),
+                emitc::OpaqueType::get(localBuilder.getContext(), "uint32_t"),
+                emitc::OpaqueAttr::get(localBuilder.getContext(),
+                                       "0u /* fixup */"));
+          }
+          fixupCache[val] = replacement;
+          operand.set(replacement);
+        }
+      });
+    }
     SmallVector<Operation *> toErase;
     for (auto &op : moduleOp.getBody()->getOperations()) {
       if (!isa<emitc::FuncOp>(op) && !isa<emitc::IncludeOp>(op))
@@ -392,9 +506,12 @@ private:
     }
 
     if (auto addrPatch = dyn_cast<AIEX::NpuAddressPatchOp>(op)) {
+      Value dynPlus = addrPatch.getDynArgPlus();
+      if (dynPlus)
+        dynPlus = argMapping.lookupOrDefault(dynPlus);
       emitTxnAddressPatch(builder, opLoc, txnVec, addrPatch.getAddr(),
                           addrPatch.getArgIdx(), addrPatch.getArgPlus(),
-                          opCountLval);
+                          dynPlus, opCountLval);
       return success();
     }
 
@@ -482,6 +599,141 @@ private:
       return success();
     }
 
+    if (auto remOp = dyn_cast<arith::RemUIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(remOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(remOp.getRhs());
+      Type resType = lhs.getType();
+      Value result = emitc::RemOp::create(builder, opLoc, resType, lhs, rhs);
+      argMapping.map(remOp.getResult(), result);
+      return success();
+    }
+
+    if (auto shlOp = dyn_cast<arith::ShLIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(shlOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(shlOp.getRhs());
+      Type resType = lhs.getType();
+      Value result =
+          emitc::BitwiseLeftShiftOp::create(builder, opLoc, resType, lhs, rhs);
+      argMapping.map(shlOp.getResult(), result);
+      return success();
+    }
+
+    if (auto shrOp = dyn_cast<arith::ShRUIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(shrOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(shrOp.getRhs());
+      Type resType = lhs.getType();
+      Value result =
+          emitc::BitwiseRightShiftOp::create(builder, opLoc, resType, lhs, rhs);
+      argMapping.map(shrOp.getResult(), result);
+      return success();
+    }
+
+    if (auto orOp = dyn_cast<arith::OrIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(orOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(orOp.getRhs());
+      Type resType = lhs.getType();
+      Value result =
+          emitc::BitwiseOrOp::create(builder, opLoc, resType, lhs, rhs);
+      argMapping.map(orOp.getResult(), result);
+      return success();
+    }
+
+    if (auto andOp = dyn_cast<arith::AndIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(andOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(andOp.getRhs());
+      Type resType = lhs.getType();
+      Value result =
+          emitc::BitwiseAndOp::create(builder, opLoc, resType, lhs, rhs);
+      argMapping.map(andOp.getResult(), result);
+      return success();
+    }
+
+    if (auto xorOp = dyn_cast<arith::XOrIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(xorOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(xorOp.getRhs());
+      Type resType = lhs.getType();
+      Value result =
+          emitc::BitwiseXorOp::create(builder, opLoc, resType, lhs, rhs);
+      argMapping.map(xorOp.getResult(), result);
+      return success();
+    }
+
+    if (auto cmpOp = dyn_cast<arith::CmpIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(cmpOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(cmpOp.getRhs());
+
+      // For signed predicates, cast operands to int32_t before comparing.
+      // Our representation uses uint32_t for all i32 values, but signed
+      // comparisons require signed arithmetic to handle negative values
+      // correctly.
+      bool isSigned = false;
+      switch (cmpOp.getPredicate()) {
+      case arith::CmpIPredicate::slt:
+      case arith::CmpIPredicate::sle:
+      case arith::CmpIPredicate::sgt:
+      case arith::CmpIPredicate::sge:
+        isSigned = true;
+        break;
+      default:
+        break;
+      }
+      if (isSigned) {
+        lhs = castToI32(builder, opLoc, lhs);
+        rhs = castToI32(builder, opLoc, rhs);
+      }
+
+      // Map arith::CmpIPredicate to emitc::CmpPredicate.
+      emitc::CmpPredicate emitcPred;
+      switch (cmpOp.getPredicate()) {
+      case arith::CmpIPredicate::eq:
+        emitcPred = emitc::CmpPredicate::eq;
+        break;
+      case arith::CmpIPredicate::ne:
+        emitcPred = emitc::CmpPredicate::ne;
+        break;
+      case arith::CmpIPredicate::slt:
+      case arith::CmpIPredicate::ult:
+        emitcPred = emitc::CmpPredicate::lt;
+        break;
+      case arith::CmpIPredicate::sle:
+      case arith::CmpIPredicate::ule:
+        emitcPred = emitc::CmpPredicate::le;
+        break;
+      case arith::CmpIPredicate::sgt:
+      case arith::CmpIPredicate::ugt:
+        emitcPred = emitc::CmpPredicate::gt;
+        break;
+      case arith::CmpIPredicate::sge:
+      case arith::CmpIPredicate::uge:
+        emitcPred = emitc::CmpPredicate::ge;
+        break;
+      default:
+        emitcPred = emitc::CmpPredicate::eq;
+        break;
+      }
+
+      auto i1Type = emitc::OpaqueType::get(builder.getContext(), "bool");
+      Value result =
+          emitc::CmpOp::create(builder, opLoc, i1Type, emitcPred, lhs, rhs);
+      argMapping.map(cmpOp.getResult(), result);
+      return success();
+    }
+
+    if (auto selectOp = dyn_cast<arith::SelectOp>(op)) {
+      Value cond = argMapping.lookupOrDefault(selectOp.getCondition());
+      Value trueVal = argMapping.lookupOrDefault(selectOp.getTrueValue());
+      Value falseVal = argMapping.lookupOrDefault(selectOp.getFalseValue());
+      Type resType = trueVal.getType();
+      // emitc.conditional requires i1 condition; cast if needed.
+      if (!cond.getType().isInteger(1))
+        cond = emitc::CastOp::create(
+            builder, opLoc, IntegerType::get(builder.getContext(), 1), cond);
+      Value result = emitc::ConditionalOp::create(builder, opLoc, resType, cond,
+                                                  trueVal, falseVal);
+      argMapping.map(selectOp.getResult(), result);
+      return success();
+    }
+
     if (auto indexCast = dyn_cast<arith::IndexCastOp>(op)) {
       Value input = argMapping.lookupOrDefault(indexCast.getIn());
       Type origResultType = indexCast.getType();
@@ -501,6 +753,64 @@ private:
       return success();
     }
 
+    if (auto minOp = dyn_cast<arith::MinSIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(minOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(minOp.getRhs());
+      // arith.minsi is a SIGNED operation. Cast to int32_t before std::min
+      // to preserve correct signed semantics (uint32_t would wrap on negative).
+      auto i32Type = getI32Type(builder.getContext());
+      Value lhsSigned = castToI32(builder, opLoc, lhs);
+      Value rhsSigned = castToI32(builder, opLoc, rhs);
+      auto callOp =
+          emitc::CallOpaqueOp::create(builder, opLoc, i32Type, "std::min",
+                                      ValueRange{lhsSigned, rhsSigned});
+      // Cast result back to the original type (uint32_t in our representation)
+      Value result = emitc::CastOp::create(builder, opLoc, lhs.getType(),
+                                           callOp.getResult(0));
+      argMapping.map(minOp.getResult(), result);
+      return success();
+    }
+
+    if (auto maxOp = dyn_cast<arith::MaxSIOp>(op)) {
+      Value lhs = argMapping.lookupOrDefault(maxOp.getLhs());
+      Value rhs = argMapping.lookupOrDefault(maxOp.getRhs());
+      // arith.maxsi is a SIGNED operation. Cast to int32_t before std::max.
+      auto i32Type = getI32Type(builder.getContext());
+      Value lhsSigned = castToI32(builder, opLoc, lhs);
+      Value rhsSigned = castToI32(builder, opLoc, rhs);
+      auto callOp =
+          emitc::CallOpaqueOp::create(builder, opLoc, i32Type, "std::max",
+                                      ValueRange{lhsSigned, rhsSigned});
+      Value result = emitc::CastOp::create(builder, opLoc, lhs.getType(),
+                                           callOp.getResult(0));
+      argMapping.map(maxOp.getResult(), result);
+      return success();
+    }
+
+    if (auto truncOp = dyn_cast<arith::TruncIOp>(op)) {
+      Value input = argMapping.lookupOrDefault(truncOp.getIn());
+      Type resultType = truncOp.getType();
+      Value result = emitc::CastOp::create(builder, opLoc, resultType, input);
+      argMapping.map(truncOp.getResult(), result);
+      return success();
+    }
+
+    if (auto extOp = dyn_cast<arith::ExtUIOp>(op)) {
+      Value input = argMapping.lookupOrDefault(extOp.getIn());
+      Type resultType = extOp.getType();
+      Value result = emitc::CastOp::create(builder, opLoc, resultType, input);
+      argMapping.map(extOp.getResult(), result);
+      return success();
+    }
+
+    if (auto extOp = dyn_cast<arith::ExtSIOp>(op)) {
+      Value input = argMapping.lookupOrDefault(extOp.getIn());
+      Type resultType = extOp.getType();
+      Value result = emitc::CastOp::create(builder, opLoc, resultType, input);
+      argMapping.map(extOp.getResult(), result);
+      return success();
+    }
+
     // SCF control flow.
     if (auto forOp = dyn_cast<scf::ForOp>(op)) {
       return emitScfFor(builder, forOp, txnVec, opCountLval, argMapping);
@@ -510,8 +820,18 @@ private:
       return emitScfIf(builder, ifOp, txnVec, opCountLval, argMapping);
     }
 
-    // Terminators - skip.
-    if (isa<scf::YieldOp>(op) || isa<AIE::EndOp>(op))
+    // scf.yield: assign yielded values to the corresponding mutable variables
+    // (set up by emitScfFor/emitScfIf).
+    if (auto yieldOp = dyn_cast<scf::YieldOp>(op)) {
+      for (auto [yieldVal, resultVar] :
+           llvm::zip(yieldOp.getOperands(), yieldTargets)) {
+        Value mapped = argMapping.lookupOrDefault(yieldVal);
+        emitc::AssignOp::create(builder, opLoc, resultVar, mapped);
+      }
+      return success();
+    }
+
+    if (isa<AIE::EndOp>(op))
       return success();
 
     // Ignore unknown ops with a comment.
@@ -530,34 +850,97 @@ private:
     Value ub = argMapping.lookupOrDefault(forOp.getUpperBound());
     Value step = argMapping.lookupOrDefault(forOp.getStep());
 
+    // Handle iter_args: create mutable variables before the loop,
+    // initialize them with the init values, and map the iter_args and
+    // for-op results to those variables.
+    SmallVector<Value> iterVars;
+    for (auto [initVal, iterArg] :
+         llvm::zip(forOp.getInitArgs(), forOp.getRegionIterArgs())) {
+      Value mappedInit = argMapping.lookupOrDefault(initVal);
+      // Create a mutable variable: type var = init;
+      auto lvalType = emitc::LValueType::get(mappedInit.getType());
+      auto var = emitc::VariableOp::create(
+          builder, loc, lvalType,
+          emitc::OpaqueAttr::get(builder.getContext(), "{}"));
+      emitc::AssignOp::create(builder, loc, var.getResult(), mappedInit);
+      iterVars.push_back(var.getResult());
+      argMapping.map(iterArg, var.getResult());
+    }
+
     // Create emitc.for.
     auto emitcFor = emitc::ForOp::create(builder, loc, lb, ub, step);
 
     // Map the induction variable.
     argMapping.map(forOp.getInductionVar(), emitcFor.getInductionVar());
 
-    // Emit body.
-    OpBuilder::InsertionGuard guard(builder);
-    builder.setInsertionPointToStart(emitcFor.getBody());
+    // Push yield targets for the loop body.
+    auto savedTargets = yieldTargets;
+    yieldTargetStack.push_back(iterVars);
+    yieldTargets = yieldTargetStack.back();
 
-    for (auto &bodyOp : forOp.getBody()->getOperations()) {
-      if (failed(
-              emitOp(builder, &bodyOp, loc, txnVec, opCountLval, argMapping)))
-        return failure();
+    // Emit body.
+    {
+      OpBuilder::InsertionGuard guard(builder);
+      builder.setInsertionPointToStart(emitcFor.getBody());
+
+      // Emit loads for iter_arg variables at the top of the loop body.
+      // This gives each iteration a snapshot of the current variable value.
+      for (auto [iterArg, var] :
+           llvm::zip(forOp.getRegionIterArgs(), iterVars)) {
+        auto loadedType = cast<emitc::LValueType>(var.getType()).getValueType();
+        Value loaded = emitc::LoadOp::create(builder, loc, loadedType, var);
+        argMapping.map(iterArg, loaded);
+      }
+
+      for (auto &bodyOp : forOp.getBody()->getOperations()) {
+        if (failed(
+                emitOp(builder, &bodyOp, loc, txnVec, opCountLval, argMapping)))
+          return failure();
+      }
+    }
+
+    // Pop yield targets.
+    yieldTargetStack.pop_back();
+    yieldTargets = savedTargets;
+
+    // Map the for-op results to loaded values from the mutable variables.
+    for (auto [result, var] : llvm::zip(forOp.getResults(), iterVars)) {
+      auto loadedType = cast<emitc::LValueType>(var.getType()).getValueType();
+      Value loaded = emitc::LoadOp::create(builder, loc, loadedType, var);
+      argMapping.map(result, loaded);
     }
 
     return success();
   }
 
-  /// Emit an scf.if as emitc.if.
+  /// Emit an scf.if as emitc.if, with support for result values.
   LogicalResult emitScfIf(OpBuilder &builder, scf::IfOp ifOp, Value txnVec,
                           Value opCountLval, IRMapping &argMapping) {
     Location loc = ifOp.getLoc();
 
     Value cond = argMapping.lookupOrDefault(ifOp.getCondition());
+    // emitc.if requires i1 condition; cast if needed.
+    if (!cond.getType().isInteger(1))
+      cond = emitc::CastOp::create(
+          builder, loc, IntegerType::get(builder.getContext(), 1), cond);
+
+    // If the scf.if has results, create mutable variables before the if.
+    SmallVector<Value> resultVars;
+    for (auto result : ifOp.getResults()) {
+      auto lvalType = emitc::LValueType::get(result.getType());
+      auto var = emitc::VariableOp::create(
+          builder, loc, lvalType,
+          emitc::OpaqueAttr::get(builder.getContext(), "{}"));
+      resultVars.push_back(var.getResult());
+    }
 
     bool hasElse = !ifOp.getElseRegion().empty();
     auto emitcIf = emitc::IfOp::create(builder, loc, cond, hasElse);
+
+    // Push yield targets for the if body.
+    auto savedTargets = yieldTargets;
+    yieldTargetStack.push_back(resultVars);
+    yieldTargets = yieldTargetStack.back();
 
     // Emit then body.
     {
@@ -568,6 +951,8 @@ private:
                 emitOp(builder, &thenOp, loc, txnVec, opCountLval, argMapping)))
           return failure();
       }
+      // Add emitc.yield terminator for the then block.
+      emitc::YieldOp::create(builder, loc);
     }
 
     // Emit else body.
@@ -579,6 +964,19 @@ private:
                 emitOp(builder, &elseOp, loc, txnVec, opCountLval, argMapping)))
           return failure();
       }
+      // Add emitc.yield terminator for the else block.
+      emitc::YieldOp::create(builder, loc);
+    }
+
+    // Pop yield targets.
+    yieldTargetStack.pop_back();
+    yieldTargets = savedTargets;
+
+    // Map the if-op results to loaded values from the mutable variables.
+    for (auto [result, var] : llvm::zip(ifOp.getResults(), resultVars)) {
+      auto loadedType = cast<emitc::LValueType>(var.getType()).getValueType();
+      Value loaded = emitc::LoadOp::create(builder, loc, loadedType, var);
+      argMapping.map(result, loaded);
     }
 
     return success();

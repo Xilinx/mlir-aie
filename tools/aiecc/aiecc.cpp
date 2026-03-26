@@ -75,6 +75,7 @@
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/Passes.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -86,6 +87,7 @@
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
@@ -223,6 +225,9 @@ static cl::opt<bool>
     generateCppTxn("aie-generate-txn-cpp",
                    cl::desc("Generate C++ code for runtime TXN generation"),
                    cl::init(false), cl::cat(aieCompilerOptions));
+
+// Module clone saved before SCF→CF for the TXN C++ path.
+static OwningOpRef<ModuleOp> preSCFModule;
 
 static cl::opt<std::string> cppTxnName("txn-cpp-name",
                                        cl::desc("Output C++ TXN filename"),
@@ -1448,9 +1453,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
   devicePm.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
-  // Step 5: Convert SCF to CF (module-level pass)
-  pm.addPass(createSCFToControlFlowPass());
-
   if (verbose) {
     llvm::outs() << "Running resource allocation pipeline in-memory "
                  << "(alloc-scheme=" << allocScheme.getValue() << ")\n";
@@ -1461,6 +1463,43 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
                                      tmpDirName))) {
     llvm::errs() << "Error: Resource allocation pipeline failed\n";
     return failure();
+  }
+
+  // Step 5: Convert SCF to CF in aie.core bodies only.
+  // We use applyPartialConversion with a custom ConversionTarget that marks
+  // RuntimeSequenceOp as legal. This prevents the SCF→CF pass from descending
+  // into aie.runtime_sequence, where scf.if regions may end with aiex ops
+  // (e.g. aiex.npu.sync) that are not proper SCF terminators. The runtime
+  // sequence SCF ops are handled later by AIEXToStandardPass. The
+  // IsolatedFromAbove trait alone does NOT prevent applyPartialConversion from
+  // walking into RuntimeSequenceOp - we must explicitly mark it legal.
+  {
+    MLIRContext *ctx = moduleOp.getContext();
+    ConversionTarget scfTarget(*ctx);
+    // Mark all dialects legal by default so only SCF ops trigger conversion
+    scfTarget.addLegalDialect<cf::ControlFlowDialect>();
+    scfTarget.addLegalDialect<scf::SCFDialect>();
+    scfTarget.addLegalDialect<arith::ArithDialect>();
+    scfTarget.addLegalDialect<func::FuncDialect>();
+    scfTarget.addLegalDialect<memref::MemRefDialect>();
+    scfTarget.addLegalDialect<xilinx::AIE::AIEDialect>();
+    scfTarget.addLegalDialect<xilinx::AIEX::AIEXDialect>();
+    scfTarget.addLegalOp<ModuleOp>();
+    // Mark RuntimeSequenceOp as legal with all its nested ops - this prevents
+    // the converter from descending into runtime_sequence and trying to lower
+    // SCF ops that have non-standard terminators (aiex ops) in their regions.
+    scfTarget.addLegalOp<xilinx::AIE::RuntimeSequenceOp>();
+    scfTarget.markOpRecursivelyLegal<xilinx::AIE::RuntimeSequenceOp>();
+    // Mark SCF ops as illegal inside aie.core bodies (not inside
+    // runtime_sequence)
+    scfTarget.addIllegalDialect<scf::SCFDialect>();
+    RewritePatternSet scfPatterns(ctx);
+    populateSCFToControlFlowConversionPatterns(scfPatterns);
+    if (failed(applyPartialConversion(moduleOp, scfTarget,
+                                      std::move(scfPatterns)))) {
+      llvm::errs() << "Error: SCF to CF conversion failed\n";
+      return failure();
+    }
   }
 
   if (verbose) {
@@ -1726,6 +1765,7 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass(aievecOpts));
 
   // Step 5: Standard LLVM lowering passes
+  pm.addPass(createSCFToControlFlowPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(memref::createExpandStridedMetadataPass());
@@ -1807,6 +1847,7 @@ static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass(aievecOpts));
 
   // Step 5: Standard LLVM lowering passes
+  pm.addPass(createSCFToControlFlowPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(memref::createExpandStridedMetadataPass());
