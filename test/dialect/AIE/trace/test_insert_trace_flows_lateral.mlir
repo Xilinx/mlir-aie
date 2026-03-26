@@ -10,6 +10,7 @@
 
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows="lateral-routing=true" | FileCheck %s
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows | FileCheck %s --check-prefix=NOLATRL
+// RUN: aie-opt %s --split-input-file -aie-insert-trace-flows="lateral-routing=true distribute-channels=true" | FileCheck %s --check-prefix=COMBO
 
 // -----
 
@@ -76,5 +77,45 @@ module @lateral_no_spare {
 
     // No spare column, falls back to column 0
     // CHECK: aie.packet_dest<%{{.*}}0_0{{.*}}, DMA : 1>
+  }
+}
+
+// -----
+
+// Test: Lateral routing + channel distribution compose together.
+// Two traces in column 0 (active) should route laterally to column 1 (spare)
+// AND distribute across two DMA channels.
+// COMBO-LABEL: module @lateral_and_distribute
+module @lateral_and_distribute {
+  aie.device(npu1_2col) {
+    %tile02 = aie.tile(0, 2)
+    %tile03 = aie.tile(0, 3)
+    %tile00 = aie.tile(0, 0)
+
+    %core0 = aie.core(%tile02) { aie.end }
+
+    aie.trace @trace_a(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.trace @trace_b(%tile03) {
+      aie.trace.packet id=2 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 8192
+      aie.trace.start_config @trace_a
+      aie.trace.start_config @trace_b
+    }
+
+    // Both traces route to column 1 (spare) with different DMA channels
+    // COMBO-DAG: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 1>
+    // COMBO-DAG: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 0>
   }
 }
