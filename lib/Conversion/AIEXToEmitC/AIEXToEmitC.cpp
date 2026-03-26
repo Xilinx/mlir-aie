@@ -723,11 +723,14 @@ private:
       Value cond = argMapping.lookupOrDefault(selectOp.getCondition());
       Value trueVal = argMapping.lookupOrDefault(selectOp.getTrueValue());
       Value falseVal = argMapping.lookupOrDefault(selectOp.getFalseValue());
-      Type resType = trueVal.getType();
       // emitc.conditional requires i1 condition; cast if needed.
       if (!cond.getType().isInteger(1))
         cond = emitc::CastOp::create(
             builder, opLoc, IntegerType::get(builder.getContext(), 1), cond);
+      // Unify types: cast falseVal to trueVal's type if they differ
+      Type resType = trueVal.getType();
+      if (falseVal.getType() != resType)
+        falseVal = emitc::CastOp::create(builder, opLoc, resType, falseVal);
       Value result = emitc::ConditionalOp::create(builder, opLoc, resType, cond,
                                                   trueVal, falseVal);
       argMapping.map(selectOp.getResult(), result);
@@ -826,6 +829,11 @@ private:
       for (auto [yieldVal, resultVar] :
            llvm::zip(yieldOp.getOperands(), yieldTargets)) {
         Value mapped = argMapping.lookupOrDefault(yieldVal);
+        // Cast if types differ (e.g., i32 vs !emitc.opaque<"uint32_t">)
+        auto varInnerType =
+            cast<emitc::LValueType>(resultVar.getType()).getValueType();
+        if (mapped.getType() != varInnerType)
+          mapped = emitc::CastOp::create(builder, opLoc, varInnerType, mapped);
         emitc::AssignOp::create(builder, opLoc, resultVar, mapped);
       }
       return success();
@@ -857,8 +865,11 @@ private:
     for (auto [initVal, iterArg] :
          llvm::zip(forOp.getInitArgs(), forOp.getRegionIterArgs())) {
       Value mappedInit = argMapping.lookupOrDefault(initVal);
-      // Create a mutable variable: type var = init;
-      auto lvalType = emitc::LValueType::get(mappedInit.getType());
+      // Create a mutable variable with the mapped init value's type.
+      // If types don't match (e.g., i32 vs !emitc.opaque<"uint32_t">
+      // from the fixup pass), cast the init value.
+      Type varValueType = mappedInit.getType();
+      auto lvalType = emitc::LValueType::get(varValueType);
       auto var = emitc::VariableOp::create(
           builder, loc, lvalType,
           emitc::OpaqueAttr::get(builder.getContext(), "{}"));

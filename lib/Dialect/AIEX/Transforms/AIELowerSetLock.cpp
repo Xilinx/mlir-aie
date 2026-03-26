@@ -76,9 +76,16 @@ struct AIELowerSetLockPass
     RewritePatternSet patterns(&getContext());
     patterns.add<SetLockToWrite32Pattern>(&getContext());
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+    FrozenRewritePatternSet frozenPat(std::move(patterns));
+    if (failed(applyPartialConversion(device, target, frozenPat))) {
       signalPassFailure();
+      return;
     }
+    // Also apply inside IsolatedFromAbove RuntimeSequenceOps
+    device.walk([&](AIE::RuntimeSequenceOp seqOp) {
+      if (failed(applyPartialConversion(seqOp, target, frozenPat)))
+        signalPassFailure();
+    });
   }
 };
 

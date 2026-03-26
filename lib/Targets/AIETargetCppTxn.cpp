@@ -46,7 +46,10 @@ LogicalResult AIETranslateToCppTxn(ModuleOp module, llvm::raw_ostream &output) {
   // down to npu.write32/blockwrite/sync/address_patch.
   {
     PassManager pm(ctx);
-    populateNpuLoweringPipeline(pm);
+    // Skip materialize pass: the runtime_sequence is already in final form
+    // (no aiex.run calls to inline). Also, materialize uses
+    // applyPatternsGreedily which won't enter IsolatedFromAbove regions.
+    populateNpuLoweringPipeline(pm, /*skipMaterialize=*/true);
 
     if (failed(pm.run(*clonedModule)))
       return module.emitError("NPU lowering pipeline failed");

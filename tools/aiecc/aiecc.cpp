@@ -1391,19 +1391,10 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // options (canonicalize, lower, optimize) through parseFromString, not
   // through direct member assignment. Without this, aie2p falls back to aie1
   // patterns.
-  std::string lowerTarget = aieTarget.lower();
-  if (lowerTarget == "aie2" || lowerTarget == "aieml" ||
-      lowerTarget == "aie2p") {
-    std::string vecPipeline =
-        "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        " target-backend=llvmir" +
-        (bf16Emulation ? " bf16-emulation=true" : "") + "}";
-    if (failed(parsePassPipeline(vecPipeline, pm))) {
-      llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
-                      "pipeline\n";
-      return failure();
-    }
-  }
+  // Note: convert-vector-to-aievec is now in the per-core LLVM lowering
+  // pipeline, not here. Running it at the module level would vectorize
+  // arith ops inside runtime_sequence (e.g. arith.minsi -> aievec.min),
+  // breaking EmitC conversion for the C++ TXN code path.
 
   // Step 2: Lower affine
   pm.addPass(createLowerAffinePass());
@@ -1747,6 +1738,19 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
   devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
   devicePm.addPass(xilinx::AIEX::createAIETransformBfpTypesPass());
+
+  // Step 1b: Vector to AIEVec conversion (before core extraction)
+  {
+    std::string lt = aieTarget.lower();
+    if (lt == "aie2" || lt == "aieml" || lt == "aie2p") {
+      std::string vecPipeline = "convert-vector-to-aievec{aie-target=" + lt +
+                                " target-backend=llvmir}";
+      if (failed(parsePassPipeline(vecPipeline, pm))) {
+        llvm::errs() << "Error: Failed to parse convert-vector-to-aievec\n";
+        return failure();
+      }
+    }
+  }
 
   // Step 2: aie-standard-lowering with specific core coordinates
   // This extracts the specified core and removes the aie.device wrapper

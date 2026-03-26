@@ -10,6 +10,13 @@ import numpy as np
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
+
+
+# TraceShimRouting enum (from AIETraceAttrs.td, not yet auto-generated)
+class TraceShimRouting(IntEnum):
+    Single = 0
+
+
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp

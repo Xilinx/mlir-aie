@@ -566,6 +566,8 @@ def AIE_RunOp: AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
      $runtime_sequence_symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
   }];
 
+  let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     AIE::DeviceOp getCalleeDeviceOp();
     AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp();

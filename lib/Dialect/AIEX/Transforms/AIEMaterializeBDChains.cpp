@@ -128,6 +128,7 @@ struct AIEMaterializeBDChainsPass
     GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
     rewriter_config.setRegionSimplificationLevel(
         GreedySimplifyRegionLevel::Disabled);
+    rewriter_config.enableConstantCSE(false);
 
     RewritePatternSet patterns_0(ctx);
     patterns_0.insert<DMAStartBdChainForOpPattern>(ctx);
