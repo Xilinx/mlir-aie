@@ -437,3 +437,63 @@ def test_array_to_torch_zero_copy(dtype, torch_dtype, shape):
     sentinel = 42 if np.issubdtype(dtype, np.integer) else dtype(42.0)
     arr.flat[0] = sentinel
     assert t.flat[0].item() == pytest.approx(float(sentinel), rel=0.05)
+
+
+# ---------------------------------------------------------------------------
+# float8 dtypes: _array_to_torch when torch and ml_dtypes both support them
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "ml_attr,torch_attr",
+    [
+        ("float8_e4m3fn", "float8_e4m3fn"),
+        ("float8_e5m2", "float8_e5m2"),
+        ("float8_e4m3fnuz", "float8_e4m3fnuz"),
+        ("float8_e5m2fnuz", "float8_e5m2fnuz"),
+    ],
+)
+@pytest.mark.parametrize("shape", [(8,), (4, 4)])
+def test_array_to_torch_float8(ml_attr, torch_attr, shape):
+    """_array_to_torch handles float8 dtypes zero-copy when available in both libraries."""
+    ml_dt = getattr(ml_dtypes, ml_attr, None)
+    torch_dt = getattr(torch, torch_attr, None)
+    if ml_dt is None or torch_dt is None:
+        pytest.skip(f"{ml_attr} not available in ml_dtypes or torch")
+
+    arr = np.ones(shape, dtype=ml_dt)
+    t = _array_to_torch(arr)
+    assert t.dtype == torch_dt
+    assert t.shape == tuple(shape)
+    # Zero-copy: mutation in source is visible in tensor
+    arr.flat[0] = ml_dt(0.0)
+    assert t.flat[0].item() != t.flat[1].item()  # 0 != 1
+
+
+# ---------------------------------------------------------------------------
+# torch_view() + to("npu") round-trip: verify NPU sees written data
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dtype,torch_dtype", TORCH_VIEW_DTYPE_PAIRS)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_torch_view_npu_roundtrip(tensorclass, dtype, torch_dtype):
+    """
+    Write via torch_view(), sync to NPU via to("npu"), sync back via to("cpu"),
+    and verify the data is intact — confirming the NPU saw the written values.
+    """
+    shape = (8,)
+    fill_val = 3 if np.issubdtype(dtype, np.integer) else dtype(3.0)
+    tensor = tensorclass(shape, dtype=dtype)
+
+    # torch_view() marks device=cpu; write fill value
+    view = tensor.torch_view()
+    view.fill_(fill_val)
+
+    # Sync to device (would be no-op if device were still "npu")
+    tensor.to("npu")
+    assert tensor.device == "npu"
+
+    # Sync back from device and verify data survived the round-trip
+    result = tensor.to_torch()  # to_torch() syncs from NPU
+    assert torch.all(result.float() == pytest.approx(float(fill_val), rel=0.05))

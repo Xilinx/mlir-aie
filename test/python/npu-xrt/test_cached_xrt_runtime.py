@@ -699,3 +699,132 @@ def test_handle_garbage_collected_after_cleanup(runtime):
         "Handle not garbage collected after cleanup() with no external references. "
         "Leaking pyxrt.kernel / context resources."
     )
+
+
+# ---------------------------------------------------------------------------
+# Handle cache: additional coverage for kernel_name=None, mtime invalidation,
+# and load_and_run() weakref behaviour
+# ---------------------------------------------------------------------------
+
+
+def test_handle_cache_kernel_name_none(runtime):
+    """
+    load() with kernel_name=None (auto-resolved) populates _handle_cache and
+    returns the same handle on repeated calls while it is alive.
+    """
+    import weakref
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+
+    # Compile with default (None) kernel name
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    assert len(runtime._handle_cache) >= 1
+
+    # The cached key includes the resolved kernel_name (not None)
+    handle_key = list(runtime._handle_cache.keys())[0]
+    resolved_kernel_name = handle_key[-1]
+    assert (
+        resolved_kernel_name is not None
+    ), "Expected kernel_name to be resolved in handle cache key, got None"
+
+    # Second call should still return the same weakref target
+    handle_ref = runtime._handle_cache[handle_key]
+    handle = handle_ref()
+    assert handle is not None
+
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    assert runtime._handle_cache[handle_key]() is handle
+
+
+def test_handle_cache_invalidated_on_mtime_change(runtime):
+    """
+    Touching the xclbin file (changing mtime) causes a new context and new
+    handle to be created; the old handle cache entry must not be reused.
+    """
+    import time
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    old_keys = set(runtime._handle_cache.keys())
+    old_xclbin_path = list(old_keys)[0][0]
+
+    time.sleep(0.01)
+    import os
+
+    os.utime(old_xclbin_path, None)
+
+    # Load again — mtime changed so it's a cache miss, new handle is created
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    new_keys = set(runtime._handle_cache.keys())
+    # There should be a new key with the updated mtime
+    added_keys = new_keys - old_keys
+    assert (
+        len(added_keys) >= 1
+    ), "Expected a new handle cache entry after mtime change, but none was added"
+    # The new key has the same xclbin path but different mtime
+    new_key = next(iter(added_keys))
+    assert new_key[0] == old_xclbin_path
+    assert new_key[1] != list(old_keys)[0][1], "Expected different mtime in new key"
+
+
+def test_load_and_run_handle_weakref_not_kept_alive(runtime):
+    """
+    load_and_run() returns the handle to the caller but does not store a strong
+    reference internally, so if the caller discards it the weakref in
+    _handle_cache becomes stale and the next call rebuilds the handle.
+
+    This is the accepted trade-off (documented behaviour, not a regression):
+    load_and_run() is less efficient than explicit load() + run() for hot paths.
+    Callers who need efficiency should use load() once and hold the handle.
+    """
+    import gc
+    import weakref
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+
+    # Populate the cache via transform (uses load_and_run internally)
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    assert len(runtime._handle_cache) >= 1
+
+    handle_key = list(runtime._handle_cache.keys())[0]
+    handle_weakref = runtime._handle_cache[handle_key]
+    handle_obj = handle_weakref()
+    assert handle_obj is not None
+
+    # Take a liveness weakref independent of the cache entry
+    liveness_ref = weakref.ref(handle_obj)
+
+    # Drop our strong ref; load_and_run keeps no internal strong ref
+    del handle_obj
+    gc.collect()
+
+    # The handle should now be GC'd (no external strong refs remain)
+    assert liveness_ref() is None, (
+        "load_and_run() appears to keep an internal strong reference to the handle. "
+        "This is not necessarily wrong, but documents that the behaviour changed."
+    )
+
+
+def test_explicit_load_keeps_handle_alive_across_calls(runtime):
+    """
+    Explicit load() callers who hold the returned handle keep the weakref alive
+    across multiple calls — the efficient pattern for hot paths like get_callable().
+    The weakref in _handle_cache stays live as long as the caller holds the ref.
+    """
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    handle_key = list(runtime._handle_cache.keys())[0]
+
+    # Hold a strong ref (simulates what get_callable() does in practice)
+    strong_ref = runtime._handle_cache[handle_key]()
+    assert strong_ref is not None
+
+    # Repeated calls return the same handle object while strong_ref is held
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    assert runtime._handle_cache[handle_key]() is strong_ref
+
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    assert runtime._handle_cache[handle_key]() is strong_ref

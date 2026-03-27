@@ -372,7 +372,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
-        # Kernel handle cache: keyed on (xclbin_path, insts_path, kernel_name).
+
         # Weak-reference handle cache, keyed on (xclbin_path, xclbin_mtime,
         # insts_path, insts_mtime, kernel_name).
         # Stores weakref.ref so the handle lives only as long as an external
@@ -381,8 +381,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         # This lets callers preemptively free kernel/context resources simply
         # by dropping their handle reference — no explicit unload() needed.
         # Avoids reconstructing pyxrt.kernel on every load() call while a
-        # handle is alive, which would trigger an implicit NPU context
-        # activation on each call. See: mlir_aie_issue_cached_xrt_runtime_handle_caching.md
+        # handle is alive. See: mlir_aie_issue_cached_xrt_runtime_handle_caching.md
         self._handle_cache: dict[tuple, weakref.ref] = {}
 
         # Set default from dict if present
