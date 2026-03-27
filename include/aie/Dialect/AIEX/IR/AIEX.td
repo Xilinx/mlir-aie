@@ -571,8 +571,6 @@ def AIE_RunOp: AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
     AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp();
   }];
 
-  let hasVerifier = 1;
-  
   let summary = "Execute a runtime sequence";
   let description = [{
     Executes an `aiex.runtime_sequence` with the given name and arguments by inlining its instructions at the call site.

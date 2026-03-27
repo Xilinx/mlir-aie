@@ -1067,46 +1067,6 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
   return runtimeSequence;
 }
 
-LogicalResult AIEX::RunOp::verify() {
-  AIE::DeviceOp calleeDevice = getCalleeDeviceOp();
-  if (!calleeDevice) {
-    return emitOpError() << "No such device: '" << getRuntimeSequenceSymbol()
-                         << "'";
-  }
-
-  AIE::RuntimeSequenceOp calleeRuntimeSequence = getCalleeRuntimeSequenceOp();
-  if (!calleeRuntimeSequence) {
-    auto err = emitError() << "No such runtime sequence for device '"
-                           << calleeDevice.getSymName() << "': '"
-                           << getRuntimeSequenceSymbol() << "'";
-    err.attachNote(calleeDevice.getLoc())
-        << "This device does not have a '" << getRuntimeSequenceSymbol()
-        << "' runtime sequence";
-    return err;
-  }
-
-  // Validate argument types match the callee's parameters
-  Block &calleeBody = calleeRuntimeSequence.getBody().front();
-  ValueRange values = getArgs();
-
-  if (calleeBody.getNumArguments() != values.size()) {
-    return emitOpError() << "argument count mismatch";
-  }
-
-  for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
-    BlockArgument arg = calleeBody.getArgument(i);
-    Value val = values[i];
-
-    if (arg.getType() != val.getType()) {
-      return emitOpError() << "argument " << i << " type mismatch: "
-                           << "expected " << arg.getType() << " but got "
-                           << val.getType();
-    }
-  }
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // NpuLoadPdiOp
 //===----------------------------------------------------------------------===//
