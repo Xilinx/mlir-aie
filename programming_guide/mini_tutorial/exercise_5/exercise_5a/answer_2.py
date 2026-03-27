@@ -17,7 +17,7 @@ from aie.helpers.taplib import TensorTiler2D
 import aie.iron as iron
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def exercise_5a(input0, output):
     # Define tile size
     tile_height = 3
