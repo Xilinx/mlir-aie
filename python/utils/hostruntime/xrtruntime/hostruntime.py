@@ -373,10 +373,17 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
         # Kernel handle cache: keyed on (xclbin_path, insts_path, kernel_name).
-        # Avoids reconstructing pyxrt.kernel on every load() call, which triggers
-        # an implicit NPU context activation even on a context-cache hit.
-        # See: mlir_aie_issue_cached_xrt_runtime_handle_caching.md
-        self._handle_cache: dict[tuple, "CachedXRTKernelHandle"] = {}
+        # Weak-reference handle cache, keyed on (xclbin_path, xclbin_mtime,
+        # insts_path, insts_mtime, kernel_name).
+        # Stores weakref.ref so the handle lives only as long as an external
+        # caller holds a strong reference. When all external references drop,
+        # the handle is garbage collected and the next load() rebuilds it.
+        # This lets callers preemptively free kernel/context resources simply
+        # by dropping their handle reference — no explicit unload() needed.
+        # Avoids reconstructing pyxrt.kernel on every load() call while a
+        # handle is alive, which would trigger an implicit NPU context
+        # activation on each call. See: mlir_aie_issue_cached_xrt_runtime_handle_caching.md
+        self._handle_cache: dict[tuple, weakref.ref] = {}
 
         # Set default from dict if present
         self._cache_size = None
@@ -508,12 +515,18 @@ class CachedXRTRuntime(XRTHostRuntime):
         xclbin_mtime = xclbin_path.stat().st_mtime
         insts_mtime = insts_path.stat().st_mtime
 
-        # Handle cache lookup: return cached handle if xclbin/insts are unchanged.
-        # kernel_name may be None at this point (resolved below), so we use the
-        # raw value as part of the key and resolve lazily on a cache miss.
+        # Handle cache lookup: return live cached handle if xclbin/insts are unchanged.
+        # Uses weakref so the handle is only kept alive by external callers; when
+        # all external references drop the entry becomes stale and load() rebuilds.
+        # kernel_name may be None at this point (resolved below); use the raw value
+        # as key and resolve lazily on a miss.
         handle_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime, kernel_name)
         if handle_key in self._handle_cache:
-            return self._handle_cache[handle_key]
+            cached = self._handle_cache[handle_key]()  # dereference weakref
+            if cached is not None:
+                return cached
+            # Weakref is dead: external caller dropped the handle, remove stale entry
+            del self._handle_cache[handle_key]
 
         # Context Cache Lookup
         context_key = (str(xclbin_path), xclbin_mtime)
@@ -614,10 +627,10 @@ class CachedXRTRuntime(XRTHostRuntime):
             )
             entry["handles"].append(weakref.ref(kernel_handle))
 
-            # Cache the handle keyed on resolved kernel_name so future load() calls
-            # return immediately without constructing a new pyxrt.kernel.
+            # Cache a weakref to the handle so future load() calls return the same
+            # object while it's alive, but allow GC when all external refs drop.
             resolved_handle_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime, kernel_name)
-            self._handle_cache[resolved_handle_key] = kernel_handle
+            self._handle_cache[resolved_handle_key] = weakref.ref(kernel_handle)
 
             return kernel_handle
 
