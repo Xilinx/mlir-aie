@@ -199,15 +199,18 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
 
     // the allocator can accomadate this existing allocation
     nextAddrInBanks[i] = addr + buffer.getAllocationSize();
-    if(memBankAttr){
+    if (memBankAttr) {
       // specified both mem_bank and address, check if they are consistent
       int mem_bank = memBankAttr.getInt();
-      if(mem_bank != i)
-        return buffer->emitOpError("mem_bank attribute is inconsistent with address attribute");
+      if (mem_bank != i)
+        return buffer->emitOpError(
+            "mem_bank attribute is inconsistent with address attribute");
     }
     buffer.setMemBank(i);
+    return true;
   }
-  return true;
+  return buffer->emitOpError(
+      "address attribute does not fall within any bank range");
 }
 
 // Function that checks whether the given buffer already has a set mem_bank
