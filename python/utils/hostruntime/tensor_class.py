@@ -15,16 +15,23 @@ import numpy as np
 # Populated lazily at first use to avoid importing torch/ml_dtypes at module load.
 _ML_DTYPE_TO_TORCH: dict | None = None
 
+
 def _ml_dtype_to_torch_map():
     global _ML_DTYPE_TO_TORCH
     if _ML_DTYPE_TO_TORCH is None:
         import torch
         import ml_dtypes
+
         _ML_DTYPE_TO_TORCH = {}
         _candidates = {
             ml_dtypes.bfloat16: torch.bfloat16,
         }
-        for attr in ("float8_e4m3fn", "float8_e5m2", "float8_e4m3fnuz", "float8_e5m2fnuz"):
+        for attr in (
+            "float8_e4m3fn",
+            "float8_e5m2",
+            "float8_e4m3fnuz",
+            "float8_e5m2fnuz",
+        ):
             ml_dt = getattr(ml_dtypes, attr, None)
             torch_dt = getattr(torch, attr, None)
             if ml_dt is not None and torch_dt is not None:
@@ -32,6 +39,7 @@ def _ml_dtype_to_torch_map():
         for ml_dt, torch_dt in _candidates.items():
             _ML_DTYPE_TO_TORCH[np.dtype(ml_dt)] = torch_dt
     return _ML_DTYPE_TO_TORCH
+
 
 # Same-width unsigned integer dtype for the ND reinterpret-view trick.
 _UINT_VIEW_DTYPE = {

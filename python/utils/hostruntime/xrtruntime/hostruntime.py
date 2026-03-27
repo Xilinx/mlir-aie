@@ -520,7 +520,13 @@ class CachedXRTRuntime(XRTHostRuntime):
         # all external references drop the entry becomes stale and load() rebuilds.
         # kernel_name may be None at this point (resolved below); use the raw value
         # as key and resolve lazily on a miss.
-        handle_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime, kernel_name)
+        handle_key = (
+            str(xclbin_path),
+            xclbin_mtime,
+            str(insts_path),
+            insts_mtime,
+            kernel_name,
+        )
         if handle_key in self._handle_cache:
             cached = self._handle_cache[handle_key]()  # dereference weakref
             if cached is not None:
@@ -629,7 +635,13 @@ class CachedXRTRuntime(XRTHostRuntime):
 
             # Cache a weakref to the handle so future load() calls return the same
             # object while it's alive, but allow GC when all external refs drop.
-            resolved_handle_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime, kernel_name)
+            resolved_handle_key = (
+                str(xclbin_path),
+                xclbin_mtime,
+                str(insts_path),
+                insts_mtime,
+                kernel_name,
+            )
             self._handle_cache[resolved_handle_key] = weakref.ref(kernel_handle)
 
             return kernel_handle

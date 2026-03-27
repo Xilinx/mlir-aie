@@ -521,7 +521,9 @@ def test_handle_cache_returns_same_object(runtime):
     # the weakref stays alive for the second call comparison
     handle_key = list(runtime._handle_cache.keys())[0]
     handle_first = runtime._handle_cache[handle_key]()  # dereference weakref
-    assert handle_first is not None, "Cached weakref unexpectedly dead after first load()"
+    assert (
+        handle_first is not None
+    ), "Cached weakref unexpectedly dead after first load()"
 
     # Second call with same kernel: load() must return the same handle object
     transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -552,9 +554,9 @@ def test_handle_cache_cleared_on_eviction(runtime):
         # Handle cache entries from first xclbin should be gone
         remaining_keys = set(runtime._handle_cache.keys())
         evicted_still_present = first_handle_keys & remaining_keys
-        assert not evicted_still_present, (
-            f"Stale handle cache entries still present after eviction: {evicted_still_present}"
-        )
+        assert (
+            not evicted_still_present
+        ), f"Stale handle cache entries still present after eviction: {evicted_still_present}"
     finally:
         runtime._cache_size = original_size
 
