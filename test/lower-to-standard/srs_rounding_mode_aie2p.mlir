@@ -12,13 +12,13 @@
 
 // RUN: aie-opt --aie-standard-lowering="tilecol=0 tilerow=2" %s | FileCheck --check-prefix=CHECK-BF16-AIE2P %s
 
-// BF16 matmul_aie2p: rounding mode = conv_even (register 6 = 12)
-// Uses llvm.aie2p.set.ctrl.reg instead of llvm.aie2.set.ctrl.reg
+// BF16 matmul_aie2p: crRnd index fixed for AIE2P (1 instead of 6).
+// crSat keeps AIE2 index (9) to preserve existing saturation behavior.
 // CHECK-BF16-AIE2P:  func.func @core_0_2
 // CHECK-BF16-AIE2P:    call @llvm.aie2p.set.ctrl.reg(%c9_i32, %c1_i32)
-// CHECK-BF16-AIE2P:    %c6_i32 = arith.constant 6 : i32
+// CHECK-BF16-AIE2P:    %c1_i32_0 = arith.constant 1 : i32
 // CHECK-BF16-AIE2P:    %c12_i32 = arith.constant 12 : i32
-// CHECK-BF16-AIE2P:    call @llvm.aie2p.set.ctrl.reg(%c6_i32, %c12_i32)
+// CHECK-BF16-AIE2P:    call @llvm.aie2p.set.ctrl.reg(%c1_i32_0, %c12_i32)
 
 module @test_aie2p_rounding {
   aie.device(npu2) {

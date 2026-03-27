@@ -22,16 +22,11 @@ defaults:
     shell: bash
 
 concurrency:
-  # Merge queue runs share a single group key (serialized, never cancelled).
-  # PR runs use a per-PR key (cancelled when the same PR gets a new push).
-  # Push/schedule/workflow_dispatch runs use the SHA-based key.
-  # Appending event_name prevents schedule and tag-push collisions on the same SHA.
-  group: >-
-    ci-build-test-ryzenai-experimental-${{
-    github.event_name == 'merge_group' && 'merge-queue' ||
-    github.event.number || github.sha
-    }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-ryzenai-experimental-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
 
 env:
   DEBIAN_FRONTEND: noninteractive
@@ -291,15 +286,34 @@ jobs:
           "OPENSSL_ROOT_DIR=$($vcpkgRoot.Replace('\','/'))/installed/x64-windows-static" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Stage XRT SDK
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/Xilinx/XRT/releases/download/2.21.75/xrt_windows_sdk.zip'
+
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile xrt_windows_sdk.zip
+              break
+            } catch {
+              if ($attempt -eq 3) { throw }
+              Start-Sleep -Seconds 5
+            }
+          }
+
+          Expand-Archive -Path xrt_windows_sdk.zip -DestinationPath xrt_windows_sdk -Force
+          New-Item -ItemType Directory -Path C:\Xilinx -Force | Out-Null
+          Copy-Item xrt_windows_sdk\xrt_sdk\xrt C:\Xilinx\XRT -Recurse -Force
+          "XRT_ROOT=C:/Xilinx/XRT" >> $env:GITHUB_ENV
+
       - name: Build mlir-aie wheel
         shell: bash
         env:
           # Copy Linux job style: tag-aligned versioning only on version tags.
-          # Perhaps a literal "" should be here?
           AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '' }}
           ENABLE_RTTI: ${{ matrix.ENABLE_RTTI }}
           CMAKE_GENERATOR: Ninja
-          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF -DOPENSSL_USE_STATIC_LIBS=TRUE
+          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF -DOPENSSL_USE_STATIC_LIBS=TRUE -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF
         run: |
           set -euo pipefail
   

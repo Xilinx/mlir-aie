@@ -50,16 +50,18 @@ aie.runtime_sequence(...) {
 ```
 
 Compiler lowering pipeline for declarative trace:
-1. `-aie-trace-to-config`
-2. `-aie-trace-pack-reg-writes`
-3. `-aie-inline-trace-config`
+1. `-aie-insert-trace-flows`
+2. `-aie-trace-to-config`
+3. `-aie-trace-pack-reg-writes`
+4. `-aie-inline-trace-config`
 
 Inspect intermediate IR:
 
 ```bash
-aie-opt -aie-trace-to-config aie_trace.mlir
-aie-opt -aie-trace-to-config -aie-trace-pack-reg-writes aie_trace.mlir
-aie-opt -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config aie_trace.mlir
+aie-opt -aie-insert-trace-flows aie_trace.mlir
+aie-opt -aie-insert-trace-flows -aie-trace-to-config aie_trace.mlir
+aie-opt -aie-insert-trace-flows -aie-trace-to-config -aie-trace-pack-reg-writes aie_trace.mlir
+aie-opt -aie-insert-trace-flows -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config aie_trace.mlir
 ```
 
 ## Example Visualization
