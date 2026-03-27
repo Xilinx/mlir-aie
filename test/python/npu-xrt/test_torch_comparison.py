@@ -332,104 +332,108 @@ def test_roundtrip_bfloat16(tensorclass):
 # torch_view(): zero-copy write path without FROM_DEVICE sync
 # ---------------------------------------------------------------------------
 
+from aie.utils.hostruntime.tensor_class import _array_to_torch
 
+# Dtypes that torch_view() must handle correctly.
+TORCH_VIEW_DTYPE_PAIRS = [
+    (bfloat16, torch.bfloat16),
+    (np.float32, torch.float32),
+    (np.float16, torch.float16),
+    (np.int32, torch.int32),
+]
+
+
+@pytest.mark.parametrize("dtype,torch_dtype", TORCH_VIEW_DTYPE_PAIRS)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_torch_view_returns_bfloat16(tensorclass):
-    """torch_view() returns a torch.bfloat16 tensor for bfloat16 buffers."""
-    data = np.array([1.0, 2.0, 3.0], dtype=bfloat16)
-    tensor = tensorclass(data, dtype=bfloat16)
+def test_torch_view_correct_dtype(tensorclass, dtype, torch_dtype):
+    """torch_view() returns a tensor with the correct torch dtype."""
+    data = np.array([1, 2, 3], dtype=dtype)
+    tensor = tensorclass(data, dtype=dtype)
     view = tensor.torch_view()
-    assert view.dtype == torch.bfloat16
+    assert view.dtype == torch_dtype
     assert view.shape == (3,)
 
 
+@pytest.mark.parametrize("dtype,torch_dtype", TORCH_VIEW_DTYPE_PAIRS)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_torch_view_marks_device_cpu(tensorclass):
+def test_torch_view_marks_device_cpu(tensorclass, dtype, torch_dtype):
     """torch_view() marks the buffer as CPU-resident so to('npu') will sync."""
-    data = np.zeros((2, 3), dtype=bfloat16)
-    tensor = tensorclass(data, dtype=bfloat16)
-    # Buffer starts on npu (XRTTensor default) or cpu (CPUOnlyTensor)
+    data = np.zeros((2, 3), dtype=dtype)
+    tensor = tensorclass(data, dtype=dtype)
     _ = tensor.torch_view()
     assert tensor.device == "cpu"
 
 
+@pytest.mark.parametrize("dtype,torch_dtype", TORCH_VIEW_DTYPE_PAIRS)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_torch_view_zero_copy(tensorclass):
+def test_torch_view_zero_copy(tensorclass, dtype, torch_dtype):
     """Writes through the torch_view() tensor are visible in the underlying buffer."""
-    data = np.zeros(4, dtype=bfloat16)
-    tensor = tensorclass(data, dtype=bfloat16)
+    data = np.zeros(4, dtype=dtype)
+    tensor = tensorclass(data, dtype=dtype)
     view = tensor.torch_view()
-    view[0] = 7.0
-    view[1] = 8.0
-    # The write must be visible when reading host memory back
-    assert float(tensor.data[0]) == pytest.approx(7.0, abs=0.5)
-    assert float(tensor.data[1]) == pytest.approx(8.0, abs=0.5)
+    view[0] = 7
+    view[1] = 8
+    assert float(tensor.data[0]) == pytest.approx(7, rel=0.05)
+    assert float(tensor.data[1]) == pytest.approx(8, rel=0.05)
 
 
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_torch_view_2d_shape_preserved(tensorclass):
-    """torch_view() preserves 2D shape for ND arrays."""
-    data = np.ones((4, 8), dtype=bfloat16)
-    tensor = tensorclass(data, dtype=bfloat16)
-    view = tensor.torch_view()
-    assert view.shape == (4, 8)
-    assert view.dtype == torch.bfloat16
-
-
+@pytest.mark.parametrize("dtype,torch_dtype", TORCH_VIEW_DTYPE_PAIRS)
 @pytest.mark.parametrize("shape", [(10,), (3, 4), (2, 3, 4)])
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_torch_view_write_then_to_torch(shape, tensorclass):
-    """Write via torch_view then read back via to_torch gives same values."""
-    tensor = tensorclass(shape, dtype=bfloat16)
-    # Write known values through torch_view
+def test_torch_view_shape_preserved(tensorclass, shape, dtype, torch_dtype):
+    """torch_view() preserves shape for both 1D and ND arrays."""
+    data = np.ones(shape, dtype=dtype)
+    tensor = tensorclass(data, dtype=dtype)
     view = tensor.torch_view()
-    view.fill_(5.0)
-    # to_torch syncs from device (if on NPU) then returns host view
-    # Since torch_view marked device=cpu, to_torch just returns the host data
-    result = tensor.to_torch()
-    assert result.dtype == torch.bfloat16
-    assert torch.all(result.float() == pytest.approx(5.0, abs=0.5))
+    assert view.shape == tuple(shape)
+    assert view.dtype == torch_dtype
 
 
+@pytest.mark.parametrize("dtype,torch_dtype", TORCH_VIEW_DTYPE_PAIRS)
+@pytest.mark.parametrize("shape", [(10,), (3, 4), (2, 3, 4)])
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_torch_view_native_dtype(tensorclass):
-    """torch_view() works for native numpy dtypes too."""
-    data = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-    tensor = tensorclass(data, dtype=np.float32)
+def test_torch_view_write_then_to_torch(tensorclass, shape, dtype, torch_dtype):
+    """Write via torch_view then read back via to_torch gives same values."""
+    fill_val = 5 if np.issubdtype(dtype, np.integer) else 5.0
+    tensor = tensorclass(shape, dtype=dtype)
     view = tensor.torch_view()
-    assert view.dtype == torch.float32
-    assert tensor.device == "cpu"
+    view.fill_(fill_val)
+    # torch_view() marked device=cpu; to_torch() sees cpu and skips FROM_DEVICE sync
+    result = tensor.to_torch()
+    assert result.dtype == torch_dtype
+    assert torch.all(result.float() == pytest.approx(fill_val, rel=0.05))
 
 
 # ---------------------------------------------------------------------------
-# _array_to_torch: zero-copy routing correctness
+# _array_to_torch: zero-copy routing correctness across dtypes and shapes
 # ---------------------------------------------------------------------------
 
-
-from aie.utils.hostruntime.tensor_class import _array_to_torch
-
-
-@pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
-def test_array_to_torch_bfloat16_zero_copy(shape):
-    """_array_to_torch is zero-copy for bfloat16 at any shape."""
-    arr = np.ones(shape, dtype=bfloat16)
-    t = _array_to_torch(arr)
-    assert t.dtype == torch.bfloat16
-    assert t.shape == tuple(shape)
-    # Mutation check
-    arr.flat[0] = bfloat16(99.0)
-    assert t.flat[0].item() == pytest.approx(99.0, abs=1.0)
-
-
-@pytest.mark.parametrize("dtype,torch_dtype", [
+ARRAY_TO_TORCH_DTYPE_PAIRS = [
+    (bfloat16, torch.bfloat16),
     (np.float32, torch.float32),
     (np.float16, torch.float16),
     (np.int32, torch.int32),
-])
-def test_array_to_torch_native_zero_copy(dtype, torch_dtype):
-    """_array_to_torch is zero-copy for native dtypes."""
-    arr = np.array([1.0, 2.0, 3.0], dtype=dtype)
+    (np.int16, torch.int16),
+    (np.uint8, torch.uint8),
+]
+
+
+@pytest.mark.parametrize("dtype,torch_dtype", ARRAY_TO_TORCH_DTYPE_PAIRS)
+@pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
+def test_array_to_torch_correct_dtype_and_shape(dtype, torch_dtype, shape):
+    """_array_to_torch returns the correct torch dtype and shape for all supported types."""
+    arr = np.ones(shape, dtype=dtype)
     t = _array_to_torch(arr)
     assert t.dtype == torch_dtype
-    arr[0] = dtype(99)
-    assert t[0].item() == pytest.approx(99, rel=0.01)
+    assert t.shape == tuple(shape)
+
+
+@pytest.mark.parametrize("dtype,torch_dtype", ARRAY_TO_TORCH_DTYPE_PAIRS)
+@pytest.mark.parametrize("shape", [(8,), (4, 4), (2, 3, 4)])
+def test_array_to_torch_zero_copy(dtype, torch_dtype, shape):
+    """_array_to_torch is always zero-copy: mutations to the source array are visible in the tensor."""
+    arr = np.ones(shape, dtype=dtype)
+    t = _array_to_torch(arr)
+    sentinel = 42 if np.issubdtype(dtype, np.integer) else dtype(42.0)
+    arr.flat[0] = sentinel
+    assert t.flat[0].item() == pytest.approx(float(sentinel), rel=0.05)

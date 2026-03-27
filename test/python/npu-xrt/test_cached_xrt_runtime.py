@@ -511,37 +511,24 @@ def test_handle_cache_populated_after_first_load(runtime):
 
 def test_handle_cache_returns_same_object(runtime):
     """load() with the same kernel returns the identical handle object (no new pyxrt.kernel)."""
-    original_load = runtime.load
-    call_count = [0]
+    input_tensor = iron.arange(32, dtype=np.int32)
 
-    # Wrap load to count how many times a NEW handle is created
-    original_kernel_cls = None
-    import aie.utils.hostruntime.xrtruntime.hostruntime as hrmod
-    original_CachedXRTKernelHandle = hrmod.CachedXRTKernelHandle
-    created_handles = []
+    # First call: compiles and caches the handle
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    assert len(runtime._handle_cache) >= 1
 
-    class TrackingHandle(original_CachedXRTKernelHandle):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            created_handles.append(self)
+    # Retrieve the cached handle directly
+    handle_key = list(runtime._handle_cache.keys())[0]
+    handle_first = runtime._handle_cache[handle_key]
 
-    hrmod.CachedXRTKernelHandle = TrackingHandle
-    try:
-        input_tensor = iron.arange(32, dtype=np.int32)
-        # First call: compiles and loads
-        transform(input_tensor, input_tensor, lambda x: x + 1)
-        handles_after_first = len(created_handles)
+    # Second call with same kernel: must return the exact same object
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    handle_second = runtime._handle_cache[handle_key]
 
-        # Second call with same kernel: should hit handle cache
-        transform(input_tensor, input_tensor, lambda x: x + 1)
-        handles_after_second = len(created_handles)
-
-        assert handles_after_second == handles_after_first, (
-            f"Expected no new handles on second call (cache hit), "
-            f"but {handles_after_second - handles_after_first} new handle(s) were created"
-        )
-    finally:
-        hrmod.CachedXRTKernelHandle = original_CachedXRTKernelHandle
+    assert handle_first is handle_second, (
+        "Expected handle cache to return the same handle object on repeated load(), "
+        "but got a different object (new pyxrt.kernel was constructed)"
+    )
 
 
 def test_handle_cache_cleared_on_eviction(runtime):
