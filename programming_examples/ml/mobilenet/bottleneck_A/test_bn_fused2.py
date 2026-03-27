@@ -25,93 +25,105 @@ from brevitas.quant.fixed_point import (
 )
 
 sys.path.append("..")
-from mb_utils import convert_to_numpy
+import mb_utils
 
 torch.use_deterministic_algorithms(True)
 import json
-
-
-# Function to read scale factors from JSON file
-def read_scale_factors(file_path):
-    with open(file_path, "r") as file:
-        return json.load(file)
-
-
-# Function to write scale factors to JSON file
-def write_scale_factors(file_path, scale_factors):
-    with open(file_path, "w") as file:
-        json.dump(scale_factors, file, indent=4)
-
 
 log_dir = "log/"
 data_dir = "data/"
 
 # Read the existing scale factors
 scale_factor_file = "scale_factors_fused_bn8+bn9.json"
-scale_factors = read_scale_factors(data_dir + scale_factor_file)
+scale_factors = mb_utils.read_scale_factors(data_dir + scale_factor_file)
 
 torch.manual_seed(0)
 vectorSize = 8
 
-tensorInW = 7
-tensorInH = 7  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
-tensorInC = 80  # NOLF to avoid L1 overflow due to weights
-
-# config for bn8
-bneck_7_OutC3 = tensorInC
-
-bneck_8_tensorInW = tensorInW
-bneck_8_tensorInH = tensorInH
-bneck_8_tensorInC = tensorInC
-bneck_8_tensorOutC = tensorInC
-bneck_8_depthwiseStride = 1
-bneck_8_depthWiseChannels = 184
-
-bneck_8_InW1 = bneck_8_tensorInW
-bneck_8_InH1 = bneck_8_tensorInH
-bneck_8_InC1 = bneck_8_tensorInC
-bneck_8_OutC1 = bneck_8_depthWiseChannels
-
-bneck_8_InW2 = bneck_8_InW1
-bneck_8_InH2 = bneck_8_InH1
-bneck_8_OutC2 = bneck_8_OutC1
-
-bneck_8_InW3 = bneck_8_InW2
-bneck_8_InH3 = bneck_8_InH2
-bneck_8_OutC3 = bneck_8_tensorOutC
-
-
-# config for bn9
-bneck_9_tensorInW = bneck_8_InW3
-bneck_9_tensorInH = bneck_8_InH3
-bneck_9_tensorInC = bneck_8_OutC3
-bneck_9_tensorOutC = tensorInC
-bneck_9_depthwiseStride = 1
-bneck_9_depthWiseChannels = 184
-
-bneck_9_InW1 = bneck_9_tensorInW
-bneck_9_InH1 = bneck_9_tensorInH
-bneck_9_InC1 = bneck_9_tensorInC
-bneck_9_OutC1 = bneck_9_depthWiseChannels
-
-bneck_9_InW2 = bneck_9_InW1
-bneck_9_InH2 = bneck_9_InH1
-bneck_9_OutC2 = bneck_9_OutC1
-
-bneck_9_InW3 = bneck_9_InW2
-bneck_9_InH3 = bneck_9_InH2
-bneck_9_OutC3 = bneck_9_tensorOutC
-
-tensorOutW = bneck_9_InW3
-tensorOutH = bneck_9_InH3
-tensorOutC = bneck_9_OutC3
-
-InC_vec = math.floor(tensorInC / vectorSize)
-OutC_vec = math.floor(tensorOutC / vectorSize)
-
 
 def main(opts):
+    bn = opts.bn
     design = "mobilenet_bottleneck_A_bn8_bn9"
+
+    if bn == "4_5":
+        tensorInW = 28
+        tensorInH = 28
+        tensorInC = 40  # NOLF to avoid L1 overflow due to weights
+
+        bn8_depthWiseStride = 1
+        bn8_depthWiseChannels = 120
+
+        bn9_depthWiseStride = 1
+        bn9_depthWiseChannels = 120
+
+    elif bn == "8_9":
+        # tensorInW = 7
+        # tensorInH = 7  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
+        tensorInW = 14
+        tensorInH = 14  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
+        tensorInC = 80  # NOLF to avoid L1 overflow due to weights
+
+        bn8_depthWiseStride = 1
+        bn8_depthWiseChannels = 184
+
+        bn9_depthWiseStride = 1
+        bn9_depthWiseChannels = 184
+
+    else:
+        print("ERROR: invalid or unsupported BN layer selected")
+        exit(-1)
+
+    # config for bn8
+    bneck_7_OutC3 = tensorInC
+
+    bneck_8_tensorInW = tensorInW
+    bneck_8_tensorInH = tensorInH
+    bneck_8_tensorInC = tensorInC
+    bneck_8_tensorOutC = tensorInC
+    bneck_8_depthwiseStride = bn8_depthWiseStride
+    bneck_8_depthWiseChannels = bn8_depthWiseChannels
+
+    bneck_8_InW1 = bneck_8_tensorInW
+    bneck_8_InH1 = bneck_8_tensorInH
+    bneck_8_InC1 = bneck_8_tensorInC
+    bneck_8_OutC1 = bneck_8_depthWiseChannels
+
+    bneck_8_InW2 = bneck_8_InW1
+    bneck_8_InH2 = bneck_8_InH1
+    bneck_8_OutC2 = bneck_8_OutC1
+
+    bneck_8_InW3 = bneck_8_InW2
+    bneck_8_InH3 = bneck_8_InH2
+    bneck_8_OutC3 = bneck_8_tensorOutC
+
+    # config for bn9
+    bneck_9_tensorInW = bneck_8_InW3
+    bneck_9_tensorInH = bneck_8_InH3
+    bneck_9_tensorInC = bneck_8_OutC3
+    bneck_9_tensorOutC = tensorInC
+    bneck_9_depthwiseStride = bn9_depthWiseStride
+    bneck_9_depthWiseChannels = bn9_depthWiseChannels
+
+    bneck_9_InW1 = bneck_9_tensorInW
+    bneck_9_InH1 = bneck_9_tensorInH
+    bneck_9_InC1 = bneck_9_tensorInC
+    bneck_9_OutC1 = bneck_9_depthWiseChannels
+
+    bneck_9_InW2 = bneck_9_InW1
+    bneck_9_InH2 = bneck_9_InH1
+    bneck_9_OutC2 = bneck_9_OutC1
+
+    bneck_9_InW3 = bneck_9_InW2
+    bneck_9_InH3 = bneck_9_InH2
+    bneck_9_OutC3 = bneck_9_tensorOutC
+
+    tensorOutW = bneck_9_InW3
+    tensorOutH = bneck_9_InH3
+    tensorOutC = bneck_9_OutC3
+
+    InC_vec = math.floor(tensorInC / vectorSize)
+    OutC_vec = math.floor(tensorOutC / vectorSize)
+
     xclbin_path = opts.xclbin
     insts_path = opts.instr
 
@@ -157,6 +169,7 @@ def main(opts):
     # Initialize activation, weights, scaling factor for int8 model
     # ------------------------------------------------------
     input = torch.randn(1, InC_vec * vectorSize, tensorInH, tensorInW)
+    print("input dtype:" + str(input.type()) + ", input size:" + str(input.size()))
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
@@ -336,7 +349,6 @@ def main(opts):
             ExpandChannels(target_channels=tensorInC),  # Expand to 80 channels
         ]
     )
-    data_dir = "data"
 
     # test_dataset = torchvision.datasets.ImageNet(
     #     root=data_dir, train=False, transform=transform, download=True)
@@ -431,7 +443,7 @@ def main(opts):
     scale_factors["BN9"]["conv1x1_2"] = int(block_9_combined_scale3.item())
     scale_factors["BN9"]["skip_add"] = int(block_9_combined_scale_skip.item())
 
-    write_scale_factors(log_dir + scale_factor_file, scale_factors)
+    mb_utils.write_scale_factors(log_dir + scale_factor_file, scale_factors)
 
     atol = block_9_skip_add
     # ------------------------------------------------------
@@ -547,8 +559,8 @@ def main(opts):
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
-    golden = convert_to_numpy(golden_output)
-    ofm_mem_fmt_out = convert_to_numpy(ofm_mem_fmt_out)
+    golden = mb_utils.convert_to_numpy(golden_output)
+    ofm_mem_fmt_out = mb_utils.convert_to_numpy(ofm_mem_fmt_out)
     max_diff_int = np.max((golden) - (ofm_mem_fmt_out))
     print("atol: {} max difference (int): {}".format(atol, max_diff_int))
     mismatch_indices = np.where(golden != ofm_mem_fmt_out)
@@ -580,5 +592,12 @@ def main(opts):
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
+    p.add_argument(
+        "-bn",
+        dest="bn",
+        default="8_9",
+        type=str,
+        help="selected BN layer",
+    )
     opts = p.parse_args(sys.argv[1:])
     main(opts)

@@ -74,6 +74,13 @@ def main(opts):
         tensorOutC = 80
         depthwiseStride = 1
         depthWiseChannels = 200
+    elif bn == "8":
+        tensorInW = 14
+        tensorInH = 14
+        tensorInC = 80
+        tensorOutC = 80
+        depthwiseStride = 1
+        depthWiseChannels = 184
     else:
         print("ERROR: invalid or unsupported BN layer selected")
         exit(-1)

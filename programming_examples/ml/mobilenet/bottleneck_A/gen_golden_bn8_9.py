@@ -40,8 +40,10 @@ scale_factors = mb_utils.read_scale_factors(data_dir + scale_factor_file)
 torch.manual_seed(0)
 vectorSize = 8
 
-tensorInW = 7
-tensorInH = 7  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
+# tensorInW = 7
+# tensorInH = 7  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
+tensorInW = 14
+tensorInH = 14  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
 tensorInC = 80  # NOLF to avoid L1 overflow due to weights
 
 # config for bn8
@@ -100,8 +102,8 @@ OutC_vec = math.floor(tensorOutC / vectorSize)
 def main():
     print("Running torch reference model for bottleneck_A_subblocks for bn8_9 ...")
 
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
@@ -431,16 +433,14 @@ def main():
     )
 
     print("Writing golden output txt file.")
-    golden_output.tofile(log_folder + "/golden_output.txt", sep=",", format="%d")
+    golden_output.tofile(log_dir + "/golden_output.txt", sep=",", format="%d")
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
 
     print("Writing input txt file.")
-    before_input.tofile(
-        log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
-    )
+    before_input.tofile(log_dir + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-    ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt.txt", sep=",", format="%d")
+    ifm_mem_fmt.tofile(log_dir + "/after_ifm_mem_fmt.txt", sep=",", format="%d")
 
     # **************************** bn8 ****************************
     bn8_wts1 = ds.reorder_mat(
@@ -471,9 +471,7 @@ def main():
     total_wts = np.concatenate((bn8_total_wts, bn9_total_wts), axis=None)
 
     print("Writing weights txt files.")
-    total_wts.tofile(
-        log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d"
-    )
+    total_wts.tofile(log_dir + "/after_weights_mem_fmt_final.txt", sep=",", format="%d")
     print(total_wts.shape)
     print(input.shape)
 

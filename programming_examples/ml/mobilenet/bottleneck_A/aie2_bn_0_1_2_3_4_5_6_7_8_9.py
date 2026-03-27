@@ -683,11 +683,11 @@ def aie2_bn_0_1_2_3_4_5_6_7_8_9(
         @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         def sequence(inputFromL3, weightsFromL3, outputToL3):
 
-            # # bn0
+            # bn0
             NpuWriteRTPOp("rtp_bn0_tile", index=0, value=bn0_scaleFactor2)
             NpuWriteRTPOp("rtp_bn0_tile", index=1, value=bn0_scaleFactor3)
             NpuWriteRTPOp("rtp_bn0_tile", index=2, value=bn0_scaleFactorAdd)
-            # # bn1
+            # bn1
             NpuWriteRTPOp("rtp_bn1_tile", index=0, value=bn1_scaleFactor1)
             NpuWriteRTPOp("rtp_bn1_tile", index=1, value=bn1_scaleFactor2)
             NpuWriteRTPOp("rtp_bn1_tile", index=2, value=bn1_scaleFactor3)
@@ -698,7 +698,7 @@ def aie2_bn_0_1_2_3_4_5_6_7_8_9(
             NpuWriteRTPOp("rtp_bn2_tile", index=2, value=bn2_scaleFactor3)
             NpuWriteRTPOp("rtp_bn2_tile", index=3, value=bn2_scaleFactorAdd)
 
-            # # bn3
+            # bn3
             NpuWriteRTPOp("rtp_bn3_tile", index=0, value=bn3_scaleFactor1)
             NpuWriteRTPOp("rtp_bn3_tile", index=1, value=bn3_scaleFactor2)
             NpuWriteRTPOp("rtp_bn3_tile", index=2, value=bn3_scaleFactor3)
@@ -710,27 +710,31 @@ def aie2_bn_0_1_2_3_4_5_6_7_8_9(
             NpuWriteRTPOp("rtp_bn4_5_tile", index=2, value=bn4_scaleFactor3)
             NpuWriteRTPOp("rtp_bn4_5_tile", index=3, value=bn4_scaleFactorAdd)
 
-            # # bn5
+            # bn5
             NpuWriteRTPOp("rtp_bn4_5_tile", index=4, value=bn5_scaleFactor1)
             NpuWriteRTPOp("rtp_bn4_5_tile", index=5, value=bn5_scaleFactor2)
             NpuWriteRTPOp("rtp_bn4_5_tile", index=6, value=bn5_scaleFactor3)
             NpuWriteRTPOp("rtp_bn4_5_tile", index=7, value=bn5_scaleFactorAdd)
 
+            # bn6
             NpuWriteRTPOp("rtp_bn6_tile", index=0, value=bn6_scaleFactor1)
             NpuWriteRTPOp("rtp_bn6_tile", index=1, value=bn6_scaleFactor2)
             NpuWriteRTPOp("rtp_bn6_tile", index=2, value=bn6_scaleFactor3)
             NpuWriteRTPOp("rtp_bn6_tile", index=3, value=bn6_scaleFactorAdd)
 
+            # bn7
             NpuWriteRTPOp("rtp_bn7_tile", index=0, value=bn7_scaleFactor1)
             NpuWriteRTPOp("rtp_bn7_tile", index=1, value=bn7_scaleFactor2)
             NpuWriteRTPOp("rtp_bn7_tile", index=2, value=bn7_scaleFactor3)
             NpuWriteRTPOp("rtp_bn7_tile", index=3, value=bn7_scaleFactorAdd)
 
+            # bn8
             NpuWriteRTPOp("rtp_bn8_9_tile", index=0, value=bn8_scaleFactor1)
             NpuWriteRTPOp("rtp_bn8_9_tile", index=1, value=bn8_scaleFactor2)
             NpuWriteRTPOp("rtp_bn8_9_tile", index=2, value=bn8_scaleFactor3)
             NpuWriteRTPOp("rtp_bn8_9_tile", index=3, value=bn8_scaleFactorAdd)
 
+            # bn9
             NpuWriteRTPOp("rtp_bn8_9_tile", index=4, value=bn9_scaleFactor1)
             NpuWriteRTPOp("rtp_bn8_9_tile", index=5, value=bn9_scaleFactor2)
             NpuWriteRTPOp("rtp_bn8_9_tile", index=6, value=bn9_scaleFactor3)

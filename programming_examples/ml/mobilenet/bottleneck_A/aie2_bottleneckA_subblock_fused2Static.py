@@ -45,7 +45,7 @@ class bottleneckASubblockFused2Static:
         _tensorInH=14,
         _tensorInC=80,
         _bn8_depthWiseStride=1,
-        bn8_depthWiseChannels=184,
+        _bn8_depthWiseChannels=184,
         _bn9_depthWiseStride=1,
         _bn9_depthWiseChannels=184,
         _tensorOutC=80,
@@ -86,7 +86,7 @@ class bottleneckASubblockFused2Static:
         self.tensorInH = _tensorInH
         self.tensorInC = _tensorInC
         self.bn8_depthWiseStride = _bn8_depthWiseStride
-        self.bn8_depthWiseChannels = bn8_depthWiseChannels
+        self.bn8_depthWiseChannels = _bn8_depthWiseChannels
         self.bn9_depthWiseStride = _bn9_depthWiseStride
         self.bn9_depthWiseChannels = _bn9_depthWiseChannels
         self.tensorOutC = _tensorOutC
@@ -99,7 +99,7 @@ class bottleneckASubblockFused2Static:
         ) // self.bn9_depthWiseStride
 
         self.tensorL8_1InC = _tensorInC
-        self.tensorL8_1OutC = bn8_depthWiseChannels
+        self.tensorL8_1OutC = self.bn8_depthWiseChannels
 
         self.tensorL8_2InC = self.tensorL8_1OutC
         self.tensorL8_2OutC = self.tensorL8_2InC
@@ -1031,6 +1031,7 @@ def mobilenetV3BottleneckASubblockFused2(
             tensorLayer8_1In_ty,
             via_DMA=False,
         )
+        act_in.allocate(ComputeTileForL1)
         # act_in.allocate(ComputeTileForL1)
         # TODO
         # act_in = object_fifo(
@@ -1042,7 +1043,7 @@ def mobilenetV3BottleneckASubblockFused2(
         # )
 
         # act_in.set_via_shared_mem(ObjectFifoPort.Produce)
-        # object_fifo_link(act_in_tmp, act_in)
+        object_fifo_link(act_in_tmp, act_in)
 
         # wts
         # wts_OF_L3L2 = object_fifo(
@@ -1076,23 +1077,23 @@ def mobilenetV3BottleneckASubblockFused2(
             ComputeTile, np.ndarray[(16,), np.dtype[np.int32]], "rtp"
         )
 
-        @core(ComputeTileForL1)
-        def core_body():
-            for _ in for_(tensorInH):
-                elem_in = act_in_tmp.acquire(ObjectFifoPort.Consume, 1)
-                elem_out = act_in.acquire(ObjectFifoPort.Produce, 1)
-                for i in for_(tensorInW):
-                    for j in for_(tensorInC):
-                        v0 = memref.load(elem_in, [i, 1, j])
-                        memref.store(v0, elem_out, [i, 1, j])
-                        yield_([])
+        # @core(ComputeTileForL1)
+        # def core_body():
+        #     for _ in for_(tensorInH):
+        #         elem_in = act_in_tmp.acquire(ObjectFifoPort.Consume, 1)
+        #         elem_out = act_in.acquire(ObjectFifoPort.Produce, 1)
+        #         for i in for_(tensorInW):
+        #             for j in for_(tensorInC):
+        #                 v0 = memref.load(elem_in, [i, 1, j])
+        #                 memref.store(v0, elem_out, [i, 1, j])
+        #                 yield_([])
 
-                    yield_([])
+        #             yield_([])
 
-                act_in.release(ObjectFifoPort.Produce, 1)
-                act_in_tmp.release(ObjectFifoPort.Consume, 1)
+        #         act_in.release(ObjectFifoPort.Produce, 1)
+        #         act_in_tmp.release(ObjectFifoPort.Consume, 1)
 
-                yield_([])
+        #         yield_([])
 
         bottleneckASubblockFused2Static(
             "bn8_bn9",
@@ -1178,4 +1179,4 @@ def mobilenetV3BottleneckASubblockFused2(
             #     mem=weightsFromL3,
             #     sizes=[1, 1, 1, totalWeightsSize32b],
             # )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_sync(column=tileColIndex, row=0, direction=0, channel=0)
