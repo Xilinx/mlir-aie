@@ -43,7 +43,7 @@ struct AIETraceToConfigPass
       // Create config symbol name
       std::string configName = (trace.getSymName().str() + "_config");
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
-      TileID tileID = {tile.getCol(), tile.getRow()};
+      TileID tileID = tile.getTileID();
 
       // Find packet type (if any)
       TracePacketType packetType = TracePacketType::Core; // default
@@ -218,7 +218,22 @@ struct AIETraceToConfigPass
         if (auto startOp = dyn_cast<TraceStartEventOp>(op)) {
           uint32_t startEvent = 0;
           if (startOp.getBroadcast()) {
-            startEvent = *startOp.getBroadcast();
+            uint32_t broadcastNum = *startOp.getBroadcast();
+            // Resolve broadcast channel to hardware event ID
+            std::string eventName;
+            if (tile.isShimTile()) {
+              eventName = "BROADCAST_A_" + std::to_string(broadcastNum);
+            } else {
+              eventName = "BROADCAST_" + std::to_string(broadcastNum);
+            }
+            auto eventNum = targetModel.lookupEvent(eventName, tileID, isMem);
+            if (eventNum) {
+              startEvent = *eventNum;
+            } else {
+              startOp.emitError("unknown broadcast event '")
+                  << eventName << "'";
+              return signalPassFailure();
+            }
           } else if (auto eventAttr = startOp.getEvent()) {
             // Use getEventName() helper and check for enum
             std::string eventName = eventAttr->getEventName();
@@ -248,7 +263,21 @@ struct AIETraceToConfigPass
         if (auto stopOp = dyn_cast<TraceStopEventOp>(op)) {
           uint32_t stopEvent = 0;
           if (stopOp.getBroadcast()) {
-            stopEvent = *stopOp.getBroadcast();
+            uint32_t broadcastNum = *stopOp.getBroadcast();
+            // Resolve broadcast channel to hardware event ID
+            std::string eventName;
+            if (tile.isShimTile()) {
+              eventName = "BROADCAST_A_" + std::to_string(broadcastNum);
+            } else {
+              eventName = "BROADCAST_" + std::to_string(broadcastNum);
+            }
+            auto eventNum = targetModel.lookupEvent(eventName, tileID, isMem);
+            if (eventNum) {
+              stopEvent = *eventNum;
+            } else {
+              stopOp.emitError("unknown broadcast event '") << eventName << "'";
+              return signalPassFailure();
+            }
           } else if (auto eventAttr = stopOp.getEvent()) {
             // Use getEventName() helper and check for enum
             std::string eventName = eventAttr->getEventName();
@@ -276,8 +305,10 @@ struct AIETraceToConfigPass
         }
 
         // Emit mode if present.
-        // Memory trace does not expose Trace_Control0.Mode in the register DB.
-        if (auto modeOp = dyn_cast<TraceModeOp>(op); modeOp && !isMem) {
+        // Only core traces expose Trace_Control0.Mode in the register DB.
+        // Memory, memory_tile, and shim modules do not have the Mode field.
+        bool isCore = (packetType == TracePacketType::Core);
+        if (auto modeOp = dyn_cast<TraceModeOp>(op); modeOp && isCore) {
           configBuilder.create<TraceRegOp>(
               trace.getLoc(), builder.getStringAttr("Trace_Control0"),
               builder.getStringAttr("Mode"),
@@ -442,9 +473,9 @@ struct AIETraceRegPackWritesPass
       OpBuilder builder(&configOp.getBody().front(),
                         configOp.getBody().front().begin());
 
+      TileID tileID = tile.getTileID();
       for (auto regOp : regsToConvert) {
         // Look up register and field information
-        TileID tileID = {tile.getCol(), tile.getRow()};
         const RegisterInfo *regInfo =
             targetModel.lookupRegister(regOp.getRegName(), tileID, isMem);
 
