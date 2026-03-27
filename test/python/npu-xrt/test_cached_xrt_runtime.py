@@ -568,3 +568,74 @@ def test_handle_cache_cleared_on_cleanup(runtime):
     assert len(runtime._handle_cache) == 0
     assert len(runtime._context_cache) == 0
     assert len(runtime._insts_cache) == 0
+
+
+def test_handle_garbage_collected_after_eviction(runtime):
+    """
+    After context eviction, the handle should be garbage collected if no external
+    reference is held — verifying that _handle_cache is the only strong owner and
+    that pyxrt.kernel / context resources are fully released on eviction.
+
+    Contexts are a scarce, system-wide resource (NPU1: 6, NPU2: 32), so handles
+    that outlive their context would leak kernel and context references.
+    """
+    import gc
+    import weakref
+
+    original_size = runtime._cache_size
+    runtime._cache_size = 1
+
+    try:
+        input_tensor = iron.arange(32, dtype=np.int32)
+
+        # Load first kernel; handle goes into _handle_cache (strong ref)
+        transform(input_tensor, input_tensor, lambda x: x + 1)
+        assert len(runtime._handle_cache) == 1
+
+        # Take a weak reference to the handle — does not prevent GC
+        handle_key = list(runtime._handle_cache.keys())[0]
+        handle_weakref = weakref.ref(runtime._handle_cache[handle_key])
+
+        # The handle must be alive while still in the cache
+        assert handle_weakref() is not None
+
+        # Load a different kernel; forces eviction of first context.
+        # _evict() removes the handle from _handle_cache (drops strong ref)
+        # and calls invalidate() on any surviving weak-ref holders.
+        transform(input_tensor, input_tensor, lambda x: x * 2)
+
+        # Drop any local strong refs and run GC
+        gc.collect()
+
+        # The handle must now be garbage collected: _handle_cache was the sole
+        # strong owner, and eviction removed it.
+        assert handle_weakref() is None, (
+            "Handle was not garbage collected after context eviction. "
+            "This means a stale strong reference to the handle (and its "
+            "pyxrt.kernel / context) is being kept alive, leaking resources."
+        )
+    finally:
+        runtime._cache_size = original_size
+
+
+def test_handle_garbage_collected_after_cleanup(runtime):
+    """
+    After cleanup(), all handles must be garbage collected if no external
+    reference is held.
+    """
+    import gc
+    import weakref
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    handle_weakref = weakref.ref(list(runtime._handle_cache.values())[0])
+    assert handle_weakref() is not None
+
+    runtime.cleanup()
+    gc.collect()
+
+    assert handle_weakref() is None, (
+        "Handle was not garbage collected after cleanup(). "
+        "Stale strong reference is leaking pyxrt.kernel / context resources."
+    )
