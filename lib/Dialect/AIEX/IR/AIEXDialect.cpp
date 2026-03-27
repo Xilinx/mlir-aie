@@ -379,11 +379,17 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
 // yielding a total of N = s0 * s1 * s2 contiguous elements.  The repeat
 // dimension s3 / stride st3 is unchanged by the fold.
 //
+// Note: this pattern applies only to NpuDmaMemcpyNdOp.  The analogous
+// dimensionsToStream / dimensionsFromStreamPerConsumer attributes on
+// ObjectFifoCreateOp are not canonicalized here; they are lowered separately
+// by the ObjectFifo stateful transform pass.
+//
 // This fold is always semantically valid and never introduces new hardware
 // limit violations: in the resulting linear form, isLinearTransferWithout-
 // Transformation() returns true, so verifyStridesWraps() skips the 10-bit
-// d0 wrap-size check.  The hardware uses a wider transfer-length register in
-// linear mode, so arbitrarily large N is supported.
+// d0 wrap-size check.  The hardware uses a wider buffer_length register in
+// linear mode (32-bit on shim tiles, 17-bit on mem tiles, 14-bit on core
+// tiles), so N can be much larger than the 10-bit ND wrap limit.
 namespace {
 struct LinearizeContiguousTransfer
     : public mlir::OpRewritePattern<AIEX::NpuDmaMemcpyNdOp> {
@@ -874,9 +880,9 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
   }
   for (unsigned i = 0, n = expectedArgTypes.size(); i < n; i++) {
     if (actualArgTypes[i] != expectedArgTypes[i]) {
-      return emitOpError("Argument ") << (i + 1) << " types mismatch: "
-                                      << "expected " << expectedArgTypes[i]
-                                      << " but got " << actualArgTypes[i];
+      return emitOpError("Argument ")
+             << (i + 1) << " types mismatch: " << "expected "
+             << expectedArgTypes[i] << " but got " << actualArgTypes[i];
     }
   }
   return success();

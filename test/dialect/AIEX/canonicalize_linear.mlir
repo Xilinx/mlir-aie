@@ -248,3 +248,77 @@ module {
     aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
   }
 }
+
+// -----
+
+// s1 == 1 with a nonzero st1.  The notation is outermost-first:
+// [s3, s2, s1, s0][st3, st2, st1, st0], so s1 is the third element from the
+// left.  When s1 == 1 the stride st1 is never applied, so any st1 value is
+// semantically equivalent to zero.  The canonicalization should still fire.
+//
+// sizes=[1,2,1,4] strides=[0,4,99,1]  ->  sizes=[1,1,1,8] strides=[0,0,0,1]
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_size1_nonzero_stride1
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_size1_nonzero_stride1(%arg0 : memref<32xi32>) {
+      // st1=99 (middle stride) with s1=1: the stride is never applied.
+      // st2=4==s0=4 is the correct contiguous stride for s2=2.
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 2, 1, 4][0, 4, 99, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<32xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
+// s2 (outermost non-repeat) == 1 with a nonzero st2.  The notation is
+// outermost-first: [s3, s2, s1, s0][st3, st2, st1, st0], so s2 is the second
+// element from the left.  When s2 == 1 the stride st2 is never applied.
+//
+// sizes=[1,1,2,4] strides=[0,99,4,1]  ->  sizes=[1,1,1,8] strides=[0,0,0,1]
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_size2_nonzero_stride2
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_size2_nonzero_stride2(%arg0 : memref<32xi32>) {
+      // st2=99 (outermost non-repeat stride) with s2=1: the stride is never
+      // applied.  st1=4==s0=4 is a valid contiguous stride for s1=2.
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 4][0, 99, 4, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<32xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
+// Both size1 and size2 == 1 with nonzero strides for both.
+//
+// sizes=[1,1,1,4] strides=[0,7,99,1]  ->  sizes=[1,1,1,4] strides=[0,0,0,1]
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_both_size1_size2_nonzero_strides
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 4][0, 0, 0, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_both_size1_size2_nonzero_strides(%arg0 : memref<4xi32>) {
+      // st1=99 (middle stride) with s1=1 and st2=7 with s2=1: both strides
+      // are never applied; the transfer is a single contiguous run of 4 elems.
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 4][0, 7, 99, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<4xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
