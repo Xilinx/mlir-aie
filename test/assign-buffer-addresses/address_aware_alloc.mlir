@@ -9,10 +9,10 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
-// CHECK:   {{.*}} aie.buffer({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "core02_buff_in"} : memref<256xi8>
-// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "core02_rtp_Buffer"} : memref<256xi8>
-// CHECK:   {{.*}} aie.buffer({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "core02_buff_out"} : memref<256xi8>
-// CHECK:   {{.*}} aie.buffer({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "_anonymous0"} : memref<500xi32>
+// CHECK: {{.*}} aie.buffer({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "core02_buff_in"} : memref<256xi8>
+// CHECK: {{.*}} aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "core02_rtp_Buffer"} : memref<256xi8>
+// CHECK: {{.*}} aie.buffer({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "core02_buff_out"} : memref<256xi8>
+// CHECK: {{.*}} aie.buffer({{.*}}) {address = {{[0-9]+}} : i32, mem_bank = {{[0-9]+}} : i32, sym_name = "_anonymous0"} : memref<500xi32>
 
 module @test {
   aie.device(npu2) {
