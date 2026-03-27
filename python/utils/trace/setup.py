@@ -516,7 +516,6 @@ def start_trace(
     trace_size=8192,
     ddr_id=4,
     routing="single",
-    trace_after_last_tensor=False,
 ):
     """Start tracing and configure trace output buffer.
 
@@ -526,19 +525,16 @@ def start_trace(
     Args:
         trace_size: Trace buffer size in bytes. Default is 8192.
         ddr_id: DDR buffer index (0-4) mapping to XRT group_id (3-7).
-                Default is 4 (group_id 7).
+                Default is 4 (group_id 7). Set to -1 to append trace data
+                after the last runtime_sequence tensor argument.
         routing: Shim routing strategy. Currently only "single" is supported,
                  which routes all traces to column 0's shim.
-        trace_after_last_tensor: If True, append trace data after the last
-                                 runtime_sequence tensor argument. Only valid
-                                 with routing="single".
     """
     # Emit host_config op (handles string-to-enum conversion for routing)
     trace_host_config(
         buffer_size=trace_size,
         arg_idx=ddr_id,
         routing=routing,
-        trace_after_last_tensor=trace_after_last_tensor,
     )
 
     # Emit start_config for each configured trace

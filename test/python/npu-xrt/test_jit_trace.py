@@ -65,7 +65,7 @@ def test_jit_trace(trace_size):
     a = tensor(ref, dtype=np.int32)
     c = tensor(np.zeros(N, dtype=np.int32), dtype=np.int32)
 
-    trace_config = TraceConfig(trace_size=trace_size, trace_after_last_tensor=False)
+    trace_config = TraceConfig(trace_size=trace_size)
 
     # Run JIT kernel with tracing
     design(a, c, trace_config=trace_config)

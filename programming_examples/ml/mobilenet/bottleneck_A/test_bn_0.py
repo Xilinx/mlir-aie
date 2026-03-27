@@ -306,7 +306,6 @@ def main(opts):
         trace_config = TraceConfig(
             trace_size=trace_size,
             trace_file=trace_file,
-            trace_after_last_tensor=False,
             enable_ctrl_pkts=False,
             last_tensor_shape=out.shape,
             last_tensor_dtype=out.dtype,

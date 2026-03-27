@@ -189,14 +189,12 @@ See the [chaining_channels](../../../programming_examples/basic/chaining_channel
 trace_utils.start_trace(
     trace_size=8192,              # Buffer size in bytes (default: 8192)
     ddr_id=4,                     # XRT buffer index 0-4 → group_id 3-7 (default: 4)
-    trace_after_last_tensor=False, # Append trace after last tensor (default: False)
     routing="single",             # Shim routing strategy (default: "single")
 )
 ```
 
 * `trace_size` - Size of the trace buffer in bytes. Must match the host-side `--trace-sz` CLI arg or `TraceConfig.trace_size`.
-* `ddr_id` - XRT buffer index (0-4) mapping to group_id (3-7). Default is 4 (group_id 7). Ignored when `trace_after_last_tensor` is True.
-* `trace_after_last_tensor` - If True, the compiler automatically appends trace data after the last `runtime_sequence` tensor argument, computing the buffer index and byte offset. The "last tensor" is determined by argument order in `runtime_sequence(A, B, C)` - typically `C` is the output buffer since users conventionally list outputs last, but it is simply whichever argument comes last. This is useful when sharing an XRT buffer between output data and trace data.
+* `ddr_id` - XRT buffer index (0-4) mapping to group_id (3-7). Default is 4 (group_id 7). Set to -1 to append trace data after the last `runtime_sequence` tensor argument.
 * `routing` - Shim routing strategy for trace collection. Currently only `"single"` is supported, which routes all trace data to a single shim tile at column 0 (tile 0,0).
 
 ## <u>4. Complete Examples</u>

@@ -46,7 +46,7 @@ struct ShimInfo {
   int channel;      // S2MM channel
   int bdId;         // Buffer descriptor ID
   int argIdx;       // Runtime sequence argument index
-  int bufferOffset; // Offset in bytes (for trace_after_last_tensor)
+  int bufferOffset; // Offset in bytes (non-zero when arg_idx=-1)
   std::vector<TraceInfo> traceSources; // All traces routed to this shim
   std::optional<int> startBroadcast;   // Broadcast to trigger for start
   std::optional<int> stopBroadcast;    // Broadcast to trigger for stop
@@ -101,14 +101,12 @@ struct AIEInsertTraceFlowsPass
     int bufferSizeBytes = hostConfig.getBufferSize();
     int traceArgIdx = hostConfig.getArgIdx();
     auto routing = hostConfig.getRouting();
-    bool traceAfterLastTensor = hostConfig.getTraceAfterLastTensor();
 
-    // Compute offset for trace_after_last_tensor mode
+    // arg_idx=-1 means "append trace after last tensor"
     int traceBufferOffset = 0; // in bytes
-    if (traceAfterLastTensor) {
+    if (traceArgIdx == -1) {
       auto args = runtimeSeq.getBody().getArguments();
-      assert(!args.empty() &&
-             "runtime_sequence must have args for trace_after_last_tensor");
+      assert(!args.empty() && "runtime_sequence must have args for arg_idx=-1");
 
       Value lastArg = args.back();
       traceArgIdx = args.size() - 1;
@@ -434,7 +432,7 @@ struct AIEInsertTraceFlowsPass
           clTraceBurstLength // burst_length
       );
 
-      // 4d. Address patch (arg_plus = offset for trace_after_last_tensor)
+      // 4d. Address patch (arg_plus = offset when arg_idx=-1)
       uint32_t bdAddress = computeBDAddress(shimCol, shimInfo.bdId,
                                             shimInfo.shimTile, targetModel);
       xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),

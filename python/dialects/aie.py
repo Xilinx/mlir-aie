@@ -637,7 +637,6 @@ def trace_host_config(
     *,
     arg_idx=4,
     routing=TraceShimRouting.Single,
-    trace_after_last_tensor=False,
     loc=None,
     ip=None,
 ):
@@ -650,7 +649,6 @@ def trace_host_config(
         buffer_size=buffer_size,
         arg_idx=arg_idx,
         routing=routing,
-        trace_after_last_tensor=trace_after_last_tensor,
         loc=loc,
         ip=ip,
     )

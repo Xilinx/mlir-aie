@@ -63,8 +63,7 @@ Configuring the trace unit in each core tile and routing the trace packets to a 
 ### <u>Customizing Trace Behavior</u>
 
 The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you want more control over some of these configuration, additional arguments are available in `enable_trace`:
-* `ddr_id` - XRT buffer index (0-4) to write trace data to, mapping to group_id (3-7). Defaults to 4 (group_id 7). See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
-* `trace_after_last_tensor` - If True, append trace data after the last buffer object. The compiler automatically determines the XRT buffer index and offset. Defaults to False.
+* `ddr_id` - XRT buffer index (0-4) to write trace data to, mapping to group_id (3-7). Defaults to 4 (group_id 7). Set to -1 to append trace data after the last runtime_sequence tensor argument. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
 * `coretile_events` - which 8 events do we use for all coretiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for CoreEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
 * `coremem_events` - which 8 events do we use for all core mem in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
 * `memtile_events` - which 8 events do we use for all memtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2p)]
@@ -77,7 +76,6 @@ The trace configuration chooses helpful default settings so you can trace your d
         rt.enable_trace(
             trace_size = trace_size,
             ddr_id = 4,
-            trace_after_last_tensor=False,
             coretile_events = [
                     trace_utils.CoreEvent.INSTR_EVENT_0,
                     trace_utils.CoreEvent.INSTR_EVENT_1,
@@ -117,13 +115,13 @@ To support trace, we will configure a shim tile to move the trace packet data to
 |--------|--------|--------|--------|--------|
 | input A  | input B | output C | unused | trace  |
 
-In some designs, we have also used a pattern where we share an XRT buffer object where the trace data is written to same buffer object as the output by setting `trace_after_last_tensor=True`. This is helpful if we do not have a spare buffer object dedicated to trace, but requires precise declaration of offset size. See [Conv2d example](../../../programming_examples/ml/conv2d/).
+In some designs, we have also used a pattern where we share an XRT buffer object where the trace data is written to same buffer object as the output by setting `ddr_id=-1`. This is helpful if we do not have a spare buffer object dedicated to trace, but requires precise declaration of offset size. See [Conv2d example](../../../programming_examples/ml/conv2d/).
 
 | inout0 (3)| inout1 (4)| inout2 (5)|
 |--------|--------|--------|
 | input A  | input B | (output C + trace) |
 
-By specifying `inout4 (7)` as the default case, we can leave the parameters for `enable_trace()` / `start_trace()` to their default values other than `trace_size`. However, if we do decide to customize the XRT buffer object used, we can do so through `ddr_id` (to specify the buffer to use). Alternatively, setting `trace_after_last_tensor=True` tells the compiler to automatically append trace data after the last output tensor, computing the buffer index and offset for you.
+By specifying `inout4 (7)` as the default case, we can leave the parameters for `enable_trace()` / `start_trace()` to their default values other than `trace_size`. However, if we do decide to customize the XRT buffer object used, we can do so through `ddr_id` (to specify the buffer to use). Setting `ddr_id=-1` appends trace data after the last output tensor, using the last argument's buffer index and a byte offset equal to the tensor size.
 
 Once the design is configured to a XRT buffer object, we turn our attention to the host code to read the DDR data and write it to a file.
 
@@ -240,9 +238,9 @@ res = DefaultNPURuntime.run_test(npu_opts.npu_kernel, ...)
 The relevant CLI arguments (from `test_utils.create_default_args()`) are:
 - `--trace-sz` (`-t`): Trace buffer size in bytes. Tracing is enabled when this is > 0.
 - `--trace-file`: Path to write raw trace data (default: `trace.txt`).
-- `--trace-after-output`: Sets `trace_after_last_tensor=True` in `TraceConfig`.
+- `--ddr-id`: DDR buffer index for trace (0-4, or -1 to append after last tensor). Default is 4.
 
-> **IMPORTANT**: `trace_after_last_tensor` (set via `--trace-after-output`) **must match** the `trace_after_last_tensor` parameter in your IRON `enable_trace()` (unplaced) / `start_trace()` (placed) call, or buffer allocation will be incorrect.
+> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` (unplaced) / `start_trace()` (placed) call, or buffer allocation will be incorrect.
 
 #### TraceConfig (manual setup)
 
@@ -255,7 +253,6 @@ from aie.utils.npukernel import NPUKernel
 trace_config = TraceConfig(
     trace_size=8192,                # Buffer size in bytes
     trace_file="trace.txt",         # Output file for raw trace data (default)
-    trace_after_last_tensor=False,  # Share output buffer for trace (default: False)
 )
 
 npu_kernel = NPUKernel(
@@ -286,9 +283,9 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 
 ## <u>Additional Debug Hints</u>
 * If you are not getting valid trace data out (e.g. empty `trace.txt` or just 0's), then trace packets were not written to a file successfully. There could be a number of reasons for this but some things to check are:
-    * Did you write to the correct XRT buffer object that your host code is reading from? The default is `ddr_id=4` (`group_id=7`), which means trace data is written to a dedicated XRT buffer.
-        * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically. However, `trace_after_last_tensor` in `TraceConfig` must match the corresponding parameter in your IRON `enable_trace()` / `start_trace()` call.
-        * If using a **C/C++ host** with `trace_after_last_tensor=True`, trace data is appended to the last `runtime_sequence` argument's buffer at an offset equal to the output size. Allocate that buffer large enough for both output and trace data, and do **not** create a separate `bo_trace` at `group_id(7)`.
+    * Did you write to the correct XRT buffer object that your host code is reading from? The default is `ddr_id=4` (`group_id=7`), which means trace data is written to a dedicated XRT buffer. If using `ddr_id=-1`, trace data is appended after the last tensor argument.
+        * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically. However, `ddr_id` in `TraceConfig` must match the corresponding parameter in your IRON `enable_trace()` / `start_trace()` call.
+        * If using a **C/C++ host** with `ddr_id=-1`, trace data is appended to the last `runtime_sequence` argument's buffer at an offset equal to the output size. Allocate that buffer large enough for both output and trace data, and do **not** create a separate `bo_trace` at `group_id(7)`.
     * It's possible that a simple core may have too few events to create a valid trace packet. For placed designs, you can work around this by adding a ShimTile to the `tiles_to_trace` array in `configure_trace()` to generate additional trace data.
     * Check that the correct tile is being routed to the correct shim DMA. Using the declarative trace API handles this automatically.
     * You may get an invalid tile error if the `colshift` doesn't match the actually starting column of the design. This should automatically be set by the `parse.py` script but can also be specified manually. Phoenix (npu) devices should have `colshift=1` while Strix (npu2) should have `colshift=0` when allocated to an unused NPU.

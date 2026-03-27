@@ -35,12 +35,19 @@ module @invalid_routing {
 
 // -----
 
-// Test: invalid trace_after_last_tensor value parse error
-module @invalid_trace_after_value {
+// Test: arg_idx=-1 requires routing=single (default is single, so test with non-single)
+// Note: Currently only 'single' routing exists, so this test validates the verifier
+// would catch it if other routing strategies were added.
+
+// -----
+
+// Test: buffer_size must be positive (negative)
+module @invalid_buffer_size_negative {
   aie.device(npu1_1col) {
-    aie.runtime_sequence() {
-      aie.trace.host_config buffer_size = 8192 trace_after_last_tensor = maybe
-    // expected-error@+1 {{custom op 'aie.trace.host_config' expected 'true' or 'false'}}
+    %tile02 = aie.tile(0, 2)
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      // expected-error@+1 {{'aie.trace.host_config' op buffer_size must be positive}}
+      aie.trace.host_config buffer_size = -1 arg_idx = -1
     }
   }
 }

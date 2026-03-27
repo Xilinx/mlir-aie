@@ -66,7 +66,6 @@ class Runtime(Resolvable):
         self._open_task_groups = []
         self._trace_size = None
         self._trace_workers = None
-        self._trace_after_last_tensor = False
         self._strict_task_groups = strict_task_groups
         self._ddr_id = 4
 
@@ -244,7 +243,6 @@ class Runtime(Resolvable):
         trace_size: int = None,
         workers: list | None = None,
         ddr_id: int = 4,
-        trace_after_last_tensor: bool = False,
         coretile_events: list | None = None,
         coremem_events: list | None = None,
         memtile_events: list | None = None,
@@ -259,12 +257,10 @@ class Runtime(Resolvable):
             trace_size (int): Size of the trace buffer in bytes.
             workers (list[Worker] | None, optional): Specific workers to trace. If None,
                 all workers with ``trace`` set will be traced. Defaults to None.
-            ddr_id (int, optional): XRT inout buffer index to write trace data into.
-                Defaults to 4 (the conventional last buffer slot).
-                Ignored when ``trace_after_last_tensor`` is True.
-            trace_after_last_tensor (bool, optional): If True, append trace data after the
-                last runtime_sequence tensor argument. The compiler automatically determines
-                the buffer index and offset. Defaults to False.
+            ddr_id (int, optional): XRT inout buffer index (0-4) to write trace data
+                into, mapping to group_id (3-7). Defaults to 4 (group_id 7).
+                Set to -1 to append trace data after the last runtime_sequence
+                tensor argument.
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
                 See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available
                 events under (type)EventAIE such as CoreEventAIE.
@@ -279,7 +275,6 @@ class Runtime(Resolvable):
         self._trace_size = trace_size
         self._trace_workers = workers
         self._ddr_id = ddr_id
-        self._trace_after_last_tensor = trace_after_last_tensor
         self._coretile_events = coretile_events
         self._coremem_events = coremem_events
         self._memtile_events = memtile_events
@@ -332,7 +327,6 @@ class Runtime(Resolvable):
                     trace_size=self._trace_size,
                     ddr_id=self._ddr_id,
                     routing="single",
-                    trace_after_last_tensor=self._trace_after_last_tensor,
                 )
 
             for rt_data, rt_data_val in zip(self._rt_data, args):
