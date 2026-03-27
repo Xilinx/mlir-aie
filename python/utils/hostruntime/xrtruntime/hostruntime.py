@@ -372,6 +372,11 @@ class CachedXRTRuntime(XRTHostRuntime):
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
+        # Kernel handle cache: keyed on (xclbin_path, insts_path, kernel_name).
+        # Avoids reconstructing pyxrt.kernel on every load() call, which triggers
+        # an implicit NPU context activation even on a context-cache hit.
+        # See: mlir_aie_issue_cached_xrt_runtime_handle_caching.md
+        self._handle_cache: dict[tuple, "CachedXRTKernelHandle"] = {}
 
         # Set default from dict if present
         self._cache_size = None
@@ -396,6 +401,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict()
         while self._insts_cache:
             self._evict_insts()
+        self._handle_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
 
     def _cleanup_entry(self, entry):
@@ -414,6 +420,12 @@ class CachedXRTRuntime(XRTHostRuntime):
     def _evict(self):
         # Pop the oldest item
         key, entry = self._context_cache.popitem(last=False)
+        # Remove handle cache entries associated with this xclbin path so
+        # stale handles don't outlive their context.
+        xclbin_path_str = key[0]
+        self._handle_cache = {
+            k: v for k, v in self._handle_cache.items() if k[0] != xclbin_path_str
+        }
         self._cleanup_entry(entry)
 
     def _cleanup_insts_entry(self, entry):
@@ -495,6 +507,13 @@ class CachedXRTRuntime(XRTHostRuntime):
 
         xclbin_mtime = xclbin_path.stat().st_mtime
         insts_mtime = insts_path.stat().st_mtime
+
+        # Handle cache lookup: return cached handle if xclbin/insts are unchanged.
+        # kernel_name may be None at this point (resolved below), so we use the
+        # raw value as part of the key and resolve lazily on a cache miss.
+        handle_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime, kernel_name)
+        if handle_key in self._handle_cache:
+            return self._handle_cache[handle_key]
 
         # Context Cache Lookup
         context_key = (str(xclbin_path), xclbin_mtime)
@@ -594,6 +613,11 @@ class CachedXRTRuntime(XRTHostRuntime):
                 kernel, xclbin, context, insts, insts_bo
             )
             entry["handles"].append(weakref.ref(kernel_handle))
+
+            # Cache the handle keyed on resolved kernel_name so future load() calls
+            # return immediately without constructing a new pyxrt.kernel.
+            resolved_handle_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime, kernel_name)
+            self._handle_cache[resolved_handle_key] = kernel_handle
 
             return kernel_handle
 

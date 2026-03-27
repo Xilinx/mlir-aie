@@ -493,3 +493,91 @@ def test_runtime_run_only_if_loaded(runtime):
 
     with pytest.raises(HostRuntimeError, match="Kernel not loaded"):
         runtime.run(handle, [input_tensor, input_tensor], only_if_loaded=True)
+
+
+# ---------------------------------------------------------------------------
+# Handle cache: fix for implicit context activation on every load() call
+# See: mlir_aie_issue_cached_xrt_runtime_handle_caching.md
+# ---------------------------------------------------------------------------
+
+
+def test_handle_cache_populated_after_first_load(runtime):
+    """load() populates _handle_cache so subsequent calls return the same handle."""
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    assert len(runtime._handle_cache) >= 1
+
+
+def test_handle_cache_returns_same_object(runtime):
+    """load() with the same kernel returns the identical handle object (no new pyxrt.kernel)."""
+    original_load = runtime.load
+    call_count = [0]
+
+    # Wrap load to count how many times a NEW handle is created
+    original_kernel_cls = None
+    import aie.utils.hostruntime.xrtruntime.hostruntime as hrmod
+    original_CachedXRTKernelHandle = hrmod.CachedXRTKernelHandle
+    created_handles = []
+
+    class TrackingHandle(original_CachedXRTKernelHandle):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            created_handles.append(self)
+
+    hrmod.CachedXRTKernelHandle = TrackingHandle
+    try:
+        input_tensor = iron.arange(32, dtype=np.int32)
+        # First call: compiles and loads
+        transform(input_tensor, input_tensor, lambda x: x + 1)
+        handles_after_first = len(created_handles)
+
+        # Second call with same kernel: should hit handle cache
+        transform(input_tensor, input_tensor, lambda x: x + 1)
+        handles_after_second = len(created_handles)
+
+        assert handles_after_second == handles_after_first, (
+            f"Expected no new handles on second call (cache hit), "
+            f"but {handles_after_second - handles_after_first} new handle(s) were created"
+        )
+    finally:
+        hrmod.CachedXRTKernelHandle = original_CachedXRTKernelHandle
+
+
+def test_handle_cache_cleared_on_eviction(runtime):
+    """_handle_cache entries are removed when their context is evicted."""
+    original_size = runtime._cache_size
+    runtime._cache_size = 1
+
+    try:
+        input_tensor = iron.arange(32, dtype=np.int32)
+
+        # Load first kernel -> populates handle cache
+        transform(input_tensor, input_tensor, lambda x: x + 1)
+        assert len(runtime._handle_cache) >= 1
+        first_handle_keys = set(runtime._handle_cache.keys())
+
+        # Load a different kernel -> forces eviction of first context
+        transform(input_tensor, input_tensor, lambda x: x * 2)
+
+        # Handle cache entries from first xclbin should be gone
+        remaining_keys = set(runtime._handle_cache.keys())
+        evicted_still_present = first_handle_keys & remaining_keys
+        assert not evicted_still_present, (
+            f"Stale handle cache entries still present after eviction: {evicted_still_present}"
+        )
+    finally:
+        runtime._cache_size = original_size
+
+
+def test_handle_cache_cleared_on_cleanup(runtime):
+    """cleanup() clears _handle_cache along with context/insts caches."""
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    assert len(runtime._handle_cache) >= 1
+
+    runtime.cleanup()
+
+    assert len(runtime._handle_cache) == 0
+    assert len(runtime._context_cache) == 0
+    assert len(runtime._insts_cache) == 0
