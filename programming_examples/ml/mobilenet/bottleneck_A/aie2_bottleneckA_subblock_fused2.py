@@ -1125,4 +1125,4 @@ def mobilenetV3BottleneckASubblockFused2(
                 mem=weightsFromL3,
                 sizes=[1, 1, 1, totalWeightsSize32b],
             )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_sync(column=tileColIndex, row=0, direction=0, channel=0)

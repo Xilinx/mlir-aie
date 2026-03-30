@@ -5,23 +5,27 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-from aie2_bottleneckA_subblock0Static import mobilenetV3BottleneckSubblockBN0
+from aie2_bottleneckA_subblockStatic import mobilenetV3BottleneckASubblock
 
 from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx
 
 with mlir_mod_ctx() as ctx:
-    mobilenetV3BottleneckSubblockBN0(
-        weights_file="data/bn0_single.txt",
-        tensorInW=112,
-        tensorInH=112,
-        tensorInC=16,
-        tensorOutC=16,
-        scaleFactor2=9,
-        scaleFactor3=8,
-        scaleFactorAdd=2,
-    )  # bottleneck 1
-
+    mobilenetV3BottleneckASubblock(
+        "bn8",
+        weights_file="data/bn8_single.txt",
+        withSkip=True,
+        depthWiseStride=1,
+        tensorInW=14,
+        tensorInH=14,
+        tensorInC=80,
+        tensorOutC=80,
+        depthWiseChannels=184,
+        scaleFactor1=9,
+        scaleFactor2=8,
+        scaleFactor3=11,
+        scaleFactorAdd=0,
+    )  # bottleneck 8
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
