@@ -5,15 +5,14 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-from aie2_bottleneck0Static import mobilenetV3Bottleneck0
+from aie2_bottleneckA_subblock0Static import mobilenetV3BottleneckSubblockBN0
 
-# from aie2_bottleneck0 import mobilenetV3Bottleneck0
 from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx
 
 with mlir_mod_ctx() as ctx:
-    mobilenetV3Bottleneck0(
-        weights_file="bn0_single.txt",
+    mobilenetV3BottleneckSubblockBN0(
+        weights_file="data/bn0_single.txt",
         tensorInW=112,
         tensorInH=112,
         tensorInC=16,

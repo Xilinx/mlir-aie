@@ -42,6 +42,33 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
   ];
 }
 
+def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
+  let summary = "Place logical tiles onto physical AIE tiles";
+  let description = [{
+    Sequential placer algorithm places core tiles in a
+    column-major order and places fifo-connected Shim/Mem tiles
+    near its core tiles. One or more aie.logical_tile operation is mapped
+    to one aie.tile.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
+
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options = [
+    Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
+           /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
+           "Placement algorithm to use (default: sequential_placer)",
+           "llvm::cl::values("
+             "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
+                        "\"sequential_placer\", \"Sequential column-major placement\"))">,
+    Option<"clCoresPerCol", "cores-per-col", "int",
+           /*default=*/"-1",
+           "Limit number of cores per column (-1 = no limit). "
+           "Spreads cores across columns for better trace packet routing.">
+  ];
+}
+
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{
@@ -421,6 +448,43 @@ def AIETraceRegPackWrites : Pass<"aie-trace-pack-reg-writes", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIETraceRegPackWritesPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
+  let summary = "Insert packet flows and runtime sequence trace setup";
+  let description = [{
+    For each aie.trace operation, this pass:
+    - Creates ONE packet flow from trace port to shim DMA
+    - Groups traces by target shim (minimizes shim usage, ideally 1)
+    - Inserts ONE shim buffer descriptor per shim tile for all traces
+    - Inserts per-tile timer control register writes
+    - Inserts per-shim broadcast and DMA control setup
+    
+    All trace configuration is injected at the beginning of the runtime
+    sequence, before user data transfer operations.
+    
+    Multiple trace streams (from different tiles or different trace units
+    on the same tile) are routed to the same shim DMA channel and drained
+    by a single buffer descriptor.
+  }];
+  
+  let constructor = "xilinx::AIE::createAIEInsertTraceFlowsPass()";
+
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+
+  let options = [
+    Option<"clShimChannel", "shim-channel", "int", "1",
+           "S2MM DMA channel to use for trace (default: 1)">,
+    Option<"clDefaultBdId", "default-bd-id", "int", "15",
+           "Buffer descriptor ID for trace (default: 15)">,
+    Option<"clPacketIdStart", "packet-id-start", "int", "1",
+           "Starting packet ID for trace flows (default: 1)">,
+    Option<"clTraceBurstLength", "burst-length", "int", "64",
+           "DMA burst length for trace transfers (default: 64 bytes)">
   ];
 }
 

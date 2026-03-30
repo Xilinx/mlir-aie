@@ -7,6 +7,8 @@
 
 add_mlir_dialect_library(
   AIETransforms
+  AIEPlacer.cpp
+  AIEPlaceTiles.cpp
   AIEAssignBufferDescriptorIDs.cpp
   AIEAssignBuffers.cpp
   AIEAssignCoreLinkFiles.cpp
@@ -27,6 +29,7 @@ add_mlir_dialect_library(
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp
   AIETraceToConfig.cpp
+  AIEInsertTraceFlows.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 

@@ -728,6 +728,111 @@ ParseResult TraceEdgeEventOp::parse(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
+// TraceHostConfigOp
+//===----------------------------------------------------------------------===//
+
+void TraceHostConfigOp::print(OpAsmPrinter &p) {
+  p << " buffer_size = " << getBufferSize();
+
+  // Only print non-default values
+  if (getArgIdx() != 4)
+    p << " arg_idx = " << getArgIdx();
+
+  if (getRouting() != TraceShimRouting::Single)
+    p << " routing = " << stringifyTraceShimRouting(getRouting());
+
+  if (getTraceAfterLastTensor())
+    p << " trace_after_last_tensor = true";
+
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing",
+                                           "trace_after_last_tensor"});
+}
+
+ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+  // Parse required buffer_size
+  IntegerAttr bufferSize;
+  if (parser.parseKeyword("buffer_size") || parser.parseEqual() ||
+      parser.parseAttribute(bufferSize, parser.getBuilder().getI32Type(),
+                            "buffer_size", result.attributes))
+    return failure();
+
+  // Parse arg_idx (default: 4)
+  int32_t argIdxVal = 4;
+  if (succeeded(parser.parseOptionalKeyword("arg_idx"))) {
+    IntegerAttr argIdx;
+    if (parser.parseEqual() ||
+        parser.parseAttribute(argIdx, parser.getBuilder().getI32Type(),
+                              "arg_idx", result.attributes))
+      return failure();
+  } else {
+    result.attributes.set("arg_idx",
+                          parser.getBuilder().getI32IntegerAttr(argIdxVal));
+  }
+
+  // Parse routing (default: single)
+  TraceShimRouting routingVal = TraceShimRouting::Single;
+  if (succeeded(parser.parseOptionalKeyword("routing"))) {
+    if (parser.parseEqual())
+      return failure();
+    StringRef routingStr;
+    if (failed(parser.parseKeyword(&routingStr)))
+      return failure();
+    auto routing = symbolizeTraceShimRouting(routingStr);
+    if (!routing)
+      return parser.emitError(parser.getCurrentLocation(),
+                              "unknown routing strategy: ")
+             << routingStr;
+    routingVal = *routing;
+  }
+  result.attributes.set(
+      "routing", TraceShimRoutingAttr::get(parser.getContext(), routingVal));
+
+  // Parse trace_after_last_tensor (default: false)
+  bool traceAfterVal = false;
+  if (succeeded(parser.parseOptionalKeyword("trace_after_last_tensor"))) {
+    if (parser.parseEqual())
+      return failure();
+    StringRef boolStr;
+    if (failed(parser.parseKeyword(&boolStr)))
+      return failure();
+    if (boolStr == "true")
+      traceAfterVal = true;
+    else if (boolStr != "false")
+      return parser.emitError(parser.getCurrentLocation(),
+                              "expected 'true' or 'false'");
+  }
+  result.attributes.set("trace_after_last_tensor",
+                        parser.getBuilder().getBoolAttr(traceAfterVal));
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  return success();
+}
+
+LogicalResult TraceHostConfigOp::verify() {
+  bool useTraceAfterLastTensor = getTraceAfterLastTensor();
+
+  // Appending trace data after the last tensor only works with single shim
+  if (useTraceAfterLastTensor) {
+    if (getRouting() != TraceShimRouting::Single) {
+      return emitOpError("appending trace data to the last tensor argument "
+                         "only works with single shim destination strategy "
+                         "(routing=single)");
+    }
+  }
+
+  // Validate buffer_size is positive
+  if (getBufferSize() <= 0) {
+    return emitOpError("buffer_size must be positive");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TraceStartConfigOp
 //===----------------------------------------------------------------------===//
 
