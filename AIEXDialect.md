@@ -3479,6 +3479,16 @@ _Packet type identifier for parsing_
 | ShimTile | `2` | shimtile |
 | MemTile | `3` | memtile |
 
+### TraceShimRouting
+
+_Shim tile routing strategy for trace collection_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Single | `0` | single |
+
 ### WireBundle
 
 _Bundle of wires_

@@ -922,11 +922,9 @@ Examples:
 %fixed = aie.logical_tile<CoreTile>(2, 3)
 ```
 
-Traits: `AlwaysSpeculatableImplTrait`, `SkipAccessibilityCheckTrait`
+Traits: `SkipAccessibilityCheckTrait`
 
-Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`, `TileLike`
-
-Effects: `MemoryEffects::Effect{}`
+Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileLike`
 
 #### Attributes:
 
@@ -2155,8 +2153,7 @@ _Declare a named trace configuration for a tile_
 Syntax:
 
 ```
-operation ::= `aie.trace` $sym_name `(` $tile `)` (`buffer_size` `=` $buffer_size^)?
-              $body attr-dict
+operation ::= `aie.trace` $sym_name `(` $tile `)` $body attr-dict
 ```
 
 Declares a named trace configuration that can be invoked from a runtime
@@ -2188,7 +2185,6 @@ Interfaces: `OpAsmOpInterface`, `Symbol`
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
-<tr><td><code>buffer_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 #### Operands:
@@ -2445,6 +2441,46 @@ Traits: `HasParent<TraceOp>`
       CoreEventAIE2::INSTR_EVENT_0   // Enum
   {{% /markdown %}}</details></td></tr>
 <tr><td><code>label</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+
+
+### `aie.trace.host_config` (::xilinx::AIE::TraceHostConfigOp)
+
+_Configure host buffer for trace data collection_
+
+Configures host-side trace buffer.
+
+Attributes:
+- buffer_size: Trace buffer size in bytes
+- arg_idx (default=4): XRT argument index for trace buffer
+- routing (default=single): Shim routing strategy. Currently only 'single'
+  is supported, which routes all traces to column 0's shim.
+- trace_after_last_tensor (default=false): Append trace data to the last
+  tensor argument in the runtime_sequence. When true, buffer_offset is computed
+  from the tensor size. Only valid with routing=single.
+
+Example:
+```mlir
+aie.runtime_sequence(%arg0: memref<16xi32>) {
+  aie.trace.host_config buffer_size=65536
+  aie.trace.start_config @trace1
+}
+```
+
+Traits: `HasParent<RuntimeSequenceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>buffer_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>arg_idx</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>routing</code></td><td>::xilinx::AIE::TraceShimRoutingAttr</td><td><details><summary>Shim tile routing strategy for trace collection</summary>{{% markdown %}}
+    Determines how traces are routed to shim tiles:
+    - single: All traces route to a single shim tile (column 0)
+  {{% /markdown %}}</details></td></tr>
+<tr><td><code>trace_after_last_tensor</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 
@@ -4673,6 +4709,16 @@ _Packet type identifier for parsing_
 | Mem | `1` | mem |
 | ShimTile | `2` | shimtile |
 | MemTile | `3` | memtile |
+
+### TraceShimRouting
+
+_Shim tile routing strategy for trace collection_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Single | `0` | single |
 
 ### WireBundle
 

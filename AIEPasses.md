@@ -130,6 +130,33 @@ the loop body, replacing them with simple pointer arithmetic.
 This pass must run before scf-to-cf conversion and before cores are outlined
 to functions, since it operates on scf.for loops within aie.core regions.
 
+### `-aie-insert-trace-flows`
+
+_Insert packet flows and runtime sequence trace setup_
+
+For each aie.trace operation, this pass:
+- Creates ONE packet flow from trace port to shim DMA
+- Groups traces by target shim (minimizes shim usage, ideally 1)
+- Inserts ONE shim buffer descriptor per shim tile for all traces
+- Inserts per-tile timer control register writes
+- Inserts per-shim broadcast and DMA control setup
+
+All trace configuration is injected at the beginning of the runtime
+sequence, before user data transfer operations.
+
+Multiple trace streams (from different tiles or different trace units
+on the same tile) are routed to the same shim DMA channel and drained
+by a single buffer descriptor.
+
+#### Options
+
+```
+-shim-channel    : S2MM DMA channel to use for trace (default: 1)
+-default-bd-id   : Buffer descriptor ID for trace (default: 15)
+-packet-id-start : Starting packet ID for trace flows (default: 1)
+-burst-length    : DMA burst length for trace transfers (default: 64 bytes)
+```
+
 ### `-aie-localize-locks`
 
 _Convert global locks to a core-relative index_
@@ -189,6 +216,22 @@ the original loop.
 ```
 -dynamic-objFifos   : Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.
 -packet-sw-objFifos : Flag to enable aie.packetflow lowering from objectfifos.
+```
+
+### `-aie-place-tiles`
+
+_Place logical tiles onto physical AIE tiles_
+
+Sequential placer algorithm places core tiles in a
+column-major order and places fifo-connected Shim/Mem tiles
+near its core tiles. One or more aie.logical_tile operation is mapped
+to one aie.tile.
+
+#### Options
+
+```
+-placer        : Placement algorithm to use (default: sequential_placer)
+-cores-per-col : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
 ```
 
 ### `-aie-register-objectFifos`

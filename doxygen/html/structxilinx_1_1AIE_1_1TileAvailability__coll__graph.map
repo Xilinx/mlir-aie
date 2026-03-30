@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::TileAvailability" name="xilinx::AIE::TileAvailability">
+<area shape="rect" id="Node000001" title=" " alt="" coords="65,108,257,133"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,136,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="92,39,153,106,149,110,88,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="160,5,344,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="247,45,238,66,225,86,209,100,191,110,188,105,205,95,221,82,234,63,242,43"/>
+</map>
