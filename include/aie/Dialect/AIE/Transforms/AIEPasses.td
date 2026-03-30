@@ -42,6 +42,33 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
   ];
 }
 
+def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
+  let summary = "Place logical tiles onto physical AIE tiles";
+  let description = [{
+    Sequential placer algorithm places core tiles in a
+    column-major order and places fifo-connected Shim/Mem tiles
+    near its core tiles. One or more aie.logical_tile operation is mapped
+    to one aie.tile.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
+
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options = [
+    Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
+           /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
+           "Placement algorithm to use (default: sequential_placer)",
+           "llvm::cl::values("
+             "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
+                        "\"sequential_placer\", \"Sequential column-major placement\"))">,
+    Option<"clCoresPerCol", "cores-per-col", "int",
+           /*default=*/"-1",
+           "Limit number of cores per column (-1 = no limit). "
+           "Spreads cores across columns for better trace packet routing.">
+  ];
+}
+
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{
