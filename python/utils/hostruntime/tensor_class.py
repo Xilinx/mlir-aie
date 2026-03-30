@@ -19,12 +19,7 @@ _ML_DTYPE_TO_TORCH: dict | None = None
 def _ml_dtype_to_torch_map():
     global _ML_DTYPE_TO_TORCH
     if _ML_DTYPE_TO_TORCH is None:
-        try:
-            import torch
-        except ImportError:
-            raise ImportError(
-                "torch is not installed. Please install it with 'pip install torch'"
-            )
+        import torch
         import ml_dtypes
 
         _candidates = {
@@ -375,13 +370,8 @@ class Tensor(ABC):
         Raises:
             ImportError: If torch is not installed.
         """
-        try:
-            import torch
-            from ml_dtypes import bfloat16
-        except ImportError:
-            raise ImportError(
-                "torch is not installed. Please install it with 'pip install torch'"
-            )
+        import torch
+        from ml_dtypes import bfloat16
 
         # Detach (to drop grad) and ensure on CPU
         t = torch_tensor.detach()
