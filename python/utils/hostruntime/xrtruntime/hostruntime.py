@@ -373,17 +373,6 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
 
-        # Weak-reference handle cache, keyed on (xclbin_path, xclbin_mtime,
-        # insts_path, insts_mtime, kernel_name).
-        # Stores weakref.ref so the handle lives only as long as an external
-        # caller holds a strong reference. When all external references drop,
-        # the handle is garbage collected and the next load() rebuilds it.
-        # This lets callers preemptively free kernel/context resources simply
-        # by dropping their handle reference — no explicit unload() needed.
-        # Avoids reconstructing pyxrt.kernel on every load() call while a
-        # handle is alive. See: mlir_aie_issue_cached_xrt_runtime_handle_caching.md
-        self._handle_cache: dict[tuple, weakref.ref] = {}
-
         # Set default from dict if present
         self._cache_size = None
         if self.npu_str in self.NPU_CONTEXT_CACHE_SIZE.keys():
@@ -407,11 +396,9 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict()
         while self._insts_cache:
             self._evict_insts()
-        self._handle_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
 
     def _cleanup_entry(self, entry):
-        context = entry["context"]
         handles = entry["handles"]
 
         # Invalidate all handles
@@ -420,18 +407,19 @@ class CachedXRTRuntime(XRTHostRuntime):
             if handle:
                 handle.invalidate()
 
-        # Explicitly delete context
-        del context
+        # Clear kernel cache so pyxrt.kernel objects are released with the context
+        entry["kernels"].clear()
+
+        # Release the hw_context by removing its strong reference from the entry dict.
+        # Simply assigning a local `context = entry["context"]` and then `del context`
+        # only removes the local name — entry["context"] would keep the object alive for
+        # as long as any caller holds a reference to the entry dict (e.g. tests, or the
+        # exception handler).  Deleting the key guarantees the refcount drops here.
+        del entry["context"]
 
     def _evict(self):
         # Pop the oldest item
         key, entry = self._context_cache.popitem(last=False)
-        # Remove handle cache entries associated with this xclbin path so
-        # stale handles don't outlive their context.
-        xclbin_path_str = key[0]
-        self._handle_cache = {
-            k: v for k, v in self._handle_cache.items() if k[0] != xclbin_path_str
-        }
         self._cleanup_entry(entry)
 
     def _cleanup_insts_entry(self, entry):
@@ -514,25 +502,6 @@ class CachedXRTRuntime(XRTHostRuntime):
         xclbin_mtime = xclbin_path.stat().st_mtime
         insts_mtime = insts_path.stat().st_mtime
 
-        # Handle cache lookup: return live cached handle if xclbin/insts are unchanged.
-        # Uses weakref so the handle is only kept alive by external callers; when
-        # all external references drop the entry becomes stale and load() rebuilds.
-        # kernel_name may be None at this point (resolved below); use the raw value
-        # as key and resolve lazily on a miss.
-        handle_key = (
-            str(xclbin_path),
-            xclbin_mtime,
-            str(insts_path),
-            insts_mtime,
-            kernel_name,
-        )
-        if handle_key in self._handle_cache:
-            cached = self._handle_cache[handle_key]()  # dereference weakref
-            if cached is not None:
-                return cached
-            # Weakref is dead: external caller dropped the handle, remove stale entry
-            del self._handle_cache[handle_key]
-
         # Context Cache Lookup
         context_key = (str(xclbin_path), xclbin_mtime)
 
@@ -579,6 +548,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 entry = {
                     "context": context,
                     "xclbin": xclbin,
+                    "kernels": {},  # kernel_name -> pyxrt.kernel (strong ref, tied to context)
                     "handles": [],
                     "uuid": xclbin_uuid,
                 }
@@ -599,9 +569,17 @@ class CachedXRTRuntime(XRTHostRuntime):
             insts = self.read_insts(insts_path)
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
-                kernel = pyxrt.ext.kernel(context, insts, kernel_name)
+                if kernel_name in entry["kernels"]:
+                    kernel = entry["kernels"][kernel_name]
+                else:
+                    kernel = pyxrt.ext.kernel(context, insts, kernel_name)
+                    entry["kernels"][kernel_name] = kernel
             else:
-                kernel = pyxrt.kernel(context, kernel_name)
+                if kernel_name in entry["kernels"]:
+                    kernel = entry["kernels"][kernel_name]
+                else:
+                    kernel = pyxrt.kernel(context, kernel_name)
+                    entry["kernels"][kernel_name] = kernel
 
                 # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
                 # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621
@@ -631,17 +609,6 @@ class CachedXRTRuntime(XRTHostRuntime):
                 kernel, xclbin, context, insts, insts_bo
             )
             entry["handles"].append(weakref.ref(kernel_handle))
-
-            # Cache a weakref to the handle so future load() calls return the same
-            # object while it's alive, but allow GC when all external refs drop.
-            resolved_handle_key = (
-                str(xclbin_path),
-                xclbin_mtime,
-                str(insts_path),
-                insts_mtime,
-                kernel_name,
-            )
-            self._handle_cache[resolved_handle_key] = weakref.ref(kernel_handle)
 
             return kernel_handle
 
