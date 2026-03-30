@@ -190,7 +190,9 @@ module {
 
 // -----
 
-// Nonzero static offset is preserved unchanged through the fold.
+// Nonzero static offset in the innermost dimension is preserved unchanged.
+// offsets[0] (d0) contributes offsets[0]*strides[0] = 4*1 = 4 to the linear
+// offset, so the result is [0,0,0,4].
 
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_with_offset
@@ -199,9 +201,69 @@ module {
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_with_offset(%arg0 : memref<2048xi32>) {
-      // Offset of 4 elements; sizes/strides fold as normal.
+      // Offset of 4 elements in d0; sizes/strides fold as normal.
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 4][1, 1, 2, 512][0, 0, 512, 1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<2048xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
+// Regression: nonzero offset in a folded (non-innermost) dimension must be
+// linearised into d0 rather than dropped.  This is the pattern from the
+// packet_flow_fanout hardware test:
+//   two slices of a 128x64 buffer, each 64x64, addressed via d1 offset.
+//
+// Op 2 has outermost-first offsets [0, 0, 64, 0], sizes [1, 1, 64, 64],
+// strides [0, 0, 64, 1].  In innermost-first:
+//   offsets = [0, 64, 0, 0], strides = [1, 64, 0, 0]
+// linearOffset = 0*1 + 64*64 + 0*0 = 4096  -> new offsets [0, 0, 0, 4096].
+//
+// Before the fix the intermediate strides were zeroed without updating the
+// offsets, silently mapping both slices to byte 0.
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_d1_offset
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 4096][1, 1, 1, 4096][0, 0, 0, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_d1_offset(%arg0 : memref<128x64xi32>) {
+      // Second 64x64 slice: outermost-first offset [0,0,64,0] selects row 64.
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 64, 0][1, 1, 64, 64][0, 0, 64, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<128x64xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
+// Regression: nonzero offset in d2 (the outermost non-repeat dimension) must
+// also be linearised.  This is the pattern from ctrl_packet_reconfig_4x1_cores
+// where four 64x64 tiles are sliced out of a 4x64x64 buffer using d2 offsets.
+//
+// shim_in_1: offsets [0, 1, 0, 0], sizes [1, 1, 64, 64], strides [0, 4096, 64, 1]
+// In innermost-first: offsets=[0,0,1,0], strides=[1,64,4096,0]
+// linearOffset = 0*1 + 0*64 + 1*4096 = 4096  -> new offsets [0, 0, 0, 4096].
+//
+// Before the fix strides[2]=4096 was zeroed without folding offsets[2]=1 into
+// d0, so all four channels computed byte offset 0 (pointing to the same tile).
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_d2_offset
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 4096][1, 1, 1, 4096][0, 0, 0, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_d2_offset(%arg0 : memref<4x64x64xi8>) {
+      // Second 64x64 tile (index 1 along the batch axis).
+      aiex.npu.dma_memcpy_nd (%arg0[0, 1, 0, 0][1, 1, 64, 64][0, 4096, 64, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<4x64x64xi8>
     }
     %tile = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
@@ -317,6 +379,109 @@ module {
       // are never applied; the transfer is a single contiguous run of 4 elems.
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 4][0, 7, 99, 1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<4xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
+// Non-zero offset in the repeat (d3/outermost) dimension is passed through
+// unchanged to the new op's outermost offset slot.
+//
+// offsets=[5, 0, 0, 0] sizes=[2, 1, 2, 4] strides=[4096, 0, 4, 1]
+// (outermost-first)
+// In innermost-first: offsets=[0,0,0,5], strides=[1,4,0,4096]
+// linearOffset = 0*1 + 0*4 + 0*0 = 0  ->  new offsets [5, 0, 0, 0]
+// sizes -> [2, 1, 1, 8], strides -> [4096, 0, 0, 1]
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_repeat_offset
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [5, 0, 0, 0][2, 1, 1, 8][4096, 0, 0, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_repeat_offset(%arg0 : memref<8192xi32>) {
+      // Outermost offset of 5 repeat-strides; inner dims fold as normal.
+      aiex.npu.dma_memcpy_nd (%arg0[5, 0, 0, 0][2, 1, 2, 4][4096, 0, 4, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<8192xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
+// s1 == 1 with a non-zero offset1 and a non-zero strides1.  Even though the
+// loop over d1 runs only once (size==1), getOffsetInBytes() still multiplies
+// offset * stride for every dimension, so the linearization must include
+// offsets[1]*strides[1] regardless.
+//
+// outermost-first: offsets=[0, 0, 3, 0] sizes=[1, 2, 1, 4] strides=[0, 4, 99, 1]
+// innermost-first: offsets=[0,3,0,0], strides=[1,99,4,0]
+// linearOffset = 0*1 + 3*99 + 0*4 = 297 -> new offsets [0, 0, 0, 297]
+// sizes -> [1, 1, 1, 8], strides -> [0, 0, 0, 1]
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_size1_nonzero_offset1
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 297][1, 1, 1, 8][0, 0, 0, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_size1_nonzero_offset1(%arg0 : memref<512xi32>) {
+      // s1=1, so strides[1]=99 is never applied during the transfer, but
+      // getOffsetInBytes() uses it to compute the start address.  The fold
+      // must preserve offsets[1]*strides[1] = 3*99 = 297 in the d0 slot.
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 3, 0][1, 2, 1, 4][0, 4, 99, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<512xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
+// Metadata and id attributes are preserved through the fold.
+// Also verifies that a non-zero id value survives.
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_preserves_metadata
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        {id = 7 : i64, metadata = @my_alloc}
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_preserves_metadata(%arg0 : memref<2x512xi32>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+        { metadata = @my_alloc, id = 7 : i64 } : memref<2x512xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @my_alloc (%tile, MM2S, 0)
+  }
+}
+
+// -----
+
+// burst_length is preserved unchanged through the fold.  burst_length is a
+// ShimTile-only attribute; zero_before/after is a MemTile-only attribute.
+// NpuDmaMemcpyNdOp canonicalization only fires on ShimTile ops (all
+// aiex.npu.dma_memcpy_nd in a runtime_sequence target the shim level), so
+// only burst_length needs to be tested here.
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_preserves_burst_length
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        burst_length = 64
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_preserves_burst_length(%arg0 : memref<2x512xi32>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+        { metadata = @of_fromMem, id = 0 : i64,
+          burst_length = 64 : i64 } : memref<2x512xi32>
     }
     %tile = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)

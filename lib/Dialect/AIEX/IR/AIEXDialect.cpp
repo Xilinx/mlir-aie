@@ -398,7 +398,7 @@ struct LinearizeContiguousTransfer
   mlir::LogicalResult
   matchAndRewrite(AIEX::NpuDmaMemcpyNdOp op,
                   mlir::PatternRewriter &rewriter) const override {
-    // Only constant sizes/strides can be analysed statically.
+    // Only constant sizes/strides/offsets can be analysed statically.
     if (!llvm::all_of(op.getMixedSizes(), [](mlir::OpFoldResult s) {
           return mlir::getConstantIntValue(s).has_value();
         }))
@@ -407,19 +407,27 @@ struct LinearizeContiguousTransfer
           return mlir::getConstantIntValue(s).has_value();
         }))
       return mlir::failure();
+    if (!llvm::all_of(op.getMixedOffsets(), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).has_value();
+        }))
+      return mlir::failure();
 
     // Skip ops that are already in canonical linear form.
     if (op.isLinearTransferWithoutTransformation())
       return mlir::failure();
 
-    // getMixedSizes/Strides return outermost-first; reverse to innermost-first
-    // so index 0 = d0 (innermost) and index 3 = repeat (outermost).
+    // getMixedSizes/Strides/Offsets return outermost-first; reverse to
+    // innermost-first so index 0 = d0 (innermost) and index 3 = repeat.
     llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
         llvm::reverse(op.getMixedSizes()), [](mlir::OpFoldResult s) {
           return mlir::getConstantIntValue(s).value();
         });
     llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).value();
+        });
+    llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
+        llvm::reverse(op.getMixedOffsets()), [](mlir::OpFoldResult s) {
           return mlir::getConstantIntValue(s).value();
         });
 
@@ -438,13 +446,22 @@ struct LinearizeContiguousTransfer
     llvm::SmallVector<int64_t, 4> newSizesOuter = {sizes[3], 1, 1, N};
     llvm::SmallVector<int64_t, 4> newStridesOuter = {strides[3], 0, 0, 1};
 
-    // Preserve all other attributes (offsets, packet, metadata, etc.) exactly.
+    // getOffsetInBytes() computes: sum(offsets[i] * strides[i] * elemSize).
+    // After folding, the intermediate strides become 0, so any non-zero offset
+    // in those dimensions would silently contribute 0 bytes.  Preserve the
+    // correct start address by collapsing the innermost three offset/stride
+    // pairs into a single linear element index at d0.
+    int64_t linearOffset = offsets[0] * strides[0] + offsets[1] * strides[1] +
+                           offsets[2] * strides[2];
+    llvm::SmallVector<int64_t, 4> newOffsetsOuter = {offsets[3], 0, 0,
+                                                      linearOffset};
+
     rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
         op, op.getMemref(),
-        /*offsets=*/op.getOffsets(),
+        /*offsets=*/mlir::ValueRange{},
         /*sizes=*/mlir::ValueRange{},
         /*strides=*/mlir::ValueRange{},
-        mlir::DenseI64ArrayAttr::get(op.getContext(), op.getStaticOffsets()),
+        mlir::DenseI64ArrayAttr::get(op.getContext(), newOffsetsOuter),
         mlir::DenseI64ArrayAttr::get(op.getContext(), newSizesOuter),
         mlir::DenseI64ArrayAttr::get(op.getContext(), newStridesOuter),
         op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
