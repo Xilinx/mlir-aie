@@ -454,7 +454,7 @@ struct LinearizeContiguousTransfer
     int64_t linearOffset = offsets[0] * strides[0] + offsets[1] * strides[1] +
                            offsets[2] * strides[2];
     llvm::SmallVector<int64_t, 4> newOffsetsOuter = {offsets[3], 0, 0,
-                                                      linearOffset};
+                                                     linearOffset};
 
     rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
         op, op.getMemref(),
