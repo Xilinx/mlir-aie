@@ -60,6 +60,9 @@ module @multi_column_single {
       aie.trace.host_config buffer_size = 65536
       aie.trace.start_config @trace_col0
     }
+    // DEFAULT-COUNT-1: aiex.npu.writebd
+    // DEFAULT-COUNT-1: aiex.npu.address_patch
+    // DEFAULT-COUNT-1: aiex.npu.maskwrite32
     // Both traces go to column 0 shim
     // DEFAULT-DAG: aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>
     // DEFAULT-DAG: aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>
