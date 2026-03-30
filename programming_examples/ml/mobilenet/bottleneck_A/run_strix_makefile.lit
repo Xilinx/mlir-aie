@@ -8,4 +8,16 @@
 // RUN: cp %S/../mb_utils.py ..
 // RUN: cp -r %S/data .
 // RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu2% make -f %S/Makefile run_py_0 devicename=npu2
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu2% make -f %S/Makefile run_py_1 devicename=npu2
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu2% make -f %S/Makefile run_py_2 devicename=npu2
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu2% make -f %S/Makefile run_py_3 devicename=npu2
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu2% make -f %S/Makefile run_py_6 devicename=npu2
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu2% make -f %S/Makefile run_py_7 devicename=npu2
+// RUN: make -f %S/Makefile clean
 // RUN: %run_on_npu2% make -f %S/Makefile run_py devicename=npu2

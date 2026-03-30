@@ -27,7 +27,13 @@ from brevitas.quant.fixed_point import (
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 vectorSize = 8
+sys.path.append("..")
+import mb_utils
 
+log_dir = "log/"
+data_dir = "data/"
+
+# bn7
 bneck_7_tensorInW = 14
 bneck_7_tensorInH = 14
 bneck_7_tensorInC = 80
@@ -53,22 +59,12 @@ bneck_7_InC1_vec = math.floor(bneck_7_InC1 / vectorSize)
 bneck_7_OutC3_vec = math.floor(bneck_7_OutC3 / vectorSize)
 
 
-def main(opts):
-    design = "mobilenet_bottleneck_A_bn7"
-    xclbin_path = opts.xclbin
-    insts_path = opts.instr
+def main():
+    print("Running torch reference model for bottleneck_A_subblocks for bn7 ...")
 
-    log_folder = "log/"
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-    num_iter = 1
-    npu_time_total = 0
-    npu_time_min = 9999999
-    npu_time_max = 0
-    trace_size = 16384
-    enable_trace = False
-    trace_file = "log/trace_" + design + ".txt"
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
     # ------------------------------------------------------
@@ -99,11 +95,6 @@ def main(opts):
     # Initialize activation, weights, scaling factor for int8 model
     # ------------------------------------------------------
     input = torch.randn(1, bneck_7_InC1_vec * vectorSize, bneck_7_InH1, bneck_7_InW1)
-    # ------------------------------------------------------
-    # Get device, load the xclbin & kernel and register them
-    # ------------------------------------------------------
-    npu_kernel = NPUKernel(xclbin_path, insts_path)
-    kernel_handle = DefaultNPURuntime.load(npu_kernel)
 
     class QuantBottleneckA(nn.Module):
         def __init__(self, in_planes=16, bn7_expand=16, bn7_project=16):
@@ -234,14 +225,15 @@ def main(opts):
         float_datatype=True
     )
 
-    golden_output.tofile(log_folder + "/golden_output.txt", sep=",", format="%d")
+    print("Writing golden output txt file.")
+    golden_output.tofile(log_dir + "/golden_output.txt", sep=",", format="%d")
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-    before_input.tofile(
-        log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
-    )
+
+    print("Writing input txt file.")
+    before_input.tofile(log_dir + "before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-    ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt.txt", sep=",", format="%d")
+    ifm_mem_fmt.tofile(log_dir + "after_ifm_mem_fmt.txt", sep=",", format="%d")
 
     # **************************** bn7 ****************************
     bn7_wts1 = ds.reorder_mat(
@@ -256,80 +248,12 @@ def main(opts):
 
     total_wts = np.concatenate((bn7_wts1, bn7_wts2, bn7_wts3), axis=None)
 
-    total_wts.tofile(
-        log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d"
-    )
+    print("Writing weights txt files.")
+    total_wts.tofile(log_dir + "after_weights_mem_fmt_final.txt", sep=",", format="%d")
     print(total_wts.shape)
 
-    # ------------------------------------------------------
-    # Setup buffers run loop
-    # ------------------------------------------------------
-    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-    in2 = iron.tensor(total_wts, dtype=dtype_wts)
-    out = iron.zeros(shape_out, dtype=dtype_out)
-    buffers = [in1, in2, out]
-
-    trace_config = None
-    if enable_trace:
-        trace_config = TraceConfig(
-            trace_size=trace_size,
-            trace_file=trace_file,
-            trace_after_last_tensor=False,
-            enable_ctrl_pkts=False,
-            last_tensor_shape=out.shape,
-            last_tensor_dtype=out.dtype,
-        )
-        HostRuntime.prepare_args_for_trace(buffers, trace_config)
-
-    # ------------------------------------------------------
-    # Main run loop
-    # ------------------------------------------------------
-    for i in range(num_iter):
-        start = time.time_ns()
-        DefaultNPURuntime.run(kernel_handle, buffers)
-        stop = time.time_ns()
-        npu_time = stop - start
-        npu_time_total = npu_time_total + npu_time
-
-    # ------------------------------------------------------
-    # Reorder output data-layout
-    # ------------------------------------------------------
-    aie_output = out.numpy()  # .astype(dtype_out)
-    temp_out = aie_output.reshape(shape_out)
-    temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
-    ofm_mem_fmt = temp_out.reshape(shape_out_final)
-    ofm_mem_fmt.tofile(
-        log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
-    )
-    ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
-    print(ofm_mem_fmt_out)
-    # ------------------------------------------------------
-    # Compare the AIE output and the golden reference
-    # ------------------------------------------------------
-    print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
-
-    sys.path.append("..")
-    from mb_utils import convert_to_numpy
-
-    golden = convert_to_numpy(golden_output)
-    ofm_mem_fmt_out = convert_to_numpy(ofm_mem_fmt_out)
-    max_diff_int = np.max((golden) - (ofm_mem_fmt_out))
-    print("max difference (int): {}".format(max_diff_int))
-
-    if np.allclose(
-        ofm_mem_fmt_out,
-        golden_output,
-        rtol=0,
-        atol=1,
-    ):
-        print("\nPASS!\n")
-        exit(0)
-    else:
-        print("\nFailed.\n")
-        exit(-1)
+    print("Done.")
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
-    opts = p.parse_args(sys.argv[1:])
-    main(opts)
+    main()
