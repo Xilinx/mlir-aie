@@ -431,4 +431,5 @@ jobs:
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: false
+          omitBodyDuringUpdate: true
           makeLatest: false
