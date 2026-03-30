@@ -206,6 +206,20 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   endif()
 endif()
 
+# Detect whether PyTorch is importable by the configured Python interpreter.
+# Used to enable/skip lit tests that require torch (# REQUIRES: pytorch).
+execute_process(
+  COMMAND ${Python3_EXECUTABLE} -c "import torch"
+  RESULT_VARIABLE _torch_result
+  OUTPUT_QUIET ERROR_QUIET
+)
+if(_torch_result EQUAL 0)
+  set(AIE_ENABLE_PYTORCH ON)
+else()
+  set(AIE_ENABLE_PYTORCH OFF)
+endif()
+message(STATUS "PyTorch available for testing: ${AIE_ENABLE_PYTORCH}")
+
 cmake_dependent_option(AIECC_COMPILE
   "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)
 

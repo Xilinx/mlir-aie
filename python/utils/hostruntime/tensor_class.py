@@ -55,28 +55,29 @@ def _array_to_torch(array: np.ndarray):
     Convert a numpy array to a torch tensor, zero-copy.
 
     For native numpy dtypes (float32, float16, int32, …) torch.from_numpy is used directly
-    (~0.35 µs, fastest path for these types).
+    (fastest path for these types).
 
     For ml_dtypes types (bfloat16, float8_*) that torch cannot consume via from_numpy:
-    - 1D: torch.frombuffer interprets raw bytes directly (~0.45 µs, no reshape needed).
-    - ND: reinterpret as a same-width unsigned integer numpy view, wrap with from_numpy,
-          then view as the target torch dtype (~0.96 µs, preserves shape without reshape).
+    reinterpret as a same-width unsigned integer numpy view, wrap with from_numpy,
+    then view as the target torch dtype.  This is guaranteed zero-copy for all ranks.
 
     Raises:
         ImportError: If torch is not installed.
     """
-    try:
-        import torch
-    except ImportError:
-        raise ImportError(
-            "torch is not installed. Please install it with 'pip install torch'"
-        )
     torch_dtype = _ml_dtype_to_torch_map().get(array.dtype)
     if torch_dtype is None:
         # Native numpy dtype: torch.from_numpy handles it directly and fastest.
+        try:
+            import torch
+        except ImportError:
+            raise ImportError(
+                "torch is not installed. Please install it with 'pip install torch'"
+            )
         return torch.from_numpy(array)
-    if array.ndim == 1:
-        return torch.frombuffer(array, dtype=torch_dtype)
+    # ml_dtype: reinterpret memory as a same-width uint, then view as the torch dtype.
+    # _ml_dtype_to_torch_map() already imported torch; no ImportError guard needed here.
+    import torch
+
     uint_dtype = _UINT_VIEW_DTYPE[array.dtype.itemsize]
     return torch.from_numpy(array.view(uint_dtype)).view(torch_dtype)
 

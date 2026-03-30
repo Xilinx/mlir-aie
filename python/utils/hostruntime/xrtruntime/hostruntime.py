@@ -423,8 +423,8 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._cleanup_entry(entry)
 
     def _cleanup_insts_entry(self, entry):
-        insts_bo = entry["insts_bo"]
-        del insts_bo
+        # Delete the key (not a local copy) so the refcount drops here.
+        del entry["insts_bo"]
 
     def _evict_insts(self):
         key, entry = self._insts_cache.popitem(last=False)
@@ -569,17 +569,15 @@ class CachedXRTRuntime(XRTHostRuntime):
             insts = self.read_insts(insts_path)
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
-                if kernel_name in entry["kernels"]:
-                    kernel = entry["kernels"][kernel_name]
-                else:
-                    kernel = pyxrt.ext.kernel(context, insts, kernel_name)
-                    entry["kernels"][kernel_name] = kernel
+                if kernel_name not in entry["kernels"]:
+                    entry["kernels"][kernel_name] = pyxrt.ext.kernel(
+                        context, insts, kernel_name
+                    )
+                kernel = entry["kernels"][kernel_name]
             else:
-                if kernel_name in entry["kernels"]:
-                    kernel = entry["kernels"][kernel_name]
-                else:
-                    kernel = pyxrt.kernel(context, kernel_name)
-                    entry["kernels"][kernel_name] = kernel
+                if kernel_name not in entry["kernels"]:
+                    entry["kernels"][kernel_name] = pyxrt.kernel(context, kernel_name)
+                kernel = entry["kernels"][kernel_name]
 
                 # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
                 # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621

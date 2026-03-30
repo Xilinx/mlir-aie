@@ -610,6 +610,74 @@ def test_load_returns_fresh_handle_each_call(runtime):
 
 
 # ---------------------------------------------------------------------------
+# insts_bo release tests
+#
+# The insts buffer object must be freed when its cache entry is evicted or
+# when cleanup() is called.  Previously _cleanup_insts_entry did
+# `del insts_bo` (local name only), leaving entry["insts_bo"] alive.
+# ---------------------------------------------------------------------------
+
+
+def test_insts_bo_released_when_evicted(runtime):
+    """
+    The insts buffer object is released when its cache entry is evicted.
+    """
+    import gc
+    import weakref
+
+    original_size = runtime._cache_size
+    runtime._cache_size = 1
+
+    try:
+        input_tensor = iron.arange(32, dtype=np.int32)
+        transform(input_tensor, input_tensor, lambda x: x + 1)
+
+        assert len(runtime._insts_cache) >= 1
+        insts_entry = list(runtime._insts_cache.values())[0]
+        insts_ref = weakref.ref(insts_entry["insts_bo"])
+        assert insts_ref() is not None
+
+        del insts_entry  # don't let the test keep the object alive
+
+        # Force eviction of the insts entry by loading a different kernel.
+        transform(input_tensor, input_tensor, lambda x: x * 2)
+        gc.collect()
+
+        assert insts_ref() is None, (
+            "insts_bo was not released after cache eviction. "
+            "Buffer memory is leaked."
+        )
+    finally:
+        runtime._cache_size = original_size
+
+
+def test_insts_bo_released_on_cleanup(runtime):
+    """
+    The insts buffer object is released when cleanup() is called.
+    """
+    import gc
+    import weakref
+
+    input_tensor = iron.arange(32, dtype=np.int32)
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    assert len(runtime._insts_cache) >= 1
+    insts_entry = list(runtime._insts_cache.values())[0]
+    insts_ref = weakref.ref(insts_entry["insts_bo"])
+    assert insts_ref() is not None
+
+    del insts_entry  # don't let the test keep the object alive
+
+    runtime.cleanup()
+    gc.collect()
+
+    assert insts_ref() is None, (
+        "insts_bo was not released after cleanup(). "
+        "Buffer memory is leaked for the lifetime of the process."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Context lifetime / hardware-slot leak tests
 #
 # The machine has a finite number of hw_context slots.  These tests verify
@@ -619,14 +687,15 @@ def test_load_returns_fresh_handle_each_call(runtime):
 # ---------------------------------------------------------------------------
 
 
-def _capture_kernel_paths(runtime):
+@pytest.fixture
+def kernel_paths(runtime):
     """
-    Run one transform() call, capture the npu_kernel passed to load(), and
-    return (xclbin_path, insts_path).
-    """
-    import aie.iron as iron
-    import numpy as np
+    Pytest fixture: run one transform() call, capture the npu_kernel passed to
+    load(), and return (xclbin_path, insts_path).
 
+    Uses a try/finally so the monkeypatch is always undone even if transform()
+    raises, avoiding fixture-state leakage into subsequent tests.
+    """
     original_load = runtime.load
     captured = []
 
@@ -635,9 +704,12 @@ def _capture_kernel_paths(runtime):
         return original_load(npu_kernel, **kwargs)
 
     runtime.load = side_effect
-    input_tensor = iron.arange(32, dtype=np.int32)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
-    runtime.load = original_load
+    try:
+        input_tensor = iron.arange(32, dtype=np.int32)
+        transform(input_tensor, input_tensor, lambda x: x + 1)
+    finally:
+        runtime.load = original_load
+
     return captured[0].xclbin_path, captured[0].insts_path
 
 
@@ -704,7 +776,7 @@ def test_context_released_on_cleanup(runtime):
     )
 
 
-def test_load_exception_cleans_up_new_context(runtime):
+def test_load_exception_cleans_up_new_context(runtime, kernel_paths):
     """
     If load() raises after creating a new context (but before appending any
     handle), the exception handler must evict the context so the hardware
@@ -712,7 +784,7 @@ def test_load_exception_cleans_up_new_context(runtime):
     """
     from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
-    xclbin_path, insts_path = _capture_kernel_paths(runtime)
+    xclbin_path, insts_path = kernel_paths
 
     # Clear cache so the next load() definitely creates a fresh context.
     runtime.cleanup()
@@ -732,7 +804,9 @@ def test_load_exception_cleans_up_new_context(runtime):
     )
 
 
-def test_load_exception_preserves_cached_context_with_live_handle(runtime):
+def test_load_exception_preserves_cached_context_with_live_handle(
+    runtime, kernel_paths
+):
     """
     If load() raises on a *cached* context while a prior handle is still alive,
     the context must NOT be evicted — the live handle is still using it and
@@ -740,7 +814,7 @@ def test_load_exception_preserves_cached_context_with_live_handle(runtime):
     """
     from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
-    xclbin_path, insts_path = _capture_kernel_paths(runtime)
+    xclbin_path, insts_path = kernel_paths
 
     # First: a successful load that returns a handle we hold strongly.
     good_kernel = NPUKernel(xclbin_path, insts_path, kernel_name="MLIR_AIE")

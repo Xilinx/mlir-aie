@@ -15,6 +15,7 @@ import torch
 import aie.iron as iron
 from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, Tensor
 from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
+import ml_dtypes
 from ml_dtypes import bfloat16
 
 TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
@@ -401,7 +402,7 @@ def test_torch_view_write_then_to_torch(tensorclass, shape, dtype, torch_dtype):
     # torch_view() marked device=cpu; to_torch() sees cpu and skips FROM_DEVICE sync
     result = tensor.to_torch()
     assert result.dtype == torch_dtype
-    assert torch.all(result.float() == pytest.approx(fill_val, rel=0.05))
+    assert torch.allclose(result.float(), torch.full(result.shape, float(fill_val)))
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +437,35 @@ def test_array_to_torch_zero_copy(dtype, torch_dtype, shape):
     t = _array_to_torch(arr)
     sentinel = 42 if np.issubdtype(dtype, np.integer) else dtype(42.0)
     arr.flat[0] = sentinel
-    assert t.flat[0].item() == pytest.approx(float(sentinel), rel=0.05)
+    assert t.reshape(-1)[0].item() == pytest.approx(float(sentinel), rel=0.05)
+
+
+# ---------------------------------------------------------------------------
+# Regression: 1D ml_dtype arrays must be zero-copy via the uint-view path.
+# Previously the 1D path used torch.frombuffer which does not guarantee
+# zero-copy; it has been replaced with the same uint-view trick used for ND.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "dtype,torch_dtype",
+    [
+        (bfloat16, torch.bfloat16),
+    ],
+)
+def test_array_to_torch_1d_ml_dtype_zero_copy(dtype, torch_dtype):
+    """
+    Regression: _array_to_torch must be zero-copy for 1D ml_dtype arrays.
+    A mutation to the source array must be visible in the returned tensor.
+    """
+    arr = np.ones(8, dtype=dtype)
+    t = _array_to_torch(arr)
+    assert t.dtype == torch_dtype
+    assert t.shape == (8,)
+    # Write through the source; verify the tensor sees the change.
+    arr[3] = dtype(0.0)
+    assert t[3].item() == pytest.approx(0.0, abs=0.1)
+    assert t[0].item() == pytest.approx(1.0, rel=0.05)
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +496,7 @@ def test_array_to_torch_float8(ml_attr, torch_attr, shape):
     assert t.shape == tuple(shape)
     # Zero-copy: mutation in source is visible in tensor
     arr.flat[0] = ml_dt(0.0)
-    assert t.flat[0].item() != t.flat[1].item()  # 0 != 1
+    assert t.reshape(-1)[0].item() != t.reshape(-1)[1].item()  # 0 != 1
 
 
 # ---------------------------------------------------------------------------
@@ -483,7 +512,7 @@ def test_torch_view_npu_roundtrip(tensorclass, dtype, torch_dtype):
     and verify the data is intact — confirming the NPU saw the written values.
     """
     shape = (8,)
-    fill_val = 3 if np.issubdtype(dtype, np.integer) else dtype(3.0)
+    fill_val = 3 if np.issubdtype(dtype, np.integer) else 3.0
     tensor = tensorclass(shape, dtype=dtype)
 
     # torch_view() marks device=cpu; write fill value
@@ -496,4 +525,4 @@ def test_torch_view_npu_roundtrip(tensorclass, dtype, torch_dtype):
 
     # Sync back from device and verify data survived the round-trip
     result = tensor.to_torch()  # to_torch() syncs from NPU
-    assert torch.all(result.float() == pytest.approx(float(fill_val), rel=0.05))
+    assert torch.allclose(result.float(), torch.full(result.shape, float(fill_val)))
