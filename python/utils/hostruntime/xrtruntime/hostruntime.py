@@ -571,11 +571,12 @@ class CachedXRTRuntime(XRTHostRuntime):
             insts = self.read_insts(insts_path)
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
-                if kernel_name not in entry["kernels"]:
-                    entry["kernels"][kernel_name] = pyxrt.ext.kernel(
+                ext_kernel_key = (kernel_name, str(insts_path), insts_mtime)
+                if ext_kernel_key not in entry["kernels"]:
+                    entry["kernels"][ext_kernel_key] = pyxrt.ext.kernel(
                         context, insts, kernel_name
                     )
-                kernel = entry["kernels"][kernel_name]
+                kernel = entry["kernels"][ext_kernel_key]
             else:
                 if kernel_name not in entry["kernels"]:
                     entry["kernels"][kernel_name] = pyxrt.kernel(context, kernel_name)

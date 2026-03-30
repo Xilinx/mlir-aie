@@ -27,7 +27,6 @@ def _ml_dtype_to_torch_map():
             )
         import ml_dtypes
 
-        _ML_DTYPE_TO_TORCH = {}
         _candidates = {
             ml_dtypes.bfloat16: torch.bfloat16,
         }
@@ -41,8 +40,9 @@ def _ml_dtype_to_torch_map():
             torch_dt = getattr(torch, attr, None)
             if ml_dt is not None and torch_dt is not None:
                 _candidates[ml_dt] = torch_dt
-        for ml_dt, torch_dt in _candidates.items():
-            _ML_DTYPE_TO_TORCH[np.dtype(ml_dt)] = torch_dt
+        _ML_DTYPE_TO_TORCH = {
+            np.dtype(ml_dt): torch_dt for ml_dt, torch_dt in _candidates.items()
+        }
     return _ML_DTYPE_TO_TORCH
 
 
