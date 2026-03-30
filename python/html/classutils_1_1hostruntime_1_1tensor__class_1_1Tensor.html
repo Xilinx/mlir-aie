@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;262b751aca0ccea5753313eb1e068d9c50145116</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;190bd98bb8af38f6ebd8d2a65f9a9cc3ce306d9f</span>
    </div>
   </td>
  </tr>
@@ -136,6 +136,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a3192aecdf1d3eb08ed5d7dbaba3cfcbb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8ab2ca4ad7ccba19a936bbab041d252c" id="r_a8ab2ca4ad7ccba19a936bbab041d252c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a8ab2ca4ad7ccba19a936bbab041d252c">to_torch</a> (self)</td></tr>
 <tr class="separator:a8ab2ca4ad7ccba19a936bbab041d252c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad395f306030f8c6adbacb34cff44b524" id="r_ad395f306030f8c6adbacb34cff44b524"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#ad395f306030f8c6adbacb34cff44b524">torch_view</a> (self)</td></tr>
+<tr class="separator:ad395f306030f8c6adbacb34cff44b524"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9a6ec10ce28414e79c5049266b4f8198" id="r_a9a6ec10ce28414e79c5049266b4f8198"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a9a6ec10ce28414e79c5049266b4f8198">from_torch</a> (cls, torch_tensor, <a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a86ce202dea58b77c7f87ff3b51380ff8">device</a>=None, **kwargs)</td></tr>
 <tr class="separator:a9a6ec10ce28414e79c5049266b4f8198"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a868f7f052cb6b91a9dc4c9b2fb41d52c" id="r_a868f7f052cb6b91a9dc4c9b2fb41d52c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a868f7f052cb6b91a9dc4c9b2fb41d52c">fill_</a> (self, value)</td></tr>
@@ -161,6 +163,8 @@ Public Attributes</h2></td></tr>
 <tr class="separator:a86ce202dea58b77c7f87ff3b51380ff8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af1331c6a7be3726736893c6e114fe8c6" id="r_af1331c6a7be3726736893c6e114fe8c6"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#af1331c6a7be3726736893c6e114fe8c6">dtype</a></td></tr>
 <tr class="separator:af1331c6a7be3726736893c6e114fe8c6"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af7494856b23c363f90c49b772a600739" id="r_af7494856b23c363f90c49b772a600739"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#af7494856b23c363f90c49b772a600739">data</a></td></tr>
+<tr class="separator:af7494856b23c363f90c49b772a600739"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5f8f57fc262d840a65dd879e92bcc4ff" id="r_a5f8f57fc262d840a65dd879e92bcc4ff"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a5f8f57fc262d840a65dd879e92bcc4ff">shape</a></td></tr>
 <tr class="separator:a5f8f57fc262d840a65dd879e92bcc4ff"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -190,7 +194,7 @@ Private Member Functions</h2></td></tr>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><pre class="fragment">Tensor object backed by NPU or CPU memory.
 
-The class provides commom tensor operations such as creation,
+The class provides common tensor operations such as creation,
 filling with values, and accessing data.</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a83ca5ffb583df40d4967c46dfc6e58d4" name="a83ca5ffb583df40d4967c46dfc6e58d4"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a83ca5ffb583df40d4967c46dfc6e58d4">&#9670;&#160;</a></span>__init__()</h2>
@@ -1100,8 +1104,40 @@ Returns:
 </div><div class="memdoc">
 <pre class="fragment">Returns a torch tensor sharing the data in this tensor if possible.
 
+Syncs from device first if the tensor is on the NPU.
+
 Returns:
     torch.Tensor: A torch tensor containing the data.
+
+Raises:
+    ImportError: If torch is not installed.
+</pre> 
+</div>
+</div>
+<a id="ad395f306030f8c6adbacb34cff44b524" name="ad395f306030f8c6adbacb34cff44b524"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad395f306030f8c6adbacb34cff44b524">&#9670;&#160;</a></span>torch_view()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.hostruntime.tensor_class.Tensor.torch_view </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Returns a torch tensor sharing this buffer's host memory without syncing from device.
+
+Unlike to_torch(), this does NOT sync from the NPU first. Marks the buffer as
+CPU-resident so that a subsequent .to("npu") call (or the NPU operator's implicit
+sync) will push the written data to device. Use this on write paths where the
+caller is about to overwrite the buffer contents.
+
+Returns:
+    torch.Tensor: A zero-copy torch tensor view of the host-side buffer.
 
 Raises:
     ImportError: If torch is not installed.
@@ -1228,6 +1264,22 @@ Returns:
 </div>
 </div>
 <h2 class="groupheader">Member Data Documentation</h2>
+<a id="af7494856b23c363f90c49b772a600739" name="af7494856b23c363f90c49b772a600739"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af7494856b23c363f90c49b772a600739">&#9670;&#160;</a></span>data</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.hostruntime.tensor_class.Tensor.data</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Reimplemented in <a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1CPUOnlyTensor.html#afadc45456b2014d0ab6604326b54cb4b">utils.hostruntime.tensor_class.CPUOnlyTensor</a>, and <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a95e4149e861a7b33cbe2ada813a2db60">utils.hostruntime.xrtruntime.tensor.XRTTensor</a>.</p>
+
+</div>
+</div>
 <a id="a0ca317d31d76bd3a44139aac34762104" name="a0ca317d31d76bd3a44139aac34762104"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a0ca317d31d76bd3a44139aac34762104">&#9670;&#160;</a></span>DEFAULT_DEVICE</h2>
 

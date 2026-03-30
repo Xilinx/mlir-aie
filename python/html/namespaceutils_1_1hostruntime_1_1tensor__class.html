@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;262b751aca0ccea5753313eb1e068d9c50145116</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;190bd98bb8af38f6ebd8d2a65f9a9cc3ce306d9f</span>
    </div>
   </td>
  </tr>
@@ -74,7 +74,9 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
-<a href="#nested-classes">Classes</a>  </div>
+<a href="#nested-classes">Classes</a> &#124;
+<a href="#func-members">Functions</a> &#124;
+<a href="#var-members">Variables</a>  </div>
   <div class="headertitle"><div class="title">utils.hostruntime.tensor_class Namespace Reference</div></div>
 </div><!--header-->
 <div class="contents">
@@ -85,7 +87,135 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html">Tensor</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
+Functions</h2></td></tr>
+<tr class="memitem:a1bf5c875f9ec50645fe50ecc815e3a26" id="r_a1bf5c875f9ec50645fe50ecc815e3a26"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1tensor__class.html#a1bf5c875f9ec50645fe50ecc815e3a26">_ml_dtype_to_torch_map</a> ()</td></tr>
+<tr class="separator:a1bf5c875f9ec50645fe50ecc815e3a26"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a53e1dbb763b40636b3f76367b8543f05" id="r_a53e1dbb763b40636b3f76367b8543f05"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1tensor__class.html#a53e1dbb763b40636b3f76367b8543f05">_array_to_torch</a> (np.ndarray array)</td></tr>
+<tr class="separator:a53e1dbb763b40636b3f76367b8543f05"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
+Variables</h2></td></tr>
+<tr class="memitem:a9531f40709ceb9da3fd5aa0b9840f70f" id="r_a9531f40709ceb9da3fd5aa0b9840f70f"><td class="memItemLeft" align="right" valign="top">dict&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1tensor__class.html#a9531f40709ceb9da3fd5aa0b9840f70f">_ML_DTYPE_TO_TORCH</a> = None</td></tr>
+<tr class="separator:a9531f40709ceb9da3fd5aa0b9840f70f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad5a14687ae1d05722bc351d7542ff7f3" id="r_ad5a14687ae1d05722bc351d7542ff7f3"><td class="memItemLeft" align="right" valign="top">dict&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1tensor__class.html#ad5a14687ae1d05722bc351d7542ff7f3">_UINT_VIEW_DTYPE</a></td></tr>
+<tr class="separator:ad5a14687ae1d05722bc351d7542ff7f3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
+<h2 class="groupheader">Function Documentation</h2>
+<a id="a53e1dbb763b40636b3f76367b8543f05" name="a53e1dbb763b40636b3f76367b8543f05"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a53e1dbb763b40636b3f76367b8543f05">&#9670;&#160;</a></span>_array_to_torch()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.hostruntime.tensor_class._array_to_torch </td>
+          <td>(</td>
+          <td class="paramtype">np.ndarray&#160;</td>
+          <td class="paramname"><em>array</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Convert a numpy array to a torch tensor, zero-copy.
+
+For native numpy dtypes (float32, float16, int32, …) torch.from_numpy is used directly
+(fastest path for these types).
+
+For ml_dtypes types (bfloat16, float8_*) that torch cannot consume via from_numpy:
+reinterpret as a same-width unsigned integer numpy view, wrap with from_numpy,
+then view as the target torch dtype.  This is guaranteed zero-copy for all ranks.
+
+Raises:
+    ImportError: If torch is not installed.
+</pre> 
+</div>
+</div>
+<a id="a1bf5c875f9ec50645fe50ecc815e3a26" name="a1bf5c875f9ec50645fe50ecc815e3a26"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1bf5c875f9ec50645fe50ecc815e3a26">&#9670;&#160;</a></span>_ml_dtype_to_torch_map()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.hostruntime.tensor_class._ml_dtype_to_torch_map </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<h2 class="groupheader">Variable Documentation</h2>
+<a id="a9531f40709ceb9da3fd5aa0b9840f70f" name="a9531f40709ceb9da3fd5aa0b9840f70f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9531f40709ceb9da3fd5aa0b9840f70f">&#9670;&#160;</a></span>_ML_DTYPE_TO_TORCH</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">dict utils.hostruntime.tensor_class._ML_DTYPE_TO_TORCH = None</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="ad5a14687ae1d05722bc351d7542ff7f3" name="ad5a14687ae1d05722bc351d7542ff7f3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad5a14687ae1d05722bc351d7542ff7f3">&#9670;&#160;</a></span>_UINT_VIEW_DTYPE</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">dict utils.hostruntime.tensor_class._UINT_VIEW_DTYPE</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<b>Initial value:</b><div class="fragment"><div class="line"><span class="lineno">    1</span>=  {</div>
+<div class="line"><span class="lineno">    2</span>    1: np.uint8,</div>
+<div class="line"><span class="lineno">    3</span>    2: np.uint16,</div>
+<div class="line"><span class="lineno">    4</span>    4: np.uint32,</div>
+<div class="line"><span class="lineno">    5</span>    8: np.uint64,</div>
+<div class="line"><span class="lineno">    6</span>}</div>
+</div><!-- fragment -->
+</div>
+</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
