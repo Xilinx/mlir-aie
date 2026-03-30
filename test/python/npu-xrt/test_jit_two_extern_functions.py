@@ -28,7 +28,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
-@jit(is_placed=False)
+@jit
 def add_then_scale(input, output, add_func, scale_func):
     """Apply add_func then scale_func sequentially on each tile."""
     num_elements = np.size(input)
