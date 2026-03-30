@@ -204,9 +204,10 @@ class XRTHostRuntime(HostRuntime):
                 raise RuntimeError("No kernels found in xclbin")
             kernel_name = kernels[0].get_name()
         else:
-            if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
+            available_kernels = [k.get_name() for k in xclbin.get_kernels()]
+            if kernel_name not in available_kernels:
                 raise HostRuntimeError(
-                    f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
+                    f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                 )
 
         insts = self.read_insts(insts_path)
@@ -561,9 +562,10 @@ class CachedXRTRuntime(XRTHostRuntime):
                     raise RuntimeError("No kernels found in xclbin")
                 kernel_name = kernels[0].get_name()
             else:
-                if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
+                available_kernels = [k.get_name() for k in xclbin.get_kernels()]
+                if kernel_name not in available_kernels:
                     raise HostRuntimeError(
-                        f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
+                        f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                     )
 
             insts = self.read_insts(insts_path)

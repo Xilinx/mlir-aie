@@ -19,7 +19,12 @@ _ML_DTYPE_TO_TORCH: dict | None = None
 def _ml_dtype_to_torch_map():
     global _ML_DTYPE_TO_TORCH
     if _ML_DTYPE_TO_TORCH is None:
-        import torch
+        try:
+            import torch
+        except ImportError:
+            raise ImportError(
+                "torch is not installed. Please install it with 'pip install torch'"
+            )
         import ml_dtypes
 
         _ML_DTYPE_TO_TORCH = {}
@@ -64,20 +69,16 @@ def _array_to_torch(array: np.ndarray):
     Raises:
         ImportError: If torch is not installed.
     """
+    # _ml_dtype_to_torch_map() imports torch (raising ImportError with a helpful message
+    # if absent) and returns the ml_dtype -> torch dtype mapping.
     torch_dtype = _ml_dtype_to_torch_map().get(array.dtype)
+    import torch  # already imported by _ml_dtype_to_torch_map(); cached by Python
+
     if torch_dtype is None:
         # Native numpy dtype: torch.from_numpy handles it directly and fastest.
-        try:
-            import torch
-        except ImportError:
-            raise ImportError(
-                "torch is not installed. Please install it with 'pip install torch'"
-            )
         return torch.from_numpy(array)
-    # ml_dtype: reinterpret memory as a same-width uint, then view as the torch dtype.
-    # _ml_dtype_to_torch_map() already imported torch; no ImportError guard needed here.
-    import torch
 
+    # ml_dtype: reinterpret memory as a same-width uint, then view as the torch dtype.
     uint_dtype = _UINT_VIEW_DTYPE[array.dtype.itemsize]
     return torch.from_numpy(array.view(uint_dtype)).view(torch_dtype)
 
@@ -86,7 +87,7 @@ class Tensor(ABC):
     """
     Tensor object backed by NPU or CPU memory.
 
-    The class provides commom tensor operations such as creation,
+    The class provides common tensor operations such as creation,
     filling with values, and accessing data.
 
     """
