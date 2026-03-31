@@ -56,15 +56,12 @@ std::optional<int64_t> TraceEventAttr::getEnumValue() const {
 // Tile Type Validation Helper
 //===----------------------------------------------------------------------===//
 
-static bool isValidEventForTile(TileOp tile, Attribute eventAttr) {
-  int col = tile.getCol();
-  int row = tile.getRow();
-  const auto &targetModel = getTargetModel(tile);
-
-  // Determine tile type
-  bool isShimTile = targetModel.isShimNOCorPLTile(col, row);
-  bool isMemTile = targetModel.isMemTile(col, row);
-  bool isCoreTile = targetModel.isCoreTile(col, row);
+static bool isValidEventForTile(TileLike tile, Attribute eventAttr,
+                                const AIETargetModel &targetModel) {
+  // Determine tile type from TileLike interface
+  bool isShimTile = tile.isShimTile();
+  bool isMemTile = tile.isMemTile();
+  bool isCoreTile = tile.isCoreTile();
   AIEArch arch = targetModel.getTargetArch();
 
   // If eventAttr is a TraceEventAttr, extract the inner attribute
@@ -154,9 +151,9 @@ LogicalResult TraceOp::verify() {
            << eventCount;
   }
 
-  // Verify tile operand is a TileOp
-  if (!getTile().getDefiningOp<TileOp>()) {
-    return emitOpError("tile operand must be a TileOp");
+  // Verify tile operand is a TileOp or LogicalTileOp
+  if (!llvm::dyn_cast<TileLike>(getTile().getDefiningOp())) {
+    return emitOpError("tile operand must be a TileOp or LogicalTileOp");
   }
 
   // Track combo/edge slot usage within this trace
@@ -337,19 +334,19 @@ LogicalResult TraceEventOp::verify() {
     return emitOpError("must be nested in aie.trace");
   }
 
-  auto tileOp = dyn_cast<TileOp>(trace.getTile().getDefiningOp());
-  if (!tileOp) {
-    return emitOpError("trace tile must be a TileOp");
+  auto tileLike = dyn_cast<TileLike>(trace.getTile().getDefiningOp());
+  if (!tileLike) {
+    return emitOpError("trace tile must be a TileOp or LogicalTileOp");
   }
 
-  if (!isValidEventForTile(tileOp, eventAttr.getValue())) {
-    int col = tileOp.getCol();
-    int row = tileOp.getRow();
-    const auto &targetModel = getTargetModel(tileOp);
+  auto device = trace->getParentOfType<DeviceOp>();
+  const auto &targetModel = device.getTargetModel();
+
+  if (!isValidEventForTile(tileLike, eventAttr.getValue(), targetModel)) {
     std::string tileTypeStr;
-    if (targetModel.isCoreTile(col, row))
+    if (tileLike.isCoreTile())
       tileTypeStr = "core tile";
-    else if (targetModel.isMemTile(col, row))
+    else if (tileLike.isMemTile())
       tileTypeStr = "mem tile";
     else
       tileTypeStr = "shim tile";
@@ -361,10 +358,17 @@ LogicalResult TraceEventOp::verify() {
     else
       fullEventName = eventName;
 
+    auto col = tileLike.tryGetCol();
+    auto row = tileLike.tryGetRow();
+    if (col && row) {
+      return emitOpError("event '")
+             << fullEventName << "' is not valid for " << tileTypeStr << " ("
+             << stringifyAIEArch(targetModel.getTargetArch()) << ") at ("
+             << *col << ", " << *row << ")";
+    }
     return emitOpError("event '")
            << fullEventName << "' is not valid for " << tileTypeStr << " ("
-           << stringifyAIEArch(targetModel.getTargetArch()) << ") at (" << col
-           << ", " << row << ")";
+           << stringifyAIEArch(targetModel.getTargetArch()) << ")";
   }
 
   return success();
@@ -396,9 +400,9 @@ LogicalResult TracePortOp::verify() {
     return emitOpError("must be nested in aie.trace");
   }
 
-  auto tileOp = dyn_cast<TileOp>(trace.getTile().getDefiningOp());
-  if (!tileOp) {
-    return emitOpError("trace tile must be a TileOp");
+  auto tileLike = dyn_cast<TileLike>(trace.getTile().getDefiningOp());
+  if (!tileLike) {
+    return emitOpError("trace tile must be a TileOp or LogicalTileOp");
   }
 
   // Get target model
@@ -408,13 +412,17 @@ LogicalResult TracePortOp::verify() {
   // Convert DMAChannelDir to master flag: S2MM=master, MM2S=slave
   bool isMaster = (getDirection() == DMAChannelDir::S2MM);
 
-  // Verify port is valid for this tile
-  if (!targetModel
-           .getStreamSwitchPortIndex(tileOp.getCol(), tileOp.getRow(),
-                                     getPort(), getChannel(), isMaster)
-           .has_value()) {
-    return emitOpError("invalid stream switch port configuration for tile (")
-           << tileOp.getCol() << ", " << tileOp.getRow() << ")";
+  // Verify port is valid for this tile (only when placed with known col/row)
+  auto col = tileLike.tryGetCol();
+  auto row = tileLike.tryGetRow();
+  if (col && row) {
+    if (!targetModel
+             .getStreamSwitchPortIndex(*col, *row, getPort(), getChannel(),
+                                       isMaster)
+             .has_value()) {
+      return emitOpError("invalid stream switch port configuration for tile (")
+             << *col << ", " << *row << ")";
+    }
   }
 
   // Check for duplicate slots within same trace
@@ -584,16 +592,19 @@ LogicalResult TraceComboEventOp::verify() {
     return emitOpError("must be nested in aie.trace");
   }
 
-  auto tileOp = dyn_cast<TileOp>(trace.getTile().getDefiningOp());
-  if (!tileOp) {
-    return emitOpError("trace tile must be a TileOp");
+  auto tileLike = dyn_cast<TileLike>(trace.getTile().getDefiningOp());
+  if (!tileLike) {
+    return emitOpError("trace tile must be a TileOp or LogicalTileOp");
   }
 
   // Validate event types match tile
-  if (!isValidEventForTile(tileOp, getEventA().getValue())) {
+  auto device = trace->getParentOfType<DeviceOp>();
+  const auto &targetModel = device.getTargetModel();
+
+  if (!isValidEventForTile(tileLike, getEventA().getValue(), targetModel)) {
     return emitOpError("eventA is not valid for this tile type");
   }
-  if (!isValidEventForTile(tileOp, getEventB().getValue())) {
+  if (!isValidEventForTile(tileLike, getEventB().getValue(), targetModel)) {
     return emitOpError("eventB is not valid for this tile type");
   }
 
@@ -650,13 +661,16 @@ LogicalResult TraceEdgeEventOp::verify() {
     return emitOpError("must be nested in aie.trace");
   }
 
-  auto tileOp = dyn_cast<TileOp>(trace.getTile().getDefiningOp());
-  if (!tileOp) {
-    return emitOpError("trace tile must be a TileOp");
+  auto tileLike = dyn_cast<TileLike>(trace.getTile().getDefiningOp());
+  if (!tileLike) {
+    return emitOpError("trace tile must be a TileOp or LogicalTileOp");
   }
 
   // Validate event type matches tile
-  if (!isValidEventForTile(tileOp, getEvent().getValue())) {
+  auto device = trace->getParentOfType<DeviceOp>();
+  const auto &targetModel = device.getTargetModel();
+
+  if (!isValidEventForTile(tileLike, getEvent().getValue(), targetModel)) {
     return emitOpError("event is not valid for this tile type");
   }
 

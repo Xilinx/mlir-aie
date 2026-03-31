@@ -67,6 +67,26 @@ module @missing_stop {
 
 // -----
 
+// Test: LogicalTileOp must be resolved before insert-trace-flows
+module @unresolved_logical_tile {
+  aie.device(npu1_1col) {
+    // expected-error@+1 {{LogicalTileOp must be resolved to TileOp before running -aie-insert-trace-flows (run -aie-place-tiles first)}}
+    %tile = aie.logical_tile<CoreTile>(?, ?)
+    aie.trace @core_trace(%tile) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 65536
+      aie.trace.start_config @core_trace
+    }
+  }
+}
+
+// -----
+
 // Test: Trace ops without runtime_sequence
 module @no_runtime_seq {
   // expected-error@+1 {{aie.trace ops found but no runtime_sequence defined}}
