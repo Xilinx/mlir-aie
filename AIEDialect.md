@@ -2453,12 +2453,10 @@ Configures host-side trace buffer.
 
 Attributes:
 - buffer_size: Trace buffer size in bytes
-- arg_idx (default=4): XRT argument index for trace buffer
+- arg_idx (default=4): XRT argument index for trace buffer. Set to -1 to
+  append trace data after the last tensor argument in the runtime_sequence.
 - routing (default=single): Shim routing strategy. Currently only 'single'
   is supported, which routes all traces to column 0's shim.
-- trace_after_last_tensor (default=false): Append trace data to the last
-  tensor argument in the runtime_sequence. When true, buffer_offset is computed
-  from the tensor size. Only valid with routing=single.
 
 Example:
 ```mlir
@@ -2480,7 +2478,6 @@ Traits: `HasParent<RuntimeSequenceOp>`
     Determines how traces are routed to shim tiles:
     - single: All traces route to a single shim tile (column 0)
   {{% /markdown %}}</details></td></tr>
-<tr><td><code>trace_after_last_tensor</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 

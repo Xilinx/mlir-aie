@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;190bd98bb8af38f6ebd8d2a65f9a9cc3ce306d9f</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;e4f35d643c7e9f077faf85577dcfb340174d671e</span>
    </div>
   </td>
  </tr>
@@ -75,7 +75,6 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
-<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="#pro-attribs">Protected Attributes</a> &#124;
 <a href="#pri-static-attribs">Static Private Attributes</a> &#124;
 <a href="classiron_1_1runtime_1_1runtime_1_1Runtime-members.html">List of all members</a>  </div>
@@ -125,8 +124,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a374badc82bbd7649468f72f637818399"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a77189d41cb28ba32bbf24cf23085c839" id="r_a77189d41cb28ba32bbf24cf23085c839"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a77189d41cb28ba32bbf24cf23085c839">inline_ops</a> (self, Callable inline_func, list inline_args)</td></tr>
 <tr class="separator:a77189d41cb28ba32bbf24cf23085c839"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af96c5fa69aa514f68292e206c8b92f65" id="r_af96c5fa69aa514f68292e206c8b92f65"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#af96c5fa69aa514f68292e206c8b92f65">enable_trace</a> (self, int trace_size=None, int trace_offset=None, list|None <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a3e917dfd0851b02e6b31d23451acb40b">workers</a>=None, int <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a121e442943853d57be1d6d66f56c5279">ddr_id</a>=None, list|None coretile_events=None, list|None coremem_events=None, list|None memtile_events=None, list|None shimtile_events=None)</td></tr>
-<tr class="separator:af96c5fa69aa514f68292e206c8b92f65"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a0213949221b055584fb13bc0a0d204cf" id="r_a0213949221b055584fb13bc0a0d204cf"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a0213949221b055584fb13bc0a0d204cf">enable_trace</a> (self, int trace_size=None, list|None <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a3e917dfd0851b02e6b31d23451acb40b">workers</a>=None, int ddr_id=4, list|None coretile_events=None, list|None coremem_events=None, list|None memtile_events=None, list|None shimtile_events=None)</td></tr>
+<tr class="separator:a0213949221b055584fb13bc0a0d204cf"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aeb89d96ce109977a224b651413444fc6" id="r_aeb89d96ce109977a224b651413444fc6"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#aeb89d96ce109977a224b651413444fc6">set_barrier</a> (self, <a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html">WorkerRuntimeBarrier</a> barrier, int value)</td></tr>
 <tr class="separator:aeb89d96ce109977a224b651413444fc6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3e917dfd0851b02e6b31d23451acb40b" id="r_a3e917dfd0851b02e6b31d23451acb40b"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1worker_1_1Worker.html">Worker</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a3e917dfd0851b02e6b31d23451acb40b">workers</a> (self)</td></tr>
@@ -137,11 +136,6 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:af0b721becd44d6123fa39c95986880da"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0aa82aec64335ad4f150f713fa0dd3b0" id="r_a0aa82aec64335ad4f150f713fa0dd3b0"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a0aa82aec64335ad4f150f713fa0dd3b0">resolve</a> (self, ir.Location|None loc=None, ir.InsertionPoint|None ip=None)</td></tr>
 <tr class="separator:a0aa82aec64335ad4f150f713fa0dd3b0"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
-Public Attributes</h2></td></tr>
-<tr class="memitem:a121e442943853d57be1d6d66f56c5279" id="r_a121e442943853d57be1d6d66f56c5279"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a121e442943853d57be1d6d66f56c5279">ddr_id</a></td></tr>
-<tr class="separator:a121e442943853d57be1d6d66f56c5279"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-attribs" name="pro-attribs"></a>
 Protected Attributes</h2></td></tr>
@@ -155,8 +149,6 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:a5f67560cc342e90c7065c601a9c455ce"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae10f79d3eaa7f02877b800558ca57bc5" id="r_ae10f79d3eaa7f02877b800558ca57bc5"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ae10f79d3eaa7f02877b800558ca57bc5">_trace_size</a></td></tr>
 <tr class="separator:ae10f79d3eaa7f02877b800558ca57bc5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ad82274cfc9218f999fe84a13a65d52e6" id="r_ad82274cfc9218f999fe84a13a65d52e6"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ad82274cfc9218f999fe84a13a65d52e6">_trace_offset</a></td></tr>
-<tr class="separator:ad82274cfc9218f999fe84a13a65d52e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a82d7df3e6c606fc3ed6ce41831e3111d" id="r_a82d7df3e6c606fc3ed6ce41831e3111d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a82d7df3e6c606fc3ed6ce41831e3111d">_trace_workers</a></td></tr>
 <tr class="separator:a82d7df3e6c606fc3ed6ce41831e3111d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a57f55b7ceaf4584dce8a8338bd15a186" id="r_a57f55b7ceaf4584dce8a8338bd15a186"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a57f55b7ceaf4584dce8a8338bd15a186">_strict_task_groups</a></td></tr>
@@ -286,8 +278,8 @@ Raises:
 </pre> 
 </div>
 </div>
-<a id="af96c5fa69aa514f68292e206c8b92f65" name="af96c5fa69aa514f68292e206c8b92f65"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af96c5fa69aa514f68292e206c8b92f65">&#9670;&#160;</a></span>enable_trace()</h2>
+<a id="a0213949221b055584fb13bc0a0d204cf" name="a0213949221b055584fb13bc0a0d204cf"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0213949221b055584fb13bc0a0d204cf">&#9670;&#160;</a></span>enable_trace()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -307,12 +299,6 @@ Raises:
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int &#160;</td>
-          <td class="paramname"><em>trace_offset</em> = <code>None</code>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
           <td class="paramtype">list | None &#160;</td>
           <td class="paramname"><em>workers</em> = <code>None</code>, </td>
         </tr>
@@ -320,7 +306,7 @@ Raises:
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">int &#160;</td>
-          <td class="paramname"><em>ddr_id</em> = <code>None</code>, </td>
+          <td class="paramname"><em>ddr_id</em> = <code>4</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -360,17 +346,17 @@ Should be called within a :meth:`sequence` context before data movement operatio
 
 Args:
     trace_size (int): Size of the trace buffer in bytes.
-    trace_offset (int | None, optional): Byte offset into the DDR buffer where trace
-        data should begin. Defaults to None (treated as 0).
     workers (list[Worker] | None, optional): Specific workers to trace. If None,
         all workers with ``trace`` set will be traced. Defaults to None.
-    ddr_id (int | None, optional): XRT inout buffer index to write trace data into.
-        Defaults to None (treated as 4, the conventional last buffer slot).
+    ddr_id (int, optional): XRT inout buffer index (0-4) to write trace data
+        into, mapping to group_id (3-7). Defaults to 4 (group_id 7).
+        Set to -1 to append trace data after the last runtime_sequence
+        tensor argument.
     coretile_events (list | None, optional): List of up to 8 core tile trace events.
         See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available
         events under (type)EventAIE such as CoreEventAIE.
         Defaults to None (uses hardware defaults).
-    coremem_events (list | None, optional): List of up to 8 mem tile trace events.
+    coremem_events (list | None, optional): List of up to 8 core memory trace events.
         Defaults to None (uses hardware defaults).
     memtile_events (list | None, optional): List of up to 8 mem tile trace events.
         Defaults to None (uses hardware defaults).
@@ -979,28 +965,6 @@ Returns:
 
 </div>
 </div>
-<a id="ad82274cfc9218f999fe84a13a65d52e6" name="ad82274cfc9218f999fe84a13a65d52e6"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ad82274cfc9218f999fe84a13a65d52e6">&#9670;&#160;</a></span>_trace_offset</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">iron.runtime.runtime.Runtime._trace_offset</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
 <a id="ae10f79d3eaa7f02877b800558ca57bc5" name="ae10f79d3eaa7f02877b800558ca57bc5"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ae10f79d3eaa7f02877b800558ca57bc5">&#9670;&#160;</a></span>_trace_size</h2>
 
@@ -1063,20 +1027,6 @@ Returns:
 <span class="mlabels"><span class="mlabel">protected</span></span>  </td>
   </tr>
 </table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="a121e442943853d57be1d6d66f56c5279" name="a121e442943853d57be1d6d66f56c5279"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a121e442943853d57be1d6d66f56c5279">&#9670;&#160;</a></span>ddr_id</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">iron.runtime.runtime.Runtime.ddr_id</td>
-        </tr>
-      </table>
 </div><div class="memdoc">
 
 </div>

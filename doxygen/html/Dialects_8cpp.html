@@ -196,6 +196,18 @@ Functions</h2></td></tr>
 <tr class="separator:aee5470f2f5dfe4b3f6fc9d756ee4fb98"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6ce5988e63b28e5489c022cc3ac59b35" id="r_a6ce5988e63b28e5489c022cc3ac59b35"><td class="memItemLeft" align="right" valign="top">MlirType&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="Dialects_8cpp.html#a6ce5988e63b28e5489c022cc3ac59b35">aieBlockFloatTypeGet</a> (MlirContext ctx, const std::string &amp;blockType)</td></tr>
 <tr class="separator:a6ce5988e63b28e5489c022cc3ac59b35"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7a6f0f410ac1d116f5a0b2252e2ae6ce" id="r_a7a6f0f410ac1d116f5a0b2252e2ae6ce"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="Dialects_8cpp.html#a7a6f0f410ac1d116f5a0b2252e2ae6ce">aieOpImplementsTileLike</a> (MlirOperation op)</td></tr>
+<tr class="separator:a7a6f0f410ac1d116f5a0b2252e2ae6ce"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab2071231aa6ccaf28622644cc1f81a80" id="r_ab2071231aa6ccaf28622644cc1f81a80"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="Dialects_8cpp.html#ab2071231aa6ccaf28622644cc1f81a80">aieTileLikeIsCoreTile</a> (MlirOperation op)</td></tr>
+<tr class="separator:ab2071231aa6ccaf28622644cc1f81a80"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7eb52c6edbb43b1fe9faa60e346b2862" id="r_a7eb52c6edbb43b1fe9faa60e346b2862"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="Dialects_8cpp.html#a7eb52c6edbb43b1fe9faa60e346b2862">aieTileLikeIsMemTile</a> (MlirOperation op)</td></tr>
+<tr class="separator:a7eb52c6edbb43b1fe9faa60e346b2862"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a83eaadb944f4e0a489dd9784265aaf92" id="r_a83eaadb944f4e0a489dd9784265aaf92"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="Dialects_8cpp.html#a83eaadb944f4e0a489dd9784265aaf92">aieTileLikeIsShimNOCTile</a> (MlirOperation op)</td></tr>
+<tr class="separator:a83eaadb944f4e0a489dd9784265aaf92"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a20976c69b84c317a3f3b4c47c8f33375" id="r_a20976c69b84c317a3f3b4c47c8f33375"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="Dialects_8cpp.html#a20976c69b84c317a3f3b4c47c8f33375">aieTileLikeIsShimPLTile</a> (MlirOperation op)</td></tr>
+<tr class="separator:a20976c69b84c317a3f3b4c47c8f33375"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a07082002c2e3e8fc48434542d96cdfa5" id="r_a07082002c2e3e8fc48434542d96cdfa5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="Dialects_8cpp.html#a07082002c2e3e8fc48434542d96cdfa5">aieTileLikeIsShimNOCorPLTile</a> (MlirOperation op)</td></tr>
+<tr class="separator:a07082002c2e3e8fc48434542d96cdfa5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
 <a id="a6ce5988e63b28e5489c022cc3ac59b35" name="a6ce5988e63b28e5489c022cc3ac59b35"></a>
@@ -265,6 +277,126 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p class="definition">Definition at line <a class="el" href="Dialects_8cpp_source.html#l00036">36</a> of file <a class="el" href="Dialects_8cpp_source.html">Dialects.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a7a6f0f410ac1d116f5a0b2252e2ae6ce" name="a7a6f0f410ac1d116f5a0b2252e2ae6ce"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7a6f0f410ac1d116f5a0b2252e2ae6ce">&#9670;&#160;</a></span>aieOpImplementsTileLike()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> aieOpImplementsTileLike </td>
+          <td>(</td>
+          <td class="paramtype">MlirOperation&#160;</td>
+          <td class="paramname"><em>op</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="Dialects_8cpp_source.html#l00070">70</a> of file <a class="el" href="Dialects_8cpp_source.html">Dialects.cpp</a>.</p>
+
+</div>
+</div>
+<a id="ab2071231aa6ccaf28622644cc1f81a80" name="ab2071231aa6ccaf28622644cc1f81a80"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab2071231aa6ccaf28622644cc1f81a80">&#9670;&#160;</a></span>aieTileLikeIsCoreTile()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> aieTileLikeIsCoreTile </td>
+          <td>(</td>
+          <td class="paramtype">MlirOperation&#160;</td>
+          <td class="paramname"><em>op</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="Dialects_8cpp_source.html#l00074">74</a> of file <a class="el" href="Dialects_8cpp_source.html">Dialects.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a7eb52c6edbb43b1fe9faa60e346b2862" name="a7eb52c6edbb43b1fe9faa60e346b2862"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7eb52c6edbb43b1fe9faa60e346b2862">&#9670;&#160;</a></span>aieTileLikeIsMemTile()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> aieTileLikeIsMemTile </td>
+          <td>(</td>
+          <td class="paramtype">MlirOperation&#160;</td>
+          <td class="paramname"><em>op</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="Dialects_8cpp_source.html#l00079">79</a> of file <a class="el" href="Dialects_8cpp_source.html">Dialects.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a07082002c2e3e8fc48434542d96cdfa5" name="a07082002c2e3e8fc48434542d96cdfa5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a07082002c2e3e8fc48434542d96cdfa5">&#9670;&#160;</a></span>aieTileLikeIsShimNOCorPLTile()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> aieTileLikeIsShimNOCorPLTile </td>
+          <td>(</td>
+          <td class="paramtype">MlirOperation&#160;</td>
+          <td class="paramname"><em>op</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="Dialects_8cpp_source.html#l00094">94</a> of file <a class="el" href="Dialects_8cpp_source.html">Dialects.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a83eaadb944f4e0a489dd9784265aaf92" name="a83eaadb944f4e0a489dd9784265aaf92"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a83eaadb944f4e0a489dd9784265aaf92">&#9670;&#160;</a></span>aieTileLikeIsShimNOCTile()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> aieTileLikeIsShimNOCTile </td>
+          <td>(</td>
+          <td class="paramtype">MlirOperation&#160;</td>
+          <td class="paramname"><em>op</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="Dialects_8cpp_source.html#l00084">84</a> of file <a class="el" href="Dialects_8cpp_source.html">Dialects.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a20976c69b84c317a3f3b4c47c8f33375" name="a20976c69b84c317a3f3b4c47c8f33375"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a20976c69b84c317a3f3b4c47c8f33375">&#9670;&#160;</a></span>aieTileLikeIsShimPLTile()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> aieTileLikeIsShimPLTile </td>
+          <td>(</td>
+          <td class="paramtype">MlirOperation&#160;</td>
+          <td class="paramname"><em>op</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="Dialects_8cpp_source.html#l00089">89</a> of file <a class="el" href="Dialects_8cpp_source.html">Dialects.cpp</a>.</p>
 
 </div>
 </div>
@@ -347,7 +479,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Mar 30 2026 23:47:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Mar 31 2026 01:23:14 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
