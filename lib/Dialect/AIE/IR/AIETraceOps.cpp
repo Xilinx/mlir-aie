@@ -360,15 +360,13 @@ LogicalResult TraceEventOp::verify() {
 
     auto col = tileLike.tryGetCol();
     auto row = tileLike.tryGetRow();
-    if (col && row) {
-      return emitOpError("event '")
-             << fullEventName << "' is not valid for " << tileTypeStr << " ("
-             << stringifyAIEArch(targetModel.getTargetArch()) << ") at ("
-             << *col << ", " << *row << ")";
-    }
+    auto fmtCoord = [](std::optional<int> v) -> std::string {
+      return v ? std::to_string(*v) : "?";
+    };
     return emitOpError("event '")
            << fullEventName << "' is not valid for " << tileTypeStr << " ("
-           << stringifyAIEArch(targetModel.getTargetArch()) << ")";
+           << stringifyAIEArch(targetModel.getTargetArch()) << ") at ("
+           << fmtCoord(col) << ", " << fmtCoord(row) << ")";
   }
 
   return success();
