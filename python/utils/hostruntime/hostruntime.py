@@ -169,7 +169,7 @@ class HostRuntime(ABC):
         trace_config = npu_kernel.trace_config
         handle = self.load(npu_kernel, **kwargs)
         if trace_config:
-            if trace_config.trace_after_last_tensor and len(run_args) > 0:
+            if trace_config.ddr_id == -1 and len(run_args) > 0:
                 trace_config.last_tensor_shape = run_args[-1].shape
                 trace_config.last_tensor_dtype = np.dtype(run_args[-1].dtype)
             self.prepare_args_for_trace(run_args, trace_config)
@@ -251,7 +251,7 @@ class HostRuntime(ABC):
         Returns:
             list[Tensor]: The updated list of tensors with trace buffers appended.
         """
-        if trace_config.trace_after_last_tensor:
+        if trace_config.ddr_id == -1:
             # Create a new, extended out tensor.
             out_size = trace_config.trace_size
             if len(args) > 0:
@@ -308,7 +308,7 @@ class HostRuntime(ABC):
         trace_buff = None
         ctrl_buff = None
 
-        if trace_config.trace_after_last_tensor:
+        if trace_config.ddr_id == -1:
             args[-1], trace_buff = cls._extract_prefix(
                 args[-1], trace_config.last_tensor_shape, trace_config.last_tensor_dtype
             )

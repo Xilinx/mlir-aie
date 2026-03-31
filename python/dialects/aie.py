@@ -39,6 +39,11 @@ from .._mlir_libs._aie import (
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
     transaction_binary_to_mlir,
+    tile_like_is_core_tile,
+    tile_like_is_mem_tile,
+    tile_like_is_shim_noc_tile,
+    tile_like_is_shim_pl_tile,
+    tile_like_is_shim_tile,
 )
 from ..extras import types as T
 from ..extras.meta import region_op
@@ -632,7 +637,6 @@ def trace_host_config(
     *,
     arg_idx=4,
     routing=TraceShimRouting.Single,
-    trace_after_last_tensor=False,
     loc=None,
     ip=None,
 ):
@@ -645,7 +649,6 @@ def trace_host_config(
         buffer_size=buffer_size,
         arg_idx=arg_idx,
         routing=routing,
-        trace_after_last_tensor=trace_after_last_tensor,
         loc=loc,
         ip=ip,
     )

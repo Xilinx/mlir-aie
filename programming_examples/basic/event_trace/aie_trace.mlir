@@ -105,7 +105,7 @@ module {
     // Trace configuration for compute tile (0,2) - memory events
     aie.trace @mem_trace(%tile_0_2) {
       // For core tiles, type=mem selects the memory module trace unit
-      aie.trace.packet id=3 type=mem
+      aie.trace.packet id=2 type=mem
 
       // Specify which events to capture (up to 8 events)
       aie.trace.event<"DMA_S2MM_0_START_TASK">
@@ -125,7 +125,7 @@ module {
     // Trace configuration for mem tile (0, 1)
     aie.trace @memtile_trace(%mem_tile_0_1) {
       // For memtiles, type=memtile is inferred but can be explicit
-      aie.trace.packet id=4 type=memtile
+      aie.trace.packet id=3 type=memtile
 
       // Specify which events to capture (up to 8 events)
       aie.trace.event<"PORT_RUNNING_0">
@@ -155,7 +155,7 @@ module {
     // Trace configuration for shim tile (0,0)
     aie.trace @shim_trace(%shim_noc_tile_0_0) {
       // For shim tiles, type=shimtile is inferred but can be explicit
-      aie.trace.packet id=2 type=shimtile
+      aie.trace.packet id=4 type=shimtile
 
       // Specify which events to capture (up to 8 events)
       aie.trace.event<"DMA_S2MM_0_START_TASK">
@@ -167,9 +167,9 @@ module {
       aie.trace.event<"DMA_S2MM_0_STREAM_STARVATION">
       aie.trace.event<"DMA_S2MM_1_STREAM_STARVATION">
 
-      // Specify start/stop control (broadcast events)
-      aie.trace.start event=<"TRUE">
-      aie.trace.stop event=<"NONE">
+      // Specify start/stop control using broadcast
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
     }
 
     // ========================================================================

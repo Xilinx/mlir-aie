@@ -6,16 +6,8 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 # RUN: %python %s | FileCheck %s
-#
-# CHECK: aiex.npu.write32 {address = 213200 : ui32, column = 0 : i32, row = 2 : i32, value = 65536 : ui32}
-# CHECK: aiex.npu.write32 {address = 213204 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
-# CHECK: aiex.npu.write32 {address = 213216 : ui32, column = 0 : i32, row = 2 : i32, value = 1260527909 : ui32}
-# CHECK: aiex.npu.write32 {address = 213220 : ui32, column = 0 : i32, row = 2 : i32, value = 757865039 : ui32}
-# CHECK: aiex.npu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32}
-# CHECK: aiex.npu.write32 {address = 261892 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
-# CHECK: aiex.npu.writebd {bd_id = 3 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, burst_length = 64 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
-# CHECK: aiex.npu.address_patch {addr = 118884 : ui32, arg_idx = 2 : i32, arg_plus = 1024 : i32}
-# CHECK: aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
+
+# Test that configure_trace() and start_trace() generate correct aie.trace ops
 
 import sys
 
@@ -23,8 +15,14 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.iron.controlflow import range_
 from aie.extras.context import mlir_mod_ctx
-from aie.utils.trace import *
-from aie.utils.trace.events import *
+from aie.extras import types as T
+
+import aie.utils.trace as trace_utils
+from aie.utils.trace.events import (
+    PortEvent,
+    CoreEvent,
+    MemEvent,
+)
 
 N = 1024
 
@@ -33,10 +31,6 @@ if len(sys.argv) == 2:
 
 lineWidthInBytes = N // 4  # chop input in 4 sub-tensors
 lineWidthInInt32s = lineWidthInBytes // 4
-
-enableTrace = True
-traceSizeInBytes = 8192
-traceSizeInInt32s = traceSizeInBytes // 4
 
 
 def passthroughKernel():
@@ -58,9 +52,6 @@ def passthroughKernel():
             ShimTile = tile(0, 0)
             ComputeTile2 = tile(0, 2)
 
-            if enableTrace:
-                flow(ComputeTile2, WireBundle.Trace, 0, ShimTile, WireBundle.DMA, 1)
-
             # AIE-array data movement with object fifos
             of_in = object_fifo("in", ShimTile, ComputeTile2, 2, memRef_ty)
             of_out = object_fifo("out", ComputeTile2, ShimTile, 2, memRef_ty)
@@ -77,36 +68,62 @@ def passthroughKernel():
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
-            #    print(ctx.module.operation.verify())
+            # Configure tracing with custom events on multiple tiles
+            # CHECK: aie.trace @trace_core_1(%{{.*}}) {
+            # CHECK:   aie.trace.mode "Event-Time"
+            # CHECK:   aie.trace.packet id = 1 type = core
+            # CHECK:   aie.trace.event <"INSTR_EVENT_1">
+            # CHECK:   aie.trace.event <"INSTR_EVENT_0">
+            # CHECK:   aie.trace.event <"INSTR_VECTOR">
+            # CHECK:   aie.trace.event <"PORT_RUNNING_0">
+            # CHECK:   aie.trace.event <"PORT_RUNNING_1">
+            # CHECK:   aie.trace.event <"INSTR_LOCK_ACQUIRE_REQ">
+            # CHECK:   aie.trace.event <"LOCK_STALL">
+            # CHECK:   aie.trace.event <"MEMORY_STALL">
+            # CHECK:   aie.trace.port<0> port = DMA channel = 0 direction = S2MM
+            # CHECK:   aie.trace.port<1> port = DMA channel = 0 direction = MM2S
+            # CHECK:   aie.trace.start broadcast = 15
+            # CHECK:   aie.trace.stop broadcast = 14
+            # CHECK: }
+            # CHECK: aie.trace @trace_shim_2(%{{.*}}) {
+            # CHECK:   aie.trace.packet id = 2 type = shimtile
+            # CHECK:   aie.trace.event <"DMA_S2MM_0_START_TASK">
+            # CHECK:   aie.trace.event <"DMA_S2MM_1_START_TASK">
+            # CHECK:   aie.trace.event <"DMA_MM2S_0_START_TASK">
+            # CHECK:   aie.trace.event <"DMA_S2MM_0_FINISHED_TASK">
+            # CHECK:   aie.trace.event <"DMA_S2MM_1_FINISHED_TASK">
+            # CHECK:   aie.trace.event <"DMA_MM2S_0_FINISHED_TASK">
+            # CHECK:   aie.trace.event <"DMA_S2MM_0_STREAM_STARVATION">
+            # CHECK:   aie.trace.event <"DMA_S2MM_1_STREAM_STARVATION">
+            # CHECK:   aie.trace.start broadcast = 15
+            # CHECK:   aie.trace.stop broadcast = 14
+            # CHECK: }
+            trace_utils.configure_trace(
+                [ComputeTile2, ShimTile],
+                coretile_events=[
+                    CoreEvent.INSTR_EVENT_1,
+                    CoreEvent.INSTR_EVENT_0,
+                    CoreEvent.INSTR_VECTOR,
+                    PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+                    PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False),
+                    CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+                    CoreEvent.LOCK_STALL,
+                    CoreEvent.MEMORY_STALL,
+                ],
+            )
 
             tensorSize = N
             tensorSizeInInt32s = tensorSize // 4
             tensor_ty = T.memref(lineWidthInInt32s, T.i32())
 
+            # Verify start_trace() generates host_config and start_config ops
+            # CHECK: aie.runtime_sequence
+            # CHECK:   aie.trace.host_config buffer_size = 8192
+            # CHECK:   aie.trace.start_config @trace_core_1
+            # CHECK:   aie.trace.start_config @trace_shim_2
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
-                if enableTrace:
-                    configure_simple_tracing_aie2(
-                        ComputeTile2,
-                        ShimTile,
-                        channel=1,
-                        bd_id=3,
-                        ddr_id=2,
-                        size=traceSizeInBytes,
-                        offset=tensorSize,
-                        start=0x1,
-                        stop=0x0,
-                        events=[
-                            0x25,
-                            0x21,
-                            0x22,
-                            PortEvent(0x4B, 1, True),
-                            PortEvent(0x4F, 1, False),
-                            0x1A,
-                            0x2C,
-                            0x2D,
-                        ],
-                    )
+                trace_utils.start_trace(trace_size=8192, ddr_id=4)
 
                 npu_dma_memcpy_nd(
                     metadata=of_in,

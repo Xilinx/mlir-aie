@@ -319,7 +319,7 @@ def traceHostConfig():
 
 # CHECK-LABEL: traceHostConfigAfterTensor
 # CHECK: aie.runtime_sequence @seq() {
-# CHECK:   aie.trace.host_config buffer_size = 16384 trace_after_last_tensor = true
+# CHECK:   aie.trace.host_config buffer_size = 16384 arg_idx = -1
 # CHECK: }
 @construct_and_print_module
 def traceHostConfigAfterTensor():
@@ -327,4 +327,4 @@ def traceHostConfigAfterTensor():
     def device_body():
         @runtime_sequence()
         def seq():
-            trace_host_config(buffer_size=16384, trace_after_last_tensor=True)
+            trace_host_config(buffer_size=16384, arg_idx=-1)

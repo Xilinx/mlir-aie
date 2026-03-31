@@ -741,12 +741,9 @@ void TraceHostConfigOp::print(OpAsmPrinter &p) {
   if (getRouting() != TraceShimRouting::Single)
     p << " routing = " << stringifyTraceShimRouting(getRouting());
 
-  if (getTraceAfterLastTensor())
-    p << " trace_after_last_tensor = true";
-
-  p.printOptionalAttrDict((*this)->getAttrs(),
-                          /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing",
-                                           "trace_after_last_tensor"});
+  p.printOptionalAttrDict(
+      (*this)->getAttrs(),
+      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing"});
 }
 
 ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
@@ -789,23 +786,6 @@ ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
   result.attributes.set(
       "routing", TraceShimRoutingAttr::get(parser.getContext(), routingVal));
 
-  // Parse trace_after_last_tensor (default: false)
-  bool traceAfterVal = false;
-  if (succeeded(parser.parseOptionalKeyword("trace_after_last_tensor"))) {
-    if (parser.parseEqual())
-      return failure();
-    StringRef boolStr;
-    if (failed(parser.parseKeyword(&boolStr)))
-      return failure();
-    if (boolStr == "true")
-      traceAfterVal = true;
-    else if (boolStr != "false")
-      return parser.emitError(parser.getCurrentLocation(),
-                              "expected 'true' or 'false'");
-  }
-  result.attributes.set("trace_after_last_tensor",
-                        parser.getBuilder().getBoolAttr(traceAfterVal));
-
   if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
@@ -813,12 +793,10 @@ ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
 }
 
 LogicalResult TraceHostConfigOp::verify() {
-  bool useTraceAfterLastTensor = getTraceAfterLastTensor();
-
-  // Appending trace data after the last tensor only works with single shim
-  if (useTraceAfterLastTensor) {
+  // arg_idx=-1 means "append after last tensor", only valid with single shim
+  if (getArgIdx() == -1) {
     if (getRouting() != TraceShimRouting::Single) {
-      return emitOpError("appending trace data to the last tensor argument "
+      return emitOpError("arg_idx=-1 (append trace after last tensor) "
                          "only works with single shim destination strategy "
                          "(routing=single)");
     }
