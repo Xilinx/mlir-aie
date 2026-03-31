@@ -401,8 +401,11 @@ struct AIEInsertTraceFlowsPass
     }
 
     // 4c-4f. Insert per-shim configurations
+    std::set<int> configuredShimCols;
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
+      if (!configuredShimCols.insert(shimCol).second)
+        continue;
 
       // Convert buffer size (bytes) to 32-bit words for buffer_length parameter
       int bufferLengthWords = bufferSizeBytes / 4;
@@ -500,11 +503,14 @@ struct AIEInsertTraceFlowsPass
     // Phase 4g: Insert trace stop at end of runtime sequence
     builder.setInsertionPointToEnd(&seqBlock);
 
+    std::set<int> stoppedShimCols;
     for (auto &[col, shimInfo] : shimInfos) {
       if (!shimInfo.stopBroadcast)
         continue;
 
       int shimCol = shimInfo.shimTile.getCol();
+      if (!stoppedShimCols.insert(shimCol).second)
+        continue;
 
       auto userEvent0 = targetModel.lookupEvent(
           "USER_EVENT_0", shimInfo.shimTile.getTileID(), false);

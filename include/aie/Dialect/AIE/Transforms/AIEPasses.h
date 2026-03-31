@@ -13,6 +13,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+#include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -24,6 +25,7 @@ namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferAddressesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>

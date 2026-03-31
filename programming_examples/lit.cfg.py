@@ -70,13 +70,9 @@ opencv_config = LitConfigHelper.detect_opencv(
     config.opencv_include_dir, config.opencv_lib_dir, config.opencv_libs
 )
 
-try:
-    import torch
-
+if config.pytorch:
     config.available_features.add("torch")
-except ImportError:
-    print("torch not found", file=sys.stderr)
-    pass
+    config.available_features.add("pytorch")
 
 # Setup host target triplet and sysroot
 triplet, sysroot_flag = LitConfigHelper.setup_host_target_triplet(
