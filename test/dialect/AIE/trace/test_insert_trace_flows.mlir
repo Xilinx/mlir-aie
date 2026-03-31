@@ -255,7 +255,7 @@ module @buffer_size_config {
 
 // -----
 
-// Test: trace_after_last_tensor uses last arg index with size offset (1024*4=4096)
+// Test: arg_idx=-1 uses last arg index with size offset (1024*4=4096)
 // CHECK-LABEL: module @trace_after_last_tensor
 module @trace_after_last_tensor {
   aie.device(npu1_1col) {
@@ -269,7 +269,7 @@ module @trace_after_last_tensor {
     }
     aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<1024xi32>) {
       // CHECK: aiex.npu.address_patch {{{.*}}arg_idx = 1{{.*}}arg_plus = 4096{{.*}}}
-      aie.trace.host_config buffer_size = 8192 trace_after_last_tensor = true
+      aie.trace.host_config buffer_size = 8192 arg_idx = -1
       aie.trace.start_config @core_trace
     }
   }

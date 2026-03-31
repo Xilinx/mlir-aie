@@ -62,3 +62,36 @@ bool aieTypeIsBlockFloatType(MlirType type) {
 MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string &blockType) {
   return wrap(xilinx::AIEX::BlockFloatType::get(unwrap(ctx), blockType));
 }
+
+//===---------------------------------------------------------------------===//
+// TileLike Interface
+//===---------------------------------------------------------------------===//
+
+bool aieOpImplementsTileLike(MlirOperation op) {
+  return llvm::isa<xilinx::AIE::TileLike>(unwrap(op));
+}
+
+bool aieTileLikeIsCoreTile(MlirOperation op) {
+  auto tileLike = llvm::dyn_cast<xilinx::AIE::TileLike>(unwrap(op));
+  return tileLike && tileLike.isCoreTile();
+}
+
+bool aieTileLikeIsMemTile(MlirOperation op) {
+  auto tileLike = llvm::dyn_cast<xilinx::AIE::TileLike>(unwrap(op));
+  return tileLike && tileLike.isMemTile();
+}
+
+bool aieTileLikeIsShimNOCTile(MlirOperation op) {
+  auto tileLike = llvm::dyn_cast<xilinx::AIE::TileLike>(unwrap(op));
+  return tileLike && tileLike.isShimNOCTile();
+}
+
+bool aieTileLikeIsShimPLTile(MlirOperation op) {
+  auto tileLike = llvm::dyn_cast<xilinx::AIE::TileLike>(unwrap(op));
+  return tileLike && tileLike.isShimPLTile();
+}
+
+bool aieTileLikeIsShimNOCorPLTile(MlirOperation op) {
+  auto tileLike = llvm::dyn_cast<xilinx::AIE::TileLike>(unwrap(op));
+  return tileLike && tileLike.isShimNOCorPLTile();
+}

@@ -14,7 +14,7 @@ class TraceConfig:
         self,
         trace_size: int,
         trace_file: str = "trace.txt",
-        trace_after_last_tensor: bool = False,
+        ddr_id: int = 4,
         enable_ctrl_pkts: bool = False,
         last_tensor_shape=None,
         last_tensor_dtype=None,
@@ -23,10 +23,12 @@ class TraceConfig:
             raise ValueError(f"Invalid trace size: {trace_size}")
         self.trace_size = trace_size
         self.trace_file = trace_file
-        self.trace_after_last_tensor = trace_after_last_tensor
+        self.ddr_id = ddr_id
         self.enable_ctrl_pkts = enable_ctrl_pkts
         self.last_tensor_shape = last_tensor_shape
         self.last_tensor_dtype = last_tensor_dtype
+        # Path to physical MLIR with lowered trace ops (set by NPUKernel)
+        self.physical_mlir_path = None
 
     def write_trace(self, trace):
         out_str = "\n".join(f"{i:0{8}x}" for i in trace if i != 0)
