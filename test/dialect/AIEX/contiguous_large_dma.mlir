@@ -62,11 +62,18 @@ module {
 
 // -----
 // Test 3: After aie-dma-tasks-to-npu, a contiguous shim BD with d0/d1 > 1023
-//         is lowered to linear mode (d0_wrap=0 and d1_wrap=0 in the output BD
-//         configuration instruction, meaning the hardware uses buffer_length).
+//         is lowered to linear mode (d0_size=d1_size=0).
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWER
+//
+// -----
+// Test 4: After aie-dma-to-npu, a contiguous NpuDmaMemcpyNdOp with d0/d1>1023
+//         is lowered to linear mode.  This is the NpuDmaMemcpyNdOp counterpart
+//         of Test 3, covering the path used by hand-written MLIR files.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-dma-to-npu))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=NPU
 
 // LOWER-LABEL: aie.device(npu1)
 // LOWER:         aie.runtime_sequence @tasks_to_npu_large
@@ -93,5 +100,34 @@ module {
       aiex.dma_start_task(%0)
       aiex.dma_await_task(%0)
     }
+  }
+}
+
+// -----
+// Test 4 module: NpuDmaMemcpyNdOp with d0=1920>1023 and d1=1080>1023 lowered
+// to linear mode by aie-dma-to-npu (the NpuDmaMemcpyNdOp lowering path).
+
+// NPU-LABEL: aie.device(npu1)
+// -- aie-dma-to-npu packs BD registers into a global blockwrite constant.
+// -- The first element of the dense data is the buffer_length (2073600 i32
+// -- elements in linear mode).  Words 1-3 being 0 means d0_size=d0_stride=
+// -- d1_size=d1_stride=0 -- all ND wrap fields are inactive (linear mode).
+// NPU:         memref.global
+// NPU-SAME:      dense<[2073600, 0, 0, 0
+// NPU:         aie.runtime_sequence @dma_to_npu_large
+// -- A blockwrite carries the packed BD; address_patch fills in the buffer ptr.
+// NPU:           aiex.npu.blockwrite
+// NPU:           aiex.npu.address_patch
+module {
+  aie.device(npu1) {
+    // 1080 rows x 1920 i32 words: d0=1920 > 1023, d1=1080 > 1023, contiguous.
+    // aie-dma-to-npu must lower to linear mode: buffer_length=2073600, all
+    // wrap/stride fields zero (d0_size=d1_size=0).
+    aie.runtime_sequence @dma_to_npu_large(%arg0 : memref<2073600xi32>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1080, 1920][0, 0, 1920, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<2073600xi32>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
   }
 }

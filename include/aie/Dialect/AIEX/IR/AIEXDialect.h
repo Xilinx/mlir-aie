@@ -51,9 +51,14 @@ verifyStridesWraps(mlir::Operation *forOp,
 bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
                       llvm::ArrayRef<int64_t> strides);
 
-// Forwards to AIE::isContiguousBDTransfer for use in AIEX passes.
-// See AIEDialect.h for the full description.
-bool isContiguousBDTransfer(llvm::ArrayRef<xilinx::AIE::BDDimLayoutAttr> dims);
+// Returns true when sizes/strides (innermost-first, same convention as
+// NpuDmaMemcpyNdOp) describe a contiguous row-major scan:
+//   strides[0] == 1
+//   for i in 1..2: if sizes[i] > 1 then strides[i] == product of sizes[0..i-1]
+// The repeat dimension (index 3) is excluded.
+// This is the vector-form counterpart of AIE::isContiguousBDTransfer.
+bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
+                          llvm::ArrayRef<int64_t> strides);
 
 } // namespace AIEX
 } // namespace xilinx

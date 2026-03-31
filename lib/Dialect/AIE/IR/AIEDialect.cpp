@@ -2223,28 +2223,18 @@ LogicalResult DMABDOp::verify() {
                            << std::to_string(maxIdx) << " in memref of length "
                            << std::to_string(buffer.getNumElements()) << ".";
 
-    // A contiguous row-major access on a shim tile is canonicalized to linear
-    // form by LinearizeContiguousBDTransfer, which uses the wider
-    // buffer_length register (exempt from the 10-bit wrap-size limit).
-    // Skip the per-dimension size check in that case so the natural ND form
-    // can be written and still pass verification before canonicalization.
-    // Skip the d0 size check when:
-    //  1. Inside a ShimDMAOp (after full lowering), or
-    //  2. The buffer is an ExternalBufferOp (dma_configure_task_for stage), or
-    //  3. The parent TileElement is a shim tile (dma_configure_task stage).
-    // All three represent shim DMA BDs that use the wide buffer_length register
-    // in linear mode after canonicalization.
-    bool bufferIsExternal =
-        !isUnrankedMemRef &&
-        isa_and_nonnull<ExternalBufferOp>(getBuffer().getDefiningOp());
-    TileElement parentTileElem2 = getParentTileElement(getOperation());
-    TileLike parentTileLike2 =
-        parentTileElem2 ? parentTileElem2.getTileLike() : TileLike{};
-    bool inShimContext = (parentTile && parentTile.isShimTile()) ||
-                         bufferIsExternal ||
-                         (parentTileLike2 && parentTileLike2.isShimTile());
+    // A contiguous row-major access on a shim tile is lowered to linear mode
+    // by aie-dma-tasks-to-npu / aie-dma-to-npu, using the wide buffer_length
+    // register which is exempt from the 10-bit ND wrap-size limit.
+    // Skip the per-dimension size check when the BD is on a shim tile and the
+    // access is contiguous, so the natural ND form can be written without
+    // triggering a spurious verifier error before lowering.
+    //
+    // Note: the verifier early-exit above means we only reach this code when
+    // the parent op is MemOp, MemTileDMAOp, ShimDMAOp, or DMAOp -- all of
+    // which are TileElements, so parentTile is always non-null here.
     bool skipSizeCheck =
-        inShimContext && xilinx::AIE::isContiguousBDTransfer(*dims);
+        parentTile.isShimTile() && xilinx::AIE::isContiguousBDTransfer(*dims);
 
     for (BDDimLayoutAttr dim : *dims) {
       if (0 == dim.getStride())

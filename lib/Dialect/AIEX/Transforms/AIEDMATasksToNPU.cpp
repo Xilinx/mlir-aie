@@ -359,14 +359,13 @@ struct AIEDMATasksToNPUPass
       }
 
       // d3 (repeat) is excluded; a repeated linear transfer is still linear.
-      // A contiguous row-major ND access is also treated as linear because
-      // LinearizeContiguousTransfer (or LinearizeContiguousBDTransfer) will
-      // fold it to canonical linear form, which uses the wide buffer_length
-      // register and is exempt from the 10-bit d0 wrap-size limit.
+      // A contiguous row-major ND access on a shim NOC tile is also treated as
+      // linear: it is lowered using the wide buffer_length register, which is
+      // exempt from the 10-bit ND wrap-size limit.
       bool isLinearTransfer =
           AIEX::isLinearTransfer(input_sizes, input_strides) ||
           (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
-           xilinx::AIE::isContiguousBDTransfer(*dims));
+           AIEX::isContiguousTransfer(input_sizes, input_strides));
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))

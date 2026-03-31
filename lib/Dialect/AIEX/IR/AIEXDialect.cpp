@@ -352,12 +352,19 @@ bool AIEX::isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
          strides[2] == 0;
 }
 
-// isContiguousBDTransfer is implemented in AIEDialect.cpp (AIE dialect) so
-// that it is available to both AIE and AIEX without creating a circular
-// dependency.  Forward it here for callers in the AIEX namespace.
-bool AIEX::isContiguousBDTransfer(
-    llvm::ArrayRef<xilinx::AIE::BDDimLayoutAttr> dims) {
-  return xilinx::AIE::isContiguousBDTransfer(dims);
+// Returns true when sizes/strides (innermost-first) describe a contiguous
+// row-major scan: innermost stride == 1 and each outer stride equals the
+// product of all inner sizes.  The repeat dimension (index 3) is excluded.
+// This is the vector-form counterpart of AIE::isContiguousBDTransfer.
+bool AIEX::isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
+                                llvm::ArrayRef<int64_t> strides) {
+  if (strides[0] != 1)
+    return false;
+  if (sizes[1] > 1 && strides[1] != sizes[0])
+    return false;
+  if (sizes[2] > 1 && strides[2] != sizes[0] * sizes[1])
+    return false;
+  return true;
 }
 
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
@@ -439,13 +446,8 @@ struct LinearizeContiguousTransfer
           return mlir::getConstantIntValue(s).value();
         });
 
-    // Require a contiguous row-major scan.  A stride is only constrained when
-    // its corresponding size is > 1 (a never-applied stride is irrelevant).
-    if (strides[0] != 1)
-      return mlir::failure();
-    if (sizes[1] > 1 && strides[1] != sizes[0])
-      return mlir::failure();
-    if (sizes[2] > 1 && strides[2] != sizes[0] * sizes[1])
+    // Require a contiguous row-major scan.
+    if (!AIEX::isContiguousTransfer(sizes, strides))
       return mlir::failure();
 
     // Fold d0/d1/d2 into one linear count; keep the repeat dimension intact.
@@ -589,16 +591,13 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     }
     int col = tile.getCol();
     int row = tile.getRow();
-    // A contiguous row-major ND access (innermost stride=1, each outer stride =
-    // product of inner sizes) will be linearized by LinearizeContiguousTransfer
-    // canonicalization, so it is also exempt from the ND wrap-size limit.
-    bool isContiguous =
-        inputStrides[0] == 1 &&
-        (inputSizes[1] <= 1 || inputStrides[1] == inputSizes[0]) &&
-        (inputSizes[2] <= 1 ||
-         inputStrides[2] == inputSizes[0] * inputSizes[1]);
+    // A contiguous row-major ND access is also exempt from the ND wrap-size
+    // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
+    // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
     bool skipTransformationChecks =
-        isLinearTransferWithoutTransformation() || isContiguous;
+        isLinearTransferWithoutTransformation() ||
+        (targetModel.isShimNOCTile(col, row) &&
+         AIEX::isContiguousTransfer(inputSizes, inputStrides));
     if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
                                   inputStrides, hardwareSizes, hardwareStrides,
                                   skipTransformationChecks))) {
