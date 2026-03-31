@@ -40,7 +40,7 @@ build/%.cc.o: %.cc
 ifeq ($(device),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 else
 	echo "Device type not supported"
 endif
@@ -55,8 +55,9 @@ ifeq ($(device),npu)
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
-else
+else ifeq ($(device),npu2)
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
+		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
