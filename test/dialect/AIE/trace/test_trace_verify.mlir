@@ -132,3 +132,17 @@ module {
     }
   }
 }
+
+// -----
+
+// Test: Typed event enum mismatch with logical tile (half-known coordinates)
+module {
+  aie.device(npu1_1col) {
+    %tile = aie.logical_tile<CoreTile>(0, ?)
+
+    aie.trace @test_enum_arch_mismatch_logical(%tile) {
+      // expected-error@+1 {{event 'CoreEventAIE2P::INSTR_EVENT_0' is not valid for core tile (AIE2) at (0, ?)}}
+      aie.trace.event<CoreEventAIE2P::INSTR_EVENT_0>
+    }
+  }
+}

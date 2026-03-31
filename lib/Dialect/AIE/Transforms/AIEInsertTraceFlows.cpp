@@ -60,6 +60,17 @@ struct AIEInsertTraceFlowsPass
     OpBuilder builder(device);
     const auto &targetModel = device.getTargetModel();
 
+    // Verify no LogicalTileOps remain — placement must run before this pass
+    bool hasLogicalTile = false;
+    device.walk([&](LogicalTileOp op) {
+      op.emitError() << "LogicalTileOp must be resolved to TileOp before "
+                        "running -aie-insert-trace-flows (run -aie-place-tiles "
+                        "first)";
+      hasLogicalTile = true;
+    });
+    if (hasLogicalTile)
+      return signalPassFailure();
+
     // Phase 1: Collect all trace operations
     SmallVector<TraceOp> traces;
     device.walk([&](TraceOp trace) { traces.push_back(trace); });

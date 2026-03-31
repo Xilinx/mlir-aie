@@ -10,6 +10,32 @@
 
 // RUN: aie-opt %s | FileCheck %s
 
+// CHECK-LABEL: module @trace_with_logical_tile {
+module @trace_with_logical_tile {
+  // CHECK: aie.device(npu1_1col)
+  aie.device(npu1_1col) {
+    // CHECK: %[[LTILE:.*]] = aie.logical_tile<CoreTile>(?, ?)
+    %ltile = aie.logical_tile<CoreTile>(?, ?)
+
+    // CHECK: aie.trace @logical_trace(%[[LTILE]]) {
+    aie.trace @logical_trace(%ltile) {
+      // CHECK: aie.trace.mode "Event-Time"
+      aie.trace.mode "Event-Time"
+
+      // CHECK: aie.trace.event <"INSTR_EVENT_0">
+      aie.trace.event<"INSTR_EVENT_0">
+
+      // CHECK: aie.trace.start broadcast = 15
+      aie.trace.start broadcast=15
+
+      // CHECK: aie.trace.stop broadcast = 14
+      aie.trace.stop broadcast=14
+    }
+  }
+}
+
+// -----
+
 // CHECK-LABEL: module {
 module {
   // CHECK: aie.device(npu1_1col)
