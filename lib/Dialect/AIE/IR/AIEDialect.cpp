@@ -2137,6 +2137,27 @@ void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
   printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
 }
 
+// A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
+// scan when the innermost stride is 1 and each outer stride equals the product
+// of all inner sizes.  Used by both DMABDOp verification and canonicalization.
+bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
+  if (dims.empty())
+    return true; // no ND layout = trivially contiguous
+  // Innermost (last) stride must be 1.
+  if (dims.back().getStride() != 1)
+    return false;
+  // Each outer stride must equal the product of all inner sizes.
+  int64_t product = 1;
+  for (int i = static_cast<int>(dims.size()) - 1; i >= 1; --i) {
+    product *= dims[i].getSize();
+    // A size-1 dimension's stride is irrelevant (it is never stepped).
+    if (dims[i - 1].getSize() > 1 &&
+        static_cast<int64_t>(dims[i - 1].getStride()) != product)
+      return false;
+  }
+  return true;
+}
+
 LogicalResult DMABDOp::verify() {
   // Skip verification of the BDOp outside of mem operations.
   // BDOps may appear elsewhere and subsequent lowerings will place them in the
@@ -2202,6 +2223,29 @@ LogicalResult DMABDOp::verify() {
                            << std::to_string(maxIdx) << " in memref of length "
                            << std::to_string(buffer.getNumElements()) << ".";
 
+    // A contiguous row-major access on a shim tile is canonicalized to linear
+    // form by LinearizeContiguousBDTransfer, which uses the wider
+    // buffer_length register (exempt from the 10-bit wrap-size limit).
+    // Skip the per-dimension size check in that case so the natural ND form
+    // can be written and still pass verification before canonicalization.
+    // Skip the d0 size check when:
+    //  1. Inside a ShimDMAOp (after full lowering), or
+    //  2. The buffer is an ExternalBufferOp (dma_configure_task_for stage), or
+    //  3. The parent TileElement is a shim tile (dma_configure_task stage).
+    // All three represent shim DMA BDs that use the wide buffer_length register
+    // in linear mode after canonicalization.
+    bool bufferIsExternal =
+        !isUnrankedMemRef &&
+        isa_and_nonnull<ExternalBufferOp>(getBuffer().getDefiningOp());
+    TileElement parentTileElem2 = getParentTileElement(getOperation());
+    TileLike parentTileLike2 =
+        parentTileElem2 ? parentTileElem2.getTileLike() : TileLike{};
+    bool inShimContext = (parentTile && parentTile.isShimTile()) ||
+                         bufferIsExternal ||
+                         (parentTileLike2 && parentTileLike2.isShimTile());
+    bool skipSizeCheck =
+        inShimContext && xilinx::AIE::isContiguousBDTransfer(*dims);
+
     for (BDDimLayoutAttr dim : *dims) {
       if (0 == dim.getStride())
         return emitOpError()
@@ -2210,7 +2254,7 @@ LogicalResult DMABDOp::verify() {
         return emitOpError() << "Step size " << std::to_string(dim.getStride())
                              << " exceeds memref size "
                              << std::to_string(buffer.getNumElements());
-      if (dim.getSize() >= (1UL << 9) + 1)
+      if (!skipSizeCheck && dim.getSize() >= (1UL << 9) + 1)
         return emitOpError() << "Size may not exceed 1023.";
       if (dim.getStride() >= (1UL << 19))
         return emitOpError() << "Stride may not exceed " << (1 << 20);
@@ -2356,6 +2400,59 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
 
   return success();
+}
+
+// Canonicalization pattern for DMABDOp: on shim tiles, fold a contiguous
+// row-major ND access pattern into canonical linear form (no dimensions
+// attribute), so that the hardware uses the wide buffer_length register.
+namespace {
+struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(DMABDOp op, mlir::PatternRewriter &rewriter) const override {
+    // Only fire for shim DMA BDs: ExternalBufferOp buffer
+    // (dma_configure_task_for stage), parent TileElement is shim
+    // (dma_configure_task stage), or inside ShimDMAOp (after full lowering).
+    bool bufferIsExternal =
+        isa_and_nonnull<ExternalBufferOp>(op.getBuffer().getDefiningOp());
+    TileElement parentElem = getParentTileElement(op.getOperation());
+    TileLike parentTileLike =
+        parentElem ? parentElem.getTileLike() : TileLike{};
+    bool parentIsShim = parentTileLike && parentTileLike.isShimTile();
+    bool inShimDMA = (bool)op->getParentOfType<ShimDMAOp>();
+    if (!bufferIsExternal && !parentIsShim && !inShimDMA)
+      return mlir::failure();
+
+    // Only when ND dimensions are present and contiguous.
+    auto dims = op.getDimensions();
+    if (!dims.has_value() || dims->empty())
+      return mlir::failure();
+    if (!xilinx::AIE::isContiguousBDTransfer(*dims))
+      return mlir::failure();
+    // Already linear (single dimension with stride 1)?
+    if (dims->size() == 1 && dims->front().getStride() == 1)
+      return mlir::failure();
+
+    // Recover offset (default 0) and len (default = buffer element count).
+    int32_t offset = op.getOffset();
+    int32_t len = 0;
+    if (auto lenVal = op.getLen())
+      len = *lenVal;
+    else if (auto memref =
+                 llvm::dyn_cast<mlir::MemRefType>(op.getBuffer().getType()))
+      len = memref.getNumElements();
+
+    // Replace with the same op but no dimensions attribute (linear mode).
+    rewriter.replaceOpWithNewOp<DMABDOp>(op, op.getBuffer(), offset, len);
+    return mlir::success();
+  }
+};
+} // namespace
+
+void DMABDOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                          MLIRContext *context) {
+  patterns.add<LinearizeContiguousBDTransfer>(context);
 }
 
 void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,

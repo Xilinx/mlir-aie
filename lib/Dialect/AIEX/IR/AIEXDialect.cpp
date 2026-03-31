@@ -250,7 +250,7 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError(
         "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  if (hardwareSizes[1] > (1 << wrap_bits) - 1)
+  if (!skipTransformationChecks && hardwareSizes[1] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
@@ -350,6 +350,14 @@ bool AIEX::isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
                             llvm::ArrayRef<int64_t> strides) {
   return sizes[1] == 1 && sizes[2] == 1 && strides[0] == 1 && strides[1] == 0 &&
          strides[2] == 0;
+}
+
+// isContiguousBDTransfer is implemented in AIEDialect.cpp (AIE dialect) so
+// that it is available to both AIE and AIEX without creating a circular
+// dependency.  Forward it here for callers in the AIEX namespace.
+bool AIEX::isContiguousBDTransfer(
+    llvm::ArrayRef<xilinx::AIE::BDDimLayoutAttr> dims) {
+  return xilinx::AIE::isContiguousBDTransfer(dims);
 }
 
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
@@ -581,7 +589,16 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     }
     int col = tile.getCol();
     int row = tile.getRow();
-    bool skipTransformationChecks = isLinearTransferWithoutTransformation();
+    // A contiguous row-major ND access (innermost stride=1, each outer stride =
+    // product of inner sizes) will be linearized by LinearizeContiguousTransfer
+    // canonicalization, so it is also exempt from the ND wrap-size limit.
+    bool isContiguous =
+        inputStrides[0] == 1 &&
+        (inputSizes[1] <= 1 || inputStrides[1] == inputSizes[0]) &&
+        (inputSizes[2] <= 1 ||
+         inputStrides[2] == inputSizes[0] * inputSizes[1]);
+    bool skipTransformationChecks =
+        isLinearTransferWithoutTransformation() || isContiguous;
     if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
                                   inputStrides, hardwareSizes, hardwareStrides,
                                   skipTransformationChecks))) {
@@ -897,9 +914,9 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
   }
   for (unsigned i = 0, n = expectedArgTypes.size(); i < n; i++) {
     if (actualArgTypes[i] != expectedArgTypes[i]) {
-      return emitOpError("Argument ") << (i + 1) << " types mismatch: "
-                                      << "expected " << expectedArgTypes[i]
-                                      << " but got " << actualArgTypes[i];
+      return emitOpError("Argument ")
+             << (i + 1) << " types mismatch: " << "expected "
+             << expectedArgTypes[i] << " but got " << actualArgTypes[i];
     }
   }
   return success();

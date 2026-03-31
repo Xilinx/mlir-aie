@@ -51,6 +51,10 @@ verifyStridesWraps(mlir::Operation *forOp,
 bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
                       llvm::ArrayRef<int64_t> strides);
 
+// Forwards to AIE::isContiguousBDTransfer for use in AIEX passes.
+// See AIEDialect.h for the full description.
+bool isContiguousBDTransfer(llvm::ArrayRef<xilinx::AIE::BDDimLayoutAttr> dims);
+
 } // namespace AIEX
 } // namespace xilinx
 

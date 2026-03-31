@@ -487,3 +487,25 @@ module {
     aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
   }
 }
+
+// -----
+
+// 2D fold where both d0 and d1 exceed the 10-bit ND wrap limit (>1023):
+// sizes=[1,1,1080,7680] strides=[0,0,7680,1] is contiguous and should fold
+// to sizes=[1,1,1,8294400] strides=[0,0,0,1].
+// Motivating case: 1920x1080 RGBA image (lineWidthInBytes=7680, height=1080).
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:         aie.runtime_sequence @fold_large_2d_image
+// CHECK:           aiex.npu.dma_memcpy_nd
+// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 8294400][0, 0, 0, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @fold_large_2d_image(%arg0 : memref<8294400xi8>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1080, 7680][0, 0, 7680, 1])
+        { metadata = @of_fromMem, id = 0 : i64 } : memref<8294400xi8>
+    }
+    %tile = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
+  }
+}
