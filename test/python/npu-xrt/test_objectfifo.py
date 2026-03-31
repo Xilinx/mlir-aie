@@ -11,87 +11,11 @@
 import pytest
 import numpy as np
 
-from aie.iron.device import (
-    NPU1Col1,
-    NPU1,
-    NPU2,
-    Tile,
-    AnyMemTile,
-    AnyComputeTile,
-    AnyShimTile,
-)
-from aie.iron.dataflow.objectfifo import ObjectFifo
-from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
-
-
-@pytest.fixture(params=[NPU1Col1, NPU1, NPU2])
-def device(request):
-    return request.param()
-
-
-def test_can_used_shared_mem(device):
-    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
-
-    # Legal affinity
-    of_legal = ObjectFifo(n_ty)
-    of_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    assert of_legal.can_used_shared_mem(device)
-    assert of_legal.can_used_shared_mem(device, cons_only=True)
-
-    # Illegal affinity
-    of_illegal = ObjectFifo(n_ty)
-    of_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    of_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    assert not of_illegal.can_used_shared_mem(device)
-    assert of_illegal.can_used_shared_mem(device, cons_only=True)
-
-    # Multiple consumers, legal
-    of_mult_cons_legal = ObjectFifo(n_ty)
-    of_mult_cons_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 4))
-    assert of_mult_cons_legal.can_used_shared_mem(device)
-    assert of_mult_cons_legal.can_used_shared_mem(device, cons_only=True)
-
-    # Multiple consumers, illegal
-    of_mult_cons_illegal = ObjectFifo(n_ty)
-    of_mult_cons_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    assert not of_mult_cons_illegal.can_used_shared_mem(device)
-    assert not of_mult_cons_illegal.can_used_shared_mem(device, cons_only=True)
-
-    # Illegal producer, legal consumer
-    of_illegal_prod = ObjectFifo(n_ty)
-    of_illegal_prod.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    of_illegal_prod.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    assert not of_illegal_prod.can_used_shared_mem(device)
-    assert of_illegal_prod.can_used_shared_mem(device, cons_only=True)
-
-    # Forwarded ObjectFifo
-    of_forward = ObjectFifo(n_ty)
-    of_forward.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    forwarded = of_forward.cons().forward(placement=AnyMemTile)
-    forwarded.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_forward.can_used_shared_mem(device)
-    with pytest.raises(ValueError):
-        forwarded.can_used_shared_mem(device)
-
-    # AnyComputeTile
-    of_any_compute = ObjectFifo(n_ty)
-    of_any_compute.prod().endpoint = ObjectFifoEndpoint(AnyComputeTile)
-    of_any_compute.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_any_compute.can_used_shared_mem(device)
-
-    # AnyShimTile
-    of_any_shim = ObjectFifo(n_ty)
-    of_any_shim.prod().endpoint = ObjectFifoEndpoint(AnyShimTile)
-    of_any_shim.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_any_shim.can_used_shared_mem(device)
+from aie.dialects._aie_enum_gen import AIETileType
+from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron.dataflow.objectfifo import ObjectFifoLink
+from aie.iron.device import NPU2, Tile
+from aie.iron.runtime.endpoint import RuntimeEndpoint
 
 
 def test_set_iter_count():
@@ -146,3 +70,66 @@ def test_split():
     assert isinstance(sub_fifos[1], ObjectFifo)
     assert sub_fifos[0].name == of.name + "_split0"
     assert sub_fifos[1].name == of.name + "_split1"
+
+
+def test_worker_tile_type_validation():
+    """Worker must use CoreTile; other tile types are rejected."""
+    with pytest.raises(ValueError, match="Worker requires a compute tile"):
+        Worker(None, tile=Tile(tile_type=AIETileType.MemTile))
+    with pytest.raises(ValueError, match="Worker requires a compute tile"):
+        Worker(None, tile=Tile(tile_type=AIETileType.ShimNOCTile))
+    # CoreTile is accepted
+    w = Worker(None, tile=Tile(tile_type=AIETileType.CoreTile))
+    assert w.tile.tile_type == AIETileType.CoreTile
+    # None tile_type is accepted (Worker sets it to CoreTile)
+    w2 = Worker(None)
+    assert w2.tile.tile_type == AIETileType.CoreTile
+
+
+def test_runtime_endpoint_tile_type_validation():
+    """RuntimeEndpoint must use ShimNOCTile; other tile types are rejected."""
+    with pytest.raises(ValueError, match="RuntimeEndpoint requires a shim tile"):
+        RuntimeEndpoint(tile=Tile(tile_type=AIETileType.CoreTile))
+    with pytest.raises(ValueError, match="RuntimeEndpoint requires a shim tile"):
+        RuntimeEndpoint(tile=Tile(tile_type=AIETileType.MemTile))
+    # ShimNOCTile is accepted
+    ep = RuntimeEndpoint(tile=Tile(tile_type=AIETileType.ShimNOCTile))
+    assert ep.tile.tile_type == AIETileType.ShimNOCTile
+    # None tile_type is accepted (RuntimeEndpoint sets it to ShimNOCTile)
+    ep2 = RuntimeEndpoint()
+    assert ep2.tile.tile_type == AIETileType.ShimNOCTile
+
+
+def test_workers_cannot_share_tile():
+    """Two workers cannot be placed on the same tile object."""
+    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+    shared_tile = Tile(0, 2)
+    of1 = ObjectFifo(n_ty, name="shared_of1")
+    of2 = ObjectFifo(n_ty, name="shared_of2")
+    w1 = Worker(None, [of1.cons()], tile=shared_tile)
+    w2 = Worker(None, [of2.cons()], tile=shared_tile)
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty) as (A, B):
+        rt.start(w1, w2)
+        rt.fill(of1.prod(), A)
+        rt.fill(of2.prod(), B)
+    with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
+        Program(NPU2(), rt).resolve_program()
+
+
+def test_forward_shares_link_tile():
+    """forward() must link both ObjectFifos through the same MemTile logical tile."""
+    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+    of_in = ObjectFifo(n_ty, name="fwd_in")
+    cons = of_in.cons()
+    of_out = cons.forward(name="fwd_out")
+
+    # The consumer of of_in and the producer of of_out should share the same
+    # ObjectFifoLink endpoint, which holds a single MemTile.
+    link = cons.endpoint
+    assert isinstance(link, ObjectFifoLink)
+    assert link is of_out.prod().endpoint
+    assert link.tile.tile_type == AIETileType.MemTile
+
+    # Both sides of the link resolve to the same Python Tile object.
+    assert cons.endpoint.tile is of_out.prod().endpoint.tile

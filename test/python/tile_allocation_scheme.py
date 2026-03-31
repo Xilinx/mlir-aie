@@ -4,13 +4,13 @@
 # RUN: %python %s | FileCheck %s
 
 from aie.iron import Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
+
 from aie.iron.device import NPU1, Tile
 
 # =============================================================================
 # CHECK: {allocation_scheme = "bank-aware"}
 
-my_worker = Worker(None, placement=Tile(1, 2, allocation_scheme="bank-aware"))
+my_worker = Worker(None, tile=Tile(1, 2, allocation_scheme="bank-aware"))
 
 rt = Runtime()
 with rt.sequence():
@@ -18,7 +18,7 @@ with rt.sequence():
 
 my_program = Program(NPU1(), rt)
 
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 print(module)
 
@@ -33,7 +33,7 @@ with rt.sequence():
 
 my_program = Program(NPU1(), rt)
 
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 print(module)
 
@@ -42,7 +42,7 @@ print(module)
 
 my_worker = Worker(
     None,
-    placement=Tile(1, 2, allocation_scheme="bank-aware"),
+    tile=Tile(1, 2, allocation_scheme="bank-aware"),
     allocation_scheme="basic-sequential",
 )
 
@@ -52,14 +52,14 @@ with rt.sequence():
 
 my_program = Program(NPU1(), rt)
 
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 print(module)
 
 # =============================================================================
 # CHECK: {allocation_scheme = "bank-aware"}
 
-my_worker = Worker(None, placement=Tile(1, 2), allocation_scheme="bank-aware")
+my_worker = Worker(None, tile=Tile(1, 2), allocation_scheme="bank-aware")
 
 rt = Runtime()
 with rt.sequence():
@@ -67,7 +67,7 @@ with rt.sequence():
 
 my_program = Program(NPU1(), rt)
 
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 print(module)
 
@@ -82,6 +82,6 @@ with rt.sequence():
 
 my_program = Program(NPU1(), rt)
 
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 print(module)

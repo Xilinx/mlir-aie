@@ -10,7 +10,6 @@
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.iron as iron
@@ -173,7 +172,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16):
         rt.drain(of_out.cons(), output_seq_arg, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
@@ -371,7 +370,7 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
         rt.finish_task_group(tg_out)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def transform(func, input, output, *params, tile_size=16):

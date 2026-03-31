@@ -14,7 +14,8 @@ from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
 from ..dialects.aiex import set_lock_value, LockAction
 from ..helpers.dialects.scf import _for as range_
-from .device import PlacementTile, AnyComputeTile, Tile
+from ..dialects._aie_enum_gen import AIETileType
+from .device import Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
@@ -25,15 +26,15 @@ class Worker(ObjectFifoEndpoint):
     """A task to be run on an AIE compute core.
 
     A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,
-    Buffers, Kernels, etc.). Each Worker must be placed on a single compute tile, either
-    explicitly via ``placement`` or automatically by a :class:`~aie.iron.placers.Placer`.
+    Buffers, Kernels, etc.). Each Worker is placed on a single compute tile, either
+    explicitly via ``placement`` or automatically by the ``--aie-place-tiles`` compiler pass.
     """
 
     def __init__(
         self,
         core_fn: Callable | None,
         fn_args: list = [],
-        placement: PlacementTile | None = AnyComputeTile,
+        tile: Tile | None = None,
         while_true: bool = True,
         stack_size: int = None,
         allocation_scheme: str = None,
@@ -45,18 +46,25 @@ class Worker(ObjectFifoEndpoint):
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
             fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
-            placement (PlacementTile | None, optional): The placement for the Worker. Defaults to AnyComputeTile.
+            tile (Tile | None, optional): The compute tile for the Worker. Defaults to a new unplaced compute tile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
-                Will override any allocation scheme set on the tile given as placement.
+                Will override any allocation scheme set on the tile.
             trace (int, optional): If >0, enable tracing for this worker.
             trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.
 
         Raises:
             ValueError: Parameters are validated.
         """
-        self._tile = placement
+        if tile is None:
+            tile = Tile()
+        if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
+            raise ValueError(
+                f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
+            )
+        tile.tile_type = AIETileType.CoreTile
+        self._tile = tile
         self._while_true = while_true
         self.stack_size = stack_size
         self.allocation_scheme = allocation_scheme
@@ -87,6 +95,8 @@ class Worker(ObjectFifoEndpoint):
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
                 self._buffers.append(arg)
+                # Buffers are placed on the same tile as the Worker
+                arg._tile = self._tile
             elif isinstance(arg, ObjectFifo):
                 # This is an easy error to make, so we catch it early
                 raise ValueError(
@@ -100,15 +110,6 @@ class Worker(ObjectFifoEndpoint):
             # func.call ops when invoked inside core_fn and carry link_with on their
             # func.func declaration. Other unrecognized args are assumed to be
             # metaprogramming values (Python scalars, etc.).
-
-    def place(self, tile: Tile) -> None:
-        """Set the placement of the Worker.
-
-        Args:
-            tile (Tile): The placement location.
-        """
-        tile.allocation_scheme = self.allocation_scheme
-        ObjectFifoEndpoint.place(self, tile)
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
