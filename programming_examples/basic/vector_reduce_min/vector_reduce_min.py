@@ -9,7 +9,6 @@ import numpy as np
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 
 
@@ -58,7 +57,7 @@ def my_reduce_min():
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 print(my_reduce_min())

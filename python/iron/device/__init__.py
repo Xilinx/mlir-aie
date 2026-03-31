@@ -23,4 +23,4 @@ from .device import (
     NPU2Col7,
     XCVC1902,
 )
-from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, PlacementTile, Tile
+from .tile import Tile, TileType

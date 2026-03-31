@@ -10,8 +10,7 @@ import numpy as np
 import sys
 
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU1Col1, NPU2Col1, AnyComputeTile
-from aie.iron.placers import SequentialPlacer
+from aie.iron.device import NPU1Col1, NPU2Col1, Tile, TileType
 from aie.helpers.taplib import TensorTiler2D
 
 if len(sys.argv) > 3:
@@ -38,7 +37,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
 
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(tensor_ty)
-    of_out = of_in.cons().forward(AnyComputeTile)
+    of_out = of_in.cons().forward(Tile(tile_type=TileType.Core))
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
@@ -50,7 +49,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
     my_program = Program(dev, rt)
 
     # Place program components (assign the resources on the device) and generate an MLIR module
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
 
     # Print the generated MLIR
     print(module)

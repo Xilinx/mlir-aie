@@ -13,7 +13,6 @@ from aie.dialects.aiex import v8bfp16ebs8
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.kernel import Kernel
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 
@@ -121,7 +120,7 @@ def bfp_conversion():
         rt.fill(of_in2.prod(), B)
         rt.drain(of_out.cons(), C, wait=True)
 
-    return Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return Program(NPU2(), rt).resolve_program()
 
 
 module = bfp_conversion()

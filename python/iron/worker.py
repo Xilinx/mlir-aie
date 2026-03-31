@@ -14,8 +14,7 @@ from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
 from ..dialects.aiex import set_lock_value, LockAction
 from ..helpers.dialects.scf import _for as range_
-from ..dialects._aie_enum_gen import AIETileType
-from .device import Tile
+from .device import Tile, TileType
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
@@ -59,11 +58,11 @@ class Worker(ObjectFifoEndpoint):
         """
         if tile is None:
             tile = Tile()
-        if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
+        if tile.tile_type is not None and tile.tile_type != TileType.Core:
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
             )
-        tile.tile_type = AIETileType.CoreTile
+        tile.tile_type = TileType.Core
         self._tile = tile
         self._while_true = while_true
         self.stack_size = stack_size

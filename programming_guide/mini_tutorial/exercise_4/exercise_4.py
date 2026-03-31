@@ -10,7 +10,6 @@ import sys
 import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo, Buffer
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 import aie.iron as iron
@@ -62,7 +61,7 @@ def exercise_4(output):
     my_program = Program(iron.get_current_device(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

@@ -10,7 +10,8 @@ import numpy as np
 from typing import Sequence
 
 from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import AIETileType, ObjectFifoPort  # type: ignore
+from ...dialects._aie_enum_gen import ObjectFifoPort  # type: ignore
+from ..device import TileType
 from ...dialects._aie_ops_gen import ObjectFifoCreateOp  # type: ignore
 from ...dialects.aie import object_fifo, object_fifo_link
 from ...helpers.util import (
@@ -752,7 +753,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         if tile is None:
             tile = Tile()
         if tile.tile_type is None:
-            tile.tile_type = AIETileType.MemTile
+            tile.tile_type = TileType.Mem
         ObjectFifoEndpoint.__init__(self, tile)
 
     def resolve(

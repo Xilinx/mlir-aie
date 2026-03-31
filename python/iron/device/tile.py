@@ -10,6 +10,15 @@ from ...dialects._aie_enum_gen import AIETileType
 from ...dialects.aie import LogicalTileOp, TileOp
 
 
+class TileType:
+    """User-facing constants for AIE tile types."""
+
+    Core = AIETileType.CoreTile
+    Mem = AIETileType.MemTile
+    ShimNOC = AIETileType.ShimNOCTile
+    ShimPL = AIETileType.ShimPLTile
+
+
 class Tile:
     """An object representing a tile on a device.
 
@@ -64,25 +73,3 @@ class Tile:
 
     def __hash__(self):
         return id(self)
-
-
-# Backwards compatibility aliases - these will be removed in a future release
-class AnyShimTile:
-    """Deprecated: Use Tile() instead. Tile type is set automatically."""
-
-    pass
-
-
-class AnyMemTile:
-    """Deprecated: Use Tile() instead. Tile type is set automatically."""
-
-    pass
-
-
-class AnyComputeTile:
-    """Deprecated: Use Tile() instead. Tile type is set automatically."""
-
-    pass
-
-
-PlacementTile = Tile | AnyShimTile | AnyMemTile | AnyComputeTile

@@ -4,8 +4,7 @@
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 
-from aie.dialects._aie_enum_gen import AIETileType
-from aie.iron.device import NPU2, Tile
+from aie.iron.device import NPU2, Tile, TileType
 from aie.helpers.util import np_ndarray_type_get_shape
 from util import construct_and_print_module
 
@@ -151,10 +150,10 @@ def compute_one_in_two_links(module):
     of_in1 = ObjectFifo(n_ty, name="in1")
     of_in2 = ObjectFifo(n_ty, name="in2")
     of_out1 = of_in1.cons().forward(
-        obj_type=n_ty, name="out1", tile=Tile(tile_type=AIETileType.CoreTile)
+        obj_type=n_ty, name="out1", tile=Tile(tile_type=TileType.Core)
     )
     of_out2 = of_in2.cons().forward(
-        obj_type=n_ty, name="out_2", tile=Tile(tile_type=AIETileType.CoreTile)
+        obj_type=n_ty, name="out_2", tile=Tile(tile_type=TileType.Core)
     )
 
     def core_fn(of_in0):
@@ -189,10 +188,10 @@ def compute_partial_placement(module):
     of_in1 = ObjectFifo(n_ty, name="in1")
     of_in2 = ObjectFifo(n_ty, name="in2")
     of_out1 = of_in1.cons().forward(
-        obj_type=n_ty, name="out1", tile=Tile(tile_type=AIETileType.CoreTile)
+        obj_type=n_ty, name="out1", tile=Tile(tile_type=TileType.Core)
     )
     of_out2 = of_in2.cons().forward(
-        obj_type=n_ty, name="out_2", tile=Tile(tile_type=AIETileType.CoreTile)
+        obj_type=n_ty, name="out_2", tile=Tile(tile_type=TileType.Core)
     )
 
     def core_fn(of_in0):

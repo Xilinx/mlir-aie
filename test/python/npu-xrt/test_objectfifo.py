@@ -11,10 +11,9 @@
 import pytest
 import numpy as np
 
-from aie.dialects._aie_enum_gen import AIETileType
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.dataflow.objectfifo import ObjectFifoLink
-from aie.iron.device import NPU2, Tile
+from aie.iron.device import NPU2, Tile, TileType
 from aie.iron.runtime.endpoint import RuntimeEndpoint
 
 
@@ -75,29 +74,29 @@ def test_split():
 def test_worker_tile_type_validation():
     """Worker must use CoreTile; other tile types are rejected."""
     with pytest.raises(ValueError, match="Worker requires a compute tile"):
-        Worker(None, tile=Tile(tile_type=AIETileType.MemTile))
+        Worker(None, tile=Tile(tile_type=TileType.Mem))
     with pytest.raises(ValueError, match="Worker requires a compute tile"):
-        Worker(None, tile=Tile(tile_type=AIETileType.ShimNOCTile))
+        Worker(None, tile=Tile(tile_type=TileType.ShimNOC))
     # CoreTile is accepted
-    w = Worker(None, tile=Tile(tile_type=AIETileType.CoreTile))
-    assert w.tile.tile_type == AIETileType.CoreTile
+    w = Worker(None, tile=Tile(tile_type=TileType.Core))
+    assert w.tile.tile_type == TileType.Core
     # None tile_type is accepted (Worker sets it to CoreTile)
     w2 = Worker(None)
-    assert w2.tile.tile_type == AIETileType.CoreTile
+    assert w2.tile.tile_type == TileType.Core
 
 
 def test_runtime_endpoint_tile_type_validation():
     """RuntimeEndpoint must use ShimNOCTile; other tile types are rejected."""
     with pytest.raises(ValueError, match="RuntimeEndpoint requires a shim tile"):
-        RuntimeEndpoint(tile=Tile(tile_type=AIETileType.CoreTile))
+        RuntimeEndpoint(tile=Tile(tile_type=TileType.Core))
     with pytest.raises(ValueError, match="RuntimeEndpoint requires a shim tile"):
-        RuntimeEndpoint(tile=Tile(tile_type=AIETileType.MemTile))
+        RuntimeEndpoint(tile=Tile(tile_type=TileType.Mem))
     # ShimNOCTile is accepted
-    ep = RuntimeEndpoint(tile=Tile(tile_type=AIETileType.ShimNOCTile))
-    assert ep.tile.tile_type == AIETileType.ShimNOCTile
+    ep = RuntimeEndpoint(tile=Tile(tile_type=TileType.ShimNOC))
+    assert ep.tile.tile_type == TileType.ShimNOC
     # None tile_type is accepted (RuntimeEndpoint sets it to ShimNOCTile)
     ep2 = RuntimeEndpoint()
-    assert ep2.tile.tile_type == AIETileType.ShimNOCTile
+    assert ep2.tile.tile_type == TileType.ShimNOC
 
 
 def test_workers_cannot_share_tile():
@@ -129,7 +128,7 @@ def test_forward_shares_link_tile():
     link = cons.endpoint
     assert isinstance(link, ObjectFifoLink)
     assert link is of_out.prod().endpoint
-    assert link.tile.tile_type == AIETileType.MemTile
+    assert link.tile.tile_type == TileType.Mem
 
     # Both sides of the link resolve to the same Python Tile object.
     assert cons.endpoint.tile is of_out.prod().endpoint.tile
