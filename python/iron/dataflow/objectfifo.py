@@ -460,11 +460,16 @@ class ObjectFifoHandle(Resolvable):
 
     @endpoint.setter
     def endpoint(self, endpoint: ObjectFifoEndpoint) -> None:
-        if self._endpoint and self._endpoint != endpoint:
-            raise ValueError(
-                f"Endpoint already set for ObjectFifoHandle {self.name}.{self.handle_type}: "
-                f"Set to {self._endpoint}, trying to set to {endpoint}"
-            )
+        if self._endpoint is not None:
+            # A handle may be passed to fill()/drain() multiple times (e.g.
+            # matmul tiling loops). Allow redundant sets of the same endpoint
+            # type but reject conflicting types (RuntimeEndpoint vs ObjectFifoLink).
+            if type(self._endpoint) is not type(endpoint):
+                raise ValueError(
+                    f"Endpoint already set for ObjectFifoHandle {self.name}.{self.handle_type}: "
+                    f"Set to {self._endpoint}, trying to set to {endpoint}"
+                )
+            return
         self._endpoint = endpoint
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
