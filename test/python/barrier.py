@@ -15,7 +15,6 @@ from aie.iron.device import (
     NPU2Col1,
 )
 
-
 # CHECK: module {
 # CHECK:   aie.device(npu2_1col) {
 # CHECK:     %[[TILE:.*]] = aie.logical_tile<CoreTile>(?, ?)

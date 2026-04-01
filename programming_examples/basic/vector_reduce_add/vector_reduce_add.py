@@ -11,7 +11,6 @@ import sys
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col1, NPU2Col1
 
-
 if len(sys.argv) > 2:
     if sys.argv[1] == "npu":
         dev = NPU1Col1()
