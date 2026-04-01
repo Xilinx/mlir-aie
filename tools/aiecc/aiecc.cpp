@@ -208,6 +208,11 @@ static cl::opt<std::string> allocScheme(
         "or empty string for bank-aware with fallback to basic-sequential)"),
     cl::init(""), cl::cat(aieCompilerOptions));
 
+static cl::opt<int> coresPerCol(
+    "cores-per-col",
+    cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
+    cl::init(-1), cl::cat(aieCompilerOptions));
+
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
                      cl::desc("Generate NPU instruction stream"),
@@ -1328,7 +1333,9 @@ static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
   }
 
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass());
+  xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
+  placeTilesOpts.clCoresPerCol = coresPerCol;
+  devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
 
   if (verbose) {
     llvm::outs() << "Running tile placement pipeline in-memory\n";

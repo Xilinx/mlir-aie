@@ -72,13 +72,15 @@ build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+		--aie-generate-npu-insts --npu-insts-name=insts.bin \
+		$(if $(filter col_wise_%,$(aie_py_src)),--cores-per-col 2) $(<:%=../%)
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+		--aie-generate-npu-insts --npu-insts-name=insts.bin \
+		$(if $(filter col_wise_%,$(aie_py_src)),--cores-per-col 2) $(<:%=../%)
 ${targetname}.exe: ${srcdir}/../test.cpp
 	rm -rf _build
 	mkdir -p _build

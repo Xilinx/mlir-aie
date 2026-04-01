@@ -25,11 +25,6 @@ from aie.dialects.aie import (
 from aie.ir import OpView
 
 
-def _get_op(tile_op):
-    """Get the OpView from a tile value or return the OpView as-is."""
-    if isinstance(tile_op, OpView):
-        return tile_op
-    return tile_op.owner
 from aie.dialects.aiex import (
     npu_write32,
     npu_writebd,
@@ -416,7 +411,7 @@ def configure_trace(
     seen_core_tiles = set()
 
     for tile_val in tiles_to_trace:
-        tile_op = _get_op(tile_val)
+        tile_op = tile_val if isinstance(tile_val, OpView) else tile_val.owner
         # Determine if this is a core tile memory trace (second occurrence)
         is_mem_trace = False
         if tile_op.is_core_tile():
