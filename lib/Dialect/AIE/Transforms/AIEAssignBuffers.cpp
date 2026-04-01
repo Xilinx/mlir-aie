@@ -434,11 +434,6 @@ bool simpleBankAwareAllocation(TileOp tile) {
         continue;
       }
 
-      buffer.emitWarning("Buffer '")
-          << buffer.name()
-          << "' has pre-allocated attributes. This might introduce "
-             "fragmentation and cause allocation failure. For more detail, see "
-             "PR 3003.";
       // Buffer has address and/or mem_bank. Try address first.
       auto has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
                                                    nextAddrInBanks, bankLimits);
