@@ -457,16 +457,22 @@ def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
     For each aie.trace operation, this pass:
     - Creates ONE packet flow from trace port to shim DMA
     - Groups traces by target shim (minimizes shim usage, ideally 1)
-    - Inserts ONE shim buffer descriptor per shim tile for all traces
+    - Inserts shim buffer descriptors and DMA control setup per shim tile
     - Inserts per-tile timer control register writes
     - Inserts per-shim broadcast and DMA control setup
-    
+
     All trace configuration is injected at the beginning of the runtime
     sequence, before user data transfer operations.
-    
-    Multiple trace streams (from different tiles or different trace units
-    on the same tile) are routed to the same shim DMA channel and drained
-    by a single buffer descriptor.
+
+    By default, multiple trace streams are routed to the same shim DMA
+    channel and drained by a single buffer descriptor. With
+    `distribute-channels`, traces are round-robin distributed across two
+    S2MM DMA channels per shim tile, each with its own BD and host buffer
+    argument.
+
+    With `lateral-routing`, trace destinations are redirected from columns
+    with active cores to spare shim NOC columns, reducing data path
+    perturbation. Use `lateral-target-col` to force a specific target.
   }];
   
   let constructor = "xilinx::AIE::createAIEInsertTraceFlowsPass()";

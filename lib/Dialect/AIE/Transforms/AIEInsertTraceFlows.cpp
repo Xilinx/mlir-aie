@@ -296,10 +296,30 @@ struct AIEInsertTraceFlowsPass
         int curTarget = shimInfo.shimTile.getCol();
         if (redirects.count(curTarget))
           continue; // already computed
-        if (activeColumns.count(curTarget) == 0)
-          continue; // already spare, no redirect needed
-        int spare =
-            findNearestSpareColumn(curTarget, activeColumns, targetModel);
+
+        int spare = -1;
+        if (clLateralTargetCol >= 0) {
+          // Forced lateral target: always redirect unless it's a no-op.
+          if (clLateralTargetCol == curTarget)
+            continue;
+          // Validate the forced column is in range and is a shim NOC tile.
+          int numCols = targetModel.columns();
+          if (clLateralTargetCol >= numCols ||
+              !targetModel.isShimNOCTile(clLateralTargetCol, 0)) {
+            device.emitError()
+                << "lateral-target-col " << clLateralTargetCol
+                << " is not a valid shim NOC tile (device has " << numCols
+                << " columns)";
+            return signalPassFailure();
+          }
+          spare = clLateralTargetCol;
+        } else {
+          // Auto-detect: only redirect from active columns to a spare.
+          if (activeColumns.count(curTarget) == 0)
+            continue; // already spare, no redirect needed
+          spare =
+              findNearestSpareColumn(curTarget, activeColumns, targetModel);
+        }
         if (spare >= 0)
           redirects[curTarget] = spare;
       }
@@ -687,6 +707,9 @@ private:
   /// Build channel descriptors. Always includes the primary channel.
   /// Adds a secondary channel when distribute-channels is enabled and there
   /// are multiple traces. AIE2 shim tiles have exactly 2 S2MM DMA channels.
+  /// Note: arg_idx values are XRT argument indices (not MLIR function args).
+  /// The secondary channel uses primaryArgIdx+1, so the host must provide
+  /// a second trace buffer at that XRT arg index.
   std::vector<ChannelDescriptor> buildChannelDescriptors(size_t numTraces,
                                                          int primaryChannel,
                                                          int primaryBdId,
@@ -712,11 +735,10 @@ private:
   }
 
   /// Find the nearest NOC shim column without active cores.
-  /// Returns -1 if no spare column exists.
+  /// Returns -1 if no spare column exists, or signals pass failure for
+  /// invalid forced columns.
   int findNearestSpareColumn(int sourceCol, const std::set<int> &activeColumns,
                              const AIETargetModel &targetModel) {
-    if (clLateralTargetCol >= 0)
-      return clLateralTargetCol;
     int bestCol = -1;
     int bestDist = INT_MAX;
     int numCols = targetModel.columns();

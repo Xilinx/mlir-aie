@@ -41,6 +41,14 @@ module @distribute_two_traces {
       aie.trace.start_config @trace_b
     }
 
+    // Phase 4 emits per-channel shim DMA configuration:
+    // Two buffer descriptors (one per channel, distinct bd_ids).
+    // CHECK-DAG: aiex.npu.writebd {bd_id = 15
+    // CHECK-DAG: aiex.npu.writebd {bd_id = 14
+    // Two address patches with distinct arg_idx values.
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 5
+
     // First trace -> channel 1 (default shim-channel), second -> channel 0
     // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 1>
     // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 0>

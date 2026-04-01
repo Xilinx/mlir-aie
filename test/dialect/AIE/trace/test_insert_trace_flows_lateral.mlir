@@ -39,6 +39,9 @@ module @lateral_basic {
       aie.trace.start_config @core_trace
     }
 
+    // Shim DMA config targets the redirected column 1
+    // CHECK: aiex.npu.writebd {{{.*}}column = 1
+
     // Trace routes to column 1 (spare), not column 0 (active)
     // CHECK: aie.packet_flow(1)
     // CHECK:   aie.packet_source<%{{.*}}, Trace : 0>
@@ -46,9 +49,11 @@ module @lateral_basic {
     // CHECK:   keep_pkt_header = true
 
     // Without lateral routing, trace stays on column 0
+    // NOLATRL: aiex.npu.writebd {{{.*}}column = 0
     // NOLATRL: aie.packet_dest<%{{.*}}0_0{{.*}}, DMA : 1>
 
     // With forced target column 1, routes to column 1
+    // FORCED: aiex.npu.writebd {{{.*}}column = 1
     // FORCED: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 1>
   }
 }
@@ -120,6 +125,10 @@ module @lateral_and_distribute {
       aie.trace.start_config @trace_a
       aie.trace.start_config @trace_b
     }
+
+    // Both DMA channels configured on the redirected column 1
+    // COMBO-DAG: aiex.npu.writebd {bd_id = 15{{.*}}column = 1
+    // COMBO-DAG: aiex.npu.writebd {bd_id = 14{{.*}}column = 1
 
     // Both traces route to column 1 (spare) with different DMA channels
     // COMBO-DAG: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 1>
