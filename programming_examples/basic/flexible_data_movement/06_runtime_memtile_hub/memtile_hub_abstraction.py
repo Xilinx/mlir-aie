@@ -68,16 +68,18 @@ import numpy as np
 # Core Abstraction Classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MemTileBuffer:
     """A named buffer region allocated in MemTile L2 memory."""
+
     name: str
     shape: tuple
     dtype: np.dtype
     # Internal: managed by MemTileHub
-    _aie_buffer: object = None     # aie.buffer() handle
-    _prod_lock: object = None      # producer lock
-    _cons_lock: object = None      # consumer lock
+    _aie_buffer: object = None  # aie.buffer() handle
+    _prod_lock: object = None  # producer lock
+    _cons_lock: object = None  # consumer lock
 
 
 @dataclass
@@ -91,9 +93,10 @@ class PoolRegion:
 
     Proven on hardware in Prototype 7 (07_memtile_pool_alloc).
     """
-    offset: int        # Offset in elements within the pool buffer
-    size: int          # Size in elements
-    name: str = ""     # Optional label for debugging
+
+    offset: int  # Offset in elements within the pool buffer
+    size: int  # Size in elements
+    name: str = ""  # Optional label for debugging
     _freed: bool = False
     # Locks are managed per-region for synchronization
     _prod_lock: object = None
@@ -103,9 +106,10 @@ class PoolRegion:
 @dataclass
 class CoreConnection:
     """A pre-wired route between MemTile and a compute core."""
-    target_tile: object            # aie.tile() handle (col, row)
-    send_channel: int = -1         # MemTile MM2S channel (auto-assigned)
-    recv_channel: int = -1         # MemTile S2MM channel (auto-assigned)
+
+    target_tile: object  # aie.tile() handle (col, row)
+    send_channel: int = -1  # MemTile MM2S channel (auto-assigned)
+    recv_channel: int = -1  # MemTile S2MM channel (auto-assigned)
     # Internal
     _send_flow: object = None
     _recv_flow: object = None
@@ -145,8 +149,13 @@ class MemTileHub:
     # Only even MemTile DMA channels (0, 2, 4) to work around BD ID bug
     EVEN_CHANNELS = [0, 2, 4]
 
-    def __init__(self, memtile, shim, capacity_bytes: int = 512 * 1024,
-                 pool_size: Optional[int] = None):
+    def __init__(
+        self,
+        memtile,
+        shim,
+        capacity_bytes: int = 512 * 1024,
+        pool_size: Optional[int] = None,
+    ):
         self.memtile = memtile
         self.shim = shim
         self.capacity = capacity_bytes
@@ -158,14 +167,14 @@ class MemTileHub:
         self._next_lock_id = 0
         self._next_send_ch_idx = 0  # index into EVEN_CHANNELS
         self._next_recv_ch_idx = 1  # start recv from channel 2
-        self._shim_send_ch = 0      # shimDMA MM2S channel for loading
-        self._shim_recv_ch = 0      # shimDMA S2MM channel for draining
+        self._shim_send_ch = 0  # shimDMA MM2S channel for loading
+        self._shim_recv_ch = 0  # shimDMA S2MM channel for draining
 
         # Pool allocator state
         self._pool_size = pool_size
-        self._pool_buffer = None     # aie.buffer() handle (created on first pool_alloc)
+        self._pool_buffer = None  # aie.buffer() handle (created on first pool_alloc)
         self._pool_regions: list[PoolRegion] = []
-        self._pool_watermark = 0     # next free offset (bump allocator)
+        self._pool_watermark = 0  # next free offset (bump allocator)
 
     # ------ Compile-time API ------
 
@@ -232,9 +241,7 @@ class MemTileHub:
                     region.name = name
                     return region
                 # Split: reuse first 'size' elements, leave remainder freed
-                new_region = PoolRegion(
-                    offset=region.offset, size=size, name=name
-                )
+                new_region = PoolRegion(offset=region.offset, size=size, name=name)
                 region.offset += size
                 region.size -= size
                 self._pool_regions.append(new_region)
@@ -247,9 +254,7 @@ class MemTileHub:
                 f"pool_size={self._pool_size}"
             )
 
-        region = PoolRegion(
-            offset=self._pool_watermark, size=size, name=name
-        )
+        region = PoolRegion(offset=self._pool_watermark, size=size, name=name)
         self._pool_watermark += size
 
         # --- Would emit lock pair for this region: ---
@@ -316,8 +321,13 @@ class MemTileHub:
 
     # ------ Runtime API (inside runtime_sequence) ------
 
-    def load(self, buf: MemTileBuffer, ddr_tensor, offset: int = 0,
-             size: Optional[int] = None):
+    def load(
+        self,
+        buf: MemTileBuffer,
+        ddr_tensor,
+        offset: int = 0,
+        size: Optional[int] = None,
+    ):
         """
         Load data from DDR into a MemTile buffer.
 
@@ -381,8 +391,14 @@ class MemTileHub:
         # dma_start_task(t)
         pass
 
-    def drain(self, buf: MemTileBuffer, ddr_tensor, offset: int = 0,
-              size: Optional[int] = None, wait: bool = False):
+    def drain(
+        self,
+        buf: MemTileBuffer,
+        ddr_tensor,
+        offset: int = 0,
+        size: Optional[int] = None,
+        wait: bool = False,
+    ):
         """
         Drain data from a MemTile buffer back to DDR.
 
@@ -411,6 +427,7 @@ class MemTileHub:
 # ---------------------------------------------------------------------------
 # Example: What Prototype 6 would look like with MemTileHub
 # ---------------------------------------------------------------------------
+
 
 def example_with_abstraction():
     """

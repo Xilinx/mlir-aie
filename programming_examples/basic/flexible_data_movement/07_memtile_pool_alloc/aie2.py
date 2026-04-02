@@ -192,7 +192,8 @@ def memtile_pool_alloc(dev, chunk_size=256):
             with bds(t_shim_in) as bd:
                 with bd[0]:
                     shim_dma_bd(
-                        inTensor, offset=0,
+                        inTensor,
+                        offset=0,
                         sizes=[1, 1, 1, total_size],
                         strides=[0, 0, 0, 1],
                     )
@@ -201,9 +202,7 @@ def memtile_pool_alloc(dev, chunk_size=256):
             # MemTile S2MM:0 — BD chain writing to pool at different offsets
             # BD[0]: 256B → pool[0:256] (data region A)
             # BD[1]: 256B → pool[256:512] (data region B)
-            t_mem_recv = dma_configure_task(
-                MemTileTile, DMAChannelDir.S2MM, 0
-            )
+            t_mem_recv = dma_configure_task(MemTileTile, DMAChannelDir.S2MM, 0)
             with bds(t_mem_recv) as bd:
                 with bd[0]:
                     use_lock(data_a_prod, LockAction.AcquireGreaterEqual, value=1)
@@ -218,9 +217,7 @@ def memtile_pool_alloc(dev, chunk_size=256):
 
             # ==== PHASE 2: pool → Cores (different offsets into same pool) ====
             # MM2S:0 sends pool[0:256] → Core A
-            t_send_a = dma_configure_task(
-                MemTileTile, DMAChannelDir.MM2S, 0
-            )
+            t_send_a = dma_configure_task(MemTileTile, DMAChannelDir.MM2S, 0)
             with bds(t_send_a) as bd:
                 with bd[0]:
                     use_lock(data_a_cons, LockAction.AcquireGreaterEqual, value=1)
@@ -229,9 +226,7 @@ def memtile_pool_alloc(dev, chunk_size=256):
                     EndOp()
 
             # MM2S:2 sends pool[256:512] → Core B
-            t_send_b = dma_configure_task(
-                MemTileTile, DMAChannelDir.MM2S, 2
-            )
+            t_send_b = dma_configure_task(MemTileTile, DMAChannelDir.MM2S, 2)
             with bds(t_send_b) as bd:
                 with bd[0]:
                     use_lock(data_b_cons, LockAction.AcquireGreaterEqual, value=1)
@@ -241,9 +236,7 @@ def memtile_pool_alloc(dev, chunk_size=256):
 
             # ==== PHASE 3: Cores → pool results ====
             # S2MM:2 receives Core A result → pool[512:768]
-            t_recv_a = dma_configure_task(
-                MemTileTile, DMAChannelDir.S2MM, 2
-            )
+            t_recv_a = dma_configure_task(MemTileTile, DMAChannelDir.S2MM, 2)
             with bds(t_recv_a) as bd:
                 with bd[0]:
                     use_lock(res_a_prod, LockAction.AcquireGreaterEqual, value=1)
@@ -252,9 +245,7 @@ def memtile_pool_alloc(dev, chunk_size=256):
                     EndOp()
 
             # S2MM:4 receives Core B result → pool[768:1024]
-            t_recv_b = dma_configure_task(
-                MemTileTile, DMAChannelDir.S2MM, 4
-            )
+            t_recv_b = dma_configure_task(MemTileTile, DMAChannelDir.S2MM, 4)
             with bds(t_recv_b) as bd:
                 with bd[0]:
                     use_lock(res_b_prod, LockAction.AcquireGreaterEqual, value=1)
@@ -264,9 +255,7 @@ def memtile_pool_alloc(dev, chunk_size=256):
 
             # ==== PHASE 4: pool[512:1024] → DDR (drain with BD chain) ====
             # MM2S:4 chains: pool[512:768] then pool[768:1024]
-            t_drain = dma_configure_task(
-                MemTileTile, DMAChannelDir.MM2S, 4
-            )
+            t_drain = dma_configure_task(MemTileTile, DMAChannelDir.MM2S, 4)
             with bds(t_drain) as bd:
                 with bd[0]:
                     use_lock(res_a_cons, LockAction.AcquireGreaterEqual, value=1)
@@ -286,7 +275,8 @@ def memtile_pool_alloc(dev, chunk_size=256):
             with bds(t_shim_out) as bd:
                 with bd[0]:
                     shim_dma_bd(
-                        outTensor, offset=0,
+                        outTensor,
+                        offset=0,
                         sizes=[1, 1, 1, total_size],
                         strides=[0, 0, 0, 1],
                     )

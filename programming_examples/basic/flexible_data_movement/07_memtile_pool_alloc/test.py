@@ -30,7 +30,9 @@ def main(opts):
     print(f"  Chunk/core:    {chunk_size} bytes")
     print(f"  Cores:         2 (Core(0,2) and Core(0,3))")
     print(f"  MemTile DMAs:  ALL configured at runtime (no @memtile_dma)")
-    print(f"  Pattern:       DDR → pool[0:512] → Core(0,2) + Core(0,3) → pool[512:1024] → DDR")
+    print(
+        f"  Pattern:       DDR → pool[0:512] → Core(0,2) + Core(0,3) → pool[512:1024] → DDR"
+    )
     print(f"  Key:           ONE pool buffer, sub-regions via dma_bd(pool, offset=N)")
 
     npu_opts = test_utils.create_npu_kernel(opts)
