@@ -12,6 +12,20 @@
 # The underlying primitives (dma_configure_task on MemTile, locks, flows)
 # are proven working on hardware in Prototype 6.
 #
+# POOL ALLOCATION (Prototype 7):
+# Instead of individual alloc() calls that each create a separate aie.buffer(),
+# pool mode allocates ONE large buffer and returns offset-based regions:
+#
+#   hub = MemTileHub(tile(0, 1), shim=tile(0, 0), pool_size=8192)
+#   region_a = hub.pool_alloc(size=256)   # returns PoolRegion(offset=0, size=256)
+#   region_b = hub.pool_alloc(size=256)   # returns PoolRegion(offset=256, size=256)
+#   hub.pool_free(region_a)               # marks region available for reuse
+#   region_c = hub.pool_alloc(size=512)   # reuses freed space at offset 0
+#
+# At compile time, this emits ONE aie.buffer of pool_size. At runtime,
+# dma_bd(pool, offset=region.offset, len=region.size) selects sub-regions.
+# Proven on hardware in Prototype 7 (07_memtile_pool_alloc).
+#
 # ==========================================================================
 #
 # TODAY (Prototype 6 — ~100 lines of boilerplate):
@@ -67,6 +81,26 @@ class MemTileBuffer:
 
 
 @dataclass
+class PoolRegion:
+    """A sub-region within a pool buffer, identified by offset and size.
+
+    Unlike MemTileBuffer (which maps 1:1 to an aie.buffer()), a PoolRegion
+    is a slice of a single large pool buffer. At the MLIR level, all
+    PoolRegions share the same aie.buffer and use dma_bd(pool, offset=N)
+    to select their sub-region.
+
+    Proven on hardware in Prototype 7 (07_memtile_pool_alloc).
+    """
+    offset: int        # Offset in elements within the pool buffer
+    size: int          # Size in elements
+    name: str = ""     # Optional label for debugging
+    _freed: bool = False
+    # Locks are managed per-region for synchronization
+    _prod_lock: object = None
+    _cons_lock: object = None
+
+
+@dataclass
 class CoreConnection:
     """A pre-wired route between MemTile and a compute core."""
     target_tile: object            # aie.tile() handle (col, row)
@@ -111,7 +145,8 @@ class MemTileHub:
     # Only even MemTile DMA channels (0, 2, 4) to work around BD ID bug
     EVEN_CHANNELS = [0, 2, 4]
 
-    def __init__(self, memtile, shim, capacity_bytes: int = 512 * 1024):
+    def __init__(self, memtile, shim, capacity_bytes: int = 512 * 1024,
+                 pool_size: Optional[int] = None):
         self.memtile = memtile
         self.shim = shim
         self.capacity = capacity_bytes
@@ -125,6 +160,12 @@ class MemTileHub:
         self._next_recv_ch_idx = 1  # start recv from channel 2
         self._shim_send_ch = 0      # shimDMA MM2S channel for loading
         self._shim_recv_ch = 0      # shimDMA S2MM channel for draining
+
+        # Pool allocator state
+        self._pool_size = pool_size
+        self._pool_buffer = None     # aie.buffer() handle (created on first pool_alloc)
+        self._pool_regions: list[PoolRegion] = []
+        self._pool_watermark = 0     # next free offset (bump allocator)
 
     # ------ Compile-time API ------
 
@@ -145,6 +186,105 @@ class MemTileHub:
 
         self.buffers.append(buf)
         return buf
+
+    def pool_alloc(self, size: int, name: str = "") -> PoolRegion:
+        """
+        Allocate a sub-region from the pool buffer.
+
+        Returns a PoolRegion with an offset into the single pool buffer.
+        At the MLIR level, this offset is used with dma_bd(pool, offset=N, len=M).
+
+        First call lazily creates the pool buffer:
+            pool = buffer(self.memtile, pool_ty, name="pool")
+
+        Allocation strategy: simple bump allocator. For reuse after pool_free(),
+        a first-fit search checks freed regions before bumping the watermark.
+
+        Args:
+            size: Size in elements (bytes for uint8)
+            name: Optional label for debugging
+
+        Returns:
+            PoolRegion with offset and size set
+
+        Example:
+            hub = MemTileHub(tile(0,1), shim=tile(0,0), pool_size=8192)
+            data_a = hub.pool_alloc(256, name="data_a")   # offset=0
+            data_b = hub.pool_alloc(256, name="data_b")   # offset=256
+            result_a = hub.pool_alloc(256, name="result_a") # offset=512
+        """
+        if self._pool_size is None:
+            raise ValueError(
+                "Pool mode not enabled. Pass pool_size= to MemTileHub constructor."
+            )
+
+        # --- Would lazily create pool buffer on first call: ---
+        # if self._pool_buffer is None:
+        #     pool_ty = np.ndarray[(self._pool_size,), np.dtype[np.uint8]]
+        #     self._pool_buffer = buffer(self.memtile, pool_ty, name="pool")
+
+        # First-fit search in freed regions
+        for region in self._pool_regions:
+            if region._freed and region.size >= size:
+                # Reuse freed region (exact or split)
+                if region.size == size:
+                    region._freed = False
+                    region.name = name
+                    return region
+                # Split: reuse first 'size' elements, leave remainder freed
+                new_region = PoolRegion(
+                    offset=region.offset, size=size, name=name
+                )
+                region.offset += size
+                region.size -= size
+                self._pool_regions.append(new_region)
+                return new_region
+
+        # Bump allocation
+        if self._pool_watermark + size > self._pool_size:
+            raise MemoryError(
+                f"Pool exhausted: need {size} at offset {self._pool_watermark}, "
+                f"pool_size={self._pool_size}"
+            )
+
+        region = PoolRegion(
+            offset=self._pool_watermark, size=size, name=name
+        )
+        self._pool_watermark += size
+
+        # --- Would emit lock pair for this region: ---
+        # region._prod_lock = lock(self.memtile, lock_id=N, init=1)
+        # region._cons_lock = lock(self.memtile, lock_id=N+1, init=0)
+
+        self._pool_regions.append(region)
+        return region
+
+    def pool_free(self, region: PoolRegion):
+        """
+        Mark a pool region as available for reuse.
+
+        Does NOT zero the memory or release locks — just marks the offset
+        range as available for future pool_alloc() calls.
+
+        At the hardware level, this is a host-side bookkeeping operation.
+        The MemTile memory is not affected until a new DMA BD is configured
+        to write to the freed region.
+
+        Args:
+            region: A PoolRegion previously returned by pool_alloc()
+        """
+        if region._freed:
+            raise ValueError(f"Double-free of pool region at offset {region.offset}")
+        region._freed = True
+
+    def pool_reset(self):
+        """
+        Reset the pool allocator, freeing all regions.
+
+        Use between runtime_sequence invocations to start with a fresh pool layout.
+        """
+        self._pool_regions.clear()
+        self._pool_watermark = 0
 
     def connect(self, core_tile) -> CoreConnection:
         """
@@ -326,6 +466,56 @@ def example_with_abstraction():
     pass
 
 
+def example_with_pool_allocator():
+    """
+    This is what Prototype 7 WOULD look like using MemTileHub pool mode.
+    Instead of 4 separate alloc() calls, we use 1 pool with offset-based regions.
+
+    Key difference: ONE aie.buffer() at MLIR level, sub-regions via dma_bd offset.
+    Proven on hardware in Prototype 7 (07_memtile_pool_alloc/aie2.py).
+    """
+
+    # from aie.iron import MemTileHub, Kernel, Worker, Runtime, Program
+    # from aie.iron.device import NPU2
+
+    # # Pool mode: ONE large buffer, sub-regions via offset
+    # hub = MemTileHub(tile(0, 1), shim=tile(0, 0), pool_size=2048)
+    #
+    # # Allocate sub-regions from the pool (returns PoolRegion, not MemTileBuffer)
+    # data_a = hub.pool_alloc(256, name="data_a")     # offset=0
+    # data_b = hub.pool_alloc(256, name="data_b")     # offset=256
+    # result_a = hub.pool_alloc(256, name="result_a") # offset=512
+    # result_b = hub.pool_alloc(256, name="result_b") # offset=768
+    # # pool[1024:2048] remains free for future use
+    #
+    # # Connect cores (same as non-pool mode)
+    # hub.connect(tile(0, 2))
+    # hub.connect(tile(0, 3))
+    #
+    # # Runtime: data movement using pool regions
+    # # Under the hood, each operation emits dma_bd(pool, offset=region.offset)
+    # rt = Runtime()
+    # with rt.sequence(full_ty, full_ty) as (inp, out):
+    #     hub.pool_load(data_a, inp, ddr_offset=0)    # DDR[0:256] → pool[0:256]
+    #     hub.pool_load(data_b, inp, ddr_offset=256)  # DDR[256:512] → pool[256:512]
+    #     hub.pool_send(data_a, target=tile(0, 2))    # pool[0:256] → Core A
+    #     hub.pool_send(data_b, target=tile(0, 3))    # pool[256:512] → Core B
+    #     hub.pool_recv(result_a, source=tile(0, 2))  # Core A → pool[512:768]
+    #     hub.pool_recv(result_b, source=tile(0, 3))  # Core B → pool[768:1024]
+    #     hub.pool_drain(result_a, out, ddr_offset=0)
+    #     hub.pool_drain(result_b, out, ddr_offset=256, wait=True)
+    #
+    # # Between invocations, can reallocate pool regions:
+    # hub.pool_free(data_a)
+    # hub.pool_free(data_b)
+    # big_region = hub.pool_alloc(512, name="big_input")  # reuses freed space
+    # # Or reset entirely:
+    # hub.pool_reset()
+    #
+    # return Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Design Notes for Implementation
 # ---------------------------------------------------------------------------
@@ -372,3 +562,18 @@ def example_with_abstraction():
 #    - Multi-column: one MemTileHub per column, cross-column linking
 #    - 512KB L2 budget shared across all allocated buffers
 #    - 64 locks shared across all buffer lock pairs (32 buffers max)
+#
+# 7. POOL ALLOCATION (Prototype 7)
+#    - pool_alloc()/pool_free() provide a host-side memory manager
+#    - At MLIR level: ONE aie.buffer, sub-regions via dma_bd offset
+#    - Bump allocator with first-fit reuse of freed regions
+#    - pool_reset() clears all allocations between invocations
+#    - Advantages over individual alloc():
+#      * Fewer aie.buffer() objects → simpler MLIR
+#      * Dynamic sub-region sizing (within pool bounds)
+#      * Region reuse without recompiling
+#    - Limitations:
+#      * Offsets are compile-time constants in dma_bd (not SSA values)
+#      * Truly dynamic offsets need npu_writebd or dynamic-runtime-sequences
+#      * Fragmentation possible with many alloc/free cycles
+#    - Proven on hardware: 07_memtile_pool_alloc
