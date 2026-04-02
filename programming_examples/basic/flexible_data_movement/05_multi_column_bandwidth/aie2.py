@@ -55,8 +55,7 @@ def multi_column_bandwidth(dev, n_cols=2, cores_per_col=2, chunk_size=256):
         shim_tiles = [tile(col, 0) for col in range(n_cols)]
         mem_tiles = [tile(col, 1) for col in range(n_cols)]
         core_tiles = [
-            [tile(col, 2 + r) for r in range(cores_per_col)]
-            for col in range(n_cols)
+            [tile(col, 2 + r) for r in range(cores_per_col)] for col in range(n_cols)
         ]
 
         # Per-column ObjectFIFOs
@@ -67,9 +66,7 @@ def multi_column_bandwidth(dev, n_cols=2, cores_per_col=2, chunk_size=256):
 
         for col in range(n_cols):
             # Input: Shim -> MemTile
-            of_in = object_fifo(
-                f"in_{col}", shim_tiles[col], mem_tiles[col], 2, col_ty
-            )
+            of_in = object_fifo(f"in_{col}", shim_tiles[col], mem_tiles[col], 2, col_ty)
             all_of_in.append(of_in)
 
             # Split: MemTile -> cores
@@ -119,15 +116,9 @@ def multi_column_bandwidth(dev, n_cols=2, cores_per_col=2, chunk_size=256):
                             elem_in = all_of_split[c][row].acquire(
                                 ObjectFifoPort.Consume, 1
                             )
-                            passthrough_fn(
-                                elem_in, elem_out, chunk_size
-                            )
-                            all_of_split[c][row].release(
-                                ObjectFifoPort.Consume, 1
-                            )
-                            all_of_join[c][row].release(
-                                ObjectFifoPort.Produce, 1
-                            )
+                            passthrough_fn(elem_in, elem_out, chunk_size)
+                            all_of_split[c][row].release(ObjectFifoPort.Consume, 1)
+                            all_of_join[c][row].release(ObjectFifoPort.Produce, 1)
 
                 make_core_fn(col, r)
 

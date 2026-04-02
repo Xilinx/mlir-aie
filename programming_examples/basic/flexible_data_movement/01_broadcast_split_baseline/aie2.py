@@ -63,9 +63,7 @@ def broadcast_split_baseline(dev, n_cores=4, chunk_size=256):
 
         of_split = []
         for i in range(n_cores):
-            split_fifo = object_fifo(
-                f"split_{i}", MemTile, cores[i], 2, chunk_ty
-            )
+            split_fifo = object_fifo(f"split_{i}", MemTile, cores[i], 2, chunk_ty)
             of_split.append(split_fifo)
 
         # Link with offsets: core i gets bytes [i*chunk_size, (i+1)*chunk_size)
@@ -75,9 +73,7 @@ def broadcast_split_baseline(dev, n_cores=4, chunk_size=256):
         # --- JOIN: cores -> MemTile -> ShimTile ---
         of_join = []
         for i in range(n_cores):
-            join_fifo = object_fifo(
-                f"join_{i}", cores[i], MemTile, 2, chunk_ty
-            )
+            join_fifo = object_fifo(f"join_{i}", cores[i], MemTile, 2, chunk_ty)
             of_join.append(join_fifo)
 
         of_out = object_fifo("out", MemTile, ShimTile, 2, full_ty)
@@ -92,12 +88,8 @@ def broadcast_split_baseline(dev, n_cores=4, chunk_size=256):
                 @core(cores[idx])
                 def core_body():
                     for _ in range_(sys.maxsize):
-                        elem_out = of_join[idx].acquire(
-                            ObjectFifoPort.Produce, 1
-                        )
-                        elem_in = of_split[idx].acquire(
-                            ObjectFifoPort.Consume, 1
-                        )
+                        elem_out = of_join[idx].acquire(ObjectFifoPort.Produce, 1)
+                        elem_in = of_split[idx].acquire(ObjectFifoPort.Consume, 1)
                         add_func(elem_in, elem_out, chunk_size)
                         of_split[idx].release(ObjectFifoPort.Consume, 1)
                         of_join[idx].release(ObjectFifoPort.Produce, 1)

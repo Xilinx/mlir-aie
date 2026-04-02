@@ -86,12 +86,8 @@ def time_multiplex_phases(dev, n_cores=4, chunk_size=256, n_iterations=4):
                 @core(cores[idx])
                 def core_body():
                     for _ in range_(sys.maxsize):
-                        elem_out = of_join[idx].acquire(
-                            ObjectFifoPort.Produce, 1
-                        )
-                        elem_in = of_split[idx].acquire(
-                            ObjectFifoPort.Consume, 1
-                        )
+                        elem_out = of_join[idx].acquire(ObjectFifoPort.Produce, 1)
+                        elem_in = of_split[idx].acquire(ObjectFifoPort.Consume, 1)
                         passthrough_fn(elem_in, elem_out, chunk_size)
                         of_split[idx].release(ObjectFifoPort.Consume, 1)
                         of_join[idx].release(ObjectFifoPort.Produce, 1)

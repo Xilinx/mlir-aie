@@ -178,16 +178,15 @@ def runtime_memtile_hub(dev, chunk_size=256):
             with bds(t_shim_in) as bd:
                 with bd[0]:
                     shim_dma_bd(
-                        inTensor, offset=0,
+                        inTensor,
+                        offset=0,
                         sizes=[1, 1, 1, total_size],
                         strides=[0, 0, 0, 1],
                     )
                     EndOp()
 
             # MemTile S2MM:0 — BD chain: 256B → data_buf_a, 256B → data_buf_b
-            t_mem_recv = dma_configure_task(
-                MemTileTile, DMAChannelDir.S2MM, 0
-            )
+            t_mem_recv = dma_configure_task(MemTileTile, DMAChannelDir.S2MM, 0)
             with bds(t_mem_recv) as bd:
                 with bd[0]:
                     use_lock(data_a_prod, LockAction.AcquireGreaterEqual, value=1)
@@ -202,9 +201,7 @@ def runtime_memtile_hub(dev, chunk_size=256):
 
             # ==== PHASE 2: MemTile → Cores (runtime-decided) ====
             # MM2S:0 → Core A
-            t_send_a = dma_configure_task(
-                MemTileTile, DMAChannelDir.MM2S, 0
-            )
+            t_send_a = dma_configure_task(MemTileTile, DMAChannelDir.MM2S, 0)
             with bds(t_send_a) as bd:
                 with bd[0]:
                     use_lock(data_a_cons, LockAction.AcquireGreaterEqual, value=1)
@@ -213,9 +210,7 @@ def runtime_memtile_hub(dev, chunk_size=256):
                     EndOp()
 
             # MM2S:2 → Core B
-            t_send_b = dma_configure_task(
-                MemTileTile, DMAChannelDir.MM2S, 2
-            )
+            t_send_b = dma_configure_task(MemTileTile, DMAChannelDir.MM2S, 2)
             with bds(t_send_b) as bd:
                 with bd[0]:
                     use_lock(data_b_cons, LockAction.AcquireGreaterEqual, value=1)
@@ -225,9 +220,7 @@ def runtime_memtile_hub(dev, chunk_size=256):
 
             # ==== PHASE 3: Cores → MemTile results ====
             # S2MM:2 ← Core A
-            t_recv_a = dma_configure_task(
-                MemTileTile, DMAChannelDir.S2MM, 2
-            )
+            t_recv_a = dma_configure_task(MemTileTile, DMAChannelDir.S2MM, 2)
             with bds(t_recv_a) as bd:
                 with bd[0]:
                     use_lock(res_a_prod, LockAction.AcquireGreaterEqual, value=1)
@@ -236,9 +229,7 @@ def runtime_memtile_hub(dev, chunk_size=256):
                     EndOp()
 
             # S2MM:4 ← Core B
-            t_recv_b = dma_configure_task(
-                MemTileTile, DMAChannelDir.S2MM, 4
-            )
+            t_recv_b = dma_configure_task(MemTileTile, DMAChannelDir.S2MM, 4)
             with bds(t_recv_b) as bd:
                 with bd[0]:
                     use_lock(res_b_prod, LockAction.AcquireGreaterEqual, value=1)
@@ -248,9 +239,7 @@ def runtime_memtile_hub(dev, chunk_size=256):
 
             # ==== PHASE 4: MemTile → DDR (drain) ====
             # MM2S:4 — BD chain: result_buf_a then result_buf_b
-            t_drain = dma_configure_task(
-                MemTileTile, DMAChannelDir.MM2S, 4
-            )
+            t_drain = dma_configure_task(MemTileTile, DMAChannelDir.MM2S, 4)
             with bds(t_drain) as bd:
                 with bd[0]:
                     use_lock(res_a_cons, LockAction.AcquireGreaterEqual, value=1)
@@ -270,7 +259,8 @@ def runtime_memtile_hub(dev, chunk_size=256):
             with bds(t_shim_out) as bd:
                 with bd[0]:
                     shim_dma_bd(
-                        outTensor, offset=0,
+                        outTensor,
+                        offset=0,
                         sizes=[1, 1, 1, total_size],
                         strides=[0, 0, 0, 1],
                     )

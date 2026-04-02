@@ -66,7 +66,11 @@ def bd_chain_streaming(dev, n_cores=2, chunk_size=512, n_iterations=8):
 
         # --- Input: ShimTile -> MemTile with iter_count ---
         of_in = object_fifo(
-            "in", ShimTile, MemTile, 2, chunk_ty,
+            "in",
+            ShimTile,
+            MemTile,
+            2,
+            chunk_ty,
             iter_count=n_iterations,
         )
 
@@ -74,7 +78,11 @@ def bd_chain_streaming(dev, n_cores=2, chunk_size=512, n_iterations=8):
         of_split = []
         for i in range(n_cores):
             sf = object_fifo(
-                f"split_{i}", MemTile, cores[i], 2, core_chunk_ty,
+                f"split_{i}",
+                MemTile,
+                cores[i],
+                2,
+                core_chunk_ty,
                 iter_count=n_iterations,
             )
             sf.set_repeat_count(repeat_count)
@@ -87,13 +95,21 @@ def bd_chain_streaming(dev, n_cores=2, chunk_size=512, n_iterations=8):
         of_join = []
         for i in range(n_cores):
             jf = object_fifo(
-                f"join_{i}", cores[i], MemTile, 2, core_chunk_ty,
+                f"join_{i}",
+                cores[i],
+                MemTile,
+                2,
+                core_chunk_ty,
                 iter_count=out_iterations,
             )
             of_join.append(jf)
 
         of_out = object_fifo(
-            "out", MemTile, ShimTile, 2, chunk_ty,
+            "out",
+            MemTile,
+            ShimTile,
+            2,
+            chunk_ty,
             iter_count=out_iterations,
         )
         join_offsets = [i * elements_per_core for i in range(n_cores)]
@@ -106,15 +122,9 @@ def bd_chain_streaming(dev, n_cores=2, chunk_size=512, n_iterations=8):
                 @core(cores[idx])
                 def core_body():
                     for _ in range_(sys.maxsize):
-                        elem_out = of_join[idx].acquire(
-                            ObjectFifoPort.Produce, 1
-                        )
-                        elem_in = of_split[idx].acquire(
-                            ObjectFifoPort.Consume, 1
-                        )
-                        passthrough_fn(
-                            elem_in, elem_out, elements_per_core
-                        )
+                        elem_out = of_join[idx].acquire(ObjectFifoPort.Produce, 1)
+                        elem_in = of_split[idx].acquire(ObjectFifoPort.Consume, 1)
+                        passthrough_fn(elem_in, elem_out, elements_per_core)
                         of_split[idx].release(ObjectFifoPort.Consume, 1)
                         of_join[idx].release(ObjectFifoPort.Produce, 1)
 
@@ -129,7 +139,8 @@ def bd_chain_streaming(dev, n_cores=2, chunk_size=512, n_iterations=8):
             dma_start_task(in_task)
 
             out_task = shim_dma_single_bd_task(
-                of_out, outTensor,
+                of_out,
+                outTensor,
                 sizes=[1, 1, 1, total_out_size],
                 issue_token=True,
             )

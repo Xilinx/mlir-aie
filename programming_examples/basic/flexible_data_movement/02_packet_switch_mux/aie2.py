@@ -78,15 +78,9 @@ def packet_switch_mux(dev, n_cores=2, chunk_size=256):
             core_locks_cons_out.append(cons_out)
 
         # --- MemTile buffers: 1 input (with packet header), 1 output ---
-        mem_buf_in = buffer(
-            MemTile_0_1, chunk_with_pkt_ty, name="mem_buf_in"
-        )
-        mem_lock_prod_in = lock(
-            MemTile_0_1, lock_id=0, init=1, sym_name="mem_prod_in"
-        )
-        mem_lock_cons_in = lock(
-            MemTile_0_1, lock_id=1, init=0, sym_name="mem_cons_in"
-        )
+        mem_buf_in = buffer(MemTile_0_1, chunk_with_pkt_ty, name="mem_buf_in")
+        mem_lock_prod_in = lock(MemTile_0_1, lock_id=0, init=1, sym_name="mem_prod_in")
+        mem_lock_cons_in = lock(MemTile_0_1, lock_id=1, init=0, sym_name="mem_cons_in")
         mem_buf_out = buffer(MemTile_0_1, chunk_ty, name="mem_buf_out")
         mem_lock_prod_out = lock(
             MemTile_0_1, lock_id=2, init=1, sym_name="mem_prod_out"
@@ -185,9 +179,7 @@ def packet_switch_mux(dev, n_cores=2, chunk_size=256):
                 @mem(cores[idx])
                 def m(block):
                     # S2MM ch0: stream -> core input buffer
-                    s0 = dma_start(
-                        DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2]
-                    )
+                    s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2])
                     with block[1]:
                         use_lock(
                             core_locks_prod_in[idx],
@@ -239,15 +231,11 @@ def packet_switch_mux(dev, n_cores=2, chunk_size=256):
                     value=1,
                 )
                 dma_bd(mem_buf_in)
-                use_lock(
-                    mem_lock_cons_in, LockAction.Release, value=1
-                )
+                use_lock(mem_lock_cons_in, LockAction.Release, value=1)
                 next_bd(block[1])
             with block[2]:
                 # MM2S ch0: forward to cores (packet header in buffer does routing)
-                s1 = dma_start(
-                    DMAChannelDir.MM2S, 0, dest=block[3], chain=block[4]
-                )
+                s1 = dma_start(DMAChannelDir.MM2S, 0, dest=block[3], chain=block[4])
             with block[3]:
                 use_lock(
                     mem_lock_cons_in,
@@ -255,15 +243,11 @@ def packet_switch_mux(dev, n_cores=2, chunk_size=256):
                     value=1,
                 )
                 dma_bd(mem_buf_in)
-                use_lock(
-                    mem_lock_prod_in, LockAction.Release, value=1
-                )
+                use_lock(mem_lock_prod_in, LockAction.Release, value=1)
                 next_bd(block[3])
             with block[4]:
                 # S2MM ch2: receive results from cores
-                s2 = dma_start(
-                    DMAChannelDir.S2MM, 2, dest=block[5], chain=block[6]
-                )
+                s2 = dma_start(DMAChannelDir.S2MM, 2, dest=block[5], chain=block[6])
             with block[5]:
                 use_lock(
                     mem_lock_prod_out,
@@ -271,15 +255,11 @@ def packet_switch_mux(dev, n_cores=2, chunk_size=256):
                     value=1,
                 )
                 dma_bd(mem_buf_out)
-                use_lock(
-                    mem_lock_cons_out, LockAction.Release, value=1
-                )
+                use_lock(mem_lock_cons_out, LockAction.Release, value=1)
                 next_bd(block[5])
             with block[6]:
                 # MM2S ch2: forward results to shim (with packet header)
-                s3 = dma_start(
-                    DMAChannelDir.MM2S, 2, dest=block[7], chain=block[8]
-                )
+                s3 = dma_start(DMAChannelDir.MM2S, 2, dest=block[7], chain=block[8])
             with block[7]:
                 use_lock(
                     mem_lock_cons_out,
@@ -287,9 +267,7 @@ def packet_switch_mux(dev, n_cores=2, chunk_size=256):
                     value=1,
                 )
                 dma_bd(mem_buf_out, packet=(0, 2 * n_cores + 1))
-                use_lock(
-                    mem_lock_prod_out, LockAction.Release, value=1
-                )
+                use_lock(mem_lock_prod_out, LockAction.Release, value=1)
                 next_bd(block[7])
             with block[8]:
                 EndOp()
@@ -299,9 +277,7 @@ def packet_switch_mux(dev, n_cores=2, chunk_size=256):
         def sequence(A, B):
             # Send each core's data as a separate packet
             for i in range(n_cores):
-                in_task = dma_configure_task(
-                    ShimTile, DMAChannelDir.MM2S, 0
-                )
+                in_task = dma_configure_task(ShimTile, DMAChannelDir.MM2S, 0)
                 with bds(in_task) as bd:
                     with bd[0]:
                         shim_dma_bd(
