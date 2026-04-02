@@ -10,15 +10,6 @@ from ...dialects._aie_enum_gen import AIETileType
 from ...dialects.aie import LogicalTileOp, TileOp
 
 
-class TileType:
-    """User-facing constants for AIE tile types."""
-
-    Core = AIETileType.CoreTile
-    Mem = AIETileType.MemTile
-    ShimNOC = AIETileType.ShimNOCTile
-    ShimPL = AIETileType.ShimPLTile
-
-
 class Tile:
     """An object representing a tile on a device.
 
@@ -73,3 +64,37 @@ class Tile:
 
     def __hash__(self):
         return id(self)
+
+    @staticmethod
+    def resolve(tile):
+        """Convert a tile argument (Tile, Any*Tile, or None) to a Tile instance."""
+        if tile is None or tile in _ANY_TILE_MAP:
+            return Tile(tile_type=_ANY_TILE_MAP.get(tile))
+        if isinstance(tile, Tile):
+            return tile
+        raise TypeError(f"Expected Tile, Any*Tile, or None; got {tile}")
+
+
+class AnyShimTile:
+    """A placeholder that should be replaced with a concrete Tile() representing a Shim tile on a device."""
+
+    pass
+
+
+class AnyMemTile:
+    """A placeholder that should be replaced with a concrete Tile() representing a Mem tile on a device."""
+
+    pass
+
+
+class AnyComputeTile:
+    """A placeholder that should be replaced with a concrete Tile() representing a Compute tile on a device."""
+
+    pass
+
+
+_ANY_TILE_MAP = {
+    AnyComputeTile: AIETileType.CoreTile,
+    AnyMemTile: AIETileType.MemTile,
+    AnyShimTile: AIETileType.ShimNOCTile,
+}

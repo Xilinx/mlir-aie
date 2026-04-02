@@ -10,7 +10,7 @@ import numpy as np
 import sys
 
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU1Col1, NPU2Col1, Tile, TileType
+from aie.iron.device import NPU1Col1, NPU2Col1, AnyComputeTile
 from aie.helpers.taplib import TensorTiler2D
 
 if len(sys.argv) > 3:
@@ -37,7 +37,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
 
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(tensor_ty)
-    of_out = of_in.cons().forward(Tile(tile_type=TileType.Core))
+    of_out = of_in.cons().forward(AnyComputeTile)
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()

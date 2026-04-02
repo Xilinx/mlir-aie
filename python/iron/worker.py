@@ -14,7 +14,8 @@ from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
 from ..dialects.aiex import set_lock_value, LockAction
 from ..helpers.dialects.scf import _for as range_
-from .device import Tile, TileType
+from .device import Tile
+from .device.tile import AIETileType
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
@@ -56,13 +57,12 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
-        if tile is None:
-            tile = Tile()
-        if tile.tile_type is not None and tile.tile_type != TileType.Core:
+        tile = Tile.resolve(tile)
+        if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
             )
-        tile.tile_type = TileType.Core
+        tile.tile_type = AIETileType.CoreTile
         self._tile = tile
         self._while_true = while_true
         self.stack_size = stack_size

@@ -11,7 +11,7 @@ from typing import Sequence
 
 from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import ObjectFifoPort  # type: ignore
-from ..device import TileType
+from ..device.tile import AIETileType
 from ...dialects._aie_ops_gen import ObjectFifoCreateOp  # type: ignore
 from ...dialects.aie import object_fifo, object_fifo_link
 from ...helpers.util import (
@@ -228,6 +228,14 @@ class ObjectFifo(Resolvable):
             raise ValueError("Cannot return cons tiles because cons were not created.")
         tiles += [cons.endpoint.tile for cons in self._cons]
         return tiles
+
+    def can_used_shared_mem(self, device, cons_only=False):
+        """Check if all endpoints have legal memory affinity."""
+        tiles = self.tiles(cons_only=cons_only)
+        for t in tiles:
+            if device.is_mem_accessible(t, tiles):
+                return True
+        return False
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:
@@ -755,10 +763,9 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             s.endpoint = self
         for d in self._dsts:
             d.endpoint = self
-        if tile is None:
-            tile = Tile()
+        tile = Tile.resolve(tile)
         if tile.tile_type is None:
-            tile.tile_type = TileType.Mem
+            tile.tile_type = AIETileType.MemTile
         ObjectFifoEndpoint.__init__(self, tile)
 
     def resolve(

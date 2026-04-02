@@ -20,7 +20,6 @@ Covers the bug reported in https://github.com/Xilinx/mlir-aie/issues/3011:
 import numpy as np
 
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 
 rtp_ty = np.ndarray[(16,), np.dtype[np.int32]]
@@ -63,7 +62,7 @@ with rt.sequence(data_ty, data_ty) as (inp, out):
     rt.fill(of_in.prod(), inp)
     rt.drain(of_out.cons(), out, wait=True)
 
-module = Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+module = Program(NPU1Col1(), rt).resolve_program()
 print(module)
 
 
@@ -120,7 +119,7 @@ with rt2.sequence(data_ty, data_ty, data_ty, data_ty, data_ty, data_ty) as (
     rt2.drain(of_outs[1].cons(), o1, wait=True)
     rt2.drain(of_outs[2].cons(), o2, wait=True)
 
-module2 = Program(NPU2(), rt2).resolve_program(SequentialPlacer())
+module2 = Program(NPU2(), rt2).resolve_program()
 print(module2)
 
 
@@ -164,7 +163,7 @@ with rt3.sequence(data_ty, data_ty) as (inp3, out3):
     rt3.drain(of_out3.cons(), out3, wait=True)
 
 try:
-    Program(NPU1Col1(), rt3).resolve_program(SequentialPlacer())
+    Program(NPU1Col1(), rt3).resolve_program()
     print("FAILED: expected ValueError but no exception was raised")
 except ValueError as e:
     assert "placed" in str(e).lower(), f"unexpected message: {e}"
