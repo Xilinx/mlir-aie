@@ -1,6 +1,6 @@
 # Flexible Data Movement Patterns for NPU/AIE
 
-This directory contains 5 prototype designs that explore different strategies
+This directory contains 7 prototype designs that explore different strategies
 for maximizing shimDMA bandwidth utilization and achieving flexible data
 distribution patterns from DDR through MemTile to AIE compute cores.
 
@@ -100,6 +100,23 @@ runtime_sequence.
 - **Abstraction sketch**: `memtile_hub_abstraction.py` proposes a `MemTileHub`
   class that reduces ~200 lines of boilerplate to ~15 lines.
 
+### 07: MemTile Pool Allocator
+
+Uses a **single pool buffer** in MemTile with `dma_bd(pool, offset=N, len=M)` to
+address different sub-regions of the same `aie.buffer()`. Replaces Prototype 6's
+4 separate buffer objects with 1 pool buffer and offset-based BD addressing.
+
+- **Pattern**: `dma_bd(pool, offset=N, len=M)` with different offsets per BD
+- **ShimDMA**: 1 MM2S + 1 S2MM
+- **Cores**: 2 (Core(0,2) and Core(0,3))
+- **MemTile buffers**: 1 pool (`memref<2048xui8>`) instead of 4 separate buffers
+- **API level**: Low-level (`buffer()`, `lock()`, `flow()`, `dma_configure_task()`)
+- **Key insight**: One contiguous allocation can serve multiple logical buffers
+  via offset-based addressing in the BD configuration — the foundation for a
+  runtime pool allocator where the host decides memory layout on the fly.
+- **Abstraction**: `memtile_hub_abstraction.py` extended with `pool_alloc()`,
+  `pool_free()`, `pool_reset()` API and `PoolRegion` dataclass.
+
 ## Results Summary
 
 | Prototype | ShimDMA Used | Cores | Key Pattern |
@@ -110,6 +127,7 @@ runtime_sequence.
 | 04 BD Chain | 1 MM2S + 1 S2MM | 2 | `iter_count` + `repeat_count` |
 | 05 Multi-Column | 4 MM2S + 4 S2MM | 4 | Parallel columns |
 | 06 MemTile Hub | 1 MM2S + 1 S2MM | 2 | Runtime `dma_configure_task` on MemTile |
+| 07 Pool Alloc | 1 MM2S + 1 S2MM | 2 | 1 pool buffer, offset-based BDs |
 
 All prototypes verified on NPU Strix Halo hardware.
 
