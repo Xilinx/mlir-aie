@@ -55,9 +55,9 @@ struct ShimInfo {
   int bdId;         // Buffer descriptor ID
   int argIdx;       // Runtime sequence argument index
   int bufferOffset; // Offset in bytes (non-zero when arg_idx=-1)
-  std::vector<TraceInfo> traceSources; // All traces routed to this shim
-  std::optional<int> startBroadcast;   // Broadcast to trigger for start
-  std::optional<int> stopBroadcast;    // Broadcast to trigger for stop
+  std::vector<TraceInfo> traceSources;     // All traces routed to this shim
+  std::optional<int> startBroadcast;       // Broadcast to trigger for start
+  std::optional<int> stopBroadcast;        // Broadcast to trigger for stop
   std::vector<ChannelDescriptor> channels; // Per-channel descriptors
   std::vector<int> traceChannelAssignment; // Per-trace index into channels
 };
@@ -306,10 +306,9 @@ struct AIEInsertTraceFlowsPass
           int numCols = targetModel.columns();
           if (clLateralTargetCol >= numCols ||
               !targetModel.isShimNOCTile(clLateralTargetCol, 0)) {
-            device.emitError()
-                << "lateral-target-col " << clLateralTargetCol
-                << " is not a valid shim NOC tile (device has " << numCols
-                << " columns)";
+            device.emitError() << "lateral-target-col " << clLateralTargetCol
+                               << " is not a valid shim NOC tile (device has "
+                               << numCols << " columns)";
             return signalPassFailure();
           }
           spare = clLateralTargetCol;
@@ -317,8 +316,7 @@ struct AIEInsertTraceFlowsPass
           // Auto-detect: only redirect from active columns to a spare.
           if (activeColumns.count(curTarget) == 0)
             continue; // already spare, no redirect needed
-          spare =
-              findNearestSpareColumn(curTarget, activeColumns, targetModel);
+          spare = findNearestSpareColumn(curTarget, activeColumns, targetModel);
         }
         if (spare >= 0)
           redirects[curTarget] = spare;
