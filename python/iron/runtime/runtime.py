@@ -29,7 +29,7 @@ from ..device import PlacementTile, AnyShimTile
 from ..resolvable import Resolvable
 from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
 from .dmatask import DMATask
-from .data import RuntimeData
+from .data import RuntimeData, RuntimeScalar
 from .endpoint import RuntimeEndpoint
 from .taskgroup import RuntimeTaskGroup
 from .task import (
@@ -37,6 +37,7 @@ from .task import (
     RuntimeStartTask,
     InlineOpRuntimeTask,
     FinishTaskGroupTask,
+    RtpWriteTask,
 )
 
 
@@ -70,23 +71,34 @@ class Runtime(Resolvable):
         self._ddr_id = 4
 
     @contextmanager
-    def sequence(self, *input_types: type[np.ndarray]):
+    def sequence(self, *input_types):
         """A RuntimeSequence is a sequence of operations that are performed in
         support of a program. Common operations include input and output data movement.
+
+        Args:
+            *input_types: numpy ndarray types for buffer parameters, or MLIR types
+                (e.g. IntegerType) for scalar parameters.
 
         Raises:
             ValueError: Arguments are validated.
             ValueError: If task groups are not finished within the sequence() context, and error will be raised.
 
         Yields:
-            RuntimeData | tuple[RuntimeData, ...]: Handles to the runtime buffers matching the declared input types.
+            _type_: Handles to the buffers/scalars matching the input types.
         """
         try:
-            self._rt_data = list(map(RuntimeData, input_types))
-            if len(self._rt_data) == 1:
-                yield self._rt_data[0]
+            items = []
+            for t in input_types:
+                if isinstance(t, ir.Type):
+                    items.append(RuntimeScalar(t))
+                else:
+                    items.append(RuntimeData(t))
+            self._sequence_items = items
+            self._rt_data = [i for i in items if isinstance(i, RuntimeData)]
+            if len(items) == 1:
+                yield items[0]
             else:
-                yield tuple(self._rt_data.copy())
+                yield tuple(items)
         finally:
             if len(self._open_task_groups) != 0:
                 tgs_str = ", ".join([str(t) for t in self._open_task_groups])
@@ -310,12 +322,34 @@ class Runtime(Resolvable):
                 if endpoint_tile.row == 0:
                     return endpoint_tile.op
 
+    def write_rtp(self, buf, index: int, value):
+        """Queue an RTP write to a buffer.
+
+        Args:
+            buf: A Buffer object (with _name attribute) or a string buffer name.
+            index (int): The index within the RTP buffer to write.
+            value: The value to write (integer constant or RuntimeScalar).
+        """
+        buf_name = buf._name if hasattr(buf, "_name") else str(buf)
+        self._tasks.append(RtpWriteTask(buf_name, index, value))
+
     def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        rt_dtypes = [rt_data.arr_type for rt_data in self._rt_data]
+        sequence_items = getattr(self, "_sequence_items", None)
+        if sequence_items is None:
+            sequence_items = self._rt_data
+
+        rt_dtypes = []
+        for item in sequence_items:
+            if isinstance(item, RuntimeData):
+                rt_dtypes.append(item.arr_type)
+            elif isinstance(item, RuntimeScalar):
+                rt_dtypes.append(item.mlir_type)
+            else:
+                rt_dtypes.append(item)
 
         task_group_actions = defaultdict(list)
 
@@ -329,8 +363,8 @@ class Runtime(Resolvable):
                     routing="single",
                 )
 
-            for rt_data, rt_data_val in zip(self._rt_data, args):
-                rt_data.op = rt_data_val
+            for item, arg_val in zip(sequence_items, args):
+                item.op = arg_val
 
             def finish_task_group(tg, task_group_actions):
                 actions = task_group_actions[tg]

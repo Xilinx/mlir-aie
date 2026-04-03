@@ -272,14 +272,16 @@ def test_include_directories():
         # Create a header file
         header_file = os.path.join(temp_dir, "math_ops.h")
         with open(header_file, "w") as f:
-            f.write("""
+            f.write(
+                """
 #ifndef MATH_OPS_H
 #define MATH_OPS_H
 
 #define ADD_VALUE 42
 
 #endif
-""")
+"""
+            )
 
         # Create input and output tensors
         input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")

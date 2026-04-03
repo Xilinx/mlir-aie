@@ -10,6 +10,13 @@ import numpy as np
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
+
+
+# TraceShimRouting enum (from AIETraceAttrs.td, not yet auto-generated)
+class TraceShimRouting(IntEnum):
+    Single = 0
+
+
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp
@@ -89,7 +96,12 @@ class npu_write_rtp(NpuWriteRTPOp):
         buff_name = buffer
         if isinstance(buffer, BufferOp):
             buff_name = buffer.sym_name.value
-        super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
+        if isinstance(value, Value):
+            super().__init__(
+                buffer=buff_name, index=index, dyn_value=value, loc=loc, ip=ip
+            )
+        else:
+            super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 
 class external_func(FuncOp):

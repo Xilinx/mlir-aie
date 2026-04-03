@@ -514,7 +514,8 @@ emitTransactionOps(OpBuilder &builder,
       AIEX::NpuAddressPatchOp::create(builder, loc,
                                       builder.getUI32IntegerAttr(patch.addr),
                                       builder.getI32IntegerAttr(patch.argIdx),
-                                      builder.getI32IntegerAttr(patch.argPlus));
+                                      builder.getI32IntegerAttr(patch.argPlus),
+                                      /*dyn_arg_plus=*/Value{});
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
           IntegerType::get(builder.getContext(), 8, IntegerType::Unsigned);

@@ -40,8 +40,10 @@ add_dependencies(obj.AIERT xaienginecdo_static xaienginecdo_static-headers)
 
 add_mlir_library(AIETargets
   AIETargets.cpp
+  AIENpuLowering.cpp
   AIETargetBCF.cpp
   AIETargetCDODirect.cpp
+  AIETargetCppTxn.cpp
   AIETargetNPU.cpp
   AIETargetLdScript.cpp
   AIETargetUcCert.cpp
@@ -84,9 +86,14 @@ add_mlir_library(AIETargets
   LINK_LIBS PUBLIC
   AIERT
   AIE
+  AIETransforms
   AIEX
+  AIEXTransforms
   AIEXUtils
   ADF
+  MLIRAIEXToEmitC
+  MLIREmitCDialect
+  MLIRTargetCpp
 )
 
 target_link_libraries(AIETargets PRIVATE xaienginecdo_static)

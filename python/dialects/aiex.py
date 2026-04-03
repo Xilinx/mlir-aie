@@ -26,6 +26,7 @@ from ..ir import (
     IntegerAttr,
     UnitAttr,
     Type,
+    Value,
     InsertionPoint,
     Attribute,
     AttrBuilder,
@@ -133,6 +134,80 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
 
 
 npu_dma_memcpy_nd = NpuDmaMemcpyNd
+
+
+# Dynamic convenience wrappers
+# These create unified ops with SSA value operands for runtime-parameterized
+# sequences. The static attributes serve as placeholders (0) and the dynamic
+# SSA values override them at runtime.
+
+
+def npu_write32_dynamic(dyn_address, dyn_value, *, buffer=None, column=None, row=None):
+    """write32 with SSA value operands for runtime-parameterized sequences."""
+    return NpuWrite32Op(
+        address=0,
+        value=0,
+        buffer=buffer,
+        column=column,
+        row=row,
+        dyn_address=dyn_address,
+        dyn_value=dyn_value,
+    )
+
+
+def npu_maskwrite32_dynamic(
+    dyn_address, dyn_value, dyn_mask, *, buffer=None, column=None, row=None
+):
+    """maskwrite32 with SSA value operands for runtime-parameterized sequences."""
+    return NpuMaskWrite32Op(
+        address=0,
+        value=0,
+        mask=0,
+        buffer=buffer,
+        column=column,
+        row=row,
+        dyn_address=dyn_address,
+        dyn_value=dyn_value,
+        dyn_mask=dyn_mask,
+    )
+
+
+def npu_sync_dynamic(
+    dyn_column, dyn_row, dyn_direction, dyn_channel, dyn_column_num, dyn_row_num
+):
+    """sync with SSA value operands for runtime-parameterized sequences."""
+    return NpuSyncOp(
+        column=0,
+        row=0,
+        direction=0,
+        channel=0,
+        column_num=0,
+        row_num=0,
+        dyn_column=dyn_column,
+        dyn_row=dyn_row,
+        dyn_direction=dyn_direction,
+        dyn_channel=dyn_channel,
+        dyn_column_num=dyn_column_num,
+        dyn_row_num=dyn_row_num,
+    )
+
+
+# Override auto-generated npu_rtp_write to support SSA values
+_orig_npu_rtp_write = npu_rtp_write
+
+
+def npu_rtp_write(buffer, index, value, *, loc=None, ip=None):
+    """RTP write supporting both static int and dynamic SSA Value.
+
+    When value is a Python int, it is passed as a static I32Attr.
+    When value is an SSA Value (i32), it is passed as the dyn_value operand.
+    """
+    if isinstance(value, Value):
+        return NpuWriteRTPOp(
+            buffer=buffer, index=index, dyn_value=value, loc=loc, ip=ip
+        )
+    else:
+        return NpuWriteRTPOp(buffer=buffer, index=index, value=value, loc=loc, ip=ip)
 
 
 # Runtime sequence

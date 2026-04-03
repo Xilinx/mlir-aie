@@ -2227,8 +2227,8 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
 
 def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
   Symbol,
-  NoTerminator, 
-  HasParent<"DeviceOp">, 
+  NoTerminator,
+  HasParent<"DeviceOp">,
 ]> {
   let summary = "Program the configuration co-processor of the AI Engine array";
   let description = [{

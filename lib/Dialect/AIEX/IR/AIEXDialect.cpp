@@ -414,18 +414,22 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Minimum data transfer size required is ")
            << addressGranularity << "bits. ";
   }
-  if (!llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
-        return getConstantIntValue(s).has_value();
-      }))
-    return emitOpError("Only constant strides currently supported.");
-  if (!llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
-        return getConstantIntValue(s).has_value();
-      }))
-    return emitOpError("Only constant sizes currently supported.");
-  if (!llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
-        return getConstantIntValue(s).has_value();
-      }))
-    return emitOpError("Only constant offsets currently supported.");
+  // Check if all sizes, strides, and offsets are compile-time constants.
+  // When any are SSA values (dynamic), skip the constant-only verification
+  // since those checks cannot be performed at compile time.
+  bool allSizesConstant = llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allStridesConstant = llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allOffsetsConstant = llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+
+  // Skip detailed stride/size/offset verification when values are dynamic.
+  if (!allSizesConstant || !allStridesConstant || !allOffsetsConstant)
+    return success();
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
@@ -618,7 +622,193 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op) {
 }
 
 std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+  if (hasDynamicOperands())
+    return std::nullopt;
   return ::getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuWrite32Op parse/print/verify
+//===----------------------------------------------------------------------===//
+
+/// Parse: `aiex.npu.write32(%addr, %val) {attrs} : type, type`
+/// or:    `aiex.npu.write32 {attrs}`
+ParseResult AIEX::NpuWrite32Op::parse(OpAsmParser &parser,
+                                      OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> dynOperands;
+  SmallVector<Type, 2> dynTypes;
+
+  // Try to parse optional `(operands)` for dynamic form
+  bool hasDynamic = false;
+  if (succeeded(parser.parseOptionalLParen())) {
+    hasDynamic = true;
+    OpAsmParser::UnresolvedOperand addr, val;
+    if (parser.parseOperand(addr) || parser.parseComma() ||
+        parser.parseOperand(val) || parser.parseRParen())
+      return failure();
+    dynOperands.push_back(addr);
+    dynOperands.push_back(val);
+  }
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  if (hasDynamic) {
+    if (parser.parseColon() || parser.parseType(dynTypes.emplace_back()) ||
+        parser.parseComma() || parser.parseType(dynTypes.emplace_back()))
+      return failure();
+    if (parser.resolveOperand(dynOperands[0], dynTypes[0], result.operands) ||
+        parser.resolveOperand(dynOperands[1], dynTypes[1], result.operands))
+      return failure();
+  }
+
+  // Set operand segment sizes: [dyn_address, dyn_value]
+  result.addAttribute("operandSegmentSizes",
+                      parser.getBuilder().getDenseI32ArrayAttr(
+                          {hasDynamic ? 1 : 0, hasDynamic ? 1 : 0}));
+
+  return success();
+}
+
+void AIEX::NpuWrite32Op::print(OpAsmPrinter &p) {
+  if (hasDynamicOperands()) {
+    p << '(' << getDynAddress() << ", " << getDynValue() << ')';
+  }
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{"operandSegmentSizes"});
+  if (hasDynamicOperands()) {
+    p << " : " << getDynAddress().getType() << ", " << getDynValue().getType();
+  }
+}
+
+LogicalResult AIEX::NpuWrite32Op::verify() {
+  bool hasAddr = getDynAddress() != nullptr;
+  bool hasVal = getDynValue() != nullptr;
+  if (hasAddr != hasVal)
+    return emitOpError(
+        "dynamic operands must be provided together (both or neither)");
+
+  if (hasAddr) {
+    auto addrType = getDynAddress().getType();
+    auto valType = getDynValue().getType();
+    if (auto intType = dyn_cast<IntegerType>(addrType)) {
+      if (intType.getWidth() != 32 && intType.getWidth() != 64)
+        return emitOpError("dynamic address must be 32-bit or 64-bit integer");
+    }
+    if (auto intType = dyn_cast<IntegerType>(valType)) {
+      if (intType.getWidth() != 32 && intType.getWidth() != 64)
+        return emitOpError("dynamic value must be 32-bit or 64-bit integer");
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuWriteRTPOp parse/print/verify
+//===----------------------------------------------------------------------===//
+
+/// Parse: `aiex.npu.rtp_write(@buffer, 0 : ui32, 42 : i32)` (static)
+/// or:    `aiex.npu.rtp_write(@buffer, 0 : ui32, %val) : i32` (dynamic)
+ParseResult AIEX::NpuWriteRTPOp::parse(OpAsmParser &parser,
+                                       OperationState &result) {
+  if (parser.parseLParen())
+    return failure();
+
+  // Parse buffer symbol ref
+  FlatSymbolRefAttr bufferAttr;
+  if (parser.parseAttribute(bufferAttr))
+    return failure();
+  result.addAttribute("buffer", bufferAttr);
+
+  if (parser.parseComma())
+    return failure();
+
+  // Parse index attribute (ui32). Accepts both bare (0) and typed (0 : ui32).
+  IntegerAttr indexAttr;
+  if (parser.parseAttribute(indexAttr))
+    return failure();
+  auto ui32Type = parser.getBuilder().getIntegerType(32, /*isSigned=*/false);
+  if (indexAttr.getType() != ui32Type)
+    indexAttr = IntegerAttr::get(ui32Type, indexAttr.getInt());
+  result.addAttribute("index", indexAttr);
+
+  if (parser.parseComma())
+    return failure();
+
+  // Try to parse dynamic value (SSA operand %val), else parse static attr.
+  OpAsmParser::UnresolvedOperand dynVal;
+  bool hasDynamic = false;
+
+  auto optResult = parser.parseOptionalOperand(dynVal);
+  if (optResult.has_value()) {
+    if (failed(*optResult))
+      return failure();
+    hasDynamic = true;
+  } else {
+    // Static value. Accepts both bare (42) and typed (42 : i32).
+    IntegerAttr valueAttr;
+    if (parser.parseAttribute(valueAttr))
+      return failure();
+    auto i32Type = parser.getBuilder().getIntegerType(32);
+    if (valueAttr.getType() != i32Type)
+      valueAttr = IntegerAttr::get(i32Type, valueAttr.getInt());
+    result.addAttribute("value", valueAttr);
+  }
+
+  if (parser.parseRParen())
+    return failure();
+
+  if (hasDynamic) {
+    Type dynType;
+    if (parser.parseColon() || parser.parseType(dynType))
+      return failure();
+    if (parser.resolveOperand(dynVal, dynType, result.operands))
+      return failure();
+  }
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  return success();
+}
+
+void AIEX::NpuWriteRTPOp::print(OpAsmPrinter &p) {
+  p << "(";
+  p.printAttribute(getBufferAttr());
+  p << ", ";
+  p.printAttribute(getIndexAttr());
+  p << ", ";
+  if (hasDynamicValue()) {
+    p.printOperand(getDynValue());
+    p << ")";
+  } else {
+    p.printAttribute(getValueAttr());
+    p << ")";
+  }
+
+  // Print type annotation for dynamic case (before attr-dict, matching parser)
+  if (hasDynamicValue()) {
+    p << " : " << getDynValue().getType();
+  }
+
+  // Elide attributes that are printed inline or handled by traits
+  SmallVector<StringRef> elidedAttrs = {"buffer", "index",
+                                        "operandSegmentSizes"};
+  if (!hasDynamicValue())
+    elidedAttrs.push_back("value");
+  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+}
+
+LogicalResult AIEX::NpuWriteRTPOp::verify() {
+  bool hasStaticVal = getValueAttr() != nullptr;
+  bool hasDynVal = getDynValue() != nullptr;
+
+  if (hasStaticVal == hasDynVal)
+    return emitOpError(
+        "exactly one of 'value' (static) or 'dyn_value' (dynamic) "
+        "must be provided");
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -626,7 +816,172 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+  if (hasDynamicOperands())
+    return std::nullopt;
   return ::getAbsoluteAddress(this);
+}
+
+/// Parse: `aiex.npu.maskwrite32(%addr, %val, %mask) {attrs} : type, type, type`
+/// or:    `aiex.npu.maskwrite32 {attrs}`
+ParseResult AIEX::NpuMaskWrite32Op::parse(OpAsmParser &parser,
+                                          OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 3> dynOperands;
+  SmallVector<Type, 3> dynTypes;
+
+  bool hasDynamic = false;
+  if (succeeded(parser.parseOptionalLParen())) {
+    hasDynamic = true;
+    OpAsmParser::UnresolvedOperand addr, val, mask;
+    if (parser.parseOperand(addr) || parser.parseComma() ||
+        parser.parseOperand(val) || parser.parseComma() ||
+        parser.parseOperand(mask) || parser.parseRParen())
+      return failure();
+    dynOperands.push_back(addr);
+    dynOperands.push_back(val);
+    dynOperands.push_back(mask);
+  }
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  if (hasDynamic) {
+    if (parser.parseColon() || parser.parseType(dynTypes.emplace_back()) ||
+        parser.parseComma() || parser.parseType(dynTypes.emplace_back()) ||
+        parser.parseComma() || parser.parseType(dynTypes.emplace_back()))
+      return failure();
+    for (unsigned i = 0; i < 3; ++i)
+      if (parser.resolveOperand(dynOperands[i], dynTypes[i], result.operands))
+        return failure();
+  }
+
+  // Set operand segment sizes: [dyn_address, dyn_value, dyn_mask]
+  int seg = hasDynamic ? 1 : 0;
+  result.addAttribute(
+      "operandSegmentSizes",
+      parser.getBuilder().getDenseI32ArrayAttr({seg, seg, seg}));
+
+  return success();
+}
+
+void AIEX::NpuMaskWrite32Op::print(OpAsmPrinter &p) {
+  if (hasDynamicOperands()) {
+    p << '(' << getDynAddress() << ", " << getDynValue() << ", " << getDynMask()
+      << ')';
+  }
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{"operandSegmentSizes"});
+  if (hasDynamicOperands()) {
+    p << " : " << getDynAddress().getType() << ", " << getDynValue().getType()
+      << ", " << getDynMask().getType();
+  }
+}
+
+LogicalResult AIEX::NpuMaskWrite32Op::verify() {
+  bool hasAddr = getDynAddress() != nullptr;
+  bool hasVal = getDynValue() != nullptr;
+  bool hasMask = getDynMask() != nullptr;
+  if (hasAddr != hasVal || hasAddr != hasMask)
+    return emitOpError(
+        "dynamic operands must be provided together (all or none)");
+
+  if (hasAddr) {
+    for (Value v : {getDynAddress(), getDynValue(), getDynMask()}) {
+      if (auto intType = dyn_cast<IntegerType>(v.getType())) {
+        if (intType.getWidth() != 32 && intType.getWidth() != 64)
+          return emitOpError(
+              "dynamic operands must be 32-bit or 64-bit integers");
+      }
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuSyncOp parse/print/verify
+//===----------------------------------------------------------------------===//
+
+/// Parse: `aiex.npu.sync(%c, %r, %d, %ch, %cn, %rn) {attrs} : i32, ...`
+/// or:    `aiex.npu.sync {attrs}`
+ParseResult AIEX::NpuSyncOp::parse(OpAsmParser &parser,
+                                   OperationState &result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 6> dynOperands;
+  SmallVector<Type, 6> dynTypes;
+
+  bool hasDynamic = false;
+  if (succeeded(parser.parseOptionalLParen())) {
+    hasDynamic = true;
+    for (unsigned i = 0; i < 6; ++i) {
+      if (i > 0 && parser.parseComma())
+        return failure();
+      dynOperands.emplace_back();
+      if (parser.parseOperand(dynOperands.back()))
+        return failure();
+    }
+    if (parser.parseRParen())
+      return failure();
+  }
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  if (hasDynamic) {
+    if (parser.parseColon())
+      return failure();
+    for (unsigned i = 0; i < 6; ++i) {
+      if (i > 0 && parser.parseComma())
+        return failure();
+      dynTypes.emplace_back();
+      if (parser.parseType(dynTypes.back()))
+        return failure();
+    }
+    for (unsigned i = 0; i < 6; ++i)
+      if (parser.resolveOperand(dynOperands[i], dynTypes[i], result.operands))
+        return failure();
+  }
+
+  // Set operand segment sizes: [dyn_column..dyn_row_num] (6 segments)
+  int seg = hasDynamic ? 1 : 0;
+  result.addAttribute(
+      "operandSegmentSizes",
+      parser.getBuilder().getDenseI32ArrayAttr({seg, seg, seg, seg, seg, seg}));
+
+  return success();
+}
+
+void AIEX::NpuSyncOp::print(OpAsmPrinter &p) {
+  if (hasDynamicOperands()) {
+    p << '(' << getDynColumn() << ", " << getDynRow() << ", "
+      << getDynDirection() << ", " << getDynChannel() << ", "
+      << getDynColumnNum() << ", " << getDynRowNum() << ')';
+  }
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{"operandSegmentSizes"});
+  if (hasDynamicOperands()) {
+    p << " : " << getDynColumn().getType() << ", " << getDynRow().getType()
+      << ", " << getDynDirection().getType() << ", "
+      << getDynChannel().getType() << ", " << getDynColumnNum().getType()
+      << ", " << getDynRowNum().getType();
+  }
+}
+
+LogicalResult AIEX::NpuSyncOp::verify() {
+  bool hasAny = getDynColumn() != nullptr;
+  bool allPresent = hasAny && getDynRow() != nullptr &&
+                    getDynDirection() != nullptr &&
+                    getDynChannel() != nullptr &&
+                    getDynColumnNum() != nullptr && getDynRowNum() != nullptr;
+  if (hasAny && !allPresent)
+    return emitOpError(
+        "dynamic operands must be provided together (all or none)");
+
+  if (hasAny) {
+    for (Value v : {getDynColumn(), getDynRow(), getDynDirection(),
+                    getDynChannel(), getDynColumnNum(), getDynRowNum()}) {
+      if (!v.getType().isSignlessInteger())
+        return emitOpError("all dynamic operands must be signless integers");
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

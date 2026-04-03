@@ -14,7 +14,6 @@ from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.func import func
 from aie.iron.controlflow import range_
 
-
 dev = AIEDevice.npu1_1col
 
 if len(sys.argv) > 2:

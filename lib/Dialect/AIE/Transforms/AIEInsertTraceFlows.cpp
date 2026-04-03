@@ -451,7 +451,8 @@ struct AIEInsertTraceFlowsPass
                                             shimInfo.shimTile, targetModel);
       xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
                                               bdAddress, shimInfo.argIdx,
-                                              shimInfo.bufferOffset);
+                                              shimInfo.bufferOffset,
+                                              /*dyn_arg_plus=*/Value{});
 
       // 4e. DMA channel configuration
       uint32_t ctrlAddr =

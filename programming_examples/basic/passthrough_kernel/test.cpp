@@ -11,6 +11,10 @@
 #include "xrt_test_wrapper.h"
 #include <cstdint>
 
+#ifdef USE_DYNAMIC_TXN
+#include "generated_txn.h"
+#endif
+
 //*****************************************************************************
 // Modify this section to customize buffer datatypes, initialization functions,
 // and verify function. The other place to reconfigure your design is the
@@ -63,13 +67,35 @@ int verify_passthrough_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
 
 int main(int argc, const char *argv[]) {
 
-  constexpr int IN1_VOLUME = IN1_SIZE / sizeof(DATATYPE_IN1);
-  constexpr int OUT_VOLUME = OUT_SIZE / sizeof(DATATYPE_OUT);
+  int in1_volume = IN1_SIZE / sizeof(DATATYPE_IN1);
+  int out_volume = OUT_SIZE / sizeof(DATATYPE_OUT);
 
   args myargs = parse_args(argc, argv);
 
+#ifdef USE_DYNAMIC_TXN
+  // If --dynamic-size is given, override the compiled-in buffer sizes
+  // and generate TXN instructions for that size at runtime.
+  // BD addresses are hardware constants for NPU2 shim tile (0,0).
+  constexpr uint32_t INPUT_BD_ADDR = 118784;  // 0x1D000
+  constexpr uint32_t OUTPUT_BD_ADDR = 118816; // 0x1D020
+  if (myargs.dynamic_size > 0) {
+    uint32_t size_bytes = myargs.dynamic_size;
+    in1_volume = size_bytes / sizeof(DATATYPE_IN1);
+    out_volume = size_bytes / sizeof(DATATYPE_OUT);
+    myargs.generate_instr = [size_bytes]() {
+      return generate_txn_sequence(size_bytes / 4, INPUT_BD_ADDR,
+                                   OUTPUT_BD_ADDR);
+    };
+  } else {
+    myargs.generate_instr = []() {
+      // Default: use compile-time size
+      return generate_txn_sequence(IN1_SIZE / 4, INPUT_BD_ADDR, OUTPUT_BD_ADDR);
+    };
+  }
+#endif
+
   int res = setup_and_run_aie<DATATYPE_IN1, DATATYPE_OUT, initialize_bufIn1,
                               initialize_bufOut, verify_passthrough_kernel>(
-      IN1_VOLUME, OUT_VOLUME, myargs);
+      in1_volume, out_volume, myargs);
   return res;
 }

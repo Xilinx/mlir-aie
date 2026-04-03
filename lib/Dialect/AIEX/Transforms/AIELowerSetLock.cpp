@@ -78,6 +78,7 @@ struct AIELowerSetLockPass
 
     if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
+      return;
     }
   }
 };

@@ -61,6 +61,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
+#include "aie/Targets/AIENpuLowering.h"
 #include "aie/Targets/AIETargets.h"
 #include "aie/version.h"
 
@@ -74,6 +75,7 @@
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
 #include "mlir/Conversion/Passes.h"
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -85,6 +87,7 @@
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
@@ -217,6 +220,16 @@ static cl::opt<std::string>
     instsName("npu-insts-name",
               cl::desc("Output instructions filename for NPU target"),
               cl::init("{0}_{1}.bin"), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    generateCppTxn("aie-generate-txn-cpp",
+                   cl::desc("Generate C++ code for runtime TXN generation"),
+                   cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string> cppTxnName("txn-cpp-name",
+                                       cl::desc("Output C++ TXN filename"),
+                                       cl::init("generated_txn.h"),
+                                       cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> generateElf(
     "aie-generate-elf",
@@ -1375,19 +1388,10 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // options (canonicalize, lower, optimize) through parseFromString, not
   // through direct member assignment. Without this, aie2p falls back to aie1
   // patterns.
-  std::string lowerTarget = aieTarget.lower();
-  if (lowerTarget == "aie2" || lowerTarget == "aieml" ||
-      lowerTarget == "aie2p") {
-    std::string vecPipeline =
-        "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        " target-backend=llvmir" +
-        (bf16Emulation ? " bf16-emulation=true" : "") + "}";
-    if (failed(parsePassPipeline(vecPipeline, pm))) {
-      llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
-                      "pipeline\n";
-      return failure();
-    }
-  }
+  // Note: convert-vector-to-aievec is now in the per-core LLVM lowering
+  // pipeline, not here. Running it at the module level would vectorize
+  // arith ops inside runtime_sequence (e.g. arith.minsi -> aievec.min),
+  // breaking EmitC conversion for the C++ TXN code path.
 
   // Step 2: Lower affine
   pm.addPass(createLowerAffinePass());
@@ -1437,9 +1441,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
   devicePm.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
-  // Step 5: Convert SCF to CF (module-level pass)
-  pm.addPass(createSCFToControlFlowPass());
-
   if (verbose) {
     llvm::outs() << "Running resource allocation pipeline in-memory "
                  << "(alloc-scheme=" << allocScheme.getValue() << ")\n";
@@ -1450,6 +1451,43 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
                                      tmpDirName))) {
     llvm::errs() << "Error: Resource allocation pipeline failed\n";
     return failure();
+  }
+
+  // Step 5: Convert SCF to CF in aie.core bodies only.
+  // We use applyPartialConversion with a custom ConversionTarget that marks
+  // RuntimeSequenceOp as legal. This prevents the SCF→CF pass from descending
+  // into aie.runtime_sequence, where scf.if regions may end with aiex ops
+  // (e.g. aiex.npu.sync) that are not proper SCF terminators. The runtime
+  // sequence SCF ops are handled later by AIEXToStandardPass. The
+  // IsolatedFromAbove trait alone does NOT prevent applyPartialConversion from
+  // walking into RuntimeSequenceOp - we must explicitly mark it legal.
+  {
+    MLIRContext *ctx = moduleOp.getContext();
+    ConversionTarget scfTarget(*ctx);
+    // Mark all dialects legal by default so only SCF ops trigger conversion
+    scfTarget.addLegalDialect<cf::ControlFlowDialect>();
+    scfTarget.addLegalDialect<scf::SCFDialect>();
+    scfTarget.addLegalDialect<arith::ArithDialect>();
+    scfTarget.addLegalDialect<func::FuncDialect>();
+    scfTarget.addLegalDialect<memref::MemRefDialect>();
+    scfTarget.addLegalDialect<xilinx::AIE::AIEDialect>();
+    scfTarget.addLegalDialect<xilinx::AIEX::AIEXDialect>();
+    scfTarget.addLegalOp<ModuleOp>();
+    // Mark RuntimeSequenceOp as legal with all its nested ops - this prevents
+    // the converter from descending into runtime_sequence and trying to lower
+    // SCF ops that have non-standard terminators (aiex ops) in their regions.
+    scfTarget.addLegalOp<xilinx::AIE::RuntimeSequenceOp>();
+    scfTarget.markOpRecursivelyLegal<xilinx::AIE::RuntimeSequenceOp>();
+    // Mark SCF ops as illegal inside aie.core bodies (not inside
+    // runtime_sequence)
+    scfTarget.addIllegalDialect<scf::SCFDialect>();
+    RewritePatternSet scfPatterns(ctx);
+    populateSCFToControlFlowConversionPatterns(scfPatterns);
+    if (failed(applyPartialConversion(moduleOp, scfTarget,
+                                      std::move(scfPatterns)))) {
+      llvm::errs() << "Error: SCF to CF conversion failed\n";
+      return failure();
+    }
   }
 
   if (verbose) {
@@ -1511,20 +1549,8 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
       pm.enableVerifier(true);
     }
 
-    // Add materialize runtime sequences pass at module level (before device
-    // nesting) unless --no-materialize is specified
-    if (!noMaterialize) {
-      pm.addPass(xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass());
-    }
-
-    // Device-level passes
-    OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-    devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
-    devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
-    devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
-    devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
-    devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
-    devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
+    xilinx::AIE::populateNpuLoweringPipeline(pm,
+                                             /*skipMaterialize=*/noMaterialize);
 
     if (verbose) {
       llvm::outs() << "Running NPU lowering pipeline in-memory\n";
@@ -1710,6 +1736,19 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
   devicePm.addPass(xilinx::AIEX::createAIETransformBfpTypesPass());
 
+  // Step 1b: Vector to AIEVec conversion (before core extraction)
+  {
+    std::string lt = aieTarget.lower();
+    if (lt == "aie2" || lt == "aieml" || lt == "aie2p") {
+      std::string vecPipeline = "convert-vector-to-aievec{aie-target=" + lt +
+                                " target-backend=llvmir}";
+      if (failed(parsePassPipeline(vecPipeline, pm))) {
+        llvm::errs() << "Error: Failed to parse convert-vector-to-aievec\n";
+        return failure();
+      }
+    }
+  }
+
   // Step 2: aie-standard-lowering with specific core coordinates
   // This extracts the specified core and removes the aie.device wrapper
   xilinx::AIE::AIECoreToStandardOptions coreOpts;
@@ -1727,6 +1766,7 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass(aievecOpts));
 
   // Step 5: Standard LLVM lowering passes
+  pm.addPass(createSCFToControlFlowPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(memref::createExpandStridedMetadataPass());
@@ -1808,6 +1848,7 @@ static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass(aievecOpts));
 
   // Step 5: Standard LLVM lowering passes
+  pm.addPass(createSCFToControlFlowPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addPass(memref::createExpandStridedMetadataPass());
@@ -1987,6 +2028,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
   // Step 1: Clone module and run LLVM lowering pipeline in-memory
   // The pipeline is destructive (removes other cores), so we clone first.
   OwningOpRef<ModuleOp> coreModule = moduleOp.clone();
+
+  // Remove runtime_sequences from the clone — they're not needed for
+  // core compilation and their presence causes the canonicalizer (in
+  // convert-vector-to-aievec) to hoist constants from the sequence to
+  // device scope, creating cross-region references that crash during
+  // core extraction.
+  coreModule->walk([](xilinx::AIE::RuntimeSequenceOp seqOp) { seqOp.erase(); });
 
   // Register LLVM IR translation dialects
   mlir::registerBuiltinDialectTranslation(context);
@@ -2779,6 +2827,10 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
   // Step 1: Clone module and run unified LLVM lowering pipeline
   OwningOpRef<ModuleOp> unifiedModule = moduleOp.clone();
+
+  // Remove runtime_sequences from the clone (not needed for core compilation).
+  unifiedModule->walk(
+      [](xilinx::AIE::RuntimeSequenceOp seqOp) { seqOp.erase(); });
 
   // Register LLVM IR translation dialects
   mlir::registerBuiltinDialectTranslation(context);
@@ -3761,6 +3813,52 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   if (failed(result)) {
     return failure();
   }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// C++ TXN Generation
+//===----------------------------------------------------------------------===//
+
+/// Generate C++ code that builds TXN instruction binaries at runtime.
+/// This clones the module, runs NPU lowering + EmitC conversion, and emits C++.
+static LogicalResult generateCppTxnCode(ModuleOp moduleOp, StringRef tmpDirName,
+                                        StringRef devName) {
+  if (!generateCppTxn)
+    return success();
+
+  if (verbose)
+    llvm::outs() << "Generating C++ TXN code for device: " << devName << "\n";
+
+  if (dryRun) {
+    if (verbose)
+      llvm::outs() << "Would generate C++ TXN code for device: " << devName
+                   << "\n";
+    return success();
+  }
+
+  // Clone the module since the pipeline is destructive
+  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+
+  // Use AIETranslateToCppTxn which runs NPU lowering + EmitC conversion
+  std::string outputFileName = formatString(cppTxnName, devName);
+
+  std::error_code ec;
+  raw_fd_ostream outFile(outputFileName, ec, sys::fs::OpenFlags::OF_None);
+  if (ec) {
+    llvm::errs() << "Error opening C++ TXN output file: " << ec.message()
+                 << "\n";
+    return failure();
+  }
+
+  if (failed(xilinx::AIE::AIETranslateToCppTxn(*clonedModule, outFile))) {
+    llvm::errs() << "Error generating C++ TXN code\n";
+    return failure();
+  }
+
+  if (verbose)
+    llvm::outs() << "Wrote C++ TXN code to: " << outputFileName << "\n";
 
   return success();
 }
@@ -5246,6 +5344,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     // Generate NPU instructions from in-memory module.
     if (!generateCtrlPkt &&
         failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
+      return failure();
+    }
+
+    // Generate C++ TXN code if requested. This clones the module internally,
+    // so moduleOp must still be in its pre-NPU-lowered state (which it is,
+    // because generateNpuInstructions also works on a clone).
+    if (failed(generateCppTxnCode(moduleOp, tmpDirName, devName))) {
       return failure();
     }
 

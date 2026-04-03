@@ -241,7 +241,8 @@ struct AIEDMATasksToNPUPass
       NpuAddressPatchOp::create(builder, bd_op.getLoc(),
                                 /*addr*/ register_addr,
                                 /*arg_idx*/ arg_idx,
-                                /*arg_plus*/ offset);
+                                /*arg_plus*/ offset,
+                                /*dyn_arg_plus=*/Value{});
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -659,6 +660,7 @@ struct AIEDMATasksToNPUPass
     patterns.insert<DMAAwaitTaskOpPattern>(&getContext());
     if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
+      return;
     }
 
     // Lower the configuration for the BDs

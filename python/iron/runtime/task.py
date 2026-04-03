@@ -8,10 +8,12 @@
 from typing import Callable
 
 from ... import ir  # type: ignore
+from ...dialects.aiex import npu_rtp_write
 
 from ..buffer import Buffer
 from ..resolvable import Resolvable
 from ..worker import Worker
+from .data import RuntimeScalar
 from .taskgroup import RuntimeTaskGroup
 
 
@@ -95,3 +97,28 @@ class InlineOpRuntimeTask(RuntimeTask):
         for arg in self._args:
             InlineOpRuntimeTask._resolve_buffers(arg, loc, ip)
         self._fn(*self._args)
+
+
+class RtpWriteTask(RuntimeTask):
+    """A RuntimeTask that writes a value to a Runtime Parameter (RTP) buffer."""
+
+    def __init__(self, buf_name: str, index: int, value):
+        """Construct an RtpWriteTask.
+
+        Args:
+            buf_name (str): The name of the RTP buffer.
+            index (int): The index within the RTP buffer to write.
+            value: The value to write (int or RuntimeScalar op).
+        """
+        self._buf_name = buf_name
+        self._index = index
+        self._value = value
+        RuntimeTask.__init__(self, None)
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        val = self._value.op if isinstance(self._value, RuntimeScalar) else self._value
+        npu_rtp_write(self._buf_name, self._index, val)
