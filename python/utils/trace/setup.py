@@ -490,7 +490,7 @@ def configure_trace(
                 else:
                     port_configs[slot] = (config, event.code.name)
 
-        # Generate the aie.trace op (needs SSA value, not OpView)
+        # Generate the aie.trace op
         @trace(tile_val, trace_name)
         def trace_body():
             if is_core_trace:
