@@ -44,6 +44,7 @@ void test_utils::add_default_options(cxxopts::Options &options) {
       "instr,i",
       "path of file containing userspace instructions sent to the NPU",
       cxxopts::value<std::string>())(
+      "elf,e", "the input ELF path for full-ELF", cxxopts::value<std::string>())(
       "verify", "whether to verify the AIE computed output",
       cxxopts::value<bool>()->default_value("true"))(
       "iters", "number of iterations",
@@ -72,10 +73,16 @@ void test_utils::parse_options(int argc, const char *argv[],
   }
 
   try {
-    check_arg_file_exists(vm, "xclbin");
-    check_arg_file_exists(vm, "instr");
+    check_arg_file_exists(vm, "elf");
   } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
+    std::string msg = ex.what();
+    try {
+      check_arg_file_exists(vm, "xclbin");
+      check_arg_file_exists(vm, "instr");
+    } catch (const std::exception &ex) {
+      msg += "\n and \n" + std::string(ex.what());
+      std::cerr << msg << "\n\n";
+    }
   }
 }
 
