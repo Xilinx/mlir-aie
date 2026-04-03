@@ -95,6 +95,11 @@ class Worker(ObjectFifoEndpoint):
             elif isinstance(arg, Buffer):
                 self._buffers.append(arg)
                 # Buffers are placed on the same tile as the Worker
+                if arg._tile is not None and arg._tile is not self._tile:
+                    raise ValueError(
+                        f"Buffer '{arg._name}' is already placed on {arg._tile}; "
+                        f"cannot reassign to {self._tile}"
+                    )
                 arg._tile = self._tile
             elif isinstance(arg, ObjectFifo):
                 # This is an easy error to make, so we catch it early

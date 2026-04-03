@@ -12,7 +12,7 @@ import pytest
 import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
 from aie.iron.dataflow.objectfifo import ObjectFifoLink
 from aie.iron.device import (
     NPU2,
@@ -121,6 +121,36 @@ def test_workers_cannot_share_tile():
         rt.fill(of2.prod(), B)
     with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
         Program(NPU2(), rt).resolve_program()
+
+
+def test_workers_cannot_share_tile_by_coordinates():
+    """Two workers with different Tile objects but same coordinates must error."""
+    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+    tile_1 = Tile(0, 2)
+    tile_2 = Tile(0, 2)
+    of1 = ObjectFifo(n_ty, name="coord_of1")
+    of2 = ObjectFifo(n_ty, name="coord_of2")
+    w1 = Worker(None, [of1.cons()], tile=tile_1)
+    w2 = Worker(None, [of2.cons()], tile=tile_2)
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty) as (A, B):
+        rt.start(w1, w2)
+        rt.fill(of1.prod(), A)
+        rt.fill(of2.prod(), B)
+    with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
+        Program(NPU2(), rt).resolve_program()
+
+
+def test_buffer_cannot_be_shared_across_workers():
+    """A Buffer passed to two Workers must error on the second assignment."""
+    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+    buf_ty = np.ndarray[(16,), np.dtype[np.int32]]
+    buf = Buffer(type=buf_ty, name="shared_buf")
+    of1 = ObjectFifo(n_ty, name="buf_of1")
+    _ = Worker(None, [of1.cons(), buf])
+    of2 = ObjectFifo(n_ty, name="buf_of2")
+    with pytest.raises(ValueError, match="already placed on"):
+        Worker(None, [of2.cons(), buf])
 
 
 def test_tile_resolve_invalid_input():

@@ -67,13 +67,21 @@ class Program:
 
                 # Collect all tiles, validating no two workers share the same tile
                 all_tiles = []
-                worker_tiles = set()
+                worker_tile_ids = set()
+                worker_tile_coords = set()
                 for w in self._rt.workers:
-                    if id(w.tile) in worker_tiles:
+                    if id(w.tile) in worker_tile_ids:
                         raise ValueError(
                             f"Multiple workers cannot share the same tile: {w.tile}"
                         )
-                    worker_tiles.add(id(w.tile))
+                    worker_tile_ids.add(id(w.tile))
+                    if w.tile.col is not None and w.tile.row is not None:
+                        coord = (w.tile.col, w.tile.row)
+                        if coord in worker_tile_coords:
+                            raise ValueError(
+                                f"Multiple workers cannot share the same tile: {w.tile}"
+                            )
+                        worker_tile_coords.add(coord)
                     all_tiles.append(w.tile)
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])

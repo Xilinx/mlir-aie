@@ -16,7 +16,7 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.iron.device import NPU1Col1, NPU2, Tile
+from aie.iron.device import AnyMemTile, NPU1Col1, NPU2, Tile
 from aie.iron.controlflow import range_
 
 if len(sys.argv) > 1:
@@ -137,7 +137,7 @@ def bottleneck4AIEs():
     # AIE-array data movement with object fifos
     of_inOF_act_L3L2 = ObjectFifo(tensorLayer1In_ty, name="inOF_act_L3L2")
     of_skip_buf = of_inOF_act_L3L2.cons(4).forward(
-        depth=2, tile=Tile(), name="skip_buf"
+        depth=2, tile=AnyMemTile, name="skip_buf"
     )
 
     # weights
