@@ -157,7 +157,7 @@ class Runtime(Resolvable):
                 If None is given, this will default to a linear transfer containing all data in the source buffer. Defaults to None.
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
-            tile (Tile | None, optional): The shim tile for this data transfer. Defaults to a new unplaced shim tile.
+            tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
 
         Raises:
             ValueError: Arguments are validated.
@@ -194,7 +194,7 @@ class Runtime(Resolvable):
                 If None is given, this will default to a linear transfer containing all data in the destination buffer. Defaults to None.
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
-            tile (Tile | None, optional): The shim tile for this data transfer. Defaults to a new unplaced shim tile.
+            tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
 
         Raises:
             ValueError: Arguments are validated.

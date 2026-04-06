@@ -27,7 +27,7 @@ class Worker(ObjectFifoEndpoint):
 
     A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,
     Buffers, Kernels, etc.). Each Worker is placed on a single compute tile, either
-    explicitly via ``placement`` or automatically by the ``--aie-place-tiles`` compiler pass.
+    explicitly via ``tile`` or automatically by the ``--aie-place-tiles`` compiler pass.
     """
 
     def __init__(

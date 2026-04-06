@@ -1110,6 +1110,12 @@ class LogicalTileOp(LogicalTileOp):
         return tile_like_is_shim_tile(self.operation)
 
 
+def logical_tile(tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None):
+    return LogicalTileOp(
+        tile_type=tile_type, col=col, row=row, allocation_scheme=allocation_scheme, loc=loc, ip=ip
+    )
+
+
 # BDChainOp
 
 

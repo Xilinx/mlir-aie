@@ -22,7 +22,6 @@ from aie.dialects.aie import (
     DMAChannelDir,
     get_target_model,
 )
-
 from aie.dialects.aiex import (
     npu_write32,
     npu_writebd,
@@ -408,15 +407,14 @@ def configure_trace(
     packet_id = 1
     seen_core_tiles = set()
 
-    for tile_val in tiles_to_trace:
-        tile_op = tile_val.owner
+    for tile_op in tiles_to_trace:
         # Determine if this is a core tile memory trace (second occurrence)
         is_mem_trace = False
         if tile_op.is_core_tile():
-            if tile_val in seen_core_tiles:
+            if tile_op in seen_core_tiles:
                 is_mem_trace = True
             else:
-                seen_core_tiles.add(tile_val)
+                seen_core_tiles.add(tile_op)
 
         # Generate unique trace name based on tile type
         if tile_op.is_core_tile():
@@ -489,7 +487,7 @@ def configure_trace(
                     port_configs[slot] = (config, event.code.name)
 
         # Generate the aie.trace op
-        @trace(tile_val, trace_name)
+        @trace(tile_op, trace_name)
         def trace_body():
             if is_core_trace:
                 trace_mode(TraceMode.EventTime)
