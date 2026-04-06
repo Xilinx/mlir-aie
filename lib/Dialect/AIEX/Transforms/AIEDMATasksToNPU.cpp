@@ -359,25 +359,17 @@ struct AIEDMATasksToNPUPass
       }
 
       // d3 (repeat) is excluded; a repeated linear transfer is still linear.
-      // A contiguous row-major ND access on a shim NOC tile is also treated as
-      // linear: it is lowered using the wide buffer_length register, which is
-      // exempt from the 10-bit ND wrap-size limit.
-      //
-      // Note: isContiguousTransfer allows size-1 dimensions to carry any
-      // stride value (the stride is not applied during the transfer).  In the
-      // BD lowering context we must be stricter: a size-1 dimension with a
-      // non-zero stride must still use the ND registers because the BD
-      // descriptor encodes those strides and they affect hardware behaviour.
-      // We therefore require that any size-1 outer dimension has stride 0
-      // before we may collapse to the linear (flat) register mode.
-      bool size1DimsHaveZeroStrides =
-          (input_sizes[1] == 1 ? input_strides[1] == 0 : true) &&
-          (input_sizes[2] == 1 ? input_strides[2] == 0 : true);
-      bool isLinearTransfer =
-          AIEX::isLinearTransfer(input_sizes, input_strides) ||
+      // A contiguous row-major ND access on a shim NOC tile is also lowered
+      // using the wide buffer_length register, exempt from the 10-bit ND
+      // wrap-size limit.  At the BD level we use
+      // isLinearizableContiguousTransfer rather than isContiguousTransfer: the
+      // BD descriptor physically encodes all stride fields, so a non-zero
+      // stride in a size-1 dimension would occupy ND registers and prevent flat
+      // (linear) mode.
+      bool treatAsLinear =
+          isLinearTransfer(input_sizes, input_strides) ||
           (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
-           size1DimsHaveZeroStrides &&
-           AIEX::isContiguousTransfer(input_sizes, input_strides));
+           isLinearizableContiguousTransfer(input_sizes, input_strides));
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
@@ -411,14 +403,14 @@ struct AIEDMATasksToNPUPass
 
       if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
                                     tile.getRow(), input_sizes, input_strides,
-                                    sizes, strides, isLinearTransfer))) {
+                                    sizes, strides, treatAsLinear))) {
         return failure();
       }
 
       iteration_size = sizes[3];
       iteration_stride = strides[3];
 
-      if (!isLinearTransfer) {
+      if (!treatAsLinear) {
         // d0_size, d0_stride
         d0size = sizes[0];
         d0stride = strides[0];

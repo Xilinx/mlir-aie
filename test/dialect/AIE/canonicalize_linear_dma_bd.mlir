@@ -183,3 +183,60 @@ module {
     }
   }
 }
+
+// -----
+
+// Regression: burst_length attribute must be preserved when folding to linear
+// form.  burst_length is a shim-only attribute; using modifyOpInPlace rather
+// than replaceOpWithNewOp ensures it (and all other non-dimension attributes)
+// survive the fold without an explicit copy loop.
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:       aie.shim_dma
+// CHECK:         aie.dma_bd
+// CHECK-NOT:       dimensions
+// CHECK-NOT:       [<
+// CHECK-SAME:      burst_length = 64
+module {
+  aie.device(npu1) {
+    %tile_0_0 = aie.tile(0, 0)
+    %buf = aie.external_buffer { sym_name = "buf_burst" } : memref<1024xi32>
+    aie.shim_dma(%tile_0_0) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<1024xi32>, 0, 1024,
+          [<size = 2, stride = 512>, <size = 512, stride = 1>]) {
+            burst_length = 64 : i32}
+        aie.next_bd ^end
+      ^end:
+        aie.end
+    }
+  }
+}
+
+// -----
+
+// Regression: bd_id attribute must be preserved when folding to linear form.
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:       aie.shim_dma
+// CHECK:         aie.dma_bd
+// CHECK-NOT:       dimensions
+// CHECK-NOT:       [<
+// CHECK-SAME:      bd_id = 3
+module {
+  aie.device(npu1) {
+    %tile_0_0 = aie.tile(0, 0)
+    %buf = aie.external_buffer { sym_name = "buf_bdid" } : memref<1024xi32>
+    aie.shim_dma(%tile_0_0) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<1024xi32>, 0, 1024,
+          [<size = 2, stride = 512>, <size = 512, stride = 1>]) {
+            bd_id = 3 : i32}
+        aie.next_bd ^end
+      ^end:
+        aie.end
+    }
+  }
+}

@@ -2147,12 +2147,12 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   if (dims.back().getStride() != 1)
     return false;
   // Each outer stride must equal the product of all inner sizes.
-  int64_t product = 1;
+  // Use uint64_t throughout to match the unsigned getSize()/getStride() types.
+  uint64_t product = 1;
   for (int i = static_cast<int>(dims.size()) - 1; i >= 1; --i) {
     product *= dims[i].getSize();
     // A size-1 dimension's stride is irrelevant (it is never stepped).
-    if (dims[i - 1].getSize() > 1 &&
-        static_cast<int64_t>(dims[i - 1].getStride()) != product)
+    if (dims[i - 1].getSize() > 1 && dims[i - 1].getStride() != product)
       return false;
   }
   return true;
@@ -2424,25 +2424,25 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     if (dims->size() == 1 && dims->front().getStride() == 1)
       return mlir::failure();
 
-    // Recover offset (default 0) and len (default = buffer element count).
-    int32_t offset = op.getOffset();
-    int32_t len = 0;
-    if (auto lenVal = op.getLen())
+    // If the op has no explicit len, compute it from the total element count
+    // across all dims (product of all sizes).  This is always well-defined
+    // when dims is non-empty, so we don't need to fall back to the buffer type.
+    int32_t len;
+    if (auto lenVal = op.getLen()) {
       len = *lenVal;
-    else if (auto memref =
-                 llvm::dyn_cast<mlir::MemRefType>(op.getBuffer().getType()))
-      len = memref.getNumElements();
-
-    // Replace with the same op but no dimensions attribute (linear mode).
-    // Preserve all other attributes (packet, burst_length, bd_id, etc.).
-    auto newOp =
-        rewriter.replaceOpWithNewOp<DMABDOp>(op, op.getBuffer(), offset, len);
-    for (mlir::NamedAttribute attr : op->getAttrs()) {
-      mlir::StringRef name = attr.getName().getValue();
-      if (name == "offset" || name == "len" || name == "dimensions")
-        continue;
-      newOp->setAttr(attr.getName(), attr.getValue());
+    } else {
+      int64_t product = 1;
+      for (BDDimLayoutAttr dim : *dims)
+        product *= dim.getSize();
+      len = static_cast<int32_t>(product);
     }
+
+    // Drop the dimensions attribute in-place; all other attributes (offset,
+    // len, packet, burst_length, bd_id, etc.) are preserved automatically.
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.setLen(len);
+      op->removeAttr("dimensions");
+    });
     return mlir::success();
   }
 };

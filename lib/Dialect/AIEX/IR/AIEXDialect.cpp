@@ -355,6 +355,8 @@ bool AIEX::isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
 // Returns true when sizes/strides (innermost-first) describe a contiguous
 // row-major scan: innermost stride == 1 and each outer stride equals the
 // product of all inner sizes.  The repeat dimension (index 3) is excluded.
+// Size-1 dimensions are allowed to carry any stride value because that stride
+// is never applied during the transfer (the loop runs only once).
 // This is the vector-form counterpart of AIE::isContiguousBDTransfer.
 bool AIEX::isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
                                 llvm::ArrayRef<int64_t> strides) {
@@ -363,6 +365,21 @@ bool AIEX::isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
   if (sizes[1] > 1 && strides[1] != sizes[0])
     return false;
   if (sizes[2] > 1 && strides[2] != sizes[0] * sizes[1])
+    return false;
+  return true;
+}
+
+// Like isContiguousTransfer, but additionally requires every size-1 outer
+// dimension to have stride 0.  Use this when the BD descriptor physically
+// encodes the stride fields and a non-zero stride in a size-1 dimension would
+// prevent lowering to flat (linear) register mode.
+bool AIEX::isLinearizableContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
+                                            llvm::ArrayRef<int64_t> strides) {
+  if (!isContiguousTransfer(sizes, strides))
+    return false;
+  if (sizes[1] == 1 && strides[1] != 0)
+    return false;
+  if (sizes[2] == 1 && strides[2] != 0)
     return false;
   return true;
 }
@@ -913,9 +930,9 @@ LogicalResult AIEX::DMAStartBdChainOp::verify() {
   }
   for (unsigned i = 0, n = expectedArgTypes.size(); i < n; i++) {
     if (actualArgTypes[i] != expectedArgTypes[i]) {
-      return emitOpError("Argument ") << (i + 1) << " types mismatch: "
-                                      << "expected " << expectedArgTypes[i]
-                                      << " but got " << actualArgTypes[i];
+      return emitOpError("Argument ")
+             << (i + 1) << " types mismatch: " << "expected "
+             << expectedArgTypes[i] << " but got " << actualArgTypes[i];
     }
   }
   return success();
