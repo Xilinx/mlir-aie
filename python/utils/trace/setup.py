@@ -22,8 +22,6 @@ from aie.dialects.aie import (
     DMAChannelDir,
     get_target_model,
 )
-from aie.ir import OpView
-
 
 from aie.dialects.aiex import (
     npu_write32,
@@ -411,7 +409,7 @@ def configure_trace(
     seen_core_tiles = set()
 
     for tile_val in tiles_to_trace:
-        tile_op = tile_val if isinstance(tile_val, OpView) else tile_val.owner
+        tile_op = tile_val.owner
         # Determine if this is a core tile memory trace (second occurrence)
         is_mem_trace = False
         if tile_op.is_core_tile():

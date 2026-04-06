@@ -14,8 +14,8 @@ from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
 from ..dialects.aiex import set_lock_value, LockAction
 from ..helpers.dialects.scf import _for as range_
-from .device import Tile
-from .device.tile import AIETileType
+from .device import Tile, AnyComputeTile
+from ..dialects._aie_enum_gen import AIETileType  # type: ignore
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
@@ -34,7 +34,7 @@ class Worker(ObjectFifoEndpoint):
         self,
         core_fn: Callable | None,
         fn_args: list = [],
-        tile: Tile | None = None,
+        tile: Tile = AnyComputeTile,
         while_true: bool = True,
         stack_size: int = None,
         allocation_scheme: str = None,
@@ -46,7 +46,7 @@ class Worker(ObjectFifoEndpoint):
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
             fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
-            tile (Tile | None, optional): The compute tile for the Worker. Defaults to a new unplaced compute tile.
+            tile (Tile, optional): The compute tile for the Worker. Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
@@ -57,7 +57,7 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
-        tile = Tile.resolve(tile)
+        tile = tile.copy()
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"

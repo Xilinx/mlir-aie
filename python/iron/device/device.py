@@ -33,6 +33,7 @@ class Device(Resolvable):
         self._device = device
         self._tm = get_target_model(device)
         self._resolved_tiles: dict[int, LogicalTileOp] = {}
+        self._resolved_coords: dict[tuple[int, int], LogicalTileOp] = {}
 
     @property
     def cols(self) -> int:
@@ -44,18 +45,18 @@ class Device(Resolvable):
         """Number of rows in the device tile array."""
         return self._tm.rows()
 
-    def _infer_tile_type(self, col, row):
-        """Infer the AIETileType from device coordinates."""
-        if self._tm.is_core_tile(col, row):
-            return AIETileType.CoreTile
-        elif self._tm.is_mem_tile(col, row):
-            return AIETileType.MemTile
-        elif self._tm.is_shim_noc_tile(col, row):
-            return AIETileType.ShimNOCTile
-        elif self._tm.is_shim_pl_tile(col, row):
-            return AIETileType.ShimPLTile
-        else:
-            raise ValueError(f"Cannot determine tile type for ({col}, {row})")
+    def _validate_coordinates(self, col, row):
+        """Raise ValueError if coordinates are outside the device grid."""
+        if col < 0 or col >= self._tm.columns() or row < 0 or row >= self._tm.rows():
+            raise ValueError(
+                f"Coordinates ({col}, {row}) are out of range for device "
+                f"({self._tm.columns()} cols x {self._tm.rows()} rows)"
+            )
+
+    def get_tile_type(self, col, row) -> AIETileType:
+        """Return the AIETileType for the given device coordinates."""
+        self._validate_coordinates(col, row)
+        return AIETileType(self._tm.get_tile_type(col, row))
 
     def tile_iterator(self) -> Generator[Tile, None, None]:
         """
@@ -63,7 +64,7 @@ class Device(Resolvable):
         """
         for c in range(self._tm.columns()):
             for r in range(self._tm.rows()):
-                yield Tile(c, r, tile_type=self._infer_tile_type(c, r))
+                yield Tile(c, r, tile_type=self.get_tile_type(c, r))
         return None
 
     def get_shim_tiles(self) -> list[Tile]:
@@ -246,15 +247,24 @@ class Device(Resolvable):
             tile.op = self._resolved_tiles[tile_id]
             return
 
+        # Merge tiles at the same coordinates into one logical_tile op
+        if tile.col is not None and tile.row is not None:
+            coord = (tile.col, tile.row)
+            if coord in self._resolved_coords:
+                op = self._resolved_coords[coord]
+                self._resolved_tiles[tile_id] = op
+                tile.op = op
+                return
+
         if tile.tile_type is None:
             if tile.col is not None and tile.row is not None:
-                tile.tile_type = self._infer_tile_type(tile.col, tile.row)
+                tile.tile_type = self.get_tile_type(tile.col, tile.row)
             else:
                 raise ValueError(
                     f"Cannot resolve {tile}: tile_type must be set or inferred from coordinates."
                 )
         elif tile.col is not None and tile.row is not None:
-            inferred = self._infer_tile_type(tile.col, tile.row)
+            inferred = self.get_tile_type(tile.col, tile.row)
             if tile.tile_type != inferred:
                 raise ValueError(
                     f"Tile at ({tile.col}, {tile.row}) has tile_type={tile.tile_type}, "
@@ -270,6 +280,8 @@ class Device(Resolvable):
             ip=ip,
         )
         self._resolved_tiles[tile_id] = op
+        if tile.col is not None and tile.row is not None:
+            self._resolved_coords[(tile.col, tile.row)] = op
         tile.op = op
 
 

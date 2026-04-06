@@ -114,14 +114,24 @@ def test_tile_type_coordinate_mismatch(device):
 
 
 def test_tile_type_inferred_from_coordinates(device):
-    """_infer_tile_type must return the correct tile type for known coordinates."""
+    """get_tile_type must return the correct tile type for known coordinates."""
     from aie.dialects._aie_enum_gen import AIETileType
 
     # Shim tile at row 0
-    assert device._infer_tile_type(0, 0) in (
+    assert device.get_tile_type(0, 0) in (
         AIETileType.ShimNOCTile,
         AIETileType.ShimPLTile,
     )
 
     # Compute tile at row 2
-    assert device._infer_tile_type(0, 2) == AIETileType.CoreTile
+    assert device.get_tile_type(0, 2) == AIETileType.CoreTile
+
+
+def test_out_of_range_coordinates_error(device):
+    """get_tile_type must reject out-of-range coordinates."""
+    with pytest.raises(ValueError, match="out of range"):
+        device.get_tile_type(99, 99)
+    with pytest.raises(ValueError, match="out of range"):
+        device.get_tile_type(-1, 0)
+    with pytest.raises(ValueError, match="out of range"):
+        device.get_tile_type(0, -1)

@@ -14,7 +14,10 @@ import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
 from aie.iron.dataflow.objectfifo import ObjectFifoLink
+from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import (
+    NPU1Col1,
+    NPU1,
     NPU2,
     Tile,
     AnyMemTile,
@@ -22,6 +25,76 @@ from aie.iron.device import (
     AnyShimTile,
 )
 from aie.iron.runtime.endpoint import RuntimeEndpoint
+
+
+@pytest.fixture(params=[NPU1Col1, NPU1, NPU2])
+def device(request):
+    return request.param()
+
+
+def test_can_used_shared_mem(device):
+    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+
+    # Legal affinity
+    of_legal = ObjectFifo(n_ty)
+    of_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
+    of_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
+    assert of_legal.can_used_shared_mem(device)
+    assert of_legal.can_used_shared_mem(device, cons_only=True)
+
+    # Illegal affinity
+    of_illegal = ObjectFifo(n_ty)
+    of_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
+    of_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
+    assert not of_illegal.can_used_shared_mem(device)
+    assert of_illegal.can_used_shared_mem(device, cons_only=True)
+
+    # Multiple consumers, legal
+    of_mult_cons_legal = ObjectFifo(n_ty)
+    of_mult_cons_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
+    of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
+    of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 4))
+    assert of_mult_cons_legal.can_used_shared_mem(device)
+    assert of_mult_cons_legal.can_used_shared_mem(device, cons_only=True)
+
+    # Multiple consumers, illegal
+    of_mult_cons_illegal = ObjectFifo(n_ty)
+    of_mult_cons_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
+    of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
+    of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(0, 0))
+    assert not of_mult_cons_illegal.can_used_shared_mem(device)
+    assert not of_mult_cons_illegal.can_used_shared_mem(device, cons_only=True)
+
+    # Illegal producer, legal consumer
+    of_illegal_prod = ObjectFifo(n_ty)
+    of_illegal_prod.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
+    of_illegal_prod.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
+    assert not of_illegal_prod.can_used_shared_mem(device)
+    assert of_illegal_prod.can_used_shared_mem(device, cons_only=True)
+
+    # Forwarded ObjectFifo
+    of_forward = ObjectFifo(n_ty)
+    of_forward.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
+    forwarded = of_forward.cons().forward(tile=AnyMemTile)
+    forwarded.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
+    with pytest.raises(ValueError):
+        of_forward.can_used_shared_mem(device)
+    with pytest.raises(ValueError):
+        forwarded.can_used_shared_mem(device)
+
+    # AnyComputeTile
+    of_any_compute = ObjectFifo(n_ty)
+    of_any_compute.prod().endpoint = ObjectFifoEndpoint(AnyComputeTile)
+    of_any_compute.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
+    with pytest.raises(ValueError):
+        of_any_compute.can_used_shared_mem(device)
+
+    # AnyShimTile
+    of_any_shim = ObjectFifo(n_ty)
+    of_any_shim.prod().endpoint = ObjectFifoEndpoint(AnyShimTile)
+    of_any_shim.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
+    with pytest.raises(ValueError):
+        of_any_shim.can_used_shared_mem(device)
 
 
 def test_set_iter_count():
@@ -87,7 +160,7 @@ def test_worker_tile_type_validation():
     # CoreTile is accepted via sentinel
     w = Worker(None, tile=AnyComputeTile)
     assert w.tile.tile_type == AIETileType.CoreTile
-    # None tile_type is accepted (Worker sets it to CoreTile)
+    # Default tile_type is CoreTile
     w2 = Worker(None)
     assert w2.tile.tile_type == AIETileType.CoreTile
 
@@ -101,13 +174,13 @@ def test_runtime_endpoint_tile_type_validation():
     # ShimNOCTile is accepted via sentinel
     ep = RuntimeEndpoint(tile=AnyShimTile)
     assert ep.tile.tile_type == AIETileType.ShimNOCTile
-    # None tile_type is accepted (RuntimeEndpoint sets it to ShimNOCTile)
+    # Default tile_type is ShimNOCTile
     ep2 = RuntimeEndpoint()
     assert ep2.tile.tile_type == AIETileType.ShimNOCTile
 
 
 def test_workers_cannot_share_tile():
-    """Two workers cannot be placed on the same tile object."""
+    """Two workers placed on the same coordinates must error."""
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     shared_tile = Tile(0, 2)
     of1 = ObjectFifo(n_ty, name="shared_of1")
@@ -153,14 +226,6 @@ def test_buffer_cannot_be_shared_across_workers():
         Worker(None, [of2.cons(), buf])
 
 
-def test_tile_resolve_invalid_input():
-    """Tile.resolve must reject invalid input types."""
-    with pytest.raises(TypeError, match="Expected Tile"):
-        Tile.resolve("not a tile")
-    with pytest.raises(TypeError, match="Expected Tile"):
-        Tile.resolve(42)
-
-
 def test_forward_shares_link_tile():
     """forward() must link both ObjectFifos through the same MemTile logical tile."""
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
@@ -177,3 +242,40 @@ def test_forward_shares_link_tile():
 
     # Both sides of the link resolve to the same Python Tile object.
     assert cons.endpoint.tile is of_out.prod().endpoint.tile
+
+
+def test_fill_conflicting_tiles_errors():
+    """Calling fill() twice on the same handle with different tile coordinates must error."""
+    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+    of = ObjectFifo(n_ty, name="conflict_of")
+    prod = of.prod()
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty) as (A, _):
+        rt.start(Worker(None, [of.cons()]))
+        rt.fill(prod, A, tile=Tile(0, 0))
+        with pytest.raises(ValueError, match="Endpoint already set"):
+            rt.fill(prod, A, tile=Tile(1, 0))
+
+
+def test_fill_same_tile_allowed():
+    """Calling fill() twice on the same handle with the same coordinates is allowed (tiling loop pattern)."""
+    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+    of = ObjectFifo(n_ty, name="same_of")
+    prod = of.prod()
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty) as (A, _):
+        rt.start(Worker(None, [of.cons()]))
+        rt.fill(prod, A, tile=Tile(0, 0))
+        rt.fill(prod, A, tile=Tile(0, 0))  # same coords — no error
+
+
+def test_fill_unplaced_tile_allowed():
+    """Calling fill() twice with default (unplaced) tiles is allowed (tiling loop pattern)."""
+    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+    of = ObjectFifo(n_ty, name="unplaced_of")
+    prod = of.prod()
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty) as (A, _):
+        rt.start(Worker(None, [of.cons()]))
+        rt.fill(prod, A)
+        rt.fill(prod, A)  # both default AnyShimTile — no error

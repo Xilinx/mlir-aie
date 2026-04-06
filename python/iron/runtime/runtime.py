@@ -25,7 +25,7 @@ from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
-from ..device import Tile
+from ..device import Tile, AnyShimTile
 from ..resolvable import Resolvable
 from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
 from .dmatask import DMATask
@@ -145,7 +145,7 @@ class Runtime(Resolvable):
         tap: TensorAccessPattern | None = None,
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
-        tile: Tile | None = None,
+        tile: Tile = AnyShimTile,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type producer) with data from a runtime buffer.
         This should be called within a Runtime.sequence() context.
@@ -182,7 +182,7 @@ class Runtime(Resolvable):
         tap: TensorAccessPattern | None = None,
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
-        tile: Tile | None = None,
+        tile: Tile = AnyShimTile,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type consumer) of data and write that data to a runtime buffer.
         This should be called within a Runtime.sequence() context.

@@ -43,7 +43,7 @@ class Buffer(Resolvable):
             type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.
             initial_value (np.ndarray | None, optional): An initial value to set the buffer to. Should be of same datatype and shape as the buffer. Defaults to None.
             name (str | None, optional): The name of the buffer. If none is given, a unique name will be generated. Defaults to None.
-            tile (Tile | None, optional): The tile for the buffer. Usually set automatically by the Worker. Defaults to None.
+            tile (Tile | None, optional): The tile for the buffer. Automatically set to the Worker's tile when the buffer is passed in the Worker's fn_args list. Defaults to None.
             use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations will be generated. Otherwise, traditional write/read operations will be used. Defaults to False.
 
         Raises:
