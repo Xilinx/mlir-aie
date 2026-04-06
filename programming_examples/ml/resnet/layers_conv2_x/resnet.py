@@ -204,19 +204,6 @@ conv3_kernels_call = [
     conv2dk1_skip_ui8,
 ]
 
-# runtime parameters
-rtp = []
-for i in range(3):
-    rtp.append([])
-    for j in range(2, 6):
-        rtp[i].append(
-            Buffer(
-                np.ndarray[(16,), np.dtype[np.int32]],
-                name=f"rtpComputeTile{i}{j}",
-                use_write_rtp=True,
-            )
-        )
-
 # Cores - we move in a snake-like pattern, that depends on
 # shared memory between neighbors, so we'll explicitly place all cores
 cores = [
@@ -224,6 +211,23 @@ cores = [
     [Tile(1, 5), Tile(1, 4), Tile(1, 3), Tile(1, 2)],
     [Tile(2, 2), Tile(2, 3), Tile(2, 4), Tile(2, 5)],
 ]
+
+
+# Runtime parameters: one RTP buffer per worker that reads RTPs.
+# Only conv1_fn (cores[i][0]) and conv1_skip_fn (cores[i][2]) use RTPs;
+# conv2_fn workers hard-code scale=1 and need no buffer.
+def make_rtp(col, row):
+    return Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        name=f"rtpComputeTile{col}{row}",
+        use_write_rtp=True,
+    )
+
+
+# rtp_conv1[i]      -> buffer for conv1_fn worker in column i
+# rtp_conv1_skip[i] -> buffer for conv1_skip_fn worker in column i
+rtp_conv1 = [make_rtp(cores[i][0].col, cores[i][0].row) for i in range(n_cols)]
+rtp_conv1_skip = [make_rtp(cores[i][2].col, cores[i][2].row) for i in range(n_cols)]
 
 # input tensor (with broadcast for skip connection)
 act1_fifo_names = ["act1_00_02_01", "act1_04_15_11", "act1_13_22_21"]
@@ -467,7 +471,6 @@ def conv1_skip_fn(
 # Create workers and place each one on a particular compute core
 workers = []
 for i in range(n_cols):
-    placement = cores[i][0]
     w = Worker(
         conv1_fn,
         [
@@ -475,10 +478,10 @@ for i in range(n_cols):
             act1_fifos[i].cons(),
             act2_fifos[i].prod(),
             conv1_kernels_call[i],
-            rtp[placement.col][placement.row - 2],
+            rtp_conv1[i],
             i,
         ],
-        placement=placement,
+        placement=cores[i][0],
     )
     workers.append(w)
     w = Worker(
@@ -493,11 +496,6 @@ for i in range(n_cols):
         placement=cores[i][1],
     )
     workers.append(w)
-    placement = cores[i][2]
-    if i == 0:
-        skip_rtp = rtp[0][3]
-    else:
-        skip_rtp = rtp[placement.col][placement.row - 2]
     w = Worker(
         conv1_skip_fn,
         [
@@ -507,10 +505,10 @@ for i in range(n_cols):
             conv3_out_fifos[i].prod(),
             skip_fifos[i].cons(),
             conv3_kernels_call[i],
-            skip_rtp,
+            rtp_conv1_skip[i],
             i,
         ],
-        placement=placement,
+        placement=cores[i][2],
         stack_size=0xA00,
     )
     workers.append(w)
@@ -535,29 +533,22 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     outputToL3,
 ):
 
-    # Set runtime parameters
-    def set_rtps(rtp):
-        # Only set RTPs for tiles that actually read them (conv1_fn and conv1_skip_fn
-        # workers). conv2_fn workers use a hardcoded scale=1 and have no RTP arg,
-        # so their corresponding buffers are never placed/resolved.
+    # Set runtime parameters for conv1_fn workers (scale)
+    # and conv1_skip_fn workers (scale, skipScale, [skipConvScale for col 0])
+    def set_rtps(rtp_conv1, rtp_conv1_skip):
+        rtp_conv1[0][0] = 1  # col 0 conv1 scale
+        rtp_conv1[1][0] = 1  # col 1 conv1 scale
+        rtp_conv1[2][0] = 1  # col 2 conv1 scale
 
-        # col 0: conv1_fn at Tile(0,2) → rtp[0][0]; conv1_skip_fn at Tile(0,4) → rtp[0][3]
-        rtp[0][0][0] = 1
-        rtp[0][3][0] = 1
-        rtp[0][3][1] = 0
-        rtp[0][3][2] = 1
+        rtp_conv1_skip[0][0] = 1  # col 0 skip scale
+        rtp_conv1_skip[0][1] = 0  # col 0 skipScale
+        rtp_conv1_skip[0][2] = 1  # col 0 skipConvScale (init only)
+        rtp_conv1_skip[1][0] = 1  # col 1 skip scale
+        rtp_conv1_skip[1][1] = 0  # col 1 skipScale
+        rtp_conv1_skip[2][0] = 1  # col 2 skip scale
+        rtp_conv1_skip[2][1] = 0  # col 2 skipScale
 
-        # col 1: conv1_fn at Tile(1,5) → rtp[1][3]; conv1_skip_fn at Tile(1,3) → rtp[1][1]
-        rtp[1][3][0] = 1
-        rtp[1][1][0] = 1
-        rtp[1][1][1] = 0
-
-        # col 2: conv1_fn at Tile(2,2) → rtp[2][0]; conv1_skip_fn at Tile(2,4) → rtp[2][2]
-        rtp[2][0][0] = 1
-        rtp[2][2][0] = 1
-        rtp[2][2][1] = 0
-
-    rt.inline_ops(set_rtps, [rtp])
+    rt.inline_ops(set_rtps, [rtp_conv1, rtp_conv1_skip])
 
     # Start workers
     rt.start(*workers)
