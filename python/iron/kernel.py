@@ -156,13 +156,15 @@ class ExternalFunction(Kernel):
         arg_types: list[type[np.ndarray] | np.dtype] = [],
         include_dirs: list[str] = [],
         compile_flags: list[str] = [],
+        *,
+        symbol_prefix: str | None = None,
     ) -> None:
         """
         Args:
             name: Symbol name of the function as it will appear in the object
                 file.
             object_file_name: Output object file name.  Defaults to
-                ``<name>.o``.
+                ``<effective_name>.o``.
             source_file: Path to a C/C++ source file on disk.  Mutually
                 exclusive with ``source_string``.
             source_string: Inline C/C++ source code.  Mutually exclusive with
@@ -173,10 +175,17 @@ class ExternalFunction(Kernel):
                 compiler.  Defaults to [].
             compile_flags: Additional flags passed verbatim to the Peano
                 compiler.  Defaults to [].
+            symbol_prefix: Optional prefix for the exported symbol name.  When
+                set, the effective symbol name becomes ``<symbol_prefix>_<name>``
+                and the object file is named accordingly.  The original name is
+                preserved in ``_original_name`` for source file naming.
         """
+        self._original_name = name
+        self._symbol_prefix = symbol_prefix
+        effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         if not object_file_name:
-            object_file_name = f"{name}.o"
-        super().__init__(name, object_file_name, arg_types)
+            object_file_name = f"{effective_name}.o"
+        super().__init__(effective_name, object_file_name, arg_types)
 
         if source_file is not None:
             self._source_file = source_file
@@ -225,11 +234,21 @@ class ExternalFunction(Kernel):
 
     def __hash__(self):
         """Hash based on source content and compiler options for cache keying."""
-        # TODO: extend to cover included headers (issue #2543)
+        from pathlib import Path as _Path
+
+        include_dir_mtimes = []
+        for d in sorted(self._include_dirs):
+            try:
+                mtime = str(_Path(d).stat().st_mtime)
+            except (FileNotFoundError, OSError):
+                mtime = "missing"
+            include_dir_mtimes.append(f"{d}:{mtime}")
+        include_dirs_hash = str(include_dir_mtimes)
+
         hash_parts = [
             self._name,
             str(self._arg_types),
-            str(sorted(self._include_dirs)),
+            include_dirs_hash,
             str(sorted(self._compile_flags)),
         ]
         if self._source_string:

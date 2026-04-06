@@ -22,19 +22,25 @@ import numpy as np
 import pytest
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, jit
+from aie.iron import Compile, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
 @jit
-def add_then_scale(input, output, add_func, scale_func):
+def add_then_scale(
+    input: In,
+    output: Out,
+    *,
+    add_func: Compile[object],
+    scale_func: Compile[object],
+    num_elements: Compile[int] = 32,
+    dtype: Compile[object] = np.int32,
+):
     """Apply add_func then scale_func sequentially on each tile."""
-    num_elements = np.size(input)
     tile_size = add_func.tile_size(0)
     num_tiles = num_elements // tile_size
-    dtype = input.dtype
 
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
@@ -103,7 +109,9 @@ def test_two_external_functions_different_objects():
     input_tensor = iron.arange(32, dtype=np.int32)
     output_tensor = iron.zeros((32,), dtype=np.int32)
 
-    add_then_scale(input_tensor, output_tensor, add_one, scale_by_two)
+    add_then_scale(
+        input_tensor, output_tensor, add_func=add_one, scale_func=scale_by_two
+    )
 
     expected = (np.arange(32, dtype=np.int32) + 1) * 2
     np.testing.assert_array_equal(output_tensor.numpy(), expected)
@@ -156,7 +164,9 @@ def test_two_external_functions_same_object():
     input_tensor = iron.arange(32, dtype=np.int32)
     output_tensor = iron.zeros((32,), dtype=np.int32)
 
-    add_then_scale(input_tensor, output_tensor, add_one, scale_by_two)
+    add_then_scale(
+        input_tensor, output_tensor, add_func=add_one, scale_func=scale_by_two
+    )
 
     expected = (np.arange(32, dtype=np.int32) + 1) * 2
     np.testing.assert_array_equal(output_tensor.numpy(), expected)

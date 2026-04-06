@@ -127,18 +127,27 @@ def _create_function_cache_key(function, args, kwargs):
                 code = arg.__code__
                 defaults = arg.__defaults__ if hasattr(arg, "__defaults__") else None
                 closure_vals = _closure_key(arg)
+                from aie.iron.compile.compilabledesign import _hash_captured_globals
+
+                global_hash = _hash_captured_globals(arg)
                 func_hash = hash(
                     (
                         code.co_code,
                         code.co_consts,
                         code.co_names,
+                        code.co_filename,
+                        (
+                            code.co_qualname
+                            if hasattr(code, "co_qualname")
+                            else code.co_name
+                        ),
                         defaults,
                         closure_vals,
+                        global_hash,
                     )
                 )
                 signature_parts.append(f"function_{func_hash}")
             else:
-                # Function argument - use hash of function address for uniqueness
                 func_hash = hash(arg)
                 signature_parts.append(f"function_{func_hash}")
         else:
@@ -158,18 +167,27 @@ def _create_function_cache_key(function, args, kwargs):
                     value.__defaults__ if hasattr(value, "__defaults__") else None
                 )
                 closure_vals = _closure_key(value)
+                from aie.iron.compile.compilabledesign import _hash_captured_globals
+
+                global_hash = _hash_captured_globals(value)
                 func_hash = hash(
                     (
                         code.co_code,
                         code.co_consts,
                         code.co_names,
+                        code.co_filename,
+                        (
+                            code.co_qualname
+                            if hasattr(code, "co_qualname")
+                            else code.co_name
+                        ),
                         defaults,
                         closure_vals,
+                        global_hash,
                     )
                 )
                 signature_parts.append(f"{key}_function_{func_hash}")
             else:
-                # Function argument - use hash of function address for uniqueness
                 func_hash = hash(value)
                 signature_parts.append(f"{key}_function_{func_hash}")
         else:

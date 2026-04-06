@@ -173,7 +173,14 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16):
         rt.drain(of_out.cons(), output_seq_arg, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    device = iron.get_current_device()
+    if device is None:
+        raise RuntimeError(
+            "iron.algorithms.transform requires an active NPU device. "
+            "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
+            "before calling transform functions."
+        )
+    return Program(device, rt).resolve_program(SequentialPlacer())
 
 
 def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
@@ -219,7 +226,14 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
     dtype = ref_dtype
 
     # Determine number of columns based on device
-    num_columns = iron.get_current_device().cols
+    device = iron.get_current_device()
+    if device is None:
+        raise RuntimeError(
+            "iron.algorithms.transform_parallel requires an active NPU device. "
+            "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
+            "before calling parallel transform functions."
+        )
+    num_columns = device.cols
 
     per_tile_elements = tile_size
     n = per_tile_elements * num_columns
@@ -371,7 +385,216 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
         rt.finish_task_group(tg_out)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(device, rt).resolve_program(SequentialPlacer())
+
+
+def transform_typed(func, tensor_ty, tile_size=16):
+    """Apply ``func`` element-wise over a tensor described by *tensor_ty*.
+
+    Like :func:`transform` but accepts a numpy ``ndarray`` type descriptor
+    instead of a real tensor.  Intended for use inside ``@iron.jit`` generator
+    bodies where the tensor's shape and dtype are expressed as ``Compile[T]``
+    parameters and the actual tensors are not yet available::
+
+        @iron.jit
+        def my_design(inp: In, out: Out,
+                      N: Compile[int], dtype: Compile[type] = np.int32):
+            tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+            return iron.algorithms.transform_typed(lambda x: x + 1, tensor_ty)
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
+            np.dtype[np.int32]]``). Shape and dtype are inferred from this.
+        tile_size (int, optional): Number of elements per tile. Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    # Infer num_elements and dtype from the ndarray type descriptor.
+    # numpy ndarray types store shape as __args__[0] and dtype as __args__[1].
+    try:
+        shape_arg, dtype_arg = tensor_ty.__args__
+        # shape_arg is a tuple like (1024,)
+        num_elements = 1
+        for dim in shape_arg:
+            num_elements *= dim
+        # dtype_arg is np.dtype[np.int32] — extract the scalar type
+        dtype = dtype_arg.__args__[0]
+    except Exception as exc:
+        raise TypeError(
+            f"transform_typed expects a numpy ndarray type such as "
+            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
+        ) from exc
+
+    n = tile_size
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of "
+            f"tile size ({n})"
+        )
+
+    # Build a minimal fake-tensor class that _transform_gen can call
+    # .shape, .dtype, and .size on, without needing real NPU memory.
+    # Capture dtype in a local alias to avoid the class-scope shadowing issue
+    # where `dtype = dtype` inside a class body is self-referential.
+    _dtype = dtype
+
+    class _TypeDescriptor:
+        shape = (num_elements,)
+        size = num_elements
+        dtype = _dtype
+
+    fake_tensor = _TypeDescriptor()
+    return _transform_gen(func, [fake_tensor], fake_tensor, tile_size=tile_size)
+
+
+def transform_binary_typed(func, tensor_ty, tile_size=16):
+    """Apply ``func`` element-wise over two tensors described by *tensor_ty*.
+
+    Like :func:`transform_binary` but accepts a numpy ``ndarray`` type
+    descriptor instead of real tensors.  Intended for use inside
+    ``@iron.jit`` generator bodies.
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
+            np.dtype[np.int32]]``). Shape and dtype are inferred from this.
+        tile_size (int, optional): Number of elements per tile. Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    try:
+        shape_arg, dtype_arg = tensor_ty.__args__
+        num_elements = 1
+        for dim in shape_arg:
+            num_elements *= dim
+        dtype = dtype_arg.__args__[0]
+    except Exception as exc:
+        raise TypeError(
+            f"transform_binary_typed expects a numpy ndarray type such as "
+            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
+        ) from exc
+
+    n = tile_size
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of "
+            f"tile size ({n})"
+        )
+
+    _dtype = dtype
+
+    class _TypeDescriptor:
+        shape = (num_elements,)
+        size = num_elements
+        dtype = _dtype
+
+    fake_tensor = _TypeDescriptor()
+    return _transform_gen(
+        func, [fake_tensor, fake_tensor], fake_tensor, tile_size=tile_size
+    )
+
+
+def transform_parallel_typed(func, tensor_ty, *params, tile_size=16):
+    """Apply ``func`` element-wise in parallel using a tensor type descriptor.
+
+    Like :func:`transform_parallel` but accepts a numpy ``ndarray`` type
+    descriptor instead of a real tensor.  Intended for use inside
+    ``@iron.jit`` generator bodies.
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
+            np.dtype[np.int32]]``). Shape and dtype are inferred from this.
+        *params: Additional compile-time scalar parameters forwarded to
+            ``func`` (ExternalFunction only).
+        tile_size (int, optional): Number of elements per tile per column.
+            Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    try:
+        shape_arg, dtype_arg = tensor_ty.__args__
+        num_elements = 1
+        for dim in shape_arg:
+            num_elements *= dim
+        dtype = dtype_arg.__args__[0]
+    except Exception as exc:
+        raise TypeError(
+            f"transform_parallel_typed expects a numpy ndarray type such as "
+            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
+        ) from exc
+
+    n = tile_size
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of "
+            f"tile size ({n})"
+        )
+
+    _dtype = dtype
+
+    class _TypeDescriptor:
+        shape = (num_elements,)
+        size = num_elements
+        dtype = _dtype
+
+    fake_tensor = _TypeDescriptor()
+    return _transform_parallel_gen(
+        func, [fake_tensor], fake_tensor, *params, tile_size=tile_size
+    )
+
+
+def transform_parallel_binary_typed(func, tensor_ty, tile_size=16):
+    """Apply ``func`` over two tensors in parallel using a tensor type descriptor.
+
+    Like :func:`transform_parallel_binary` but accepts a numpy ``ndarray``
+    type descriptor instead of real tensors.  Intended for use inside
+    ``@iron.jit`` generator bodies.
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
+            np.dtype[np.int32]]``). Shape and dtype are inferred from this.
+        tile_size (int, optional): Number of elements per tile per column.
+            Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    try:
+        shape_arg, dtype_arg = tensor_ty.__args__
+        num_elements = 1
+        for dim in shape_arg:
+            num_elements *= dim
+        dtype = dtype_arg.__args__[0]
+    except Exception as exc:
+        raise TypeError(
+            f"transform_parallel_binary_typed expects a numpy ndarray type such as "
+            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
+        ) from exc
+
+    n = tile_size
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of "
+            f"tile size ({n})"
+        )
+
+    _dtype = dtype
+
+    class _TypeDescriptor:
+        shape = (num_elements,)
+        size = num_elements
+        dtype = _dtype
+
+    fake_tensor = _TypeDescriptor()
+    return _transform_parallel_gen(
+        func, [fake_tensor, fake_tensor], fake_tensor, tile_size=tile_size
+    )
 
 
 def transform(func, input, output, *params, tile_size=16):

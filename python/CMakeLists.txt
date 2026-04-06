@@ -38,7 +38,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/__init__.py
     utils/config.py
     utils/test.py
-    utils/jit.py
     utils/ml.py
     utils/npukernel.py
     utils/regdb.py
@@ -75,6 +74,12 @@ declare_mlir_python_sources(AIEPythonSources.Iron
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     iron/*.py
+    iron/compile/*.py
+    iron/hostruntime/*.py
+    iron/algorithms/*.py
+    iron/dataflow/*.py
+    iron/device/*.py
+    iron/runtime/*.py
 )
 
 declare_mlir_dialect_python_bindings(

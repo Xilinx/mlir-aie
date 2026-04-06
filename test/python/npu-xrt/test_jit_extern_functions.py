@@ -14,21 +14,22 @@ import tempfile
 import pytest
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, jit
+from aie.iron import Compile, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
 @jit
-def transform(input, output, func):
+def transform(
+    input: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    num_elements: Compile[int] = 1024,
+    dtype: Compile[object] = np.int32,
+):
     """Transform kernel that applies a function to input tensor and stores result in output tensor."""
-    if input.shape != output.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input.shape} != {output.shape})."
-        )
-    num_elements = np.size(input)
-
     # Extract tile size from ExternalFunction (using first argument)
     tile_size = func.tile_size(0)
 
@@ -42,13 +43,6 @@ def transform(input, output, func):
             f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
         )
     num_tiles = num_elements // tile_size
-
-    if input.dtype != output.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input.dtype} != {output.dtype})."
-        )
-
-    dtype = input.dtype
 
     # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
@@ -85,6 +79,13 @@ def transform(input, output, func):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
+@pytest.fixture(autouse=True)
+def _clear_kernel_caches():
+    transform._kernel_cache.clear()
+    yield
+    transform._kernel_cache.clear()
+
+
 def test_simple_add_one():
     """Test basic ExternalFunction with simple add_one operation."""
     # Create input and output tensors
@@ -110,7 +111,7 @@ def test_simple_add_one():
     )
 
     # Apply the transform
-    transform(input_tensor, output_tensor, add_one)
+    transform(input_tensor, output_tensor, func=add_one)
 
     # Verify results
     expected = initial_tensor + 1
@@ -145,7 +146,7 @@ def test_different_tile_sizes(tile_size):
     )
 
     # Apply the transform
-    transform(input_tensor, output_tensor, add_one)
+    transform(input_tensor, output_tensor, func=add_one)
 
     # Verify results
     expected = initial_tensor + 1
@@ -185,7 +186,7 @@ def test_different_data_types(dtype, c_type):
     )
 
     # Apply the transform
-    transform(input_tensor, output_tensor, add_one)
+    transform(input_tensor, output_tensor, func=add_one, dtype=dtype)
 
     # Verify results
     expected = initial_tensor + 1.0
@@ -219,7 +220,7 @@ def test_define_values(value):
     )
 
     # Apply the transform
-    transform(input_tensor, output_tensor, add_value)
+    transform(input_tensor, output_tensor, func=add_value)
 
     # Verify results
     expected = initial_tensor + value
@@ -257,7 +258,7 @@ def test_multiple_defines():
     )
 
     # Apply the transform
-    transform(input_tensor, output_tensor, complex_op)
+    transform(input_tensor, output_tensor, func=complex_op)
 
     # Verify results (should add 15: 5 + 10 due to FLAG2 define)
     expected = initial_tensor + 15
@@ -306,7 +307,7 @@ def test_include_directories():
         )
 
         # Apply the transform
-        transform(input_tensor, output_tensor, add_value)
+        transform(input_tensor, output_tensor, func=add_value)
 
         # Verify results
         expected = initial_tensor + 42
@@ -353,7 +354,7 @@ def test_multiple_include_directories():
         )
 
         # Apply the transform
-        transform(input_tensor, output_tensor, add_values)
+        transform(input_tensor, output_tensor, func=add_values)
 
         # Verify results
         expected = initial_tensor + 30  # 10 + 20
@@ -402,11 +403,11 @@ def test_caching_same_source():
     )
 
     # Apply both transforms
-    transform(input_tensor, output_tensor, add_one_1)
+    transform(input_tensor, output_tensor, func=add_one_1)
     result1 = output_tensor.numpy().copy()
 
     output_tensor.fill_(0)
-    transform(input_tensor, output_tensor, add_one_2)
+    transform(input_tensor, output_tensor, func=add_one_2)
     result2 = output_tensor.numpy()
 
     # Verify both produce same results
@@ -434,7 +435,7 @@ def test_inline_source_string():
             np.int32,
         ],
     )
-    transform(input_tensor, output_tensor, add_one)
+    transform(input_tensor, output_tensor, func=add_one)
 
     expected = initial_tensor + 1
     np.testing.assert_array_equal(output_tensor.numpy(), expected)
@@ -462,7 +463,7 @@ def test_inline_source_string_with_compiler_options():
         ],
         compile_flags=["-DADD_VALUE=42"],
     )
-    transform(input_tensor, output_tensor, add_value)
+    transform(input_tensor, output_tensor, func=add_value)
 
     expected = initial_tensor + 42
     np.testing.assert_array_equal(output_tensor.numpy(), expected)
@@ -500,7 +501,7 @@ def test_source_file():
         )
 
         # Apply the transform
-        transform(input_tensor, output_tensor, add_one_from_file)
+        transform(input_tensor, output_tensor, func=add_one_from_file)
 
         # Verify results
         expected = initial_tensor + 1
@@ -545,7 +546,7 @@ def test_source_file_with_compiler_options():
         )
 
         # Apply the transform
-        transform(input_tensor, output_tensor, add_value_from_file)
+        transform(input_tensor, output_tensor, func=add_value_from_file)
 
         # Verify results
         expected = initial_tensor + 25
@@ -582,7 +583,7 @@ def test_transform_with_internal_func():
     )
 
     # Apply the transform (ExternalFunction is passed as argument)
-    transform(input_tensor, output_tensor, internal_func)
+    transform(input_tensor, output_tensor, func=internal_func)
 
     # Verify results
     expected = initial_tensor + 1
@@ -633,11 +634,11 @@ def test_caching_different_flags():
     )
 
     # Apply transforms
-    transform(input_tensor, output_tensor, add_value_5)
+    transform(input_tensor, output_tensor, func=add_value_5)
     result_5 = output_tensor.numpy().copy()
 
     output_tensor.fill_(0)
-    transform(input_tensor, output_tensor, add_value_10)
+    transform(input_tensor, output_tensor, func=add_value_10)
     result_10 = output_tensor.numpy()
 
     # Verify different results
@@ -698,7 +699,7 @@ def test_invalid_source(invalid_source):
 
     # Should raise an error during compilation
     with pytest.raises(Exception):
-        transform(input_tensor, output_tensor, invalid_func)
+        transform(input_tensor, output_tensor, func=invalid_func)
 
 
 @pytest.mark.parametrize(
@@ -734,7 +735,7 @@ def test_mismatched_tile_sizes(input_tile_size, output_tile_size):
 
     # Should raise an assertion error
     with pytest.raises(AssertionError, match="Input and output tile sizes must match"):
-        transform(input_tensor, output_tensor, mismatched_func)
+        transform(input_tensor, output_tensor, func=mismatched_func)
 
 
 def test_external_function_wrong_args_count():
@@ -824,7 +825,7 @@ def test_invalid_include_directory(invalid_include):
 
     # Should raise an error during compilation
     with pytest.raises(Exception):
-        transform(input_tensor, output_tensor, invalid_include_func)
+        transform(input_tensor, output_tensor, func=invalid_include_func)
 
 
 @pytest.mark.parametrize(
@@ -872,7 +873,7 @@ def test_compiler_flag_combinations(compile_flags, expected_value):
     )
 
     # Apply the transform
-    transform(input_tensor, output_tensor, complex_op)
+    transform(input_tensor, output_tensor, func=complex_op)
 
     # Verify results
     expected = initial_tensor + expected_value
@@ -906,7 +907,7 @@ def test_object_file_name():
     )
 
     # Apply the transform
-    transform(input_tensor, output_tensor, add_one)
+    transform(input_tensor, output_tensor, func=add_one)
 
     # Verify results
     expected = initial_tensor + 1
