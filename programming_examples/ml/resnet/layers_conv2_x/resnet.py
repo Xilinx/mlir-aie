@@ -241,11 +241,11 @@ skip_fifos.append(
 for i in range(1, repeat + 1):
     act1_fifos.append(ObjectFifo(laye1_act_sizes[i], name=act1_fifo_names[i]))
     if i == 1:
-        placement = Tile(0, 1)
+        skip_tile = Tile(0, 1)
     else:
-        placement = Tile(i, 1)
+        skip_tile = Tile(i, 1)
     skip_fifos.append(
-        act1_fifos[-1].cons(4).forward(tile=placement, depth=2, name=f"skip_{i}")
+        act1_fifos[-1].cons(4).forward(tile=skip_tile, depth=2, name=f"skip_{i}")
     )
 
 act2_fifo_names = ["act2_02_03_05", "act2_15_12_14", "act2_22_23_25"]

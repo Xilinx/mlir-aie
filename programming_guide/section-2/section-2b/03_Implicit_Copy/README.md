@@ -33,7 +33,7 @@ Instead of an explicit copy, the Object FIFO API provides an implicit copy via t
 ```python
 def forward(
     self,
-    placement: PlacementTile = AnyMemTile,
+    tile: Tile = AnyMemTile,
     obj_type: type[np.ndarray] | None = None,
     depth: int | None = None,
     name: str | None = None,
@@ -42,7 +42,7 @@ def forward(
     plio: bool = False,
 )
 ```
-The `forward()` function creates a new Object FIFO to which the user can additionally specify the same inputs as to a regular Object FIFO. The `placement` tile is where the implicit copy will be done and is by default set to be a Mem tile.
+The `forward()` function creates a new Object FIFO to which the user can additionally specify the same inputs as to a regular Object FIFO. The `tile` is where the implicit copy will be done and defaults to a Mem tile.
 
 With an implicit copy, the previous code can be written as:
 ```python
@@ -85,7 +85,7 @@ Users can use the Object FIFO API to describe a distribute pattern where parts o
 def split(
     self,
     offsets: list[int],
-    placement: PlacementTile = AnyMemTile,
+    tile: Tile = AnyMemTile,
     depths: list[int] | None = None,
     obj_types: list[type[np.ndarray]] = None,
     names: list[str] | None = None,
@@ -140,7 +140,7 @@ The join pattern is the opposite of the distribute pattern where data received f
 def join(
     self,
     offsets: list[int],
-    placement: PlacementTile = AnyMemTile,
+    tile: Tile = AnyMemTile,
     depths: list[int] | None = None,
     obj_types: list[type[np.ndarray]] = None,
     names: list[str] | None = None,
