@@ -2434,7 +2434,15 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
       len = memref.getNumElements();
 
     // Replace with the same op but no dimensions attribute (linear mode).
-    rewriter.replaceOpWithNewOp<DMABDOp>(op, op.getBuffer(), offset, len);
+    // Preserve all other attributes (packet, burst_length, bd_id, etc.).
+    auto newOp =
+        rewriter.replaceOpWithNewOp<DMABDOp>(op, op.getBuffer(), offset, len);
+    for (mlir::NamedAttribute attr : op->getAttrs()) {
+      mlir::StringRef name = attr.getName().getValue();
+      if (name == "offset" || name == "len" || name == "dimensions")
+        continue;
+      newOp->setAttr(attr.getName(), attr.getValue());
+    }
     return mlir::success();
   }
 };

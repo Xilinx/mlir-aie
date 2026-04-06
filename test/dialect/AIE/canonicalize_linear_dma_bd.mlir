@@ -98,6 +98,36 @@ module {
 
 // -----
 
+// Regression: packet attribute must be preserved when folding to linear form.
+// A BD with packet routing info that is contiguous must still carry its
+// packet header after canonicalization.  Before the fix, replaceOpWithNewOp
+// was called with only (buffer, offset, len), silently dropping the packet
+// attribute and breaking packet-switched designs at runtime.
+
+// CHECK-LABEL: aie.device(npu1)
+// CHECK:       aie.shim_dma
+// CHECK:         aie.dma_bd
+// CHECK-NOT:       dimensions
+// CHECK-SAME:      packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>
+module {
+  aie.device(npu1) {
+    %tile_0_0 = aie.tile(0, 0)
+    %buf = aie.external_buffer { sym_name = "buf_pkt" } : memref<1024xi32>
+    aie.shim_dma(%tile_0_0) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<1024xi32>, 0, 1024,
+          [<size = 2, stride = 512>, <size = 512, stride = 1>]) {
+            packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
+        aie.next_bd ^end
+      ^end:
+        aie.end
+    }
+  }
+}
+
+// -----
+
 // Non-contiguous (stride != size product): must NOT be folded.
 
 // CHECK-LABEL: aie.device(npu1)
