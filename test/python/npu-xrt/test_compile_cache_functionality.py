@@ -90,14 +90,26 @@ def test_cache_lambda_functions():
     input_tensor = iron.arange(32, dtype=np.int32)
 
     # Test 1: First execution with lambda function
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32, dtype=np.int32)
+    transform(
+        input_tensor,
+        input_tensor,
+        func=lambda x: x + 1,
+        num_elements=32,
+        dtype=np.int32,
+    )
     result1 = input_tensor.numpy().copy()
 
     # Reset tensor
     input_tensor[:] = np.arange(32, dtype=np.int32)
 
     # Test 2: Second execution with same lambda function (should use cache)
-    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32, dtype=np.int32)
+    transform(
+        input_tensor,
+        input_tensor,
+        func=lambda x: x + 1,
+        num_elements=32,
+        dtype=np.int32,
+    )
     result2 = input_tensor.numpy()
 
     # Results should be identical
@@ -105,7 +117,13 @@ def test_cache_lambda_functions():
 
     # Test 3: Different lambda function (should generate new cache entry)
     input_tensor[:] = np.arange(1, 33, dtype=np.int32)
-    transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32, dtype=np.int32)
+    transform(
+        input_tensor,
+        input_tensor,
+        func=lambda x: x * 2,
+        num_elements=32,
+        dtype=np.int32,
+    )
     result3 = input_tensor.numpy()
 
     # Results should be different
@@ -135,7 +153,9 @@ def test_cache_external_functions():
             np.int32,
         ],
     )
-    transform(input_tensor, input_tensor, func=add_one_1, num_elements=32, dtype=np.int32)
+    transform(
+        input_tensor, input_tensor, func=add_one_1, num_elements=32, dtype=np.int32
+    )
     result1 = input_tensor.numpy().copy()
 
     # Reset tensor
@@ -157,7 +177,9 @@ def test_cache_external_functions():
             np.int32,
         ],
     )
-    transform(input_tensor, input_tensor, func=add_one_2, num_elements=32, dtype=np.int32)
+    transform(
+        input_tensor, input_tensor, func=add_one_2, num_elements=32, dtype=np.int32
+    )
     result2 = input_tensor.numpy()
 
     # Results should be identical
@@ -181,7 +203,9 @@ def test_cache_external_functions():
     )
 
     input_tensor[:] = np.arange(32, dtype=np.int32)
-    transform(input_tensor, input_tensor, func=multiply_two, num_elements=32, dtype=np.int32)
+    transform(
+        input_tensor, input_tensor, func=multiply_two, num_elements=32, dtype=np.int32
+    )
     result3 = input_tensor.numpy()
 
     # Results should be different
@@ -344,7 +368,13 @@ def test_cache_file_source():
         )
 
         # Test execution
-        transform(input_tensor, input_tensor, func=add_one_from_file, num_elements=32, dtype=np.int32)
+        transform(
+            input_tensor,
+            input_tensor,
+            func=add_one_from_file,
+            num_elements=32,
+            dtype=np.int32,
+        )
         result = input_tensor.numpy()
 
         # Verify expected results
@@ -388,7 +418,9 @@ def test_cache_include_directories():
         )
 
         # Test execution
-        transform(input_tensor, input_tensor, func=add_value, num_elements=32, dtype=np.int32)
+        transform(
+            input_tensor, input_tensor, func=add_value, num_elements=32, dtype=np.int32
+        )
         result = input_tensor.numpy()
 
         # Verify expected results
@@ -406,7 +438,13 @@ def test_cache_tensor_shapes():
         input_tensor = iron.arange(size, dtype=np.int32)
 
         # Apply transformation
-        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=size, dtype=np.int32)
+        transform(
+            input_tensor,
+            input_tensor,
+            func=lambda x: x + 1,
+            num_elements=size,
+            dtype=np.int32,
+        )
         result = input_tensor.numpy()
         results.append(result)
 
