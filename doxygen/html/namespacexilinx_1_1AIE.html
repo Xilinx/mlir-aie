@@ -266,6 +266,8 @@ Functions</h2></td></tr>
 <tr class="separator:a3a91d62b738d30b89aaca25caf49edbe"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3e9658a61800052f09a70ec072b7ced9" id="r_a3e9658a61800052f09a70ec072b7ced9"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a3e9658a61800052f09a70ec072b7ced9">collectBuffers</a> (DeviceOp &amp;device, llvm::DenseMap&lt; mlir::Operation *, llvm::SmallVector&lt; BufferOp, 4 &gt; &gt; &amp;buffers)</td></tr>
 <tr class="separator:a3e9658a61800052f09a70ec072b7ced9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a10d3571af1568db80e9dea49bcbccff4" id="r_a10d3571af1568db80e9dea49bcbccff4"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a10d3571af1568db80e9dea49bcbccff4">isContiguousBDTransfer</a> (llvm::ArrayRef&lt; BDDimLayoutAttr &gt; dims)</td></tr>
+<tr class="separator:a10d3571af1568db80e9dea49bcbccff4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a54d967313bd67b6127e14f84b63ad3c6" id="r_a54d967313bd67b6127e14f84b63ad3c6"><td class="memItemLeft" align="right" valign="top">std::string&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a54d967313bd67b6127e14f84b63ad3c6">to_string</a> (const <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> &amp;s)</td></tr>
 <tr class="separator:a54d967313bd67b6127e14f84b63ad3c6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a164aca2faaae12465e9620489d068d7f" id="r_a164aca2faaae12465e9620489d068d7f"><td class="memItemLeft" align="right" valign="top">llvm::raw_ostream &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a164aca2faaae12465e9620489d068d7f">operator&lt;&lt;</a> (llvm::raw_ostream &amp;<a class="el" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, const <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> &amp;s)</td></tr>
@@ -2599,7 +2601,7 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l02701">2701</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l02796">2796</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="AIEPathFinder_8cpp_source.html#l00406">xilinx::AIE::Pathfinder::dijkstraShortestPaths()</a>, <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00156">translateCircuitFlows()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00276">translatePacketFlows()</a>.</p>
 
@@ -2842,6 +2844,26 @@ Variables</h2></td></tr>
 </div><div class="memdoc">
 
 <p class="definition">Definition at line <a class="el" href="AIEToConfiguration_8h_source.html#l00064">64</a> of file <a class="el" href="AIEToConfiguration_8h_source.html">AIEToConfiguration.h</a>.</p>
+
+</div>
+</div>
+<a id="a10d3571af1568db80e9dea49bcbccff4" name="a10d3571af1568db80e9dea49bcbccff4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a10d3571af1568db80e9dea49bcbccff4">&#9670;&#160;</a></span>isContiguousBDTransfer()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="classbool.html">bool</a> xilinx::AIE::isContiguousBDTransfer </td>
+          <td>(</td>
+          <td class="paramtype">llvm::ArrayRef&lt; BDDimLayoutAttr &gt;&#160;</td>
+          <td class="paramname"><em>dims</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l02143">2143</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
 
 </div>
 </div>
@@ -4221,7 +4243,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00156">156</a> of file <a class="el" href="AIEFlowsToJSON_8cpp_source.html">AIEFlowsToJSON.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEDialect_8cpp_source.html#l02701">getConnectingBundle()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00034">getNextCoords()</a>.</p>
+<p class="reference">References <a class="el" href="AIEDialect_8cpp_source.html#l02796">getConnectingBundle()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00034">getNextCoords()</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00425">AIEFlowsToJSON()</a>.</p>
 
@@ -4261,7 +4283,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00276">276</a> of file <a class="el" href="AIEFlowsToJSON_8cpp_source.html">AIEFlowsToJSON.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEDialect_8cpp_source.html#l02701">getConnectingBundle()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00034">getNextCoords()</a>.</p>
+<p class="reference">References <a class="el" href="AIEDialect_8cpp_source.html#l02796">getConnectingBundle()</a>, and <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00034">getNextCoords()</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="AIEFlowsToJSON_8cpp_source.html#l00425">AIEFlowsToJSON()</a>.</p>
 
@@ -4808,7 +4830,7 @@ Variables</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Apr 3 2026 05:54:03 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Apr 7 2026 19:42:42 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
