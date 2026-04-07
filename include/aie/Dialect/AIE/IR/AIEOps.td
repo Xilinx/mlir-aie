@@ -1037,6 +1037,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       $_state.addOperands(buffer);

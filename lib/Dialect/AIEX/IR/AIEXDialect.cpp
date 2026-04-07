@@ -250,7 +250,7 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError(
         "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  if (hardwareSizes[1] > (1 << wrap_bits) - 1)
+  if (!skipTransformationChecks && hardwareSizes[1] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
@@ -352,6 +352,23 @@ bool AIEX::isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
          strides[2] == 0;
 }
 
+// Returns true when sizes/strides (innermost-first) describe a contiguous
+// row-major scan: innermost stride == 1 and each outer stride equals the
+// product of all inner sizes.  The repeat dimension (index 3) is excluded.
+// Size-1 dimensions are allowed to carry any stride value because that stride
+// is never applied during the transfer (the loop runs only once).
+// This is the vector-form counterpart of AIE::isContiguousBDTransfer.
+bool AIEX::isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
+                                llvm::ArrayRef<int64_t> strides) {
+  if (strides[0] != 1)
+    return false;
+  if (sizes[1] > 1 && strides[1] != sizes[0])
+    return false;
+  if (sizes[2] > 1 && strides[2] != sizes[0] * sizes[1])
+    return false;
+  return true;
+}
+
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
 // specify any data layout transformation, but simply express a contiguous
 // transfer of `len`. The 4th dimension is excluded because a repeat count
@@ -366,6 +383,112 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
         return getConstantIntValue(s).value();
       });
   return isLinearTransfer(inputSizes, inputStrides);
+}
+
+// Canonicalization pattern: rewrite a contiguous row-major access pattern to
+// the canonical linear form [s3, 1, 1, N][st3, 0, 0, 1].
+//
+// Using outermost-first index notation (matching the IR syntax), a 4D access
+// [s3, s2, s1, s0][st3, st2, st1, st0] is a contiguous linear scan when:
+//   st0 == 1
+//   s1 == 1  ||  st1 == s0          (stride irrelevant when size is 1)
+//   s2 == 1  ||  st2 == s0 * s1
+// yielding a total of N = s0 * s1 * s2 contiguous elements.  The repeat
+// dimension s3 / stride st3 is unchanged by the fold.
+//
+// Note: this pattern applies only to NpuDmaMemcpyNdOp.  The analogous
+// dimensionsToStream / dimensionsFromStreamPerConsumer attributes on
+// ObjectFifoCreateOp are not canonicalized here; they are lowered separately
+// by the ObjectFifo stateful transform pass.
+//
+// This fold is always semantically valid and never introduces new hardware
+// limit violations: in the resulting linear form, isLinearTransferWithout-
+// Transformation() returns true, so verifyStridesWraps() skips the 10-bit
+// d0 wrap-size check.  The hardware uses a wider buffer_length register in
+// linear mode (32-bit on shim tiles, 17-bit on mem tiles, 14-bit on core
+// tiles), so N can be much larger than the 10-bit ND wrap limit.
+namespace {
+struct LinearizeContiguousTransfer
+    : public mlir::OpRewritePattern<AIEX::NpuDmaMemcpyNdOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(AIEX::NpuDmaMemcpyNdOp op,
+                  mlir::PatternRewriter &rewriter) const override {
+    // Only constant sizes/strides/offsets can be analysed statically.
+    if (!llvm::all_of(op.getMixedSizes(), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).has_value();
+        }))
+      return mlir::failure();
+    if (!llvm::all_of(op.getMixedStrides(), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).has_value();
+        }))
+      return mlir::failure();
+    if (!llvm::all_of(op.getMixedOffsets(), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).has_value();
+        }))
+      return mlir::failure();
+
+    // Skip ops that are already in canonical linear form.
+    if (op.isLinearTransferWithoutTransformation())
+      return mlir::failure();
+
+    // getMixedSizes/Strides/Offsets return outermost-first; reverse to
+    // innermost-first so index 0 = d0 (innermost) and index 3 = repeat.
+    llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
+        llvm::reverse(op.getMixedSizes()), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).value();
+        });
+    llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
+        llvm::reverse(op.getMixedStrides()), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).value();
+        });
+    llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
+        llvm::reverse(op.getMixedOffsets()), [](mlir::OpFoldResult s) {
+          return mlir::getConstantIntValue(s).value();
+        });
+
+    // Require a contiguous row-major scan.
+    if (!AIEX::isContiguousTransfer(sizes, strides))
+      return mlir::failure();
+
+    // Fold d0/d1/d2 into one linear count; keep the repeat dimension intact.
+    // Build directly in outermost-first order for the replacement op.
+    int64_t N = sizes[0] * sizes[1] * sizes[2];
+    llvm::SmallVector<int64_t, 4> newSizesOuter = {sizes[3], 1, 1, N};
+    llvm::SmallVector<int64_t, 4> newStridesOuter = {strides[3], 0, 0, 1};
+
+    // getOffsetInBytes() computes: sum(offsets[i] * strides[i] * elemSize).
+    // After folding, the intermediate strides become 0, so any non-zero offset
+    // in those dimensions would silently contribute 0 bytes.  Preserve the
+    // correct start address by collapsing the innermost three offset/stride
+    // pairs into a single linear element index at d0.
+    int64_t linearOffset = offsets[0] * strides[0] + offsets[1] * strides[1] +
+                           offsets[2] * strides[2];
+    llvm::SmallVector<int64_t, 4> newOffsetsOuter = {offsets[3], 0, 0,
+                                                     linearOffset};
+
+    rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
+        op, op.getMemref(),
+        /*offsets=*/mlir::ValueRange{},
+        /*sizes=*/mlir::ValueRange{},
+        /*strides=*/mlir::ValueRange{},
+        mlir::DenseI64ArrayAttr::get(op.getContext(), newOffsetsOuter),
+        mlir::DenseI64ArrayAttr::get(op.getContext(), newSizesOuter),
+        mlir::DenseI64ArrayAttr::get(op.getContext(), newStridesOuter),
+        op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
+        op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
+        op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
+        op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr());
+    return mlir::success();
+  }
+};
+} // namespace
+
+void AIEX::NpuDmaMemcpyNdOp::getCanonicalizationPatterns(
+    mlir::RewritePatternSet &patterns, mlir::MLIRContext *context) {
+  patterns.add<LinearizeContiguousTransfer>(context);
 }
 
 // Helper method to check if a requested burst length is supported by the target
@@ -470,7 +593,13 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     }
     int col = tile.getCol();
     int row = tile.getRow();
-    bool skipTransformationChecks = isLinearTransferWithoutTransformation();
+    // A contiguous row-major ND access is also exempt from the ND wrap-size
+    // limit: aie-dma-to-npu lowers it to linear mode (d0_size=d1_size=0),
+    // and LinearizeContiguousTransfer canonicalizes it to explicit linear form.
+    bool skipTransformationChecks =
+        isLinearTransferWithoutTransformation() ||
+        (targetModel.isShimNOCTile(col, row) &&
+         AIEX::isContiguousTransfer(inputSizes, inputStrides));
     if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
                                   inputStrides, hardwareSizes, hardwareStrides,
                                   skipTransformationChecks))) {

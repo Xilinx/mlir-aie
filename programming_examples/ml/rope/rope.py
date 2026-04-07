@@ -11,7 +11,7 @@ import sys
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron.controlflow import range_
 from ml_dtypes import bfloat16
 
@@ -36,37 +36,12 @@ def rope(dev, sequence_length, embedding_dim, trace_size):
     rope_kernel = Kernel(
         "rope", "rope.o", [chunk_type, chunk_type, chunk_type, np.int32]
     )
-    taps_in = []
-    taps_out = []
-    for i in range(n_cores):
-        taps = TensorAccessPattern(
-            (sequence_length, embedding_dim),
-            offset=embedding_dim * rows_per_core * i,
-            sizes=[1, 1, 1, embedding_dim * rows_per_core],
-            strides=[0, 0, 0, 1],
-        )
-        # taps.visualize(
-        #     title=f"Core {i} input tap",
-        #     show_arsequence_length=True,
-        #     plot_access_count=True,
-        #     file_path=f"core_{i}_input_tap.png",
-        # )
-        taps_in.append(taps)
-
-    for i in range(n_cores):
-        taps = TensorAccessPattern(
-            (sequence_length, embedding_dim),
-            offset=embedding_dim * rows_per_core * i,
-            sizes=[1, 1, 1, embedding_dim * rows_per_core],
-            strides=[0, 0, 0, 1],
-        )
-        # taps.visualize(
-        #     title=f"Core {i} output tap",
-        #     show_arsequence_length=True,
-        #     plot_access_count=True,
-        #     file_path=f"core_{i}_output_tap.png",
-        # )
-        taps_out.append(taps)
+    taps_in = TensorTiler2D.simple_tiler(
+        (sequence_length, embedding_dim), (rows_per_core, embedding_dim)
+    )
+    taps_out = TensorTiler2D.simple_tiler(
+        (sequence_length, embedding_dim), (rows_per_core, embedding_dim)
+    )
 
     def core_body(of_in, of_lut, of_out, rope_kernel):
         for row in range_(rows_per_core):
