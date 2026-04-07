@@ -109,7 +109,8 @@ xrt-smi examine
     ```
 
     > **Note:** CMake **3.30 or newer** is required. If your distribution provides an older
-    > version, you can install a newer one inside your Python virtual environment:
+    > version, create and activate the Python virtual environment in the setup step below
+    > first, then install a newer CMake into that virtual environment:
     >
     > ```bash
     > python3 -m pip install --upgrade cmake
