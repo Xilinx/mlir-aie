@@ -108,6 +108,13 @@ xrt-smi examine
     build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
     ```
 
+    > **Note:** CMake **3.30 or newer** is required. If your distribution provides an older
+    > version, you can install a newer one inside your Python virtual environment:
+    >
+    > ```bash
+    > pip install cmake
+    > ```
+
 1. (Optional) Install opencv which is needed for vision programming examples:
 
    ```bash
