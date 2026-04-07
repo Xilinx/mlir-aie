@@ -1678,7 +1678,7 @@ def main(opts):
         trace_config = TraceConfig(
             trace_size=opts.trace_size,
             trace_file=trace_file,
-            trace_after_last_tensor=True,
+            ddr_id=-1,
             enable_ctrl_pkts=False,
             last_tensor_shape=out.shape,
             last_tensor_dtype=out.dtype,

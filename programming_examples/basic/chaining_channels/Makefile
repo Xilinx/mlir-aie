@@ -46,7 +46,7 @@ run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${LENGTH} -t ${TRACE}
 
 parse_trace: run
-	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie.mlir --output trace_${targetname}.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie.mlir.prj/input_with_addresses.mlir --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
 clean_trace:

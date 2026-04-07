@@ -46,7 +46,7 @@ struct ShimInfo {
   int channel;      // S2MM channel
   int bdId;         // Buffer descriptor ID
   int argIdx;       // Runtime sequence argument index
-  int bufferOffset; // Offset in bytes (for trace_after_last_tensor)
+  int bufferOffset; // Offset in bytes (non-zero when arg_idx=-1)
   std::vector<TraceInfo> traceSources; // All traces routed to this shim
   std::optional<int> startBroadcast;   // Broadcast to trigger for start
   std::optional<int> stopBroadcast;    // Broadcast to trigger for stop
@@ -59,6 +59,17 @@ struct AIEInsertTraceFlowsPass
     DeviceOp device = getOperation();
     OpBuilder builder(device);
     const auto &targetModel = device.getTargetModel();
+
+    // Verify no LogicalTileOps remain — placement must run before this pass
+    bool hasLogicalTile = false;
+    device.walk([&](LogicalTileOp op) {
+      op.emitError() << "LogicalTileOp must be resolved to TileOp before "
+                        "running -aie-insert-trace-flows (run -aie-place-tiles "
+                        "first)";
+      hasLogicalTile = true;
+    });
+    if (hasLogicalTile)
+      return signalPassFailure();
 
     // Phase 1: Collect all trace operations
     SmallVector<TraceOp> traces;
@@ -101,14 +112,12 @@ struct AIEInsertTraceFlowsPass
     int bufferSizeBytes = hostConfig.getBufferSize();
     int traceArgIdx = hostConfig.getArgIdx();
     auto routing = hostConfig.getRouting();
-    bool traceAfterLastTensor = hostConfig.getTraceAfterLastTensor();
 
-    // Compute offset for trace_after_last_tensor mode
+    // arg_idx=-1 means "append trace after last tensor"
     int traceBufferOffset = 0; // in bytes
-    if (traceAfterLastTensor) {
+    if (traceArgIdx == -1) {
       auto args = runtimeSeq.getBody().getArguments();
-      assert(!args.empty() &&
-             "runtime_sequence must have args for trace_after_last_tensor");
+      assert(!args.empty() && "runtime_sequence must have args for arg_idx=-1");
 
       Value lastArg = args.back();
       traceArgIdx = args.size() - 1;
@@ -403,8 +412,11 @@ struct AIEInsertTraceFlowsPass
     }
 
     // 4c-4f. Insert per-shim configurations
+    std::set<int> configuredShimCols;
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
+      if (!configuredShimCols.insert(shimCol).second)
+        continue;
 
       // Convert buffer size (bytes) to 32-bit words for buffer_length parameter
       int bufferLengthWords = bufferSizeBytes / 4;
@@ -434,7 +446,7 @@ struct AIEInsertTraceFlowsPass
           clTraceBurstLength // burst_length
       );
 
-      // 4d. Address patch (arg_plus = offset for trace_after_last_tensor)
+      // 4d. Address patch (arg_plus = offset when arg_idx=-1)
       uint32_t bdAddress = computeBDAddress(shimCol, shimInfo.bdId,
                                             shimInfo.shimTile, targetModel);
       xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
@@ -502,11 +514,14 @@ struct AIEInsertTraceFlowsPass
     // Phase 4g: Insert trace stop at end of runtime sequence
     builder.setInsertionPointToEnd(&seqBlock);
 
+    std::set<int> stoppedShimCols;
     for (auto &[col, shimInfo] : shimInfos) {
       if (!shimInfo.stopBroadcast)
         continue;
 
       int shimCol = shimInfo.shimTile.getCol();
+      if (!stoppedShimCols.insert(shimCol).second)
+        continue;
 
       auto userEvent0 = targetModel.lookupEvent(
           "USER_EVENT_0", shimInfo.shimTile.getTileID(), false);

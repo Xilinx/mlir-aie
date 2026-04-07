@@ -9,6 +9,10 @@
   </thead>
   <tbody>
     <tr>
+      <td style="vertical-align: middle;">ASPLOS 2026 Workshop - IRON AI Engine API for Ryzen AI NPU</td>
+      <td style="vertical-align: middle;"><a href="https://www.amd.com/content/dam/amd/en/documents/solutions/ai/iron-aie-api-for-ryzen-ai-npu-tutorial-asplos-2026.pdf"><img src="https://xilinx.github.io/xup_aie_training/images/pdf.png" alt="alt text" /></a></td>
+    </tr>
+    <tr>
       <td style="vertical-align: middle;">ISCA 2025 Workshop - Leveraging the IRON AI Engine API to Program the Ryzen AI NPU</td>
       <td style="vertical-align: middle;"><a href="https://www.amd.com/content/dam/amd/en/documents/products/processors/ryzen/ai/iron-for-ryzen-ai-tutorial-isca-2025.pdf"><img src="https://xilinx.github.io/xup_aie_training/images/pdf.png" alt="alt text" /></a></td>
     </tr>

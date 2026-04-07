@@ -65,10 +65,9 @@ class Runtime(Resolvable):
         self._workers = []
         self._open_task_groups = []
         self._trace_size = None
-        self._trace_offset = None
         self._trace_workers = None
         self._strict_task_groups = strict_task_groups
-        self.ddr_id = None
+        self._ddr_id = 4
 
     @contextmanager
     def sequence(self, *input_types: type[np.ndarray]):
@@ -242,9 +241,8 @@ class Runtime(Resolvable):
     def enable_trace(
         self,
         trace_size: int = None,
-        trace_offset: int = None,
         workers: list | None = None,
-        ddr_id: int = None,
+        ddr_id: int = 4,
         coretile_events: list | None = None,
         coremem_events: list | None = None,
         memtile_events: list | None = None,
@@ -257,17 +255,17 @@ class Runtime(Resolvable):
 
         Args:
             trace_size (int): Size of the trace buffer in bytes.
-            trace_offset (int | None, optional): Byte offset into the DDR buffer where trace
-                data should begin. Defaults to None (treated as 0).
             workers (list[Worker] | None, optional): Specific workers to trace. If None,
                 all workers with ``trace`` set will be traced. Defaults to None.
-            ddr_id (int | None, optional): XRT inout buffer index to write trace data into.
-                Defaults to None (treated as 4, the conventional last buffer slot).
+            ddr_id (int, optional): XRT inout buffer index (0-4) to write trace data
+                into, mapping to group_id (3-7). Defaults to 4 (group_id 7).
+                Set to -1 to append trace data after the last runtime_sequence
+                tensor argument.
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
                 See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available
                 events under (type)EventAIE such as CoreEventAIE.
                 Defaults to None (uses hardware defaults).
-            coremem_events (list | None, optional): List of up to 8 mem tile trace events.
+            coremem_events (list | None, optional): List of up to 8 core memory trace events.
                 Defaults to None (uses hardware defaults).
             memtile_events (list | None, optional): List of up to 8 mem tile trace events.
                 Defaults to None (uses hardware defaults).
@@ -275,7 +273,6 @@ class Runtime(Resolvable):
                 Defaults to None (uses hardware defaults).
         """
         self._trace_size = trace_size
-        self._trace_offset = trace_offset
         self._trace_workers = workers
         self._ddr_id = ddr_id
         self._coretile_events = coretile_events
@@ -325,32 +322,11 @@ class Runtime(Resolvable):
         @runtime_sequence(*rt_dtypes)
         def sequence(*args):
 
-            if self._trace_size is not None:
-                tiles_to_trace = []
-                if self._trace_workers is not None:
-                    for w in self._trace_workers:
-                        tiles_to_trace.append(w.tile.op)
-                else:
-                    for w in self._workers:
-                        if w.trace is not None:
-                            tiles_to_trace.append(w.tile.op)
-
-                trace_shim_tile = self.get_first_cons_shimtile()
-
-                logger.debug("config_trace")
-                trace_utils.configure_packet_tracing_aie2(
-                    # tiles_to_trace=[ tiles_to_trace[0] ],
-                    tiles_to_trace=tiles_to_trace,
-                    shim=trace_shim_tile,
-                    trace_size=self._trace_size // 4,
-                    trace_offset=(
-                        self._trace_offset if self._trace_offset is not None else 0
-                    ),
-                    ddr_id=self._ddr_id if self._ddr_id is not None else 4,
-                    coretile_events=self._coretile_events,
-                    coremem_events=self._coremem_events,
-                    memtile_events=self._memtile_events,
-                    shimtile_events=self._shimtile_events,
+            if self._trace_size is not None and self._trace_size > 0:
+                trace_utils.start_trace(
+                    trace_size=self._trace_size,
+                    ddr_id=self._ddr_id,
+                    routing="single",
                 )
 
             for rt_data, rt_data_val in zip(self._rt_data, args):
@@ -414,6 +390,3 @@ class Runtime(Resolvable):
 
             if task_group_actions[default_task_group]:
                 finish_task_group(default_task_group, task_group_actions)
-
-            if self._trace_size is not None:
-                trace_utils.gen_trace_done_aie2(trace_shim_tile)
