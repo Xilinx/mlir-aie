@@ -420,8 +420,9 @@ def test_cache_tensor_shapes():
         np.int32,
         pytest.param(
             np.float32,
-            marks=pytest.mark.skip(
-                reason="Suspected f32 kernel stack overflow when two runtime_sequence buffers map to same host-side buffer"
+            marks=pytest.mark.xfail(
+                reason="Suspected f32 kernel stack overflow when two runtime_sequence buffers map to same host-side buffer",
+                strict=False,
             ),
         ),
     ],
