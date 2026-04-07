@@ -62,14 +62,6 @@ bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
 bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
                           llvm::ArrayRef<int64_t> strides);
 
-// Like isContiguousTransfer, but additionally requires every size-1 outer
-// dimension to have stride 0.  Use this when the BD descriptor physically
-// encodes those stride fields (e.g. aie.dma_bd in dma_configure_task), where
-// a non-zero stride in a size-1 dimension would occupy ND registers and
-// prevent the transfer from being lowered to flat (linear) mode.
-bool isLinearizableContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
-                                      llvm::ArrayRef<int64_t> strides);
-
 } // namespace AIEX
 } // namespace xilinx
 

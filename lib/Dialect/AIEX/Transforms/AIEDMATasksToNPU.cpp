@@ -361,15 +361,12 @@ struct AIEDMATasksToNPUPass
       // d3 (repeat) is excluded; a repeated linear transfer is still linear.
       // A contiguous row-major ND access on a shim NOC tile is also lowered
       // using the wide buffer_length register, exempt from the 10-bit ND
-      // wrap-size limit.  At the BD level we use
-      // isLinearizableContiguousTransfer rather than isContiguousTransfer: the
-      // BD descriptor physically encodes all stride fields, so a non-zero
-      // stride in a size-1 dimension would occupy ND registers and prevent flat
-      // (linear) mode.
+      // wrap-size limit.  Canonicalization zeroes size-1 strides before this
+      // pass runs, so isContiguousTransfer is sufficient.
       bool treatAsLinear =
           isLinearTransfer(input_sizes, input_strides) ||
           (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
-           isLinearizableContiguousTransfer(input_sizes, input_strides));
+           isContiguousTransfer(input_sizes, input_strides));
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
