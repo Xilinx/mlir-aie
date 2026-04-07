@@ -112,7 +112,7 @@ xrt-smi examine
     > version, you can install a newer one inside your Python virtual environment:
     >
     > ```bash
-    > pip install cmake
+    > python3 -m pip install --upgrade cmake
     > ```
 
 1. (Optional) Install opencv which is needed for vision programming examples:
