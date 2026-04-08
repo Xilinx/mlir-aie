@@ -136,22 +136,6 @@ def install_eudsl(req_file, target_dir):
 
         shutil.copytree(install_dir, target_dir, dirs_exist_ok=True)
 
-    # Derive the installed prefix from config_setting for verification.
-    prefix = config_setting.split("=", 1)[1] if "=" in config_setting else "mlir"
-    util_path = os.path.join(target_dir, prefix, "extras", "util.py")
-    if not os.path.exists(util_path):
-        print(f"ERROR: {util_path} not found!", file=sys.stderr)
-        sys.exit(1)
-
-    # Patch np.bool -> np.bool_ (removed in NumPy 1.24).
-    with open(util_path) as f:
-        util_content = f.read()
-    if "np.bool:" in util_content:
-        util_content = util_content.replace("np.bool:", "np.bool_:")
-        with open(util_path, "w") as f:
-            f.write(util_content)
-        print(f"Patched np.bool -> np.bool_ in {util_path}", file=sys.stderr)
-
 
 def install_non_eudsl_deps(req_file):
     """Install all non-eudsl packages from req_file via a plain pip install.
