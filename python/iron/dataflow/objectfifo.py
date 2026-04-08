@@ -79,6 +79,8 @@ class ObjectFifo(Resolvable):
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
         self._iter_count: int | None = None
+        self._aie_stream: int | None = None
+        self._aie_stream_port: int | None = None
 
     @classmethod
     def __get_index(cls) -> int:
@@ -136,6 +138,19 @@ class ObjectFifo(Resolvable):
             raise ValueError("Iter count must be in [1, 256] range.")
 
         self._iter_count = iter_count
+
+    def set_aie_stream(self, stream_end: int, stream_port: int = 0):
+        """Configure one end of this ObjectFifo to use a Core stream port
+        instead of DMA, bypassing L1 buffering.
+
+        Args:
+            stream_end: 0 (producer stream), 1 (consumer stream), 2 (both)
+            stream_port: Core stream port index (default 0)
+        """
+        if stream_end not in (0, 1, 2):
+            raise ValueError("stream_end must be 0 (producer), 1 (consumer), or 2 (both)")
+        self._aie_stream = stream_end
+        self._aie_stream_port = stream_port
 
     def __str__(self) -> str:
         prod_endpoint = None
@@ -299,6 +314,9 @@ class ObjectFifo(Resolvable):
                 padDimensions=self._pad_dimensions,
                 iter_count=self._iter_count,
             )
+
+            if self._aie_stream is not None:
+                self._op.set_aie_stream(self._aie_stream, self._aie_stream_port)
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
                 self._prod.endpoint.resolve()
