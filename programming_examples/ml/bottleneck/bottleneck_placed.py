@@ -200,20 +200,20 @@ def bottleneck4AIEs():
 
             # weights
             inOF_wts_0_L3L2 = object_fifo(
-                "inOF_wts_0_L3L2", ShimTile, MemTile, 1, weightsAll_ty
+                "inOF_wts_0_L3L2", ShimTile, MemTile, [1, 1], weightsAll_ty
             )
             of_wts_buf_00 = object_fifo(
-                "wts_buf_00", MemTile, ComputeTile2, 1, weightsLayer1_ty
+                "wts_buf_00", MemTile, ComputeTile2, [1, 1], weightsLayer1_ty
             )
             wts_buf_01 = object_fifo(
                 "wts_buf_01",
                 MemTile,
                 [ComputeTile3, ComputeTile5],
-                1,
+                [1, 1, 1],
                 weightsLayer2_ty,
             )
             wts_buf_02 = object_fifo(
-                "wts_buf_02", MemTile, ComputeTile4, 1, weightsLayer3_ty
+                "wts_buf_02", MemTile, ComputeTile4, [1, 1], weightsLayer3_ty
             )
             of_offsets = [
                 0,

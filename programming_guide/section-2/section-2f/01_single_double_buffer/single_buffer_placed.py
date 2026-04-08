@@ -35,12 +35,12 @@ def single_buffer():
             # AIE-array data movement with object fifos
             # Input
             of_in = object_fifo(
-                "in", ComputeTile2, ComputeTile3, 1, data_ty
-            )  # single buffer
+                "in", ComputeTile2, ComputeTile3, 2, data_ty
+            )  # double buffer (ping-pong)
             # Output
             of_out = object_fifo(
-                "out", ComputeTile3, ShimTile, 1, data_ty
-            )  # single buffer
+                "out", ComputeTile3, ShimTile, 2, data_ty
+            )  # double buffer (ping-pong)
 
             # Set up compute tiles
             # Compute tile 2

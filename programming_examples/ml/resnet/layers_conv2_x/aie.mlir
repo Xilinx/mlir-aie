@@ -57,10 +57,10 @@ aie.device(npu1_3col) {
     aie.objectfifo.link[@inOF_act_L3L2]-> [@skip_buf] ()
 
     //wts
-    aie.objectfifo @inOF_wts_0_L3L2(%tile00, {%tile01}, 1 : i32) : !aie.objectfifo<memref<73728xi8>> // total buffer for weights
-    aie.objectfifo @wts_buf_00(%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<4096xi8>> // L1 buffer for first conv1x1 weights 256x64x1x1= 16384
-    aie.objectfifo @wts_buf_01(%tile01, {%tile03,%tile04}, 1 : i32) : !aie.objectfifo<memref<36864xi8>> // L1 buffer for middle conv3x3 weights 64x64x3x3= 36864
-    aie.objectfifo @wts_buf_02(%tile01, {%tile05}, 1 : i32) : !aie.objectfifo<memref<32768xi8>> // L1 buffer for final conv1x1 weights 64x256x1x1= 16384
+    aie.objectfifo @inOF_wts_0_L3L2(%tile00, {%tile01}, [1, 1]) : !aie.objectfifo<memref<73728xi8>> // total buffer for weights
+    aie.objectfifo @wts_buf_00(%tile01, {%tile02}, [1, 1]) : !aie.objectfifo<memref<4096xi8>> // L1 buffer for first conv1x1 weights 256x64x1x1= 16384
+    aie.objectfifo @wts_buf_01(%tile01, {%tile03,%tile04}, [1, 1, 1]) : !aie.objectfifo<memref<36864xi8>> // L1 buffer for middle conv3x3 weights 64x64x3x3= 36864
+    aie.objectfifo @wts_buf_02(%tile01, {%tile05}, [1, 1]) : !aie.objectfifo<memref<32768xi8>> // L1 buffer for final conv1x1 weights 64x256x1x1= 16384
     aie.objectfifo.link[@inOF_wts_0_L3L2]-> [@wts_buf_00,@wts_buf_01,@wts_buf_02] ()
 
     // OF for intermediate ofm between 1x1 and 3x3
@@ -71,10 +71,10 @@ aie.device(npu1_3col) {
 
   // ___________________________Bottleneck 2___________________________
     //wts
-    aie.objectfifo @inOF_wts_1_L3L2(%tile10, {%tile11}, 1 : i32) : !aie.objectfifo<memref<69632xi8>> // total buffer for weights
-    aie.objectfifo @wts_buf_10(%tile11, {%tile15}, 1 : i32) : !aie.objectfifo<memref<16384xi8>> // L1 buffer for first conv1x1 weights 256x64x1x1= 16384
-    aie.objectfifo @wts_buf_11(%tile11, {%tile12,%tile14}, 1 : i32) : !aie.objectfifo<memref<36864xi8>> // L1 buffer for middle conv3x3 weights 64x64x3x3= 36864
-    aie.objectfifo @wts_buf_12(%tile11, {%tile13}, 1 : i32) : !aie.objectfifo<memref<16384xi8>> // L1 buffer for final conv1x1 weights 64x256x1x1= 16384
+    aie.objectfifo @inOF_wts_1_L3L2(%tile10, {%tile11}, [1, 1]) : !aie.objectfifo<memref<69632xi8>> // total buffer for weights
+    aie.objectfifo @wts_buf_10(%tile11, {%tile15}, [1, 1]) : !aie.objectfifo<memref<16384xi8>> // L1 buffer for first conv1x1 weights 256x64x1x1= 16384
+    aie.objectfifo @wts_buf_11(%tile11, {%tile12,%tile14}, [1, 1, 1]) : !aie.objectfifo<memref<36864xi8>> // L1 buffer for middle conv3x3 weights 64x64x3x3= 36864
+    aie.objectfifo @wts_buf_12(%tile11, {%tile13}, [1, 1]) : !aie.objectfifo<memref<16384xi8>> // L1 buffer for final conv1x1 weights 64x256x1x1= 16384
     aie.objectfifo.link[@inOF_wts_1_L3L2]-> [@wts_buf_10,@wts_buf_11,@wts_buf_12] ()
 
     //initial activation for 1x1
@@ -92,10 +92,10 @@ aie.device(npu1_3col) {
 
   // ___________________________Bottleneck 3___________________________
     //wts
-    aie.objectfifo @inOF_wts_2_L3L2(%tile20, {%tile21}, 1 : i32) : !aie.objectfifo<memref<69632xi8>> // total buffer for weights
-    aie.objectfifo @wts_buf_20(%tile21, {%tile22}, 1 : i32) : !aie.objectfifo<memref<16384xi8>> // L1 buffer for first conv1x1 weights 256x64x1x1= 16384
-    aie.objectfifo @wts_buf_21(%tile21, {%tile23,%tile25}, 1 : i32) : !aie.objectfifo<memref<36864xi8>> // L1 buffer for middle conv3x3 weights 64x64x3x3= 36864
-    aie.objectfifo @wts_buf_22(%tile21, {%tile24}, 1 : i32) : !aie.objectfifo<memref<16384xi8>> // L1 buffer for final conv1x1 weights 64x256x1x1= 16384
+    aie.objectfifo @inOF_wts_2_L3L2(%tile20, {%tile21}, [1, 1]) : !aie.objectfifo<memref<69632xi8>> // total buffer for weights
+    aie.objectfifo @wts_buf_20(%tile21, {%tile22}, [1, 1]) : !aie.objectfifo<memref<16384xi8>> // L1 buffer for first conv1x1 weights 256x64x1x1= 16384
+    aie.objectfifo @wts_buf_21(%tile21, {%tile23,%tile25}, [1, 1, 1]) : !aie.objectfifo<memref<36864xi8>> // L1 buffer for middle conv3x3 weights 64x64x3x3= 36864
+    aie.objectfifo @wts_buf_22(%tile21, {%tile24}, [1, 1]) : !aie.objectfifo<memref<16384xi8>> // L1 buffer for final conv1x1 weights 64x256x1x1= 16384
     aie.objectfifo.link[@inOF_wts_2_L3L2]-> [@wts_buf_20,@wts_buf_21,@wts_buf_22] ()
 
     //initial activation for 1x1

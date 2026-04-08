@@ -40,7 +40,7 @@ class ObjectFifo(Resolvable):
     def __init__(
         self,
         obj_type: type[np.ndarray],
-        depth: int | None = 2,
+        depth: int | list[int] | None = 2,
         name: str | None = None,
         dims_to_stream: list[Sequence[int]] | None = None,
         dims_from_stream_per_cons: list[Sequence[int]] | None = None,
@@ -51,7 +51,12 @@ class ObjectFifo(Resolvable):
 
         Args:
             obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
-            depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
+            depth (int | list[int] | None, optional): The default depth of the ObjectFifo
+                endpoints. An integer specifies a scalar depth, which is subject to
+                ``findObjectFifoSize`` analysis during lowering. A list of integers
+                specifies explicit per-endpoint depths (producer first, then each
+                consumer in order), which bypasses depth analysis and are used as-is.
+                Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
             dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
             dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
@@ -60,7 +65,8 @@ class ObjectFifo(Resolvable):
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
         """
-        self._depth = depth
+        self._array_depth = isinstance(depth, list)
+        self._depth = depth[0] if self._array_depth else depth
         if isinstance(self._depth, int) and self._depth < 1:
             raise ValueError(
                 f"Default ObjectFifo depth must be > 0, but got {self._depth}"
@@ -260,6 +266,8 @@ class ObjectFifo(Resolvable):
                 "Cannot return depths since no cons ObjectFifoHandles are created."
             )
         depths = [self._prod.depth] + [con.depth for con in self._cons]
+        if self._array_depth:
+            return depths
         if len(set(depths)) == 1:
             return depths[0]
         return depths
@@ -566,7 +574,7 @@ class ObjectFifoHandle(Resolvable):
         self,
         offsets: list[int],
         placement: PlacementTile = AnyMemTile,
-        depths: list[int] | None = None,
+        depths: list[int | list[int]] | None = None,
         obj_types: list[type[np.ndarray]] = None,
         names: list[str] | None = None,
         dims_to_stream: list[list[Sequence[int]]] | None = None,
