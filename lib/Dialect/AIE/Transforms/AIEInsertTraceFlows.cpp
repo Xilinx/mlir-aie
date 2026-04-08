@@ -339,12 +339,76 @@ struct AIEInsertTraceFlowsPass
       }
     }
 
+    // Phase 2b-conflict: Check S2MM channel availability on target shims.
+    // If channels are occupied, adjust: use free channel, redirect lateral,
+    // or error.
+    auto usedChannels = scanUsedS2MMChannels(device);
+
+    for (auto &[col, shimInfo] : shimInfos) {
+      int shimCol = shimInfo.shimTile.getCol();
+      auto usedIt = usedChannels.find(shimCol);
+      if (usedIt == usedChannels.end())
+        continue; // No conflicts on this shim
+
+      const auto &usedSet = usedIt->second;
+      int freeCount = 2 - static_cast<int>(usedSet.size());
+
+      if (freeCount <= 0) {
+        // No channels free -- try lateral redirect
+        if (clLateralRouting) {
+          std::set<int> activeColumns;
+          device.walk([&](CoreOp core) {
+            auto coreTile = cast<TileOp>(core.getTile().getDefiningOp());
+            activeColumns.insert(coreTile.getCol());
+          });
+          // Also treat columns with full shims as "active" for spare search
+          for (auto &[fullCol, channels] : usedChannels) {
+            if (static_cast<int>(channels.size()) >= 2)
+              activeColumns.insert(fullCol);
+          }
+          int spare =
+              findNearestSpareColumn(shimCol, activeColumns, targetModel);
+          if (spare >= 0) {
+            shimInfo.shimTile = getOrCreateShim(device, builder, spare);
+            // Reset channel to default since spare shim is clean
+            shimInfo.channel = clShimChannel;
+            continue;
+          }
+        }
+        // No lateral available -- emit error
+        device.emitError()
+            << "no S2MM channels available on shim tile at column " << shimCol
+            << " (both channels in use by existing flows); enable "
+               "lateral-routing to redirect to a spare column";
+        return signalPassFailure();
+      }
+
+      if (freeCount == 1) {
+        // One channel free -- use it
+        int freeChannel = -1;
+        for (int ch = 0; ch < 2; ch++) {
+          if (usedSet.count(ch) == 0) {
+            freeChannel = ch;
+            break;
+          }
+        }
+        shimInfo.channel = freeChannel;
+      }
+    }
+
     // Build channel descriptors and trace-to-channel assignments
     int numRuntimeArgs = runtimeSeq.getBody().getArguments().size();
     for (auto &[col, shimInfo] : shimInfos) {
+      int shimCol = shimInfo.shimTile.getCol();
+      std::set<int> available = {0, 1};
+      auto usedIt = usedChannels.find(shimCol);
+      if (usedIt != usedChannels.end()) {
+        for (int ch : usedIt->second)
+          available.erase(ch);
+      }
       shimInfo.channels = buildChannelDescriptors(
           shimInfo.traceSources.size(), shimInfo.channel, shimInfo.bdId,
-          shimInfo.argIdx, numRuntimeArgs, argIdxAutoResolved);
+          shimInfo.argIdx, numRuntimeArgs, argIdxAutoResolved, available);
       // Round-robin assignment of traces to channels
       for (size_t i = 0; i < shimInfo.traceSources.size(); i++) {
         shimInfo.traceChannelAssignment.push_back(i % shimInfo.channels.size());
@@ -713,7 +777,8 @@ private:
   std::vector<ChannelDescriptor>
   buildChannelDescriptors(size_t numTraces, int primaryChannel, int primaryBdId,
                           int primaryArgIdx, int numRuntimeArgs,
-                          bool argIdxAutoResolved) {
+                          bool argIdxAutoResolved,
+                          const std::set<int> &availableChannels) {
     std::vector<ChannelDescriptor> chans;
     chans.push_back({primaryChannel, primaryBdId, primaryArgIdx});
     // Only distribute when: enabled, >1 trace, bd_id headroom, and secondary
@@ -725,7 +790,11 @@ private:
     if (clDistributeChannels && numTraces > 1 && primaryBdId > 0 &&
         secondArgAvailable) {
       int ch2 = (primaryChannel == 1) ? 0 : 1;
-      chans.push_back({ch2, primaryBdId - 1, primaryArgIdx + 1});
+      // Only add secondary channel if it's available (not claimed by existing
+      // flows)
+      if (availableChannels.count(ch2)) {
+        chans.push_back({ch2, primaryBdId - 1, primaryArgIdx + 1});
+      }
     }
     return chans;
   }
@@ -739,6 +808,40 @@ private:
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&device.getRegion().front());
     return TileOp::create(builder, device.getLoc(), col, 0);
+  }
+
+  /// Scan the device for existing S2MM channel claims on shim tiles.
+  /// Checks aie.flow destinations, aie.packet_flow destinations, and
+  /// ShimDMAAllocationOp declarations.
+  std::map<int, std::set<int>> scanUsedS2MMChannels(DeviceOp device) {
+    std::map<int, std::set<int>> used; // shimCol -> set of used S2MM channels
+
+    device.walk([&](FlowOp flow) {
+      auto destTile = cast<TileOp>(flow.getDest().getDefiningOp());
+      if (destTile.isShimTile() && flow.getDestBundle() == WireBundle::DMA) {
+        used[destTile.getCol()].insert(flow.getDestChannel());
+      }
+    });
+
+    device.walk([&](PacketFlowOp pktFlow) {
+      for (auto &op : pktFlow.getPorts().front()) {
+        if (auto dest = dyn_cast<PacketDestOp>(op)) {
+          auto destTile = cast<TileOp>(dest.getTile().getDefiningOp());
+          if (destTile.isShimTile() && dest.getBundle() == WireBundle::DMA) {
+            used[destTile.getCol()].insert(dest.getChannel());
+          }
+        }
+      }
+    });
+
+    device.walk([&](ShimDMAAllocationOp alloc) {
+      if (alloc.getChannelDir() == DMAChannelDir::S2MM) {
+        auto tile = alloc.getTileOp();
+        used[tile.getCol()].insert(alloc.getChannelIndex());
+      }
+    });
+
+    return used;
   }
 
   /// Find the nearest NOC shim column without active cores.

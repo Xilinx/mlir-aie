@@ -135,3 +135,36 @@ module @lateral_and_distribute {
     // COMBO-DAG: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 0>
   }
 }
+
+// -----
+
+// Test: Both S2MM channels on target shim are used -- falls back to lateral.
+// CHECK-LABEL: module @lateral_fallback_full_shim
+module @lateral_fallback_full_shim {
+  aie.device(npu1_2col) {
+    %tile02 = aie.tile(0, 2)
+    %tile00 = aie.tile(0, 0)
+
+    %core = aie.core(%tile02) { aie.end }
+
+    // Both S2MM channels claimed on column 0 shim
+    aie.flow(%tile02, DMA : 0, %tile00, DMA : 0)
+    aie.flow(%tile02, DMA : 1, %tile00, DMA : 1)
+
+    aie.trace @trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 8192
+      aie.trace.start_config @trace
+    }
+
+    // Trace redirects to column 1 (spare, both channels free)
+    // CHECK: aiex.npu.writebd {{{.*}}column = 1
+    // CHECK: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 1>
+  }
+}
