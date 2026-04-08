@@ -81,10 +81,11 @@ module @secondary_channel_used {
       aie.trace.start_config @trace_b
     }
 
+    // Single channel means single BD (appears in runtime_sequence before packet flows)
+    // CHECK: aiex.npu.writebd
+    // CHECK-NOT: aiex.npu.writebd
     // Both traces use channel 1 (channel 0 occupied, no distribute possible)
     // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
     // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
-    // Single channel means single BD
-    // CHECK-COUNT-1: aiex.npu.writebd
   }
 }
