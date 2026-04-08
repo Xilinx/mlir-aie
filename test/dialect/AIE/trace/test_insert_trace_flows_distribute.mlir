@@ -87,3 +87,44 @@ module @distribute_single_trace {
 // NODIST-LABEL: module @distribute_two_traces
 // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>
 // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>
+
+// -----
+
+// Test: distribute with arg_idx=-1 falls back to single channel
+// (arg_idx=-1 resolves to last arg; +1 would be out of bounds)
+// CHECK-LABEL: module @distribute_auto_argidx_fallback
+module @distribute_auto_argidx_fallback {
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    %tile03 = aie.tile(0, 3)
+    %tile00 = aie.tile(0, 0)
+
+    aie.trace @trace_a(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.trace @trace_b(%tile03) {
+      aie.trace.packet id=2 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 8192 arg_idx = -1
+      aie.trace.start_config @trace_a
+      aie.trace.start_config @trace_b
+    }
+
+    // With arg_idx=-1, distribute falls back to single channel.
+    // Only one writebd and one address_patch (single channel).
+    // CHECK-COUNT-1: aiex.npu.writebd
+    // CHECK-COUNT-1: aiex.npu.address_patch
+    // Both traces use the same DMA channel (no distribute).
+    // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
+    // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
+  }
+}

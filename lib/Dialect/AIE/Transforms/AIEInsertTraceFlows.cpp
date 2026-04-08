@@ -125,6 +125,7 @@ struct AIEInsertTraceFlowsPass
 
     // arg_idx=-1 means "append trace after last tensor"
     int traceBufferOffset = 0; // in bytes
+    bool argIdxAutoResolved = (traceArgIdx == -1);
     if (traceArgIdx == -1) {
       auto args = runtimeSeq.getBody().getArguments();
       assert(!args.empty() && "runtime_sequence must have args for arg_idx=-1");
@@ -339,10 +340,11 @@ struct AIEInsertTraceFlowsPass
     }
 
     // Build channel descriptors and trace-to-channel assignments
+    int numRuntimeArgs = runtimeSeq.getBody().getArguments().size();
     for (auto &[col, shimInfo] : shimInfos) {
       shimInfo.channels = buildChannelDescriptors(
           shimInfo.traceSources.size(), shimInfo.channel, shimInfo.bdId,
-          shimInfo.argIdx);
+          shimInfo.argIdx, numRuntimeArgs, argIdxAutoResolved);
       // Round-robin assignment of traces to channels
       for (size_t i = 0; i < shimInfo.traceSources.size(); i++) {
         shimInfo.traceChannelAssignment.push_back(i % shimInfo.channels.size());
@@ -708,13 +710,20 @@ private:
   /// Note: arg_idx values are XRT argument indices (not MLIR function args).
   /// The secondary channel uses primaryArgIdx+1, so the host must provide
   /// a second trace buffer at that XRT arg index.
-  std::vector<ChannelDescriptor> buildChannelDescriptors(size_t numTraces,
-                                                         int primaryChannel,
-                                                         int primaryBdId,
-                                                         int primaryArgIdx) {
+  std::vector<ChannelDescriptor>
+  buildChannelDescriptors(size_t numTraces, int primaryChannel, int primaryBdId,
+                          int primaryArgIdx, int numRuntimeArgs,
+                          bool argIdxAutoResolved) {
     std::vector<ChannelDescriptor> chans;
     chans.push_back({primaryChannel, primaryBdId, primaryArgIdx});
-    if (clDistributeChannels && numTraces > 1 && primaryBdId > 0) {
+    // Only distribute when: enabled, >1 trace, bd_id headroom, and secondary
+    // arg index is available. When arg_idx was auto-resolved from -1, the
+    // resolved index is at the boundary of runtime_sequence args, so +1 would
+    // be out of bounds.
+    bool secondArgAvailable =
+        !argIdxAutoResolved || primaryArgIdx + 1 < numRuntimeArgs;
+    if (clDistributeChannels && numTraces > 1 && primaryBdId > 0 &&
+        secondArgAvailable) {
       int ch2 = (primaryChannel == 1) ? 0 : 1;
       chans.push_back({ch2, primaryBdId - 1, primaryArgIdx + 1});
     }
