@@ -9,8 +9,9 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.iron.controlflow import range_
 from aie.extras.context import mlir_mod_ctx
+from aie.helpers.taplib import TensorTiler2D
+from aie.iron.controlflow import range_
 
 
 def edge_detect(dev, width, height):
@@ -264,15 +265,12 @@ def edge_detect(dev, width, height):
                 outOF_L1L2.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
+        tap = TensorTiler2D.simple_tiler((height, lineWidthInBytes))[0]
+
         @runtime_sequence(tensor_ty, tensor_16x16_ty, tensor_ty)
         def sequence(I, B, O):
-            in_task = shim_dma_single_bd_task(inOF_L3L2, I, sizes=[1, 1, 1, tensorSize])
-            out_task = shim_dma_single_bd_task(
-                outOF_L2L3,
-                O,
-                sizes=[1, 1, 1, tensorSize],
-                issue_token=True,
-            )
+            in_task = shim_dma_single_bd_task(inOF_L3L2, I, tap=tap)
+            out_task = shim_dma_single_bd_task(outOF_L2L3, O, tap=tap, issue_token=True)
 
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)

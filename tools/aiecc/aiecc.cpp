@@ -1522,6 +1522,7 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
     devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
     devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
     devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
+    devicePm.addPass(createCanonicalizerPass());
     devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
     devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
     devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());

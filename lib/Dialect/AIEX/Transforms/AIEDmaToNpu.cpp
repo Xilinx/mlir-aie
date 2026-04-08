@@ -284,10 +284,15 @@ public:
     // row
     row = IntegerAttr::get(i32ty, tileRow);
 
-    bool skipTransformationChecks = op.isLinearTransferWithoutTransformation();
+    // A contiguous row-major ND access on a shim NOC tile is lowered to linear
+    // mode (d0_size=d1_size=0) just like an already-canonical linear transfer.
+    // This allows naturally-expressed multidimensional transfers (e.g., a 2D
+    // image as [height, width]) without hitting the 10-bit ND wrap-size limit.
+    bool isLinear = op.isLinearTransferWithoutTransformation() ||
+                    (targetModel.isShimNOCTile(tileCol, tileRow) &&
+                     isContiguousTransfer(inputSizes, inputStrides));
     if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
-                                  inputStrides, sizes, strides,
-                                  skipTransformationChecks))) {
+                                  inputStrides, sizes, strides, isLinear))) {
       return failure();
     }
 
@@ -353,7 +358,7 @@ public:
 
     // out_of_order_id
 
-    if (!op.isLinearTransferWithoutTransformation()) {
+    if (!isLinear) {
       // d0_size, d0_stride
       d0_size = IntegerAttr::get(i32ty, sizes[0]);
       d0_stride = IntegerAttr::get(i32ty, strides[0]);
