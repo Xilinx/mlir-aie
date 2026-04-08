@@ -128,3 +128,71 @@ module @distribute_auto_argidx_fallback {
     // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
   }
 }
+
+// -----
+
+// Test: 4 traces across 3 columns, distributed across 2 channels.
+// Round-robin: traces 0,2 -> channel 1 (primary), traces 1,3 -> channel 0.
+// CHECK-LABEL: module @distribute_four_traces_three_cols
+module @distribute_four_traces_three_cols {
+  aie.device(npu1_3col) {
+    %tile02 = aie.tile(0, 2)
+    %tile03 = aie.tile(0, 3)
+    %tile12 = aie.tile(1, 2)
+    %tile22 = aie.tile(2, 2)
+    %tile00 = aie.tile(0, 0)
+
+    aie.trace @trace_0_2(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.trace @trace_0_3(%tile03) {
+      aie.trace.packet id=2 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.trace @trace_1_2(%tile12) {
+      aie.trace.packet id=3 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.trace @trace_2_2(%tile22) {
+      aie.trace.packet id=4 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 8192
+      aie.trace.start_config @trace_0_2
+      aie.trace.start_config @trace_0_3
+      aie.trace.start_config @trace_1_2
+      aie.trace.start_config @trace_2_2
+    }
+
+    // All 4 traces route to column 0 shim (Single routing strategy)
+    // Distributed across 2 channels: traces alternate between DMA 1 and DMA 0
+    // CHECK-DAG: aie.packet_dest<%{{.*}}0_0{{.*}}, DMA : 1>
+    // CHECK-DAG: aie.packet_dest<%{{.*}}0_0{{.*}}, DMA : 0>
+    // Two BDs configured (one per channel)
+    // CHECK-DAG: aiex.npu.writebd {bd_id = 15
+    // CHECK-DAG: aiex.npu.writebd {bd_id = 14
+    // Two address patches
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 5
+
+    // Without distribute, all 4 traces use same channel
+    // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>
+    // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>
+    // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>
+    // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>
+  }
+}
