@@ -1,0 +1,22 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess
+//
+// RUN: mkdir -p %t/conv3d_single && cd %t/conv3d_single
+// RUN: make -C %S clean
+// RUN: make -C %S devicename=npu2 depth=8 height=8 width=8 in_channels=8 out_channels=8
+// RUN: %run_on_npu make -C %S run_py devicename=npu2 depth=8 height=8 width=8 in_channels=8 out_channels=8 | FileCheck %s
+// CHECK: PASS!
+
+// Test with different depth
+// RUN: mkdir -p %t/conv3d_depth16 && cd %t/conv3d_depth16
+// RUN: make -C %S clean
+// RUN: make -C %S devicename=npu2 depth=16 height=8 width=8 in_channels=8 out_channels=8
+// RUN: %run_on_npu make -C %S run_py devicename=npu2 depth=16 height=8 width=8 in_channels=8 out_channels=8 | FileCheck %s
+
+// Test larger spatial volume
+// RUN: mkdir -p %t/conv3d_32x32 && cd %t/conv3d_32x32
+// RUN: make -C %S clean
+// RUN: make -C %S devicename=npu2 depth=8 height=32 width=32 in_channels=8 out_channels=8
+// RUN: %run_on_npu make -C %S run_py devicename=npu2 depth=8 height=32 width=32 in_channels=8 out_channels=8 | FileCheck %s

@@ -1,0 +1,17 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, chess
+//
+// Test 2-core spatial parallelism
+// RUN: mkdir -p %t/conv3d_spatial_2core && cd %t/conv3d_spatial_2core
+// RUN: make -C %S clean
+// RUN: make -C %S spatial_2core depth=8 height=32 width=32 in_channels=8 out_channels=8
+// RUN: %run_on_npu python3 %S/test.py -x %S/build/spatial_2core.xclbin -i %S/build/spatial_2core_insts.bin -k MLIR_AIE -d 8 -ht 32 -wd 32 -ic 8 -oc 8 | FileCheck %s
+// CHECK: PASS!
+
+// Test 4-core spatial parallelism
+// RUN: mkdir -p %t/conv3d_spatial_4core && cd %t/conv3d_spatial_4core
+// RUN: make -C %S clean
+// RUN: make -C %S spatial_4core depth=8 height=64 width=64 in_channels=8 out_channels=8
+// RUN: %run_on_npu python3 %S/test.py -x %S/build/spatial_4core.xclbin -i %S/build/spatial_4core_insts.bin -k MLIR_AIE -d 8 -ht 64 -wd 64 -ic 8 -oc 8 | FileCheck %s
