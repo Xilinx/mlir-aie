@@ -368,17 +368,37 @@ class CallableDesign:
         Returns:
             The MLIR module as a string (suitable for inspection or debugging).
 
-        Note:
-            Unlike ``__call__``, this method does not raise ``TypeError`` when a
-            call-time ``Compile[T]`` value conflicts with a pre-bound value.
-            ``lower()`` is an inspection tool; pre-bound values silently win,
-            consistent with the merge semantics of ``__call__``.
+        Raises:
+            UserWarning: When a call-time ``Compile[T]`` value is overridden by
+                a pre-bound value, so the caller knows their argument was ignored.
         """
         from aie.iron.kernel import ExternalFunction
 
         call_compile_kwargs, _scalar_runtime_kwargs, effective_compile_kwargs = (
             self._extract_compile_kwargs(runtime_kwargs)
         )
+
+        # Warn about any call-time kwargs that are silently overridden by
+        # pre-bound values. This is the primary footgun for lower() users.
+        pre_bound = self.compilable.compile_kwargs
+        overridden = {
+            k: (call_compile_kwargs[k], pre_bound[k])
+            for k in call_compile_kwargs
+            if k in pre_bound and call_compile_kwargs[k] != pre_bound[k]
+        }
+        if overridden:
+            details = ", ".join(
+                f"{k}={passed!r} ignored (pre-bound={bound!r})"
+                for k, (passed, bound) in overridden.items()
+            )
+            warnings.warn(
+                f"lower(): the following Compile[T] arguments were ignored because "
+                f"they conflict with pre-bound values: {details}. "
+                f"Pre-bound values always win. To inspect with different compile "
+                f"params, create a new CallableDesign.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         compilable = self._build_compilable(
             call_compile_kwargs, effective_compile_kwargs
