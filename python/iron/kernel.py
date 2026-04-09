@@ -272,3 +272,15 @@ class ExternalFunction(Kernel):
         if not isinstance(other, ExternalFunction):
             return NotImplemented
         return self._content_digest() == other._content_digest()
+
+    def __repr__(self) -> str:
+        """Content-based repr so str(ef) is stable across GC cycles.
+
+        The default ``object.__repr__`` includes the memory address, which
+        Python's GC recycles.  Two ExternalFunction instances with different
+        content can end up at the same address in sequence, producing the same
+        ``str(ef)`` and therefore the same filesystem cache hash in
+        ``_compute_hash``, causing the wrong compiled binary to be loaded.
+        Using the content digest here makes ``str(ef)`` unique per content.
+        """
+        return f"ExternalFunction({self._name!r}, digest={self._content_digest()})"

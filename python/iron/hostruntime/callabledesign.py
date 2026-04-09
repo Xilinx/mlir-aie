@@ -36,10 +36,30 @@ from typing import Any, Callable
 
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.npukernel import NPUKernel
+from aie.utils import DefaultNPURuntime
 
 from aie.iron.compile.compilabledesign import CompilableDesign
 
 logger = logging.getLogger(__name__)
+
+
+def _evict_xrt_context(xclbin_path: Path) -> None:
+    """Evict a stale XRT hw_context from ``DefaultNPURuntime._context_cache``.
+
+    Called after an IOCTL EINVAL error so the next kernel load creates a
+    genuinely fresh hardware context rather than reusing the invalid one.
+    No-op when the runtime has no context cache or the entry is absent.
+    """
+    if DefaultNPURuntime is None or not hasattr(DefaultNPURuntime, "_context_cache"):
+        return
+    try:
+        resolved = str(xclbin_path.resolve())
+        mtime = xclbin_path.stat().st_mtime
+        entry = DefaultNPURuntime._context_cache.pop((resolved, mtime), None)
+        if entry is not None:
+            DefaultNPURuntime._cleanup_entry(entry)
+    except Exception:
+        pass
 
 
 class CallableDesign:
@@ -355,7 +375,40 @@ class CallableDesign:
             runtime_args, scalar_runtime_kwargs
         )
         compilable.validate_tensor_args(tensor_args)
-        return kernel(*tensor_args, **remaining_scalars)
+
+        try:
+            return kernel(*tensor_args, **remaining_scalars)
+        except RuntimeError as exc:
+            # IOCTL EINVAL (err=-22) means the XRT hw_context backing this
+            # NPUKernel is invalid (stale context from the XRT context cache).
+            # Evict both the Python kernel cache entry AND the XRT context cache
+            # entry so the retry creates a genuinely fresh hardware context.
+            if "err=-22" not in str(exc) and "Invalid argument" not in str(exc):
+                raise
+
+            # Evict Python kernel cache entry.
+            self._kernel_cache.pop(cache_key, None)
+
+            # Recompile to obtain xclbin path (filesystem cache makes this fast).
+            xclbin_path, inst_path = compilable.compile()
+
+            # Evict the stale XRT hw_context so the retry creates a new one.
+            _evict_xrt_context(xclbin_path)
+
+            if trace_config is not None:
+                kernel_dir = xclbin_path.parent
+                physical_mlir = kernel_dir / "input_with_addresses.mlir"
+                if physical_mlir.exists():
+                    trace_config.physical_mlir_path = str(physical_mlir)
+            kernel = NPUKernel(
+                xclbin_path,
+                inst_path,
+                kernel_name="MLIR_AIE",
+                trace_config=trace_config,
+            )
+            if compilable.use_cache:
+                self._kernel_cache[cache_key] = kernel
+            return kernel(*tensor_args, **remaining_scalars)
 
     def lower(self, *runtime_args, **runtime_kwargs) -> str:
         """Generate and return the MLIR text for this kernel without compiling.

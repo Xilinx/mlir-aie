@@ -13,11 +13,8 @@ def reset_iron_state():
     """Clear ExternalFunction._instances before and after every test.
 
     ``ExternalFunction._instances`` is a class-level global set that accumulates
-    live instances for the ``@jit`` decorator to compile.  If a test fails during
-    compilation, stale instances can remain and contaminate subsequent tests.
-    Clearing it around each test ensures a clean slate without forcing expensive
-    kernel recompilation (the in-process ``_kernel_cache`` is left intact so
-    successive tests within the same session still benefit from caching).
+    live instances for the ``@jit`` decorator to compile.  A failed compilation
+    leaves stale entries that corrupt subsequent compilations.
     """
     from aie.iron.kernel import ExternalFunction
 
