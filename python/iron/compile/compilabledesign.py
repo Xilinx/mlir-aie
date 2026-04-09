@@ -63,18 +63,18 @@ def _collect_co_names(code) -> set:
     return names
 
 
-def _hash_captured_globals(generator) -> str:
-    """Return a SHA-256 hex digest of the primitive globals referenced by *generator*.
+def _iter_referenced_globals(generator):
+    """Yield ``(name, value)`` pairs for non-trivial globals referenced by *generator*.
 
-    Recursively collects all ``co_names`` from the generator's code object and
-    nested code objects, looks each name up in the generator's global namespace,
-    and hashes the primitive-scalar values it finds.  Modules, types, builtins,
-    and callables are skipped.  Non-primitive values are hashed via pickle; if
-    pickle fails the value is skipped with a debug log.
+    Skips builtins, modules, types, callables, and ``None``.  Yields everything
+    else — both primitive scalars (which are cheaply hashable) and complex
+    objects (which may need pickle).
+
+    Used by :func:`_hash_captured_globals` and by ``@iron.jit`` to warn users
+    about globals that cannot be reliably cache-invalidated.
     """
     all_names = _collect_co_names(generator.__code__)
     globs = generator.__globals__
-    parts = []
     for name in sorted(all_names):
         val = globs.get(name)
         if val is None:
@@ -85,20 +85,33 @@ def _hash_captured_globals(generator) -> str:
             continue
         if callable(val):
             continue
+        yield name, val
+
+
+def _hash_captured_globals(generator) -> str:
+    """Return a SHA-256 hex digest of the primitive globals referenced by *generator*.
+
+    Recursively collects all ``co_names`` from the generator's code object and
+    nested code objects, looks each name up in the generator's global namespace,
+    and hashes the primitive-scalar values it finds.  Modules, types, builtins,
+    and callables are skipped.  Non-primitive values are hashed via pickle; if
+    pickle fails the value is skipped with a debug log.
+    """
+    parts = []
+    for name, val in _iter_referenced_globals(generator):
         if isinstance(val, _PRIMITIVE_TYPES):
             parts.append(f"{name}={repr(val)}")
-            continue
-        if isinstance(val, (tuple, list)) and all(
+        elif isinstance(val, (tuple, list)) and all(
             isinstance(v, _PRIMITIVE_TYPES) for v in val
         ):
             parts.append(f"{name}={repr(val)}")
-            continue
-        # Non-primitive: try pickle
-        try:
-            digest = hashlib.sha256(pickle.dumps(val)).hexdigest()
-            parts.append(f"{name}=pickle:{digest}")
-        except Exception as exc:
-            logger.debug("_hash_captured_globals: skipping %r (%s)", name, exc)
+        else:
+            # Non-primitive: try pickle
+            try:
+                digest = hashlib.sha256(pickle.dumps(val)).hexdigest()
+                parts.append(f"{name}=pickle:{digest}")
+            except Exception as exc:
+                logger.debug("_hash_captured_globals: skipping %r (%s)", name, exc)
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
@@ -493,9 +506,7 @@ class CompilableDesign:
                 # aiecc may exit with code 0 even when xclbin generation fails
                 # silently (e.g. missing xclbinutil or bootgen), so we must
                 # check the files exist before treating compilation as a success.
-                missing = [
-                    p for p in (xclbin_path, inst_path) if not p.exists()
-                ]
+                missing = [p for p in (xclbin_path, inst_path) if not p.exists()]
                 if missing:
                     raise RuntimeError(
                         "[aiecc] Compilation appeared to succeed (exit code 0) "

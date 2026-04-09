@@ -57,9 +57,6 @@ _JIT_CONFIG_KEYS = frozenset(
     if p not in ("self", "mlir_generator", "compile_kwargs")
 )
 
-# Re-export CallableDesign under its original name for use in this module.
-CallableDesign = _CallableDesign
-
 
 def jit(mlir_generator: Callable | None = None, **kwargs):
     """Decorator for JIT compilation and NPU execution.
@@ -106,31 +103,18 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
                 )
 
         # Warn about captured globals that could cause stale cache hits.
-        import types as _types
-        import builtins as _builtins
-        from aie.iron.compile.compilabledesign import _collect_co_names
+        from aie.iron.compile.compilabledesign import _iter_referenced_globals
 
-        _builtin_names = set(dir(_builtins))
-        all_names = _collect_co_names(mlir_generator.__code__)
-        globs = mlir_generator.__globals__
-        complex_globals = []
-        for name in sorted(all_names):
-            val = globs.get(name)
-            if val is None:
-                continue
-            if isinstance(val, (_types.ModuleType, type)):
-                continue
-            if name in _builtin_names:
-                continue
-            if callable(val):
-                continue
-            if isinstance(val, (int, float, str, bool, bytes)):
-                continue
-            if isinstance(val, (tuple, list)) and all(
-                isinstance(v, (int, float, str, bool)) for v in val
-            ):
-                continue
-            complex_globals.append(name)
+        _primitive = (int, float, str, bool, bytes)
+        complex_globals = [
+            name
+            for name, val in _iter_referenced_globals(mlir_generator)
+            if not isinstance(val, _primitive)
+            and not (
+                isinstance(val, (tuple, list))
+                and all(isinstance(v, _primitive) for v in val)
+            )
+        ]
         if complex_globals:
             warnings.warn(
                 f"@iron.jit: {mlir_generator.__name__!r} references module-level global(s) "
@@ -170,7 +154,7 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
                 f"      ..."
             )
 
-    return CallableDesign(
+    return _CallableDesign(
         mlir_generator,
         compile_kwargs=compile_kwargs if compile_kwargs else None,
         **config,
