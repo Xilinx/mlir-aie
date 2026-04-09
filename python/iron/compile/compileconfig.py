@@ -11,9 +11,6 @@
 compile-time options (source files, flags, etc.) can be declared once at
 definition time.  It does *not* bind compile_kwargs — those are supplied later
 at ``CompilableDesign`` construction or ``@iron.jit(...)`` call time.
-
-Bug fix vs. erika-vibe-coding: the original ``functools.partial`` call lacked
-a callable as its first argument.  Fixed by using a proper inner wrapper.
 """
 
 from __future__ import annotations

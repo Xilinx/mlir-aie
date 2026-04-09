@@ -50,9 +50,11 @@ class Compile(Generic[T]):
 
     Example::
 
+        from ml_dtypes import bfloat16
+
         def gemm(a: In, b: In, c: Out,
                  M: Compile[int], K: Compile[int], N: Compile[int],
-                 dtype: Compile[np.dtype] = np.bfloat16):
+                 dtype: Compile[type] = bfloat16):
             ...
     """
 

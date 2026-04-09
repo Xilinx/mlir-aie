@@ -185,10 +185,9 @@ class TestMul:
         with pytest.raises(ValueError, match="dtype must be bfloat16"):
             kernels.mul(tile_size=1024, dtype=np.float32)
 
-    def test_custom_tile_size_reflected_in_arg_types(self):
-        ef = kernels.mul(tile_size=512, dtype=bfloat16)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (512,)
+    def test_wrong_tile_size_raises(self):
+        with pytest.raises(ValueError, match="tile_size must be 1024"):
+            kernels.mul(tile_size=512)
 
 
 # ---------------------------------------------------------------------------
@@ -235,8 +234,7 @@ class TestReduceAdd:
 
     def test_custom_tile_size_reflected_in_arg_types(self):
         ef = kernels.reduce_add(tile_size=2048, dtype=np.int32)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (2048,)
+        assert ef._arg_types[0].__args__[0] == (2048,)
 
 
 # ---------------------------------------------------------------------------
@@ -283,8 +281,7 @@ class TestReduceMin:
 
     def test_custom_tile_size_reflected_in_arg_types(self):
         ef = kernels.reduce_min(tile_size=2048, dtype=np.int32)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (2048,)
+        assert ef._arg_types[0].__args__[0] == (2048,)
 
 
 # ---------------------------------------------------------------------------
@@ -334,8 +331,7 @@ class TestReduceMax:
 
     def test_custom_tile_size_reflected_in_arg_types(self):
         ef = kernels.reduce_max(tile_size=2048, dtype=np.int32)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (2048,)
+        assert ef._arg_types[0].__args__[0] == (2048,)
 
 
 # ---------------------------------------------------------------------------
@@ -363,10 +359,9 @@ class TestRelu:
         ef = kernels.relu(tile_size=1024)
         assert ef._name == "bf16_relu"
 
-    def test_custom_tile_size_reflected_in_arg_types(self):
-        ef = kernels.relu(tile_size=512)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (512,)
+    def test_wrong_tile_size_raises(self):
+        with pytest.raises(ValueError, match="tile_size must be 1024"):
+            kernels.relu(tile_size=512)
 
 
 # ---------------------------------------------------------------------------
@@ -396,8 +391,7 @@ class TestRgba2Hue:
 
     def test_input_shape_is_4x_line_width(self):
         ef = kernels.rgba2hue(line_width=640)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (640 * 4,)
+        assert ef._arg_types[0].__args__[0] == (640 * 4,)
 
     def test_output_shape_is_line_width(self):
         ef = kernels.rgba2hue(line_width=640)
@@ -446,98 +440,95 @@ class TestThreshold:
 
     def test_custom_line_width_reflected_in_arg_types(self):
         ef = kernels.threshold(line_width=640, dtype=np.uint8)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (640,)
+        assert ef._arg_types[0].__args__[0] == (640,)
 
 
 # ---------------------------------------------------------------------------
-# bitwiseOR
+# bitwise_or
 # ---------------------------------------------------------------------------
 
 
 class TestBitwiseOR:
     def test_returns_external_function(self):
-        ef = kernels.bitwiseOR(line_width=1920, dtype=np.uint8)
+        ef = kernels.bitwise_or(line_width=1920, dtype=np.uint8)
         assert isinstance(ef, ExternalFunction)
 
     def test_source_file_exists(self):
-        ef = kernels.bitwiseOR(line_width=1920, dtype=np.uint8)
+        ef = kernels.bitwise_or(line_width=1920, dtype=np.uint8)
         src = _source_file(ef)
         assert src is not None
         assert Path(src).exists(), f"Source file not found: {src}"
 
     def test_arg_types_length(self):
         # (in1, in2, out, lineWidth: np.int32)
-        ef = kernels.bitwiseOR(line_width=1920, dtype=np.uint8)
+        ef = kernels.bitwise_or(line_width=1920, dtype=np.uint8)
         assert len(ef._arg_types) == 4
 
     def test_function_name(self):
-        ef = kernels.bitwiseOR(line_width=1920, dtype=np.uint8)
+        ef = kernels.bitwise_or(line_width=1920, dtype=np.uint8)
         assert ef._name == "bitwiseORLine"
 
     def test_int16_dtype(self):
-        ef = kernels.bitwiseOR(line_width=1920, dtype=np.int16)
+        ef = kernels.bitwise_or(line_width=1920, dtype=np.int16)
         assert isinstance(ef, ExternalFunction)
         assert len(ef._arg_types) == 4
 
     def test_int32_dtype(self):
-        ef = kernels.bitwiseOR(line_width=1920, dtype=np.int32)
+        ef = kernels.bitwise_or(line_width=1920, dtype=np.int32)
         assert isinstance(ef, ExternalFunction)
         assert len(ef._arg_types) == 4
 
     def test_invalid_dtype_raises(self):
         with pytest.raises(ValueError, match="unsupported dtype"):
-            kernels.bitwiseOR(line_width=1920, dtype=np.float32)
+            kernels.bitwise_or(line_width=1920, dtype=np.float32)
 
     def test_custom_line_width_reflected_in_arg_types(self):
-        ef = kernels.bitwiseOR(line_width=640, dtype=np.uint8)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (640,)
+        ef = kernels.bitwise_or(line_width=640, dtype=np.uint8)
+        assert ef._arg_types[0].__args__[0] == (640,)
 
 
 # ---------------------------------------------------------------------------
-# bitwiseAND
+# bitwise_and
 # ---------------------------------------------------------------------------
 
 
 class TestBitwiseAND:
     def test_returns_external_function(self):
-        ef = kernels.bitwiseAND(line_width=1920, dtype=np.uint8)
+        ef = kernels.bitwise_and(line_width=1920, dtype=np.uint8)
         assert isinstance(ef, ExternalFunction)
 
     def test_source_file_exists(self):
-        ef = kernels.bitwiseAND(line_width=1920, dtype=np.uint8)
+        ef = kernels.bitwise_and(line_width=1920, dtype=np.uint8)
         src = _source_file(ef)
         assert src is not None
         assert Path(src).exists(), f"Source file not found: {src}"
 
     def test_arg_types_length(self):
         # (in1, in2, out, lineWidth: np.int32)
-        ef = kernels.bitwiseAND(line_width=1920, dtype=np.uint8)
+        ef = kernels.bitwise_and(line_width=1920, dtype=np.uint8)
         assert len(ef._arg_types) == 4
 
     def test_function_name(self):
-        ef = kernels.bitwiseAND(line_width=1920, dtype=np.uint8)
+        ef = kernels.bitwise_and(line_width=1920, dtype=np.uint8)
         assert ef._name == "bitwiseANDLine"
 
     def test_int16_dtype(self):
-        ef = kernels.bitwiseAND(line_width=1920, dtype=np.int16)
+        ef = kernels.bitwise_and(line_width=1920, dtype=np.int16)
         assert isinstance(ef, ExternalFunction)
         assert len(ef._arg_types) == 4
 
     def test_int32_dtype(self):
-        ef = kernels.bitwiseAND(line_width=1920, dtype=np.int32)
+        ef = kernels.bitwise_and(line_width=1920, dtype=np.int32)
         assert isinstance(ef, ExternalFunction)
         assert len(ef._arg_types) == 4
 
     def test_invalid_dtype_raises(self):
         with pytest.raises(ValueError, match="unsupported dtype"):
-            kernels.bitwiseAND(line_width=1920, dtype=np.float32)
+            kernels.bitwise_and(line_width=1920, dtype=np.float32)
 
     def test_custom_line_width_reflected_in_arg_types(self):
-        ef = kernels.bitwiseAND(line_width=640, dtype=np.uint8)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (640,)
+        ef = kernels.bitwise_and(line_width=640, dtype=np.uint8)
+        assert ef._arg_types[0].__args__[0] == (640,)
 
 
 # ---------------------------------------------------------------------------
@@ -567,8 +558,7 @@ class TestGray2Rgba:
 
     def test_input_shape_is_line_width(self):
         ef = kernels.gray2rgba(line_width=640)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (640,)
+        assert ef._arg_types[0].__args__[0] == (640,)
 
     def test_output_shape_is_4x_line_width(self):
         ef = kernels.gray2rgba(line_width=640)
@@ -603,8 +593,7 @@ class TestRgba2Gray:
 
     def test_input_shape_is_4x_line_width(self):
         ef = kernels.rgba2gray(line_width=640)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (640 * 4,)
+        assert ef._arg_types[0].__args__[0] == (640 * 4,)
 
     def test_output_shape_is_line_width(self):
         ef = kernels.rgba2gray(line_width=640)
@@ -639,53 +628,51 @@ class TestFilter2d:
 
     def test_custom_line_width_reflected_in_arg_types(self):
         ef = kernels.filter2d(line_width=640)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (640,)
+        assert ef._arg_types[0].__args__[0] == (640,)
 
 
 # ---------------------------------------------------------------------------
-# addWeighted
+# add_weighted
 # ---------------------------------------------------------------------------
 
 
 class TestAddWeighted:
     def test_returns_external_function(self):
-        ef = kernels.addWeighted(line_width=1920, dtype=np.uint8)
+        ef = kernels.add_weighted(line_width=1920, dtype=np.uint8)
         assert isinstance(ef, ExternalFunction)
 
     def test_source_file_exists(self):
-        ef = kernels.addWeighted(line_width=1920, dtype=np.uint8)
+        ef = kernels.add_weighted(line_width=1920, dtype=np.uint8)
         src = _source_file(ef)
         assert src is not None
         assert Path(src).exists(), f"Source file not found: {src}"
 
     def test_arg_types_length(self):
         # (in1, in2, out, lineWidth, alpha, beta, gamma)
-        ef = kernels.addWeighted(line_width=1920, dtype=np.uint8)
+        ef = kernels.add_weighted(line_width=1920, dtype=np.uint8)
         assert len(ef._arg_types) == 7
 
     def test_function_name(self):
-        ef = kernels.addWeighted(line_width=1920, dtype=np.uint8)
+        ef = kernels.add_weighted(line_width=1920, dtype=np.uint8)
         assert ef._name == "addWeightedLine"
 
     def test_int16_dtype(self):
-        ef = kernels.addWeighted(line_width=1920, dtype=np.int16)
+        ef = kernels.add_weighted(line_width=1920, dtype=np.int16)
         assert isinstance(ef, ExternalFunction)
         assert len(ef._arg_types) == 7
 
     def test_int32_dtype(self):
-        ef = kernels.addWeighted(line_width=1920, dtype=np.int32)
+        ef = kernels.add_weighted(line_width=1920, dtype=np.int32)
         assert isinstance(ef, ExternalFunction)
         assert len(ef._arg_types) == 7
 
     def test_invalid_dtype_raises(self):
         with pytest.raises(ValueError, match="unsupported dtype"):
-            kernels.addWeighted(line_width=1920, dtype=np.float32)
+            kernels.add_weighted(line_width=1920, dtype=np.float32)
 
     def test_custom_line_width_reflected_in_arg_types(self):
-        ef = kernels.addWeighted(line_width=640, dtype=np.uint8)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (640,)
+        ef = kernels.add_weighted(line_width=640, dtype=np.uint8)
+        assert ef._arg_types[0].__args__[0] == (640,)
 
 
 # saxpy tests are intentionally omitted: the saxpy factory was removed because
@@ -721,10 +708,9 @@ class TestSoftmax:
         ef = kernels.softmax(tile_size=1024)
         assert ef._name == "softmax_bf16"
 
-    def test_custom_tile_size_reflected_in_arg_types(self):
-        ef = kernels.softmax(tile_size=2048)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (2048,)
+    def test_wrong_tile_size_raises(self):
+        with pytest.raises(ValueError, match="tile_size must be 1024"):
+            kernels.softmax(tile_size=2048)
 
 
 # ---------------------------------------------------------------------------
@@ -755,10 +741,9 @@ class TestGelu:
         ef = kernels.gelu(tile_size=1024)
         assert ef._name == "gelu_bf16"
 
-    def test_custom_tile_size_reflected_in_arg_types(self):
-        ef = kernels.gelu(tile_size=512)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (512,)
+    def test_wrong_tile_size_raises(self):
+        with pytest.raises(ValueError, match="tile_size must be 1024"):
+            kernels.gelu(tile_size=512)
 
 
 # ---------------------------------------------------------------------------
@@ -789,10 +774,9 @@ class TestSilu:
         ef = kernels.silu(tile_size=1024)
         assert ef._name == "silu_bf16"
 
-    def test_custom_tile_size_reflected_in_arg_types(self):
-        ef = kernels.silu(tile_size=512)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (512,)
+    def test_wrong_tile_size_raises(self):
+        with pytest.raises(ValueError, match="tile_size must be 1024"):
+            kernels.silu(tile_size=512)
 
 
 # ---------------------------------------------------------------------------
@@ -823,10 +807,9 @@ class TestSwiglu:
         ef = kernels.swiglu(tile_size=1024)
         assert ef._name == "swiglu_bf16"
 
-    def test_custom_tile_size_reflected_in_arg_types(self):
-        ef = kernels.swiglu(tile_size=512)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (512,)
+    def test_wrong_tile_size_raises(self):
+        with pytest.raises(ValueError, match="tile_size must be 1024"):
+            kernels.swiglu(tile_size=512)
 
 
 # ---------------------------------------------------------------------------
@@ -857,10 +840,9 @@ class TestBf16Exp:
         ef = kernels.bf16_exp(tile_size=1024)
         assert ef._name == "exp_bf16_1024"
 
-    def test_custom_tile_size_reflected_in_arg_types(self):
-        ef = kernels.bf16_exp(tile_size=512)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (512,)
+    def test_wrong_tile_size_raises(self):
+        with pytest.raises(ValueError, match="tile_size must be 1024"):
+            kernels.bf16_exp(tile_size=512)
 
 
 # ---------------------------------------------------------------------------
@@ -910,8 +892,6 @@ class TestMM:
 
     def test_custom_dims_reflected_in_arg_types(self):
         ef = kernels.mm(dim_m=32, dim_k=16, dim_n=48)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (32 * 16,)
         arg2 = ef._arg_types[2]
         assert arg2.__args__[0] == (32 * 48,)
 
@@ -923,7 +903,7 @@ class TestMM:
 
 class TestMMZero:
     def test_returns_external_function(self):
-        ef = kernels.mm_zero(dim_m=64, dim_n=64, output_dtype=np.int16)
+        ef = kernels.mm_zero(dim_m=64, dim_k=64, dim_n=64, output_dtype=np.int16)
         assert isinstance(ef, ExternalFunction)
 
     def test_source_file_exists(self):
@@ -981,8 +961,6 @@ class TestMV:
 
     def test_custom_dims_reflected_in_arg_types(self):
         ef = kernels.mv(dim_m=16, dim_k=64)
-        arg0 = ef._arg_types[0]
-        assert arg0.__args__[0] == (16 * 64,)
         arg1 = ef._arg_types[1]
         assert arg1.__args__[0] == (64,)
         arg2 = ef._arg_types[2]

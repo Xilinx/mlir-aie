@@ -51,12 +51,12 @@ Available factories
 - :func:`relu` — element-wise ReLU activation on bf16 tiles.
 - :func:`rgba2hue` — converts RGBA pixels to hue values.
 - :func:`threshold` — applies a threshold operation to a line.
-- :func:`bitwiseOR` — element-wise bitwise OR of two lines.
-- :func:`bitwiseAND` — element-wise bitwise AND of two lines.
+- :func:`bitwise_or` — element-wise bitwise OR of two lines.
+- :func:`bitwise_and` — element-wise bitwise AND of two lines.
 - :func:`gray2rgba` — converts grayscale pixels to RGBA.
 - :func:`rgba2gray` — converts RGBA pixels to grayscale.
 - :func:`filter2d` — applies a 3x3 2D convolution filter.
-- :func:`addWeighted` — weighted addition of two lines.
+- :func:`add_weighted` — weighted addition of two lines.
 - :func:`softmax` — softmax activation on bf16 tiles.
 - :func:`gelu` — GELU activation on bf16 tiles.
 - :func:`silu` — SiLU (Swish) activation on bf16 tiles.
@@ -64,11 +64,14 @@ Available factories
 - :func:`bf16_exp` — element-wise exponential on bf16 tiles.
 """
 
+import logging
 from pathlib import Path
 import numpy as np
 from ml_dtypes import bfloat16
 
 from aie.iron.kernel import ExternalFunction
+
+_log = logging.getLogger(__name__)
 
 
 def _detect_arch() -> str:
@@ -84,6 +87,7 @@ def _detect_arch() -> str:
         device = _iron.get_current_device()
         return resolve_target_arch(device)
     except Exception:
+        _log.debug("_detect_arch: falling back to aie2", exc_info=True)
         return "aie2"
 
 
@@ -132,10 +136,6 @@ def _include_dirs() -> list[str]:
 
     return [config.cxx_header_path()]
 
-
-# ---------------------------------------------------------------------------
-# Private helpers to reduce boilerplate across factory functions
-# ---------------------------------------------------------------------------
 
 _DTYPE_BIT_WIDTHS = {
     np.dtype(np.uint8): 8,
@@ -186,11 +186,21 @@ def _reduce_kernel(
     )
 
 
+_ELTWISE_FIXED_TILE = 1024  # C++ loop bound hard-coded in add.cc and mul.cc
+_LUT_FIXED_TILE = 1024  # C++ loop bound hard-coded in lut-based activation kernels
+_RELU_FIXED_TILE = 1024  # C++ loop bound hard-coded in relu.cc
+
+
 def _eltwise_bf16_kernel(
     op: str, tile_size: int, dtype, vectorized: bool
 ) -> ExternalFunction:
     """Shared implementation for :func:`add` and :func:`mul`."""
-    if dtype is not bfloat16 and dtype != bfloat16:
+    if tile_size != _ELTWISE_FIXED_TILE:
+        raise ValueError(
+            f"{op}() tile_size must be {_ELTWISE_FIXED_TILE} to match the "
+            f"hard-coded C++ loop bound, got {tile_size}."
+        )
+    if dtype is not bfloat16:
         raise ValueError(
             f"{op}() dtype must be bfloat16, got {dtype}. "
             "Only the bf16 variant is available in the installed aie_kernels."
@@ -211,7 +221,7 @@ def _eltwise_bf16_kernel(
 
 
 def _bitwise_kernel(op: str, line_width: int, dtype) -> ExternalFunction:
-    """Shared implementation for :func:`bitwiseOR` and :func:`bitwiseAND`."""
+    """Shared implementation for :func:`bitwise_or` and :func:`bitwise_and`."""
     bit_width = _dtype_to_bit_width(dtype, factory_name=f"bitwise{op}")
 
     arch = _detect_arch()
@@ -269,11 +279,6 @@ def _conv_act_dtype_info(
         )
 
 
-# ---------------------------------------------------------------------------
-# passthrough
-# ---------------------------------------------------------------------------
-
-
 def passthrough(tile_size: int = 4096, dtype=np.int32) -> ExternalFunction:
     """Element-wise passthrough kernel: copies input tile to output tile.
 
@@ -285,11 +290,9 @@ def passthrough(tile_size: int = 4096, dtype=np.int32) -> ExternalFunction:
         void passThroughLine(T *in, T *out, int32_t lineWidth)
 
     Args:
-        tile_size: Number of elements per tile.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements per tile.  Compile-time.
         dtype: Element data type (``np.uint8``, ``np.int16``, or
-            ``np.int32``).  Compile-time — determines ``BIT_WIDTH``; use
-            ``Compile[type]`` in ``@iron.jit`` designs.
+            ``np.int32``).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for ``passThroughLine``.
@@ -312,11 +315,6 @@ def passthrough(tile_size: int = 4096, dtype=np.int32) -> ExternalFunction:
     )
 
 
-# ---------------------------------------------------------------------------
-# scale
-# ---------------------------------------------------------------------------
-
-
 def scale(
     tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -324,7 +322,7 @@ def scale(
 
     Maps to ``vector_scalar_mul_vector`` (vectorized) or
     ``vector_scalar_mul_scalar`` (scalar) exported from
-    ``aie_kernels/aie2/scale.cc``.
+    ``aie_kernels/<arch>/scale.cc``.
 
     Signature::
 
@@ -335,13 +333,11 @@ def scale(
     so the caller can share it via an :class:`~aie.iron.ObjectFifo`.
 
     Args:
-        tile_size: Number of elements per tile.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements per tile.  Compile-time.
         dtype: Element data type.  Must be ``np.int16`` or ``np.int32``
-            (controlled by the ``BIT_WIDTH`` macro).  Compile-time — use
-            ``Compile[type]`` in ``@iron.jit`` designs.
-        vectorized: If ``True`` use the vectorized variant; otherwise use the
-            scalar reference variant.
+            (controlled by the ``BIT_WIDTH`` macro).  Compile-time.
+        vectorized: If ``True`` use the vectorized (default) path; ``False``
+            selects the scalar reference path for debugging only.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the scale kernel.
@@ -369,11 +365,6 @@ def scale(
     )
 
 
-# ---------------------------------------------------------------------------
-# add
-# ---------------------------------------------------------------------------
-
-
 def add(
     tile_size: int = 1024, dtype=bfloat16, vectorized: bool = True
 ) -> ExternalFunction:
@@ -381,7 +372,7 @@ def add(
 
     Maps to ``eltwise_add_bf16_vector`` (vectorized) or
     ``eltwise_add_bf16_scalar`` (scalar) exported from
-    ``aie_kernels/aie2/add.cc``.
+    ``aie_kernels/<arch>/add.cc``.
 
     Signature::
 
@@ -396,13 +387,12 @@ def add(
 
     Args:
         tile_size: Number of elements per tile (must be 1024 to match the
-            hard-coded kernel loop bound).  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+            hard-coded kernel loop bound).  Compile-time.
         dtype: Element data type.  Only ``bfloat16`` is supported by the
             installed kernel.  Compile-time — use ``Compile[type]`` in
             ``@iron.jit`` designs.
-        vectorized: If ``True`` use the vectorized variant; otherwise use the
-            scalar reference variant.
+        vectorized: If ``True`` use the vectorized (default) path; ``False``
+            selects the scalar reference path for debugging only.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the add kernel.
@@ -413,11 +403,6 @@ def add(
     return _eltwise_bf16_kernel("add", tile_size, dtype, vectorized)
 
 
-# ---------------------------------------------------------------------------
-# mul (element-wise multiply)
-# ---------------------------------------------------------------------------
-
-
 def mul(
     tile_size: int = 1024, dtype=bfloat16, vectorized: bool = True
 ) -> ExternalFunction:
@@ -425,7 +410,7 @@ def mul(
 
     Maps to ``eltwise_mul_bf16_vector`` (vectorized) or
     ``eltwise_mul_bf16_scalar`` (scalar) exported from
-    ``aie_kernels/aie2/mul.cc``.
+    ``aie_kernels/<arch>/mul.cc``.
 
     Signature::
 
@@ -440,12 +425,11 @@ def mul(
 
     Args:
         tile_size: Number of elements per tile (must be 1024 to match the
-            hard-coded kernel loop bound).  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+            hard-coded kernel loop bound).  Compile-time.
         dtype: Element data type.  Only ``bfloat16`` is supported.
-            Compile-time — use ``Compile[type]`` in ``@iron.jit`` designs.
-        vectorized: If ``True`` use the vectorized variant; otherwise use the
-            scalar reference variant.
+            Compile-time.
+        vectorized: If ``True`` use the vectorized (default) path; ``False``
+            selects the scalar reference path for debugging only.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the mul kernel.
@@ -456,18 +440,13 @@ def mul(
     return _eltwise_bf16_kernel("mul", tile_size, dtype, vectorized)
 
 
-# ---------------------------------------------------------------------------
-# reduce_add
-# ---------------------------------------------------------------------------
-
-
 def reduce_add(
     tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
 ) -> ExternalFunction:
     """Reduction kernel: sums all elements of a tile to a scalar.
 
     Maps to ``reduce_add_vector`` (vectorized) or ``reduce_add_scalar``
-    (scalar) exported from ``aie_kernels/aie2/reduce_add.cc``.
+    (scalar) exported from ``aie_kernels/<arch>/reduce_add.cc``.
 
     Signature::
 
@@ -475,13 +454,12 @@ def reduce_add(
                                int32_t input_size)
 
     Args:
-        tile_size: Number of elements in the input tile.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements in the input tile.  Compile-time.
         dtype: Element data type.  Only ``np.int32`` is currently supported
             by the installed kernel.  Compile-time — use ``Compile[type]``
             in ``@iron.jit`` designs.
-        vectorized: If ``True`` use the vectorized variant; otherwise use the
-            scalar reference variant.
+        vectorized: If ``True`` use the vectorized (default) path; ``False``
+            selects the scalar reference path for debugging only.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the reduce_add
@@ -493,18 +471,13 @@ def reduce_add(
     return _reduce_kernel("add", tile_size, dtype, vectorized)
 
 
-# ---------------------------------------------------------------------------
-# reduce_min
-# ---------------------------------------------------------------------------
-
-
 def reduce_min(
     tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
 ) -> ExternalFunction:
     """Reduction kernel: finds the minimum element of a tile.
 
     Maps to ``reduce_min_vector`` (vectorized) or ``reduce_min_scalar``
-    (scalar) exported from ``aie_kernels/aie2/reduce_min.cc``.
+    (scalar) exported from ``aie_kernels/<arch>/reduce_min.cc``.
 
     Signature::
 
@@ -512,13 +485,12 @@ def reduce_min(
                                int32_t input_size)
 
     Args:
-        tile_size: Number of elements in the input tile.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements in the input tile.  Compile-time.
         dtype: Element data type.  Only ``np.int32`` is currently supported
             by the installed kernel.  Compile-time — use ``Compile[type]``
             in ``@iron.jit`` designs.
-        vectorized: If ``True`` use the vectorized variant; otherwise use the
-            scalar reference variant.
+        vectorized: If ``True`` use the vectorized (default) path; ``False``
+            selects the scalar reference path for debugging only.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the reduce_min
@@ -530,11 +502,6 @@ def reduce_min(
     return _reduce_kernel("min", tile_size, dtype, vectorized)
 
 
-# ---------------------------------------------------------------------------
-# reduce_max
-# ---------------------------------------------------------------------------
-
-
 def reduce_max(
     tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -542,7 +509,7 @@ def reduce_max(
 
     Maps to ``reduce_max_vector`` / ``reduce_max_vector_bfloat16``
     (vectorized) or ``reduce_max_scalar`` / ``reduce_max_scalar_bfloat16``
-    (scalar) exported from ``aie_kernels/aie2/reduce_max.cc``.
+    (scalar) exported from ``aie_kernels/<arch>/reduce_max.cc``.
 
     Signature::
 
@@ -552,13 +519,11 @@ def reduce_max(
                                         int32_t input_size)
 
     Args:
-        tile_size: Number of elements in the input tile.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements in the input tile.  Compile-time.
         dtype: Element data type.  ``np.int32`` or ``bfloat16``.
-            Compile-time — selects the C++ function variant; use
-            ``Compile[type]`` in ``@iron.jit`` designs.
-        vectorized: If ``True`` use the vectorized variant; otherwise use the
-            scalar reference variant.
+            Compile-time.
+        vectorized: If ``True`` use the vectorized (default) path; ``False``
+            selects the scalar reference path for debugging only.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the reduce_max
@@ -593,15 +558,10 @@ def reduce_max(
     )
 
 
-# ---------------------------------------------------------------------------
-# relu
-# ---------------------------------------------------------------------------
-
-
 def relu(tile_size: int = 1024) -> ExternalFunction:
     """Element-wise ReLU activation kernel for bf16 tiles.
 
-    Maps to ``bf16_relu`` exported from ``aie_kernels/aie2/relu.cc``.
+    Maps to ``bf16_relu`` exported from ``aie_kernels/<arch>/relu.cc``.
 
     Signature::
 
@@ -613,12 +573,19 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
         ``arg_types`` and **must** match ``1024`` for correct results.
 
     Args:
-        tile_size: Number of elements per tile (must be 1024).  Compile-time
-            — use ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements per tile (must be 1024).  Compile-time.
+
+    Raises:
+        ValueError: When ``tile_size`` is not 1024.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the relu kernel.
     """
+    if tile_size != _RELU_FIXED_TILE:
+        raise ValueError(
+            f"relu() tile_size must be {_RELU_FIXED_TILE} to match the hard-coded "
+            f"C++ loop bound, got {tile_size}."
+        )
     arch = _detect_arch()
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
 
@@ -631,16 +598,11 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-# ---------------------------------------------------------------------------
-# Vision kernels
-# ---------------------------------------------------------------------------
-
-
 def rgba2hue(line_width: int = 1920) -> ExternalFunction:
     """Converts a line of RGBA pixels to hue values.
 
     Maps to ``rgba2hueLine`` exported from
-    ``aie_kernels/aie2/rgba2hue.cc``.
+    ``aie_kernels/<arch>/rgba2hue.cc``.
 
     Signature::
 
@@ -650,8 +612,7 @@ def rgba2hue(line_width: int = 1920) -> ExternalFunction:
     ``lineWidth`` bytes (single-channel hue).
 
     Args:
-        line_width: Number of pixels per line.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        line_width: Number of pixels per line.  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for ``rgba2hueLine``.
@@ -665,7 +626,7 @@ def threshold(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
     """Applies a threshold operation to a line of pixels.
 
     Maps to ``thresholdLine`` exported from
-    ``aie_kernels/aie2/threshold.cc``.
+    ``aie_kernels/<arch>/threshold.cc``.
 
     Signature (BIT_WIDTH=8)::
 
@@ -674,11 +635,9 @@ def threshold(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
                            uint8_t thresholdType)
 
     Args:
-        line_width: Number of elements per line.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        line_width: Number of elements per line.  Compile-time.
         dtype: Element data type (``np.uint8``, ``np.int16``, or
-            ``np.int32``).  Compile-time — determines ``BIT_WIDTH``; use
-            ``Compile[type]`` in ``@iron.jit`` designs.
+            ``np.int32``).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for ``thresholdLine``.
@@ -710,11 +669,11 @@ def threshold(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
     )
 
 
-def bitwiseOR(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
+def bitwise_or(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
     """Element-wise bitwise OR of two lines.
 
     Maps to ``bitwiseORLine`` exported from
-    ``aie_kernels/aie2/bitwiseOR.cc``.
+    ``aie_kernels/<arch>/bitwiseOR.cc``.
 
     Signature (BIT_WIDTH=8)::
 
@@ -722,11 +681,9 @@ def bitwiseOR(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
                            int32_t lineWidth)
 
     Args:
-        line_width: Number of elements per line.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        line_width: Number of elements per line.  Compile-time.
         dtype: Element data type (``np.uint8``, ``np.int16``, or
-            ``np.int32``).  Compile-time — determines ``BIT_WIDTH``; use
-            ``Compile[type]`` in ``@iron.jit`` designs.
+            ``np.int32``).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for
@@ -739,11 +696,11 @@ def bitwiseOR(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
     return _bitwise_kernel("OR", line_width, dtype)
 
 
-def bitwiseAND(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
+def bitwise_and(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
     """Element-wise bitwise AND of two lines.
 
     Maps to ``bitwiseANDLine`` exported from
-    ``aie_kernels/aie2/bitwiseAND.cc``.
+    ``aie_kernels/<arch>/bitwiseAND.cc``.
 
     Signature (BIT_WIDTH=8)::
 
@@ -751,11 +708,9 @@ def bitwiseAND(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
                             int32_t lineWidth)
 
     Args:
-        line_width: Number of elements per line.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        line_width: Number of elements per line.  Compile-time.
         dtype: Element data type (``np.uint8``, ``np.int16``, or
-            ``np.int32``).  Compile-time — determines ``BIT_WIDTH``; use
-            ``Compile[type]`` in ``@iron.jit`` designs.
+            ``np.int32``).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for
@@ -772,7 +727,7 @@ def gray2rgba(line_width: int = 1920) -> ExternalFunction:
     """Converts a grayscale line to RGBA.
 
     Maps to ``gray2rgbaLine`` exported from
-    ``aie_kernels/aie2/gray2rgba.cc``.
+    ``aie_kernels/<arch>/gray2rgba.cc``.
 
     Signature::
 
@@ -782,8 +737,7 @@ def gray2rgba(line_width: int = 1920) -> ExternalFunction:
     ``lineWidth * 4`` bytes (RGBA).
 
     Args:
-        line_width: Number of pixels per line.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        line_width: Number of pixels per line.  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for
@@ -798,7 +752,7 @@ def rgba2gray(line_width: int = 1920) -> ExternalFunction:
     """Converts an RGBA line to grayscale.
 
     Maps to ``rgba2grayLine`` exported from
-    ``aie_kernels/aie2/rgba2gray.cc``.
+    ``aie_kernels/<arch>/rgba2gray.cc``.
 
     Signature::
 
@@ -808,8 +762,7 @@ def rgba2gray(line_width: int = 1920) -> ExternalFunction:
     ``lineWidth`` bytes (single-channel grayscale).
 
     Args:
-        line_width: Number of pixels per line.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        line_width: Number of pixels per line.  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for
@@ -824,7 +777,7 @@ def filter2d(line_width: int = 1920) -> ExternalFunction:
     """Applies a 3x3 2D convolution filter across three input lines.
 
     Maps to ``filter2dLine`` exported from
-    ``aie_kernels/aie2/filter2d.cc``.
+    ``aie_kernels/<arch>/filter2d.cc``.
 
     Signature::
 
@@ -833,8 +786,7 @@ def filter2d(line_width: int = 1920) -> ExternalFunction:
                           int32_t lineWidth, int16_t *filterKernel)
 
     Args:
-        line_width: Number of pixels per line.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        line_width: Number of pixels per line.  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for
@@ -853,11 +805,11 @@ def filter2d(line_width: int = 1920) -> ExternalFunction:
     )
 
 
-def addWeighted(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
+def add_weighted(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
     """Weighted addition of two lines with a gamma offset.
 
     Maps to ``addWeightedLine`` exported from
-    ``aie_kernels/aie2/addWeighted.cc``.
+    ``aie_kernels/<arch>/addWeighted.cc``.
 
     Signature (BIT_WIDTH=8)::
 
@@ -866,11 +818,9 @@ def addWeighted(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
                              int16_t beta, uint8_t gamma)
 
     Args:
-        line_width: Number of elements per line.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        line_width: Number of elements per line.  Compile-time.
         dtype: Element data type (``np.uint8``, ``np.int16``, or
-            ``np.int32``).  Compile-time — determines ``BIT_WIDTH``; use
-            ``Compile[type]`` in ``@iron.jit`` designs.
+            ``np.int32``).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for
@@ -880,7 +830,7 @@ def addWeighted(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
         ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or
             ``np.int32``.
     """
-    bit_width = _dtype_to_bit_width(dtype, factory_name="addWeighted")
+    bit_width = _dtype_to_bit_width(dtype, factory_name="add_weighted")
     _gamma_types = {8: np.int8, 16: np.int16, 32: np.int32}
     gamma_ty = _gamma_types[bit_width]
 
@@ -910,9 +860,6 @@ def addWeighted(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
 # Locating it by walking up from __file__ is fragile for installed packages.
 
 
-# ---------------------------------------------------------------------------
-# LUT-based activation kernels (softmax, gelu, silu, swiglu, bf16_exp)
-# ---------------------------------------------------------------------------
 #
 # On aie2, these kernels depend on lookup-table operations declared in
 # ``lut_based_ops.h`` with the LUT data arrays defined in
@@ -996,13 +943,17 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
                           int32_t input_size)
 
     Args:
-        tile_size: Number of elements per tile.  Compile-time — use
-            ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements per tile.  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the softmax
         kernel.
     """
+    if tile_size != _LUT_FIXED_TILE:
+        raise ValueError(
+            f"softmax() tile_size must be {_LUT_FIXED_TILE} to match the "
+            f"hard-coded C++ loop bound, got {tile_size}."
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "softmax_bf16",
@@ -1027,12 +978,16 @@ def gelu(tile_size: int = 1024) -> ExternalFunction:
         ``arg_types`` and **must** match ``1024`` for correct results.
 
     Args:
-        tile_size: Number of elements per tile (must be 1024).  Compile-time
-            — use ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements per tile (must be 1024).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the gelu kernel.
     """
+    if tile_size != _LUT_FIXED_TILE:
+        raise ValueError(
+            f"gelu() tile_size must be {_LUT_FIXED_TILE} to match the "
+            f"hard-coded C++ loop bound, got {tile_size}."
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "gelu_bf16",
@@ -1057,12 +1012,16 @@ def silu(tile_size: int = 1024) -> ExternalFunction:
         ``arg_types`` and **must** match ``1024`` for correct results.
 
     Args:
-        tile_size: Number of elements per tile (must be 1024).  Compile-time
-            — use ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements per tile (must be 1024).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the silu kernel.
     """
+    if tile_size != _LUT_FIXED_TILE:
+        raise ValueError(
+            f"silu() tile_size must be {_LUT_FIXED_TILE} to match the "
+            f"hard-coded C++ loop bound, got {tile_size}."
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "silu_bf16",
@@ -1088,13 +1047,17 @@ def swiglu(tile_size: int = 1024) -> ExternalFunction:
         ``arg_types`` and **must** match ``1024`` for correct results.
 
     Args:
-        tile_size: Number of elements per tile (must be 1024).  Compile-time
-            — use ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements per tile (must be 1024).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the swiglu
         kernel.
     """
+    if tile_size != _LUT_FIXED_TILE:
+        raise ValueError(
+            f"swiglu() tile_size must be {_LUT_FIXED_TILE} to match the "
+            f"hard-coded C++ loop bound, got {tile_size}."
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "swiglu_bf16",
@@ -1119,13 +1082,17 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
         and **must** match ``1024`` for correct results.
 
     Args:
-        tile_size: Number of elements per tile (must be 1024).  Compile-time
-            — use ``Compile[int]`` in ``@iron.jit`` designs.
+        tile_size: Number of elements per tile (must be 1024).  Compile-time.
 
     Returns:
         :class:`~aie.iron.ExternalFunction` configured for the bf16_exp
         kernel.
     """
+    if tile_size != _LUT_FIXED_TILE:
+        raise ValueError(
+            f"bf16_exp() tile_size must be {_LUT_FIXED_TILE} to match the "
+            f"hard-coded C++ loop bound, got {tile_size}."
+        )
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "exp_bf16_1024",
@@ -1134,12 +1101,15 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-# ---------------------------------------------------------------------------
-# Matrix multiply (mm)
-# ---------------------------------------------------------------------------
-
 # Mapping from (input_dtype, output_dtype) to the C++ function name suffix
 # and the compile-time -D flag that selects only that combo.
+_CASCADE_COMBOS = {
+    (np.int16, np.int16): "i16_i16",
+    (np.int16, np.int32): "i16_i32",
+    (bfloat16, bfloat16): "bf16_bf16",
+    (bfloat16, np.float32): "bf16_f32",
+}
+
 _MM_COMBOS = {
     (np.int8, np.int8): ("i8_i8", "i8_i8_ONLY"),
     (np.int8, np.int16): ("i8_i16", "i8_i16_ONLY"),
@@ -1228,6 +1198,7 @@ def mm(
 
 def mm_zero(
     dim_m: int = 64,
+    dim_k: int = 64,
     dim_n: int = 64,
     output_dtype=np.int16,
     vectorized: bool = True,
@@ -1241,8 +1212,12 @@ def mm_zero(
 
         void zero_i16(int16 *c_out)
 
+    ``dim_k`` must match the ``dim_k`` used in the paired :func:`mm` call
+    because ``mm.cc`` is compiled once for a fixed ``DIM_K``.
+
     Args:
         dim_m: Number of rows.
+        dim_k: Inner dimension (must match the paired :func:`mm` call).
         dim_n: Number of columns.
         output_dtype: Element type of the output matrix.
         vectorized: If ``True`` use the vectorized variant.
@@ -1291,16 +1266,11 @@ def mm_zero(
         include_dirs=_include_dirs(),
         compile_flags=[
             f"-DDIM_M={dim_m}",
-            f"-DDIM_K=64",
+            f"-DDIM_K={dim_k}",
             f"-DDIM_N={dim_n}",
             f"-D{only_flag}",
         ],
     )
-
-
-# ---------------------------------------------------------------------------
-# Matrix-vector multiply (mv)
-# ---------------------------------------------------------------------------
 
 
 def mv(
@@ -1314,7 +1284,7 @@ def mv(
 
     Maps to ``matvec_vectorized_i16_i32`` (vectorized) or
     ``matvec_scalar_i16_i32`` (scalar) exported from
-    ``aie_kernels/aie2/mv.cc``.
+    ``aie_kernels/<arch>/mv.cc``.
 
     Signature::
 
@@ -1358,11 +1328,6 @@ def mv(
     )
 
 
-# ---------------------------------------------------------------------------
-# Cascade matrix multiply (cascade_mm)
-# ---------------------------------------------------------------------------
-
-
 def cascade_mm(
     dim_m: int = 64,
     dim_k: int = 64,
@@ -1374,7 +1339,7 @@ def cascade_mm(
     """Cascade matrix-multiply kernel for multi-core accumulation.
 
     Maps to ``matmul_scalar_cascade_{mode}_{in}_{out}`` exported from
-    ``aie_kernels/aie2/cascade_mm.cc``.
+    ``aie_kernels/<arch>/cascade_mm.cc``.
 
     Available cascade modes:
 
@@ -1402,12 +1367,6 @@ def cascade_mm(
         ValueError: When the cascade_mode or dtype combination is not
             supported.
     """
-    _CASCADE_COMBOS = {
-        (np.int16, np.int16): "i16_i16",
-        (np.int16, np.int32): "i16_i32",
-        (bfloat16, bfloat16): "bf16_bf16",
-        (bfloat16, np.float32): "bf16_f32",
-    }
     valid_modes = ("put_only", "get_only", "put_get")
     if cascade_mode not in valid_modes:
         raise ValueError(
@@ -1441,11 +1400,6 @@ def cascade_mm(
             f"-DDIM_N={dim_n}",
         ],
     )
-
-
-# ---------------------------------------------------------------------------
-# conv2dk1 — 1x1 convolution
-# ---------------------------------------------------------------------------
 
 
 def conv2dk1(
@@ -1482,15 +1436,9 @@ def conv2dk1(
         "conv2dk1", act_dtype, factory_name="conv2dk1"
     )
 
-    in_ty = np.ndarray[
-        (input_width * input_channels,), np.dtype[act_dtype]
-    ]
-    wt_ty = np.ndarray[
-        (input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.uint8]
-    ]
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[act_dtype]]
+    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, arch, "conv2dk1.cc")
@@ -1501,11 +1449,6 @@ def conv2dk1(
         include_dirs=_include_dirs(),
         compile_flags=flags,
     )
-
-
-# ---------------------------------------------------------------------------
-# conv2dk3 — 3x3 convolution
-# ---------------------------------------------------------------------------
 
 
 def conv2dk3(
@@ -1547,12 +1490,8 @@ def conv2dk3(
 
     line_size = input_width * input_channels
     line_ty = np.ndarray[(line_size,), np.dtype[act_dtype]]
-    wt_ty = np.ndarray[
-        (3 * 3 * input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.uint8]
-    ]
+    wt_ty = np.ndarray[(3 * 3 * input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, arch, "conv2dk3.cc")
@@ -1560,18 +1499,23 @@ def conv2dk3(
         func_name,
         source_file=str(source),
         arg_types=[
-            line_ty, line_ty, line_ty, wt_ty, out_ty,
-            np.int32, np.int32, np.int32, np.int32,
-            np.int32, np.int32, np.int32, np.int32,
+            line_ty,
+            line_ty,
+            line_ty,
+            wt_ty,
+            out_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
         include_dirs=_include_dirs(),
         compile_flags=flags,
     )
-
-
-# ---------------------------------------------------------------------------
-# conv2dk1_skip — 1x1 convolution with skip connection
-# ---------------------------------------------------------------------------
 
 
 def conv2dk1_skip(
@@ -1583,7 +1527,7 @@ def conv2dk1_skip(
     """1x1 convolution kernel with skip (residual) connection.
 
     Maps to ``conv2dk1_skip_i8`` (``INT8_ACT``) or ``conv2dk1_skip_ui8``
-    (``UINT8_ACT``) exported from ``aie_kernels/aie2/conv2dk1_skip.cc``.
+    (``UINT8_ACT``) exported from ``aie_kernels/<arch>/conv2dk1_skip.cc``.
 
     Signature::
 
@@ -1616,15 +1560,9 @@ def conv2dk1_skip(
     half_ch = input_channels // 2
     in0_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
     in1_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
-    wt_ty = np.ndarray[
-        (input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.uint8]
-    ]
-    skip_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[act_dtype]
-    ]
+    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
+    skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[act_dtype]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, "aie2", "conv2dk1_skip.cc")
@@ -1632,17 +1570,20 @@ def conv2dk1_skip(
         func_name,
         source_file=str(source),
         arg_types=[
-            in0_ty, in1_ty, wt_ty, out_ty, skip_ty,
-            np.int32, np.int32, np.int32, np.int32, np.int32,
+            in0_ty,
+            in1_ty,
+            wt_ty,
+            out_ty,
+            skip_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
         include_dirs=_include_dirs(),
         compile_flags=flags,
     )
-
-
-# ---------------------------------------------------------------------------
-# conv2dk1_i8 — 1x1 convolution (int8 in, int8 out)
-# ---------------------------------------------------------------------------
 
 
 def conv2dk1_i8(
@@ -1670,15 +1611,9 @@ def conv2dk1_i8(
     Returns:
         :class:`~aie.iron.ExternalFunction`.
     """
-    in_ty = np.ndarray[
-        (input_width * input_channels,), np.dtype[np.int8]
-    ]
-    wt_ty = np.ndarray[
-        (input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.int8]
-    ]
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, arch, "conv2dk1_i8.cc")
@@ -1689,11 +1624,6 @@ def conv2dk1_i8(
         include_dirs=_include_dirs(),
         compile_flags=["-DINT8_ACT"],
     )
-
-
-# ---------------------------------------------------------------------------
-# conv2dk14 — 14x14 convolution (aie2p only)
-# ---------------------------------------------------------------------------
 
 
 def conv2dk14(
@@ -1725,15 +1655,11 @@ def conv2dk14(
     """
     tiles = input_width // kernel_width
     pixels = kernel_width * kernel_width
-    in_ty = np.ndarray[
-        (tiles * pixels * 4,), np.dtype[np.uint8]
-    ]
-    wt_ty = np.ndarray[
-        (output_channels * pixels * 4,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (output_channels * tiles * 8,), np.dtype[np.int8]
-    ]
+    _RGBA = 4  # 4 channels per pixel (RGBA / packed int8x4)
+    _ACC_FACTOR = 8  # output accumulation packing factor in conv2dk14
+    in_ty = np.ndarray[(tiles * pixels * _RGBA,), np.dtype[np.uint8]]
+    wt_ty = np.ndarray[(output_channels * pixels * _RGBA,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(output_channels * tiles * _ACC_FACTOR,), np.dtype[np.int8]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, "aie2p", "conv2dk14.cc")
@@ -1741,16 +1667,17 @@ def conv2dk14(
         "conv2dk14_i8",
         source_file=str(source),
         arg_types=[
-            in_ty, wt_ty, out_ty,
-            np.int32, np.int32, np.int32, np.int32, np.int32,
+            in_ty,
+            wt_ty,
+            out_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
         include_dirs=_include_dirs(),
     )
-
-
-# ---------------------------------------------------------------------------
-# conv2dk1_skip_init — 1x1 conv with skip + initial accumulation
-# ---------------------------------------------------------------------------
 
 
 def conv2dk1_skip_init(
@@ -1763,7 +1690,7 @@ def conv2dk1_skip_init(
 
     Maps to ``conv2dk1_skip_init_i8`` (``INT8_ACT``) or
     ``conv2dk1_skip_init_ui8`` (``UINT8_ACT``) exported from
-    ``aie_kernels/aie2/conv2dk1_skip_init.cc``.
+    ``aie_kernels/<arch>/conv2dk1_skip_init.cc``.
 
     Signature::
 
@@ -1795,15 +1722,9 @@ def conv2dk1_skip_init(
     half_ch = input_channels // 2
     in0_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
     in1_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
-    wt_ty = np.ndarray[
-        (input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.uint8]
-    ]
-    skip_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[act_dtype]
-    ]
+    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
+    skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[act_dtype]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, "aie2", "conv2dk1_skip_init.cc")
@@ -1811,18 +1732,22 @@ def conv2dk1_skip_init(
         func_name,
         source_file=str(source),
         arg_types=[
-            in0_ty, in1_ty, wt_ty, out_ty, skip_ty,
-            np.int32, np.int32, np.int32, np.int32,
-            np.int32, np.int32, np.int32,
+            in0_ty,
+            in1_ty,
+            wt_ty,
+            out_ty,
+            skip_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
         include_dirs=_include_dirs(),
         compile_flags=flags,
     )
-
-
-# ---------------------------------------------------------------------------
-# Bottleneck convolution kernels (aie2/bottleneck/)
-# ---------------------------------------------------------------------------
 
 
 def bn_conv2dk1_relu(
@@ -1833,7 +1758,7 @@ def bn_conv2dk1_relu(
     """Bottleneck 1x1 conv + ReLU kernel (int8 in, uint8 out).
 
     Maps to ``conv2dk1_relu_i8_ui8`` exported from
-    ``aie_kernels/aie2/bottleneck/bn_conv2dk1_relu.cc``.
+    ``aie_kernels/<arch>/bottleneck/bn_conv2dk1_relu.cc``.
 
     Signature::
 
@@ -1850,15 +1775,9 @@ def bn_conv2dk1_relu(
     Returns:
         :class:`~aie.iron.ExternalFunction`.
     """
-    in_ty = np.ndarray[
-        (input_width * input_channels,), np.dtype[np.int8]
-    ]
-    wt_ty = np.ndarray[
-        (input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.uint8]
-    ]
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk1_relu.cc")
@@ -1878,7 +1797,7 @@ def bn_conv2dk3(
     """Bottleneck 3x3 conv with stride-2 kernel (int8 in, uint8 out).
 
     Maps to ``conv2dk3_stride2_i8`` exported from
-    ``aie_kernels/aie2/bottleneck/bn_conv2dk3.cc``.
+    ``aie_kernels/<arch>/bottleneck/bn_conv2dk3.cc``.
 
     Signature::
 
@@ -1900,12 +1819,8 @@ def bn_conv2dk3(
     """
     line_size = input_width * input_channels
     line_ty = np.ndarray[(line_size,), np.dtype[np.int8]]
-    wt_ty = np.ndarray[
-        (3 * 3 * input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.uint8]
-    ]
+    wt_ty = np.ndarray[(3 * 3 * input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk3.cc")
@@ -1913,9 +1828,19 @@ def bn_conv2dk3(
         "conv2dk3_stride2_i8",
         source_file=str(source),
         arg_types=[
-            line_ty, line_ty, line_ty, wt_ty, out_ty,
-            np.int32, np.int32, np.int32, np.int32,
-            np.int32, np.int32, np.int32, np.int32,
+            line_ty,
+            line_ty,
+            line_ty,
+            wt_ty,
+            out_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
         include_dirs=_include_dirs(),
     )
@@ -1929,7 +1854,7 @@ def bn_conv2dk1_i8(
     """Bottleneck 1x1 conv kernel (uint8 in, int8 out).
 
     Maps to ``conv2dk1_ui8_i8`` exported from
-    ``aie_kernels/aie2/bottleneck/bn_conv2dk1_i8.cc``.
+    ``aie_kernels/<arch>/bottleneck/bn_conv2dk1_i8.cc``.
 
     Signature::
 
@@ -1946,15 +1871,9 @@ def bn_conv2dk1_i8(
     Returns:
         :class:`~aie.iron.ExternalFunction`.
     """
-    in_ty = np.ndarray[
-        (input_width * input_channels,), np.dtype[np.uint8]
-    ]
-    wt_ty = np.ndarray[
-        (input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.int8]
-    ]
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
+    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk1_i8.cc")
@@ -1975,7 +1894,7 @@ def bn_conv2dk1_skip(
     """Bottleneck 1x1 conv with skip connection (uint8 in).
 
     Maps to ``conv2dk1_skip_ui8_ui8_i8`` or ``conv2dk1_skip_ui8_i8_i8``
-    exported from ``aie_kernels/aie2/bottleneck/bn_conv2dk1_skip.cc``.
+    exported from ``aie_kernels/<arch>/bottleneck/bn_conv2dk1_skip.cc``.
 
     Args:
         input_width: Spatial width of the input.
@@ -1999,18 +1918,10 @@ def bn_conv2dk1_skip(
             f"got {skip_dtype}"
         )
 
-    in_ty = np.ndarray[
-        (input_width * input_channels,), np.dtype[np.uint8]
-    ]
-    wt_ty = np.ndarray[
-        (input_channels * output_channels,), np.dtype[np.int8]
-    ]
-    out_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[np.int8]
-    ]
-    skip_ty = np.ndarray[
-        (input_width * output_channels,), np.dtype[skip_dtype]
-    ]
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
+    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
+    skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[skip_dtype]]
 
     arch = _detect_arch()
     source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk1_skip.cc")
@@ -2018,8 +1929,15 @@ def bn_conv2dk1_skip(
         func_name,
         source_file=str(source),
         arg_types=[
-            in_ty, wt_ty, out_ty, skip_ty,
-            np.int32, np.int32, np.int32, np.int32, np.int32,
+            in_ty,
+            wt_ty,
+            out_ty,
+            skip_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
         include_dirs=_include_dirs(),
     )
@@ -2034,7 +1952,7 @@ def bn_conv2dk3_dw(
     """Bottleneck depthwise 3x3 conv + ReLU kernel (uint8 in/out).
 
     Maps to ``conv2dk3_dw_stride{1|2}_relu_ui8_ui8`` exported from
-    ``aie_kernels/aie2/bottleneck/bn_conv2dk3_dw.cc``.
+    ``aie_kernels/<arch>/bottleneck/bn_conv2dk3_dw.cc``.
 
     Args:
         input_width: Spatial width of the input.
@@ -2049,17 +1967,13 @@ def bn_conv2dk3_dw(
         ValueError: When ``stride`` is not 1 or 2.
     """
     if stride not in (1, 2):
-        raise ValueError(
-            f"bn_conv2dk3_dw(): stride must be 1 or 2, got {stride}"
-        )
+        raise ValueError(f"bn_conv2dk3_dw(): stride must be 1 or 2, got {stride}")
 
     func_name = f"conv2dk3_dw_stride{stride}_relu_ui8_ui8"
 
     line_size = input_width * input_channels
     line_ty = np.ndarray[(line_size,), np.dtype[np.uint8]]
-    wt_ty = np.ndarray[
-        (3 * 3 * input_channels,), np.dtype[np.int8]
-    ]
+    wt_ty = np.ndarray[(3 * 3 * input_channels,), np.dtype[np.int8]]
     out_size = (input_width // stride) * output_channels
     out_ty = np.ndarray[(out_size,), np.dtype[np.uint8]]
 
@@ -2072,9 +1986,20 @@ def bn_conv2dk3_dw(
             func_name,
             source_file=str(source),
             arg_types=[
-                line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty,
-                np.int32, np.int32, np.int32, np.int32,
-                np.int32, np.int32, np.int32, np.int32,
+                line_ty,
+                line_ty,
+                line_ty,
+                wt_ty,
+                out_ty,
+                out_ty,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
             ],
             include_dirs=_include_dirs(),
         )
@@ -2083,9 +2008,19 @@ def bn_conv2dk3_dw(
             func_name,
             source_file=str(source),
             arg_types=[
-                line_ty, line_ty, line_ty, wt_ty, out_ty,
-                np.int32, np.int32, np.int32, np.int32,
-                np.int32, np.int32, np.int32, np.int32,
+                line_ty,
+                line_ty,
+                line_ty,
+                wt_ty,
+                out_ty,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
+                np.int32,
             ],
             include_dirs=_include_dirs(),
         )
@@ -2102,12 +2037,12 @@ __all__ = [
     "relu",
     "rgba2hue",
     "threshold",
-    "bitwiseOR",
-    "bitwiseAND",
+    "bitwise_or",
+    "bitwise_and",
     "gray2rgba",
     "rgba2gray",
     "filter2d",
-    "addWeighted",
+    "add_weighted",
     "softmax",
     "gelu",
     "silu",

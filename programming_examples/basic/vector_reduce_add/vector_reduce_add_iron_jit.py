@@ -10,27 +10,25 @@ import numpy as np
 import sys
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron import kernels
 
 
 @iron.jit
-def my_reduce_add(input_tensor, output_tensor):
-    N = input_tensor.numel()
-
-    # Define tensor types
+def my_reduce_add(
+    input_tensor: In,
+    output_tensor: Out,
+    *,
+    N: Compile[int] = 1024,
+):
     in_ty = np.ndarray[(N,), np.dtype[np.int32]]
     out_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
-    # AIE-array data movement with object fifos
     of_in = ObjectFifo(in_ty, name="in")
     of_out = ObjectFifo(out_ty, name="out")
 
-    # AIE Core Function declarations
-    reduce_add_fn = kernels.reduce_add(tile_size=N)
+    reduce_add_fn = iron.kernels.reduce_add(tile_size=N)
 
-    # A task for a core to perform
     def core_body(of_in, of_out, reduce_add_vector):
         elem_out = of_out.acquire(1)
         elem_in = of_in.acquire(1)
@@ -38,31 +36,23 @@ def my_reduce_add(input_tensor, output_tensor):
         of_in.release(1)
         of_out.release(1)
 
-    # Create a worker to run the task on a core
-    worker = Worker(
-        core_body, fn_args=[of_in.cons(), of_out.prod(), reduce_add_fn]
-    )
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), reduce_add_fn])
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (a_in, c_out):
         rt.start(worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)
 
-    # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(
-        SequentialPlacer()
-    )
+    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
 def main():
     N = 1024
-
     input_tensor = iron.randint(0, 100, (N,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1,), dtype=np.int32, device="npu")
 
-    my_reduce_add(input_tensor, output_tensor)
+    my_reduce_add(input_tensor, output_tensor, N=N)
 
     expected = int(np.sum(input_tensor.numpy()))
     computed = int(output_tensor.numpy()[0])
