@@ -77,6 +77,11 @@ class CallableDesign:
         compile_flags: Extra Peano compiler flags. Forwarded to ``CompilableDesign``.
         include_paths: Extra ``-I`` paths. Forwarded to ``CompilableDesign``.
         object_files: Pre-compiled ``.o`` files. Forwarded to ``CompilableDesign``.
+        trace_config: Optional ``TraceConfig`` for hardware trace collection.
+            When set, ``trace_config.trace_size`` is injected as a
+            ``trace_size`` compile kwarg so generators can use
+            ``trace_size: Compile[int] = 0`` instead of receiving the full
+            ``TraceConfig`` object.
     """
 
     def __init__(
@@ -90,6 +95,7 @@ class CallableDesign:
         compile_flags: list[str] | None = None,
         include_paths: list[str | Path] | None = None,
         object_files: list[str | Path] | None = None,
+        trace_config=None,
     ):
         if isinstance(mlir_generator, CompilableDesign):
             self.compilable = mlir_generator
@@ -104,6 +110,8 @@ class CallableDesign:
                 include_paths=include_paths,
                 object_files=object_files,
             )
+
+        self.trace_config = trace_config
 
         # Pre-build the named wrapper object used as the cache-key identity for
         # Path-based generators.  Creating it once here avoids allocating a new
@@ -253,12 +261,24 @@ class CallableDesign:
                     f"must be keyword arguments, not positional."
                 )
 
-        # Extract trace_config from the effective compile kwargs so it can be
-        # forwarded to NPUKernel and used to set physical_mlir_path after compile.
-        # Use .get (not .pop) so effective_compile_kwargs remains intact and the
-        # transient CompilableDesign (built below) receives trace_config in its
-        # compile_kwargs, allowing the generator to enable tracing in the MLIR.
-        trace_config = effective_compile_kwargs.get("trace_config", None)
+        # --- Resolve trace_config ---
+        # Two patterns are supported:
+        #   1. JIT config: trace_config set on CallableDesign.__init__ (or via
+        #      @iron.jit(trace_config=...)).  trace_config.trace_size is
+        #      injected as a "trace_size" compile kwarg so generators can use
+        #      the simpler ``trace_size: Compile[int] = 0`` signature.
+        #   2. Compile kwarg (legacy): trace_config passed as a Compile[T]
+        #      param on the generator (``trace_config: Compile[... | None]``).
+        trace_config = self.trace_config
+        if trace_config is not None:
+            # Inject trace_size as a compile kwarg for the generator.
+            if "trace_size" not in effective_compile_kwargs:
+                effective_compile_kwargs["trace_size"] = trace_config.trace_size
+                call_compile_kwargs["trace_size"] = trace_config.trace_size
+        else:
+            # Legacy path: extract trace_config from compile kwargs.
+            trace_config = effective_compile_kwargs.get("trace_config", None)
+
         # Build a separate dict for the cache key that excludes trace_config:
         # trace_config is a per-call object whose identity should not drive cache
         # misses.

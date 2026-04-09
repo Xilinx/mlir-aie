@@ -65,9 +65,9 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
     """Decorator for JIT compilation and NPU execution.
 
     Standard configuration kwargs (``use_cache``, ``source_files``,
-    ``aiecc_flags``, ``compile_flags``, ``include_paths``, ``object_files``)
-    are forwarded to ``CompilableDesign``.  All other kwargs become
-    ``compile_kwargs`` (values for ``Compile[T]``-annotated parameters).
+    ``aiecc_flags``, ``compile_flags``, ``include_paths``, ``object_files``,
+    ``trace_config``) are forwarded to ``CallableDesign``.  All other kwargs
+    become ``compile_kwargs`` (values for ``Compile[T]``-annotated parameters).
 
     Args:
         mlir_generator: The MLIR generator callable (supplied automatically
