@@ -34,7 +34,7 @@ module {
       aie.packet_dest<%tile_0_0, "South" : 0>
     }
 
-    // Core tile: looping S2MM→MM2S passthrough (20 iterations)
+    // Core tile: continuously looping S2MM→MM2S passthrough
     %lock_in = aie.lock(%tile_0_2, 0) {init = 1 : i32, sym_name = "lock_in"}
     %lock_out = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "lock_out"}
 

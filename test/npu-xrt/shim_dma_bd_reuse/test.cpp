@@ -36,16 +36,21 @@ int main(int argc, const char *argv[]) {
   constexpr int NUM_TRANSFERS = 20;
   constexpr int SLICES_PER_SRC = 10; // 10 from buf_a, 10 from buf_b
   constexpr int SRC_SIZE = SLICES_PER_SRC * SLICE; // 2560
-  constexpr int OUT_SIZE = NUM_TRANSFERS * SLICE;   // 5120
+  constexpr int OUT_SIZE = NUM_TRANSFERS * SLICE;  // 5120
 
   auto device = xrt::device(0);
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
   std::string Node = vm["kernel"].as<std::string>();
   auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
-                                 return k.get_name().rfind(Node, 0) == 0;
-                               });
+  auto xkernel_it = std::find_if(xkernels.begin(), xkernels.end(),
+                                 [Node](xrt::xclbin::kernel &k) {
+                                   return k.get_name().rfind(Node, 0) == 0;
+                                 });
+  if (xkernel_it == xkernels.end()) {
+    std::cout << "Kernel '" << Node << "' not found in xclbin\n";
+    return 1;
+  }
+  auto xkernel = *xkernel_it;
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
   auto kernel = xrt::kernel(context, xkernel.get_name());
