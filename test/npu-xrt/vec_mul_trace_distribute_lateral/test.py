@@ -26,7 +26,7 @@
 #
 # Pre-lower trace ops with distribute + lateral options, then compile.
 # The trace pipeline in aiecc is a no-op since trace ops are already consumed.
-# RUN: aie-opt %S/aie.mlir -aie-insert-trace-flows="distribute-channels=true lateral-routing=true" -aie-trace-to-config -aie-trace-pack-reg-writes -aiex-inline-trace-config -o trace_lowered.mlir
+# RUN: aie-opt %S/aie.mlir -aie-insert-trace-flows="distribute-channels=true lateral-routing=true" -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config -o trace_lowered.mlir
 # RUN: %python aiecc.py --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin trace_lowered.mlir
 #
 # Run on NPU1 hardware:
@@ -84,7 +84,7 @@ def main(opts):
     rng = np.random.default_rng(seed=42)
     input_data = rng.integers(1, 100, size=IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
     in1 = iron.tensor(input_data, dtype=IN_OUT_DTYPE)
-    in2 = iron.tensor([SCALAR_FACTOR], dtype=IN_OUT_DTYPE)
+    in2 = iron.tensor(np.array([SCALAR_FACTOR], dtype=IN_OUT_DTYPE), dtype=IN_OUT_DTYPE)
     out = iron.zeros(IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
     ref_data = input_data * SCALAR_FACTOR
 
