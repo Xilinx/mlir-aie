@@ -31,7 +31,13 @@ class TraceConfig:
         self.physical_mlir_path = None
 
     def write_trace(self, trace):
-        out_str = "\n".join(f"{i:0{8}x}" for i in trace if i != 0)
+        # Strip only trailing zeros (unused buffer space). Internal zeros are
+        # preserved -- they encode the gap between split DMA channel regions
+        # when distribute-channels is active.
+        end = len(trace)
+        while end > 0 and trace[end - 1] == 0:
+            end -= 1
+        out_str = "\n".join(f"{i:0{8}x}" for i in trace[:end])
         with open(self.trace_file, "w") as f:
             f.write(out_str)
 
