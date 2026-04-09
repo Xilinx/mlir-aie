@@ -44,9 +44,10 @@ struct TraceInfo {
 
 /// Per-channel DMA resource allocation.
 struct ChannelDescriptor {
-  int channel; // S2MM channel number
-  int bdId;    // Buffer descriptor ID
-  int argIdx;  // Runtime sequence argument index
+  int channel;      // S2MM channel number
+  int bdId;         // Buffer descriptor ID
+  int argIdx;       // Runtime sequence argument index
+  int bufferOffset; // Byte offset within the shared trace buffer
 };
 
 struct ShimInfo {
@@ -54,7 +55,7 @@ struct ShimInfo {
   int channel;      // S2MM channel
   int bdId;         // Buffer descriptor ID
   int argIdx;       // Runtime sequence argument index
-  int bufferOffset; // Offset in bytes (non-zero when arg_idx=-1)
+  int bufferOffset; // Base byte offset for trace within the XRT buffer
   std::vector<TraceInfo> traceSources;     // All traces routed to this shim
   std::optional<int> startBroadcast;       // Broadcast to trigger for start
   std::optional<int> stopBroadcast;        // Broadcast to trigger for stop
@@ -125,7 +126,6 @@ struct AIEInsertTraceFlowsPass
 
     // arg_idx=-1 means "append trace after last tensor"
     int traceBufferOffset = 0; // in bytes
-    bool argIdxAutoResolved = (traceArgIdx == -1);
     if (traceArgIdx == -1) {
       auto args = runtimeSeq.getBody().getArguments();
       assert(!args.empty() && "runtime_sequence must have args for arg_idx=-1");
@@ -397,7 +397,6 @@ struct AIEInsertTraceFlowsPass
     }
 
     // Build channel descriptors and trace-to-channel assignments
-    int numRuntimeArgs = runtimeSeq.getBody().getArguments().size();
     for (auto &[col, shimInfo] : shimInfos) {
       int shimCol = shimInfo.shimTile.getCol();
       std::set<int> available = {0, 1};
@@ -408,7 +407,7 @@ struct AIEInsertTraceFlowsPass
       }
       shimInfo.channels = buildChannelDescriptors(
           shimInfo.traceSources.size(), shimInfo.channel, shimInfo.bdId,
-          shimInfo.argIdx, numRuntimeArgs, argIdxAutoResolved, available);
+          shimInfo.argIdx, shimInfo.bufferOffset, bufferSizeBytes, available);
       // Round-robin assignment of traces to channels
       for (size_t i = 0; i < shimInfo.traceSources.size(); i++) {
         shimInfo.traceChannelAssignment.push_back(i % shimInfo.channels.size());
@@ -603,12 +602,14 @@ struct AIEInsertTraceFlowsPass
             clTraceBurstLength // burst_length
         );
 
-        // 4d. Address patch (arg_plus = offset when arg_idx=-1)
+        // 4d. Address patch -- each channel gets its own offset within the
+        // shared trace buffer (the secondary channel starts at
+        // baseOffset + bufferSizeBytes when distribute is active).
         uint32_t bdAddress = computeBDAddress(shimCol, chanDesc.bdId,
                                               shimInfo.shimTile, targetModel);
         xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
                                                 bdAddress, chanDesc.argIdx,
-                                                shimInfo.bufferOffset);
+                                                chanDesc.bufferOffset);
 
         // 4e. DMA channel configuration
         uint32_t ctrlAddr =
@@ -771,29 +772,26 @@ private:
   /// Build channel descriptors. Always includes the primary channel.
   /// Adds a secondary channel when distribute-channels is enabled and there
   /// are multiple traces. AIE2 shim tiles have exactly 2 S2MM DMA channels.
-  /// Note: arg_idx values are XRT argument indices (not MLIR function args).
-  /// The secondary channel uses primaryArgIdx+1, so the host must provide
-  /// a second trace buffer at that XRT arg index.
+  ///
+  /// Both channels share the same arg_idx (XRT buffer). The buffer is split
+  /// by offset: channel 0 starts at the base bufferOffset, channel 1 starts
+  /// at bufferOffset + bufferSizeBytes. The host must allocate a trace buffer
+  /// of 2 * bufferSizeBytes when distribute is active.
   std::vector<ChannelDescriptor>
   buildChannelDescriptors(size_t numTraces, int primaryChannel, int primaryBdId,
-                          int primaryArgIdx, int numRuntimeArgs,
-                          bool argIdxAutoResolved,
+                          int primaryArgIdx, int baseBufferOffset,
+                          int bufferSizeBytes,
                           const std::set<int> &availableChannels) {
     std::vector<ChannelDescriptor> chans;
-    chans.push_back({primaryChannel, primaryBdId, primaryArgIdx});
-    // Only distribute when: enabled, >1 trace, bd_id headroom, and secondary
-    // arg index is available. When arg_idx was auto-resolved from -1, the
-    // resolved index is at the boundary of runtime_sequence args, so +1 would
-    // be out of bounds.
-    bool secondArgAvailable =
-        !argIdxAutoResolved || primaryArgIdx + 1 < numRuntimeArgs;
-    if (clDistributeChannels && numTraces > 1 && primaryBdId > 0 &&
-        secondArgAvailable) {
+    chans.push_back(
+        {primaryChannel, primaryBdId, primaryArgIdx, baseBufferOffset});
+    if (clDistributeChannels && numTraces > 1 && primaryBdId > 0) {
       int ch2 = (primaryChannel == 1) ? 0 : 1;
       // Only add secondary channel if it's available (not claimed by existing
       // flows)
       if (availableChannels.count(ch2)) {
-        chans.push_back({ch2, primaryBdId - 1, primaryArgIdx + 1});
+        chans.push_back({ch2, primaryBdId - 1, primaryArgIdx,
+                         baseBufferOffset + bufferSizeBytes});
       }
     }
     return chans;
@@ -845,8 +843,7 @@ private:
   }
 
   /// Find the nearest NOC shim column without active cores.
-  /// Returns -1 if no spare column exists, or signals pass failure for
-  /// invalid forced columns.
+  /// Returns -1 if no spare column exists.
   int findNearestSpareColumn(int sourceCol, const std::set<int> &activeColumns,
                              const AIETargetModel &targetModel) {
     int bestCol = -1;

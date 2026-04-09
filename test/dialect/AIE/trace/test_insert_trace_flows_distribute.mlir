@@ -45,9 +45,10 @@ module @distribute_two_traces {
     // Two buffer descriptors (one per channel, distinct bd_ids).
     // CHECK-DAG: aiex.npu.writebd {bd_id = 15
     // CHECK-DAG: aiex.npu.writebd {bd_id = 14
-    // Two address patches with distinct arg_idx values.
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 5
+    // Both channels share arg_idx=4, split by offset within the trace buffer.
+    // Channel 0 at offset 0, channel 1 at offset 8192 (= buffer_size).
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 0
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 8192
 
     // First trace -> channel 1 (default shim-channel), second -> channel 0
     // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 1>
@@ -90,10 +91,10 @@ module @distribute_single_trace {
 
 // -----
 
-// Test: distribute with arg_idx=-1 falls back to single channel
-// (arg_idx=-1 resolves to last arg; +1 would be out of bounds)
-// CHECK-LABEL: module @distribute_auto_argidx_fallback
-module @distribute_auto_argidx_fallback {
+// Test: distribute with arg_idx=-1 still distributes (both channels share
+// the resolved arg_idx, split by offset within the same buffer).
+// CHECK-LABEL: module @distribute_auto_argidx
+module @distribute_auto_argidx {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0, 2)
     %tile03 = aie.tile(0, 3)
@@ -119,13 +120,15 @@ module @distribute_auto_argidx_fallback {
       aie.trace.start_config @trace_b
     }
 
-    // With arg_idx=-1, distribute falls back to single channel.
-    // Only one writebd and one address_patch (single channel).
-    // CHECK-COUNT-1: aiex.npu.writebd
-    // CHECK-COUNT-1: aiex.npu.address_patch
-    // Both traces use the same DMA channel (no distribute).
-    // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
-    // CHECK: aie.packet_dest<%{{.*}}, DMA : 1>
+    // With arg_idx=-1, resolved arg_idx is shared by both channels.
+    // memref<16xi32> = 64 bytes, so base offset = 64.
+    // Channel 0 at offset 64, channel 1 at offset 64 + 8192 = 8256.
+    // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 1>
+    // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 0>
+    // CHECK-DAG: aiex.npu.writebd {bd_id = 15
+    // CHECK-DAG: aiex.npu.writebd {bd_id = 14
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 0 : i32, arg_plus = 64
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 0 : i32, arg_plus = 8256
   }
 }
 
@@ -185,9 +188,9 @@ module @distribute_four_traces_three_cols {
     // Two BDs configured (one per channel)
     // CHECK-DAG: aiex.npu.writebd {bd_id = 15
     // CHECK-DAG: aiex.npu.writebd {bd_id = 14
-    // Two address patches
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 5
+    // Both channels share arg_idx, split by offset
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 0
+    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 8192
 
     // Without distribute, all 4 traces use same channel
     // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>

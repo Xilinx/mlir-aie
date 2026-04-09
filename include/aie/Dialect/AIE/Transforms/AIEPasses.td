@@ -455,7 +455,7 @@ def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
   let summary = "Insert packet flows and runtime sequence trace setup";
   let description = [{
     For each aie.trace operation, this pass:
-    - Creates ONE packet flow from trace port to shim DMA
+    - Creates packet flows from trace ports to shim DMA
     - Groups traces by target shim (minimizes shim usage, ideally 1)
     - Inserts shim buffer descriptors and DMA control setup per shim tile
     - Inserts per-tile timer control register writes
@@ -467,8 +467,10 @@ def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
     By default, multiple trace streams are routed to the same shim DMA
     channel and drained by a single buffer descriptor. With
     `distribute-channels`, traces are round-robin distributed across two
-    S2MM DMA channels per shim tile, each with its own BD and host buffer
-    argument.
+    S2MM DMA channels per shim tile, each with its own BD. Both channels
+    share the same host buffer argument (arg_idx) and are split by offset:
+    channel 0 starts at the base offset, channel 1 at base + buffer_size.
+    The host must allocate 2x buffer_size for the trace buffer.
 
     With `lateral-routing`, trace destinations are redirected from columns
     with active cores to spare shim NOC columns, reducing data path
