@@ -44,7 +44,15 @@ class TraceConfig:
     def read_trace(self):
         with open(self.trace_file, "r") as f:
             trace_data = [int(line.strip(), 16) for line in f if line.strip()]
-        return np.array(trace_data, dtype=np.uint32)
+        buf = np.array(trace_data, dtype=np.uint32)
+        # Pad back to the full trace buffer size. write_trace() strips
+        # trailing zeros for compactness, but callers (especially with
+        # distribute-channels) need the full buffer to index by channel
+        # offset correctly.
+        expected_words = self.trace_size // 4
+        if len(buf) < expected_words:
+            buf = np.pad(buf, (0, expected_words - len(buf)))
+        return buf
 
     def trace_to_json(self, mlir_file: str, output_name: str = "trace.json"):
         """Wrapper over parse_trace.py utility."""

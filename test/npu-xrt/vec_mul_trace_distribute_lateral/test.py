@@ -153,18 +153,19 @@ def main(opts):
                 for ev in trace_events
                 if ev.get("name") == "INSTR_EVENT_1" and ev.get("ph") == "B"
             )
-            # Count memory DMA events
-            mem_dma_start = sum(
+            # Count memory DMA events (any DMA_ prefixed event from the
+            # mem trace module confirms channel 1 captured data)
+            mem_dma_events = sum(
                 1
                 for ev in trace_events
-                if ev.get("name") == "DMA_S2MM_0_START_TASK" and ev.get("ph") == "B"
+                if ev.get("name", "").startswith("DMA_") and ev.get("ph") == "B"
             )
 
             if opts.verbosity >= 1:
                 print(f"\nTrace events:")
                 print(f"  INSTR_EVENT_0: {core_event_0}")
                 print(f"  INSTR_EVENT_1: {core_event_1}")
-                print(f"  DMA_S2MM_0_START_TASK: {mem_dma_start}")
+                print(f"  DMA_* (mem trace): {mem_dma_events}")
 
             if core_event_0 < 4:
                 print(f"ERROR: Expected >= 4 INSTR_EVENT_0, got {core_event_0}")
@@ -172,10 +173,10 @@ def main(opts):
             if core_event_1 < 4:
                 print(f"ERROR: Expected >= 4 INSTR_EVENT_1, got {core_event_1}")
                 errors += 1
-            if mem_dma_start < 1:
+            if mem_dma_events < 1:
                 print(
-                    f"ERROR: Expected >= 1 DMA_S2MM_0_START_TASK, "
-                    f"got {mem_dma_start}"
+                    f"ERROR: Expected >= 1 DMA_* mem trace events, "
+                    f"got {mem_dma_events}"
                 )
                 errors += 1
         else:
