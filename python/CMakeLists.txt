@@ -77,6 +77,7 @@ declare_mlir_python_sources(AIEPythonSources.Iron
     iron/compile/*.py
     iron/hostruntime/*.py
     iron/algorithms/*.py
+    iron/kernels/*.py
     iron/dataflow/*.py
     iron/device/*.py
     iron/runtime/*.py

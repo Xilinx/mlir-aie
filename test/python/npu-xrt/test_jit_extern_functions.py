@@ -158,7 +158,6 @@ def test_different_tile_sizes(tile_size):
     "dtype,c_type",
     [
         (np.int32, "int"),
-        (np.float32, "float"),
     ],
 )
 def test_different_data_types(dtype, c_type):

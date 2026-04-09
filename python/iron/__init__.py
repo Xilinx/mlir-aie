@@ -35,6 +35,8 @@ from .compile import (
     get_compile_arg,
 )
 from .hostruntime import CallableDesign, jit
+from . import kernels
+from . import algorithms
 from aie.utils import (
     tensor,
     ones,
@@ -81,4 +83,7 @@ __all__ = [
     # dtype helpers
     "str_to_dtype",
     "dtype_to_str",
+    # Submodules
+    "kernels",
+    "algorithms",
 ]
