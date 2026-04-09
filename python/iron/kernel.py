@@ -232,8 +232,11 @@ class ExternalFunction(Kernel):
                     f"got {arg.shape}/{arg.dtype}"
                 )
 
-    def __hash__(self):
-        """Hash based on source content and compiler options for cache keying."""
+    def _content_digest(self) -> str:
+        """Return a 64-bit hex SHA-256 digest of this instance's content.
+
+        Used by both ``__hash__`` and ``__eq__`` so the two are consistent.
+        """
         from pathlib import Path as _Path
 
         include_dir_mtimes = []
@@ -243,18 +246,29 @@ class ExternalFunction(Kernel):
             except (FileNotFoundError, OSError):
                 mtime = "missing"
             include_dir_mtimes.append(f"{d}:{mtime}")
-        include_dirs_hash = str(include_dir_mtimes)
 
-        hash_parts = [
+        parts = [
             self._name,
             str(self._arg_types),
-            include_dirs_hash,
+            str(include_dir_mtimes),
             str(sorted(self._compile_flags)),
         ]
         if self._source_string:
-            hash_parts.append(self._source_string)
+            parts.append(self._source_string)
         elif self._source_file:
-            with open(self._source_file, "r") as f:
-                hash_parts.append(f.read())
-        combined = "|".join(hash_parts)
-        return int(hashlib.sha256(combined.encode("utf-8")).hexdigest()[:8], 16)
+            try:
+                with open(self._source_file) as f:
+                    parts.append(f.read())
+            except OSError:
+                parts.append(f"<unreadable:{self._source_file}>")
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]  # 64-bit
+
+    def __hash__(self) -> int:
+        """Content-based hash for use as a dict/set key and in cache signatures."""
+        return int(self._content_digest(), 16)
+
+    def __eq__(self, other: object) -> bool:
+        """Content-based equality so hash collisions never produce false cache hits."""
+        if not isinstance(other, ExternalFunction):
+            return NotImplemented
+        return self._content_digest() == other._content_digest()
