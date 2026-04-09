@@ -23,7 +23,6 @@ import tempfile
 from aie.utils.trace.utils import split_trace_segments
 from aie.utils.trace.config import TraceConfig
 
-
 # -- split_trace_segments tests ------------------------------------------------
 
 
