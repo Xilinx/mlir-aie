@@ -368,37 +368,23 @@ class CallableDesign:
         Returns:
             The MLIR module as a string (suitable for inspection or debugging).
 
-        Raises:
-            UserWarning: When a call-time ``Compile[T]`` value is overridden by
-                a pre-bound value, so the caller knows their argument was ignored.
+        Note:
+            Unlike ``__call__``, call-time ``Compile[T]`` kwargs **override**
+            pre-bound values so you can inspect what different configurations
+            produce without creating a new ``CallableDesign``.
         """
         from aie.iron.kernel import ExternalFunction
 
-        call_compile_kwargs, _scalar_runtime_kwargs, effective_compile_kwargs = (
-            self._extract_compile_kwargs(runtime_kwargs)
+        call_compile_kwargs, _scalar_runtime_kwargs, _ = self._extract_compile_kwargs(
+            runtime_kwargs
         )
 
-        # Warn about any call-time kwargs that are silently overridden by
-        # pre-bound values. This is the primary footgun for lower() users.
-        pre_bound = self.compilable.compile_kwargs
-        overridden = {
-            k: (call_compile_kwargs[k], pre_bound[k])
-            for k in call_compile_kwargs
-            if k in pre_bound and call_compile_kwargs[k] != pre_bound[k]
+        # For lower(), call-time kwargs override pre-bound values so callers
+        # can inspect different configurations without creating a new design.
+        effective_compile_kwargs = {
+            **self.compilable.compile_kwargs,
+            **call_compile_kwargs,
         }
-        if overridden:
-            details = ", ".join(
-                f"{k}={passed!r} ignored (pre-bound={bound!r})"
-                for k, (passed, bound) in overridden.items()
-            )
-            warnings.warn(
-                f"lower(): the following Compile[T] arguments were ignored because "
-                f"they conflict with pre-bound values: {details}. "
-                f"Pre-bound values always win. To inspect with different compile "
-                f"params, create a new CallableDesign.",
-                UserWarning,
-                stacklevel=2,
-            )
 
         compilable = self._build_compilable(
             call_compile_kwargs, effective_compile_kwargs

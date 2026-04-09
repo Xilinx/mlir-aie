@@ -421,42 +421,6 @@ def test_guard_3c_too_many_positional_raises():
     cd = CallableDesign(gen, compile_kwargs={"M": 1})
     with pytest.raises(TypeError, match="positional argument"):
         cd(object(), object(), object())  # 3 positional, only 1 expected
-
-
-# ---------------------------------------------------------------------------
-# lower() warns on pre-bound kwarg conflict
-# ---------------------------------------------------------------------------
-
-
-def test_lower_warns_on_pre_bound_kwarg_conflict():
-    """lower() must warn when a call-time Compile[T] kwarg conflicts with pre-bound."""
-    import warnings as _warnings
-    from aie.iron import Compile, In, Out
-    from aie.iron.compile.compilabledesign import CompilableDesign
-
-    def gen(a: In, b: Out, *, N: Compile[int] = 1024):
-        pass
-
-    cd = CallableDesign(gen, compile_kwargs={"N": 1024})
-
-    with _warnings.catch_warnings(record=True) as caught:
-        _warnings.simplefilter("always")
-        # Pass N=512 — conflicts with pre-bound N=1024
-        try:
-            cd.lower(N=512)
-        except Exception:
-            pass  # MLIR generation may fail without hardware — we only care about the warning
-
-    conflict_warnings = [
-        w
-        for w in caught
-        if "ignored" in str(w.message).lower() or "pre-bound" in str(w.message).lower()
-    ]
-    assert (
-        conflict_warnings
-    ), "lower() must warn when a call-time kwarg is overridden by a pre-bound value"
-
-
 def test_lower_no_warning_when_no_conflict():
     """lower() must not warn when call-time kwargs match pre-bound values."""
     import warnings as _warnings
