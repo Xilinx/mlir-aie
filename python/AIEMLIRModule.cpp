@@ -206,6 +206,10 @@ NB_MODULE(_aie, m) {
           "rows",
           [](PyAieTargetModel &self) { return aieTargetModelRows(self.get()); },
           "Get the number of rows in the device.")
+      .def("get_tile_type",
+           [](PyAieTargetModel &self, int col, int row) {
+             return aieTargetModelGetTileType(self.get(), col, row);
+           })
       .def("is_core_tile",
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelIsCoreTile(self.get(), col, row);

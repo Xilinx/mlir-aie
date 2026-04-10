@@ -68,10 +68,10 @@ def fill(
         tap: TensorAccessPattern | None = None,
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
-        placement: PlacementTile = AnyShimTile,
+        tile: Tile = AnyShimTile,
     )
 ```
-When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `placement` Shim tile can also be explicitly specified, otherwise the compiler will choose one based on the placement algorithm. The `task_group` is explained further in this section.
+When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `tile` (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The `task_group` is explained further in this section.
 
 The code snippet below shows how data from a source runtime buffer `a_in` is sent to the producer `ObjectFifoHandle` of `of_in`. This data could then be read via a consumer `ObjectFifoHandle` of the same Object FIFO.
 ```python
@@ -89,10 +89,10 @@ def drain(
     tap: TensorAccessPattern | None = None,
     task_group: RuntimeTaskGroup | None = None,
     wait: bool = False,
-    placement: PlacementTile = AnyShimTile,
+    tile: Tile = AnyShimTile,
 )
 ```
-When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `placement` Shim tile can also be explicitly specified, otherwise the compiler will choose one based on the placement algorithm. The `task_group` is explained further in this section.
+When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `tile` (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The `task_group` is explained further in this section.
 
 The code snippet below shows how data from a consumer `ObjectFifoHandle` of `of_out` is drained into a destination runtime buffer `c_out`. Data could be produced into `of_out` via its producer `ObjectFifoHandle`. Additionally, the `wait` input of the `drain()` task is set meaning that this task will be waited on until completion, i.e., until the `c_out` runtime buffer had received enough data as described by the `data_ty`.
 ```python
