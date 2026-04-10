@@ -58,4 +58,18 @@ foreach(_aie_arch IN LISTS AIE_VITIS_COMPONENTS)
   endif()
 endforeach()
 
-
+# Install and copy aie_objectfifo.h unconditionally (no AIETools dependency)
+foreach(arch AIE2 AIE2P)
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${arch}/aie_objectfifo.h)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${arch}/aie_objectfifo.h
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/aie_runtime_lib/${arch})
+    add_custom_target(aie-copy-${arch}-runtime-libs-aie_objectfifo.h ALL
+                      DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${arch}/aie_objectfifo.h)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${arch}/aie_objectfifo.h
+                       COMMAND ${CMAKE_COMMAND} -E copy
+                       ${CMAKE_CURRENT_SOURCE_DIR}/${arch}/aie_objectfifo.h
+                       ${CMAKE_CURRENT_BINARY_DIR}/${arch}/aie_objectfifo.h
+                       DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${arch}/aie_objectfifo.h)
+    add_dependencies(aie-runtime-libs aie-copy-${arch}-runtime-libs-aie_objectfifo.h)
+  endif()
+endforeach()
