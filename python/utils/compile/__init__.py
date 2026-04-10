@@ -14,6 +14,7 @@ from .utils import (
     compile_cxx_core_function,
     compile_mlir_module,
     compile_external_kernel,
+    resolve_target_arch,
 )
 
 # Compiled kernels are cached inside the `NPU_CACHE_HOME` directory.

@@ -15,6 +15,59 @@ from aie.iron.controlflow import range_
 import aie.iron as iron
 
 
+def for_each_typed(func, tensor_ty, tile_size=16):
+    """In-place transform using a tensor type descriptor.
+
+    Like :func:`for_each` but accepts a numpy ``ndarray`` type descriptor
+    instead of a real tensor.  Intended for use inside ``@iron.jit``
+    generator bodies where shape and dtype are expressed as ``Compile[T]``
+    parameters::
+
+        @iron.jit
+        def my_design(data: InOut,
+                      N: Compile[int], dtype: Compile[type] = np.int32):
+            tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+            return iron.algorithms.for_each_typed(lambda x: x + 1, tensor_ty)
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
+            np.dtype[np.int32]]``). Shape and dtype are inferred from this.
+        tile_size (int, optional): Number of elements per tile. Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    try:
+        shape_arg, dtype_arg = tensor_ty.__args__
+        num_elements = 1
+        for dim in shape_arg:
+            num_elements *= dim
+        dtype = dtype_arg.__args__[0]
+    except Exception as exc:
+        raise TypeError(
+            f"for_each_typed expects a numpy ndarray type such as "
+            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
+        ) from exc
+
+    n = tile_size
+    if num_elements % n != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of "
+            f"tile size ({n})"
+        )
+
+    _dtype = dtype
+
+    class _TypeDescriptor:
+        shape = (num_elements,)
+        size = num_elements
+        dtype = _dtype
+
+    fake_tensor = _TypeDescriptor()
+    return for_each(func, fake_tensor, tile_size=tile_size)
+
+
 def for_each(func, tensor, *params, tile_size=16):
     """
     In-place transform. Internally uses separate input/output ObjectFifos,
@@ -159,4 +212,11 @@ def for_each(func, tensor, *params, tile_size=16):
         rt.drain(of_out.cons(), tensor_arg, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    device = iron.get_current_device()
+    if device is None:
+        raise RuntimeError(
+            "iron.algorithms.for_each requires an active NPU device. "
+            "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
+            "before calling for_each."
+        )
+    return Program(device, rt).resolve_program(SequentialPlacer())

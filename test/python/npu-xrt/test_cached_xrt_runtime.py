@@ -13,11 +13,10 @@ import numpy as np
 import time
 import os
 import aie.iron as iron
-from aie.iron import ObjectFifo, Worker, Runtime, Program
+from aie.iron import Compile, In, Out, ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 import aie.utils
-import aie.utils.jit
 from aie.utils.hostruntime.xrtruntime.hostruntime import (
     CachedXRTRuntime,
     XRTHostRuntime,
@@ -44,14 +43,15 @@ def runtime():
 
 
 @iron.jit
-def transform(input, output, func):
+def transform(
+    input: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    num_elements: Compile[int],
+    dtype: Compile[object] = np.int32,
+):
     """Transform kernel that applies a function to input tensor and stores result in output tensor."""
-    if input.shape != output.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input.shape} != {output.shape})."
-        )
-    num_elements = np.size(input)
-
     if isinstance(func, iron.ExternalFunction):
         tile_size = func.tile_size(0)
     else:
@@ -59,18 +59,10 @@ def transform(input, output, func):
 
     if num_elements % tile_size != 0:
         raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
+            f"num_elements ({num_elements}) must be divisible by tile_size ({tile_size})"
         )
     num_tiles = num_elements // tile_size
 
-    if input.dtype != output.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input.dtype} != {output.dtype})."
-        )
-
-    dtype = input.dtype
-
-    # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
 
@@ -111,7 +103,7 @@ def test_runtime_caching_reuse(runtime):
     input_tensor = iron.arange(32, dtype=np.int32)
 
     # First run with lambda
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     assert len(runtime._context_cache) == 1
 
@@ -121,7 +113,7 @@ def test_runtime_caching_reuse(runtime):
     context1 = entry1["context"]
 
     # Second run with same lambda (jit cache should hit, returning same NPUKernel)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     assert len(runtime._context_cache) == 1
 
@@ -140,11 +132,11 @@ def test_runtime_caching_multiple_kernels(runtime):
     input_tensor = iron.arange(32, dtype=np.int32)
 
     # Run first kernel (add 1)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
     assert len(runtime._context_cache) == 1
 
     # Run second kernel (multiply by 2)
-    transform(input_tensor, input_tensor, lambda x: x * 2)
+    transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
 
     # Should have 2 entries now
     assert len(runtime._context_cache) == 2
@@ -160,12 +152,12 @@ def test_runtime_eviction_logic(runtime):
         input_tensor = iron.arange(32, dtype=np.int32)
 
         # Run first kernel
-        transform(input_tensor, input_tensor, lambda x: x + 1)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
         assert len(runtime._context_cache) == 1
         key1 = list(runtime._context_cache.keys())[0]
 
         # Run second kernel (different lambda -> different xclbin)
-        transform(input_tensor, input_tensor, lambda x: x * 2)
+        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
 
         assert len(runtime._context_cache) == 1
         key2 = list(runtime._context_cache.keys())[0]
@@ -180,6 +172,10 @@ def test_runtime_eviction_logic(runtime):
 def test_runtime_cache_fill(runtime):
     """Test filling the cache to its capacity."""
 
+    # Clear the per-instance kernel cache so every transform() call triggers a
+    # fresh compile() and populates _context_cache, regardless of prior tests.
+    transform._kernel_cache.clear()
+
     # Ensure cache is empty
     runtime.cleanup()
 
@@ -190,7 +186,9 @@ def test_runtime_cache_fill(runtime):
     first_key = None
 
     for i in range(limit + 1):
-        transform(input_tensor, input_tensor, lambda x, val=i: x + val)
+        transform(
+            input_tensor, input_tensor, func=lambda x, val=i: x + val, num_elements=32
+        )
 
         if i == 0:
             first_key = list(runtime._context_cache.keys())[0]
@@ -208,7 +206,7 @@ def test_runtime_mtime_sensitivity(runtime):
 
     input_tensor = iron.arange(32, dtype=np.int32)
     # Load kernel
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
     assert len(runtime._context_cache) == 1
 
     # Get the xclbin path from the cache key
@@ -222,7 +220,7 @@ def test_runtime_mtime_sensitivity(runtime):
     os.utime(xclbin_path, None)
 
     # Load again
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     # Should have 2 entries now (old one and new one with new mtime)
     # Because CachedXRTRuntime keys include mtime, and it doesn't automatically evict old mtime entries for same path unless LRU kicks in.
@@ -253,7 +251,7 @@ def test_runtime_handle_invalidation(runtime):
         input_tensor = iron.arange(32, dtype=np.int32)
 
         # Load first kernel to generate artifacts
-        transform(input_tensor, input_tensor, lambda x: x + 1)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
         # Restore load
         runtime.load = original_load
@@ -270,7 +268,7 @@ def test_runtime_handle_invalidation(runtime):
         assert handle._is_valid
 
         # Load second kernel to force eviction
-        transform(input_tensor, input_tensor, lambda x: x * 2)
+        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
 
         # Verify handle is invalidated
         assert not handle._is_valid
@@ -295,7 +293,7 @@ def test_runtime_cleanup(runtime):
     runtime.load = side_effect_load
 
     # Load kernel to generate artifacts
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     # Restore load
     runtime.load = original_load
@@ -334,7 +332,7 @@ def test_base_runtime_load_run(runtime):
     runtime.load = side_effect_load
 
     # Run transform to generate artifacts using the cached runtime (fixture)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     # Restore load
     runtime.load = original_load
@@ -400,7 +398,7 @@ def test_runtime_retry_disable(runtime):
     runtime.load = side_effect_load
 
     # Run transform to generate artifacts
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     # Restore load
     runtime.load = original_load
@@ -432,7 +430,7 @@ def test_runtime_run_only_if_loaded(runtime):
     runtime.load = side_effect_load
 
     # Run transform to generate artifacts
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     # Restore load
     runtime.load = original_load
@@ -472,7 +470,7 @@ def test_runtime_run_only_if_loaded(runtime):
 def test_kernel_cache_populated_after_first_load(runtime):
     """load() populates entry['kernels'] so subsequent calls skip pyxrt.kernel()."""
     input_tensor = iron.arange(32, dtype=np.int32)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     assert len(runtime._context_cache) >= 1
     entry = list(runtime._context_cache.values())[0]
@@ -484,7 +482,7 @@ def test_kernel_cache_returns_same_kernel(runtime):
     input_tensor = iron.arange(32, dtype=np.int32)
 
     # First call: compiles and caches pyxrt.kernel in entry["kernels"]
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
     assert len(runtime._context_cache) >= 1
     entry = list(runtime._context_cache.values())[0]
     kernel_name = list(entry["kernels"].keys())[0]
@@ -492,7 +490,7 @@ def test_kernel_cache_returns_same_kernel(runtime):
     assert kernel_first is not None
 
     # Second call with same kernel: must return the cached pyxrt.kernel (identity)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
     kernel_second = entry["kernels"][kernel_name]
 
     assert kernel_first is kernel_second, (
@@ -510,14 +508,14 @@ def test_kernel_cache_cleared_on_eviction(runtime):
         input_tensor = iron.arange(32, dtype=np.int32)
 
         # Load first kernel -> populates kernels sub-cache
-        transform(input_tensor, input_tensor, lambda x: x + 1)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
         assert len(runtime._context_cache) == 1
         first_context_key = list(runtime._context_cache.keys())[0]
         first_entry = runtime._context_cache[first_context_key]
         assert len(first_entry["kernels"]) >= 1
 
         # Load a different kernel -> forces eviction of first context
-        transform(input_tensor, input_tensor, lambda x: x * 2)
+        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
 
         # First context entry must be gone
         assert first_context_key not in runtime._context_cache
@@ -530,7 +528,7 @@ def test_kernel_cache_cleared_on_eviction(runtime):
 def test_kernel_cache_cleared_on_cleanup(runtime):
     """cleanup() evicts all contexts, clearing their kernel sub-caches."""
     input_tensor = iron.arange(32, dtype=np.int32)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     entry = list(runtime._context_cache.values())[0]
     assert len(entry["kernels"]) >= 1
@@ -556,7 +554,7 @@ def test_kernel_released_when_context_evicted(runtime):
 
     try:
         input_tensor = iron.arange(32, dtype=np.int32)
-        transform(input_tensor, input_tensor, lambda x: x + 1)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
         entry = list(runtime._context_cache.values())[0]
         kernel_name = list(entry["kernels"].keys())[0]
@@ -564,7 +562,7 @@ def test_kernel_released_when_context_evicted(runtime):
         assert kernel_ref() is not None
 
         # Force eviction by loading a different kernel
-        transform(input_tensor, input_tensor, lambda x: x * 2)
+        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
         gc.collect()
 
         # The kernel weakref should be dead (strong ref released with context)
@@ -592,7 +590,7 @@ def test_load_returns_fresh_handle_each_call(runtime):
 
     runtime.load = side_effect_load
 
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     runtime.load = original_load
 
@@ -630,7 +628,7 @@ def test_insts_bo_released_when_evicted(runtime):
 
     try:
         input_tensor = iron.arange(32, dtype=np.int32)
-        transform(input_tensor, input_tensor, lambda x: x + 1)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
         assert len(runtime._insts_cache) >= 1
         insts_entry = list(runtime._insts_cache.values())[0]
@@ -640,7 +638,7 @@ def test_insts_bo_released_when_evicted(runtime):
         del insts_entry  # don't let the test keep the object alive
 
         # Force eviction of the insts entry by loading a different kernel.
-        transform(input_tensor, input_tensor, lambda x: x * 2)
+        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
         gc.collect()
 
         assert insts_ref() is None, (
@@ -659,7 +657,7 @@ def test_insts_bo_released_on_cleanup(runtime):
     import weakref
 
     input_tensor = iron.arange(32, dtype=np.int32)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     assert len(runtime._insts_cache) >= 1
     insts_entry = list(runtime._insts_cache.values())[0]
@@ -706,7 +704,7 @@ def kernel_paths(runtime):
     runtime.load = side_effect
     try:
         input_tensor = iron.arange(32, dtype=np.int32)
-        transform(input_tensor, input_tensor, lambda x: x + 1)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
     finally:
         runtime.load = original_load
 
@@ -727,7 +725,7 @@ def test_context_released_when_evicted(runtime):
 
     try:
         input_tensor = iron.arange(32, dtype=np.int32)
-        transform(input_tensor, input_tensor, lambda x: x + 1)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
         entry = list(runtime._context_cache.values())[0]
         ctx_ref = weakref.ref(entry["context"])
@@ -738,7 +736,7 @@ def test_context_released_when_evicted(runtime):
         del entry
 
         # Force eviction of the first context by loading a different kernel.
-        transform(input_tensor, input_tensor, lambda x: x * 2)
+        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
         gc.collect()
 
         assert ctx_ref() is None, (
@@ -759,7 +757,7 @@ def test_context_released_on_cleanup(runtime):
     import weakref
 
     input_tensor = iron.arange(32, dtype=np.int32)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     entry = list(runtime._context_cache.values())[0]
     ctx_ref = weakref.ref(entry["context"])

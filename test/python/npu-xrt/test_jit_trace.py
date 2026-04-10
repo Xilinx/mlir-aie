@@ -14,10 +14,10 @@ import pytest
 import numpy as np
 import os
 import aie.iron as iron
-from aie.utils.jit import jit
+
 from aie.utils import tensor
 from aie.utils.trace import TraceConfig, parse_trace
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
@@ -32,8 +32,10 @@ def scale_scalar(of_in, of_out, factor, N):
     of_out.release(1)
 
 
-@jit
-def design(a_in, c_out, trace_config=None):
+@iron.jit
+def design(
+    a_in: iron.In, c_out: iron.Out, *, trace_config: Compile[TraceConfig | None] = None
+):
     N = 1024
     # Construct types for sequence
     a_type = np.ndarray[(1024,), np.dtype[np.int32]]
