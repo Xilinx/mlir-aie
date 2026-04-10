@@ -220,6 +220,14 @@ void collectTiles(DeviceOp &device,
 void collectBuffers(
     DeviceOp &device,
     llvm::DenseMap<mlir::Operation *, llvm::SmallVector<BufferOp, 4>> &buffers);
+
+// Returns true when a BDDimLayoutAttr array (outermost-first) describes a
+// contiguous row-major scan: innermost stride == 1 and each outer stride
+// equals the product of all inner sizes.  Used by DMABDOp verification and
+// canonicalization to allow natural ND forms on shim tiles that will be
+// linearized by the compiler.
+bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
+
 } // namespace xilinx::AIE
 
 namespace llvm {

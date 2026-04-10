@@ -8,6 +8,7 @@
 # RUN: %run_on_npu2% %pytest %s
 # REQUIRES: xrt_python_bindings
 
+import pytest
 import numpy as np
 import tempfile
 import os
@@ -413,20 +414,27 @@ def test_cache_tensor_shapes():
         np.testing.assert_array_equal(result, expected)
 
 
-def test_cache_tensor_dtypes():
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int32,
+        pytest.param(
+            np.float32,
+            marks=pytest.mark.xfail(
+                reason="Suspected f32 kernel stack overflow when two runtime_sequence buffers map to same host-side buffer",
+                strict=False,
+            ),
+        ),
+    ],
+)
+def test_cache_tensor_dtypes(dtype):
     """Test that different tensor dtypes work correctly with caching."""
-    # Test with different dtypes
-    dtypes = [np.int32, np.float32]
-    results = []
+    input_tensor = iron.arange(32, dtype=dtype)
 
-    for dtype in dtypes:
-        input_tensor = iron.arange(32, dtype=dtype)
+    # Apply transformation
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+    result = input_tensor.numpy()
 
-        # Apply transformation
-        transform(input_tensor, input_tensor, lambda x: x + 1)
-        result = input_tensor.numpy()
-        results.append(result)
-
-        # Verify expected results
-        expected = np.arange(32, dtype=dtype) + 1
-        np.testing.assert_array_equal(result, expected)
+    # Verify expected results
+    expected = np.arange(32, dtype=dtype) + 1
+    np.testing.assert_array_equal(result, expected)

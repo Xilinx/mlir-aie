@@ -7,6 +7,9 @@
 cmake_minimum_required(VERSION 3.30)
 project("test lib for ${AIE_RUNTIME_TARGET}")
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 function(add_runtime_pic_flag target_name)
   if (NOT WIN32)
     target_compile_options(${target_name} PRIVATE -fPIC)
@@ -28,7 +31,6 @@ if ("${AIE_RUNTIME_TARGET}" STREQUAL "x86_64-hsa")
 endif()
 if (WIN32)
   set(BUILD_TEST_LIBRARY OFF)
-  set(BUILD_TEST_UTILS_LIBRARY OFF)
 endif()
 
 # test_lib library
@@ -66,7 +68,10 @@ if (BUILD_TEST_UTILS_LIBRARY)
   set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;xrt_test_wrapper.h;cxxopts.hpp")
   add_runtime_pic_flag(test_utils)
 
-  if (${XRT_FOUND})
+  # XRT headers on Windows pull in boost/any.hpp which is not typically
+  # available.  Skip XRT integration there; the core helpers (load_instr_*,
+  # nearly_equal, etc.) are still usable without it.
+  if (${XRT_FOUND} AND NOT WIN32)
     target_compile_options(test_utils PRIVATE -DTEST_UTILS_USE_XRT)
     target_include_directories(test_utils PRIVATE ${XRT_INCLUDE_DIR})
   endif()

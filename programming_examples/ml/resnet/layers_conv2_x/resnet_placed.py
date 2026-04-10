@@ -10,8 +10,9 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.util import np_ndarray_type_get_shape
+from aie.iron.controlflow import range_
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -901,10 +902,13 @@ def resnet_conv_x():
                 rtpComputeTile24[0] = 1
                 rtpComputeTile24[1] = 0
 
+                tap_act_in = TensorTiler2D.simple_tiler(
+                    (tensorInH, tensorInW * tensorInCInit)
+                )[0]
                 act1_0_task = shim_dma_single_bd_task(
                     act1_fifos[0],
                     inputFromL3,
-                    sizes=[1, 1, 1, activationsIn],
+                    tap=tap_act_in,
                 )
 
                 wts_0_task = shim_dma_single_bd_task(
@@ -927,11 +931,11 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, totalWeights_rest],
                 )
 
+                tap_act_out = TensorTiler2D.simple_tiler(
+                    (tensorInH, tensorInW * tensorInCRest)
+                )[0]
                 out_task = shim_dma_single_bd_task(
-                    outOFL2L3,
-                    outputToL3,
-                    sizes=[1, 1, 1, acitivationsOut],
-                    issue_token=True,
+                    outOFL2L3, outputToL3, tap=tap_act_out, issue_token=True
                 )
 
                 dma_start_task(

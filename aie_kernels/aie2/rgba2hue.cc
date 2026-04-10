@@ -170,8 +170,14 @@ void rgba2hue_aie_scalar(uint8_t *rgba_in, uint8_t *hue_out,
 extern "C" {
 
 void rgba2hueLine(uint8_t *in, uint8_t *out, int32_t lineWidth) {
-  // rgba2hue_aie_scalar(in, out, 1, lineWidth);
+#ifdef __AIE2__
+  // Vectorized path: correct and fast on AIE2 (npu1).
   rgba2hue_aie(in, out, 1, lineWidth);
+#else
+  // AIE2P (npu2): the vectorized path produces incorrect results due to
+  // differences in acc32 SRS behaviour on AIE2P; use the scalar fallback.
+  rgba2hue_aie_scalar(in, out, 1, lineWidth);
+#endif
 }
 
 void rgba2hueTile(uint8_t *in, uint8_t *out, int32_t tileHeight,
