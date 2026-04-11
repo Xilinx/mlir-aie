@@ -28,7 +28,7 @@ int main(int argc, const char *argv[]) {
   test_utils::add_default_options(options);
   options.add_options()("m", "m, number of rows in the small tile",
                         cxxopts::value<int>()->default_value("32"))(
-      "tile-k", "k, number of columns in the small tile",
+      "tile-k", "tile-k, number of columns in the small tile",
       cxxopts::value<int>()->default_value("64"))(
       "K", "K, number of columns in the large tile",
       cxxopts::value<int>()->default_value("256"))(
