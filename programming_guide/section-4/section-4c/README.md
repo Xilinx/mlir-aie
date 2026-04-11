@@ -17,7 +17,7 @@
 
 -----
 
-Now that we are able to measure the total application time ([section-4a](../section-4a/)) and have seen how we can look at kernel performance via tracing ([section-4b](../section-4b)), we will take a closer look at kernel vectorization and compare perfomance using trace. We will now switch to using the [vector-scalar multiply example](../../../programming_examples/basic/vector_scalar_mul/) rather than a local copy of that same design to illustrate kernel vectorization concepts. Note that by default, that example design is working with 16-bit data (vs 32-bit in our previous setion-4 examples) and has `vectorized=True`.
+Now that we are able to measure the total application time ([section-4a](../section-4a/)) and have seen how we can look at kernel performance via tracing ([section-4b](../section-4b)), we will take a closer look at kernel vectorization and compare performance using trace. We will now switch to using the [vector-scalar multiply example](../../../programming_examples/basic/vector_scalar_mul/) rather than a local copy of that same design to illustrate kernel vectorization concepts. Note that by default, that example design is working with 16-bit data (vs 32-bit in our previous section-4 examples) and has `vectorized=True`.
 
 Go ahead and read the design example summary for [vector-scalar multiply](../../../programming_examples/basic/vector_scalar_mul/) first to get an idea of the different components of this example design. Then, let's take a closer look at the kernel source file ([scale.cc](../../../aie_kernels/aie2/scale.cc)).
 
@@ -84,14 +84,15 @@ The accumulator data type in this case is 32x 32-bit accumulator. We store the c
 ```C++
       T *__restrict pC1 = c;
 
-      aie::store_v(pC1, cout.template to_vector<T>(0)):
+      aie::store_v(pC1, cout.template to_vector<T>(0));
 ```
 Here, the accumulator type can be shift-round-saturated back to a vector register with the `.template to_vector<T>(0)` call where `T` is the vector register type and the single integer argument `(0)` is the shift amount.
 
 The entire vector block is then:
 ```C++
 template <typename T>
-void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
+void scale_vectorized(T *__restrict a, T *__restrict c, int32_t factor,
+                      const int32_t N) {
   event0();
   constexpr int vec_factor = 32;
   T *__restrict pA1 = a;
@@ -101,13 +102,36 @@ void scale_vectorized(T *a, T *c, int32_t factor, const int32_t N) {
 
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(16)
-  for (int i = 0; i < F; i++)
-  {
-      aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
-      pA1 += vec_factor;
-      aie::accum<acc32, vec_factor> cout = aie::mul(A0, fac);
-      aie::store_v(pC1, cout.template to_vector<T>(0));
-      pC1 += vec_factor;
+  for (int i = 0; i < F; i++) {
+    aie::vector<T, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
+    pA1 += vec_factor;
+    aie::accum<acc32, vec_factor> cout = aie::mul(A0, fac);
+    aie::store_v(pC1, cout.template to_vector<T>(0));
+    pC1 += vec_factor;
+  }
+  event1();
+}
+```
+
+Note that multiplication with `int32_t` inputs requires a larger 64-bit accumulator (`acc64`) which only has 16 output lanes. The [scale.cc](../../../aie_kernels/aie2/scale.cc) source file includes a template specialization for this case:
+```C++
+template <>
+void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
+                               int32_t factor, const int32_t N) {
+  event0();
+  constexpr int vec_factor = 16;
+  int32_t *__restrict pA1 = a;
+  int32_t *__restrict pC1 = c;
+  const int F = N / vec_factor;
+
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(16)
+  for (int i = 0; i < F; i++) {
+    aie::vector<int32_t, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
+    pA1 += vec_factor;
+    aie::accum<acc64, vec_factor> cout = aie::mul(A0, factor);
+    aie::store_v(pC1, cout.template to_vector<int32_t>(0));
+    pC1 += vec_factor;
   }
   event1();
 }
@@ -118,7 +142,7 @@ In this example, the vectorization strategy was relatively straight forward. Ins
 > **NOTE** - AIE API is a portable programming interface that is implemented as a C++ header-only library providing types and operations that get translated into generation specific efficient low-level intrinsics. AIE kernels can also be programmed directly in these low-level C++ intrinsics: [AIE1 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html) and [AIE2 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/index.html)
 
 ## <u>Vectorization Exercises</u>
-1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source file has `vectorized=False`. In the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source code, we now have selected the scalar version of the kernel function. We're also going to build the 32-bit integer version of the design by passing the environment variales `int_bit-width=32` to our `makefile` command, by running  `make int_bit_width=32 trace`. This makefile argument is defined in our makefile to customize datatypes and buffer sizes in our design code (`vector_scalar_mul.py`) and our host code (`test.cpp`). After the trace compilation is complete, open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_exercises/images/answer1.jpg" title="~12,297 cycles" height=25> 
+1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source file has `vectorized=False`. In the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source code, we now have selected the scalar version of the kernel function. We're also going to build the 32-bit integer version of the design by passing the environment variables `int_bit_width=32` to our `makefile` command, by running  `make int_bit_width=32 trace`. This makefile argument is defined in our makefile to customize datatypes and buffer sizes in our design code (`vector_scalar_mul.py`) and our host code (`test.cpp`). After the trace compilation is complete, open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_exercises/images/answer1.jpg" title="~12,297 cycles" height=25> 
 
     You may notice that in our `vector_scalar_mul` example, we call `python/utils/trace/get_trace_summary.py` to analyze the generated json file and measure the delta between `event 0` and `event 1` automatically, providing the number of kernel invocations, and the first/ min/ avg/ max number of cycles. This is a handy utility for summarizing kernel performance for single core designs.
 
@@ -160,7 +184,7 @@ Once data has been computed (either in 1 cycle or accumulated over a number of c
 
 <img src="../../assets/aie-ml_srs_ups.png" title="AIE-ML SRS UPS Unit." height=230>
 
-The SRS path is on the right of the diagram above with the corollary path, the Upshift (UPS) path on the left. Upshift move data from vector resgister to accumulator registers.
+The SRS path is on the right of the diagram above with the corollary path, the Upshift (UPS) path on the left. Upshift moves data from vector register to accumulator registers.
 
 ### The Vector Unit - Shift/ Shuffle/ Adder Path
 
@@ -213,18 +237,18 @@ Looking at this table, we quickly see that the data movement is the bottleneck f
 
     Mouse over the blocks of PortRuning0 and PortRunning1, what is the measured number of cycles per chunk? <img src="../../../mlir_exercises/images/answer1.jpg" title="512 cycles" height=25> This matches what we expected to see. But note how it's obvious from the waveform how dominant data movement is as compared to compute. 
 
-1. We can already see that our design is inbalanced between data movement and compute where we have 72 cycles for compute and 512 cycles for data movement. Let's take a look at the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and see if we can do better. In the description, it talks about how each iteration of the kernel is by default configured for MxKxN values of 64x64x64 giving us 262,144 MACs. Given that we're working with `int16_t` datatype which has 64 MACs per clock, how many cycles will the ideal case take?  <img src="../../../mlir_exercises/images/answer1.jpg" title="2048 cycles = 262,144/ 64" height=25> Given that the A and B matrix are each 64x64 x `int16_t` and our stream switch channels are 32-bits wide, how many cycles does it take to move data to the compute tile (bear in mind A and B can be moved in parallel via separate channels). <img src="../../../mlir_exercises/images/answer1.jpg" title="2048 cycles = 64x64/2" height=25>
+1. We can already see that our design is imbalanced between data movement and compute where we have 72 cycles for compute and 512 cycles for data movement. Let's take a look at the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and see if we can do better. In the description, it talks about how each iteration of the kernel is by default configured for MxKxN values of 64x64x64 giving us 262,144 MACs. Given that we're working with `int16_t` datatype which has 64 MACs per clock, how many cycles will the ideal case take?  <img src="../../../mlir_exercises/images/answer1.jpg" title="2048 cycles = 262,144/ 64" height=25> Given that the A and B matrix are each 64x64 x `int16_t` and our stream switch channels are 32-bits wide, how many cycles does it take to move data to the compute tile (bear in mind A and B can be moved in parallel via separate channels). <img src="../../../mlir_exercises/images/answer1.jpg" title="2048 cycles = 64x64/2" height=25>
 
 1. So this example should be perfectly balanced between compute and data movement! Navigate to the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and run the trace build (`make clean; make use_placed=1 trace`). Then open the generated waveform json (`trace_mm.json`) and measure the delta between `event 0` and `event 1` in the first run. What value did you get and how close is it to ideal? <img src="../../../mlir_exercises/images/answer1.jpg" title="~2535 cycles which is 80% of 2048" height=25> You should now see that the compute cycles and the data movement cycles are much more closely matched!
 
 ## <u>Diving Deep - Examining the Microcode</u>
 Let's take another look at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also go back one step and comment out `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` and rerun the compilation (`make clean; make trace`). 
 
-At this point, we can actually take a look at the disassembly code. The disassembly is the precise schedule of instructions that our AIE executes in order to run the kernel program. To obtain, the disassembly, we can run the `llvm-objdump` on the generated object or elf file. 
+At this point, we can actually take a look at the disassembly code. The disassembly is the precise schedule of instructions that our AIE executes in order to run the kernel program. To obtain the disassembly, we can run the `llvm-objdump` on the generated object or elf file. 
 ```bash
-<mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > diassembly_0_2.txt
+<mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > disassembly_0_2.txt
 ```
-For the elf file, the naming includes the `core` name where the two numbers for the core indicates its column and row position respectively. So if your design has multiple cores, then each core will have its own `.elf` file that you can disassembl. Once you generate the disassembly file and open it, you will see a lot of information. Comment lines will have a . in front of them. The other lines are the instructions and are structured as follows:
+For the elf file, the naming includes the `core` name where the two numbers for the core indicates its column and row position respectively. So if your design has multiple cores, then each core will have its own `.elf` file that you can disassemble. Once you generate the disassembly file and open it, you will see a lot of information. Comment lines will have a . in front of them. The other lines are the instructions and are structured as follows:
 
 ```
 Instruction Line Number ---- Encoded Instruction ---- 1 or more slots of ISA commands
@@ -265,7 +289,7 @@ Let's examine this more closely in our example.
 
 1. The number you got gives us a rough idea of how optimized the innermost loop of our algorithm is. In this case, we have 1 VMAC out of 9 cycles or ~11% MAC utilization. If the inner loop take 11 cycles and we iterate 32 times, how many cycles should this version take and how close are we to the measured cycle count? <img src="../../../mlir_exercises/images/answer1.jpg" title="11*32=352 cycles out of ~309 cycles measured. Pretty close. Overhead is ~15 cycles" height=25> 
 
-1. Now go back and uncomment the pragma lines again and rerun the build and cleanup script (`make clean; make trace; <mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > diassembly_0_2.txt`). Search for `vector_scalar_mul_vector` again and count the number of inner loop lines, as well as `VMUL/VMAC` lines again. How many do you see? <img src="../../../mlir_exercises/images/answer1.jpg" title="2 inner loop lines. 1 VMUL." height=25> This matches with our hand calculation that the inner loop is limited to 2 because of the vector stores. 
+1. Now go back and uncomment the pragma lines again and rerun the build and cleanup script (`make clean; make trace; <mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > disassembly_0_2.txt`). Search for `vector_scalar_mul_vector` again and count the number of inner loop lines, as well as `VMUL/VMAC` lines again. How many do you see? <img src="../../../mlir_exercises/images/answer1.jpg" title="2 inner loop lines. 1 VMUL." height=25> This matches with our hand calculation that the inner loop is limited to 2 because of the vector stores. 
 
 -----
 [[Prev]](../section-4b) [[Up]](../../section-4) [[Next - Section 5]](../../section-5)
