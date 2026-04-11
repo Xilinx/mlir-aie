@@ -135,26 +135,37 @@ to functions, since it operates on scf.for loops within aie.core regions.
 _Insert packet flows and runtime sequence trace setup_
 
 For each aie.trace operation, this pass:
-- Creates ONE packet flow from trace port to shim DMA
+- Creates packet flows from trace ports to shim DMA
 - Groups traces by target shim (minimizes shim usage, ideally 1)
-- Inserts ONE shim buffer descriptor per shim tile for all traces
+- Inserts shim buffer descriptors and DMA control setup per shim tile
 - Inserts per-tile timer control register writes
 - Inserts per-shim broadcast and DMA control setup
 
 All trace configuration is injected at the beginning of the runtime
 sequence, before user data transfer operations.
 
-Multiple trace streams (from different tiles or different trace units
-on the same tile) are routed to the same shim DMA channel and drained
-by a single buffer descriptor.
+By default, multiple trace streams are routed to the same shim DMA
+channel and drained by a single buffer descriptor. With
+`distribute-channels`, traces are round-robin distributed across two
+S2MM DMA channels per shim tile, each with its own BD. Both channels
+share the same host buffer argument (arg_idx) and are split by offset:
+channel 0 starts at the base offset, channel 1 at base + buffer_size.
+The host must allocate 2x buffer_size for the trace buffer.
+
+With `lateral-routing`, trace destinations are redirected from columns
+with active cores to spare shim NOC columns, reducing data path
+perturbation. Use `lateral-target-col` to force a specific target.
 
 #### Options
 
 ```
--shim-channel    : S2MM DMA channel to use for trace (default: 1)
--default-bd-id   : Buffer descriptor ID for trace (default: 15)
--packet-id-start : Starting packet ID for trace flows (default: 1)
--burst-length    : DMA burst length for trace transfers (default: 64 bytes)
+-shim-channel        : S2MM DMA channel to use for trace (default: 1)
+-default-bd-id       : Buffer descriptor ID for trace (default: 15)
+-packet-id-start     : Starting packet ID for trace flows (default: 1)
+-burst-length        : DMA burst length for trace transfers (default: 64 bytes)
+-distribute-channels : Distribute traces across multiple S2MM channels per shim tile
+-lateral-routing     : Route traces to spare columns to minimize data path perturbation
+-lateral-target-col  : Force lateral routing target column (-1 = auto-detect nearest spare)
 ```
 
 ### `-aie-localize-locks`
