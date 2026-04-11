@@ -5572,6 +5572,8 @@ int main(int argc, char **argv) {
   }
   if (noXchesscc) {
     xchesscc = false;
+    // xbridge cannot link Peano-compiled objects; disable it automatically.
+    xbridge = false;
   }
   if (noCompile) {
     compile = false;

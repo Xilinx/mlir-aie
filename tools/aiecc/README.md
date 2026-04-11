@@ -81,8 +81,8 @@ aiecc [options] <input.mlir>
 
 ### Compiler Options
 
-- `--xbridge` / `--no-xbridge` - Link using xbridge (default: enabled)
-- `--xchesscc` / `--no-xchesscc` - Compile using xchesscc vs Peano (default: xchesscc)
+- `--xbridge` / `--no-xbridge` - Link using xbridge (default: enabled; automatically disabled when `--no-xchesscc` is used)
+- `--xchesscc` / `--no-xchesscc` - Compile using xchesscc vs Peano (default: xchesscc); `--no-xchesscc` implies `--no-xbridge`
 - `--peano <dir>` - Peano compiler installation directory
 - `--aietools <dir>` - Vitis aietools installation directory (auto-discovered from PATH or `AIETOOLS_ROOT`)
 - `--aiesim` / `--no-aiesim` - Generate aiesim work folder (requires xbridge)
