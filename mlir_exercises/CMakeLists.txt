@@ -105,7 +105,6 @@ include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
-add_definitions(${LLVM_DEFINITIONS})
 
 if(ENABLE_CHESS_TESTS)
 set(CONFIG_ENABLE_CHESS_TESTS 1)
