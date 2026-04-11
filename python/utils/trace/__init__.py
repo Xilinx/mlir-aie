@@ -547,4 +547,5 @@ from .utils import (
     get_cycles,
     get_cycles_summary,
     get_vector_time,
+    split_trace_segments,
 )
