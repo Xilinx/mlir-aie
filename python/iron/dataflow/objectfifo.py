@@ -79,6 +79,7 @@ class ObjectFifo(Resolvable):
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
         self._iter_count: int | None = None
+        self._repeat_count: int | None = None
 
     @classmethod
     def __get_index(cls) -> int:
@@ -136,6 +137,24 @@ class ObjectFifo(Resolvable):
             raise ValueError("Iter count must be in [1, 256] range.")
 
         self._iter_count = iter_count
+
+    def set_repeat_count(self, repeat_count: int):
+        """Set the repeat count on this ObjectFifo.
+
+        ``repeat_count`` causes the MemTile DMA to replay the buffer descriptor
+        ``repeat_count`` times without a new DMA transfer from L3. This is distinct
+        from ``iter_count`` which controls BD-chain iteration count.
+
+        Can be called before or after resolution. Typically used on weight fifos
+        that supply the same weights to multiple row computations, e.g.,
+        cascade-split weight fifos that repeat once per output row.
+
+        Args:
+            repeat_count (int): Number of times to replay the buffer descriptor.
+        """
+        self._repeat_count = repeat_count
+        if self._op is not None:
+            self._op.set_repeat_count(repeat_count)
 
     def __str__(self) -> str:
         prod_endpoint = None
@@ -299,6 +318,9 @@ class ObjectFifo(Resolvable):
                 padDimensions=self._pad_dimensions,
                 iter_count=self._iter_count,
             )
+
+            if self._repeat_count is not None:
+                self._op.set_repeat_count(self._repeat_count)
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
                 self._prod.endpoint.resolve()
@@ -479,6 +501,10 @@ class ObjectFifoHandle(Resolvable):
         return self._object_fifo._get_endpoint(
             is_prod=True
         ) + self._object_fifo._get_endpoint(is_prod=False)
+
+    def set_repeat_count(self, repeat_count: int):
+        """Set repeat count on the underlying ObjectFifo. See ObjectFifo.set_repeat_count()."""
+        self._object_fifo.set_repeat_count(repeat_count)
 
     def join(
         self,

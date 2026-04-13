@@ -3,58 +3,30 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
-"""Pipeline bottleneck blocks (bn10-bn12) for MobileNet V3 IRON API rewrite."""
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
 
 import numpy as np
 import os
-
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.controlflow import range_
 
 
-# ---------------------------------------------------------------------------
-# Tensor shape constants derived from aie2_bottleneckBStatic.py
-# ---------------------------------------------------------------------------
-# bn10: 3-layer (1x1-relu -> DW-stride1 3x3 -> 1x1, no skip)
-#   L1: in=(14,1,80) int8,   out=(14,1,480) uint8
-#   L2: in=(14,1,480) uint8, out=(14,1,480) uint8   (DW stride-1)
-#   L3: in=(14,1,480) uint8, out=(14,1,112) int8
-_BN10_IN_W = 14
-_BN10_IN_H = 14
-_BN10_IN_C = 80
-_BN10_DW_CH = 480
-_BN10_OUT_C = 112
+def _i8(shape):
+    return np.ndarray[shape, np.dtype[np.int8]]
 
-# bn11: 3-layer (1x1-relu -> DW-stride1 3x3 -> 1x1-skip)
-#   L1: in=(14,1,112) int8,  out=(14,1,336) uint8
-#   L2: in=(14,1,336) uint8, out=(14,1,336) uint8   (DW stride-1)
-#   L3: in=(14,1,336) uint8, out=(14,1,112) int8    (with skip add)
-_BN11_IN_W = 14
-_BN11_IN_H = 14
-_BN11_IN_C = 112
-_BN11_DW_CH = 336
-_BN11_OUT_C = 112
 
-# bn12: 2-tile (L1 on tile1, L2+L3 interleaved on tile2, DW stride-2)
-#   L1: in=(14,1,112) int8,  out=(14,1,336) uint8
-#   L2: in=(14,1,336) uint8, out=(7,1,336)  uint8   (DW stride-2)
-#   L3: in=(7,1,336)  uint8, out=(7,1,80)   int8
-_BN12_IN_W = 14
-_BN12_IN_H = 14
-_BN12_IN_C = 112
-_BN12_DW_CH = 336
-_BN12_OUT_C = 80
-_BN12_OUT_W = 7
-_BN12_OUT_H = 7
+def _u8(shape):
+    return np.ndarray[shape, np.dtype[np.uint8]]
+
+
+def _i32():
+    return np.int32
 
 
 def _load_weights(data_dir, filename):
-    """Load int8 weights from a comma-separated file; return zeros if missing."""
     path = os.path.join(data_dir, filename)
     if os.path.exists(path):
-        return np.fromfile(path, sep=",", dtype=np.int8)
-    # Return zeros shaped to match what Buffer expects (reshaped later by caller)
+        return np.fromfile(path, dtype=np.int8)
     return None
 
 
@@ -63,20 +35,14 @@ def pipeline_bottlenecks(
     *scale_factors: int,
     data_dir: str,
 ) -> tuple:
-    """Implement bn10-bn12 pipeline bottleneck blocks.
+    """Returns (workers, act_bn12_out)
 
-    Args:
-        act_in: from regular_bottlenecks: (14,1,80) int8, depth=2
-        *scale_factors: bn10_s1, bn10_s2, bn10_s3,
-                        bn11_s1, bn11_s2, bn11_s3, bn11_sAdd,
-                        bn12_s1, bn12_s2, bn12_s3
-        data_dir: Directory containing kernel .o files and weight data
-
-    Returns:
-        (workers, act_bn12_out) where act_bn12_out is (7,1,80) int8, depth=2
+    scale_factors order:
+        bn10_s1, bn10_s2, bn10_s3,
+        bn11_s1, bn11_s2, bn11_s3, bn11_sAdd,
+        bn12_s1, bn12_s2, bn12_s3
     """
     workers = []
-
     (
         bn10_s1,
         bn10_s2,
@@ -90,494 +56,509 @@ def pipeline_bottlenecks(
         bn12_s3,
     ) = scale_factors
 
-    # -------------------------------------------------------------------
-    # Weight sizes (exact integers)
-    # -------------------------------------------------------------------
-    _bn10_l1_wts_size = _BN10_IN_C * _BN10_DW_CH          # 80*480 = 38400
-    _bn10_l2_wts_size = 3 * 3 * _BN10_DW_CH * 1           # 9*480 = 4320
-    _bn10_l3_wts_size = _BN10_DW_CH * _BN10_OUT_C          # 480*112 = 53760
+    # ---- bn10 ----
+    # Dimensions (from aie2_bottleneckBStatic.py):
+    #   b10_InW1=14, b10_InH1=14, b10_InC1=80, b10_OutC1=480, b10_OutC3=112
+    #   L1: in=(14,1,80) int8,   out=(14,1,480) uint8  wts=80*480=38400
+    #   L2: in=(14,1,480) uint8, out=(14,1,480) uint8  wts=3*3*480=4320  (DW stride-1)
+    #   L3: in=(14,1,480) uint8, out=(14,1,112) int8   wts=480*112=53760
+    bn10_l1_wts_sz = 80 * 480    # 38400
+    bn10_l2_wts_sz = 3 * 3 * 480  # 4320
+    bn10_l3_wts_sz = 480 * 112   # 53760
 
-    _bn11_l1_wts_size = _BN11_IN_C * _BN11_DW_CH          # 112*336 = 37632
-    _bn11_l2_wts_size = 3 * 3 * _BN11_DW_CH * 1           # 9*336 = 3024
-    _bn11_l3_wts_size = _BN11_DW_CH * _BN11_OUT_C          # 336*112 = 37632
+    bn10_l1_data = _load_weights(data_dir, "bn10_l1_wts.bin")
+    bn10_l2_data = _load_weights(data_dir, "bn10_l2_wts.bin")
+    bn10_l3_data = _load_weights(data_dir, "bn10_l3_wts.bin")
 
-    _bn12_l1_wts_size = _BN12_IN_C * _BN12_DW_CH          # 112*336 = 37632
-    _bn12_l2_wts_size = 3 * 3 * _BN12_DW_CH * 1           # 9*336 = 3024
-    _bn12_l3_wts_size = _BN12_DW_CH * _BN12_OUT_C          # 336*80 = 26880
-    _bn12_l23_wts_size = _bn12_l2_wts_size + _bn12_l3_wts_size  # 29904
+    bn10_l1_wts = Buffer(
+        _i8((bn10_l1_wts_sz,)),
+        initial_value=(
+            bn10_l1_data
+            if bn10_l1_data is not None
+            else np.zeros(bn10_l1_wts_sz, dtype=np.int8)
+        ),
+        name="bn10_l1_wts",
+    )
+    bn10_l2_wts = Buffer(
+        _i8((bn10_l2_wts_sz,)),
+        initial_value=(
+            bn10_l2_data
+            if bn10_l2_data is not None
+            else np.zeros(bn10_l2_wts_sz, dtype=np.int8)
+        ),
+        name="bn10_l2_wts",
+    )
+    bn10_l3_wts = Buffer(
+        _i8((bn10_l3_wts_sz,)),
+        initial_value=(
+            bn10_l3_data
+            if bn10_l3_data is not None
+            else np.zeros(bn10_l3_wts_sz, dtype=np.int8)
+        ),
+        name="bn10_l3_wts",
+    )
 
-    # -------------------------------------------------------------------
-    # Weight Buffers (static; zeros if file not present)
-    # -------------------------------------------------------------------
-    def _make_wts(size, filename, name):
-        arr = _load_weights(data_dir, filename)
-        if arr is None:
-            arr = np.zeros((size,), dtype=np.int8)
-        return Buffer(
-            np.ndarray[(size,), np.dtype[np.int8]],
-            initial_value=arr,
-            name=name,
-        )
-
-    # Weight files use comma-separated text format: bn10_1_chain.txt etc.
-    bn10_l1_wts = _make_wts(_bn10_l1_wts_size, "bn10_1_chain.txt", "bn10_l1_wts")
-    bn10_l2_wts = _make_wts(_bn10_l2_wts_size, "bn10_2_chain.txt", "bn10_l2_wts")
-    bn10_l3_wts = _make_wts(_bn10_l3_wts_size, "bn10_3_chain.txt", "bn10_l3_wts")
-
-    bn11_l1_wts = _make_wts(_bn11_l1_wts_size, "bn11_1_chain.txt", "bn11_l1_wts")
-    bn11_l2_wts = _make_wts(_bn11_l2_wts_size, "bn11_2_chain.txt", "bn11_l2_wts")
-    bn11_l3_wts = _make_wts(_bn11_l3_wts_size, "bn11_3_chain.txt", "bn11_l3_wts")
-
-    bn12_l1_wts = _make_wts(_bn12_l1_wts_size, "bn12_1_chain.txt", "bn12_l1_wts")
-    bn12_l23_wts = _make_wts(_bn12_l23_wts_size, "bn12_2_3_chain.txt", "bn12_l23_wts")
-
-    # -------------------------------------------------------------------
-    # Type aliases
-    # -------------------------------------------------------------------
-    # bn10
-    bn10_l1_in_ty = np.ndarray[(_BN10_IN_W, 1, _BN10_IN_C), np.dtype[np.int8]]
-    bn10_l1_wts_ty = np.ndarray[(_bn10_l1_wts_size,), np.dtype[np.int8]]
-    bn10_l1_out_ty = np.ndarray[(_BN10_IN_W, 1, _BN10_DW_CH), np.dtype[np.uint8]]
-    bn10_l2_wts_ty = np.ndarray[(_bn10_l2_wts_size,), np.dtype[np.int8]]
-    bn10_l2_out_ty = np.ndarray[(_BN10_IN_W, 1, _BN10_DW_CH), np.dtype[np.uint8]]
-    bn10_l3_wts_ty = np.ndarray[(_bn10_l3_wts_size,), np.dtype[np.int8]]
-    bn10_l3_out_ty = np.ndarray[(_BN10_IN_W, 1, _BN10_OUT_C), np.dtype[np.int8]]
-
-    # bn11
-    bn11_l1_in_ty = np.ndarray[(_BN11_IN_W, 1, _BN11_IN_C), np.dtype[np.int8]]
-    bn11_l1_wts_ty = np.ndarray[(_bn11_l1_wts_size,), np.dtype[np.int8]]
-    bn11_l1_out_ty = np.ndarray[(_BN11_IN_W, 1, _BN11_DW_CH), np.dtype[np.uint8]]
-    bn11_l2_wts_ty = np.ndarray[(_bn11_l2_wts_size,), np.dtype[np.int8]]
-    bn11_l2_out_ty = np.ndarray[(_BN11_IN_W, 1, _BN11_DW_CH), np.dtype[np.uint8]]
-    bn11_l3_wts_ty = np.ndarray[(_bn11_l3_wts_size,), np.dtype[np.int8]]
-    bn11_l3_out_ty = np.ndarray[(_BN11_IN_W, 1, _BN11_OUT_C), np.dtype[np.int8]]
-
-    # bn12
-    bn12_l1_in_ty = np.ndarray[(_BN12_IN_W, 1, _BN12_IN_C), np.dtype[np.int8]]
-    bn12_l1_wts_ty = np.ndarray[(_bn12_l1_wts_size,), np.dtype[np.int8]]
-    bn12_l1_out_ty = np.ndarray[(_BN12_IN_W, 1, _BN12_DW_CH), np.dtype[np.uint8]]
-    bn12_l2_in_ty = np.ndarray[(_BN12_IN_W, 1, _BN12_DW_CH), np.dtype[np.uint8]]
-    bn12_l2_wts_ty = np.ndarray[(_bn12_l2_wts_size,), np.dtype[np.int8]]
-    bn12_l2_out_ty = np.ndarray[(_BN12_OUT_W, 1, _BN12_DW_CH), np.dtype[np.uint8]]
-    bn12_l3_wts_ty = np.ndarray[(_bn12_l3_wts_size,), np.dtype[np.int8]]
-    bn12_l3_out_ty = np.ndarray[(_BN12_OUT_W, 1, _BN12_OUT_C), np.dtype[np.int8]]
-    bn12_l23_wts_ty = np.ndarray[(_bn12_l23_wts_size,), np.dtype[np.int8]]
-
-    # -------------------------------------------------------------------
-    # Kernel declarations
-    # -------------------------------------------------------------------
-    # bn10
-    bn10_conv2dk1_relu = Kernel(
+    # Kernel declarations matching aie2_bottleneckBStatic.py external_func signatures.
+    # bn10 L1: (in(14,1,80)i8, wts(38400)i8, out(14,1,480)u8, W, InC, OutC, scale)
+    k_bn10_l1 = Kernel(
         "bn10_conv2dk1_relu_i8_ui8",
         "bn10_conv2dk1_fused_relu.o",
-        [bn10_l1_in_ty, bn10_l1_wts_ty, bn10_l1_out_ty,
-         np.int32, np.int32, np.int32, np.int32],
+        [
+            _i8((14, 1, 80)),
+            _i8((38400,)),
+            _u8((14, 1, 480)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
-    bn10_conv2dk3_dw = Kernel(
+    # bn10 L2 DW stride-1:
+    #   (top, mid, bot: u8(14,1,480), wts(4320)i8, out(14,1,480)u8,
+    #    W, 1, C, kH, kW, border, scale, 0)  -- 13 args
+    k_bn10_l2 = Kernel(
         "bn10_conv2dk3_dw_stride1_relu_ui8_ui8",
         "bn10_conv2dk3_dw.o",
-        [bn10_l1_out_ty, bn10_l1_out_ty, bn10_l1_out_ty,
-         bn10_l2_wts_ty, bn10_l2_out_ty,
-         np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
+        [
+            _u8((14, 1, 480)),
+            _u8((14, 1, 480)),
+            _u8((14, 1, 480)),
+            _i8((4320,)),
+            _u8((14, 1, 480)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
-    bn10_conv2dk1_ui8 = Kernel(
+    # bn10 L3: (in(14,1,480)u8, wts(53760)i8, out(14,1,112)i8, W, InC, OutC, scale)
+    k_bn10_l3 = Kernel(
         "bn10_conv2dk1_ui8_i8",
         "bn10_conv2dk1_ui8.o",
-        [bn10_l2_out_ty, bn10_l3_wts_ty, bn10_l3_out_ty,
-         np.int32, np.int32, np.int32, np.int32],
+        [
+            _u8((14, 1, 480)),
+            _i8((53760,)),
+            _i8((14, 1, 112)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
 
-    # bn11
-    bn11_conv2dk1_relu = Kernel(
+    # Internal fifos (depth=4 for L1->L2 matching source OF_b10_act_layer1_layer2)
+    bn10_of_12 = ObjectFifo(_u8((14, 1, 480)), depth=4, name="bn10_of_12")
+    bn10_of_23 = ObjectFifo(_u8((14, 1, 480)), depth=2, name="bn10_of_23")
+    act_bn10_out = ObjectFifo(_i8((14, 1, 112)), depth=2, name="act_bn10_out")
+
+    def bn10_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
+        for _ in range_(14):
+            row_in = act_in.acquire(1)
+            row_out = of_12.acquire(1)
+            k_l1(row_in, wts_buf, row_out, 14, 80, 480, sf1)
+            act_in.release(1)
+            of_12.release(1)
+
+    def bn10_l2_fn(of_12, of_23, wts_buf, k_l2, sf2):
+        # preamble: top row (border=0, replicate row 0 above)
+        rows = of_12.acquire(2)
+        row_out = of_23.acquire(1)
+        k_l2(rows[0], rows[0], rows[1], wts_buf, row_out, 14, 1, 480, 3, 3, 0, sf2, 0)
+        of_23.release(1)
+        # middle rows (border=1): b10_InH2 - 2 = 14 - 2 = 12
+        for _ in range_(12):
+            rows = of_12.acquire(3)
+            row_out = of_23.acquire(1)
+            k_l2(rows[0], rows[1], rows[2], wts_buf, row_out, 14, 1, 480, 3, 3, 1, sf2, 0)
+            of_12.release(1)
+            of_23.release(1)
+        # postamble: bottom row (border=2, replicate last row below)
+        rows = of_12.acquire(2)
+        row_out = of_23.acquire(1)
+        k_l2(rows[0], rows[1], rows[1], wts_buf, row_out, 14, 1, 480, 3, 3, 2, sf2, 0)
+        of_12.release(2)
+        of_23.release(1)
+
+    def bn10_l3_fn(of_23, act_out, wts_buf, k_l3, sf3):
+        for _ in range_(14):
+            row_in = of_23.acquire(1)
+            row_out = act_out.acquire(1)
+            k_l3(row_in, wts_buf, row_out, 14, 480, 112, sf3)
+            of_23.release(1)
+            act_out.release(1)
+
+    workers += [
+        Worker(
+            bn10_l1_fn,
+            [act_in.cons(), bn10_of_12.prod(), bn10_l1_wts, k_bn10_l1, bn10_s1],
+        ),
+        Worker(
+            bn10_l2_fn,
+            [bn10_of_12.cons(), bn10_of_23.prod(), bn10_l2_wts, k_bn10_l2, bn10_s2],
+        ),
+        Worker(
+            bn10_l3_fn,
+            [bn10_of_23.cons(), act_bn10_out.prod(), bn10_l3_wts, k_bn10_l3, bn10_s3],
+        ),
+    ]
+
+    # ---- bn11 (with skip) ----
+    # Source: OF_b10_layer3_bn_11_layer1 fans out to [computeTileBN11_1, skipMemTile]
+    # then OF_b11_skip links skipMemTile -> computeTileBN11_3.
+    # We model this with act_bn10_out feeding bn11_l1 and a skip forward fifo.
+    bn11_skip_of = ObjectFifo(_i8((14, 1, 112)), depth=2, name="bn11_skip_of")
+
+    # b11_OutC1=336, b11_OutC2=336, b11_OutC3=112
+    bn11_l1_wts_sz = 112 * 336   # 37632
+    bn11_l2_wts_sz = 3 * 3 * 336  # 3024
+    bn11_l3_wts_sz = 336 * 112   # 37632
+
+    bn11_l1_data = _load_weights(data_dir, "bn11_l1_wts.bin")
+    bn11_l2_data = _load_weights(data_dir, "bn11_l2_wts.bin")
+    bn11_l3_data = _load_weights(data_dir, "bn11_l3_wts.bin")
+
+    bn11_l1_wts = Buffer(
+        _i8((bn11_l1_wts_sz,)),
+        initial_value=(
+            bn11_l1_data
+            if bn11_l1_data is not None
+            else np.zeros(bn11_l1_wts_sz, dtype=np.int8)
+        ),
+        name="bn11_l1_wts",
+    )
+    bn11_l2_wts = Buffer(
+        _i8((bn11_l2_wts_sz,)),
+        initial_value=(
+            bn11_l2_data
+            if bn11_l2_data is not None
+            else np.zeros(bn11_l2_wts_sz, dtype=np.int8)
+        ),
+        name="bn11_l2_wts",
+    )
+    bn11_l3_wts = Buffer(
+        _i8((bn11_l3_wts_sz,)),
+        initial_value=(
+            bn11_l3_data
+            if bn11_l3_data is not None
+            else np.zeros(bn11_l3_wts_sz, dtype=np.int8)
+        ),
+        name="bn11_l3_wts",
+    )
+
+    # bn11 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
+    k_bn11_l1 = Kernel(
         "bn11_conv2dk1_relu_i8_ui8",
         "bn11_conv2dk1_fused_relu.o",
-        [bn11_l1_in_ty, bn11_l1_wts_ty, bn11_l1_out_ty,
-         np.int32, np.int32, np.int32, np.int32],
+        [
+            _i8((14, 1, 112)),
+            _i8((37632,)),
+            _u8((14, 1, 336)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
-    bn11_conv2dk3_dw = Kernel(
+    # bn11 L2 DW stride-1:
+    #   (top, mid, bot: u8(14,1,336), wts(3024)i8, out(14,1,336)u8,
+    #    W, 1, C, kH, kW, border, scale, 0)  -- 13 args
+    k_bn11_l2 = Kernel(
         "bn11_conv2dk3_dw_stride1_relu_ui8_ui8",
         "bn11_conv2dk3_dw.o",
-        [bn11_l1_out_ty, bn11_l1_out_ty, bn11_l1_out_ty,
-         bn11_l2_wts_ty, bn11_l2_out_ty,
-         np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
+        [
+            _u8((14, 1, 336)),
+            _u8((14, 1, 336)),
+            _u8((14, 1, 336)),
+            _i8((3024,)),
+            _u8((14, 1, 336)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
-    bn11_conv2dk1_skip = Kernel(
+    # bn11 L3 skip: actual kernel name from source is "bn11_conv2dk1_skip_ui8_i8_i8"
+    # Signature from source external_func (9 args):
+    #   (in(14,1,336)u8, wts(37632)i8, out(14,1,112)i8, skip(14,1,112)i8,
+    #    W, InC, OutC, scale, scaleAdd)
+    k_bn11_l3 = Kernel(
         "bn11_conv2dk1_skip_ui8_i8_i8",
         "bn11_conv2dk1_skip.o",
-        [bn11_l2_out_ty, bn11_l3_wts_ty, bn11_l3_out_ty, bn11_l1_in_ty,
-         np.int32, np.int32, np.int32, np.int32, np.int32],
+        [
+            _u8((14, 1, 336)),
+            _i8((37632,)),
+            _i8((14, 1, 112)),
+            _i8((14, 1, 112)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
 
-    # bn12
-    bn12_conv2dk1_relu = Kernel(
+    bn11_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="bn11_of_12")
+    bn11_of_23 = ObjectFifo(_u8((14, 1, 336)), depth=2, name="bn11_of_23")
+    act_bn11_out = ObjectFifo(_i8((14, 1, 112)), depth=2, name="act_bn11_out")
+
+    def bn11_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
+        for _ in range_(14):
+            row_in = act_in.acquire(1)
+            row_out = of_12.acquire(1)
+            k_l1(row_in, wts_buf, row_out, 14, 112, 336, sf1)
+            act_in.release(1)
+            of_12.release(1)
+
+    def bn11_skip_forward_fn(src_in, skip_out):
+        for _ in range_(14):
+            row = src_in.acquire(1)
+            skip_row = skip_out.acquire(1)
+            skip_row[:] = row[:]
+            src_in.release(1)
+            skip_out.release(1)
+
+    def bn11_l2_fn(of_12, of_23, wts_buf, k_l2, sf2):
+        # preamble: top row (border=0)
+        rows = of_12.acquire(2)
+        row_out = of_23.acquire(1)
+        k_l2(rows[0], rows[0], rows[1], wts_buf, row_out, 14, 1, 336, 3, 3, 0, sf2, 0)
+        of_23.release(1)
+        # middle rows (border=1): b10_InH2 - 2 = 12
+        for _ in range_(12):
+            rows = of_12.acquire(3)
+            row_out = of_23.acquire(1)
+            k_l2(rows[0], rows[1], rows[2], wts_buf, row_out, 14, 1, 336, 3, 3, 1, sf2, 0)
+            of_12.release(1)
+            of_23.release(1)
+        # postamble: bottom row (border=2)
+        rows = of_12.acquire(2)
+        row_out = of_23.acquire(1)
+        k_l2(rows[0], rows[1], rows[1], wts_buf, row_out, 14, 1, 336, 3, 3, 2, sf2, 0)
+        of_12.release(2)
+        of_23.release(1)
+
+    # bn11 L3 call from source:
+    #   call(bn11_conv2dk1_skip,
+    #        [elemIn, wts, elemOut, elementSkipsIn, W, C2, C3, scale, skipScale])
+    def bn11_l3_fn(of_23, skip_in, act_out, wts_buf, k_l3, sf3, sfAdd):
+        for _ in range_(14):
+            row_23 = of_23.acquire(1)
+            skip_row = skip_in.acquire(1)
+            row_out = act_out.acquire(1)
+            k_l3(row_23, wts_buf, row_out, skip_row, 14, 336, 112, sf3, sfAdd)
+            of_23.release(1)
+            skip_in.release(1)
+            act_out.release(1)
+
+    workers += [
+        Worker(
+            bn11_l1_fn,
+            [
+                act_bn10_out.cons(),
+                bn11_of_12.prod(),
+                bn11_l1_wts,
+                k_bn11_l1,
+                bn11_s1,
+            ],
+        ),
+        Worker(
+            bn11_skip_forward_fn,
+            [act_bn10_out.cons(), bn11_skip_of.prod()],
+        ),
+        Worker(
+            bn11_l2_fn,
+            [bn11_of_12.cons(), bn11_of_23.prod(), bn11_l2_wts, k_bn11_l2, bn11_s2],
+        ),
+        Worker(
+            bn11_l3_fn,
+            [
+                bn11_of_23.cons(),
+                bn11_skip_of.cons(),
+                act_bn11_out.prod(),
+                bn11_l3_wts,
+                k_bn11_l3,
+                bn11_s3,
+                bn11_sAdd,
+            ],
+        ),
+    ]
+
+    # ---- bn12 (2-tile: L1 on tile1, interleaved DW-stride2 + 1x1 on tile2) ----
+    # Source (aie2_bottleneckBStatic.py lines 959-1146) uses two separate kernels:
+    #   bn12_conv2dk3_dw_stride2_relu_ui8_ui8  (DW stride-2, 13 args)
+    #   bn12_conv2dk1_ui8_i8                   (1x1, 7 args)
+    # interleaved per output row via of_act_bn12_2_3 (self-loop fifo, depth=1).
+    # Weights concatenated: [dw_wts(3024) | pw_wts(26880)] = 29904 total.
+    # DW output: (14,1,336) -> (7,1,336) u8 (stride-2 halves spatial).
+    # Source link_with: DW="bn12_conv2dk3_dw_stride2.o", PW="bn12_conv2dk1_ui8.o"
+    bn12_l1_wts_sz = 112 * 336    # 37632
+    bn12_dw_wts_sz = 3 * 3 * 336  # 3024
+    bn12_pw_wts_sz = 336 * 80     # 26880
+    bn12_l23_wts_sz = bn12_dw_wts_sz + bn12_pw_wts_sz  # 29904
+
+    bn12_l1_data = _load_weights(data_dir, "bn12_l1_wts.bin")
+    bn12_l23_data = _load_weights(data_dir, "bn12_l23_wts.bin")
+
+    bn12_l1_wts = Buffer(
+        _i8((bn12_l1_wts_sz,)),
+        initial_value=(
+            bn12_l1_data
+            if bn12_l1_data is not None
+            else np.zeros(bn12_l1_wts_sz, dtype=np.int8)
+        ),
+        name="bn12_l1_wts",
+    )
+    bn12_l23_wts = Buffer(
+        _i8((bn12_l23_wts_sz,)),
+        initial_value=(
+            bn12_l23_data
+            if bn12_l23_data is not None
+            else np.zeros(bn12_l23_wts_sz, dtype=np.int8)
+        ),
+        name="bn12_l23_wts",
+    )
+
+    # bn12 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
+    k_bn12_l1 = Kernel(
         "bn12_conv2dk1_relu_i8_ui8",
         "bn12_conv2dk1_fused_relu.o",
-        [bn12_l1_in_ty, bn12_l1_wts_ty, bn12_l1_out_ty,
-         np.int32, np.int32, np.int32, np.int32],
+        [
+            _i8((14, 1, 112)),
+            _i8((37632,)),
+            _u8((14, 1, 336)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
-    bn12_conv2dk3_dw_stride2 = Kernel(
+    # bn12 DW stride-2 -- kernel name from source: "bn12_conv2dk3_dw_stride2_relu_ui8_ui8"
+    # link_with from source: "bn12_conv2dk3_dw_stride2.o"
+    # Output is (7,1,336) u8 (spatial halved by stride-2).
+    # Args: (top, mid, bot: u8(14,1,336), wts(3024)i8, out(7,1,336)u8,
+    #         inW, 1, C, kH, kW, border, scale, 0)  -- 13 args
+    k_bn12_dw = Kernel(
         "bn12_conv2dk3_dw_stride2_relu_ui8_ui8",
         "bn12_conv2dk3_dw_stride2.o",
-        [bn12_l2_in_ty, bn12_l2_in_ty, bn12_l2_in_ty,
-         bn12_l2_wts_ty, bn12_l2_out_ty,
-         np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
+        [
+            _u8((14, 1, 336)),
+            _u8((14, 1, 336)),
+            _u8((14, 1, 336)),
+            _i8((3024,)),
+            _u8((7, 1, 336)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
-    bn12_conv2dk1_ui8 = Kernel(
+    # bn12 PW 1x1 -- kernel name from source: "bn12_conv2dk1_ui8_i8"
+    # link_with from source: "bn12_conv2dk1_ui8.o"
+    # Args: (in(7,1,336)u8, wts(26880)i8, out(7,1,80)i8, W, InC, OutC, scale)
+    k_bn12_pw = Kernel(
         "bn12_conv2dk1_ui8_i8",
         "bn12_conv2dk1_ui8.o",
-        [bn12_l2_out_ty, bn12_l3_wts_ty, bn12_l3_out_ty,
-         np.int32, np.int32, np.int32, np.int32],
+        [
+            _u8((7, 1, 336)),
+            _i8((26880,)),
+            _i8((7, 1, 80)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
 
-    # -------------------------------------------------------------------
-    # Inter-layer ObjectFifos
-    # -------------------------------------------------------------------
-    # bn10: act_in -> L1 -> L2 -> L3 -> bn11
-    act_bn10_l1_l2 = ObjectFifo(
-        np.ndarray[(_BN10_IN_W, 1, _BN10_DW_CH), np.dtype[np.uint8]],
-        depth=4,
-        name="act_bn10_l1_l2",
-    )
-    act_bn10_l2_l3 = ObjectFifo(
-        np.ndarray[(_BN10_IN_W, 1, _BN10_DW_CH), np.dtype[np.uint8]],
-        depth=2,
-        name="act_bn10_l2_l3",
-    )
-    act_bn10_l3_bn11 = ObjectFifo(
-        np.ndarray[(_BN11_IN_W, 1, _BN11_IN_C), np.dtype[np.int8]],
-        depth=2,
-        name="act_bn10_l3_bn11",
-    )
+    bn12_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="bn12_of_12")
+    # Local intermediate fifo for DW -> PW handoff on tile2 (depth=1, mirrors self-loop)
+    bn12_of_dw_pw = ObjectFifo(_u8((7, 1, 336)), depth=1, name="bn12_of_dw_pw")
+    act_bn12_out = ObjectFifo(_i8((7, 1, 80)), depth=2, name="act_bn12_out")
 
-    # bn11 skip: forward bn10 output through a MemTile to bn11 L3.
-    # The ObjectFifo.forward() creates the MemTile-mediated copy automatically.
-    act_bn11_skip = act_bn10_l3_bn11.cons(depth=2).forward(
-        name="act_bn11_skip", depth=2
-    )
-    act_bn11_l1_l2 = ObjectFifo(
-        np.ndarray[(_BN11_IN_W, 1, _BN11_DW_CH), np.dtype[np.uint8]],
-        depth=4,
-        name="act_bn11_l1_l2",
-    )
-    act_bn11_l2_l3 = ObjectFifo(
-        np.ndarray[(_BN11_IN_W, 1, _BN11_DW_CH), np.dtype[np.uint8]],
-        depth=2,
-        name="act_bn11_l2_l3",
-    )
-    act_bn11_l3_bn12 = ObjectFifo(
-        np.ndarray[(_BN12_IN_W, 1, _BN12_IN_C), np.dtype[np.int8]],
-        depth=2,
-        name="act_bn11_l3_bn12",
-    )
-
-    # bn12: L1 -> L2 fifo; output
-    act_bn12_l1_l2 = ObjectFifo(
-        np.ndarray[(_BN12_IN_W, 1, _BN12_DW_CH), np.dtype[np.uint8]],
-        depth=4,
-        name="act_bn12_l1_l2",
-    )
-    act_bn12_out = ObjectFifo(
-        np.ndarray[(_BN12_OUT_W, 1, _BN12_OUT_C), np.dtype[np.int8]],
-        depth=2,
-        name="act_bn12_out",
-    )
-
-    # -------------------------------------------------------------------
-    # bn10 Workers
-    # -------------------------------------------------------------------
-
-    # bn10 L1: 1x1 conv relu, row by row
-    def bn10_l1_fn(act_in_fifo, of_12, wts_buf, k_l1, W, InC, OutC, sf1):
-        for _ in range_(_BN10_IN_H):
-            row_in = act_in_fifo.acquire(1)
+    def bn12_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
+        for _ in range_(14):
+            row_in = act_in.acquire(1)
             row_out = of_12.acquire(1)
-            k_l1(row_in, wts_buf, row_out, W, InC, OutC, sf1)
-            act_in_fifo.release(1)
+            k_l1(row_in, wts_buf, row_out, 14, 112, 336, sf1)
+            act_in.release(1)
             of_12.release(1)
 
-    bn10_l1_worker = Worker(
-        bn10_l1_fn,
-        fn_args=[
-            act_in.cons(),
-            act_bn10_l1_l2.prod(),
-            bn10_l1_wts,
-            bn10_conv2dk1_relu,
-            _BN10_IN_W,
-            _BN10_IN_C,
-            _BN10_DW_CH,
-            bn10_s1,
-        ],
-        name="bn10_l1_worker",
-    )
-    workers.append(bn10_l1_worker)
-
-    # bn10 L2: DW stride-1 3x3
-    def bn10_l2_fn(of_12, of_23, wts_buf, k_l2, W, C, sf2):
-        # preamble: top row (pad above = row 0)
+    # bn12 tile2: interleave DW-stride2 and PW per output row.
+    # Source loop structure (b12_InH2=7 output rows from 14 input rows):
+    #   preamble:
+    #     acquire 2 in-rows; DW(r0,r0,r1,border=0) -> dw_tmp; release 1 in-row
+    #     PW(dw_tmp) -> out_row
+    #   middle (b12_InH2-2 = 5 iters):
+    #     acquire 3 in-rows; DW(r0,r1,r2,border=1) -> dw_tmp; release 2 in-rows
+    #     PW(dw_tmp) -> out_row
+    #   postamble (last output row, source acquires 3, releases 3, border=1):
+    #     acquire 3 in-rows; DW(r0,r1,r2,border=1) -> dw_tmp; release 3 in-rows
+    #     PW(dw_tmp) -> out_row
+    def bn12_l23_fn(of_12, dw_pw_of, act_out, wts_buf, k_dw, k_pw, sf2, sf3):
+        # preamble: top output row (border=0)
         rows = of_12.acquire(2)
-        row_out = of_23.acquire(1)
-        k_l2(rows[0], rows[0], rows[1], wts_buf, row_out, W, 1, C, 3, 3, 0, sf2, 0)
-        of_23.release(1)
-
-        for _ in range_(_BN10_IN_H - 2):
-            rows = of_12.acquire(3)
-            row_out = of_23.acquire(1)
-            k_l2(rows[0], rows[1], rows[2], wts_buf, row_out, W, 1, C, 3, 3, 1, sf2, 0)
-            of_12.release(1)
-            of_23.release(1)
-
-        # last row (pad below = last row)
-        rows = of_12.acquire(2)
-        row_out = of_23.acquire(1)
-        k_l2(rows[0], rows[1], rows[1], wts_buf, row_out, W, 1, C, 3, 3, 2, sf2, 0)
-        of_12.release(2)
-        of_23.release(1)
-
-    bn10_l2_worker = Worker(
-        bn10_l2_fn,
-        fn_args=[
-            act_bn10_l1_l2.cons(),
-            act_bn10_l2_l3.prod(),
-            bn10_l2_wts,
-            bn10_conv2dk3_dw,
-            _BN10_IN_W,
-            _BN10_DW_CH,
-            bn10_s2,
-        ],
-        name="bn10_l2_worker",
-    )
-    workers.append(bn10_l2_worker)
-
-    # bn10 L3: 1x1 conv (no relu), row by row -> feeds bn11
-    def bn10_l3_fn(of_23, act_out, wts_buf, k_l3, W, InC, OutC, sf3):
-        for _ in range_(_BN10_IN_H):
-            row_in = of_23.acquire(1)
-            row_out = act_out.acquire(1)
-            k_l3(row_in, wts_buf, row_out, W, InC, OutC, sf3)
-            of_23.release(1)
-            act_out.release(1)
-
-    bn10_l3_worker = Worker(
-        bn10_l3_fn,
-        fn_args=[
-            act_bn10_l2_l3.cons(),
-            act_bn10_l3_bn11.prod(),
-            bn10_l3_wts,
-            bn10_conv2dk1_ui8,
-            _BN10_IN_W,
-            _BN10_DW_CH,
-            _BN10_OUT_C,
-            bn10_s3,
-        ],
-        name="bn10_l3_worker",
-    )
-    workers.append(bn10_l3_worker)
-
-    # -------------------------------------------------------------------
-    # bn11 Workers (3-tile pipeline, WITH skip)
-    # The skip uses act_bn11_skip (forward() declared above), which carries
-    # bn10 L3 output rows via MemTile DMA to bn11 L3.
-    # -------------------------------------------------------------------
-
-    def bn11_l1_fn(act_in_fifo, of_12, wts_buf, k_l1, W, InC, OutC, sf1):
-        for _ in range_(_BN11_IN_H):
-            row_in = act_in_fifo.acquire(1)
-            row_out = of_12.acquire(1)
-            k_l1(row_in, wts_buf, row_out, W, InC, OutC, sf1)
-            act_in_fifo.release(1)
-            of_12.release(1)
-
-    bn11_l1_worker = Worker(
-        bn11_l1_fn,
-        fn_args=[
-            act_bn10_l3_bn11.cons(),
-            act_bn11_l1_l2.prod(),
-            bn11_l1_wts,
-            bn11_conv2dk1_relu,
-            _BN11_IN_W,
-            _BN11_IN_C,
-            _BN11_DW_CH,
-            bn11_s1,
-        ],
-        name="bn11_l1_worker",
-    )
-    workers.append(bn11_l1_worker)
-
-    # bn11 skip: forwarded via MemTile DMA (declared above as act_bn11_skip).
-    # No separate copy worker needed.
-
-    # bn11 L2: DW stride-1 3x3
-    def bn11_l2_fn(of_12, of_23, wts_buf, k_l2, W, C, sf2):
-        # preamble
-        rows = of_12.acquire(2)
-        row_out = of_23.acquire(1)
-        k_l2(rows[0], rows[0], rows[1], wts_buf, row_out, W, 1, C, 3, 3, 0, sf2, 0)
-        of_23.release(1)
-
-        for _ in range_(_BN11_IN_H - 2):
-            rows = of_12.acquire(3)
-            row_out = of_23.acquire(1)
-            k_l2(rows[0], rows[1], rows[2], wts_buf, row_out, W, 1, C, 3, 3, 1, sf2, 0)
-            of_12.release(1)
-            of_23.release(1)
-
-        rows = of_12.acquire(2)
-        row_out = of_23.acquire(1)
-        k_l2(rows[0], rows[1], rows[1], wts_buf, row_out, W, 1, C, 3, 3, 2, sf2, 0)
-        of_12.release(2)
-        of_23.release(1)
-
-    bn11_l2_worker = Worker(
-        bn11_l2_fn,
-        fn_args=[
-            act_bn11_l1_l2.cons(),
-            act_bn11_l2_l3.prod(),
-            bn11_l2_wts,
-            bn11_conv2dk3_dw,
-            _BN11_IN_W,
-            _BN11_DW_CH,
-            bn11_s2,
-        ],
-        name="bn11_l2_worker",
-    )
-    workers.append(bn11_l2_worker)
-
-    # bn11 L3: 1x1 conv with skip add
-    def bn11_l3_fn(of_23, skip_fifo, act_out, wts_buf, k_l3, W, InC, OutC, sf3, sfAdd):
-        for _ in range_(_BN11_IN_H):
-            row_in = of_23.acquire(1)
-            skip_row = skip_fifo.acquire(1)
-            row_out = act_out.acquire(1)
-            k_l3(row_in, wts_buf, row_out, skip_row, W, InC, OutC, sf3, sfAdd)
-            of_23.release(1)
-            skip_fifo.release(1)
-            act_out.release(1)
-
-    bn11_l3_worker = Worker(
-        bn11_l3_fn,
-        fn_args=[
-            act_bn11_l2_l3.cons(),
-            act_bn11_skip.cons(),
-            act_bn11_l3_bn12.prod(),
-            bn11_l3_wts,
-            bn11_conv2dk1_skip,
-            _BN11_IN_W,
-            _BN11_DW_CH,
-            _BN11_OUT_C,
-            bn11_s3,
-            bn11_sAdd,
-        ],
-        name="bn11_l3_worker",
-    )
-    workers.append(bn11_l3_worker)
-
-    # -------------------------------------------------------------------
-    # bn12 Workers
-    # -------------------------------------------------------------------
-
-    # bn12 L1: 1x1 conv relu, row by row (14 rows input -> 14 rows output)
-    def bn12_l1_fn(act_in_fifo, of_12, wts_buf, k_l1, W, InC, OutC, sf1):
-        for _ in range_(_BN12_IN_H):
-            row_in = act_in_fifo.acquire(1)
-            row_out = of_12.acquire(1)
-            k_l1(row_in, wts_buf, row_out, W, InC, OutC, sf1)
-            act_in_fifo.release(1)
-            of_12.release(1)
-
-    bn12_l1_worker = Worker(
-        bn12_l1_fn,
-        fn_args=[
-            act_bn11_l3_bn12.cons(),
-            act_bn12_l1_l2.prod(),
-            bn12_l1_wts,
-            bn12_conv2dk1_relu,
-            _BN12_IN_W,
-            _BN12_IN_C,
-            _BN12_DW_CH,
-            bn12_s1,
-        ],
-        name="bn12_l1_worker",
-    )
-    workers.append(bn12_l1_worker)
-
-    # bn12 L2+L3 fused on tile2:
-    # DW stride-2 reduces 14 input rows -> 7 output rows, then 1x1 applied per row.
-    # The reference code (aie2_bottleneckBStatic.py lines 959-1146) interleaves
-    # the DW-stride2 call and the 1x1 call for each output row within one tile.
-    # Pattern (from reference):
-    #   preamble:  acquire 2 in-rows, DW(row0,row0,row1) -> tmp, release 1 in-row
-    #              acquire tmp, 1x1(tmp) -> out_row, release tmp, out_row
-    #   middle (outH-2 iters): acquire 3 in-rows, DW(r0,r1,r2) -> tmp, release 2 in-rows
-    #                           acquire tmp, 1x1(tmp) -> out_row, release tmp, out_row
-    #   last:      acquire 3 in-rows, DW(r0,r1,r2) -> tmp, release 3 in-rows
-    #              acquire tmp, 1x1(tmp) -> out_row, release tmp, out_row
-    def bn12_l23_fn(of_12, act_out, wts_l2, wts_l3, k_dw, k_1x1,
-                    inW, outW, DWC, OutC, sf2, sf3):
-        # local fifo for DW -> 1x1 intermediate (single row at a time)
-        act_l2_l3 = ObjectFifo(
-            np.ndarray[(outW, 1, DWC), np.dtype[np.uint8]],
-            depth=1,
-            name="bn12_act_l2_l3",
-        )
-
-        # preamble: top row (zero-pad above)
-        rows = of_12.acquire(2)
-        row_tmp = act_l2_l3.acquire(1)
-        k_dw(rows[0], rows[0], rows[1], wts_l2, row_tmp, inW, 1, DWC, 3, 3, 0, sf2, 0)
+        dw_out = dw_pw_of.acquire(1)
+        k_dw(rows[0], rows[0], rows[1], wts_buf, dw_out, 14, 1, 336, 3, 3, 0, sf2, 0)
         of_12.release(1)
-        act_l2_l3.release(1)
-
-        row_tmp = act_l2_l3.acquire(1)
-        row_out = act_out.acquire(1)
-        k_1x1(row_tmp, wts_l3, row_out, outW, DWC, OutC, sf3)
-        act_l2_l3.release(1)
+        dw_pw_of.release(1)
+        pw_in = dw_pw_of.acquire(1)
+        pw_out = act_out.acquire(1)
+        k_pw(pw_in, wts_buf, pw_out, 7, 336, 80, sf3)
+        dw_pw_of.release(1)
         act_out.release(1)
-
-        # middle rows (outH - 2 iterations)
-        for _ in range_(_BN12_OUT_H - 2):
+        # middle output rows (border=1): b12_InH2 - 2 = 7 - 2 = 5
+        for _ in range_(5):
             rows = of_12.acquire(3)
-            row_tmp = act_l2_l3.acquire(1)
-            k_dw(rows[0], rows[1], rows[2], wts_l2, row_tmp, inW, 1, DWC, 3, 3, 1, sf2, 0)
+            dw_out = dw_pw_of.acquire(1)
+            k_dw(rows[0], rows[1], rows[2], wts_buf, dw_out, 14, 1, 336, 3, 3, 1, sf2, 0)
             of_12.release(2)
-            act_l2_l3.release(1)
-
-            row_tmp = act_l2_l3.acquire(1)
-            row_out = act_out.acquire(1)
-            k_1x1(row_tmp, wts_l3, row_out, outW, DWC, OutC, sf3)
-            act_l2_l3.release(1)
+            dw_pw_of.release(1)
+            pw_in = dw_pw_of.acquire(1)
+            pw_out = act_out.acquire(1)
+            k_pw(pw_in, wts_buf, pw_out, 7, 336, 80, sf3)
+            dw_pw_of.release(1)
             act_out.release(1)
-
-        # last row (zero-pad below)
+        # postamble: last output row (source acquires 3, border=1, releases 3)
         rows = of_12.acquire(3)
-        row_tmp = act_l2_l3.acquire(1)
-        k_dw(rows[0], rows[1], rows[2], wts_l2, row_tmp, inW, 1, DWC, 3, 3, 1, sf2, 0)
+        dw_out = dw_pw_of.acquire(1)
+        k_dw(rows[0], rows[1], rows[2], wts_buf, dw_out, 14, 1, 336, 3, 3, 1, sf2, 0)
         of_12.release(3)
-        act_l2_l3.release(1)
-
-        row_tmp = act_l2_l3.acquire(1)
-        row_out = act_out.acquire(1)
-        k_1x1(row_tmp, wts_l3, row_out, outW, DWC, OutC, sf3)
-        act_l2_l3.release(1)
+        dw_pw_of.release(1)
+        pw_in = dw_pw_of.acquire(1)
+        pw_out = act_out.acquire(1)
+        k_pw(pw_in, wts_buf, pw_out, 7, 336, 80, sf3)
+        dw_pw_of.release(1)
         act_out.release(1)
 
-    bn12_l23_worker = Worker(
-        bn12_l23_fn,
-        fn_args=[
-            act_bn12_l1_l2.cons(),
-            act_bn12_out.prod(),
-            bn12_l23_wts,   # wts_l2 (caller slices; here we pass combined buf)
-            bn12_l23_wts,   # wts_l3 (same buf, kernel indexes into correct offset)
-            bn12_conv2dk3_dw_stride2,
-            bn12_conv2dk1_ui8,
-            _BN12_IN_W,
-            _BN12_OUT_W,
-            _BN12_DW_CH,
-            _BN12_OUT_C,
-            bn12_s2,
-            bn12_s3,
-        ],
-        name="bn12_l23_worker",
-    )
-    workers.append(bn12_l23_worker)
+    workers += [
+        Worker(
+            bn12_l1_fn,
+            [act_bn11_out.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1, bn12_s1],
+        ),
+        Worker(
+            bn12_l23_fn,
+            [
+                bn12_of_12.cons(),
+                bn12_of_dw_pw.prod(),
+                act_bn12_out.prod(),
+                bn12_l23_wts,
+                k_bn12_dw,
+                k_bn12_pw,
+                bn12_s2,
+                bn12_s3,
+            ],
+        ),
+    ]
 
     return workers, act_bn12_out
