@@ -46,6 +46,7 @@ class ObjectFifo(Resolvable):
         dims_from_stream_per_cons: list[Sequence[int]] | None = None,
         plio: bool = False,
         pad_dimensions: list[Sequence[int]] | None = None,
+        disable_synchronization: bool = False,
     ):
         """Construct an ObjectFifo.
 
@@ -80,6 +81,8 @@ class ObjectFifo(Resolvable):
         self._resolving = False
         self._iter_count: int | None = None
         self._repeat_count: int | None = None
+        self._disable_synchronization: bool = disable_synchronization
+        self._alloc_tile_ops: list = []  # tile ops for post-resolve allocate() calls
 
     @classmethod
     def __get_index(cls) -> int:
@@ -317,16 +320,48 @@ class ObjectFifo(Resolvable):
                 plio=self._plio,
                 padDimensions=self._pad_dimensions,
                 iter_count=self._iter_count,
+                disable_synchronization=self._disable_synchronization or None,
             )
 
             if self._repeat_count is not None:
                 self._op.set_repeat_count(self._repeat_count)
+
+            # Apply pending allocate_on() calls (redirect buffer to adjacent tile)
+            for alloc_tile in self._alloc_tile_ops:
+                self._op.allocate(alloc_tile.op)
+            self._alloc_tile_ops = []
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
                 self._prod.endpoint.resolve()
             for con in self._cons:
                 if isinstance(con.endpoint, ObjectFifoLink):
                     con.endpoint.resolve()
+
+    def allocate_on(self, tile) -> None:
+        """Redirect this ObjectFifo's buffer allocation to a neighboring tile.
+
+        Calls ``aie.objectfifo.allocate`` to place the fifo's buffer memory on
+        ``tile`` instead of the default compute tile. Used when a self-loop
+        ObjectFifo's intermediate buffers would exceed the compute tile's local
+        SRAM limit — e.g., fused bottleneck pairs where the combined weight +
+        intermediate activation buffers overflow 64KB.
+
+        Can be called before or after resolution. If called before, the
+        allocation is applied automatically during ``resolve()``. If called
+        after, it calls the MLIR op directly.
+
+        Args:
+            tile: A ``Tile`` object. Must be placed (have a valid column/row).
+        """
+        from ..device import Tile as TileType
+        if isinstance(tile, TileType):
+            if self._op is not None:
+                self._op.allocate(tile.op)
+            else:
+                self._alloc_tile_ops.append(tile)
+        else:
+            # Already a resolved op — call allocate directly
+            self._op.allocate(tile)
 
     def _acquire(
         self,
