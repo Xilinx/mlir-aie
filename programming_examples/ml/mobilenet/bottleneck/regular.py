@@ -11,6 +11,7 @@ import os
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.controlflow import range_
+from aie.extras.dialects.memref import view as memref_view
 
 
 # ---------------------------------------------------------------------------
@@ -250,16 +251,23 @@ def regular_bottlenecks(
         scale3,
         scale_add,
     ):
+        # Slice combined weight buffer into per-layer views.
+        # wts_buf is an IRON Buffer; .op gives the resolved MLIR memref Value.
+        dw_wts_size = 3 * 3 * dw_c * 1
+        skip_wts_size = 1 * 1 * dw_c * out_c
+        wts_dw = memref_view(wts_buf.op, [dw_wts_size], shift=0)
+        wts_skip = memref_view(wts_buf.op, [skip_wts_size], shift=dw_wts_size)
+
         # pre-amble: top row
         rows_in = act_in_fifo.acquire(2)
         row_out = act_23_prod.acquire(1)
-        f_dw(rows_in[0], rows_in[0], rows_in[1], wts_buf, row_out,
+        f_dw(rows_in[0], rows_in[0], rows_in[1], wts_dw, row_out,
              in_w, 1, dw_c, 3, 3, 0, scale2, 0)
         act_23_prod.release(1)
 
         row_dw = act_23_cons.acquire(1)
         row_final = act_out_fifo.acquire(1)
-        f_skip(row_dw, wts_buf, row_final, rows_in[0],
+        f_skip(row_dw, wts_skip, row_final, rows_in[0],
                in_w, dw_c, out_c, scale3, scale_add)
         act_23_cons.release(1)
         act_out_fifo.release(1)
@@ -268,13 +276,13 @@ def regular_bottlenecks(
         for _ in range_(in_h - 2):
             rows_in = act_in_fifo.acquire(3)
             row_out = act_23_prod.acquire(1)
-            f_dw(rows_in[0], rows_in[1], rows_in[2], wts_buf, row_out,
+            f_dw(rows_in[0], rows_in[1], rows_in[2], wts_dw, row_out,
                  in_w, 1, dw_c, 3, 3, 1, scale2, 0)
             act_23_prod.release(1)
 
             row_dw = act_23_cons.acquire(1)
             row_final = act_out_fifo.acquire(1)
-            f_skip(row_dw, wts_buf, row_final, rows_in[1],
+            f_skip(row_dw, wts_skip, row_final, rows_in[1],
                    in_w, dw_c, out_c, scale3, scale_add)
             act_in_fifo.release(1)
             act_23_cons.release(1)
@@ -283,13 +291,13 @@ def regular_bottlenecks(
         # last row
         rows_in = act_in_fifo.acquire(2)
         row_out = act_23_prod.acquire(1)
-        f_dw(rows_in[0], rows_in[1], rows_in[1], wts_buf, row_out,
+        f_dw(rows_in[0], rows_in[1], rows_in[1], wts_dw, row_out,
              in_w, 1, dw_c, 3, 3, 2, scale2, 0)
         act_23_prod.release(1)
 
         row_dw = act_23_cons.acquire(1)
         row_final = act_out_fifo.acquire(1)
-        f_skip(row_dw, wts_buf, row_final, rows_in[1],
+        f_skip(row_dw, wts_skip, row_final, rows_in[1],
                in_w, dw_c, out_c, scale3, scale_add)
         act_in_fifo.release(2)
         act_23_cons.release(1)
@@ -408,24 +416,29 @@ def regular_bottlenecks(
         out_w = in_w // 2
         out_h = in_h // 2
 
+        # Slice combined weight buffer into per-layer views.
+        wts_l1 = memref_view(wts_buf.op, [_bn1_l1_wts_size], shift=0)
+        wts_l2 = memref_view(wts_buf.op, [_bn1_l2_wts_size], shift=_bn1_l1_wts_size)
+        wts_l3 = memref_view(wts_buf.op, [_bn1_l3_wts_size], shift=_bn1_l1_wts_size + _bn1_l2_wts_size)
+
         # pre-amble: acquire 2 input rows, produce 2 L1 rows
         rows_in = act_in_fifo.acquire(2)
         rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
         act_12_prod.release(2)
         act_in_fifo.release(2)
 
         rows_l1 = act_12_cons.acquire(2)
         row_l2 = act_23_prod.acquire(1)
-        f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
+        f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_l2, row_l2,
                      in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
         act_12_cons.release(1)
         act_23_prod.release(1)
 
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
+        f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
@@ -433,21 +446,21 @@ def regular_bottlenecks(
         for _ in range_(out_h - 1):
             rows_in = act_in_fifo.acquire(2)
             rows_l1 = act_12_prod.acquire(2)
-            f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
-            f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
+            f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
+            f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
             act_12_prod.release(2)
             act_in_fifo.release(2)
 
             rows_l1 = act_12_cons.acquire(3)
             row_l2 = act_23_prod.acquire(1)
-            f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
+            f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_l2, row_l2,
                          in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
             act_12_cons.release(2)
             act_23_prod.release(1)
 
             row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
-            f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
+            f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
@@ -559,22 +572,27 @@ def regular_bottlenecks(
         scale3,
         scale_add,
     ):
+        # Slice combined weight buffer into per-layer views.
+        wts_l1 = memref_view(wts_buf.op, [_bn2_l1_wts_size], shift=0)
+        wts_l2 = memref_view(wts_buf.op, [_bn2_l2_wts_size], shift=_bn2_l1_wts_size)
+        wts_l3 = memref_view(wts_buf.op, [_bn2_l3_wts_size], shift=_bn2_l1_wts_size + _bn2_l2_wts_size)
+
         # pre-amble: 2 rows
         rows_in = act_in_fifo.acquire(2)
         rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
         act_12_prod.release(2)
 
         rows_l1 = act_12_cons.acquire(2)
         row_l2 = act_23_prod.acquire(1)
-        f_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
+        f_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_l2, row_l2,
              in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
         act_23_prod.release(1)
 
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f_1x1_skip(row_l2, wts_buf, row_out, rows_in[0],
+        f_1x1_skip(row_l2, wts_l3, row_out, rows_in[0],
                    in_w, dw_ch, out_c, scale3, scale_add)
         act_in_fifo.release(2)
         act_23_cons.release(1)
@@ -584,19 +602,19 @@ def regular_bottlenecks(
         for _ in range_(in_h - 2):
             rows_in = act_in_fifo.acquire(2)
             row_l1 = act_12_prod.acquire(1)
-            f_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, dw_ch, scale1)
+            f_1x1_relu(rows_in[1], wts_l1, row_l1, in_w, in_c, dw_ch, scale1)
             act_12_prod.release(1)
 
             rows_l1 = act_12_cons.acquire(3)
             row_l2 = act_23_prod.acquire(1)
-            f_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
+            f_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_l2, row_l2,
                  in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
             act_12_cons.release(1)
             act_23_prod.release(1)
 
             row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
-            f_1x1_skip(row_l2, wts_buf, row_out, rows_in[0],
+            f_1x1_skip(row_l2, wts_l3, row_out, rows_in[0],
                        in_w, dw_ch, out_c, scale3, scale_add)
             act_in_fifo.release(2)
             act_23_cons.release(1)
@@ -605,7 +623,7 @@ def regular_bottlenecks(
         # last row
         rows_l1 = act_12_cons.acquire(2)
         row_l2 = act_23_prod.acquire(1)
-        f_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_buf, row_l2,
+        f_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_l2, row_l2,
              in_w, 1, dw_ch, 3, 3, 2, scale2, 0)
         act_12_cons.release(2)
         act_23_prod.release(1)
@@ -613,7 +631,7 @@ def regular_bottlenecks(
         row_in = act_in_fifo.acquire(1)
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f_1x1_skip(row_l2, wts_buf, row_out, row_in,
+        f_1x1_skip(row_l2, wts_l3, row_out, row_in,
                    in_w, dw_ch, out_c, scale3, scale_add)
         act_in_fifo.release(1)
         act_23_cons.release(1)
@@ -730,24 +748,29 @@ def regular_bottlenecks(
         out_w = in_w // 2
         out_h = in_h // 2
 
+        # Slice combined weight buffer into per-layer views.
+        wts_l1 = memref_view(wts_buf.op, [_bn3_l1_wts_size], shift=0)
+        wts_l2 = memref_view(wts_buf.op, [_bn3_l2_wts_size], shift=_bn3_l1_wts_size)
+        wts_l3 = memref_view(wts_buf.op, [_bn3_l3_wts_size], shift=_bn3_l1_wts_size + _bn3_l2_wts_size)
+
         # pre-amble
         rows_in = act_in_fifo.acquire(2)
         rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
         act_12_prod.release(2)
         act_in_fifo.release(2)
 
         rows_l1 = act_12_cons.acquire(2)
         row_l2 = act_23_prod.acquire(1)
-        f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
+        f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_l2, row_l2,
                      in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
         act_12_cons.release(1)
         act_23_prod.release(1)
 
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
+        f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
@@ -755,21 +778,21 @@ def regular_bottlenecks(
         for _ in range_(out_h - 1):
             rows_in = act_in_fifo.acquire(2)
             rows_l1 = act_12_prod.acquire(2)
-            f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
-            f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
+            f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
+            f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
             act_12_prod.release(2)
             act_in_fifo.release(2)
 
             rows_l1 = act_12_cons.acquire(3)
             row_l2 = act_23_prod.acquire(1)
-            f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
+            f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_l2, row_l2,
                          in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
             act_12_cons.release(2)
             act_23_prod.release(1)
 
             row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
-            f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
+            f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
@@ -935,24 +958,32 @@ def regular_bottlenecks(
         s4_1, s4_2, s4_3, s4_add,
         s5_1, s5_2, s5_3, s5_add,
     ):
+        # Slice combined weight buffer into per-layer views.
+        wts_bn4_l1 = memref_view(wts_buf.op, [_bn4_l1_wts], shift=0)
+        wts_bn4_l2 = memref_view(wts_buf.op, [_bn4_l2_wts], shift=_bn4_l1_wts)
+        wts_bn4_l3 = memref_view(wts_buf.op, [_bn4_l3_wts], shift=_bn4_l1_wts + _bn4_l2_wts)
+        wts_bn5_l1 = memref_view(wts_buf.op, [_bn5_l1_wts], shift=_bn4_l1_wts + _bn4_l2_wts + _bn4_l3_wts)
+        wts_bn5_l2 = memref_view(wts_buf.op, [_bn5_l2_wts], shift=_bn4_l1_wts + _bn4_l2_wts + _bn4_l3_wts + _bn5_l1_wts)
+        wts_bn5_l3 = memref_view(wts_buf.op, [_bn5_l3_wts], shift=_bn4_l1_wts + _bn4_l2_wts + _bn4_l3_wts + _bn5_l1_wts + _bn5_l2_wts)
+
         # This is a complex fused pipeline - stub body to make it importable
         # Full pipeline follows the same pattern as bn8+bn9 in aie2_bottleneckA_subblock_fused2Static.py
         # pre-amble: 2 rows of bn4 L1
         rows_in = act_in_fifo.acquire(2)
         rows_l1 = act_bn4_12_prod.acquire(2)
-        f4_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, bn4_dw_ch, s4_1)
-        f4_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, bn4_dw_ch, s4_1)
+        f4_1x1_relu(rows_in[0], wts_bn4_l1, rows_l1[0], in_w, in_c, bn4_dw_ch, s4_1)
+        f4_1x1_relu(rows_in[1], wts_bn4_l1, rows_l1[1], in_w, in_c, bn4_dw_ch, s4_1)
         act_bn4_12_prod.release(2)
 
         rows_l1 = act_bn4_12_cons.acquire(2)
         row_l2 = act_bn4_23_prod.acquire(1)
-        f4_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
+        f4_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_bn4_l2, row_l2,
               in_w, 1, bn4_dw_ch, 3, 3, 0, s4_2, 0)
         act_bn4_23_prod.release(1)
 
         row_l2 = act_bn4_23_cons.acquire(1)
         row_bn4_out = act_bn4_bn5_prod.acquire(1)
-        f4_skip(row_l2, wts_buf, row_bn4_out, rows_in[0],
+        f4_skip(row_l2, wts_bn4_l3, row_bn4_out, rows_in[0],
                 in_w, bn4_dw_ch, bn4_out_c, s4_3, s4_add)
         act_in_fifo.release(1)
         act_bn4_23_cons.release(1)
@@ -960,7 +991,7 @@ def regular_bottlenecks(
 
         row_bn5_in = act_bn4_bn5_cons.acquire(1)
         row_l1 = act_bn5_12_prod.acquire(1)
-        f5_1x1_relu(row_bn5_in, wts_buf, row_l1, in_w, bn4_out_c, bn5_dw_ch, s5_1)
+        f5_1x1_relu(row_bn5_in, wts_bn5_l1, row_l1, in_w, bn4_out_c, bn5_dw_ch, s5_1)
         act_bn5_12_prod.release(1)
 
         # Continue middle and post-amble rows following the same pipeline pattern...
@@ -968,19 +999,19 @@ def regular_bottlenecks(
         for _ in range_(in_h - 3):
             rows_in = act_in_fifo.acquire(2)
             row_l1 = act_bn4_12_prod.acquire(1)
-            f4_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, bn4_dw_ch, s4_1)
+            f4_1x1_relu(rows_in[1], wts_bn4_l1, row_l1, in_w, in_c, bn4_dw_ch, s4_1)
             act_bn4_12_prod.release(1)
 
             rows_l1_4 = act_bn4_12_cons.acquire(3)
             row_l2 = act_bn4_23_prod.acquire(1)
-            f4_dw(rows_l1_4[0], rows_l1_4[1], rows_l1_4[2], wts_buf, row_l2,
+            f4_dw(rows_l1_4[0], rows_l1_4[1], rows_l1_4[2], wts_bn4_l2, row_l2,
                   in_w, 1, bn4_dw_ch, 3, 3, 1, s4_2, 0)
             act_bn4_12_cons.release(1)
             act_bn4_23_prod.release(1)
 
             row_l2 = act_bn4_23_cons.acquire(1)
             row_bn4_out = act_bn4_bn5_prod.acquire(1)
-            f4_skip(row_l2, wts_buf, row_bn4_out, rows_in[0],
+            f4_skip(row_l2, wts_bn4_l3, row_bn4_out, rows_in[0],
                     in_w, bn4_dw_ch, bn4_out_c, s4_3, s4_add)
             act_in_fifo.release(1)
             act_bn4_23_cons.release(1)
@@ -988,19 +1019,19 @@ def regular_bottlenecks(
 
             rows_bn5_in = act_bn4_bn5_cons.acquire(2)
             row_l1 = act_bn5_12_prod.acquire(1)
-            f5_1x1_relu(rows_bn5_in[1], wts_buf, row_l1, in_w, bn4_out_c, bn5_dw_ch, s5_1)
+            f5_1x1_relu(rows_bn5_in[1], wts_bn5_l1, row_l1, in_w, bn4_out_c, bn5_dw_ch, s5_1)
             act_bn5_12_prod.release(1)
 
             rows_l1_5 = act_bn5_12_cons.acquire(3)
             row_l2_5 = act_bn5_23_prod.acquire(1)
-            f5_dw(rows_l1_5[0], rows_l1_5[1], rows_l1_5[2], wts_buf, row_l2_5,
+            f5_dw(rows_l1_5[0], rows_l1_5[1], rows_l1_5[2], wts_bn5_l2, row_l2_5,
                   in_w, 1, bn5_dw_ch, 3, 3, 1, s5_2, 0)
             act_bn5_12_cons.release(1)
             act_bn5_23_prod.release(1)
 
             row_l2_5 = act_bn5_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
-            f5_skip(row_l2_5, wts_buf, row_out, rows_bn5_in[0],
+            f5_skip(row_l2_5, wts_bn5_l3, row_out, rows_bn5_in[0],
                     in_w, bn5_dw_ch, bn5_out_c, s5_3, s5_add)
             act_bn5_23_cons.release(1)
             act_bn4_bn5_cons.release(1)
@@ -1126,44 +1157,49 @@ def regular_bottlenecks(
         out_w = in_w // 2
         out_h = in_h // 2
 
+        # Slice combined weight buffer into per-layer views.
+        wts_l1 = memref_view(wts_buf.op, [_bn6_l1_wts_size], shift=0)
+        wts_l2 = memref_view(wts_buf.op, [_bn6_l2_wts_size], shift=_bn6_l1_wts_size)
+        wts_l3 = memref_view(wts_buf.op, [_bn6_l3_wts_size], shift=_bn6_l1_wts_size + _bn6_l2_wts_size)
+
         rows_in = act_in_fifo.acquire(2)
         rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
         act_12_prod.release(2)
         act_in_fifo.release(2)
 
         rows_l1 = act_12_cons.acquire(2)
         row_l2 = act_23_prod.acquire(1)
-        f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
+        f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_l2, row_l2,
                      in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
         act_12_cons.release(1)
         act_23_prod.release(1)
 
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
+        f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
         for _ in range_(out_h - 1):
             rows_in = act_in_fifo.acquire(2)
             rows_l1 = act_12_prod.acquire(2)
-            f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
-            f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
+            f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
+            f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
             act_12_prod.release(2)
             act_in_fifo.release(2)
 
             rows_l1 = act_12_cons.acquire(3)
             row_l2 = act_23_prod.acquire(1)
-            f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
+            f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_l2, row_l2,
                          in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
             act_12_cons.release(2)
             act_23_prod.release(1)
 
             row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
-            f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
+            f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
@@ -1275,22 +1311,27 @@ def regular_bottlenecks(
         scale3,
         scale_add,
     ):
+        # Slice combined weight buffer into per-layer views.
+        wts_l1 = memref_view(wts_buf.op, [_bn7_l1_wts_size], shift=0)
+        wts_l2 = memref_view(wts_buf.op, [_bn7_l2_wts_size], shift=_bn7_l1_wts_size)
+        wts_l3 = memref_view(wts_buf.op, [_bn7_l3_wts_size], shift=_bn7_l1_wts_size + _bn7_l2_wts_size)
+
         # pre-amble: 2 rows
         rows_in = act_in_fifo.acquire(2)
         rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
+        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
         act_12_prod.release(2)
 
         rows_l1 = act_12_cons.acquire(2)
         row_l2 = act_23_prod.acquire(1)
-        f_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
+        f_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_l2, row_l2,
              in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
         act_23_prod.release(1)
 
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f_1x1_skip(row_l2, wts_buf, row_out, rows_in[0],
+        f_1x1_skip(row_l2, wts_l3, row_out, rows_in[0],
                    in_w, dw_ch, out_c, scale3, scale_add)
         act_in_fifo.release(2)
         act_23_cons.release(1)
@@ -1300,19 +1341,19 @@ def regular_bottlenecks(
         for _ in range_(in_h - 2):
             rows_in = act_in_fifo.acquire(2)
             row_l1 = act_12_prod.acquire(1)
-            f_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, dw_ch, scale1)
+            f_1x1_relu(rows_in[1], wts_l1, row_l1, in_w, in_c, dw_ch, scale1)
             act_12_prod.release(1)
 
             rows_l1 = act_12_cons.acquire(3)
             row_l2 = act_23_prod.acquire(1)
-            f_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
+            f_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_l2, row_l2,
                  in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
             act_12_cons.release(1)
             act_23_prod.release(1)
 
             row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
-            f_1x1_skip(row_l2, wts_buf, row_out, rows_in[0],
+            f_1x1_skip(row_l2, wts_l3, row_out, rows_in[0],
                        in_w, dw_ch, out_c, scale3, scale_add)
             act_in_fifo.release(2)
             act_23_cons.release(1)
@@ -1321,7 +1362,7 @@ def regular_bottlenecks(
         # last row
         rows_l1 = act_12_cons.acquire(2)
         row_l2 = act_23_prod.acquire(1)
-        f_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_buf, row_l2,
+        f_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_l2, row_l2,
              in_w, 1, dw_ch, 3, 3, 2, scale2, 0)
         act_12_cons.release(2)
         act_23_prod.release(1)
@@ -1329,7 +1370,7 @@ def regular_bottlenecks(
         row_in = act_in_fifo.acquire(1)
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f_1x1_skip(row_l2, wts_buf, row_out, row_in,
+        f_1x1_skip(row_l2, wts_l3, row_out, row_in,
                    in_w, dw_ch, out_c, scale3, scale_add)
         act_in_fifo.release(1)
         act_23_cons.release(1)
@@ -1500,22 +1541,30 @@ def regular_bottlenecks(
         s8_1, s8_2, s8_3, s8_add,
         s9_1, s9_2, s9_3, s9_add,
     ):
+        # Slice combined weight buffer into per-layer views.
+        wts_bn8_l1 = memref_view(wts_buf.op, [_bn8_l1_wts], shift=0)
+        wts_bn8_l2 = memref_view(wts_buf.op, [_bn8_l2_wts], shift=_bn8_l1_wts)
+        wts_bn8_l3 = memref_view(wts_buf.op, [_bn8_l3_wts], shift=_bn8_l1_wts + _bn8_l2_wts)
+        wts_bn9_l1 = memref_view(wts_buf.op, [_bn9_l1_wts], shift=_bn8_l1_wts + _bn8_l2_wts + _bn8_l3_wts)
+        wts_bn9_l2 = memref_view(wts_buf.op, [_bn9_l2_wts], shift=_bn8_l1_wts + _bn8_l2_wts + _bn8_l3_wts + _bn9_l1_wts)
+        wts_bn9_l3 = memref_view(wts_buf.op, [_bn9_l3_wts], shift=_bn8_l1_wts + _bn8_l2_wts + _bn8_l3_wts + _bn9_l1_wts + _bn9_l2_wts)
+
         # pre-amble 0: 2 rows of bn8 L1, row 0 of bn8 L2, row 0 of bn8 L3, row 0 of bn9 L1
         rows_in = act_in_fifo.acquire(2)
         rows_l1 = act_bn8_12_prod.acquire(2)
-        f8_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, bn8_dw_ch, s8_1)
-        f8_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, bn8_dw_ch, s8_1)
+        f8_1x1_relu(rows_in[0], wts_bn8_l1, rows_l1[0], in_w, in_c, bn8_dw_ch, s8_1)
+        f8_1x1_relu(rows_in[1], wts_bn8_l1, rows_l1[1], in_w, in_c, bn8_dw_ch, s8_1)
         act_bn8_12_prod.release(2)
 
         rows_l1 = act_bn8_12_cons.acquire(2)
         row_l2 = act_bn8_23_prod.acquire(1)
-        f8_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
+        f8_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_bn8_l2, row_l2,
               in_w, 1, bn8_dw_ch, 3, 3, 0, s8_2, 0)
         act_bn8_23_prod.release(1)
 
         row_l2 = act_bn8_23_cons.acquire(1)
         row_bn8_out = act_bn8_bn9_prod.acquire(1)
-        f8_skip(row_l2, wts_buf, row_bn8_out, rows_in[0],
+        f8_skip(row_l2, wts_bn8_l3, row_bn8_out, rows_in[0],
                 in_w, bn8_dw_ch, bn8_out_c, s8_3, s8_add)
         act_in_fifo.release(1)
         act_bn8_23_cons.release(1)
@@ -1523,26 +1572,26 @@ def regular_bottlenecks(
 
         row_bn9_in = act_bn8_bn9_cons.acquire(1)
         row_l1_9 = act_bn9_12_prod.acquire(1)
-        f9_1x1_relu(row_bn9_in, wts_buf, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
+        f9_1x1_relu(row_bn9_in, wts_bn9_l1, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
         act_bn9_12_prod.release(1)
 
         # pre-amble 1: row 2 of bn8 L1, row 1 of bn8 L2, row 1 of bn8 L3,
         #              row 1 of bn9 L1, row 0 of bn9 L2
         rows_in = act_in_fifo.acquire(2)
         row_l1 = act_bn8_12_prod.acquire(1)
-        f8_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, bn8_dw_ch, s8_1)
+        f8_1x1_relu(rows_in[1], wts_bn8_l1, row_l1, in_w, in_c, bn8_dw_ch, s8_1)
         act_bn8_12_prod.release(1)
 
         rows_l1 = act_bn8_12_cons.acquire(3)
         row_l2 = act_bn8_23_prod.acquire(1)
-        f8_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
+        f8_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_bn8_l2, row_l2,
               in_w, 1, bn8_dw_ch, 3, 3, 1, s8_2, 0)
         act_bn8_12_cons.release(1)
         act_bn8_23_prod.release(1)
 
         row_l2 = act_bn8_23_cons.acquire(1)
         row_bn8_out = act_bn8_bn9_prod.acquire(1)
-        f8_skip(row_l2, wts_buf, row_bn8_out, rows_in[0],
+        f8_skip(row_l2, wts_bn8_l3, row_bn8_out, rows_in[0],
                 in_w, bn8_dw_ch, bn8_out_c, s8_3, s8_add)
         act_in_fifo.release(1)
         act_bn8_23_cons.release(1)
@@ -1550,18 +1599,18 @@ def regular_bottlenecks(
 
         rows_bn9_in = act_bn8_bn9_cons.acquire(2)
         row_l1_9 = act_bn9_12_prod.acquire(1)
-        f9_1x1_relu(rows_bn9_in[1], wts_buf, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
+        f9_1x1_relu(rows_bn9_in[1], wts_bn9_l1, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
         act_bn9_12_prod.release(1)
 
         rows_l1_9 = act_bn9_12_cons.acquire(2)
         row_l2_9 = act_bn9_23_prod.acquire(1)
-        f9_dw(rows_l1_9[0], rows_l1_9[0], rows_l1_9[1], wts_buf, row_l2_9,
+        f9_dw(rows_l1_9[0], rows_l1_9[0], rows_l1_9[1], wts_bn9_l2, row_l2_9,
               in_w, 1, bn9_dw_ch, 3, 3, 0, s9_2, 0)
         act_bn9_23_prod.release(1)
 
         row_l2_9 = act_bn9_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f9_skip(row_l2_9, wts_buf, row_out, rows_bn9_in[0],
+        f9_skip(row_l2_9, wts_bn9_l3, row_out, rows_bn9_in[0],
                 in_w, bn9_dw_ch, bn9_out_c, s9_3, s9_add)
         act_bn9_23_cons.release(1)
         act_bn8_bn9_cons.release(1)
@@ -1571,19 +1620,19 @@ def regular_bottlenecks(
         for _ in range_(in_h - 3):
             rows_in = act_in_fifo.acquire(2)
             row_l1 = act_bn8_12_prod.acquire(1)
-            f8_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, bn8_dw_ch, s8_1)
+            f8_1x1_relu(rows_in[1], wts_bn8_l1, row_l1, in_w, in_c, bn8_dw_ch, s8_1)
             act_bn8_12_prod.release(1)
 
             rows_l1 = act_bn8_12_cons.acquire(3)
             row_l2 = act_bn8_23_prod.acquire(1)
-            f8_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
+            f8_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_bn8_l2, row_l2,
                   in_w, 1, bn8_dw_ch, 3, 3, 1, s8_2, 0)
             act_bn8_12_cons.release(1)
             act_bn8_23_prod.release(1)
 
             row_l2 = act_bn8_23_cons.acquire(1)
             row_bn8_out = act_bn8_bn9_prod.acquire(1)
-            f8_skip(row_l2, wts_buf, row_bn8_out, rows_in[0],
+            f8_skip(row_l2, wts_bn8_l3, row_bn8_out, rows_in[0],
                     in_w, bn8_dw_ch, bn8_out_c, s8_3, s8_add)
             act_in_fifo.release(1)
             act_bn8_23_cons.release(1)
@@ -1591,19 +1640,19 @@ def regular_bottlenecks(
 
             rows_bn9_in = act_bn8_bn9_cons.acquire(2)
             row_l1_9 = act_bn9_12_prod.acquire(1)
-            f9_1x1_relu(rows_bn9_in[1], wts_buf, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
+            f9_1x1_relu(rows_bn9_in[1], wts_bn9_l1, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
             act_bn9_12_prod.release(1)
 
             rows_l1_9 = act_bn9_12_cons.acquire(3)
             row_l2_9 = act_bn9_23_prod.acquire(1)
-            f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[2], wts_buf, row_l2_9,
+            f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[2], wts_bn9_l2, row_l2_9,
                   in_w, 1, bn9_dw_ch, 3, 3, 1, s9_2, 0)
             act_bn9_12_cons.release(1)
             act_bn9_23_prod.release(1)
 
             row_l2_9 = act_bn9_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
-            f9_skip(row_l2_9, wts_buf, row_out, rows_bn9_in[0],
+            f9_skip(row_l2_9, wts_bn9_l3, row_out, rows_bn9_in[0],
                     in_w, bn9_dw_ch, bn9_out_c, s9_3, s9_add)
             act_bn9_23_cons.release(1)
             act_bn8_bn9_cons.release(1)
@@ -1612,7 +1661,7 @@ def regular_bottlenecks(
         # post-amble 0: last row of bn8
         rows_l1 = act_bn8_12_cons.acquire(2)
         row_l2 = act_bn8_23_prod.acquire(1)
-        f8_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_buf, row_l2,
+        f8_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_bn8_l2, row_l2,
               in_w, 1, bn8_dw_ch, 3, 3, 2, s8_2, 0)
         act_bn8_12_cons.release(2)
         act_bn8_23_prod.release(1)
@@ -1620,7 +1669,7 @@ def regular_bottlenecks(
         row_in = act_in_fifo.acquire(1)
         row_l2 = act_bn8_23_cons.acquire(1)
         row_bn8_out = act_bn8_bn9_prod.acquire(1)
-        f8_skip(row_l2, wts_buf, row_bn8_out, row_in,
+        f8_skip(row_l2, wts_bn8_l3, row_bn8_out, row_in,
                 in_w, bn8_dw_ch, bn8_out_c, s8_3, s8_add)
         act_in_fifo.release(1)
         act_bn8_23_cons.release(1)
@@ -1628,19 +1677,19 @@ def regular_bottlenecks(
 
         rows_bn9_in = act_bn8_bn9_cons.acquire(2)
         row_l1_9 = act_bn9_12_prod.acquire(1)
-        f9_1x1_relu(rows_bn9_in[1], wts_buf, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
+        f9_1x1_relu(rows_bn9_in[1], wts_bn9_l1, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
         act_bn9_12_prod.release(1)
 
         rows_l1_9 = act_bn9_12_cons.acquire(3)
         row_l2_9 = act_bn9_23_prod.acquire(1)
-        f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[2], wts_buf, row_l2_9,
+        f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[2], wts_bn9_l2, row_l2_9,
               in_w, 1, bn9_dw_ch, 3, 3, 1, s9_2, 0)
         act_bn9_12_cons.release(1)
         act_bn9_23_prod.release(1)
 
         row_l2_9 = act_bn9_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f9_skip(row_l2_9, wts_buf, row_out, rows_bn9_in[0],
+        f9_skip(row_l2_9, wts_bn9_l3, row_out, rows_bn9_in[0],
                 in_w, bn9_dw_ch, bn9_out_c, s9_3, s9_add)
         act_bn9_23_cons.release(1)
         act_bn8_bn9_cons.release(1)
@@ -1649,7 +1698,7 @@ def regular_bottlenecks(
         # post-amble 1: last row of bn9
         rows_l1_9 = act_bn9_12_cons.acquire(2)
         row_l2_9 = act_bn9_23_prod.acquire(1)
-        f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[1], wts_buf, row_l2_9,
+        f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[1], wts_bn9_l2, row_l2_9,
               in_w, 1, bn9_dw_ch, 3, 3, 2, s9_2, 0)
         act_bn9_12_cons.release(2)
         act_bn9_23_prod.release(1)
@@ -1657,7 +1706,7 @@ def regular_bottlenecks(
         row_bn9_skip = act_bn8_bn9_cons.acquire(1)
         row_l2_9 = act_bn9_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
-        f9_skip(row_l2_9, wts_buf, row_out, row_bn9_skip,
+        f9_skip(row_l2_9, wts_bn9_l3, row_out, row_bn9_skip,
                 in_w, bn9_dw_ch, bn9_out_c, s9_3, s9_add)
         act_bn9_23_cons.release(1)
         act_bn8_bn9_cons.release(1)
