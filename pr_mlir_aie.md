@@ -1,0 +1,5 @@
+# runtime-and-tensor-improvements: Runtime cache correctness and tensor torch interop
+
+Fixes two resource leaks in `CachedXRTRuntime` where `del local_var` (instead of `del entry["key"]`) left `pyxrt.hw_context` slots and instruction buffer objects alive after eviction. Also caches `pyxrt.kernel` objects per context entry so they are not reconstructed on every `load()` call. Adds a new `Tensor.torch_view()` API for zero-copy torch access on write paths without triggering a device sync, and replaces the old bfloat16-only `frombuffer` conversion with `_array_to_torch` — a unified zero-copy path covering all dtypes and array ranks including float8 variants.
+
+Tests cover: weakref-verified release of `hw_context`, `insts_bo`, and `pyxrt.kernel` on eviction and cleanup; exception-safety of the load path (failed load evicts new contexts, preserves cached ones with live handles); kernel cache identity across repeated `load()` calls; and `torch_view()` / `_array_to_torch` correctness for dtype, shape, zero-copy semantics, and NPU round-trip.

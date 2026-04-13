@@ -58,7 +58,7 @@ _l1_split_wts_sz = (_InC // _InputSplit) * (_L1_OutC // _OutputSplit)   # 40*480
 # L2 DW weight:     3 * 3 * L1_OutC (full depthwise filter)
 _l2_wts_sz = 3 * 3 * _L1_OutC * 1                                        # 8640
 # L3 split weight per tile:  (L1_OutC // InputSplit) * (L3_OutC // OutputSplit2)
-_l3_split_wts_sz = (_L1_OutC // _InputSplit) * (_L3_OutC // _OutputSplit2)  # 480*40 = 19200
+_l3_split_wts_sz = (_L1_OutC // _InputSplit) * _L3_OutC  # 480*80 = 38400 (split by InputSplit only)
 
 # ---------------------------------------------------------------------------
 # Type aliases

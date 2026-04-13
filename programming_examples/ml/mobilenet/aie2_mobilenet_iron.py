@@ -307,19 +307,25 @@ def mobilenet_iron():
          _i32(), _i32(), _i32(), _i32(), _i32(), _i32()],
     )
 
-    def post_l1_fn(act_in, act_out, wts, k, inW, inH, inC, outC, sf):
-        # Accumulate all rows then produce one output row
-        rows = act_in.acquire(inH)
-        row_out = act_out.acquire(1)
-        k(rows[0], wts, row_out, inW, inH, inC, outC, outC, sf)
-        act_in.release(inH)
+    # post-L1: depth=2 matches original act_in_C_post fifo
+    # Worker processes one row at a time in a loop (not all rows at once)
+    PostOutputSplit = 8   # from original postBlock: split output channels
+
+    def post_l1_fn(act_in, act_out, wts, k, inW, inH, inC, outC, outC_padd, sf):
+        # One full output frame: acquire output, loop over rows
+        elem_out = act_out.acquire(1)
+        for _ in range_(inH):
+            elem_in = act_in.acquire(1)
+            for wi in range_(PostOutputSplit):
+                k(elem_in, wts, elem_out, inW, inC, outC, outC_padd, sf, 0)
+            act_in.release(1)
         act_out.release(1)
 
     w_post_l1 = Worker(
         post_l1_fn,
         fn_args=[
             act_bn14_out.cons(), act_post_l1_out.prod(), post_l1_wts, k_post_l1,
-            post_L1_InW, post_L1_InH, post_L1_InC, post_L2_InC, post_sf,
+            post_L1_InW, post_L1_InH, post_L1_InC, post_L2_InC, post_L2_InC, post_sf,
         ],
     )
 
@@ -351,11 +357,13 @@ def mobilenet_iron():
         names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
     )
 
+    # FC1 + FC2 weights concatenated per tile
+    fc_wts_per_tile = 2 * post_L2_InC * fc_out_per_tile  # 2 * 1280 * 320 = 819200
     k_post_l2 = Kernel(
         "post_conv2dk1_i8_ui8",
         "post_conv2dk1.o",
         [_i8((1, 1, post_L2_InC)),
-         _i8((1,)),
+         _i8((fc_wts_per_tile,)),
          _u8((fc_out_per_tile,)),
          _i32(), _i32(), _i32(), _i32(), _i32()],
     )

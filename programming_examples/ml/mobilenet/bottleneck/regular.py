@@ -187,7 +187,7 @@ def regular_bottlenecks(
 
     bn0_conv2dk3_dw = Kernel(
         "bn0_conv2dk3_dw_stride1_relu_ui8_ui8",
-        os.path.join(data_dir, "bn0_conv2dk3_dw_stride1.o"),
+        "bn0_conv2dk3_dw_stride1.o",
         [
             bn0_dw_ty_in,
             bn0_dw_ty_in,
@@ -206,7 +206,7 @@ def regular_bottlenecks(
     )
     bn0_conv2dk1_skip = Kernel(
         "bn0_conv2dk1_skip_ui8_ui8_i8",
-        os.path.join(data_dir, "bn0_conv2dk1_skipui8.o"),
+        "bn0_conv2dk1_skipui8.o",
         [
             bn0_dw_ty_out,
             bn0_skip_wts_ty,
@@ -226,10 +226,19 @@ def regular_bottlenecks(
         depth=2
     )
 
+    # Internal self-loop fifo for bn0: DW output row → 1x1 input row (same tile)
+    bn0_act_2_3 = ObjectFifo(
+        np.ndarray[(_BN0_IN_W, 1, _BN0_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn0_act_2_3",
+    )
+
     def bn0_worker_fn(
         act_in_fifo,
         wts_buf,
         act_out_fifo,
+        act_23_prod,   # bn0_act_2_3.prod()
+        act_23_cons,   # bn0_act_2_3.cons()
         f_dw,
         f_skip,
         in_w,
@@ -241,58 +250,49 @@ def regular_bottlenecks(
         scale3,
         scale_add,
     ):
-        dw_wts_size = 3 * 3 * dw_c * 1
-        skip_wts_size = 1 * 1 * dw_c * out_c
-
-        # Intermediate local fifo (logically: produce one row at a time)
-        act_2_3 = ObjectFifo(
-            np.ndarray[(in_w, 1, dw_c), np.dtype[np.uint8]],
-            depth=1
-        )
-
         # pre-amble: top row
         rows_in = act_in_fifo.acquire(2)
-        row_out = act_2_3.acquire(1)
+        row_out = act_23_prod.acquire(1)
         f_dw(rows_in[0], rows_in[0], rows_in[1], wts_buf, row_out,
              in_w, 1, dw_c, 3, 3, 0, scale2, 0)
-        act_2_3.release(1)
+        act_23_prod.release(1)
 
-        row_dw = act_2_3.acquire(1)
+        row_dw = act_23_cons.acquire(1)
         row_final = act_out_fifo.acquire(1)
         f_skip(row_dw, wts_buf, row_final, rows_in[0],
                in_w, dw_c, out_c, scale3, scale_add)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
         # middle rows
         for _ in range_(in_h - 2):
             rows_in = act_in_fifo.acquire(3)
-            row_out = act_2_3.acquire(1)
+            row_out = act_23_prod.acquire(1)
             f_dw(rows_in[0], rows_in[1], rows_in[2], wts_buf, row_out,
                  in_w, 1, dw_c, 3, 3, 1, scale2, 0)
-            act_2_3.release(1)
+            act_23_prod.release(1)
 
-            row_dw = act_2_3.acquire(1)
+            row_dw = act_23_cons.acquire(1)
             row_final = act_out_fifo.acquire(1)
             f_skip(row_dw, wts_buf, row_final, rows_in[1],
                    in_w, dw_c, out_c, scale3, scale_add)
             act_in_fifo.release(1)
-            act_2_3.release(1)
+            act_23_cons.release(1)
             act_out_fifo.release(1)
 
         # last row
         rows_in = act_in_fifo.acquire(2)
-        row_out = act_2_3.acquire(1)
+        row_out = act_23_prod.acquire(1)
         f_dw(rows_in[0], rows_in[1], rows_in[1], wts_buf, row_out,
              in_w, 1, dw_c, 3, 3, 2, scale2, 0)
-        act_2_3.release(1)
+        act_23_prod.release(1)
 
-        row_dw = act_2_3.acquire(1)
+        row_dw = act_23_cons.acquire(1)
         row_final = act_out_fifo.acquire(1)
         f_skip(row_dw, wts_buf, row_final, rows_in[1],
                in_w, dw_c, out_c, scale3, scale_add)
         act_in_fifo.release(2)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
     bn0_worker = Worker(
@@ -301,6 +301,8 @@ def regular_bottlenecks(
             act_in.cons(),
             bn0_wts,
             act_bn0_bn1.prod(),
+            bn0_act_2_3.prod(),   # self-loop: same Worker is prod and cons
+            bn0_act_2_3.cons(),
             bn0_conv2dk3_dw,
             bn0_conv2dk1_skip,
             _BN0_IN_W,
@@ -344,25 +346,25 @@ def regular_bottlenecks(
 
     bn1_conv2dk1_relu = Kernel(
         "bn1_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn1_conv2dk1_fused_relu.o"),
+        "bn1_conv2dk1_fused_relu.o",
         [bn1_l1_in_ty, bn1_l1_wts_ty, bn1_l1_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
     bn1_conv2dk3_dw_stride2 = Kernel(
         "bn1_conv2dk3_dw_stride2_relu_ui8_ui8",
-        os.path.join(data_dir, "bn1_conv2dk3_dw_stride2.o"),
+        "bn1_conv2dk3_dw_stride2.o",
         [bn1_l1_out_ty, bn1_l1_out_ty, bn1_l1_out_ty, bn1_l2_wts_ty, bn1_l2_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn1_conv2dk3_dw_stride1 = Kernel(
         "bn1_conv2dk3_dw_stride1_relu_ui8_ui8",
-        os.path.join(data_dir, "bn1_conv2dk3_dw_stride1.o"),
+        "bn1_conv2dk3_dw_stride1.o",
         [bn1_l1_out_ty, bn1_l1_out_ty, bn1_l1_out_ty, bn1_l2_wts_ty, bn1_l2_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn1_conv2dk1 = Kernel(
         "bn1_conv2dk1_ui8_i8",
-        os.path.join(data_dir, "bn1_conv2dk1_i8.o"),
+        "bn1_conv2dk1_i8.o",
         [bn1_l2_out_ty, bn1_l3_wts_ty, bn1_l3_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
@@ -372,10 +374,25 @@ def regular_bottlenecks(
         depth=2
     )
 
+    bn1_act_1_2 = ObjectFifo(
+        np.ndarray[(_BN1_IN_W, 1, _BN1_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn1_act_1_2",
+    )
+    bn1_act_2_3 = ObjectFifo(
+        np.ndarray[(_BN1_OUT_W, 1, _BN1_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn1_act_2_3",
+    )
+
     def bn1_worker_fn(
         act_in_fifo,
         wts_buf,
         act_out_fifo,
+        act_12_prod,
+        act_12_cons,
+        act_23_prod,
+        act_23_cons,
         f_1x1_relu,
         f_dw_stride2,
         f_1x1,
@@ -391,56 +408,47 @@ def regular_bottlenecks(
         out_w = in_w // 2
         out_h = in_h // 2
 
-        act_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_2_3 = ObjectFifo(
-            np.ndarray[(out_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-
         # pre-amble: acquire 2 input rows, produce 2 L1 rows
         rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_1_2.acquire(2)
+        rows_l1 = act_12_prod.acquire(2)
         f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
         f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_1_2.release(2)
+        act_12_prod.release(2)
         act_in_fifo.release(2)
 
-        rows_l1 = act_1_2.acquire(2)
-        row_l2 = act_2_3.acquire(1)
+        rows_l1 = act_12_cons.acquire(2)
+        row_l2 = act_23_prod.acquire(1)
         f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
                      in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
-        act_1_2.release(1)
-        act_2_3.release(1)
+        act_12_cons.release(1)
+        act_23_prod.release(1)
 
-        row_l2 = act_2_3.acquire(1)
+        row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
         # middle
         for _ in range_(out_h - 1):
             rows_in = act_in_fifo.acquire(2)
-            rows_l1 = act_1_2.acquire(2)
+            rows_l1 = act_12_prod.acquire(2)
             f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
             f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
-            act_1_2.release(2)
+            act_12_prod.release(2)
             act_in_fifo.release(2)
 
-            rows_l1 = act_1_2.acquire(3)
-            row_l2 = act_2_3.acquire(1)
+            rows_l1 = act_12_cons.acquire(3)
+            row_l2 = act_23_prod.acquire(1)
             f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
                          in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
-            act_1_2.release(2)
-            act_2_3.release(1)
+            act_12_cons.release(2)
+            act_23_prod.release(1)
 
-            row_l2 = act_2_3.acquire(1)
+            row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
             f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
-            act_2_3.release(1)
+            act_23_cons.release(1)
             act_out_fifo.release(1)
 
     bn1_worker = Worker(
@@ -449,6 +457,10 @@ def regular_bottlenecks(
             act_bn0_bn1.cons(),
             bn1_wts,
             act_bn1_bn2.prod(),
+            bn1_act_1_2.prod(),
+            bn1_act_1_2.cons(),
+            bn1_act_2_3.prod(),
+            bn1_act_2_3.cons(),
             bn1_conv2dk1_relu,
             bn1_conv2dk3_dw_stride2,
             bn1_conv2dk1,
@@ -493,19 +505,19 @@ def regular_bottlenecks(
 
     bn2_conv2dk1_relu = Kernel(
         "bn2_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn2_conv2dk1_fused_relu.o"),
+        "bn2_conv2dk1_fused_relu.o",
         [bn2_l1_in_ty, bn2_l1_wts_ty, bn2_l1_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
     bn2_conv2dk3_dw_stride1 = Kernel(
         "bn2_conv2dk3_dw_stride1_relu_ui8_ui8",
-        os.path.join(data_dir, "bn2_conv2dk3_dw_stride1.o"),
+        "bn2_conv2dk3_dw_stride1.o",
         [bn2_l1_out_ty, bn2_l1_out_ty, bn2_l1_out_ty, bn2_l2_wts_ty, bn2_l2_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn2_conv2dk1_skip = Kernel(
         "bn2_conv2dk1_skip_ui8_i8_i8",
-        os.path.join(data_dir, "bn2_conv2dk1_skip.o"),
+        "bn2_conv2dk1_skip.o",
         [bn2_l2_out_ty, bn2_l3_wts_ty, bn2_l3_out_ty, bn2_l3_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32],
     )
@@ -515,10 +527,25 @@ def regular_bottlenecks(
         depth=2
     )
 
+    bn2_act_1_2 = ObjectFifo(
+        np.ndarray[(_BN2_IN_W, 1, _BN2_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn2_act_1_2",
+    )
+    bn2_act_2_3 = ObjectFifo(
+        np.ndarray[(_BN2_OUT_W, 1, _BN2_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn2_act_2_3",
+    )
+
     def bn2_worker_fn(
         act_in_fifo,
         wts_buf,
         act_out_fifo,
+        act_12_prod,
+        act_12_cons,
+        act_23_prod,
+        act_23_cons,
         f_1x1_relu,
         f_dw,
         f_1x1_skip,
@@ -532,73 +559,64 @@ def regular_bottlenecks(
         scale3,
         scale_add,
     ):
-        act_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_2_3 = ObjectFifo(
-            np.ndarray[(in_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-
         # pre-amble: 2 rows
         rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_1_2.acquire(2)
+        rows_l1 = act_12_prod.acquire(2)
         f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
         f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_1_2.release(2)
+        act_12_prod.release(2)
 
-        rows_l1 = act_1_2.acquire(2)
-        row_l2 = act_2_3.acquire(1)
+        rows_l1 = act_12_cons.acquire(2)
+        row_l2 = act_23_prod.acquire(1)
         f_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
              in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
-        act_2_3.release(1)
+        act_23_prod.release(1)
 
-        row_l2 = act_2_3.acquire(1)
+        row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f_1x1_skip(row_l2, wts_buf, row_out, rows_in[0],
                    in_w, dw_ch, out_c, scale3, scale_add)
         act_in_fifo.release(2)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
         # middle
         for _ in range_(in_h - 2):
             rows_in = act_in_fifo.acquire(2)
-            row_l1 = act_1_2.acquire(1)
+            row_l1 = act_12_prod.acquire(1)
             f_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, dw_ch, scale1)
-            act_1_2.release(1)
+            act_12_prod.release(1)
 
-            rows_l1 = act_1_2.acquire(3)
-            row_l2 = act_2_3.acquire(1)
+            rows_l1 = act_12_cons.acquire(3)
+            row_l2 = act_23_prod.acquire(1)
             f_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
                  in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
-            act_1_2.release(1)
-            act_2_3.release(1)
+            act_12_cons.release(1)
+            act_23_prod.release(1)
 
-            row_l2 = act_2_3.acquire(1)
+            row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
             f_1x1_skip(row_l2, wts_buf, row_out, rows_in[0],
                        in_w, dw_ch, out_c, scale3, scale_add)
             act_in_fifo.release(2)
-            act_2_3.release(1)
+            act_23_cons.release(1)
             act_out_fifo.release(1)
 
         # last row
-        rows_l1 = act_1_2.acquire(2)
-        row_l2 = act_2_3.acquire(1)
+        rows_l1 = act_12_cons.acquire(2)
+        row_l2 = act_23_prod.acquire(1)
         f_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_buf, row_l2,
              in_w, 1, dw_ch, 3, 3, 2, scale2, 0)
-        act_1_2.release(2)
-        act_2_3.release(1)
+        act_12_cons.release(2)
+        act_23_prod.release(1)
 
         row_in = act_in_fifo.acquire(1)
-        row_l2 = act_2_3.acquire(1)
+        row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f_1x1_skip(row_l2, wts_buf, row_out, row_in,
                    in_w, dw_ch, out_c, scale3, scale_add)
         act_in_fifo.release(1)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
     bn2_worker = Worker(
@@ -607,6 +625,10 @@ def regular_bottlenecks(
             act_bn1_bn2.cons(),
             bn2_wts,
             act_bn2_bn3.prod(),
+            bn2_act_1_2.prod(),
+            bn2_act_1_2.cons(),
+            bn2_act_2_3.prod(),
+            bn2_act_2_3.cons(),
             bn2_conv2dk1_relu,
             bn2_conv2dk3_dw_stride1,
             bn2_conv2dk1_skip,
@@ -652,19 +674,19 @@ def regular_bottlenecks(
 
     bn3_conv2dk1_relu = Kernel(
         "bn3_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn3_conv2dk1_fused_relu.o"),
+        "bn3_conv2dk1_fused_relu.o",
         [bn3_l1_in_ty, bn3_l1_wts_ty, bn3_l1_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
     bn3_conv2dk3_dw_stride2 = Kernel(
         "bn3_conv2dk3_dw_stride2_relu_ui8_ui8",
-        os.path.join(data_dir, "bn3_conv2dk3_dw_stride2.o"),
+        "bn3_conv2dk3_dw_stride2.o",
         [bn3_l1_out_ty, bn3_l1_out_ty, bn3_l1_out_ty, bn3_l2_wts_ty, bn3_l2_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn3_conv2dk1 = Kernel(
         "bn3_conv2dk1_ui8_i8",
-        os.path.join(data_dir, "bn3_conv2dk1_i8.o"),
+        "bn3_conv2dk1_i8.o",
         [bn3_l2_out_ty, bn3_l3_wts_ty, bn3_l3_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
@@ -674,10 +696,25 @@ def regular_bottlenecks(
         depth=2
     )
 
+    bn3_act_1_2 = ObjectFifo(
+        np.ndarray[(_BN3_IN_W, 1, _BN3_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn3_act_1_2",
+    )
+    bn3_act_2_3 = ObjectFifo(
+        np.ndarray[(_BN3_OUT_W, 1, _BN3_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn3_act_2_3",
+    )
+
     def bn3_worker_fn(
         act_in_fifo,
         wts_buf,
         act_out_fifo,
+        act_12_prod,
+        act_12_cons,
+        act_23_prod,
+        act_23_cons,
         f_1x1_relu,
         f_dw_stride2,
         f_1x1,
@@ -693,56 +730,47 @@ def regular_bottlenecks(
         out_w = in_w // 2
         out_h = in_h // 2
 
-        act_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_2_3 = ObjectFifo(
-            np.ndarray[(out_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-
         # pre-amble
         rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_1_2.acquire(2)
+        rows_l1 = act_12_prod.acquire(2)
         f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
         f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_1_2.release(2)
+        act_12_prod.release(2)
         act_in_fifo.release(2)
 
-        rows_l1 = act_1_2.acquire(2)
-        row_l2 = act_2_3.acquire(1)
+        rows_l1 = act_12_cons.acquire(2)
+        row_l2 = act_23_prod.acquire(1)
         f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
                      in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
-        act_1_2.release(1)
-        act_2_3.release(1)
+        act_12_cons.release(1)
+        act_23_prod.release(1)
 
-        row_l2 = act_2_3.acquire(1)
+        row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
         # middle
         for _ in range_(out_h - 1):
             rows_in = act_in_fifo.acquire(2)
-            rows_l1 = act_1_2.acquire(2)
+            rows_l1 = act_12_prod.acquire(2)
             f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
             f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
-            act_1_2.release(2)
+            act_12_prod.release(2)
             act_in_fifo.release(2)
 
-            rows_l1 = act_1_2.acquire(3)
-            row_l2 = act_2_3.acquire(1)
+            rows_l1 = act_12_cons.acquire(3)
+            row_l2 = act_23_prod.acquire(1)
             f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
                          in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
-            act_1_2.release(2)
-            act_2_3.release(1)
+            act_12_cons.release(2)
+            act_23_prod.release(1)
 
-            row_l2 = act_2_3.acquire(1)
+            row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
             f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
-            act_2_3.release(1)
+            act_23_cons.release(1)
             act_out_fifo.release(1)
 
     bn3_worker = Worker(
@@ -751,6 +779,10 @@ def regular_bottlenecks(
             act_bn2_bn3.cons(),
             bn3_wts,
             act_bn3_bn4.prod(),
+            bn3_act_1_2.prod(),
+            bn3_act_1_2.cons(),
+            bn3_act_2_3.prod(),
+            bn3_act_2_3.cons(),
             bn3_conv2dk1_relu,
             bn3_conv2dk3_dw_stride2,
             bn3_conv2dk1,
@@ -800,25 +832,25 @@ def regular_bottlenecks(
 
     bn4_conv2dk1_relu = Kernel(
         "bn4_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn4_conv2dk1_fused_relu.o"),
+        "bn4_conv2dk1_fused_relu.o",
         [bn4_l1_in_ty, bn4_l1_wts_ty, bn4_l1_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
     bn4_conv2dk3_dw_stride1 = Kernel(
         "bn4_conv2dk3_dw_stride1_relu_ui8_ui8",
-        os.path.join(data_dir, "bn4_conv2dk3_dw_stride1.o"),
+        "bn4_conv2dk3_dw_stride1.o",
         [bn4_l1_out_ty, bn4_l1_out_ty, bn4_l1_out_ty, bn4_l2_wts_ty, bn4_l2_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn4_conv2dk1_skip = Kernel(
         "bn4_conv2dk1_skip_ui8_i8_i8",
-        os.path.join(data_dir, "bn4_conv2dk1_skip.o"),
+        "bn4_conv2dk1_skip.o",
         [bn4_l2_out_ty, bn4_l3_wts_ty, bn4_l3_out_ty, bn4_l3_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn5_conv2dk1_relu = Kernel(
         "bn5_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn5_conv2dk1_fused_relu.o"),
+        "bn5_conv2dk1_fused_relu.o",
         [bn4_l3_out_ty,
          np.ndarray[(_bn5_l1_wts,), np.dtype[np.int8]],
          bn5_l1_out_ty,
@@ -826,7 +858,7 @@ def regular_bottlenecks(
     )
     bn5_conv2dk3_dw_stride1 = Kernel(
         "bn5_conv2dk3_dw_stride1_relu_ui8_ui8",
-        os.path.join(data_dir, "bn5_conv2dk3_dw_stride1.o"),
+        "bn5_conv2dk3_dw_stride1.o",
         [bn5_l1_out_ty, bn5_l1_out_ty, bn5_l1_out_ty,
          np.ndarray[(_bn5_l2_wts,), np.dtype[np.int8]],
          bn5_l2_out_ty,
@@ -834,7 +866,7 @@ def regular_bottlenecks(
     )
     bn5_conv2dk1_skip = Kernel(
         "bn5_conv2dk1_skip_ui8_i8_i8",
-        os.path.join(data_dir, "bn5_conv2dk1_skip.o"),
+        "bn5_conv2dk1_skip.o",
         [bn5_l2_out_ty,
          np.ndarray[(_bn5_l3_wts,), np.dtype[np.int8]],
          np.ndarray[(_BN45_OUT_W, 1, _BN5_OUT_C), np.dtype[np.int8]],
@@ -847,10 +879,46 @@ def regular_bottlenecks(
         depth=2
     )
 
+    bn45_act_bn4_1_2 = ObjectFifo(
+        np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn45_act_bn4_1_2",
+    )
+    bn45_act_bn4_2_3 = ObjectFifo(
+        np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn45_act_bn4_2_3",
+    )
+    bn45_act_bn4_bn5 = ObjectFifo(
+        np.ndarray[(_BN45_IN_W, 1, _BN4_OUT_C), np.dtype[np.int8]],
+        depth=2,
+        name="bn45_act_bn4_bn5",
+    )
+    bn45_act_bn5_1_2 = ObjectFifo(
+        np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn45_act_bn5_1_2",
+    )
+    bn45_act_bn5_2_3 = ObjectFifo(
+        np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn45_act_bn5_2_3",
+    )
+
     def bn45_worker_fn(
         act_in_fifo,
         wts_buf,
         act_out_fifo,
+        act_bn4_12_prod,
+        act_bn4_12_cons,
+        act_bn4_23_prod,
+        act_bn4_23_cons,
+        act_bn4_bn5_prod,
+        act_bn4_bn5_cons,
+        act_bn5_12_prod,
+        act_bn5_12_cons,
+        act_bn5_23_prod,
+        act_bn5_23_cons,
         f4_1x1_relu,
         f4_dw,
         f4_skip,
@@ -867,97 +935,75 @@ def regular_bottlenecks(
         s4_1, s4_2, s4_3, s4_add,
         s5_1, s5_2, s5_3, s5_add,
     ):
-        # Intermediate fifos for bn4
-        act_bn4_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn4_dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_bn4_2_3 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn4_dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-        act_bn4_bn5 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn4_out_c), np.dtype[np.int8]],
-            depth=2
-        )
-        act_bn9_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn5_dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_bn9_2_3 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn5_dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-
         # This is a complex fused pipeline - stub body to make it importable
         # Full pipeline follows the same pattern as bn8+bn9 in aie2_bottleneckA_subblock_fused2Static.py
         # pre-amble: 2 rows of bn4 L1
         rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_bn4_1_2.acquire(2)
+        rows_l1 = act_bn4_12_prod.acquire(2)
         f4_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, bn4_dw_ch, s4_1)
         f4_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, bn4_dw_ch, s4_1)
-        act_bn4_1_2.release(2)
+        act_bn4_12_prod.release(2)
 
-        rows_l1 = act_bn4_1_2.acquire(2)
-        row_l2 = act_bn4_2_3.acquire(1)
+        rows_l1 = act_bn4_12_cons.acquire(2)
+        row_l2 = act_bn4_23_prod.acquire(1)
         f4_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
               in_w, 1, bn4_dw_ch, 3, 3, 0, s4_2, 0)
-        act_bn4_2_3.release(1)
+        act_bn4_23_prod.release(1)
 
-        row_l2 = act_bn4_2_3.acquire(1)
-        row_bn4_out = act_bn4_bn5.acquire(1)
+        row_l2 = act_bn4_23_cons.acquire(1)
+        row_bn4_out = act_bn4_bn5_prod.acquire(1)
         f4_skip(row_l2, wts_buf, row_bn4_out, rows_in[0],
                 in_w, bn4_dw_ch, bn4_out_c, s4_3, s4_add)
         act_in_fifo.release(1)
-        act_bn4_2_3.release(1)
-        act_bn4_bn5.release(1)
+        act_bn4_23_cons.release(1)
+        act_bn4_bn5_prod.release(1)
 
-        row_bn5_in = act_bn4_bn5.acquire(1)
-        row_l1 = act_bn9_1_2.acquire(1)
+        row_bn5_in = act_bn4_bn5_cons.acquire(1)
+        row_l1 = act_bn5_12_prod.acquire(1)
         f5_1x1_relu(row_bn5_in, wts_buf, row_l1, in_w, bn4_out_c, bn5_dw_ch, s5_1)
-        act_bn9_1_2.release(1)
+        act_bn5_12_prod.release(1)
 
         # Continue middle and post-amble rows following the same pipeline pattern...
         # (abbreviated here - the full pipeline mirrors aie2_bottleneckA_subblock_fused2Static)
         for _ in range_(in_h - 3):
             rows_in = act_in_fifo.acquire(2)
-            row_l1 = act_bn4_1_2.acquire(1)
+            row_l1 = act_bn4_12_prod.acquire(1)
             f4_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, bn4_dw_ch, s4_1)
-            act_bn4_1_2.release(1)
+            act_bn4_12_prod.release(1)
 
-            rows_l1_4 = act_bn4_1_2.acquire(3)
-            row_l2 = act_bn4_2_3.acquire(1)
+            rows_l1_4 = act_bn4_12_cons.acquire(3)
+            row_l2 = act_bn4_23_prod.acquire(1)
             f4_dw(rows_l1_4[0], rows_l1_4[1], rows_l1_4[2], wts_buf, row_l2,
                   in_w, 1, bn4_dw_ch, 3, 3, 1, s4_2, 0)
-            act_bn4_1_2.release(1)
-            act_bn4_2_3.release(1)
+            act_bn4_12_cons.release(1)
+            act_bn4_23_prod.release(1)
 
-            row_l2 = act_bn4_2_3.acquire(1)
-            row_bn4_out = act_bn4_bn5.acquire(1)
+            row_l2 = act_bn4_23_cons.acquire(1)
+            row_bn4_out = act_bn4_bn5_prod.acquire(1)
             f4_skip(row_l2, wts_buf, row_bn4_out, rows_in[0],
                     in_w, bn4_dw_ch, bn4_out_c, s4_3, s4_add)
             act_in_fifo.release(1)
-            act_bn4_2_3.release(1)
-            act_bn4_bn5.release(1)
+            act_bn4_23_cons.release(1)
+            act_bn4_bn5_prod.release(1)
 
-            rows_bn5_in = act_bn4_bn5.acquire(2)
-            row_l1 = act_bn9_1_2.acquire(1)
+            rows_bn5_in = act_bn4_bn5_cons.acquire(2)
+            row_l1 = act_bn5_12_prod.acquire(1)
             f5_1x1_relu(rows_bn5_in[1], wts_buf, row_l1, in_w, bn4_out_c, bn5_dw_ch, s5_1)
-            act_bn9_1_2.release(1)
+            act_bn5_12_prod.release(1)
 
-            rows_l1_5 = act_bn9_1_2.acquire(3)
-            row_l2_5 = act_bn9_2_3.acquire(1)
+            rows_l1_5 = act_bn5_12_cons.acquire(3)
+            row_l2_5 = act_bn5_23_prod.acquire(1)
             f5_dw(rows_l1_5[0], rows_l1_5[1], rows_l1_5[2], wts_buf, row_l2_5,
                   in_w, 1, bn5_dw_ch, 3, 3, 1, s5_2, 0)
-            act_bn9_1_2.release(1)
-            act_bn9_2_3.release(1)
+            act_bn5_12_cons.release(1)
+            act_bn5_23_prod.release(1)
 
-            row_l2_5 = act_bn9_2_3.acquire(1)
+            row_l2_5 = act_bn5_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
             f5_skip(row_l2_5, wts_buf, row_out, rows_bn5_in[0],
                     in_w, bn5_dw_ch, bn5_out_c, s5_3, s5_add)
-            act_bn9_2_3.release(1)
-            act_bn4_bn5.release(1)
+            act_bn5_23_cons.release(1)
+            act_bn4_bn5_cons.release(1)
             act_out_fifo.release(1)
 
     bn45_worker = Worker(
@@ -966,6 +1012,16 @@ def regular_bottlenecks(
             act_bn3_bn4.cons(),
             bn45_wts,
             act_bn5_bn6.prod(),
+            bn45_act_bn4_1_2.prod(),
+            bn45_act_bn4_1_2.cons(),
+            bn45_act_bn4_2_3.prod(),
+            bn45_act_bn4_2_3.cons(),
+            bn45_act_bn4_bn5.prod(),
+            bn45_act_bn4_bn5.cons(),
+            bn45_act_bn5_1_2.prod(),
+            bn45_act_bn5_1_2.cons(),
+            bn45_act_bn5_2_3.prod(),
+            bn45_act_bn5_2_3.cons(),
             bn4_conv2dk1_relu,
             bn4_conv2dk3_dw_stride1,
             bn4_conv2dk1_skip,
@@ -1014,19 +1070,19 @@ def regular_bottlenecks(
 
     bn6_conv2dk1_relu = Kernel(
         "bn6_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn6_conv2dk1_fused_relu.o"),
+        "bn6_conv2dk1_fused_relu.o",
         [bn6_l1_in_ty, bn6_l1_wts_ty, bn6_l1_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
     bn6_conv2dk3_dw_stride2 = Kernel(
         "bn6_conv2dk3_dw_stride2_relu_ui8_ui8",
-        os.path.join(data_dir, "bn6_conv2dk3_dw_stride2.o"),
+        "bn6_conv2dk3_dw_stride2.o",
         [bn6_l1_out_ty, bn6_l1_out_ty, bn6_l1_out_ty, bn6_l2_wts_ty, bn6_l2_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn6_conv2dk1 = Kernel(
         "bn6_conv2dk1_ui8_i8",
-        os.path.join(data_dir, "bn6_conv2dk1_i8.o"),
+        "bn6_conv2dk1_i8.o",
         [bn6_l2_out_ty, bn6_l3_wts_ty, bn6_l3_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
@@ -1036,10 +1092,25 @@ def regular_bottlenecks(
         depth=2
     )
 
+    bn6_act_1_2 = ObjectFifo(
+        np.ndarray[(_BN6_IN_W, 1, _BN6_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn6_act_1_2",
+    )
+    bn6_act_2_3 = ObjectFifo(
+        np.ndarray[(_BN6_OUT_W, 1, _BN6_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn6_act_2_3",
+    )
+
     def bn6_worker_fn(
         act_in_fifo,
         wts_buf,
         act_out_fifo,
+        act_12_prod,
+        act_12_cons,
+        act_23_prod,
+        act_23_cons,
         f_1x1_relu,
         f_dw_stride2,
         f_1x1,
@@ -1055,54 +1126,45 @@ def regular_bottlenecks(
         out_w = in_w // 2
         out_h = in_h // 2
 
-        act_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_2_3 = ObjectFifo(
-            np.ndarray[(out_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-
         rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_1_2.acquire(2)
+        rows_l1 = act_12_prod.acquire(2)
         f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
         f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_1_2.release(2)
+        act_12_prod.release(2)
         act_in_fifo.release(2)
 
-        rows_l1 = act_1_2.acquire(2)
-        row_l2 = act_2_3.acquire(1)
+        rows_l1 = act_12_cons.acquire(2)
+        row_l2 = act_23_prod.acquire(1)
         f_dw_stride2(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
                      in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
-        act_1_2.release(1)
-        act_2_3.release(1)
+        act_12_cons.release(1)
+        act_23_prod.release(1)
 
-        row_l2 = act_2_3.acquire(1)
+        row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
         for _ in range_(out_h - 1):
             rows_in = act_in_fifo.acquire(2)
-            rows_l1 = act_1_2.acquire(2)
+            rows_l1 = act_12_prod.acquire(2)
             f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
             f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
-            act_1_2.release(2)
+            act_12_prod.release(2)
             act_in_fifo.release(2)
 
-            rows_l1 = act_1_2.acquire(3)
-            row_l2 = act_2_3.acquire(1)
+            rows_l1 = act_12_cons.acquire(3)
+            row_l2 = act_23_prod.acquire(1)
             f_dw_stride2(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
                          in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
-            act_1_2.release(2)
-            act_2_3.release(1)
+            act_12_cons.release(2)
+            act_23_prod.release(1)
 
-            row_l2 = act_2_3.acquire(1)
+            row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
             f_1x1(row_l2, wts_buf, row_out, out_w, dw_ch, out_c, scale3)
-            act_2_3.release(1)
+            act_23_cons.release(1)
             act_out_fifo.release(1)
 
     bn6_worker = Worker(
@@ -1111,6 +1173,10 @@ def regular_bottlenecks(
             act_bn5_bn6.cons(),
             bn6_wts,
             act_bn6_bn7.prod(),
+            bn6_act_1_2.prod(),
+            bn6_act_1_2.cons(),
+            bn6_act_2_3.prod(),
+            bn6_act_2_3.cons(),
             bn6_conv2dk1_relu,
             bn6_conv2dk3_dw_stride2,
             bn6_conv2dk1,
@@ -1155,19 +1221,19 @@ def regular_bottlenecks(
 
     bn7_conv2dk1_relu = Kernel(
         "bn7_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn7_conv2dk1_fused_relu.o"),
+        "bn7_conv2dk1_fused_relu.o",
         [bn7_l1_in_ty, bn7_l1_wts_ty, bn7_l1_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
     bn7_conv2dk3_dw_stride1 = Kernel(
         "bn7_conv2dk3_dw_stride1_relu_ui8_ui8",
-        os.path.join(data_dir, "bn7_conv2dk3_dw_stride1.o"),
+        "bn7_conv2dk3_dw_stride1.o",
         [bn7_l1_out_ty, bn7_l1_out_ty, bn7_l1_out_ty, bn7_l2_wts_ty, bn7_l2_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn7_conv2dk1_skip = Kernel(
         "bn7_conv2dk1_skip_ui8_i8_i8",
-        os.path.join(data_dir, "bn7_conv2dk1_skip.o"),
+        "bn7_conv2dk1_skip.o",
         [bn7_l2_out_ty, bn7_l3_wts_ty, bn7_l3_out_ty, bn7_l3_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32],
     )
@@ -1177,10 +1243,25 @@ def regular_bottlenecks(
         depth=2
     )
 
+    bn7_act_1_2 = ObjectFifo(
+        np.ndarray[(_BN7_IN_W, 1, _BN7_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn7_act_1_2",
+    )
+    bn7_act_2_3 = ObjectFifo(
+        np.ndarray[(_BN7_OUT_W, 1, _BN7_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn7_act_2_3",
+    )
+
     def bn7_worker_fn(
         act_in_fifo,
         wts_buf,
         act_out_fifo,
+        act_12_prod,
+        act_12_cons,
+        act_23_prod,
+        act_23_cons,
         f_1x1_relu,
         f_dw,
         f_1x1_skip,
@@ -1194,73 +1275,64 @@ def regular_bottlenecks(
         scale3,
         scale_add,
     ):
-        act_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_2_3 = ObjectFifo(
-            np.ndarray[(in_w, 1, dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-
         # pre-amble: 2 rows
         rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_1_2.acquire(2)
+        rows_l1 = act_12_prod.acquire(2)
         f_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, dw_ch, scale1)
         f_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_1_2.release(2)
+        act_12_prod.release(2)
 
-        rows_l1 = act_1_2.acquire(2)
-        row_l2 = act_2_3.acquire(1)
+        rows_l1 = act_12_cons.acquire(2)
+        row_l2 = act_23_prod.acquire(1)
         f_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
              in_w, 1, dw_ch, 3, 3, 0, scale2, 0)
-        act_2_3.release(1)
+        act_23_prod.release(1)
 
-        row_l2 = act_2_3.acquire(1)
+        row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f_1x1_skip(row_l2, wts_buf, row_out, rows_in[0],
                    in_w, dw_ch, out_c, scale3, scale_add)
         act_in_fifo.release(2)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
         # middle
         for _ in range_(in_h - 2):
             rows_in = act_in_fifo.acquire(2)
-            row_l1 = act_1_2.acquire(1)
+            row_l1 = act_12_prod.acquire(1)
             f_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, dw_ch, scale1)
-            act_1_2.release(1)
+            act_12_prod.release(1)
 
-            rows_l1 = act_1_2.acquire(3)
-            row_l2 = act_2_3.acquire(1)
+            rows_l1 = act_12_cons.acquire(3)
+            row_l2 = act_23_prod.acquire(1)
             f_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
                  in_w, 1, dw_ch, 3, 3, 1, scale2, 0)
-            act_1_2.release(1)
-            act_2_3.release(1)
+            act_12_cons.release(1)
+            act_23_prod.release(1)
 
-            row_l2 = act_2_3.acquire(1)
+            row_l2 = act_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
             f_1x1_skip(row_l2, wts_buf, row_out, rows_in[0],
                        in_w, dw_ch, out_c, scale3, scale_add)
             act_in_fifo.release(2)
-            act_2_3.release(1)
+            act_23_cons.release(1)
             act_out_fifo.release(1)
 
         # last row
-        rows_l1 = act_1_2.acquire(2)
-        row_l2 = act_2_3.acquire(1)
+        rows_l1 = act_12_cons.acquire(2)
+        row_l2 = act_23_prod.acquire(1)
         f_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_buf, row_l2,
              in_w, 1, dw_ch, 3, 3, 2, scale2, 0)
-        act_1_2.release(2)
-        act_2_3.release(1)
+        act_12_cons.release(2)
+        act_23_prod.release(1)
 
         row_in = act_in_fifo.acquire(1)
-        row_l2 = act_2_3.acquire(1)
+        row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f_1x1_skip(row_l2, wts_buf, row_out, row_in,
                    in_w, dw_ch, out_c, scale3, scale_add)
         act_in_fifo.release(1)
-        act_2_3.release(1)
+        act_23_cons.release(1)
         act_out_fifo.release(1)
 
     bn7_worker = Worker(
@@ -1269,6 +1341,10 @@ def regular_bottlenecks(
             act_bn6_bn7.cons(),
             bn7_wts,
             act_bn7_bn8.prod(),
+            bn7_act_1_2.prod(),
+            bn7_act_1_2.cons(),
+            bn7_act_2_3.prod(),
+            bn7_act_2_3.cons(),
             bn7_conv2dk1_relu,
             bn7_conv2dk3_dw_stride1,
             bn7_conv2dk1_skip,
@@ -1320,25 +1396,25 @@ def regular_bottlenecks(
 
     bn8_conv2dk1_relu = Kernel(
         "bn8_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn8_conv2dk1_fused_relu.o"),
+        "bn8_conv2dk1_fused_relu.o",
         [bn8_l1_in_ty, bn8_l1_wts_ty, bn8_l1_out_ty,
          np.int32, np.int32, np.int32, np.int32],
     )
     bn8_conv2dk3_dw_stride1 = Kernel(
         "bn8_conv2dk3_dw_stride1_relu_ui8_ui8",
-        os.path.join(data_dir, "bn8_conv2dk3_dw_stride1.o"),
+        "bn8_conv2dk3_dw_stride1.o",
         [bn8_l1_out_ty, bn8_l1_out_ty, bn8_l1_out_ty, bn8_l2_wts_ty, bn8_l2_out_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn8_conv2dk1_skip = Kernel(
         "bn8_conv2dk1_skip_ui8_i8_i8",
-        os.path.join(data_dir, "bn8_conv2dk1_skip.o"),
+        "bn8_conv2dk1_skip.o",
         [bn8_l2_out_ty, bn8_l3_wts_ty, bn8_l3_out_ty, bn8_l1_in_ty,
          np.int32, np.int32, np.int32, np.int32, np.int32],
     )
     bn9_conv2dk1_relu = Kernel(
         "bn9_conv2dk1_relu_i8_ui8",
-        os.path.join(data_dir, "bn9_conv2dk1_fused_relu.o"),
+        "bn9_conv2dk1_fused_relu.o",
         [bn8_l3_out_ty,
          np.ndarray[(_bn9_l1_wts,), np.dtype[np.int8]],
          bn9_l1_out_ty,
@@ -1346,7 +1422,7 @@ def regular_bottlenecks(
     )
     bn9_conv2dk3_dw_stride1 = Kernel(
         "bn9_conv2dk3_dw_stride1_relu_ui8_ui8",
-        os.path.join(data_dir, "bn9_conv2dk3_dw_stride1.o"),
+        "bn9_conv2dk3_dw_stride1.o",
         [bn9_l1_out_ty, bn9_l1_out_ty, bn9_l1_out_ty,
          np.ndarray[(_bn9_l2_wts,), np.dtype[np.int8]],
          bn9_l2_out_ty,
@@ -1354,7 +1430,7 @@ def regular_bottlenecks(
     )
     bn9_conv2dk1_skip = Kernel(
         "bn9_conv2dk1_skip_ui8_i8_i8",
-        os.path.join(data_dir, "bn9_conv2dk1_skip.o"),
+        "bn9_conv2dk1_skip.o",
         [bn9_l2_out_ty,
          np.ndarray[(_bn9_l3_wts,), np.dtype[np.int8]],
          bn9_l3_out_ty,
@@ -1368,10 +1444,46 @@ def regular_bottlenecks(
         depth=2
     )
 
+    bn89_act_bn8_1_2 = ObjectFifo(
+        np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn89_act_bn8_1_2",
+    )
+    bn89_act_bn8_2_3 = ObjectFifo(
+        np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn89_act_bn8_2_3",
+    )
+    bn89_act_bn8_bn9 = ObjectFifo(
+        np.ndarray[(_BN89_IN_W, 1, _BN8_OUT_C), np.dtype[np.int8]],
+        depth=2,
+        name="bn89_act_bn8_bn9",
+    )
+    bn89_act_bn9_1_2 = ObjectFifo(
+        np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
+        depth=3,
+        name="bn89_act_bn9_1_2",
+    )
+    bn89_act_bn9_2_3 = ObjectFifo(
+        np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
+        depth=1,
+        name="bn89_act_bn9_2_3",
+    )
+
     def bn89_worker_fn(
         act_in_fifo,
         wts_buf,
         act_out_fifo,
+        act_bn8_12_prod,
+        act_bn8_12_cons,
+        act_bn8_23_prod,
+        act_bn8_23_cons,
+        act_bn8_bn9_prod,
+        act_bn8_bn9_cons,
+        act_bn9_12_prod,
+        act_bn9_12_cons,
+        act_bn9_23_prod,
+        act_bn9_23_cons,
         f8_1x1_relu,
         f8_dw,
         f8_skip,
@@ -1388,189 +1500,167 @@ def regular_bottlenecks(
         s8_1, s8_2, s8_3, s8_add,
         s9_1, s9_2, s9_3, s9_add,
     ):
-        # Intermediate fifos matching aie2_bottleneckA_subblock_fused2Static.py
-        act_bn8_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn8_dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_bn8_2_3 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn8_dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-        act_bn8_bn9 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn8_out_c), np.dtype[np.int8]],
-            depth=2
-        )
-        act_bn9_1_2 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn9_dw_ch), np.dtype[np.uint8]],
-            depth=3
-        )
-        act_bn9_2_3 = ObjectFifo(
-            np.ndarray[(in_w, 1, bn9_dw_ch), np.dtype[np.uint8]],
-            depth=1
-        )
-
         # pre-amble 0: 2 rows of bn8 L1, row 0 of bn8 L2, row 0 of bn8 L3, row 0 of bn9 L1
         rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_bn8_1_2.acquire(2)
+        rows_l1 = act_bn8_12_prod.acquire(2)
         f8_1x1_relu(rows_in[0], wts_buf, rows_l1[0], in_w, in_c, bn8_dw_ch, s8_1)
         f8_1x1_relu(rows_in[1], wts_buf, rows_l1[1], in_w, in_c, bn8_dw_ch, s8_1)
-        act_bn8_1_2.release(2)
+        act_bn8_12_prod.release(2)
 
-        rows_l1 = act_bn8_1_2.acquire(2)
-        row_l2 = act_bn8_2_3.acquire(1)
+        rows_l1 = act_bn8_12_cons.acquire(2)
+        row_l2 = act_bn8_23_prod.acquire(1)
         f8_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_buf, row_l2,
               in_w, 1, bn8_dw_ch, 3, 3, 0, s8_2, 0)
-        act_bn8_2_3.release(1)
+        act_bn8_23_prod.release(1)
 
-        row_l2 = act_bn8_2_3.acquire(1)
-        row_bn8_out = act_bn8_bn9.acquire(1)
+        row_l2 = act_bn8_23_cons.acquire(1)
+        row_bn8_out = act_bn8_bn9_prod.acquire(1)
         f8_skip(row_l2, wts_buf, row_bn8_out, rows_in[0],
                 in_w, bn8_dw_ch, bn8_out_c, s8_3, s8_add)
         act_in_fifo.release(1)
-        act_bn8_2_3.release(1)
-        act_bn8_bn9.release(1)
+        act_bn8_23_cons.release(1)
+        act_bn8_bn9_prod.release(1)
 
-        row_bn9_in = act_bn8_bn9.acquire(1)
-        row_l1_9 = act_bn9_1_2.acquire(1)
+        row_bn9_in = act_bn8_bn9_cons.acquire(1)
+        row_l1_9 = act_bn9_12_prod.acquire(1)
         f9_1x1_relu(row_bn9_in, wts_buf, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
-        act_bn9_1_2.release(1)
+        act_bn9_12_prod.release(1)
 
         # pre-amble 1: row 2 of bn8 L1, row 1 of bn8 L2, row 1 of bn8 L3,
         #              row 1 of bn9 L1, row 0 of bn9 L2
         rows_in = act_in_fifo.acquire(2)
-        row_l1 = act_bn8_1_2.acquire(1)
+        row_l1 = act_bn8_12_prod.acquire(1)
         f8_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, bn8_dw_ch, s8_1)
-        act_bn8_1_2.release(1)
+        act_bn8_12_prod.release(1)
 
-        rows_l1 = act_bn8_1_2.acquire(3)
-        row_l2 = act_bn8_2_3.acquire(1)
+        rows_l1 = act_bn8_12_cons.acquire(3)
+        row_l2 = act_bn8_23_prod.acquire(1)
         f8_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
               in_w, 1, bn8_dw_ch, 3, 3, 1, s8_2, 0)
-        act_bn8_1_2.release(1)
-        act_bn8_2_3.release(1)
+        act_bn8_12_cons.release(1)
+        act_bn8_23_prod.release(1)
 
-        row_l2 = act_bn8_2_3.acquire(1)
-        row_bn8_out = act_bn8_bn9.acquire(1)
+        row_l2 = act_bn8_23_cons.acquire(1)
+        row_bn8_out = act_bn8_bn9_prod.acquire(1)
         f8_skip(row_l2, wts_buf, row_bn8_out, rows_in[0],
                 in_w, bn8_dw_ch, bn8_out_c, s8_3, s8_add)
         act_in_fifo.release(1)
-        act_bn8_2_3.release(1)
-        act_bn8_bn9.release(1)
+        act_bn8_23_cons.release(1)
+        act_bn8_bn9_prod.release(1)
 
-        rows_bn9_in = act_bn8_bn9.acquire(2)
-        row_l1_9 = act_bn9_1_2.acquire(1)
+        rows_bn9_in = act_bn8_bn9_cons.acquire(2)
+        row_l1_9 = act_bn9_12_prod.acquire(1)
         f9_1x1_relu(rows_bn9_in[1], wts_buf, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
-        act_bn9_1_2.release(1)
+        act_bn9_12_prod.release(1)
 
-        rows_l1_9 = act_bn9_1_2.acquire(2)
-        row_l2_9 = act_bn9_2_3.acquire(1)
+        rows_l1_9 = act_bn9_12_cons.acquire(2)
+        row_l2_9 = act_bn9_23_prod.acquire(1)
         f9_dw(rows_l1_9[0], rows_l1_9[0], rows_l1_9[1], wts_buf, row_l2_9,
               in_w, 1, bn9_dw_ch, 3, 3, 0, s9_2, 0)
-        act_bn9_2_3.release(1)
+        act_bn9_23_prod.release(1)
 
-        row_l2_9 = act_bn9_2_3.acquire(1)
+        row_l2_9 = act_bn9_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f9_skip(row_l2_9, wts_buf, row_out, rows_bn9_in[0],
                 in_w, bn9_dw_ch, bn9_out_c, s9_3, s9_add)
-        act_bn9_2_3.release(1)
-        act_bn8_bn9.release(1)
+        act_bn9_23_cons.release(1)
+        act_bn8_bn9_cons.release(1)
         act_out_fifo.release(1)
 
         # middle
         for _ in range_(in_h - 3):
             rows_in = act_in_fifo.acquire(2)
-            row_l1 = act_bn8_1_2.acquire(1)
+            row_l1 = act_bn8_12_prod.acquire(1)
             f8_1x1_relu(rows_in[1], wts_buf, row_l1, in_w, in_c, bn8_dw_ch, s8_1)
-            act_bn8_1_2.release(1)
+            act_bn8_12_prod.release(1)
 
-            rows_l1 = act_bn8_1_2.acquire(3)
-            row_l2 = act_bn8_2_3.acquire(1)
+            rows_l1 = act_bn8_12_cons.acquire(3)
+            row_l2 = act_bn8_23_prod.acquire(1)
             f8_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_buf, row_l2,
                   in_w, 1, bn8_dw_ch, 3, 3, 1, s8_2, 0)
-            act_bn8_1_2.release(1)
-            act_bn8_2_3.release(1)
+            act_bn8_12_cons.release(1)
+            act_bn8_23_prod.release(1)
 
-            row_l2 = act_bn8_2_3.acquire(1)
-            row_bn8_out = act_bn8_bn9.acquire(1)
+            row_l2 = act_bn8_23_cons.acquire(1)
+            row_bn8_out = act_bn8_bn9_prod.acquire(1)
             f8_skip(row_l2, wts_buf, row_bn8_out, rows_in[0],
                     in_w, bn8_dw_ch, bn8_out_c, s8_3, s8_add)
             act_in_fifo.release(1)
-            act_bn8_2_3.release(1)
-            act_bn8_bn9.release(1)
+            act_bn8_23_cons.release(1)
+            act_bn8_bn9_prod.release(1)
 
-            rows_bn9_in = act_bn8_bn9.acquire(2)
-            row_l1_9 = act_bn9_1_2.acquire(1)
+            rows_bn9_in = act_bn8_bn9_cons.acquire(2)
+            row_l1_9 = act_bn9_12_prod.acquire(1)
             f9_1x1_relu(rows_bn9_in[1], wts_buf, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
-            act_bn9_1_2.release(1)
+            act_bn9_12_prod.release(1)
 
-            rows_l1_9 = act_bn9_1_2.acquire(3)
-            row_l2_9 = act_bn9_2_3.acquire(1)
+            rows_l1_9 = act_bn9_12_cons.acquire(3)
+            row_l2_9 = act_bn9_23_prod.acquire(1)
             f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[2], wts_buf, row_l2_9,
                   in_w, 1, bn9_dw_ch, 3, 3, 1, s9_2, 0)
-            act_bn9_1_2.release(1)
-            act_bn9_2_3.release(1)
+            act_bn9_12_cons.release(1)
+            act_bn9_23_prod.release(1)
 
-            row_l2_9 = act_bn9_2_3.acquire(1)
+            row_l2_9 = act_bn9_23_cons.acquire(1)
             row_out = act_out_fifo.acquire(1)
             f9_skip(row_l2_9, wts_buf, row_out, rows_bn9_in[0],
                     in_w, bn9_dw_ch, bn9_out_c, s9_3, s9_add)
-            act_bn9_2_3.release(1)
-            act_bn8_bn9.release(1)
+            act_bn9_23_cons.release(1)
+            act_bn8_bn9_cons.release(1)
             act_out_fifo.release(1)
 
         # post-amble 0: last row of bn8
-        rows_l1 = act_bn8_1_2.acquire(2)
-        row_l2 = act_bn8_2_3.acquire(1)
+        rows_l1 = act_bn8_12_cons.acquire(2)
+        row_l2 = act_bn8_23_prod.acquire(1)
         f8_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_buf, row_l2,
               in_w, 1, bn8_dw_ch, 3, 3, 2, s8_2, 0)
-        act_bn8_1_2.release(2)
-        act_bn8_2_3.release(1)
+        act_bn8_12_cons.release(2)
+        act_bn8_23_prod.release(1)
 
         row_in = act_in_fifo.acquire(1)
-        row_l2 = act_bn8_2_3.acquire(1)
-        row_bn8_out = act_bn8_bn9.acquire(1)
+        row_l2 = act_bn8_23_cons.acquire(1)
+        row_bn8_out = act_bn8_bn9_prod.acquire(1)
         f8_skip(row_l2, wts_buf, row_bn8_out, row_in,
                 in_w, bn8_dw_ch, bn8_out_c, s8_3, s8_add)
         act_in_fifo.release(1)
-        act_bn8_2_3.release(1)
-        act_bn8_bn9.release(1)
+        act_bn8_23_cons.release(1)
+        act_bn8_bn9_prod.release(1)
 
-        rows_bn9_in = act_bn8_bn9.acquire(2)
-        row_l1_9 = act_bn9_1_2.acquire(1)
+        rows_bn9_in = act_bn8_bn9_cons.acquire(2)
+        row_l1_9 = act_bn9_12_prod.acquire(1)
         f9_1x1_relu(rows_bn9_in[1], wts_buf, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
-        act_bn9_1_2.release(1)
+        act_bn9_12_prod.release(1)
 
-        rows_l1_9 = act_bn9_1_2.acquire(3)
-        row_l2_9 = act_bn9_2_3.acquire(1)
+        rows_l1_9 = act_bn9_12_cons.acquire(3)
+        row_l2_9 = act_bn9_23_prod.acquire(1)
         f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[2], wts_buf, row_l2_9,
               in_w, 1, bn9_dw_ch, 3, 3, 1, s9_2, 0)
-        act_bn9_1_2.release(1)
-        act_bn9_2_3.release(1)
+        act_bn9_12_cons.release(1)
+        act_bn9_23_prod.release(1)
 
-        row_l2_9 = act_bn9_2_3.acquire(1)
+        row_l2_9 = act_bn9_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f9_skip(row_l2_9, wts_buf, row_out, rows_bn9_in[0],
                 in_w, bn9_dw_ch, bn9_out_c, s9_3, s9_add)
-        act_bn9_2_3.release(1)
-        act_bn8_bn9.release(1)
+        act_bn9_23_cons.release(1)
+        act_bn8_bn9_cons.release(1)
         act_out_fifo.release(1)
 
         # post-amble 1: last row of bn9
-        rows_l1_9 = act_bn9_1_2.acquire(2)
-        row_l2_9 = act_bn9_2_3.acquire(1)
+        rows_l1_9 = act_bn9_12_cons.acquire(2)
+        row_l2_9 = act_bn9_23_prod.acquire(1)
         f9_dw(rows_l1_9[0], rows_l1_9[1], rows_l1_9[1], wts_buf, row_l2_9,
               in_w, 1, bn9_dw_ch, 3, 3, 2, s9_2, 0)
-        act_bn9_1_2.release(2)
-        act_bn9_2_3.release(1)
+        act_bn9_12_cons.release(2)
+        act_bn9_23_prod.release(1)
 
-        row_bn9_skip = act_bn8_bn9.acquire(1)
-        row_l2_9 = act_bn9_2_3.acquire(1)
+        row_bn9_skip = act_bn8_bn9_cons.acquire(1)
+        row_l2_9 = act_bn9_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
         f9_skip(row_l2_9, wts_buf, row_out, row_bn9_skip,
                 in_w, bn9_dw_ch, bn9_out_c, s9_3, s9_add)
-        act_bn9_2_3.release(1)
-        act_bn8_bn9.release(1)
+        act_bn9_23_cons.release(1)
+        act_bn8_bn9_cons.release(1)
         act_out_fifo.release(1)
 
     bn89_worker = Worker(
@@ -1579,6 +1669,16 @@ def regular_bottlenecks(
             act_bn7_bn8.cons(),
             bn89_wts,
             act_bn9_out.prod(),
+            bn89_act_bn8_1_2.prod(),
+            bn89_act_bn8_1_2.cons(),
+            bn89_act_bn8_2_3.prod(),
+            bn89_act_bn8_2_3.cons(),
+            bn89_act_bn8_bn9.prod(),
+            bn89_act_bn8_bn9.cons(),
+            bn89_act_bn9_1_2.prod(),
+            bn89_act_bn9_1_2.cons(),
+            bn89_act_bn9_2_3.prod(),
+            bn89_act_bn9_2_3.cons(),
             bn8_conv2dk1_relu,
             bn8_conv2dk3_dw_stride1,
             bn8_conv2dk1_skip,
