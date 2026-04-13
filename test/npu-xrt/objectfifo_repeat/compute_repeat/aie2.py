@@ -54,8 +54,8 @@ def compute_repeat():
             ComputeTile = tile(col, 3)
 
             # AIE-array data movement with object fifos
-            of_in = object_fifo("in", ShimTile, ComputeTile, 1, tensor_ty)
-            of_out = object_fifo("out", ComputeTile, ShimTile, 1, tensor_ty)
+            of_in = object_fifo("in", ShimTile, ComputeTile, [1, 1], tensor_ty)
+            of_out = object_fifo("out", ComputeTile, ShimTile, [1, 1], tensor_ty)
             of_out.set_repeat_count(repeat_count)
 
             # Compute tile

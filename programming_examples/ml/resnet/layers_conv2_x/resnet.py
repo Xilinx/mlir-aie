@@ -269,7 +269,7 @@ wts_fifos = []
 wts_sub_fifos = [[], [], []]
 
 for i in range(n_cols):
-    wts_fifos.append(ObjectFifo(wts_sizes[i], name=f"wts_{i}_L3L2", depth=1))
+    wts_fifos.append(ObjectFifo(wts_sizes[i], name=f"wts_{i}_L3L2", depth=[1, 1]))
     wts_offsets = [
         0,
         np.prod(np_ndarray_type_get_shape(layer1_wts_sizes[i])),
@@ -281,7 +281,7 @@ for i in range(n_cols):
         .cons()
         .split(
             wts_offsets,
-            depths=[1, 1, 1],
+            depths=[[1, 1], [1, 1], [1, 1]],
             obj_types=[layer1_wts_sizes[i], weightsLayer2_ty, layer3_wts_sizes[i]],
             names=[f"wts_buf_{i}{j}" for j in range(3)],
             placement=Tile(i, 1),

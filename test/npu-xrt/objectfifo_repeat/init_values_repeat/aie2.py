@@ -59,14 +59,14 @@ def init_values_repeat():
                 "in",
                 MemTile,
                 ComputeTile,
-                1,
+                [1, 1],
                 tensor_ty,
                 initValues=[
                     np.arange(1, N + 1, dtype=np.int32),
                 ],
             )
             of_in.set_repeat_count(memtile_repeat_count)
-            of_out = object_fifo("out", ComputeTile, ShimTile, 1, tensor_ty)
+            of_out = object_fifo("out", ComputeTile, ShimTile, [1, 1], tensor_ty)
 
             # Compute tile
             @core(ComputeTile)

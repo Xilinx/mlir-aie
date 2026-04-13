@@ -68,7 +68,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_4 = aie.tile(0, 4)
-    aie.objectfifo @input_fifo(%tile_0_0, {%tile_0_2}, 1 : i32) : !aie.objectfifo<memref<10xi32>>
+    aie.objectfifo @input_fifo(%tile_0_0, {%tile_0_2}, [1, 1]) : !aie.objectfifo<memref<10xi32>>
 
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index

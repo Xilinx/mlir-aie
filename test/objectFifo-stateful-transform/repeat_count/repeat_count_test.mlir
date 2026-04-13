@@ -17,7 +17,7 @@
 // CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32> 
 // CHECK:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_1_3, 0) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
 // CHECK:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_3, 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32> 
+// CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32>
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
 // CHECK:     %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 // CHECK:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
@@ -73,7 +73,7 @@ module @repeatCount {
     %tile12 = aie.tile(1, 2)
     %tile13 = aie.tile(1, 3)
 
-    aie.objectfifo @of1 (%tile12, {%tile13}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1 (%tile12, {%tile13}, [1, 1]) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
        return
