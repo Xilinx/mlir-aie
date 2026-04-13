@@ -24,9 +24,10 @@ def _i32():
 
 
 def _load_weights(data_dir, filename):
+    """Load int8 weights from a comma-separated text file."""
     path = os.path.join(data_dir, filename)
     if os.path.exists(path):
-        return np.fromfile(path, dtype=np.int8)
+        return np.fromfile(path, sep=",", dtype=np.int8)
     return None
 
 
