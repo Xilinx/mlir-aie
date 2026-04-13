@@ -43,7 +43,7 @@ DUMMY =
 new= True
 newFlag=_NEW
 
-MLIR_FILE = aie2_mobilenet
+MLIR_FILE = aie2_mobilenet_iron
 TEST_FILE = test_mobilenet
 OBJ = build/init_conv2dk3.o \
 	build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o \
