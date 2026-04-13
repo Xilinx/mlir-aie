@@ -382,6 +382,8 @@ def cascade_bottlenecks(
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn13_wts_l3_put", "bn13_wts_l3_get"],
     )
+    bn13_wts_l3_put.set_repeat_count(_InH)
+    bn13_wts_l3_get.set_repeat_count(_InH)
 
     # L2 weights are static (baked in at compile time, from aie2_bn_13_14.py pattern)
     bn13_l2_wts = _make_static_wts(
@@ -597,6 +599,8 @@ def cascade_bottlenecks(
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn14_wts_l3_put", "bn14_wts_l3_get"],
     )
+    bn14_wts_l3_put.set_repeat_count(_InH)
+    bn14_wts_l3_get.set_repeat_count(_InH)
 
     bn14_l2_wts = _make_static_wts(
         data_dir, _l2_wts_sz, "bn14_2_chain.txt", "bn14_l2_wts"
