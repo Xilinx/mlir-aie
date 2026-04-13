@@ -31,7 +31,7 @@ import numpy as np
 import os
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
-from aie.iron.device import Tile
+from aie.iron.device import Tile, AnyMemTile
 from aie.iron.controlflow import range_
 
 
