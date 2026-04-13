@@ -160,18 +160,16 @@ void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
   nextAddrInBanks[buffer.getMemBank().value()] = end_addr;
 }
 
-
 bool isBufferPreAllocated(BufferOp buffer) {
   auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
   auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
   return (addrAttr != nullptr || memBankAttr != nullptr);
 }
 
-
 // Function that checks whether the given buffer already has a set address
 // attribute. If it does, it finds in which bank the buffer is and checks
-// whether there is enough space left for it (and ensure the bank match to 
-//the mem_bank attribute if given). 
+// whether there is enough space left for it (and ensure the bank match to
+// the mem_bank attribute if given).
 // If there is the function
 // returns true and if not, the function emits a warning that the address
 // will be overwritten and returns false (which will cause the buffer to be
@@ -185,8 +183,7 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
     return false;
   // it is fine if mem_bank is not set
   auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
-  
-  
+
   int addr = addrAttr.getInt();
   for (int i = 0; i < numBanks; i++) {
     // if the address is not within the bank, continue
@@ -427,8 +424,6 @@ bool simpleBankAwareAllocation(TileOp tile) {
   for (auto buffer : allBuffers) {
     if (buffer.getTileOp() == tile) {
 
-
-
       if (!isBufferPreAllocated(buffer)) {
         buffersToAlloc.push_back(buffer);
         continue;
@@ -454,7 +449,6 @@ bool simpleBankAwareAllocation(TileOp tile) {
       }
       // Shouldn't reach here since isBufferPreAllocated was true.
       return false;
-
     }
   }
 
