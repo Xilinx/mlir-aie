@@ -390,3 +390,52 @@ def trim_trace_pkts(trace_pkts):
                 if trace_pkts[i + 1] == "00000000" and trace_pkts[i + 2] == "00000000":
                     return trace_pkts[0 : i + 1]
     return trace_pkts
+
+
+def split_trace_segments(trace_pkts, min_gap=8):
+    """Split trace packets into contiguous non-zero segments.
+
+    When trace data from multiple S2MM DMA channels shares a single buffer
+    (via offset splitting), each channel's data occupies a separate region
+    separated by a run of zero words. This function finds each contiguous
+    block of non-zero data, treating runs of min_gap or more consecutive
+    zero words as segment boundaries.
+
+    Short runs of zeros (< min_gap) are kept within the current segment,
+    since zero words can occasionally appear within valid trace data.
+    Leading and trailing zeros are always dropped.
+
+    Args:
+        trace_pkts: list of 8-char lowercase hex strings
+        min_gap: minimum consecutive zeros to treat as a boundary (default: 8,
+                 matching the 8-word trace packet size)
+
+    Returns:
+        list of lists, where each inner list is one contiguous trace segment.
+        Returns [] if the input contains no non-zero data.
+    """
+    segments = []
+    current = []
+    zero_run = []
+
+    for pkt in trace_pkts:
+        if pkt == "":
+            continue
+        if pkt == "00000000":
+            zero_run.append(pkt)
+        else:
+            if len(zero_run) >= min_gap:
+                # Real gap: finalize the current segment and start a new one
+                if current:
+                    segments.append(current)
+                current = [pkt]
+            else:
+                # Short zero run: keep as part of the current segment
+                current.extend(zero_run)
+                current.append(pkt)
+            zero_run = []
+
+    if current:
+        segments.append(current)
+
+    return segments

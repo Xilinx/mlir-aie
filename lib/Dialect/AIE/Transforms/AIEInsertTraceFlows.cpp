@@ -15,6 +15,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
+#include <climits>
 #include <map>
 #include <set>
 
@@ -41,15 +42,25 @@ struct TraceInfo {
   std::optional<int> stopBroadcast; // Broadcast channel for trace stop (if any)
 };
 
+/// Per-channel DMA resource allocation.
+struct ChannelDescriptor {
+  int channel;      // S2MM channel number
+  int bdId;         // Buffer descriptor ID
+  int argIdx;       // Runtime sequence argument index
+  int bufferOffset; // Byte offset within the shared trace buffer
+};
+
 struct ShimInfo {
   TileOp shimTile;
   int channel;      // S2MM channel
   int bdId;         // Buffer descriptor ID
   int argIdx;       // Runtime sequence argument index
-  int bufferOffset; // Offset in bytes (non-zero when arg_idx=-1)
-  std::vector<TraceInfo> traceSources; // All traces routed to this shim
-  std::optional<int> startBroadcast;   // Broadcast to trigger for start
-  std::optional<int> stopBroadcast;    // Broadcast to trigger for stop
+  int bufferOffset; // Base byte offset for trace within the XRT buffer
+  std::vector<TraceInfo> traceSources;     // All traces routed to this shim
+  std::optional<int> startBroadcast;       // Broadcast to trigger for start
+  std::optional<int> stopBroadcast;        // Broadcast to trigger for stop
+  std::vector<ChannelDescriptor> channels; // Per-channel descriptors
+  std::vector<int> traceChannelAssignment; // Per-trace index into channels
 };
 
 struct AIEInsertTraceFlowsPass
@@ -269,6 +280,140 @@ struct AIEInsertTraceFlowsPass
       }
     }
 
+    // Phase 2b-lateral: Optionally redirect shim targets to spare columns.
+    // This is a post-processing step that works with ANY routing strategy.
+    // When per-column routing returns, lateral routing will compose with it
+    // (each column's shim redirects to its nearest spare).
+    if (clLateralRouting) {
+      std::set<int> activeColumns;
+      device.walk([&](CoreOp core) {
+        auto coreTile = cast<TileOp>(core.getTile().getDefiningOp());
+        activeColumns.insert(coreTile.getCol());
+      });
+
+      // Collect all unique shim target columns and find redirects
+      std::map<int, int> redirects; // old target col -> new target col
+      for (auto &[col, shimInfo] : shimInfos) {
+        int curTarget = shimInfo.shimTile.getCol();
+        if (redirects.count(curTarget))
+          continue; // already computed
+
+        int spare = -1;
+        if (clLateralTargetCol >= 0) {
+          // Forced lateral target: always redirect unless it's a no-op.
+          if (clLateralTargetCol == curTarget)
+            continue;
+          // Validate the forced column is in range and is a shim NOC tile.
+          int numCols = targetModel.columns();
+          if (clLateralTargetCol >= numCols ||
+              !targetModel.isShimNOCTile(clLateralTargetCol, 0)) {
+            device.emitError() << "lateral-target-col " << clLateralTargetCol
+                               << " is not a valid shim NOC tile (device has "
+                               << numCols << " columns)";
+            return signalPassFailure();
+          }
+          spare = clLateralTargetCol;
+        } else {
+          // Auto-detect: only redirect from active columns to a spare.
+          if (activeColumns.count(curTarget) == 0)
+            continue; // already spare, no redirect needed
+          spare = findNearestSpareColumn(curTarget, activeColumns, targetModel);
+        }
+        if (spare >= 0)
+          redirects[curTarget] = spare;
+      }
+
+      // Apply redirects: rebuild shimInfos with new target columns
+      if (!redirects.empty()) {
+        std::map<int, ShimInfo> newShimInfos;
+        for (auto &[col, shimInfo] : shimInfos) {
+          int curTarget = shimInfo.shimTile.getCol();
+          auto it = redirects.find(curTarget);
+          if (it != redirects.end()) {
+            int newTarget = it->second;
+            shimInfo.shimTile = getOrCreateShim(device, builder, newTarget);
+          }
+          newShimInfos[col] = shimInfo;
+        }
+        shimInfos = std::move(newShimInfos);
+      }
+    }
+
+    // Phase 2b-conflict: Check S2MM channel availability on target shims.
+    // If channels are occupied, adjust: use free channel, redirect lateral,
+    // or error.
+    auto usedChannels = scanUsedS2MMChannels(device);
+
+    for (auto &[col, shimInfo] : shimInfos) {
+      int shimCol = shimInfo.shimTile.getCol();
+      auto usedIt = usedChannels.find(shimCol);
+      if (usedIt == usedChannels.end())
+        continue; // No conflicts on this shim
+
+      const auto &usedSet = usedIt->second;
+      int freeCount = 2 - static_cast<int>(usedSet.size());
+
+      if (freeCount <= 0) {
+        // No channels free -- try lateral redirect
+        if (clLateralRouting) {
+          std::set<int> activeColumns;
+          device.walk([&](CoreOp core) {
+            auto coreTile = cast<TileOp>(core.getTile().getDefiningOp());
+            activeColumns.insert(coreTile.getCol());
+          });
+          // Also treat columns with full shims as "active" for spare search
+          for (auto &[fullCol, channels] : usedChannels) {
+            if (static_cast<int>(channels.size()) >= 2)
+              activeColumns.insert(fullCol);
+          }
+          int spare =
+              findNearestSpareColumn(shimCol, activeColumns, targetModel);
+          if (spare >= 0) {
+            shimInfo.shimTile = getOrCreateShim(device, builder, spare);
+            // Reset channel to default since spare shim is clean
+            shimInfo.channel = clShimChannel;
+            continue;
+          }
+        }
+        // No lateral available -- emit error
+        device.emitError()
+            << "no S2MM channels available on shim tile at column " << shimCol
+            << " (both channels in use by existing flows); enable "
+               "lateral-routing to redirect to a spare column";
+        return signalPassFailure();
+      }
+
+      if (freeCount == 1) {
+        // One channel free -- use it
+        int freeChannel = -1;
+        for (int ch = 0; ch < 2; ch++) {
+          if (usedSet.count(ch) == 0) {
+            freeChannel = ch;
+            break;
+          }
+        }
+        shimInfo.channel = freeChannel;
+      }
+    }
+
+    // Build channel descriptors and trace-to-channel assignments
+    for (auto &[col, shimInfo] : shimInfos) {
+      int shimCol = shimInfo.shimTile.getCol();
+      std::set<int> available = {0, 1};
+      auto usedIt = usedChannels.find(shimCol);
+      if (usedIt != usedChannels.end()) {
+        for (int ch : usedIt->second)
+          available.erase(ch);
+      }
+      shimInfo.channels = buildChannelDescriptors(
+          shimInfo.traceSources.size(), shimInfo.channel, shimInfo.bdId,
+          shimInfo.argIdx, shimInfo.bufferOffset, bufferSizeBytes, available);
+      // Round-robin assignment of traces to channels
+      for (size_t i = 0; i < shimInfo.traceSources.size(); i++) {
+        shimInfo.traceChannelAssignment.push_back(i % shimInfo.channels.size());
+      }
+    }
+
     // Phase 2c: Rewrite broadcast to USER_EVENT for destination shim tiles
     // (shim can't listen for its own broadcast)
     for (auto &info : traceInfos) {
@@ -321,6 +466,16 @@ struct AIEInsertTraceFlowsPass
       int col = info.tile.getCol();
       ShimInfo &shimInfo = shimInfos[col];
 
+      // Find this trace's channel assignment
+      int chanIdx = 0;
+      for (size_t i = 0; i < shimInfo.traceSources.size(); i++) {
+        if (shimInfo.traceSources[i].packetId == info.packetId) {
+          chanIdx = shimInfo.traceChannelAssignment[i];
+          break;
+        }
+      }
+      auto &chanDesc = shimInfo.channels[chanIdx];
+
       // Create packet flow
       auto packetFlowOp = PacketFlowOp::create(
           builder, device.getLoc(), builder.getI8IntegerAttr(info.packetId),
@@ -336,7 +491,7 @@ struct AIEInsertTraceFlowsPass
 
       PacketDestOp::create(flowBuilder, device.getLoc(),
                            Value(shimInfo.shimTile.getResult()),
-                           WireBundle::DMA, shimInfo.channel);
+                           WireBundle::DMA, chanDesc.channel);
 
       EndOp::create(flowBuilder, device.getLoc());
 
@@ -418,58 +573,62 @@ struct AIEInsertTraceFlowsPass
       if (!configuredShimCols.insert(shimCol).second)
         continue;
 
-      // Convert buffer size (bytes) to 32-bit words for buffer_length parameter
-      int bufferLengthWords = bufferSizeBytes / 4;
+      for (auto &chanDesc : shimInfo.channels) {
+        // Convert buffer size (bytes) to 32-bit words for buffer_length
+        int bufferLengthWords = bufferSizeBytes / 4;
 
-      // 4c. Write buffer descriptor
-      xilinx::AIEX::NpuWriteBdOp::create(
-          builder, runtimeSeq.getLoc(),
-          shimCol,           // column
-          shimInfo.bdId,     // bd_id
-          bufferLengthWords, // buffer_length (in 32-bit words)
-          0,                 // buffer_offset
-          1,                 // enable_packet
-          0,                 // out_of_order_id
-          0,                 // packet_id (not used for reception)
-          0,                 // packet_type (not used for reception)
-          0, 0, 0, 0, 0,
-          0,       // d0_size, d0_stride, d1_size, d1_stride, d2_size, d2_stride
-          0, 0, 0, // iteration_current, iteration_size, iteration_stride
-          0,       // next_bd
-          0,       // row
-          0,       // use_next_bd
-          1,       // valid_bd
-          0, 0, 0, 0, 0,     // lock_rel_val, lock_rel_id, lock_acq_enable,
-                             // lock_acq_val, lock_acq_id
-          0, 0, 0, 0, 0, 0,  // d0_zero_before, d1_zero_before, d2_zero_before,
-                             // d0_zero_after, d1_zero_after, d2_zero_after
-          clTraceBurstLength // burst_length
-      );
+        // 4c. Write buffer descriptor
+        xilinx::AIEX::NpuWriteBdOp::create(
+            builder, runtimeSeq.getLoc(),
+            shimCol,           // column
+            chanDesc.bdId,     // bd_id
+            bufferLengthWords, // buffer_length (in 32-bit words)
+            0,                 // buffer_offset
+            1,                 // enable_packet
+            0,                 // out_of_order_id
+            0,                 // packet_id (not used for reception)
+            0,                 // packet_type (not used for reception)
+            0, 0, 0, 0, 0,
+            0, // d0_size, d0_stride, d1_size, d1_stride, d2_size, d2_stride
+            0, 0, 0, // iteration_current, iteration_size, iteration_stride
+            0,       // next_bd
+            0,       // row
+            0,       // use_next_bd
+            1,       // valid_bd
+            0, 0, 0, 0, 0,    // lock_rel_val, lock_rel_id, lock_acq_enable,
+                              // lock_acq_val, lock_acq_id
+            0, 0, 0, 0, 0, 0, // d0_zero_before, d1_zero_before, d2_zero_before,
+                              // d0_zero_after, d1_zero_after, d2_zero_after
+            clTraceBurstLength // burst_length
+        );
 
-      // 4d. Address patch (arg_plus = offset when arg_idx=-1)
-      uint32_t bdAddress = computeBDAddress(shimCol, shimInfo.bdId,
-                                            shimInfo.shimTile, targetModel);
-      xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
-                                              bdAddress, shimInfo.argIdx,
-                                              shimInfo.bufferOffset);
+        // 4d. Address patch -- each channel gets its own offset within the
+        // shared trace buffer (the secondary channel starts at
+        // baseOffset + bufferSizeBytes when distribute is active).
+        uint32_t bdAddress = computeBDAddress(shimCol, chanDesc.bdId,
+                                              shimInfo.shimTile, targetModel);
+        xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
+                                                bdAddress, chanDesc.argIdx,
+                                                chanDesc.bufferOffset);
 
-      // 4e. DMA channel configuration
-      uint32_t ctrlAddr =
-          computeCtrlAddress(DMAChannelDir::S2MM, shimInfo.channel,
-                             shimInfo.shimTile, targetModel);
-      xilinx::AIEX::NpuMaskWrite32Op::create(
-          builder, runtimeSeq.getLoc(), ctrlAddr, 3840, 7936, // value, mask
-          nullptr, builder.getI32IntegerAttr(shimCol),
-          builder.getI32IntegerAttr(0));
+        // 4e. DMA channel configuration
+        uint32_t ctrlAddr =
+            computeCtrlAddress(DMAChannelDir::S2MM, chanDesc.channel,
+                               shimInfo.shimTile, targetModel);
+        xilinx::AIEX::NpuMaskWrite32Op::create(
+            builder, runtimeSeq.getLoc(), ctrlAddr, 3840, 7936, // value, mask
+            nullptr, builder.getI32IntegerAttr(shimCol),
+            builder.getI32IntegerAttr(0));
 
-      // Push BD to task queue
-      uint32_t taskQueueAddr =
-          computeTaskQueueAddress(DMAChannelDir::S2MM, shimInfo.channel,
-                                  shimInfo.shimTile, targetModel);
-      uint32_t bdIdWithToken = (1U << 31) | shimInfo.bdId; // enable_token = 1
-      xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), taskQueueAddr, bdIdWithToken, nullptr,
-          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+        // Push BD to task queue
+        uint32_t taskQueueAddr =
+            computeTaskQueueAddress(DMAChannelDir::S2MM, chanDesc.channel,
+                                    shimInfo.shimTile, targetModel);
+        uint32_t bdIdWithToken = (1U << 31) | chanDesc.bdId; // enable_token = 1
+        xilinx::AIEX::NpuWrite32Op::create(
+            builder, runtimeSeq.getLoc(), taskQueueAddr, bdIdWithToken, nullptr,
+            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+      }
 
       // 4f. Shim timer and broadcast control (only if start broadcast is used)
       if (shimInfo.startBroadcast) {
@@ -608,6 +767,98 @@ private:
     if (!reg)
       llvm::report_fatal_error("Failed to lookup Timer_Control register");
     return reg->offset;
+  }
+
+  /// Build channel descriptors. Always includes the primary channel.
+  /// Adds a secondary channel when distribute-channels is enabled and there
+  /// are multiple traces. AIE2 shim tiles have exactly 2 S2MM DMA channels.
+  ///
+  /// Both channels share the same arg_idx (XRT buffer). The buffer is split
+  /// by offset: channel 0 starts at the base bufferOffset, channel 1 starts
+  /// at bufferOffset + bufferSizeBytes. The host must allocate a trace buffer
+  /// of 2 * bufferSizeBytes when distribute is active.
+  std::vector<ChannelDescriptor>
+  buildChannelDescriptors(size_t numTraces, int primaryChannel, int primaryBdId,
+                          int primaryArgIdx, int baseBufferOffset,
+                          int bufferSizeBytes,
+                          const std::set<int> &availableChannels) {
+    std::vector<ChannelDescriptor> chans;
+    chans.push_back(
+        {primaryChannel, primaryBdId, primaryArgIdx, baseBufferOffset});
+    if (clDistributeChannels && numTraces > 1 && primaryBdId > 0) {
+      int ch2 = (primaryChannel == 1) ? 0 : 1;
+      // Only add secondary channel if it's available (not claimed by existing
+      // flows)
+      if (availableChannels.count(ch2)) {
+        chans.push_back({ch2, primaryBdId - 1, primaryArgIdx,
+                         baseBufferOffset + bufferSizeBytes});
+      }
+    }
+    return chans;
+  }
+
+  /// Find or create a shim tile at the given column.
+  TileOp getOrCreateShim(DeviceOp device, OpBuilder &builder, int col) {
+    for (auto tile : device.getOps<TileOp>()) {
+      if (tile.getCol() == col && tile.getRow() == 0)
+        return tile;
+    }
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&device.getRegion().front());
+    return TileOp::create(builder, device.getLoc(), col, 0);
+  }
+
+  /// Scan the device for existing S2MM channel claims on shim tiles.
+  /// Checks aie.flow destinations, aie.packet_flow destinations, and
+  /// ShimDMAAllocationOp declarations.
+  std::map<int, std::set<int>> scanUsedS2MMChannels(DeviceOp device) {
+    std::map<int, std::set<int>> used; // shimCol -> set of used S2MM channels
+
+    device.walk([&](FlowOp flow) {
+      auto destTile = cast<TileOp>(flow.getDest().getDefiningOp());
+      if (destTile.isShimTile() && flow.getDestBundle() == WireBundle::DMA) {
+        used[destTile.getCol()].insert(flow.getDestChannel());
+      }
+    });
+
+    device.walk([&](PacketFlowOp pktFlow) {
+      for (auto &op : pktFlow.getPorts().front()) {
+        if (auto dest = dyn_cast<PacketDestOp>(op)) {
+          auto destTile = cast<TileOp>(dest.getTile().getDefiningOp());
+          if (destTile.isShimTile() && dest.getBundle() == WireBundle::DMA) {
+            used[destTile.getCol()].insert(dest.getChannel());
+          }
+        }
+      }
+    });
+
+    device.walk([&](ShimDMAAllocationOp alloc) {
+      if (alloc.getChannelDir() == DMAChannelDir::S2MM) {
+        auto tile = alloc.getTileOp();
+        used[tile.getCol()].insert(alloc.getChannelIndex());
+      }
+    });
+
+    return used;
+  }
+
+  /// Find the nearest NOC shim column without active cores.
+  /// Returns -1 if no spare column exists.
+  int findNearestSpareColumn(int sourceCol, const std::set<int> &activeColumns,
+                             const AIETargetModel &targetModel) {
+    int bestCol = -1;
+    int bestDist = INT_MAX;
+    int numCols = targetModel.columns();
+    for (int c = 0; c < numCols; c++) {
+      if (activeColumns.count(c) == 0 && targetModel.isShimNOCTile(c, 0)) {
+        int dist = std::abs(c - sourceCol);
+        if (dist > 0 && dist < bestDist) {
+          bestDist = dist;
+          bestCol = c;
+        }
+      }
+    }
+    return bestCol;
   }
 };
 
