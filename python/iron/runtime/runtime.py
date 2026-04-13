@@ -63,6 +63,7 @@ class Runtime(Resolvable):
         self._tasks: list[RuntimeTask] = []
         self._fifos = set()
         self._workers = []
+        self._cascade_flows: list = []
         self._open_task_groups = []
         self._trace_size = None
         self._trace_workers = None
@@ -226,6 +227,20 @@ class Runtime(Resolvable):
                 raise ValueError("Runtime can only start Worker objects")
             self._workers.append(worker)
             self._tasks.append(RuntimeStartTask(worker))
+
+    def cascade_flow(self, src, dst) -> None:
+        """Register a cascade stream connection from src Worker to dst Worker.
+
+        This should be called within a Runtime.sequence() context.
+        The cascade_flow op will be emitted during program resolution,
+        after all workers have been placed and their tiles assigned.
+
+        Args:
+            src: Source Worker (the tile that puts data onto the cascade stream)
+            dst: Destination Worker (the tile that gets data from the cascade stream)
+        """
+        from ..dataflow.cascadeflow import CascadeFlow
+        self._cascade_flows.append(CascadeFlow(src, dst))
 
     def inline_ops(self, inline_func: Callable, inline_args: list):
         """Insert an InlineOpRuntimeTask into the runtime.

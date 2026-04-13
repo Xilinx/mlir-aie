@@ -16,6 +16,7 @@ from .runtime import Runtime
 from .worker import Worker
 from .device import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
 from .dataflow import ObjectFifoHandle, ObjectFifoLink, ObjectFifoEndpoint
+from .dataflow.persistentbuffer import PersistentBufferHandle
 
 
 class Placer(metaclass=ABCMeta):
@@ -141,6 +142,13 @@ class SequentialPlacer(Placer):
             # Account for channels used by Workers, which are already placed
             prod_fifos = [of for of in worker.fifos if of._is_prod]
             cons_fifos = [of for of in worker.fifos if not of._is_prod]
+            # Each PersistentBufferHandle consumes one S2MM (input) DMA channel
+            # on the compute tile (data streamed from MemTile via DMA).
+            persistent_buf_handles = [
+                arg
+                for arg in worker.fn_args
+                if isinstance(arg, PersistentBufferHandle)
+            ]
             self._update_channels(
                 worker,
                 worker.tile,
@@ -154,7 +162,7 @@ class SequentialPlacer(Placer):
                 worker,
                 worker.tile,
                 False,
-                len(cons_fifos),
+                len(cons_fifos) + len(persistent_buf_handles),
                 channels_in,
                 computes_in,
                 device,

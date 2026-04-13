@@ -100,6 +100,10 @@ class Program:
                 for w in self._rt.workers:
                     w.resolve()
 
+                # Resolve cascade flows (must be after worker placement, within device body)
+                for cf in self._rt._cascade_flows:
+                    cf.resolve()
+
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
                 #      Alternatively, we merge the mechanism for packet routed objfifos so we use unique

@@ -18,7 +18,7 @@ from .kernel import ExternalFunction, Kernel
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
-from .dataflow import ObjectFifo
+from .dataflow import ObjectFifo, CascadeFlow, PersistentBuffer
 from .dtype import str_to_dtype, dtype_to_str
 from aie.utils.jit import jit
 from aie.utils import (
