@@ -365,12 +365,16 @@ def cascade_bottlenecks(
     _ty_l1_full_wts = np.ndarray[(_l1_full_wts_sz,), np.dtype[np.int8]]
     _ty_l3_full_wts = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
 
+    # Explicit MemTile placement matches original design to avoid BD exhaustion.
+    # Original: bn13 L1→MemTile(0,1), bn13 L3→MemTile(1,1)
+    #           bn14 L1→MemTile(2,1), bn14 L3→MemTile(3,1)
     bn13_wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1, name="bn13_wts_l1_full")
     bn13_wts_l1_put, bn13_wts_l1_get = bn13_wts_l1_full.cons().split(
         offsets=[0, _l1_split_wts_sz],
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn13_wts_l1_put", "bn13_wts_l1_get"],
+        placement=Tile(0, 1),   # mem_tile_0_1 in original
     )
     bn13_wts_l1_put.set_repeat_count(_InH)
     bn13_wts_l1_get.set_repeat_count(_InH)
@@ -381,6 +385,7 @@ def cascade_bottlenecks(
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn13_wts_l3_put", "bn13_wts_l3_get"],
+        placement=Tile(1, 1),   # mem_tile_1_1 in original
     )
     bn13_wts_l3_put.set_repeat_count(_InH)
     bn13_wts_l3_get.set_repeat_count(_InH)
@@ -412,7 +417,9 @@ def cascade_bottlenecks(
     # act_in has 3 consumers: l1_put, l1_get, and the skip forward.
     # We acquire depth=6 to allow all 7 rows to be buffered before the skip
     # consumer drains them (matching the original bn13_skip depth from source).
-    bn13_skip_fifo = act_in.cons(depth=6).forward(name="bn13_skip_fifo", depth=2)
+    bn13_skip_fifo = act_in.cons(depth=6).forward(
+        name="bn13_skip_fifo", depth=2, placement=Tile(5, 1)  # mem_tile_5_1 in original
+    )
 
     # -- Create bn13 Workers --
     w_bn13_l1_put = Worker(
@@ -581,13 +588,15 @@ def cascade_bottlenecks(
         ],
     )
 
-    # -- Weight ObjectFifos for bn14 (same split pattern as bn13) --
+    # -- Weight ObjectFifos for bn14 with explicit MemTile placement --
+    # Original: bn14 L1→MemTile(2,1), bn14 L3→MemTile(3,1)
     bn14_wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1, name="bn14_wts_l1_full")
     bn14_wts_l1_put, bn14_wts_l1_get = bn14_wts_l1_full.cons().split(
         offsets=[0, _l1_split_wts_sz],
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn14_wts_l1_put", "bn14_wts_l1_get"],
+        placement=Tile(2, 1),   # mem_tile_2_1 in original
     )
     bn14_wts_l1_put.set_repeat_count(_InH)
     bn14_wts_l1_get.set_repeat_count(_InH)
@@ -598,6 +607,7 @@ def cascade_bottlenecks(
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn14_wts_l3_put", "bn14_wts_l3_get"],
+        placement=Tile(3, 1),   # mem_tile_3_1 in original
     )
     bn14_wts_l3_put.set_repeat_count(_InH)
     bn14_wts_l3_get.set_repeat_count(_InH)
@@ -625,7 +635,9 @@ def cascade_bottlenecks(
     )
 
     # bn14 skip: bn13 output forwarded to bn14 L3 GET via MemTile DMA.
-    bn14_skip_fifo = act_bn13_out.cons(depth=6).forward(name="bn14_skip_fifo", depth=2)
+    bn14_skip_fifo = act_bn13_out.cons(depth=6).forward(
+        name="bn14_skip_fifo", depth=2, placement=Tile(7, 1)  # mem_tile_7_1 in original
+    )
 
     w_bn14_l1_put = Worker(
         l1_put_fn,

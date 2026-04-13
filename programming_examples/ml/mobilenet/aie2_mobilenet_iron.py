@@ -29,7 +29,7 @@ import numpy as np
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2
+from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 
 # Import bottleneck modules (new IRON organization)
@@ -452,16 +452,23 @@ def mobilenet_iron():
             rt.cascade_flow(src, dst)
 
         # Data movement — activations in, output out
-        rt.fill(act_in.prod(), inp)
+        # Shim tile placement matches original design to distribute DMA BD load:
+        #   act_in:       ShimTile00 (col 0)
+        #   bn13 L1 wts:  ShimTile40 (col 4)
+        #   bn13 L3 wts:  ShimTile50 (col 5)
+        #   bn14 L1 wts:  ShimTile60 (col 6)
+        #   bn14 L3 wts:  ShimTile70 (col 7)
+        #   act_out:      ShimTile70 (col 7, shared with bn14 L3)
+        rt.fill(act_in.prod(), inp, placement=Tile(0, 0))
 
         # Cascade weight DMA: host fills the full-weight fifos,
         # MemTile splits them to put/get tiles via cons().split()
-        rt.fill(wts_fifos[0].prod(), wts_bn13_l1)  # bn13 L1 full weights
-        rt.fill(wts_fifos[1].prod(), wts_bn13_l3)  # bn13 L3 full weights
-        rt.fill(wts_fifos[2].prod(), wts_bn14_l1)  # bn14 L1 full weights
-        rt.fill(wts_fifos[3].prod(), wts_bn14_l3)  # bn14 L3 full weights
+        rt.fill(wts_fifos[0].prod(), wts_bn13_l1, placement=Tile(4, 0))  # bn13 L1 → ShimTile40
+        rt.fill(wts_fifos[1].prod(), wts_bn13_l3, placement=Tile(5, 0))  # bn13 L3 → ShimTile50
+        rt.fill(wts_fifos[2].prod(), wts_bn14_l1, placement=Tile(6, 0))  # bn14 L1 → ShimTile60
+        rt.fill(wts_fifos[3].prod(), wts_bn14_l3, placement=Tile(7, 0))  # bn14 L3 → ShimTile70
 
-        rt.drain(act_out_of.cons(), out, wait=True)
+        rt.drain(act_out_of.cons(), out, wait=True, placement=Tile(7, 0))
 
     # ------------------------------------------------------------------
     # Generate MLIR
