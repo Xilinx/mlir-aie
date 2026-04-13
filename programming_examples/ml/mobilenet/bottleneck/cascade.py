@@ -23,7 +23,7 @@ Weight delivery:
 Tile placements (col, row):
   bn13: l1_put=Tile(4,5), l1_get=Tile(5,5), l2=Tile(5,4),
         l3_put=Tile(4,3), l3_get=Tile(5,3)
-  bn14: l1_put=Tile(6,5), l1_get=Tile(7,5), l2=Tile(7,4),
+  bn14: l1_put=Tile(6,5), l1_get=Tile(7,5), l2=Tile(6,2),
         l3_put=Tile(4,2), l3_get=Tile(5,2)
 """
 
@@ -660,7 +660,7 @@ def cascade_bottlenecks(
             bn14_k_l2_dw,
             _InW, _L1_OutC, bn14_s2,
         ],
-        placement=Tile(7, 4)
+        placement=Tile(6, 2)   # original: tile(6,2) — same row as L3 get (5,2)
     )
 
     w_bn14_l3_put = Worker(
