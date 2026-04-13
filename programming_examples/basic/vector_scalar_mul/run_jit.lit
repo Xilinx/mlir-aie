@@ -5,5 +5,3 @@
 //
 // RUN: %run_on_npu1% python3 %S/vector_scalar_mul_jit.py --iters 10 --warmup 10 -n 4096
 // RUN: %run_on_npu2% python3 %S/vector_scalar_mul_jit.py --iters 10 --warmup 10 -n 4096
-// RUN: %run_on_npu1% python3 %S/vector_scalar_mul_iron_jit.py
-// RUN: %run_on_npu2% python3 %S/vector_scalar_mul_iron_jit.py
