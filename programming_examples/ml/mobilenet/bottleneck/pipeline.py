@@ -66,9 +66,9 @@ def pipeline_bottlenecks(
     bn10_l2_wts_sz = 3 * 3 * 480  # 4320
     bn10_l3_wts_sz = 480 * 112   # 53760
 
-    bn10_l1_data = _load_weights(data_dir, "bn10_l1_wts.bin")
-    bn10_l2_data = _load_weights(data_dir, "bn10_l2_wts.bin")
-    bn10_l3_data = _load_weights(data_dir, "bn10_l3_wts.bin")
+    bn10_l1_data = _load_weights(data_dir, "bn10_1_chain.txt")
+    bn10_l2_data = _load_weights(data_dir, "bn10_2_chain.txt")
+    bn10_l3_data = _load_weights(data_dir, "bn10_3_chain.txt")
 
     bn10_l1_wts = Buffer(
         _i8((bn10_l1_wts_sz,)),
@@ -76,8 +76,7 @@ def pipeline_bottlenecks(
             bn10_l1_data
             if bn10_l1_data is not None
             else np.zeros(bn10_l1_wts_sz, dtype=np.int8)
-        ),
-        name="bn10_l1_wts",
+        )
     )
     bn10_l2_wts = Buffer(
         _i8((bn10_l2_wts_sz,)),
@@ -85,8 +84,7 @@ def pipeline_bottlenecks(
             bn10_l2_data
             if bn10_l2_data is not None
             else np.zeros(bn10_l2_wts_sz, dtype=np.int8)
-        ),
-        name="bn10_l2_wts",
+        )
     )
     bn10_l3_wts = Buffer(
         _i8((bn10_l3_wts_sz,)),
@@ -94,8 +92,7 @@ def pipeline_bottlenecks(
             bn10_l3_data
             if bn10_l3_data is not None
             else np.zeros(bn10_l3_wts_sz, dtype=np.int8)
-        ),
-        name="bn10_l3_wts",
+        )
     )
 
     # Kernel declarations matching aie2_bottleneckBStatic.py external_func signatures.
@@ -207,19 +204,18 @@ def pipeline_bottlenecks(
     ]
 
     # ---- bn11 (with skip) ----
-    # Source: OF_b10_layer3_bn_11_layer1 fans out to [computeTileBN11_1, skipMemTile]
-    # then OF_b11_skip links skipMemTile -> computeTileBN11_3.
-    # We model this with act_bn10_out feeding bn11_l1 and a skip forward fifo.
-    bn11_skip_of = ObjectFifo(_i8((14, 1, 112)), depth=2, name="bn11_skip_of")
+    # bn11 skip: bn10 output forwarded via MemTile DMA to bn11 L3.
+    # forward() creates the MemTile-side copy, no extra compute tile needed.
+    bn11_skip_of = act_bn10_out.cons(depth=2).forward(name="bn11_skip_of", depth=2)
 
     # b11_OutC1=336, b11_OutC2=336, b11_OutC3=112
     bn11_l1_wts_sz = 112 * 336   # 37632
     bn11_l2_wts_sz = 3 * 3 * 336  # 3024
     bn11_l3_wts_sz = 336 * 112   # 37632
 
-    bn11_l1_data = _load_weights(data_dir, "bn11_l1_wts.bin")
-    bn11_l2_data = _load_weights(data_dir, "bn11_l2_wts.bin")
-    bn11_l3_data = _load_weights(data_dir, "bn11_l3_wts.bin")
+    bn11_l1_data = _load_weights(data_dir, "bn11_1_chain.txt")
+    bn11_l2_data = _load_weights(data_dir, "bn11_2_chain.txt")
+    bn11_l3_data = _load_weights(data_dir, "bn11_3_chain.txt")
 
     bn11_l1_wts = Buffer(
         _i8((bn11_l1_wts_sz,)),
@@ -227,8 +223,7 @@ def pipeline_bottlenecks(
             bn11_l1_data
             if bn11_l1_data is not None
             else np.zeros(bn11_l1_wts_sz, dtype=np.int8)
-        ),
-        name="bn11_l1_wts",
+        )
     )
     bn11_l2_wts = Buffer(
         _i8((bn11_l2_wts_sz,)),
@@ -236,8 +231,7 @@ def pipeline_bottlenecks(
             bn11_l2_data
             if bn11_l2_data is not None
             else np.zeros(bn11_l2_wts_sz, dtype=np.int8)
-        ),
-        name="bn11_l2_wts",
+        )
     )
     bn11_l3_wts = Buffer(
         _i8((bn11_l3_wts_sz,)),
@@ -245,8 +239,7 @@ def pipeline_bottlenecks(
             bn11_l3_data
             if bn11_l3_data is not None
             else np.zeros(bn11_l3_wts_sz, dtype=np.int8)
-        ),
-        name="bn11_l3_wts",
+        )
     )
 
     # bn11 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
@@ -317,14 +310,6 @@ def pipeline_bottlenecks(
             act_in.release(1)
             of_12.release(1)
 
-    def bn11_skip_forward_fn(src_in, skip_out):
-        for _ in range_(14):
-            row = src_in.acquire(1)
-            skip_row = skip_out.acquire(1)
-            skip_row[:] = row[:]
-            src_in.release(1)
-            skip_out.release(1)
-
     def bn11_l2_fn(of_12, of_23, wts_buf, k_l2, sf2):
         # preamble: top row (border=0)
         rows = of_12.acquire(2)
@@ -370,10 +355,6 @@ def pipeline_bottlenecks(
             ],
         ),
         Worker(
-            bn11_skip_forward_fn,
-            [act_bn10_out.cons(), bn11_skip_of.prod()],
-        ),
-        Worker(
             bn11_l2_fn,
             [bn11_of_12.cons(), bn11_of_23.prod(), bn11_l2_wts, k_bn11_l2, bn11_s2],
         ),
@@ -404,8 +385,8 @@ def pipeline_bottlenecks(
     bn12_pw_wts_sz = 336 * 80     # 26880
     bn12_l23_wts_sz = bn12_dw_wts_sz + bn12_pw_wts_sz  # 29904
 
-    bn12_l1_data = _load_weights(data_dir, "bn12_l1_wts.bin")
-    bn12_l23_data = _load_weights(data_dir, "bn12_l23_wts.bin")
+    bn12_l1_data = _load_weights(data_dir, "bn12_1_chain.txt")
+    bn12_l23_data = _load_weights(data_dir, "bn12_2_3_chain.txt")
 
     bn12_l1_wts = Buffer(
         _i8((bn12_l1_wts_sz,)),
@@ -413,8 +394,7 @@ def pipeline_bottlenecks(
             bn12_l1_data
             if bn12_l1_data is not None
             else np.zeros(bn12_l1_wts_sz, dtype=np.int8)
-        ),
-        name="bn12_l1_wts",
+        )
     )
     bn12_l23_wts = Buffer(
         _i8((bn12_l23_wts_sz,)),
@@ -422,8 +402,7 @@ def pipeline_bottlenecks(
             bn12_l23_data
             if bn12_l23_data is not None
             else np.zeros(bn12_l23_wts_sz, dtype=np.int8)
-        ),
-        name="bn12_l23_wts",
+        )
     )
 
     # bn12 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
@@ -483,7 +462,13 @@ def pipeline_bottlenecks(
 
     bn12_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="bn12_of_12")
     # Local intermediate fifo for DW -> PW handoff on tile2 (depth=1, mirrors self-loop)
-    bn12_of_dw_pw = ObjectFifo(_u8((7, 1, 336)), depth=1, name="bn12_of_dw_pw")
+    # Intermediate local buffer for DW->PW on the same tile.
+    # In the placed dialect this is object_fifo(computeTile, computeTile, 1, ty) — a
+    # self-loop. In IRON we use a Buffer on the compute tile instead, which is simpler.
+    bn12_dw_tmp = Buffer(
+        _u8((7, 1, 336)),
+        name="bn12_dw_tmp",
+    )
     act_bn12_out = ObjectFifo(_i8((7, 1, 80)), depth=2, name="act_bn12_out")
 
     def bn12_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
@@ -495,50 +480,29 @@ def pipeline_bottlenecks(
             of_12.release(1)
 
     # bn12 tile2: interleave DW-stride2 and PW per output row.
-    # Source loop structure (b12_InH2=7 output rows from 14 input rows):
-    #   preamble:
-    #     acquire 2 in-rows; DW(r0,r0,r1,border=0) -> dw_tmp; release 1 in-row
-    #     PW(dw_tmp) -> out_row
-    #   middle (b12_InH2-2 = 5 iters):
-    #     acquire 3 in-rows; DW(r0,r1,r2,border=1) -> dw_tmp; release 2 in-rows
-    #     PW(dw_tmp) -> out_row
-    #   postamble (last output row, source acquires 3, releases 3, border=1):
-    #     acquire 3 in-rows; DW(r0,r1,r2,border=1) -> dw_tmp; release 3 in-rows
-    #     PW(dw_tmp) -> out_row
-    def bn12_l23_fn(of_12, dw_pw_of, act_out, wts_buf, k_dw, k_pw, sf2, sf3):
+    # dw_tmp is a tile-local Buffer (not an ObjectFifo) for DW->PW handoff.
+    def bn12_l23_fn(of_12, dw_tmp, act_out, wts_buf, k_dw, k_pw, sf2, sf3):
         # preamble: top output row (border=0)
         rows = of_12.acquire(2)
-        dw_out = dw_pw_of.acquire(1)
-        k_dw(rows[0], rows[0], rows[1], wts_buf, dw_out, 14, 1, 336, 3, 3, 0, sf2, 0)
-        of_12.release(1)
-        dw_pw_of.release(1)
-        pw_in = dw_pw_of.acquire(1)
         pw_out = act_out.acquire(1)
-        k_pw(pw_in, wts_buf, pw_out, 7, 336, 80, sf3)
-        dw_pw_of.release(1)
+        k_dw(rows[0], rows[0], rows[1], wts_buf, dw_tmp, 14, 1, 336, 3, 3, 0, sf2, 0)
+        of_12.release(1)
+        k_pw(dw_tmp, wts_buf, pw_out, 7, 336, 80, sf3)
         act_out.release(1)
-        # middle output rows (border=1): b12_InH2 - 2 = 7 - 2 = 5
+        # middle output rows (border=1): 5 iters
         for _ in range_(5):
             rows = of_12.acquire(3)
-            dw_out = dw_pw_of.acquire(1)
-            k_dw(rows[0], rows[1], rows[2], wts_buf, dw_out, 14, 1, 336, 3, 3, 1, sf2, 0)
-            of_12.release(2)
-            dw_pw_of.release(1)
-            pw_in = dw_pw_of.acquire(1)
             pw_out = act_out.acquire(1)
-            k_pw(pw_in, wts_buf, pw_out, 7, 336, 80, sf3)
-            dw_pw_of.release(1)
+            k_dw(rows[0], rows[1], rows[2], wts_buf, dw_tmp, 14, 1, 336, 3, 3, 1, sf2, 0)
+            of_12.release(2)
+            k_pw(dw_tmp, wts_buf, pw_out, 7, 336, 80, sf3)
             act_out.release(1)
-        # postamble: last output row (source acquires 3, border=1, releases 3)
+        # postamble: last output row (border=1, release 3)
         rows = of_12.acquire(3)
-        dw_out = dw_pw_of.acquire(1)
-        k_dw(rows[0], rows[1], rows[2], wts_buf, dw_out, 14, 1, 336, 3, 3, 1, sf2, 0)
-        of_12.release(3)
-        dw_pw_of.release(1)
-        pw_in = dw_pw_of.acquire(1)
         pw_out = act_out.acquire(1)
-        k_pw(pw_in, wts_buf, pw_out, 7, 336, 80, sf3)
-        dw_pw_of.release(1)
+        k_dw(rows[0], rows[1], rows[2], wts_buf, dw_tmp, 14, 1, 336, 3, 3, 1, sf2, 0)
+        of_12.release(3)
+        k_pw(dw_tmp, wts_buf, pw_out, 7, 336, 80, sf3)
         act_out.release(1)
 
     workers += [
@@ -550,7 +514,7 @@ def pipeline_bottlenecks(
             bn12_l23_fn,
             [
                 bn12_of_12.cons(),
-                bn12_of_dw_pw.prod(),
+                bn12_dw_tmp,           # tile-local Buffer for DW->PW handoff
                 act_bn12_out.prod(),
                 bn12_l23_wts,
                 k_bn12_dw,

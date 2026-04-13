@@ -164,7 +164,7 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     act_in = ObjectFifo(
         np.ndarray[(tensorInW, 1, tensorInC), np.dtype[np.int8]],
-        depth=2,
+        depth=5,   # Consumer depth=5 to allow 3-row sliding window in init conv
         name="act_in",
     )
     act_init_out = ObjectFifo(
@@ -244,7 +244,7 @@ def mobilenet_iron():
     # Regular family: bn0–bn9
     a_workers, act_bn9_out = regular_bottlenecks(
         act_init_out,
-        bn0_sf2, bn0_sf3, bn0_sfAdd,
+        bn0_sf2, bn0_sf3,      # bn0: 2-layer block, no sf1 (no expand 1x1)
         bn1_sf1, bn1_sf2, bn1_sf3,
         bn2_sf1, bn2_sf2, bn2_sf3, bn2_sfAdd,
         bn3_sf1, bn3_sf2, bn3_sf3,
@@ -267,7 +267,7 @@ def mobilenet_iron():
     )
 
     # Cascade family: bn13–bn14
-    c_workers, act_bn14_out, cascade_pairs = cascade_bottlenecks(
+    c_workers, act_bn14_out, wts_fifos, cascade_pairs = cascade_bottlenecks(
         act_bn12_out,
         bn13_sf1, bn13_sf2, bn13_sf3, bn13_sfAdd,
         bn14_sf1, bn14_sf2, bn14_sf3, bn14_sfAdd,
@@ -337,26 +337,30 @@ def mobilenet_iron():
     n_fc_tiles = 4
     fc_out_per_tile = post_L2_OutC // n_fc_tiles   # 1280/4 = 320
 
-    act_post_l2_tiles = [
-        ObjectFifo(
-            np.ndarray[(1, 1, fc_out_per_tile), np.dtype[np.uint8]],
-            depth=2,
-            name=f"act_post_l2_tile{i}",
-        )
-        for i in range(n_fc_tiles)
-    ]
+    # Output fifo: all 4 FC tiles join their results here via MemTile
+    act_out_of = ObjectFifo(
+        np.ndarray[(post_L2_OutC,), np.dtype[np.uint8]],
+        depth=2,
+        name="act_post_out",
+    )
+    # Split the output fifo into 4 segments, one per FC tile
+    act_post_l2_tiles = act_out_of.prod().join(
+        offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
+        depths=[2] * n_fc_tiles,
+        obj_types=[np.ndarray[(fc_out_per_tile,), np.dtype[np.uint8]]] * n_fc_tiles,
+        names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
+    )
 
     k_post_l2 = Kernel(
         "post_conv2dk1_i8_ui8",
         "post_conv2dk1.o",
         [_i8((1, 1, post_L2_InC)),
-         _i8((1,)),   # weight buffer (variable size passed as Buffer arg)
-         _u8((1, 1, fc_out_per_tile)),
+         _i8((1,)),
+         _u8((fc_out_per_tile,)),
          _i32(), _i32(), _i32(), _i32(), _i32()],
     )
 
     post_l2_workers = []
-    post_l2_wts_bufs = []
     for i, (fc1_f, fc2_f) in enumerate(fc_wts_filenames):
         fc1_data = None
         fc2_data = None
@@ -367,20 +371,17 @@ def mobilenet_iron():
         if os.path.exists(fc2_path):
             fc2_data = np.fromfile(fc2_path, sep=",", dtype=np.int8)
 
-        fc1_sz = post_L2_InC * (fc_out_per_tile)
-        fc2_sz = post_L2_InC * (fc_out_per_tile)
-        if fc1_data is None: fc1_data = np.zeros(fc1_sz, dtype=np.int8)
-        if fc2_data is None: fc2_data = np.zeros(fc2_sz, dtype=np.int8)
+        fc_sz = post_L2_InC * fc_out_per_tile
+        if fc1_data is None: fc1_data = np.zeros(fc_sz, dtype=np.int8)
+        if fc2_data is None: fc2_data = np.zeros(fc_sz, dtype=np.int8)
         wts_combined = np.concatenate([fc1_data, fc2_data])
 
         wts_buf = Buffer(
             _i8((len(wts_combined),)),
             initial_value=wts_combined,
-            name=f"post_l2_wts_{i}",
         )
-        post_l2_wts_bufs.append(wts_buf)
 
-        def post_l2_fn(act_in, act_out, wts, k, inC, outC, sf1, sf2, idx=i):
+        def post_l2_fn(act_in, act_out, wts, k, inC, outC, sf1, sf2):
             elem_in = act_in.acquire(1)
             elem_out = act_out.acquire(1)
             k(elem_in, wts, elem_out, 1, inC, outC, outC, sf1)
@@ -403,19 +404,6 @@ def mobilenet_iron():
         )
         post_l2_workers.append(w)
 
-    # Join the 4 output tiles
-    act_post_out = act_post_l2_tiles[0].prod().join(
-        offsets=[0, fc_out_per_tile, 2*fc_out_per_tile, 3*fc_out_per_tile],
-        obj_types=[np.ndarray[(post_L2_OutC,), np.dtype[np.uint8]]],
-        names=["act_post_out"],
-    )[0]
-    # Declare the output fifo explicitly for drain
-    act_out_of = ObjectFifo(
-        np.ndarray[(post_L2_OutC,), np.dtype[np.uint8]],
-        depth=2,
-        name="act_post_out",
-    )
-
     # ------------------------------------------------------------------
     # Collect all workers
     # ------------------------------------------------------------------
@@ -429,18 +417,42 @@ def mobilenet_iron():
     )
 
     # ------------------------------------------------------------------
+    # Cascade weight types (for runtime sequence DMA)
+    # ------------------------------------------------------------------
+    _l1_full_wts_sz = 80 * 960       # 76800
+    _l3_full_wts_sz = 960 * 80       # 76800
+    bn13_l1_wts_ty = np.ndarray[(_l1_full_wts_sz,), np.dtype[np.int8]]
+    bn13_l3_wts_ty = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
+    bn14_l1_wts_ty = np.ndarray[(_l1_full_wts_sz,), np.dtype[np.int8]]
+    bn14_l3_wts_ty = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
+
+    # ------------------------------------------------------------------
     # Runtime sequence
     # ------------------------------------------------------------------
     rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (inp, out):
+    with rt.sequence(in_ty,
+                     bn13_l1_wts_ty, bn13_l3_wts_ty,
+                     bn14_l1_wts_ty, bn14_l3_wts_ty,
+                     out_ty) as (inp,
+                                  wts_bn13_l1, wts_bn13_l3,
+                                  wts_bn14_l1, wts_bn14_l3,
+                                  out):
         rt.start(*all_workers)
 
         # Register cascade stream connections
         for src, dst in cascade_pairs:
             rt.cascade_flow(src, dst)
 
-        # Data movement
+        # Data movement — activations in, output out
         rt.fill(act_in.prod(), inp)
+
+        # Cascade weight DMA: host fills the full-weight fifos,
+        # MemTile splits them to put/get tiles via cons().split()
+        rt.fill(wts_fifos[0].prod(), wts_bn13_l1)  # bn13 L1 full weights
+        rt.fill(wts_fifos[1].prod(), wts_bn13_l3)  # bn13 L3 full weights
+        rt.fill(wts_fifos[2].prod(), wts_bn14_l1)  # bn14 L1 full weights
+        rt.fill(wts_fifos[3].prod(), wts_bn14_l3)  # bn14 L3 full weights
+
         rt.drain(act_out_of.cons(), out, wait=True)
 
     # ------------------------------------------------------------------

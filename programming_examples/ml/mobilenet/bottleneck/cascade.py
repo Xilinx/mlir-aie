@@ -391,23 +391,19 @@ def cascade_bottlenecks(
     # -- Inter-tile activation ObjectFifos for bn13 --
     bn13_of_l1_l2 = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_OutC), np.dtype[np.uint8]],
-        depth=4,
-        name="bn13_of_l1_l2",
+        depth=4
     )
     bn13_of_l2_l3_first = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-        depth=2,
-        name="bn13_of_l2_l3_first",
+        depth=2
     )
     bn13_of_l2_l3_second = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-        depth=2,
-        name="bn13_of_l2_l3_second",
+        depth=2
     )
     act_bn13_out = ObjectFifo(
         np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]],
-        depth=2,
-        name="act_bn13_out",
+        depth=2
     )
 
     # Skip fifo: forward bn13 input to the L3 GET tile via MemTile DMA.
@@ -425,8 +421,7 @@ def cascade_bottlenecks(
             bn13_k_l1_put,
             _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn13_s1,
         ],
-        placement=Tile(4, 5),
-        name="w_bn13_l1_put",
+        placement=Tile(4, 5)
     )
 
     w_bn13_l1_get = Worker(
@@ -438,8 +433,7 @@ def cascade_bottlenecks(
             bn13_k_l1_get,
             _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn13_s1,
         ],
-        placement=Tile(5, 5),
-        name="w_bn13_l1_get",
+        placement=Tile(5, 5)
     )
 
     w_bn13_l2 = Worker(
@@ -452,8 +446,7 @@ def cascade_bottlenecks(
             bn13_k_l2_dw,
             _InW, _L1_OutC, bn13_s2,
         ],
-        placement=Tile(5, 4),
-        name="w_bn13_l2",
+        placement=Tile(5, 4)
     )
 
     w_bn13_l3_put = Worker(
@@ -464,8 +457,7 @@ def cascade_bottlenecks(
             bn13_k_l3_put,
             _InW, _L1_OutC, _L3_OutC, _InputSplit, _OutputSplit2, _OC8_out, bn13_s3,
         ],
-        placement=Tile(4, 3),
-        name="w_bn13_l3_put",
+        placement=Tile(4, 3)
     )
 
     w_bn13_l3_get = Worker(
@@ -479,8 +471,7 @@ def cascade_bottlenecks(
             _InW, _L1_OutC, _L3_OutC, _InputSplit, _OutputSplit2, _OC8_out,
             bn13_s3, bn13_sAdd,
         ],
-        placement=Tile(5, 3),
-        name="w_bn13_l3_get",
+        placement=Tile(5, 3)
     )
 
     workers += [
@@ -614,23 +605,19 @@ def cascade_bottlenecks(
     # -- Inter-tile activation ObjectFifos for bn14 --
     bn14_of_l1_l2 = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_OutC), np.dtype[np.uint8]],
-        depth=4,
-        name="bn14_of_l1_l2",
+        depth=4
     )
     bn14_of_l2_l3_first = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-        depth=2,
-        name="bn14_of_l2_l3_first",
+        depth=2
     )
     bn14_of_l2_l3_second = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-        depth=2,
-        name="bn14_of_l2_l3_second",
+        depth=2
     )
     act_bn14_out = ObjectFifo(
         np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]],
-        depth=2,
-        name="act_bn14_out",
+        depth=2
     )
 
     # bn14 skip: bn13 output forwarded to bn14 L3 GET via MemTile DMA.
@@ -644,8 +631,7 @@ def cascade_bottlenecks(
             bn14_k_l1_put,
             _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn14_s1,
         ],
-        placement=Tile(6, 5),
-        name="w_bn14_l1_put",
+        placement=Tile(6, 5)
     )
 
     w_bn14_l1_get = Worker(
@@ -657,8 +643,7 @@ def cascade_bottlenecks(
             bn14_k_l1_get,
             _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn14_s1,
         ],
-        placement=Tile(7, 5),
-        name="w_bn14_l1_get",
+        placement=Tile(7, 5)
     )
 
     w_bn14_l2 = Worker(
@@ -671,8 +656,7 @@ def cascade_bottlenecks(
             bn14_k_l2_dw,
             _InW, _L1_OutC, bn14_s2,
         ],
-        placement=Tile(7, 4),
-        name="w_bn14_l2",
+        placement=Tile(7, 4)
     )
 
     w_bn14_l3_put = Worker(
@@ -683,8 +667,7 @@ def cascade_bottlenecks(
             bn14_k_l3_put,
             _InW, _L1_OutC, _L3_OutC, _InputSplit, _OutputSplit2, _OC8_out, bn14_s3,
         ],
-        placement=Tile(4, 2),
-        name="w_bn14_l3_put",
+        placement=Tile(4, 2)
     )
 
     w_bn14_l3_get = Worker(
@@ -698,8 +681,7 @@ def cascade_bottlenecks(
             _InW, _L1_OutC, _L3_OutC, _InputSplit, _OutputSplit2, _OC8_out,
             bn14_s3, bn14_sAdd,
         ],
-        placement=Tile(5, 2),
-        name="w_bn14_l3_get",
+        placement=Tile(5, 2)
     )
 
     workers += [
