@@ -124,8 +124,11 @@ class PersistentBuffer(Resolvable):
 
         # --- MemTile side ---
         # lock_id=None → auto-assigned by AIEAssignLockIDs pass
+        # For ping-pong: each buffer gets init=1 (one copy ready to send).
+        # For single-buffer: init=repeat_count (pre-load N repeats).
         mem_prod_lock = lock(memtile_op, init=0)
-        mem_cons_lock = lock(memtile_op, init=self._repeat_count)
+        cons_init = 1 if self._ping_pong_buf is not None else self._repeat_count
+        mem_cons_lock = lock(memtile_op, init=cons_init)
 
         wts_buf = buffer(
             memtile_op,
@@ -163,7 +166,7 @@ class PersistentBuffer(Resolvable):
             pp_memtile_op = (self._ping_pong_memtile.op
                              if self._ping_pong_memtile else memtile_op)
             pp_prod_lock = lock(pp_memtile_op, init=0)
-            pp_cons_lock = lock(pp_memtile_op, init=self._repeat_count)
+            pp_cons_lock = lock(pp_memtile_op, init=1)
             pp_buf = buffer(pp_memtile_op, pp_type, pp_name,
                             initial_value=np.asarray(pp_data, dtype=np.int8))
 
