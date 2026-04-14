@@ -242,7 +242,7 @@ def mobilenet_iron():
     # Bottleneck blocks
     # ------------------------------------------------------------------
     # Regular family: bn0–bn9
-    a_workers, act_bn9_out, bn89_internal_fifos = regular_bottlenecks(
+    a_workers, act_bn9_out = regular_bottlenecks(
         act_init_out,
         bn0_sf2, bn0_sf3,      # bn0: 2-layer block, no sf1 (no expand 1x1)
         bn1_sf1, bn1_sf2, bn1_sf3,

@@ -79,6 +79,8 @@ class Program:
                     all_tiles.append(w.tile)
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
+                    # Also include any tiles registered via allocate_on()
+                    all_tiles.extend(f._object_fifo._alloc_tile_ops)
 
                 # Resolve tiles
                 for t in all_tiles:

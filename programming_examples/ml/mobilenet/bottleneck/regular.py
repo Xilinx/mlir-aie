@@ -10,6 +10,7 @@ import numpy as np
 import os
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
+from aie.iron.device import Tile
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
@@ -902,31 +903,36 @@ def regular_bottlenecks(
         depth=2
     )
 
+    # Internal self-loop fifos for bn4+5 fused block.
+    # disable_synchronization=True: no locks needed (same sequential @core).
+    # allocate_on(Tile(0,2)): redirect buffers to init tile's SRAM (same as
+    # original's objectfifo.allocate(L1_tile_for_bn4_5) = tile(0,2)).
+    _bn45_alloc_tile = Tile(0, 2)   # init tile — matches original MLIR
     bn45_act_bn4_1_2 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-        name="bn45_act_bn4_1_2",
+        depth=3, name="bn45_act_bn4_1_2", disable_synchronization=True,
     )
+    bn45_act_bn4_1_2.allocate_on(_bn45_alloc_tile)
     bn45_act_bn4_2_3 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-        name="bn45_act_bn4_2_3",
+        depth=1, name="bn45_act_bn4_2_3", disable_synchronization=True,
     )
+    bn45_act_bn4_2_3.allocate_on(_bn45_alloc_tile)
     bn45_act_bn4_bn5 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_OUT_C), np.dtype[np.int8]],
-        depth=2,
-        name="bn45_act_bn4_bn5",
+        depth=2, name="bn45_act_bn4_bn5", disable_synchronization=True,
     )
+    bn45_act_bn4_bn5.allocate_on(_bn45_alloc_tile)
     bn45_act_bn5_1_2 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-        name="bn45_act_bn5_1_2",
+        depth=3, name="bn45_act_bn5_1_2", disable_synchronization=True,
     )
+    bn45_act_bn5_1_2.allocate_on(_bn45_alloc_tile)
     bn45_act_bn5_2_3 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-        name="bn45_act_bn5_2_3",
+        depth=1, name="bn45_act_bn5_2_3", disable_synchronization=True,
     )
+    bn45_act_bn5_2_3.allocate_on(_bn45_alloc_tile)
 
     def bn45_worker_fn(
         act_in_fifo,
@@ -1485,31 +1491,36 @@ def regular_bottlenecks(
         depth=2
     )
 
+    # Internal self-loop fifos for bn8+9 fused block.
+    # disable_synchronization=True + allocate_on(Tile(3,4)) matches original:
+    #   {disable_synchronization=true} + objectfifo.allocate(tile_3_4)
+    # tile(3,4) is the bn11_l1 pipeline tile — adjacent to bn8+9 compute tile(3,3).
+    _bn89_alloc_tile = Tile(3, 4)   # pipeline bn11_l1 tile — matches original MLIR
     bn89_act_bn8_1_2 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-        name="bn89_act_bn8_1_2",
+        depth=3, name="bn89_act_bn8_1_2", disable_synchronization=True,
     )
+    bn89_act_bn8_1_2.allocate_on(_bn89_alloc_tile)
     bn89_act_bn8_2_3 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-        name="bn89_act_bn8_2_3",
+        depth=1, name="bn89_act_bn8_2_3", disable_synchronization=True,
     )
+    bn89_act_bn8_2_3.allocate_on(_bn89_alloc_tile)
     bn89_act_bn8_bn9 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_OUT_C), np.dtype[np.int8]],
-        depth=2,
-        name="bn89_act_bn8_bn9",
+        depth=2, name="bn89_act_bn8_bn9", disable_synchronization=True,
     )
+    bn89_act_bn8_bn9.allocate_on(_bn89_alloc_tile)
     bn89_act_bn9_1_2 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-        name="bn89_act_bn9_1_2",
+        depth=3, name="bn89_act_bn9_1_2", disable_synchronization=True,
     )
+    bn89_act_bn9_1_2.allocate_on(_bn89_alloc_tile)
     bn89_act_bn9_2_3 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-        name="bn89_act_bn9_2_3",
+        depth=1, name="bn89_act_bn9_2_3", disable_synchronization=True,
     )
+    bn89_act_bn9_2_3.allocate_on(_bn89_alloc_tile)
 
     def bn89_worker_fn(
         act_in_fifo,
