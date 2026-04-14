@@ -463,50 +463,37 @@ def mobilenet_iron():
         + post_l2_workers
     )
 
-    # ------------------------------------------------------------------
-    # Cascade weight types (for runtime sequence DMA)
-    # ------------------------------------------------------------------
-    _l1_full_wts_sz = 80 * 960       # 76800
-    _l3_full_wts_sz = 960 * 80       # 76800
-    bn13_l1_wts_ty = np.ndarray[(_l1_full_wts_sz,), np.dtype[np.int8]]
-    bn13_l3_wts_ty = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
-    bn14_l1_wts_ty = np.ndarray[(_l1_full_wts_sz,), np.dtype[np.int8]]
-    bn14_l3_wts_ty = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
+    # Combined cascade weight tensor — matches test_mobilenet.py API (3 buffers).
+    # Layout: bn13_L1(76800) | bn13_L3_put(38400) | bn13_L3_get(38400) |
+    #         bn14_L1(76800) | bn14_L3_put(38400) | bn14_L3_get(38400) = 307200
+    from aie.helpers.taplib import TensorAccessPattern
+    _L1 = 80 * 960      # 76800
+    _L3h = 480 * 80     # 38400 (half)
+    _L3f = _L3h * 2     # 76800 (full = put+get combined)
+    _cascade_wts_sz = (_L1 + _L3h * 2) * 2   # 307200
+    cascade_wts_ty = np.ndarray[(_cascade_wts_sz,), np.dtype[np.int8]]
 
-    # ------------------------------------------------------------------
-    # Runtime sequence
-    # ------------------------------------------------------------------
+    # TAP helpers: slice a sub-tensor from the combined buffer (offset in int8 elements)
+    def _wts_tap(offset, size):
+        return TensorAccessPattern((_cascade_wts_sz,), offset=offset,
+                                   sizes=[1, 1, 1, size], strides=[0, 0, 0, 1])
+
     rt = Runtime()
-    with rt.sequence(in_ty,
-                     bn13_l1_wts_ty, bn13_l3_wts_ty,
-                     bn14_l1_wts_ty, bn14_l3_wts_ty,
-                     out_ty) as (inp,
-                                  wts_bn13_l1, wts_bn13_l3,
-                                  wts_bn14_l1, wts_bn14_l3,
-                                  out):
+    with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)
-
-        # Register cascade stream connections
         for src, dst in cascade_pairs:
             rt.cascade_flow(src, dst)
 
-        # Data movement — activations in, output out
-        # Shim tile placement matches original design to distribute DMA BD load:
-        #   act_in:       ShimTile00 (col 0)
-        #   bn13 L1 wts:  ShimTile40 (col 4)
-        #   bn13 L3 wts:  ShimTile50 (col 5)
-        #   bn14 L1 wts:  ShimTile60 (col 6)
-        #   bn14 L3 wts:  ShimTile70 (col 7)
-        #   act_out:      ShimTile70 (col 7, shared with bn14 L3)
         rt.fill(act_in.prod(), inp, placement=Tile(0, 0))
-
-        # Cascade weight DMA: host fills the full-weight fifos,
-        # MemTile splits them to put/get tiles via cons().split()
-        rt.fill(wts_fifos[0].prod(), wts_bn13_l1, placement=Tile(4, 0))  # bn13 L1 → ShimTile40
-        rt.fill(wts_fifos[1].prod(), wts_bn13_l3, placement=Tile(5, 0))  # bn13 L3 → ShimTile50
-        rt.fill(wts_fifos[2].prod(), wts_bn14_l1, placement=Tile(6, 0))  # bn14 L1 → ShimTile60
-        rt.fill(wts_fifos[3].prod(), wts_bn14_l3, placement=Tile(7, 0))  # bn14 L3 → ShimTile70
-
+        # Slice each sub-weight from the combined buffer (offsets in int8 elements):
+        #   0..76799:   bn13 L1 (76800)
+        #   76800..153599: bn13 L3 (38400 put + 38400 get = 76800 combined)
+        #   153600..230399: bn14 L1 (76800)
+        #   230400..307199: bn14 L3 (38400 put + 38400 get = 76800 combined)
+        rt.fill(wts_fifos[0].prod(), cascade_wts, _wts_tap(0,        _L1),  placement=Tile(4, 0))
+        rt.fill(wts_fifos[1].prod(), cascade_wts, _wts_tap(_L1,      _L3f), placement=Tile(5, 0))
+        rt.fill(wts_fifos[2].prod(), cascade_wts, _wts_tap(_L1+_L3f, _L1),  placement=Tile(6, 0))
+        rt.fill(wts_fifos[3].prod(), cascade_wts, _wts_tap(_L1*2+_L3f, _L3f), placement=Tile(7, 0))
         rt.drain(act_out_of.cons(), out, wait=True, placement=Tile(7, 0))
 
     # ------------------------------------------------------------------
