@@ -1,10 +1,10 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""Mid-level compile layer: CompilableDesign, compileconfig, markers, and context."""
+"""Backwards-compatible re-export from aie.utils.compile.jit."""
 
-from .context import compile_context, get_compile_arg
-from .markers import Compile, In, InOut, Out
-from .compilabledesign import CompilableDesign
-from .compileconfig import compileconfig
+from aie.utils.compile.jit.context import compile_context, get_compile_arg
+from aie.utils.compile.jit.markers import Compile, In, InOut, Out
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.compile.jit.compileconfig import compileconfig
 
 __all__ = [
     "CompilableDesign",

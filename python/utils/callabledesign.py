@@ -38,7 +38,7 @@ from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.npukernel import NPUKernel
 from aie.utils import DefaultNPURuntime
 
-from aie.iron.compile.compilabledesign import CompilableDesign
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
 
 logger = logging.getLogger(__name__)
 

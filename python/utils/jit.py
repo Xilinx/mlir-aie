@@ -46,7 +46,7 @@ import warnings
 from pathlib import Path
 from typing import Callable
 
-from .callabledesign import CallableDesign as _CallableDesign
+from aie.utils.callabledesign import CallableDesign as _CallableDesign
 
 # Derived from CallableDesign.__init__ so it stays in sync automatically.
 # Excludes 'self', 'mlir_generator', and 'compile_kwargs' — those are
@@ -85,7 +85,7 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
 
     # --- Validate Compile[T] params when generator is callable ---
     if callable(mlir_generator):
-        from aie.iron.compile.compilabledesign import _split_params
+        from aie.utils.compile.jit.compilabledesign import _split_params
 
         compile_params, _, _ = _split_params(mlir_generator)
 
@@ -101,29 +101,6 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
                     f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}.",
                     stacklevel=2,
                 )
-
-        # Warn about captured globals that could cause stale cache hits.
-        from aie.iron.compile.compilabledesign import _iter_referenced_globals
-
-        _primitive = (int, float, str, bool, bytes)
-        complex_globals = [
-            name
-            for name, val in _iter_referenced_globals(mlir_generator)
-            if not isinstance(val, _primitive)
-            and not (
-                isinstance(val, (tuple, list))
-                and all(isinstance(v, _primitive) for v in val)
-            )
-        ]
-        if complex_globals:
-            warnings.warn(
-                f"@iron.jit: {mlir_generator.__name__!r} references module-level global(s) "
-                f"{complex_globals!r} whose values cannot be reliably hashed for cache "
-                f"invalidation. If these globals affect MLIR generation, use Compile[T] "
-                f"parameters instead to ensure correct caching.",
-                UserWarning,
-                stacklevel=2,
-            )
 
         # Guard: Compile[T] params must be keyword-only (unless pre-bound).
         sig = _inspect.signature(mlir_generator)

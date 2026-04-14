@@ -19,9 +19,6 @@ This design consists of the following:
   JIT decorator to compile the design into a binary to run on the NPU, as well as 
   to describe the program that runs on the CPU (host) that calculates a correct 
   reference output, verifies and times our NPU design's execution.
-* `passThrough.cc`: A C++ vectorized kernel that exposes efficient 
-  vector operations on the AI Engine using the 
-  [AIE API](https://xilinx.github.io/aie_api/index.html).
 * `run.lit`: lit tests that run the design on different NPU devices.
 
 ## Step-by-Step Instructions

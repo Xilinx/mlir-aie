@@ -249,11 +249,18 @@ def compile_external_kernel(func, kernel_dir, target_arch):
                 f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
             )
         shutil.copy2(func._source_file, source_file)
+        # Include the original source file's directory so relative includes
+        # (e.g. "../aie_kernel_utils.h") still resolve after the file is
+        # copied into kernel_dir.
+        src_dir = os.path.dirname(os.path.abspath(func._source_file))
+        include_dirs = list(func._include_dirs)
+        if src_dir not in include_dirs:
+            include_dirs.append(src_dir)
         compile_cxx_core_function(
             source_path=source_file,
             target_arch=target_arch,
             output_path=output_file,
-            include_dirs=func._include_dirs,
+            include_dirs=include_dirs,
             compile_args=func._compile_flags,
             cwd=kernel_dir,
         )

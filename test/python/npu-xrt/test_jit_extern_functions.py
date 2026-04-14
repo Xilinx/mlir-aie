@@ -13,6 +13,9 @@ import os
 import tempfile
 import pytest
 
+# Peano -O2 has an FPU pipeline hazard for float32; skip until upstream fix.
+_skip_float32 = pytest.mark.skip(reason="Peano -O2 float32 FPU pipeline hazard")
+
 import aie.iron as iron
 from aie.iron import Compile, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
@@ -158,6 +161,7 @@ def test_different_tile_sizes(tile_size):
     "dtype,c_type",
     [
         (np.int32, "int"),
+        pytest.param(np.float32, "float", marks=_skip_float32),
     ],
 )
 def test_different_data_types(dtype, c_type):

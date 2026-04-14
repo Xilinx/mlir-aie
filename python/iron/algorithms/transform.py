@@ -388,6 +388,54 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
     return Program(device, rt).resolve_program(SequentialPlacer())
 
 
+def _make_fake_tensor(tensor_ty, tile_size, fn_name):
+    """Parse a numpy ndarray type descriptor and return a fake tensor object.
+
+    Extracts ``num_elements`` and ``dtype`` from *tensor_ty*, validates that
+    *tile_size* divides evenly into *num_elements*, and returns a lightweight
+    object exposing ``.shape``, ``.size``, and ``.dtype`` attributes — enough
+    for :func:`_transform_gen` and :func:`_transform_parallel_gen` to operate
+    without real NPU memory.
+
+    Args:
+        tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
+            np.dtype[np.int32]]``).
+        tile_size (int): Number of elements per tile.
+        fn_name (str): Caller name used in error messages.
+
+    Returns:
+        An object with ``.shape``, ``.size``, and ``.dtype``.
+    """
+    try:
+        shape_arg, dtype_arg = tensor_ty.__args__
+        num_elements = 1
+        for dim in shape_arg:
+            num_elements *= dim
+        dtype = dtype_arg.__args__[0]
+    except Exception as exc:
+        raise TypeError(
+            f"{fn_name} expects a numpy ndarray type such as "
+            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
+        ) from exc
+
+    if num_elements % tile_size != 0:
+        raise ValueError(
+            f"Number of elements ({num_elements}) must be a multiple of "
+            f"tile size ({tile_size})"
+        )
+
+    # Capture dtype in a local alias to avoid the class-scope shadowing issue
+    # where `dtype = dtype` inside a class body is self-referential.
+    _dtype = dtype
+
+    class _TypeDescriptor:
+        shape = (num_elements,)
+        size = num_elements
+        dtype = _dtype
+
+    return _TypeDescriptor()
+
+
 def transform_typed(func, tensor_ty, tile_size=16):
     """Apply ``func`` element-wise over a tensor described by *tensor_ty*.
 
@@ -411,41 +459,7 @@ def transform_typed(func, tensor_ty, tile_size=16):
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-    # Infer num_elements and dtype from the ndarray type descriptor.
-    # numpy ndarray types store shape as __args__[0] and dtype as __args__[1].
-    try:
-        shape_arg, dtype_arg = tensor_ty.__args__
-        # shape_arg is a tuple like (1024,)
-        num_elements = 1
-        for dim in shape_arg:
-            num_elements *= dim
-        # dtype_arg is np.dtype[np.int32] — extract the scalar type
-        dtype = dtype_arg.__args__[0]
-    except Exception as exc:
-        raise TypeError(
-            f"transform_typed expects a numpy ndarray type such as "
-            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
-        ) from exc
-
-    n = tile_size
-    if num_elements % n != 0:
-        raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of "
-            f"tile size ({n})"
-        )
-
-    # Build a minimal fake-tensor class that _transform_gen can call
-    # .shape, .dtype, and .size on, without needing real NPU memory.
-    # Capture dtype in a local alias to avoid the class-scope shadowing issue
-    # where `dtype = dtype` inside a class body is self-referential.
-    _dtype = dtype
-
-    class _TypeDescriptor:
-        shape = (num_elements,)
-        size = num_elements
-        dtype = _dtype
-
-    fake_tensor = _TypeDescriptor()
+    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_typed")
     return _transform_gen(func, [fake_tensor], fake_tensor, tile_size=tile_size)
 
 
@@ -465,33 +479,7 @@ def transform_binary_typed(func, tensor_ty, tile_size=16):
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-    try:
-        shape_arg, dtype_arg = tensor_ty.__args__
-        num_elements = 1
-        for dim in shape_arg:
-            num_elements *= dim
-        dtype = dtype_arg.__args__[0]
-    except Exception as exc:
-        raise TypeError(
-            f"transform_binary_typed expects a numpy ndarray type such as "
-            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
-        ) from exc
-
-    n = tile_size
-    if num_elements % n != 0:
-        raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of "
-            f"tile size ({n})"
-        )
-
-    _dtype = dtype
-
-    class _TypeDescriptor:
-        shape = (num_elements,)
-        size = num_elements
-        dtype = _dtype
-
-    fake_tensor = _TypeDescriptor()
+    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_binary_typed")
     return _transform_gen(
         func, [fake_tensor, fake_tensor], fake_tensor, tile_size=tile_size
     )
@@ -516,33 +504,7 @@ def transform_parallel_typed(func, tensor_ty, *params, tile_size=16):
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-    try:
-        shape_arg, dtype_arg = tensor_ty.__args__
-        num_elements = 1
-        for dim in shape_arg:
-            num_elements *= dim
-        dtype = dtype_arg.__args__[0]
-    except Exception as exc:
-        raise TypeError(
-            f"transform_parallel_typed expects a numpy ndarray type such as "
-            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
-        ) from exc
-
-    n = tile_size
-    if num_elements % n != 0:
-        raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of "
-            f"tile size ({n})"
-        )
-
-    _dtype = dtype
-
-    class _TypeDescriptor:
-        shape = (num_elements,)
-        size = num_elements
-        dtype = _dtype
-
-    fake_tensor = _TypeDescriptor()
+    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_parallel_typed")
     return _transform_parallel_gen(
         func, [fake_tensor], fake_tensor, *params, tile_size=tile_size
     )
@@ -565,33 +527,9 @@ def transform_parallel_binary_typed(func, tensor_ty, tile_size=16):
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-    try:
-        shape_arg, dtype_arg = tensor_ty.__args__
-        num_elements = 1
-        for dim in shape_arg:
-            num_elements *= dim
-        dtype = dtype_arg.__args__[0]
-    except Exception as exc:
-        raise TypeError(
-            f"transform_parallel_binary_typed expects a numpy ndarray type such as "
-            f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
-        ) from exc
-
-    n = tile_size
-    if num_elements % n != 0:
-        raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of "
-            f"tile size ({n})"
-        )
-
-    _dtype = dtype
-
-    class _TypeDescriptor:
-        shape = (num_elements,)
-        size = num_elements
-        dtype = _dtype
-
-    fake_tensor = _TypeDescriptor()
+    fake_tensor = _make_fake_tensor(
+        tensor_ty, tile_size, "transform_parallel_binary_typed"
+    )
     return _transform_parallel_gen(
         func, [fake_tensor, fake_tensor], fake_tensor, tile_size=tile_size
     )

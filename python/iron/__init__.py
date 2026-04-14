@@ -24,7 +24,7 @@ from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
 from .dtype import str_to_dtype, dtype_to_str
-from .compile import (
+from aie.utils.compile.jit import (
     CompilableDesign,
     compile_context,
     Compile,
@@ -34,7 +34,8 @@ from .compile import (
     compileconfig,
     get_compile_arg,
 )
-from .hostruntime import CallableDesign, jit
+from aie.utils.jit import jit
+from aie.utils.callabledesign import CallableDesign
 from . import kernels
 from . import algorithms
 from aie.utils import (

@@ -7,18 +7,12 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """CompilableDesign: bundles an MLIR generator with its compile-time configuration.
 
-``CompilableDesign`` is the central mid-level abstraction.  It pairs an MLIR
-generator function (or a path to a ``.mlir`` file) with explicit compile-time
-parameters and produces an ``xclbin`` + ``insts.bin`` artifact pair via
-``compile()``.
-
-The compile-time parameters (``compile_kwargs``) are bound at construction
-time.  No runtime tensors are required to compile; only the ``Compile[T]``-
-annotated parameters need to be supplied.
+Pairs an MLIR generator function (or ``.mlir`` file path) with explicit
+compile-time parameters and produces an ``xclbin`` + ``insts.bin`` artifact
+pair via ``compile()``.
 
 Hashing uses ``SHA256(generator_bytecode + compile_kwargs_json +
-source_file_mtimes + flags)`` — no MLIR generation is needed for a cache
-lookup, making it significantly faster than the legacy MLIR-string hash.
+source_file_mtimes + flags)`` — no MLIR generation needed for a cache lookup.
 """
 
 from __future__ import annotations
@@ -29,9 +23,7 @@ import inspect
 import json
 import logging
 import os
-import pickle
 import sys
-import types
 import typing
 from pathlib import Path
 from typing import Any, Callable, get_args, get_origin
@@ -50,105 +42,31 @@ from .markers import Compile, In, InOut, Out
 
 logger = logging.getLogger(__name__)
 
-_BUILTIN_NAMES = set(dir(builtins))
 _PRIMITIVE_TYPES = (int, float, str, bool, bytes)
 
-
-def _collect_co_names(code) -> set:
-    """Recursively collect all co_names from *code* and nested code objects."""
-    names = set(code.co_names)
-    for const in code.co_consts:
-        if isinstance(const, types.CodeType):
-            names |= _collect_co_names(const)
-    return names
-
-
-def _iter_referenced_globals(generator):
-    """Yield ``(name, value)`` pairs for non-trivial globals referenced by *generator*.
-
-    Skips builtins, modules, types, callables, and ``None``.  Yields everything
-    else — both primitive scalars (which are cheaply hashable) and complex
-    objects (which may need pickle).
-
-    Used by :func:`_hash_captured_globals` and by ``@iron.jit`` to warn users
-    about globals that cannot be reliably cache-invalidated.
-    """
-    all_names = _collect_co_names(generator.__code__)
-    globs = generator.__globals__
-    for name in sorted(all_names):
-        val = globs.get(name)
-        if val is None:
-            continue
-        if isinstance(val, (types.ModuleType, type)):
-            continue
-        if name in _BUILTIN_NAMES:
-            continue
-        if callable(val):
-            continue
-        yield name, val
-
-
-def _hash_captured_globals(generator) -> str:
-    """Return a SHA-256 hex digest of the primitive globals referenced by *generator*.
-
-    Recursively collects all ``co_names`` from the generator's code object and
-    nested code objects, looks each name up in the generator's global namespace,
-    and hashes the primitive-scalar values it finds.  Modules, types, builtins,
-    and callables are skipped.  Non-primitive values are hashed via pickle; if
-    pickle fails the value is skipped with a debug log.
-    """
-    parts = []
-    for name, val in _iter_referenced_globals(generator):
-        if isinstance(val, _PRIMITIVE_TYPES):
-            parts.append(f"{name}={repr(val)}")
-        elif isinstance(val, (tuple, list)) and all(
-            isinstance(v, _PRIMITIVE_TYPES) for v in val
-        ):
-            parts.append(f"{name}={repr(val)}")
-        else:
-            # Non-primitive: try pickle
-            try:
-                digest = hashlib.sha256(pickle.dumps(val)).hexdigest()
-                parts.append(f"{name}=pickle:{digest}")
-            except Exception as exc:
-                logger.debug("_hash_captured_globals: skipping %r (%s)", name, exc)
-    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+_KWARG_TYPE_MAP = {"bool": bool, "int": int, "float": float, "str": str}
 
 
 def _encode_kwarg(value: Any) -> Any:
-    """Encode a compile_kwarg value for JSON storage with type information."""
-    if isinstance(value, bool):
-        return {"__type__": "bool", "__value__": value}
+    """Encode a compile_kwarg value as [typename, value] for JSON storage."""
+    if isinstance(value, bool):  # must check bool before int
+        return ["bool", value]
     if isinstance(value, int):
-        return {"__type__": "int", "__value__": value}
+        return ["int", value]
     if isinstance(value, float):
-        return {"__type__": "float", "__value__": value}
+        return ["float", value]
     if isinstance(value, str):
-        return {"__type__": "str", "__value__": value}
-    # Fallback: store as string with a marker so from_json can warn.
-    return {"__type__": "unknown", "__value__": str(value)}
+        return ["str", value]
+    return ["str", str(value)]
 
 
 def _decode_kwarg(encoded: Any) -> Any:
     """Decode a compile_kwarg value from JSON storage."""
-    if not isinstance(encoded, dict) or "__type__" not in encoded:
-        # Legacy format (plain string) — return as-is.
-        return encoded
-    t = encoded["__type__"]
-    v = encoded["__value__"]
-    if t == "bool":
-        return bool(v)
-    if t == "int":
-        return int(v)
-    if t == "float":
-        return float(v)
-    if t == "str":
-        return str(v)
-    # Unknown type — return the string value with a warning.
-    logger.warning(
-        "from_json: compile_kwarg value of unknown type %r decoded as string", t
-    )
-    return str(v)
+    if not isinstance(encoded, list) or len(encoded) != 2:
+        return encoded  # legacy plain value or unknown format
+    t, v = encoded
+    converter = _KWARG_TYPE_MAP.get(t, str)
+    return converter(v)
 
 
 class _TensorPlaceholder:
@@ -166,16 +84,11 @@ class _TensorPlaceholder:
 
     def _raise(self, op: str = "") -> None:
         name = object.__getattribute__(self, "_param_name")
+        suffix = f": {op}" if op else ""
         raise RuntimeError(
-            f"Generator parameter {name!r} is an In/Out/InOut runtime tensor "
-            f"and is not available at compile time{': ' + op if op else ''}.\n"
-            f"Move shape and dtype information into Compile[T] parameters:\n\n"
-            f"  # Instead of:\n"
-            f"  def gen({name}: In, *, ...):\n"
-            f"      N = {name}.shape[0]   # ← fails: {name!r} is a runtime tensor\n\n"
-            f"  # Write:\n"
-            f"  def gen({name}: In, *, N: Compile[int], dtype: Compile[type] = np.float32):\n"
-            f"      tensor_ty = np.ndarray[(N,), np.dtype[dtype]]"
+            f"Generator parameter {name!r} is a runtime tensor (In/Out/InOut) "
+            f"and is not available at compile time{suffix}. "
+            f"Use Compile[T] parameters for shape/dtype information instead."
         )
 
     def __getattr__(self, name: str):
@@ -186,17 +99,6 @@ class _TensorPlaceholder:
 
     def __getitem__(self, key):
         self._raise(f"[{key!r}]")
-
-    def __len__(self) -> int:
-        self._raise("len()")
-        return 0  # unreachable
-
-    def __iter__(self):
-        self._raise("iter()")
-
-    def __bool__(self) -> bool:
-        self._raise("bool()")
-        return False  # unreachable
 
     def __repr__(self) -> str:
         name = object.__getattribute__(self, "_param_name")
@@ -366,11 +268,6 @@ def _compute_hash(
         h.update(
             f"target_arch={target_arch}|peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
         )
-
-    # Captured module-level globals (primitive scalars and homogeneous containers).
-    if not isinstance(generator, Path):
-        global_hash = _hash_captured_globals(generator)
-        h.update(global_hash.encode())
 
     return h.hexdigest()[:24]
 

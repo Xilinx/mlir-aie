@@ -25,6 +25,9 @@ from aie.iron.algorithms import (
 
 TILE_SIZE = 16
 
+# Peano -O2 has an FPU pipeline hazard for float32; skip until upstream fix.
+_skip_float32 = pytest.mark.skip(reason="Peano -O2 float32 FPU pipeline hazard")
+
 
 # =============================================================================
 # @iron.jit wrappers using typed algorithm variants
@@ -181,43 +184,42 @@ def test_transform_add_parametrized(add_value):
     "dtype,c_type",
     [
         (np.int32, "int"),
-        (np.float32, "float"),
+        pytest.param(np.float32, "float", marks=_skip_float32),
     ],
 )
-def test_transform_different_datatypes_extern(dtype, c_type, skip_on_f32_failure):
+def test_transform_different_datatypes_extern(dtype, c_type):
     """Test transform algorithm with ExternalFunction on different datatypes."""
-    with skip_on_f32_failure():
-        add_one = ExternalFunction(
-            "add_one",
-            source_string=f"""extern "C" {{
-                void add_one({c_type}* input, {c_type}* output, int tile_size) {{
-                    for (int i = 0; i < tile_size; i++) {{
-                        output[i] = input[i] + 1.0f;
-                    }}
+    add_one = ExternalFunction(
+        "add_one",
+        source_string=f"""extern "C" {{
+            void add_one({c_type}* input, {c_type}* output, int tile_size) {{
+                for (int i = 0; i < tile_size; i++) {{
+                    output[i] = input[i] + 1.0f;
                 }}
-            }}""",
-            arg_types=[
-                np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
-                np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
-                np.int32,
-            ],
-        )
-        if np.issubdtype(dtype, np.floating):
-            input = iron.rand(1024, dtype=dtype, device="npu")
-        else:
-            input = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
-        output = iron.zeros_like(input)
-        run_transform(
-            input,
-            output,
-            func=add_one,
-            N_in=input.shape[0],
-            N_out=output.shape[0],
-            dtype_in=input.dtype,
-            dtype_out=output.dtype,
-            tile_size=TILE_SIZE,
-        )
-        assert np.allclose(input.numpy() + 1, output.numpy())
+            }}
+        }}""",
+        arg_types=[
+            np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
+            np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
+            np.int32,
+        ],
+    )
+    if np.issubdtype(dtype, np.floating):
+        input = iron.rand(1024, dtype=dtype, device="npu")
+    else:
+        input = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
+    output = iron.zeros_like(input)
+    run_transform(
+        input,
+        output,
+        func=add_one,
+        N_in=input.shape[0],
+        N_out=output.shape[0],
+        dtype_in=input.dtype,
+        dtype_out=output.dtype,
+        tile_size=TILE_SIZE,
+    )
+    assert np.allclose(input.numpy() + 1, output.numpy())
 
 
 @pytest.mark.parametrize("num_elements", [512, 1024, 2048])
@@ -345,27 +347,29 @@ def test_transform_binary_add():
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.int32])
-def test_transform_binary_different_datatypes(dtype, skip_on_f32_failure):
+@pytest.mark.parametrize(
+    "dtype",
+    [pytest.param(np.float32, marks=_skip_float32), np.int32],
+)
+def test_transform_binary_different_datatypes(dtype):
     """Test transform_binary algorithm with different datatypes."""
-    with skip_on_f32_failure():
-        if np.issubdtype(dtype, np.floating):
-            first = iron.rand(1024, dtype=dtype, device="npu")
-            second = iron.rand(1024, dtype=dtype, device="npu")
-        else:
-            first = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
-            second = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
-        output = iron.zeros_like(first)
-        run_transform_binary(
-            first,
-            second,
-            output,
-            func=lambda a, b: a + b,
-            N=first.shape[0],
-            dtype=first.dtype,
-            tile_size=TILE_SIZE,
-        )
-        assert np.allclose(first.numpy() + second.numpy(), output.numpy())
+    if np.issubdtype(dtype, np.floating):
+        first = iron.rand(1024, dtype=dtype, device="npu")
+        second = iron.rand(1024, dtype=dtype, device="npu")
+    else:
+        first = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
+        second = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
+    output = iron.zeros_like(first)
+    run_transform_binary(
+        first,
+        second,
+        output,
+        func=lambda a, b: a + b,
+        N=first.shape[0],
+        dtype=first.dtype,
+        tile_size=TILE_SIZE,
+    )
+    assert np.allclose(first.numpy() + second.numpy(), output.numpy())
 
 
 @pytest.mark.parametrize("num_elements", [512, 1024, 2048])
@@ -428,26 +432,28 @@ def test_transform_parallel_add_parametrized(add_value):
     assert np.allclose(original + add_value, output.numpy())
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.int32])
-def test_transform_parallel_different_datatypes(dtype, skip_on_f32_failure):
+@pytest.mark.parametrize(
+    "dtype",
+    [pytest.param(np.float32, marks=_skip_float32), np.int32],
+)
+def test_transform_parallel_different_datatypes(dtype):
     """Test transform_parallel algorithm with add operation on different datatypes."""
-    with skip_on_f32_failure():
-        if np.issubdtype(dtype, np.floating):
-            input = iron.rand(1024, dtype=dtype, device="npu")
-        else:
-            input = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
-        output = iron.zeros_like(input)
-        run_transform_parallel(
-            input,
-            output,
-            func=lambda a: a + 1,
-            N_in=input.shape[0],
-            N_out=output.shape[0],
-            dtype_in=input.dtype,
-            dtype_out=output.dtype,
-            tile_size=TILE_SIZE,
-        )
-        assert np.allclose(input.numpy() + 1, output.numpy())
+    if np.issubdtype(dtype, np.floating):
+        input = iron.rand(1024, dtype=dtype, device="npu")
+    else:
+        input = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
+    output = iron.zeros_like(input)
+    run_transform_parallel(
+        input,
+        output,
+        func=lambda a: a + 1,
+        N_in=input.shape[0],
+        N_out=output.shape[0],
+        dtype_in=input.dtype,
+        dtype_out=output.dtype,
+        tile_size=TILE_SIZE,
+    )
+    assert np.allclose(input.numpy() + 1, output.numpy())
 
 
 @pytest.mark.parametrize("num_elements", [512, 1024, 2048])
@@ -608,27 +614,29 @@ def test_transform_parallel_binary_add():
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.int32])
-def test_transform_parallel_binary_different_datatypes(dtype, skip_on_f32_failure):
+@pytest.mark.parametrize(
+    "dtype",
+    [pytest.param(np.float32, marks=_skip_float32), np.int32],
+)
+def test_transform_parallel_binary_different_datatypes(dtype):
     """Test transform_parallel_binary algorithm with add operation on different datatypes."""
-    with skip_on_f32_failure():
-        if np.issubdtype(dtype, np.floating):
-            first = iron.rand(1024, dtype=dtype, device="npu")
-            second = iron.rand(1024, dtype=dtype, device="npu")
-        else:
-            first = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
-            second = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
-        output = iron.zeros_like(first)
-        run_transform_parallel_binary(
-            first,
-            second,
-            output,
-            func=lambda a, b: a + b,
-            N=first.shape[0],
-            dtype=first.dtype,
-            tile_size=TILE_SIZE,
-        )
-        assert np.allclose(first.numpy() + second.numpy(), output.numpy())
+    if np.issubdtype(dtype, np.floating):
+        first = iron.rand(1024, dtype=dtype, device="npu")
+        second = iron.rand(1024, dtype=dtype, device="npu")
+    else:
+        first = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
+        second = iron.randint(0, 50, (1024,), dtype=dtype, device="npu")
+    output = iron.zeros_like(first)
+    run_transform_parallel_binary(
+        first,
+        second,
+        output,
+        func=lambda a, b: a + b,
+        N=first.shape[0],
+        dtype=first.dtype,
+        tile_size=TILE_SIZE,
+    )
+    assert np.allclose(first.numpy() + second.numpy(), output.numpy())
 
 
 @pytest.mark.parametrize("num_elements", [512, 1024, 2048])
@@ -668,63 +676,64 @@ def test_for_each_add():
     assert np.allclose(original + 1, data.numpy())
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.int32])
-def test_for_each_different_datatypes(dtype, skip_on_f32_failure):
+@pytest.mark.parametrize(
+    "dtype",
+    [pytest.param(np.float32, marks=_skip_float32), np.int32],
+)
+def test_for_each_different_datatypes(dtype):
     """Test for_each algorithm on different datatypes."""
-    with skip_on_f32_failure():
-        if np.issubdtype(dtype, np.floating):
-            data = iron.rand(1024, dtype=dtype, device="npu")
-        else:
-            data = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
-        original = data.numpy().copy()
-        run_for_each(
-            data,
-            func=lambda a: a + 1,
-            N=data.shape[0],
-            dtype=data.dtype,
-            tile_size=TILE_SIZE,
-        )
-        assert np.allclose(original + 1, data.numpy())
+    if np.issubdtype(dtype, np.floating):
+        data = iron.rand(1024, dtype=dtype, device="npu")
+    else:
+        data = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
+    original = data.numpy().copy()
+    run_for_each(
+        data,
+        func=lambda a: a + 1,
+        N=data.shape[0],
+        dtype=data.dtype,
+        tile_size=TILE_SIZE,
+    )
+    assert np.allclose(original + 1, data.numpy())
 
 
 @pytest.mark.parametrize(
     "dtype,c_type",
     [
         (np.int32, "int"),
-        (np.float32, "float"),
+        pytest.param(np.float32, "float", marks=_skip_float32),
     ],
 )
-def test_for_each_different_datatypes_extern(dtype, c_type, skip_on_f32_failure):
+def test_for_each_different_datatypes_extern(dtype, c_type):
     """Test for_each algorithm with ExternalFunction on different datatypes."""
-    with skip_on_f32_failure():
-        add_one = ExternalFunction(
-            "add_one",
-            source_string=f"""extern "C" {{
-                void add_one({c_type}* input, {c_type}* output, int tile_size) {{
-                    for (int i = 0; i < tile_size; i++) {{
-                        output[i] = input[i] + 1.0f;
-                    }}
+    add_one = ExternalFunction(
+        "add_one",
+        source_string=f"""extern "C" {{
+            void add_one({c_type}* input, {c_type}* output, int tile_size) {{
+                for (int i = 0; i < tile_size; i++) {{
+                    output[i] = input[i] + 1.0f;
                 }}
-            }}""",
-            arg_types=[
-                np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
-                np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
-                np.int32,
-            ],
-        )
-        if np.issubdtype(dtype, np.floating):
-            data = iron.rand(1024, dtype=dtype, device="npu")
-        else:
-            data = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
-        original = data.numpy().copy()
-        run_for_each(
-            data,
-            func=add_one,
-            N=data.shape[0],
-            dtype=data.dtype,
-            tile_size=TILE_SIZE,
-        )
-        assert np.allclose(original + 1, data.numpy())
+            }}
+        }}""",
+        arg_types=[
+            np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
+            np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
+            np.int32,
+        ],
+    )
+    if np.issubdtype(dtype, np.floating):
+        data = iron.rand(1024, dtype=dtype, device="npu")
+    else:
+        data = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
+    original = data.numpy().copy()
+    run_for_each(
+        data,
+        func=add_one,
+        N=data.shape[0],
+        dtype=data.dtype,
+        tile_size=TILE_SIZE,
+    )
+    assert np.allclose(original + 1, data.numpy())
 
 
 @pytest.mark.parametrize("num_elements", [512, 1024, 2048])

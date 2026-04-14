@@ -1,10 +1,7 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""High-level host-runtime layer: CallableDesign and jit decorator."""
+"""Backwards-compatible re-export from aie.utils."""
 
-from .callabledesign import CallableDesign
-from .jit import jit
+from aie.utils.callabledesign import CallableDesign
+from aie.utils.jit import jit
 
-__all__ = [
-    "CallableDesign",
-    "jit",
-]
+__all__ = ["CallableDesign", "jit"]
