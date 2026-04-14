@@ -39,6 +39,7 @@ class Worker(ObjectFifoEndpoint):
         allocation_scheme: str = None,
         trace: int = None,
         trace_events: list = None,
+        dynamic_objfifo_lowering: bool = False,
     ):
         """Construct a Worker
 
@@ -60,6 +61,7 @@ class Worker(ObjectFifoEndpoint):
         self._while_true = while_true
         self.stack_size = stack_size
         self.allocation_scheme = allocation_scheme
+        self._dynamic_objfifo_lowering = dynamic_objfifo_lowering
         if allocation_scheme:
             self._tile.allocation_scheme = allocation_scheme
         self.trace = trace
@@ -143,8 +145,9 @@ class Worker(ObjectFifoEndpoint):
             l = lock(my_tile)
             barrier._add_worker_lock(l)
 
+        dyn = self._dynamic_objfifo_lowering if self._dynamic_objfifo_lowering else None
         @core(my_tile, stack_size=self.stack_size,
-              dynamic_objfifo_lowering=True)
+              dynamic_objfifo_lowering=dyn)
         def core_body():
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)
