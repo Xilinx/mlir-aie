@@ -123,8 +123,9 @@ class PersistentBuffer(Resolvable):
         compute_op = self._compute.op
 
         # --- MemTile side ---
-        mem_prod_lock = lock(memtile_op, lock_id=0, init=0)   # initially no space
-        mem_cons_lock = lock(memtile_op, lock_id=1, init=self._repeat_count)  # initially ready
+        # lock_id=None → auto-assigned by AIEAssignLockIDs pass
+        mem_prod_lock = lock(memtile_op, init=0)
+        mem_cons_lock = lock(memtile_op, init=self._repeat_count)
 
         wts_buf = buffer(
             memtile_op,
@@ -134,8 +135,8 @@ class PersistentBuffer(Resolvable):
         )
 
         # --- Compute tile side ---
-        comp_prod_lock = lock(compute_op, lock_id=0, init=1)   # initially ready to receive
-        comp_cons_lock = lock(compute_op, lock_id=1, init=0)   # initially no data
+        comp_prod_lock = lock(compute_op, init=1)
+        comp_cons_lock = lock(compute_op, init=0)
 
         recv_buf = buffer(
             compute_op,
@@ -161,8 +162,8 @@ class PersistentBuffer(Resolvable):
             pp_type, pp_data, pp_name = self._ping_pong_buf
             pp_memtile_op = (self._ping_pong_memtile.op
                              if self._ping_pong_memtile else memtile_op)
-            pp_prod_lock = lock(pp_memtile_op, lock_id=0, init=0)
-            pp_cons_lock = lock(pp_memtile_op, lock_id=1, init=self._repeat_count)
+            pp_prod_lock = lock(pp_memtile_op, init=0)
+            pp_cons_lock = lock(pp_memtile_op, init=self._repeat_count)
             pp_buf = buffer(pp_memtile_op, pp_type, pp_name,
                             initial_value=np.asarray(pp_data, dtype=np.int8))
 

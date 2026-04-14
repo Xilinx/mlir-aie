@@ -155,7 +155,7 @@ def mobilenet_iron():
     # Input / output tensor types (used in runtime sequence)
     # ------------------------------------------------------------------
     in_ty  = np.ndarray[(tensorInW * tensorInH * tensorInC,), np.dtype[np.int8]]
-    out_ty = np.ndarray[(post_L1_OutW * post_L1_OutH * post_L2_OutC,), np.dtype[np.uint8]]
+    out_ty = np.ndarray[(post_L1_OutW * post_L1_OutH * post_L2_OutC,), np.dtype[np.uint16]]
 
     # ------------------------------------------------------------------
     # Init conv boundary fifos (declared here; owned by orchestrator)
@@ -198,7 +198,7 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     k_init = Kernel(
         "conv2dk3_stride2_i8",
-        "init_conv2dk3_stride2.o",
+        "init_conv2dk3.o",
         [_i8((tensorInW, 1, tensorInC)),
          _i8((tensorInW, 1, tensorInC)),
          _i8((tensorInW, 1, tensorInC)),
@@ -314,24 +314,26 @@ def mobilenet_iron():
     )
 
     k_post_l1 = Kernel(
-        "post_fused_conv2dk1_i8_avg_pool",
-        "post_conv2dk1_avg_pool.o",
+        "conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
+        "post_conv2dk1_relu_xy_pool_padded_i8_ui8.o",
         [_i8((post_L1_InW, 1, post_L1_InC)),
-         _i8((post_l1_wts_chunk,)),   # 9600 bytes = 1/PostOutputSplit of full weights
+         _i8((post_l1_wts_chunk,)),
          _i8((post_L1_OutW, 1, post_L2_InC)),
-         _i32(), _i32(), _i32(), _i32(), _i32(), _i32()],
+         _i32(), _i32(), _i32(), _i32(), _i32(), _i32(), _i32(), _i32()],
     )
 
     # Post-L1 worker: placed on Tile(6,4) = PostL1Tile (matches original)
-    def post_l1_fn(act_in, act_out, wts_pb, k, inW, inH, inC, outC, outC_padd, sf):
-        # One full output frame: acquire output, loop over rows
+    def post_l1_fn(act_in, act_out, wts_pb, k, inW, inH, inC, outC, outC_padd, sf,
+                   n_splits=PostOutputSplit):
+        # One full output frame: acquire output, loop over rows then weight splits
         elem_out = act_out.acquire(1)
-        for _ in range_(inH):
+        for yi in range_(inH):
             elem_in = act_in.acquire(1)
-            for wi in range_(PostOutputSplit):
-                wts_chunk = wts_pb.acquire(1)  # wait for MemTile DMA delivery
-                k(elem_in, wts_chunk, elem_out, inW, inC, outC, outC_padd, sf, 0)
-                wts_pb.release(1)              # signal DMA to send next chunk
+            for wi in range_(n_splits):
+                wts_chunk = wts_pb.acquire(1)
+                k(elem_in, wts_chunk, elem_out, inW, inC, outC, outC_padd, sf,
+                  0, n_splits, 0)      # yIndex, nSplits, wIndex (3 extra ints)
+                wts_pb.release(1)
             act_in.release(1)
         act_out.release(1)
 
@@ -341,7 +343,7 @@ def mobilenet_iron():
             act_bn14_out.cons(), act_post_l1_out.prod(), post_l1_pb.cons(), k_post_l1,
             post_L1_InW, post_L1_InH, post_L1_InC, post_L2_InC, post_L2_InC, post_sf,
         ],
-        placement=Tile(6, 4),    # PostL1Tile = tile(6,4) in original
+        placement=Tile(6, 4),
     )
 
     # ------------------------------------------------------------------
@@ -360,7 +362,7 @@ def mobilenet_iron():
 
     # Output fifo: all 4 FC tiles join their results here via MemTile
     act_out_of = ObjectFifo(
-        np.ndarray[(post_L2_OutC,), np.dtype[np.uint8]],
+        np.ndarray[(post_L2_OutC,), np.dtype[np.uint16]],
         depth=2,
         name="act_post_out",
     )
@@ -368,7 +370,7 @@ def mobilenet_iron():
     act_post_l2_tiles = act_out_of.prod().join(
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
-        obj_types=[np.ndarray[(fc_out_per_tile,), np.dtype[np.uint8]]] * n_fc_tiles,
+        obj_types=[np.ndarray[(fc_out_per_tile,), np.dtype[np.uint16]]] * n_fc_tiles,
         names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
     )
 
@@ -388,12 +390,14 @@ def mobilenet_iron():
     fc2_memtiles = [Tile(1,1), Tile(3,1), Tile(5,1), Tile(7,1)]   # FC2 MemTiles (serve DMA)
     fc_comptiles = [Tile(6,3), Tile(7,4), Tile(7,3), Tile(7,2)]   # PostL2 compute tiles
 
+    def _u16(shape): return np.ndarray[shape, np.dtype[np.uint16]]
+    # Post-L2 FC: int8 input → uint16 output (matches original ty_post_Layer2_out_split)
     k_post_l2 = Kernel(
-        "post_conv2dk1_i8_ui8",
-        "post_conv2dk1.o",
+        "post_L2_conv2dk1_relu_i16_ui16_pad",
+        "post_L2_conv2dk1_relu_ui16_ui16_pad.o",
         [_i8((1, 1, post_L2_InC)),
          _i8((fc_recv_per_tile,)),
-         _u8((fc_out_per_tile,)),
+         _u16((fc_out_per_tile,)),
          _i32(), _i32(), _i32(), _i32(), _i32()],
     )
 
@@ -416,7 +420,7 @@ def mobilenet_iron():
             memtile_placement=fc2_memtiles[i], compute_placement=fc_comptiles[i],
             mm2s_channel=0, s2mm_channel=1,
             ping_pong_buf=(_i8((fc_full_per_tile,)), fc1_data, f"post_l2_fc1_wts_{i}"),
-            ping_pong_memtile=fc1_memtiles[i],  # FC1 on adjacent MemTile
+            ping_pong_memtile=fc1_memtiles[i],  # FC1 on adjacent MemTile (shared memory)
         )
 
         def post_l2_fn(act_in, act_out, wts_h, k, inC, outC, sf1, sf2,
