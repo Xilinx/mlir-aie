@@ -27,7 +27,7 @@ import os
 import sys
 import numpy as np
 
-from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker, PersistentBuffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
@@ -278,18 +278,33 @@ def mobilenet_iron():
     # Post-processing L1: avg pool + expand 1x1 conv
     # Input:  (7,1,80) int8   Output: (1,1,960) int8
     # ------------------------------------------------------------------
-    post_l1_wts_sz = post_L1_OutC * post_L1_InC   # 960*80 = 76800 (approx; includes pool)
+    # Post-L1 weights: 960*80 = 76800 bytes — too large for compute tile.
+    # Original: stored on MemTile(4,1), streamed 1/8 at a time to PostL1Tile(6,4).
+    # PersistentBuffer replicates this: MemTile holds full weights, DMA streams
+    # post_l1_wts_chunk bytes at a time to the small recv buffer on compute tile.
+    PostOutputSplit = 8                             # split output channels (original: 8)
+    PostRepeatChannels = post_L1_InH               # = 7 (original: math.floor(post_L1_InH))
+    post_l1_wts_full_sz = post_L1_OutC * post_L1_InC        # 76800 bytes on MemTile
+    post_l1_wts_chunk = post_l1_wts_full_sz // PostOutputSplit  # 9600 bytes per chunk on compute
+
     post_l1_wts_path = data_dir + "post_conv_chain.txt"
     post_l1_wts_data = None
     if os.path.exists(post_l1_wts_path):
         post_l1_wts_data = np.fromfile(post_l1_wts_path, sep=",", dtype=np.int8)
     if post_l1_wts_data is None:
-        post_l1_wts_data = np.zeros(post_l1_wts_sz, dtype=np.int8)
+        post_l1_wts_data = np.zeros(post_l1_wts_full_sz, dtype=np.int8)
 
-    post_l1_wts = Buffer(
-        _i8((len(post_l1_wts_data),)),
+    # Original: PostL1Tile = tile(6,4), MemTile41 = tile(4,1), flow: MemTile41→PostL1Tile
+    post_l1_pb = PersistentBuffer(
+        obj_type=_i8((post_l1_wts_full_sz,)),
         initial_value=post_l1_wts_data,
         name="post_l1_wts",
+        recv_type=_i8((post_l1_wts_chunk,)),
+        repeat_count=PostRepeatChannels,
+        memtile_placement=Tile(4, 1),    # MemTile41 in original
+        compute_placement=Tile(6, 4),    # PostL1Tile in original
+        mm2s_channel=0,
+        s2mm_channel=0,
     )
 
     act_post_l1_out = ObjectFifo(
@@ -302,31 +317,31 @@ def mobilenet_iron():
         "post_fused_conv2dk1_i8_avg_pool",
         "post_conv2dk1_avg_pool.o",
         [_i8((post_L1_InW, 1, post_L1_InC)),
-         _i8((len(post_l1_wts_data),)),
+         _i8((post_l1_wts_chunk,)),   # 9600 bytes = 1/PostOutputSplit of full weights
          _i8((post_L1_OutW, 1, post_L2_InC)),
          _i32(), _i32(), _i32(), _i32(), _i32(), _i32()],
     )
 
-    # post-L1: depth=2 matches original act_in_C_post fifo
-    # Worker processes one row at a time in a loop (not all rows at once)
-    PostOutputSplit = 8   # from original postBlock: split output channels
-
-    def post_l1_fn(act_in, act_out, wts, k, inW, inH, inC, outC, outC_padd, sf):
+    # Post-L1 worker: placed on Tile(6,4) = PostL1Tile (matches original)
+    def post_l1_fn(act_in, act_out, wts_pb, k, inW, inH, inC, outC, outC_padd, sf):
         # One full output frame: acquire output, loop over rows
         elem_out = act_out.acquire(1)
         for _ in range_(inH):
             elem_in = act_in.acquire(1)
             for wi in range_(PostOutputSplit):
-                k(elem_in, wts, elem_out, inW, inC, outC, outC_padd, sf, 0)
+                wts_chunk = wts_pb.acquire(1)  # wait for MemTile DMA delivery
+                k(elem_in, wts_chunk, elem_out, inW, inC, outC, outC_padd, sf, 0)
+                wts_pb.release(1)              # signal DMA to send next chunk
             act_in.release(1)
         act_out.release(1)
 
     w_post_l1 = Worker(
         post_l1_fn,
         fn_args=[
-            act_bn14_out.cons(), act_post_l1_out.prod(), post_l1_wts, k_post_l1,
+            act_bn14_out.cons(), act_post_l1_out.prod(), post_l1_pb.cons(), k_post_l1,
             post_L1_InW, post_L1_InH, post_L1_InC, post_L2_InC, post_L2_InC, post_sf,
         ],
+        placement=Tile(6, 4),    # PostL1Tile = tile(6,4) in original
     )
 
     # ------------------------------------------------------------------
@@ -357,43 +372,69 @@ def mobilenet_iron():
         names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
     )
 
-    # FC1 + FC2 weights concatenated per tile
-    fc_wts_per_tile = 2 * post_L2_InC * fc_out_per_tile  # 2 * 1280 * 320 = 819200
+    # FC weights: 1280*1280 = 1,638,400 bytes total (too large for compute tile).
+    # Original: each MemTile holds FC1+FC2 halves for one core (409,600 bytes total),
+    # compute tile holds 1/(PostOutputSplitL2=40) = 10,240 bytes at a time.
+    PostOutputSplitL2 = 40
+    fc_full_per_tile = post_L2_InC * fc_out_per_tile          # 409,600 bytes (FC1 or FC2 half)
+    fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2   # 10,240 bytes on compute tile
+
+    # MemTile and PostL2Tile assignments matching original:
+    #   Tile_i 0: MemTile(1,1) → PostL2Tile(6,3)
+    #   Tile_i 1: MemTile(3,1) → PostL2Tile(7,4)
+    #   Tile_i 2: MemTile(5,1) → PostL2Tile(7,3)
+    #   Tile_i 3: MemTile(7,1) → PostL2Tile(7,2)
+    fc_memtiles    = [Tile(1,1), Tile(3,1), Tile(5,1), Tile(7,1)]
+    fc_comptiles   = [Tile(6,3), Tile(7,4), Tile(7,3), Tile(7,2)]
+
     k_post_l2 = Kernel(
         "post_conv2dk1_i8_ui8",
         "post_conv2dk1.o",
         [_i8((1, 1, post_L2_InC)),
-         _i8((fc_wts_per_tile,)),
+         _i8((fc_recv_per_tile,)),   # one output split chunk (10,240 bytes)
          _u8((fc_out_per_tile,)),
          _i32(), _i32(), _i32(), _i32(), _i32()],
     )
 
     post_l2_workers = []
     for i, (fc1_f, fc2_f) in enumerate(fc_wts_filenames):
-        fc1_data = None
-        fc2_data = None
+        fc1_data = np.zeros(fc_full_per_tile, dtype=np.int8)
+        fc2_data = np.zeros(fc_full_per_tile, dtype=np.int8)
         fc1_path = data_dir + fc1_f
         fc2_path = data_dir + fc2_f
         if os.path.exists(fc1_path):
             fc1_data = np.fromfile(fc1_path, sep=",", dtype=np.int8)
         if os.path.exists(fc2_path):
             fc2_data = np.fromfile(fc2_path, sep=",", dtype=np.int8)
-
-        fc_sz = post_L2_InC * fc_out_per_tile
-        if fc1_data is None: fc1_data = np.zeros(fc_sz, dtype=np.int8)
-        if fc2_data is None: fc2_data = np.zeros(fc_sz, dtype=np.int8)
+        # Interleave FC1+FC2 as original: mem holds both, DMA alternates
         wts_combined = np.concatenate([fc1_data, fc2_data])
 
-        wts_buf = Buffer(
-            _i8((len(wts_combined),)),
+        # PersistentBuffer: full weights on MemTile, receive chunk on compute tile
+        fc_pb = PersistentBuffer(
+            obj_type=_i8((len(wts_combined),)),
             initial_value=wts_combined,
+            name=f"post_l2_wts_{i}",
+            recv_type=_i8((fc_recv_per_tile,)),
+            repeat_count=PostOutputSplitL2,
+            memtile_placement=fc_memtiles[i],
+            compute_placement=fc_comptiles[i],
+            mm2s_channel=0,
+            s2mm_channel=1,   # S2MM channel 1 (channel 0 used by other traffic)
         )
 
-        def post_l2_fn(act_in, act_out, wts, k, inC, outC, sf1, sf2):
+        def post_l2_fn(act_in, act_out, wts_pb, k, inC, outC, sf1, sf2, n_splits=PostOutputSplitL2):
             elem_in = act_in.acquire(1)
             elem_out = act_out.acquire(1)
-            k(elem_in, wts, elem_out, 1, inC, outC, outC, sf1)
-            k(elem_in, wts, elem_out, 1, inC, outC, outC, sf2)
+            # FC1 pass: iterate through all output splits
+            for _ in range_(n_splits):
+                wts_chunk = wts_pb.acquire(1)
+                k(elem_in, wts_chunk, elem_out, 1, inC, outC, outC, sf1)
+                wts_pb.release(1)
+            # FC2 pass: same iteration
+            for _ in range_(n_splits):
+                wts_chunk = wts_pb.acquire(1)
+                k(elem_in, wts_chunk, elem_out, 1, inC, outC, outC, sf2)
+                wts_pb.release(1)
             act_in.release(1)
             act_out.release(1)
 
@@ -402,13 +443,14 @@ def mobilenet_iron():
             fn_args=[
                 act_post_l1_out.cons(),
                 act_post_l2_tiles[i].prod(),
-                wts_buf,
+                fc_pb.cons(),
                 k_post_l2,
                 post_L2_InC,
                 fc_out_per_tile,
                 post_fc1_sf,
                 post_fc2_sf,
             ],
+            placement=fc_comptiles[i],   # explicit placement matching original
         )
         post_l2_workers.append(w)
 

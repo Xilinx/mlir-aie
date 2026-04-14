@@ -74,9 +74,15 @@ class Program:
                     )
 
                 # Collect all tiles
+                from .dataflow.persistentbuffer import PersistentBufferHandle
                 all_tiles = []
                 for w in self._rt.workers:
                     all_tiles.append(w.tile)
+                    # Also include tiles from PersistentBuffer (memtile + compute)
+                    for arg in w.fn_args:
+                        if isinstance(arg, PersistentBufferHandle):
+                            if arg._pb._memtile: all_tiles.append(arg._pb._memtile)
+                            if arg._pb._compute: all_tiles.append(arg._pb._compute)
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
                     # Also include any tiles registered via allocate_on()
@@ -91,12 +97,16 @@ class Program:
                     f.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
+                from .dataflow.persistentbuffer import PersistentBufferHandle
                 for w in self._rt.workers:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
                         elif isinstance(arg, Resolvable):
                             arg.resolve()
+                        elif isinstance(arg, PersistentBufferHandle):
+                            # Resolve the underlying PersistentBuffer (emits locks, buffers, DMA)
+                            arg._pb.resolve()
 
                 # Generate core programs
                 for w in self._rt.workers:
