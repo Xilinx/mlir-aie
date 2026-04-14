@@ -8,6 +8,7 @@
 import numpy as np
 import os
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
+from aie.iron.device import Tile
 from aie.iron.controlflow import range_
 
 
@@ -189,18 +190,24 @@ def pipeline_bottlenecks(
             of_23.release(1)
             act_out.release(1)
 
+    # Explicit tile placements matching original design (tileColIndex=0):
+    #   bn10_tile_1=tile(1,5), bn10_tile_2=tile(2,4), bn10_tile_3=tile(2,5)
+    # L2(2,4)→L3(2,5): same column, adjacent rows → shared local memory (no DMA buffer on L3)
     workers += [
         Worker(
             bn10_l1_fn,
             [act_in.cons(), bn10_of_12.prod(), bn10_l1_wts, k_bn10_l1, bn10_s1],
+            placement=Tile(1, 5),
         ),
         Worker(
             bn10_l2_fn,
             [bn10_of_12.cons(), bn10_of_23.prod(), bn10_l2_wts, k_bn10_l2, bn10_s2],
+            placement=Tile(2, 4),
         ),
         Worker(
             bn10_l3_fn,
             [bn10_of_23.cons(), act_bn10_out.prod(), bn10_l3_wts, k_bn10_l3, bn10_s3],
+            placement=Tile(2, 5),
         ),
     ]
 
@@ -344,6 +351,7 @@ def pipeline_bottlenecks(
             skip_in.release(1)
             act_out.release(1)
 
+    # Original: bn11_tile_1=tile(3,2), bn11_tile_2=tile(3,4), bn11_tile_3=tile(2,2)
     workers += [
         Worker(
             bn11_l1_fn,
@@ -354,10 +362,12 @@ def pipeline_bottlenecks(
                 k_bn11_l1,
                 bn11_s1,
             ],
+            placement=Tile(3, 2),
         ),
         Worker(
             bn11_l2_fn,
             [bn11_of_12.cons(), bn11_of_23.prod(), bn11_l2_wts, k_bn11_l2, bn11_s2],
+            placement=Tile(3, 4),
         ),
         Worker(
             bn11_l3_fn,
@@ -370,6 +380,7 @@ def pipeline_bottlenecks(
                 bn11_s3,
                 bn11_sAdd,
             ],
+            placement=Tile(2, 2),
         ),
     ]
 
@@ -516,10 +527,12 @@ def pipeline_bottlenecks(
         k_pw(dw_tmp, pw_wts, pw_out, 7, 336, 80, sf3)
         act_out.release(1)
 
+    # Original: bn12_tile_1=tile(3,5), bn12_tile_2=tile(4,4)
     workers += [
         Worker(
             bn12_l1_fn,
             [act_bn11_out.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1, bn12_s1],
+            placement=Tile(3, 5),
         ),
         Worker(
             bn12_l23_fn,
@@ -534,6 +547,7 @@ def pipeline_bottlenecks(
                 bn12_s2,
                 bn12_s3,
             ],
+            placement=Tile(4, 4),
         ),
     ]
 
