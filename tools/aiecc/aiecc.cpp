@@ -5572,7 +5572,9 @@ int main(int argc, char **argv) {
   }
   if (noXchesscc) {
     xchesscc = false;
-    // xbridge cannot link Peano-compiled objects; disable it automatically.
+    // Without xchesscc, linking would use the Peano-compiled object path.
+    // xbridge does not support linking Peano-compiled objects, so disable it
+    // automatically to keep the behavior consistent with the supported flow.
     xbridge = false;
   }
   if (noCompile) {
