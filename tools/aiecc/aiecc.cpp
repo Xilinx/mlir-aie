@@ -162,8 +162,11 @@ static cl::opt<bool> noXbridge("no-xbridge",
 static cl::opt<bool> xchesscc("xchesscc", cl::desc("Compile using xchesscc"),
                               cl::init(true), cl::cat(aieCompilerOptions));
 
-static cl::opt<bool> noXchesscc("no-xchesscc", cl::desc("Compile using peano"),
-                                cl::init(false), cl::cat(aieCompilerOptions));
+static cl::opt<bool> noXchesscc(
+    "no-xchesscc",
+    cl::desc("Compile using peano (also disables xbridge; incompatible with "
+             "--aiesim)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
                             cl::init(false), cl::cat(aieCompilerOptions));
@@ -2293,8 +2296,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   if (xbridge) {
     // xbridge linking: generate BCF, extract link_with, link with
-    // xchesscc_wrapper Note: xbridge works with both xchesscc and
-    // peano-compiled object files
+    // xchesscc_wrapper. Note: xbridge only supports xchesscc-compiled objects;
+    // Peano-compiled objects must use the Peano linker path (--no-xbridge).
 
     // Generate BCF file
     SmallString<128> bcfPath(tmpDirName);
@@ -5590,10 +5593,16 @@ int main(int argc, char **argv) {
     compileHost = false;
   }
 
-  // Validate: aiesim requires xbridge
+  // Validate: aiesim requires xbridge; since --no-xchesscc disables xbridge,
+  // it is also incompatible with --aiesim.
   if (aiesim && !xbridge) {
-    llvm::errs()
-        << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
+    if (noXchesscc)
+      llvm::errs() << "Error: AIE Simulation (--aiesim) is incompatible with "
+                      "--no-xchesscc because xbridge is required for aiesim "
+                      "and --no-xchesscc disables xbridge\n";
+    else
+      llvm::errs()
+          << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
     return 1;
   }
 
