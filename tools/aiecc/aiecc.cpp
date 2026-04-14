@@ -2217,6 +2217,11 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
     std::string optLevelStr = std::to_string(optLevel);
+    // globaldce removes unreferenced external global declarations from each
+    // core's IR, preventing large per-device symbol tables from bloating every
+    // core's ELF and overflowing the AIE tile's program memory limit.
+    // unroll-max-count=1 prevents aggressive loop unrolling that can expand
+    // constant-trip loops into massive inline code sequences.
     SmallVector<std::string, 12> optCmd = {
         peanoOpt,
         "--passes=default<O" + std::to_string(safeOptLevel) + ">",
