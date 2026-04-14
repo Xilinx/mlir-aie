@@ -369,13 +369,6 @@ def mobilenet_iron():
         depth=2,
         name="act_post_out",
     )
-    # Split the output fifo into 4 segments, one per FC tile
-    act_post_l2_tiles = act_out_of.prod().join(
-        offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
-        depths=[2] * n_fc_tiles,
-        obj_types=[np.ndarray[(fc_out_per_tile,), np.dtype[np.uint16]]] * n_fc_tiles,
-        names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
-    )
 
     # FC weights: ping-pong design matching original.
     # Each PostL2Tile gets FC1 (409,600 bytes) and FC2 (409,600 bytes) on separate MemTiles.
@@ -388,6 +381,19 @@ def mobilenet_iron():
     PostOutputSplitL2 = 40
     fc_full_per_tile = post_L2_InC * fc_out_per_tile          # 409,600 bytes per FC half
     fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2   # 10,240 bytes on compute tile
+    # co: channels per output element (8 channels per objectfifo element, 40 per inference)
+    # Matches original ty_post_Layer2_out_split = memref<8 x uint16>
+    co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
+
+    # Split the output fifo into 4 segments, one per FC tile.
+    # Each element = 8 channels (co), depth=1 — matches original design.
+    # unrollForLoops sees the objectfifo.acquire inside WeightIndex loop → no unrolling.
+    act_post_l2_tiles = act_out_of.prod().join(
+        offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
+        depths=[1] * n_fc_tiles,
+        obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
+        names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
+    )
 
     fc1_memtiles = [Tile(0,1), Tile(2,1), Tile(4,1), Tile(6,1)]   # FC1 MemTiles
     fc2_memtiles = [Tile(1,1), Tile(3,1), Tile(5,1), Tile(7,1)]   # FC2 MemTiles (serve DMA)
@@ -395,12 +401,14 @@ def mobilenet_iron():
 
     def _u16(shape): return np.ndarray[shape, np.dtype[np.uint16]]
     # Post-L2 FC: int8 input → uint16 output (matches original ty_post_Layer2_out_split)
+    # Output element = co=8 channels (not fc_out_per_tile=320): each element is one
+    # WeightIndex-loop iteration's output slice.
     k_post_l2 = Kernel(
         "post_L2_conv2dk1_relu_i16_ui16_pad",
         "post_L2_conv2dk1_relu_ui16_ui16_pad.o",
         [_i8((1, 1, post_L2_InC)),
          _i8((fc_recv_per_tile,)),
-         _u16((fc_out_per_tile,)),
+         _u16((co,)),
          _i32(), _i32(), _i32(), _i32(), _i32()],
     )
 
@@ -431,29 +439,32 @@ def mobilenet_iron():
             mem_lock_id=0, comp_lock_id=2, pp_lock_id=0,
         )
 
-        def post_l2_fn(act_in, act_out, wts_h, k, inC, outC, sf1, sf2,
+        def post_l2_fn(act_in, act_out, wts_h, k, inC, n_co, sf2, sf1,
                        n_splits=PostOutputSplitL2):
             elem_in = act_in.acquire(1)
-            elem_out = act_out.acquire(1)
-            # FC2 pass (first in DMA chain)
+            # FC2 pass: acquire output INSIDE loop → unrollForLoops sees objectfifo op
+            # → LCM(1)=1 → loop preserved → compact ELF → no CDO overflow
             for _ in range_(n_splits):
+                elem_out = act_out.acquire(1)
                 wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC, outC, outC, sf2)
+                k(elem_in, wts, elem_out, 1, inC, n_co, n_co, sf2)
                 wts_h.release(1)
+                act_out.release(1)
             # FC1 pass (ping-pong second)
             for _ in range_(n_splits):
+                elem_out = act_out.acquire(1)
                 wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC, outC, outC, sf1)
+                k(elem_in, wts, elem_out, 1, inC, n_co, n_co, sf1)
                 wts_h.release(1)
+                act_out.release(1)
             act_in.release(1)
-            act_out.release(1)
 
         w = Worker(
             post_l2_fn,
             fn_args=[
                 act_post_l1_out.cons(), act_post_l2_tiles[i].prod(),
                 fc_pb.cons(), k_post_l2,
-                post_L2_InC, fc_out_per_tile, post_fc1_sf, post_fc2_sf,
+                post_L2_InC, co, post_fc2_sf, post_fc1_sf,
             ],
             placement=fc_comptiles[i],
         )

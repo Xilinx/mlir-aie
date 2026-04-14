@@ -56,13 +56,13 @@ class PersistentBuffer(Resolvable):
     Usage::
 
         pb = PersistentBuffer(
-            np.ndarray[(76800,), np.dtype[np.int8]],  # full weights on MemTile
-            recv_type=np.ndarray[(9600,), np.dtype[np.int8]],  # chunk on compute tile
+            obj_type=np.ndarray[(76800,), np.dtype[np.int8]],
+            recv_type=np.ndarray[(9600,), np.dtype[np.int8]],
             initial_value=weight_array,
             name="post_l1_wts",
-            repeat_count=8,          # how many times the chunk cycles
+            repeat_count=7,
             memtile_placement=Tile(4,1),
-            compute_placement=Tile(6,3),
+            compute_placement=Tile(6,4),
             mm2s_channel=0,
             s2mm_channel=0,
         )
@@ -88,7 +88,7 @@ class PersistentBuffer(Resolvable):
         s2mm_channel: int = 0,
         ping_pong_buf=None,           # (obj_type, initial_value, name) for second buffer
         ping_pong_memtile=None,       # MemTile holding the second buffer (may differ)
-        mem_lock_id: int = 0,         # starting lock_id for MemTile (uses mem_lock_id and mem_lock_id+1)
+        mem_lock_id: int = 0,         # starting lock_id for MemTile (uses id and id+1)
         comp_lock_id: int = 0,        # starting lock_id for compute tile
         pp_lock_id: int = 0,          # starting lock_id for ping-pong MemTile
     ):
@@ -101,8 +101,8 @@ class PersistentBuffer(Resolvable):
         self._compute = compute_placement
         self._mm2s_ch = mm2s_channel
         self._s2mm_ch = s2mm_channel
-        self._ping_pong_buf = ping_pong_buf           # (type, data, name) tuple or None
-        self._ping_pong_memtile = ping_pong_memtile   # MemTile for second buffer
+        self._ping_pong_buf = ping_pong_buf
+        self._ping_pong_memtile = ping_pong_memtile
         self._mem_lock_id = mem_lock_id
         self._comp_lock_id = comp_lock_id
         self._pp_lock_id = pp_lock_id
@@ -129,8 +129,10 @@ class PersistentBuffer(Resolvable):
         compute_op = self._compute.op
 
         # --- MemTile side ---
-        # Explicit lock_id required — AIEObjectFifoStatefulTransform runs before
-        # AIEAssignLockIDs and requires IDs to be set.
+        # Explicit lock_id required: AIEObjectFifoStatefulTransform runs before
+        # AIEAssignLockIDs and requires IDs to be explicitly set.
+        # For ping-pong: each buffer gets init=1 (one copy ready to send).
+        # For single-buffer: init=repeat_count (pre-load N repeats).
         cons_init = 1 if self._ping_pong_buf is not None else self._repeat_count
         mem_prod_lock = lock(memtile_op, lock_id=self._mem_lock_id,     init=0)
         mem_cons_lock = lock(memtile_op, lock_id=self._mem_lock_id + 1, init=cons_init)
@@ -178,12 +180,12 @@ class PersistentBuffer(Resolvable):
             @memtile_dma(memtile_op)
             def _mtdma(block):
                 dma_start(DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[3])
-                with block[1]:   # BD1: first buffer
+                with block[1]:   # BD1: first buffer (FC2)
                     use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
                     dma_bd(wts_buf)
                     use_lock(mem_prod_lock, LockAction.Release)
                     next_bd(block[2])   # → BD2
-                with block[2]:   # BD2: second buffer (ping-pong)
+                with block[2]:   # BD2: second buffer (FC1, ping-pong)
                     use_lock(pp_cons_lock, LockAction.AcquireGreaterEqual)
                     dma_bd(pp_buf)
                     use_lock(pp_prod_lock, LockAction.Release)
