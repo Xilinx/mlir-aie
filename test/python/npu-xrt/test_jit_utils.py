@@ -10,7 +10,7 @@
 # RUN: %run_on_npu2% %pytest %s
 # REQUIRES: xrt_python_bindings
 
-# Unit tests for hash_module and compile_external_kernel.
+# Unit tests for compile_external_kernel and cache key utilities.
 
 import os
 import tempfile
@@ -19,10 +19,10 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
+from aie.iron import Compile, In, Out
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
-from aie.utils.jit import hash_module
 from aie.utils.compile.utils import compile_external_kernel
 from aie.utils.compile.cache.utils import _create_function_cache_key
 
@@ -40,102 +40,12 @@ def npu_target_arch():
     return "aie2"
 
 
-def _build_module(add_value):
-    """Build a minimal real MLIR module via iron that adds add_value to each element."""
-    n = 16
-    num_elems = 1024
-    tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
-    tensor_ty = np.ndarray[(num_elems,), np.dtype[np.int32]]
-    of_in = ObjectFifo(tile_ty, name="in")
-    of_out = ObjectFifo(tile_ty, name="out")
-
-    def core_body(of_in, of_out):
-        for _ in range_(num_elems // n):
-            elem_in = of_in.acquire(1)
-            elem_out = of_out.acquire(1)
-            for i in range_(n):
-                elem_out[i] = elem_in[i] + add_value
-            of_in.release(1)
-            of_out.release(1)
-
-    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
-
-
-@pytest.fixture(scope="session")
-def mlir_module_add1():
-    return _build_module(1)
-
-
-@pytest.fixture(scope="session")
-def mlir_module_add2():
-    return _build_module(2)
-
-
 @pytest.fixture(autouse=True)
 def _clear_external_function_instances():
     """Prevent ExternalFunction instances from leaking between tests."""
     ExternalFunction._instances.clear()
     yield
     ExternalFunction._instances.clear()
-
-
-# ---------------------------------------------------------------------------
-# hash_module
-#
-# Regression: the original implementation used "|".join(running_hash), which
-# iterated over *characters* of a concatenated string rather than over
-# per-kernel hash values, causing false collisions (e.g. hashes "1"+"2"
-# produced the same key as hash "12").
-# ---------------------------------------------------------------------------
-
-
-def test_hash_module_distinct_kernels_produce_distinct_keys(mlir_module_add1):
-    """Two ExternalFunctions with different source must produce different cache keys."""
-    k1 = ExternalFunction("k", source_string='extern "C" void k() { int x = 1; }')
-    k2 = ExternalFunction("k", source_string='extern "C" void k() { int x = 2; }')
-    assert hash_module(mlir_module_add1, [k1]) != hash_module(mlir_module_add1, [k2])
-
-
-def test_hash_module_one_vs_two_kernels_differ(mlir_module_add1):
-    """Regression: a single kernel must not collide with two kernels whose
-    individual hash strings naively concatenate to the same value."""
-    k1 = ExternalFunction("a", source_string='extern "C" void a() {}')
-    k2 = ExternalFunction("b", source_string='extern "C" void b() {}')
-    k12 = ExternalFunction("ab", source_string='extern "C" void ab() {}')
-    assert hash_module(mlir_module_add1, [k12]) != hash_module(
-        mlir_module_add1, [k1, k2]
-    )
-
-
-def test_hash_module_same_inputs_are_stable(mlir_module_add1):
-    """Identical inputs must always produce the same cache key."""
-    k = ExternalFunction("k", source_string='extern "C" void k() {}')
-    assert hash_module(mlir_module_add1, [k]) == hash_module(mlir_module_add1, [k])
-
-
-def test_hash_module_no_kernels_differs_from_with_kernels(mlir_module_add1):
-    """A module with no external kernels must hash differently from one with kernels."""
-    k = ExternalFunction("k", source_string='extern "C" void k() {}')
-    assert hash_module(mlir_module_add1, None) != hash_module(mlir_module_add1, [k])
-
-
-def test_hash_module_different_target_arch_differ(mlir_module_add1):
-    """The same module and kernels under different target architectures must differ."""
-    k = ExternalFunction("k", source_string='extern "C" void k() {}')
-    assert hash_module(mlir_module_add1, [k], target_arch="aie2") != hash_module(
-        mlir_module_add1, [k], target_arch="aie2p"
-    )
-
-
-def test_hash_module_different_mlir_text_differ(mlir_module_add1, mlir_module_add2):
-    """Modules with different MLIR text must produce different cache keys."""
-    assert hash_module(mlir_module_add1) != hash_module(mlir_module_add2)
 
 
 # ---------------------------------------------------------------------------
@@ -339,8 +249,15 @@ _tensor_ty = np.ndarray[(_NUM_ELEMS,), np.dtype[np.int32]]
 
 
 @iron.jit
-def _transform(input_tensor, output_tensor, kernel_fn):
-    """JIT-compiled element-wise transform using a caller-supplied lambda."""
+def _transform(input_tensor: In, output_tensor: Out, *, kernel_fn: Compile[object]):
+    """JIT-compiled element-wise transform using a caller-supplied lambda.
+
+    ``kernel_fn`` is a compile-time callable — changing it produces a new cache
+    entry and recompiles. Types are constructed from compile-time constants
+    rather than from the runtime tensors (which are not available at generation
+    time). This is why iron.algorithms.transform cannot be used directly here;
+    that function requires real tensors to infer shape/dtype.
+    """
     of_in = ObjectFifo(_tile_ty, name="in")
     of_out = ObjectFifo(_tile_ty, name="out")
 
@@ -372,7 +289,7 @@ def test_jit_closure_parametrize(add_value):
     """
     input_tensor = iron.arange(_NUM_ELEMS, dtype=np.int32)
     output_tensor = iron.zeros(_NUM_ELEMS, dtype=np.int32, device="npu")
-    _transform(input_tensor, output_tensor, lambda x: x + add_value)
+    _transform(input_tensor, output_tensor, kernel_fn=lambda x: x + add_value)
     np.testing.assert_array_equal(
         output_tensor.numpy(), input_tensor.numpy() + add_value
     )

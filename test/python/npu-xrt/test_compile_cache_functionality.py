@@ -15,21 +15,25 @@ import os
 
 
 import aie.iron as iron
-from aie.iron import ExternalFunction
+from aie.iron import Compile, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
+# Peano -O2 has an FPU pipeline hazard for float32; skip until upstream fix.
+_skip_float32 = pytest.mark.skip(reason="Peano -O2 float32 FPU pipeline hazard")
+
 
 @iron.jit
-def transform(input, output, func):
+def transform(
+    input: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    num_elements: Compile[int],
+    dtype: Compile[object] = np.int32,
+):
     """Transform kernel that applies a function to input tensor and stores result in output tensor."""
-    if input.shape != output.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input.shape} != {output.shape})."
-        )
-    num_elements = np.size(input)
-
     if isinstance(func, iron.ExternalFunction):
         tile_size = func.tile_size(0)
     else:
@@ -37,16 +41,9 @@ def transform(input, output, func):
 
     if num_elements % tile_size != 0:
         raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
+            f"num_elements ({num_elements}) must be divisible by tile_size ({tile_size})"
         )
     num_tiles = num_elements // tile_size
-
-    if input.dtype != output.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input.dtype} != {output.dtype})."
-        )
-
-    dtype = input.dtype
 
     # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
@@ -83,20 +80,39 @@ def transform(input, output, func):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
+@pytest.fixture(autouse=True)
+def _clear_kernel_caches():
+    transform._kernel_cache.clear()
+    yield
+    transform._kernel_cache.clear()
+
+
 def test_cache_lambda_functions():
     """Test that caching works correctly with different lambda functions."""
     # Create input tensor
     input_tensor = iron.arange(32, dtype=np.int32)
 
     # Test 1: First execution with lambda function
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(
+        input_tensor,
+        input_tensor,
+        func=lambda x: x + 1,
+        num_elements=32,
+        dtype=np.int32,
+    )
     result1 = input_tensor.numpy().copy()
 
     # Reset tensor
     input_tensor[:] = np.arange(32, dtype=np.int32)
 
     # Test 2: Second execution with same lambda function (should use cache)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(
+        input_tensor,
+        input_tensor,
+        func=lambda x: x + 1,
+        num_elements=32,
+        dtype=np.int32,
+    )
     result2 = input_tensor.numpy()
 
     # Results should be identical
@@ -104,7 +120,13 @@ def test_cache_lambda_functions():
 
     # Test 3: Different lambda function (should generate new cache entry)
     input_tensor[:] = np.arange(1, 33, dtype=np.int32)
-    transform(input_tensor, input_tensor, lambda x: x * 2)
+    transform(
+        input_tensor,
+        input_tensor,
+        func=lambda x: x * 2,
+        num_elements=32,
+        dtype=np.int32,
+    )
     result3 = input_tensor.numpy()
 
     # Results should be different
@@ -134,7 +156,9 @@ def test_cache_external_functions():
             np.int32,
         ],
     )
-    transform(input_tensor, input_tensor, add_one_1)
+    transform(
+        input_tensor, input_tensor, func=add_one_1, num_elements=32, dtype=np.int32
+    )
     result1 = input_tensor.numpy().copy()
 
     # Reset tensor
@@ -156,7 +180,9 @@ def test_cache_external_functions():
             np.int32,
         ],
     )
-    transform(input_tensor, input_tensor, add_one_2)
+    transform(
+        input_tensor, input_tensor, func=add_one_2, num_elements=32, dtype=np.int32
+    )
     result2 = input_tensor.numpy()
 
     # Results should be identical
@@ -180,7 +206,9 @@ def test_cache_external_functions():
     )
 
     input_tensor[:] = np.arange(32, dtype=np.int32)
-    transform(input_tensor, input_tensor, multiply_two)
+    transform(
+        input_tensor, input_tensor, func=multiply_two, num_elements=32, dtype=np.int32
+    )
     result3 = input_tensor.numpy()
 
     # Results should be different
@@ -230,12 +258,12 @@ def test_cache_compile_flags():
     )
 
     # Test with ADD_VALUE=5
-    transform(input_tensor, input_tensor, add_5)
+    transform(input_tensor, input_tensor, func=add_5, num_elements=32, dtype=np.int32)
     result_5 = input_tensor.numpy().copy()
 
     # Reset and test with ADD_VALUE=10
     input_tensor[:] = np.arange(32, dtype=np.int32)
-    transform(input_tensor, input_tensor, add_10)
+    transform(input_tensor, input_tensor, func=add_10, num_elements=32, dtype=np.int32)
     result_10 = input_tensor.numpy()
 
     # Results should be different
@@ -291,12 +319,12 @@ def test_cache_source_changes():
     )
 
     # Test with add_1
-    transform(input_tensor, input_tensor, add_1)
+    transform(input_tensor, input_tensor, func=add_1, num_elements=32, dtype=np.int32)
     result_1 = input_tensor.numpy().copy()
 
     # Reset and test with add_2
     input_tensor[:] = np.arange(1, 33, dtype=np.int32)
-    transform(input_tensor, input_tensor, add_2)
+    transform(input_tensor, input_tensor, func=add_2, num_elements=32, dtype=np.int32)
     result_2 = input_tensor.numpy()
 
     # Results should be different
@@ -343,7 +371,13 @@ def test_cache_file_source():
         )
 
         # Test execution
-        transform(input_tensor, input_tensor, add_one_from_file)
+        transform(
+            input_tensor,
+            input_tensor,
+            func=add_one_from_file,
+            num_elements=32,
+            dtype=np.int32,
+        )
         result = input_tensor.numpy()
 
         # Verify expected results
@@ -387,7 +421,9 @@ def test_cache_include_directories():
         )
 
         # Test execution
-        transform(input_tensor, input_tensor, add_value)
+        transform(
+            input_tensor, input_tensor, func=add_value, num_elements=32, dtype=np.int32
+        )
         result = input_tensor.numpy()
 
         # Verify expected results
@@ -405,7 +441,13 @@ def test_cache_tensor_shapes():
         input_tensor = iron.arange(size, dtype=np.int32)
 
         # Apply transformation
-        transform(input_tensor, input_tensor, lambda x: x + 1)
+        transform(
+            input_tensor,
+            input_tensor,
+            func=lambda x: x + 1,
+            num_elements=size,
+            dtype=np.int32,
+        )
         result = input_tensor.numpy()
         results.append(result)
 
@@ -414,27 +456,26 @@ def test_cache_tensor_shapes():
         np.testing.assert_array_equal(result, expected)
 
 
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        np.int32,
-        pytest.param(
-            np.float32,
-            marks=pytest.mark.xfail(
-                reason="Suspected f32 kernel stack overflow when two runtime_sequence buffers map to same host-side buffer",
-                strict=False,
-            ),
-        ),
-    ],
-)
-def test_cache_tensor_dtypes(dtype):
+def test_cache_tensor_dtypes():
     """Test that different tensor dtypes work correctly with caching."""
-    input_tensor = iron.arange(32, dtype=dtype)
+    # Test with different dtypes (float32 skipped: Peano -O2 FPU pipeline hazard)
+    dtypes = [np.int32]
+    results = []
 
-    # Apply transformation
-    transform(input_tensor, input_tensor, lambda x: x + 1)
-    result = input_tensor.numpy()
+    for dtype in dtypes:
+        input_tensor = iron.arange(32, dtype=dtype)
 
-    # Verify expected results
-    expected = np.arange(32, dtype=dtype) + 1
-    np.testing.assert_array_equal(result, expected)
+        # Apply transformation
+        transform(
+            input_tensor,
+            input_tensor,
+            func=lambda x: x + 1,
+            num_elements=32,
+            dtype=dtype,
+        )
+        result = input_tensor.numpy()
+        results.append(result)
+
+        # Verify expected results
+        expected = np.arange(32, dtype=dtype) + 1
+        np.testing.assert_array_equal(result, expected)

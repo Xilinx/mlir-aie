@@ -18,6 +18,31 @@ import aie.utils.config as config
 logger = logging.getLogger(__name__)
 
 
+def resolve_target_arch(device=None) -> str:
+    """Return ``'aie2'`` or ``'aie2p'`` for the given device, or ``'aie2'`` if device is None."""
+    if device is None:
+        return "aie2"
+    from aie.dialects.aie import AIEDevice
+
+    # Normalise to AIEDevice enum if the device is an IRON device class instance.
+    device_enum = getattr(device, "_device", device)
+    try:
+        name = (
+            device_enum.name
+        )  # e.g. "npu1", "npu1_1col", "npu2", "npu2_1col", "npu2_4col"
+    except AttributeError:
+        raise RuntimeError(f"Unsupported device type: {type(device)}")
+
+    if name.startswith("npu2"):
+        return "aie2p"
+    if name.startswith("npu1"):
+        return "aie2"
+    raise RuntimeError(
+        f"Unsupported device type: {type(device)} (AIEDevice name={name!r}). "
+        f"Expected name starting with 'npu1' or 'npu2'."
+    )
+
+
 def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
@@ -155,6 +180,25 @@ def compile_mlir_module(
             raise RuntimeError("[aiecc] Compilation failed") from e
 
 
+def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> None:
+    """Rename a symbol in a compiled object file using llvm-objcopy."""
+    objcopy = shutil.which("llvm-objcopy")
+    if not objcopy:
+        objcopy = shutil.which("objcopy")
+    if not objcopy:
+        raise RuntimeError(
+            "Cannot rename symbol: neither 'llvm-objcopy' nor 'objcopy' found in PATH. "
+            "Install the LLVM toolchain or GNU binutils."
+        )
+    result = subprocess.run(
+        [objcopy, f"--redefine-sym={old_name}={new_name}", str(object_path)],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Symbol rename failed: {result.stderr.decode()}")
+
+
 def compile_external_kernel(func, kernel_dir, target_arch):
     """
     Compile an ExternalFunction to an object file in the kernel directory.
@@ -177,32 +221,58 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     # Skip if the object file already exists (cache hit).
     output_file = os.path.join(kernel_dir, func.object_file_name)
     if os.path.exists(output_file):
+        if getattr(func, "_symbol_prefix", None):
+            # Ensure rename is applied even on cache hit — idempotent with llvm-objcopy
+            _rename_symbol_in_object(output_file, func._original_name, func._name)
         return
 
-    source_file = os.path.join(kernel_dir, f"{func._name}.cc")
+    original_name = getattr(func, "_original_name", func._name)
 
     if func._source_string is not None:
+        source_file = os.path.join(kernel_dir, f"{original_name}.cc")
         with open(source_file, "w") as f:
             f.write(func._source_string)
+        compile_cxx_core_function(
+            source_path=source_file,
+            target_arch=target_arch,
+            output_path=output_file,
+            include_dirs=func._include_dirs,
+            compile_args=func._compile_flags,
+            cwd=str(kernel_dir),
+        )
+
     elif func._source_file is not None:
-        # Use source_file (copy existing file)
+        source_file = os.path.join(kernel_dir, f"{original_name}.cc")
         # Check if source file exists before copying
         if not os.path.exists(func._source_file):
             raise FileNotFoundError(
                 f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
             )
         shutil.copy2(func._source_file, source_file)
+        # Include the original source file's directory so relative includes
+        # (e.g. "../aie_kernel_utils.h") still resolve after the file is
+        # copied into kernel_dir.
+        src_dir = os.path.dirname(os.path.abspath(func._source_file))
+        include_dirs = list(func._include_dirs)
+        if src_dir not in include_dirs:
+            include_dirs.append(src_dir)
+        compile_cxx_core_function(
+            source_path=source_file,
+            target_arch=target_arch,
+            output_path=output_file,
+            include_dirs=include_dirs,
+            compile_args=func._compile_flags,
+            cwd=kernel_dir,
+        )
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    compile_cxx_core_function(
-        source_path=source_file,
-        target_arch=target_arch,
-        output_path=output_file,
-        include_dirs=func._include_dirs,
-        compile_args=func._compile_flags,
-        cwd=kernel_dir,
-    )
+    # Rename symbol if a prefix is set.
+    if getattr(func, "_symbol_prefix", None):
+        original = func._original_name
+        prefixed = func._name  # already prefixed
+        _rename_symbol_in_object(output_file, original, prefixed)
+
     func._compiled = True
 
 

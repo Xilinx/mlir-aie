@@ -13,11 +13,10 @@ import numpy as np
 import time
 import os
 import aie.iron as iron
-from aie.iron import ObjectFifo, Worker, Runtime, Program
+from aie.iron import Compile, In, Out, ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 import aie.utils
-import aie.utils.jit
 from aie.utils.hostruntime.xrtruntime.hostruntime import (
     CachedXRTRuntime,
     XRTHostRuntime,
@@ -43,14 +42,15 @@ def runtime():
 
 
 @iron.jit
-def transform(input, output, func):
+def transform(
+    input: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    num_elements: Compile[int],
+    dtype: Compile[object] = np.int32,
+):
     """Transform kernel that applies a function to input tensor and stores result in output tensor."""
-    if input.shape != output.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input.shape} != {output.shape})."
-        )
-    num_elements = np.size(input)
-
     if isinstance(func, iron.ExternalFunction):
         tile_size = func.tile_size(0)
     else:
@@ -58,18 +58,10 @@ def transform(input, output, func):
 
     if num_elements % tile_size != 0:
         raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
+            f"num_elements ({num_elements}) must be divisible by tile_size ({tile_size})"
         )
     num_tiles = num_elements // tile_size
 
-    if input.dtype != output.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input.dtype} != {output.dtype})."
-        )
-
-    dtype = input.dtype
-
-    # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
 
@@ -110,7 +102,7 @@ def test_insts_caching(runtime):
     input_tensor = iron.arange(32, dtype=np.int32)
 
     # First run
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     # Check if _insts_cache exists (it should after our changes)
     if not hasattr(runtime, "_insts_cache"):
@@ -124,7 +116,7 @@ def test_insts_caching(runtime):
     insts_bo1 = entry1["insts_bo"]
 
     # Second run with same lambda (should reuse insts)
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     assert len(runtime._insts_cache) == 1
 
@@ -155,7 +147,7 @@ def test_insts_initialization(runtime):
     runtime.load = side_effect_load
 
     # Run once to generate artifacts
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     # Restore load
     runtime.load = original_load
@@ -191,7 +183,7 @@ def test_insts_mtime_sensitivity(runtime):
     input_tensor = iron.arange(32, dtype=np.int32)
 
     # Load kernel
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     if not hasattr(runtime, "_insts_cache"):
         pytest.skip("CachedXRTRuntime does not have _insts_cache yet")
@@ -209,7 +201,7 @@ def test_insts_mtime_sensitivity(runtime):
     os.utime(insts_path, None)
 
     # Load again
-    transform(input_tensor, input_tensor, lambda x: x + 1)
+    transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
 
     # Should have 2 entries now (old one and new one with new mtime)
     assert len(runtime._insts_cache) == 2

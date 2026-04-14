@@ -9,7 +9,7 @@ import sys
 import os
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, jit
+from aie.iron import Compile, ExternalFunction, In, Out, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
@@ -22,15 +22,12 @@ from aie.utils.config import cxx_header_path
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def matrix_multiplication_single_core(input0, input1, output):
+def matrix_multiplication_single_core(input0: In, input1: In, output: Out, *, M: Compile[int], K: Compile[int], N: Compile[int], element_type: Compile[type]):
     # Problem size
     # - matrix0 shapes: (M, K)
     # - matrix1 shapes: (K, N)
-    M, K, N = input0.shape[0], input0.shape[1], input1.shape[1]
     m, k, n = 64, 64, 64  # Tile size moved to/from the compute cores via mem tiles
     r, s, t = 8, 2, 8  # AIE kernel intrinsic size
-
-    element_type = output.dtype
 
     # --------------------------------------------------------------------------
     # In-Array Data Movement
@@ -176,7 +173,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    matrix_multiplication_single_core(input0, input1, output)
+    matrix_multiplication_single_core(input0, input1, output, M=M, K=K, N=N, element_type=element_type)
 
     # Check the correctness of the result
     e = np.equal(ref_vec.flatten(), output.numpy())

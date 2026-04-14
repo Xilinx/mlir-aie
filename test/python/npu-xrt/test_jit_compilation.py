@@ -12,40 +12,22 @@ import pytest
 import numpy as np
 import aie.iron as iron
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
 @iron.jit
-def vector_vector_add(input0, input1, output):
-    if input0.shape != input1.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input0.shape} != {input1.shape})."
-        )
-    if input0.shape != output.shape:
-        raise ValueError(
-            f"Input and output shapes are not the equal ({input0.shape} != {output.shape})."
-        )
-    if len(np.shape(input0)) != 1:
-        raise ValueError("Function only supports vectors.")
-    num_elements = np.size(input0)
+def vector_vector_add(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    num_elements: Compile[int],
+    dtype: Compile[object] = np.int32,
+):
     n = 16
-    if num_elements % n != 0:
-        raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of {n}."
-        )
     N_div_n = num_elements // n
-
-    if input0.dtype != input1.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input0.dtype} != {input1.dtype})."
-        )
-    if input0.dtype != output.dtype:
-        raise ValueError(
-            f"Input and output data types are not the same ({input0.dtype} != {output.dtype})."
-        )
-    dtype = input0.dtype
 
     # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
@@ -93,5 +75,5 @@ def test_multiple_jit_compilations(num_elements, dtype):
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launch the kernel with the given arguments
-    vector_vector_add(input0, input1, output)
+    vector_vector_add(input0, input1, output, num_elements=num_elements)
     assert np.array_equal(input0.numpy() + input1.numpy(), output.numpy())

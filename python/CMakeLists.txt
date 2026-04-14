@@ -38,7 +38,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/__init__.py
     utils/config.py
     utils/test.py
-    utils/jit.py
     utils/ml.py
     utils/npukernel.py
     utils/regdb.py
@@ -50,8 +49,14 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
-    utils/compile/cache/circular_cache.py
     utils/compile/cache/utils.py
+    utils/compile/jit/__init__.py
+    utils/compile/jit/compilabledesign.py
+    utils/compile/jit/markers.py
+    utils/compile/jit/context.py
+    utils/compile/jit/compileconfig.py
+    utils/callabledesign.py
+    utils/jit.py
     utils/trace/__init__.py
     utils/trace/config.py
     utils/trace/events/__init__.py
@@ -75,6 +80,13 @@ declare_mlir_python_sources(AIEPythonSources.Iron
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     iron/*.py
+    iron/compile/*.py
+    iron/hostruntime/*.py
+    iron/algorithms/*.py
+    iron/kernels/*.py
+    iron/dataflow/*.py
+    iron/device/*.py
+    iron/runtime/*.py
 )
 
 declare_mlir_dialect_python_bindings(

@@ -10,7 +10,7 @@ import sys
 import os
 
 import aie.iron as iron
-from aie.iron import ExternalFunction
+from aie.iron import Compile, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.utils.config import cxx_header_path
@@ -21,9 +21,7 @@ from aie.utils.config import cxx_header_path
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def saxpy(input0, input1, output):
-    N = input0.shape[0]  # Tensor size
-    element_type = output.dtype
+def saxpy(input0: In, input1: In, output: Out, *, N: Compile[int], element_type: Compile[type]):
 
     # --------------------------------------------------------------------------
     # In-Array Data Movement
@@ -97,7 +95,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    saxpy(input0, input1, output)
+    saxpy(input0, input1, output, N=data_size, element_type=element_type)
 
     # Check the correctness of the result and print any mismatches
     ref_vec = [3 * input0[i] + input1[i] for i in range(data_size)]

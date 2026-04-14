@@ -7,16 +7,15 @@
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
-import os
 
 import aie.iron as iron
-from aie.iron import ExternalFunction
+from aie.iron import Compile, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer
+from aie.utils.config import cxx_header_path
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.dialects.scf import if_, else_
-from aie.utils.config import cxx_header_path
 
 
 # JIT decorator for IRON
@@ -24,11 +23,7 @@ from aie.utils.config import cxx_header_path
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def vector_reduce_max(input0, output):
-    element_type = output.dtype
-
-    in_tensor_size = input0.shape[0]  # Input tensor size
-    out_tensor_size = output.shape[0]  # Output tensor size
+def vector_reduce_max(input0: In, output: Out, *, in_tensor_size: Compile[int], element_type: Compile[type]):
 
     n_cores = 4
     N = 2048
@@ -43,7 +38,12 @@ def vector_reduce_max(input0, output):
     in_ty = np.ndarray[(in_tensor_size,), np.dtype[element_type]]
     mem_ty = np.ndarray[(N,), np.dtype[element_type]]
     op_ty = np.ndarray[(elems_per_core,), np.dtype[element_type]]
-    out_ty = np.ndarray[(out_tensor_size,), np.dtype[element_type]]
+    # DMA transfers must be 4-byte aligned; pad to the minimum element count
+    # that satisfies this: ceil(4 / itemsize).
+    _dma_align = 4
+    _itemsize = np.dtype(element_type).itemsize
+    out_elems = (_dma_align + _itemsize - 1) // _itemsize
+    out_ty = np.ndarray[(out_elems,), np.dtype[element_type]]
 
     # Input A and Output C
     of_in = ObjectFifo(mem_ty, name="of_in")
@@ -68,20 +68,20 @@ def vector_reduce_max(input0, output):
         names=[f"memA{i}" for i in range(n_cores)],
     )
 
-    min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
+    min_val = np.full(out_elems, bfloat16(float("-inf")), dtype=element_type)
     nextC_buffers = []
     tmp_buffers = []
     for i in range(n_cores):
         out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
         nextC_buffers.append(
             Buffer(
-                type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
+                type=out_ty,
                 initial_value=min_val,
             )
         )
         tmp_buffers.append(
             Buffer(
-                type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
+                type=out_ty,
                 initial_value=min_val,
             )
         )
@@ -89,9 +89,12 @@ def vector_reduce_max(input0, output):
     # Task each core will run
     # --------------------------------------------------------------------------
 
+    # Use ExternalFunction with a 2-element output buffer (4 bytes) for DMA alignment.
+    # kernels.reduce_max() uses a 1-element output which is only 2 bytes for bfloat16,
+    # violating the 4-byte DMA alignment requirement.
     reduce_max_vector = ExternalFunction(
-        f"reduce_max_vector_bfloat16",
-        source_file=os.path.join(os.path.dirname(__file__), "reduce_max_vector.cc"),
+        "reduce_max_vector_bfloat16",
+        source_file=cxx_header_path() + "/aie_kernels/aie2/reduce_max.cc",
         arg_types=[op_ty, out_ty, np.int32],
         include_dirs=[cxx_header_path()],
     )
@@ -183,21 +186,17 @@ def main():
     out_size = 4
     element_type = bfloat16
 
-    assert (
-        out_size == 4
-    ), "Output buffer must be size 4 (4 bytes = 2 bfloat16 elements)."
-
     in_tensor_size = in_size // element_type(0).nbytes
-    out_tensor_size = out_size // element_type(0).nbytes
 
-    # Construct an input tensor and an output zeroed tensor
-    # The two tensors are in memory accessible to the NPU
+    # Allocate output with enough elements for 4-byte DMA alignment.
+    _dma_align = 4
+    out_elems = (_dma_align + element_type(0).nbytes - 1) // element_type(0).nbytes
     input0 = iron.arange(in_tensor_size, dtype=element_type, device="npu")
-    output = iron.arange(out_tensor_size, dtype=element_type, device="npu")
+    output = iron.zeros(out_elems, dtype=element_type, device="npu")
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    vector_reduce_max(input0, output)
+    vector_reduce_max(input0, output, in_tensor_size=in_tensor_size, element_type=element_type)
 
     # Check the correctness of the result and print.
     # Initialize to -inf so the reference is correct for all-negative inputs.

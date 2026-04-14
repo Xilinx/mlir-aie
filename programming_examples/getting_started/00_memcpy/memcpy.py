@@ -7,15 +7,13 @@
 import numpy as np
 import argparse
 import sys
-import os
 import time
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, jit
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, In, Out, jit
+from aie.iron import kernels, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib.tap import TensorAccessPattern
-from aie.utils.config import cxx_header_path
 
 #
 # Memcpy is designed to use every column's shimDMA in-out pairs
@@ -29,19 +27,19 @@ from aie.utils.config import cxx_header_path
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def my_memcpy(input0, output):
+def my_memcpy(
+    input0: In,
+    output: Out,
+    *,
+    size: Compile[int],
+    xfr_dtype: Compile[type] = np.int32,
+):
     # --------------------------------------------------------------------------
     # Configuration
     # --------------------------------------------------------------------------
 
-    xfr_dtype = output.dtype
-
     # Number of channels must be 1 or 2
     num_channels = 2
-
-    # Transfer size must be a multiple of 1024 and divisible by the number of
-    # columns and 2 channels per column
-    size = output.shape[0]
 
     # Number of columns on the device (4 for npu1 and 8 for npu2)
     device = iron.get_current_device()
@@ -85,12 +83,7 @@ def my_memcpy(input0, output):
     # --------------------------------------------------------------------------
 
     # External, binary kernel definition
-    passthrough_fn = ExternalFunction(
-        "passThrough",
-        source_file=os.path.join(os.path.dirname(__file__), "passThrough.cc"),
-        arg_types=[line_type, line_type, np.int32],
-        include_dirs=[cxx_header_path()],
-    )
+    passthrough_fn = kernels.passthrough(tile_size=line_size, dtype=xfr_dtype)
 
     # Task for the core to perform
     def core_fn(of_in, of_out, passThroughLine):
@@ -195,11 +188,11 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    my_memcpy(input0, output_jit)
+    my_memcpy(input0, output_jit, size=length, xfr_dtype=element_type)
 
     # Measure peformance on the second execution using the JIT cached design
     start_time = time.perf_counter()
-    my_memcpy(input0, output)
+    my_memcpy(input0, output, size=length, xfr_dtype=element_type)
     end_time = time.perf_counter()
 
     elapsed_time = end_time - start_time  # seconds

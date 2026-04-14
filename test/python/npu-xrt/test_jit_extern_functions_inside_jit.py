@@ -12,21 +12,21 @@ import numpy as np
 import tempfile
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, jit
+from aie.iron import Compile, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
 @jit
-def transform_with_internal_func_with_options(input, output):
+def transform_with_internal_func_with_options(
+    input: In,
+    output: Out,
+    *,
+    num_elements: Compile[int] = 1024,
+    dtype: Compile[object] = np.int32,
+):
     """Transform kernel that creates ExternalFunction internally with compiler options."""
-    if input.shape != output.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input.shape} != {output.shape})."
-        )
-    num_elements = np.size(input)
-
     # Create ExternalFunction inside the transform with compiler options
     internal_func = ExternalFunction(
         "internal_add_value",
@@ -53,13 +53,6 @@ def transform_with_internal_func_with_options(input, output):
             f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
         )
     num_tiles = num_elements // tile_size
-
-    if input.dtype != output.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input.dtype} != {output.dtype})."
-        )
-
-    dtype = input.dtype
 
     # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
@@ -97,13 +90,14 @@ def transform_with_internal_func_with_options(input, output):
 
 
 @jit
-def transform_with_internal_func_from_file(input, output):
+def transform_with_internal_func_from_file(
+    input: In,
+    output: Out,
+    *,
+    num_elements: Compile[int] = 1024,
+    dtype: Compile[object] = np.int32,
+):
     """Transform kernel that creates ExternalFunction internally from a file."""
-    if input.shape != output.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input.shape} != {output.shape})."
-        )
-    num_elements = np.size(input)
 
     # Create a temporary file with the source code inside the function
     with tempfile.NamedTemporaryFile(mode="w", suffix=".cc", delete=False) as f:
@@ -136,13 +130,6 @@ def transform_with_internal_func_from_file(input, output):
         )
     num_tiles = num_elements // tile_size
 
-    if input.dtype != output.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input.dtype} != {output.dtype})."
-        )
-
-    dtype = input.dtype
-
     # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
@@ -179,13 +166,14 @@ def transform_with_internal_func_from_file(input, output):
 
 
 @jit
-def transform_with_internal_func(input, output):
+def transform_with_internal_func(
+    input: In,
+    output: Out,
+    *,
+    num_elements: Compile[int] = 1024,
+    dtype: Compile[object] = np.int32,
+):
     """Transform kernel that creates ExternalFunction internally."""
-    if input.shape != output.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input.shape} != {output.shape})."
-        )
-    num_elements = np.size(input)
 
     # Create ExternalFunction inside the transform
     internal_func = ExternalFunction(
@@ -212,13 +200,6 @@ def transform_with_internal_func(input, output):
             f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
         )
     num_tiles = num_elements // tile_size
-
-    if input.dtype != output.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input.dtype} != {output.dtype})."
-        )
-
-    dtype = input.dtype
 
     # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]

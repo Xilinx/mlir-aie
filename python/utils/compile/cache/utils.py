@@ -132,13 +132,18 @@ def _create_function_cache_key(function, args, kwargs):
                         code.co_code,
                         code.co_consts,
                         code.co_names,
+                        code.co_filename,
+                        (
+                            code.co_qualname
+                            if hasattr(code, "co_qualname")
+                            else code.co_name
+                        ),
                         defaults,
                         closure_vals,
                     )
                 )
                 signature_parts.append(f"function_{func_hash}")
             else:
-                # Function argument - use hash of function address for uniqueness
                 func_hash = hash(arg)
                 signature_parts.append(f"function_{func_hash}")
         else:
@@ -163,13 +168,18 @@ def _create_function_cache_key(function, args, kwargs):
                         code.co_code,
                         code.co_consts,
                         code.co_names,
+                        code.co_filename,
+                        (
+                            code.co_qualname
+                            if hasattr(code, "co_qualname")
+                            else code.co_name
+                        ),
                         defaults,
                         closure_vals,
                     )
                 )
                 signature_parts.append(f"{key}_function_{func_hash}")
             else:
-                # Function argument - use hash of function address for uniqueness
                 func_hash = hash(value)
                 signature_parts.append(f"{key}_function_{func_hash}")
         else:

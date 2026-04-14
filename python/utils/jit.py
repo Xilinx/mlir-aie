@@ -4,252 +4,135 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
-"""JIT decorator for compiling and running IRON-decorated functions on the NPU."""
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""``@iron.jit`` decorator — Triton-style JIT compilation for the NPU.
 
-import os
+``@iron.jit`` is a thin wrapper that creates a ``CallableDesign``.  Extra
+kwargs that are not recognised as configuration keys become ``compile_kwargs``
+(i.e. values for ``Compile[T]``-annotated generator parameters).
+
+Three usage patterns are supported:
+
+1. **Bare decorator** — no pre-bound compile params::
+
+       @iron.jit
+       def gemm(a: In, b: In, c: Out, *,
+                M: Compile[int], K: Compile[int], N: Compile[int]):
+           ...
+
+       gemm(a, b, c, M=512, K=512, N=512)   # compile params at call time
+
+2. **With configuration only** — source files, flags, etc., no compile params::
+
+       @iron.jit(source_files=["kernel.cc"])
+       def gemm(a: In, b: In, c: Out, *, M: Compile[int], ...):
+           ...
+
+3. **With pre-bound compile params** — Triton-style, params fixed at decoration::
+
+       @iron.jit(M=512, K=512, N=512)
+       def gemm(a: In, b: In, c: Out, *,
+                M: Compile[int], K: Compile[int], N: Compile[int]):
+           ...
+
+       gemm(a, b, c)   # no compile params needed at call time
+"""
+
+from __future__ import annotations
+
 import functools
-import hashlib
-import numpy as np
+import inspect as _inspect
+import warnings
+from pathlib import Path
+from typing import Callable
 
-from aie.extras.context import mlir_mod_ctx
-from .compile import compile_mlir_module, compile_external_kernel
-from .npukernel import NPUKernel
-from aie.dialects.aie import AIEDevice
-from .compile.cache.circular_cache import CircularCache
-from .compile.cache.utils import _create_function_cache_key, file_lock
-from .compile import NPU_CACHE_HOME
-from .compile.utils import _cleanup_failed_compilation
+from aie.utils.callabledesign import CallableDesign as _CallableDesign
 
-# Global cache for compiled kernels at the function level
-# Key: (function_name, args_signature) -> NPUKernel instance
-# There is a limit on the number of kernels we have in cache
-_compiled_kernels = CircularCache(max_size=1)
+# Derived from CallableDesign.__init__ so it stays in sync automatically.
+# Excludes 'self', 'mlir_generator', and 'compile_kwargs' — those are
+# positional/compile-param arguments, not config keys.
+_JIT_CONFIG_KEYS = frozenset(
+    p
+    for p in _inspect.signature(_CallableDesign.__init__).parameters
+    if p not in ("self", "mlir_generator", "compile_kwargs")
+)
 
 
-def jit(function=None, use_cache=True):
-    """
-    Decorator to compile an NPU kernel into a binary to run on the NPU.
+def jit(mlir_generator: Callable | None = None, **kwargs):
+    """Decorator for JIT compilation and NPU execution.
 
-    The decorated function may either return an MLIR module directly (unplaced
-    style, using the IRON API) or return None and populate the module implicitly
-    through the active ``mlir_mod_ctx`` context (placed style, using low-level
-    dialects).  The mode is detected automatically from the return value.
+    Standard configuration kwargs (``use_cache``, ``source_files``,
+    ``aiecc_flags``, ``compile_flags``, ``include_paths``, ``object_files``,
+    ``trace_config``) are forwarded to ``CallableDesign``.  All other kwargs
+    become ``compile_kwargs`` (values for ``Compile[T]``-annotated parameters).
 
     Args:
-        function (callable, optional): The function to compile.
-        use_cache (bool, optional): Use cached MLIR module if available. Defaults to True.
+        mlir_generator: The MLIR generator callable (supplied automatically
+            when used as a bare decorator).
+        **kwargs: Mix of config options and/or compile-time parameter values.
 
     Returns:
-        callable: The decorated function.
+        A ``CallableDesign`` instance (or a partial decorator when called with
+        kwargs before the generator is known).
     """
-    if function is None:
-        return functools.partial(jit, use_cache=use_cache)
+    if mlir_generator is None:
+        # Called with kwargs only — return a partial so the generator can be
+        # supplied when Python applies the decorator.
+        return functools.partial(jit, **kwargs)
 
-    @functools.wraps(function)
-    def decorator(*args, **kwargs):
-        from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
-        from aie.iron.kernel import ExternalFunction
-        from . import DefaultNPURuntime
+    config = {k: v for k, v in kwargs.items() if k in _JIT_CONFIG_KEYS}
+    compile_kwargs = {k: v for k, v in kwargs.items() if k not in _JIT_CONFIG_KEYS}
 
-        if DefaultNPURuntime is None:
-            raise Exception("Cannot use JIT; DefaultNPURuntime not set.")
+    # --- Validate Compile[T] params when generator is callable ---
+    if callable(mlir_generator):
+        from aie.utils.compile.jit.compilabledesign import _split_params
 
-        trace_config = kwargs.get("trace_config")
+        compile_params, _, _ = _split_params(mlir_generator)
 
-        # Strip compile-time-only kwargs that must not be forwarded to the NPU
-        # kernel at runtime (e.g. trace_config is consumed by NPUKernel.__init__).
-        runtime_kwargs = {k: v for k, v in kwargs.items() if k != "trace_config"}
-
-        effective_use_cache = use_cache
-
-        # Check if we already have a compiled kernel for this function signature
-        cache_key = _create_function_cache_key(function, args, kwargs)
-        if effective_use_cache and cache_key in _compiled_kernels:
-            cached_kernel = _compiled_kernels[cache_key]
-            if cached_kernel is None:
-                raise RuntimeError(
-                    f"Cached kernel for '{function.__name__}' is None; this is a bug."
+        # Guard 1-A: warn if any compile kwarg doesn't match a Compile[T] param.
+        if compile_kwargs:
+            unknown = set(compile_kwargs.keys()) - set(compile_params)
+            if unknown:
+                warnings.warn(
+                    f"@iron.jit received keyword argument(s) that do not match any "
+                    f"Compile[T]-annotated parameter of {mlir_generator.__name__!r}: "
+                    f"{unknown}.\n"
+                    f"  Valid Compile[T] params: {compile_params}.\n"
+                    f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}.",
+                    stacklevel=2,
                 )
-            # Filter out non-tensor arguments (ExternalFunction, scalars)
-            # Only tensor args should be passed to the kernel
-            tensor_args = _filter_tensor_args(args)
-            return cached_kernel(*tensor_args, **runtime_kwargs)
 
-        # Collect ExternalFunction instances that need JIT compilation.
-        # Note: bare Kernel instances (pre-compiled .o) are intentionally
-        # excluded here — they require no compilation step. Both Kernel and
-        # ExternalFunction are stripped from the tensor args passed to the NPU
-        # kernel (see _filter_tensor_args).
-        # ExternalFunction.__init__ registers to _instances at construction time
-        # (before this JIT call), so they must be captured before the clear below.
-        external_kernels = [
-            arg for arg in args if isinstance(arg, ExternalFunction)
-        ] + [v for v in kwargs.values() if isinstance(v, ExternalFunction)]
-        seen = set(id(k) for k in external_kernels)
+        # Guard: Compile[T] params must be keyword-only (unless pre-bound).
+        sig = _inspect.signature(mlir_generator)
+        non_kw_compile_params = [
+            name
+            for name in compile_params
+            if sig.parameters[name].kind
+            not in (
+                _inspect.Parameter.KEYWORD_ONLY,
+                _inspect.Parameter.VAR_KEYWORD,
+            )
+            and name not in compile_kwargs  # pre-bound params are exempt
+        ]
+        if non_kw_compile_params:
+            raise TypeError(
+                f"@iron.jit: Compile[T] parameter(s) {non_kw_compile_params!r} "
+                f"in {mlir_generator.__name__!r} are not keyword-only.\n"
+                f"Place a bare '*' before your Compile[T] parameters:\n\n"
+                f"  # Before:\n"
+                f"  def {mlir_generator.__name__}(a: In, b: Out, "
+                + ", ".join(f"{n}: Compile[...]" for n in non_kw_compile_params)
+                + "):\n"
+                f"      ...\n\n"
+                f"  # After:\n"
+                f"  def {mlir_generator.__name__}(a: In, b: Out, *, "
+                + ", ".join(f"{n}: Compile[...]" for n in non_kw_compile_params)
+                + "):\n"
+                f"      ..."
+            )
 
-        # Clear stale instances from previous (possibly failed) runs so that a
-        # broken kernel doesn't prevent a corrected one from being recompiled.
-        ExternalFunction._instances.clear()
-
-        # Execute the function to generate MLIR.
-        # Always wrap in mlir_mod_ctx so that placed-style functions (which
-        # populate the module implicitly) work correctly.  If the function
-        # returns a module directly (unplaced style) we use that instead.
-        with mlir_mod_ctx() as ctx:
-            result = function(*args, **kwargs)
-
-        if result is None:
-            # Placed style: module was built implicitly via the context.
-            assert (
-                ctx.module.operation.verify()
-            ), f"Verification failed for '{function.__name__}'"
-            mlir_module = ctx.module
-        else:
-            # Unplaced style: function returned the module directly.
-            mlir_module = result
-
-        # Also collect ExternalFunction instances created during function()
-        # execution (e.g. inside algorithm helpers that construct them internally).
-        for func in ExternalFunction._instances:
-            if not func._compiled and id(func) not in seen:
-                external_kernels.append(func)
-                seen.add(id(func))
-
-        current_device = DefaultNPURuntime.device()
-
-        # Determine target architecture based on device type
-        if isinstance(current_device, (NPU2, NPU2Col1)):
-            target_arch = "aie2p"
-        elif isinstance(current_device, (NPU1, NPU1Col1)):
-            target_arch = "aie2"
-        elif current_device in (AIEDevice.npu2, AIEDevice.npu2_1col):
-            target_arch = "aie2p"
-        elif current_device in (AIEDevice.npu1, AIEDevice.npu1_1col):
-            target_arch = "aie2"
-        else:
-            raise RuntimeError(f"Unsupported device type: {type(current_device)}")
-
-        # Hash of the IR string, ExternalFunction compiler options, and target architecture
-        module_hash = hash_module(mlir_module, external_kernels, target_arch)
-        kernel_dir = NPU_CACHE_HOME / f"{module_hash}"
-        lock_file_path = kernel_dir / ".lock"
-        mlir_path = kernel_dir / "aie.mlir"
-
-        # Use file locking to prevent race conditions when accessing cache directory
-        with file_lock(lock_file_path):
-            # Ensure cache directory exists
-            os.makedirs(kernel_dir, exist_ok=True)
-
-            # Write MLIR to file if not already cached
-            inst_filename = "insts.bin"
-            xclbin_filename = "final.xclbin"
-            xclbin_path = kernel_dir / xclbin_filename
-            inst_path = kernel_dir / inst_filename
-
-            xclbin_exists = os.path.exists(xclbin_path)
-            inst_exists = os.path.exists(inst_path)
-
-            if not effective_use_cache or not xclbin_exists or not inst_exists:
-                try:
-                    with open(mlir_path, "w", encoding="utf-8") as f:
-                        print(mlir_module, file=f)
-
-                    # Compile ExternalFunctions from inside the JIT compilation directory
-                    for func in external_kernels:
-                        compile_external_kernel(func, kernel_dir, target_arch)
-
-                    # Compile the MLIR module
-                    compile_mlir_module(
-                        mlir_module=mlir_module,
-                        insts_path=inst_path,
-                        xclbin_path=xclbin_path,
-                        work_dir=kernel_dir,
-                    )
-                except Exception:
-                    # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
-                    _cleanup_failed_compilation(kernel_dir)
-                    raise
-
-        # Set physical MLIR path for trace parsing (contains lowered npu_write32 ops)
-        if trace_config is not None:
-            physical_mlir = kernel_dir / "input_with_addresses.mlir"
-            if physical_mlir.exists():
-                trace_config.physical_mlir_path = str(physical_mlir)
-
-        kernel = NPUKernel(
-            xclbin_path,
-            inst_path,
-            kernel_name="MLIR_AIE",
-            trace_config=trace_config,
-        )
-        if effective_use_cache:
-            _compiled_kernels[cache_key] = kernel
-
-        # Filter out non-tensor arguments (ExternalFunction, scalars) before calling kernel
-        # Only tensor args should be passed to the kernel
-        tensor_args = _filter_tensor_args(args)
-        kernel(*tensor_args, **runtime_kwargs)
-
-    return decorator
-
-
-def _filter_tensor_args(args):
-    """
-    Filter out non-tensor arguments from args.
-
-    Algorithm functions may include Kernel/ExternalFunction instances and scalar
-    compile-time constants in their Python signature that must not be forwarded
-    to the NPU kernel as runtime buffer arguments.
-
-    Removes:
-    - Kernel and ExternalFunction instances (resolved at compile time via link_with)
-    - Scalar values (int, float, np.integer, np.floating) used as MLIR constants
-    - Callables (e.g. lambda configuration helpers)
-    """
-    from aie.iron.kernel import ExternalFunction, Kernel
-
-    tensor_args = []
-    for arg in args:
-        # Skip any kernel handle (Kernel, ExternalFunction, or subclasses)
-        if isinstance(arg, Kernel):
-            continue
-        # Skip scalar types (MLIR constants)
-        if isinstance(arg, (int, float, np.integer, np.floating)):
-            continue
-        # Skip callables (lambda functions)
-        if callable(arg):
-            continue
-        tensor_args.append(arg)
-
-    return tensor_args
-
-
-def hash_module(module, external_kernels=None, target_arch=None):
-    """
-    Hash the MLIR module and ExternalFunction compiler options to create a unique identifier.
-
-    Args:
-        module: The MLIR module.
-        external_kernels (list, optional): List of external kernels. Defaults to None.
-        target_arch (str, optional): Target architecture. Defaults to None.
-
-    Returns:
-        str: The hash string.
-    """
-    mlir_str = str(module)
-
-    # Include ExternalFunction compiler options and source code in the hash
-    if external_kernels:
-        combined_str = (
-            mlir_str + "|" + "|".join(sorted(str(hash(f)) for f in external_kernels))
-        )
-    else:
-        combined_str = mlir_str
-
-    # Include target architecture in the hash
-    if target_arch:
-        combined_str += f"|target_arch={target_arch}"
-
-    hash_result = hashlib.sha256(combined_str.encode("utf-8")).hexdigest()[:16]
-    return hash_result
+    return _CallableDesign(
+        mlir_generator,
+        compile_kwargs=compile_kwargs if compile_kwargs else None,
+        **config,
+    )

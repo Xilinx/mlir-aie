@@ -156,13 +156,15 @@ class ExternalFunction(Kernel):
         arg_types: list[type[np.ndarray] | np.dtype] = [],
         include_dirs: list[str] = [],
         compile_flags: list[str] = [],
+        *,
+        symbol_prefix: str | None = None,
     ) -> None:
         """
         Args:
             name: Symbol name of the function as it will appear in the object
                 file.
             object_file_name: Output object file name.  Defaults to
-                ``<name>.o``.
+                ``<effective_name>.o``.
             source_file: Path to a C/C++ source file on disk.  Mutually
                 exclusive with ``source_string``.
             source_string: Inline C/C++ source code.  Mutually exclusive with
@@ -173,10 +175,17 @@ class ExternalFunction(Kernel):
                 compiler.  Defaults to [].
             compile_flags: Additional flags passed verbatim to the Peano
                 compiler.  Defaults to [].
+            symbol_prefix: Optional prefix for the exported symbol name.  When
+                set, the effective symbol name becomes ``<symbol_prefix>_<name>``
+                and the object file is named accordingly.  The original name is
+                preserved in ``_original_name`` for source file naming.
         """
+        self._original_name = name
+        self._symbol_prefix = symbol_prefix
+        effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         if not object_file_name:
-            object_file_name = f"{name}.o"
-        super().__init__(name, object_file_name, arg_types)
+            object_file_name = f"{effective_name}.o"
+        super().__init__(effective_name, object_file_name, arg_types)
 
         if source_file is not None:
             self._source_file = source_file
@@ -223,19 +232,55 @@ class ExternalFunction(Kernel):
                     f"got {arg.shape}/{arg.dtype}"
                 )
 
-    def __hash__(self):
-        """Hash based on source content and compiler options for cache keying."""
-        # TODO: extend to cover included headers (issue #2543)
-        hash_parts = [
+    def _content_digest(self) -> str:
+        """Return a 64-bit hex SHA-256 digest of this instance's content.
+
+        Used by both ``__hash__`` and ``__eq__`` so the two are consistent.
+        """
+        from pathlib import Path as _Path
+
+        include_dir_mtimes = []
+        for d in sorted(self._include_dirs):
+            try:
+                mtime = str(_Path(d).stat().st_mtime)
+            except (FileNotFoundError, OSError):
+                mtime = "missing"
+            include_dir_mtimes.append(f"{d}:{mtime}")
+
+        parts = [
             self._name,
             str(self._arg_types),
-            str(sorted(self._include_dirs)),
+            str(include_dir_mtimes),
             str(sorted(self._compile_flags)),
         ]
         if self._source_string:
-            hash_parts.append(self._source_string)
+            parts.append(self._source_string)
         elif self._source_file:
-            with open(self._source_file, "r") as f:
-                hash_parts.append(f.read())
-        combined = "|".join(hash_parts)
-        return int(hashlib.sha256(combined.encode("utf-8")).hexdigest()[:8], 16)
+            try:
+                with open(self._source_file) as f:
+                    parts.append(f.read())
+            except OSError:
+                parts.append(f"<unreadable:{self._source_file}>")
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]  # 64-bit
+
+    def __hash__(self) -> int:
+        """Content-based hash for use as a dict/set key and in cache signatures."""
+        return int(self._content_digest(), 16)
+
+    def __eq__(self, other: object) -> bool:
+        """Content-based equality so hash collisions never produce false cache hits."""
+        if not isinstance(other, ExternalFunction):
+            return NotImplemented
+        return self._content_digest() == other._content_digest()
+
+    def __repr__(self) -> str:
+        """Content-based repr so str(ef) is stable across GC cycles.
+
+        The default ``object.__repr__`` includes the memory address, which
+        Python's GC recycles.  Two ExternalFunction instances with different
+        content can end up at the same address in sequence, producing the same
+        ``str(ef)`` and therefore the same filesystem cache hash in
+        ``_compute_hash``, causing the wrong compiled binary to be loaded.
+        Using the content digest here makes ``str(ef)`` unique per content.
+        """
+        return f"ExternalFunction({self._name!r}, digest={self._content_digest()})"
