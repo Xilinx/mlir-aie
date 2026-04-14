@@ -1074,7 +1074,8 @@ def regular_bottlenecks(
             _BN5_OUT_C,
             bn4_scale1, bn4_scale2, bn4_scale3, bn4_scaleAdd,
             bn5_scale1, bn5_scale2, bn5_scale3, bn5_scaleAdd,
-        ]
+        ],
+        placement=Tile(1, 2),   # original: bn4_5_tile = tile(1,2); L1 alloc on tile(0,2) (adjacent)
     )
     workers.append(bn45_worker)
 
@@ -1754,7 +1755,8 @@ def regular_bottlenecks(
             _BN9_OUT_C,
             bn8_scale1, bn8_scale2, bn8_scale3, bn8_scaleAdd,
             bn9_scale1, bn9_scale2, bn9_scale3, bn9_scaleAdd,
-        ]
+        ],
+        placement=Tile(3, 3),   # original: bn8_9_tile = tile(3,3); L1 alloc on tile(3,4) (adjacent)
     )
     workers.append(bn89_worker)
 
