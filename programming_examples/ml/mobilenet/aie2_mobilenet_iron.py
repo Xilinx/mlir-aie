@@ -295,16 +295,19 @@ def mobilenet_iron():
         post_l1_wts_data = np.zeros(post_l1_wts_full_sz, dtype=np.int8)
 
     # Original: PostL1Tile = tile(6,4), MemTile41 = tile(4,1), flow: MemTile41→PostL1Tile
+    # Lock IDs matching original: MemTile41 uses lock_id=2,3; PostL1Tile uses lock_id=0,1
     post_l1_pb = PersistentBuffer(
         obj_type=_i8((post_l1_wts_full_sz,)),
         initial_value=post_l1_wts_data,
         name="post_l1_wts",
         recv_type=_i8((post_l1_wts_chunk,)),
         repeat_count=PostRepeatChannels,
-        memtile_placement=Tile(4, 1),    # MemTile41 in original
-        compute_placement=Tile(6, 4),    # PostL1Tile in original
+        memtile_placement=Tile(4, 1),
+        compute_placement=Tile(6, 4),
         mm2s_channel=0,
         s2mm_channel=0,
+        mem_lock_id=2,    # MemTile41: lock_id=2 (prod), lock_id=3 (cons)
+        comp_lock_id=0,   # PostL1Tile: lock_id=0 (prod), lock_id=1 (cons)
     )
 
     act_post_l1_out = ObjectFifo(
@@ -413,6 +416,10 @@ def mobilenet_iron():
         # Single PersistentBuffer with ping-pong: FC1 on fc2_memtile, FC2 as ping-pong
         # on fc1_memtile (adjacent MemTile). DMA BD chain alternates: FC2→FC1→FC2→...
         # This matches original's single DMA flow with two-BD chain from MemTile(N,1).
+        # Lock IDs matching original:
+        #   MemTile (FC2): lock_id=0 (prod), lock_id=1 (cons)
+        #   MemTile (FC1 ping-pong on adjacent tile): lock_id=0 (prod), lock_id=1 (cons)
+        #   Compute tile: lock_id=2 (prod), lock_id=3 (cons)
         fc_pb = PersistentBuffer(
             obj_type=_i8((fc_full_per_tile,)), initial_value=fc2_data,
             name=f"post_l2_fc2_wts_{i}",
@@ -420,7 +427,8 @@ def mobilenet_iron():
             memtile_placement=fc2_memtiles[i], compute_placement=fc_comptiles[i],
             mm2s_channel=0, s2mm_channel=1,
             ping_pong_buf=(_i8((fc_full_per_tile,)), fc1_data, f"post_l2_fc1_wts_{i}"),
-            ping_pong_memtile=fc1_memtiles[i],  # FC1 on adjacent MemTile (shared memory)
+            ping_pong_memtile=fc1_memtiles[i],
+            mem_lock_id=0, comp_lock_id=2, pp_lock_id=0,
         )
 
         def post_l2_fn(act_in, act_out, wts_h, k, inC, outC, sf1, sf2,

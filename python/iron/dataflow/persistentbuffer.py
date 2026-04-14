@@ -88,6 +88,9 @@ class PersistentBuffer(Resolvable):
         s2mm_channel: int = 0,
         ping_pong_buf=None,           # (obj_type, initial_value, name) for second buffer
         ping_pong_memtile=None,       # MemTile holding the second buffer (may differ)
+        mem_lock_id: int = 0,         # starting lock_id for MemTile (uses mem_lock_id and mem_lock_id+1)
+        comp_lock_id: int = 0,        # starting lock_id for compute tile
+        pp_lock_id: int = 0,          # starting lock_id for ping-pong MemTile
     ):
         self._obj_type = obj_type
         self._initial_value = np.asarray(initial_value, dtype=np.int8)
@@ -100,6 +103,9 @@ class PersistentBuffer(Resolvable):
         self._s2mm_ch = s2mm_channel
         self._ping_pong_buf = ping_pong_buf           # (type, data, name) tuple or None
         self._ping_pong_memtile = ping_pong_memtile   # MemTile for second buffer
+        self._mem_lock_id = mem_lock_id
+        self._comp_lock_id = comp_lock_id
+        self._pp_lock_id = pp_lock_id
 
         # Set by resolve()
         self._comp_cons_lock = None
@@ -123,12 +129,11 @@ class PersistentBuffer(Resolvable):
         compute_op = self._compute.op
 
         # --- MemTile side ---
-        # lock_id=None → auto-assigned by AIEAssignLockIDs pass
-        # For ping-pong: each buffer gets init=1 (one copy ready to send).
-        # For single-buffer: init=repeat_count (pre-load N repeats).
-        mem_prod_lock = lock(memtile_op, init=0)
+        # Explicit lock_id required — AIEObjectFifoStatefulTransform runs before
+        # AIEAssignLockIDs and requires IDs to be set.
         cons_init = 1 if self._ping_pong_buf is not None else self._repeat_count
-        mem_cons_lock = lock(memtile_op, init=cons_init)
+        mem_prod_lock = lock(memtile_op, lock_id=self._mem_lock_id,     init=0)
+        mem_cons_lock = lock(memtile_op, lock_id=self._mem_lock_id + 1, init=cons_init)
 
         wts_buf = buffer(
             memtile_op,
@@ -138,8 +143,8 @@ class PersistentBuffer(Resolvable):
         )
 
         # --- Compute tile side ---
-        comp_prod_lock = lock(compute_op, init=1)
-        comp_cons_lock = lock(compute_op, init=0)
+        comp_prod_lock = lock(compute_op, lock_id=self._comp_lock_id,     init=1)
+        comp_cons_lock = lock(compute_op, lock_id=self._comp_lock_id + 1, init=0)
 
         recv_buf = buffer(
             compute_op,
@@ -165,8 +170,8 @@ class PersistentBuffer(Resolvable):
             pp_type, pp_data, pp_name = self._ping_pong_buf
             pp_memtile_op = (self._ping_pong_memtile.op
                              if self._ping_pong_memtile else memtile_op)
-            pp_prod_lock = lock(pp_memtile_op, init=0)
-            pp_cons_lock = lock(pp_memtile_op, init=1)
+            pp_prod_lock = lock(pp_memtile_op, lock_id=self._pp_lock_id,     init=0)
+            pp_cons_lock = lock(pp_memtile_op, lock_id=self._pp_lock_id + 1, init=1)
             pp_buf = buffer(pp_memtile_op, pp_type, pp_name,
                             initial_value=np.asarray(pp_data, dtype=np.int8))
 
