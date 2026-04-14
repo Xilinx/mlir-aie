@@ -86,6 +86,8 @@ class PersistentBuffer(Resolvable):
         compute_placement=None,
         mm2s_channel: int = 0,
         s2mm_channel: int = 0,
+        ping_pong_buf=None,           # (obj_type, initial_value, name) for second buffer
+        ping_pong_memtile=None,       # MemTile holding the second buffer (may differ)
     ):
         self._obj_type = obj_type
         self._initial_value = np.asarray(initial_value, dtype=np.int8)
@@ -96,6 +98,8 @@ class PersistentBuffer(Resolvable):
         self._compute = compute_placement
         self._mm2s_ch = mm2s_channel
         self._s2mm_ch = s2mm_channel
+        self._ping_pong_buf = ping_pong_buf           # (type, data, name) tuple or None
+        self._ping_pong_memtile = ping_pong_memtile   # MemTile for second buffer
 
         # Set by resolve()
         self._comp_cons_lock = None
@@ -150,17 +154,44 @@ class PersistentBuffer(Resolvable):
             compute_op,  WireBundle.DMA, self._s2mm_ch,
         )
 
-        # --- MemTile DMA region (MM2S, loops forever) ---
-        @memtile_dma(memtile_op)
-        def _mtdma(block):
-            dma_start(DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[2])
-            with block[1]:
-                use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
-                dma_bd(wts_buf)
-                use_lock(mem_prod_lock, LockAction.Release)
-                next_bd(block[1])   # infinite loop: replay forever
-            with block[2]:
-                EndOp()
+        # --- MemTile DMA region (MM2S) ---
+        if self._ping_pong_buf is not None:
+            # Two-BD ping-pong: alternates between wts_buf and ping_pong second buffer.
+            # The second buffer may be on an adjacent MemTile (shared memory access).
+            pp_type, pp_data, pp_name = self._ping_pong_buf
+            pp_memtile_op = (self._ping_pong_memtile.op
+                             if self._ping_pong_memtile else memtile_op)
+            pp_prod_lock = lock(pp_memtile_op, lock_id=0, init=0)
+            pp_cons_lock = lock(pp_memtile_op, lock_id=1, init=self._repeat_count)
+            pp_buf = buffer(pp_memtile_op, pp_type, pp_name,
+                            initial_value=np.asarray(pp_data, dtype=np.int8))
+
+            @memtile_dma(memtile_op)
+            def _mtdma(block):
+                dma_start(DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[3])
+                with block[1]:   # BD1: first buffer
+                    use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
+                    dma_bd(wts_buf)
+                    use_lock(mem_prod_lock, LockAction.Release)
+                    next_bd(block[2])   # → BD2
+                with block[2]:   # BD2: second buffer (ping-pong)
+                    use_lock(pp_cons_lock, LockAction.AcquireGreaterEqual)
+                    dma_bd(pp_buf)
+                    use_lock(pp_prod_lock, LockAction.Release)
+                    next_bd(block[1])   # → BD1 (alternate forever)
+                with block[3]:
+                    EndOp()
+        else:
+            @memtile_dma(memtile_op)
+            def _mtdma(block):
+                dma_start(DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[2])
+                with block[1]:
+                    use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
+                    dma_bd(wts_buf)
+                    use_lock(mem_prod_lock, LockAction.Release)
+                    next_bd(block[1])   # infinite loop
+                with block[2]:
+                    EndOp()
 
         # --- Compute tile DMA region (S2MM, loops forever) ---
         @mem(compute_op)

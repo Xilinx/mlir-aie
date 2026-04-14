@@ -83,6 +83,7 @@ class Program:
                         if isinstance(arg, PersistentBufferHandle):
                             if arg._pb._memtile: all_tiles.append(arg._pb._memtile)
                             if arg._pb._compute: all_tiles.append(arg._pb._compute)
+                            if arg._pb._ping_pong_memtile: all_tiles.append(arg._pb._ping_pong_memtile)
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
                     # Also include any tiles registered via allocate_on()

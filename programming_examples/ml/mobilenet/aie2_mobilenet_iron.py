@@ -372,26 +372,27 @@ def mobilenet_iron():
         names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
     )
 
-    # FC weights: 1280*1280 = 1,638,400 bytes total (too large for compute tile).
-    # Original: each MemTile holds FC1+FC2 halves for one core (409,600 bytes total),
-    # compute tile holds 1/(PostOutputSplitL2=40) = 10,240 bytes at a time.
+    # FC weights: ping-pong design matching original.
+    # Each PostL2Tile gets FC1 (409,600 bytes) and FC2 (409,600 bytes) on separate MemTiles.
+    # Compute tile receive buffer: 10,240 bytes = 1/40 of one FC half at a time.
+    # Original assignments:
+    #   PostL2Tile_1(6,3): FC1 on MemTile(0,1), FC2 on MemTile(1,1), flow from MemTile(1,1)
+    #   PostL2Tile_2(7,4): FC1 on MemTile(2,1), FC2 on MemTile(3,1), flow from MemTile(3,1)
+    #   PostL2Tile_3(7,3): FC1 on MemTile(4,1), FC2 on MemTile(5,1), flow from MemTile(5,1)
+    #   PostL2Tile_4(7,2): FC1 on MemTile(6,1), FC2 on MemTile(7,1), flow from MemTile(7,1)
     PostOutputSplitL2 = 40
-    fc_full_per_tile = post_L2_InC * fc_out_per_tile          # 409,600 bytes (FC1 or FC2 half)
+    fc_full_per_tile = post_L2_InC * fc_out_per_tile          # 409,600 bytes per FC half
     fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2   # 10,240 bytes on compute tile
 
-    # MemTile and PostL2Tile assignments matching original:
-    #   Tile_i 0: MemTile(1,1) → PostL2Tile(6,3)
-    #   Tile_i 1: MemTile(3,1) → PostL2Tile(7,4)
-    #   Tile_i 2: MemTile(5,1) → PostL2Tile(7,3)
-    #   Tile_i 3: MemTile(7,1) → PostL2Tile(7,2)
-    fc_memtiles    = [Tile(1,1), Tile(3,1), Tile(5,1), Tile(7,1)]
-    fc_comptiles   = [Tile(6,3), Tile(7,4), Tile(7,3), Tile(7,2)]
+    fc1_memtiles = [Tile(0,1), Tile(2,1), Tile(4,1), Tile(6,1)]   # FC1 MemTiles
+    fc2_memtiles = [Tile(1,1), Tile(3,1), Tile(5,1), Tile(7,1)]   # FC2 MemTiles (serve DMA)
+    fc_comptiles = [Tile(6,3), Tile(7,4), Tile(7,3), Tile(7,2)]   # PostL2 compute tiles
 
     k_post_l2 = Kernel(
         "post_conv2dk1_i8_ui8",
         "post_conv2dk1.o",
         [_i8((1, 1, post_L2_InC)),
-         _i8((fc_recv_per_tile,)),   # one output split chunk (10,240 bytes)
+         _i8((fc_recv_per_tile,)),
          _u8((fc_out_per_tile,)),
          _i32(), _i32(), _i32(), _i32(), _i32()],
     )
@@ -400,57 +401,49 @@ def mobilenet_iron():
     for i, (fc1_f, fc2_f) in enumerate(fc_wts_filenames):
         fc1_data = np.zeros(fc_full_per_tile, dtype=np.int8)
         fc2_data = np.zeros(fc_full_per_tile, dtype=np.int8)
-        fc1_path = data_dir + fc1_f
-        fc2_path = data_dir + fc2_f
-        if os.path.exists(fc1_path):
-            fc1_data = np.fromfile(fc1_path, sep=",", dtype=np.int8)
-        if os.path.exists(fc2_path):
-            fc2_data = np.fromfile(fc2_path, sep=",", dtype=np.int8)
-        # Interleave FC1+FC2 as original: mem holds both, DMA alternates
-        wts_combined = np.concatenate([fc1_data, fc2_data])
+        if os.path.exists(data_dir + fc1_f):
+            fc1_data = np.fromfile(data_dir + fc1_f, sep=",", dtype=np.int8)
+        if os.path.exists(data_dir + fc2_f):
+            fc2_data = np.fromfile(data_dir + fc2_f, sep=",", dtype=np.int8)
 
-        # PersistentBuffer: full weights on MemTile, receive chunk on compute tile
+        # Single PersistentBuffer with ping-pong: FC1 on fc2_memtile, FC2 as ping-pong
+        # on fc1_memtile (adjacent MemTile). DMA BD chain alternates: FC2→FC1→FC2→...
+        # This matches original's single DMA flow with two-BD chain from MemTile(N,1).
         fc_pb = PersistentBuffer(
-            obj_type=_i8((len(wts_combined),)),
-            initial_value=wts_combined,
-            name=f"post_l2_wts_{i}",
-            recv_type=_i8((fc_recv_per_tile,)),
-            repeat_count=PostOutputSplitL2,
-            memtile_placement=fc_memtiles[i],
-            compute_placement=fc_comptiles[i],
-            mm2s_channel=0,
-            s2mm_channel=1,   # S2MM channel 1 (channel 0 used by other traffic)
+            obj_type=_i8((fc_full_per_tile,)), initial_value=fc2_data,
+            name=f"post_l2_fc2_wts_{i}",
+            recv_type=_i8((fc_recv_per_tile,)), repeat_count=PostOutputSplitL2,
+            memtile_placement=fc2_memtiles[i], compute_placement=fc_comptiles[i],
+            mm2s_channel=0, s2mm_channel=1,
+            ping_pong_buf=(_i8((fc_full_per_tile,)), fc1_data, f"post_l2_fc1_wts_{i}"),
+            ping_pong_memtile=fc1_memtiles[i],  # FC1 on adjacent MemTile
         )
 
-        def post_l2_fn(act_in, act_out, wts_pb, k, inC, outC, sf1, sf2, n_splits=PostOutputSplitL2):
+        def post_l2_fn(act_in, act_out, wts_h, k, inC, outC, sf1, sf2,
+                       n_splits=PostOutputSplitL2):
             elem_in = act_in.acquire(1)
             elem_out = act_out.acquire(1)
-            # FC1 pass: iterate through all output splits
+            # FC2 pass (first in DMA chain)
             for _ in range_(n_splits):
-                wts_chunk = wts_pb.acquire(1)
-                k(elem_in, wts_chunk, elem_out, 1, inC, outC, outC, sf1)
-                wts_pb.release(1)
-            # FC2 pass: same iteration
+                wts = wts_h.acquire(1)
+                k(elem_in, wts, elem_out, 1, inC, outC, outC, sf2)
+                wts_h.release(1)
+            # FC1 pass (ping-pong second)
             for _ in range_(n_splits):
-                wts_chunk = wts_pb.acquire(1)
-                k(elem_in, wts_chunk, elem_out, 1, inC, outC, outC, sf2)
-                wts_pb.release(1)
+                wts = wts_h.acquire(1)
+                k(elem_in, wts, elem_out, 1, inC, outC, outC, sf1)
+                wts_h.release(1)
             act_in.release(1)
             act_out.release(1)
 
         w = Worker(
             post_l2_fn,
             fn_args=[
-                act_post_l1_out.cons(),
-                act_post_l2_tiles[i].prod(),
-                fc_pb.cons(),
-                k_post_l2,
-                post_L2_InC,
-                fc_out_per_tile,
-                post_fc1_sf,
-                post_fc2_sf,
+                act_post_l1_out.cons(), act_post_l2_tiles[i].prod(),
+                fc_pb.cons(), k_post_l2,
+                post_L2_InC, fc_out_per_tile, post_fc1_sf, post_fc2_sf,
             ],
-            placement=fc_comptiles[i],   # explicit placement matching original
+            placement=fc_comptiles[i],
         )
         post_l2_workers.append(w)
 
