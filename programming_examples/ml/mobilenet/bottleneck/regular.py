@@ -1405,7 +1405,8 @@ def regular_bottlenecks(
             bn7_scale2,
             bn7_scale3,
             bn7_scaleAdd,
-        ]
+        ],
+        placement=Tile(2, 3),   # original: bn7_tile = tile(2,3), adjacent to bn8+9 tile(3,3)
     )
     workers.append(bn7_worker)
 
@@ -1487,9 +1488,12 @@ def regular_bottlenecks(
     )
 
     # Final output fifo (boundary interface - FIXED type and depth)
+    # Split depth [1, 2]: producer (bn89 tile) gets depth=1 buffer (saves SRAM),
+    # consumer (pipeline bn10 tile) gets depth=2. Matches original act_bn9_bn10 [1,2].
     act_bn9_out = ObjectFifo(
         np.ndarray[(_BN89_OUT_W, 1, _BN9_OUT_C), np.dtype[np.int8]],
-        depth=2
+        depth=[1, 2],
+        name="act_bn9_out",
     )
 
     # Internal self-loop fifos for bn8+9 fused block.

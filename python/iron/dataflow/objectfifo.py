@@ -189,10 +189,12 @@ class ObjectFifo(Resolvable):
                     raise ValueError(f"If depth is None, then depth must be specified.")
                 else:
                     depth = self._depth
-            elif depth < 1:
+            elif isinstance(depth, int) and depth < 1:
                 raise ValueError(f"Depth must be > 1, but got {depth}")
         else:
-            self._prod = ObjectFifoHandle(self, True, depth)
+            # For split-depth fifos ([prod_depth, cons_depth, ...]), extract prod depth
+            prod_depth = self._depth[0] if isinstance(self._depth, list) else self._depth
+            self._prod = ObjectFifoHandle(self, True, prod_depth if depth is None else depth)
         return self._prod
 
     def cons(
@@ -217,7 +219,8 @@ class ObjectFifo(Resolvable):
             if self._depth is None:
                 raise ValueError(f"If depth is None, then depth must be specified.")
             else:
-                depth = self._depth
+                # For split-depth fifos ([prod_depth, cons_depth, ...]), use cons depth
+                depth = self._depth[-1] if isinstance(self._depth, list) else self._depth
 
         if dims_from_stream is None:
             dims_from_stream = self._dims_from_stream_per_cons
@@ -410,7 +413,7 @@ class ObjectFifoHandle(Resolvable):
                 raise ValueError(
                     "Must specify either ObjectFifoHandle depth or ObjectFifo default depth; both are None."
                 )
-        if depth < 1:
+        if isinstance(depth, int) and depth < 1:
             raise ValueError(f"Depth must be > 0 but is {depth}")
         self._port: ObjectFifoPort = (
             ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
