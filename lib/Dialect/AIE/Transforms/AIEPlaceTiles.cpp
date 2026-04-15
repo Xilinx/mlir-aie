@@ -58,6 +58,13 @@ private:
 
 struct AIEPlaceTilesPass
     : xilinx::AIE::impl::AIEPlaceTilesBase<AIEPlaceTilesPass> {
+
+  AIEPlaceTilesPass() = default;
+
+  AIEPlaceTilesPass(const AIEPlaceTilesOptions &options) {
+    clCoresPerCol = options.clCoresPerCol;
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -95,4 +102,9 @@ struct AIEPlaceTilesPass
 
 std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEPlaceTilesPass() {
   return std::make_unique<AIEPlaceTilesPass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+AIE::createAIEPlaceTilesPass(const AIEPlaceTilesOptions &options) {
+  return std::make_unique<AIEPlaceTilesPass>(options);
 }

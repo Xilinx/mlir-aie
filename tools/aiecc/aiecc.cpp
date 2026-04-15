@@ -211,6 +211,11 @@ static cl::opt<std::string> allocScheme(
         "or empty string for bank-aware with fallback to basic-sequential)"),
     cl::init(""), cl::cat(aieCompilerOptions));
 
+static cl::opt<int> coresPerCol(
+    "cores-per-col",
+    cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
+    cl::init(-1), cl::cat(aieCompilerOptions));
+
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
                      cl::desc("Generate NPU instruction stream"),
@@ -1300,6 +1305,58 @@ static LogicalResult runPipelineWithRepeater(PassManager &pm, ModuleOp moduleOp,
 //===----------------------------------------------------------------------===//
 // In-Memory Pass Execution
 //===----------------------------------------------------------------------===//
+
+/// Check if the module contains any aie.logical_tile ops.
+static bool hasLogicalTileOps(ModuleOp moduleOp) {
+  bool found = false;
+  moduleOp.walk([&](xilinx::AIE::LogicalTileOp) {
+    found = true;
+    return WalkResult::interrupt();
+  });
+  return found;
+}
+
+/// Run tile placement pass in-memory, only when logical tile ops exist.
+/// This converts aie.logical_tile ops to aie.tile ops and must run before
+/// all other passes (trace lowering, resource allocation, routing) because
+/// downstream passes require physical tile coordinates.
+static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
+                                          StringRef tmpDirName) {
+  if (!hasLogicalTileOps(moduleOp))
+    return success();
+
+  MLIRContext *ctx = moduleOp.getContext();
+  PassManager pm(ctx);
+
+  if (verbose) {
+    pm.enableVerifier(true);
+    SmallString<128> crashFile(tmpDirName);
+    sys::path::append(crashFile, "placement_crash.mlir");
+    pm.enableCrashReproducerGeneration(crashFile);
+  }
+
+  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
+  placeTilesOpts.clCoresPerCol = coresPerCol;
+  devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
+
+  if (verbose) {
+    llvm::outs() << "Running tile placement pipeline in-memory\n";
+    llvm::outs().flush();
+  }
+
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "tile placement",
+                                     tmpDirName))) {
+    llvm::errs() << "Error: Tile placement pipeline failed\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Tile placement pipeline completed successfully\n";
+  }
+
+  return success();
+}
 
 /// Check if the module contains any aie.trace ops.
 static bool hasTraceOps(ModuleOp moduleOp) {
@@ -5143,6 +5200,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       }
       deviceOp.erase();
     }
+  }
+
+  // Step 0: Run tile placement (only when logical tile ops exist)
+  // This converts aie.logical_tile -> aie.tile before any other passes.
+  if (failed(runPlacementPipeline(moduleOp, tmpDirName))) {
+    return failure();
   }
 
   // Step 1a: Run trace lowering (only when trace ops exist)

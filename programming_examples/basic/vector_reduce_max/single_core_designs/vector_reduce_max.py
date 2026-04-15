@@ -10,7 +10,6 @@ import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 
 
@@ -68,7 +67,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 p = argparse.ArgumentParser()

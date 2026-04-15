@@ -3,7 +3,6 @@
 
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, AnyComputeTile, Tile
 from aie.helpers.util import np_ndarray_type_get_shape
 from util import construct_and_print_module
@@ -38,14 +37,14 @@ def objectfifo_order(module):
         rt.fill(of_in_B.prod(), B)
         rt.drain(of_out_C.cons(), C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
 # CHECK-LABEL: TEST: shim_three_in
-# CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
-# CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile
-# CHECK-NOT: %[[shim_noc_tile_2_0:.+]] = aie.tile(2, 0)
+# CHECK: aie.logical_tile<ShimNOCTile>
+# CHECK: aie.logical_tile<ShimNOCTile>
+# CHECK: aie.logical_tile<ShimNOCTile>
 @construct_and_print_module
 def shim_three_in(module):
     N = 4096
@@ -72,13 +71,14 @@ def shim_three_in(module):
         rt.fill(of_ins[1].prod(), B)
         rt.fill(of_ins[2].prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
 # CHECK-LABEL: TEST: shim_two_in_one_out
-# CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile(0, 0)
-# CHECK-NOT: %[[shim_noc_tile_1_0:.+]] = aie.tile(1, 0)
+# CHECK: aie.logical_tile<ShimNOCTile>
+# CHECK: aie.logical_tile<ShimNOCTile>
+# CHECK: aie.logical_tile<ShimNOCTile>
 @construct_and_print_module
 def shim_two_in_one_out(module):
     N = 4096
@@ -102,13 +102,13 @@ def shim_two_in_one_out(module):
         rt.fill(of_in_B.prod(), B)
         rt.drain(of_out_C.cons(), C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
 # CHECK-LABEL: TEST: compute_three_in
-# CHECK: %[[tile_0_2:.+]] = aie.tile(0, 2)
-# CHECK-NOT: %[[tile_0_3:.+]] = aie.tile(0, 3)
+# CHECK: aie.logical_tile<CoreTile>
+# CHECK-NOT: aie.logical_tile<CoreTile>
 @construct_and_print_module
 def compute_three_in(module):
     n = 1024
@@ -131,13 +131,14 @@ def compute_three_in(module):
         rt.fill(of_1.prod(), B)
         rt.fill(of_2.prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
 # CHECK-LABEL: TEST: compute_one_in_two_links
-# CHECK: %[[tile_0_2:.+]] = aie.tile
-# CHECK: %[[tile_0_3:.+]] = aie.tile
+# CHECK: aie.logical_tile<CoreTile>
+# CHECK: aie.logical_tile<CoreTile>
+# CHECK: aie.logical_tile<CoreTile>
 @construct_and_print_module
 def compute_one_in_two_links(module):
     n = 1024
@@ -147,12 +148,8 @@ def compute_one_in_two_links(module):
     of_0 = ObjectFifo(n_ty, name="of0")
     of_in1 = ObjectFifo(n_ty, name="in1")
     of_in2 = ObjectFifo(n_ty, name="in2")
-    of_out1 = of_in1.cons().forward(
-        obj_type=n_ty, name="out1", placement=AnyComputeTile
-    )
-    of_out2 = of_in2.cons().forward(
-        obj_type=n_ty, name="out_2", placement=AnyComputeTile
-    )
+    of_out1 = of_in1.cons().forward(obj_type=n_ty, name="out1", tile=AnyComputeTile)
+    of_out2 = of_in2.cons().forward(obj_type=n_ty, name="out_2", tile=AnyComputeTile)
 
     def core_fn(of_in0):
         pass
@@ -168,13 +165,14 @@ def compute_one_in_two_links(module):
         rt.drain(of_out1.cons(), D, wait=True)
         rt.drain(of_out2.cons(), E, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
 # CHECK-LABEL: TEST: compute_partial_placement
-# CHECK: %[[tile_0_2:.+]] = aie.tile
-# CHECK: %[[tile_0_4:.+]] = aie.tile
+# CHECK: aie.logical_tile<CoreTile>(0, 4)
+# CHECK: aie.logical_tile<CoreTile>(?, ?)
+# CHECK: aie.logical_tile<CoreTile>(?, ?)
 @construct_and_print_module
 def compute_partial_placement(module):
     n = 1024
@@ -184,17 +182,13 @@ def compute_partial_placement(module):
     of_0 = ObjectFifo(n_ty, name="of0")
     of_in1 = ObjectFifo(n_ty, name="in1")
     of_in2 = ObjectFifo(n_ty, name="in2")
-    of_out1 = of_in1.cons().forward(
-        obj_type=n_ty, name="out1", placement=AnyComputeTile
-    )
-    of_out2 = of_in2.cons().forward(
-        obj_type=n_ty, name="out_2", placement=AnyComputeTile
-    )
+    of_out1 = of_in1.cons().forward(obj_type=n_ty, name="out1", tile=AnyComputeTile)
+    of_out2 = of_in2.cons().forward(obj_type=n_ty, name="out_2", tile=AnyComputeTile)
 
     def core_fn(of_in0):
         pass
 
-    worker = Worker(core_fn, [of_0.cons()], placement=Tile(0, 4))
+    worker = Worker(core_fn, [of_0.cons()], tile=Tile(0, 4))
 
     rt = Runtime()
     with rt.sequence(n_ty, n_ty, n_ty, n_ty, n_ty) as (A, B, C, D, E):
@@ -205,15 +199,14 @@ def compute_partial_placement(module):
         rt.drain(of_out1.cons(), D, wait=True)
         rt.drain(of_out2.cons(), E, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
 # CHECK-LABEL: TEST: mem_eight_in_three_out
-# CHECK: %[[mem_tile_0_1:.+]] = aie.tile
-# CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
-# CHECK: %[[mem_tile_1_1:.+]] = aie.tile
-# CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile
+# CHECK: aie.logical_tile<MemTile>
+# CHECK: aie.logical_tile<MemTile>
+# CHECK: aie.logical_tile<MemTile>
 @construct_and_print_module
 def mem_eight_in_three_out(module):
     N = 6000
@@ -254,14 +247,14 @@ def mem_eight_in_three_out(module):
         rt.drain(of_out_B.cons(), B, wait=True)
         rt.drain(of_out_C.cons(), C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
 # CHECK-LABEL: TEST: compute_three_in_col_lim
-# CHECK: %[[tile_0_2:.+]] = aie.tile
-# CHECK: %[[tile_0_3:.+]] = aie.tile
-# CHECK: %[[tile_1_2:.+]] = aie.tile
+# CHECK: aie.logical_tile<CoreTile>
+# CHECK: aie.logical_tile<CoreTile>
+# CHECK: aie.logical_tile<CoreTile>
 @construct_and_print_module
 def compute_three_in_col_lim(module):
     n = 1024
@@ -289,5 +282,5 @@ def compute_three_in_col_lim(module):
         rt.fill(of_1.prod(), B)
         rt.fill(of_2.prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
+    module = Program(NPU2(), rt).resolve_program()
     return module

@@ -16,10 +16,9 @@ When we program the AIE-array, we need to declare and configure its structural b
 
 Let's first look at a basic Python source file (named [aie2.py](./aie2.py)) for an IRON design at the highest level of abstraction:
 
-At the top of this Python source, we include modules that define the IRON libraries `aie.iron` for high-level abstraction constructs, resource placement algorithms `aie.iron.placers` and target architecture `aie.iron.device`.
+At the top of this Python source, we include modules that define the IRON libraries `aie.iron` for high-level abstraction constructs and target architecture `aie.iron.device`.
 ```python
 from aie.iron import Program, Runtime, Worker, Buffer
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, Tile
 ```
 Data movement inside the AIE-array is usually also declared at this step, however that part of design configuration has its own dedicated [section](../section-2/) and is not covered in detail here.
@@ -28,14 +27,14 @@ Data movement inside the AIE-array is usually also declared at this step, howeve
 # described in a future section of the guide...
 ```
 In the AIE array, computational kernels are run on compute tiles, which are represented by Workers. 
-A Worker takes as input a routine to run, and the list of arguments needed to run it. The Worker class is defined below and can be found in [worker.py](../../python/iron/worker.py). The Worker can be explicitly placed on a `placement` tile in the AIE array or its the placement can be left to the compiler, as is explained further in this section. Finally, the `while_true` input is set to True by default as Workers typically run continuously once the design is started.
+A Worker takes as input a routine to run, and the list of arguments needed to run it. The Worker class is defined below and can be found in [worker.py](../../python/iron/worker.py). The Worker can be explicitly placed on a `tile` in the AIE array or its placement can be left to the compiler, as is explained further in this section. Finally, the `while_true` input is set to True by default as Workers typically run continuously once the design is started.
 ```python
 class Worker(ObjectFifoEndpoint):
     def __init__(
         self,
         core_fn: Callable | None,
         fn_args: list = [],
-        placement: PlacementTile | None = AnyComputeTile,
+        tile: Tile = AnyComputeTile,
         while_true: bool = True,
     )
 ```
@@ -49,7 +48,7 @@ def core_fn(buff):
         buff[i] = 0
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [buffer], placement=Tile(0, 2), while_true=False)
+my_worker = Worker(core_fn, [buffer], tile=Tile(0, 2), while_true=False)
 ```
 > **NOTE 1:**  Did you notice the underscore in `range_`? Although IRON makes NPU designs look mostly like normal Python programs, it is important to understand that the code you write here is _not_ directly executed on the NPU; instead, the code you write in an IRON design _generates other code_ (metaprogramming), kind of like if you wrote a print-statement with a string of code inside. Our toolchain then compiles this generated other code, and it can then run directly on the NPU. 
 >
@@ -65,13 +64,13 @@ rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
     rt.start(my_worker)
 ```
-All the components are tied together into a `Program` which represents all design information needed to run the design on a device. It is also at this stage that the previously unplaced Workers are mapped onto AIE tiles using a `Placer`. Currently, only one placement algorithm is available in IRON, the `SequentialPlacer()` as is seen in the code snippet below. Other placers can be added with minimal effort and we encourage all users to experiment with these tools which can be found in [placers.py](../../python/iron/placers.py). Finally, the program is printed to produce the corresponding MLIR definitions from the IRON library and python language bindings.
+All the components are tied together into a `Program` which represents all design information needed to run the design on a device. The program emits `aie.logical_tile` ops for unplaced tiles, and the `--aie-place-tiles` compiler pass assigns physical tile coordinates during compilation. Finally, the program is printed to produce the corresponding MLIR definitions from the IRON library and python language bindings.
 ```python
 # Create the program from the device type and runtime
 my_program = Program(NPU1Col1(), rt)
 
-# Place components (assign them resources on the device) and generate an MLIR module
-module = my_program.resolve_program(SequentialPlacer())
+# Generate an MLIR module
+module = my_program.resolve_program()
 
 # Print the generated MLIR
 print(module)
