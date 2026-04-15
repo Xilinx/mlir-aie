@@ -18,6 +18,7 @@ from aie.utils.trace.utils import (
     convert_to_byte_stream,
     convert_to_commands,
     trim_trace_pkts,
+    split_trace_segments,
 )
 from aie.utils.trace.events import (
     NUM_TRACE_TYPES,
@@ -716,24 +717,34 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None):
     """
 
     # Convert numpy array to list of hex strings (format expected by existing functions)
-    trace_pkts = []
-    for word in trace_buffer:
-        # Convert uint32 to 8-character hex string (lowercase, no '0x' prefix)
-        hex_str = f"{int(word):08x}"
-        trace_pkts.append(hex_str)
+    trace_pkts = [f"{int(word):08x}" for word in trace_buffer]
 
     # Parse MLIR to extract event configuration
     pid_events, events_module = parse_mlir_trace_events(mlir_module_str, colshift)
 
-    # Check for valid trace
-    if not check_for_valid_trace("<numpy_array>", trace_pkts):
+    # Split buffer into segments to handle multi-channel trace buffers
+    # (e.g. when distribute-channels splits data across two S2MM channels
+    # at different offsets within the same buffer)
+    segments = split_trace_segments(trace_pkts)
+    if not segments:
         raise ValueError("Invalid trace data: empty or all zeros")
 
-    # Trim trailing empty packets
-    trimmed_trace_pkts = trim_trace_pkts(trace_pkts)
-
-    # De-interleave packets by type and location
-    trace_pkts_sorted = trace_pkts_de_interleave(trimmed_trace_pkts)
+    # Process each segment independently and merge de-interleaved results.
+    # Each segment goes through trim -> de-interleave, then results are
+    # merged by (type, location) key. For single-channel traces this is
+    # equivalent to the old single-pass pipeline.
+    trace_pkts_sorted = [dict() for _ in range(NUM_TRACE_TYPES)]
+    for segment in segments:
+        if not check_for_valid_trace("<numpy_array>", segment):
+            continue
+        trimmed = trim_trace_pkts(segment)
+        sorted_pkts = trace_pkts_de_interleave(trimmed)
+        for t in range(NUM_TRACE_TYPES):
+            for loc, data in sorted_pkts[t].items():
+                if loc in trace_pkts_sorted[t]:
+                    trace_pkts_sorted[t][loc].extend(data)
+                else:
+                    trace_pkts_sorted[t][loc] = list(data)
 
     # Convert to byte streams
     byte_streams = convert_to_byte_stream(trace_pkts_sorted)
@@ -810,13 +821,33 @@ def main():
     logger.debug("trace_pkts: %s", trace_pkts)
     logger.debug("pid events: %s", pid_events)
 
-    if not check_for_valid_trace(opts.input, trace_pkts):
+    # Split into segments for multi-channel trace buffer support
+    segments = split_trace_segments(trace_pkts)
+    if not segments:
+        logger.error("No valid trace data found in %s", opts.input)
         sys.exit(1)
+    logger.debug("found %d trace segment(s)", len(segments))
 
-    trimmed_trace_pkts = trim_trace_pkts(trace_pkts)
-    logger.debug("trimmed %s lines", len(trace_pkts) - len(trimmed_trace_pkts))
+    # Process each segment and merge de-interleaved results
+    trace_pkts_sorted = [dict() for _ in range(NUM_TRACE_TYPES)]
+    for seg_idx, segment in enumerate(segments):
+        if not check_for_valid_trace(opts.input, segment):
+            continue
+        trimmed = trim_trace_pkts(segment)
+        logger.debug(
+            "segment %d: %d words, trimmed %d",
+            seg_idx,
+            len(segment),
+            len(segment) - len(trimmed),
+        )
+        sorted_pkts = trace_pkts_de_interleave(trimmed)
+        for t in range(NUM_TRACE_TYPES):
+            for loc, data in sorted_pkts[t].items():
+                if loc in trace_pkts_sorted[t]:
+                    trace_pkts_sorted[t][loc].extend(data)
+                else:
+                    trace_pkts_sorted[t][loc] = list(data)
 
-    trace_pkts_sorted = trace_pkts_de_interleave(trimmed_trace_pkts)
     logger.debug("trace_pkts_sorted: %s", trace_pkts_sorted)
 
     byte_streams = convert_to_byte_stream(trace_pkts_sorted)

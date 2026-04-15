@@ -171,8 +171,6 @@ The host code contains the following sections (with C/C++ code examples):
 
     Note that the `kernel.group_id(<number>)` needs to match the order of `def sequence(A, F, C):` in the data movement to/from the AIE-array of python AIE-array structural description, starting with ID number 3 for the first sequence argument and then incrementing by 1. So the 1 input, 1 output pattern maps to group_id=3,4 while the 2 input, 1 output pattern maps to group_id=3,4,5 as shown below.
 
-    This mapping is described as well in the [python utils documentation](../../python/utils/README.md#configure-shimdma). 
-
     ```c
     // set up the buffer objects
     auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),

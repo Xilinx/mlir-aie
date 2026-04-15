@@ -55,6 +55,10 @@ MLIR_CAPI_EXPORTED int aieTargetModelRows(AieTargetModel targetModel);
 /// Returns true if this is an NPU target model.
 MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
 
+/// Returns the tile type for the given coordinates.
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetTileType(AieTargetModel targetModel, int col, int row);
+
 MLIR_CAPI_EXPORTED bool aieTargetModelIsCoreTile(AieTargetModel targetModel,
                                                  int col, int row);
 
