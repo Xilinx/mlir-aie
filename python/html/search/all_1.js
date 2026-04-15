@@ -1,19 +1,18 @@
 var searchData=
 [
-  ['access_5fcount_0',['access_count',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a3bc861b547f500b364b9cb61704266da',1,'taplib.tap.TensorAccessPattern.access_count()'],['../classtaplib_1_1tas_1_1TensorAccessSequence.html#a4067b395d629762957742a9239d293dd',1,'taplib.tas.TensorAccessSequence.access_count()']]],
+  ['access_5fcount_0',['access_count',['../classtaplib_1_1tas_1_1TensorAccessSequence.html#a4067b395d629762957742a9239d293dd',1,'taplib.tas.TensorAccessSequence.access_count()'],['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a3bc861b547f500b364b9cb61704266da',1,'taplib.tap.TensorAccessPattern.access_count(self)']]],
   ['access_5fgenerator_1',['access_generator',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a5ed0665447b10d322103e2ee44956073',1,'taplib::tap::TensorAccessPattern']]],
   ['access_5forder_2',['access_order',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#ae58935ee685ecd10b5551e9cd4292ae0',1,'taplib.tap.TensorAccessPattern.access_order()'],['../classtaplib_1_1tas_1_1TensorAccessSequence.html#abe816acb0018c3658184a51afeb4fbea',1,'taplib.tas.TensorAccessSequence.access_order()']]],
   ['accesses_3',['accesses',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a38f2fc7f6ffdba12aea30f5e3a06657e',1,'taplib.tap.TensorAccessPattern.accesses()'],['../classtaplib_1_1tas_1_1TensorAccessSequence.html#a319dc364453945660e815b364050edb6',1,'taplib.tas.TensorAccessSequence.accesses()']]],
   ['acquire_4',['acquire',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#af2df42bef2b7aafdf6cc31acee9ef865',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
   ['all_5fof_5fendpoints_5',['all_of_endpoints',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a9b8e261cf23b5949ce41d446c4dca3ac',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
   ['allocation_5fscheme_6',['allocation_scheme',['../classiron_1_1worker_1_1Worker.html#a1c8282d3e34e9b94c10ff60901e7031a',1,'iron::worker::Worker']]],
-  ['alreadyplacederror_7',['AlreadyPlacedError',['../classiron_1_1placeable_1_1AlreadyPlacedError.html',1,'iron::placeable']]],
-  ['animate_8',['animate',['../classtaplib_1_1tas_1_1TensorAccessSequence.html#ac37dd395dca38ec04823b8c7310a0e37',1,'taplib::tas::TensorAccessSequence']]],
-  ['animate_5ffrom_5faccesses_9',['animate_from_accesses',['../namespacetaplib_1_1visualization2d.html#affeb22effce76577f9435c2cab032a03',1,'taplib::visualization2d']]],
-  ['anycomputetile_10',['AnyComputeTile',['../classiron_1_1device_1_1tile_1_1AnyComputeTile.html',1,'iron::device::tile']]],
-  ['anymemtile_11',['AnyMemTile',['../classiron_1_1device_1_1tile_1_1AnyMemTile.html',1,'iron::device::tile']]],
-  ['anyshimtile_12',['AnyShimTile',['../classiron_1_1device_1_1tile_1_1AnyShimTile.html',1,'iron::device::tile']]],
-  ['arange_13',['arange',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a08e2d55b9975b73c703bc7c84ca9fa90',1,'utils.hostruntime.tensor_class.Tensor.arange()'],['../namespaceutils.html#acf2d302f79941de9b4c635dfe98dab56',1,'utils.arange()']]],
-  ['arg_5ftypes_14',['arg_types',['../classiron_1_1kernel_1_1BaseKernel.html#a2c43096f97c1f389cb593f24fe6a42d8',1,'iron::kernel::BaseKernel']]],
-  ['arr_5ftype_15',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#ab4aafe0b2e38225956d412252894b65d',1,'iron::runtime::data::RuntimeData']]]
+  ['animate_7',['animate',['../classtaplib_1_1tas_1_1TensorAccessSequence.html#ac37dd395dca38ec04823b8c7310a0e37',1,'taplib::tas::TensorAccessSequence']]],
+  ['animate_5ffrom_5faccesses_8',['animate_from_accesses',['../namespacetaplib_1_1visualization2d.html#affeb22effce76577f9435c2cab032a03',1,'taplib::visualization2d']]],
+  ['anycomputetile_9',['AnyComputeTile',['../namespaceiron_1_1device_1_1tile.html#afabe1408657c97a6f47a2ac88b9389fe',1,'iron::device::tile']]],
+  ['anymemtile_10',['AnyMemTile',['../namespaceiron_1_1device_1_1tile.html#a6d419557ee8b784327c3b2bdeaee943d',1,'iron::device::tile']]],
+  ['anyshimtile_11',['AnyShimTile',['../namespaceiron_1_1device_1_1tile.html#a78ad06e8f701004c6167760cbdc140d3',1,'iron::device::tile']]],
+  ['arange_12',['arange',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a08e2d55b9975b73c703bc7c84ca9fa90',1,'utils.hostruntime.tensor_class.Tensor.arange()'],['../namespaceutils.html#acf2d302f79941de9b4c635dfe98dab56',1,'utils.arange()']]],
+  ['arg_5ftypes_13',['arg_types',['../classiron_1_1kernel_1_1BaseKernel.html#a2c43096f97c1f389cb593f24fe6a42d8',1,'iron::kernel::BaseKernel']]],
+  ['arr_5ftype_14',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#ab4aafe0b2e38225956d412252894b65d',1,'iron::runtime::data::RuntimeData']]]
 ];

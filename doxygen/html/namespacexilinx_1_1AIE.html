@@ -280,6 +280,8 @@ Functions</h2></td></tr>
 <tr class="separator:a638bb81621d64018812ed5fa7433b3f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8ec5735e15f8c9555b9aadeeb326dd52" id="r_a8ec5735e15f8c9555b9aadeeb326dd52"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a8ec5735e15f8c9555b9aadeeb326dd52">createAIEPlaceTilesPass</a> ()</td></tr>
 <tr class="separator:a8ec5735e15f8c9555b9aadeeb326dd52"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af4fe33ff13e052c1c3596d37e59511e7" id="r_af4fe33ff13e052c1c3596d37e59511e7"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#af4fe33ff13e052c1c3596d37e59511e7">createAIEPlaceTilesPass</a> (const AIEPlaceTilesOptions &amp;options)</td></tr>
+<tr class="separator:af4fe33ff13e052c1c3596d37e59511e7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab739be0589e309d7da3122b4143f3ede" id="r_ab739be0589e309d7da3122b4143f3ede"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#ab739be0589e309d7da3122b4143f3ede">createAIEAssignBufferAddressesPass</a> ()</td></tr>
 <tr class="separator:ab739be0589e309d7da3122b4143f3ede"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afc34b98288c8d246339e5c22ccd9f60a" id="r_afc34b98288c8d246339e5c22ccd9f60a"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#afc34b98288c8d246339e5c22ccd9f60a">createAIEAssignBufferAddressesPass</a> (const AIEAssignBufferAddressesOptions &amp;options)</td></tr>
@@ -2125,7 +2127,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a8ec5735e15f8c9555b9aadeeb326dd52" name="a8ec5735e15f8c9555b9aadeeb326dd52"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a8ec5735e15f8c9555b9aadeeb326dd52">&#9670;&#160;</a></span>createAIEPlaceTilesPass()</h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a8ec5735e15f8c9555b9aadeeb326dd52">&#9670;&#160;</a></span>createAIEPlaceTilesPass() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -2139,7 +2141,27 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEPlaceTiles_8cpp_source.html#l00096">96</a> of file <a class="el" href="AIEPlaceTiles_8cpp_source.html">AIEPlaceTiles.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPlaceTiles_8cpp_source.html#l00103">103</a> of file <a class="el" href="AIEPlaceTiles_8cpp_source.html">AIEPlaceTiles.cpp</a>.</p>
+
+</div>
+</div>
+<a id="af4fe33ff13e052c1c3596d37e59511e7" name="af4fe33ff13e052c1c3596d37e59511e7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af4fe33ff13e052c1c3596d37e59511e7">&#9670;&#160;</a></span>createAIEPlaceTilesPass() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; DeviceOp &gt; &gt; xilinx::AIE::createAIEPlaceTilesPass </td>
+          <td>(</td>
+          <td class="paramtype">const AIEPlaceTilesOptions &amp;&#160;</td>
+          <td class="paramname"><em>options</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEPlaceTiles_8cpp_source.html#l00108">108</a> of file <a class="el" href="AIEPlaceTiles_8cpp_source.html">AIEPlaceTiles.cpp</a>.</p>
 
 </div>
 </div>
@@ -4830,7 +4852,7 @@ Variables</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Apr 14 2026 19:00:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Apr 15 2026 15:44:43 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

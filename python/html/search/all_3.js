@@ -21,8 +21,8 @@ var searchData=
   ['cons_18',['cons',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9074a9e04b32080262f3755b0f24b36a',1,'iron::dataflow::objectfifo::ObjectFifo']]],
   ['context_19',['context',['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a4452f097d1e6125b533a2f6c0cb0c9c7',1,'utils::hostruntime::xrtruntime::hostruntime::XRTKernelHandle']]],
   ['controlflow_2epy_20',['controlflow.py',['../controlflow_8py.html',1,'']]],
-  ['core_5ffn_21',['core_fn',['../classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476',1,'iron::worker::Worker']]],
-  ['cores_5fper_5fcol_22',['cores_per_col',['../classiron_1_1placers_1_1SequentialPlacer.html#afe604e6c30ecbe2d594f4c644fd8034c',1,'iron::placers::SequentialPlacer']]],
+  ['copy_21',['copy',['../classiron_1_1device_1_1tile_1_1Tile.html#ac1230d3841605d73bc11655fa69ecf71',1,'iron::device::tile::Tile']]],
+  ['core_5ffn_22',['core_fn',['../classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476',1,'iron::worker::Worker']]],
   ['cpuonlytensor_23',['CPUOnlyTensor',['../classutils_1_1hostruntime_1_1tensor__class_1_1CPUOnlyTensor.html',1,'utils::hostruntime::tensor_class']]],
   ['create_5fclass_24',['create_class',['../namespaceiron_1_1device_1_1device.html#a75a6d3df1229a191db361283e9b81b6d',1,'iron::device::device']]]
 ];

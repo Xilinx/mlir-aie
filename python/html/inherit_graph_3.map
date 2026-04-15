@@ -1,3 +1,63 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classiron_1_1device_1_1tile_1_1AnyComputeTile.html" title=" " alt="" coords="5,5,236,31"/>
+<area shape="rect" id="Node000000" href="$classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html" title=" " alt="" coords="106,63,319,103"/>
+<area shape="rect" id="Node000001" href="$classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html" title=" " alt="" coords="430,120,605,160"/>
+<area shape="poly" id="edge5_Node000000_Node000001" title=" " alt="" coords="333,103,430,121,429,126,332,108"/>
+<area shape="rect" id="Node000029" href="$classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html" title=" " alt="" coords="406,5,629,45"/>
+<area shape="poly" id="edge6_Node000000_Node000029" title=" " alt="" coords="332,57,410,43,411,48,333,63"/>
+<area shape="rect" id="Node000030" href="$classiron_1_1worker_1_1Worker.html" title=" " alt="" coords="446,70,589,95"/>
+<area shape="poly" id="edge7_Node000000_Node000030" title=" " alt="" coords="333,80,446,80,446,85,333,85"/>
+<area shape="rect" id="Node000017" title=" " alt="" coords="5,735,55,761"/>
+<area shape="rect" id="Node000002" href="$classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="115,389,310,414"/>
+<area shape="poly" id="edge8_Node000017_Node000002" title=" " alt="" coords="42,722,202,413,207,415,47,725"/>
+<area shape="rect" id="Node000018" href="$classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html" title=" " alt="" coords="103,664,323,704"/>
+<area shape="poly" id="edge24_Node000017_Node000018" title=" " alt="" coords="66,728,102,714,137,702,139,707,104,718,68,733"/>
+<area shape="rect" id="Node000021" href="$classutils_1_1hostruntime_1_1hostruntime_1_1KernelHandle.html" title=" " alt="" coords="103,728,323,768"/>
+<area shape="poly" id="edge27_Node000017_Node000021" title=" " alt="" coords="68,745,102,745,102,751,68,751"/>
+<area shape="rect" id="Node000024" href="$classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html" title=" " alt="" coords="103,792,323,832"/>
+<area shape="poly" id="edge30_Node000017_Node000024" title=" " alt="" coords="68,763,104,778,139,789,137,794,102,782,66,768"/>
+<area shape="rect" id="Node000026" href="$classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html" title=" " alt="" coords="123,856,302,896"/>
+<area shape="poly" id="edge32_Node000017_Node000026" title=" " alt="" coords="46,772,70,808,104,842,125,854,123,858,101,846,66,812,42,775"/>
+<area shape="poly" id="edge12_Node000002_Node000001" title=" " alt="" coords="221,375,242,330,274,274,316,217,341,192,369,170,398,155,429,145,431,150,400,160,372,174,345,196,320,221,278,277,247,332,226,377"/>
+<area shape="rect" id="Node000003" href="$classiron_1_1buffer_1_1Buffer.html" title=" " alt="" coords="452,185,583,210"/>
+<area shape="poly" id="edge9_Node000002_Node000003" title=" " alt="" coords="226,375,249,339,281,297,322,255,369,220,410,204,451,197,452,202,411,210,372,225,325,259,285,300,253,342,230,378"/>
+<area shape="rect" id="Node000004" href="$classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html" title=" " alt="" coords="430,235,605,275"/>
+<area shape="poly" id="edge10_Node000002_Node000004" title=" " alt="" coords="236,377,294,330,330,305,370,284,429,265,431,270,372,289,333,310,297,334,239,381"/>
+<area shape="rect" id="Node000005" href="$classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html" title=" " alt="" coords="430,299,605,339"/>
+<area shape="poly" id="edge11_Node000002_Node000005" title=" " alt="" coords="263,381,370,348,429,334,431,339,371,353,264,387"/>
+<area shape="rect" id="Node000006" href="$classiron_1_1device_1_1device_1_1Device.html" title=" " alt="" coords="422,363,613,389"/>
+<area shape="poly" id="edge13_Node000002_Node000006" title=" " alt="" coords="324,389,421,381,422,387,324,395"/>
+<area shape="rect" id="Node000007" href="$classiron_1_1kernel_1_1BaseKernel.html" title=" " alt="" coords="433,413,601,438"/>
+<area shape="poly" id="edge14_Node000002_Node000007" title=" " alt="" coords="324,407,433,416,433,421,324,413"/>
+<area shape="rect" id="Node000010" href="$classiron_1_1runtime_1_1runtime_1_1Runtime.html" title=" " alt="" coords="409,462,625,487"/>
+<area shape="poly" id="edge17_Node000002_Node000010" title=" " alt="" coords="265,416,371,447,433,459,432,465,370,452,263,421"/>
+<area shape="rect" id="Node000011" href="$classiron_1_1runtime_1_1task_1_1RuntimeTask.html" title=" " alt="" coords="406,511,629,537"/>
+<area shape="poly" id="edge18_Node000002_Node000011" title=" " alt="" coords="242,420,300,460,335,480,372,496,415,509,413,514,370,501,332,484,297,464,239,425"/>
+<area shape="rect" id="Node000016" href="$classiron_1_1worker_1_1__BarrierSetOp.html" title=" " alt="" coords="423,561,611,586"/>
+<area shape="poly" id="edge23_Node000002_Node000016" title=" " alt="" coords="234,423,291,486,329,519,372,546,424,563,422,568,370,550,326,523,287,490,230,427"/>
+<area shape="rect" id="Node000008" href="$classiron_1_1kernel_1_1Kernel.html" title=" " alt="" coords="791,373,927,398"/>
+<area shape="poly" id="edge15_Node000007_Node000008" title=" " alt="" coords="615,411,790,391,791,396,615,417"/>
+<area shape="rect" id="Node000009" href="$classiron_1_1kernel_1_1ExternalFunction.html" title=" " alt="" coords="1053,373,1257,398"/>
+<area shape="poly" id="edge16_Node000008_Node000009" title=" " alt="" coords="940,383,1053,383,1053,388,940,388"/>
+<area shape="rect" id="Node000012" href="$classiron_1_1runtime_1_1dmatask_1_1DMATask.html" title=" " alt="" coords="745,422,972,447"/>
+<area shape="poly" id="edge19_Node000011_Node000012" title=" " alt="" coords="640,505,663,496,677,487,686,478,696,467,711,458,747,445,749,450,713,462,699,471,690,481,680,491,665,501,641,510"/>
+<area shape="rect" id="Node000013" href="$classiron_1_1runtime_1_1task_1_1FinishTaskGroupTask.html" title=" " alt="" coords="771,472,947,512"/>
+<area shape="poly" id="edge20_Node000011_Node000013" title=" " alt="" coords="642,510,770,498,771,503,643,515"/>
+<area shape="rect" id="Node000014" href="$classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html" title=" " alt="" coords="771,536,946,576"/>
+<area shape="poly" id="edge21_Node000011_Node000014" title=" " alt="" coords="643,533,771,545,771,551,643,538"/>
+<area shape="rect" id="Node000015" href="$classiron_1_1runtime_1_1task_1_1RuntimeStartTask.html" title=" " alt="" coords="762,600,955,640"/>
+<area shape="poly" id="edge22_Node000011_Node000015" title=" " alt="" coords="643,537,665,546,680,555,690,566,699,576,713,586,763,603,761,608,711,590,696,580,686,570,677,559,663,550,641,542"/>
+<area shape="rect" id="Node000019" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTHostRuntime.html" title=" " alt="" coords="371,664,664,704"/>
+<area shape="poly" id="edge25_Node000018_Node000019" title=" " alt="" coords="337,681,370,681,370,687,337,687"/>
+<area shape="rect" id="Node000020" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html" title=" " alt="" coords="712,664,1005,704"/>
+<area shape="poly" id="edge26_Node000019_Node000020" title=" " alt="" coords="678,681,712,681,712,687,678,687"/>
+<area shape="rect" id="Node000022" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html" title=" " alt="" coords="371,728,664,768"/>
+<area shape="poly" id="edge28_Node000021_Node000022" title=" " alt="" coords="337,745,370,745,370,751,337,751"/>
+<area shape="rect" id="Node000023" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTKernelHandle.html" title=" " alt="" coords="712,728,1005,768"/>
+<area shape="poly" id="edge29_Node000022_Node000023" title=" " alt="" coords="678,745,712,745,712,751,678,751"/>
+<area shape="rect" id="Node000025" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelResult.html" title=" " alt="" coords="371,792,664,832"/>
+<area shape="poly" id="edge31_Node000024_Node000025" title=" " alt="" coords="337,809,370,809,370,815,337,815"/>
+<area shape="rect" id="Node000027" href="$classutils_1_1hostruntime_1_1tensor__class_1_1CPUOnlyTensor.html" title=" " alt="" coords="428,856,607,896"/>
+<area shape="poly" id="edge33_Node000026_Node000027" title=" " alt="" coords="316,873,428,873,428,879,316,879"/>
+<area shape="rect" id="Node000028" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html" title=" " alt="" coords="390,920,645,960"/>
+<area shape="poly" id="edge34_Node000026_Node000028" title=" " alt="" coords="316,895,422,917,421,923,315,900"/>
 </map>

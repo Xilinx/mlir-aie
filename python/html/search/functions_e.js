@@ -1,8 +1,8 @@
 var searchData=
 [
-  ['name_0',['name',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#aa14fd266f46c72f6cfc83169d1bd8cd9',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
-  ['nbytes_1',['nbytes',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#adebcfcd20b5c28e7ab4753d92e1ec5f5',1,'utils::hostruntime::tensor_class::Tensor']]],
-  ['npu_5ftime_2',['npu_time',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#aaac04dad245be2e39d3d527160e1cdc1',1,'utils::hostruntime::hostruntime::KernelResult']]],
-  ['numel_3',['numel',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a6acd63ccc0d8799b8e4ed6397ce74ca7',1,'utils::hostruntime::tensor_class::Tensor']]],
-  ['numpy_4',['numpy',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a3192aecdf1d3eb08ed5d7dbaba3cfcbb',1,'utils::hostruntime::tensor_class::Tensor']]]
+  ['obj_5ftype_0',['obj_type',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9dfb84dd852bf7ca96418064817245ef',1,'iron.dataflow.objectfifo.ObjectFifo.obj_type()'],['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#aef9b5b1cade843d05d23a0131c5ebe26',1,'iron.dataflow.objectfifo.ObjectFifoHandle.obj_type()']]],
+  ['object_5ffile_5fname_1',['object_file_name',['../classiron_1_1kernel_1_1Kernel.html#a8ac7d96f7a4e897795375417c1f38db4',1,'iron::kernel::Kernel']]],
+  ['offset_2',['offset',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a61bc195433abb3dbc847e103890b67f1',1,'taplib::tap::TensorAccessPattern']]],
+  ['ones_3',['ones',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a9b18dda3ed452f0205c04f30efce057c',1,'utils.hostruntime.tensor_class.Tensor.ones()'],['../namespaceutils.html#a5011be1cb49f9f26d9f451edc4a3397a',1,'utils.ones()']]],
+  ['op_4',['op',['../classiron_1_1buffer_1_1Buffer.html#a0833fb2fd7813fd964b3669780f6e493',1,'iron.buffer.Buffer.op()'],['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a34982456c57a909184754296a1053f48',1,'iron.dataflow.objectfifo.ObjectFifo.op()'],['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a30153bab5f82fa7bac3e863b785994d2',1,'iron.dataflow.objectfifo.ObjectFifoHandle.op()'],['../classiron_1_1device_1_1tile_1_1Tile.html#a419e2ce672906b186e958792d2ced013',1,'iron.device.tile.Tile.op(self)'],['../classiron_1_1device_1_1tile_1_1Tile.html#a185b4487b2deef08a0f85b9fde8a9ab3',1,'iron.device.tile.Tile.op(self, LogicalTileOp|TileOp op)'],['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a8ff0896ea6063369c808a447822ec93c',1,'iron.runtime.data.RuntimeData.op(self)'],['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a596b69d1095bca1147850a9948ec3b76',1,'iron.runtime.data.RuntimeData.op(self, MemRefValue op)']]]
 ];

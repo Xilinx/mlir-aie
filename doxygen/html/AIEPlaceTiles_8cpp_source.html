@@ -118,45 +118,59 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
 <div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span><span class="keyword">struct </span>AIEPlaceTilesPass</div>
 <div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    : xilinx::AIE::impl::AIEPlaceTilesBase&lt;AIEPlaceTilesPass&gt; {</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    DeviceOp device = getOperation();</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>  AIEPlaceTilesPass() = <span class="keywordflow">default</span>;</div>
 <div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span> </div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>    <span class="comment">// Create placer</span></div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    std::shared_ptr&lt;Placer&gt; placer;</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    <span class="keywordflow">switch</span> (clPlacerType) {</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    <span class="keywordflow">case</span> PlacerType::SequentialPlacer: {</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>      std::optional&lt;int&gt; coresPerCol = std::nullopt;</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>      <span class="keywordflow">if</span> (clCoresPerCol &gt;= 0)</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>        coresPerCol = clCoresPerCol;</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>      placer = std::make_shared&lt;SequentialPlacer&gt;(coresPerCol);</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>      <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    }</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>    }</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span> </div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>    placer-&gt;initialize(device.getTargetModel());</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>    <span class="keywordflow">if</span> (failed(placer-&gt;place(device)))</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span> </div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    ConversionTarget target(getContext());</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>    target.addLegalOp&lt;TileOp&gt;();</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    target.addIllegalOp&lt;LogicalTileOp&gt;();</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    target.addLegalDialect&lt;AIEDialect&gt;();</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span> </div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>    RewritePatternSet patterns(&amp;getContext());</div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    patterns.add&lt;ConvertLogicalTileToTile&gt;(device.getContext(), device,</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>                                           *placer);</div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span> </div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>  }</div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>};</div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span> </div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>} <span class="comment">// namespace</span></div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>  AIEPlaceTilesPass(<span class="keyword">const</span> AIEPlaceTilesOptions &amp;options) {</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    clCoresPerCol = options.clCoresPerCol;</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>  }</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span> </div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    DeviceOp device = getOperation();</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span> </div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>    <span class="comment">// Create placer</span></div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    std::shared_ptr&lt;Placer&gt; placer;</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    <span class="keywordflow">switch</span> (clPlacerType) {</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>    <span class="keywordflow">case</span> PlacerType::SequentialPlacer: {</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>      std::optional&lt;int&gt; coresPerCol = std::nullopt;</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>      <span class="keywordflow">if</span> (clCoresPerCol &gt;= 0)</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>        coresPerCol = clCoresPerCol;</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>      placer = std::make_shared&lt;SequentialPlacer&gt;(coresPerCol);</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>      <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    }</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>    }</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span> </div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    placer-&gt;initialize(device.getTargetModel());</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>    <span class="keywordflow">if</span> (failed(placer-&gt;place(device)))</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span> </div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>    ConversionTarget target(getContext());</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>    target.addLegalOp&lt;TileOp&gt;();</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    target.addIllegalOp&lt;LogicalTileOp&gt;();</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>    target.addLegalDialect&lt;AIEDialect&gt;();</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span> </div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>    RewritePatternSet patterns(&amp;getContext());</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>    patterns.add&lt;ConvertLogicalTileToTile&gt;(device.getContext(), device,</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>                                           *placer);</div>
 <div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span> </div>
-<div class="foldopen" id="foldopen00096" data-start="{" data-end="}">
-<div class="line"><a id="l00096" name="l00096"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a8ec5735e15f8c9555b9aadeeb326dd52">   96</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8ec5735e15f8c9555b9aadeeb326dd52">AIE::createAIEPlaceTilesPass</a>() {</div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEPlaceTilesPass&gt;();</div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>}</div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>  }</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>};</div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span> </div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>} <span class="comment">// namespace</span></div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span> </div>
+<div class="foldopen" id="foldopen00103" data-start="{" data-end="}">
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a8ec5735e15f8c9555b9aadeeb326dd52">  103</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8ec5735e15f8c9555b9aadeeb326dd52">AIE::createAIEPlaceTilesPass</a>() {</div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEPlaceTilesPass&gt;();</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>}</div>
+</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span> </div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00108" data-start="{" data-end="}">
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#af4fe33ff13e052c1c3596d37e59511e7">  108</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a8ec5735e15f8c9555b9aadeeb326dd52">AIE::createAIEPlaceTilesPass</a>(<span class="keyword">const</span> AIEPlaceTilesOptions &amp;options) {</div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEPlaceTilesPass&gt;(options);</div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
@@ -165,12 +179,12 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1Placer_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1Placer.html">xilinx::AIE::Placer</a></div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00037">AIEPlacer.h:37</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a8ec5735e15f8c9555b9aadeeb326dd52"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a8ec5735e15f8c9555b9aadeeb326dd52">xilinx::AIE::createAIEPlaceTilesPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEPlaceTilesPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEPlaceTiles_8cpp_source.html#l00096">AIEPlaceTiles.cpp:96</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a8ec5735e15f8c9555b9aadeeb326dd52"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a8ec5735e15f8c9555b9aadeeb326dd52">xilinx::AIE::createAIEPlaceTilesPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEPlaceTilesPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEPlaceTiles_8cpp_source.html#l00103">AIEPlaceTiles.cpp:103</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Apr 14 2026 19:00:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Apr 15 2026 15:44:43 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

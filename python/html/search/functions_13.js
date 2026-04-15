@@ -1,20 +1,9 @@
 var searchData=
 [
-  ['task_0',['task',['../classiron_1_1runtime_1_1dmatask_1_1DMATask.html#adb21b814aec1d67b36ec02358a9f5850',1,'iron::runtime::dmatask::DMATask']]],
-  ['task_5fgroup_1',['task_group',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a4901bd9f703d35e870af35a39baf1fa5',1,'iron.runtime.runtime.Runtime.task_group()'],['../classiron_1_1runtime_1_1task_1_1RuntimeTask.html#aa5eeb977e8fcd8bda133f302123ee22b',1,'iron.runtime.task.RuntimeTask.task_group()']]],
-  ['tensor_2',['tensor',['../namespaceutils.html#aa3cd9f974aedf5d065d3e75f61daebaa',1,'utils']]],
-  ['tensor_5fdims_3',['tensor_dims',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a0c267f19b17c50b1db656ba7559586c2',1,'taplib::tap::TensorAccessPattern']]],
-  ['tile_4',['tile',['../classiron_1_1placeable_1_1Placeable.html#a13bda709bf9b8fbd6ac31f83efc0ad32',1,'iron::placeable::Placeable']]],
-  ['tile_5fiterator_5',['tile_iterator',['../classiron_1_1device_1_1device_1_1Device.html#af46779b00c0d536d50d46bca86e039c5',1,'iron::device::device::Device']]],
-  ['tile_5fsize_6',['tile_size',['../classiron_1_1kernel_1_1BaseKernel.html#af61103884ace3b3b9a1b11c0dc51be20',1,'iron::kernel::BaseKernel']]],
-  ['tiles_7',['tiles',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#addaa438e03fde9d546e54fd042c3866c',1,'iron::dataflow::objectfifo::ObjectFifo']]],
-  ['to_8',['to',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a68a260a707273a1ea7be69a101ebd014',1,'utils::hostruntime::tensor_class::Tensor']]],
-  ['to_5ftorch_9',['to_torch',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a8ab2ca4ad7ccba19a936bbab041d252c',1,'utils::hostruntime::tensor_class::Tensor']]],
-  ['torch_5fview_10',['torch_view',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#ad395f306030f8c6adbacb34cff44b524',1,'utils::hostruntime::tensor_class::Tensor']]],
-  ['trace_5fconfig_11',['trace_config',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#a355956f6aaebd0b3a7b1677d398315ca',1,'utils.hostruntime.hostruntime.KernelResult.trace_config()'],['../classutils_1_1npukernel_1_1NPUKernel.html#ab9545bca26568ea4a54b350ea3da7913',1,'utils.npukernel.NPUKernel.trace_config()']]],
-  ['transform_12',['transform',['../namespaceiron_1_1algorithms_1_1transform.html#ac06d9562ff1be8c64e11cca2cbe172bc',1,'iron::algorithms::transform']]],
-  ['transform_5fbinary_13',['transform_binary',['../namespaceiron_1_1algorithms_1_1transform.html#ad95055250c1d15e5fb7b31207fceb641',1,'iron::algorithms::transform']]],
-  ['transform_5fparallel_14',['transform_parallel',['../namespaceiron_1_1algorithms_1_1transform.html#a8cb2b332d9070f03b053a23bff68014b',1,'iron::algorithms::transform']]],
-  ['transform_5fparallel_5fbinary_15',['transform_parallel_binary',['../namespaceiron_1_1algorithms_1_1transform.html#a3ed144ad36941a14679ce572b7f2492f',1,'iron::algorithms::transform']]],
-  ['transformation_5fdims_16',['transformation_dims',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a03111d13caa805af17a246b208e6e892',1,'taplib::tap::TensorAccessPattern']]]
+  ['validate_5fand_5fclean_5fsizes_5fstrides_0',['validate_and_clean_sizes_strides',['../namespacetaplib_1_1utils.html#ac52698a8c536822b6caa3df3b308d03d',1,'taplib::utils']]],
+  ['validate_5foffset_1',['validate_offset',['../namespacetaplib_1_1utils.html#a2afd23e4e0fffe132e07af258059068a',1,'taplib::utils']]],
+  ['validate_5ftensor_5fdims_2',['validate_tensor_dims',['../namespacetaplib_1_1utils.html#a011877ce240204c18ddc0b4bb340a459',1,'taplib::utils']]],
+  ['verify_5fresults_3',['verify_results',['../classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html#adfae19ce486719cb597a42e3fed688c7',1,'utils::hostruntime::hostruntime::HostRuntime']]],
+  ['visualize_4',['visualize',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#aca32fcea257695f2627b8e38e877874c',1,'taplib.tap.TensorAccessPattern.visualize()'],['../classtaplib_1_1tas_1_1TensorAccessSequence.html#aa57f97ad73466457357ad65b97939f55',1,'taplib.tas.TensorAccessSequence.visualize()']]],
+  ['visualize_5ffrom_5faccesses_5',['visualize_from_accesses',['../namespacetaplib_1_1visualization2d.html#a00cf2d862c85f5110a561084a0590a85',1,'taplib::visualization2d']]]
 ];

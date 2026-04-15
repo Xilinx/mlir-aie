@@ -16,7 +16,7 @@ var searchData=
   ['dims_5fto_5fstream_13',['dims_to_stream',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a2ce8065bb36b6b51517ffee42d4bfd8b',1,'iron::dataflow::objectfifo::ObjectFifo']]],
   ['dmatask_14',['DMATask',['../classiron_1_1runtime_1_1dmatask_1_1DMATask.html',1,'iron::runtime::dmatask']]],
   ['dmatask_2epy_15',['dmatask.py',['../dmatask_8py.html',1,'']]],
-  ['drain_16',['drain',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#afe0b538f67eb8ccbe374b4f41db577ea',1,'iron::runtime::runtime::Runtime']]],
+  ['drain_16',['drain',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a110b1ff91ddd0706d1b3c150019365a3',1,'iron::runtime::runtime::Runtime']]],
   ['dtype_17',['dtype',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#af1331c6a7be3726736893c6e114fe8c6',1,'utils.hostruntime.tensor_class.Tensor.dtype'],['../classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a5ebab8526e3a7d94baad1e57f6848051',1,'utils.hostruntime.xrtruntime.tensor.XRTTensor.dtype'],['../classiron_1_1buffer_1_1Buffer.html#afeeb0bf46057b983998878c8219dc5db',1,'iron.buffer.Buffer.dtype()'],['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#af3f2ba3a0744cc943cc83af64d8c451d',1,'iron.dataflow.objectfifo.ObjectFifo.dtype()'],['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a8eb7f1b2fb1c561f5c2eb45526f5999c',1,'iron.dataflow.objectfifo.ObjectFifoHandle.dtype()'],['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a23c06c816778040b8fcffa76ab450278',1,'iron.runtime.data.RuntimeData.dtype()']]],
   ['dtype_2epy_18',['dtype.py',['../dtype_8py.html',1,'']]],
   ['dtype_5fmap_19',['dtype_map',['../namespaceiron_1_1dtype.html#a04849b80e829a75a6728f6ea39f4e6a1',1,'iron::dtype']]],

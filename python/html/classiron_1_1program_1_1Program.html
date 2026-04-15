@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;c879266272765aa4fcf5e8738bc4b683636d7624</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;b2fc5aa5eda35877ddbcce110708dc138410d642</span>
    </div>
   </td>
  </tr>
@@ -86,8 +86,8 @@ $(function() {
 Public Member Functions</h2></td></tr>
 <tr class="memitem:ac89da562da0e556133510224d24a8066" id="r_ac89da562da0e556133510224d24a8066"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1program_1_1Program.html#ac89da562da0e556133510224d24a8066">__init__</a> (self, <a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a> device, <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html">Runtime</a> rt)</td></tr>
 <tr class="separator:ac89da562da0e556133510224d24a8066"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a406ab94c6e9bd78be1eed281fbf18499" id="r_a406ab94c6e9bd78be1eed281fbf18499"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1program_1_1Program.html#a406ab94c6e9bd78be1eed281fbf18499">resolve_program</a> (self, <a class="el" href="classiron_1_1placers_1_1Placer.html">Placer</a>|None placer=None, device_name=&quot;main&quot;)</td></tr>
-<tr class="separator:a406ab94c6e9bd78be1eed281fbf18499"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a00726ac97d3fc4f1df3490c19c1768d3" id="r_a00726ac97d3fc4f1df3490c19c1768d3"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1program_1_1Program.html#a00726ac97d3fc4f1df3490c19c1768d3">resolve_program</a> (self, device_name=&quot;main&quot;)</td></tr>
+<tr class="separator:a00726ac97d3fc4f1df3490c19c1768d3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-methods" name="pro-methods"></a>
 Protected Member Functions</h2></td></tr>
@@ -181,8 +181,8 @@ Args:
 
 </div>
 </div>
-<a id="a406ab94c6e9bd78be1eed281fbf18499" name="a406ab94c6e9bd78be1eed281fbf18499"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a406ab94c6e9bd78be1eed281fbf18499">&#9670;&#160;</a></span>resolve_program()</h2>
+<a id="a00726ac97d3fc4f1df3490c19c1768d3" name="a00726ac97d3fc4f1df3490c19c1768d3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a00726ac97d3fc4f1df3490c19c1768d3">&#9670;&#160;</a></span>resolve_program()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -192,12 +192,6 @@ Args:
           <td>(</td>
           <td class="paramtype">&#160;</td>
           <td class="paramname"><em>self</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="classiron_1_1placers_1_1Placer.html">Placer</a> | None &#160;</td>
-          <td class="paramname"><em>placer</em> = <code>None</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -214,9 +208,8 @@ Args:
 </div><div class="memdoc">
 <pre class="fragment">This method resolves the program components in order to generate MLIR.
 
-Args:
-    placer (Placer | None, optional): The placer that will assign placement to unplaced components.
-        If a placer is not given, all components must be fully placed. Defaults to None.
+Tiles are emitted as aie.logical_tile ops. The --aie-place-tiles pass
+in the compilation pipeline converts them to aie.tile ops.
 
 Returns:
     module (Module): The module containing the MLIR context information.

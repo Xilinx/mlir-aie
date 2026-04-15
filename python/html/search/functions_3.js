@@ -11,5 +11,6 @@ var searchData=
   ['compile_5fexternal_5fkernel_8',['compile_external_kernel',['../namespaceutils_1_1compile_1_1utils.html#a513d68013b69c23c55adc01c00de04f2',1,'utils::compile::utils']]],
   ['compile_5fmlir_5fmodule_9',['compile_mlir_module',['../namespaceutils_1_1compile_1_1utils.html#a8fe36ca913e727468ae01c8c09aef774',1,'utils::compile::utils']]],
   ['cons_10',['cons',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9074a9e04b32080262f3755b0f24b36a',1,'iron::dataflow::objectfifo::ObjectFifo']]],
-  ['create_5fclass_11',['create_class',['../namespaceiron_1_1device_1_1device.html#a75a6d3df1229a191db361283e9b81b6d',1,'iron::device::device']]]
+  ['copy_11',['copy',['../classiron_1_1device_1_1tile_1_1Tile.html#ac1230d3841605d73bc11655fa69ecf71',1,'iron::device::tile::Tile']]],
+  ['create_5fclass_12',['create_class',['../namespaceiron_1_1device_1_1device.html#a75a6d3df1229a191db361283e9b81b6d',1,'iron::device::device']]]
 ];
