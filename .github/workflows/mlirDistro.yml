@@ -126,7 +126,7 @@ jobs:
         echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
