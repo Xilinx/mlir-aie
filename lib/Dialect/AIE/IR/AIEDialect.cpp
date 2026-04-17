@@ -2294,7 +2294,7 @@ LogicalResult DMABDOp::verify() {
   if (!isUnrankedMemRef &&
       (parentTile.isMemTile() || parentTile.isCoreTile())) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
-      int offsetInBytes = *baseAddr + getOffsetInBytes();
+      int64_t offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
         return emitOpError("bd address must be 4 byte (32b) aligned; got "
                            "base+offset: ")
