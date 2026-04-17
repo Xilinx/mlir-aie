@@ -103,8 +103,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int packetType = 0;
     int packetID = 0;
     bool foundBd = false;
-    int lenA = 0;
-    int offsetA = 0;
+    uint64_t lenA = 0;
+    int64_t offsetA = 0;
     int BaseAddrA = 0;
     int elementWidthInBytes = 0;
     int ndims = 0;

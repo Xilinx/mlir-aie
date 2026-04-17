@@ -1025,15 +1025,20 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
       auto bufferType = llvm::cast<mlir::BaseMemRefType>(getBuffer().getType());
       return dataLayout.getTypeSize(bufferType.getElementType());
     }
-    uint32_t getLenInBytes() {
-      if (std::optional<uint32_t> len = getLen(); len.has_value())
-        return len.value() * getBufferElementTypeWidthInBytes();
+    uint64_t getLenInBytes() {
+      if (std::optional<int32_t> len = getLen(); len.has_value())
+        return static_cast<uint64_t>(static_cast<uint32_t>(len.value())) *
+               static_cast<uint64_t>(getBufferElementTypeWidthInBytes());
       auto memrefType = llvm::dyn_cast<mlir::MemRefType>(getBuffer().getType());
       if (!memrefType)
         return 0; // Unranked memref without explicit len
-      return memrefType.getNumElements() * getBufferElementTypeWidthInBytes();
+      return static_cast<uint64_t>(memrefType.getNumElements()) *
+             static_cast<uint64_t>(getBufferElementTypeWidthInBytes());
     }
-    int32_t getOffsetInBytes() { return getOffset() * getBufferElementTypeWidthInBytes(); }
+    int64_t getOffsetInBytes() {
+      return static_cast<int64_t>(getOffset()) *
+             static_cast<int64_t>(getBufferElementTypeWidthInBytes());
+    }
   }];
 
   let hasVerifier = 1;
