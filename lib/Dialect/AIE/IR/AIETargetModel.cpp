@@ -105,9 +105,9 @@ AIETargetModel::getTileToControllerIdMap(bool columnWiseUniqueIDs) const {
     // single-level LUT bit-masking on packet header. Shim tile ids are < 16
     // because the TCT actor id field is only 4 bits.
     SmallVector<SmallVector<int>> validTileIds = {{15, 26, 27, 29, 30, 31},
-                                                   {14, 21, 22, 23, 24, 25},
-                                                   {13, 11, 17, 18, 19, 20},
-                                                   {12, 28, 7, 8, 9, 10}};
+                                                  {14, 21, 22, 23, 24, 25},
+                                                  {13, 11, 17, 18, 19, 20},
+                                                  {12, 28, 7, 8, 9, 10}};
     DenseMap<TileID, int> tileIDMap;
     for (int col = 0; col < columns(); col++) {
       for (int row = 0; row < rows(); row++) {

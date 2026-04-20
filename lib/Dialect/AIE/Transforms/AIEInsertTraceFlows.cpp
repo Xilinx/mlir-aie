@@ -629,8 +629,8 @@ struct AIEInsertTraceFlowsPass
             shimInfo.shimTile->getAttrOfType<PacketInfoAttr>("controller_id");
         std::string ctrlRegName =
             (chanDesc.channel == 0) ? "DMA_S2MM_0_Ctrl" : "DMA_S2MM_1_Ctrl";
-        const RegisterInfo *ctrlReg =
-            targetModel.lookupRegister(ctrlRegName, shimInfo.shimTile.getTileID());
+        const RegisterInfo *ctrlReg = targetModel.lookupRegister(
+            ctrlRegName, shimInfo.shimTile.getTileID());
         const BitFieldInfo *ctrlIdField = ctrlReg->getField("Controller_ID");
         uint32_t ctrlIdValue =
             targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.getPktId());
