@@ -108,6 +108,12 @@ AIETargetModel::getTileToControllerIdMap(bool columnWiseUniqueIDs) const {
                                                   {14, 21, 22, 23, 24, 25},
                                                   {13, 11, 17, 18, 19, 20},
                                                   {12, 28, 7, 8, 9, 10}};
+    if (!columnWiseUniqueIDs && columns() > (int)validTileIds.size())
+      llvm::report_fatal_error(
+          "Device has " + llvm::Twine(columns()) + " columns but only " +
+          llvm::Twine(validTileIds.size()) +
+          " globally-unique controller ID sets are defined; "
+          "use column-wise unique IDs mode.");
     DenseMap<TileID, int> tileIDMap;
     for (int col = 0; col < columns(); col++) {
       for (int row = 0; row < rows(); row++) {

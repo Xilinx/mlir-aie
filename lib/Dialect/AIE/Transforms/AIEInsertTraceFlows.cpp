@@ -631,10 +631,19 @@ struct AIEInsertTraceFlowsPass
             (chanDesc.channel == 0) ? "DMA_S2MM_0_Ctrl" : "DMA_S2MM_1_Ctrl";
         const RegisterInfo *ctrlReg = targetModel.lookupRegister(
             ctrlRegName, shimInfo.shimTile.getTileID());
+        if (!ctrlReg)
+          llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
+                                   ctrlRegName);
         const BitFieldInfo *ctrlIdField = ctrlReg->getField("Controller_ID");
+        if (!ctrlIdField)
+          llvm::report_fatal_error("Failed to lookup Controller_ID field in " +
+                                   llvm::Twine(ctrlRegName));
         uint32_t ctrlIdValue =
             targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.getPktId());
         auto ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);
+        if (!ctrlIdMask)
+          llvm::report_fatal_error(
+              "Controller_ID field does not fit in 32-bit register");
         xilinx::AIEX::NpuMaskWrite32Op::create(
             builder, runtimeSeq.getLoc(), ctrlAddr, ctrlIdValue, *ctrlIdMask,
             nullptr, builder.getI32IntegerAttr(shimCol),
