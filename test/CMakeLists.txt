@@ -94,7 +94,6 @@ include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
-add_definitions(${LLVM_DEFINITIONS})
 
 if(WIN32)
   file(TO_CMAKE_PATH "${PEANO_INSTALL_DIR}" PEANO_INSTALL_DIR)
