@@ -619,339 +619,399 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>                                 &lt;&lt; broadcastEventName &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
 <div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span>        <span class="keywordflow">return</span> signalPassFailure();</div>
 <div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span>      }</div>
-<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>      uint32_t timerCtrlValue = *broadcastEvent &lt;&lt; 8;</div>
-<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span> </div>
-<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>      xilinx::AIEX::NpuWrite32Op::create(</div>
-<div class="line"><a id="l00565" name="l00565"></a><span class="lineno">  565</span>          builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, <span class="keyword">nullptr</span>,</div>
-<div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span>          builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>), builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>));</div>
-<div class="line"><a id="l00567" name="l00567"></a><span class="lineno">  567</span>    }</div>
-<div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span> </div>
-<div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span>    <span class="comment">// 4c-4f. Insert per-shim configurations</span></div>
-<div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>    std::set&lt;int&gt; configuredShimCols;</div>
-<div class="line"><a id="l00571" name="l00571"></a><span class="lineno">  571</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, shimInfo] : shimInfos) {</div>
-<div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span>      <span class="keywordtype">int</span> shimCol = shimInfo.shimTile.getCol();</div>
-<div class="line"><a id="l00573" name="l00573"></a><span class="lineno">  573</span>      <span class="keywordflow">if</span> (!configuredShimCols.insert(shimCol).second)</div>
-<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span>        <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span> </div>
-<div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;chanDesc : shimInfo.channels) {</div>
-<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>        <span class="comment">// Convert buffer size (bytes) to 32-bit words for buffer_length</span></div>
-<div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>        <span class="keywordtype">int</span> bufferLengthWords = bufferSizeBytes / 4;</div>
-<div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span> </div>
-<div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>        <span class="comment">// 4c. Write buffer descriptor</span></div>
-<div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>        xilinx::AIEX::NpuWriteBdOp::create(</div>
-<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>            builder, runtimeSeq.getLoc(),</div>
-<div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span>            shimCol,           <span class="comment">// column</span></div>
-<div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span>            chanDesc.bdId,     <span class="comment">// bd_id</span></div>
-<div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>            bufferLengthWords, <span class="comment">// buffer_length (in 32-bit words)</span></div>
-<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>            0,                 <span class="comment">// buffer_offset</span></div>
-<div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>            1,                 <span class="comment">// enable_packet</span></div>
-<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>            0,                 <span class="comment">// out_of_order_id</span></div>
-<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>            0,                 <span class="comment">// packet_id (not used for reception)</span></div>
-<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>            0,                 <span class="comment">// packet_type (not used for reception)</span></div>
-<div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>            0, 0, 0, 0, 0,</div>
-<div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>            0, <span class="comment">// d0_size, d0_stride, d1_size, d1_stride, d2_size, d2_stride</span></div>
-<div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>            0, 0, 0, <span class="comment">// iteration_current, iteration_size, iteration_stride</span></div>
-<div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>            0,       <span class="comment">// next_bd</span></div>
-<div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span>            0,       <span class="comment">// row</span></div>
-<div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>            0,       <span class="comment">// use_next_bd</span></div>
-<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>            1,       <span class="comment">// valid_bd</span></div>
-<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>            0, 0, 0, 0, 0,    <span class="comment">// lock_rel_val, lock_rel_id, lock_acq_enable,</span></div>
-<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>                              <span class="comment">// lock_acq_val, lock_acq_id</span></div>
-<div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>            0, 0, 0, 0, 0, 0, <span class="comment">// d0_zero_before, d1_zero_before, d2_zero_before,</span></div>
-<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>                              <span class="comment">// d0_zero_after, d1_zero_after, d2_zero_after</span></div>
-<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>            clTraceBurstLength <span class="comment">// burst_length</span></div>
-<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>        );</div>
-<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span> </div>
-<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>        <span class="comment">// 4d. Address patch -- each channel gets its own offset within the</span></div>
-<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>        <span class="comment">// shared trace buffer (the secondary channel starts at</span></div>
-<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>        <span class="comment">// baseOffset + bufferSizeBytes when distribute is active).</span></div>
-<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>        uint32_t bdAddress = computeBDAddress(shimCol, chanDesc.bdId,</div>
-<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>                                              shimInfo.shimTile, targetModel);</div>
-<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span>        xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),</div>
-<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span>                                                bdAddress, chanDesc.argIdx,</div>
-<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>                                                chanDesc.bufferOffset);</div>
+<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>      <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *timerReg = targetModel.lookupRegister(</div>
+<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span>          <span class="stringliteral">&quot;Timer_Control&quot;</span>, info.tile.getTileID(), isMemTrace);</div>
+<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>      <span class="keywordflow">if</span> (!timerReg)</div>
+<div class="line"><a id="l00565" name="l00565"></a><span class="lineno">  565</span>        llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup Timer_Control register&quot;</span>);</div>
+<div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span>      <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1BitFieldInfo.html">BitFieldInfo</a> *resetField = timerReg-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a11076dcf3c48826b1dafeee2a002735b">getField</a>(<span class="stringliteral">&quot;Reset_Event&quot;</span>);</div>
+<div class="line"><a id="l00567" name="l00567"></a><span class="lineno">  567</span>      <span class="keywordflow">if</span> (!resetField)</div>
+<div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span>        llvm::report_fatal_error(</div>
+<div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span>            <span class="stringliteral">&quot;Failed to lookup Reset_Event field in Timer_Control&quot;</span>);</div>
+<div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>      uint32_t timerCtrlValue =</div>
+<div class="line"><a id="l00571" name="l00571"></a><span class="lineno">  571</span>          targetModel.encodeFieldValue(*resetField, *broadcastEvent);</div>
+<div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span> </div>
+<div class="line"><a id="l00573" name="l00573"></a><span class="lineno">  573</span>      xilinx::AIEX::NpuWrite32Op::create(</div>
+<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span>          builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, <span class="keyword">nullptr</span>,</div>
+<div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span>          builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>), builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>));</div>
+<div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span>    }</div>
+<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span> </div>
+<div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>    <span class="comment">// 4c-4f. Insert per-shim configurations</span></div>
+<div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span>    std::set&lt;int&gt; configuredShimCols;</div>
+<div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, shimInfo] : shimInfos) {</div>
+<div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>      <span class="keywordtype">int</span> shimCol = shimInfo.shimTile.getCol();</div>
+<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>      <span class="keywordflow">if</span> (!configuredShimCols.insert(shimCol).second)</div>
+<div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span> </div>
+<div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;chanDesc : shimInfo.channels) {</div>
+<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>        <span class="comment">// Convert buffer size (bytes) to 32-bit words for buffer_length</span></div>
+<div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>        <span class="keywordtype">int</span> bufferLengthWords = bufferSizeBytes / 4;</div>
+<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span> </div>
+<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>        <span class="comment">// 4c. Write buffer descriptor</span></div>
+<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>        xilinx::AIEX::NpuWriteBdOp::create(</div>
+<div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>            builder, runtimeSeq.getLoc(),</div>
+<div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>            shimCol,           <span class="comment">// column</span></div>
+<div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>            chanDesc.bdId,     <span class="comment">// bd_id</span></div>
+<div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>            bufferLengthWords, <span class="comment">// buffer_length (in 32-bit words)</span></div>
+<div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span>            0,                 <span class="comment">// buffer_offset</span></div>
+<div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>            1,                 <span class="comment">// enable_packet</span></div>
+<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>            0,                 <span class="comment">// out_of_order_id</span></div>
+<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>            0,                 <span class="comment">// packet_id (not used for reception)</span></div>
+<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>            0,                 <span class="comment">// packet_type (not used for reception)</span></div>
+<div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>            0, 0, 0, 0, 0,</div>
+<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>            0, <span class="comment">// d0_size, d0_stride, d1_size, d1_stride, d2_size, d2_stride</span></div>
+<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>            0, 0, 0, <span class="comment">// iteration_current, iteration_size, iteration_stride</span></div>
+<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>            0,       <span class="comment">// next_bd</span></div>
+<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>            0,       <span class="comment">// row</span></div>
+<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>            0,       <span class="comment">// use_next_bd</span></div>
+<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>            1,       <span class="comment">// valid_bd</span></div>
+<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>            0, 0, 0, 0, 0,    <span class="comment">// lock_rel_val, lock_rel_id, lock_acq_enable,</span></div>
+<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>                              <span class="comment">// lock_acq_val, lock_acq_id</span></div>
+<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>            0, 0, 0, 0, 0, 0, <span class="comment">// d0_zero_before, d1_zero_before, d2_zero_before,</span></div>
+<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span>                              <span class="comment">// d0_zero_after, d1_zero_after, d2_zero_after</span></div>
+<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span>            clTraceBurstLength <span class="comment">// burst_length</span></div>
+<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>        );</div>
 <div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span> </div>
-<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>        <span class="comment">// 4e. DMA channel configuration</span></div>
-<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>        uint32_t ctrlAddr =</div>
-<div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>            computeCtrlAddress(DMAChannelDir::S2MM, chanDesc.channel,</div>
-<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>                               shimInfo.shimTile, targetModel);</div>
-<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span>        xilinx::AIEX::NpuMaskWrite32Op::create(</div>
-<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span>            builder, runtimeSeq.getLoc(), ctrlAddr, 3840, 7936, <span class="comment">// value, mask</span></div>
-<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>            <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
-<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>            builder.getI32IntegerAttr(0));</div>
+<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>        <span class="comment">// 4d. Address patch -- each channel gets its own offset within the</span></div>
+<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>        <span class="comment">// shared trace buffer (the secondary channel starts at</span></div>
+<div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>        <span class="comment">// baseOffset + bufferSizeBytes when distribute is active).</span></div>
+<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>        uint32_t bdAddress = computeBDAddress(shimCol, chanDesc.bdId,</div>
+<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span>                                              shimInfo.shimTile, targetModel);</div>
+<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span>        xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),</div>
+<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>                                                bdAddress, chanDesc.argIdx,</div>
+<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>                                                chanDesc.bufferOffset);</div>
 <div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span> </div>
-<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>        <span class="comment">// Push BD to task queue</span></div>
-<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>        uint32_t taskQueueAddr =</div>
-<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>            computeTaskQueueAddress(DMAChannelDir::S2MM, chanDesc.channel,</div>
-<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>                                    shimInfo.shimTile, targetModel);</div>
-<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>        uint32_t bdIdWithToken = (1U &lt;&lt; 31) | chanDesc.bdId; <span class="comment">// enable_token = 1</span></div>
-<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>        xilinx::AIEX::NpuWrite32Op::create(</div>
-<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>            builder, runtimeSeq.getLoc(), taskQueueAddr, bdIdWithToken, <span class="keyword">nullptr</span>,</div>
-<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));</div>
-<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>      }</div>
-<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span> </div>
-<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>      <span class="comment">// 4f. Shim timer and broadcast control (only if start broadcast is used)</span></div>
-<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>      <span class="keywordflow">if</span> (shimInfo.startBroadcast) {</div>
-<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>        <span class="comment">// Look up USER_EVENT_1 from target model (trigger event)</span></div>
-<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>        <span class="keyword">auto</span> userEvent1 = targetModel.lookupEvent(</div>
-<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>            <span class="stringliteral">&quot;USER_EVENT_1&quot;</span>, shimInfo.shimTile.getTileID(), <span class="keyword">false</span>);</div>
-<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>        <span class="keywordflow">if</span> (!userEvent1)</div>
-<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>          llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup USER_EVENT_1 event&quot;</span>);</div>
-<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span> </div>
-<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>        uint32_t shimTimerCtrlAddr =</div>
-<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>            computeTimerCtrlAddress(shimInfo.shimTile, targetModel, <span class="keyword">false</span>);</div>
-<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>        xilinx::AIEX::NpuWrite32Op::create(</div>
-<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>            builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, *userEvent1 &lt;&lt; 8,</div>
-<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>            <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
-<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>            builder.getI32IntegerAttr(0));</div>
-<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span> </div>
-<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>        <span class="comment">// Configure broadcast register with USER_EVENT_1</span></div>
-<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>        std::string broadcastRegName =</div>
-<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>            <span class="stringliteral">&quot;Event_Broadcast&quot;</span> + std::to_string(*shimInfo.startBroadcast) + <span class="stringliteral">&quot;_A&quot;</span>;</div>
-<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *broadcastReg = targetModel.lookupRegister(</div>
-<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>            broadcastRegName, shimInfo.shimTile.getTileID());</div>
-<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>        <span class="keywordflow">if</span> (!broadcastReg)</div>
-<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>          llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) +</div>
-<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span>                                   broadcastRegName);</div>
-<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>        xilinx::AIEX::NpuWrite32Op::create(</div>
-<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span>            builder, runtimeSeq.getLoc(), broadcastReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, *userEvent1,</div>
-<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>            <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
-<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>            builder.getI32IntegerAttr(0));</div>
-<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span> </div>
-<div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span>        <span class="comment">// Generate USER_EVENT_1 to trigger the broadcast</span></div>
-<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *eventGenReg = targetModel.lookupRegister(</div>
-<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>            <span class="stringliteral">&quot;Event_Generate&quot;</span>, shimInfo.shimTile.getTileID());</div>
-<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span>        <span class="keywordflow">if</span> (!eventGenReg)</div>
-<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span>          llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup Event_Generate register&quot;</span>);</div>
-<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span>        xilinx::AIEX::NpuWrite32Op::create(</div>
-<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>            builder, runtimeSeq.getLoc(), eventGenReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, *userEvent1,</div>
-<div class="line"><a id="l00668" name="l00668"></a><span class="lineno">  668</span>            <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
-<div class="line"><a id="l00669" name="l00669"></a><span class="lineno">  669</span>            builder.getI32IntegerAttr(0));</div>
-<div class="line"><a id="l00670" name="l00670"></a><span class="lineno">  670</span>      }</div>
-<div class="line"><a id="l00671" name="l00671"></a><span class="lineno">  671</span>    }</div>
-<div class="line"><a id="l00672" name="l00672"></a><span class="lineno">  672</span> </div>
-<div class="line"><a id="l00673" name="l00673"></a><span class="lineno">  673</span>    <span class="comment">// Phase 4g: Insert trace stop at end of runtime sequence</span></div>
-<div class="line"><a id="l00674" name="l00674"></a><span class="lineno">  674</span>    builder.setInsertionPointToEnd(&amp;seqBlock);</div>
-<div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span> </div>
-<div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span>    std::set&lt;int&gt; stoppedShimCols;</div>
-<div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, shimInfo] : shimInfos) {</div>
-<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span>      <span class="keywordflow">if</span> (!shimInfo.stopBroadcast)</div>
-<div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span>        <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span> </div>
-<div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span>      <span class="keywordtype">int</span> shimCol = shimInfo.shimTile.getCol();</div>
-<div class="line"><a id="l00682" name="l00682"></a><span class="lineno">  682</span>      <span class="keywordflow">if</span> (!stoppedShimCols.insert(shimCol).second)</div>
-<div class="line"><a id="l00683" name="l00683"></a><span class="lineno">  683</span>        <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00684" name="l00684"></a><span class="lineno">  684</span> </div>
-<div class="line"><a id="l00685" name="l00685"></a><span class="lineno">  685</span>      <span class="keyword">auto</span> userEvent0 = targetModel.lookupEvent(</div>
-<div class="line"><a id="l00686" name="l00686"></a><span class="lineno">  686</span>          <span class="stringliteral">&quot;USER_EVENT_0&quot;</span>, shimInfo.shimTile.getTileID(), <span class="keyword">false</span>);</div>
-<div class="line"><a id="l00687" name="l00687"></a><span class="lineno">  687</span>      <span class="keywordflow">if</span> (!userEvent0)</div>
-<div class="line"><a id="l00688" name="l00688"></a><span class="lineno">  688</span>        llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup USER_EVENT_0 event&quot;</span>);</div>
-<div class="line"><a id="l00689" name="l00689"></a><span class="lineno">  689</span> </div>
-<div class="line"><a id="l00690" name="l00690"></a><span class="lineno">  690</span>      std::string broadcastRegName =</div>
-<div class="line"><a id="l00691" name="l00691"></a><span class="lineno">  691</span>          <span class="stringliteral">&quot;Event_Broadcast&quot;</span> + std::to_string(*shimInfo.stopBroadcast) + <span class="stringliteral">&quot;_A&quot;</span>;</div>
-<div class="line"><a id="l00692" name="l00692"></a><span class="lineno">  692</span>      <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *broadcastReg = targetModel.lookupRegister(</div>
-<div class="line"><a id="l00693" name="l00693"></a><span class="lineno">  693</span>          broadcastRegName, shimInfo.shimTile.getTileID());</div>
-<div class="line"><a id="l00694" name="l00694"></a><span class="lineno">  694</span>      <span class="keywordflow">if</span> (!broadcastReg)</div>
-<div class="line"><a id="l00695" name="l00695"></a><span class="lineno">  695</span>        llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) +</div>
-<div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span>                                 broadcastRegName);</div>
-<div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span>      xilinx::AIEX::NpuWrite32Op::create(</div>
-<div class="line"><a id="l00698" name="l00698"></a><span class="lineno">  698</span>          builder, runtimeSeq.getLoc(), broadcastReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, *userEvent0,</div>
-<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>          <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
-<div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span>          builder.getI32IntegerAttr(0));</div>
-<div class="line"><a id="l00701" name="l00701"></a><span class="lineno">  701</span> </div>
-<div class="line"><a id="l00702" name="l00702"></a><span class="lineno">  702</span>      <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *stopEventGenReg = targetModel.lookupRegister(</div>
-<div class="line"><a id="l00703" name="l00703"></a><span class="lineno">  703</span>          <span class="stringliteral">&quot;Event_Generate&quot;</span>, shimInfo.shimTile.getTileID());</div>
-<div class="line"><a id="l00704" name="l00704"></a><span class="lineno">  704</span>      <span class="keywordflow">if</span> (!stopEventGenReg)</div>
-<div class="line"><a id="l00705" name="l00705"></a><span class="lineno">  705</span>        llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup Event_Generate register&quot;</span>);</div>
-<div class="line"><a id="l00706" name="l00706"></a><span class="lineno">  706</span>      xilinx::AIEX::NpuWrite32Op::create(</div>
-<div class="line"><a id="l00707" name="l00707"></a><span class="lineno">  707</span>          builder, runtimeSeq.getLoc(), stopEventGenReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, *userEvent0,</div>
-<div class="line"><a id="l00708" name="l00708"></a><span class="lineno">  708</span>          <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
-<div class="line"><a id="l00709" name="l00709"></a><span class="lineno">  709</span>          builder.getI32IntegerAttr(0));</div>
-<div class="line"><a id="l00710" name="l00710"></a><span class="lineno">  710</span>    }</div>
-<div class="line"><a id="l00711" name="l00711"></a><span class="lineno">  711</span>  }</div>
-<div class="line"><a id="l00712" name="l00712"></a><span class="lineno">  712</span> </div>
-<div class="line"><a id="l00713" name="l00713"></a><span class="lineno">  713</span><span class="keyword">private</span>:</div>
-<div class="line"><a id="l00714" name="l00714"></a><span class="lineno">  714</span>  <span class="comment">// Compute buffer descriptor base address for the buffer address field</span></div>
-<div class="line"><a id="l00715" name="l00715"></a><span class="lineno">  715</span>  uint32_t computeBDAddress(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> bdId, TileOp shimTile,</div>
-<div class="line"><a id="l00716" name="l00716"></a><span class="lineno">  716</span>                            <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm) {</div>
-<div class="line"><a id="l00717" name="l00717"></a><span class="lineno">  717</span>    <span class="comment">// Use register database to lookup BD0 address, then add stride * bdId</span></div>
-<div class="line"><a id="l00718" name="l00718"></a><span class="lineno">  718</span>    <span class="comment">// The buffer address field is at offset +4 within each BD descriptor</span></div>
-<div class="line"><a id="l00719" name="l00719"></a><span class="lineno">  719</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *bdReg =</div>
-<div class="line"><a id="l00720" name="l00720"></a><span class="lineno">  720</span>        tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a52a5031d69912dbdd409486dd954e881">lookupRegister</a>(<span class="stringliteral">&quot;DMA_BD0_0&quot;</span>, shimTile.getTileID());</div>
-<div class="line"><a id="l00721" name="l00721"></a><span class="lineno">  721</span>    <span class="keywordflow">if</span> (!bdReg)</div>
-<div class="line"><a id="l00722" name="l00722"></a><span class="lineno">  722</span>      llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup DMA_BD0_0 register&quot;</span>);</div>
-<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>    <span class="keyword">const</span> uint32_t BD_STRIDE = 0x20;</div>
-<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>    <span class="keyword">const</span> uint32_t BUFFER_ADDR_OFFSET = 4; <span class="comment">// buffer address is 2nd word in BD</span></div>
-<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span>    <span class="keywordflow">return</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#acae8887d9d64be1a250a2f14eea3ec43">getColumnShift</a>()) |</div>
-<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>           (bdReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a> + bdId * BD_STRIDE + BUFFER_ADDR_OFFSET);</div>
-<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>  }</div>
+<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>        <span class="comment">// 4e. DMA channel configuration — set Controller_ID from tile attribute</span></div>
+<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>        uint32_t ctrlAddr =</div>
+<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>            computeCtrlAddress(DMAChannelDir::S2MM, chanDesc.channel,</div>
+<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>                               shimInfo.shimTile, targetModel);</div>
+<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>        ensureControllerIdAttr(shimInfo.shimTile, targetModel);</div>
+<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>        <span class="keyword">auto</span> ctrlIdAttr =</div>
+<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>            shimInfo.shimTile-&gt;getAttrOfType&lt;PacketInfoAttr&gt;(<span class="stringliteral">&quot;controller_id&quot;</span>);</div>
+<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>        std::string ctrlRegName =</div>
+<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>            (chanDesc.channel == 0) ? <span class="stringliteral">&quot;DMA_S2MM_0_Ctrl&quot;</span> : <span class="stringliteral">&quot;DMA_S2MM_1_Ctrl&quot;</span>;</div>
+<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *ctrlReg = targetModel.lookupRegister(</div>
+<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>            ctrlRegName, shimInfo.shimTile.getTileID());</div>
+<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>        <span class="keywordflow">if</span> (!ctrlReg)</div>
+<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>          llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) +</div>
+<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>                                   ctrlRegName);</div>
+<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1BitFieldInfo.html">BitFieldInfo</a> *ctrlIdField = ctrlReg-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a11076dcf3c48826b1dafeee2a002735b">getField</a>(<span class="stringliteral">&quot;Controller_ID&quot;</span>);</div>
+<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>        <span class="keywordflow">if</span> (!ctrlIdField)</div>
+<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>          llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup Controller_ID field in &quot;</span> +</div>
+<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>                                   llvm::Twine(ctrlRegName));</div>
+<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>        uint32_t ctrlIdValue =</div>
+<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>            targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.getPktId());</div>
+<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>        <span class="keyword">auto</span> ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);</div>
+<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>        <span class="keywordflow">if</span> (!ctrlIdMask)</div>
+<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>          llvm::report_fatal_error(</div>
+<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>              <span class="stringliteral">&quot;Controller_ID field does not fit in 32-bit register&quot;</span>);</div>
+<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>        xilinx::AIEX::NpuMaskWrite32Op::create(</div>
+<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>            builder, runtimeSeq.getLoc(), ctrlAddr, ctrlIdValue, *ctrlIdMask,</div>
+<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>            <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
+<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>            builder.getI32IntegerAttr(0));</div>
+<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span> </div>
+<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>        <span class="comment">// Push BD to task queue</span></div>
+<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>        std::string taskQueueRegName = (chanDesc.channel == 0)</div>
+<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>                                           ? <span class="stringliteral">&quot;DMA_S2MM_0_Task_Queue&quot;</span></div>
+<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span>                                           : <span class="stringliteral">&quot;DMA_S2MM_1_Task_Queue&quot;</span>;</div>
+<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *queueReg = targetModel.lookupRegister(</div>
+<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span>            taskQueueRegName, shimInfo.shimTile.getTileID());</div>
+<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>        <span class="keywordflow">if</span> (!queueReg)</div>
+<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>          llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) +</div>
+<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span>                                   taskQueueRegName);</div>
+<div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1BitFieldInfo.html">BitFieldInfo</a> *tokenField =</div>
+<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>            queueReg-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a11076dcf3c48826b1dafeee2a002735b">getField</a>(<span class="stringliteral">&quot;Enable_Token_Issue&quot;</span>);</div>
+<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1BitFieldInfo.html">BitFieldInfo</a> *bdIdField = queueReg-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a11076dcf3c48826b1dafeee2a002735b">getField</a>(<span class="stringliteral">&quot;Start_BD_ID&quot;</span>);</div>
+<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span>        <span class="keywordflow">if</span> (!tokenField || !bdIdField)</div>
+<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span>          llvm::report_fatal_error(</div>
+<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span>              <span class="stringliteral">&quot;Failed to lookup Enable_Token_Issue or Start_BD_ID fields&quot;</span>);</div>
+<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>        uint32_t queueValue =</div>
+<div class="line"><a id="l00668" name="l00668"></a><span class="lineno">  668</span>            targetModel.encodeFieldValue(*tokenField, 1) |</div>
+<div class="line"><a id="l00669" name="l00669"></a><span class="lineno">  669</span>            targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);</div>
+<div class="line"><a id="l00670" name="l00670"></a><span class="lineno">  670</span>        xilinx::AIEX::NpuWrite32Op::create(</div>
+<div class="line"><a id="l00671" name="l00671"></a><span class="lineno">  671</span>            builder, runtimeSeq.getLoc(), queueReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, queueValue, <span class="keyword">nullptr</span>,</div>
+<div class="line"><a id="l00672" name="l00672"></a><span class="lineno">  672</span>            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));</div>
+<div class="line"><a id="l00673" name="l00673"></a><span class="lineno">  673</span>      }</div>
+<div class="line"><a id="l00674" name="l00674"></a><span class="lineno">  674</span> </div>
+<div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span>      <span class="comment">// 4f. Shim timer and broadcast control (only if start broadcast is used)</span></div>
+<div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span>      <span class="keywordflow">if</span> (shimInfo.startBroadcast) {</div>
+<div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span>        <span class="comment">// Look up USER_EVENT_1 from target model (trigger event)</span></div>
+<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span>        <span class="keyword">auto</span> userEvent1 = targetModel.lookupEvent(</div>
+<div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span>            <span class="stringliteral">&quot;USER_EVENT_1&quot;</span>, shimInfo.shimTile.getTileID(), <span class="keyword">false</span>);</div>
+<div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span>        <span class="keywordflow">if</span> (!userEvent1)</div>
+<div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span>          llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup USER_EVENT_1 event&quot;</span>);</div>
+<div class="line"><a id="l00682" name="l00682"></a><span class="lineno">  682</span> </div>
+<div class="line"><a id="l00683" name="l00683"></a><span class="lineno">  683</span>        uint32_t shimTimerCtrlAddr =</div>
+<div class="line"><a id="l00684" name="l00684"></a><span class="lineno">  684</span>            computeTimerCtrlAddress(shimInfo.shimTile, targetModel, <span class="keyword">false</span>);</div>
+<div class="line"><a id="l00685" name="l00685"></a><span class="lineno">  685</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *shimTimerReg = targetModel.lookupRegister(</div>
+<div class="line"><a id="l00686" name="l00686"></a><span class="lineno">  686</span>            <span class="stringliteral">&quot;Timer_Control&quot;</span>, shimInfo.shimTile.getTileID(), <span class="keyword">false</span>);</div>
+<div class="line"><a id="l00687" name="l00687"></a><span class="lineno">  687</span>        <span class="keywordflow">if</span> (!shimTimerReg)</div>
+<div class="line"><a id="l00688" name="l00688"></a><span class="lineno">  688</span>          llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup shim Timer_Control&quot;</span>);</div>
+<div class="line"><a id="l00689" name="l00689"></a><span class="lineno">  689</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1BitFieldInfo.html">BitFieldInfo</a> *shimResetField =</div>
+<div class="line"><a id="l00690" name="l00690"></a><span class="lineno">  690</span>            shimTimerReg-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a11076dcf3c48826b1dafeee2a002735b">getField</a>(<span class="stringliteral">&quot;Reset_Event&quot;</span>);</div>
+<div class="line"><a id="l00691" name="l00691"></a><span class="lineno">  691</span>        <span class="keywordflow">if</span> (!shimResetField)</div>
+<div class="line"><a id="l00692" name="l00692"></a><span class="lineno">  692</span>          llvm::report_fatal_error(</div>
+<div class="line"><a id="l00693" name="l00693"></a><span class="lineno">  693</span>              <span class="stringliteral">&quot;Failed to lookup Reset_Event in shim Timer_Control&quot;</span>);</div>
+<div class="line"><a id="l00694" name="l00694"></a><span class="lineno">  694</span>        uint32_t shimTimerCtrlValue =</div>
+<div class="line"><a id="l00695" name="l00695"></a><span class="lineno">  695</span>            targetModel.encodeFieldValue(*shimResetField, *userEvent1);</div>
+<div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span>        xilinx::AIEX::NpuWrite32Op::create(</div>
+<div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span>            builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, shimTimerCtrlValue,</div>
+<div class="line"><a id="l00698" name="l00698"></a><span class="lineno">  698</span>            <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
+<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>            builder.getI32IntegerAttr(0));</div>
+<div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span> </div>
+<div class="line"><a id="l00701" name="l00701"></a><span class="lineno">  701</span>        <span class="comment">// Configure broadcast register with USER_EVENT_1</span></div>
+<div class="line"><a id="l00702" name="l00702"></a><span class="lineno">  702</span>        std::string broadcastRegName =</div>
+<div class="line"><a id="l00703" name="l00703"></a><span class="lineno">  703</span>            <span class="stringliteral">&quot;Event_Broadcast&quot;</span> + std::to_string(*shimInfo.startBroadcast) + <span class="stringliteral">&quot;_A&quot;</span>;</div>
+<div class="line"><a id="l00704" name="l00704"></a><span class="lineno">  704</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *broadcastReg = targetModel.lookupRegister(</div>
+<div class="line"><a id="l00705" name="l00705"></a><span class="lineno">  705</span>            broadcastRegName, shimInfo.shimTile.getTileID());</div>
+<div class="line"><a id="l00706" name="l00706"></a><span class="lineno">  706</span>        <span class="keywordflow">if</span> (!broadcastReg)</div>
+<div class="line"><a id="l00707" name="l00707"></a><span class="lineno">  707</span>          llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) +</div>
+<div class="line"><a id="l00708" name="l00708"></a><span class="lineno">  708</span>                                   broadcastRegName);</div>
+<div class="line"><a id="l00709" name="l00709"></a><span class="lineno">  709</span>        xilinx::AIEX::NpuWrite32Op::create(</div>
+<div class="line"><a id="l00710" name="l00710"></a><span class="lineno">  710</span>            builder, runtimeSeq.getLoc(), broadcastReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, *userEvent1,</div>
+<div class="line"><a id="l00711" name="l00711"></a><span class="lineno">  711</span>            <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
+<div class="line"><a id="l00712" name="l00712"></a><span class="lineno">  712</span>            builder.getI32IntegerAttr(0));</div>
+<div class="line"><a id="l00713" name="l00713"></a><span class="lineno">  713</span> </div>
+<div class="line"><a id="l00714" name="l00714"></a><span class="lineno">  714</span>        <span class="comment">// Generate USER_EVENT_1 to trigger the broadcast</span></div>
+<div class="line"><a id="l00715" name="l00715"></a><span class="lineno">  715</span>        <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *eventGenReg = targetModel.lookupRegister(</div>
+<div class="line"><a id="l00716" name="l00716"></a><span class="lineno">  716</span>            <span class="stringliteral">&quot;Event_Generate&quot;</span>, shimInfo.shimTile.getTileID());</div>
+<div class="line"><a id="l00717" name="l00717"></a><span class="lineno">  717</span>        <span class="keywordflow">if</span> (!eventGenReg)</div>
+<div class="line"><a id="l00718" name="l00718"></a><span class="lineno">  718</span>          llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup Event_Generate register&quot;</span>);</div>
+<div class="line"><a id="l00719" name="l00719"></a><span class="lineno">  719</span>        xilinx::AIEX::NpuWrite32Op::create(</div>
+<div class="line"><a id="l00720" name="l00720"></a><span class="lineno">  720</span>            builder, runtimeSeq.getLoc(), eventGenReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, *userEvent1,</div>
+<div class="line"><a id="l00721" name="l00721"></a><span class="lineno">  721</span>            <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
+<div class="line"><a id="l00722" name="l00722"></a><span class="lineno">  722</span>            builder.getI32IntegerAttr(0));</div>
+<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>      }</div>
+<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>    }</div>
+<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span> </div>
+<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>    <span class="comment">// Phase 4g: Insert trace stop at end of runtime sequence</span></div>
+<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>    builder.setInsertionPointToEnd(&amp;seqBlock);</div>
 <div class="line"><a id="l00728" name="l00728"></a><span class="lineno">  728</span> </div>
-<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>  <span class="comment">// Compute DMA task queue address</span></div>
-<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>  uint32_t computeTaskQueueAddress(DMAChannelDir dir, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>,</div>
-<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>                                   TileOp shimTile, <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm) {</div>
-<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span>    std::string regName;</div>
-<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span>    <span class="keywordflow">if</span> (dir == DMAChannelDir::S2MM) {</div>
-<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span>      regName =</div>
-<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span>          (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> == 0) ? <span class="stringliteral">&quot;DMA_S2MM_0_Task_Queue&quot;</span> : <span class="stringliteral">&quot;DMA_S2MM_1_Task_Queue&quot;</span>;</div>
-<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span>    } <span class="keywordflow">else</span> { <span class="comment">// MM2S</span></div>
-<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span>      regName =</div>
-<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>          (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> == 0) ? <span class="stringliteral">&quot;DMA_MM2S_0_Task_Queue&quot;</span> : <span class="stringliteral">&quot;DMA_MM2S_1_Task_Queue&quot;</span>;</div>
-<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>    }</div>
-<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *reg = tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a52a5031d69912dbdd409486dd954e881">lookupRegister</a>(regName, shimTile.getTileID());</div>
-<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>    <span class="keywordflow">if</span> (!reg)</div>
-<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>      llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) + regName);</div>
-<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span>    <span class="keywordflow">return</span> reg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>;</div>
-<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>  }</div>
-<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span> </div>
-<div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span>  <span class="comment">// Compute DMA control register address</span></div>
-<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span>  uint32_t computeCtrlAddress(DMAChannelDir dir, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>, TileOp shimTile,</div>
-<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span>                              <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm) {</div>
-<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span>    std::string regName;</div>
-<div class="line"><a id="l00750" name="l00750"></a><span class="lineno">  750</span>    <span class="keywordflow">if</span> (dir == DMAChannelDir::S2MM) {</div>
-<div class="line"><a id="l00751" name="l00751"></a><span class="lineno">  751</span>      regName = (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> == 0) ? <span class="stringliteral">&quot;DMA_S2MM_0_Ctrl&quot;</span> : <span class="stringliteral">&quot;DMA_S2MM_1_Ctrl&quot;</span>;</div>
-<div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span>    } <span class="keywordflow">else</span> { <span class="comment">// MM2S</span></div>
-<div class="line"><a id="l00753" name="l00753"></a><span class="lineno">  753</span>      regName = (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> == 0) ? <span class="stringliteral">&quot;DMA_MM2S_0_Ctrl&quot;</span> : <span class="stringliteral">&quot;DMA_MM2S_1_Ctrl&quot;</span>;</div>
-<div class="line"><a id="l00754" name="l00754"></a><span class="lineno">  754</span>    }</div>
-<div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *reg = tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a52a5031d69912dbdd409486dd954e881">lookupRegister</a>(regName, shimTile.getTileID());</div>
-<div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span>    <span class="keywordflow">if</span> (!reg)</div>
-<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>      llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) + regName);</div>
-<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>    <span class="keywordflow">return</span> reg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>;</div>
-<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>  }</div>
-<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span> </div>
-<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span>  <span class="comment">// Compute timer control address based on tile type</span></div>
-<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>  uint32_t computeTimerCtrlAddress(TileOp tile, <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm,</div>
-<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>                                   <span class="keywordtype">bool</span> isMemTrace) {</div>
-<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span>    <span class="comment">// Use register database to lookup Timer_Control for the appropriate module</span></div>
-<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *reg =</div>
-<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span>        tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a52a5031d69912dbdd409486dd954e881">lookupRegister</a>(<span class="stringliteral">&quot;Timer_Control&quot;</span>, tile.getTileID(), isMemTrace);</div>
-<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>    <span class="keywordflow">if</span> (!reg)</div>
-<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span>      llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup Timer_Control register&quot;</span>);</div>
-<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span>    <span class="keywordflow">return</span> reg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>;</div>
-<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span>  }</div>
-<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span><span class="comment"></span> </div>
-<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span><span class="comment">  /// Build channel descriptors. Always includes the primary channel.</span></div>
-<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span><span class="comment">  /// Adds a secondary channel when distribute-channels is enabled and there</span></div>
-<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span><span class="comment">  /// are multiple traces. AIE2 shim tiles have exactly 2 S2MM DMA channels.</span></div>
-<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span><span class="comment">  ///</span></div>
-<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span><span class="comment">  /// Both channels share the same arg_idx (XRT buffer). The buffer is split</span></div>
-<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span><span class="comment">  /// by offset: channel 0 starts at the base bufferOffset, channel 1 starts</span></div>
-<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span><span class="comment">  /// at bufferOffset + bufferSizeBytes. The host must allocate a trace buffer</span></div>
-<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span><span class="comment">  /// of 2 * bufferSizeBytes when distribute is active.</span></div>
-<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span><span class="comment"></span>  std::vector&lt;ChannelDescriptor&gt;</div>
-<div class="line"><a id="l00781" name="l00781"></a><span class="lineno">  781</span>  buildChannelDescriptors(<span class="keywordtype">size_t</span> numTraces, <span class="keywordtype">int</span> primaryChannel, <span class="keywordtype">int</span> primaryBdId,</div>
-<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span>                          <span class="keywordtype">int</span> primaryArgIdx, <span class="keywordtype">int</span> baseBufferOffset,</div>
-<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span>                          <span class="keywordtype">int</span> bufferSizeBytes,</div>
-<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span>                          <span class="keyword">const</span> std::set&lt;int&gt; &amp;availableChannels) {</div>
-<div class="line"><a id="l00785" name="l00785"></a><span class="lineno">  785</span>    std::vector&lt;ChannelDescriptor&gt; chans;</div>
-<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>    chans.push_back(</div>
-<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>        {primaryChannel, primaryBdId, primaryArgIdx, baseBufferOffset});</div>
-<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>    <span class="keywordflow">if</span> (clDistributeChannels &amp;&amp; numTraces &gt; 1 &amp;&amp; primaryBdId &gt; 0) {</div>
-<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span>      <span class="keywordtype">int</span> ch2 = (primaryChannel == 1) ? 0 : 1;</div>
-<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span>      <span class="comment">// Only add secondary channel if it&#39;s available (not claimed by existing</span></div>
-<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span>      <span class="comment">// flows)</span></div>
-<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>      <span class="keywordflow">if</span> (availableChannels.count(ch2)) {</div>
-<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>        chans.push_back({ch2, primaryBdId - 1, primaryArgIdx,</div>
-<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span>                         baseBufferOffset + bufferSizeBytes});</div>
-<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>      }</div>
-<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span>    }</div>
-<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span>    <span class="keywordflow">return</span> chans;</div>
-<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span>  }</div>
-<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span><span class="comment"></span> </div>
-<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span><span class="comment">  /// Find or create a shim tile at the given column.</span></div>
-<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span><span class="comment"></span>  TileOp getOrCreateShim(DeviceOp device, OpBuilder &amp;builder, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>) {</div>
-<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> tile : device.getOps&lt;TileOp&gt;()) {</div>
-<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>      <span class="keywordflow">if</span> (tile.getCol() == <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &amp;&amp; tile.getRow() == 0)</div>
-<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>        <span class="keywordflow">return</span> tile;</div>
-<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span>    }</div>
-<div class="line"><a id="l00806" name="l00806"></a><span class="lineno">  806</span>    OpBuilder::InsertionGuard guard(builder);</div>
-<div class="line"><a id="l00807" name="l00807"></a><span class="lineno">  807</span>    builder.setInsertionPointToStart(&amp;device.getRegion().front());</div>
-<div class="line"><a id="l00808" name="l00808"></a><span class="lineno">  808</span>    <span class="keywordflow">return</span> TileOp::create(builder, device.getLoc(), <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, 0);</div>
-<div class="line"><a id="l00809" name="l00809"></a><span class="lineno">  809</span>  }</div>
-<div class="line"><a id="l00810" name="l00810"></a><span class="lineno">  810</span><span class="comment"></span> </div>
-<div class="line"><a id="l00811" name="l00811"></a><span class="lineno">  811</span><span class="comment">  /// Scan the device for existing S2MM channel claims on shim tiles.</span></div>
-<div class="line"><a id="l00812" name="l00812"></a><span class="lineno">  812</span><span class="comment">  /// Checks aie.flow destinations, aie.packet_flow destinations, and</span></div>
-<div class="line"><a id="l00813" name="l00813"></a><span class="lineno">  813</span><span class="comment">  /// ShimDMAAllocationOp declarations.</span></div>
-<div class="line"><a id="l00814" name="l00814"></a><span class="lineno">  814</span><span class="comment"></span>  std::map&lt;int, std::set&lt;int&gt;&gt; scanUsedS2MMChannels(DeviceOp device) {</div>
-<div class="line"><a id="l00815" name="l00815"></a><span class="lineno">  815</span>    std::map&lt;int, std::set&lt;int&gt;&gt; used; <span class="comment">// shimCol -&gt; set of used S2MM channels</span></div>
+<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>    std::set&lt;int&gt; stoppedShimCols;</div>
+<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, shimInfo] : shimInfos) {</div>
+<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>      <span class="keywordflow">if</span> (!shimInfo.stopBroadcast)</div>
+<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span> </div>
+<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span>      <span class="keywordtype">int</span> shimCol = shimInfo.shimTile.getCol();</div>
+<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span>      <span class="keywordflow">if</span> (!stoppedShimCols.insert(shimCol).second)</div>
+<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span> </div>
+<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>      <span class="keyword">auto</span> userEvent0 = targetModel.lookupEvent(</div>
+<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>          <span class="stringliteral">&quot;USER_EVENT_0&quot;</span>, shimInfo.shimTile.getTileID(), <span class="keyword">false</span>);</div>
+<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>      <span class="keywordflow">if</span> (!userEvent0)</div>
+<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>        llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup USER_EVENT_0 event&quot;</span>);</div>
+<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span> </div>
+<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span>      std::string broadcastRegName =</div>
+<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>          <span class="stringliteral">&quot;Event_Broadcast&quot;</span> + std::to_string(*shimInfo.stopBroadcast) + <span class="stringliteral">&quot;_A&quot;</span>;</div>
+<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span>      <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *broadcastReg = targetModel.lookupRegister(</div>
+<div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span>          broadcastRegName, shimInfo.shimTile.getTileID());</div>
+<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span>      <span class="keywordflow">if</span> (!broadcastReg)</div>
+<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span>        llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) +</div>
+<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span>                                 broadcastRegName);</div>
+<div class="line"><a id="l00750" name="l00750"></a><span class="lineno">  750</span>      xilinx::AIEX::NpuWrite32Op::create(</div>
+<div class="line"><a id="l00751" name="l00751"></a><span class="lineno">  751</span>          builder, runtimeSeq.getLoc(), broadcastReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, *userEvent0,</div>
+<div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span>          <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
+<div class="line"><a id="l00753" name="l00753"></a><span class="lineno">  753</span>          builder.getI32IntegerAttr(0));</div>
+<div class="line"><a id="l00754" name="l00754"></a><span class="lineno">  754</span> </div>
+<div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>      <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *stopEventGenReg = targetModel.lookupRegister(</div>
+<div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span>          <span class="stringliteral">&quot;Event_Generate&quot;</span>, shimInfo.shimTile.getTileID());</div>
+<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>      <span class="keywordflow">if</span> (!stopEventGenReg)</div>
+<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>        llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup Event_Generate register&quot;</span>);</div>
+<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>      xilinx::AIEX::NpuWrite32Op::create(</div>
+<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span>          builder, runtimeSeq.getLoc(), stopEventGenReg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>, *userEvent0,</div>
+<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span>          <span class="keyword">nullptr</span>, builder.getI32IntegerAttr(shimCol),</div>
+<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>          builder.getI32IntegerAttr(0));</div>
+<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>    }</div>
+<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span>  }</div>
+<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span> </div>
+<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span><span class="keyword">private</span>:<span class="comment"></span></div>
+<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span><span class="comment">  /// Ensure a tile has a controller_id attribute. If missing, assign one</span></div>
+<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span><span class="comment">  /// using the target model&#39;s mapping.</span></div>
+<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span><span class="comment"></span>  <span class="keywordtype">void</span> ensureControllerIdAttr(TileOp tile, <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm) {</div>
+<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span>    <span class="keywordflow">if</span> (tile-&gt;hasAttr(<span class="stringliteral">&quot;controller_id&quot;</span>))</div>
+<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span>      <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span>    <span class="keyword">auto</span> idMap = tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a0de753e79a8bde7af2ad1e9958f0f4bf">getTileToControllerIdMap</a>();</div>
+<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span>    <span class="keywordtype">int</span> pktId = idMap[{tile.colIndex(), tile.rowIndex()}];</div>
+<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span>    <span class="keyword">auto</span> pktInfoAttr = PacketInfoAttr::get(tile-&gt;getContext(), 0, pktId);</div>
+<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span>    tile-&gt;setAttr(<span class="stringliteral">&quot;controller_id&quot;</span>, pktInfoAttr);</div>
+<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span>  }</div>
+<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span> </div>
+<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span>  uint32_t computeBDAddress(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> bdId, TileOp shimTile,</div>
+<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span>                            <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm) {</div>
+<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = shimTile.getRow();</div>
+<div class="line"><a id="l00781" name="l00781"></a><span class="lineno">  781</span>    <span class="keywordflow">return</span> tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a668ed6cb8d5024f4c78388b56d8c87a0">getDmaBdAddress</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, bdId) +</div>
+<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span>           tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a729ed6f03e901d4370bae42be1996dc5">getDmaBdAddressOffset</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span>  }</div>
+<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span> </div>
+<div class="line"><a id="l00785" name="l00785"></a><span class="lineno">  785</span>  <span class="comment">// Compute DMA task queue address</span></div>
+<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>  uint32_t computeTaskQueueAddress(DMAChannelDir dir, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>,</div>
+<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>                                   TileOp shimTile, <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm) {</div>
+<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>    std::string regName;</div>
+<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span>    <span class="keywordflow">if</span> (dir == DMAChannelDir::S2MM) {</div>
+<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span>      regName =</div>
+<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span>          (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> == 0) ? <span class="stringliteral">&quot;DMA_S2MM_0_Task_Queue&quot;</span> : <span class="stringliteral">&quot;DMA_S2MM_1_Task_Queue&quot;</span>;</div>
+<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>    } <span class="keywordflow">else</span> { <span class="comment">// MM2S</span></div>
+<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>      regName =</div>
+<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span>          (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> == 0) ? <span class="stringliteral">&quot;DMA_MM2S_0_Task_Queue&quot;</span> : <span class="stringliteral">&quot;DMA_MM2S_1_Task_Queue&quot;</span>;</div>
+<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>    }</div>
+<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *reg = tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a52a5031d69912dbdd409486dd954e881">lookupRegister</a>(regName, shimTile.getTileID());</div>
+<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span>    <span class="keywordflow">if</span> (!reg)</div>
+<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span>      llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) + regName);</div>
+<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span>    <span class="keywordflow">return</span> reg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>;</div>
+<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span>  }</div>
+<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span> </div>
+<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>  <span class="comment">// Compute DMA control register address</span></div>
+<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>  uint32_t computeCtrlAddress(DMAChannelDir dir, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>, TileOp shimTile,</div>
+<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>                              <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm) {</div>
+<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span>    std::string regName;</div>
+<div class="line"><a id="l00806" name="l00806"></a><span class="lineno">  806</span>    <span class="keywordflow">if</span> (dir == DMAChannelDir::S2MM) {</div>
+<div class="line"><a id="l00807" name="l00807"></a><span class="lineno">  807</span>      regName = (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> == 0) ? <span class="stringliteral">&quot;DMA_S2MM_0_Ctrl&quot;</span> : <span class="stringliteral">&quot;DMA_S2MM_1_Ctrl&quot;</span>;</div>
+<div class="line"><a id="l00808" name="l00808"></a><span class="lineno">  808</span>    } <span class="keywordflow">else</span> { <span class="comment">// MM2S</span></div>
+<div class="line"><a id="l00809" name="l00809"></a><span class="lineno">  809</span>      regName = (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a> == 0) ? <span class="stringliteral">&quot;DMA_MM2S_0_Ctrl&quot;</span> : <span class="stringliteral">&quot;DMA_MM2S_1_Ctrl&quot;</span>;</div>
+<div class="line"><a id="l00810" name="l00810"></a><span class="lineno">  810</span>    }</div>
+<div class="line"><a id="l00811" name="l00811"></a><span class="lineno">  811</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *reg = tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a52a5031d69912dbdd409486dd954e881">lookupRegister</a>(regName, shimTile.getTileID());</div>
+<div class="line"><a id="l00812" name="l00812"></a><span class="lineno">  812</span>    <span class="keywordflow">if</span> (!reg)</div>
+<div class="line"><a id="l00813" name="l00813"></a><span class="lineno">  813</span>      llvm::report_fatal_error(llvm::Twine(<span class="stringliteral">&quot;Failed to lookup &quot;</span>) + regName);</div>
+<div class="line"><a id="l00814" name="l00814"></a><span class="lineno">  814</span>    <span class="keywordflow">return</span> reg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>;</div>
+<div class="line"><a id="l00815" name="l00815"></a><span class="lineno">  815</span>  }</div>
 <div class="line"><a id="l00816" name="l00816"></a><span class="lineno">  816</span> </div>
-<div class="line"><a id="l00817" name="l00817"></a><span class="lineno">  817</span>    device.walk([&amp;](FlowOp flow) {</div>
-<div class="line"><a id="l00818" name="l00818"></a><span class="lineno">  818</span>      <span class="keyword">auto</span> destTile = cast&lt;TileOp&gt;(flow.getDest().getDefiningOp());</div>
-<div class="line"><a id="l00819" name="l00819"></a><span class="lineno">  819</span>      <span class="keywordflow">if</span> (destTile.isShimTile() &amp;&amp; flow.getDestBundle() == WireBundle::DMA) {</div>
-<div class="line"><a id="l00820" name="l00820"></a><span class="lineno">  820</span>        used[destTile.getCol()].insert(flow.getDestChannel());</div>
-<div class="line"><a id="l00821" name="l00821"></a><span class="lineno">  821</span>      }</div>
-<div class="line"><a id="l00822" name="l00822"></a><span class="lineno">  822</span>    });</div>
-<div class="line"><a id="l00823" name="l00823"></a><span class="lineno">  823</span> </div>
-<div class="line"><a id="l00824" name="l00824"></a><span class="lineno">  824</span>    device.walk([&amp;](PacketFlowOp pktFlow) {</div>
-<div class="line"><a id="l00825" name="l00825"></a><span class="lineno">  825</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;op : pktFlow.getPorts().front()) {</div>
-<div class="line"><a id="l00826" name="l00826"></a><span class="lineno">  826</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> dest = dyn_cast&lt;PacketDestOp&gt;(op)) {</div>
-<div class="line"><a id="l00827" name="l00827"></a><span class="lineno">  827</span>          <span class="keyword">auto</span> destTile = cast&lt;TileOp&gt;(dest.getTile().getDefiningOp());</div>
-<div class="line"><a id="l00828" name="l00828"></a><span class="lineno">  828</span>          <span class="keywordflow">if</span> (destTile.isShimTile() &amp;&amp; dest.getBundle() == WireBundle::DMA) {</div>
-<div class="line"><a id="l00829" name="l00829"></a><span class="lineno">  829</span>            used[destTile.getCol()].insert(dest.getChannel());</div>
-<div class="line"><a id="l00830" name="l00830"></a><span class="lineno">  830</span>          }</div>
-<div class="line"><a id="l00831" name="l00831"></a><span class="lineno">  831</span>        }</div>
-<div class="line"><a id="l00832" name="l00832"></a><span class="lineno">  832</span>      }</div>
-<div class="line"><a id="l00833" name="l00833"></a><span class="lineno">  833</span>    });</div>
-<div class="line"><a id="l00834" name="l00834"></a><span class="lineno">  834</span> </div>
-<div class="line"><a id="l00835" name="l00835"></a><span class="lineno">  835</span>    device.walk([&amp;](ShimDMAAllocationOp alloc) {</div>
-<div class="line"><a id="l00836" name="l00836"></a><span class="lineno">  836</span>      <span class="keywordflow">if</span> (alloc.getChannelDir() == DMAChannelDir::S2MM) {</div>
-<div class="line"><a id="l00837" name="l00837"></a><span class="lineno">  837</span>        <span class="keyword">auto</span> tile = alloc.getTileOp();</div>
-<div class="line"><a id="l00838" name="l00838"></a><span class="lineno">  838</span>        used[tile.getCol()].insert(alloc.getChannelIndex());</div>
-<div class="line"><a id="l00839" name="l00839"></a><span class="lineno">  839</span>      }</div>
-<div class="line"><a id="l00840" name="l00840"></a><span class="lineno">  840</span>    });</div>
-<div class="line"><a id="l00841" name="l00841"></a><span class="lineno">  841</span> </div>
-<div class="line"><a id="l00842" name="l00842"></a><span class="lineno">  842</span>    <span class="keywordflow">return</span> used;</div>
-<div class="line"><a id="l00843" name="l00843"></a><span class="lineno">  843</span>  }</div>
-<div class="line"><a id="l00844" name="l00844"></a><span class="lineno">  844</span><span class="comment"></span> </div>
-<div class="line"><a id="l00845" name="l00845"></a><span class="lineno">  845</span><span class="comment">  /// Find the nearest NOC shim column without active cores.</span></div>
-<div class="line"><a id="l00846" name="l00846"></a><span class="lineno">  846</span><span class="comment">  /// Returns -1 if no spare column exists.</span></div>
-<div class="line"><a id="l00847" name="l00847"></a><span class="lineno">  847</span><span class="comment"></span>  <span class="keywordtype">int</span> findNearestSpareColumn(<span class="keywordtype">int</span> sourceCol, <span class="keyword">const</span> std::set&lt;int&gt; &amp;activeColumns,</div>
-<div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span>                             <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;targetModel) {</div>
-<div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>    <span class="keywordtype">int</span> bestCol = -1;</div>
-<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>    <span class="keywordtype">int</span> bestDist = INT_MAX;</div>
-<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>    <span class="keywordtype">int</span> numCols = targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">columns</a>();</div>
-<div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> c = 0; c &lt; numCols; c++) {</div>
-<div class="line"><a id="l00853" name="l00853"></a><span class="lineno">  853</span>      <span class="keywordflow">if</span> (activeColumns.count(c) == 0 &amp;&amp; targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a9e0cf48a851a279c50ec2326f100e9df">isShimNOCTile</a>(c, 0)) {</div>
-<div class="line"><a id="l00854" name="l00854"></a><span class="lineno">  854</span>        <span class="keywordtype">int</span> dist = std::abs(c - sourceCol);</div>
-<div class="line"><a id="l00855" name="l00855"></a><span class="lineno">  855</span>        <span class="keywordflow">if</span> (dist &gt; 0 &amp;&amp; dist &lt; bestDist) {</div>
-<div class="line"><a id="l00856" name="l00856"></a><span class="lineno">  856</span>          bestDist = dist;</div>
-<div class="line"><a id="l00857" name="l00857"></a><span class="lineno">  857</span>          bestCol = c;</div>
-<div class="line"><a id="l00858" name="l00858"></a><span class="lineno">  858</span>        }</div>
-<div class="line"><a id="l00859" name="l00859"></a><span class="lineno">  859</span>      }</div>
-<div class="line"><a id="l00860" name="l00860"></a><span class="lineno">  860</span>    }</div>
-<div class="line"><a id="l00861" name="l00861"></a><span class="lineno">  861</span>    <span class="keywordflow">return</span> bestCol;</div>
-<div class="line"><a id="l00862" name="l00862"></a><span class="lineno">  862</span>  }</div>
-<div class="line"><a id="l00863" name="l00863"></a><span class="lineno">  863</span>};</div>
-<div class="line"><a id="l00864" name="l00864"></a><span class="lineno">  864</span> </div>
-<div class="line"><a id="l00865" name="l00865"></a><span class="lineno">  865</span>} <span class="comment">// namespace</span></div>
-<div class="line"><a id="l00866" name="l00866"></a><span class="lineno">  866</span> </div>
-<div class="line"><a id="l00867" name="l00867"></a><span class="lineno">  867</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00868" data-start="{" data-end="}">
-<div class="line"><a id="l00868" name="l00868"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a08016a365ef7ec71aa1c7ce6182b32b9">  868</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a08016a365ef7ec71aa1c7ce6182b32b9">xilinx::AIE::createAIEInsertTraceFlowsPass</a>() {</div>
-<div class="line"><a id="l00869" name="l00869"></a><span class="lineno">  869</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEInsertTraceFlowsPass&gt;();</div>
-<div class="line"><a id="l00870" name="l00870"></a><span class="lineno">  870</span>}</div>
+<div class="line"><a id="l00817" name="l00817"></a><span class="lineno">  817</span>  <span class="comment">// Compute timer control address based on tile type</span></div>
+<div class="line"><a id="l00818" name="l00818"></a><span class="lineno">  818</span>  uint32_t computeTimerCtrlAddress(TileOp tile, <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm,</div>
+<div class="line"><a id="l00819" name="l00819"></a><span class="lineno">  819</span>                                   <span class="keywordtype">bool</span> isMemTrace) {</div>
+<div class="line"><a id="l00820" name="l00820"></a><span class="lineno">  820</span>    <span class="comment">// Use register database to lookup Timer_Control for the appropriate module</span></div>
+<div class="line"><a id="l00821" name="l00821"></a><span class="lineno">  821</span>    <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *reg =</div>
+<div class="line"><a id="l00822" name="l00822"></a><span class="lineno">  822</span>        tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a52a5031d69912dbdd409486dd954e881">lookupRegister</a>(<span class="stringliteral">&quot;Timer_Control&quot;</span>, tile.getTileID(), isMemTrace);</div>
+<div class="line"><a id="l00823" name="l00823"></a><span class="lineno">  823</span>    <span class="keywordflow">if</span> (!reg)</div>
+<div class="line"><a id="l00824" name="l00824"></a><span class="lineno">  824</span>      llvm::report_fatal_error(<span class="stringliteral">&quot;Failed to lookup Timer_Control register&quot;</span>);</div>
+<div class="line"><a id="l00825" name="l00825"></a><span class="lineno">  825</span>    <span class="keywordflow">return</span> reg-&gt;<a class="code hl_variable" href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">offset</a>;</div>
+<div class="line"><a id="l00826" name="l00826"></a><span class="lineno">  826</span>  }</div>
+<div class="line"><a id="l00827" name="l00827"></a><span class="lineno">  827</span><span class="comment"></span> </div>
+<div class="line"><a id="l00828" name="l00828"></a><span class="lineno">  828</span><span class="comment">  /// Build channel descriptors. Always includes the primary channel.</span></div>
+<div class="line"><a id="l00829" name="l00829"></a><span class="lineno">  829</span><span class="comment">  /// Adds a secondary channel when distribute-channels is enabled and there</span></div>
+<div class="line"><a id="l00830" name="l00830"></a><span class="lineno">  830</span><span class="comment">  /// are multiple traces. AIE2 shim tiles have exactly 2 S2MM DMA channels.</span></div>
+<div class="line"><a id="l00831" name="l00831"></a><span class="lineno">  831</span><span class="comment">  ///</span></div>
+<div class="line"><a id="l00832" name="l00832"></a><span class="lineno">  832</span><span class="comment">  /// Both channels share the same arg_idx (XRT buffer). The buffer is split</span></div>
+<div class="line"><a id="l00833" name="l00833"></a><span class="lineno">  833</span><span class="comment">  /// by offset: channel 0 starts at the base bufferOffset, channel 1 starts</span></div>
+<div class="line"><a id="l00834" name="l00834"></a><span class="lineno">  834</span><span class="comment">  /// at bufferOffset + bufferSizeBytes. The host must allocate a trace buffer</span></div>
+<div class="line"><a id="l00835" name="l00835"></a><span class="lineno">  835</span><span class="comment">  /// of 2 * bufferSizeBytes when distribute is active.</span></div>
+<div class="line"><a id="l00836" name="l00836"></a><span class="lineno">  836</span><span class="comment"></span>  std::vector&lt;ChannelDescriptor&gt;</div>
+<div class="line"><a id="l00837" name="l00837"></a><span class="lineno">  837</span>  buildChannelDescriptors(<span class="keywordtype">size_t</span> numTraces, <span class="keywordtype">int</span> primaryChannel, <span class="keywordtype">int</span> primaryBdId,</div>
+<div class="line"><a id="l00838" name="l00838"></a><span class="lineno">  838</span>                          <span class="keywordtype">int</span> primaryArgIdx, <span class="keywordtype">int</span> baseBufferOffset,</div>
+<div class="line"><a id="l00839" name="l00839"></a><span class="lineno">  839</span>                          <span class="keywordtype">int</span> bufferSizeBytes,</div>
+<div class="line"><a id="l00840" name="l00840"></a><span class="lineno">  840</span>                          <span class="keyword">const</span> std::set&lt;int&gt; &amp;availableChannels) {</div>
+<div class="line"><a id="l00841" name="l00841"></a><span class="lineno">  841</span>    std::vector&lt;ChannelDescriptor&gt; chans;</div>
+<div class="line"><a id="l00842" name="l00842"></a><span class="lineno">  842</span>    chans.push_back(</div>
+<div class="line"><a id="l00843" name="l00843"></a><span class="lineno">  843</span>        {primaryChannel, primaryBdId, primaryArgIdx, baseBufferOffset});</div>
+<div class="line"><a id="l00844" name="l00844"></a><span class="lineno">  844</span>    <span class="keywordflow">if</span> (clDistributeChannels &amp;&amp; numTraces &gt; 1 &amp;&amp; primaryBdId &gt; 0) {</div>
+<div class="line"><a id="l00845" name="l00845"></a><span class="lineno">  845</span>      <span class="keywordtype">int</span> ch2 = (primaryChannel == 1) ? 0 : 1;</div>
+<div class="line"><a id="l00846" name="l00846"></a><span class="lineno">  846</span>      <span class="comment">// Only add secondary channel if it&#39;s available (not claimed by existing</span></div>
+<div class="line"><a id="l00847" name="l00847"></a><span class="lineno">  847</span>      <span class="comment">// flows)</span></div>
+<div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span>      <span class="keywordflow">if</span> (availableChannels.count(ch2)) {</div>
+<div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>        chans.push_back({ch2, primaryBdId - 1, primaryArgIdx,</div>
+<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>                         baseBufferOffset + bufferSizeBytes});</div>
+<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>      }</div>
+<div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>    }</div>
+<div class="line"><a id="l00853" name="l00853"></a><span class="lineno">  853</span>    <span class="keywordflow">return</span> chans;</div>
+<div class="line"><a id="l00854" name="l00854"></a><span class="lineno">  854</span>  }</div>
+<div class="line"><a id="l00855" name="l00855"></a><span class="lineno">  855</span><span class="comment"></span> </div>
+<div class="line"><a id="l00856" name="l00856"></a><span class="lineno">  856</span><span class="comment">  /// Find or create a shim tile at the given column.</span></div>
+<div class="line"><a id="l00857" name="l00857"></a><span class="lineno">  857</span><span class="comment"></span>  TileOp getOrCreateShim(DeviceOp device, OpBuilder &amp;builder, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>) {</div>
+<div class="line"><a id="l00858" name="l00858"></a><span class="lineno">  858</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> tile : device.getOps&lt;TileOp&gt;()) {</div>
+<div class="line"><a id="l00859" name="l00859"></a><span class="lineno">  859</span>      <span class="keywordflow">if</span> (tile.getCol() == <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &amp;&amp; tile.getRow() == 0)</div>
+<div class="line"><a id="l00860" name="l00860"></a><span class="lineno">  860</span>        <span class="keywordflow">return</span> tile;</div>
+<div class="line"><a id="l00861" name="l00861"></a><span class="lineno">  861</span>    }</div>
+<div class="line"><a id="l00862" name="l00862"></a><span class="lineno">  862</span>    OpBuilder::InsertionGuard guard(builder);</div>
+<div class="line"><a id="l00863" name="l00863"></a><span class="lineno">  863</span>    builder.setInsertionPointToStart(&amp;device.getRegion().front());</div>
+<div class="line"><a id="l00864" name="l00864"></a><span class="lineno">  864</span>    <span class="keywordflow">return</span> TileOp::create(builder, device.getLoc(), <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, 0);</div>
+<div class="line"><a id="l00865" name="l00865"></a><span class="lineno">  865</span>  }</div>
+<div class="line"><a id="l00866" name="l00866"></a><span class="lineno">  866</span><span class="comment"></span> </div>
+<div class="line"><a id="l00867" name="l00867"></a><span class="lineno">  867</span><span class="comment">  /// Scan the device for existing S2MM channel claims on shim tiles.</span></div>
+<div class="line"><a id="l00868" name="l00868"></a><span class="lineno">  868</span><span class="comment">  /// Checks aie.flow destinations, aie.packet_flow destinations, and</span></div>
+<div class="line"><a id="l00869" name="l00869"></a><span class="lineno">  869</span><span class="comment">  /// ShimDMAAllocationOp declarations.</span></div>
+<div class="line"><a id="l00870" name="l00870"></a><span class="lineno">  870</span><span class="comment"></span>  std::map&lt;int, std::set&lt;int&gt;&gt; scanUsedS2MMChannels(DeviceOp device) {</div>
+<div class="line"><a id="l00871" name="l00871"></a><span class="lineno">  871</span>    std::map&lt;int, std::set&lt;int&gt;&gt; used; <span class="comment">// shimCol -&gt; set of used S2MM channels</span></div>
+<div class="line"><a id="l00872" name="l00872"></a><span class="lineno">  872</span> </div>
+<div class="line"><a id="l00873" name="l00873"></a><span class="lineno">  873</span>    device.walk([&amp;](FlowOp flow) {</div>
+<div class="line"><a id="l00874" name="l00874"></a><span class="lineno">  874</span>      <span class="keyword">auto</span> destTile = cast&lt;TileOp&gt;(flow.getDest().getDefiningOp());</div>
+<div class="line"><a id="l00875" name="l00875"></a><span class="lineno">  875</span>      <span class="keywordflow">if</span> (destTile.isShimTile() &amp;&amp; flow.getDestBundle() == WireBundle::DMA) {</div>
+<div class="line"><a id="l00876" name="l00876"></a><span class="lineno">  876</span>        used[destTile.getCol()].insert(flow.getDestChannel());</div>
+<div class="line"><a id="l00877" name="l00877"></a><span class="lineno">  877</span>      }</div>
+<div class="line"><a id="l00878" name="l00878"></a><span class="lineno">  878</span>    });</div>
+<div class="line"><a id="l00879" name="l00879"></a><span class="lineno">  879</span> </div>
+<div class="line"><a id="l00880" name="l00880"></a><span class="lineno">  880</span>    device.walk([&amp;](PacketFlowOp pktFlow) {</div>
+<div class="line"><a id="l00881" name="l00881"></a><span class="lineno">  881</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;op : pktFlow.getPorts().front()) {</div>
+<div class="line"><a id="l00882" name="l00882"></a><span class="lineno">  882</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> dest = dyn_cast&lt;PacketDestOp&gt;(op)) {</div>
+<div class="line"><a id="l00883" name="l00883"></a><span class="lineno">  883</span>          <span class="keyword">auto</span> destTile = cast&lt;TileOp&gt;(dest.getTile().getDefiningOp());</div>
+<div class="line"><a id="l00884" name="l00884"></a><span class="lineno">  884</span>          <span class="keywordflow">if</span> (destTile.isShimTile() &amp;&amp; dest.getBundle() == WireBundle::DMA) {</div>
+<div class="line"><a id="l00885" name="l00885"></a><span class="lineno">  885</span>            used[destTile.getCol()].insert(dest.getChannel());</div>
+<div class="line"><a id="l00886" name="l00886"></a><span class="lineno">  886</span>          }</div>
+<div class="line"><a id="l00887" name="l00887"></a><span class="lineno">  887</span>        }</div>
+<div class="line"><a id="l00888" name="l00888"></a><span class="lineno">  888</span>      }</div>
+<div class="line"><a id="l00889" name="l00889"></a><span class="lineno">  889</span>    });</div>
+<div class="line"><a id="l00890" name="l00890"></a><span class="lineno">  890</span> </div>
+<div class="line"><a id="l00891" name="l00891"></a><span class="lineno">  891</span>    device.walk([&amp;](ShimDMAAllocationOp alloc) {</div>
+<div class="line"><a id="l00892" name="l00892"></a><span class="lineno">  892</span>      <span class="keywordflow">if</span> (alloc.getChannelDir() == DMAChannelDir::S2MM) {</div>
+<div class="line"><a id="l00893" name="l00893"></a><span class="lineno">  893</span>        <span class="keyword">auto</span> tile = alloc.getTileOp();</div>
+<div class="line"><a id="l00894" name="l00894"></a><span class="lineno">  894</span>        used[tile.getCol()].insert(alloc.getChannelIndex());</div>
+<div class="line"><a id="l00895" name="l00895"></a><span class="lineno">  895</span>      }</div>
+<div class="line"><a id="l00896" name="l00896"></a><span class="lineno">  896</span>    });</div>
+<div class="line"><a id="l00897" name="l00897"></a><span class="lineno">  897</span> </div>
+<div class="line"><a id="l00898" name="l00898"></a><span class="lineno">  898</span>    <span class="keywordflow">return</span> used;</div>
+<div class="line"><a id="l00899" name="l00899"></a><span class="lineno">  899</span>  }</div>
+<div class="line"><a id="l00900" name="l00900"></a><span class="lineno">  900</span><span class="comment"></span> </div>
+<div class="line"><a id="l00901" name="l00901"></a><span class="lineno">  901</span><span class="comment">  /// Find the nearest NOC shim column without active cores.</span></div>
+<div class="line"><a id="l00902" name="l00902"></a><span class="lineno">  902</span><span class="comment">  /// Returns -1 if no spare column exists.</span></div>
+<div class="line"><a id="l00903" name="l00903"></a><span class="lineno">  903</span><span class="comment"></span>  <span class="keywordtype">int</span> findNearestSpareColumn(<span class="keywordtype">int</span> sourceCol, <span class="keyword">const</span> std::set&lt;int&gt; &amp;activeColumns,</div>
+<div class="line"><a id="l00904" name="l00904"></a><span class="lineno">  904</span>                             <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;targetModel) {</div>
+<div class="line"><a id="l00905" name="l00905"></a><span class="lineno">  905</span>    <span class="keywordtype">int</span> bestCol = -1;</div>
+<div class="line"><a id="l00906" name="l00906"></a><span class="lineno">  906</span>    <span class="keywordtype">int</span> bestDist = INT_MAX;</div>
+<div class="line"><a id="l00907" name="l00907"></a><span class="lineno">  907</span>    <span class="keywordtype">int</span> numCols = targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">columns</a>();</div>
+<div class="line"><a id="l00908" name="l00908"></a><span class="lineno">  908</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> c = 0; c &lt; numCols; c++) {</div>
+<div class="line"><a id="l00909" name="l00909"></a><span class="lineno">  909</span>      <span class="keywordflow">if</span> (activeColumns.count(c) == 0 &amp;&amp; targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a9e0cf48a851a279c50ec2326f100e9df">isShimNOCTile</a>(c, 0)) {</div>
+<div class="line"><a id="l00910" name="l00910"></a><span class="lineno">  910</span>        <span class="keywordtype">int</span> dist = std::abs(c - sourceCol);</div>
+<div class="line"><a id="l00911" name="l00911"></a><span class="lineno">  911</span>        <span class="keywordflow">if</span> (dist &gt; 0 &amp;&amp; dist &lt; bestDist) {</div>
+<div class="line"><a id="l00912" name="l00912"></a><span class="lineno">  912</span>          bestDist = dist;</div>
+<div class="line"><a id="l00913" name="l00913"></a><span class="lineno">  913</span>          bestCol = c;</div>
+<div class="line"><a id="l00914" name="l00914"></a><span class="lineno">  914</span>        }</div>
+<div class="line"><a id="l00915" name="l00915"></a><span class="lineno">  915</span>      }</div>
+<div class="line"><a id="l00916" name="l00916"></a><span class="lineno">  916</span>    }</div>
+<div class="line"><a id="l00917" name="l00917"></a><span class="lineno">  917</span>    <span class="keywordflow">return</span> bestCol;</div>
+<div class="line"><a id="l00918" name="l00918"></a><span class="lineno">  918</span>  }</div>
+<div class="line"><a id="l00919" name="l00919"></a><span class="lineno">  919</span>};</div>
+<div class="line"><a id="l00920" name="l00920"></a><span class="lineno">  920</span> </div>
+<div class="line"><a id="l00921" name="l00921"></a><span class="lineno">  921</span>} <span class="comment">// namespace</span></div>
+<div class="line"><a id="l00922" name="l00922"></a><span class="lineno">  922</span> </div>
+<div class="line"><a id="l00923" name="l00923"></a><span class="lineno">  923</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00924" data-start="{" data-end="}">
+<div class="line"><a id="l00924" name="l00924"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a08016a365ef7ec71aa1c7ce6182b32b9">  924</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a08016a365ef7ec71aa1c7ce6182b32b9">xilinx::AIE::createAIEInsertTraceFlowsPass</a>() {</div>
+<div class="line"><a id="l00925" name="l00925"></a><span class="lineno">  925</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEInsertTraceFlowsPass&gt;();</div>
+<div class="line"><a id="l00926" name="l00926"></a><span class="lineno">  926</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
 <div class="ttc" id="aAIEXDialect_8h_html"><div class="ttname"><a href="AIEXDialect_8h.html">AIEXDialect.h</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html">xilinx::AIE::AIETargetModel</a></div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00058">AIETargetModel.h:58</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_a0de753e79a8bde7af2ad1e9958f0f4bf"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#a0de753e79a8bde7af2ad1e9958f0f4bf">xilinx::AIE::AIETargetModel::getTileToControllerIdMap</a></div><div class="ttdeci">llvm::DenseMap&lt; TileID, int &gt; getTileToControllerIdMap(bool columnWiseUniqueIDs=true) const</div><div class="ttdoc">Return a mapping from tile coordinates to controller IDs.</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8cpp_source.html#l00102">AIETargetModel.cpp:102</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_a52a5031d69912dbdd409486dd954e881"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#a52a5031d69912dbdd409486dd954e881">xilinx::AIE::AIETargetModel::lookupRegister</a></div><div class="ttdeci">const RegisterInfo * lookupRegister(llvm::StringRef name, TileID tile, bool isMem=false) const</div><div class="ttdoc">Register Database API - provides access to register and event information for trace configuration and...</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8cpp_source.html#l00061">AIETargetModel.cpp:61</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_a668ed6cb8d5024f4c78388b56d8c87a0"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#a668ed6cb8d5024f4c78388b56d8c87a0">xilinx::AIE::AIETargetModel::getDmaBdAddress</a></div><div class="ttdeci">virtual uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel=-1, AIE::DMAChannelDir direction=AIE::DMAChannelDir::MM2S) const =0</div><div class="ttdoc">Return the array address of the dma buffer descriptor for the given col, row, buffer descriptor id,...</div></div>
+<div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_a729ed6f03e901d4370bae42be1996dc5"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#a729ed6f03e901d4370bae42be1996dc5">xilinx::AIE::AIETargetModel::getDmaBdAddressOffset</a></div><div class="ttdeci">virtual uint32_t getDmaBdAddressOffset(int col, int row) const =0</div><div class="ttdoc">Return the offset of the base address field within the shim dma buffer descriptor.</div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_a9e0cf48a851a279c50ec2326f100e9df"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#a9e0cf48a851a279c50ec2326f100e9df">xilinx::AIE::AIETargetModel::isShimNOCTile</a></div><div class="ttdeci">bool isShimNOCTile(int col, int row) const</div><div class="ttdoc">Return true if the given tile is a ShimNOC tile.</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00157">AIETargetModel.h:157</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_acae8887d9d64be1a250a2f14eea3ec43"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#acae8887d9d64be1a250a2f14eea3ec43">xilinx::AIE::AIETargetModel::getColumnShift</a></div><div class="ttdeci">virtual uint32_t getColumnShift() const =0</div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_ad211b18c915a01ab1c3a1b731cafabea"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">xilinx::AIE::AIETargetModel::columns</a></div><div class="ttdeci">virtual int columns() const =0</div><div class="ttdoc">Return the number of columns in the device.</div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a08016a365ef7ec71aa1c7ce6182b32b9"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a08016a365ef7ec71aa1c7ce6182b32b9">xilinx::AIE::createAIEInsertTraceFlowsPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEInsertTraceFlowsPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEInsertTraceFlows_8cpp_source.html#l00868">AIEInsertTraceFlows.cpp:868</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a08016a365ef7ec71aa1c7ce6182b32b9"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a08016a365ef7ec71aa1c7ce6182b32b9">xilinx::AIE::createAIEInsertTraceFlowsPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEInsertTraceFlowsPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEInsertTraceFlows_8cpp_source.html#l00924">AIEInsertTraceFlows.cpp:924</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a13c075c9d7c2571066fd7cf9c0633472"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">xilinx::AIE::channel</a></div><div class="ttdeci">int channel</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00129">AIEDialect.h:129</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a1e6006c1b4fccd997eba880457892eec"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">xilinx::AIE::row</a></div><div class="ttdeci">int row</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00055">AIETargetModel.h:55</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2e68be9ae4fa95fd84120dc8154599e6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">xilinx::AIE::col</a></div><div class="ttdeci">int col</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00055">AIETargetModel.h:55</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructargs_html"><div class="ttname"><a href="structargs.html">args</a></div><div class="ttdef"><b>Definition</b> <a href="xrt__test__wrapper_8h_source.html#l00013">xrt_test_wrapper.h:13</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1BitFieldInfo_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1BitFieldInfo.html">xilinx::AIE::BitFieldInfo</a></div><div class="ttdoc">Bit field information for a register.</div><div class="ttdef"><b>Definition</b> <a href="AIERegisterDatabase_8h_source.html#l00029">AIERegisterDatabase.h:29</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1RegisterInfo_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1RegisterInfo.html">xilinx::AIE::RegisterInfo</a></div><div class="ttdoc">Register information.</div><div class="ttdef"><b>Definition</b> <a href="AIERegisterDatabase_8h_source.html#l00041">AIERegisterDatabase.h:41</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1RegisterInfo_html_a11076dcf3c48826b1dafeee2a002735b"><div class="ttname"><a href="structxilinx_1_1AIE_1_1RegisterInfo.html#a11076dcf3c48826b1dafeee2a002735b">xilinx::AIE::RegisterInfo::getField</a></div><div class="ttdeci">const BitFieldInfo * getField(llvm::StringRef fieldName) const</div><div class="ttdef"><b>Definition</b> <a href="AIERegisterDatabase_8cpp_source.html#l00027">AIERegisterDatabase.cpp:27</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1RegisterInfo_html_a7d6152aea50e82209273324238b9efd2"><div class="ttname"><a href="structxilinx_1_1AIE_1_1RegisterInfo.html#a7d6152aea50e82209273324238b9efd2">xilinx::AIE::RegisterInfo::offset</a></div><div class="ttdeci">uint32_t offset</div><div class="ttdef"><b>Definition</b> <a href="AIERegisterDatabase_8h_source.html#l00043">AIERegisterDatabase.h:43</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Apr 21 2026 18:17:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Apr 23 2026 17:28:55 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
