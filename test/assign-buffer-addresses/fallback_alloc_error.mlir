@@ -17,8 +17,22 @@ module @test2 {
 
     // expected-warning @below {{Bank-aware allocation failed, trying basic sequential allocation.}}
     %tile34 = aie.tile(3, 4)
+    // expected-error @below {{'aie.buffer' op would override existing mem_bank}}
     %buf0 = aie.buffer(%tile34) { sym_name = "a", mem_bank = 1 : i32 } : memref<4096xi32> // use the whole buffer
+    %buf2 = aie.buffer(%tile34) { sym_name = "b", address = 16416 : i32, aligned = false } : memref<1024xi32> // allocate on bank_id 1
+  }
+}
+
+
+// -----
+
+module @test3 {
+  aie.device(npu1) {
+
+    // expected-warning @below {{Bank-aware allocation failed, trying basic sequential allocation.}}
+    %tile34 = aie.tile(3, 4)
+    %buf0 = aie.buffer(%tile34) { sym_name = "a", address = 16384 : i32, mem_bank = 1 : i32 } : memref<4096xi32> // use the whole buffer
     // expected-error@+1 {{'aie.buffer' op would override allocated address}}    
-    %buf2 = aie.buffer(%tile34) { sym_name = "b", address = 16416 : i32 } : memref<1024xi32> // allocate on bank_id 1
+    %buf2 = aie.buffer(%tile34) { sym_name = "b", address = 16416 : i32, aligned = false } : memref<1024xi32> // allocate on bank_id 1
   }
 }

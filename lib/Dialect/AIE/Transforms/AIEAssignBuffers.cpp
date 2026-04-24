@@ -459,7 +459,23 @@ bool simpleBankAwareAllocation(TileOp tile) {
   });
 
 
-  // First, allocate the buffer with pre-allocated address or mem_bank
+  // First, allocate the buffer with pre-allocated address
+  // Then, allocated the buffer with pre-allocated mem_bank t
+  // Do it by doing a sort preAllocatedBuffers to have buffer with address first, then buffer with only mem_bank
+  std::sort(preAllocatedBuffers.begin(), preAllocatedBuffers.end(),
+      [](BufferOp a, BufferOp b) -> bool {
+        auto a_addr = a.getAddress();
+        auto b_addr = b.getAddress();
+        if(a_addr.has_value() && !b_addr.has_value()){
+          return true;// a buffer before b_buffer
+        }else if(!a_addr.has_value() && b_addr.has_value()){
+          return false;// b buffer before a_buffer
+        }else{
+          return false;
+        }
+      }
+  );
+
   for(auto buffer: preAllocatedBuffers){
 
     auto has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
