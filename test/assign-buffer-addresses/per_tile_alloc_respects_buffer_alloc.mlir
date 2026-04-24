@@ -17,10 +17,10 @@ module @test {
     //This test is making sure that the alloc-scheme=basic-sequential flag is respected.
 
     %t1 = aie.tile(0, 1)
-    //CHECK: address = 0
-    %buf0 = aie.buffer(%t1) { address = 0 : i32 } : memref<1024xi32>
-    //CHECK: address = 1024
-    %buf2 = aie.buffer(%t1) { address = 1024 : i32 } : memref<1024xi32>
+    //CHECK: address = 2048
+    %buf0 = aie.buffer(%t1) { address = 2048 : i32 } : memref<1024xi32>
+    //CHECK: address = 3072
+    %buf2 = aie.buffer(%t1) { address = 3072 : i32 } : memref<1024xi32>
     //CHECK: address = 12288
     %b3 = aie.buffer(%t1) { address = 12288 : i32 } : memref<1024xi32>
     //CHECK: address = 20000
@@ -28,6 +28,6 @@ module @test {
 
     aie.core(%t1) {
       aie.end
-    }
+    }{ stackSize = 2048 :i32}
   }
 }

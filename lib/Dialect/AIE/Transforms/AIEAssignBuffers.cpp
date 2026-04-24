@@ -102,6 +102,12 @@ bool basicAllocation(TileOp tile) {
     address += stacksize;
   }
 
+
+  // sanity check: ensure pre-allocated buffers do is not allocated into the stack space.
+  for(auto buffer: allocated_buffers){
+    assert(buffer.getAddress().value() >= address && "pre-allocated buffer address overlaps with stack space");
+  }
+
   // As the next address to allocate is assigned, skip over any buffers
   // from the allocated_buffers list.
   auto current_alloc = allocated_buffers.begin();
