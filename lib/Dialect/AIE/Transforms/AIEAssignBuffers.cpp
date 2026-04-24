@@ -47,6 +47,8 @@ bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
     for (auto buffer : buffers) {
       assert(buffer.getAddress().has_value() &&
              "buffer must have address assigned");
+      assert(buffer.getAddress().value() >= stacksize &&
+             "buffer address overlaps with stack space");
       printbuffer(buffer.name(), buffer.getAddress().value(),
                   buffer.getAllocationSize());
     }
@@ -102,12 +104,6 @@ bool basicAllocation(TileOp tile) {
     address += stacksize;
   }
 
-
-  // sanity check: ensure pre-allocated buffers do is not allocated into the stack space.
-  for(auto buffer: allocated_buffers){
-    assert(buffer.getAddress().value() >= address && "pre-allocated buffer address overlaps with stack space");
-  }
-
   // As the next address to allocate is assigned, skip over any buffers
   // from the allocated_buffers list.
   auto current_alloc = allocated_buffers.begin();
@@ -124,15 +120,26 @@ bool basicAllocation(TileOp tile) {
     address += buffer.getAllocationSize();
   }
 
+  SmallVector<BufferOp> allBuffers_on_tile;
+  for(auto buffer: allocated_buffers){
+    assert(buffer.getTileOp() == tile && "pre-allocated buffer must be on the tile");
+    allBuffers_on_tile.push_back(buffer);
+  }
+    
+  for(auto buffer: buffers){
+    assert(buffer.getTileOp() == tile && "buffer must be on the tile");
+    allBuffers_on_tile.push_back(buffer);
+  }
+
   // Sort by smallest address before printing memory map.
-  std::sort(buffers.begin(), buffers.end(), [](BufferOp a, BufferOp b) {
+  std::sort(allBuffers_on_tile.begin(), allBuffers_on_tile.end(), [](BufferOp a, BufferOp b) {
     assert(a.getAddress().has_value() && "buffer must have address assigned");
     assert(b.getAddress().has_value() && "buffer must have address assigned");
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
   return checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
-                               buffers);
+                               allBuffers_on_tile);
 }
 
 //===----------------------------------------------------------------------===//
