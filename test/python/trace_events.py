@@ -33,9 +33,11 @@
 # CHECK: AIE2.CoreEvent.SRS_SATURATE does not exist
 # CHECK: All tests passed!
 
-import aie.utils.trace.events.aie as aie1
-import aie.utils.trace.events.aie2 as aie2
-import aie.utils.trace.events.aie2p as aie2p
+from aie.utils.trace.events import get_events_for_device
+
+aie1 = get_events_for_device("xcvc1902")
+aie2 = get_events_for_device("npu1")
+aie2p = get_events_for_device("npu2p")
 
 
 def test_arch(name, core_cls, mem_cls, shim_cls, mem_tile_cls=None):
@@ -132,19 +134,15 @@ def test_edge_cases():
     assert hasattr(aie2.MemEvent, "WATCHPOINT_0"), "AIE2 should have WATCHPOINT_0"
     print("AIE2.MemEvent has WATCHPOINT_0")
 
-    # MemTileEvent only exists in AIE2/AIE2P
-    assert hasattr(aie1, "MemTileEvent"), "AIE1 module has MemTileEvent class"
-    # But AIE1's MemTileEvent has no events (just pass)
+    # MemTileEvent only has events in AIE2/AIE2P
     aie1_memtile_events = [e for e in aie1.MemTileEvent]
     assert len(aie1_memtile_events) == 0, "AIE1 MemTileEvent should be empty"
     print("AIE2 has MemTileEvent, AIE1 does not")
 
     # AIE2/AIE2P have actual MemTileEvent events
-    assert hasattr(aie2, "MemTileEvent"), "AIE2 should have MemTileEvent"
     aie2_memtile_events = [e for e in aie2.MemTileEvent]
     assert len(aie2_memtile_events) > 0, "AIE2 MemTileEvent should have events"
 
-    assert hasattr(aie2p, "MemTileEvent"), "AIE2P should have MemTileEvent"
     aie2p_memtile_events = [e for e in aie2p.MemTileEvent]
     assert len(aie2p_memtile_events) > 0, "AIE2P MemTileEvent should have events"
     print("AIE2P has MemTileEvent, AIE1 does not")
