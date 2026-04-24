@@ -15,7 +15,7 @@
 // CHECK: %_anonymous0 = aie.buffer(%tile_4_4) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "_anonymous0"} : memref<500xi32> 
 // CHECK: %a1 = aie.buffer(%tile_3_3) {address = 2048 : i32, mem_bank = 0 : i32, sym_name = "a1"} : memref<4xi8> 
 // CHECK: %b2 = aie.buffer(%tile_3_3) {address = 2052 : i32, aligned = false, mem_bank = 0 : i32, sym_name = "b2"} : memref<12xi8> 
-// CHECK: %b3 = aie.buffer(%tile_3_3) {address = 2112 : i32, mem_bank = 0 : i32, sym_name = "b3"} : memref<4xi8> 
+// CHECK: %b3 = aie.buffer(%tile_3_3) {address = 2080 : i32, mem_bank = 0 : i32, sym_name = "b3"} : memref<4xi8> 
 module @test {
   aie.device(xcvc1902) {
     %0 = aie.tile(3, 3)

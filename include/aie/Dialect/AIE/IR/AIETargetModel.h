@@ -454,7 +454,7 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
-  uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
+  uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
   uint32_t getMemTileLoadStoreBusWidth() const override { return 128; }
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
@@ -556,7 +556,7 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
-  uint32_t getComputeTileLoadStoreBusWidth() const override { return 512; }
+  uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
   uint32_t getMemTileLoadStoreBusWidth() const override { return 256; }  
 
   using AIETargetModel::getNumLocks;
