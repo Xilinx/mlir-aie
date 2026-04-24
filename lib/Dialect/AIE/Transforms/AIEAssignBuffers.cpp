@@ -39,6 +39,18 @@ bool isBufferPreAllocated(BufferOp buffer ){
 }
 
 
+// Return an address that is aligned to tile's load/store bus
+// NOTE: assume address are byte address
+uint32_t getAlignedAddress( uint32_t address, uint32_t alignBitWidth){
+  assert(alignBitWidth != 0 && alignBitWidth % 8 == 0 && "alignBitWidth must be a non-zero multiple of 8");
+  uint32_t alignByteWidth = alignBitWidth / 8;
+  if (address % alignByteWidth == 0) {
+    return address;
+  } else {
+    return ((address / alignByteWidth) + 1) * alignByteWidth;
+  }
+
+}
 
 // Check if there is any overlap between the stack and the allocated buffers. 
 bool checkAndPrintOverlapStackframe(int stacksize, SmallVector<BufferOp> &buffers) {
@@ -94,10 +106,18 @@ bool basicAllocation(TileOp tile) {
 
   const auto &targetModel = getTargetModel(tile);
   int maxDataMemorySize = 0;
-  if (tile.isMemTile())
-    maxDataMemorySize = targetModel.getMemTileSize();
-  else
-    maxDataMemorySize = targetModel.getLocalMemorySize();
+  uint32_t tileAlignBitWidth  = 0;
+  if (tile.isMemTile()){
+      maxDataMemorySize = targetModel.getMemTileSize();
+      tileAlignBitWidth = targetModel.getMemTileLoadStoreBusWidth();
+  }
+  else{
+      maxDataMemorySize = targetModel.getLocalMemorySize();
+      tileAlignBitWidth = targetModel.getComputeTileLoadStoreBusWidth();
+  }
+
+
+
 
   SmallVector<BufferOp> buffers;
   SmallVector<BufferOp> allocated_buffers;
@@ -138,6 +158,16 @@ bool basicAllocation(TileOp tile) {
     address += stacksize;
   }
 
+
+
+  // Ensure align of preallicate buffer
+  for(auto buffer:allocated_buffers){
+    if(buffer.getAligned() && buffer.getAddress().value() % (tileAlignBitWidth/8) != 0){
+      buffer.emitOpError("pre-allocated address must be aligned to tile load/store bus width when aligned attribute is set");
+      return false;
+    }
+  }
+
   // As the next address to allocate is assigned, skip over any buffers
   // from the allocated_buffers list.
   auto current_alloc = allocated_buffers.begin();
@@ -150,7 +180,14 @@ bool basicAllocation(TileOp tile) {
                 current_alloc->getAllocationSize();
       current_alloc++;
     }
-    buffer.setAddress(address);
+
+
+    if(buffer.getAligned()){
+      address = getAlignedAddress(address, tileAlignBitWidth);
+      buffer.setAddress(address);
+    }else{
+      buffer.setAddress(address);
+    }
     address += buffer.getAllocationSize();
   }
 
@@ -193,7 +230,7 @@ void fillBankLimits(int numBanks, int bankSize,
 void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
                                int64_t end_addr,
                                std::vector<int64_t> &nextAddrInBanks) {
-  // Fixme: alignment
+
   buffer.setAddress(start_addr);
   nextAddrInBanks[buffer.getMemBank().value()] = end_addr;
 }
@@ -209,7 +246,7 @@ void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
 // will be overwritten and returns false (which will cause the buffer to be
 // added to the list of buffers without addresses, to be completed later on).
 FailureOr<bool>
-checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
+checkAndAddBufferWithAddress(BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
                              std::vector<int64_t> &nextAddrInBanks,
                              std::vector<BankLimits> &bankLimits) {
   auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
@@ -219,6 +256,9 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
   auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
 
   int addr = addrAttr.getInt();
+  if(buffer.getAligned()  && addr %(tileAlignBitWidth/8) != 0 ){
+    return buffer->emitOpError("address attribute value must be aligned to tile load/store bus width when aligned attribute is set");
+  }
   for (int i = 0; i < numBanks; i++) {
     // if the address is not within the bank, continue
     if (addr < bankLimits[i].startAddr || addr >= bankLimits[i].endAddr)
@@ -251,7 +291,7 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
 // false (which will cause the buffer to be added to the list of buffers
 // without addresses, to be completed later on).
 FailureOr<bool>
-checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
+checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,uint32_t tileAlignBitWidth,
                              std::vector<int64_t> &nextAddrInBanks,
                              std::vector<BankLimits> &bankLimits) {
   auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
@@ -260,6 +300,10 @@ checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
 
   int mem_bank = memBankAttr.getInt();
   int64_t startAddr = nextAddrInBanks[mem_bank];
+  if(buffer.getAligned()){
+    startAddr = getAlignedAddress(startAddr, tileAlignBitWidth);
+  }
+
   int64_t endAddr = startAddr + buffer.getAllocationSize();
   if (endAddr > bankLimits[mem_bank].endAddr)
     return buffer->emitOpError("would override existing mem_bank");
@@ -317,7 +361,8 @@ void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
 // Returns true if the buffer was successfully allocated, false otherwise.
 // If no bank has enough space to accommodate the buffer, an error is emitted.
 
-int setBufferAddress(BufferOp buffer, int numBanks, int &startBankIndex,
+int setBufferAddress(BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
+                     int &startBankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
   assert(startBankIndex < numBanks &&
@@ -326,6 +371,11 @@ int setBufferAddress(BufferOp buffer, int numBanks, int &startBankIndex,
   bool allocated = false;
   for (int i = 0; i < numBanks; i++) {
     int64_t startAddr = nextAddrInBanks[bankIndex];
+
+    if(buffer.getAligned()){
+      startAddr = getAlignedAddress(startAddr, tileAlignBitWidth);
+    }
+
     int64_t endAddr = startAddr + buffer.getAllocationSize();
     if (endAddr <= bankLimits[bankIndex].endAddr) {
       buffer.setMemBank(bankIndex);
@@ -421,10 +471,15 @@ bool simpleBankAwareAllocation(TileOp tile) {
 
   const auto &targetModel = getTargetModel(tile);
   int maxDataMemorySize = 0;
-  if (tile.isMemTile())
+  uint32_t tileAlignBitWidth  = 0;
+  if (tile.isMemTile()){
     maxDataMemorySize = targetModel.getMemTileSize();
-  else
+    tileAlignBitWidth = targetModel.getMemTileLoadStoreBusWidth();
+  }
+  else{
     maxDataMemorySize = targetModel.getLocalMemorySize();
+    tileAlignBitWidth = targetModel.getComputeTileLoadStoreBusWidth();
+  }
 
   int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
   int bankSize = maxDataMemorySize / numBanks;
@@ -478,13 +533,13 @@ bool simpleBankAwareAllocation(TileOp tile) {
 
   for(auto buffer: preAllocatedBuffers){
 
-    auto has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
+    auto has_addr = checkAndAddBufferWithAddress(buffer, numBanks, tileAlignBitWidth,
                                                  nextAddrInBanks, bankLimits);
     if (failed(has_addr))
       return false;
     if (has_addr.value())
       continue;
-    auto has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
+    auto has_bank = checkAndAddBufferWithMemBank(buffer, numBanks, tileAlignBitWidth,
                                                  nextAddrInBanks, bankLimits);
     if (failed(has_bank))
       return false;
@@ -504,7 +559,7 @@ bool simpleBankAwareAllocation(TileOp tile) {
     // it prints the current memory map of the banks,
     // deallocates all the buffers, and
     // returns a failure.
-    if (!setBufferAddress(buffer, numBanks, bankIndex, nextAddrInBanks,
+    if (!setBufferAddress(buffer, numBanks, tileAlignBitWidth, bankIndex, nextAddrInBanks,
                           bankLimits)) {
 
       printMemMap(tile, allocatedBuffers, preAllocatedBuffers, numBanks,

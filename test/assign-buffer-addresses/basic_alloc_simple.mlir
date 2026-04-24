@@ -8,12 +8,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s | FileCheck %s
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 3104 : i32, sym_name = "a"} : memref<16xi8>
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 1024 : i32, sym_name = "b"} : memref<512xi32>
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 3072 : i32, sym_name = "c"} : memref<16xi16>
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 1024 : i32, sym_name = "_anonymous0"} : memref<500xi32>
-
+// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 4096 : i32, sym_name = "a"} : memref<1024xi32>
+// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 8192 : i32, sym_name = "b"} : memref<1031xi32>
+// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 12316 : i32, aligned = false, sym_name = "c"} : memref<100xi32>
+// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 12736 : i32, sym_name = "d"} : memref<1xi32>
+// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 4096 : i32, sym_name = "a2"} : memref<1xi32>
+// CHECK:   {{.*}} aie.buffer({{.*}}) {address = 4100 : i32, aligned = false, sym_name = "b2"} : memref<1024xi32>
 module @test {
   aie.device(xcvc1902) {
     %0 = aie.tile(3, 3)
@@ -29,4 +34,41 @@ module @test {
       aie.end
     }
   }
+}
+
+// -----
+
+module @test_align{
+
+  aie.device(npu2){
+      %0 = aie.tile(3, 3)
+      %b1 = aie.buffer(%0) { address=4096 : i32,  sym_name = "a"} : memref<1024xi32>
+      %b2 = aie.buffer(%0) { sym_name = "b"} : memref<1031xi32>
+      %b3 = aie.buffer(%0) { sym_name = "c", aligned=false } : memref<100xi32>
+      %b4 = aie.buffer(%0) { sym_name = "d"} : memref<1xi32>
+
+      aie.core(%0){
+        aie.end
+      }{stackSize = 4096 : i32}
+  }
+
+
+}
+
+
+// -----
+
+module @test_align2{
+
+  aie.device(npu2) {
+    %0 = aie.tile(3, 3)
+    %b1 = aie.buffer(%0) { address = 4096 : i32, sym_name = "a2" } : memref<1xi32>
+    %b2 = aie.buffer(%0) { address = 4100 : i32, sym_name = "b2", aligned=false } : memref<1024xi32>
+
+    aie.core(%0) {
+      aie.end
+    }{stackSize = 4096 : i32}
+
+  }
+
 }

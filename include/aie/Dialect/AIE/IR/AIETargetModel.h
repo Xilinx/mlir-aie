@@ -257,6 +257,13 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
+  /// Return the data bus width (in bits) for load/store operations of a compute core.
+  virtual uint32_t getComputeTileLoadStoreBusWidth() const = 0;
+  
+  //NOTE: maybe it should be set to 4Byte align? Since DMA on Memtile seem handles the unalign access
+  /// Return the data bus width (in bits) for load/store operations of a memory tile.
+  virtual uint32_t getMemTileLoadStoreBusWidth() const = 0;
+
   /// Return the size (in bits) of the accumulator/cascade.
   virtual uint32_t getAccumulatorCascadeSize() const = 0;
 
@@ -447,6 +454,8 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
+  uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
+  uint32_t getMemTileLoadStoreBusWidth() const override { return 128; }
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
     return 16; // AIE1 has no MemTiles, always 16
@@ -547,6 +556,8 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
+  uint32_t getComputeTileLoadStoreBusWidth() const override { return 512; }
+  uint32_t getMemTileLoadStoreBusWidth() const override { return 256; }  
 
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
