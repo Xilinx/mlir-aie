@@ -160,7 +160,7 @@ bool basicAllocation(TileOp tile) {
 
 
 
-  // Ensure align of preallicate buffer
+  // Ensure alignment of preallocated buffer
   for(auto buffer:allocated_buffers){
     if(buffer.getAligned() && buffer.getAddress().value() % (tileAlignBitWidth/8) != 0){
       buffer.emitOpError("pre-allocated address must be aligned to tile load/store bus width when aligned attribute is set");
