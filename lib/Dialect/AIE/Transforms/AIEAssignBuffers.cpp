@@ -24,6 +24,38 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+
+
+
+bool isBufferForTile(BufferOp buffer, TileOp tile) {
+  return buffer.getTile() == tile;
+}
+
+bool isBufferPreAllocated(BufferOp buffer ){
+  auto addr = buffer.getAddress();
+  auto memBank = buffer.getMemBank();
+  return (addr != std::nullopt  || memBank != std::nullopt);
+
+}
+
+
+
+// Check if there is any overlap between the stack and the allocated buffers. 
+bool checkAndPrintOverlapStackframe(int stacksize, SmallVector<BufferOp> &buffers) {
+  for (auto buf : buffers) {
+    assert(buf.getAddress().has_value() && "buffer must have address assigned");
+    if (buf.getAddress().value() < stacksize) {
+      buf.emitOpError("buffer '")
+          << buf.name() << "' at address 0x"
+          << llvm::utohexstr(buf.getAddress().value())
+          << " overlaps with stack (size: " << stacksize << " bytes)";
+      return false;
+    }
+  }
+  return true;
+}
+
+
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
@@ -47,8 +79,6 @@ bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
     for (auto buffer : buffers) {
       assert(buffer.getAddress().has_value() &&
              "buffer must have address assigned");
-      assert(buffer.getAddress().value() >= stacksize &&
-             "buffer address overlaps with stack space");
       printbuffer(buffer.name(), buffer.getAddress().value(),
                   buffer.getAllocationSize());
     }
@@ -71,14 +101,18 @@ bool basicAllocation(TileOp tile) {
 
   SmallVector<BufferOp> buffers;
   SmallVector<BufferOp> allocated_buffers;
+  SmallVector<BufferOp> allBuffers_on_tile;  
   // Collect all the buffers for this tile. If the buffer has an address, add
   // it to allocated_buffers. Otherwise, add it to buffers.
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
     if (buffer.getTileOp() == tile) {
-      if (buffer.getAddress())
-        allocated_buffers.push_back(buffer);
-      else
+      if (buffer.getAddress()){
+        allocated_buffers.push_back(buffer); //TODO: Right now, this ignore all buffer with only mem_bank attribute.
+      }
+      else{
         buffers.push_back(buffer);
+      }
+      allBuffers_on_tile.push_back(buffer);
     }
   });
 
@@ -120,16 +154,6 @@ bool basicAllocation(TileOp tile) {
     address += buffer.getAllocationSize();
   }
 
-  SmallVector<BufferOp> allBuffers_on_tile;
-  for(auto buffer: allocated_buffers){
-    assert(buffer.getTileOp() == tile && "pre-allocated buffer must be on the tile");
-    allBuffers_on_tile.push_back(buffer);
-  }
-    
-  for(auto buffer: buffers){
-    assert(buffer.getTileOp() == tile && "buffer must be on the tile");
-    allBuffers_on_tile.push_back(buffer);
-  }
 
   // Sort by smallest address before printing memory map.
   std::sort(allBuffers_on_tile.begin(), allBuffers_on_tile.end(), [](BufferOp a, BufferOp b) {
@@ -138,7 +162,8 @@ bool basicAllocation(TileOp tile) {
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
-  return checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
+  return  checkAndPrintOverlapStackframe(stacksize,allBuffers_on_tile ) &&\
+  checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
                                allBuffers_on_tile);
 }
 
@@ -173,11 +198,7 @@ void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
   nextAddrInBanks[buffer.getMemBank().value()] = end_addr;
 }
 
-bool isBufferPreAllocated(BufferOp buffer) {
-  auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
-  auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
-  return (addrAttr != nullptr || memBankAttr != nullptr);
-}
+
 
 // Function that checks whether the given buffer already has a set address
 // attribute. If it does, it finds in which bank the buffer is and checks
@@ -423,46 +444,34 @@ bool simpleBankAwareAllocation(TileOp tile) {
 
   SmallVector<BufferOp> preAllocatedBuffers;
   SmallVector<BufferOp> buffersToAlloc;
-  SmallVector<BufferOp> allBuffers;
+  SmallVector<BufferOp> allBuffers_on_tile;   
   // Collect all the buffers for this tile.
   device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
-    if (buffer.getTileOp() == tile)
-      allBuffers.push_back(buffer);
-  });
-  // If possible, the buffers with an already specified address will not
-  // be overwritten (the available address range of the bank the buffers
-  // are in will start AFTER the specified adress + buffer size).
-  // Buffers with a specified mem_bank will be assigned first, after
-  // the above.
-  for (auto buffer : allBuffers) {
-    if (buffer.getTileOp() == tile) {
-
-      if (!isBufferPreAllocated(buffer)) {
+    if (buffer.getTileOp() == tile){
+      if(!isBufferPreAllocated(buffer)){
         buffersToAlloc.push_back(buffer);
-        continue;
-      }
-
-      // Buffer has address and/or mem_bank. Try address first.
-      auto has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
-                                                   nextAddrInBanks, bankLimits);
-      if (failed(has_addr))
-        return false;
-      if (has_addr.value()) {
+      } else {
         preAllocatedBuffers.push_back(buffer);
-        continue;
       }
-      // No address, but has mem_bank.
-      auto has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
-                                                   nextAddrInBanks, bankLimits);
-      if (failed(has_bank))
-        return false;
-      if (has_bank.value()) {
-        preAllocatedBuffers.push_back(buffer);
-        continue;
-      }
-      // Shouldn't reach here since isBufferPreAllocated was true.
-      return false;
+      allBuffers_on_tile.push_back(buffer);
     }
+
+  });
+
+
+  // First, allocate the buffer with pre-allocated address or mem_bank
+  for(auto buffer: preAllocatedBuffers){
+
+    auto has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
+                                                 nextAddrInBanks, bankLimits);
+    if (failed(has_addr))
+      return false;
+    if (has_addr.value())
+      continue;
+    auto has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
+                                                 nextAddrInBanks, bankLimits);
+    if (failed(has_bank))
+      return false;
   }
 
   // Sort by largest allocation size before allocating.
@@ -472,7 +481,7 @@ bool simpleBankAwareAllocation(TileOp tile) {
             });
 
   // Set addresses for remaining buffers.
-  SmallVector<BufferOp> allocatedBuffers;
+  SmallVector<BufferOp> allocatedBuffers; // keep track of buffers allocated in this function to be able to deallocate in case of failure and print helpful debug info about them. This does not include the pre-allocated buffers.
   int bankIndex = 0;
   for (auto buffer : buffersToAlloc) {
     // If the buffer doesn't fit in any of the bank space then
@@ -490,15 +499,17 @@ bool simpleBankAwareAllocation(TileOp tile) {
       allocatedBuffers.push_back(buffer);
     }
   }
+  assert(allocatedBuffers.size() == buffersToAlloc.size());
 
   // Sort by smallest address before printing memory map.
-  std::sort(allBuffers.begin(), allBuffers.end(), [](BufferOp a, BufferOp b) {
+  std::sort(allBuffers_on_tile.begin(), allBuffers_on_tile.end(), [](BufferOp a, BufferOp b) {
     assert(a.getAddress().has_value() && "buffer must have address assigned");
     assert(b.getAddress().has_value() && "buffer must have address assigned");
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
-  return checkAndPrintOverflow(tile, numBanks, stacksize, allBuffers,
+  return checkAndPrintOverlapStackframe(stacksize,allBuffers_on_tile) && \
+  checkAndPrintOverflow(tile, numBanks, stacksize, allBuffers_on_tile,
                                nextAddrInBanks, bankLimits);
 }
 
