@@ -1,0 +1,5810 @@
+{
+  "aie": {
+    "display_name": "AIE",
+    "prefix": "XAIE_EVENTS_",
+    "modules": {
+      "core": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "PERF_CNT_2"
+        },
+        {
+          "number": 8,
+          "name": "PERF_CNT_3"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 11,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 12,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 15,
+          "name": "GROUP_PC_EVENT"
+        },
+        {
+          "number": 16,
+          "name": "PC_0"
+        },
+        {
+          "number": 17,
+          "name": "PC_1"
+        },
+        {
+          "number": 18,
+          "name": "PC_2"
+        },
+        {
+          "number": 19,
+          "name": "PC_3"
+        },
+        {
+          "number": 20,
+          "name": "PC_RANGE_0_1"
+        },
+        {
+          "number": 21,
+          "name": "PC_RANGE_2_3"
+        },
+        {
+          "number": 22,
+          "name": "GROUP_STALL"
+        },
+        {
+          "number": 23,
+          "name": "MEMORY_STALL"
+        },
+        {
+          "number": 24,
+          "name": "STREAM_STALL"
+        },
+        {
+          "number": 25,
+          "name": "CASCADE_STALL"
+        },
+        {
+          "number": 26,
+          "name": "LOCK_STALL"
+        },
+        {
+          "number": 27,
+          "name": "DEBUG_HALTED"
+        },
+        {
+          "number": 28,
+          "name": "ACTIVE"
+        },
+        {
+          "number": 29,
+          "name": "DISABLED"
+        },
+        {
+          "number": 30,
+          "name": "ECC_ERROR_STALL"
+        },
+        {
+          "number": 31,
+          "name": "ECC_SCRUBBING_STALL"
+        },
+        {
+          "number": 32,
+          "name": "GROUP_PROGRAM_FLOW"
+        },
+        {
+          "number": 33,
+          "name": "INSTR_EVENT_0"
+        },
+        {
+          "number": 34,
+          "name": "INSTR_EVENT_1"
+        },
+        {
+          "number": 35,
+          "name": "INSTR_CALL"
+        },
+        {
+          "number": 36,
+          "name": "INSTR_RETURN"
+        },
+        {
+          "number": 37,
+          "name": "INSTR_VECTOR"
+        },
+        {
+          "number": 38,
+          "name": "INSTR_LOAD"
+        },
+        {
+          "number": 39,
+          "name": "INSTR_STORE"
+        },
+        {
+          "number": 40,
+          "name": "INSTR_STREAM_GET"
+        },
+        {
+          "number": 41,
+          "name": "INSTR_STREAM_PUT"
+        },
+        {
+          "number": 42,
+          "name": "INSTR_CASCADE_GET"
+        },
+        {
+          "number": 43,
+          "name": "INSTR_CASCADE_PUT"
+        },
+        {
+          "number": 44,
+          "name": "INSTR_LOCK_ACQUIRE_REQ"
+        },
+        {
+          "number": 45,
+          "name": "INSTR_LOCK_RELEASE_REQ"
+        },
+        {
+          "number": 46,
+          "name": "GROUP_ERRORS_0"
+        },
+        {
+          "number": 47,
+          "name": "GROUP_ERRORS_1"
+        },
+        {
+          "number": 48,
+          "name": "SRS_SATURATE"
+        },
+        {
+          "number": 49,
+          "name": "UPS_SATURATE"
+        },
+        {
+          "number": 50,
+          "name": "FP_OVERFLOW"
+        },
+        {
+          "number": 51,
+          "name": "FP_UNDERFLOW"
+        },
+        {
+          "number": 52,
+          "name": "FP_INVALID"
+        },
+        {
+          "number": 53,
+          "name": "FP_DIV_BY_ZERO"
+        },
+        {
+          "number": 54,
+          "name": "TLAST_IN_WSS_WORDS_0_2"
+        },
+        {
+          "number": 55,
+          "name": "PM_REG_ACCESS_FAILURE"
+        },
+        {
+          "number": 56,
+          "name": "STREAM_PKT_PARITY_ERROR"
+        },
+        {
+          "number": 57,
+          "name": "CONTROL_PKT_ERROR"
+        },
+        {
+          "number": 58,
+          "name": "AXI_MM_SLAVE_ERROR"
+        },
+        {
+          "number": 59,
+          "name": "INSTR_DECOMPRSN_ERROR"
+        },
+        {
+          "number": 60,
+          "name": "DM_ADDRESS_OUT_OF_RANGE"
+        },
+        {
+          "number": 61,
+          "name": "PM_ECC_ERROR_SCRUB_CORRECTED"
+        },
+        {
+          "number": 62,
+          "name": "PM_ECC_ERROR_SCRUB_2BIT"
+        },
+        {
+          "number": 63,
+          "name": "PM_ECC_ERROR_1BIT"
+        },
+        {
+          "number": 64,
+          "name": "PM_ECC_ERROR_2BIT"
+        },
+        {
+          "number": 65,
+          "name": "PM_ADDRESS_OUT_OF_RANGE"
+        },
+        {
+          "number": 66,
+          "name": "DM_ACCESS_TO_UNAVAILABLE"
+        },
+        {
+          "number": 67,
+          "name": "LOCK_ACCESS_TO_UNAVAILABLE"
+        },
+        {
+          "number": 68,
+          "name": "INSTR_EVENT_2"
+        },
+        {
+          "number": 69,
+          "name": "INSTR_EVENT_3"
+        },
+        {
+          "number": 73,
+          "name": "GROUP_STREAM_SWITCH"
+        },
+        {
+          "number": 74,
+          "name": "PORT_IDLE_0"
+        },
+        {
+          "number": 75,
+          "name": "PORT_RUNNING_0"
+        },
+        {
+          "number": 76,
+          "name": "PORT_STALLED_0"
+        },
+        {
+          "number": 77,
+          "name": "PORT_TLAST_0"
+        },
+        {
+          "number": 78,
+          "name": "PORT_IDLE_1"
+        },
+        {
+          "number": 79,
+          "name": "PORT_RUNNING_1"
+        },
+        {
+          "number": 80,
+          "name": "PORT_STALLED_1"
+        },
+        {
+          "number": 81,
+          "name": "PORT_TLAST_1"
+        },
+        {
+          "number": 82,
+          "name": "PORT_IDLE_2"
+        },
+        {
+          "number": 83,
+          "name": "PORT_RUNNING_2"
+        },
+        {
+          "number": 84,
+          "name": "PORT_STALLED_2"
+        },
+        {
+          "number": 85,
+          "name": "PORT_TLAST_2"
+        },
+        {
+          "number": 86,
+          "name": "PORT_IDLE_3"
+        },
+        {
+          "number": 87,
+          "name": "PORT_RUNNING_3"
+        },
+        {
+          "number": 88,
+          "name": "PORT_STALLED_3"
+        },
+        {
+          "number": 89,
+          "name": "PORT_TLAST_3"
+        },
+        {
+          "number": 90,
+          "name": "PORT_IDLE_4"
+        },
+        {
+          "number": 91,
+          "name": "PORT_RUNNING_4"
+        },
+        {
+          "number": 92,
+          "name": "PORT_STALLED_4"
+        },
+        {
+          "number": 93,
+          "name": "PORT_TLAST_4"
+        },
+        {
+          "number": 94,
+          "name": "PORT_IDLE_5"
+        },
+        {
+          "number": 95,
+          "name": "PORT_RUNNING_5"
+        },
+        {
+          "number": 96,
+          "name": "PORT_STALLED_5"
+        },
+        {
+          "number": 97,
+          "name": "PORT_TLAST_5"
+        },
+        {
+          "number": 98,
+          "name": "PORT_IDLE_6"
+        },
+        {
+          "number": 99,
+          "name": "PORT_RUNNING_6"
+        },
+        {
+          "number": 100,
+          "name": "PORT_STALLED_6"
+        },
+        {
+          "number": 101,
+          "name": "PORT_TLAST_6"
+        },
+        {
+          "number": 102,
+          "name": "PORT_IDLE_7"
+        },
+        {
+          "number": 103,
+          "name": "PORT_RUNNING_7"
+        },
+        {
+          "number": 104,
+          "name": "PORT_STALLED_7"
+        },
+        {
+          "number": 105,
+          "name": "PORT_TLAST_7"
+        },
+        {
+          "number": 106,
+          "name": "GROUP_BROADCAST"
+        },
+        {
+          "number": 107,
+          "name": "BROADCAST_0"
+        },
+        {
+          "number": 108,
+          "name": "BROADCAST_1"
+        },
+        {
+          "number": 109,
+          "name": "BROADCAST_2"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_3"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_4"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_5"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_6"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_7"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_8"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_9"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_10"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_11"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_12"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_13"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_14"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_15"
+        },
+        {
+          "number": 123,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 124,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 125,
+          "name": "USER_EVENT_1"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_2"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_3"
+        }
+      ],
+      "memory": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 8,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 15,
+          "name": "GROUP_WATCHPOINT"
+        },
+        {
+          "number": 16,
+          "name": "WATCHPOINT_0"
+        },
+        {
+          "number": 17,
+          "name": "WATCHPOINT_1"
+        },
+        {
+          "number": 20,
+          "name": "GROUP_DMA_ACTIVITY"
+        },
+        {
+          "number": 21,
+          "name": "DMA_S2MM_0_START_BD"
+        },
+        {
+          "number": 22,
+          "name": "DMA_S2MM_1_START_BD"
+        },
+        {
+          "number": 23,
+          "name": "DMA_MM2S_0_START_BD"
+        },
+        {
+          "number": 24,
+          "name": "DMA_MM2S_1_START_BD"
+        },
+        {
+          "number": 25,
+          "name": "DMA_S2MM_0_FINISHED_BD"
+        },
+        {
+          "number": 26,
+          "name": "DMA_S2MM_1_FINISHED_BD"
+        },
+        {
+          "number": 27,
+          "name": "DMA_MM2S_0_FINISHED_BD"
+        },
+        {
+          "number": 28,
+          "name": "DMA_MM2S_1_FINISHED_BD"
+        },
+        {
+          "number": 29,
+          "name": "DMA_S2MM_0_GO_TO_IDLE"
+        },
+        {
+          "number": 30,
+          "name": "DMA_S2MM_1_GO_TO_IDLE"
+        },
+        {
+          "number": 31,
+          "name": "DMA_MM2S_0_GO_TO_IDLE"
+        },
+        {
+          "number": 32,
+          "name": "DMA_MM2S_1_GO_TO_IDLE"
+        },
+        {
+          "number": 33,
+          "name": "DMA_S2MM_0_STALLED_LOCK_ACQUIRE"
+        },
+        {
+          "number": 34,
+          "name": "DMA_S2MM_1_STALLED_LOCK_ACQUIRE"
+        },
+        {
+          "number": 35,
+          "name": "DMA_MM2S_0_STALLED_LOCK_ACQUIRE"
+        },
+        {
+          "number": 36,
+          "name": "DMA_MM2S_1_STALLED_LOCK_ACQUIRE"
+        },
+        {
+          "number": 37,
+          "name": "DMA_S2MM_0_MEMORY_CONFLICT"
+        },
+        {
+          "number": 38,
+          "name": "DMA_S2MM_1_MEMORY_CONFLICT"
+        },
+        {
+          "number": 39,
+          "name": "DMA_MM2S_0_MEMORY_CONFLICT"
+        },
+        {
+          "number": 40,
+          "name": "DMA_MM2S_1_MEMORY_CONFLICT"
+        },
+        {
+          "number": 43,
+          "name": "GROUP_LOCK"
+        },
+        {
+          "number": 44,
+          "name": "LOCK_0_ACQ"
+        },
+        {
+          "number": 45,
+          "name": "LOCK_0_REL"
+        },
+        {
+          "number": 46,
+          "name": "LOCK_1_ACQ"
+        },
+        {
+          "number": 47,
+          "name": "LOCK_1_REL"
+        },
+        {
+          "number": 48,
+          "name": "LOCK_2_ACQ"
+        },
+        {
+          "number": 49,
+          "name": "LOCK_2_REL"
+        },
+        {
+          "number": 50,
+          "name": "LOCK_3_ACQ"
+        },
+        {
+          "number": 51,
+          "name": "LOCK_3_REL"
+        },
+        {
+          "number": 52,
+          "name": "LOCK_4_ACQ"
+        },
+        {
+          "number": 53,
+          "name": "LOCK_4_REL"
+        },
+        {
+          "number": 54,
+          "name": "LOCK_5_ACQ"
+        },
+        {
+          "number": 55,
+          "name": "LOCK_5_REL"
+        },
+        {
+          "number": 56,
+          "name": "LOCK_6_ACQ"
+        },
+        {
+          "number": 57,
+          "name": "LOCK_6_REL"
+        },
+        {
+          "number": 58,
+          "name": "LOCK_7_ACQ"
+        },
+        {
+          "number": 59,
+          "name": "LOCK_7_REL"
+        },
+        {
+          "number": 60,
+          "name": "LOCK_8_ACQ"
+        },
+        {
+          "number": 61,
+          "name": "LOCK_8_REL"
+        },
+        {
+          "number": 62,
+          "name": "LOCK_9_ACQ"
+        },
+        {
+          "number": 63,
+          "name": "LOCK_9_REL"
+        },
+        {
+          "number": 64,
+          "name": "LOCK_10_ACQ"
+        },
+        {
+          "number": 65,
+          "name": "LOCK_10_REL"
+        },
+        {
+          "number": 66,
+          "name": "LOCK_11_ACQ"
+        },
+        {
+          "number": 67,
+          "name": "LOCK_11_REL"
+        },
+        {
+          "number": 68,
+          "name": "LOCK_12_ACQ"
+        },
+        {
+          "number": 69,
+          "name": "LOCK_12_REL"
+        },
+        {
+          "number": 70,
+          "name": "LOCK_13_ACQ"
+        },
+        {
+          "number": 71,
+          "name": "LOCK_13_REL"
+        },
+        {
+          "number": 72,
+          "name": "LOCK_14_ACQ"
+        },
+        {
+          "number": 73,
+          "name": "LOCK_14_REL"
+        },
+        {
+          "number": 74,
+          "name": "LOCK_15_ACQ"
+        },
+        {
+          "number": 75,
+          "name": "LOCK_15_REL"
+        },
+        {
+          "number": 76,
+          "name": "GROUP_MEMORY_CONFLICT"
+        },
+        {
+          "number": 77,
+          "name": "CONFLICT_DM_BANK_0"
+        },
+        {
+          "number": 78,
+          "name": "CONFLICT_DM_BANK_1"
+        },
+        {
+          "number": 79,
+          "name": "CONFLICT_DM_BANK_2"
+        },
+        {
+          "number": 80,
+          "name": "CONFLICT_DM_BANK_3"
+        },
+        {
+          "number": 81,
+          "name": "CONFLICT_DM_BANK_4"
+        },
+        {
+          "number": 82,
+          "name": "CONFLICT_DM_BANK_5"
+        },
+        {
+          "number": 83,
+          "name": "CONFLICT_DM_BANK_6"
+        },
+        {
+          "number": 84,
+          "name": "CONFLICT_DM_BANK_7"
+        },
+        {
+          "number": 86,
+          "name": "GROUP_ERRORS"
+        },
+        {
+          "number": 87,
+          "name": "DM_ECC_ERROR_SCRUB_CORRECTED"
+        },
+        {
+          "number": 88,
+          "name": "DM_ECC_ERROR_SCRUB_2BIT"
+        },
+        {
+          "number": 89,
+          "name": "DM_ECC_ERROR_1BIT"
+        },
+        {
+          "number": 90,
+          "name": "DM_ECC_ERROR_2BIT"
+        },
+        {
+          "number": 91,
+          "name": "DM_PARITY_ERROR_BANK_2"
+        },
+        {
+          "number": 92,
+          "name": "DM_PARITY_ERROR_BANK_3"
+        },
+        {
+          "number": 93,
+          "name": "DM_PARITY_ERROR_BANK_4"
+        },
+        {
+          "number": 94,
+          "name": "DM_PARITY_ERROR_BANK_5"
+        },
+        {
+          "number": 95,
+          "name": "DM_PARITY_ERROR_BANK_6"
+        },
+        {
+          "number": 96,
+          "name": "DM_PARITY_ERROR_BANK_7"
+        },
+        {
+          "number": 97,
+          "name": "DMA_S2MM_0_ERROR"
+        },
+        {
+          "number": 98,
+          "name": "DMA_S2MM_1_ERROR"
+        },
+        {
+          "number": 99,
+          "name": "DMA_MM2S_0_ERROR"
+        },
+        {
+          "number": 100,
+          "name": "DMA_MM2S_1_ERROR"
+        },
+        {
+          "number": 106,
+          "name": "GROUP_BROADCAST"
+        },
+        {
+          "number": 107,
+          "name": "BROADCAST_0"
+        },
+        {
+          "number": 108,
+          "name": "BROADCAST_1"
+        },
+        {
+          "number": 109,
+          "name": "BROADCAST_2"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_3"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_4"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_5"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_6"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_7"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_8"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_9"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_10"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_11"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_12"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_13"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_14"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_15"
+        },
+        {
+          "number": 123,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 124,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 125,
+          "name": "USER_EVENT_1"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_2"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_3"
+        }
+      ],
+      "pl": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 8,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 11,
+          "name": "GROUP_DMA_ACTIVITY"
+        },
+        {
+          "number": 12,
+          "name": "DMA_S2MM_0_START_BD"
+        },
+        {
+          "number": 13,
+          "name": "DMA_S2MM_1_START_BD"
+        },
+        {
+          "number": 14,
+          "name": "DMA_MM2S_0_START_BD"
+        },
+        {
+          "number": 15,
+          "name": "DMA_MM2S_1_START_BD"
+        },
+        {
+          "number": 16,
+          "name": "DMA_S2MM_0_FINISHED_BD"
+        },
+        {
+          "number": 17,
+          "name": "DMA_S2MM_1_FINISHED_BD"
+        },
+        {
+          "number": 18,
+          "name": "DMA_MM2S_0_FINISHED_BD"
+        },
+        {
+          "number": 19,
+          "name": "DMA_MM2S_1_FINISHED_BD"
+        },
+        {
+          "number": 20,
+          "name": "DMA_S2MM_0_GO_TO_IDLE"
+        },
+        {
+          "number": 21,
+          "name": "DMA_S2MM_1_GO_TO_IDLE"
+        },
+        {
+          "number": 22,
+          "name": "DMA_MM2S_0_GO_TO_IDLE"
+        },
+        {
+          "number": 23,
+          "name": "DMA_MM2S_1_GO_TO_IDLE"
+        },
+        {
+          "number": 24,
+          "name": "DMA_S2MM_0_STALLED_LOCK_ACQUIRE"
+        },
+        {
+          "number": 25,
+          "name": "DMA_S2MM_1_STALLED_LOCK_ACQUIRE"
+        },
+        {
+          "number": 26,
+          "name": "DMA_MM2S_0_STALLED_LOCK_ACQUIRE"
+        },
+        {
+          "number": 27,
+          "name": "DMA_MM2S_1_STALLED_LOCK_ACQUIRE"
+        },
+        {
+          "number": 28,
+          "name": "GROUP_LOCK"
+        },
+        {
+          "number": 29,
+          "name": "LOCK_0_ACQUIRED"
+        },
+        {
+          "number": 30,
+          "name": "LOCK_0_RELEASED"
+        },
+        {
+          "number": 31,
+          "name": "LOCK_1_ACQUIRED"
+        },
+        {
+          "number": 32,
+          "name": "LOCK_1_RELEASED"
+        },
+        {
+          "number": 33,
+          "name": "LOCK_2_ACQUIRED"
+        },
+        {
+          "number": 34,
+          "name": "LOCK_2_RELEASED"
+        },
+        {
+          "number": 35,
+          "name": "LOCK_3_ACQUIRED"
+        },
+        {
+          "number": 36,
+          "name": "LOCK_3_RELEASED"
+        },
+        {
+          "number": 37,
+          "name": "LOCK_4_ACQUIRED"
+        },
+        {
+          "number": 38,
+          "name": "LOCK_4_RELEASED"
+        },
+        {
+          "number": 39,
+          "name": "LOCK_5_ACQUIRED"
+        },
+        {
+          "number": 40,
+          "name": "LOCK_5_RELEASED"
+        },
+        {
+          "number": 41,
+          "name": "LOCK_6_ACQUIRED"
+        },
+        {
+          "number": 42,
+          "name": "LOCK_6_RELEASED"
+        },
+        {
+          "number": 43,
+          "name": "LOCK_7_ACQUIRED"
+        },
+        {
+          "number": 44,
+          "name": "LOCK_7_RELEASED"
+        },
+        {
+          "number": 45,
+          "name": "LOCK_8_ACQUIRED"
+        },
+        {
+          "number": 46,
+          "name": "LOCK_8_RELEASED"
+        },
+        {
+          "number": 47,
+          "name": "LOCK_9_ACQUIRED"
+        },
+        {
+          "number": 48,
+          "name": "LOCK_9_RELEASED"
+        },
+        {
+          "number": 49,
+          "name": "LOCK_10_ACQUIRED"
+        },
+        {
+          "number": 50,
+          "name": "LOCK_10_RELEASED"
+        },
+        {
+          "number": 51,
+          "name": "LOCK_11_ACQUIRED"
+        },
+        {
+          "number": 52,
+          "name": "LOCK_11_RELEASED"
+        },
+        {
+          "number": 53,
+          "name": "LOCK_12_ACQUIRED"
+        },
+        {
+          "number": 54,
+          "name": "LOCK_12_RELEASED"
+        },
+        {
+          "number": 55,
+          "name": "LOCK_13_ACQUIRED"
+        },
+        {
+          "number": 56,
+          "name": "LOCK_13_RELEASED"
+        },
+        {
+          "number": 57,
+          "name": "LOCK_14_ACQUIRED"
+        },
+        {
+          "number": 58,
+          "name": "LOCK_14_RELEASED"
+        },
+        {
+          "number": 59,
+          "name": "LOCK_15_ACQUIRED"
+        },
+        {
+          "number": 60,
+          "name": "LOCK_15_RELEASED"
+        },
+        {
+          "number": 61,
+          "name": "GROUP_ERRORS"
+        },
+        {
+          "number": 62,
+          "name": "AXI_MM_SLAVE_TILE_ERROR"
+        },
+        {
+          "number": 63,
+          "name": "CONTROL_PKT_ERROR"
+        },
+        {
+          "number": 64,
+          "name": "AXI_MM_DECODE_NSU_ERROR"
+        },
+        {
+          "number": 65,
+          "name": "AXI_MM_SLAVE_NSU_ERROR"
+        },
+        {
+          "number": 66,
+          "name": "AXI_MM_UNSUPPORTED_TRAFFIC"
+        },
+        {
+          "number": 67,
+          "name": "AXI_MM_UNSECURE_ACCESS_IN_SECURE_MODE"
+        },
+        {
+          "number": 68,
+          "name": "AXI_MM_BYTE_STROBE_ERROR"
+        },
+        {
+          "number": 69,
+          "name": "DMA_S2MM_0_ERROR"
+        },
+        {
+          "number": 70,
+          "name": "DMA_S2MM_1_ERROR"
+        },
+        {
+          "number": 71,
+          "name": "DMA_MM2S_0_ERROR"
+        },
+        {
+          "number": 72,
+          "name": "DMA_MM2S_1_ERROR"
+        },
+        {
+          "number": 73,
+          "name": "GROUP_STREAM_SWITCH"
+        },
+        {
+          "number": 74,
+          "name": "PORT_IDLE_0"
+        },
+        {
+          "number": 75,
+          "name": "PORT_RUNNING_0"
+        },
+        {
+          "number": 76,
+          "name": "PORT_STALLED_0"
+        },
+        {
+          "number": 77,
+          "name": "PORT_TLAST_0"
+        },
+        {
+          "number": 78,
+          "name": "PORT_IDLE_1"
+        },
+        {
+          "number": 79,
+          "name": "PORT_RUNNING_1"
+        },
+        {
+          "number": 80,
+          "name": "PORT_STALLED_1"
+        },
+        {
+          "number": 81,
+          "name": "PORT_TLAST_1"
+        },
+        {
+          "number": 82,
+          "name": "PORT_IDLE_2"
+        },
+        {
+          "number": 83,
+          "name": "PORT_RUNNING_2"
+        },
+        {
+          "number": 84,
+          "name": "PORT_STALLED_2"
+        },
+        {
+          "number": 85,
+          "name": "PORT_TLAST_2"
+        },
+        {
+          "number": 86,
+          "name": "PORT_IDLE_3"
+        },
+        {
+          "number": 87,
+          "name": "PORT_RUNNING_3"
+        },
+        {
+          "number": 88,
+          "name": "PORT_STALLED_3"
+        },
+        {
+          "number": 89,
+          "name": "PORT_TLAST_3"
+        },
+        {
+          "number": 90,
+          "name": "PORT_IDLE_4"
+        },
+        {
+          "number": 91,
+          "name": "PORT_RUNNING_4"
+        },
+        {
+          "number": 92,
+          "name": "PORT_STALLED_4"
+        },
+        {
+          "number": 93,
+          "name": "PORT_TLAST_4"
+        },
+        {
+          "number": 94,
+          "name": "PORT_IDLE_5"
+        },
+        {
+          "number": 95,
+          "name": "PORT_RUNNING_5"
+        },
+        {
+          "number": 96,
+          "name": "PORT_STALLED_5"
+        },
+        {
+          "number": 97,
+          "name": "PORT_TLAST_5"
+        },
+        {
+          "number": 98,
+          "name": "PORT_IDLE_6"
+        },
+        {
+          "number": 99,
+          "name": "PORT_RUNNING_6"
+        },
+        {
+          "number": 100,
+          "name": "PORT_STALLED_6"
+        },
+        {
+          "number": 101,
+          "name": "PORT_TLAST_6"
+        },
+        {
+          "number": 102,
+          "name": "PORT_IDLE_7"
+        },
+        {
+          "number": 103,
+          "name": "PORT_RUNNING_7"
+        },
+        {
+          "number": 104,
+          "name": "PORT_STALLED_7"
+        },
+        {
+          "number": 105,
+          "name": "PORT_TLAST_7"
+        },
+        {
+          "number": 106,
+          "name": "GROUP_BROADCAST_A"
+        },
+        {
+          "number": 107,
+          "name": "BROADCAST_A_0"
+        },
+        {
+          "number": 108,
+          "name": "BROADCAST_A_1"
+        },
+        {
+          "number": 109,
+          "name": "BROADCAST_A_2"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_A_3"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_A_4"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_A_5"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_A_6"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_A_7"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_A_8"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_A_9"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_A_10"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_A_11"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_A_12"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_A_13"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_A_14"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_A_15"
+        },
+        {
+          "number": 123,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 124,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 125,
+          "name": "USER_EVENT_1"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_2"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_3"
+        }
+      ],
+      "mem_tile": [],
+      "uc": []
+    }
+  },
+  "aie2": {
+    "display_name": "AIE2",
+    "prefix": "XAIEML_EVENTS_",
+    "modules": {
+      "core": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "PERF_CNT_2"
+        },
+        {
+          "number": 8,
+          "name": "PERF_CNT_3"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 11,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 12,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 13,
+          "name": "EDGE_DETECTION_EVENT_0"
+        },
+        {
+          "number": 14,
+          "name": "EDGE_DETECTION_EVENT_1"
+        },
+        {
+          "number": 15,
+          "name": "GROUP_PC_EVENT"
+        },
+        {
+          "number": 16,
+          "name": "PC_0"
+        },
+        {
+          "number": 17,
+          "name": "PC_1"
+        },
+        {
+          "number": 18,
+          "name": "PC_2"
+        },
+        {
+          "number": 19,
+          "name": "PC_3"
+        },
+        {
+          "number": 20,
+          "name": "PC_RANGE_0_1"
+        },
+        {
+          "number": 21,
+          "name": "PC_RANGE_2_3"
+        },
+        {
+          "number": 22,
+          "name": "GROUP_STALL"
+        },
+        {
+          "number": 23,
+          "name": "MEMORY_STALL"
+        },
+        {
+          "number": 24,
+          "name": "STREAM_STALL"
+        },
+        {
+          "number": 25,
+          "name": "CASCADE_STALL"
+        },
+        {
+          "number": 26,
+          "name": "LOCK_STALL"
+        },
+        {
+          "number": 27,
+          "name": "DEBUG_HALTED"
+        },
+        {
+          "number": 28,
+          "name": "ACTIVE"
+        },
+        {
+          "number": 29,
+          "name": "DISABLED"
+        },
+        {
+          "number": 30,
+          "name": "ECC_ERROR_STALL"
+        },
+        {
+          "number": 31,
+          "name": "ECC_SCRUBBING_STALL"
+        },
+        {
+          "number": 32,
+          "name": "GROUP_PROGRAM_FLOW"
+        },
+        {
+          "number": 33,
+          "name": "INSTR_EVENT_0"
+        },
+        {
+          "number": 34,
+          "name": "INSTR_EVENT_1"
+        },
+        {
+          "number": 35,
+          "name": "INSTR_CALL"
+        },
+        {
+          "number": 36,
+          "name": "INSTR_RETURN"
+        },
+        {
+          "number": 37,
+          "name": "INSTR_VECTOR"
+        },
+        {
+          "number": 38,
+          "name": "INSTR_LOAD"
+        },
+        {
+          "number": 39,
+          "name": "INSTR_STORE"
+        },
+        {
+          "number": 40,
+          "name": "INSTR_STREAM_GET"
+        },
+        {
+          "number": 41,
+          "name": "INSTR_STREAM_PUT"
+        },
+        {
+          "number": 42,
+          "name": "INSTR_CASCADE_GET"
+        },
+        {
+          "number": 43,
+          "name": "INSTR_CASCADE_PUT"
+        },
+        {
+          "number": 44,
+          "name": "INSTR_LOCK_ACQUIRE_REQ"
+        },
+        {
+          "number": 45,
+          "name": "INSTR_LOCK_RELEASE_REQ"
+        },
+        {
+          "number": 46,
+          "name": "GROUP_ERRORS_0"
+        },
+        {
+          "number": 47,
+          "name": "GROUP_ERRORS_1"
+        },
+        {
+          "number": 48,
+          "name": "SRS_OVERFLOW"
+        },
+        {
+          "number": 49,
+          "name": "UPS_OVERFLOW"
+        },
+        {
+          "number": 50,
+          "name": "FP_HUGE"
+        },
+        {
+          "number": 51,
+          "name": "INT_FP_0"
+        },
+        {
+          "number": 52,
+          "name": "FP_INVALID"
+        },
+        {
+          "number": 53,
+          "name": "FP_INF"
+        },
+        {
+          "number": 55,
+          "name": "PM_REG_ACCESS_FAILURE"
+        },
+        {
+          "number": 56,
+          "name": "STREAM_PKT_PARITY_ERROR"
+        },
+        {
+          "number": 57,
+          "name": "CONTROL_PKT_ERROR"
+        },
+        {
+          "number": 58,
+          "name": "AXI_MM_SLAVE_ERROR"
+        },
+        {
+          "number": 59,
+          "name": "INSTR_DECOMPRSN_ERROR"
+        },
+        {
+          "number": 60,
+          "name": "DM_ADDRESS_OUT_OF_RANGE"
+        },
+        {
+          "number": 61,
+          "name": "PM_ECC_ERROR_SCRUB_CORRECTED"
+        },
+        {
+          "number": 62,
+          "name": "PM_ECC_ERROR_SCRUB_2BIT"
+        },
+        {
+          "number": 63,
+          "name": "PM_ECC_ERROR_1BIT"
+        },
+        {
+          "number": 64,
+          "name": "PM_ECC_ERROR_2BIT"
+        },
+        {
+          "number": 65,
+          "name": "PM_ADDRESS_OUT_OF_RANGE"
+        },
+        {
+          "number": 66,
+          "name": "DM_ACCESS_TO_UNAVAILABLE"
+        },
+        {
+          "number": 67,
+          "name": "LOCK_ACCESS_TO_UNAVAILABLE"
+        },
+        {
+          "number": 68,
+          "name": "INSTR_WARNING"
+        },
+        {
+          "number": 69,
+          "name": "INSTR_ERROR"
+        },
+        {
+          "number": 70,
+          "name": "DECOMPRESSION_UNDERFLOW"
+        },
+        {
+          "number": 71,
+          "name": "STREAM_SWITCH_PORT_PARITY_ERROR"
+        },
+        {
+          "number": 72,
+          "name": "PROCESSOR_BUS_ERROR"
+        },
+        {
+          "number": 73,
+          "name": "GROUP_STREAM_SWITCH"
+        },
+        {
+          "number": 74,
+          "name": "PORT_IDLE_0"
+        },
+        {
+          "number": 75,
+          "name": "PORT_RUNNING_0"
+        },
+        {
+          "number": 76,
+          "name": "PORT_STALLED_0"
+        },
+        {
+          "number": 77,
+          "name": "PORT_TLAST_0"
+        },
+        {
+          "number": 78,
+          "name": "PORT_IDLE_1"
+        },
+        {
+          "number": 79,
+          "name": "PORT_RUNNING_1"
+        },
+        {
+          "number": 80,
+          "name": "PORT_STALLED_1"
+        },
+        {
+          "number": 81,
+          "name": "PORT_TLAST_1"
+        },
+        {
+          "number": 82,
+          "name": "PORT_IDLE_2"
+        },
+        {
+          "number": 83,
+          "name": "PORT_RUNNING_2"
+        },
+        {
+          "number": 84,
+          "name": "PORT_STALLED_2"
+        },
+        {
+          "number": 85,
+          "name": "PORT_TLAST_2"
+        },
+        {
+          "number": 86,
+          "name": "PORT_IDLE_3"
+        },
+        {
+          "number": 87,
+          "name": "PORT_RUNNING_3"
+        },
+        {
+          "number": 88,
+          "name": "PORT_STALLED_3"
+        },
+        {
+          "number": 89,
+          "name": "PORT_TLAST_3"
+        },
+        {
+          "number": 90,
+          "name": "PORT_IDLE_4"
+        },
+        {
+          "number": 91,
+          "name": "PORT_RUNNING_4"
+        },
+        {
+          "number": 92,
+          "name": "PORT_STALLED_4"
+        },
+        {
+          "number": 93,
+          "name": "PORT_TLAST_4"
+        },
+        {
+          "number": 94,
+          "name": "PORT_IDLE_5"
+        },
+        {
+          "number": 95,
+          "name": "PORT_RUNNING_5"
+        },
+        {
+          "number": 96,
+          "name": "PORT_STALLED_5"
+        },
+        {
+          "number": 97,
+          "name": "PORT_TLAST_5"
+        },
+        {
+          "number": 98,
+          "name": "PORT_IDLE_6"
+        },
+        {
+          "number": 99,
+          "name": "PORT_RUNNING_6"
+        },
+        {
+          "number": 100,
+          "name": "PORT_STALLED_6"
+        },
+        {
+          "number": 101,
+          "name": "PORT_TLAST_6"
+        },
+        {
+          "number": 102,
+          "name": "PORT_IDLE_7"
+        },
+        {
+          "number": 103,
+          "name": "PORT_RUNNING_7"
+        },
+        {
+          "number": 104,
+          "name": "PORT_STALLED_7"
+        },
+        {
+          "number": 105,
+          "name": "PORT_TLAST_7"
+        },
+        {
+          "number": 106,
+          "name": "GROUP_BROADCAST"
+        },
+        {
+          "number": 107,
+          "name": "BROADCAST_0"
+        },
+        {
+          "number": 108,
+          "name": "BROADCAST_1"
+        },
+        {
+          "number": 109,
+          "name": "BROADCAST_2"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_3"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_4"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_5"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_6"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_7"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_8"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_9"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_10"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_11"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_12"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_13"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_14"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_15"
+        },
+        {
+          "number": 123,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 124,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 125,
+          "name": "USER_EVENT_1"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_2"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_3"
+        }
+      ],
+      "memory": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 8,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 11,
+          "name": "EDGE_DETECTION_EVENT_0"
+        },
+        {
+          "number": 12,
+          "name": "EDGE_DETECTION_EVENT_1"
+        },
+        {
+          "number": 15,
+          "name": "GROUP_WATCHPOINT"
+        },
+        {
+          "number": 16,
+          "name": "WATCHPOINT_0"
+        },
+        {
+          "number": 17,
+          "name": "WATCHPOINT_1"
+        },
+        {
+          "number": 18,
+          "name": "GROUP_DMA_ACTIVITY"
+        },
+        {
+          "number": 19,
+          "name": "DMA_S2MM_0_START_TASK"
+        },
+        {
+          "number": 20,
+          "name": "DMA_S2MM_1_START_TASK"
+        },
+        {
+          "number": 21,
+          "name": "DMA_MM2S_0_START_TASK"
+        },
+        {
+          "number": 22,
+          "name": "DMA_MM2S_1_START_TASK"
+        },
+        {
+          "number": 23,
+          "name": "DMA_S2MM_0_FINISHED_BD"
+        },
+        {
+          "number": 24,
+          "name": "DMA_S2MM_1_FINISHED_BD"
+        },
+        {
+          "number": 25,
+          "name": "DMA_MM2S_0_FINISHED_BD"
+        },
+        {
+          "number": 26,
+          "name": "DMA_MM2S_1_FINISHED_BD"
+        },
+        {
+          "number": 27,
+          "name": "DMA_S2MM_0_FINISHED_TASK"
+        },
+        {
+          "number": 28,
+          "name": "DMA_S2MM_1_FINISHED_TASK"
+        },
+        {
+          "number": 29,
+          "name": "DMA_MM2S_0_FINISHED_TASK"
+        },
+        {
+          "number": 30,
+          "name": "DMA_MM2S_1_FINISHED_TASK"
+        },
+        {
+          "number": 31,
+          "name": "DMA_S2MM_0_STALLED_LOCK"
+        },
+        {
+          "number": 32,
+          "name": "DMA_S2MM_1_STALLED_LOCK"
+        },
+        {
+          "number": 33,
+          "name": "DMA_MM2S_0_STALLED_LOCK"
+        },
+        {
+          "number": 34,
+          "name": "DMA_MM2S_1_STALLED_LOCK"
+        },
+        {
+          "number": 35,
+          "name": "DMA_S2MM_0_STREAM_STARVATION"
+        },
+        {
+          "number": 36,
+          "name": "DMA_S2MM_1_STREAM_STARVATION"
+        },
+        {
+          "number": 37,
+          "name": "DMA_MM2S_0_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 38,
+          "name": "DMA_MM2S_1_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 39,
+          "name": "DMA_S2MM_0_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 40,
+          "name": "DMA_S2MM_1_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 41,
+          "name": "DMA_MM2S_0_MEMORY_STARVATION"
+        },
+        {
+          "number": 42,
+          "name": "DMA_MM2S_1_MEMORY_STARVATION"
+        },
+        {
+          "number": 43,
+          "name": "GROUP_LOCK"
+        },
+        {
+          "number": 44,
+          "name": "LOCK_SEL0_ACQ_EQ"
+        },
+        {
+          "number": 45,
+          "name": "LOCK_SEL0_ACQ_GE"
+        },
+        {
+          "number": 46,
+          "name": "LOCK_0_REL"
+        },
+        {
+          "number": 47,
+          "name": "LOCK_SEL0_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 48,
+          "name": "LOCK_SEL1_ACQ_EQ"
+        },
+        {
+          "number": 49,
+          "name": "LOCK_SEL1_ACQ_GE"
+        },
+        {
+          "number": 50,
+          "name": "LOCK_1_REL"
+        },
+        {
+          "number": 51,
+          "name": "LOCK_SEL1_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 52,
+          "name": "LOCK_SEL2_ACQ_EQ"
+        },
+        {
+          "number": 53,
+          "name": "LOCK_SEL2_ACQ_GE"
+        },
+        {
+          "number": 54,
+          "name": "LOCK_2_REL"
+        },
+        {
+          "number": 55,
+          "name": "LOCK_SEL2_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 56,
+          "name": "LOCK_SEL3_ACQ_EQ"
+        },
+        {
+          "number": 57,
+          "name": "LOCK_SEL3_ACQ_GE"
+        },
+        {
+          "number": 58,
+          "name": "LOCK_3_REL"
+        },
+        {
+          "number": 59,
+          "name": "LOCK_SEL3_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 60,
+          "name": "LOCK_SEL4_ACQ_EQ"
+        },
+        {
+          "number": 61,
+          "name": "LOCK_SEL4_ACQ_GE"
+        },
+        {
+          "number": 62,
+          "name": "LOCK_4_REL"
+        },
+        {
+          "number": 63,
+          "name": "LOCK_SEL4_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 64,
+          "name": "LOCK_SEL5_ACQ_EQ"
+        },
+        {
+          "number": 65,
+          "name": "LOCK_SEL5_ACQ_GE"
+        },
+        {
+          "number": 66,
+          "name": "LOCK_5_REL"
+        },
+        {
+          "number": 67,
+          "name": "LOCK_SEL5_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 68,
+          "name": "LOCK_SEL6_ACQ_EQ"
+        },
+        {
+          "number": 69,
+          "name": "LOCK_SEL6_ACQ_GE"
+        },
+        {
+          "number": 70,
+          "name": "LOCK_6_REL"
+        },
+        {
+          "number": 71,
+          "name": "LOCK_SEL6_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 72,
+          "name": "LOCK_SEL7_ACQ_EQ"
+        },
+        {
+          "number": 73,
+          "name": "LOCK_SEL7_ACQ_GE"
+        },
+        {
+          "number": 74,
+          "name": "LOCK_7_REL"
+        },
+        {
+          "number": 75,
+          "name": "LOCK_SEL7_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 76,
+          "name": "GROUP_MEMORY_CONFLICT"
+        },
+        {
+          "number": 77,
+          "name": "CONFLICT_DM_BANK_0"
+        },
+        {
+          "number": 78,
+          "name": "CONFLICT_DM_BANK_1"
+        },
+        {
+          "number": 79,
+          "name": "CONFLICT_DM_BANK_2"
+        },
+        {
+          "number": 80,
+          "name": "CONFLICT_DM_BANK_3"
+        },
+        {
+          "number": 81,
+          "name": "CONFLICT_DM_BANK_4"
+        },
+        {
+          "number": 82,
+          "name": "CONFLICT_DM_BANK_5"
+        },
+        {
+          "number": 83,
+          "name": "CONFLICT_DM_BANK_6"
+        },
+        {
+          "number": 84,
+          "name": "CONFLICT_DM_BANK_7"
+        },
+        {
+          "number": 86,
+          "name": "GROUP_ERRORS"
+        },
+        {
+          "number": 87,
+          "name": "DM_ECC_ERROR_SCRUB_CORRECTED"
+        },
+        {
+          "number": 88,
+          "name": "DM_ECC_ERROR_SCRUB_2BIT"
+        },
+        {
+          "number": 89,
+          "name": "DM_ECC_ERROR_1BIT"
+        },
+        {
+          "number": 90,
+          "name": "DM_ECC_ERROR_2BIT"
+        },
+        {
+          "number": 91,
+          "name": "DM_PARITY_ERROR_BANK_2"
+        },
+        {
+          "number": 92,
+          "name": "DM_PARITY_ERROR_BANK_3"
+        },
+        {
+          "number": 93,
+          "name": "DM_PARITY_ERROR_BANK_4"
+        },
+        {
+          "number": 94,
+          "name": "DM_PARITY_ERROR_BANK_5"
+        },
+        {
+          "number": 95,
+          "name": "DM_PARITY_ERROR_BANK_6"
+        },
+        {
+          "number": 96,
+          "name": "DM_PARITY_ERROR_BANK_7"
+        },
+        {
+          "number": 97,
+          "name": "DMA_S2MM_0_ERROR"
+        },
+        {
+          "number": 98,
+          "name": "DMA_S2MM_1_ERROR"
+        },
+        {
+          "number": 99,
+          "name": "DMA_MM2S_0_ERROR"
+        },
+        {
+          "number": 100,
+          "name": "DMA_MM2S_1_ERROR"
+        },
+        {
+          "number": 101,
+          "name": "LOCK_ERROR"
+        },
+        {
+          "number": 102,
+          "name": "DMA_TASK_TOKEN_STALL"
+        },
+        {
+          "number": 106,
+          "name": "GROUP_BROADCAST"
+        },
+        {
+          "number": 107,
+          "name": "BROADCAST_0"
+        },
+        {
+          "number": 108,
+          "name": "BROADCAST_1"
+        },
+        {
+          "number": 109,
+          "name": "BROADCAST_2"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_3"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_4"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_5"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_6"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_7"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_8"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_9"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_10"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_11"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_12"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_13"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_14"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_15"
+        },
+        {
+          "number": 123,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 124,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 125,
+          "name": "USER_EVENT_1"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_2"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_3"
+        }
+      ],
+      "pl": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 8,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 11,
+          "name": "EDGE_DETECTION_EVENT_0"
+        },
+        {
+          "number": 12,
+          "name": "EDGE_DETECTION_EVENT_1"
+        },
+        {
+          "number": 13,
+          "name": "GROUP_DMA_ACTIVITY"
+        },
+        {
+          "number": 14,
+          "name": "DMA_S2MM_0_START_TASK"
+        },
+        {
+          "number": 15,
+          "name": "DMA_S2MM_1_START_TASK"
+        },
+        {
+          "number": 16,
+          "name": "DMA_MM2S_0_START_TASK"
+        },
+        {
+          "number": 17,
+          "name": "DMA_MM2S_1_START_TASK"
+        },
+        {
+          "number": 18,
+          "name": "DMA_S2MM_0_FINISHED_BD"
+        },
+        {
+          "number": 19,
+          "name": "DMA_S2MM_1_FINISHED_BD"
+        },
+        {
+          "number": 20,
+          "name": "DMA_MM2S_0_FINISHED_BD"
+        },
+        {
+          "number": 21,
+          "name": "DMA_MM2S_1_FINISHED_BD"
+        },
+        {
+          "number": 22,
+          "name": "DMA_S2MM_0_FINISHED_TASK"
+        },
+        {
+          "number": 23,
+          "name": "DMA_S2MM_1_FINISHED_TASK"
+        },
+        {
+          "number": 24,
+          "name": "DMA_MM2S_0_FINISHED_TASK"
+        },
+        {
+          "number": 25,
+          "name": "DMA_MM2S_1_FINISHED_TASK"
+        },
+        {
+          "number": 26,
+          "name": "DMA_S2MM_0_STALLED_LOCK"
+        },
+        {
+          "number": 27,
+          "name": "DMA_S2MM_1_STALLED_LOCK"
+        },
+        {
+          "number": 28,
+          "name": "DMA_MM2S_0_STALLED_LOCK"
+        },
+        {
+          "number": 29,
+          "name": "DMA_MM2S_1_STALLED_LOCK"
+        },
+        {
+          "number": 30,
+          "name": "DMA_S2MM_0_STREAM_STARVATION"
+        },
+        {
+          "number": 31,
+          "name": "DMA_S2MM_1_STREAM_STARVATION"
+        },
+        {
+          "number": 32,
+          "name": "DMA_MM2S_0_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 33,
+          "name": "DMA_MM2S_1_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 34,
+          "name": "DMA_S2MM_0_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 35,
+          "name": "DMA_S2MM_1_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 36,
+          "name": "DMA_MM2S_0_MEMORY_STARVATION"
+        },
+        {
+          "number": 37,
+          "name": "DMA_MM2S_1_MEMORY_STARVATION"
+        },
+        {
+          "number": 38,
+          "name": "GROUP_LOCK"
+        },
+        {
+          "number": 39,
+          "name": "LOCK_0_ACQ_EQ"
+        },
+        {
+          "number": 40,
+          "name": "LOCK_0_ACQ_GE"
+        },
+        {
+          "number": 41,
+          "name": "LOCK_0_REL"
+        },
+        {
+          "number": 42,
+          "name": "LOCK_0_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 43,
+          "name": "LOCK_1_ACQ_EQ"
+        },
+        {
+          "number": 44,
+          "name": "LOCK_1_ACQ_GE"
+        },
+        {
+          "number": 45,
+          "name": "LOCK_1_REL"
+        },
+        {
+          "number": 46,
+          "name": "LOCK_1_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 47,
+          "name": "LOCK_2_ACQ_EQ"
+        },
+        {
+          "number": 48,
+          "name": "LOCK_2_ACQ_GE"
+        },
+        {
+          "number": 49,
+          "name": "LOCK_2_REL"
+        },
+        {
+          "number": 50,
+          "name": "LOCK_2_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 51,
+          "name": "LOCK_3_ACQ_EQ"
+        },
+        {
+          "number": 52,
+          "name": "LOCK_3_ACQ_GE"
+        },
+        {
+          "number": 53,
+          "name": "LOCK_3_REL"
+        },
+        {
+          "number": 54,
+          "name": "LOCK_3_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 55,
+          "name": "LOCK_4_ACQ_EQ"
+        },
+        {
+          "number": 56,
+          "name": "LOCK_4_ACQ_GE"
+        },
+        {
+          "number": 57,
+          "name": "LOCK_4_REL"
+        },
+        {
+          "number": 58,
+          "name": "LOCK_4_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 59,
+          "name": "LOCK_5_ACQ_EQ"
+        },
+        {
+          "number": 60,
+          "name": "LOCK_5_ACQ_GE"
+        },
+        {
+          "number": 61,
+          "name": "LOCK_5_REL"
+        },
+        {
+          "number": 62,
+          "name": "LOCK_5_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 63,
+          "name": "GROUP_ERRORS"
+        },
+        {
+          "number": 64,
+          "name": "AXI_MM_SLAVE_ERROR"
+        },
+        {
+          "number": 65,
+          "name": "CONTROL_PKT_ERROR"
+        },
+        {
+          "number": 66,
+          "name": "STREAM_SWITCH_PARITY_ERROR"
+        },
+        {
+          "number": 67,
+          "name": "AXI_MM_DECODE_NSU_ERROR"
+        },
+        {
+          "number": 68,
+          "name": "AXI_MM_SLAVE_NSU_ERROR"
+        },
+        {
+          "number": 69,
+          "name": "AXI_MM_UNSUPPORTED_TRAFFIC"
+        },
+        {
+          "number": 70,
+          "name": "AXI_MM_UNSECURE_ACCESS_IN_SECURE_MODE"
+        },
+        {
+          "number": 71,
+          "name": "AXI_MM_BYTE_STROBE_ERROR"
+        },
+        {
+          "number": 72,
+          "name": "DMA_S2MM_ERROR"
+        },
+        {
+          "number": 73,
+          "name": "DMA_MM2S_ERROR"
+        },
+        {
+          "number": 74,
+          "name": "LOCK_ERROR"
+        },
+        {
+          "number": 75,
+          "name": "DMA_TASK_TOKEN_STALL"
+        },
+        {
+          "number": 76,
+          "name": "GROUP_STREAM_SWITCH"
+        },
+        {
+          "number": 77,
+          "name": "PORT_IDLE_0"
+        },
+        {
+          "number": 78,
+          "name": "PORT_RUNNING_0"
+        },
+        {
+          "number": 79,
+          "name": "PORT_STALLED_0"
+        },
+        {
+          "number": 80,
+          "name": "PORT_TLAST_0"
+        },
+        {
+          "number": 81,
+          "name": "PORT_IDLE_1"
+        },
+        {
+          "number": 82,
+          "name": "PORT_RUNNING_1"
+        },
+        {
+          "number": 83,
+          "name": "PORT_STALLED_1"
+        },
+        {
+          "number": 84,
+          "name": "PORT_TLAST_1"
+        },
+        {
+          "number": 85,
+          "name": "PORT_IDLE_2"
+        },
+        {
+          "number": 86,
+          "name": "PORT_RUNNING_2"
+        },
+        {
+          "number": 87,
+          "name": "PORT_STALLED_2"
+        },
+        {
+          "number": 88,
+          "name": "PORT_TLAST_2"
+        },
+        {
+          "number": 89,
+          "name": "PORT_IDLE_3"
+        },
+        {
+          "number": 90,
+          "name": "PORT_RUNNING_3"
+        },
+        {
+          "number": 91,
+          "name": "PORT_STALLED_3"
+        },
+        {
+          "number": 92,
+          "name": "PORT_TLAST_3"
+        },
+        {
+          "number": 93,
+          "name": "PORT_IDLE_4"
+        },
+        {
+          "number": 94,
+          "name": "PORT_RUNNING_4"
+        },
+        {
+          "number": 95,
+          "name": "PORT_STALLED_4"
+        },
+        {
+          "number": 96,
+          "name": "PORT_TLAST_4"
+        },
+        {
+          "number": 97,
+          "name": "PORT_IDLE_5"
+        },
+        {
+          "number": 98,
+          "name": "PORT_RUNNING_5"
+        },
+        {
+          "number": 99,
+          "name": "PORT_STALLED_5"
+        },
+        {
+          "number": 100,
+          "name": "PORT_TLAST_5"
+        },
+        {
+          "number": 101,
+          "name": "PORT_IDLE_6"
+        },
+        {
+          "number": 102,
+          "name": "PORT_RUNNING_6"
+        },
+        {
+          "number": 103,
+          "name": "PORT_STALLED_6"
+        },
+        {
+          "number": 104,
+          "name": "PORT_TLAST_6"
+        },
+        {
+          "number": 105,
+          "name": "PORT_IDLE_7"
+        },
+        {
+          "number": 106,
+          "name": "PORT_RUNNING_7"
+        },
+        {
+          "number": 107,
+          "name": "PORT_STALLED_7"
+        },
+        {
+          "number": 108,
+          "name": "PORT_TLAST_7"
+        },
+        {
+          "number": 109,
+          "name": "GROUP_BROADCAST_A"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_A_0"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_A_1"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_A_2"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_A_3"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_A_4"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_A_5"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_A_6"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_A_7"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_A_8"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_A_9"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_A_10"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_A_11"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_A_12"
+        },
+        {
+          "number": 123,
+          "name": "BROADCAST_A_13"
+        },
+        {
+          "number": 124,
+          "name": "BROADCAST_A_14"
+        },
+        {
+          "number": 125,
+          "name": "BROADCAST_A_15"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_1"
+        }
+      ],
+      "mem_tile": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT0_EVENT"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT1_EVENT"
+        },
+        {
+          "number": 7,
+          "name": "PERF_CNT2_EVENT"
+        },
+        {
+          "number": 8,
+          "name": "PERF_CNT3_EVENT"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 11,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 12,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 13,
+          "name": "EDGE_DETECTION_EVENT_0"
+        },
+        {
+          "number": 14,
+          "name": "EDGE_DETECTION_EVENT_1"
+        },
+        {
+          "number": 15,
+          "name": "GROUP_WATCHPOINT"
+        },
+        {
+          "number": 16,
+          "name": "WATCHPOINT_0"
+        },
+        {
+          "number": 17,
+          "name": "WATCHPOINT_1"
+        },
+        {
+          "number": 18,
+          "name": "WATCHPOINT_2"
+        },
+        {
+          "number": 19,
+          "name": "WATCHPOINT_3"
+        },
+        {
+          "number": 20,
+          "name": "GROUP_DMA_ACTIVITY"
+        },
+        {
+          "number": 21,
+          "name": "DMA_S2MM_SEL0_START_TASK"
+        },
+        {
+          "number": 22,
+          "name": "DMA_S2MM_SEL1_START_TASK"
+        },
+        {
+          "number": 23,
+          "name": "DMA_MM2S_SEL0_START_TASK"
+        },
+        {
+          "number": 24,
+          "name": "DMA_MM2S_SEL1_START_TASK"
+        },
+        {
+          "number": 25,
+          "name": "DMA_S2MM_SEL0_FINISHED_BD"
+        },
+        {
+          "number": 26,
+          "name": "DMA_S2MM_SEL1_FINISHED_BD"
+        },
+        {
+          "number": 27,
+          "name": "DMA_MM2S_SEL0_FINISHED_BD"
+        },
+        {
+          "number": 28,
+          "name": "DMA_MM2S_SEL1_FINISHED_BD"
+        },
+        {
+          "number": 29,
+          "name": "DMA_S2MM_SEL0_FINISHED_TASK"
+        },
+        {
+          "number": 30,
+          "name": "DMA_S2MM_SEL1_FINISHED_TASK"
+        },
+        {
+          "number": 31,
+          "name": "DMA_MM2S_SEL0_FINISHED_TASK"
+        },
+        {
+          "number": 32,
+          "name": "DMA_MM2S_SEL1_FINISHED_TASK"
+        },
+        {
+          "number": 33,
+          "name": "DMA_S2MM_SEL0_STALLED_LOCK"
+        },
+        {
+          "number": 34,
+          "name": "DMA_S2MM_SEL1_STALLED_LOCK"
+        },
+        {
+          "number": 35,
+          "name": "DMA_MM2S_SEL0_STALLED_LOCK"
+        },
+        {
+          "number": 36,
+          "name": "DMA_MM2S_SEL1_STALLED_LOCK"
+        },
+        {
+          "number": 37,
+          "name": "DMA_S2MM_SEL0_STREAM_STARVATION"
+        },
+        {
+          "number": 38,
+          "name": "DMA_S2MM_SEL1_STREAM_STARVATION"
+        },
+        {
+          "number": 39,
+          "name": "DMA_MM2S_SEL0_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 40,
+          "name": "DMA_MM2S_SEL1_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 41,
+          "name": "DMA_S2MM_SEL0_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 42,
+          "name": "DMA_S2MM_SEL1_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 43,
+          "name": "DMA_MM2S_SEL0_MEMORY_STARVATION"
+        },
+        {
+          "number": 44,
+          "name": "DMA_MM2S_SEL1_MEMORY_STARVATION"
+        },
+        {
+          "number": 45,
+          "name": "GROUP_LOCK"
+        },
+        {
+          "number": 46,
+          "name": "LOCK_SEL0_ACQ_EQ"
+        },
+        {
+          "number": 47,
+          "name": "LOCK_SEL0_ACQ_GE"
+        },
+        {
+          "number": 48,
+          "name": "LOCK_SEL0_REL"
+        },
+        {
+          "number": 49,
+          "name": "LOCK_SEL0_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 50,
+          "name": "LOCK_SEL1_ACQ_EQ"
+        },
+        {
+          "number": 51,
+          "name": "LOCK_SEL1_ACQ_GE"
+        },
+        {
+          "number": 52,
+          "name": "LOCK_SEL1_REL"
+        },
+        {
+          "number": 53,
+          "name": "LOCK_SEL1_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 54,
+          "name": "LOCK_SEL2_ACQ_EQ"
+        },
+        {
+          "number": 55,
+          "name": "LOCK_SEL2_ACQ_GE"
+        },
+        {
+          "number": 56,
+          "name": "LOCK_SEL2_REL"
+        },
+        {
+          "number": 57,
+          "name": "LOCK_SEL2_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 58,
+          "name": "LOCK_SEL3_ACQ_EQ"
+        },
+        {
+          "number": 59,
+          "name": "LOCK_SEL3_ACQ_GE"
+        },
+        {
+          "number": 60,
+          "name": "LOCK_SEL3_REL"
+        },
+        {
+          "number": 61,
+          "name": "LOCK_SEL3_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 62,
+          "name": "LOCK_SEL4_ACQ_EQ"
+        },
+        {
+          "number": 63,
+          "name": "LOCK_SEL4_ACQ_GE"
+        },
+        {
+          "number": 64,
+          "name": "LOCK_SEL4_REL"
+        },
+        {
+          "number": 65,
+          "name": "LOCK_SEL4_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 66,
+          "name": "LOCK_SEL5_ACQ_EQ"
+        },
+        {
+          "number": 67,
+          "name": "LOCK_SEL5_ACQ_GE"
+        },
+        {
+          "number": 68,
+          "name": "LOCK_SEL5_REL"
+        },
+        {
+          "number": 69,
+          "name": "LOCK_SEL5_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 70,
+          "name": "LOCK_SEL6_ACQ_EQ"
+        },
+        {
+          "number": 71,
+          "name": "LOCK_SEL6_ACQ_GE"
+        },
+        {
+          "number": 72,
+          "name": "LOCK_SEL6_REL"
+        },
+        {
+          "number": 73,
+          "name": "LOCK_SEL6_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 74,
+          "name": "LOCK_SEL7_ACQ_EQ"
+        },
+        {
+          "number": 75,
+          "name": "LOCK_SEL7_ACQ_GE"
+        },
+        {
+          "number": 76,
+          "name": "LOCK_SEL7_REL"
+        },
+        {
+          "number": 77,
+          "name": "LOCK_SEL7_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 78,
+          "name": "GROUP_STREAM_SWITCH"
+        },
+        {
+          "number": 79,
+          "name": "PORT_IDLE_0"
+        },
+        {
+          "number": 80,
+          "name": "PORT_RUNNING_0"
+        },
+        {
+          "number": 81,
+          "name": "PORT_STALLED_0"
+        },
+        {
+          "number": 82,
+          "name": "PORT_TLAST_0"
+        },
+        {
+          "number": 83,
+          "name": "PORT_IDLE_1"
+        },
+        {
+          "number": 84,
+          "name": "PORT_RUNNING_1"
+        },
+        {
+          "number": 85,
+          "name": "PORT_STALLED_1"
+        },
+        {
+          "number": 86,
+          "name": "PORT_TLAST_1"
+        },
+        {
+          "number": 87,
+          "name": "PORT_IDLE_2"
+        },
+        {
+          "number": 88,
+          "name": "PORT_RUNNING_2"
+        },
+        {
+          "number": 89,
+          "name": "PORT_STALLED_2"
+        },
+        {
+          "number": 90,
+          "name": "PORT_TLAST_2"
+        },
+        {
+          "number": 91,
+          "name": "PORT_IDLE_3"
+        },
+        {
+          "number": 92,
+          "name": "PORT_RUNNING_3"
+        },
+        {
+          "number": 93,
+          "name": "PORT_STALLED_3"
+        },
+        {
+          "number": 94,
+          "name": "PORT_TLAST_3"
+        },
+        {
+          "number": 95,
+          "name": "PORT_IDLE_4"
+        },
+        {
+          "number": 96,
+          "name": "PORT_RUNNING_4"
+        },
+        {
+          "number": 97,
+          "name": "PORT_STALLED_4"
+        },
+        {
+          "number": 98,
+          "name": "PORT_TLAST_4"
+        },
+        {
+          "number": 99,
+          "name": "PORT_IDLE_5"
+        },
+        {
+          "number": 100,
+          "name": "PORT_RUNNING_5"
+        },
+        {
+          "number": 101,
+          "name": "PORT_STALLED_5"
+        },
+        {
+          "number": 102,
+          "name": "PORT_TLAST_5"
+        },
+        {
+          "number": 103,
+          "name": "PORT_IDLE_6"
+        },
+        {
+          "number": 104,
+          "name": "PORT_RUNNING_6"
+        },
+        {
+          "number": 105,
+          "name": "PORT_STALLED_6"
+        },
+        {
+          "number": 106,
+          "name": "PORT_TLAST_6"
+        },
+        {
+          "number": 107,
+          "name": "PORT_IDLE_7"
+        },
+        {
+          "number": 108,
+          "name": "PORT_RUNNING_7"
+        },
+        {
+          "number": 109,
+          "name": "PORT_STALLED_7"
+        },
+        {
+          "number": 110,
+          "name": "PORT_TLAST_7"
+        },
+        {
+          "number": 111,
+          "name": "GROUP_MEMORY_CONFLICT"
+        },
+        {
+          "number": 112,
+          "name": "CONFLICT_DM_BANK_0"
+        },
+        {
+          "number": 113,
+          "name": "CONFLICT_DM_BANK_1"
+        },
+        {
+          "number": 114,
+          "name": "CONFLICT_DM_BANK_2"
+        },
+        {
+          "number": 115,
+          "name": "CONFLICT_DM_BANK_3"
+        },
+        {
+          "number": 116,
+          "name": "CONFLICT_DM_BANK_4"
+        },
+        {
+          "number": 117,
+          "name": "CONFLICT_DM_BANK_5"
+        },
+        {
+          "number": 118,
+          "name": "CONFLICT_DM_BANK_6"
+        },
+        {
+          "number": 119,
+          "name": "CONFLICT_DM_BANK_7"
+        },
+        {
+          "number": 120,
+          "name": "CONFLICT_DM_BANK_8"
+        },
+        {
+          "number": 121,
+          "name": "CONFLICT_DM_BANK_9"
+        },
+        {
+          "number": 122,
+          "name": "CONFLICT_DM_BANK_10"
+        },
+        {
+          "number": 123,
+          "name": "CONFLICT_DM_BANK_11"
+        },
+        {
+          "number": 124,
+          "name": "CONFLICT_DM_BANK_12"
+        },
+        {
+          "number": 125,
+          "name": "CONFLICT_DM_BANK_13"
+        },
+        {
+          "number": 126,
+          "name": "CONFLICT_DM_BANK_14"
+        },
+        {
+          "number": 127,
+          "name": "CONFLICT_DM_BANK_15"
+        },
+        {
+          "number": 128,
+          "name": "GROUP_ERRORS"
+        },
+        {
+          "number": 129,
+          "name": "DM_ECC_ERROR_SCRUB_CORRECTED"
+        },
+        {
+          "number": 130,
+          "name": "DM_ECC_ERROR_SCRUB_2BIT"
+        },
+        {
+          "number": 131,
+          "name": "DM_ECC_ERROR_1BIT"
+        },
+        {
+          "number": 132,
+          "name": "DM_ECC_ERROR_2BIT"
+        },
+        {
+          "number": 133,
+          "name": "DMA_S2MM_ERROR"
+        },
+        {
+          "number": 134,
+          "name": "DMA_MM2S_ERROR"
+        },
+        {
+          "number": 135,
+          "name": "STREAM_SWITCH_PARITY_ERROR"
+        },
+        {
+          "number": 136,
+          "name": "STREAM_PKT_ERROR"
+        },
+        {
+          "number": 137,
+          "name": "CONTROL_PKT_ERROR"
+        },
+        {
+          "number": 138,
+          "name": "AXI_MM_SLAVE_ERROR"
+        },
+        {
+          "number": 139,
+          "name": "LOCK_ERROR"
+        },
+        {
+          "number": 140,
+          "name": "DMA_TASK_TOKEN_STALL"
+        },
+        {
+          "number": 141,
+          "name": "GROUP_BROADCAST"
+        },
+        {
+          "number": 142,
+          "name": "BROADCAST_0"
+        },
+        {
+          "number": 143,
+          "name": "BROADCAST_1"
+        },
+        {
+          "number": 144,
+          "name": "BROADCAST_2"
+        },
+        {
+          "number": 145,
+          "name": "BROADCAST_3"
+        },
+        {
+          "number": 146,
+          "name": "BROADCAST_4"
+        },
+        {
+          "number": 147,
+          "name": "BROADCAST_5"
+        },
+        {
+          "number": 148,
+          "name": "BROADCAST_6"
+        },
+        {
+          "number": 149,
+          "name": "BROADCAST_7"
+        },
+        {
+          "number": 150,
+          "name": "BROADCAST_8"
+        },
+        {
+          "number": 151,
+          "name": "BROADCAST_9"
+        },
+        {
+          "number": 152,
+          "name": "BROADCAST_10"
+        },
+        {
+          "number": 153,
+          "name": "BROADCAST_11"
+        },
+        {
+          "number": 154,
+          "name": "BROADCAST_12"
+        },
+        {
+          "number": 155,
+          "name": "BROADCAST_13"
+        },
+        {
+          "number": 156,
+          "name": "BROADCAST_14"
+        },
+        {
+          "number": 157,
+          "name": "BROADCAST_15"
+        },
+        {
+          "number": 158,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 159,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 160,
+          "name": "USER_EVENT_1"
+        }
+      ],
+      "uc": []
+    }
+  },
+  "aie2p": {
+    "display_name": "AIE2P",
+    "prefix": "XAIE2P_EVENTS_",
+    "modules": {
+      "core": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "PERF_CNT_2"
+        },
+        {
+          "number": 8,
+          "name": "PERF_CNT_3"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 11,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 12,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 13,
+          "name": "EDGE_DETECTION_EVENT_0"
+        },
+        {
+          "number": 14,
+          "name": "EDGE_DETECTION_EVENT_1"
+        },
+        {
+          "number": 15,
+          "name": "GROUP_PC_EVENT"
+        },
+        {
+          "number": 16,
+          "name": "PC_0"
+        },
+        {
+          "number": 17,
+          "name": "PC_1"
+        },
+        {
+          "number": 18,
+          "name": "PC_2"
+        },
+        {
+          "number": 19,
+          "name": "PC_3"
+        },
+        {
+          "number": 20,
+          "name": "PC_RANGE_0_1"
+        },
+        {
+          "number": 21,
+          "name": "PC_RANGE_2_3"
+        },
+        {
+          "number": 22,
+          "name": "GROUP_STALL"
+        },
+        {
+          "number": 23,
+          "name": "MEMORY_STALL"
+        },
+        {
+          "number": 24,
+          "name": "STREAM_STALL"
+        },
+        {
+          "number": 25,
+          "name": "CASCADE_STALL"
+        },
+        {
+          "number": 26,
+          "name": "LOCK_STALL"
+        },
+        {
+          "number": 27,
+          "name": "DEBUG_HALTED"
+        },
+        {
+          "number": 28,
+          "name": "ACTIVE"
+        },
+        {
+          "number": 29,
+          "name": "DISABLED"
+        },
+        {
+          "number": 30,
+          "name": "ECC_ERROR_STALL"
+        },
+        {
+          "number": 31,
+          "name": "ECC_SCRUBBING_STALL"
+        },
+        {
+          "number": 32,
+          "name": "GROUP_PROGRAM_FLOW"
+        },
+        {
+          "number": 33,
+          "name": "INSTR_EVENT_0"
+        },
+        {
+          "number": 34,
+          "name": "INSTR_EVENT_1"
+        },
+        {
+          "number": 35,
+          "name": "INSTR_CALL"
+        },
+        {
+          "number": 36,
+          "name": "INSTR_RETURN"
+        },
+        {
+          "number": 37,
+          "name": "INSTR_VECTOR"
+        },
+        {
+          "number": 38,
+          "name": "INSTR_LOAD"
+        },
+        {
+          "number": 39,
+          "name": "INSTR_STORE"
+        },
+        {
+          "number": 40,
+          "name": "INSTR_STREAM_GET"
+        },
+        {
+          "number": 41,
+          "name": "INSTR_STREAM_PUT"
+        },
+        {
+          "number": 42,
+          "name": "INSTR_CASCADE_GET"
+        },
+        {
+          "number": 43,
+          "name": "INSTR_CASCADE_PUT"
+        },
+        {
+          "number": 44,
+          "name": "INSTR_LOCK_ACQUIRE_REQ"
+        },
+        {
+          "number": 45,
+          "name": "INSTR_LOCK_RELEASE_REQ"
+        },
+        {
+          "number": 46,
+          "name": "GROUP_ERRORS_0"
+        },
+        {
+          "number": 47,
+          "name": "GROUP_ERRORS_1"
+        },
+        {
+          "number": 48,
+          "name": "SRS_OVERFLOW"
+        },
+        {
+          "number": 49,
+          "name": "UPS_OVERFLOW"
+        },
+        {
+          "number": 50,
+          "name": "FP_HUGE"
+        },
+        {
+          "number": 51,
+          "name": "INT_FP_0"
+        },
+        {
+          "number": 52,
+          "name": "FP_INVALID"
+        },
+        {
+          "number": 53,
+          "name": "FP_INF"
+        },
+        {
+          "number": 55,
+          "name": "PM_REG_ACCESS_FAILURE"
+        },
+        {
+          "number": 56,
+          "name": "STREAM_PKT_PARITY_ERROR"
+        },
+        {
+          "number": 57,
+          "name": "CONTROL_PKT_ERROR"
+        },
+        {
+          "number": 58,
+          "name": "AXI_MM_SLAVE_ERROR"
+        },
+        {
+          "number": 59,
+          "name": "INSTR_DECOMPRSN_ERROR"
+        },
+        {
+          "number": 60,
+          "name": "DM_ADDRESS_OUT_OF_RANGE"
+        },
+        {
+          "number": 61,
+          "name": "PM_ECC_ERROR_SCRUB_CORRECTED"
+        },
+        {
+          "number": 62,
+          "name": "PM_ECC_ERROR_SCRUB_2BIT"
+        },
+        {
+          "number": 63,
+          "name": "PM_ECC_ERROR_1BIT"
+        },
+        {
+          "number": 64,
+          "name": "PM_ECC_ERROR_2BIT"
+        },
+        {
+          "number": 65,
+          "name": "PM_ADDRESS_OUT_OF_RANGE"
+        },
+        {
+          "number": 66,
+          "name": "DM_ACCESS_TO_UNAVAILABLE"
+        },
+        {
+          "number": 67,
+          "name": "LOCK_ACCESS_TO_UNAVAILABLE"
+        },
+        {
+          "number": 68,
+          "name": "INSTR_WARNING"
+        },
+        {
+          "number": 69,
+          "name": "INSTR_ERROR"
+        },
+        {
+          "number": 70,
+          "name": "SPARSITY_OVERFLOW"
+        },
+        {
+          "number": 71,
+          "name": "STREAM_SWITCH_PORT_PARITY_ERROR"
+        },
+        {
+          "number": 72,
+          "name": "PROCESSOR_BUS_ERROR"
+        },
+        {
+          "number": 73,
+          "name": "GROUP_STREAM_SWITCH"
+        },
+        {
+          "number": 74,
+          "name": "PORT_IDLE_0"
+        },
+        {
+          "number": 75,
+          "name": "PORT_RUNNING_0"
+        },
+        {
+          "number": 76,
+          "name": "PORT_STALLED_0"
+        },
+        {
+          "number": 77,
+          "name": "PORT_TLAST_0"
+        },
+        {
+          "number": 78,
+          "name": "PORT_IDLE_1"
+        },
+        {
+          "number": 79,
+          "name": "PORT_RUNNING_1"
+        },
+        {
+          "number": 80,
+          "name": "PORT_STALLED_1"
+        },
+        {
+          "number": 81,
+          "name": "PORT_TLAST_1"
+        },
+        {
+          "number": 82,
+          "name": "PORT_IDLE_2"
+        },
+        {
+          "number": 83,
+          "name": "PORT_RUNNING_2"
+        },
+        {
+          "number": 84,
+          "name": "PORT_STALLED_2"
+        },
+        {
+          "number": 85,
+          "name": "PORT_TLAST_2"
+        },
+        {
+          "number": 86,
+          "name": "PORT_IDLE_3"
+        },
+        {
+          "number": 87,
+          "name": "PORT_RUNNING_3"
+        },
+        {
+          "number": 88,
+          "name": "PORT_STALLED_3"
+        },
+        {
+          "number": 89,
+          "name": "PORT_TLAST_3"
+        },
+        {
+          "number": 90,
+          "name": "PORT_IDLE_4"
+        },
+        {
+          "number": 91,
+          "name": "PORT_RUNNING_4"
+        },
+        {
+          "number": 92,
+          "name": "PORT_STALLED_4"
+        },
+        {
+          "number": 93,
+          "name": "PORT_TLAST_4"
+        },
+        {
+          "number": 94,
+          "name": "PORT_IDLE_5"
+        },
+        {
+          "number": 95,
+          "name": "PORT_RUNNING_5"
+        },
+        {
+          "number": 96,
+          "name": "PORT_STALLED_5"
+        },
+        {
+          "number": 97,
+          "name": "PORT_TLAST_5"
+        },
+        {
+          "number": 98,
+          "name": "PORT_IDLE_6"
+        },
+        {
+          "number": 99,
+          "name": "PORT_RUNNING_6"
+        },
+        {
+          "number": 100,
+          "name": "PORT_STALLED_6"
+        },
+        {
+          "number": 101,
+          "name": "PORT_TLAST_6"
+        },
+        {
+          "number": 102,
+          "name": "PORT_IDLE_7"
+        },
+        {
+          "number": 103,
+          "name": "PORT_RUNNING_7"
+        },
+        {
+          "number": 104,
+          "name": "PORT_STALLED_7"
+        },
+        {
+          "number": 105,
+          "name": "PORT_TLAST_7"
+        },
+        {
+          "number": 106,
+          "name": "GROUP_BROADCAST"
+        },
+        {
+          "number": 107,
+          "name": "BROADCAST_0"
+        },
+        {
+          "number": 108,
+          "name": "BROADCAST_1"
+        },
+        {
+          "number": 109,
+          "name": "BROADCAST_2"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_3"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_4"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_5"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_6"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_7"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_8"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_9"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_10"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_11"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_12"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_13"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_14"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_15"
+        },
+        {
+          "number": 123,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 124,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 125,
+          "name": "USER_EVENT_1"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_2"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_3"
+        }
+      ],
+      "memory": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 8,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 11,
+          "name": "EDGE_DETECTION_EVENT_0"
+        },
+        {
+          "number": 12,
+          "name": "EDGE_DETECTION_EVENT_1"
+        },
+        {
+          "number": 15,
+          "name": "GROUP_WATCHPOINT"
+        },
+        {
+          "number": 16,
+          "name": "WATCHPOINT_0"
+        },
+        {
+          "number": 17,
+          "name": "WATCHPOINT_1"
+        },
+        {
+          "number": 18,
+          "name": "GROUP_DMA_ACTIVITY"
+        },
+        {
+          "number": 19,
+          "name": "DMA_S2MM_0_START_TASK"
+        },
+        {
+          "number": 20,
+          "name": "DMA_S2MM_1_START_TASK"
+        },
+        {
+          "number": 21,
+          "name": "DMA_MM2S_0_START_TASK"
+        },
+        {
+          "number": 22,
+          "name": "DMA_MM2S_1_START_TASK"
+        },
+        {
+          "number": 23,
+          "name": "DMA_S2MM_0_FINISHED_BD"
+        },
+        {
+          "number": 24,
+          "name": "DMA_S2MM_1_FINISHED_BD"
+        },
+        {
+          "number": 25,
+          "name": "DMA_MM2S_0_FINISHED_BD"
+        },
+        {
+          "number": 26,
+          "name": "DMA_MM2S_1_FINISHED_BD"
+        },
+        {
+          "number": 27,
+          "name": "DMA_S2MM_0_FINISHED_TASK"
+        },
+        {
+          "number": 28,
+          "name": "DMA_S2MM_1_FINISHED_TASK"
+        },
+        {
+          "number": 29,
+          "name": "DMA_MM2S_0_FINISHED_TASK"
+        },
+        {
+          "number": 30,
+          "name": "DMA_MM2S_1_FINISHED_TASK"
+        },
+        {
+          "number": 31,
+          "name": "DMA_S2MM_0_STALLED_LOCK"
+        },
+        {
+          "number": 32,
+          "name": "DMA_S2MM_1_STALLED_LOCK"
+        },
+        {
+          "number": 33,
+          "name": "DMA_MM2S_0_STALLED_LOCK"
+        },
+        {
+          "number": 34,
+          "name": "DMA_MM2S_1_STALLED_LOCK"
+        },
+        {
+          "number": 35,
+          "name": "DMA_S2MM_0_STREAM_STARVATION"
+        },
+        {
+          "number": 36,
+          "name": "DMA_S2MM_1_STREAM_STARVATION"
+        },
+        {
+          "number": 37,
+          "name": "DMA_MM2S_0_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 38,
+          "name": "DMA_MM2S_1_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 39,
+          "name": "DMA_S2MM_0_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 40,
+          "name": "DMA_S2MM_1_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 41,
+          "name": "DMA_MM2S_0_MEMORY_STARVATION"
+        },
+        {
+          "number": 42,
+          "name": "DMA_MM2S_1_MEMORY_STARVATION"
+        },
+        {
+          "number": 43,
+          "name": "GROUP_LOCK"
+        },
+        {
+          "number": 44,
+          "name": "LOCK_SEL0_ACQ_EQ"
+        },
+        {
+          "number": 45,
+          "name": "LOCK_SEL0_ACQ_GE"
+        },
+        {
+          "number": 46,
+          "name": "LOCK_0_REL"
+        },
+        {
+          "number": 47,
+          "name": "LOCK_SEL0_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 48,
+          "name": "LOCK_SEL1_ACQ_EQ"
+        },
+        {
+          "number": 49,
+          "name": "LOCK_SEL1_ACQ_GE"
+        },
+        {
+          "number": 50,
+          "name": "LOCK_1_REL"
+        },
+        {
+          "number": 51,
+          "name": "LOCK_SEL1_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 52,
+          "name": "LOCK_SEL2_ACQ_EQ"
+        },
+        {
+          "number": 53,
+          "name": "LOCK_SEL2_ACQ_GE"
+        },
+        {
+          "number": 54,
+          "name": "LOCK_2_REL"
+        },
+        {
+          "number": 55,
+          "name": "LOCK_SEL2_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 56,
+          "name": "LOCK_SEL3_ACQ_EQ"
+        },
+        {
+          "number": 57,
+          "name": "LOCK_SEL3_ACQ_GE"
+        },
+        {
+          "number": 58,
+          "name": "LOCK_3_REL"
+        },
+        {
+          "number": 59,
+          "name": "LOCK_SEL3_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 60,
+          "name": "LOCK_SEL4_ACQ_EQ"
+        },
+        {
+          "number": 61,
+          "name": "LOCK_SEL4_ACQ_GE"
+        },
+        {
+          "number": 62,
+          "name": "LOCK_4_REL"
+        },
+        {
+          "number": 63,
+          "name": "LOCK_SEL4_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 64,
+          "name": "LOCK_SEL5_ACQ_EQ"
+        },
+        {
+          "number": 65,
+          "name": "LOCK_SEL5_ACQ_GE"
+        },
+        {
+          "number": 66,
+          "name": "LOCK_5_REL"
+        },
+        {
+          "number": 67,
+          "name": "LOCK_SEL5_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 68,
+          "name": "LOCK_SEL6_ACQ_EQ"
+        },
+        {
+          "number": 69,
+          "name": "LOCK_SEL6_ACQ_GE"
+        },
+        {
+          "number": 70,
+          "name": "LOCK_6_REL"
+        },
+        {
+          "number": 71,
+          "name": "LOCK_SEL6_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 72,
+          "name": "LOCK_SEL7_ACQ_EQ"
+        },
+        {
+          "number": 73,
+          "name": "LOCK_SEL7_ACQ_GE"
+        },
+        {
+          "number": 74,
+          "name": "LOCK_7_REL"
+        },
+        {
+          "number": 75,
+          "name": "LOCK_SEL7_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 76,
+          "name": "GROUP_MEMORY_CONFLICT"
+        },
+        {
+          "number": 77,
+          "name": "CONFLICT_DM_BANK_0"
+        },
+        {
+          "number": 78,
+          "name": "CONFLICT_DM_BANK_1"
+        },
+        {
+          "number": 79,
+          "name": "CONFLICT_DM_BANK_2"
+        },
+        {
+          "number": 80,
+          "name": "CONFLICT_DM_BANK_3"
+        },
+        {
+          "number": 81,
+          "name": "CONFLICT_DM_BANK_4"
+        },
+        {
+          "number": 82,
+          "name": "CONFLICT_DM_BANK_5"
+        },
+        {
+          "number": 83,
+          "name": "CONFLICT_DM_BANK_6"
+        },
+        {
+          "number": 84,
+          "name": "CONFLICT_DM_BANK_7"
+        },
+        {
+          "number": 86,
+          "name": "GROUP_ERRORS"
+        },
+        {
+          "number": 87,
+          "name": "DM_ECC_ERROR_SCRUB_CORRECTED"
+        },
+        {
+          "number": 88,
+          "name": "DM_ECC_ERROR_SCRUB_2BIT"
+        },
+        {
+          "number": 89,
+          "name": "DM_ECC_ERROR_1BIT"
+        },
+        {
+          "number": 90,
+          "name": "DM_ECC_ERROR_2BIT"
+        },
+        {
+          "number": 91,
+          "name": "DM_PARITY_ERROR_BANK_2"
+        },
+        {
+          "number": 92,
+          "name": "DM_PARITY_ERROR_BANK_3"
+        },
+        {
+          "number": 93,
+          "name": "DM_PARITY_ERROR_BANK_4"
+        },
+        {
+          "number": 94,
+          "name": "DM_PARITY_ERROR_BANK_5"
+        },
+        {
+          "number": 95,
+          "name": "DM_PARITY_ERROR_BANK_6"
+        },
+        {
+          "number": 96,
+          "name": "DM_PARITY_ERROR_BANK_7"
+        },
+        {
+          "number": 97,
+          "name": "DMA_S2MM_0_ERROR"
+        },
+        {
+          "number": 98,
+          "name": "DMA_S2MM_1_ERROR"
+        },
+        {
+          "number": 99,
+          "name": "DMA_MM2S_0_ERROR"
+        },
+        {
+          "number": 100,
+          "name": "DMA_MM2S_1_ERROR"
+        },
+        {
+          "number": 101,
+          "name": "LOCK_ERROR"
+        },
+        {
+          "number": 102,
+          "name": "DMA_TASK_TOKEN_STALL"
+        },
+        {
+          "number": 106,
+          "name": "GROUP_BROADCAST"
+        },
+        {
+          "number": 107,
+          "name": "BROADCAST_0"
+        },
+        {
+          "number": 108,
+          "name": "BROADCAST_1"
+        },
+        {
+          "number": 109,
+          "name": "BROADCAST_2"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_3"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_4"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_5"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_6"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_7"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_8"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_9"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_10"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_11"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_12"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_13"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_14"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_15"
+        },
+        {
+          "number": 123,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 124,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 125,
+          "name": "USER_EVENT_1"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_2"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_3"
+        }
+      ],
+      "pl": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT_0"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT_1"
+        },
+        {
+          "number": 7,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 8,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 11,
+          "name": "EDGE_DETECTION_EVENT_0"
+        },
+        {
+          "number": 12,
+          "name": "EDGE_DETECTION_EVENT_1"
+        },
+        {
+          "number": 13,
+          "name": "GROUP_DMA_ACTIVITY"
+        },
+        {
+          "number": 14,
+          "name": "DMA_S2MM_0_START_TASK"
+        },
+        {
+          "number": 15,
+          "name": "DMA_S2MM_1_START_TASK"
+        },
+        {
+          "number": 16,
+          "name": "DMA_MM2S_0_START_TASK"
+        },
+        {
+          "number": 17,
+          "name": "DMA_MM2S_1_START_TASK"
+        },
+        {
+          "number": 18,
+          "name": "DMA_S2MM_0_FINISHED_BD"
+        },
+        {
+          "number": 19,
+          "name": "DMA_S2MM_1_FINISHED_BD"
+        },
+        {
+          "number": 20,
+          "name": "DMA_MM2S_0_FINISHED_BD"
+        },
+        {
+          "number": 21,
+          "name": "DMA_MM2S_1_FINISHED_BD"
+        },
+        {
+          "number": 22,
+          "name": "DMA_S2MM_0_FINISHED_TASK"
+        },
+        {
+          "number": 23,
+          "name": "DMA_S2MM_1_FINISHED_TASK"
+        },
+        {
+          "number": 24,
+          "name": "DMA_MM2S_0_FINISHED_TASK"
+        },
+        {
+          "number": 25,
+          "name": "DMA_MM2S_1_FINISHED_TASK"
+        },
+        {
+          "number": 26,
+          "name": "DMA_S2MM_0_STALLED_LOCK"
+        },
+        {
+          "number": 27,
+          "name": "DMA_S2MM_1_STALLED_LOCK"
+        },
+        {
+          "number": 28,
+          "name": "DMA_MM2S_0_STALLED_LOCK"
+        },
+        {
+          "number": 29,
+          "name": "DMA_MM2S_1_STALLED_LOCK"
+        },
+        {
+          "number": 30,
+          "name": "DMA_S2MM_0_STREAM_STARVATION"
+        },
+        {
+          "number": 31,
+          "name": "DMA_S2MM_1_STREAM_STARVATION"
+        },
+        {
+          "number": 32,
+          "name": "DMA_MM2S_0_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 33,
+          "name": "DMA_MM2S_1_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 34,
+          "name": "DMA_S2MM_0_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 35,
+          "name": "DMA_S2MM_1_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 36,
+          "name": "DMA_MM2S_0_MEMORY_STARVATION"
+        },
+        {
+          "number": 37,
+          "name": "DMA_MM2S_1_MEMORY_STARVATION"
+        },
+        {
+          "number": 38,
+          "name": "GROUP_LOCK"
+        },
+        {
+          "number": 39,
+          "name": "LOCK_0_ACQ_EQ"
+        },
+        {
+          "number": 40,
+          "name": "LOCK_0_ACQ_GE"
+        },
+        {
+          "number": 41,
+          "name": "LOCK_0_REL"
+        },
+        {
+          "number": 42,
+          "name": "LOCK_0_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 43,
+          "name": "LOCK_1_ACQ_EQ"
+        },
+        {
+          "number": 44,
+          "name": "LOCK_1_ACQ_GE"
+        },
+        {
+          "number": 45,
+          "name": "LOCK_1_REL"
+        },
+        {
+          "number": 46,
+          "name": "LOCK_1_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 47,
+          "name": "LOCK_2_ACQ_EQ"
+        },
+        {
+          "number": 48,
+          "name": "LOCK_2_ACQ_GE"
+        },
+        {
+          "number": 49,
+          "name": "LOCK_2_REL"
+        },
+        {
+          "number": 50,
+          "name": "LOCK_2_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 51,
+          "name": "LOCK_3_ACQ_EQ"
+        },
+        {
+          "number": 52,
+          "name": "LOCK_3_ACQ_GE"
+        },
+        {
+          "number": 53,
+          "name": "LOCK_3_REL"
+        },
+        {
+          "number": 54,
+          "name": "LOCK_3_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 55,
+          "name": "LOCK_4_ACQ_EQ"
+        },
+        {
+          "number": 56,
+          "name": "LOCK_4_ACQ_GE"
+        },
+        {
+          "number": 57,
+          "name": "LOCK_4_REL"
+        },
+        {
+          "number": 58,
+          "name": "LOCK_4_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 59,
+          "name": "LOCK_5_ACQ_EQ"
+        },
+        {
+          "number": 60,
+          "name": "LOCK_5_ACQ_GE"
+        },
+        {
+          "number": 61,
+          "name": "LOCK_5_REL"
+        },
+        {
+          "number": 62,
+          "name": "LOCK_5_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 63,
+          "name": "GROUP_ERRORS"
+        },
+        {
+          "number": 64,
+          "name": "AXI_MM_SLAVE_ERROR"
+        },
+        {
+          "number": 65,
+          "name": "CONTROL_PKT_ERROR"
+        },
+        {
+          "number": 66,
+          "name": "STREAM_SWITCH_PARITY_ERROR"
+        },
+        {
+          "number": 67,
+          "name": "AXI_MM_DECODE_NSU_ERROR"
+        },
+        {
+          "number": 68,
+          "name": "AXI_MM_SLAVE_NSU_ERROR"
+        },
+        {
+          "number": 69,
+          "name": "AXI_MM_UNSUPPORTED_TRAFFIC"
+        },
+        {
+          "number": 70,
+          "name": "AXI_MM_UNSECURE_ACCESS_IN_SECURE_MODE"
+        },
+        {
+          "number": 71,
+          "name": "AXI_MM_BYTE_STROBE_ERROR"
+        },
+        {
+          "number": 72,
+          "name": "DMA_S2MM_ERROR"
+        },
+        {
+          "number": 73,
+          "name": "DMA_MM2S_ERROR"
+        },
+        {
+          "number": 74,
+          "name": "LOCK_ERROR"
+        },
+        {
+          "number": 75,
+          "name": "DMA_TASK_TOKEN_STALL"
+        },
+        {
+          "number": 76,
+          "name": "GROUP_STREAM_SWITCH"
+        },
+        {
+          "number": 77,
+          "name": "PORT_IDLE_0"
+        },
+        {
+          "number": 78,
+          "name": "PORT_RUNNING_0"
+        },
+        {
+          "number": 79,
+          "name": "PORT_STALLED_0"
+        },
+        {
+          "number": 80,
+          "name": "PORT_TLAST_0"
+        },
+        {
+          "number": 81,
+          "name": "PORT_IDLE_1"
+        },
+        {
+          "number": 82,
+          "name": "PORT_RUNNING_1"
+        },
+        {
+          "number": 83,
+          "name": "PORT_STALLED_1"
+        },
+        {
+          "number": 84,
+          "name": "PORT_TLAST_1"
+        },
+        {
+          "number": 85,
+          "name": "PORT_IDLE_2"
+        },
+        {
+          "number": 86,
+          "name": "PORT_RUNNING_2"
+        },
+        {
+          "number": 87,
+          "name": "PORT_STALLED_2"
+        },
+        {
+          "number": 88,
+          "name": "PORT_TLAST_2"
+        },
+        {
+          "number": 89,
+          "name": "PORT_IDLE_3"
+        },
+        {
+          "number": 90,
+          "name": "PORT_RUNNING_3"
+        },
+        {
+          "number": 91,
+          "name": "PORT_STALLED_3"
+        },
+        {
+          "number": 92,
+          "name": "PORT_TLAST_3"
+        },
+        {
+          "number": 93,
+          "name": "PORT_IDLE_4"
+        },
+        {
+          "number": 94,
+          "name": "PORT_RUNNING_4"
+        },
+        {
+          "number": 95,
+          "name": "PORT_STALLED_4"
+        },
+        {
+          "number": 96,
+          "name": "PORT_TLAST_4"
+        },
+        {
+          "number": 97,
+          "name": "PORT_IDLE_5"
+        },
+        {
+          "number": 98,
+          "name": "PORT_RUNNING_5"
+        },
+        {
+          "number": 99,
+          "name": "PORT_STALLED_5"
+        },
+        {
+          "number": 100,
+          "name": "PORT_TLAST_5"
+        },
+        {
+          "number": 101,
+          "name": "PORT_IDLE_6"
+        },
+        {
+          "number": 102,
+          "name": "PORT_RUNNING_6"
+        },
+        {
+          "number": 103,
+          "name": "PORT_STALLED_6"
+        },
+        {
+          "number": 104,
+          "name": "PORT_TLAST_6"
+        },
+        {
+          "number": 105,
+          "name": "PORT_IDLE_7"
+        },
+        {
+          "number": 106,
+          "name": "PORT_RUNNING_7"
+        },
+        {
+          "number": 107,
+          "name": "PORT_STALLED_7"
+        },
+        {
+          "number": 108,
+          "name": "PORT_TLAST_7"
+        },
+        {
+          "number": 109,
+          "name": "GROUP_BROADCAST_A"
+        },
+        {
+          "number": 110,
+          "name": "BROADCAST_A_0"
+        },
+        {
+          "number": 111,
+          "name": "BROADCAST_A_1"
+        },
+        {
+          "number": 112,
+          "name": "BROADCAST_A_2"
+        },
+        {
+          "number": 113,
+          "name": "BROADCAST_A_3"
+        },
+        {
+          "number": 114,
+          "name": "BROADCAST_A_4"
+        },
+        {
+          "number": 115,
+          "name": "BROADCAST_A_5"
+        },
+        {
+          "number": 116,
+          "name": "BROADCAST_A_6"
+        },
+        {
+          "number": 117,
+          "name": "BROADCAST_A_7"
+        },
+        {
+          "number": 118,
+          "name": "BROADCAST_A_8"
+        },
+        {
+          "number": 119,
+          "name": "BROADCAST_A_9"
+        },
+        {
+          "number": 120,
+          "name": "BROADCAST_A_10"
+        },
+        {
+          "number": 121,
+          "name": "BROADCAST_A_11"
+        },
+        {
+          "number": 122,
+          "name": "BROADCAST_A_12"
+        },
+        {
+          "number": 123,
+          "name": "BROADCAST_A_13"
+        },
+        {
+          "number": 124,
+          "name": "BROADCAST_A_14"
+        },
+        {
+          "number": 125,
+          "name": "BROADCAST_A_15"
+        },
+        {
+          "number": 126,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 127,
+          "name": "USER_EVENT_1"
+        }
+      ],
+      "mem_tile": [
+        {
+          "number": 0,
+          "name": "NONE"
+        },
+        {
+          "number": 1,
+          "name": "TRUE"
+        },
+        {
+          "number": 2,
+          "name": "GROUP_0"
+        },
+        {
+          "number": 3,
+          "name": "TIMER_SYNC"
+        },
+        {
+          "number": 4,
+          "name": "TIMER_VALUE_REACHED"
+        },
+        {
+          "number": 5,
+          "name": "PERF_CNT0_EVENT"
+        },
+        {
+          "number": 6,
+          "name": "PERF_CNT1_EVENT"
+        },
+        {
+          "number": 7,
+          "name": "PERF_CNT2_EVENT"
+        },
+        {
+          "number": 8,
+          "name": "PERF_CNT3_EVENT"
+        },
+        {
+          "number": 9,
+          "name": "COMBO_EVENT_0"
+        },
+        {
+          "number": 10,
+          "name": "COMBO_EVENT_1"
+        },
+        {
+          "number": 11,
+          "name": "COMBO_EVENT_2"
+        },
+        {
+          "number": 12,
+          "name": "COMBO_EVENT_3"
+        },
+        {
+          "number": 13,
+          "name": "EDGE_DETECTION_EVENT_0"
+        },
+        {
+          "number": 14,
+          "name": "EDGE_DETECTION_EVENT_1"
+        },
+        {
+          "number": 15,
+          "name": "GROUP_WATCHPOINT"
+        },
+        {
+          "number": 16,
+          "name": "WATCHPOINT_0"
+        },
+        {
+          "number": 17,
+          "name": "WATCHPOINT_1"
+        },
+        {
+          "number": 18,
+          "name": "WATCHPOINT_2"
+        },
+        {
+          "number": 19,
+          "name": "WATCHPOINT_3"
+        },
+        {
+          "number": 20,
+          "name": "GROUP_DMA_ACTIVITY"
+        },
+        {
+          "number": 21,
+          "name": "DMA_S2MM_SEL0_START_TASK"
+        },
+        {
+          "number": 22,
+          "name": "DMA_S2MM_SEL1_START_TASK"
+        },
+        {
+          "number": 23,
+          "name": "DMA_MM2S_SEL0_START_TASK"
+        },
+        {
+          "number": 24,
+          "name": "DMA_MM2S_SEL1_START_TASK"
+        },
+        {
+          "number": 25,
+          "name": "DMA_S2MM_SEL0_FINISHED_BD"
+        },
+        {
+          "number": 26,
+          "name": "DMA_S2MM_SEL1_FINISHED_BD"
+        },
+        {
+          "number": 27,
+          "name": "DMA_MM2S_SEL0_FINISHED_BD"
+        },
+        {
+          "number": 28,
+          "name": "DMA_MM2S_SEL1_FINISHED_BD"
+        },
+        {
+          "number": 29,
+          "name": "DMA_S2MM_SEL0_FINISHED_TASK"
+        },
+        {
+          "number": 30,
+          "name": "DMA_S2MM_SEL1_FINISHED_TASK"
+        },
+        {
+          "number": 31,
+          "name": "DMA_MM2S_SEL0_FINISHED_TASK"
+        },
+        {
+          "number": 32,
+          "name": "DMA_MM2S_SEL1_FINISHED_TASK"
+        },
+        {
+          "number": 33,
+          "name": "DMA_S2MM_SEL0_STALLED_LOCK"
+        },
+        {
+          "number": 34,
+          "name": "DMA_S2MM_SEL1_STALLED_LOCK"
+        },
+        {
+          "number": 35,
+          "name": "DMA_MM2S_SEL0_STALLED_LOCK"
+        },
+        {
+          "number": 36,
+          "name": "DMA_MM2S_SEL1_STALLED_LOCK"
+        },
+        {
+          "number": 37,
+          "name": "DMA_S2MM_SEL0_STREAM_STARVATION"
+        },
+        {
+          "number": 38,
+          "name": "DMA_S2MM_SEL1_STREAM_STARVATION"
+        },
+        {
+          "number": 39,
+          "name": "DMA_MM2S_SEL0_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 40,
+          "name": "DMA_MM2S_SEL1_STREAM_BACKPRESSURE"
+        },
+        {
+          "number": 41,
+          "name": "DMA_S2MM_SEL0_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 42,
+          "name": "DMA_S2MM_SEL1_MEMORY_BACKPRESSURE"
+        },
+        {
+          "number": 43,
+          "name": "DMA_MM2S_SEL0_MEMORY_STARVATION"
+        },
+        {
+          "number": 44,
+          "name": "DMA_MM2S_SEL1_MEMORY_STARVATION"
+        },
+        {
+          "number": 45,
+          "name": "GROUP_LOCK"
+        },
+        {
+          "number": 46,
+          "name": "LOCK_SEL0_ACQ_EQ"
+        },
+        {
+          "number": 47,
+          "name": "LOCK_SEL0_ACQ_GE"
+        },
+        {
+          "number": 48,
+          "name": "LOCK_SEL0_REL"
+        },
+        {
+          "number": 49,
+          "name": "LOCK_SEL0_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 50,
+          "name": "LOCK_SEL1_ACQ_EQ"
+        },
+        {
+          "number": 51,
+          "name": "LOCK_SEL1_ACQ_GE"
+        },
+        {
+          "number": 52,
+          "name": "LOCK_SEL1_REL"
+        },
+        {
+          "number": 53,
+          "name": "LOCK_SEL1_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 54,
+          "name": "LOCK_SEL2_ACQ_EQ"
+        },
+        {
+          "number": 55,
+          "name": "LOCK_SEL2_ACQ_GE"
+        },
+        {
+          "number": 56,
+          "name": "LOCK_SEL2_REL"
+        },
+        {
+          "number": 57,
+          "name": "LOCK_SEL2_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 58,
+          "name": "LOCK_SEL3_ACQ_EQ"
+        },
+        {
+          "number": 59,
+          "name": "LOCK_SEL3_ACQ_GE"
+        },
+        {
+          "number": 60,
+          "name": "LOCK_SEL3_REL"
+        },
+        {
+          "number": 61,
+          "name": "LOCK_SEL3_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 62,
+          "name": "LOCK_SEL4_ACQ_EQ"
+        },
+        {
+          "number": 63,
+          "name": "LOCK_SEL4_ACQ_GE"
+        },
+        {
+          "number": 64,
+          "name": "LOCK_SEL4_REL"
+        },
+        {
+          "number": 65,
+          "name": "LOCK_SEL4_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 66,
+          "name": "LOCK_SEL5_ACQ_EQ"
+        },
+        {
+          "number": 67,
+          "name": "LOCK_SEL5_ACQ_GE"
+        },
+        {
+          "number": 68,
+          "name": "LOCK_SEL5_REL"
+        },
+        {
+          "number": 69,
+          "name": "LOCK_SEL5_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 70,
+          "name": "LOCK_SEL6_ACQ_EQ"
+        },
+        {
+          "number": 71,
+          "name": "LOCK_SEL6_ACQ_GE"
+        },
+        {
+          "number": 72,
+          "name": "LOCK_SEL6_REL"
+        },
+        {
+          "number": 73,
+          "name": "LOCK_SEL6_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 74,
+          "name": "LOCK_SEL7_ACQ_EQ"
+        },
+        {
+          "number": 75,
+          "name": "LOCK_SEL7_ACQ_GE"
+        },
+        {
+          "number": 76,
+          "name": "LOCK_SEL7_REL"
+        },
+        {
+          "number": 77,
+          "name": "LOCK_SEL7_EQUAL_TO_VALUE"
+        },
+        {
+          "number": 78,
+          "name": "GROUP_STREAM_SWITCH"
+        },
+        {
+          "number": 79,
+          "name": "PORT_IDLE_0"
+        },
+        {
+          "number": 80,
+          "name": "PORT_RUNNING_0"
+        },
+        {
+          "number": 81,
+          "name": "PORT_STALLED_0"
+        },
+        {
+          "number": 82,
+          "name": "PORT_TLAST_0"
+        },
+        {
+          "number": 83,
+          "name": "PORT_IDLE_1"
+        },
+        {
+          "number": 84,
+          "name": "PORT_RUNNING_1"
+        },
+        {
+          "number": 85,
+          "name": "PORT_STALLED_1"
+        },
+        {
+          "number": 86,
+          "name": "PORT_TLAST_1"
+        },
+        {
+          "number": 87,
+          "name": "PORT_IDLE_2"
+        },
+        {
+          "number": 88,
+          "name": "PORT_RUNNING_2"
+        },
+        {
+          "number": 89,
+          "name": "PORT_STALLED_2"
+        },
+        {
+          "number": 90,
+          "name": "PORT_TLAST_2"
+        },
+        {
+          "number": 91,
+          "name": "PORT_IDLE_3"
+        },
+        {
+          "number": 92,
+          "name": "PORT_RUNNING_3"
+        },
+        {
+          "number": 93,
+          "name": "PORT_STALLED_3"
+        },
+        {
+          "number": 94,
+          "name": "PORT_TLAST_3"
+        },
+        {
+          "number": 95,
+          "name": "PORT_IDLE_4"
+        },
+        {
+          "number": 96,
+          "name": "PORT_RUNNING_4"
+        },
+        {
+          "number": 97,
+          "name": "PORT_STALLED_4"
+        },
+        {
+          "number": 98,
+          "name": "PORT_TLAST_4"
+        },
+        {
+          "number": 99,
+          "name": "PORT_IDLE_5"
+        },
+        {
+          "number": 100,
+          "name": "PORT_RUNNING_5"
+        },
+        {
+          "number": 101,
+          "name": "PORT_STALLED_5"
+        },
+        {
+          "number": 102,
+          "name": "PORT_TLAST_5"
+        },
+        {
+          "number": 103,
+          "name": "PORT_IDLE_6"
+        },
+        {
+          "number": 104,
+          "name": "PORT_RUNNING_6"
+        },
+        {
+          "number": 105,
+          "name": "PORT_STALLED_6"
+        },
+        {
+          "number": 106,
+          "name": "PORT_TLAST_6"
+        },
+        {
+          "number": 107,
+          "name": "PORT_IDLE_7"
+        },
+        {
+          "number": 108,
+          "name": "PORT_RUNNING_7"
+        },
+        {
+          "number": 109,
+          "name": "PORT_STALLED_7"
+        },
+        {
+          "number": 110,
+          "name": "PORT_TLAST_7"
+        },
+        {
+          "number": 111,
+          "name": "GROUP_MEMORY_CONFLICT"
+        },
+        {
+          "number": 112,
+          "name": "CONFLICT_DM_BANK_0"
+        },
+        {
+          "number": 113,
+          "name": "CONFLICT_DM_BANK_1"
+        },
+        {
+          "number": 114,
+          "name": "CONFLICT_DM_BANK_2"
+        },
+        {
+          "number": 115,
+          "name": "CONFLICT_DM_BANK_3"
+        },
+        {
+          "number": 116,
+          "name": "CONFLICT_DM_BANK_4"
+        },
+        {
+          "number": 117,
+          "name": "CONFLICT_DM_BANK_5"
+        },
+        {
+          "number": 118,
+          "name": "CONFLICT_DM_BANK_6"
+        },
+        {
+          "number": 119,
+          "name": "CONFLICT_DM_BANK_7"
+        },
+        {
+          "number": 120,
+          "name": "CONFLICT_DM_BANK_8"
+        },
+        {
+          "number": 121,
+          "name": "CONFLICT_DM_BANK_9"
+        },
+        {
+          "number": 122,
+          "name": "CONFLICT_DM_BANK_10"
+        },
+        {
+          "number": 123,
+          "name": "CONFLICT_DM_BANK_11"
+        },
+        {
+          "number": 124,
+          "name": "CONFLICT_DM_BANK_12"
+        },
+        {
+          "number": 125,
+          "name": "CONFLICT_DM_BANK_13"
+        },
+        {
+          "number": 126,
+          "name": "CONFLICT_DM_BANK_14"
+        },
+        {
+          "number": 127,
+          "name": "CONFLICT_DM_BANK_15"
+        },
+        {
+          "number": 128,
+          "name": "GROUP_ERRORS"
+        },
+        {
+          "number": 129,
+          "name": "DM_ECC_ERROR_SCRUB_CORRECTED"
+        },
+        {
+          "number": 130,
+          "name": "DM_ECC_ERROR_SCRUB_2BIT"
+        },
+        {
+          "number": 131,
+          "name": "DM_ECC_ERROR_1BIT"
+        },
+        {
+          "number": 132,
+          "name": "DM_ECC_ERROR_2BIT"
+        },
+        {
+          "number": 133,
+          "name": "DMA_S2MM_ERROR"
+        },
+        {
+          "number": 134,
+          "name": "DMA_MM2S_ERROR"
+        },
+        {
+          "number": 135,
+          "name": "STREAM_SWITCH_PARITY_ERROR"
+        },
+        {
+          "number": 136,
+          "name": "STREAM_PKT_ERROR"
+        },
+        {
+          "number": 137,
+          "name": "CONTROL_PKT_ERROR"
+        },
+        {
+          "number": 138,
+          "name": "AXI_MM_SLAVE_ERROR"
+        },
+        {
+          "number": 139,
+          "name": "LOCK_ERROR"
+        },
+        {
+          "number": 140,
+          "name": "DMA_TASK_TOKEN_STALL"
+        },
+        {
+          "number": 141,
+          "name": "GROUP_BROADCAST"
+        },
+        {
+          "number": 142,
+          "name": "BROADCAST_0"
+        },
+        {
+          "number": 143,
+          "name": "BROADCAST_1"
+        },
+        {
+          "number": 144,
+          "name": "BROADCAST_2"
+        },
+        {
+          "number": 145,
+          "name": "BROADCAST_3"
+        },
+        {
+          "number": 146,
+          "name": "BROADCAST_4"
+        },
+        {
+          "number": 147,
+          "name": "BROADCAST_5"
+        },
+        {
+          "number": 148,
+          "name": "BROADCAST_6"
+        },
+        {
+          "number": 149,
+          "name": "BROADCAST_7"
+        },
+        {
+          "number": 150,
+          "name": "BROADCAST_8"
+        },
+        {
+          "number": 151,
+          "name": "BROADCAST_9"
+        },
+        {
+          "number": 152,
+          "name": "BROADCAST_10"
+        },
+        {
+          "number": 153,
+          "name": "BROADCAST_11"
+        },
+        {
+          "number": 154,
+          "name": "BROADCAST_12"
+        },
+        {
+          "number": 155,
+          "name": "BROADCAST_13"
+        },
+        {
+          "number": 156,
+          "name": "BROADCAST_14"
+        },
+        {
+          "number": 157,
+          "name": "BROADCAST_15"
+        },
+        {
+          "number": 158,
+          "name": "GROUP_USER_EVENT"
+        },
+        {
+          "number": 159,
+          "name": "USER_EVENT_0"
+        },
+        {
+          "number": 160,
+          "name": "USER_EVENT_1"
+        }
+      ],
+      "uc": []
+    }
+  }
+}

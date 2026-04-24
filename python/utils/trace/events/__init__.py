@@ -6,26 +6,41 @@
 #
 """Trace events enumerations for AIE architectures.
 
-Available modules:
-- aie: AIE1 architecture events
-- aie2: AIE2/AIEML architecture events
-- aie2p: AIE2P architecture events
+Event enums are sourced from the TableGen-generated Python bindings
+(aie.dialects._aie_enum_gen), which are produced from the same aie-rt
+headers that define the hardware event numbers.
+
+Architecture-specific enums (CoreEventAIE2, etc.) are re-exported here
+under architecture-agnostic names (CoreEvent, etc.) for convenience.
+Use get_events_for_device() to select the correct architecture.
 """
-from enum import IntEnum
+
+from enum import Enum, IntEnum
+from types import SimpleNamespace
 import typing
 
-from . import aie
-from . import aie2
-from . import aie2p
-
-from .aie2 import (
-    CoreEvent,
-    MemEvent,
-    ShimTileEvent,
-    MemTileEvent,
+from aie.dialects._aie_enum_gen import (
+    CoreEventAIE,
+    MemEventAIE,
+    ShimTileEventAIE,
+    MemTileEventAIE,
+    CoreEventAIE2,
+    MemEventAIE2,
+    ShimTileEventAIE2,
+    MemTileEventAIE2,
+    CoreEventAIE2P,
+    MemEventAIE2P,
+    ShimTileEventAIE2P,
+    MemTileEventAIE2P,
 )
 
 from aie.dialects.aie import WireBundle, DMAChannelDir
+
+# Default to AIE2 for backwards compatibility
+CoreEvent = CoreEventAIE2
+MemEvent = MemEventAIE2
+ShimTileEvent = ShimTileEventAIE2
+MemTileEvent = MemTileEventAIE2
 
 
 # We use the packet type field in the packet header to help differentiate the tile
@@ -44,11 +59,26 @@ NUM_TRACE_TYPES = len(PacketType)
 
 def get_events_for_device(device: str):
     if "xcvc1902" in device:
-        return aie
+        return SimpleNamespace(
+            CoreEvent=CoreEventAIE,
+            MemEvent=MemEventAIE,
+            ShimTileEvent=ShimTileEventAIE,
+            MemTileEvent=MemTileEventAIE,
+        )
     elif "npu2p" in device:
-        return aie2p
+        return SimpleNamespace(
+            CoreEvent=CoreEventAIE2P,
+            MemEvent=MemEventAIE2P,
+            ShimTileEvent=ShimTileEventAIE2P,
+            MemTileEvent=MemTileEventAIE2P,
+        )
     else:
-        return aie2
+        return SimpleNamespace(
+            CoreEvent=CoreEventAIE2,
+            MemEvent=MemEventAIE2,
+            ShimTileEvent=ShimTileEventAIE2,
+            MemTileEvent=MemTileEventAIE2,
+        )
 
 
 def _get_port_events(enum_class):
@@ -68,8 +98,12 @@ class GenericEvent:
     def __init__(
         self, code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent]
     ):
-        # For backwards compatibility, allow integer as event
-        if isinstance(code, int):
+        # For backwards compatibility, allow plain integer as event.
+        # IntEnum is a subclass of int, so check Enum first to avoid
+        # accidentally converting typed event enums to CoreEvent.
+        if isinstance(code, Enum):
+            pass
+        elif isinstance(code, int):
             code = CoreEvent(code)
         self.code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent] = code
 

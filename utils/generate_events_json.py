@@ -5,37 +5,18 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 """
-Takes the xaie_events_*.h header files from aie-rt and generates:
-1. A JSON database containing all events for all architectures
-2. Per-architecture Python files with enums
+Takes the xaie_events_*.h header files from aie-rt and generates a JSON
+database containing all events for all architectures.
 
-The generated files are used by trace utilities for event decoding and analysis.
+The generated JSON file is used by the C++ register database
+(AIERegisterDatabase.cpp) for event name-to-number lookups.
+
+Usage (offline, run manually when aie-rt headers change):
+    python utils/generate_events_json.py -o lib/Dialect/AIE/Util/
 """
 
 import sys, re, argparse, collections, json, os
 from pathlib import Path
-
-py_template = """# Enumeration of {arch_name} trace events
-# Automatically generated from utils/generate_events_enum.py
-
-from enum import Enum
-
-
-class CoreEvent(Enum):
-{core_items}
-
-
-class MemEvent(Enum):
-{mem_items}
-
-
-class ShimTileEvent(Enum):
-{pl_items}
-
-
-class MemTileEvent(Enum):
-{mem_tile_items}
-{uc_section}"""
 
 # Architecture configurations
 ARCH_CONFIGS = {
@@ -43,19 +24,16 @@ ARCH_CONFIGS = {
         "name": "aie",
         "display_name": "AIE",
         "prefix": "XAIE_EVENTS_",
-        "python_name": "aie",  # Python module name
     },
     "xaie_events_aieml.h": {
         "name": "aie2",
         "display_name": "AIE2",
         "prefix": "XAIEML_EVENTS_",
-        "python_name": "aie2",  # Python module name
     },
     "xaie_events_aie2p.h": {
         "name": "aie2p",
         "display_name": "AIE2P",
         "prefix": "XAIE2P_EVENTS_",
-        "python_name": "aie2p",  # Python module name
     },
 }
 
@@ -115,52 +93,6 @@ def parse_events_file(filepath, arch_config):
     }
 
 
-def write_enum_items(dict):
-    """Format dictionary as Python enum items, filling gaps with reserved placeholders."""
-    if not dict:
-        return "    pass  # No events defined"
-
-    # Fill gaps with rsvd_XX placeholders
-    min_val = min(dict.keys())
-    max_val = max(dict.keys())
-    filled_dict = {}
-    for val in range(min_val, max_val + 1):
-        if val in dict:
-            filled_dict[val] = dict[val]
-        else:
-            filled_dict[val] = f"rsvd_{val}"
-    dict = filled_dict
-
-    return "\n".join("    {} = {}".format(name, num) for num, name in dict.items())
-
-
-def write_python_file(output_path, arch_name, events):
-    """Write a Python enum file for one architecture."""
-    core_str = write_enum_items(events["core"])
-    mem_str = write_enum_items(events["mem"])
-    pl_str = write_enum_items(events["pl"])
-    mem_tile_str = write_enum_items(events["mem_tile"])
-    uc_str = write_enum_items(events["uc"])
-
-    # Only include UCEvent if there are events defined
-    if events["uc"]:
-        uc_section = f"\n\nclass UCEvent(Enum):\n{uc_str}\n"
-    else:
-        uc_section = ""
-
-    content = py_template.format(
-        arch_name=arch_name,
-        core_items=core_str,
-        mem_items=mem_str,
-        pl_items=pl_str,
-        mem_tile_items=mem_tile_str,
-        uc_section=uc_section,
-    )
-
-    with open(output_path, "w") as f:
-        f.write(content)
-
-
 def events_dict_to_list(events_dict):
     """Convert OrderedDict to list of {number, name} objects for JSON."""
     return [{"number": num, "name": name} for num, name in events_dict.items()]
@@ -214,7 +146,7 @@ def find_default_input_files():
 
 def main():
     argparser = argparse.ArgumentParser(
-        description="Generate Python enums and JSON database from AIE event headers"
+        description="Generate JSON event database from AIE event headers"
     )
     argparser.add_argument(
         "-i",
@@ -226,17 +158,12 @@ def main():
         "-o",
         "--output-dir",
         default=".",
-        help="Output directory for generated files (default: current directory)",
+        help="Output directory for generated file (default: current directory)",
     )
     argparser.add_argument(
         "--json",
         default="events_database.json",
         help="JSON database filename (default: events_database.json)",
-    )
-    argparser.add_argument(
-        "--python-prefix",
-        default="trace_events_enum_",
-        help="Prefix for Python enum files (default: trace_events_enum_)",
     )
     args = argparser.parse_args()
 
@@ -269,13 +196,6 @@ def main():
 
         events = parse_events_file(filepath, arch_config)
         all_events[filename] = events
-
-        # Write per-architecture Python file using python_name
-        python_name = arch_config.get("python_name", arch_config["name"])
-        py_filename = f"{args.python_prefix}{python_name}.py"
-        py_output_path = output_dir / py_filename
-        write_python_file(py_output_path, arch_config["display_name"], events)
-        sys.stderr.write(f"  Generated {py_output_path}\n")
 
     # Write unified JSON database
     json_output_path = output_dir / args.json

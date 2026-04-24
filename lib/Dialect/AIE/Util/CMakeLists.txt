@@ -8,7 +8,8 @@
 
 set(AIE_REGDB_BUILD_DIR ${AIE_BINARY_DIR}/lib/regdb)
 set(AIE_REGDB_FILES
-  aie_registers_aie2.json)
+  aie_registers_aie2.json
+  events_database.json)
 
 set(AIE_REGDB_OUTPUTS)
 foreach(regdb_file ${AIE_REGDB_FILES})
@@ -36,8 +37,9 @@ add_mlir_dialect_library(MLIRAIEUtil
   MLIRSupport
 )
 
-add_dependencies(MLIRAIEUtil MLIRAIERegDBResources GenerateTraceEventsEnum)
+add_dependencies(MLIRAIEUtil MLIRAIERegDBResources)
 
 install(FILES
   ${AIE_BINARY_DIR}/lib/regdb/aie_registers_aie2.json
+  ${AIE_BINARY_DIR}/lib/regdb/events_database.json
   DESTINATION lib${LLVM_LIBDIR_SUFFIX}/regdb)
