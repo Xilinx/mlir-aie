@@ -31,6 +31,7 @@ from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
+from .cascade import CascadeFifo  # T2.1: cascade-stream first-class primitive
 from .dtype import str_to_dtype, dtype_to_str
 from aie.utils.jit import jit
 from aie.utils import (
@@ -61,20 +62,10 @@ from aie.utils import (
 # ---------------------------------------------------------------------------
 
 
-class CascadeFifo:
-    """T2.1 reservation slot -- CascadeFifo (cascade-stream ObjectFifo subclass).
-
-    Will lower to ``aie.put_cascade`` / ``aie.get_cascade`` MLIR ops between
-    vertically-adjacent CoreTiles. Phase 1's ``bionpu/iron_extensions/
-    cascade_stream.py`` is the wrapper-level proof-of-concept being promoted.
-
-    Raises :class:`NotImplementedError` until T2.1 lands.
-    """
-
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError(
-            "CascadeFifo: T2.1 not yet landed (T1.2 reservation slot)"
-        )
+# T2.1: CascadeFifo reservation slot replaced by real implementation
+# (`from .cascade import CascadeFifo` above). The class lives in
+# `python/iron/cascade.py`. See its module docstring for the AM020
+# Ch. 4 p. 67 cascade-stream architectural reference.
 
 
 class PacketFifo:
