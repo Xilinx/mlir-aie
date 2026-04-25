@@ -219,8 +219,14 @@ class CascadeFifo(Resolvable):
                 f"({lanes_per_word})"
             )
 
-        self._producer_tile = producer_tile.copy()
-        self._consumer_tile = consumer_tile.copy()
+        # Hold tile references (not copies) so a tile op assigned by the
+        # Program's tile-resolution pass (or by the caller after CascadeFifo
+        # construction) is visible at resolve() time. Worker.__init__ copies
+        # because a Worker owns its tile placement; CascadeFifo by contrast
+        # is bound to two tiles owned by their respective Workers, so we
+        # must observe op assignment through the same object identity.
+        self._producer_tile = producer_tile
+        self._consumer_tile = consumer_tile
         self._dtype = dtype
         self._np_dtype = np_dtype
         self._lanes_per_word = lanes_per_word

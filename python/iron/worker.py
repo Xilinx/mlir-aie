@@ -18,6 +18,7 @@ from .device import Tile, AnyComputeTile
 from ..dialects._aie_enum_gen import AIETileType  # type: ignore
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
+from .dataflow.fifo_handle_registry import dispatch_fn_arg
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -88,11 +89,23 @@ class Worker(ObjectFifoEndpoint):
         self._barriers = []
 
         # Check arguments to the core. Some information is saved for resolution.
+        #
+        # T2.4: FifoHandle subclasses (ObjectFifoHandle plus Wave 2 promotions
+        # CascadeFifoHandle / PacketFifoHandle / AccumFifoHandle /
+        # SparseFifoHandle) are dispatched through the registry in
+        # ``dataflow/fifo_handle_registry.py``. This replaces the original
+        # hard-coded ``isinstance(arg, ObjectFifoHandle)`` branch with an
+        # extensible mechanism so future Wave 2 PRs do not need to edit this
+        # file. ``ObjectFifoHandle`` is pre-registered by ``dataflow/__init__.py``
+        # with the original bookkeeping (set ``arg.endpoint = self``; append to
+        # ``self._fifos``), so existing Phase 1 designs keep working unchanged.
+        # Subclasses that register their own handler later in the registry win
+        # the reverse-order isinstance() walk in ``dispatch_fn_arg``.
         for arg in self.fn_args:
-            if isinstance(arg, ObjectFifoHandle):
-                arg.endpoint = self
-                self._fifos.append(arg)
-            elif isinstance(arg, Buffer):
+            if dispatch_fn_arg(arg, self):
+                # Registry recognized the argument and bookkept it.
+                continue
+            if isinstance(arg, Buffer):
                 self._buffers.append(arg)
                 # Buffers are placed on the same tile as the Worker
                 if arg._tile is not None and arg._tile is not self._tile:
