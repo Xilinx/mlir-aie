@@ -321,20 +321,23 @@ class CascadeFifo(Resolvable):
             return
         self._resolving = True
 
-        prod_op = self._producer_tile.op
-        cons_op = self._consumer_tile.op
-        if prod_op is None:
+        # Access ._op directly because Tile.op raises ValueError ("Cannot
+        # get op before it is set.") when ._op is None. We want to give a
+        # CascadeFifo-aware diagnostic instead.
+        if self._producer_tile._op is None:
             raise ValueError(
                 f"CascadeFifo {self.name}: producer tile op not set; "
                 f"resolve the tile (or attach the producer Worker to a "
                 f"Program) before resolving the cascade."
             )
-        if cons_op is None:
+        if self._consumer_tile._op is None:
             raise ValueError(
                 f"CascadeFifo {self.name}: consumer tile op not set; "
                 f"resolve the tile (or attach the consumer Worker to a "
                 f"Program) before resolving the cascade."
             )
+        prod_op = self._producer_tile.op
+        cons_op = self._consumer_tile.op
         self._op = CascadeFlowOp(source_tile=prod_op, dest_tile=cons_op)
 
     # -----------------------------------------------------------------

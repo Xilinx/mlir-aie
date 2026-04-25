@@ -84,19 +84,12 @@ class PacketFifo:
         )
 
 
-class AccumFifo:
-    """T2.3 reservation slot -- FP32 accumulator inter-tile state passing.
-
-    Persists 512-bit BM (accumulator) state across timesteps within a tile
-    and across tiles via cascade-stream BM transfer. Closes G-T6.4-100.
-
-    Raises :class:`NotImplementedError` until T2.3 lands.
-    """
-
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError(
-            "AccumFifo: T2.3 not yet landed (T1.2 reservation slot)"
-        )
+# T2.3: AccumFifo reservation slot replaced by real implementation.
+# The class lives in `python/iron/accum.py` (sibling to `dataflow/objectfifo.py`).
+# Persists 512-bit BM (accumulator) state across timesteps within a tile
+# (BM-to-BM register move; AM020 Ch. 4 p. 67) AND across tiles
+# (cascade-stream BM transfer). Closes G-T6.4-100.
+from .accum import AccumFifo, AccumFifoHandle  # noqa: E402  (reserved slot)
 
 
 class SparseFifo:
@@ -157,6 +150,7 @@ __all__ = [
     "CascadeFifo",
     "PacketFifo",
     "AccumFifo",
+    "AccumFifoHandle",  # T2.3
     "SparseFifo",
     "MemtileAggregator",
 ]
