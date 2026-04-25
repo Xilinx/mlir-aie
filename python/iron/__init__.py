@@ -68,20 +68,13 @@ from aie.utils import (
 # Ch. 4 p. 67 cascade-stream architectural reference.
 
 
-class PacketFifo:
-    """T2.2 reservation slot -- variable-rate ObjectFifo with pktMerge / TLAST.
-
-    Will expose packet-header routing (per-packet fan-out target), pktMerge
-    N:1, finish-on-TLAST (variable-length stream termination), and
-    out-of-order BD processing on memtile.
-
-    Raises :class:`NotImplementedError` until T2.2 lands.
-    """
-
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError(
-            "PacketFifo: T2.2 not yet landed (T1.2 reservation slot)"
-        )
+# T2.2: PacketFifo reservation slot replaced by real implementation.
+# The class lives in `python/iron/packet.py` (sibling to `accum.py` /
+# `dataflow/objectfifo.py`). Variable-rate packet-switched stream
+# primitive exposing pktMerge N:1 (AM020 Ch. 2 Figure 17),
+# finish-on-TLAST (Ch. 2 p. 27), and out-of-order BD processing
+# (Ch. 5 p. 74). Closes G-T6.2-001 + G-T6.4-101 + G-T7.4-200.
+from .packet import PacketFifo, PacketFifoHandle  # noqa: E402  (reserved slot)
 
 
 # T2.3: AccumFifo reservation slot replaced by real implementation.
@@ -149,6 +142,7 @@ __all__ = [
     # Wave 2 reservation slots (T1.2 stubs, replaced by T2.1..T2.6).
     "CascadeFifo",
     "PacketFifo",
+    "PacketFifoHandle",  # T2.2
     "AccumFifo",
     "AccumFifoHandle",  # T2.3
     "SparseFifo",
