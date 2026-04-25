@@ -31,7 +31,8 @@ from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
-from .cascade import CascadeFifo  # T2.1: cascade-stream first-class primitive
+from .cascade import CascadeFifo
+from .memtile import MemtileAggregator
 from .dtype import str_to_dtype, dtype_to_str
 from aie.utils.jit import jit
 from aie.utils import (
@@ -101,20 +102,10 @@ class SparseFifo:
         )
 
 
-class MemtileAggregator:
-    """T2.6 reservation slot -- memtile-mediated fan-in helper.
-
-    Encapsulates 4-into-1 memtile fan-in via S2MM ch 0..3, memtile-side
-    layout reorganization (5D address generation), and fan-out via memtile
-    MM2S. Promotes Phase 1's hand-rolled T5.3-memtile retrofit topology.
-
-    Raises :class:`NotImplementedError` until T2.6 lands.
-    """
-
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError(
-            "MemtileAggregator: T2.6 not yet landed (T1.2 reservation slot)"
-        )
+# T2.6 (LANDED): MemtileAggregator reservation slot replaced by real
+# implementation imported above (``from .memtile import MemtileAggregator``).
+# See ``aie/iron/memtile.py`` for the class body and the canonical
+# AM020 Ch. 5 p. 74 cross-walk that motivates the API.
 
 
 __all__ = [
