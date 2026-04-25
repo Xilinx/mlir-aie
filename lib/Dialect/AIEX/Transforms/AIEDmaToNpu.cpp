@@ -652,7 +652,26 @@ public:
       // DMA_BDX_1
       // Enable_Compression [31], Enable_Packet [30], Out_Of_Order_BD_ID
       // [29:24], Packet_ID [23:19], Packet_Type [18:16]
-      words[1] = 0; // Enable_Compression
+      //
+      // G-T3.2-001: honor the IRON SparseFifo discardable-attr contract.
+      // ``aie.enable_compression`` is set on the NpuWriteBdOp by
+      // ``AIEDMATasksToNPU::rewriteSingleBD``, which forwarded it from the
+      // source ``aie.dma_bd`` op, which in turn was tagged by
+      // ``AIEObjectFifoStatefulTransform::createBdBlock`` based on the
+      // originating ObjectFifoCreateOp's SparseFifo attrs
+      // (``aie.compress_mm2s`` on MM2S, ``aie.decompress_s2mm`` on S2MM;
+      // see ``python/iron/sparse.py``). Default (no attr) preserves the
+      // pre-existing behaviour: ``Enable_Compression = 0``. The bit is
+      // documented in ``aie_registers_aie2.json`` as "Enable Compression
+      // (MM2S), decompression (S2MM). Only effective if channel has
+      // (de)compression enabled" (AM020 Ch. 2 p. 27, compute-tile DMA).
+      uint32_t enableCompression = 0;
+      if (auto compAttr = op->getAttrOfType<BoolAttr>(
+              "aie.enable_compression");
+          compAttr && compAttr.getValue()) {
+        enableCompression = 1;
+      }
+      words[1] = (enableCompression & 0x1) << 31; // Enable_Compression
       words[1] |= (op.getEnablePacket() & 0x1) << 30;
       words[1] |= (op.getOutOfOrderId() & 0x3f) << 24;
       words[1] |= (op.getPacketId() & 0x1f) << 19;

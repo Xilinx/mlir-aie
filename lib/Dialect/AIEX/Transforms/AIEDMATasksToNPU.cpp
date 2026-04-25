@@ -522,7 +522,7 @@ struct AIEDMATasksToNPUPass
       }
     }
 
-    NpuWriteBdOp::create(
+    NpuWriteBdOp newBdOp = NpuWriteBdOp::create(
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
         offset,
         /*enable_packet=*/enable_packet,
@@ -546,6 +546,23 @@ struct AIEDMATasksToNPUPass
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
         /*d2_zero_after=*/padAfter[2],
         /*burst_length=*/bd_op.getBurstLength());
+
+    // G-T3.2-001: forward IRON SparseFifo's compression intent. The
+    // ObjectFifo lowering pass (AIEObjectFifoStatefulTransform) tagged the
+    // source DMABDOp with ``aie.enable_compression = true`` when the
+    // originating ObjectFifoCreateOp carried the SparseFifo discardable
+    // attrs (``aie.compress_mm2s`` for MM2S, ``aie.decompress_s2mm`` for
+    // S2MM). The BD-emit pass (AIEDmaToNpu) reads this attribute back from
+    // the NpuWriteBdOp to flip the per-channel ``Enable_Compression`` bit
+    // on the AIE2/AIE2P tile DMA BD config word (AM020 Ch. 2 p. 27 +
+    // ``aie_registers_aie2.json``).
+    if (auto compAttr = bd_op->getAttrOfType<BoolAttr>(
+            "aie.enable_compression");
+        compAttr && compAttr.getValue()) {
+      newBdOp->setAttr("aie.enable_compression",
+                       BoolAttr::get(newBdOp.getContext(), true));
+    }
+
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 
