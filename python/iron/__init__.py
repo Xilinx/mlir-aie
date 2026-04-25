@@ -33,6 +33,7 @@ from .runtime import Runtime
 from .dataflow import ObjectFifo
 from .cascade import CascadeFifo
 from .memtile import MemtileAggregator
+from .sparse import SparseFifo
 from .dtype import str_to_dtype, dtype_to_str
 from aie.utils.jit import jit
 from aie.utils import (
@@ -86,26 +87,6 @@ from .packet import PacketFifo, PacketFifoHandle  # noqa: E402  (reserved slot)
 from .accum import AccumFifo, AccumFifoHandle  # noqa: E402  (reserved slot)
 
 
-class SparseFifo:
-    """T2.5 reservation slot -- on-the-fly N:M sparsity decompression on S2MM.
-
-    Producer accepts compressed weights; consumer receives dense data
-    transparently. Closes G-T5.1-005; makes T6.4-C compressed-weight LSTM
-    idiomatic.
-
-    Raises :class:`NotImplementedError` until T2.5 lands.
-    """
-
-    def __init__(self, *args, **kwargs):
-        raise NotImplementedError(
-            "SparseFifo: T2.5 not yet landed (T1.2 reservation slot)"
-        )
-
-
-# T2.6 (LANDED): MemtileAggregator reservation slot replaced by real
-# implementation imported above (``from .memtile import MemtileAggregator``).
-# See ``aie/iron/memtile.py`` for the class body and the canonical
-# AM020 Ch. 5 p. 74 cross-walk that motivates the API.
 
 
 __all__ = [
