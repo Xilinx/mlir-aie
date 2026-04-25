@@ -810,16 +810,39 @@ class PacketFifoHandle(ObjectFifoHandle):
         """Forward to the underlying :class:`PacketFifo`'s resolve."""
         self._packet_fifo.resolve(loc=loc, ip=ip)
 
-    def all_of_endpoints(self) -> list:  # type: ignore[override]
-        """All endpoints (producer + consumer tiles) of the PacketFifo.
+    def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:  # type: ignore[override]
+        """All endpoints (producer + consumer) of the PacketFifo.
 
-        Returns the underlying tiles since PacketFifo isn't an
-        ObjectFifo and doesn't have a single producer/cons endpoint
-        list of the same shape.
+        Returns endpoint-typed objects exposing a ``.tile`` attribute,
+        matching :meth:`ObjectFifoHandle.all_of_endpoints`'s contract.
+        ``iron/program.py`` walks every fifo and does
+        ``[e.tile for e in fifo.all_of_endpoints()]`` to populate the
+        device's tile-resolution set; if this method returned raw
+        :class:`Tile` objects (as it did pre-G-T3.3-001), that walk
+        crashed with ``AttributeError: 'Tile' object has no attribute
+        'tile'``.
+
+        For each producer / consumer index we prefer the live endpoint
+        recorded on the corresponding handle by the registry-driven
+        ``Worker.fn_args`` dispatch (i.e. the :class:`Worker` instance
+        itself, since :class:`Worker` subclasses
+        :class:`ObjectFifoEndpoint`). When a handle has not yet been
+        constructed -- e.g. the topology is being inspected before any
+        :class:`Worker` is built -- we synthesize a bare
+        :class:`ObjectFifoEndpoint` wrapping the underlying
+        :class:`Tile` so callers still get a uniform ``.tile`` view.
         """
-        return list(self._packet_fifo.producers) + list(
-            self._packet_fifo.consumers
-        )
+        endpoints: list[ObjectFifoEndpoint] = []
+        pf = self._packet_fifo
+        for i, prod_tile in enumerate(pf.producers):
+            handle = pf._prod_handles.get(i)
+            ep = handle.endpoint if (handle is not None and handle.endpoint is not None) else None
+            endpoints.append(ep if ep is not None else ObjectFifoEndpoint(prod_tile))
+        for i, cons_tile in enumerate(pf.consumers):
+            handle = pf._cons_handles.get(i)
+            ep = handle.endpoint if (handle is not None and handle.endpoint is not None) else None
+            endpoints.append(ep if ep is not None else ObjectFifoEndpoint(cons_tile))
+        return endpoints
 
     def __str__(self) -> str:
         return (

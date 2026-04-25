@@ -606,6 +606,46 @@ class AccumFifoHandle(ObjectFifoHandle):
         """Forward to the underlying :class:`AccumFifo` (idempotent)."""
         self._accum_fifo.resolve(loc=loc, ip=ip)
 
+    def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:  # type: ignore[override]
+        """All endpoints (producer + consumer) of the AccumFifo.
+
+        Returns endpoint-typed objects exposing a ``.tile`` attribute,
+        matching :meth:`ObjectFifoHandle.all_of_endpoints`'s contract.
+        ``iron/program.py`` walks every fifo and does
+        ``[e.tile for e in fifo.all_of_endpoints()]`` to populate the
+        device's tile-resolution set.
+
+        :class:`AccumFifoHandle.__init__` deliberately bypasses
+        :class:`ObjectFifoHandle.__init__` (no memref-typed buffer; no
+        ObjectFifo depth/dims to wire up), so the inherited
+        ``all_of_endpoints`` -- which walks
+        ``self._object_fifo._get_endpoint(...)`` -- would raise
+        ``AttributeError: 'AccumFifoHandle' object has no attribute
+        '_object_fifo'``. Overriding here closes G-T3.1-100.
+
+        For each side we prefer the live endpoint recorded on the
+        corresponding handle by the registry-driven ``Worker.fn_args``
+        dispatch (the :class:`Worker` instance, since :class:`Worker`
+        subclasses :class:`ObjectFifoEndpoint`). When a handle has not
+        yet been constructed we synthesize a bare
+        :class:`ObjectFifoEndpoint` wrapping the AccumFifo's pre-placed
+        :class:`Tile` so callers still get a uniform ``.tile`` view.
+        """
+        af = self._accum_fifo
+        prod_handle = af._prod
+        cons_handle = af._cons
+        prod_ep = (
+            prod_handle.endpoint
+            if (prod_handle is not None and prod_handle.endpoint is not None)
+            else ObjectFifoEndpoint(af.producer_tile)
+        )
+        cons_ep = (
+            cons_handle.endpoint
+            if (cons_handle is not None and cons_handle.endpoint is not None)
+            else ObjectFifoEndpoint(af.consumer_tile)
+        )
+        return [prod_ep, cons_ep]
+
     def __str__(self) -> str:
         return (
             f"AccumFifoHandle({self.handle_type}, dtype={self.dtype!r}, "
