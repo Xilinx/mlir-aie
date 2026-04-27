@@ -609,6 +609,14 @@ class PacketFifoHandle(ObjectFifoHandle):
     :meth:`send_with_header` and :meth:`recv_header` are added on top
     for callers that need explicit per-packet header control (the
     filter-early use case).
+
+    .. note::
+       :meth:`__init__` bypasses ``super().__init__()`` for the same
+       reason :class:`AccumFifoHandle` does -- :class:`ObjectFifoHandle`
+       requires an ``of`` with ObjectFifo semantics that
+       :class:`PacketFifo` does not have. See the corresponding note in
+       :class:`AccumFifoHandle`. A shared narrower base class is the
+       intended long-term fix.
     """
 
     def __init__(
@@ -618,10 +626,7 @@ class PacketFifoHandle(ObjectFifoHandle):
         index: int,
         depth: int,
     ):
-        # Bypass ObjectFifoHandle.__init__ (it requires an `of` with
-        # ObjectFifo semantics: depth, dims_from_stream_per_cons, etc.)
-        # and set the fields ObjectFifoHandle exposes as properties
-        # directly so isinstance-based downstream code keeps working.
+        # See class docstring "note" for why super().__init__() is bypassed.
         self._port = (
             ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
         )

@@ -478,14 +478,30 @@ class AccumFifoHandle(ObjectFifoHandle):
     :class:`AccumFifo`'s point-to-point invariant in the cascade case
     (a cascade transfer takes exactly one accumulator per cycle; there
     is no notion of a "circular buffer with depth N" here).
+
+    .. note::
+       :meth:`__init__` deliberately does **not** call
+       ``super().__init__()`` -- :class:`ObjectFifoHandle`'s constructor
+       requires an ``of`` argument with ObjectFifo semantics (depth,
+       ``dims_from_stream_per_cons``, ``_get_endpoint`` etc.) that
+       :class:`AccumFifo` does not have. We instead stub the attributes
+       :class:`ObjectFifoHandle` exposes as properties (``_port``,
+       ``_is_prod``, ``_depth``, ``_endpoint``, ``_dims_from_stream``,
+       ``_tile``) directly so isinstance-based downstream code keeps
+       working. This pattern is repeated in :class:`PacketFifoHandle`,
+       :class:`SparseFifoHandle`, and :class:`VariableRateFifoHandle`;
+       a shared narrower base class is the intended long-term fix
+       (see the "Future work" note in module docstrings) but is out of
+       scope for the initial primitive landing.
+
+       Methods inherited from :class:`ObjectFifoHandle` that traverse
+       ``self._object_fifo`` (notably :meth:`all_of_endpoints`) are
+       overridden below so the bypass does not produce
+       ``AttributeError`` at lowering time.
     """
 
     def __init__(self, accum_fifo: AccumFifo, is_prod: bool):
-        # Bypass ObjectFifoHandle.__init__ -- it requires an `of` with
-        # ObjectFifo semantics (depth, dims_from_stream_per_cons, etc.)
-        # that AccumFifo does not have. Set the fields ObjectFifoHandle
-        # exposes as properties directly so isinstance-based downstream
-        # code keeps working.
+        # See class docstring "note" for why super().__init__() is bypassed.
         self._port = (
             ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
         )
