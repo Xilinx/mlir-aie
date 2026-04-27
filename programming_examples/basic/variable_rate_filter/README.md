@@ -64,10 +64,10 @@ in two places:
 ## Build
 
 ```sh
-source /home/matteius/xdna-bringup/ironenv/bin/activate
+source <path/to/ironenv>/bin/activate
 source /opt/xilinx/xrt/setup.sh
 export MLIR_AIE_DIR=$(pwd)/../../..  # adjust to the worktree root
-export PEANO_INSTALL_DIR=/home/matteius/xdna-bringup/ironenv/lib/python3.14/site-packages/llvm-aie
+export PEANO_INSTALL_DIR=<path/to/llvm-aie>  # the installed Peano tree
 export PATH="$MLIR_AIE_DIR/install/bin:$PEANO_INSTALL_DIR/bin:$PATH"
 cd $MLIR_AIE_DIR/build && ninja -j8 install
 cd $MLIR_AIE_DIR/programming_examples/basic/variable_rate_filter

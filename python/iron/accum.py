@@ -217,7 +217,7 @@ def _check_vertical_adjacency(producer: Tile, consumer: Tile) -> None:
     row_delta = abs(consumer.row - producer.row)
 
     if same_column and row_delta == 1:
-        return  # vertically adjacent -- the only case T7-IRON measured
+        return  # vertically adjacent -- the well-trodden cascade-stream path
 
     warnings.warn(
         f"AccumFifo: producer tile (col={producer.col}, row={producer.row}) "

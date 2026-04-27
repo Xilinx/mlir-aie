@@ -95,7 +95,7 @@ def test_accum_fifo_inter_tile_detected():
     assert af.is_intra_tile is False
 
 def test_accum_fifo_warns_on_non_vertical_geometry():
-    """T7-IRON only measured vertical-adjacency cascade on AIE2P silicon.
+    """Vertical-adjacency cascade is the well-trodden path on AIE2P silicon.
 
     Non-vertical (e.g., diagonal, horizontal, non-adjacent) geometries
     raise a UserWarning with an actionable message rather than silently

@@ -1,12 +1,13 @@
 # DESIGN.md — `VariableRateFifo`
 
-> **Closes**: the *single-producer / conditional-forward* half of
-> (T7-IRON variable-rate ObjectFifo investigation).
+> **What it adds**: a *single-producer / conditional-forward* primitive
+> for variable-rate dataflow that ``ObjectFifo``'s static-rate lowering
+> cannot express.
 >
-> **Sibling primitive**: `PacketFifo`
-> closes the *N:1 multi-producer fan-in* half of the same gap pair via
-> the AXI stream-switch packet-routing fabric. The two are
-> complementary, not alternatives — see "Choice of mechanism" below.
+> **Sibling primitive**: `PacketFifo` covers the *N:1 multi-producer
+> fan-in* side of variable-rate dataflow via the AXI stream-switch
+> packet-routing fabric. The two are complementary, not alternatives —
+> see "Choice of mechanism" below.
 
 ## Problem statement
 

@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""+ : contract tests for ``*FifoHandle`` subclasses."""
+"""Contract tests for ``Program._walk_object_fifos`` on ``*FifoHandle`` subclasses."""
 
 from __future__ import annotations
 

@@ -315,13 +315,17 @@ class CascadeFifo(Resolvable):
         intrinsics inside each Worker's core_fn — they are not emitted
         here.
         """
+        # Idempotent: if we've already emitted, return immediately.
+        if self._op is not None:
+            return
         if self._resolving:
             return
-        self._resolving = True
 
         # Access ._op directly because Tile.op raises ValueError ("Cannot
         # get op before it is set.") when ._op is None. We want to give a
-        # CascadeFifo-aware diagnostic instead.
+        # CascadeFifo-aware diagnostic instead. Pre-flight check BEFORE
+        # setting _resolving so a failure here doesn't permanently latch
+        # the instance into a non-resolvable state.
         if self._producer_tile._op is None:
             raise ValueError(
                 f"CascadeFifo {self.name}: producer tile op not set; "
@@ -334,9 +338,14 @@ class CascadeFifo(Resolvable):
                 f"resolve the tile (or attach the consumer Worker to a "
                 f"Program) before resolving the cascade."
             )
-        prod_op = self._producer_tile.op
-        cons_op = self._consumer_tile.op
-        self._op = CascadeFlowOp(source_tile=prod_op, dest_tile=cons_op)
+
+        self._resolving = True
+        try:
+            prod_op = self._producer_tile.op
+            cons_op = self._consumer_tile.op
+            self._op = CascadeFlowOp(source_tile=prod_op, dest_tile=cons_op)
+        finally:
+            self._resolving = False
 
     # -----------------------------------------------------------------
     # Compatibility shims for callers that mirror ObjectFifo's

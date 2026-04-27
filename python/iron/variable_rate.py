@@ -33,10 +33,15 @@ Architectural references
   hardware capability that makes producer-side conditional advance
   safe; the BD that's not fired this iteration simply doesn't get
   scheduled).
-  early — the canonical use case: ~12.5% of windows pass NGG, so
-  forwarding only those saves ~7x DMA + ~7x consumer cycles).
-  variable-rate ObjectFifo investigation).
-- ``python/iron/packet.py`` (PacketFifo — sibling primitive; the
+- ``python/iron/packet.py`` (PacketFifo — sibling primitive for
+  runtime-routed N:1 fan-in via the AXI stream switch, vs.
+  VariableRateFifo's single-producer conditional forward on a
+  shared-memory ObjectFifo).
+- ``python/iron/sparse.py`` (SparseFifo — analogous discardable-
+  attr-on-ObjectFifo lowering pattern).
+- ``lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp``
+  (``unrollForLoops`` + split-fifo attr propagation — the lowering
+  routines this primitive interacts with).
 
 User-facing surface
 -------------------
