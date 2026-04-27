@@ -91,11 +91,13 @@ def register_fifo_handle(
         captures the handler and returns it unchanged (decorator form).
 
     Raises:
-        TypeError: ``handle_cls`` is not a class.
-        ValueError: A handler is already registered for ``handle_cls``
-            (use :func:`unregister_fifo_handle` first if you really want
-            to override; this is intentionally noisy to catch double-
-            registration bugs in fork-internal code).
+        TypeError: ``handle_cls`` is not a class, or ``handler`` is not
+            callable.
+        ValueError: A *different* handler is already registered for
+            ``handle_cls``. Re-registering the same callable is
+            idempotent (no-op) so module reloads / repeated imports
+            stay safe; use :func:`unregister_fifo_handle` first to
+            install a different handler.
     """
     if not isinstance(handle_cls, type):
         raise TypeError(
@@ -104,16 +106,21 @@ def register_fifo_handle(
         )
 
     def _do_register(h: "Callable[[object, Worker], None]"):
-        if handle_cls in _REGISTRY:
-            raise ValueError(
-                f"register_fifo_handle: {handle_cls.__name__} is already "
-                f"registered. Call unregister_fifo_handle() first if "
-                f"override is intentional."
-            )
         if not callable(h):
             raise TypeError(
                 f"register_fifo_handle: handler must be callable, got "
                 f"{type(h).__name__}"
+            )
+        existing = _REGISTRY.get(handle_cls)
+        if existing is not None:
+            if existing is h:
+                # Idempotent re-registration (e.g. module reload, repeat
+                # import in tests). Safe no-op.
+                return h
+            raise ValueError(
+                f"register_fifo_handle: {handle_cls.__name__} is already "
+                f"registered with a different handler. Call "
+                f"unregister_fifo_handle() first if override is intentional."
             )
         _REGISTRY[handle_cls] = h
         return h
@@ -175,7 +182,11 @@ def dispatch_fn_arg(arg: object, worker: "Worker") -> bool:
 # ---------------------------------------------------------------------------
 
 class _RegistrySnapshot:
-    """Context manager that saves and restores registry state.
+    """Internal context manager that saves and restores registry state.
+
+    Test-only utility: ``with _RegistrySnapshot(): ...`` saves the
+    registry on entry and restores it on exit. Not part of the public
+    API; the leading underscore signals "test-internal use only".
 
     Usage in tests::
 
@@ -199,5 +210,4 @@ __all__ = [
     "unregister_fifo_handle",
     "get_registered_handle_classes",
     "dispatch_fn_arg",
-    "_RegistrySnapshot",
 ]

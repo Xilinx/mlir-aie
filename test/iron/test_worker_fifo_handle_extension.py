@@ -289,9 +289,9 @@ def test_unregister_fifo_handle_returns_bool(clean_registry):
 # 5. Error handling.
 # ---------------------------------------------------------------------------
 
-def test_double_registration_raises(clean_registry):
-    """Registering the same class twice raises ValueError to catch
-    accidental double-registration in fork-internal code."""
+def test_double_registration_with_different_handler_raises(clean_registry):
+    """Registering a *different* handler for an already-registered class
+    raises ValueError to catch accidental override of a live handler."""
 
     class _DupHandle(ObjectFifoHandle):
         pass
@@ -299,6 +299,19 @@ def test_double_registration_raises(clean_registry):
     register_fifo_handle(_DupHandle, lambda a, w: None)
     with pytest.raises(ValueError, match="already registered"):
         register_fifo_handle(_DupHandle, lambda a, w: None)
+
+def test_double_registration_with_same_handler_is_idempotent(clean_registry):
+    """Re-registering the *same* callable for the *same* class is a no-op,
+    so module reloads / repeated imports don't blow up."""
+
+    class _DupHandle(ObjectFifoHandle):
+        pass
+
+    def _h(a, w):  # noqa: ARG001
+        pass
+
+    register_fifo_handle(_DupHandle, _h)
+    register_fifo_handle(_DupHandle, _h)  # must not raise
 
 def test_non_class_handle_cls_rejected(clean_registry):
     """``register_fifo_handle`` rejects non-class first arguments."""
