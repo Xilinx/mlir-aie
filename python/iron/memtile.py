@@ -82,20 +82,13 @@ guide-major output the consumer expects.
 If a producer instead emits **window-major** partials
 (``partial[w * n_guides_per_tile + g_local]``), flat-concat does NOT
 transpose. The result is interleaved nonsense unless the consumer
-explicitly un-shuffles it (Phase 1 hit this and fell back to a
-path skipped the transpose entirely).
+explicitly un-shuffles it. MemtileAggregator therefore requires a
+slab-major producer layout; if your kernel emits window-major
+partials, drop down to :meth:`ObjectFifo.prod().join` directly with
+an explicit ``dims_to_stream`` re-layout.
 
-This API exposes a ``layout`` parameter (one of ``"slab"`` or
-``"window"``) that documents the producer-side requirement at the
-type level. ``"slab"`` (the default) is the canonical
-flat-concat-friendly layout. Specifying ``"window"`` causes
-MemtileAggregator to insert a memtile-side ``dims_from_stream``
-re-layout so the consumer still sees a contiguous slab-major
-buffer; this costs memtile DMA cycles but lets producer kernels
-without rewriting the kernel.
-
-Phase 1 measurement summary
----------------------------
+Throughput notes
+----------------
 
 windows x 4 match tiles measured a 1.90x throughput speedup vs
 Memtile occupancy: 32 KiB / 512 KiB (~6.25%). Per-match-tile
@@ -114,7 +107,7 @@ Example
     from aie.iron.device import NPU2
 
     # 4 match tiles, each producing a 64-window x 32-guide partial
-    # (guide-major / "slab" layout).
+    # (guide-major slab layout).
     N_TILES, N_GUIDES, N_WINDOWS = 4, 128, 4096
     GUIDES_PER_TILE = N_GUIDES // N_TILES
     WINDOWS_PER_CHUNK = 64
@@ -130,7 +123,6 @@ Example
         n_producers=N_TILES,
         producer_obj_type=partial_ty,
         joined_obj_type=joined_ty,
-        layout="slab",
         name="match_join",
     )
 
@@ -171,9 +163,6 @@ MEMTILE_S2MM_NEIGHBOUR_CHANNELS: int = 4
 
 # AM020 Ch. 5 + Table 14: AIE-ML / AIE2P memtile DM capacity.
 MEMTILE_DM_BYTES: int = 512 * 1024  # 512 KiB
-
-# Producer-side layout vocabulary. Documented in the module docstring.
-_VALID_LAYOUTS: frozenset[str] = frozenset({"slab", "window"})
 
 # ---------------------------------------------------------------------------
 # Internal helpers (kept module-local to keep the import surface narrow).
@@ -238,17 +227,13 @@ class MemtileAggregator:
             output buffer the consumer sees. Must satisfy
             ``sizeof(joined) == n_producers * sizeof(partial)`` (the
             flat-concat invariant). Validated at construction time.
-        layout: Producer-side layout. ``"slab"`` (default) means each
-            producer emits a slab whose flat byte range is the same
-            as its position in the joined buffer (the canonical
-            flat-concat-friendly layout, e.g. the "guide-major"
-            choice for CRISPR mismatch). ``"window"`` means producers
-            emit window-major partials and the memtile applies a
-            ``dims_from_stream`` re-layout so the consumer still sees
-            a slab-major joined buffer (costs memtile DMA cycles).
+            Each producer must emit a slab whose flat byte range is
+            the same as its position in the joined buffer (the
+            flat-concat-friendly layout). Window-major producers
+            should drop down to :meth:`ObjectFifo.prod().join` with
+            an explicit ``dims_to_stream`` re-layout.
         depth: ObjectFifo depth (number of slots) on both producer
-            and consumer sides. Defaults to 2 (double-buffered, the
-            value Phase 1 + the AM020 examples use).
+            and consumer sides. Defaults to 2 (double-buffered).
         tile: Memtile placement. Defaults to :data:`AnyMemTile`,
             letting the placer pick a memtile in the design.
         name: Optional symbolic name; auto-generated if omitted.
@@ -256,13 +241,9 @@ class MemtileAggregator:
     Raises:
         TypeError: ``n_producers`` is not an int.
         ValueError: ``n_producers`` is not in ``[1, 4]``;
-            ``layout`` is not one of ``"slab" | "window"``;
             ``depth`` is non-positive; the partial/joined sizes do
             not satisfy the flat-concat invariant; the joined buffer
             exceeds the memtile DM capacity.
-        NotImplementedError: ``layout="window"`` is reserved for a
-            Phase 3 extension; use ``ObjectFifo.prod().join`` directly
-            with explicit ``dims_to_stream`` for now.
 
     Example:
         See module docstring.
@@ -285,7 +266,6 @@ class MemtileAggregator:
         n_producers: int,
         producer_obj_type: type[np.ndarray],
         joined_obj_type: type[np.ndarray],
-        layout: str = "slab",
         depth: int = 2,
         tile: Tile | None = None,
         name: str | None = None,
@@ -301,11 +281,6 @@ class MemtileAggregator:
                 f"[1, {MEMTILE_S2MM_NEIGHBOUR_CHANNELS}] "
                 f"(memtile S2MM neighbour-channel budget per AM020 "
                 f"Ch. 5 p. 74), got {n_producers}"
-            )
-        if layout not in _VALID_LAYOUTS:
-            raise ValueError(
-                f"MemtileAggregator: layout must be one of "
-                f"{sorted(_VALID_LAYOUTS)}, got {layout!r}"
             )
         if not isinstance(depth, int) or depth < 1:
             raise ValueError(
@@ -326,8 +301,8 @@ class MemtileAggregator:
                 f"{expected_joined_bytes} B). "
                 f"Read the 'flat-byte-offset layout lesson' section of "
                 f"the MemtileAggregator docstring; the most common cause "
-                f"is producers emitting window-major partials with the "
-                f"default layout='slab'."
+                f"is producers emitting window-major partials when "
+                f"slab-major is required."
             )
 
         # Memtile DM headroom check: the memtile holds depth*partial_bytes
@@ -351,29 +326,11 @@ class MemtileAggregator:
         self._n_producers = n_producers
         self._producer_obj_type = producer_obj_type
         self._joined_obj_type = joined_obj_type
-        self._layout = layout
         self._depth = depth
         self._partial_bytes = partial_bytes
         self._joined_bytes = joined_bytes
         self._tile = tile if tile is not None else AnyMemTile
         self.name = name
-
-        # ``layout="window"`` is documented but not lowered yet -- it
-        # would need a memtile-side dims_from_stream computed from the
-        # producer ndarray shape, which we can't infer generically
-        # without more info from the caller. Surface a clear error so
-        # the user knows to drop down to ObjectFifo.prod().join() with
-        # explicit dims_to_stream until Phase 3 extends this helper.
-        if layout == "window":
-            raise NotImplementedError(
-                "MemtileAggregator: layout='window' is reserved for a "
-                "future Phase 3 extension that infers the memtile-side "
-                "dims_to_stream from the producer shape. For now, "
-                "either (1) emit slab-major partials in your producer "
-                "flat-concat-friendly layout) or (2) drop down to "
-                "ObjectFifo.prod().join(offsets, dims_to_stream=[...]) "
-                "and pass the dims explicitly. See module docstring."
-            )
 
         # Construct the joined ObjectFifo. The producer side is then
         # split into n_producers sub-FIFOs via .prod().join(...).
@@ -414,11 +371,6 @@ class MemtileAggregator:
     def joined_obj_type(self) -> type[np.ndarray]:
         """Joined buffer type the consumer sees."""
         return self._joined_obj_type
-
-    @property
-    def layout(self) -> str:
-        """Producer-side layout (`'slab'` or `'window'`)."""
-        return self._layout
 
     @property
     def depth(self) -> int:
@@ -493,7 +445,7 @@ class MemtileAggregator:
     def __str__(self) -> str:
         return (
             f"MemtileAggregator(name={self.name!r}, "
-            f"n_producers={self._n_producers}, layout={self._layout!r}, "
+            f"n_producers={self._n_producers}, "
             f"depth={self._depth}, "
             f"partial_bytes={self._partial_bytes}, "
             f"joined_bytes={self._joined_bytes})"

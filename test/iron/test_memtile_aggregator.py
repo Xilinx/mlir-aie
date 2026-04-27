@@ -94,35 +94,6 @@ def test_flat_concat_invariant_validated():
             joined_obj_type=bad_joined,
         )
 
-def test_layout_vocabulary_enforced():
-    """The layout argument is a closed vocabulary; typos are caught
-    eagerly."""
-    partial_ty = np.ndarray[(64,), np.dtype[np.uint8]]
-    joined_ty = np.ndarray[(2 * 64,), np.dtype[np.uint8]]
-
-    with pytest.raises(ValueError, match="layout must be one of"):
-        MemtileAggregator(
-            n_producers=2,
-            producer_obj_type=partial_ty,
-            joined_obj_type=joined_ty,
-            layout="row-major",  # typo for slab/window
-        )
-
-def test_layout_window_is_phase3_reservation():
-    """layout='window' is documented but not lowered yet (Phase 3
-    work). It raises NotImplementedError with a clear pointer to
-    the workaround (use ObjectFifo.prod().join directly)."""
-    partial_ty = np.ndarray[(64,), np.dtype[np.uint8]]
-    joined_ty = np.ndarray[(2 * 64,), np.dtype[np.uint8]]
-
-    with pytest.raises(NotImplementedError, match="layout='window' is reserved"):
-        MemtileAggregator(
-            n_producers=2,
-            producer_obj_type=partial_ty,
-            joined_obj_type=joined_ty,
-            layout="window",
-        )
-
 def test_depth_must_be_positive():
     partial_ty = np.ndarray[(64,), np.dtype[np.uint8]]
     joined_ty = np.ndarray[(2 * 64,), np.dtype[np.uint8]]

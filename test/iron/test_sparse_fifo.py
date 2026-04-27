@@ -207,9 +207,13 @@ def test_invalid_producer_type_rejected():
         )
 
 # ---------------------------------------------------------------------------
-# Pattern correctness -- the falsifiable check the plan calls out.
-# Synthetic sparse-weight matmul; decompressed output bit-equal to
-# dense reference; right number of zeros per N:M group.
+# N:M sparse compression-format property tests (numpy reference).
+#
+# These exercise the structural N:M sparsity rule the on-tile
+# decompression hardware assumes — they are NOT tests of SparseFifo's
+# lowering or silicon behaviour. Lowering is exercised in the
+# "Lowering" section below, and silicon-side correctness is the
+# responsibility of integration tests against the BD-emit pass.
 # ---------------------------------------------------------------------------
 
 def _make_nm_sparse(dense: np.ndarray, N: int, M: int) -> np.ndarray:
@@ -267,19 +271,18 @@ def test_synthetic_pattern_has_expected_zero_count(N, M):
     )
 
 @pytest.mark.parametrize("N, M", [(1, 2), (2, 4)])
-def test_decompressed_matmul_bit_equal_to_sparse_reference(N, M):
-    """Simulate on-tile decompression: a sparse weight matrix produces
-    the same matmul output as the same-shape dense input restricted to
-    the (N, M) pattern. Pure-numpy reference.
+def test_nm_compression_roundtrip_is_lossless_on_compliant_input(N, M):
+    """Property test for the N:M compression format itself (not for
+    SparseFifo).
 
-    The lowering preserves the dense view to the consumer; the wire
-    transfers compressed (N, M) form; on-tile decompressor re-injects
-    zeros to restore the dense matrix. So:
-
-        decompress(compress(W_dense_pruned)) == W_dense_pruned
-
-    bit-equal. The test asserts the round-trip is lossless when the
-    input already satisfies N:M.
+    When the input weight matrix already satisfies the N:M pattern
+    (at most M-N zeros per group of M elements along the inner axis),
+    a numpy model of compress->decompress preserves the matrix
+    bit-equal. This is what the on-tile S2MM decompressor's contract
+    will rely on; SparseFifo's resolve() simply attaches the
+    compression metadata and the BD-emit pass flips the
+    Enable_Compression bit. SparseFifo behaviour proper is exercised
+    in the "Lowering" section below.
     """
     rng = np.random.default_rng(seed=0xBEEF)
     W_dense_pruned = _make_nm_sparse(

@@ -238,8 +238,7 @@ def test_inter_tile_accum_fifo_emits_cascade_flow_op(mlir_ctx):
 
     This test requires a device-op context with both tile ops materialised.
     Skipping silently if the test harness can't provide one is acceptable
-    -- the surface tests above cover the construction-level invariants
-    and the precision tests below cover the load-bearing claim.
+    -- the surface tests above cover the construction-level invariants.
     """
     try:
         from aie.dialects.aie import device, tile as tile_op
@@ -338,20 +337,19 @@ def _lstm_cell_baseline_bf16_writeback(x_seq, W_ih, W_hh, b_ih, b_hh, h0, c0):
         o = 1.0 / (1.0 + np.exp(-z_o))
         c = f * c + i * g
         h = o * np.tanh(c)
-        # Writeback narrowing -- the load-bearing precision loss.
+        # Writeback narrowing — the precision-loss step this baseline models.
         c = _bf16_round(c)
         h = _bf16_round(h)
         out[t] = h
     return out
 
-def _lstm_cell_with_accum_fifo(x_seq, W_ih, W_hh, b_ih, b_hh, h0, c0):
-    """LSTM cell whose h/c persistence uses AccumFifo's invariant:
-    full FP32 (23-mantissa-bit) accumulator precision across timesteps.
+def _lstm_cell_fp32_reference(x_seq, W_ih, W_hh, b_ih, b_hh, h0, c0):
+    """Pure-FP32 numpy LSTM cell.
 
-    This is the CPU model of what the silicon-level AccumFifo guarantees:
-    the cascade-stream BM transfer (or BM-to-BM register move) carries h
-    and c at full FP32 precision, so the only precision loss is FP32
-    arithmetic itself -- not the storage-write narrowing.
+    A reference computation for the LSTM workload, holding h/c in FP32
+    across timesteps. Used as the upper-bound on what AccumFifo's
+    silicon-level FP32 accumulator-register transfer can preserve — but
+    note this is a numpy reference, not a test of the lowering.
     """
     L, _ = x_seq.shape
     H = h0.shape[0]
@@ -410,9 +408,16 @@ def test_baseline_bf16_writeback_hits_t64d_precision_wall():
         f"measurable drift past FP32 floor on a 200-step sequence)"
     )
 
-def test_accum_fifo_invariant_hits_1e_minus_5_precision_target():
-    """    continuity invariant (full FP32 across timesteps, no bf16 writeback)
-    matches the FP32 PyTorch reference within 1e-5 max-abs."""
+def test_fp32_lstm_reference_matches_pytorch():
+    """Sanity check on the FP32 numpy LSTM reference fixture.
+
+    Pure numpy FP32 LSTM cell vs the pytorch LSTM cell over a 200-step
+    sequence; both compute the same operation. This is a fixture-
+    correctness test, NOT a test of AccumFifo behaviour. AccumFifo's
+    silicon-level continuity is exercised by separate lit / silicon
+    tests; this baseline establishes the precision floor of the
+    workload itself.
+    """
     rng = np.random.default_rng(seed=42)
     L, H = 200, 96
     x = rng.standard_normal((L, H), dtype=np.float32) * 0.1
@@ -424,23 +429,28 @@ def test_accum_fifo_invariant_hits_1e_minus_5_precision_target():
     c0 = np.zeros((H,), dtype=np.float32)
 
     out_ref = _torch_lstm_cell_reference(x, W_ih, W_hh, b_ih, b_hh, h0, c0)
-    out_accum = _lstm_cell_with_accum_fifo(
+    out_fp32 = _lstm_cell_fp32_reference(
         x, W_ih, W_hh, b_ih, b_hh, h0, c0
     )
-    diff = np.max(np.abs(out_accum.astype(np.float64) - out_ref))
+    diff = np.max(np.abs(out_fp32.astype(np.float64) - out_ref))
     assert diff < 1e-5, (
-        f"AccumFifo precision invariant gave max-abs={diff:.3e}, "
-        f"expected <1e-5. If this fails, the "
+        f"FP32 numpy reference diverged from pytorch reference "
+        f"(max-abs={diff:.3e}); fixture is broken or numerically unstable."
     )
 
-def test_accum_fifo_beats_bf16_baseline_by_three_orders_of_magnitude():
-    """Cross-check: the AccumFifo invariant should beat the bf16-writeback
-    baseline by at least 3 orders of magnitude on a 200-step sequence.
+def test_fp32_reference_beats_bf16_writeback_by_3oom():
+    """Characterize the bf16-writeback precision wall on this LSTM workload.
 
-    is a 5000x improvement). If the gap is smaller than 1000x the
-    accumulator-continuity invariant isn't doing what AM020 Ch. 4 p. 67
-    promises and the silicon-level test will not show the predicted
-    improvement either."""
+    Compares the pure-FP32 numpy reference against a bf16-storage-narrowed
+    numpy reference over a 200-step sequence. Establishes the workload's
+    sensitivity to writeback precision: ratio >=1000x indicates that
+    holding h/c at FP32 across timesteps materially matters for this
+    sequence length / weight scale, which is the scenario AccumFifo's
+    silicon path targets.
+
+    NOT a test of AccumFifo's lowering or silicon behaviour; it
+    characterizes the workload that motivates the primitive.
+    """
     rng = np.random.default_rng(seed=42)
     L, H = 200, 96
     x = rng.standard_normal((L, H), dtype=np.float32) * 0.1
@@ -455,16 +465,16 @@ def test_accum_fifo_beats_bf16_baseline_by_three_orders_of_magnitude():
     out_bf16 = _lstm_cell_baseline_bf16_writeback(
         x, W_ih, W_hh, b_ih, b_hh, h0, c0
     )
-    out_accum = _lstm_cell_with_accum_fifo(
+    out_fp32 = _lstm_cell_fp32_reference(
         x, W_ih, W_hh, b_ih, b_hh, h0, c0
     )
     diff_bf16 = np.max(np.abs(out_bf16.astype(np.float64) - out_ref))
-    diff_accum = np.max(np.abs(out_accum.astype(np.float64) - out_ref))
-    ratio = diff_bf16 / max(diff_accum, 1e-30)
+    diff_fp32 = np.max(np.abs(out_fp32.astype(np.float64) - out_ref))
+    ratio = diff_bf16 / max(diff_fp32, 1e-30)
     assert ratio >= 1000.0, (
-        f"AccumFifo precision improvement = {ratio:.1f}x over bf16 baseline "
-        f"(diff_bf16={diff_bf16:.3e}, diff_accum={diff_accum:.3e}); "
-        f"expected >=1000x. Cross-walk's predicted 10-100x improvement is "
-        f"a floor; CPU sim should land much higher because it has zero "
-        f"matmul-input-narrowing noise."
+        f"FP32-vs-bf16 ratio = {ratio:.1f}x "
+        f"(diff_bf16={diff_bf16:.3e}, diff_fp32={diff_fp32:.3e}); "
+        f"expected >=1000x for the workload to be a useful AccumFifo "
+        f"motivator. If the gap is smaller, this sequence/scale isn't "
+        f"sensitive enough to writeback precision."
     )
