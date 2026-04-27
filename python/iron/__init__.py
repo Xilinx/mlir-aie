@@ -89,6 +89,21 @@ from .accum import AccumFifo, AccumFifoHandle  # noqa: E402  (reserved slot)
 
 
 
+# G-T3.2-007: VariableRateFifo — producer-side conditional-forward
+# FIFO. Closes the single-producer / conditional-forward half of
+# G-T6.2-001 + G-T7.4-200 (the N:1 multi-producer fan-in half is
+# closed by PacketFifo above). The class lives in
+# ``python/iron/variable_rate.py`` (sibling to ``packet.py`` /
+# ``sparse.py``); uses the same discardable-attr-on-ObjectFifo
+# pattern SparseFifo uses, plus a corresponding lowering-pass change
+# in ``AIEObjectFifoStatefulTransform.cpp`` to skip variable-rate
+# fifos from LCM-based loop unrolling.
+from .variable_rate import (  # noqa: E402
+    VariableRateFifo,
+    VariableRateFifoHandle,
+)
+
+
 __all__ = [
     # Existing IRON primitives.
     "Buffer",
@@ -119,4 +134,9 @@ __all__ = [
     "AccumFifoHandle",  # T2.3
     "SparseFifo",
     "MemtileAggregator",
+    # G-T3.2-007: VariableRateFifo (producer-side conditional forward;
+    # sibling to PacketFifo for the single-producer half of
+    # G-T6.2-001 + G-T7.4-200).
+    "VariableRateFifo",
+    "VariableRateFifoHandle",
 ]
