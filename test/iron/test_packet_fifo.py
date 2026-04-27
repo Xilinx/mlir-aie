@@ -575,3 +575,73 @@ def test_packet_fifo_module_is_aie_iron_packet():
     from aie.iron import PacketFifo
 
     assert PacketFifo.__module__.endswith(".packet")
+
+# ---------------------------------------------------------------------------
+# Lowering tests — exercise resolve() against a real MLIR context to prove
+# the call into ``dialects.aie.packetflow`` matches the dialect's signature.
+# ---------------------------------------------------------------------------
+
+def test_resolve_emits_packetflow_op_in_module():
+    """``resolve()`` inside an ``aie.device`` body emits one
+    ``aie.packetflow`` op per producer connecting to the consumer's tile.
+    """
+    from aie.dialects.aie import AIEDevice, device, tile
+    from aie.extras.context import mlir_mod_ctx
+    from aie.iron import PacketFifo
+    from aie.iron.device import Tile
+
+    with mlir_mod_ctx() as ctx:
+
+        @device(AIEDevice.npu2)
+        def device_body():
+            t_p0_op = tile(0, 2)
+            t_p1_op = tile(0, 3)
+            t_c_op = tile(0, 5)
+            t_p0 = Tile(0, 2)
+            t_p0.op = t_p0_op
+            t_p1 = Tile(0, 3)
+            t_p1.op = t_p1_op
+            t_c = Tile(0, 5)
+            t_c.op = t_c_op
+            pf = PacketFifo(producers=[t_p0, t_p1], consumers=[t_c])
+            pf.resolve()
+
+        module_str = str(ctx.module)
+
+    assert "aie.packetflow" in module_str, (
+        f"expected aie.packetflow op in module after resolve(); "
+        f"got:\n{module_str}"
+    )
+    # One packetflow per producer (2 producers -> 2 packetflow ops).
+    assert module_str.count("aie.packetflow") == 2, (
+        f"expected exactly 2 packetflow ops (one per producer); "
+        f"got {module_str.count('aie.packetflow')} in:\n{module_str}"
+    )
+
+def test_resolve_idempotent_does_not_emit_twice():
+    """Calling ``resolve()`` twice on the same fifo does not double-emit."""
+    from aie.dialects.aie import AIEDevice, device, tile
+    from aie.extras.context import mlir_mod_ctx
+    from aie.iron import PacketFifo
+    from aie.iron.device import Tile
+
+    with mlir_mod_ctx() as ctx:
+
+        @device(AIEDevice.npu2)
+        def device_body():
+            t_p_op = tile(0, 2)
+            t_c_op = tile(0, 5)
+            t_p = Tile(0, 2)
+            t_p.op = t_p_op
+            t_c = Tile(0, 5)
+            t_c.op = t_c_op
+            pf = PacketFifo(producers=[t_p], consumers=[t_c])
+            pf.resolve()
+            pf.resolve()  # second call must be a no-op.
+
+        module_str = str(ctx.module)
+
+    assert module_str.count("aie.packetflow") == 1, (
+        f"expected exactly 1 packetflow op (resolve must be idempotent); "
+        f"got {module_str.count('aie.packetflow')} in:\n{module_str}"
+    )
