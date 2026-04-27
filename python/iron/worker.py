@@ -89,15 +89,21 @@ class Worker(ObjectFifoEndpoint):
 
         # Check arguments to the core. Some information is saved for resolution.
         #
-        # CascadeFifoHandle / PacketFifoHandle / AccumFifoHandle /
-        # SparseFifoHandle) are dispatched through the registry in
-        # ``dataflow/fifo_handle_registry.py``. This replaces the original
-        # hard-coded ``isinstance(arg, ObjectFifoHandle)`` branch with an
-        # file. ``ObjectFifoHandle`` is pre-registered by ``dataflow/__init__.py``
-        # with the original bookkeeping (set ``arg.endpoint = self``; append to
-        # ``self._fifos``), so existing Phase 1 designs keep working unchanged.
-        # Subclasses that register their own handler later in the registry win
-        # the reverse-order isinstance() walk in ``dispatch_fn_arg``.
+        # FIFO handle types -- ``ObjectFifoHandle`` and the specialized
+        # subclasses (``CascadeFifoHandle``, ``PacketFifoHandle``,
+        # ``AccumFifoHandle``, ``SparseFifoHandle``,
+        # ``VariableRateFifoHandle``) -- are dispatched through the registry
+        # in ``dataflow/fifo_handle_registry.py``. The registry replaces the
+        # original hard-coded ``isinstance(arg, ObjectFifoHandle)`` branch
+        # with an extensible mechanism so new handle subclasses register
+        # their own handler without editing this file.
+        #
+        # ``ObjectFifoHandle`` is pre-registered by ``dataflow/__init__.py``
+        # with the original bookkeeping (set ``arg.endpoint = self``; append
+        # the handle to ``self._fifos``), so designs that only use
+        # ``ObjectFifo`` are unaffected. A subclass that registers its own
+        # handler later wins because ``dispatch_fn_arg`` performs a
+        # reverse-insertion-order ``isinstance()`` walk.
         for arg in self.fn_args:
             if dispatch_fn_arg(arg, self):
                 # Registry recognized the argument and bookkept it.

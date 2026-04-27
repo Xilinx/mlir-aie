@@ -181,6 +181,7 @@ _AM020_VERIFIED_NM_PATTERNS: frozenset[tuple[int, int]] = frozenset(
     {
         (1, 2),  # 50 % sparsity, simplest pattern
         (1, 4),  # 75 % sparsity
+        (2, 4),  # 50 % sparsity, AM020-documented GPU-style pattern (default)
     }
 )
 

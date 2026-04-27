@@ -7,15 +7,27 @@
 
 End-to-end IRON design demonstrating the new
 [`VariableRateFifo`](../../../python/iron/variable_rate.py)
-primitive. Closes the *single-producer / conditional-forward* half
+primitive — the single-producer / conditional-forward dataflow
+path that vanilla `ObjectFifo` cannot express.
 
 ## What this example shows
 
-A producer worker reads each input window from a fixed-rate
-upstream `ObjectFifo`, runs an external C++ predicate kernel
-(`filterFirstByteEven`), and conditionally forwards the window to a
-downstream `VariableRateFifo`. The downstream consumer (the host
-runtime drain) sees only the forwarded windows.
+A producer worker reads input windows from a fixed-rate upstream
+`ObjectFifo`. On every other window it forwards the window to a
+downstream `VariableRateFifo` via a C++ window-copy kernel
+(`filterFirstByteEven` — currently a pure copy; the file name is
+historical). On the alternate window it calls `discard(1)` on the
+producer handle, telling the variable-rate fifo to skip that slot
+without forwarding. The downstream consumer (the host runtime
+drain) sees only the forwarded windows.
+
+The skip decision is made at the IRON Python layer using a
+deterministic alternating pattern. A richer "predicate decided in
+the C++ kernel per window" variant would require a first-class
+`scf.if` lowering on the conditional acquire/release that IRON
+Python does not currently expose; the alternating-Python pattern
+is sufficient to exercise `discard(1)` and the
+`aie.variable_rate = true` marker end-to-end.
 
 Topology:
 
@@ -26,7 +38,7 @@ Topology:
   in_of (ObjectFifo)
         |
         v
-  Tile A (filter_kernel)
+  Tile A (alternating skip + window-copy kernel)
         |
         v
   out_of (VariableRateFifo)   <-- aie.variable_rate = true
@@ -35,18 +47,19 @@ Topology:
   shim DMA (host)
 ```
 
-The filter kernel uses
 [`VariableRateFifoHandle.discard(n)`](../../../python/iron/variable_rate.py)
-on skip iterations -- the auditable counterpart to "just don't
-call acquire/release in the skip branch". Discard emits no MLIR;
-the static-rate invariant is intentionally relaxed via the
-`aie.variable_rate = true` discardable attribute pinned by
+is invoked on skip iterations -- the auditable counterpart to
+"just don't call acquire/release in the skip branch". Discard
+emits no MLIR; the static-rate invariant is intentionally relaxed
+via the `aie.variable_rate = true` discardable attribute pinned by
 `VariableRateFifo.resolve()` and consumed by the
 [`AIEObjectFifoStatefulTransformPass`](../../../lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp)
 in two places:
 
 1. The LCM-based loop-unroll skips variable-rate fifos.
 2. The split-fifo path propagates the marker to consumer-side
+   fifos so diagnostic dumps and the runtime-counter machinery
+   on both halves see the marker.
 
 ## Build
 

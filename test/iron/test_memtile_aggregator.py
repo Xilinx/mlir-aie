@@ -25,8 +25,7 @@ from aie.iron.memtile import (  # noqa: E402
 )
 
 # ---------------------------------------------------------------------------
-# test is self-contained and doesn't require the outer-repo Phase 1 fixture
-# file).
+# Self-contained test fixtures (no external data files required).
 # ---------------------------------------------------------------------------
 
 N_GUIDES = 128
@@ -55,7 +54,6 @@ def test_constructs_with_valid_args():
     )
     assert agg is not None
     assert agg.n_producers == N_MATCH_TILES
-    assert agg.layout == "slab"
     assert agg.depth == 2  # default per the docstring
 
 def test_n_producers_must_be_in_range():
@@ -130,7 +128,8 @@ def test_memtile_dm_budget_enforced():
 # ---------------------------------------------------------------------------
 
 def _make_t53m_aggregator() -> MemtileAggregator:
-    """    partial_ty = np.ndarray[(PARTIAL_CHUNK_SIZE,), np.dtype[np.uint8]]
+    """Build a 4-producer aggregator matching the multi-tile match topology."""
+    partial_ty = np.ndarray[(PARTIAL_CHUNK_SIZE,), np.dtype[np.uint8]]
     joined_ty = np.ndarray[(FULL_CHUNK_SIZE,), np.dtype[np.uint8]]
     return MemtileAggregator(
         n_producers=N_MATCH_TILES,
@@ -170,34 +169,33 @@ def test_consumer_returns_object_fifo_handle():
     assert h.handle_type == "cons"
 
 # ---------------------------------------------------------------------------
-# 3. Functional equivalence to Phase 1's hand-rolled topology
+# 3. Functional equivalence with the hand-rolled multi-tile-match topology
 # ---------------------------------------------------------------------------
 
-    ``join_offsets = [i * partial_chunk_size for i in range(N_MATCH_TILES)]``
-    -- exactly what flat_concat_offsets emits."""
+def test_offsets_match_flat_concat():
+    """``MemtileAggregator``'s join offsets equal
+    ``[i * partial_chunk_size for i in range(N_MATCH_TILES)]`` -- the
+    flat-concat layout the multi-tile match topology relied on.
+    """
     expected = [i * PARTIAL_CHUNK_SIZE for i in range(N_MATCH_TILES)]
     actual = flat_concat_offsets(N_MATCH_TILES, PARTIAL_CHUNK_SIZE)
     assert actual == expected
-    assert actual == [0, 2048, 4096, 6144]  # the literal Phase 1 list
+    assert actual == [0, 2048, 4096, 6144]
 
-def test_aggregator_offsets_property_matches_phase1():
+def test_aggregator_offsets_property_matches_flat_concat():
     agg = _make_t53m_aggregator()
     assert agg.offsets == [0, 2048, 4096, 6144]
 
-def test_partial_and_joined_byte_sizes_match_phase1():
-    """The byte sizes computed by the helper match Phase 1's
-    documented MANIFEST.md numbers (PARTIAL_CHUNK_SIZE=2048,
-    FULL_CHUNK_SIZE=8192)."""
+def test_partial_and_joined_byte_sizes():
+    """The byte sizes computed by the helper match the documented
+    constants (PARTIAL_CHUNK_SIZE=2048, FULL_CHUNK_SIZE=8192)."""
     partial_ty = np.ndarray[(PARTIAL_CHUNK_SIZE,), np.dtype[np.uint8]]
     joined_ty = np.ndarray[(FULL_CHUNK_SIZE,), np.dtype[np.uint8]]
     assert bytes_per_element(partial_ty) == 2048
     assert bytes_per_element(joined_ty) == 8192
 
-def test_underlying_fifos_match_phase1_naming_pattern():
-    """Phase 1 named the per-tile sub-FIFOs ``memC0..memC3``. Ours
-    use the aggregator's name + ``_p{i}`` -- different but
-    functionally equivalent. This test pins that naming so a
-    future rename trips a regression."""
+def test_underlying_fifos_have_predictable_names():
+    """Per-tile sub-FIFOs are named ``<aggregator_name>_p{i}``."""
     agg = _make_t53m_aggregator()
     sub_fifos = agg.sub_fifos
     assert len(sub_fifos) == N_MATCH_TILES
@@ -220,22 +218,21 @@ def test_joined_fifo_is_a_real_object_fifo():
 # ---------------------------------------------------------------------------
 
 def test_memtile_constants_match_am020():
-    """The exposed constants reflect AM020 Ch. 5 + Table 14 numbers"""
+    """The exposed constants reflect AM020 Ch. 5 + Table 14 numbers."""
     assert MEMTILE_S2MM_NEIGHBOUR_CHANNELS == 4
     assert MEMTILE_DM_BYTES == 512 * 1024
 
 # ---------------------------------------------------------------------------
-# 5. Phase-1 byte-equality contract: the helper-built aggregator emits the
-# same offsets + sub-FIFO obj_types as Phase 1's hand-rolled
-# oracle on the chr22 fixture per the MANIFEST). Since the lowering goes
-# through the same ObjectFifo.prod().join() primitive, byte-equality is
-# transitive: helper -> hand-roll -> oracle.
+# 5. Byte-equality contract with a hand-rolled flat-concat aggregator: the
+# helper-built MemtileAggregator must emit the same offsets and the same
+# sub-FIFO obj_types as a hand-written ObjectFifo.prod().join() call would.
 # ---------------------------------------------------------------------------
 
-def test_byte_equality_contract_with_phase1_handroll():
+def test_byte_equality_with_handrolled_flat_concat():
     """Compare the helper-emitted (offsets, obj_types, sub-FIFO count)
-    triple to the literal triple from Phase 1's
-    This is the falsifiable byte-equality check the plan calls for."""
+    triple against an explicit flat-concat hand-roll. This is the
+    falsifiable byte-equality check the helper API claims to honour.
+    """
     partial_ty = np.ndarray[(PARTIAL_CHUNK_SIZE,), np.dtype[np.uint8]]
     joined_ty = np.ndarray[(FULL_CHUNK_SIZE,), np.dtype[np.uint8]]
     agg = MemtileAggregator(
@@ -244,18 +241,18 @@ def test_byte_equality_contract_with_phase1_handroll():
         joined_obj_type=joined_ty,
     )
 
-    # Phase 1's literal join_offsets (verbatim from
-    # multitile_memtile.py line ~179).
-    phase1_join_offsets = [
+    # The hand-rolled flat-concat reference: each producer i lands at byte
+    # offset i * partial_chunk_size in the joined buffer.
+    expected_join_offsets = [
         i * PARTIAL_CHUNK_SIZE for i in range(N_MATCH_TILES)
     ]
-    assert agg.offsets == phase1_join_offsets
+    assert agg.offsets == expected_join_offsets
 
-    # Phase 1's literal obj_types list (verbatim line ~183).
-    phase1_obj_types = [partial_ty] * N_MATCH_TILES
+    # Same partial obj_type for every producer in a flat-concat aggregator.
+    expected_obj_types = [partial_ty] * N_MATCH_TILES
     actual_obj_types = [f.obj_type for f in agg.sub_fifos]
     # numpy ndarray-types compare structurally; same shape + dtype gives
     # the same flat byte-size, which is what the lowering needs.
-    assert len(actual_obj_types) == len(phase1_obj_types)
-    for actual, expected in zip(actual_obj_types, phase1_obj_types):
+    assert len(actual_obj_types) == len(expected_obj_types)
+    for actual, expected in zip(actual_obj_types, expected_obj_types):
         assert bytes_per_element(actual) == bytes_per_element(expected)

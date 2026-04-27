@@ -16,7 +16,7 @@ from .fifo_handle_registry import (
 )
 
 # the original Worker.__init__ bookkeeping bit-for-bit. This is the
-# backward-compat anchor: every Phase 1 design that passes
+# backward-compat anchor: every existing IRON design that passes
 # ObjectFifoHandle through fn_args still works without modification.
 #
 # AccumFifoHandle, SparseFifoHandle) are registered by their respective

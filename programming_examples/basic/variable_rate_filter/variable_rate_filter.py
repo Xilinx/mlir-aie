@@ -93,10 +93,12 @@ def my_variable_rate_filter(dev, in_size, out_size):
     # forwarded subset.
     out_of = VariableRateFifo(line_type, name="out_of")
 
-    # External kernel: a passthrough copy + an even-byte predicate
-    # check. We use a real C++ kernel function so the lowering
-    # does NOT inline the predicate into the IRON Python (which
-    # would defeat the demo).
+    # External C++ kernel: a window-copy callable invoked on the
+    # forwarded iterations. The skip decision is made at the IRON
+    # Python layer by the alternating pattern in ``core_fn`` below;
+    # this kernel is intentionally a pure copy so the producer-side
+    # state machine (acquire+release on forward, discard(1) on skip)
+    # is the visible mechanism in the example.
     filter_kernel_fn = Kernel(
         "filterFirstByteEven",
         "filter_first_byte_even.cc.o",

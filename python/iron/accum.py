@@ -224,7 +224,7 @@ def _check_vertical_adjacency(producer: Tile, consumer: Tile) -> None:
         f"and consumer tile (col={consumer.col}, row={consumer.row}) are not "
         f"vertically adjacent in the same column. AM020 Appendix A p. 80 "
         f"Figure 45 documents both vertical and horizontal cascade routing, "
-        f"but Phase 1's cascade_stream investigation only verified the "
+        f"but the established cascade-stream design only verified the "
         f"vertical case on AIE2P silicon. The lowering will still emit "
         f"aie.cascade_flow; expect placement-pass diagnostics if the "
         f"requested geometry isn't realisable on this device.",

@@ -6,15 +6,18 @@
 //
 // (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
-// or wedge under the split-fifo + cross-column path that the
+// Verifies that an ``aie.objectfifo`` carrying the
+// ``aie.variable_rate = true`` discardable attribute lowers cleanly
+// through the split-fifo + cross-column path without crashing or
+// wedging on the LCM-based loop-unrolling logic.
 //
-// The ``aie.variable_rate`` discardable attribute is consumed by
-// ``unrollForLoops`` (to opt out of LCM-based unrolling) and by
-// the split-fifo propagation slot (to copy the marker to
-// consumer-side fifos for diagnostic introspection). Since the
-// pass lowers and erases the ``aie.objectfifo`` ops as part of
-// the transform, the marker itself is not visible in the post-
-// pass output -- the propagation lives ENTIRELY inside the pass.
+// The ``aie.variable_rate`` attribute is consumed by
+// ``unrollForLoops`` (to opt out of LCM-based unrolling) and by the
+// split-fifo propagation slot (to copy the marker to consumer-side
+// fifos for diagnostic introspection). Since the pass lowers and
+// erases the ``aie.objectfifo`` ops as part of the transform, the
+// marker itself is not visible in the post-pass output -- the
+// propagation lives ENTIRELY inside the pass.
 //
 // What IS visible (and what this test asserts):
 //   1. Cross-column endpoints (1,2) and (3,3) lower cleanly with

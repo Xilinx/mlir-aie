@@ -78,7 +78,7 @@ def _noop_core(*_args):
 
 def test_object_fifo_handle_is_pre_registered():
     """``dataflow/__init__.py`` pre-registers ObjectFifoHandle so that
-    Phase 1 designs keep working without any other code change."""
+    Existing designs keep working without any other code change."""
     classes = get_registered_handle_classes()
     assert ObjectFifoHandle in classes, (
         f"ObjectFifoHandle missing from registry -- backward-compat broken. "
@@ -87,7 +87,7 @@ def test_object_fifo_handle_is_pre_registered():
 
 def test_worker_recognizes_object_fifo_handle_via_registry(fifo):
     """Regression guard: Worker.__init__ still records ObjectFifoHandle in
-    ``_fifos`` and sets the handle's endpoint, just like Phase 1."""
+    ``_fifos`` and sets the handle's endpoint, just like the original hard-coded path."""
     handle = fifo.prod()
     worker = Worker(_noop_core, fn_args=[handle], tile=Tile(0, 2))
 

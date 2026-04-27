@@ -8,7 +8,7 @@
 """MemtileAggregator: first-class IRON memtile-mediated fan-in helper.
 
 Encapsulates the memtile-aggregated 4-into-1 fan-in topology that
-Phase 1 of the bio-on-XDNA project hand-rolled in
+This helper promotes a hand-rolled fan-in topology used in
 after hitting the compute-tile 2-input-DMA-channel ceiling
 promotes that topology to a first-class API so every multi-tile
 CRISPR / match / reduction design can reach for it the same way they
@@ -72,7 +72,7 @@ partials end-to-end into a single contiguous joined buffer:
 
 This means the **logical layout each producer emits in must be
 "slab-major"**, where each slab maps directly to its byte range in
-the joined buffer. For Phase 1's CRISPR mismatch design this meant
+the joined buffer. A typical multi-tile match design uses
 **guide-major** partials (each tile writes
 ``partial[g_local * n_windows + w]``); flat-concat then yields a
 final layout where tile 0's 32 guides occupy rows 0..31, tile 1's

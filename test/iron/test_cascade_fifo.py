@@ -263,7 +263,7 @@ def test_double_resolve_is_idempotent():
         f"got:\n{module_str}"
     )
 
-# -- Behavioural parity vs Phase 1 wrapper --------------------------------
+# -- Behavioural parity vs hand-written cascade pipeline --------------------------------
 
 def test_cascade_fifo_lowering_matches_dialect_cascade_flow_op():
     """The CascadeFifo path emits the same MLIR op kind that the
