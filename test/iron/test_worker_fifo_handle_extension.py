@@ -5,35 +5,33 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""T2.4: Worker.fn_args FifoHandle registry -- extensibility + regression tests.
+"""Tests for the FifoHandle registry that drives ``Worker.fn_args`` dispatch.
 
 These tests cover the registry-driven type dispatch added in
 ``aie/iron/dataflow/fifo_handle_registry.py``:
 
 1. **Backward-compat (regression guard)**: ``ObjectFifoHandle`` is
    pre-registered by ``dataflow/__init__.py`` and is still recognized
-   by ``Worker.__init__`` exactly as before -- Phase 1 designs unchanged.
-2. **Custom FifoHandle subclass**: a fork-internal class that subclasses
-   :class:`ObjectFifoHandle` and has its own registered handler is
+   by ``Worker.__init__`` exactly as before.
+2. **Custom FifoHandle subclass**: a class that subclasses
+   :class:`ObjectFifoHandle` and registers its own handler is
    dispatched via the registry; the handler runs and the Worker's
    bookkeeping reflects the custom registration.
-3. **Runtime registration is reflected**: registering a brand-new handle
-   class at runtime makes ``Worker.__init__`` recognize instances of it
-   without any other code changes.
-4. **Reverse-order precedence**: when a class and its subclass are both
-   registered, the most-recently-registered (subclass) handler wins.
-5. **Decorator form** of :func:`register_fifo_handle` works the same as
-   the function-call form.
+3. **Runtime registration is reflected**: registering a brand-new
+   handle class at runtime makes ``Worker.__init__`` recognize
+   instances of it without any other code changes.
+4. **Reverse-order precedence**: when a class and its subclass are
+   both registered, the most-recently-registered (subclass) handler
+   wins.
+5. **Decorator form** of :func:`register_fifo_handle` works the same
+   as the function-call form.
 6. **Snapshot context manager** correctly restores registry state.
 7. **Error handling**: double-registration raises; non-class /
    non-callable arguments are rejected.
 
-These tests are pure-Python and do NOT require an MLIR context (no
+These tests are pure-Python and do not require an MLIR context (no
 ``Program.compile()`` is invoked); they exercise the dispatch logic
-inside ``Worker.__init__`` directly. The MLIR-context-dependent
-``Worker.resolve()`` path is exercised by the existing IRON
-integration tests in ``test/python/`` (objFifo.py et al.) which are
-unchanged by T2.4.
+inside ``Worker.__init__`` directly.
 """
 
 from __future__ import annotations
@@ -53,18 +51,15 @@ from aie.iron.dataflow.fifo_handle_registry import (  # noqa: E402
     unregister_fifo_handle,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
 
 @pytest.fixture
 def clean_registry():
     """Save and restore the registry around each test that mutates it."""
     with _RegistrySnapshot():
         yield
-
 
 @pytest.fixture
 def fifo():
@@ -73,16 +68,13 @@ def fifo():
 
     return ObjectFifo(np.ndarray[(8,), np.dtype[np.int32]], depth=2, name="t24_fifo")
 
-
 def _noop_core(*_args):
     """Trivial core_fn for Worker construction. Never actually executed in
     these tests because Worker.resolve() is not called (no MLIR context)."""
 
-
 # ---------------------------------------------------------------------------
 # 1. Backward-compat: ObjectFifoHandle still works exactly as before.
 # ---------------------------------------------------------------------------
-
 
 def test_object_fifo_handle_is_pre_registered():
     """``dataflow/__init__.py`` pre-registers ObjectFifoHandle so that
@@ -92,7 +84,6 @@ def test_object_fifo_handle_is_pre_registered():
         f"ObjectFifoHandle missing from registry -- backward-compat broken. "
         f"Registered: {[c.__name__ for c in classes]}"
     )
-
 
 def test_worker_recognizes_object_fifo_handle_via_registry(fifo):
     """Regression guard: Worker.__init__ still records ObjectFifoHandle in
@@ -109,7 +100,6 @@ def test_worker_recognizes_object_fifo_handle_via_registry(fifo):
         "the pre-registered handler did not run its bookkeeping"
     )
 
-
 def test_worker_still_rejects_raw_object_fifo(fifo):
     """Non-FifoHandle paths (Buffer/ObjectFifo/Barrier branches in
     Worker.__init__) are unchanged. Passing a raw ObjectFifo is still
@@ -117,19 +107,17 @@ def test_worker_still_rejects_raw_object_fifo(fifo):
     with pytest.raises(ValueError, match="Cannot give an ObjectFifo"):
         Worker(_noop_core, fn_args=[fifo], tile=Tile(0, 2))
 
-
 # ---------------------------------------------------------------------------
 # 2. Custom FifoHandle subclass dispatches via the registry.
 # ---------------------------------------------------------------------------
 
-
 def test_custom_subclass_dispatches_via_registry(clean_registry, fifo):
-    """A fork-internal subclass with its own registered handler wins
-    isinstance() against ObjectFifoHandle's registration (registered later
-    -> reverse-order walk in dispatch_fn_arg picks subclass first)."""
+    """A subclass with its own registered handler wins isinstance() against
+    ObjectFifoHandle's registration (registered later -> reverse-order walk
+    in dispatch_fn_arg picks subclass first)."""
 
     class _MyCustomHandle(ObjectFifoHandle):
-        """Pretend Wave 2 subclass -- e.g. PacketFifoHandle prototype."""
+        pass
 
     captured: list[tuple[object, object]] = []
 
@@ -158,7 +146,6 @@ def test_custom_subclass_dispatches_via_registry(clean_registry, fifo):
     )
     assert captured[0][0] is handle and captured[0][1] is worker
     assert handle in worker.fifos
-
 
 def test_runtime_registration_reflected_in_worker(clean_registry, fifo):
     """Registering a new handle class after the wheel is loaded is
@@ -200,7 +187,6 @@ def test_runtime_registration_reflected_in_worker(clean_registry, fifo):
     # different handler entirely) -- confirms reverse-order precedence.
     assert stub2._fifos == []
 
-
 def test_reverse_order_precedence(clean_registry, fifo):
     """Later registrations of more-specific subclasses win over earlier
     parent registrations in dispatch_fn_arg's reverse-order walk."""
@@ -231,11 +217,9 @@ def test_reverse_order_precedence(clean_registry, fifo):
         f"reverse-order walk picked the wrong handler: fired={fired}"
     )
 
-
 # ---------------------------------------------------------------------------
 # 3. Decorator form vs function-call form.
 # ---------------------------------------------------------------------------
-
 
 def test_decorator_form_registers(clean_registry, fifo):
     """``@register_fifo_handle(MyHandle)`` registers the wrapped callable
@@ -252,7 +236,6 @@ def test_decorator_form_registers(clean_registry, fifo):
     # Returned callable is the original (decorator does not wrap it).
     assert callable(_handler)
 
-
 def test_function_call_form_registers(clean_registry, fifo):
     """``register_fifo_handle(MyHandle, my_handler)`` registers without
     needing decorator syntax."""
@@ -267,11 +250,9 @@ def test_function_call_form_registers(clean_registry, fifo):
     assert ret is None  # function-call form has no return value
     assert _CallFormHandle in get_registered_handle_classes()
 
-
 # ---------------------------------------------------------------------------
 # 4. Snapshot context manager + unregister helper.
 # ---------------------------------------------------------------------------
-
 
 def test_registry_snapshot_restores_state(fifo):
     """The snapshot context manager restores the registry to its pre-entry
@@ -291,7 +272,6 @@ def test_registry_snapshot_restores_state(fifo):
     assert classes_after == classes_before
     assert _ScopedHandle not in classes_after
 
-
 def test_unregister_fifo_handle_returns_bool(clean_registry):
     """``unregister_fifo_handle`` returns True if a registration was
     removed, False otherwise. Test-only helper but worth a smoke test."""
@@ -305,11 +285,9 @@ def test_unregister_fifo_handle_returns_bool(clean_registry):
     # Idempotent removal.
     assert unregister_fifo_handle(_UnregHandle) is False
 
-
 # ---------------------------------------------------------------------------
 # 5. Error handling.
 # ---------------------------------------------------------------------------
-
 
 def test_double_registration_raises(clean_registry):
     """Registering the same class twice raises ValueError to catch
@@ -322,12 +300,10 @@ def test_double_registration_raises(clean_registry):
     with pytest.raises(ValueError, match="already registered"):
         register_fifo_handle(_DupHandle, lambda a, w: None)
 
-
 def test_non_class_handle_cls_rejected(clean_registry):
     """``register_fifo_handle`` rejects non-class first arguments."""
     with pytest.raises(TypeError, match="must be a class"):
         register_fifo_handle("not a class", lambda a, w: None)  # type: ignore[arg-type]
-
 
 def test_non_callable_handler_rejected(clean_registry):
     """``register_fifo_handle`` rejects non-callable handlers."""
@@ -337,7 +313,6 @@ def test_non_callable_handler_rejected(clean_registry):
 
     with pytest.raises(TypeError, match="must be callable"):
         register_fifo_handle(_BadHandlerHandle, "not callable")  # type: ignore[arg-type]
-
 
 def test_dispatch_returns_false_for_unregistered(clean_registry):
     """``dispatch_fn_arg`` returns False when no registered class matches."""
@@ -351,16 +326,13 @@ def test_dispatch_returns_false_for_unregistered(clean_registry):
 
     assert dispatch_fn_arg(_NotAHandle(), _StubWorker()) is False
 
-
 # ---------------------------------------------------------------------------
 # 6. Surface stability (the public registry API is what fork-PR consumers
 # rely on; pin it down so accidental rename / removal trips a test).
 # ---------------------------------------------------------------------------
 
-
 def test_registry_module_public_surface():
-    """The public surface of the registry module is what Wave 2
-    PRs rely on -- pin it down so accidental renames trip a test."""
+    """Pin the public registry API down so accidental renames trip a test."""
     from aie.iron.dataflow import fifo_handle_registry as reg
 
     expected = {

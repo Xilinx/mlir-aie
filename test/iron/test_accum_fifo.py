@@ -5,37 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""T2.3: in-fork tests for ``aie.iron.AccumFifo``.
-
-The Phase 2 plan's load-bearing falsifiable claim for this primitive is the
-**precision delta** between Phase 1's T6.4-D fallback (FP32 tile-DM static
-arrays for h/c persistence; max-abs vs FP32 PyTorch reference: 5.15e-2)
-and AccumFifo's accumulator-precision continuity (target: 1e-5 max-abs).
-
-The cross-walk's diagnosis is: the wall is *not* bf16 multiplier-input
-narrowing; it is the recurrent-state writeback step that loses 15 mantissa
-bits per timestep when h/c are narrowed to bf16 for storage. AccumFifo
-keeps h/c in 23-mantissa-bit FP32 accumulator form across timesteps, so
-the cumulative drift after L timesteps should drop from O(L * 2^-7) to
-O(L * 2^-23).
-
-The synthetic LSTM-cell test below uses **a CPU FP32 simulation of the
-AccumFifo accumulator-continuity invariant** to validate the precision
-target. The hardware test (running on AIE2P silicon) lives in T3.1's
-``dorado_fast_lstm_cell_bf16_acc_cascade`` integration test, which is
-gated on this fork-internal test passing first.
-
-Tests in this file are split into three layers:
-
-1. **Surface tests** (no MLIR import required): API shape, dtype/lane
-   validation, intra-tile vs inter-tile detection, error messages.
-2. **Lowering tests** (require ``aie.iron`` + an MLIR context): build a
-   tiny module that uses AccumFifo and assert the resulting MLIR contains
-   the expected ``aie.cascade_flow`` op (or absent for the intra-tile case).
-3. **Precision tests**: synthetic LSTM cell using AccumFifo's
-   accumulator-continuity invariant matches a FP32 PyTorch reference
-   within 1e-5 max-abs (vs 5.15e-2 for the bf16-writeback baseline).
-"""
+""": in-fork tests for ``aie.iron.AccumFifo``."""
 
 from __future__ import annotations
 
@@ -44,9 +14,7 @@ import warnings
 import numpy as np
 import pytest
 
-
 # -- Surface tests (no MLIR context, no NPU) ------------------------------
-
 
 def test_accum_fifo_imports_cleanly():
     """AccumFifo + AccumFifoHandle are importable from `aie.iron`."""
@@ -55,12 +23,9 @@ def test_accum_fifo_imports_cleanly():
     assert AccumFifo.__name__ == "AccumFifo"
     assert AccumFifoHandle.__name__ == "AccumFifoHandle"
 
-
 def test_accum_fifo_default_dtype_is_accfloat():
     """The default dtype is the FP32 accumulator path (``"accfloat"``).
 
-    This is the load-bearing default for the T6.4-D-cascade LSTM case --
-    the cross-walk explicitly diagnoses FP32-accumulator-precision h/c
     continuity as the precision-recovery primitive.
     """
     from aie.iron import AccumFifo
@@ -70,12 +35,10 @@ def test_accum_fifo_default_dtype_is_accfloat():
     assert af.dtype == "accfloat"
     assert af.lanes == 16
 
-
 def test_accum_fifo_rejects_aie1_only_acc48():
     """``acc48`` is AIE1-only; AccumFifo targets AIE-ML / AIE2P only.
 
     A clear error message is required so callers don't silently use a
-    dtype the device doesn't support. The cross-walk's hardware mandate
     section is explicit on this distinction (Ch. 4 p. 65 -- AIE-ML drops
     acc48 in favour of accfloat).
     """
@@ -85,14 +48,12 @@ def test_accum_fifo_rejects_aie1_only_acc48():
     with pytest.raises(ValueError, match="acc48.*AIE1-only"):
         AccumFifo(producer=Tile(0, 2), consumer=Tile(0, 3), dtype="acc48")
 
-
 def test_accum_fifo_rejects_unknown_dtype():
     from aie.iron import AccumFifo
     from aie.iron.device import Tile
 
     with pytest.raises(ValueError, match="unsupported dtype"):
         AccumFifo(producer=Tile(0, 2), consumer=Tile(0, 3), dtype="bf16")
-
 
 def test_accum_fifo_rejects_wrong_lane_count():
     """AM020 Ch. 4 p. 67: cascade transfer is exactly 512 bits/cycle.
@@ -107,7 +68,6 @@ def test_accum_fifo_rejects_wrong_lane_count():
         AccumFifo(producer=Tile(0, 2), consumer=Tile(0, 3),
                   dtype="accfloat", lanes=8)  # 8 * 32 = 256 bits, not 512
 
-
 def test_accum_fifo_acc64_requires_8_lanes():
     """``acc64`` is paired-lane: 8 lanes * 64 bits = 512 bits."""
     from aie.iron import AccumFifo
@@ -118,7 +78,6 @@ def test_accum_fifo_acc64_requires_8_lanes():
     assert af.dtype == "acc64"
     assert af.lanes == 8
 
-
 def test_accum_fifo_intra_tile_detected():
     """Same producer/consumer tile -> intra-tile (BM-to-BM register move)."""
     from aie.iron import AccumFifo
@@ -127,7 +86,6 @@ def test_accum_fifo_intra_tile_detected():
     af = AccumFifo(producer=Tile(0, 2), consumer=Tile(0, 2))
     assert af.is_intra_tile is True
 
-
 def test_accum_fifo_inter_tile_detected():
     """Different producer/consumer tiles -> cascade-stream transfer."""
     from aie.iron import AccumFifo
@@ -135,7 +93,6 @@ def test_accum_fifo_inter_tile_detected():
 
     af = AccumFifo(producer=Tile(0, 2), consumer=Tile(0, 3))
     assert af.is_intra_tile is False
-
 
 def test_accum_fifo_warns_on_non_vertical_geometry():
     """T7-IRON only measured vertical-adjacency cascade on AIE2P silicon.
@@ -154,7 +111,6 @@ def test_accum_fifo_warns_on_non_vertical_geometry():
         assert len(w) == 1
         assert "vertically adjacent" in str(w[0].message)
 
-
 def test_accum_fifo_no_warning_on_vertical_adjacency():
     from aie.iron import AccumFifo
     from aie.iron.device import Tile
@@ -169,7 +125,6 @@ def test_accum_fifo_no_warning_on_vertical_adjacency():
         ]
         assert len(adjacency_warnings) == 0
 
-
 def test_accum_fifo_no_warning_on_unplaced_tiles():
     """Tiles with col=None / row=None (placement-pass-deferred) should
     not trigger the adjacency warning -- the placement pass will assign
@@ -182,18 +137,15 @@ def test_accum_fifo_no_warning_on_unplaced_tiles():
         AccumFifo(producer=Tile(), consumer=Tile())
         assert all("vertically adjacent" not in str(x.message) for x in w)
 
-
 def test_accum_fifo_rejects_non_tile_argument():
     from aie.iron import AccumFifo
 
     with pytest.raises(ValueError, match="must be a Tile"):
         AccumFifo(producer="not_a_tile", consumer="not_a_tile")  # type: ignore[arg-type]
 
-
 def test_accum_fifo_handles_are_object_fifo_handles():
     """AccumFifoHandle subclasses ObjectFifoHandle so the existing
     `isinstance(arg, ObjectFifoHandle)` dispatch in Worker.fn_args
-    accepts AccumFifo handles transparently. Once T2.4 lands the
     registry-style dispatch this is no longer load-bearing for that
     purpose, but the inheritance is also documenting that AccumFifo is
     a fifo-shaped abstraction (acquire / release / endpoint)."""
@@ -210,7 +162,6 @@ def test_accum_fifo_handles_are_object_fifo_handles():
     assert isinstance(h_prod, ObjectFifoHandle)
     assert isinstance(h_cons, ObjectFifoHandle)
 
-
 def test_accum_fifo_prod_cons_idempotent():
     """Calling .prod() / .cons() twice returns the same handle (point-to-point)."""
     from aie.iron import AccumFifo
@@ -221,7 +172,6 @@ def test_accum_fifo_prod_cons_idempotent():
     c1, c2 = af.cons(), af.cons()
     assert p1 is p2
     assert c1 is c2
-
 
 def test_accum_fifo_handle_acquire_release_no_op():
     """Acquire/release on an AccumFifoHandle is a no-op (cascade wire is
@@ -235,7 +185,6 @@ def test_accum_fifo_handle_acquire_release_no_op():
     assert h.acquire(1) is None
     h.release(1)  # no exception
 
-
 def test_accum_fifo_handle_acquire_only_one():
     """A cascade transfer is one accumulator per cycle; acquire(N>1) is
     rejected as a category error rather than silently accepted."""
@@ -247,7 +196,6 @@ def test_accum_fifo_handle_acquire_only_one():
     with pytest.raises(ValueError, match="exactly 1 cascade transfer"):
         h.acquire(2)
 
-
 def test_accum_fifo_unique_default_names():
     """When no name is provided, AccumFifo generates unique ``af<N>`` names."""
     from aie.iron import AccumFifo
@@ -257,9 +205,7 @@ def test_accum_fifo_unique_default_names():
     b = AccumFifo(producer=Tile(0, 2), consumer=Tile(0, 3))
     assert a.name != b.name
 
-
 # -- Lowering tests (require an MLIR context) -----------------------------
-
 
 @pytest.fixture
 def mlir_ctx():
@@ -272,7 +218,6 @@ def mlir_ctx():
     from aie.extras.context import mlir_mod_ctx
     with mlir_mod_ctx() as ctx:
         yield ctx
-
 
 def test_intra_tile_accum_fifo_emits_no_cascade_flow_op(mlir_ctx):
     """Intra-tile AccumFifo (BM-to-BM register move) lowers to no MLIR op.
@@ -287,7 +232,6 @@ def test_intra_tile_accum_fifo_emits_no_cascade_flow_op(mlir_ctx):
     af = AccumFifo(producer=t, consumer=t)
     af.resolve()
     assert af.op is None
-
 
 def test_inter_tile_accum_fifo_emits_cascade_flow_op(mlir_ctx):
     """Inter-tile AccumFifo emits ``aie.cascade_flow`` between the tiles.
@@ -320,9 +264,7 @@ def test_inter_tile_accum_fifo_emits_cascade_flow_op(mlir_ctx):
         # The op should be an aie.cascade_flow by name.
         assert "cascade_flow" in str(af.op).lower()
 
-
 # -- Precision test (synthetic LSTM cell, CPU simulation) -----------------
-
 
 def _torch_lstm_cell_reference(x_seq: np.ndarray,
                                W_ih: np.ndarray,
@@ -361,28 +303,22 @@ def _torch_lstm_cell_reference(x_seq: np.ndarray,
         out[t] = h
     return out
 
-
 def _bf16_round(x: np.ndarray) -> np.ndarray:
     """Round-trip FP32 -> bf16 -> FP32 (i.e., truncate to 8-bit mantissa).
 
-    Used by the baseline simulation to model the T6.4-D-pre-AccumFifo
-    storage-narrowing precision wall.
-    """
+    storage-narrowing precision wall."""
     arr = np.asarray(x, dtype=np.float32).copy()
     int_view = arr.view(np.uint32)
     # Round-to-nearest-even bf16 truncation: drop the lower 16 bits.
     rounded = (int_view + 0x8000) & 0xFFFF0000
     return rounded.view(np.float32)
 
-
 def _lstm_cell_baseline_bf16_writeback(x_seq, W_ih, W_hh, b_ih, b_hh, h0, c0):
-    """Phase 1 T6.4-D-style LSTM with **bf16 writeback** of h/c each step.
-
+    """
     This reproduces the precision wall AccumFifo is meant to fix:
     after every timestep h/c are narrowed to bf16 (8 mantissa bits) for
     storage, then re-loaded as FP32 next step. Each round-trip drops
-    15 mantissa bits and the error compounds across L steps.
-    """
+    15 mantissa bits and the error compounds across L steps."""
     L, _ = x_seq.shape
     H = h0.shape[0]
     h = h0.astype(np.float32).copy()
@@ -407,7 +343,6 @@ def _lstm_cell_baseline_bf16_writeback(x_seq, W_ih, W_hh, b_ih, b_hh, h0, c0):
         h = _bf16_round(h)
         out[t] = h
     return out
-
 
 def _lstm_cell_with_accum_fifo(x_seq, W_ih, W_hh, b_ih, b_hh, h0, c0):
     """LSTM cell whose h/c persistence uses AccumFifo's invariant:
@@ -441,17 +376,12 @@ def _lstm_cell_with_accum_fifo(x_seq, W_ih, W_hh, b_ih, b_hh, h0, c0):
         out[t] = h
     return out
 
-
 def test_baseline_bf16_writeback_hits_t64d_precision_wall():
     """Sanity check: the baseline simulation reproduces the ~5e-2 max-abs
-    that T6.4-D's IRON-level fallback hit with bf16 writeback. If this
     test FAILS the simulation isn't modelling the right precision wall
     and the AccumFifo precision claim below is meaningless.
 
-    We use a 96-hidden, 200-timestep config matching Phase 1's Dorado
-    fast@v5.0.0 LSTM dimensions (per
-    bionpu/kernels/basecalling/lstm_cell_bf16_acc/lstm_cell_bf16_acc.cc).
-    """
+    fast@v5.0.0 LSTM dimensions (per"""
     rng = np.random.default_rng(seed=42)
     L, H = 200, 96
     x = rng.standard_normal((L, H), dtype=np.float32) * 0.1
@@ -467,11 +397,9 @@ def test_baseline_bf16_writeback_hits_t64d_precision_wall():
         x, W_ih, W_hh, b_ih, b_hh, h0, c0
     )
     diff = np.max(np.abs(out_bf16.astype(np.float64) - out_ref))
-    # Phase 1 T6.4-D measured 5.15e-2 on real Dorado weights with 5-stack
     # LSTM and 200-step real signal traces. This synthetic CPU sim with
     # random N(0, 0.1) weights and a single LSTM layer is a precision-wall
     # *model* not a 1:1 reproduction; it converges to the order-of-magnitude
-    # signature (>=1e-4) but doesn't hit the absolute T6.4-D value. The
     # invariant we actually need is "bf16 writeback degrades precision
     # measurably past FP32 floor" -- 1e-4 is a comfortable threshold that
     # tracks the hardware-driven 8-bit-mantissa truncation while leaving
@@ -482,18 +410,9 @@ def test_baseline_bf16_writeback_hits_t64d_precision_wall():
         f"measurable drift past FP32 floor on a 200-step sequence)"
     )
 
-
 def test_accum_fifo_invariant_hits_1e_minus_5_precision_target():
-    """T2.3's load-bearing precision claim: AccumFifo's accumulator-
-    continuity invariant (full FP32 across timesteps, no bf16 writeback)
-    matches the FP32 PyTorch reference within 1e-5 max-abs.
-
-    From the Phase 2 plan: 'AccumFifo with proper accumulator persistence
-    should hit 1e-5. If it doesn't, the cross-walk's diagnosis was wrong --
-    bf16 multiplier-input narrowing on Dorado weights is the actual wall'.
-
-    This is the falsifiable cross-walk-prediction surface for T6.4-D-cascade.
-    """
+    """    continuity invariant (full FP32 across timesteps, no bf16 writeback)
+    matches the FP32 PyTorch reference within 1e-5 max-abs."""
     rng = np.random.default_rng(seed=42)
     L, H = 200, 96
     x = rng.standard_normal((L, H), dtype=np.float32) * 0.1
@@ -511,22 +430,17 @@ def test_accum_fifo_invariant_hits_1e_minus_5_precision_target():
     diff = np.max(np.abs(out_accum.astype(np.float64) - out_ref))
     assert diff < 1e-5, (
         f"AccumFifo precision invariant gave max-abs={diff:.3e}, "
-        f"expected <1e-5 (T2.3 falsifiable claim). If this fails, the "
-        f"cross-walk diagnosis is wrong: bf16 multiplier-input narrowing "
-        f"on Dorado weights is the actual wall, not h/c writeback narrowing."
+        f"expected <1e-5. If this fails, the "
     )
-
 
 def test_accum_fifo_beats_bf16_baseline_by_three_orders_of_magnitude():
     """Cross-check: the AccumFifo invariant should beat the bf16-writeback
     baseline by at least 3 orders of magnitude on a 200-step sequence.
 
-    This is the precision-recovery scale Phase 2 promises (5e-2 -> 1e-5
     is a 5000x improvement). If the gap is smaller than 1000x the
     accumulator-continuity invariant isn't doing what AM020 Ch. 4 p. 67
     promises and the silicon-level test will not show the predicted
-    improvement either.
-    """
+    improvement either."""
     rng = np.random.default_rng(seed=42)
     L, H = 200, 96
     x = rng.standard_normal((L, H), dtype=np.float32) * 0.1

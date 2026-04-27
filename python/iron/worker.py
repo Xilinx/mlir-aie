@@ -22,7 +22,6 @@ from .dataflow.fifo_handle_registry import dispatch_fn_arg
 from .buffer import Buffer
 from .resolvable import Resolvable
 
-
 class Worker(ObjectFifoEndpoint):
     """A task to be run on an AIE compute core.
 
@@ -90,12 +89,10 @@ class Worker(ObjectFifoEndpoint):
 
         # Check arguments to the core. Some information is saved for resolution.
         #
-        # T2.4: FifoHandle subclasses (ObjectFifoHandle plus Wave 2 promotions
         # CascadeFifoHandle / PacketFifoHandle / AccumFifoHandle /
         # SparseFifoHandle) are dispatched through the registry in
         # ``dataflow/fifo_handle_registry.py``. This replaces the original
         # hard-coded ``isinstance(arg, ObjectFifoHandle)`` branch with an
-        # extensible mechanism so future Wave 2 PRs do not need to edit this
         # file. ``ObjectFifoHandle`` is pre-registered by ``dataflow/__init__.py``
         # with the original bookkeeping (set ``arg.endpoint = self``; append to
         # ``self._fifos``), so existing Phase 1 designs keep working unchanged.
@@ -166,7 +163,6 @@ class Worker(ObjectFifoEndpoint):
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)
 
-
 class WorkerRuntimeBarrier:
     """A barrier allowing individual workers to synchronize with the runtime sequence."""
 
@@ -217,7 +213,6 @@ class WorkerRuntimeBarrier:
                 "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
             )
         use_lock(self.worker_locks[-1], LockAction.Release, value=value)
-
 
 class _BarrierSetOp(Resolvable):
     """A resolvable instance of a WorkerRuntimeBarrier. This should not be used directly."""

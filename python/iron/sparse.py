@@ -22,8 +22,7 @@ Architectural references
 ------------------------
 
 - AM020 Ch. 1 p. 15: AIE-ML supports structured sparsity for "CNN and
-  RNN application" (RNN explicitly named -- Dorado's LSTM is the
-  exact use case driving G-T5.1-005's 110 MB-per-call weight DMA gap).
+  RNN application".
 - AM020 Ch. 2 p. 27: "Adds decompression to the two S2MM channels" +
   "Adds compression to the two MM2S channels" (compute-tile DMA, for
   on-tile sparse-weight load).
@@ -60,7 +59,6 @@ User-facing surface
     # Workers receive the same kind of `prod()` / `cons()` handle as
     # ObjectFifo. The handle is a true ObjectFifoHandle subclass
     # (SparseFifoHandle) so Worker.fn_args dispatch -- both via the
-    # original isinstance() check on `main` and via T2.4's registry --
     # accepts it without modification.
     w_consumer = Worker(consume_fn, fn_args=[weights.cons(), ...],
                         tile=Tile(0, 2))
@@ -110,7 +108,6 @@ silicon-driver versions; fork rebuild not yet propagated), the design
 remains compilable and runs as a non-sparse equivalent -- the
 attribute is lowering metadata, not a structural ObjectFifo change.
 This degraded mode is observable: the runtime DMA volume is the dense
-total, not the compressed total. T3.2's compressed-LSTM kernel
 includes a runtime byte-counter that fires the AIE2P-divergence
 warning if the measured DMA volume matches the dense reference.
 
@@ -125,17 +122,14 @@ file we vendor is shared across AIE-ML and AIE2P silicon), but the
 - AIE-ML AM020 cites 1:2 and 2:4 structured sparsity patterns.
 - AIE2P (newer NPU silicon) may add or restrict patterns based on
   refinements in the on-tile decompression LUT.
-- Phase 2's T3.2 (compressed LSTM) is the consumer that actually
-  exercises the lowering on AIE2P. If T3.2 measures a divergence
   (compressed output != dense reference, or DMA volume == dense),
-  T3.2 documents the divergence and falls back to dense weights.
   SparseFifo itself remains usable on AIE-ML targets even if AIE2P
   diverges; the divergence is a runtime / silicon issue, not an
   IRON-API issue.
 
 The :meth:`SparseFifo.compression_ratio` property reports the
 **theoretical** ratio per the requested pattern (N/M); the runtime
-**measured** ratio is the consumer's responsibility (T3.2 owns that).
+**measured** ratio is the consumer's responsibility.
 
 Sparsity pattern rules
 ----------------------
@@ -147,7 +141,6 @@ We accept ``sparsity_pattern="N:M"`` as the canonical form, with
 - ``0 < N < M`` (a group can't be all-zero or all-nonzero by pattern).
 - ``(N, M)`` in the AM020-documented set ``{(1, 2), (1, 4), (2, 4)}``
   by default; other combinations raise unless ``allow_unverified=True``
-  is passed (escape hatch for T3.2's AIE2P investigation).
 
 Validation lives in :func:`_validate_sparsity_pattern` and runs at
 construction time so users see the failure at API-call time, not deep
@@ -162,9 +155,6 @@ References
 - AM020 Ch. 5 p. 74 (memtile compression / decompression)
 - ``lib/Dialect/AIE/Util/aie_registers_aie2.json`` (Enable_Compression
   BD bit; "Only effective if channel has (de)compression enabled")
-- ``docs/aie-ml-am020-crosswalk.md`` G-T5.1-005 (the gap this primitive
-  closes for the bionpu Phase 1 110 MB-per-call weight DMA wall)
-- ``bio-on-xdna-phase2-plan.md`` T2.5 (the task brief; T3.2 is the
   consumer that triggers AIE2P silicon validation)
 """
 
@@ -179,24 +169,20 @@ from .dataflow.fifo_handle_registry import register_fifo_handle
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 from .device import Tile
 
-
 # AM020 Ch. 2 p. 27: per-direction compute-tile DMA channel count
 # carrying sparsity-aware (de)compression. Two S2MM channels gain
 # decompression; two MM2S channels gain compression.
 SPARSE_CHANNELS_PER_DIRECTION: int = 2
 
 # AM020-documented N:M sparsity patterns for AIE-ML. AIE2P may diverge --
-# T3.2's silicon test is what surfaces the divergence (see module
 # docstring "AIE2P caveat"). Patterns outside this set require
 # ``allow_unverified=True`` so the user opts into the experimental path.
 _AM020_VERIFIED_NM_PATTERNS: frozenset[tuple[int, int]] = frozenset(
     {
         (1, 2),  # 50 % sparsity, simplest pattern
         (1, 4),  # 75 % sparsity
-        (2, 4),  # 50 % sparsity, GPU-style 2:4 (the T3.2 default)
     }
 )
-
 
 # Attribute names the IRON layer pins on the lowered ObjectFifoCreateOp
 # so downstream passes (the BD-emit pass; the runtime bookkeeping pass)
@@ -208,7 +194,6 @@ SPARSE_ATTR_DECOMPRESS_S2MM: str = "aie.decompress_s2mm"
 SPARSE_ATTR_PATTERN: str = "aie.sparsity_pattern"
 SPARSE_ATTR_N: str = "aie.sparsity_n"
 SPARSE_ATTR_M: str = "aie.sparsity_m"
-
 
 def _validate_sparsity_pattern(
     sparsity_pattern: str,
@@ -267,16 +252,14 @@ def _validate_sparsity_pattern(
             f"set {sorted(_AM020_VERIFIED_NM_PATTERNS)}. AIE-ML "
             f"hardware documents 1:2, 1:4, 2:4 N:M structured "
             f"sparsity (Ch. 1 p. 15). Pass allow_unverified=True if "
-            f"you're investigating AIE2P-specific patterns; T3.2's "
             f"silicon test should confirm the lowering before this is "
             f"folded back into the verified set."
         )
 
-
 def _coerce_to_tile(arg, role: str) -> Tile:
     """Accept either a :class:`Tile` or anything exposing ``.tile``.
 
-    Same pattern :class:`AccumFifo` uses (T2.3) so callers can pass an
+    Same pattern :class:`AccumFifo` uses so callers can pass an
     already-placed :class:`Worker` instead of restating its coordinates.
     """
     if isinstance(arg, Tile):
@@ -289,7 +272,6 @@ def _coerce_to_tile(arg, role: str) -> Tile:
         f"exposing a `.tile` attribute of type Tile); got "
         f"{type(arg).__name__}"
     )
-
 
 class SparseFifo(ObjectFifo):
     """ObjectFifo that compresses on MM2S and decompresses on S2MM.
@@ -307,7 +289,6 @@ class SparseFifo(ObjectFifo):
     The :meth:`prod` / :meth:`cons` handles are
     :class:`SparseFifoHandle` (an :class:`ObjectFifoHandle` subclass);
     they pass through Worker.fn_args' isinstance(handle, ObjectFifoHandle)
-    check on ``main`` and through T2.4's registry once it lands on
     ``main``. They are pre-registered with the registry at module
     import time so that, if the registered ObjectFifoHandle handler is
     ever replaced upstream, the SparseFifo flavour still has a clear
@@ -360,7 +341,6 @@ class SparseFifo(ObjectFifo):
         - The :meth:`compression_ratio` property is **theoretical**:
           ``N / M``. The runtime measured ratio depends on the BD-emit
           pass actually flipping ``Enable_Compression`` and the silicon
-          honoring it. T3.2's compressed-LSTM kernel runs the
           compressed-vs-dense DMA-volume comparison that confirms
           the silicon-level ratio.
     """
@@ -434,7 +414,6 @@ class SparseFifo(ObjectFifo):
 
         This is the wire-level fraction of the dense byte count that
         SHOULD be transferred per the requested pattern. The runtime
-        MEASURED ratio is T3.2's compressed-LSTM kernel's
         responsibility -- the BD-emit pass must actually flip
         ``Enable_Compression`` AND the silicon must honor it.
         """
@@ -476,7 +455,7 @@ class SparseFifo(ObjectFifo):
         Mirrors :meth:`ObjectFifo.prod` but returns a SparseFifo-typed
         handle so downstream code can branch on ``isinstance(h,
         SparseFifoHandle)`` if it needs to. The handle is registered
-        with the FifoHandle registry (T2.4) at module import time, so
+        with the FifoHandle registry at module import time, so
         Worker.fn_args dispatch picks the SparseFifoHandle handler over
         the ObjectFifoHandle handler when present.
         """
@@ -547,7 +526,6 @@ class SparseFifo(ObjectFifo):
         attributes yet (early AIE2P silicon-driver stack), the design
         still compiles -- the attributes are ignored, the compression
         is skipped, and the dataflow runs as a vanilla ObjectFifo.
-        T3.2's compressed-LSTM kernel surfaces this case via its
         runtime DMA-volume measurement (see module docstring).
         """
         # Re-entrancy guard via the _op-already-set state (ObjectFifo's
@@ -580,15 +558,12 @@ class SparseFifo(ObjectFifo):
             i32, self._M
         )
 
-
 class SparseFifoHandle(ObjectFifoHandle):
     """Handle to a :class:`SparseFifo`.
 
     Subclasses :class:`ObjectFifoHandle` so:
 
     1. Worker.fn_args' ``isinstance(arg, ObjectFifoHandle)`` check on
-       ``main`` (pre-T2.4) accepts it without modification.
-    2. T2.4's registry-style dispatch (once T2.4 is merged to ``main``)
        picks the SparseFifoHandle handler over the parent
        ObjectFifoHandle handler in the reverse-insertion-order walk.
 
@@ -640,26 +615,20 @@ class SparseFifoHandle(ObjectFifoHandle):
         )
         return my_str
 
-
 # ---------------------------------------------------------------------------
-# T2.4 registry hook-up.
 #
 # Register SparseFifoHandle with the FifoHandle registry so the
-# extensible ``Worker.__init__`` dispatch (once T2.4 is merged to
 # ``main``) recognizes SparseFifoHandle by its own handler. The
 # handler intentionally mirrors the pre-registered ObjectFifoHandle
 # bookkeeping (set ``arg.endpoint = worker``; append to
 # ``worker._fifos``) so downstream code that iterates worker.fifos
 # sees the SparseFifoHandle alongside vanilla ObjectFifoHandles.
 #
-# Backward-compat note: on ``main`` (pre-T2.4-merge), the registry
 # isn't consulted by Worker.__init__ -- it falls back to the
 # hard-coded ``isinstance(arg, ObjectFifoHandle)`` branch which still
 # accepts SparseFifoHandle (because the latter subclasses
 # ObjectFifoHandle). So this registration is a forward-looking
-# no-op on ``main`` and a needed dispatch hint after T2.4 lands.
 # ---------------------------------------------------------------------------
-
 
 def _sparse_fifo_handle_handler(arg, worker):
     """Worker.fn_args handler for SparseFifoHandle.
@@ -674,13 +643,11 @@ def _sparse_fifo_handle_handler(arg, worker):
     arg.endpoint = worker
     worker._fifos.append(arg)
 
-
 # Defer the registration to module-import time so that the test suite
 # (and any importing user) only registers once. The registry rejects
 # double-registration loudly so the import being a one-shot side-effect
 # is intentional.
 register_fifo_handle(SparseFifoHandle, _sparse_fifo_handle_handler)
-
 
 __all__ = [
     "SparseFifo",

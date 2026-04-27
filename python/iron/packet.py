@@ -7,14 +7,10 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """IRON :class:`PacketFifo` -- variable-rate packet-switched stream primitive.
 
-This is the silicon-level promotion of the variable-rate / pktMerge /
-finish-on-TLAST / out-of-order BD primitives the AM020 cross-walk
-identified (see ``docs/aie-ml-am020-crosswalk.md`` G-T6.2-001 +
-G-T6.4-101 + G-T7.4-200) and the IRON-investigation report
-(``docs/iron-investigation.md``) flagged as the single biggest
-abstraction-layer blocker for the variable-rate dataflow patterns
-Phase 1 documented (T6.2 filter-early, T6.4 sparse-output emission,
-T7.4 prototypes).
+A first-class IRON primitive over the variable-rate / pktMerge /
+finish-on-TLAST / out-of-order BD machinery already present in AIE-ML
+and AIE2P (AM020 Ch. 2 Figure 17, Ch. 2 p. 27, Ch. 5 p. 74). Closes
+the variable-rate-dataflow gap that ``ObjectFifo`` cannot express.
 
 The ``ObjectFifo`` primitive is fundamentally a fixed-stride
 producer-consumer pipeline: every consumer receives every element, the
@@ -119,12 +115,8 @@ References
 - AM020 Ch. 2 p. 27 (Tile DMA Controller; S2MM finish-on-TLAST)
 - AM020 Ch. 5 p. 74 (Memtile DMA out-of-order BD processing)
 - AM020 Appendix A p. 87 (variable-rate stream summary)
-- ``docs/aie-ml-am020-crosswalk.md`` G-T6.2-001 / G-T6.4-101 / G-T7.4-200
-  (the cross-walk entries this primitive closes)
-- ``docs/iron-investigation.md`` (Phase 1 T7.4 RED verdict; the
-  abstraction-layer blocker this primitive resolves)
-- ``python/iron/dataflow/fifo_handle_registry.py`` (T2.4 registry that
-  PacketFifoHandle uses for fn_args dispatch)
+- ``python/iron/dataflow/fifo_handle_registry.py`` (the registry that
+  ``PacketFifoHandle`` uses for ``fn_args`` dispatch).
 """
 
 from __future__ import annotations
@@ -606,10 +598,10 @@ class PacketFifoHandle(ObjectFifoHandle):
 
     Subclasses :class:`ObjectFifoHandle` so that any code path that
     type-checks against ``ObjectFifoHandle`` (the placer, the validator,
-    debug dumps) sees a uniform "fifo handle" surface. The T2.4
+    debug dumps) sees a uniform "fifo handle" surface. The
     ``fifo_handle_registry`` dispatch is the load-bearing path now; the
-    inheritance is kept only for surface compatibility with
-    not-yet-converted code.
+    inheritance is kept only for surface compatibility with code paths
+    that haven't migrated to the registry.
 
     The ``acquire`` / ``release`` methods preserve the ObjectFifoHandle
     signature so user code parameterized over both fifo kinds doesn't
@@ -817,10 +809,9 @@ class PacketFifoHandle(ObjectFifoHandle):
         matching :meth:`ObjectFifoHandle.all_of_endpoints`'s contract.
         ``iron/program.py`` walks every fifo and does
         ``[e.tile for e in fifo.all_of_endpoints()]`` to populate the
-        device's tile-resolution set; if this method returned raw
-        :class:`Tile` objects (as it did pre-G-T3.3-001), that walk
-        crashed with ``AttributeError: 'Tile' object has no attribute
-        'tile'``.
+        device's tile-resolution set; returning raw :class:`Tile`
+        objects from this method would crash that walk with
+        ``AttributeError: 'Tile' object has no attribute 'tile'``.
 
         For each producer / consumer index we prefer the live endpoint
         recorded on the corresponding handle by the registry-driven
@@ -853,7 +844,7 @@ class PacketFifoHandle(ObjectFifoHandle):
 
 
 # ---------------------------------------------------------------------------
-# Registry integration (T2.4): register PacketFifoHandle so that
+# Registry integration: register PacketFifoHandle so that
 # Worker.fn_args dispatch recognizes it without modifying worker.py.
 #
 # The handler mirrors the ObjectFifoHandle bookkeeping bit-for-bit

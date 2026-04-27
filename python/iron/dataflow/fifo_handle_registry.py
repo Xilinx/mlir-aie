@@ -7,7 +7,6 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """FifoHandle registry: extensible type-dispatch for ``Worker.fn_args``.
 
-Phase 2's T7.4 IRON-investigation report identified
 ``Worker.__init__``'s ``fn_args`` resolution as the single biggest
 blocker for promoting ObjectFifo subclasses (PacketFifo, CascadeFifo,
 AccumFifo, SparseFifo) to first-class IRON primitives. The original
@@ -18,8 +17,6 @@ to either fork ``worker.py`` or be silently treated as a "metaprogramming
 value" -- with no chance to register itself for placement / resolution.
 
 This module provides a lightweight registry of FifoHandle classes and
-their per-Worker bookkeeping handlers. Each Wave 2 task (T2.1
-CascadeFifoHandle, T2.2 PacketFifoHandle, T2.3 AccumFifoHandle, T2.5
 SparseFifoHandle) registers its handle class via
 :func:`register_fifo_handle` (or the ``@register_fifo_handle`` decorator)
 without modifying ``worker.py`` at all.
@@ -47,7 +44,6 @@ from typing import Callable, TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover -- type-checking only
     from ..worker import Worker
 
-
 # Mapping: handle class -> handler callable ``(arg, worker) -> None``.
 #
 # The handler receives the argument and the Worker being constructed. It
@@ -63,7 +59,6 @@ if TYPE_CHECKING:  # pragma: no cover -- type-checking only
 # checks. ``dispatch_fn_arg`` walks the registry in reverse-insertion
 # order to honor that.
 _REGISTRY: "dict[type, Callable[[object, Worker], None]]" = {}
-
 
 def register_fifo_handle(
     handle_cls: type,
@@ -130,7 +125,6 @@ def register_fifo_handle(
     _do_register(handler)
     return None
 
-
 def unregister_fifo_handle(handle_cls: type) -> bool:
     """Remove a previously-registered handle class.
 
@@ -140,7 +134,6 @@ def unregister_fifo_handle(handle_cls: type) -> bool:
     """
     return _REGISTRY.pop(handle_cls, None) is not None
 
-
 def get_registered_handle_classes() -> "tuple[type, ...]":
     """Return a snapshot of registered handle classes (insertion order).
 
@@ -148,7 +141,6 @@ def get_registered_handle_classes() -> "tuple[type, ...]":
     is therefore safe.
     """
     return tuple(_REGISTRY.keys())
-
 
 def dispatch_fn_arg(arg: object, worker: "Worker") -> bool:
     """Attempt to dispatch ``arg`` through the registry.
@@ -176,13 +168,11 @@ def dispatch_fn_arg(arg: object, worker: "Worker") -> bool:
             return True
     return False
 
-
 # ---------------------------------------------------------------------------
 # Test-support helper. Production code should use the registration API
 # above directly; this exists so tests can save/restore registry state
 # without poking at the private dict.
 # ---------------------------------------------------------------------------
-
 
 class _RegistrySnapshot:
     """Context manager that saves and restores registry state.
@@ -203,7 +193,6 @@ class _RegistrySnapshot:
         _REGISTRY.clear()
         _REGISTRY.update(self._saved)
         return False
-
 
 __all__ = [
     "register_fifo_handle",

@@ -6,7 +6,6 @@
 //
 // (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
-// G-T3.2-007 worked example kernel.
 //
 // Predicate: forward the input window iff the first byte is even.
 // On forward, copy the input window to the output buffer; on

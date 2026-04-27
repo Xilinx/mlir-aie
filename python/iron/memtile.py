@@ -9,11 +9,7 @@
 
 Encapsulates the memtile-aggregated 4-into-1 fan-in topology that
 Phase 1 of the bio-on-XDNA project hand-rolled in
-``bionpu/kernels/crispr/match_multitile_memtile`` (T5.3-memtile)
 after hitting the compute-tile 2-input-DMA-channel ceiling
-(gap G-T5.3-001). The Phase 1 retrofit measured a **1.90x speedup**
-versus the 2-into-1 fallback, confirming the AM020 cross-walk
-hypothesis that memtile fan-in is the canonical AIE-ML path. T2.6
 promotes that topology to a first-class API so every multi-tile
 CRISPR / match / reduction design can reach for it the same way they
 reach for :class:`ObjectFifo`.
@@ -33,7 +29,6 @@ Architectural reference
   generation (Ch. 5 p. 71) handles the per-producer reorganisation
   without needing a joiner compute kernel.
 - AM020 Table 14: memtile DM is 512 KiB on AIE-ML; the AIE2P
-  resource probe (T1.2) confirmed the same on Strix Halo silicon.
 
 Design notes
 ------------
@@ -55,7 +50,6 @@ hood it composes three things:
 
 This split keeps :class:`ObjectFifo`'s shared-memory semantics intact
 while letting :class:`MemtileAggregator` emit the fan-in pattern
-declaratively. It also leaves the door open for T2.7 (better
 placement diagnostics) to hint at MemtileAggregator when a user
 hits the 2-input-DMA-channel ceiling.
 
@@ -89,7 +83,6 @@ If a producer instead emits **window-major** partials
 (``partial[w * n_guides_per_tile + g_local]``), flat-concat does NOT
 transpose. The result is interleaved nonsense unless the consumer
 explicitly un-shuffles it (Phase 1 hit this and fell back to a
-window-major variant + host-side transpose; T5.3-memtile's slab-major
 path skipped the transpose entirely).
 
 This API exposes a ``layout`` parameter (one of ``"slab"`` or
@@ -99,22 +92,14 @@ flat-concat-friendly layout. Specifying ``"window"`` causes
 MemtileAggregator to insert a memtile-side ``dims_from_stream``
 re-layout so the consumer still sees a contiguous slab-major
 buffer; this costs memtile DMA cycles but lets producer kernels
-that already emit window-major (Phase 1's T5.3 baseline) plug in
 without rewriting the kernel.
 
 Phase 1 measurement summary
 ---------------------------
 
-The hand-rolled T5.3-memtile retrofit on chr22 x 128 guides x 4096
 windows x 4 match tiles measured a 1.90x throughput speedup vs
-T5.3's 2-into-1 fallback (which itself was forced by G-T5.3-001).
 Memtile occupancy: 32 KiB / 512 KiB (~6.25%). Per-match-tile
 occupancy: 5.4 KiB / 64 KiB (~8.4%). Output byte-equal to the
-single-tile T4.3 reference + the NumPy oracle.
-
-See ``docs/aie-ml-am020-crosswalk.md`` Section G-T5.3-001 and
-``bionpu/kernels/crispr/match_multitile_memtile/MANIFEST.md`` in the
-outer repo for the full numbers + topology diagram.
 
 Example
 -------
@@ -161,7 +146,6 @@ Example
         rt.start(*match_workers)
         rt.drain(agg.consumer(), Out, wait=True)
 
-The above lowers to the same MLIR as the T5.3-memtile hand-rolled
 ``of_out.prod().join(join_offsets, ...)`` pattern -- byte-equal
 output guaranteed by the layout contract.
 """
@@ -178,7 +162,6 @@ from .dataflow import ObjectFifo
 from .dataflow.objectfifo import ObjectFifoHandle
 from .device import Tile, AnyMemTile
 
-
 # AM020 Ch. 5 p. 74: memtile S2MM has 6 channels total, channels 0..3
 # support east/west neighbour access (i.e. the channels usable as a
 # compute-tile fan-in target). Channels 4..5 are typically reserved
@@ -192,11 +175,9 @@ MEMTILE_DM_BYTES: int = 512 * 1024  # 512 KiB
 # Producer-side layout vocabulary. Documented in the module docstring.
 _VALID_LAYOUTS: frozenset[str] = frozenset({"slab", "window"})
 
-
 # ---------------------------------------------------------------------------
 # Internal helpers (kept module-local to keep the import surface narrow).
 # ---------------------------------------------------------------------------
-
 
 def _bytes_per_element(ndarray_type: type[np.ndarray]) -> int:
     """Compute the byte size of one element of an IRON ndarray type.
@@ -217,7 +198,6 @@ def _bytes_per_element(ndarray_type: type[np.ndarray]) -> int:
     itemsize = int(np.dtype(dtype).itemsize)
     return n_elems * itemsize
 
-
 def _flat_concat_offsets(n_producers: int, partial_bytes: int) -> list[int]:
     """Return the flat-byte-offset list used in the ``join()`` lowering.
 
@@ -229,13 +209,11 @@ def _flat_concat_offsets(n_producers: int, partial_bytes: int) -> list[int]:
     """
     return [i * partial_bytes for i in range(n_producers)]
 
-
 # Public re-exports for callers that need to compute offsets / sizes
 # without instantiating an aggregator (e.g. for size assertions in
 # downstream tests).
 bytes_per_element = _bytes_per_element
 flat_concat_offsets = _flat_concat_offsets
-
 
 class MemtileAggregator:
     """Memtile-mediated N-into-1 fan-in helper (N <= 4).
@@ -295,7 +273,6 @@ class MemtileAggregator:
           consumer no longer needs to be DMA-adjacent to the
           producer; the memtile mediates), and the API is the same.
         - The MLIR lowering goes through
-          :meth:`ObjectFifo.prod().join`. T2.7's diagnostic improvements
           will hint at this primitive when a design hits the
           compute-tile 2-input-DMA-channel ceiling.
     """
@@ -393,7 +370,6 @@ class MemtileAggregator:
                 "future Phase 3 extension that infers the memtile-side "
                 "dims_to_stream from the producer shape. For now, "
                 "either (1) emit slab-major partials in your producer "
-                "kernel (Phase 1's T5.3-memtile path -- the canonical "
                 "flat-concat-friendly layout) or (2) drop down to "
                 "ObjectFifo.prod().join(offsets, dims_to_stream=[...]) "
                 "and pass the dims explicitly. See module docstring."
@@ -522,7 +498,6 @@ class MemtileAggregator:
             f"partial_bytes={self._partial_bytes}, "
             f"joined_bytes={self._joined_bytes})"
         )
-
 
 __all__ = [
     "MemtileAggregator",

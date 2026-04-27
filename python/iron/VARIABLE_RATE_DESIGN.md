@@ -1,10 +1,9 @@
-# DESIGN.md — `VariableRateFifo` (G-T3.2-007)
+# DESIGN.md — `VariableRateFifo`
 
 > **Closes**: the *single-producer / conditional-forward* half of
-> `G-T6.2-001` (CRISPR PAM-filter early-out) and `G-T7.4-200`
 > (T7-IRON variable-rate ObjectFifo investigation).
 >
-> **Sibling primitive**: `PacketFifo` (T2.2 / `python/iron/packet.py`)
+> **Sibling primitive**: `PacketFifo`
 > closes the *N:1 multi-producer fan-in* half of the same gap pair via
 > the AXI stream-switch packet-routing fabric. The two are
 > complementary, not alternatives — see "Choice of mechanism" below.
@@ -42,7 +41,6 @@ producer's lock counter advances asymmetrically, and at runtime the
 consumer either deadlocks (waiting for slots that never arrive) or
 sees stale data.
 
-The pre-G-T3.2-007 workaround (filter-late v1) zero-fills failed
 windows so the rate stays constant — **the producer always forwards
 N=1 slot per iteration**. The DMA-volume saving on the sparse-emit
 path is real, but the match-tile cycle saving is forfeit (~7-8x
@@ -50,7 +48,6 @@ wasted cycles on zero-multiplication).
 
 ## Design space
 
-The cross-walk identified two mechanically distinct paths to relax
 the static-rate contract:
 
 | | **(a) `release(0)` semantics** | **(b) explicit `discard(n)` API** |
@@ -93,16 +90,14 @@ the static-rate contract:
 ## Choice of mechanism: VariableRateFifo vs PacketFifo
 
 Both `VariableRateFifo` (this primitive) and `PacketFifo`
-(T2.2 / `python/iron/packet.py`) close the same cross-walk gaps
-(`G-T6.2-001`, `G-T7.4-200`). They are siblings, not alternatives.
 Choose based on the topology:
 
 | Topology | Use |
 |---|---|
 | **1 producer**, 1 or more consumers, producer wants to skip slots | `VariableRateFifo` (this primitive) |
 | **N producers** (each on a different tile) fanning into 1 consumer; each producer's rate is data-dependent | `PacketFifo` (AXI stream-switch + packet headers) |
-| Producer's rate is static; you want compression on the wire | `SparseFifo` (T2.5) |
-| Producer's rate is static; cascade BM register transfer | `CascadeFifo` (T2.1) / `AccumFifo` (T2.3) |
+| Producer's rate is static; you want compression on the wire | `SparseFifo` |
+| Producer's rate is static; cascade BM register transfer | `CascadeFifo` / `AccumFifo` |
 
 The CRISPR PAM-filter early-out path uses **VariableRateFifo** for
 the producer-side filter (Tile A → match tiles), and **PacketFifo**
@@ -156,7 +151,6 @@ attr in two places:
 
 The LCM computation walks every `ObjectFifoAcquireOp` in each
 producer / consumer `scf.for` loop and adds the target ObjectFifo's
-size to `objFifoSizes`. The G-T3.2-007 change: skip acquires whose
 target ObjectFifoCreateOp carries `aie.variable_rate = true`. The
 producer's loop is therefore not unrolled on the variable-rate
 fifo's account.
@@ -168,7 +162,7 @@ through to the runtime-counter path.
 ### 2. Split-fifo attr propagation
 
 Mirrors the SparseFifo discardable-attr propagation slot
-(G-T3.2-006) at line ~2030. When the pass splits an ObjectFifo with
+ at line ~2030. When the pass splits an ObjectFifo with
 a remote consumer into `(producerFifo, consumerFifo)`, the
 `aie.variable_rate` attr is copied to the consumer-side fifo so:
 
@@ -229,7 +223,7 @@ strictly less invasive.
 ### Interaction with split-fifo + memtile paths
 
 Tested: the `aie.variable_rate` marker is propagated through the
-split-fifo path (G-T3.2-006-style) so consumer-side fifos also
+split-fifo path so consumer-side fifos also
 carry it. This is symmetric with the SparseFifo attr propagation
 shipped today.
 
@@ -257,7 +251,6 @@ class VariableRateSparseFifo(SparseFifo, VariableRateFifo):
     pass
 ```
 
-Not implemented in G-T3.2-007 (no current consumer); flagged for
 future work.
 
 ### Interaction with PacketFifo
@@ -303,15 +296,12 @@ Worked example (in `programming_examples/basic/variable_rate_filter/`):
 Regression-protect (existing lit tests):
 
 - `non_adjacency_test_AIE2.mlir` — vanilla ObjectFifo
-  cross-column split (the load-bearing pre-G-T3.2-007 path).
 - `plio_test.mlir` — PLIO ObjectFifo (orthogonal feature).
 - `repeat_count_test.mlir` — BD chain iteration count
   (orthogonal feature).
 - `sparse_fifo_split_attr_propagation.mlir` — today's
-  G-T3.2-006 closure (the discardable-attr-propagation
   baseline).
 
-All four PASS unchanged after the G-T3.2-007 lowering pass change
 (the LCM-unroll exclusion only fires on fifos with the
 `aie.variable_rate` attr).
 
@@ -338,16 +328,12 @@ All four PASS unchanged after the G-T3.2-007 lowering pass change
 ## Cross-references
 
 - `python/iron/variable_rate.py` — primitive class.
-- `python/iron/packet.py` — sibling primitive (PacketFifo, T2.2).
 - `python/iron/sparse.py` — pattern source (the discardable-attr
-  approach this primitive copies, T2.5).
 - `lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp` —
-  lowering pass (the G-T3.2-007 changes live in
   `unrollForLoops` and the split-fifo attr-propagation block at
   ~line 2030).
 - `test/objectFifo-stateful-transform/variable_rate_fifo_*.mlir` —
   lit tests.
 - `programming_examples/basic/variable_rate_filter/` — worked
   example.
-- `docs/aie-ml-am020-crosswalk.md` — gap definitions
-  (G-T6.2-001, G-T7.4-200).
+.

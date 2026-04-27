@@ -5,14 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""T2.2: in-fork tests for ``aie.iron.PacketFifo``.
+"""Surface, registry, and behavioural tests for IRON PacketFifo.
 
-Phase 2's load-bearing falsifiable claim for this primitive is that the
-three AM020-documented variable-rate hardware primitives (pktMerge N:1
-header-based routing, finish-on-TLAST stream termination, and
-out-of-order BD processing per packet header) are exposed as a single
+PacketFifo exposes three AM020-documented variable-rate hardware
+primitives (pktMerge N:1 header-based routing, finish-on-TLAST stream
+termination, out-of-order BD processing per packet header) as a single
 IRON Python class with the same producer/consumer surface as
-:class:`ObjectFifo`. Closes G-T6.2-001 + G-T6.4-101 + G-T7.4-200.
+:class:`ObjectFifo`.
 
 Tests are organized in three layers:
 
@@ -20,18 +19,15 @@ Tests are organized in three layers:
    header_dtype / merge_strategy / packet_ids validation, error
    messages, and the PacketFifoHandle subclass surface.
 2. **Registry integration tests**: PacketFifoHandle dispatches via
-   T2.4's ``dispatch_fn_arg`` -- the registry-driven Worker.fn_args
-   path is the load-bearing extensibility mechanism.
-3. **Behavioral toy tests**: a 3-producer-1-consumer round-robin
-   merge produces the union of inputs (CRISPR-like filter-early
-   pattern); priority strategy preserves header ordering;
-   finish-on-TLAST drops the routing header on the consumer side.
+   the FifoHandle registry; reverse-insertion-order picks the subclass.
+3. **Behavioural toy tests**: a 3-producer-1-consumer round-robin
+   merge produces the union of inputs; priority strategy preserves
+   header ordering; finish-on-TLAST drops the routing header on the
+   consumer side.
 
-The (3) behavioral toy tests run in pure Python (no MLIR codegen) by
+The behavioural toy tests run in pure Python (no MLIR codegen) by
 simulating the AXI stream switch's round-robin / priority arbitration
-on host-side numpy arrays. The hardware-level test (running on AIE2P
-silicon) is gated on this fork-internal test passing first; it lives
-in T3.3's ``crispr_filter_early_pktmerge`` integration test.
+on host-side numpy arrays.
 """
 
 from __future__ import annotations
@@ -39,11 +35,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Surface tests (no MLIR context, no NPU)
 # ---------------------------------------------------------------------------
-
 
 def test_packet_fifo_imports_cleanly():
     """PacketFifo + PacketFifoHandle are importable from `aie.iron`."""
@@ -52,10 +46,8 @@ def test_packet_fifo_imports_cleanly():
     assert PacketFifo.__name__ == "PacketFifo"
     assert PacketFifoHandle.__name__ == "PacketFifoHandle"
 
-
 def test_packet_fifo_default_header_dtype_is_uint8():
     """The default header_dtype is uint8 (1-bit valid + 7-bit reserved
-    -- the canonical CRISPR filter-early use case from the cross-walk).
     """
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -65,7 +57,6 @@ def test_packet_fifo_default_header_dtype_is_uint8():
     assert pf.merge_strategy == "round-robin"
     assert pf.depth == 2
     assert pf.keep_pkt_header is True
-
 
 def test_packet_fifo_auto_assigns_packet_ids():
     """Without explicit packet_ids, producer i gets pkt_id = i."""
@@ -80,7 +71,6 @@ def test_packet_fifo_auto_assigns_packet_ids():
     assert pf.num_producers == 3
     assert pf.num_consumers == 1
 
-
 def test_packet_fifo_accepts_explicit_packet_ids():
     """User-supplied packet_ids are preserved verbatim."""
     from aie.iron import PacketFifo
@@ -93,7 +83,6 @@ def test_packet_fifo_accepts_explicit_packet_ids():
     )
     assert pf.packet_ids == [0x10, 0x20]
 
-
 def test_packet_fifo_rejects_empty_producers():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -101,14 +90,12 @@ def test_packet_fifo_rejects_empty_producers():
     with pytest.raises(ValueError, match="producers must be a non-empty list"):
         PacketFifo(producers=[], consumers=[Tile(0, 5)])
 
-
 def test_packet_fifo_rejects_empty_consumers():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
 
     with pytest.raises(ValueError, match="consumers must be a non-empty list"):
         PacketFifo(producers=[Tile(0, 2)], consumers=[])
-
 
 def test_packet_fifo_rejects_unknown_header_dtype():
     from aie.iron import PacketFifo
@@ -121,7 +108,6 @@ def test_packet_fifo_rejects_unknown_header_dtype():
             header_dtype="float32",
         )
 
-
 def test_packet_fifo_rejects_unknown_merge_strategy():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -132,7 +118,6 @@ def test_packet_fifo_rejects_unknown_merge_strategy():
             consumers=[Tile(0, 5)],
             merge_strategy="lifo",
         )
-
 
 def test_packet_fifo_rejects_packet_ids_out_of_range():
     """AM020 Ch. 2 p. 25: pkt_id is 5 bits -> [0, 31]."""
@@ -146,7 +131,6 @@ def test_packet_fifo_rejects_packet_ids_out_of_range():
             packet_ids=[32],
         )
 
-
 def test_packet_fifo_rejects_duplicate_packet_ids():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -157,7 +141,6 @@ def test_packet_fifo_rejects_duplicate_packet_ids():
             consumers=[Tile(0, 5)],
             packet_ids=[5, 5],
         )
-
 
 def test_packet_fifo_rejects_packet_ids_length_mismatch():
     from aie.iron import PacketFifo
@@ -170,7 +153,6 @@ def test_packet_fifo_rejects_packet_ids_length_mismatch():
             packet_ids=[0, 1, 2],
         )
 
-
 def test_packet_fifo_rejects_too_many_producers():
     """5-bit pkt_id field caps producers at 32."""
     from aie.iron import PacketFifo
@@ -180,14 +162,12 @@ def test_packet_fifo_rejects_too_many_producers():
     with pytest.raises(ValueError, match="5 bits"):
         PacketFifo(producers=too_many, consumers=[Tile(0, 5)])
 
-
 def test_packet_fifo_rejects_non_tile_producer():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
 
     with pytest.raises(TypeError, match="must be a Tile"):
         PacketFifo(producers=["not a tile"], consumers=[Tile(0, 5)])
-
 
 def test_packet_fifo_rejects_zero_depth():
     from aie.iron import PacketFifo
@@ -200,11 +180,9 @@ def test_packet_fifo_rejects_zero_depth():
             depth=0,
         )
 
-
 # ---------------------------------------------------------------------------
 # Producer / Consumer handle surface
 # ---------------------------------------------------------------------------
-
 
 def test_prod_handle_returns_packet_fifo_handle():
     from aie.iron import PacketFifo, PacketFifoHandle
@@ -224,7 +202,6 @@ def test_prod_handle_returns_packet_fifo_handle():
     # idempotent: same idx -> same handle
     assert pf.prod(0) is h0
 
-
 def test_cons_handle_returns_packet_fifo_handle():
     from aie.iron import PacketFifo, PacketFifoHandle
     from aie.iron.device import Tile
@@ -240,7 +217,6 @@ def test_cons_handle_returns_packet_fifo_handle():
     assert c1.index == 1
     assert pf.cons(0) is c0
 
-
 def test_prod_handle_index_out_of_range():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -249,7 +225,6 @@ def test_prod_handle_index_out_of_range():
     with pytest.raises(IndexError, match=r"producer index 5 outside \[0, 1\)"):
         pf.prod(5)
 
-
 def test_cons_handle_index_out_of_range():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -257,7 +232,6 @@ def test_cons_handle_index_out_of_range():
     pf = PacketFifo(producers=[Tile(0, 2)], consumers=[Tile(0, 5)])
     with pytest.raises(IndexError, match=r"consumer index 5 outside \[0, 1\)"):
         pf.cons(5)
-
 
 def test_packet_fifo_handle_subclasses_object_fifo_handle():
     """PacketFifoHandle inherits from ObjectFifoHandle so any code path
@@ -272,7 +246,6 @@ def test_packet_fifo_handle_subclasses_object_fifo_handle():
     h = pf.prod(0)
     assert isinstance(h, ObjectFifoHandle)
 
-
 def test_packet_fifo_handle_acquire_release_no_op():
     """acquire / release preserve the ObjectFifoHandle signature so user
     code parameterized over both fifo kinds doesn't need to branch.
@@ -285,7 +258,6 @@ def test_packet_fifo_handle_acquire_release_no_op():
     assert h.acquire(1) is None
     h.release(1)
 
-
 def test_packet_fifo_handle_acquire_exceeds_depth():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -294,7 +266,6 @@ def test_packet_fifo_handle_acquire_exceeds_depth():
     h = pf.prod(0)
     with pytest.raises(ValueError, match="exceeds depth"):
         h.acquire(3)
-
 
 def test_send_with_header_validates_value():
     """uint8 header rejects values outside [0, 255]."""
@@ -309,7 +280,6 @@ def test_send_with_header_validates_value():
         h.send_with_header(256)
     with pytest.raises(ValueError, match=r"header_value -1"):
         h.send_with_header(-1)
-
 
 def test_send_with_header_uint16_widens_range():
     """uint16 header accepts values up to 65535."""
@@ -326,7 +296,6 @@ def test_send_with_header_uint16_widens_range():
     with pytest.raises(ValueError, match="header_value 65536"):
         h.send_with_header(65536)
 
-
 def test_send_with_header_rejects_consumer():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -335,7 +304,6 @@ def test_send_with_header_rejects_consumer():
     c = pf.cons(0)
     with pytest.raises(ValueError, match="producer-only"):
         c.send_with_header(1)
-
 
 def test_recv_header_rejects_producer():
     from aie.iron import PacketFifo
@@ -346,7 +314,6 @@ def test_recv_header_rejects_producer():
     with pytest.raises(ValueError, match="consumer-only"):
         p.recv_header()
 
-
 def test_packet_fifo_handle_str_includes_handle_type():
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -356,16 +323,13 @@ def test_packet_fifo_handle_str_includes_handle_type():
     assert "prod" in s
     assert "pkt_id=0" in s
 
-
 # ---------------------------------------------------------------------------
-# Registry integration: PacketFifoHandle dispatches via T2.4's
 # dispatch_fn_arg without modification to worker.py.
 # ---------------------------------------------------------------------------
 
-
 def test_packet_fifo_handle_is_in_registry():
-    """T2.4 registry: PacketFifoHandle is registered at module-import
-    time so Worker.__init__ recognizes it without further wiring.
+    """PacketFifoHandle is registered at import time so ``Worker.__init__``
+    recognizes it without further wiring.
     """
     from aie.iron import PacketFifoHandle
     from aie.iron.dataflow.fifo_handle_registry import (
@@ -378,11 +342,8 @@ def test_packet_fifo_handle_is_in_registry():
         f"Registered: {[c.__name__ for c in classes]}"
     )
 
-
 def test_dispatch_fn_arg_recognizes_packet_fifo_handle():
-    """Calling T2.4's dispatch_fn_arg with a PacketFifoHandle invokes
-    the handler registered by ``packet.py`` at import time.
-    """
+    """``dispatch_fn_arg`` invokes the handler registered by ``packet.py``."""
     from aie.iron import PacketFifo
     from aie.iron.dataflow.fifo_handle_registry import dispatch_fn_arg
     from aie.iron.device import Tile
@@ -402,14 +363,11 @@ def test_dispatch_fn_arg_recognizes_packet_fifo_handle():
     assert handle in fake._fifos
     assert handle.endpoint is fake
 
-
 def test_worker_fn_args_accepts_packet_fifo_handle():
     """End-to-end: passing a PacketFifoHandle into Worker.fn_args is
     recognized by the registry-driven dispatch in Worker.__init__ and
     recorded on Worker._fifos / handle.endpoint.
 
-    This is the load-bearing claim T7.4's RED verdict identified as
-    the abstraction-layer blocker; T2.2 + T2.4 together close it.
     """
     from aie.iron import PacketFifo, Worker
     from aie.iron.device import Tile
@@ -430,12 +388,10 @@ def test_worker_fn_args_accepts_packet_fifo_handle():
     assert p_handle in w_prod.fifos, (
         "PacketFifoHandle (producer) was not recorded on Worker.fifos -- "
         "registry-driven dispatch in Worker.__init__ failed. This is the "
-        "exact regression T2.4 + T2.2 are designed to prevent."
     )
     assert c_handle in w_cons.fifos
     assert p_handle.endpoint is w_prod
     assert c_handle.endpoint is w_cons
-
 
 def test_packet_fifo_handle_wins_over_object_fifo_handle_dispatch():
     """Reverse-insertion-order walk: PacketFifoHandle is registered
@@ -465,13 +421,11 @@ def test_packet_fifo_handle_wins_over_object_fifo_handle_dispatch():
     # reverse-order walk must pick PacketFifoHandle's handler first.
     assert issubclass(PacketFifoHandle, ObjectFifoHandle)
 
-
 # ---------------------------------------------------------------------------
 # Behavioral toy tests: simulate the AXI stream switch arbitration on
 # host-side numpy arrays. The hardware-level test runs on AIE2P silicon
 # (gated on these tests passing).
 # ---------------------------------------------------------------------------
-
 
 def _simulate_round_robin_merge(producers_packets):
     """Host-side simulation of pktMerge round-robin arbitration.
@@ -498,7 +452,6 @@ def _simulate_round_robin_merge(producers_packets):
                 out.append((i, q.pop()))
     return out
 
-
 def test_round_robin_merge_yields_union_of_producers():
     """Three producers with variable rates fan into one consumer; the
     consumer's received packet set equals the union of all producers'
@@ -515,7 +468,6 @@ def test_round_robin_merge_yields_union_of_producers():
     assert received_payloads == set(p0) | set(p1) | set(p2)
     assert len(received) == len(p0) + len(p1) + len(p2)
 
-
 def test_round_robin_merge_preserves_per_producer_ordering():
     """Within a single producer's stream, packet order is preserved
     (the AXI stream switch is FIFO per-channel even though the merge
@@ -531,7 +483,6 @@ def test_round_robin_merge_preserves_per_producer_ordering():
     seq1 = [pkt for (idx, pkt) in received if idx == 1]
     assert seq0 == p0
     assert seq1 == p1
-
 
 def test_finish_on_tlast_drops_routing_header():
     """When ``keep_pkt_header=False``, the consumer kernel sees only
@@ -556,12 +507,11 @@ def test_finish_on_tlast_drops_routing_header():
     assert pf_keep.keep_pkt_header is True
     assert pf_drop.keep_pkt_header is False
 
-
 def test_priority_strategy_construction():
     """priority merge strategy is accepted (it routes pkt_ids to BDs
     in id-order, leveraging the memtile's out-of-order BD scheduler
     per AM020 Ch. 5 p. 74). The host-side strategy validation lives
-    here; the actual scheduling test is silicon-level (T3.3).
+    here; the actual scheduling test is silicon-level.
     """
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -574,7 +524,6 @@ def test_priority_strategy_construction():
     )
     assert pf.merge_strategy == "priority"
     assert pf.packet_ids == [5, 1, 3]
-
 
 def test_n_to_m_construction():
     """N producers -> M consumers is supported via header-based
@@ -595,11 +544,9 @@ def test_n_to_m_construction():
     assert pf.prod(0) is not pf.prod(1)
     assert pf.cons(0) is not pf.cons(1)
 
-
 # ---------------------------------------------------------------------------
 # Idempotency / reentrancy
 # ---------------------------------------------------------------------------
-
 
 def test_packet_fifo_str_round_trips():
     """``str(pf)`` is non-throwing and includes the load-bearing
@@ -621,7 +568,6 @@ def test_packet_fifo_str_round_trips():
     assert "uint16" in s
     assert "priority" in s
     assert "keep_pkt_header=False" in s
-
 
 def test_packet_fifo_module_is_aie_iron_packet():
     """Real impl lives at ``aie.iron.packet.PacketFifo``, not at the

@@ -814,7 +814,6 @@ struct AIEObjectFifoStatefulTransformPass
   /// Returns the newly created DMABDOp so the caller can decorate it with
   /// dataflow-source-specific discardable attributes (e.g. the
   /// SparseFifo (de)compression bit propagated from the originating
-  /// ObjectFifoCreateOp -- see G-T3.2-001 / IRON aie.iron.sparse).
   template <typename MyOp>
   DMABDOp createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
                    LockAction acqLockAction, LockOp relLock, int relMode,
@@ -894,7 +893,6 @@ struct AIEObjectFifoStatefulTransformPass
                             relMode, buff, offset, len, succ, dims,
                             padDimensions, bdPacket);
 
-    // G-T3.2-001: propagate IRON SparseFifo's compression intent from the
     // originating ObjectFifoCreateOp onto each DMABDOp we just created so
     // downstream BD-emit (AIEDMATasksToNPU -> AIEDmaToNpu) can flip the
     // per-channel ``Enable_Compression`` bit on the AIE2/AIE2P tile DMA BD
@@ -906,15 +904,12 @@ struct AIEObjectFifoStatefulTransformPass
                                    channelDir);
   }
 
-  /// Helper for G-T3.2-001 / G-T3.2-006: read the IRON SparseFifo
   /// discardable attrs (set by ``aie.iron.sparse.SparseFifo.resolve``)
   /// from the originating ObjectFifoCreateOp and, if the channel
   /// direction selects the matching half of the
   /// (compress_mm2s, decompress_s2mm) pair AND the BD lives on a
   /// compute (AIE) tile, attach a discardable boolean
   /// ``aie.enable_compression = true`` attribute on the new DMABDOp.
-  /// This is the cross-pass plumbing that closes G-T3.2-001 (the
-  /// producer-side half) and G-T3.2-006 (the consumer-side half +
   /// the cross-module footgun guard): the SparseFifo lowering
   /// already attaches the intent to the ObjectFifoCreateOp; this
   /// propagates it to the DMABDOp where the ObjectFifoCreateOp
@@ -1403,8 +1398,19 @@ struct AIEObjectFifoStatefulTransformPass
           remainderMap[forLoop.getOperation()] = 0;
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
-              foundMap[forLoop.getOperation()] = true;
               ObjectFifoCreateOp op = acqOp.getObjectFifo();
+              // VariableRateFifo opts out of LCM-based loop unrolling.
+              // The producer's loop body contains a conditional
+              // acquire/release that the LCM-unroll math cannot model;
+              // the runtime-counter machinery handles asymmetric rates
+              // correctly without unrolling. If the loop has only
+              // variable-rate accesses, foundMap stays false and the
+              // loop is left alone.
+              auto vrAttr = op->getAttrOfType<BoolAttr>("aie.variable_rate");
+              if (vrAttr && vrAttr.getValue()) {
+                continue;
+              }
+              foundMap[forLoop.getOperation()] = true;
               objFifoSizes.insert(op.size());
             }
           }
@@ -2013,14 +2019,12 @@ struct AIEObjectFifoStatefulTransformPass
         }
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
-        // G-T3.2-006: propagate IRON SparseFifo discardable attrs from
         // the original createOp to the new consumerFifo. Without this,
         // the consumer-side ObjectFifoCreateOp is attr-less and the
         // downstream propagateSparseCompressionAttr (called from
         // createBdBlock for each consumer-side BD) finds no
         // ``aie.decompress_s2mm`` to read and silently emits no
         // ``aie.enable_compression`` on consumer-side S2MM BDs. The
-        // original G-T3.2-001 fix only landed the producer-side half
         // of this propagation; the lit test verified only the BD-emit
         // pass's final hop given a hand-constructed
         // NpuWriteBdOp{aie.enable_compression = true} and never drove
@@ -2031,7 +2035,11 @@ struct AIEObjectFifoStatefulTransformPass
                                    "aie.decompress_s2mm",
                                    "aie.sparsity_pattern",
                                    "aie.sparsity_n",
-                                   "aie.sparsity_m"}) {
+                                   "aie.sparsity_m",
+                                   // VariableRateFifo marker; read by
+                                   // unrollForLoops to exclude the fifo
+                                   // from LCM-based loop unrolling.
+                                   "aie.variable_rate"}) {
           if (auto attr = createOp->getAttr(attrName))
             consumerFifo->setAttr(attrName, attr);
         }

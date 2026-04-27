@@ -13,11 +13,8 @@ acquire / release counts within a single loop iteration -- i.e. the
 producer reads N items from upstream and forwards K <= N to the consumer,
 where K is decided at run time.
 
-This closes the **single-producer / conditional-forward** half of
-G-T6.2-001 and G-T7.4-200. The complementary **N:1 multi-producer
-fan-in** half is closed by :class:`PacketFifo` (T2.2; the AXI
-stream-switch packet-routing primitive). VariableRateFifo and
-PacketFifo are **siblings**, not alternatives:
+VariableRateFifo and :class:`PacketFifo` are **siblings**, not
+alternatives:
 
 - :class:`PacketFifo` solves "many independent producers fan into one
   consumer at runtime-decided rates" via the AXI stream switch +
@@ -36,13 +33,10 @@ Architectural references
   hardware capability that makes producer-side conditional advance
   safe; the BD that's not fired this iteration simply doesn't get
   scheduled).
-- ``docs/aie-ml-am020-crosswalk.md`` G-T6.2-001 (CRISPR PAM-filter
   early — the canonical use case: ~12.5% of windows pass NGG, so
   forwarding only those saves ~7x DMA + ~7x consumer cycles).
-- ``docs/aie-ml-am020-crosswalk.md`` G-T7.4-200 (T7-IRON
   variable-rate ObjectFifo investigation).
 - ``python/iron/packet.py`` (PacketFifo — sibling primitive; the
-  N:1 multi-producer half of the same G-T6.2-001 + G-T7.4-200 pair).
 
 User-facing surface
 -------------------
@@ -130,7 +124,6 @@ The downstream pass change (in
    not unrolled on the variable-rate fifo's account; if the loop has
    no other (fixed-rate) fifo accesses, the loop is left alone.
 2. **Split-fifo attr propagation** (the same propagation slot the
-   SparseFifo discardable attrs travel through, per G-T3.2-006):
    the consumer-side ObjectFifoCreateOp also carries the marker
    for diagnostics + downstream introspection.
 3. **No new ops, no new BD bits, no new lock semantics.** The
@@ -171,7 +164,7 @@ discard.
 Use case: CRISPR PAM filter early-out
 -------------------------------------
 
-The canonical motivating workload (G-T6.2-001 + the cross-walk):
+The canonical motivating workload:
 20-bp + 3-bp PAM windows stream from the shim into Tile A. Tile A
 checks the PAM byte (NGG); ~12.5 % of windows pass. With vanilla
 ObjectFifo, Tile A must forward EVERY window (PAM-failing windows
@@ -186,7 +179,6 @@ References
 
 - AM020 Ch. 1 p. 6 (DM + lock units; shared-memory dataflow basis)
 - AM020 Ch. 5 p. 74 (memtile out-of-order BD processing)
-- ``docs/aie-ml-am020-crosswalk.md`` G-T6.2-001 / G-T7.4-200
 - ``python/iron/packet.py`` (PacketFifo — sibling primitive)
 - ``python/iron/sparse.py`` (SparseFifo — the analogous
   discardable-attr-on-ObjectFifo pattern this primitive copies)
@@ -206,14 +198,12 @@ from .. import ir  # type: ignore
 from .dataflow.fifo_handle_registry import register_fifo_handle
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
 
-
 # Discardable-attr name pinned by VariableRateFifo.resolve() and
 # read by AIEObjectFifoStatefulTransform.cpp's unrollForLoops to
 # exclude the fifo from the LCM-unroll set, and by
 # propagateSparseCompressionAttr-style split-fifo propagation to
 # carry the marker through to the consumer-side fifo.
 VARIABLE_RATE_ATTR: str = "aie.variable_rate"
-
 
 class VariableRateFifo(ObjectFifo):
     """ObjectFifo that allows producer-side conditional forward.
@@ -240,7 +230,6 @@ class VariableRateFifo(ObjectFifo):
     The :meth:`prod` / :meth:`cons` handles are
     :class:`VariableRateFifoHandle` (an :class:`ObjectFifoHandle`
     subclass); they pass through Worker.fn_args' ``isinstance(arg,
-    ObjectFifoHandle)`` check on ``main`` and through T2.4's registry
     via the explicit registration at module-import time.
 
     The producer handle adds a :meth:`discard` method that
@@ -275,7 +264,6 @@ class VariableRateFifo(ObjectFifo):
           variable-rate marker on the producer side. All consumers
           see the same forwarded subset.
         - For N:1 multi-producer fan-in (the OTHER half of
-          G-T6.2-001 / G-T7.4-200), use :class:`PacketFifo` instead;
           the AXI stream-switch packet-routing fabric is the right
           mechanism for that use case.
         - The :meth:`is_variable_rate` property always returns True;
@@ -405,10 +393,8 @@ class VariableRateFifo(ObjectFifo):
           ``dynamicGlobalObjectFifos`` runtime-counter machinery; the
           marker is propagated through split-fifo paths to the
           consumer-side fifo too (mirrors the SparseFifo
-          discardable-attr propagation in G-T3.2-006).
 
         If the active backend hasn't been taught about the attr (a
-        legacy aie-opt build pre-G-T3.2-007), the design still
         compiles -- the attr is ignored and the pass falls through
         to LCM-unrolling. That fallback is loud (the producer's
         asymmetric acquire/release will trip the static-rate
@@ -427,7 +413,6 @@ class VariableRateFifo(ObjectFifo):
             True, ctx
         )
 
-
 class VariableRateFifoHandle(ObjectFifoHandle):
     """Handle to a :class:`VariableRateFifo`.
 
@@ -435,7 +420,6 @@ class VariableRateFifoHandle(ObjectFifoHandle):
 
     1. Worker.fn_args' ``isinstance(arg, ObjectFifoHandle)`` check on
        ``main`` accepts it without modification.
-    2. T2.4's registry-style dispatch picks the
        :class:`VariableRateFifoHandle` handler over the parent
        :class:`ObjectFifoHandle` handler in the reverse-insertion-
        order walk.
@@ -526,9 +510,7 @@ class VariableRateFifoHandle(ObjectFifoHandle):
             f"of={self._object_fifo})"
         )
 
-
 # ---------------------------------------------------------------------------
-# T2.4 registry hook-up.
 #
 # Register VariableRateFifoHandle with the FifoHandle registry so the
 # extensible ``Worker.__init__`` dispatch recognizes it via its own
@@ -538,14 +520,11 @@ class VariableRateFifoHandle(ObjectFifoHandle):
 # ``worker.fifos`` sees the VariableRateFifoHandle alongside vanilla
 # ObjectFifoHandles + SparseFifoHandles + PacketFifoHandles.
 #
-# Backward-compat note: on ``main`` (pre-T2.4), the registry isn't
 # consulted by Worker.__init__ -- it falls back to the hard-coded
 # ``isinstance(arg, ObjectFifoHandle)`` branch which still accepts
 # VariableRateFifoHandle (because the latter subclasses
 # ObjectFifoHandle). So this registration is a forward-looking no-op
-# on ``main`` and a needed dispatch hint after T2.4 lands.
 # ---------------------------------------------------------------------------
-
 
 def _variable_rate_fifo_handle_handler(arg, worker):
     """Worker.fn_args handler for VariableRateFifoHandle.
@@ -559,13 +538,11 @@ def _variable_rate_fifo_handle_handler(arg, worker):
     arg.endpoint = worker
     worker._fifos.append(arg)
 
-
 # Defer registration to module-import time so the test suite (and any
 # importing user) only registers once. The registry rejects double-
 # registration loudly so the import being a one-shot side-effect is
 # intentional.
 register_fifo_handle(VariableRateFifoHandle, _variable_rate_fifo_handle_handler)
-
 
 __all__ = [
     "VariableRateFifo",

@@ -6,7 +6,6 @@
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 #
-# G-T3.2-007 worked example: VariableRateFifo end-to-end demo.
 #
 # A producer worker reads each input window from a fixed-rate
 # upstream ObjectFifo, inspects its first byte, and conditionally
@@ -36,7 +35,6 @@
 #               out_view[0][i] = win[i]
 #           out_handle.release(1)
 #       else:
-#           out_handle.discard(1)  # G-T3.2-007 marker
 #       in_handle.release(1)
 #
 # This example demonstrates:
@@ -82,7 +80,6 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.device import NPU1Col1, NPU2
-
 
 def my_variable_rate_filter(dev, in_size, out_size):
     in_dtype = np.uint8
@@ -157,9 +154,7 @@ def my_variable_rate_filter(dev, in_size, out_size):
 
     return Program(dev, rt).resolve_program()
 
-
 p = argparse.ArgumentParser(
-    description="Variable-rate filter worked example for G-T3.2-007 "
     "(VariableRateFifo demo).",
 )
 p.add_argument(

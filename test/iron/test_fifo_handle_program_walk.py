@@ -5,43 +5,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""G-T3.3-001 + G-T3.1-100: contract tests for ``*FifoHandle`` subclasses.
-
-Both Wave 2 ``*FifoHandle`` subclasses (T2.2 :class:`PacketFifoHandle`,
-T2.3 :class:`AccumFifoHandle`) diverged from
-:class:`ObjectFifoHandle`'s contract in two ways that broke
-``iron/program.py``'s tile-collection walk
-(``[e.tile for e in fifo.all_of_endpoints()]``):
-
-- :class:`PacketFifoHandle.all_of_endpoints` returned raw
-  :class:`Tile` objects instead of endpoint-typed objects with a
-  ``.tile`` attribute. The walk crashed with
-  ``AttributeError: 'Tile' object has no attribute 'tile'`` (G-T3.3-001).
-- :class:`AccumFifoHandle.__init__` deliberately bypasses
-  :class:`ObjectFifoHandle.__init__` to avoid memref-typed
-  depth/dims_from_stream constraints, so ``self._object_fifo`` is
-  never set; the inherited ``all_of_endpoints`` walk crashed with
-  ``AttributeError: 'AccumFifoHandle' object has no attribute
-  '_object_fifo'`` (G-T3.1-100).
-
-These tests exercise the broken paths through
-:meth:`Program.resolve_program` -- one for each handle type -- so any
-future divergence from the contract is caught by the fork's test suite
-before downstream consumers (T3.1, T3.3) hit it.
-
-The contract every ``*FifoHandle.all_of_endpoints`` must satisfy:
-
-1. Returns a sequence of objects each exposing a ``.tile`` property of
-   type :class:`Tile` (or ``None``).
-2. The walk in ``iron/program.py:device_body`` must succeed on the
-   returned list: ``[e.tile for e in fifo.all_of_endpoints()]`` raises
-   no exception.
-"""
+"""+ : contract tests for ``*FifoHandle`` subclasses."""
 
 from __future__ import annotations
 
 import pytest
-
 
 def _make_noop_kernel_factory():
     """Build a no-op core_fn factory shaped like the canonical IRON
@@ -54,13 +22,8 @@ def _make_noop_kernel_factory():
         pass
     return core_fn
 
-
-# -- PacketFifoHandle: the G-T3.3-001 path ------------------------------------
-
-
 def test_packet_fifo_handle_all_of_endpoints_returns_endpoint_typed_objects():
-    """G-T3.3-001: ``PacketFifoHandle.all_of_endpoints()`` must return
-    objects exposing a ``.tile`` attribute, not raw :class:`Tile`
+    """    objects exposing a ``.tile`` attribute, not raw :class:`Tile`
     objects. The pre-fix shape (``list[Tile]``) is what crashed
     ``iron/program.py``'s tile-collection walk."""
     from aie.iron import PacketFifo
@@ -99,10 +62,8 @@ def test_packet_fifo_handle_all_of_endpoints_returns_endpoint_typed_objects():
     assert (0, 3) in tile_coords
     assert (0, 5) in tile_coords
 
-
 def test_packet_fifo_handle_program_walk_does_not_crash():
-    """G-T3.3-001: The exact walk in ``iron/program.py:device_body``
-    must succeed for a PacketFifoHandle. Pre-fix this raised
+    """    must succeed for a PacketFifoHandle. Pre-fix this raised
     ``AttributeError: 'Tile' object has no attribute 'tile'``."""
     from aie.iron import PacketFifo
     from aie.iron.device import Tile
@@ -119,7 +80,6 @@ def test_packet_fifo_handle_program_walk_does_not_crash():
         "iron/program.py's tile-collection walk must yield Tile objects "
         "for PacketFifoHandle endpoints"
     )
-
 
 def test_packet_fifo_handle_endpoint_uses_worker_when_set():
     """When the registry-driven ``Worker.fn_args`` dispatch attaches the
@@ -154,13 +114,8 @@ def test_packet_fifo_handle_endpoint_uses_worker_when_set():
         "Worker as its endpoint after Worker.fn_args dispatch"
     )
 
-
-# -- AccumFifoHandle: the G-T3.1-100 path -------------------------------------
-
-
 def test_accum_fifo_handle_all_of_endpoints_does_not_crash():
-    """G-T3.1-100: ``AccumFifoHandle.all_of_endpoints()`` must not raise
-    ``AttributeError`` for the missing ``_object_fifo`` field. Pre-fix
+    """    ``AttributeError`` for the missing ``_object_fifo`` field. Pre-fix
     the inherited ``ObjectFifoHandle.all_of_endpoints`` did
     ``self._object_fifo._get_endpoint(...)`` which crashed because
     AccumFifoHandle.__init__ bypasses the parent constructor."""
@@ -178,10 +133,8 @@ def test_accum_fifo_handle_all_of_endpoints_does_not_crash():
     assert len(prod_eps) == 2  # one producer endpoint + one consumer endpoint
     assert len(cons_eps) == 2
 
-
 def test_accum_fifo_handle_all_of_endpoints_returns_endpoint_typed_objects():
-    """G-T3.1-100: each element must expose a ``.tile`` attribute
-    matching :class:`ObjectFifoHandle.all_of_endpoints`'s contract."""
+    """    matching :class:`ObjectFifoHandle.all_of_endpoints`'s contract."""
     from aie.iron import AccumFifo
     from aie.iron.device import Tile
 
@@ -199,10 +152,8 @@ def test_accum_fifo_handle_all_of_endpoints_returns_endpoint_typed_objects():
     coords = sorted((ep.tile.col, ep.tile.row) for ep in eps)
     assert coords == [(0, 2), (0, 3)]
 
-
 def test_accum_fifo_handle_program_walk_does_not_crash():
-    """G-T3.1-100: The exact walk in ``iron/program.py:device_body``
-    must succeed for an AccumFifoHandle."""
+    """    must succeed for an AccumFifoHandle."""
     from aie.iron import AccumFifo
     from aie.iron.device import Tile
 
@@ -213,7 +164,6 @@ def test_accum_fifo_handle_program_walk_does_not_crash():
     tiles = [e.tile for e in handle.all_of_endpoints()]
     assert len(tiles) == 2
     assert all(isinstance(t, Tile) for t in tiles)
-
 
 def test_accum_fifo_handle_endpoint_uses_worker_when_set():
     """When the registry-driven ``Worker.fn_args`` dispatch attaches the
@@ -233,9 +183,7 @@ def test_accum_fifo_handle_endpoint_uses_worker_when_set():
     assert w_prod in eps
     assert w_cons in eps
 
-
 # -- Cross-cutting: the contract is shared with the ObjectFifoHandle base ----
-
 
 def test_all_fifo_handle_subclasses_satisfy_program_walk_contract():
     """The contract test rolled up: every ``*FifoHandle`` subclass must

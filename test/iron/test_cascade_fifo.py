@@ -5,8 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-
-"""T2.1: in-fork tests for the IRON CascadeFifo primitive.
+"""Surface, topology, lowering, and dialect-parity tests for CascadeFifo.
 
 Covers:
 
@@ -15,9 +14,8 @@ Covers:
 - Lowering: ``resolve()`` emits an ``aie.cascade_flow`` op connecting
   the producer and consumer tile ops.
 - Behavioural parity: a 2-tile cascade pipeline built via CascadeFifo
-  emits the same cascade_flow / configure_cascade ops as Phase 1's
-  ``bionpu.iron_extensions.cascade_stream.cascade_stream_chain``
-  wrapper would emit through the same dialect entry points.
+  emits the same ``cascade_flow`` / ``configure_cascade`` ops as a
+  hand-written dialect-level pipeline through the same entry points.
 """
 
 from __future__ import annotations
@@ -26,17 +24,13 @@ import pytest
 
 # These imports are ordered to fail-fast: if `aie` isn't built, all tests
 # are skipped (not failed) — this matches the convention in
-# tests/test_iron_fork_provenance.py in the outer repo.
 aie_iron = pytest.importorskip("aie.iron")
 aie_dialects_aie = pytest.importorskip("aie.dialects.aie")
 
-
 # -- Surface tests ---------------------------------------------------------
-
 
 def test_cascade_fifo_imports_from_aie_iron():
     """`from aie.iron import CascadeFifo` resolves to the real class
-    (not the T1.2 NotImplementedError stub).
     """
     from aie.iron import CascadeFifo
 
@@ -44,22 +38,16 @@ def test_cascade_fifo_imports_from_aie_iron():
     # in __init__.py. Discriminate via __module__.
     assert CascadeFifo.__module__.endswith(".cascade"), (
         f"CascadeFifo.__module__ = {CascadeFifo.__module__!r}; "
-        "expected the real impl from aie.iron.cascade. T1.2 stub is "
-        "still active — did the T2.1 substitution land?"
     )
 
-
 def test_cascade_fifo_real_construction_does_not_raise():
-    """The T1.2 stub raised NotImplementedError; the real class must
-    construct cleanly given valid Tile arguments.
-    """
+    """Construct cleanly given valid Tile arguments."""
     from aie.iron import CascadeFifo
     from aie.iron.device import Tile
 
     cas = CascadeFifo(Tile(0, 2), Tile(0, 3), dtype="bfloat16")
     assert cas is not None
     assert cas.dtype == "bfloat16"
-
 
 def test_cascade_fifo_constants_match_am020():
     """AM020 Ch. 4 p. 67 documents 512-bit cascade with FP32-accumulator
@@ -77,9 +65,7 @@ def test_cascade_fifo_constants_match_am020():
     assert CASCADE_LANES_INT32 == 16
     assert CASCADE_LANES_BFLOAT16 == 32
 
-
 # -- Validation tests ------------------------------------------------------
-
 
 def test_invalid_producer_tile_type_raises():
     from aie.iron import CascadeFifo
@@ -88,7 +74,6 @@ def test_invalid_producer_tile_type_raises():
     with pytest.raises(TypeError, match="producer_tile must be a Tile"):
         CascadeFifo("not_a_tile", Tile(0, 3))
 
-
 def test_invalid_consumer_tile_type_raises():
     from aie.iron import CascadeFifo
     from aie.iron.device import Tile
@@ -96,14 +81,12 @@ def test_invalid_consumer_tile_type_raises():
     with pytest.raises(TypeError, match="consumer_tile must be a Tile"):
         CascadeFifo(Tile(0, 2), 42)
 
-
 def test_invalid_dtype_raises():
     from aie.iron import CascadeFifo
     from aie.iron.device import Tile
 
     with pytest.raises(ValueError, match="dtype must be one of"):
         CascadeFifo(Tile(0, 2), Tile(0, 3), dtype="bogus")
-
 
 def test_zero_elements_per_handshake_raises():
     from aie.iron import CascadeFifo
@@ -113,7 +96,6 @@ def test_zero_elements_per_handshake_raises():
         CascadeFifo(
             Tile(0, 2), Tile(0, 3), dtype="accfloat", elements_per_handshake=0
         )
-
 
 def test_non_lane_multiple_handshake_raises():
     from aie.iron import CascadeFifo
@@ -125,9 +107,7 @@ def test_non_lane_multiple_handshake_raises():
             Tile(0, 2), Tile(0, 3), dtype="accfloat", elements_per_handshake=17
         )
 
-
 # -- Topology tests --------------------------------------------------------
-
 
 def test_default_handshake_for_accfloat_is_one_word():
     from aie.iron import CascadeFifo
@@ -139,7 +119,6 @@ def test_default_handshake_for_accfloat_is_one_word():
     assert cas.words_per_handshake == 1
     assert cas.cascade_bits == 512
 
-
 def test_default_handshake_for_bfloat16_is_one_word():
     from aie.iron import CascadeFifo
     from aie.iron.device import Tile
@@ -148,7 +127,6 @@ def test_default_handshake_for_bfloat16_is_one_word():
     # bf16 packs 32 lanes per 512-bit word.
     assert cas.elements_per_handshake == 32
     assert cas.words_per_handshake == 1
-
 
 def test_explicit_multi_word_handshake():
     from aie.iron import CascadeFifo
@@ -160,7 +138,6 @@ def test_explicit_multi_word_handshake():
     )
     assert cas.words_per_handshake == 4
     assert cas.cascade_bits == 4 * 512
-
 
 def test_tiles_property_returns_prod_then_cons():
     from aie.iron import CascadeFifo
@@ -176,7 +153,6 @@ def test_tiles_property_returns_prod_then_cons():
     assert tiles[0].col == 0 and tiles[0].row == 2
     assert tiles[1].col == 0 and tiles[1].row == 3
 
-
 def test_objectfifo_compat_prod_and_cons_methods():
     """Mirror ObjectFifo's `prod()` / `cons()` shape for muscle-memory
     compatibility — but cascade is unbuffered so they return Tiles
@@ -190,7 +166,6 @@ def test_objectfifo_compat_prod_and_cons_methods():
     assert p.col == 0 and p.row == 2
     assert c.col == 0 and c.row == 3
 
-
 def test_unique_default_names():
     from aie.iron import CascadeFifo
     from aie.iron.device import Tile
@@ -201,7 +176,6 @@ def test_unique_default_names():
     assert a.name.startswith("cas")
     assert b.name.startswith("cas")
 
-
 def test_explicit_name_honoured():
     from aie.iron import CascadeFifo
     from aie.iron.device import Tile
@@ -209,9 +183,7 @@ def test_explicit_name_honoured():
     cas = CascadeFifo(Tile(0, 2), Tile(0, 3), name="my_chain_link_0")
     assert cas.name == "my_chain_link_0"
 
-
 # -- Lowering tests --------------------------------------------------------
-
 
 def test_resolve_emits_cascade_flow_op_in_module():
     """`resolve()` inside an `aie.device` body emits an `aie.cascade_flow`
@@ -242,7 +214,6 @@ def test_resolve_emits_cascade_flow_op_in_module():
         f"got:\n{module_str}"
     )
 
-
 def test_resolve_without_tile_op_raises():
     """If neither tile has an .op set, resolve() raises a clear
     ValueError rather than the AttributeError CascadeFlowOp would
@@ -262,7 +233,6 @@ def test_resolve_without_tile_op_raises():
             cas = CascadeFifo(t_prod, t_cons)
             with pytest.raises(ValueError, match="tile op not set"):
                 cas.resolve()
-
 
 def test_double_resolve_is_idempotent():
     """Calling resolve() twice does not emit two cascade_flow ops."""
@@ -293,13 +263,10 @@ def test_double_resolve_is_idempotent():
         f"got:\n{module_str}"
     )
 
-
 # -- Behavioural parity vs Phase 1 wrapper --------------------------------
-
 
 def test_cascade_fifo_lowering_matches_dialect_cascade_flow_op():
     """The CascadeFifo path emits the same MLIR op kind that the
-    Phase-1 wrapper at bionpu.iron_extensions.cascade_stream relies
     on lowering through (`aie.cascade_flow`).
 
     This is the parity assertion the task brief calls out: the

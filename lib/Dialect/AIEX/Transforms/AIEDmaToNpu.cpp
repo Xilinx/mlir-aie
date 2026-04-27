@@ -653,7 +653,6 @@ public:
       // Enable_Compression [31], Enable_Packet [30], Out_Of_Order_BD_ID
       // [29:24], Packet_ID [23:19], Packet_Type [18:16]
       //
-      // G-T3.2-001: honor the IRON SparseFifo discardable-attr contract.
       // ``aie.enable_compression`` is set on the NpuWriteBdOp by
       // ``AIEDMATasksToNPU::rewriteSingleBD``, which forwarded it from the
       // source ``aie.dma_bd`` op, which in turn was tagged by

@@ -6,11 +6,9 @@
 //
 // (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
-// G-T3.2-006: full-pipeline regression test for the
 // SparseFifo discardable-attr propagation through
 // AIEObjectFifoStatefulTransform's split-fifo path.
 //
-// The original G-T3.2-001 closure shipped a lit test
 // (test/Conversion/DmaToNpu/dma_to_npu_sparse_compression.mlir)
 // that verified only the FINAL hop — given a hand-constructed
 // ``aiex.npu.writebd {aie.enable_compression = true}``, the
@@ -43,7 +41,6 @@
 // CHECK:           aie.dma_bd({{.*}}) {aie.enable_compression = true}
 // CHECK:           aie.dma_bd({{.*}}) {aie.enable_compression = true}
 // Consumer-side S2MM BDs on tile (3,3): MUST also carry
-// aie.enable_compression = true (the G-T3.2-006 fix).
 // CHECK:         aie.mem(%[[VAL_CONS_TILE:.*]]) {
 // CHECK:           aie.dma_start(S2MM, 0
 // CHECK:           aie.dma_bd({{.*}}) {aie.enable_compression = true}

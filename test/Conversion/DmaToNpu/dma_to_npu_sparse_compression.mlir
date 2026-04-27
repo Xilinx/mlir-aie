@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// G-T3.2-001: verify the BD-emit pass (--aie-dma-to-npu) honors the
 // IRON SparseFifo discardable contract by flipping the AIE2/AIE2P
 // tile DMA ``Enable_Compression`` bit (DMA_BDX_1[31]) when the input
 // NpuWriteBdOp carries ``aie.enable_compression = true``, and leaves

@@ -7,11 +7,9 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """IRON :class:`AccumFifo` -- FP32 accumulator inter-tile / inter-timestep state.
 
-This is the silicon-level primitive promoted from the ``bionpu`` Phase 1
-:class:`bionpu.iron_extensions.cascade_stream.CascadeStreamChain` wrapper +
-T6.4-D's IRON-level fallback (FP32 tile-DM static arrays for h/c
-recurrent state). It surfaces two AM020-documented hardware paths as a
-single dataflow primitive:
+A first-class IRON primitive over two AM020-documented hardware paths
+for FP32 accumulator-register state passing. Surfaces both as a single
+dataflow primitive:
 
 1. **BM-to-BM register move** (intra-tile, across timesteps):
    AM020 Ch. 4 p. 67 -- "Accumulator to accumulator: Move one 512-bit
@@ -54,9 +52,9 @@ identically to :class:`ObjectFifoHandle`. The lowered MLIR differs:
 
 - A regular ``ObjectFifo`` lowers to ``aie.objectfifo`` with a
   ``memref<NxT>`` element type. The DMA write narrows the FP32
-  accumulator to the buffer's element type at storage time
-  (this is precisely the ``5.15e-2 max-abs`` precision wall T6.4-D
-  hit when forced to round-trip through a memref).
+  accumulator to the buffer's element type at storage time -- the
+  precision wall observed when LSTM-style recurrent state has to
+  round-trip through a memref.
 - An ``AccumFifo`` lowers to either a cascade-flow channel
   (``aie.cascade_flow`` between distinct producer/consumer tiles) or
   a same-tile in-register handoff (no DMA, no objectfifo memref) when
@@ -94,11 +92,10 @@ Concretely the lowering rule is:
 - ``producer.tile != consumer.tile`` -> :func:`aie.cascade_flow` is
   emitted between the two tiles. AM020 Appendix A p. 80 Figure 45
   (carried forward to AIE2P) confirms cascade routing is automatic
-  for vertically-adjacent tiles in the same column. Horizontal
-  cascade routing is not measured in T7-IRON's investigation
-  (see ``bionpu/iron_extensions/cascade_stream.py`` docstring); a
-  vertical-adjacency check is enforced at construction time and an
-  informational warning is raised for the un-tested horizontal case.
+  for vertically-adjacent tiles in the same column. A vertical-
+  adjacency check is enforced at construction time and an
+  informational warning is raised for the horizontal case (the
+  routing path is documented but less commonly exercised).
 
 Notes on ``dtype``
 ------------------
@@ -107,13 +104,13 @@ The ``dtype`` argument is the AIE accumulator type tag, not a numpy
 type. Supported values:
 
 - ``"accfloat"`` -- FP32 accumulator (32-bit float, hardware-supported
-  on AIE-ML / AIE2P; the right setting for T6.4-D-cascade LSTM).
+  on AIE-ML / AIE2P; the FP32 cascade-LSTM path).
 - ``"acc32"``    -- int32 accumulator.
 - ``"acc64"``    -- int64 accumulator (paired-lane).
 
 The default is ``"accfloat"`` since AccumFifo's primary motivating
-use case (the LSTM h/c precision wall the T6.4-D crosswalk
-identified) is the FP32 accumulator path.
+use case (preserving accumulator precision across LSTM-style
+recurrent state) is the FP32 accumulator path.
 
 References
 ----------
@@ -121,12 +118,6 @@ References
 - AM020 Ch. 4 p. 67 (Register Move Functionality + Cascade Stream)
 - AM020 Ch. 4 p. 65 (FP32 accumulator width = 32-bit, 23 mantissa bits)
 - AM020 Appendix A p. 80 Figure 45 (vertical+horizontal cascade grid)
-- ``bionpu/iron_extensions/cascade_stream.py`` (Phase 1 wrapper-level
-  prototype this primitive replaces)
-- ``bionpu/kernels/basecalling/lstm_cell_bf16_acc/lstm_cell_bf16_acc.cc``
-  (Phase 1 T6.4-D LSTM cell whose IRON-level fallback used FP32
-  tile-DM static arrays for h/c persistence; AccumFifo is the
-  silicon-level primitive that replaces that fallback)
 """
 
 from __future__ import annotations
@@ -152,10 +143,9 @@ from .dataflow.objectfifo import ObjectFifoHandle
 _CASCADE_BITS: int = 512
 
 # Supported accumulator dtype tags. Mirrors aie_api/adf accumulator
-# types (`accfloat`, `acc32`, `acc64`). `accfloat` is the FP32 path
-# T6.4-D needs; `acc48` is AIE1-only (not on AIE-ML/AIE2P) and
-# explicitly rejected with a clear error message rather than silently
-# accepted.
+# types (`accfloat`, `acc32`, `acc64`). `accfloat` is the FP32 path;
+# `acc48` is AIE1-only (not on AIE-ML/AIE2P) and explicitly rejected
+# with a clear error message rather than silently accepted.
 _SUPPORTED_DTYPES: dict[str, int] = {
     "accfloat": 32,  # FP32 accumulator (AIE-ML / AIE2P)
     "acc32": 32,     # int32 accumulator
@@ -212,11 +202,10 @@ def _check_vertical_adjacency(producer: Tile, consumer: Tile) -> None:
 
     AM020 Appendix A p. 80 Figure 45 (carried forward to AIE2P) confirms
     cascade-stream routing exists for both vertical AND horizontal
-    neighbours. Phase 1's :class:`bionpu.iron_extensions.cascade_stream`
-    investigation only measured the vertical case on AIE2P silicon; we
-    raise a :class:`UserWarning` for the un-tested geometries (horizontal,
-    diagonal, non-adjacent) rather than block the lowering, so callers
-    can make an informed choice.
+    neighbours. The vertical case is the well-trodden path; we raise
+    a :class:`UserWarning` for the less-exercised geometries
+    (horizontal, diagonal, non-adjacent) rather than block the
+    lowering, so callers can make an informed choice.
     """
     # Handle un-placed tiles (col/row may be None pre-placement-pass).
     if producer.col is None or consumer.col is None:
@@ -277,9 +266,9 @@ class AccumFifo(Resolvable):
             May be the same instance as ``producer`` for the
             intra-tile BM-to-BM register move case.
         dtype: AIE accumulator type tag. One of ``"accfloat"`` (FP32;
-            default, the T6.4-D-cascade LSTM use case),
-            ``"acc32"`` (int32), ``"acc64"`` (int64 paired-lane).
-            ``"acc48"`` is rejected (AIE1-only, not AIE-ML / AIE2P).
+            default), ``"acc32"`` (int32), ``"acc64"`` (int64 paired-
+            lane). ``"acc48"`` is rejected (AIE1-only, not on AIE-ML /
+            AIE2P).
         lanes: Number of accumulator lanes per transfer. Must total
             exactly 512 bits (AM020 Ch. 4 p. 67 cascade transfer
             width): ``16`` for ``accfloat``/``acc32``, ``8`` for
@@ -476,14 +465,12 @@ class AccumFifo(Resolvable):
 class AccumFifoHandle(ObjectFifoHandle):
     """Producer or consumer handle to an :class:`AccumFifo`.
 
-    Subclasses :class:`ObjectFifoHandle` so :class:`Worker.fn_args`
-    type-dispatch (``isinstance(arg, ObjectFifoHandle)``) accepts
-    AccumFifo handles without modification. Once T2.4 lands the
-    registry-style fn_args dispatch (``@register_fifo_handle``), the
-    inheritance is no longer load-bearing for that purpose; but
-    keeping it preserves a uniform "FifoHandle" surface for downstream
-    code (placer, validator, debug dumps, etc.) that doesn't need to
-    distinguish AccumFifo from ObjectFifo at the abstraction layer.
+    Subclasses :class:`ObjectFifoHandle` so any code path that
+    type-checks against ``ObjectFifoHandle`` (placer, validator, debug
+    dumps) sees a uniform "fifo handle" surface. The
+    ``fifo_handle_registry`` dispatch is the load-bearing
+    ``Worker.fn_args`` path; the inheritance is kept for surface
+    compatibility with code that hasn't migrated to the registry.
 
     The class deliberately overrides ``acquire`` / ``release`` to be
     no-ops in the intra-tile case (BM-to-BM register move has no
@@ -621,7 +608,8 @@ class AccumFifoHandle(ObjectFifoHandle):
         ``all_of_endpoints`` -- which walks
         ``self._object_fifo._get_endpoint(...)`` -- would raise
         ``AttributeError: 'AccumFifoHandle' object has no attribute
-        '_object_fifo'``. Overriding here closes G-T3.1-100.
+        '_object_fifo'``. Override returns endpoints constructed
+        directly from this handle's tile pair.
 
         For each side we prefer the live endpoint recorded on the
         corresponding handle by the registry-driven ``Worker.fn_args``

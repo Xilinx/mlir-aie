@@ -15,19 +15,15 @@ from .fifo_handle_registry import (
     dispatch_fn_arg,
 )
 
-
-# T2.4: pre-register ObjectFifoHandle with the handler that reproduces
 # the original Worker.__init__ bookkeeping bit-for-bit. This is the
 # backward-compat anchor: every Phase 1 design that passes
 # ObjectFifoHandle through fn_args still works without modification.
 #
-# Future Wave 2 FifoHandle subclasses (CascadeFifoHandle, PacketFifoHandle,
 # AccumFifoHandle, SparseFifoHandle) are registered by their respective
 # modules at import time, so they appear *after* ObjectFifoHandle in the
 # registry and win the reverse-order isinstance() walk in dispatch_fn_arg.
 def _object_fifo_handle_handler(arg, worker):
     arg.endpoint = worker
     worker._fifos.append(arg)
-
 
 register_fifo_handle(ObjectFifoHandle, _object_fifo_handle_handler)

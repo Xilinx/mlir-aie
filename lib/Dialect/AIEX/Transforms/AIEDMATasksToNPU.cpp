@@ -547,7 +547,6 @@ struct AIEDMATasksToNPUPass
         /*d2_zero_after=*/padAfter[2],
         /*burst_length=*/bd_op.getBurstLength());
 
-    // G-T3.2-001: forward IRON SparseFifo's compression intent. The
     // ObjectFifo lowering pass (AIEObjectFifoStatefulTransform) tagged the
     // source DMABDOp with ``aie.enable_compression = true`` when the
     // originating ObjectFifoCreateOp carried the SparseFifo discardable

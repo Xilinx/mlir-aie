@@ -20,10 +20,7 @@ A :class:`CascadeFifo` represents the cascade connection between exactly
 two CoreTiles: the producer (which calls `put_mcd` / `aie.put_cascade`
 inside its core_fn) and the consumer (which calls `get_scd_v16int32` /
 `aie.get_cascade`). Multi-stage cascade chains are built by composing
-several CascadeFifos head-to-tail. See
-:func:`cascade_stream_chain` in `bionpu.iron_extensions.cascade_stream`
-for the higher-level chain helper that this primitive supersedes for
-canonical use cases.
+several CascadeFifos head-to-tail.
 
 Architectural reference
 -----------------------
@@ -56,10 +53,6 @@ body — see ``aie_kernels/aie2/cascade_mm.cc`` for a reference. The IRON
 layer here only emits the placement (tiles + cascade_flow) and the
 runtime metadata; the kernel-author is responsible for the per-element
 math.
-
-Phase 1's wrapper at ``bionpu/iron_extensions/cascade_stream.py``
-remains usable for callers that need the chain-of-N abstraction; the
-wrapper's underlying primitive is now this CascadeFifo class.
 """
 
 from __future__ import annotations
@@ -120,10 +113,9 @@ class CascadeFifo(Resolvable):
             cascade-adjacent to ``producer_tile`` (vertically- or
             horizontally-neighbouring per AM020 Appendix A p. 80).
         dtype: Cascade element dtype, one of ``"accfloat"`` (FP32
-            accumulator; the canonical cross-walk path), ``"acc32"`` /
-            ``"int32"`` (i32 accumulator), or ``"bfloat16"`` (bf16
-            multiplier-input). Defaults to ``"bfloat16"`` matching the
-            T2.1 task brief.
+            accumulator), ``"acc32"`` / ``"int32"`` (i32 accumulator),
+            or ``"bfloat16"`` (bf16 multiplier-input). Defaults to
+            ``"bfloat16"``.
         elements_per_handshake: Number of cascade-typed elements
             transferred per cascade handshake. Defaults to the number
             of lanes per 512-bit cascade word for the chosen dtype

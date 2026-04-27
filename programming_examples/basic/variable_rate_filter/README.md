@@ -3,12 +3,11 @@
    SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-# variable_rate_filter (G-T3.2-007 worked example)
+# variable_rate_filter
 
 End-to-end IRON design demonstrating the new
 [`VariableRateFifo`](../../../python/iron/variable_rate.py)
 primitive. Closes the *single-producer / conditional-forward* half
-of `G-T6.2-001` + `G-T7.4-200`.
 
 ## What this example shows
 
@@ -48,7 +47,6 @@ in two places:
 
 1. The LCM-based loop-unroll skips variable-rate fifos.
 2. The split-fifo path propagates the marker to consumer-side
-   fifos (mirrors the SparseFifo G-T3.2-006 propagation).
 
 ## Build
 
@@ -81,7 +79,6 @@ Expected output (two lines):
   `VariableRateFifo.resolve()` pinned the attribute on.
 - `aie.objectfifo @out_of_cons (...) {aie.variable_rate = true} ...`
   -- the consumer-side ObjectFifoCreateOp produced by the
-  split-fifo path; the G-T3.2-007 propagation slot picked up
   the marker.
 
 Cross-reference with
@@ -90,7 +87,6 @@ for the full design rationale.
 
 ## Sibling primitive
 
-For the `N:1 multi-producer fan-in` half of G-T6.2-001 / G-T7.4-200
 (many independent producers fanning into one consumer at
 runtime-decided rates), use [`PacketFifo`](../../../python/iron/packet.py)
 instead. The two are sibling primitives -- choose based on the

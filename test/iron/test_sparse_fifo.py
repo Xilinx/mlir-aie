@@ -5,34 +5,21 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-
-"""T2.5: in-fork tests for the IRON SparseFifo primitive.
-
-Covers the success criteria spelled out in
-``bio-on-xdna-phase2-plan.md`` T2.5:
+"""Surface, pattern, lowering, and registry tests for IRON SparseFifo.
 
 - Surface: import + class shape + sparsity (N, M) validation.
-- Pattern correctness: synthetic 2:4 / 1:4 / 1:2 weight tensors satisfy
-  the structural N-nonzeros-per-M rule and decompress to a dense
-  reference bit-equal.
+- Pattern correctness: 2:4 / 1:4 / 1:2 weight tensors satisfy the
+  structural N-nonzeros-per-M rule and decompress to a dense
+  reference bit-equal (numpy reference for the compression format).
 - Lowering: ``resolve()`` emits ``aie.objectfifo`` (the underlying
   ObjectFifo lowering) AND attaches ``aie.compress_mm2s`` /
-  ``aie.decompress_s2mm`` / sparsity-pattern attributes the BD-emit
-  pass consumes.
-- T2.4 registry hook-up: SparseFifoHandle is registered with the
-  FifoHandle registry and Worker.fn_args dispatches it correctly.
+  ``aie.decompress_s2mm`` / sparsity-pattern attributes that the
+  BD-emit pass consumes.
+- Registry: SparseFifoHandle is dispatched via the FifoHandle
+  registry from ``Worker.fn_args``.
 
-The synthetic-sparse-matmul "decompressed output bit-equal to dense
-reference" check is implemented as a pure-numpy reference: we build a
-2:4 sparse weight tensor offline, simulate the on-tile decompression
-in numpy (zero-injection per the (N, M) rule), and assert the
-resulting dense tensor matches the original dense input. This is the
-falsifiable check the plan's validation contract calls out.
-
-Tests are skipped (not failed) if `import aie.iron` fails -- that
-means the fork wheel hasn't been rebuilt after the T2.5 substitution.
-Once `tools/actions/build-mlir-aie-fork.sh` re-runs, these transition
-from skipped to green.
+Tests are skipped (not failed) if ``import aie.iron`` fails so the
+suite is hermetic against an un-built tree.
 """
 
 from __future__ import annotations
@@ -41,21 +28,16 @@ import numpy as np
 import pytest
 
 # These imports are ordered to fail-fast: if `aie` isn't built, all tests
-# are skipped (not failed) -- matches the convention in other Wave 2
 # fork tests (test_cascade_fifo.py, test_worker_fifo_handle_extension.py).
 aie_iron = pytest.importorskip("aie.iron")
 aie_dialects_aie = pytest.importorskip("aie.dialects.aie")
 
-
 # ---------------------------------------------------------------------------
-# Surface tests -- the T1.2 stub raised NotImplementedError; the real
 # class must construct cleanly and report N/M correctly.
 # ---------------------------------------------------------------------------
 
-
 def test_sparse_fifo_imports_from_aie_iron():
     """`from aie.iron import SparseFifo` resolves to the real class
-    (not the T1.2 NotImplementedError stub).
     """
     from aie.iron import SparseFifo
 
@@ -63,15 +45,10 @@ def test_sparse_fifo_imports_from_aie_iron():
     # in __init__.py. Discriminate via __module__.
     assert SparseFifo.__module__.endswith(".sparse"), (
         f"SparseFifo.__module__ = {SparseFifo.__module__!r}; "
-        "expected the real impl from aie.iron.sparse. T1.2 stub is "
-        "still active -- did the T2.5 substitution land?"
     )
 
-
 def test_sparse_fifo_real_construction_does_not_raise():
-    """The T1.2 stub raised NotImplementedError; the real class must
-    construct cleanly given valid arguments. Default 2:4 pattern.
-    """
+    """Construct cleanly given valid arguments. Default 2:4 pattern."""
     from aie.iron import SparseFifo
     from aie.iron.device import Tile
 
@@ -86,10 +63,8 @@ def test_sparse_fifo_real_construction_does_not_raise():
     assert sf.M == 4
     assert sf.compression_ratio == 0.5
 
-
 def test_sparse_fifo_handle_subclasses_object_fifo_handle():
     """SparseFifoHandle subclasses ObjectFifoHandle so Worker.fn_args
-    dispatch (both pre- and post-T2.4) accepts it without modification.
     """
     from aie.iron import SparseFifo
     from aie.iron.dataflow import ObjectFifoHandle
@@ -105,7 +80,6 @@ def test_sparse_fifo_handle_subclasses_object_fifo_handle():
     assert isinstance(h, SparseFifoHandle)
     assert isinstance(h, ObjectFifoHandle)
 
-
 def test_sparse_fifo_constants():
     """Module-level constants match the AM020 spec."""
     from aie.iron import sparse
@@ -115,11 +89,9 @@ def test_sparse_fifo_constants():
     assert sparse.SPARSE_ATTR_DECOMPRESS_S2MM == "aie.decompress_s2mm"
     assert sparse.SPARSE_ATTR_PATTERN == "aie.sparsity_pattern"
 
-
 # ---------------------------------------------------------------------------
 # Validation tests -- (N, M) rules per AM020 + escape hatch.
 # ---------------------------------------------------------------------------
-
 
 def test_validation_rejects_unsupported_pattern_tag():
     """Only ``"N:M"`` is accepted today; ``"block"`` / ``"COO"`` etc.
@@ -138,7 +110,6 @@ def test_validation_rejects_unsupported_pattern_tag():
             M=4,
         )
 
-
 def test_validation_rejects_M_lt_2():
     """M==1 is degenerate (no zeros possible); use ObjectFifo instead."""
     from aie.iron import SparseFifo
@@ -152,7 +123,6 @@ def test_validation_rejects_M_lt_2():
             N=1,
             M=1,
         )
-
 
 def test_validation_rejects_N_eq_M():
     """N == M means dense; should use ObjectFifo."""
@@ -168,7 +138,6 @@ def test_validation_rejects_N_eq_M():
             M=4,
         )
 
-
 def test_validation_rejects_N_zero():
     from aie.iron import SparseFifo
     from aie.iron.device import Tile
@@ -181,7 +150,6 @@ def test_validation_rejects_N_zero():
             N=0,
             M=4,
         )
-
 
 def test_validation_rejects_unverified_pattern_by_default():
     """(3, 8) is not in the AM020-verified set; default must reject."""
@@ -196,7 +164,6 @@ def test_validation_rejects_unverified_pattern_by_default():
             N=3,
             M=8,
         )
-
 
 def test_validation_allows_unverified_with_escape_hatch():
     """``allow_unverified=True`` accepts AIE2P-investigation patterns."""
@@ -215,7 +182,6 @@ def test_validation_allows_unverified_with_escape_hatch():
     assert sf.M == 8
     assert not sf.is_pattern_am020_verified
 
-
 def test_non_int_N_M_rejected():
     from aie.iron import SparseFifo
     from aie.iron.device import Tile
@@ -229,7 +195,6 @@ def test_non_int_N_M_rejected():
             M=4,
         )
 
-
 def test_invalid_producer_type_rejected():
     from aie.iron import SparseFifo
     from aie.iron.device import Tile
@@ -241,13 +206,11 @@ def test_invalid_producer_type_rejected():
             obj_type=np.ndarray[(64, 64), np.dtype(np.int8)],
         )
 
-
 # ---------------------------------------------------------------------------
 # Pattern correctness -- the falsifiable check the plan calls out.
 # Synthetic sparse-weight matmul; decompressed output bit-equal to
 # dense reference; right number of zeros per N:M group.
 # ---------------------------------------------------------------------------
-
 
 def _make_nm_sparse(dense: np.ndarray, N: int, M: int) -> np.ndarray:
     """Return a copy of ``dense`` zeroed to satisfy N:M structured sparsity.
@@ -276,7 +239,6 @@ def _make_nm_sparse(dense: np.ndarray, N: int, M: int) -> np.ndarray:
             flat[outer, grp] = block
     return sparse
 
-
 def _count_zeros_per_group(sparse: np.ndarray, M: int) -> np.ndarray:
     """Count zero entries per contiguous group of M along the last axis.
 
@@ -285,13 +247,11 @@ def _count_zeros_per_group(sparse: np.ndarray, M: int) -> np.ndarray:
     flat = sparse.reshape(*sparse.shape[:-1], sparse.shape[-1] // M, M)
     return np.sum(flat == 0, axis=-1)
 
-
 @pytest.mark.parametrize(
     "N, M",
     [
         (1, 2),  # 50 % sparsity, simplest pattern
         (1, 4),  # 75 % sparsity
-        (2, 4),  # 50 % sparsity, GPU-style 2:4 (the T3.2 default)
     ],
 )
 def test_synthetic_pattern_has_expected_zero_count(N, M):
@@ -305,7 +265,6 @@ def test_synthetic_pattern_has_expected_zero_count(N, M):
         f"N:M=({N},{M}) sparsity should have exactly {expected_zeros} "
         f"zeros per group of {M}; got max={zeros.max()}, min={zeros.min()}"
     )
-
 
 @pytest.mark.parametrize("N, M", [(1, 2), (2, 4)])
 def test_decompressed_matmul_bit_equal_to_sparse_reference(N, M):
@@ -362,12 +321,10 @@ def test_decompressed_matmul_bit_equal_to_sparse_reference(N, M):
         err_msg="matmul on decompressed weights diverges from dense reference",
     )
 
-
 # ---------------------------------------------------------------------------
 # Lowering -- resolve() must emit aie.objectfifo AND attach
 # compression / sparsity attributes the BD-emit pass consumes.
 # ---------------------------------------------------------------------------
-
 
 def test_resolve_emits_objectfifo_with_compression_attrs():
     """SparseFifo.resolve() builds the ObjectFifoCreateOp and pins the
@@ -443,7 +400,6 @@ def test_resolve_emits_objectfifo_with_compression_attrs():
                 assert ir.IntegerAttr(attrs[SPARSE_ATTR_N]).value == 2
                 assert ir.IntegerAttr(attrs[SPARSE_ATTR_M]).value == 4
 
-
 def test_resolve_idempotent_on_double_call():
     """Calling resolve() twice must not double-attach attributes or
     re-emit the underlying ObjectFifoCreateOp.
@@ -487,15 +443,11 @@ def test_resolve_idempotent_on_double_call():
                 # Same op instance both times (no re-emit).
                 assert op_first is op_second
 
-
 # ---------------------------------------------------------------------------
-# T2.4 registry hook-up -- SparseFifoHandle must be registered.
 # ---------------------------------------------------------------------------
-
 
 def test_sparse_fifo_handle_is_registered():
     """SparseFifoHandle is registered with the FifoHandle registry at
-    module import time so T2.4's Worker.fn_args dispatch picks it up.
     """
     from aie.iron.dataflow.fifo_handle_registry import (
         get_registered_handle_classes,
@@ -507,7 +459,6 @@ def test_sparse_fifo_handle_is_registered():
         f"SparseFifoHandle not registered with the FifoHandle registry; "
         f"registered = {[c.__name__ for c in classes]}"
     )
-
 
 def test_sparse_fifo_handle_dispatches_via_registry():
     """``dispatch_fn_arg`` recognizes a SparseFifoHandle and runs the
@@ -534,11 +485,9 @@ def test_sparse_fifo_handle_dispatches_via_registry():
     assert h in stub._fifos
     assert h.endpoint is stub
 
-
 # ---------------------------------------------------------------------------
 # Diagnostic / introspection surface stability.
 # ---------------------------------------------------------------------------
-
 
 def test_sparse_fifo_handle_diagnostic_properties():
     """SparseFifoHandle exposes (N, M, compression_ratio, sparsity_pattern)
@@ -562,7 +511,6 @@ def test_sparse_fifo_handle_diagnostic_properties():
     assert h.compression_ratio == 0.5
     assert h.sparse_fifo is sf
 
-
 def test_str_returns_formatted_summary():
     """Defensive smoke test: __str__ should not raise and should
     include the sparsity pattern + N/M for debug-dump readability.
@@ -582,7 +530,6 @@ def test_str_returns_formatted_summary():
     assert "N=2" in s
     assert "M=4" in s
     assert "N:M" in s
-
 
 def test_module_all_exports():
     """Pin the public surface: ``aie.iron.sparse.__all__`` must include

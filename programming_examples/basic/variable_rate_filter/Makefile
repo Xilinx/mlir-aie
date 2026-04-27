@@ -6,7 +6,6 @@
 #
 # Copyright (C) 2026, Advanced Micro Devices, Inc.
 #
-# G-T3.2-007 worked example: VariableRateFifo end-to-end demo.
 # Mirrors the passthrough_kernel Makefile shape; the only
 # difference is the kernel object filename and the topology .py.
 #
