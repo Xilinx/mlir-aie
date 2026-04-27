@@ -7,42 +7,33 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 #
 #
-# A producer worker reads each input window from a fixed-rate
-# upstream ObjectFifo, inspects its first byte, and conditionally
-# forwards the window to a downstream VariableRateFifo. The
+# A producer worker reads input windows from a fixed-rate upstream
+# ObjectFifo. On every other window it forwards the window to a
+# downstream VariableRateFifo via acquire/release; on the alternate
+# window it calls ``discard(1)`` on the producer handle, telling the
+# variable-rate fifo to skip that slot without forwarding. The
 # downstream consumer (the host runtime drain) sees only the
 # forwarded windows.
-#
-# Predicate is "first byte is even" -> ~50 % of windows forwarded.
-# Choosing a deterministic predicate over the data makes the
-# expected output verifiable on the host without baking the
-# predicate into the test harness.
 #
 # Topology:
 #
 #   shim DMA (host) --> in_of (ObjectFifo) --> Tile A (filter) -->
 #       out_of (VariableRateFifo) --> shim DMA (host)
 #
-# The filter kernel:
-#
-#   def filter_fn(in_handle, out_handle):
-#       in_view = in_handle.acquire(1)
-#       win = in_view[0]
-#       if win[0] % 2 == 0:
-#           out_view = out_handle.acquire(1)
-#           # passthrough copy
-#           for i in range(line_size):
-#               out_view[0][i] = win[i]
-#           out_handle.release(1)
-#       else:
-#       in_handle.release(1)
-#
 # This example demonstrates:
-#   1. The IRON-level discard(n) API works at the producer side.
+#   1. The IRON-level discard(n) API works at the producer side and
+#      is invoked in a branch where the producer chooses not to forward.
 #   2. The lowered MLIR carries the aie.variable_rate = true marker
 #      on the out_of ObjectFifoCreateOp.
 #   3. The lowering pass routes out_of through the runtime-counter
-#      machinery (no LCM unroll fights the conditional).
+#      machinery (no LCM unroll fights the asymmetric rates).
+#
+# Note: a richer "predicate decided in the C++ kernel per window"
+# variant is not expressible at the current IRON-Python layer without
+# a first-class scf.if lowering on the conditional acquire/release.
+# This example uses a Python-level deterministic skip pattern, which
+# still exercises the discard() API and the variable_rate marker
+# end-to-end.
 #
 # Build (rebuilds against the worktree's variable_rate.py + the
 # patched AIEObjectFifoStatefulTransform.cpp):
@@ -112,30 +103,36 @@ def my_variable_rate_filter(dev, in_size, out_size):
         [line_type, line_type, np.int32],  # in_window, out_window, line_size
     )
 
+    # Producer worker. Uses a Python-level deterministic skip pattern
+    # — every other window is forwarded, the alternate window is
+    # discarded via the producer-side ``discard(1)`` API. This demonstrates
+    # the variable-rate codepath: the producer's loop has asymmetric
+    # acquire / release counts on the variable-rate output fifo (acquire+
+    # release on forwarded iterations, discard on skipped ones) which the
+    # ``aie.variable_rate = true`` marker tells the lowering pass to
+    # accept (LCM-based loop unrolling is bypassed; the runtime-counter
+    # machinery handles the asymmetric rates).
+    #
+    # Predicate-based skip (where the C++ kernel decides per window) is
+    # sketched in the module-level comment but isn't expressible at the
+    # current IRON-Python layer without a first-class ``scf.if`` lowering.
     def core_fn(in_handle, out_handle, filter_fn):
-        # Acquire one input window at a time.
-        in_view = in_handle.acquire(1)
-        # filterFirstByteEven returns 1 on forward, 0 on skip.
-        # The IRON Python doesn't inspect the return; the kernel
-        # writes to the output buffer iff returning 1.
-        out_view = out_handle.acquire(1)
-        forward_flag = filter_fn(in_view, out_view, line_size)
-        # Note: in IRON Python today there is no first-class
-        # `if forward_flag:` -- the conditional acquire/release
-        # pattern is emitted by the kernel function via a runtime
-        # branch. The KEY part of the demo is the discard() call
-        # below: it tells the lowering pass that the static-rate
-        # invariant is intentionally relaxed for this fifo.
-        out_handle.release(1)
-        # discard(0) is a documentary no-op for the matched-rate
-        # path (every iteration releases 1 + discards 0); the
-        # test purpose is only to demonstrate the discard()
-        # method exists and is callable on a producer handle.
-        # A REAL skip-emitting kernel uses discard(1) in a
-        # branch alongside an absent acquire/release pair on
-        # this fifo; documenting that pattern is the goal of
-        # this example.
-        in_handle.release(1)
+        # Two iterations per worker invocation: forward, then discard.
+        # The Worker's outer while-true loop drives the cycle.
+        for skip in range(2):
+            in_view = in_handle.acquire(1)
+            if skip == 0:
+                out_view = out_handle.acquire(1)
+                # Kernel performs the copy on the forwarded iteration.
+                filter_fn(in_view, out_view, line_size)
+                out_handle.release(1)
+            else:
+                # Skipped iteration: tell the variable-rate fifo we
+                # intentionally chose not to forward this slot. The
+                # consumer's count is unaffected; only the producer's
+                # discard counter increments.
+                out_handle.discard(1)
+            in_handle.release(1)
 
     my_worker = Worker(
         core_fn,
