@@ -68,6 +68,27 @@ module @flow_memtile_two_cores {
 
 // -----
 
+// Cores pinned to columns 0 and 2: memtile lands at the rounded average (col 1).
+// CHECK-LABEL: @flow_memtile_averaging
+module @flow_memtile_averaging {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[C0:.*]] = aie.tile(0, 2)
+    %c0 = aie.logical_tile<CoreTile>(0, 2)
+    // CHECK-DAG: %[[C2:.*]] = aie.tile(2, 2)
+    %c2 = aie.logical_tile<CoreTile>(2, 2)
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(1, 1)
+    %mem = aie.logical_tile<MemTile>(?, ?)
+
+    aie.flow(%mem, DMA : 0, %c0, DMA : 0)
+    aie.flow(%mem, DMA : 1, %c2, DMA : 0)
+    aie.core(%c0) { aie.end }
+    aie.core(%c2) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
 // Two MM2S flows fit within a npu1 shim's 2 source DMA channels.
 // CHECK-LABEL: @flow_shim_channel_capacity
 module @flow_shim_channel_capacity {
