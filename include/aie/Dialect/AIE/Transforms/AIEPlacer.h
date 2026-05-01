@@ -13,6 +13,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "llvm/ADT/MapVector.h"
 
 namespace xilinx::AIE {
 
@@ -96,9 +97,9 @@ private:
   void buildFlowGroups(
       llvm::SmallVector<FlowOp> &flows,
       llvm::SmallVector<PacketFlowOp> &pktFlows,
-      llvm::DenseMap<int, llvm::SmallVector<LogicalTileOp>>
+      llvm::MapVector<int, llvm::SmallVector<LogicalTileOp>>
           &groupToNonCoreTiles,
-      llvm::DenseMap<int, llvm::SmallVector<LogicalTileOp>> &groupToCoreTiles);
+      llvm::MapVector<int, llvm::SmallVector<LogicalTileOp>> &groupToCoreTiles);
 
   std::optional<TileID> findTileWithCapacity(int targetCol,
                                              std::vector<TileID> &tiles,

@@ -9,6 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
@@ -302,9 +304,11 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     }
   }
 
-  // Phase 4b: Place mem/shim tiles by Flow-based connectivity groups
-  llvm::DenseMap<int, SmallVector<LogicalTileOp>> flowGroupNonCore;
-  llvm::DenseMap<int, SmallVector<LogicalTileOp>> flowGroupCores;
+  // Phase 4b: Place mem/shim tiles by Flow-based connectivity groups.
+  // MapVector keeps group iteration deterministic so placement is reproducible
+  // when multiple groups compete for the same physical tiles.
+  llvm::MapVector<int, SmallVector<LogicalTileOp>> flowGroupNonCore;
+  llvm::MapVector<int, SmallVector<LogicalTileOp>> flowGroupCores;
   buildFlowGroups(flows, pktFlows, flowGroupNonCore, flowGroupCores);
 
   for (auto &[groupId, nonCoreTiles] : flowGroupNonCore) {
@@ -637,12 +641,14 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
   }
 }
 
+// MapVector / SetVector preserve insertion order, which keeps group IDs and
+// per-group tile order stable across runs even when DMA capacity is tight.
 void SequentialPlacer::buildFlowGroups(
     SmallVector<FlowOp> &flows, SmallVector<PacketFlowOp> &pktFlows,
-    llvm::DenseMap<int, SmallVector<LogicalTileOp>> &groupToNonCoreTiles,
-    llvm::DenseMap<int, SmallVector<LogicalTileOp>> &groupToCoreTiles) {
+    llvm::MapVector<int, SmallVector<LogicalTileOp>> &groupToNonCoreTiles,
+    llvm::MapVector<int, SmallVector<LogicalTileOp>> &groupToCoreTiles) {
 
-  llvm::DenseMap<LogicalTileOp, llvm::DenseSet<LogicalTileOp>> adj;
+  llvm::MapVector<LogicalTileOp, llvm::SetVector<LogicalTileOp>> adj;
 
   auto addEdge = [&](Value srcVal, Value dstVal) {
     auto srcLT = dyn_cast_or_null<LogicalTileOp>(srcVal.getDefiningOp());
@@ -671,7 +677,8 @@ void SequentialPlacer::buildFlowGroups(
 
   llvm::DenseSet<LogicalTileOp> visited;
   int nextGroupId = 0;
-  for (auto &[seed, _] : adj) {
+  for (auto &entry : adj) {
+    LogicalTileOp seed = entry.first;
     if (visited.count(seed))
       continue;
     int gid = nextGroupId++;
