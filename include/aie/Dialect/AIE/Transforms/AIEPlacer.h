@@ -22,6 +22,15 @@ enum class PlacerType { SequentialPlacer };
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
 
+// For each LogicalTileOp involved in a cascade flow, the set of (peer,
+// thisIsCascadeDst) tuples. `thisIsCascadeDst==true` means this tile is the
+// destination of a cascade_flow whose source is `peer`; the lowered cascade
+// requires `peer` to be one row higher (north) or one column to the left
+// (west) of this tile. `thisIsCascadeDst==false` is the reverse.
+using CascadeAdjacency =
+    llvm::DenseMap<mlir::Operation *,
+                   llvm::SmallVector<std::pair<LogicalTileOp, bool>, 2>>;
+
 // Track available tiles and resource usage
 struct TileAvailability {
   std::vector<TileID> compTiles;
@@ -113,6 +122,16 @@ private:
   buildChannelRequirements(
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+
+  void buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows,
+                             CascadeAdjacency &adjacency);
+
+  // Returns true iff placing `logicalTile` at `candidate` would satisfy every
+  // cascade adjacency constraint relative to peers that are already placed in
+  // `result`. Unplaced peers impose no constraint at this point — they will
+  // be checked when they themselves get placed.
+  bool satisfiesCascadeAdjacency(LogicalTileOp logicalTile, TileID candidate,
+                                 const CascadeAdjacency &adjacency) const;
 };
 
 } // namespace xilinx::AIE

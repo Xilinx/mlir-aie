@@ -182,6 +182,48 @@ module @compute_tiles_exhausted {
 
 // -----
 
+// Cascade chain too long for a single column on npu1_1col (4 core rows).
+// Head pinned at row 5, chain extends south to (0,4), (0,3), (0,2), then the
+// fifth tile has no valid neighbour (row 1 is non-core and there's no col 1).
+module @cascade_chain_unsatisfiable {
+  aie.device(npu1_1col) {
+    %a = aie.logical_tile<CoreTile>(0, 5)
+    %b = aie.logical_tile<CoreTile>(?, ?)
+    %c = aie.logical_tile<CoreTile>(?, ?)
+    %d = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK: error: no available compute tiles for placement (cascade adjacency unsatisfiable)
+    %e = aie.logical_tile<CoreTile>(?, ?)
+    aie.cascade_flow(%a, %b)
+    aie.cascade_flow(%b, %c)
+    aie.cascade_flow(%c, %d)
+    aie.cascade_flow(%d, %e)
+    aie.core(%a) { aie.end }
+    aie.core(%b) { aie.end }
+    aie.core(%c) { aie.end }
+    aie.core(%d) { aie.end }
+    aie.core(%e) { aie.end }
+  }
+}
+
+// -----
+
+// Cascade direction that the cascade_flow verifier accepts (cardinal
+// adjacent) but the lowering rejects: source must be south or west of dest,
+// not north or east. Here %src at (0,4) is north of %dst at (0,5), so the
+// placer rejects when %src is placed after %dst.
+module @cascade_pinned_wrong_direction {
+  aie.device(npu1) {
+    %dst = aie.logical_tile<CoreTile>(0, 5)
+    // CHECK: error: tile (0, 4) violates cascade adjacency with an already-placed peer
+    %src = aie.logical_tile<CoreTile>(0, 4)
+    aie.cascade_flow(%src, %dst)
+    aie.core(%src) { aie.end }
+    aie.core(%dst) { aie.end }
+  }
+}
+
+// -----
+
 // Mixed input/output exceeds capacity
 module @mixed_channels_exceed_capacity {
   aie.device(npu1) {

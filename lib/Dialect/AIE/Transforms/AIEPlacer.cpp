@@ -120,6 +120,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   SmallVector<LogicalTileOp> logicalTiles;
   SmallVector<ObjectFifoCreateOp> objectFifos;
   SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+  SmallVector<CascadeFlowOp> cascadeFlows;
 
   device.walk([&](Operation *op) {
     if (auto lt = dyn_cast<LogicalTileOp>(op))
@@ -128,11 +129,17 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       objectFifos.push_back(of);
     if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
       objectFifoLinks.push_back(link);
+    if (auto cf = dyn_cast<CascadeFlowOp>(op))
+      cascadeFlows.push_back(cf);
   });
 
-  // Phase 2: Build channel requirements from ObjectFifo connectivity
+  // Phase 2: Build channel requirements from ObjectFifo connectivity, and
+  // cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
+
+  CascadeAdjacency cascadeAdjacency;
+  buildCascadeAdjacency(cascadeFlows, cascadeAdjacency);
 
   // Phase 3: Place constrained tiles then compute tiles
   size_t nextCompIdx = 0;
@@ -142,6 +149,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     auto row = logicalTile.tryGetRow();
     if (col && row) {
       TileID tile{*col, *row};
+      if (!satisfiesCascadeAdjacency(logicalTile, tile, cascadeAdjacency))
+        return logicalTile.emitError()
+               << "tile (" << tile.col << ", " << tile.row
+               << ") violates cascade adjacency with an already-placed peer";
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
                                                channelRequirements, true)))
         return failure();
@@ -167,6 +178,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           continue;
         if (row && candidate.row != *row)
           continue;
+        if (!satisfiesCascadeAdjacency(logicalTile, candidate,
+                                       cascadeAdjacency))
+          continue;
 
         // Found valid tile - swap to nextCompIdx position and use
         std::swap(availability.compTiles[i],
@@ -176,14 +190,17 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       }
 
       if (!placement) {
+        bool hasCascade = cascadeAdjacency.count(logicalTile.getOperation());
         if (col || row) {
           return logicalTile.emitError()
                  << "no compute tile available matching constraint ("
                  << (col ? std::to_string(*col) : "?") << ", "
-                 << (row ? std::to_string(*row) : "?") << ")";
+                 << (row ? std::to_string(*row) : "?") << ")"
+                 << (hasCascade ? " and cascade adjacency" : "");
         }
-        return logicalTile.emitError(
-            "no available compute tiles for placement");
+        return logicalTile.emitError()
+               << "no available compute tiles for placement"
+               << (hasCascade ? " (cascade adjacency unsatisfiable)" : "");
       }
 
       if (failed(validateAndUpdateChannelUsage(logicalTile, *placement,
@@ -469,6 +486,57 @@ SequentialPlacer::buildChannelRequirements(
   }
 
   return channelRequirements;
+}
+
+void SequentialPlacer::buildCascadeAdjacency(
+    ArrayRef<CascadeFlowOp> cascadeFlows, CascadeAdjacency &adjacency) {
+  for (auto cf : cascadeFlows) {
+    auto src =
+        dyn_cast_or_null<LogicalTileOp>(cf.getSourceTile().getDefiningOp());
+    auto dst =
+        dyn_cast_or_null<LogicalTileOp>(cf.getDestTile().getDefiningOp());
+    if (!src || !dst)
+      continue;
+    // src records dst as a peer for which it is the cascade source.
+    adjacency[src.getOperation()].push_back({dst, /*thisIsCascadeDst=*/false});
+    // dst records src as a peer for which it is the cascade destination.
+    adjacency[dst.getOperation()].push_back({src, /*thisIsCascadeDst=*/true});
+  }
+}
+
+bool SequentialPlacer::satisfiesCascadeAdjacency(
+    LogicalTileOp logicalTile, TileID candidate,
+    const CascadeAdjacency &adjacency) const {
+  auto it = adjacency.find(logicalTile.getOperation());
+  if (it == adjacency.end())
+    return true;
+
+  for (auto peerEntry : it->second) {
+    LogicalTileOp peer = peerEntry.first;
+    bool thisIsCascadeDst = peerEntry.second;
+    auto placedIt = result.find(peer.getOperation());
+    if (placedIt == result.end())
+      continue; // Peer not placed yet — constraint deferred.
+    TileID peerPos = placedIt->second;
+
+    // Cascade lowering only supports source-north-of-dest (vertical) or
+    // source-west-of-dest (horizontal). So when this tile is the dst, the
+    // peer (=src) must be at (peer.col, peer.row+1) [one row higher = north]
+    // or (peer.col-1, peer.row) [one col left = west] of `candidate`.
+    bool ok;
+    if (thisIsCascadeDst) {
+      // peer must be one row above OR one column left of candidate.
+      ok = (peerPos.col == candidate.col && peerPos.row == candidate.row + 1) ||
+           (peerPos.row == candidate.row && peerPos.col == candidate.col - 1);
+    } else {
+      // peer must be one row below OR one column right of candidate.
+      ok = (peerPos.col == candidate.col && peerPos.row == candidate.row - 1) ||
+           (peerPos.row == candidate.row && peerPos.col == candidate.col + 1);
+    }
+    if (!ok)
+      return false;
+  }
+  return true;
 }
 
 void SequentialPlacer::buildObjectFifoGroups(
