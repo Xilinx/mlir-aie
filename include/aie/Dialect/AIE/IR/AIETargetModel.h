@@ -259,8 +259,9 @@ public:
 
   /// Return the data bus width (in bits) for load/store operations of a compute core.
   virtual uint32_t getComputeTileLoadStoreBusWidth() const = 0;
-  
-  //NOTE: maybe it should be set to 4Byte align? Since DMA on Memtile seem handles the unalign access
+
+  // NOTE: Maybe this should be set to 4-byte alignment, since DMA on Memtile
+  // seems to handle unaligned access.
   /// Return the data bus width (in bits) for load/store operations of a memory tile.
   virtual uint32_t getMemTileLoadStoreBusWidth() const = 0;
 
