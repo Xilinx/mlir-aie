@@ -136,9 +136,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       pktFlows.push_back(pf);
   });
 
-  // Phase 2: Build channel requirements. ObjectFifo connectivity is the
-  // primary source; `aie.flow` / `aie.packet_flow` ops contribute additively
-  // so the placer can be channel-aware on lowered IR (e.g. AIR's DMA path).
+  // Phase 2: Build channel requirements from ObjectFifo and Flow connectivity
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
   addChannelRequirementsFromFlows(flows, pktFlows, channelRequirements);
@@ -304,10 +302,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     }
   }
 
-  // Phase 4b: Place mem/shim tiles by flow-based connectivity groups.
-  // Mirrors phase 4 but for non-core tiles connected to cores via `aie.flow`
-  // / `aie.packet_flow` (AIR DMA path, or any IR that has lowered objectfifos
-  // away). Tiles already placed by phase 4 are skipped.
+  // Phase 4b: Place mem/shim tiles by Flow-based connectivity groups
   llvm::DenseMap<int, SmallVector<LogicalTileOp>> flowGroupNonCore;
   llvm::DenseMap<int, SmallVector<LogicalTileOp>> flowGroupCores;
   buildFlowGroups(flows, pktFlows, flowGroupNonCore, flowGroupCores);
@@ -605,11 +600,8 @@ void SequentialPlacer::buildObjectFifoGroups(
   }
 }
 
-// Increment per-tile DMA channel demand based on `aie.flow` /
-// `aie.packet_flow`. A flow whose source bundle is DMA consumes one MM2S
-// channel on the source tile; a flow whose dest bundle is DMA consumes one
-// S2MM channel on the dest tile. Only counts when the endpoint's defining op
-// is a LogicalTileOp (already-resolved TileOps have no placer-visible budget).
+// Already-resolved TileOps have no placer-visible budget, so only flows whose
+// endpoints are LogicalTileOps contribute to channelRequirements.
 void SequentialPlacer::addChannelRequirementsFromFlows(
     SmallVector<FlowOp> &flows, SmallVector<PacketFlowOp> &pktFlows,
     llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
@@ -645,19 +637,11 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
   }
 }
 
-// Group LogicalTileOps by connected component over flow connectivity.
-// Each `aie.flow` / `aie.packet_flow` (source, dest) endpoint pair is treated
-// as an undirected edge. Connected components are assigned dense group IDs
-// starting at 0 (independent of objectfifo groups). For each group,
-// `groupToNonCoreTiles` collects non-core LogicalTileOps that need placement;
-// `groupToCoreTiles` collects core LogicalTileOps used to compute the group's
-// common column (for placing mem/shim near connected cores).
 void SequentialPlacer::buildFlowGroups(
     SmallVector<FlowOp> &flows, SmallVector<PacketFlowOp> &pktFlows,
     llvm::DenseMap<int, SmallVector<LogicalTileOp>> &groupToNonCoreTiles,
     llvm::DenseMap<int, SmallVector<LogicalTileOp>> &groupToCoreTiles) {
 
-  // Build adjacency over LogicalTileOp endpoints.
   llvm::DenseMap<LogicalTileOp, llvm::DenseSet<LogicalTileOp>> adj;
 
   auto addEdge = [&](Value srcVal, Value dstVal) {
@@ -680,13 +664,11 @@ void SequentialPlacer::buildFlowGroups(
       else if (auto dst = dyn_cast<PacketDestOp>(op))
         dsts.push_back(dst.getTile());
     });
-    // Connect every source to every destination in this packet flow.
     for (auto s : srcs)
       for (auto d : dsts)
         addEdge(s, d);
   }
 
-  // BFS connected components.
   llvm::DenseSet<LogicalTileOp> visited;
   int nextGroupId = 0;
   for (auto &[seed, _] : adj) {

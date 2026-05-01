@@ -8,19 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Tests that --aie-place-tiles is connectivity-aware on lowered IR using
-// `aie.flow` and `aie.packet_flow` (no `aie.objectfifo` involved).
-
 // RUN: aie-opt --split-input-file --aie-place-tiles %s | FileCheck %s
 
-// MemTile placed near connected core via aie.flow (mirrors the objectfifo
-// `memtile_near_core` test in test_place_basic.mlir).
+// MemTile placed near connected core via aie.flow.
 // CHECK-LABEL: @flow_memtile_near_core
 module @flow_memtile_near_core {
   aie.device(npu1) {
     // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
     %core = aie.logical_tile<CoreTile>(?, ?)
-    // MemTile placed near core's column (0).
     // CHECK-DAG: %[[MEM:.*]] = aie.tile(0, 1)
     %mem = aie.logical_tile<MemTile>(?, ?)
     // CHECK: aie.flow(%[[MEM]], DMA : 0, %[[CORE]], DMA : 0)
@@ -31,8 +26,7 @@ module @flow_memtile_near_core {
 
 // -----
 
-// Shim --DMA flow--> Mem --DMA flow--> Core: connected component places mem
-// and shim near the core's column (column 0 by default).
+// Shim->Mem->Core: connected component places mem and shim in the core's column.
 // CHECK-LABEL: @flow_chain_shim_mem_core
 module @flow_chain_shim_mem_core {
   aie.device(npu1) {
@@ -53,11 +47,7 @@ module @flow_chain_shim_mem_core {
 
 // -----
 
-// Two unconstrained cores in different columns share a memtile via flows.
-// The memtile's common column is the rounded average of the two cores'
-// placed columns. With sequential column-major placement on npu1, the two
-// cores land in (0,2) and (0,3) — both column 0 — so the memtile lands in
-// column 0 too.
+// Memtile shared by two cores: common column is the rounded average.
 // CHECK-LABEL: @flow_memtile_two_cores
 module @flow_memtile_two_cores {
   aie.device(npu1) {
@@ -78,13 +68,10 @@ module @flow_memtile_two_cores {
 
 // -----
 
-// Channel capacity is enforced from flows: a constrained shim with too many
-// MM2S flows out of it errors out.
+// Two MM2S flows fit within a npu1 shim's 2 source DMA channels.
 // CHECK-LABEL: @flow_shim_channel_capacity
 module @flow_shim_channel_capacity {
   aie.device(npu1) {
-    // npu1 ShimMux has 2 source DMA channels per shim. Two flows out from a
-    // pinned shim should succeed.
     // CHECK-DAG: %[[SHIM:.*]] = aie.tile(0, 0)
     %shim = aie.logical_tile<ShimNOCTile>(0, 0)
     // CHECK-DAG: %[[C1:.*]] = aie.tile(0, 2)
@@ -118,9 +105,7 @@ module @packet_flow_memtile_near_core {
 
 // -----
 
-// Non-DMA bundles do NOT contribute to channel demand. A core-to-core flow
-// over the Core bundle places without consuming any DMA channels — capacity
-// check should not fire even though both endpoints are on the same column.
+// Non-DMA bundles do not contribute to channel demand.
 // CHECK-LABEL: @flow_core_bundle_no_dma
 module @flow_core_bundle_no_dma {
   aie.device(npu1) {
