@@ -138,3 +138,62 @@ module @flow_core_bundle_no_dma {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// Objectfifo and flow on the same tiles contribute additively.
+// CHECK-LABEL: @mixed_objfifo_and_flow
+module @mixed_objfifo_and_flow {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(0, 1)
+    %mem  = aie.logical_tile<MemTile>(?, ?)
+    // CHECK-DAG: %[[SHIM:.*]] = aie.tile(0, 0)
+    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
+
+    aie.objectfifo @of1 (%shim, {%mem}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.flow(%mem, DMA : 0, %core, DMA : 0)
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// Packet flow with one source and two destinations: every src x dst pair
+// becomes a connectivity edge, and both destinations land in the source's
+// connected component.
+// CHECK-LABEL: @packet_flow_one_to_many
+module @packet_flow_one_to_many {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[C1:.*]] = aie.tile(0, 2)
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[C2:.*]] = aie.tile(0, 3)
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(0, 1)
+    %mem = aie.logical_tile<MemTile>(?, ?)
+    aie.packet_flow(0x1) {
+      aie.packet_source<%mem, DMA : 0>
+      aie.packet_dest<%c1,  DMA : 0>
+      aie.packet_dest<%c2,  DMA : 0>
+    }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// A flow with one already-resolved TileOp endpoint and one LogicalTileOp
+// endpoint: the TileOp side contributes nothing (no placer-visible budget),
+// the LogicalTileOp side still placement-validates and gets placed.
+// CHECK-LABEL: @flow_mixed_logical_and_tile
+module @flow_mixed_logical_and_tile {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[SHIM:.*]] = aie.tile(0, 0)
+    %shim = aie.tile(0, 0)
+    // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
+    %core = aie.logical_tile<CoreTile>(?, ?)
+    aie.flow(%shim, DMA : 0, %core, DMA : 0)
+    // CHECK-NOT: aie.logical_tile
+  }
+}

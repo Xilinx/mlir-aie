@@ -96,13 +96,12 @@ private:
 
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
-  void
-  buildObjectFifoGroups(llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
-                        llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
-                        llvm::SmallVectorImpl<ConnectivityGroup> &groups);
+  void buildObjectFifoGroups(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+                             llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks,
+                             llvm::SmallVectorImpl<ConnectivityGroup> &groups);
 
-  void buildFlowGroups(llvm::SmallVector<FlowOp> &flows,
-                       llvm::SmallVector<PacketFlowOp> &pktFlows,
+  void buildFlowGroups(llvm::ArrayRef<FlowOp> flows,
+                       llvm::ArrayRef<PacketFlowOp> pktFlows,
                        llvm::SmallVectorImpl<ConnectivityGroup> &groups);
 
   mlir::LogicalResult placeNonCoreTilesInGroup(
@@ -132,8 +131,7 @@ private:
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
   void addChannelRequirementsFromFlows(
-      llvm::SmallVector<FlowOp> &flows,
-      llvm::SmallVector<PacketFlowOp> &pktFlows,
+      llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
 };

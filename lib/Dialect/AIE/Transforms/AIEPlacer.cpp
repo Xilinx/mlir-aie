@@ -398,8 +398,8 @@ SequentialPlacer::buildChannelRequirements(
 }
 
 void SequentialPlacer::buildObjectFifoGroups(
-    SmallVector<ObjectFifoCreateOp> &objectFifos,
-    SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
+    ArrayRef<ObjectFifoCreateOp> objectFifos,
+    ArrayRef<ObjectFifoLinkOp> objectFifoLinks,
     SmallVectorImpl<ConnectivityGroup> &groups) {
 
   // Linked fifos share a group ID. Unlinked fifos each get their own.
@@ -448,7 +448,7 @@ void SequentialPlacer::buildObjectFifoGroups(
 // Already-resolved TileOps have no placer-visible budget, so only flows whose
 // endpoints are LogicalTileOps contribute to channelRequirements.
 void SequentialPlacer::addChannelRequirementsFromFlows(
-    SmallVector<FlowOp> &flows, SmallVector<PacketFlowOp> &pktFlows,
+    ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
     llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
 
   auto incIfDMA = [&](Operation *tileOp, WireBundle bundle, bool isOutput) {
@@ -485,10 +485,10 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
 // MapVector / SetVector preserve insertion order so that group identity and
 // per-group tile order are stable across runs even when DMA capacity is tight.
 void SequentialPlacer::buildFlowGroups(
-    SmallVector<FlowOp> &flows, SmallVector<PacketFlowOp> &pktFlows,
+    ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
     SmallVectorImpl<ConnectivityGroup> &groups) {
 
-  llvm::MapVector<LogicalTileOp, llvm::SetVector<LogicalTileOp>> adj;
+  llvm::MapVector<LogicalTileOp, llvm::SmallSetVector<LogicalTileOp, 4>> adj;
 
   auto addEdge = [&](Value srcVal, Value dstVal) {
     auto srcLT = dyn_cast_or_null<LogicalTileOp>(srcVal.getDefiningOp());
