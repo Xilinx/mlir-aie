@@ -120,6 +120,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   SmallVector<LogicalTileOp> logicalTiles;
   SmallVector<ObjectFifoCreateOp> objectFifos;
   SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+  SmallVector<FlowOp> flows;
+  SmallVector<PacketFlowOp> pktFlows;
 
   device.walk([&](Operation *op) {
     if (auto lt = dyn_cast<LogicalTileOp>(op))
@@ -128,11 +130,18 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       objectFifos.push_back(of);
     if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
       objectFifoLinks.push_back(link);
+    if (auto f = dyn_cast<FlowOp>(op))
+      flows.push_back(f);
+    if (auto pf = dyn_cast<PacketFlowOp>(op))
+      pktFlows.push_back(pf);
   });
 
-  // Phase 2: Build channel requirements from ObjectFifo connectivity
+  // Phase 2: Build channel requirements. ObjectFifo connectivity is the
+  // primary source; `aie.flow` / `aie.packet_flow` ops contribute additively
+  // so the placer can be channel-aware on lowered IR (e.g. AIR's DMA path).
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
+  addChannelRequirementsFromFlows(flows, pktFlows, channelRequirements);
 
   // Phase 3: Place constrained tiles then compute tiles
   size_t nextCompIdx = 0;
@@ -288,6 +297,64 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       result[logicalTile] = *maybeTile;
 
       // Update channel usage
+      if (numInputChannels > 0)
+        updateChannelUsage(*maybeTile, false, numInputChannels);
+      if (numOutputChannels > 0)
+        updateChannelUsage(*maybeTile, true, numOutputChannels);
+    }
+  }
+
+  // Phase 4b: Place mem/shim tiles by flow-based connectivity groups.
+  // Mirrors phase 4 but for non-core tiles connected to cores via `aie.flow`
+  // / `aie.packet_flow` (AIR DMA path, or any IR that has lowered objectfifos
+  // away). Tiles already placed by phase 4 are skipped.
+  llvm::DenseMap<int, SmallVector<LogicalTileOp>> flowGroupNonCore;
+  llvm::DenseMap<int, SmallVector<LogicalTileOp>> flowGroupCores;
+  buildFlowGroups(flows, pktFlows, flowGroupNonCore, flowGroupCores);
+
+  for (auto &[groupId, nonCoreTiles] : flowGroupNonCore) {
+    int groupCommonCol = 0;
+    int totalCoreEndpoints = 0;
+    int sumCols = 0;
+
+    auto coresIt = flowGroupCores.find(groupId);
+    if (coresIt != flowGroupCores.end()) {
+      for (auto coreTile : coresIt->second) {
+        if (result.count(coreTile.getOperation())) {
+          sumCols += result[coreTile.getOperation()].col;
+          totalCoreEndpoints++;
+        }
+      }
+    }
+
+    if (totalCoreEndpoints > 0)
+      groupCommonCol = (sumCols + totalCoreEndpoints / 2) / totalCoreEndpoints;
+
+    for (auto logicalTile : nonCoreTiles) {
+      if (result.count(logicalTile.getOperation()))
+        continue;
+
+      auto it = channelRequirements.find(logicalTile.getOperation());
+      int numInputChannels = 0, numOutputChannels = 0;
+      if (it != channelRequirements.end()) {
+        numInputChannels = it->second.first;
+        numOutputChannels = it->second.second;
+      }
+
+      auto colConstraint = logicalTile.tryGetCol();
+      int targetCol = colConstraint ? *colConstraint : groupCommonCol;
+
+      auto maybeTile = findTileWithCapacity(
+          targetCol, availability.nonCompTiles, numInputChannels,
+          numOutputChannels, logicalTile.getTileType());
+
+      if (!maybeTile)
+        return logicalTile.emitError()
+               << "no " << stringifyAIETileType(logicalTile.getTileType())
+               << " with sufficient DMA capacity";
+
+      result[logicalTile] = *maybeTile;
+
       if (numInputChannels > 0)
         updateChannelUsage(*maybeTile, false, numInputChannels);
       if (numOutputChannels > 0)
@@ -533,6 +600,110 @@ void SequentialPlacer::buildObjectFifoGroups(
             groupToLogicalTiles[groupId].push_back(consLogical);
           }
         }
+      }
+    }
+  }
+}
+
+// Increment per-tile DMA channel demand based on `aie.flow` /
+// `aie.packet_flow`. A flow whose source bundle is DMA consumes one MM2S
+// channel on the source tile; a flow whose dest bundle is DMA consumes one
+// S2MM channel on the dest tile. Only counts when the endpoint's defining op
+// is a LogicalTileOp (already-resolved TileOps have no placer-visible budget).
+void SequentialPlacer::addChannelRequirementsFromFlows(
+    SmallVector<FlowOp> &flows, SmallVector<PacketFlowOp> &pktFlows,
+    llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
+
+  auto incIfDMA = [&](Operation *tileOp, WireBundle bundle, bool isOutput) {
+    if (!tileOp || !isa<LogicalTileOp>(tileOp))
+      return;
+    if (bundle != WireBundle::DMA)
+      return;
+    if (isOutput)
+      channelRequirements[tileOp].second++;
+    else
+      channelRequirements[tileOp].first++;
+  };
+
+  for (auto flow : flows) {
+    Operation *srcOp = flow.getSource().getDefiningOp();
+    Operation *dstOp = flow.getDest().getDefiningOp();
+    incIfDMA(srcOp, flow.getSourceBundle(), /*isOutput=*/true);
+    incIfDMA(dstOp, flow.getDestBundle(), /*isOutput=*/false);
+  }
+
+  for (auto pktFlow : pktFlows) {
+    pktFlow.walk([&](Operation *op) {
+      if (auto src = dyn_cast<PacketSourceOp>(op)) {
+        incIfDMA(src.getTile().getDefiningOp(), src.getBundle(),
+                 /*isOutput=*/true);
+      } else if (auto dst = dyn_cast<PacketDestOp>(op)) {
+        incIfDMA(dst.getTile().getDefiningOp(), dst.getBundle(),
+                 /*isOutput=*/false);
+      }
+    });
+  }
+}
+
+// Group LogicalTileOps by connected component over flow connectivity.
+// Each `aie.flow` / `aie.packet_flow` (source, dest) endpoint pair is treated
+// as an undirected edge. Connected components are assigned dense group IDs
+// starting at 0 (independent of objectfifo groups). For each group,
+// `groupToNonCoreTiles` collects non-core LogicalTileOps that need placement;
+// `groupToCoreTiles` collects core LogicalTileOps used to compute the group's
+// common column (for placing mem/shim near connected cores).
+void SequentialPlacer::buildFlowGroups(
+    SmallVector<FlowOp> &flows, SmallVector<PacketFlowOp> &pktFlows,
+    llvm::DenseMap<int, SmallVector<LogicalTileOp>> &groupToNonCoreTiles,
+    llvm::DenseMap<int, SmallVector<LogicalTileOp>> &groupToCoreTiles) {
+
+  // Build adjacency over LogicalTileOp endpoints.
+  llvm::DenseMap<LogicalTileOp, llvm::DenseSet<LogicalTileOp>> adj;
+
+  auto addEdge = [&](Value srcVal, Value dstVal) {
+    auto srcLT = dyn_cast_or_null<LogicalTileOp>(srcVal.getDefiningOp());
+    auto dstLT = dyn_cast_or_null<LogicalTileOp>(dstVal.getDefiningOp());
+    if (!srcLT || !dstLT)
+      return;
+    adj[srcLT].insert(dstLT);
+    adj[dstLT].insert(srcLT);
+  };
+
+  for (auto flow : flows)
+    addEdge(flow.getSource(), flow.getDest());
+
+  for (auto pktFlow : pktFlows) {
+    SmallVector<Value> srcs, dsts;
+    pktFlow.walk([&](Operation *op) {
+      if (auto src = dyn_cast<PacketSourceOp>(op))
+        srcs.push_back(src.getTile());
+      else if (auto dst = dyn_cast<PacketDestOp>(op))
+        dsts.push_back(dst.getTile());
+    });
+    // Connect every source to every destination in this packet flow.
+    for (auto s : srcs)
+      for (auto d : dsts)
+        addEdge(s, d);
+  }
+
+  // BFS connected components.
+  llvm::DenseSet<LogicalTileOp> visited;
+  int nextGroupId = 0;
+  for (auto &[seed, _] : adj) {
+    if (visited.count(seed))
+      continue;
+    int gid = nextGroupId++;
+    SmallVector<LogicalTileOp> stack{seed};
+    visited.insert(seed);
+    while (!stack.empty()) {
+      LogicalTileOp cur = stack.pop_back_val();
+      if (cur.getTileType() == AIETileType::CoreTile)
+        groupToCoreTiles[gid].push_back(cur);
+      else
+        groupToNonCoreTiles[gid].push_back(cur);
+      for (auto nbr : adj[cur]) {
+        if (visited.insert(nbr).second)
+          stack.push_back(nbr);
       }
     }
   }

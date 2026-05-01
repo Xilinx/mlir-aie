@@ -93,6 +93,18 @@ private:
       llvm::DenseMap<int, llvm::SmallVector<LogicalTileOp>>
           &groupToLogicalTiles);
 
+  // Build flow-based connectivity groups over `aie.flow` and `aie.packet_flow`.
+  // Each connected component of LogicalTileOps connected by a flow becomes one
+  // group. `groupToNonCoreTiles` holds non-core tiles per group (the ones that
+  // need placement); `groupToCoreCols` holds the columns of placed core
+  // endpoints (used to compute the common column for that group).
+  void buildFlowGroups(
+      llvm::SmallVector<FlowOp> &flows,
+      llvm::SmallVector<PacketFlowOp> &pktFlows,
+      llvm::DenseMap<int, llvm::SmallVector<LogicalTileOp>>
+          &groupToNonCoreTiles,
+      llvm::DenseMap<int, llvm::SmallVector<LogicalTileOp>> &groupToCoreTiles);
+
   std::optional<TileID> findTileWithCapacity(int targetCol,
                                              std::vector<TileID> &tiles,
                                              int requiredInputChannels,
@@ -113,6 +125,17 @@ private:
   buildChannelRequirements(
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+
+  // Add per-tile DMA channel demand from `aie.flow` and `aie.packet_flow` ops
+  // to `channelRequirements`. `srcBundle == DMA` contributes one output (MM2S)
+  // channel on the source tile; `dstBundle == DMA` contributes one input
+  // (S2MM) channel on the destination tile. Only counts when the endpoint's
+  // defining op is a LogicalTileOp.
+  void addChannelRequirementsFromFlows(
+      llvm::SmallVector<FlowOp> &flows,
+      llvm::SmallVector<PacketFlowOp> &pktFlows,
+      llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
+          &channelRequirements);
 };
 
 } // namespace xilinx::AIE
