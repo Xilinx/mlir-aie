@@ -13,7 +13,6 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
-#include "llvm/ADT/MapVector.h"
 
 namespace xilinx::AIE {
 
@@ -22,6 +21,16 @@ enum class PlacerType { SequentialPlacer };
 
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
+
+// A set of LogicalTileOps connected by some connectivity op (objectfifo,
+// flow, packet_flow, ...). `coreTiles` is used to compute the common column
+// for placing the group's `nonCoreTiles`. Both lists may contain duplicates
+// when a tile is referenced by multiple connectivity ops in the same group;
+// duplicates intentionally weight the common-column average.
+struct ConnectivityGroup {
+  llvm::SmallVector<LogicalTileOp, 4> coreTiles;
+  llvm::SmallVector<LogicalTileOp, 4> nonCoreTiles;
+};
 
 // Track available tiles and resource usage
 struct TileAvailability {
@@ -87,19 +96,19 @@ private:
 
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
-  void buildObjectFifoGroups(
-      llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
-      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
-      llvm::DenseMap<int, llvm::SmallVector<ObjectFifoCreateOp>> &groupToFifos,
-      llvm::DenseMap<int, llvm::SmallVector<LogicalTileOp>>
-          &groupToLogicalTiles);
+  void
+  buildObjectFifoGroups(llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
+                        llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
+                        llvm::SmallVectorImpl<ConnectivityGroup> &groups);
 
-  void buildFlowGroups(
-      llvm::SmallVector<FlowOp> &flows,
-      llvm::SmallVector<PacketFlowOp> &pktFlows,
-      llvm::MapVector<int, llvm::SmallVector<LogicalTileOp>>
-          &groupToNonCoreTiles,
-      llvm::MapVector<int, llvm::SmallVector<LogicalTileOp>> &groupToCoreTiles);
+  void buildFlowGroups(llvm::SmallVector<FlowOp> &flows,
+                       llvm::SmallVector<PacketFlowOp> &pktFlows,
+                       llvm::SmallVectorImpl<ConnectivityGroup> &groups);
+
+  mlir::LogicalResult placeNonCoreTilesInGroup(
+      const ConnectivityGroup &group,
+      const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
+          &channelRequirements);
 
   std::optional<TileID> findTileWithCapacity(int targetCol,
                                              std::vector<TileID> &tiles,
