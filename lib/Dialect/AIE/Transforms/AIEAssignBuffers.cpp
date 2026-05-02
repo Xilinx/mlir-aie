@@ -43,6 +43,47 @@ static int64_t getAlignedAddress(int64_t address, uint32_t alignBitWidth) {
   }
 }
 
+// Check that every buffer in the list is properly aligned (when its
+// `aligned` attribute is set) and that no two buffers overlap. The input
+// vector must be sorted by ascending address. Emits an error on the first
+// offending buffer and returns false; returns true otherwise.
+static bool checkAndPrintBufferOverlap(SmallVector<BufferOp> &sortedBuffers,
+                                       uint32_t tileAlignBitWidth) {
+  uint32_t alignByteWidth = tileAlignBitWidth / 8;
+  for (size_t i = 0; i < sortedBuffers.size(); ++i) {
+    auto cur = sortedBuffers[i];
+    assert(cur.getAddress().has_value() && "buffer must have address assigned");
+    int64_t curAddr = cur.getAddress().value();
+
+    // Alignment check.
+    if (cur.getAligned() && alignByteWidth != 0 &&
+        curAddr % alignByteWidth != 0) {
+      cur.emitOpError("buffer '")
+          << cur.name() << "' at address 0x" << llvm::utohexstr(curAddr)
+          << " is not aligned to tile load/store bus width ("
+          << tileAlignBitWidth << " bits)";
+      return false;
+    }
+
+    // Pairwise overlap check against the previous buffer in address order.
+    if (i == 0)
+      continue;
+    auto prev = sortedBuffers[i - 1];
+    assert(prev.getAddress().has_value() &&
+           "buffer must have address assigned");
+    int64_t prevEnd = prev.getAddress().value() + prev.getAllocationSize();
+    if (curAddr < prevEnd) {
+      cur.emitOpError("buffer '")
+          << cur.name() << "' at address 0x" << llvm::utohexstr(curAddr)
+          << " overlaps with '" << prev.name() << "' at address 0x"
+          << llvm::utohexstr(prev.getAddress().value())
+          << " (size: " << prev.getAllocationSize() << " bytes)";
+      return false;
+    }
+  }
+  return true;
+}
+
 // Check if there is any overlap between the stack and the allocated buffers.
 static bool checkAndPrintOverlapStackframe(int stacksize,
                                            SmallVector<BufferOp> &buffers) {
@@ -183,7 +224,8 @@ static bool basicAllocation(TileOp tile) {
     address += buffer.getAllocationSize();
   }
 
-  // Sort by smallest address before printing memory map.
+  // Sort by smallest address before printing memory map and running the
+  // overlap / overflow checks below.
   std::sort(allBuffers_on_tile.begin(), allBuffers_on_tile.end(),
             [](BufferOp a, BufferOp b) {
               assert(a.getAddress().has_value() &&
@@ -192,9 +234,21 @@ static bool basicAllocation(TileOp tile) {
                      "buffer must have address assigned");
               return a.getAddress().value() < b.getAddress().value();
             });
-  // Check if memory was exceeded on any bank and print debug info.
+
+  // Compute the true high-water mark across *all* buffers (including
+  // pre-allocated ones above the dynamic-allocation cursor) so that
+  // checkAndPrintOverflow sees a correct memory bound.
+  int64_t highWater = address;
+  if (!allBuffers_on_tile.empty()) {
+    auto &last = allBuffers_on_tile.back();
+    highWater = std::max<int64_t>(
+        highWater, last.getAddress().value() + last.getAllocationSize());
+  }
+
+  // Check if memory was exceeded or buffers overlap, and print debug info.
   return (checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) &&
-          checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
+          checkAndPrintBufferOverlap(allBuffers_on_tile, tileAlignBitWidth) &&
+          checkAndPrintOverflow(tile, highWater, maxDataMemorySize, stacksize,
                                 allBuffers_on_tile));
 }
 
@@ -587,6 +641,7 @@ static bool simpleBankAwareAllocation(TileOp tile) {
             });
   // Check if memory was exceeded on any bank and print debug info.
   return checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) &&
+         checkAndPrintBufferOverlap(allBuffers_on_tile, tileAlignBitWidth) &&
          checkAndPrintOverflow(tile, numBanks, stacksize, allBuffers_on_tile,
                                nextAddrInBanks, bankLimits);
 }
