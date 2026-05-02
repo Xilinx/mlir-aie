@@ -159,23 +159,27 @@ static bool basicAllocation(TileOp tile) {
 
   // As the next address to allocate is assigned, skip over any buffers
   // from the allocated_buffers list.
+  // Note: alignment must be applied *before* (and after each skip in) the
+  // overlap-skip loop below, so the loop reasons about the buffer's actual
+  // placement. Otherwise an unaligned candidate address can appear to fit
+  // before the next pre-allocated buffer, but get bumped forward by
+  // getAlignedAddress and silently alias that pre-allocated buffer.
   auto current_alloc = allocated_buffers.begin();
   for (auto buffer : buffers) {
     assert(!buffer.getAddress());
+    if (buffer.getAligned())
+      address = getAlignedAddress(address, tileAlignBitWidth);
     while (current_alloc != allocated_buffers.end() &&
            address + buffer.getAllocationSize() >
                current_alloc->getAddress().value()) {
       address = current_alloc->getAddress().value() +
                 current_alloc->getAllocationSize();
+      if (buffer.getAligned())
+        address = getAlignedAddress(address, tileAlignBitWidth);
       current_alloc++;
     }
 
-    if (buffer.getAligned()) {
-      address = getAlignedAddress(address, tileAlignBitWidth);
-      buffer.setAddress(address);
-    } else {
-      buffer.setAddress(address);
-    }
+    buffer.setAddress(address);
     address += buffer.getAllocationSize();
   }
 
