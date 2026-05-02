@@ -113,6 +113,20 @@ private:
   buildChannelRequirements(
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+
+  // Sum `BufferOp::getAllocationSize()` per `LogicalTileOp` (TileOp peers are
+  // physical and validated downstream by AIEAssignBuffers).
+  llvm::DenseMap<mlir::Operation *, int64_t>
+  buildBufferRequirements(llvm::ArrayRef<BufferOp> buffers);
+
+  // Returns true iff placing `logicalTile` at `candidate` would keep its total
+  // buffer allocation within the candidate tile type's local memory capacity.
+  bool fitsBufferCapacity(LogicalTileOp logicalTile, TileID candidate,
+                          const llvm::DenseMap<mlir::Operation *, int64_t>
+                              &bufferRequirements) const;
+
+  // Capacity in bytes for the given physical tile (0 if no local memory).
+  uint32_t tileMemoryCapacity(TileID tile) const;
 };
 
 } // namespace xilinx::AIE

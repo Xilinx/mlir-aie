@@ -120,6 +120,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   SmallVector<LogicalTileOp> logicalTiles;
   SmallVector<ObjectFifoCreateOp> objectFifos;
   SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+  SmallVector<BufferOp> buffers;
 
   device.walk([&](Operation *op) {
     if (auto lt = dyn_cast<LogicalTileOp>(op))
@@ -128,11 +129,15 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       objectFifos.push_back(of);
     if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
       objectFifoLinks.push_back(link);
+    if (auto buf = dyn_cast<BufferOp>(op))
+      buffers.push_back(buf);
   });
 
-  // Phase 2: Build channel requirements from ObjectFifo connectivity
+  // Phase 2: Build channel requirements from ObjectFifo connectivity, and
+  // tile-local memory requirements from BufferOp allocations.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
+  auto bufferRequirements = buildBufferRequirements(buffers);
 
   // Phase 3: Place constrained tiles then compute tiles
   size_t nextCompIdx = 0;
@@ -142,6 +147,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     auto row = logicalTile.tryGetRow();
     if (col && row) {
       TileID tile{*col, *row};
+      if (!fitsBufferCapacity(logicalTile, tile, bufferRequirements)) {
+        int64_t need = bufferRequirements.lookup(logicalTile.getOperation());
+        return logicalTile.emitError()
+               << "tile (" << tile.col << ", " << tile.row << ") cannot host "
+               << need << " bytes of buffers (capacity "
+               << tileMemoryCapacity(tile) << ")";
+      }
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
                                                channelRequirements, true)))
         return failure();
@@ -167,6 +179,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           continue;
         if (row && candidate.row != *row)
           continue;
+        if (!fitsBufferCapacity(logicalTile, candidate, bufferRequirements))
+          continue;
 
         // Found valid tile - swap to nextCompIdx position and use
         std::swap(availability.compTiles[i],
@@ -176,14 +190,17 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       }
 
       if (!placement) {
+        bool hasBuffers = bufferRequirements.count(logicalTile.getOperation());
         if (col || row) {
           return logicalTile.emitError()
                  << "no compute tile available matching constraint ("
                  << (col ? std::to_string(*col) : "?") << ", "
-                 << (row ? std::to_string(*row) : "?") << ")";
+                 << (row ? std::to_string(*row) : "?") << ")"
+                 << (hasBuffers ? " and buffer capacity" : "");
         }
-        return logicalTile.emitError(
-            "no available compute tiles for placement");
+        return logicalTile.emitError()
+               << "no available compute tiles for placement"
+               << (hasBuffers ? " (buffer capacity exceeded)" : "");
       }
 
       if (failed(validateAndUpdateChannelUsage(logicalTile, *placement,
@@ -469,6 +486,48 @@ SequentialPlacer::buildChannelRequirements(
   }
 
   return channelRequirements;
+}
+
+llvm::DenseMap<Operation *, int64_t>
+SequentialPlacer::buildBufferRequirements(ArrayRef<BufferOp> buffers) {
+  llvm::DenseMap<Operation *, int64_t> bufferRequirements;
+  for (auto buf : buffers) {
+    auto *defOp = buf.getTile().getDefiningOp();
+    // Only LogicalTileOp endpoints participate in placement decisions.
+    // TileOp peers are physical and validated downstream by AIEAssignBuffers.
+    if (!isa_and_nonnull<LogicalTileOp>(defOp))
+      continue;
+    bufferRequirements[defOp] += buf.getAllocationSize();
+  }
+  return bufferRequirements;
+}
+
+uint32_t SequentialPlacer::tileMemoryCapacity(TileID tile) const {
+  switch (targetModel->getTileType(tile.col, tile.row)) {
+  case AIETileType::CoreTile:
+    return targetModel->getLocalMemorySize();
+  case AIETileType::MemTile:
+    return targetModel->getMemTileSize();
+  default:
+    return 0;
+  }
+}
+
+bool SequentialPlacer::fitsBufferCapacity(
+    LogicalTileOp logicalTile, TileID candidate,
+    const llvm::DenseMap<Operation *, int64_t> &bufferRequirements) const {
+  // MemTiles are shared across LogicalTileOps in the existing placer (see
+  // `removeTile` skipping non-CoreTile). Validating accumulated buffer bytes
+  // there requires per-physical-tile tracking (cf. inputChannelsUsed); leave
+  // that to AIEAssignBuffers and a follow-up PR. CoreTiles are 1:1 so the
+  // per-LogicalTileOp sum is the actual physical-tile demand.
+  if (targetModel->getTileType(candidate.col, candidate.row) !=
+      AIETileType::CoreTile)
+    return true;
+  auto it = bufferRequirements.find(logicalTile.getOperation());
+  if (it == bufferRequirements.end())
+    return true;
+  return static_cast<uint64_t>(it->second) <= tileMemoryCapacity(candidate);
 }
 
 void SequentialPlacer::buildObjectFifoGroups(

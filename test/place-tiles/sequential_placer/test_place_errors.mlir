@@ -205,3 +205,29 @@ module @mixed_channels_exceed_capacity {
     aie.core(%core) { aie.end }
   }
 }
+
+// -----
+
+// Pinned CoreTile with a buffer that exceeds L1 (npu1: 64KB). Error names the
+// tile, the requested bytes, and the available capacity.
+module @buffer_overflow_pinned {
+  aie.device(npu1) {
+    // CHECK: error: tile (2, 3) cannot host 131072 bytes of buffers (capacity 65536)
+    %t = aie.logical_tile<CoreTile>(2, 3)
+    %b = aie.buffer(%t) : memref<32768xi32>
+    aie.core(%t) { aie.end }
+  }
+}
+
+// -----
+
+// Unconstrained CoreTile whose buffer exceeds L1 — every candidate fails the
+// capacity filter, so placement is unsatisfiable.
+module @buffer_overflow_unconstrained {
+  aie.device(npu1) {
+    // CHECK: error: no available compute tiles for placement (buffer capacity exceeded)
+    %t = aie.logical_tile<CoreTile>(?, ?)
+    %b = aie.buffer(%t) : memref<32768xi32>
+    aie.core(%t) { aie.end }
+  }
+}
