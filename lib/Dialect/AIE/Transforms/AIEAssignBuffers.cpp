@@ -199,9 +199,9 @@ bool basicAllocation(TileOp tile) {
     return a.getAddress().value() < b.getAddress().value();
   });
   // Check if memory was exceeded on any bank and print debug info.
-  return  checkAndPrintOverlapStackframe(stacksize,allBuffers_on_tile ) &&\
-  checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
-                               allBuffers_on_tile);
+  return (checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) &&
+          checkAndPrintOverflow(tile, address, maxDataMemorySize, stacksize,
+                                allBuffers_on_tile));
 }
 
 //===----------------------------------------------------------------------===//
