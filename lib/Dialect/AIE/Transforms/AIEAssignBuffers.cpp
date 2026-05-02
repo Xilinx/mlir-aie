@@ -41,7 +41,7 @@ bool isBufferPreAllocated(BufferOp buffer ){
 
 // Return an address that is aligned to tile's load/store bus
 // NOTE: assume address are byte address
-uint32_t getAlignedAddress( uint32_t address, uint32_t alignBitWidth){
+int64_t getAlignedAddress( int64_t address, uint32_t alignBitWidth){
   assert(alignBitWidth != 0 && alignBitWidth % 8 == 0 && "alignBitWidth must be a non-zero multiple of 8");
   uint32_t alignByteWidth = alignBitWidth / 8;
   if (address % alignByteWidth == 0) {
@@ -151,8 +151,8 @@ bool basicAllocation(TileOp tile) {
   // Address range owned by the tile is 0x8000 in
   // AIE1 and 0x10000 in AIE2, but we need room at
   // the bottom for stack.
-  int stacksize = 0;
-  int address = 0;
+  int64_t stacksize = 0;
+  int64_t address = 0;
   if (auto core = tile.getCoreOp()) {
     stacksize = core.getStackSize();
     address += stacksize;
