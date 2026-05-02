@@ -89,7 +89,7 @@ module @test {
     // Aligned pre-allocated buffer, occupies 0x40..0x5F.
     %p2 = aie.buffer(%tile22) { sym_name = "p2", address = 64 : i32 } : memref<32xi8>
     // Dynamic aligned buffer (40 bytes). Pre-fix: placed at 0x20 and aliases
-    // p2. Post-fix: must be placed at 0x60. Recall npu1 has alignment requirement of 128-bit witdth
+    // p2. Post-fix: must be placed at 0x60. Recall npu1 has alignment requirement of 128-bit width
     %b  = aie.buffer(%tile22) { sym_name = "b" } : memref<40xi8>
   }
 }
