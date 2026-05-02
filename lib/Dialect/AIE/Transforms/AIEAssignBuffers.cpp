@@ -299,6 +299,10 @@ checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,uint32_t tileAlignBit
     return false;
 
   int mem_bank = memBankAttr.getInt();
+  if(mem_bank < 0 || mem_bank >= numBanks){
+    return buffer->emitOpError("mem_bank attribute value is out of range");
+  }
+
   int64_t startAddr = nextAddrInBanks[mem_bank];
   if(buffer.getAligned()){
     startAddr = getAlignedAddress(startAddr, tileAlignBitWidth);
