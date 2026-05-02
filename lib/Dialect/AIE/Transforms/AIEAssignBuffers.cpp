@@ -517,9 +517,11 @@ static bool simpleBankAwareAllocation(TileOp tile) {
               auto a_addr = a.getAddress();
               auto b_addr = b.getAddress();
               if (a_addr.has_value() && !b_addr.has_value()) {
-                return true; // a buffer before b_buffer
+                return true; // address buffers before mem_bank-only buffers
               } else if (!a_addr.has_value() && b_addr.has_value()) {
-                return false; // b buffer before a_buffer
+                return false; // mem_bank-only buffers after address buffers
+              } else if (a_addr.has_value() && b_addr.has_value()) {
+                return a_addr.value() < b_addr.value(); // ascending address order within same bank
               } else {
                 return false;
               }
