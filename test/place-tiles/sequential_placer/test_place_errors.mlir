@@ -182,9 +182,7 @@ module @compute_tiles_exhausted {
 
 // -----
 
-// Cascade chain too long for a single column on npu1_1col (4 core rows).
-// Head pinned at row 5, chain extends south to (0,4), (0,3), (0,2), then the
-// fifth tile has no valid neighbour (row 1 is non-core and there's no col 1).
+// 5-tile chain on npu1_1col (4 core rows): chain exhausts the column.
 module @cascade_chain_unsatisfiable {
   aie.device(npu1_1col) {
     %a = aie.logical_tile<CoreTile>(0, 5)
@@ -192,6 +190,7 @@ module @cascade_chain_unsatisfiable {
     %c = aie.logical_tile<CoreTile>(?, ?)
     %d = aie.logical_tile<CoreTile>(?, ?)
     // CHECK: error: no available compute tiles for placement (cascade adjacency unsatisfiable)
+    // CHECK: note: cascade source peer placed at (0, 2)
     %e = aie.logical_tile<CoreTile>(?, ?)
     aie.cascade_flow(%a, %b)
     aie.cascade_flow(%b, %c)
@@ -207,15 +206,45 @@ module @cascade_chain_unsatisfiable {
 
 // -----
 
-// Cascade direction that the cascade_flow verifier accepts (cardinal
-// adjacent) but the lowering rejects: source must be south or west of dest,
-// not north or east. Here %src at (0,4) is north of %dst at (0,5), so the
-// placer rejects when %src is placed after %dst.
+// Verifier-legal but lowering-illegal direction: lowering requires src to be
+// one row North or one column West of dst (rows increase upward).
 module @cascade_pinned_wrong_direction {
   aie.device(npu1) {
+    // CHECK: error: tile (0, 5) violates cascade adjacency
+    // CHECK: note: cascade source peer placed at (0, 4)
     %dst = aie.logical_tile<CoreTile>(0, 5)
-    // CHECK: error: tile (0, 4) violates cascade adjacency with an already-placed peer
     %src = aie.logical_tile<CoreTile>(0, 4)
+    aie.cascade_flow(%src, %dst)
+    aie.core(%src) { aie.end }
+    aie.core(%dst) { aie.end }
+  }
+}
+
+// -----
+
+// Partial constraint (col=0) is incompatible with pinned src at (1,3).
+// Exercises candidate-filter rejection (col-0 tiles exist, none satisfy).
+module @cascade_partial_constraint_unsatisfiable {
+  aie.device(npu1) {
+    %src = aie.logical_tile<CoreTile>(1, 3)
+    // CHECK: error: no compute tile available matching constraint (0, ?) and cascade adjacency
+    // CHECK: note: cascade source peer placed at (1, 3)
+    %dst = aie.logical_tile<CoreTile>(0, ?)
+    aie.cascade_flow(%src, %dst)
+    aie.core(%src) { aie.end }
+    aie.core(%dst) { aie.end }
+  }
+}
+
+// -----
+
+// Hybrid cascade with conflicting partial constraint on the logical peer.
+module @cascade_hybrid_unsatisfiable {
+  aie.device(npu1) {
+    %src = aie.tile(1, 3)
+    // CHECK: error: no compute tile available matching constraint (3, ?) and cascade adjacency
+    // CHECK: note: cascade source peer placed at (1, 3)
+    %dst = aie.logical_tile<CoreTile>(3, ?)
     aie.cascade_flow(%src, %dst)
     aie.core(%src) { aie.end }
     aie.core(%dst) { aie.end }

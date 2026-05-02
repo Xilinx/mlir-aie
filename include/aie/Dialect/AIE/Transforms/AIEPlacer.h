@@ -22,15 +22,6 @@ enum class PlacerType { SequentialPlacer };
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
 
-// For each LogicalTileOp involved in a cascade flow, the set of (peer,
-// thisIsCascadeDst) tuples. `thisIsCascadeDst==true` means this tile is the
-// destination of a cascade_flow whose source is `peer`; the lowered cascade
-// requires `peer` to be one row higher (north) or one column to the left
-// (west) of this tile. `thisIsCascadeDst==false` is the reverse.
-using CascadeAdjacency =
-    llvm::DenseMap<mlir::Operation *,
-                   llvm::SmallVector<std::pair<LogicalTileOp, bool>, 2>>;
-
 // Track available tiles and resource usage
 struct TileAvailability {
   std::vector<TileID> compTiles;
@@ -123,15 +114,26 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  void buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows,
-                             CascadeAdjacency &adjacency);
+  // `tileToEdges` indexes into `edges` only for `LogicalTileOp` endpoints
+  // (the ones the placer visits); `TileOp` peers contribute coords via
+  // `TileLike::tryGetCol`/`tryGetRow`.
+  struct CascadeAdjacency {
+    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
+        tileToEdges;
+  };
 
-  // Returns true iff placing `logicalTile` at `candidate` would satisfy every
-  // cascade adjacency constraint relative to peers that are already placed in
-  // `result`. Unplaced peers impose no constraint at this point — they will
-  // be checked when they themselves get placed.
+  CascadeAdjacency
+  buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
+
+  // Unplaced peers without pin coords defer; symmetric predicate makes one
+  // check per endpoint sufficient.
   bool satisfiesCascadeAdjacency(LogicalTileOp logicalTile, TileID candidate,
                                  const CascadeAdjacency &adjacency) const;
+
+  void attachCascadePeerNotes(mlir::InFlightDiagnostic &diag,
+                              LogicalTileOp logicalTile,
+                              const CascadeAdjacency &adjacency) const;
 };
 
 } // namespace xilinx::AIE
