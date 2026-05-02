@@ -27,11 +27,8 @@ using namespace xilinx::AIE;
 
 
 
-bool isBufferForTile(BufferOp buffer, TileOp tile) {
-  return buffer.getTile() == tile;
-}
 
-bool isBufferPreAllocated(BufferOp buffer ){
+static bool isBufferPreAllocated(BufferOp buffer ){
   auto addr = buffer.getAddress();
   auto memBank = buffer.getMemBank();
   return (addr != std::nullopt  || memBank != std::nullopt);
@@ -41,7 +38,7 @@ bool isBufferPreAllocated(BufferOp buffer ){
 
 // Return an address that is aligned to tile's load/store bus
 // NOTE: assume address are byte address
-int64_t getAlignedAddress( int64_t address, uint32_t alignBitWidth){
+static int64_t getAlignedAddress( int64_t address, uint32_t alignBitWidth){
   assert(alignBitWidth != 0 && alignBitWidth % 8 == 0 && "alignBitWidth must be a non-zero multiple of 8");
   uint32_t alignByteWidth = alignBitWidth / 8;
   if (address % alignByteWidth == 0) {
@@ -53,7 +50,7 @@ int64_t getAlignedAddress( int64_t address, uint32_t alignBitWidth){
 }
 
 // Check if there is any overlap between the stack and the allocated buffers. 
-bool checkAndPrintOverlapStackframe(int stacksize, SmallVector<BufferOp> &buffers) {
+static bool checkAndPrintOverlapStackframe(int stacksize, SmallVector<BufferOp> &buffers) {
   for (auto buf : buffers) {
     assert(buf.getAddress().has_value() && "buffer must have address assigned");
     if (buf.getAddress().value() < stacksize) {
@@ -71,7 +68,7 @@ bool checkAndPrintOverlapStackframe(int stacksize, SmallVector<BufferOp> &buffer
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
-bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
+static bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
                            int stacksize, SmallVector<BufferOp> &buffers) {
   if (address > maxDataMemorySize) {
     InFlightDiagnostic error =
@@ -99,7 +96,7 @@ bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
   return true;
 }
 
-bool basicAllocation(TileOp tile) {
+static bool basicAllocation(TileOp tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
     return false;
@@ -215,7 +212,7 @@ typedef struct BankLimits {
 // Function that given a number of banks and their size, computes
 // the start and end addresses for each bank and fills in the entry
 // in the bankLimits vector.
-void fillBankLimits(int numBanks, int bankSize,
+static void fillBankLimits(int numBanks, int bankSize,
                     std::vector<BankLimits> &bankLimits) {
   for (int i = 0; i < numBanks; i++) {
     auto startAddr = bankSize * i;
@@ -227,7 +224,7 @@ void fillBankLimits(int numBanks, int bankSize,
 // Function that sets the address attribute of the given buffer to
 // the given start_addr. It also updates the entry in the
 // nextAddrInBanks for the corresponding bank.
-void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
+static void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
                                int64_t end_addr,
                                std::vector<int64_t> &nextAddrInBanks) {
 
@@ -245,7 +242,7 @@ void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
 // returns true and if not, the function emits a warning that the address
 // will be overwritten and returns false (which will cause the buffer to be
 // added to the list of buffers without addresses, to be completed later on).
-FailureOr<bool>
+static FailureOr<bool>
 checkAndAddBufferWithAddress(BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
                              std::vector<int64_t> &nextAddrInBanks,
                              std::vector<BankLimits> &bankLimits) {
@@ -290,7 +287,7 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks, uint32_t tileAlignBi
 // function emits a warning that the mem_bank will be overwritten and returns
 // false (which will cause the buffer to be added to the list of buffers
 // without addresses, to be completed later on).
-FailureOr<bool>
+static FailureOr<bool>
 checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,uint32_t tileAlignBitWidth,
                              std::vector<int64_t> &nextAddrInBanks,
                              std::vector<BankLimits> &bankLimits) {
@@ -316,7 +313,7 @@ checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,uint32_t tileAlignBit
 }
 
 // Prints the memory map across banks
-void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
+static void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
                  SmallVector<BufferOp> &preAllocatedBuffers, int numBanks,
                  std::vector<BankLimits> &bankLimits, int stacksize) {
   InFlightDiagnostic error = tile.emitWarning(
@@ -365,7 +362,7 @@ void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
 // Returns true if the buffer was successfully allocated, false otherwise.
 // If no bank has enough space to accommodate the buffer, an error is emitted.
 
-int setBufferAddress(BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
+static int setBufferAddress(BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
                      int &startBankIndex,
                      std::vector<int64_t> &nextAddrInBanks,
                      std::vector<BankLimits> &bankLimits) {
@@ -402,7 +399,7 @@ int setBufferAddress(BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
   return true;
 }
 
-bool checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
+static bool checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
                            SmallVector<BufferOp> &allBuffers,
                            std::vector<int64_t> &nextAddrInBanks,
                            std::vector<BankLimits> &bankLimits) {
@@ -453,14 +450,14 @@ bool checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
 }
 
 // Function to deallocate attributes of buffers in case of a failure
-void deAllocationBuffers(SmallVector<BufferOp> &buffers) {
+static void deAllocationBuffers(SmallVector<BufferOp> &buffers) {
   for (auto buffer : buffers) {
     buffer->removeAttr("address");
     buffer->removeAttr("mem_bank");
   }
 }
 
-bool simpleBankAwareAllocation(TileOp tile) {
+static bool simpleBankAwareAllocation(TileOp tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
     return false;
@@ -588,7 +585,7 @@ bool simpleBankAwareAllocation(TileOp tile) {
                                nextAddrInBanks, bankLimits);
 }
 
-LogicalResult checkBufferScope(BufferOp buffer, DeviceOp device) {
+static LogicalResult checkBufferScope(BufferOp buffer, DeviceOp device) {
   // Buffers are not allowed to be inside the core without being statically
   // initialized.
   Operation *parent = buffer->getParentOp();
