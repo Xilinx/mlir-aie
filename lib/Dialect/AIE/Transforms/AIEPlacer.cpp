@@ -151,8 +151,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         int64_t need = bufferRequirements.lookup(logicalTile.getOperation());
         // Stack only contributes when this LogicalTileOp is a CoreTile with
         // an attached CoreOp; mention it only in that case for accuracy.
-        bool includesStack =
-            logicalTile.getTileType() == AIETileType::CoreTile;
+        bool includesStack = logicalTile.getTileType() == AIETileType::CoreTile;
         return logicalTile.emitError()
                << "tile (" << tile.col << ", " << tile.row << ") cannot host "
                << need << " bytes of buffers"
