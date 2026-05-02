@@ -84,6 +84,19 @@ uint32_t AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
   return db->encodeFieldValue(field, value);
 }
 
+uint32_t AIETargetModel::getDataMemorySize(AIETileType tileType) const {
+  switch (tileType) {
+  case AIETileType::CoreTile:
+    return getLocalMemorySize();
+  case AIETileType::MemTile:
+    return getMemTileSize();
+  case AIETileType::ShimNOCTile:
+  case AIETileType::ShimPLTile:
+    return 0;
+  }
+  llvm_unreachable("unhandled AIETileType");
+}
+
 std::optional<uint32_t>
 AIETargetModel::getFieldMask(const BitFieldInfo &field) const {
   uint32_t width = field.getWidth();

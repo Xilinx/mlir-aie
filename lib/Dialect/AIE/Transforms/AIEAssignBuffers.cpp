@@ -61,11 +61,7 @@ bool basicAllocation(TileOp tile) {
     return false;
 
   const auto &targetModel = getTargetModel(tile);
-  int maxDataMemorySize = 0;
-  if (tile.isMemTile())
-    maxDataMemorySize = targetModel.getMemTileSize();
-  else
-    maxDataMemorySize = targetModel.getLocalMemorySize();
+  int maxDataMemorySize = targetModel.getDataMemorySize(tile.getTileType());
 
   SmallVector<BufferOp> buffers;
   SmallVector<BufferOp> allocated_buffers;
@@ -386,11 +382,7 @@ bool simpleBankAwareAllocation(TileOp tile) {
                                       // end addresses for each bank
 
   const auto &targetModel = getTargetModel(tile);
-  int maxDataMemorySize = 0;
-  if (tile.isMemTile())
-    maxDataMemorySize = targetModel.getMemTileSize();
-  else
-    maxDataMemorySize = targetModel.getLocalMemorySize();
+  int maxDataMemorySize = targetModel.getDataMemorySize(tile.getTileType());
 
   int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
   int bankSize = maxDataMemorySize / numBanks;
