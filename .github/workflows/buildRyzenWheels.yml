@@ -122,9 +122,16 @@ jobs:
 
             if ! command -v python${{ matrix.python_version }} &> /dev/null; then
               echo "Python ${{ matrix.python_version }} not found, installing..."
+              # Add deadsnakes PPA without `add-apt-repository`, which calls
+              # launchpadlib and times out reliably from inside this container.
               apt-get update
-              apt-get install -y software-properties-common
-              add-apt-repository -y ppa:deadsnakes/ppa
+              apt-get install -y curl gpg ca-certificates
+              install -d -m 0755 /etc/apt/keyrings
+              curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776" \
+                | gpg --dearmor -o /etc/apt/keyrings/deadsnakes.gpg
+              . /etc/os-release
+              echo "deb [signed-by=/etc/apt/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu ${VERSION_CODENAME} main" \
+                > /etc/apt/sources.list.d/deadsnakes.list
               apt-get update
               apt-get install -y python${{ matrix.python_version }} python${{ matrix.python_version }}-venv python${{ matrix.python_version }}-dev
             fi
