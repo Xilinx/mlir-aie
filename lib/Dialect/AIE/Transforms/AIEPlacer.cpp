@@ -151,10 +151,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         int64_t need = bufferRequirements.lookup(logicalTile.getOperation());
         bool includesStack = logicalTile.getTileType() == AIETileType::CoreTile;
         return logicalTile.emitError()
-               << "tile (" << tile.col << ", " << tile.row << ") cannot host "
-               << need << " bytes of buffers"
-               << (includesStack ? " + stack" : "") << " (capacity "
-               << tileMemoryCapacity(tile) << ")";
+               << "tile (" << tile.col << ", " << tile.row << ") requires "
+               << need << " bytes for buffers"
+               << (includesStack ? " + stack" : "") << ", but only "
+               << tileMemoryCapacity(tile) << " bytes available";
       }
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
                                                channelRequirements, true)))
@@ -509,12 +509,8 @@ llvm::DenseMap<Operation *, int64_t> SequentialPlacer::buildBufferRequirements(
   for (auto lt : logicalTiles) {
     if (lt.getTileType() != AIETileType::CoreTile)
       continue;
-    for (Operation *user : lt.getResult().getUsers()) {
-      if (auto core = dyn_cast<CoreOp>(user)) {
-        bufferRequirements[lt.getOperation()] += core.getStackSize();
-        break;
-      }
-    }
+    if (auto core = lt.getCoreOp())
+      bufferRequirements[lt.getOperation()] += core.getStackSize();
   }
 
   for (auto buf : buffers) {
@@ -527,15 +523,20 @@ llvm::DenseMap<Operation *, int64_t> SequentialPlacer::buildBufferRequirements(
 }
 
 int64_t SequentialPlacer::tileMemoryCapacity(TileID tile) const {
-  return targetModel->getDataMemorySize(
-      targetModel->getTileType(tile.col, tile.row));
+  AIETileType type = targetModel->getTileType(tile.col, tile.row);
+  assert((type == AIETileType::CoreTile || type == AIETileType::MemTile) &&
+         "tileMemoryCapacity is only defined for CoreTile / MemTile");
+  return targetModel->getDataMemorySize(type);
 }
 
 bool SequentialPlacer::fitsBufferCapacity(
     LogicalTileOp logicalTile, TileID candidate,
     const llvm::DenseMap<Operation *, int64_t> &bufferRequirements) const {
-  // Per-LogicalTileOp upper bound. MemTile sharing across LogicalTileOps is
-  // not accumulated here; AIEAssignBuffers catches that.
+  // Per-LogicalTileOp upper bound. Shim tiles have no data memory and never
+  // host BufferOps, so they trivially fit.
+  // TODO(#2864): MemTile sharing across LogicalTileOps is not accumulated
+  // here; an inputChannelsUsed-style per-physical-MemTile accumulator would
+  // catch that earlier. AIEAssignBuffers still catches the overflow today.
   AIETileType type = targetModel->getTileType(candidate.col, candidate.row);
   if (type != AIETileType::CoreTile && type != AIETileType::MemTile)
     return true;

@@ -211,7 +211,7 @@ module @mixed_channels_exceed_capacity {
 // Pinned CoreTile buffer exceeds L1 (npu1: 64KB).
 module @buffer_overflow_pinned {
   aie.device(npu1) {
-    // CHECK: error: tile (2, 3) cannot host 132096 bytes of buffers + stack (capacity 65536)
+    // CHECK: error: tile (2, 3) requires 132096 bytes for buffers + stack, but only 65536 bytes available
     %t = aie.logical_tile<CoreTile>(2, 3)
     %b = aie.buffer(%t) : memref<32768xi32>
     aie.core(%t) { aie.end }
@@ -235,7 +235,7 @@ module @buffer_overflow_unconstrained {
 // Per-LogicalTileOp summation: 2 * 32KB + 1KB stack > 64KB.
 module @buffer_overflow_sum {
   aie.device(npu1) {
-    // CHECK: error: tile (2, 3) cannot host 66560 bytes of buffers + stack (capacity 65536)
+    // CHECK: error: tile (2, 3) requires 66560 bytes for buffers + stack, but only 65536 bytes available
     %t = aie.logical_tile<CoreTile>(2, 3)
     %b0 = aie.buffer(%t) : memref<8192xi32>
     %b1 = aie.buffer(%t) : memref<8192xi32>
@@ -248,7 +248,7 @@ module @buffer_overflow_sum {
 // MemTile per-LogicalTileOp upper bound (npu1: 512KB).
 module @memtile_buffer_overflow {
   aie.device(npu1) {
-    // CHECK: error: tile (0, 1) cannot host 800000 bytes of buffers (capacity 524288)
+    // CHECK: error: tile (0, 1) requires 800000 bytes for buffers, but only 524288 bytes available
     %mt = aie.logical_tile<MemTile>(0, 1)
     %b = aie.buffer(%mt) : memref<200000xi32>
   }
@@ -259,9 +259,20 @@ module @memtile_buffer_overflow {
 // AIE2P (npu2) target-model dispatch.
 module @buffer_overflow_npu2 {
   aie.device(npu2) {
-    // CHECK: error: tile (2, 3) cannot host 132096 bytes of buffers + stack (capacity 65536)
+    // CHECK: error: tile (2, 3) requires 132096 bytes for buffers + stack, but only 65536 bytes available
     %t = aie.logical_tile<CoreTile>(2, 3)
     %b = aie.buffer(%t) : memref<32768xi32>
     aie.core(%t) { aie.end }
+  }
+}
+
+// -----
+
+// Stack-only demand: pathological CoreOp stack size alone exceeds L1.
+module @buffer_overflow_stack_only {
+  aie.device(npu1) {
+    // CHECK: error: tile (2, 3) requires 131072 bytes for buffers + stack, but only 65536 bytes available
+    %t = aie.logical_tile<CoreTile>(2, 3)
+    aie.core(%t) { aie.end } { stack_size = 131072 : i32 }
   }
 }

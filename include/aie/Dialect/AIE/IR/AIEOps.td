@@ -131,6 +131,14 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
 
   let extraClassDeclaration = [{
     TileID getCanonicalTileID();
+
+    CoreOp getCoreOp() {
+      auto users = getResult().getUsers();
+      for(auto user : users)
+        if(auto coreOp = llvm::dyn_cast<CoreOp>(*user))
+          return coreOp;
+      return nullptr;
+    }
   }];
 
   let extraClassDefinition = [{
