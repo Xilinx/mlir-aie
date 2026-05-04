@@ -131,11 +131,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       objectFifoLinks.push_back(link);
   });
 
-  // Phase 2: Build channel requirements from ObjectFifo connectivity, and
-  // memory-affinity adjacency from cross-tile L1 buffer accesses.
+  // Phase 2: Build placement constraints
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
-
   auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
 
   // Phase 3: Place constrained tiles then compute tiles
@@ -499,8 +497,7 @@ SequentialPlacer::buildChannelRequirements(
   return channelRequirements;
 }
 
-// Walk view-like aliasing memref ops back to the underlying BufferOp; stop at
-// anything else (block argument, function call, unrecognized producer).
+// Walk view-like aliasing memref ops back to the underlying BufferOp.
 static BufferOp traceToBuffer(Value val) {
   for (Operation *op = val.getDefiningOp(); op;) {
     if (auto buf = dyn_cast<BufferOp>(op))
@@ -515,9 +512,8 @@ static BufferOp traceToBuffer(Value val) {
   return nullptr;
 }
 
-// Look up a peer's known position: from this placement run if already placed,
-// otherwise from a fully-pinned `(col, row)` constraint. Unconstrained and
-// not-yet-placed peers return nullopt and the predicate defers.
+// TODO: identical to the helper introduced by the cascade-adjacency PR
+// (#3042). Hoist to a shared internal header once both have landed.
 static std::optional<TileID>
 resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   auto it = placed.find(peer.getOperation());
@@ -533,9 +529,6 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
 SequentialPlacer::BufferAdjacency
 SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
   BufferAdjacency adjacency;
-
-  // Cores attached to physical TileOps don't need placement and therefore
-  // don't contribute consumer-side adjacency constraints either.
   for (auto consumer : logicalTiles) {
     if (consumer.getTileType() != AIETileType::CoreTile)
       continue;
@@ -548,7 +541,6 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
     if (!core)
       continue;
 
-    // De-dup multiple references to the same owner from one consumer body.
     llvm::SmallDenseSet<Operation *, 4> seenOwners;
     core.getBody().walk([&](Operation *op) {
       for (Value operand : op->getOperands()) {

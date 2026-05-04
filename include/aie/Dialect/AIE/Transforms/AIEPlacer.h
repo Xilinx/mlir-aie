@@ -114,18 +114,9 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  // Adjacency constraints inferred from cross-tile L1 buffer accesses.
-  //
-  // When `aie.core(%lt_consumer)` reads or writes an `aie.buffer(%owner)`
-  // attached to a different tile, the consumer's physical placement must
-  // satisfy `targetModel->isLegalMemAffinity(consumerPos, ownerPos)` so the
-  // L1 access actually resolves to a reachable neighbor-memory window.
-  //
-  // `edges` records each cross-tile reference once; `tileToEdges` indexes by
-  // any LogicalTileOp endpoint so a check at either side catches the
-  // violation regardless of placement order. Owners that are physical TileOps
-  // contribute their fixed coords via `TileLike::tryGetCol/tryGetRow` and are
-  // not indexed (the placer never visits them).
+  // Cross-tile L1 buffer accesses: consumer must satisfy isLegalMemAffinity
+  // of owner. Same shape as CascadeAdjacency in #3042; TODO: factor a generic
+  // Adjacency<Predicate> once both have landed.
   struct BufferAdjacency {
     llvm::SmallVector<std::pair<LogicalTileOp, TileLike>, 4> edges;
     llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
@@ -135,8 +126,6 @@ private:
   BufferAdjacency
   buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
 
-  // Defers when a peer is unplaced and unpinned; symmetric so a check at one
-  // endpoint suffices once the other endpoint resolves.
   bool satisfiesBufferAdjacency(LogicalTileOp logicalTile, TileID candidate,
                                 const BufferAdjacency &adjacency) const;
 
