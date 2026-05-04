@@ -241,8 +241,8 @@ static bool basicAllocation(TileOp tile) {
   int64_t highWater = address;
   if (!allBuffers_on_tile.empty()) {
     auto &last = allBuffers_on_tile.back();
-    highWater = std::max<int64_t>(
-        highWater, last.getAddress().value() + last.getAllocationSize());
+    highWater = std::max<int64_t>(highWater, last.getAddress().value() +
+                                                 last.getAllocationSize());
   }
 
   // Check if memory was exceeded or buffers overlap, and print debug info.
@@ -570,20 +570,22 @@ static bool simpleBankAwareAllocation(TileOp tile) {
   // Then, allocated the buffer with pre-allocated mem_bank t
   // Do it by doing a sort preAllocatedBuffers to have buffer with address
   // first, then buffer with only mem_bank
-  std::sort(preAllocatedBuffers.begin(), preAllocatedBuffers.end(),
-            [](BufferOp a, BufferOp b) -> bool {
-              auto a_addr = a.getAddress();
-              auto b_addr = b.getAddress();
-              if (a_addr.has_value() && !b_addr.has_value()) {
-                return true; // address buffers before mem_bank-only buffers
-              } else if (!a_addr.has_value() && b_addr.has_value()) {
-                return false; // mem_bank-only buffers after address buffers
-              } else if (a_addr.has_value() && b_addr.has_value()) {
-                return a_addr.value() < b_addr.value(); // ascending address order within same bank
-              } else {
-                return false;
-              }
-            });
+  std::sort(
+      preAllocatedBuffers.begin(), preAllocatedBuffers.end(),
+      [](BufferOp a, BufferOp b) -> bool {
+        auto a_addr = a.getAddress();
+        auto b_addr = b.getAddress();
+        if (a_addr.has_value() && !b_addr.has_value()) {
+          return true; // address buffers before mem_bank-only buffers
+        } else if (!a_addr.has_value() && b_addr.has_value()) {
+          return false; // mem_bank-only buffers after address buffers
+        } else if (a_addr.has_value() && b_addr.has_value()) {
+          return a_addr.value() <
+                 b_addr.value(); // ascending address order within same bank
+        } else {
+          return false;
+        }
+      });
 
   for (auto buffer : preAllocatedBuffers) {
 
