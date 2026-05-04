@@ -96,3 +96,42 @@ module @buffer_fits_npu2 {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// Two pinned CoreTiles, each with its own L1 buffers. Per-LogicalTileOp
+// budgets must not bleed: buffer on (2,3) does not count against (2,4)'s
+// capacity, and vice versa.
+// CHECK-LABEL: @two_pinned_tiles_independent_l1
+module @two_pinned_tiles_independent_l1 {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[T1:.*]] = aie.tile(2, 3)
+    // CHECK-DAG: %[[T2:.*]] = aie.tile(2, 4)
+    %t1 = aie.logical_tile<CoreTile>(2, 3)
+    %b1 = aie.buffer(%t1) : memref<8192xi32>
+    aie.core(%t1) { aie.end }
+    %t2 = aie.logical_tile<CoreTile>(2, 4)
+    %b2 = aie.buffer(%t2) : memref<8192xi32>
+    aie.core(%t2) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// Two unconstrained CoreTiles, each with L1 buffers. removeTile + buffer
+// filter must cooperate so the second tile picks a distinct physical tile.
+// CHECK-LABEL: @two_unconstrained_tiles_distinct_placement
+module @two_unconstrained_tiles_distinct_placement {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[T1:.*]] = aie.tile(0, 2)
+    // CHECK-DAG: %[[T2:.*]] = aie.tile(0, 3)
+    %t1 = aie.logical_tile<CoreTile>(?, ?)
+    %b1 = aie.buffer(%t1) : memref<1024xi32>
+    aie.core(%t1) { aie.end }
+    %t2 = aie.logical_tile<CoreTile>(?, ?)
+    %b2 = aie.buffer(%t2) : memref<1024xi32>
+    aie.core(%t2) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}

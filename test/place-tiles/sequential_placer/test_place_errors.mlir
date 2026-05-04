@@ -276,3 +276,20 @@ module @buffer_overflow_stack_only {
     aie.core(%t) { aie.end } { stack_size = 131072 : i32 }
   }
 }
+
+// -----
+
+// Two LogicalTileOps, second one overflows. Confirms each LogicalTileOp's
+// budget is checked independently and the placer reports the offending tile,
+// not the fitting one.
+module @buffer_overflow_second_of_two {
+  aie.device(npu1) {
+    // CHECK: error: tile (2, 4) requires 132096 bytes for buffers + stack, but only 65536 bytes available
+    %t1 = aie.logical_tile<CoreTile>(2, 3)
+    %b1 = aie.buffer(%t1) : memref<1024xi32>
+    aie.core(%t1) { aie.end }
+    %t2 = aie.logical_tile<CoreTile>(2, 4)
+    %b2 = aie.buffer(%t2) : memref<32768xi32>
+    aie.core(%t2) { aie.end }
+  }
+}
