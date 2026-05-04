@@ -14,10 +14,27 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
+#include <deque>
+#include <random>
+
 namespace xilinx::AIE {
 
 /// Placement algorithm type for pass option
-enum class PlacerType { SequentialPlacer };
+enum class PlacerType { SequentialPlacer, SABasedPlacer };
+
+/// Get DMA channel capacity (maxIn, maxOut) for a tile position.
+inline std::pair<int, int> getDMACapacity(const AIETargetModel &tm,
+                                          TileID tile) {
+  if (tile.row == 0)
+    return {tm.getNumDestShimMuxConnections(tile.col, tile.row,
+                                            WireBundle::DMA),
+            tm.getNumSourceShimMuxConnections(tile.col, tile.row,
+                                              WireBundle::DMA)};
+  return {
+      tm.getNumDestSwitchboxConnections(tile.col, tile.row, WireBundle::DMA),
+      tm.getNumSourceSwitchboxConnections(tile.col, tile.row,
+                                          WireBundle::DMA)};
+}
 
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
@@ -48,7 +65,7 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(const AIETargetModel &targetModel) = 0;
+  virtual void initialize(const AIETargetModel &targetModel);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -61,8 +78,17 @@ public:
     return std::nullopt;
   }
 
+  // Buffer allocation redirects: (ObjectFifoCreateOp, delegate TileID)
+  // Generated when a core tile's buffers exceed local memory and must
+  // spill to a neighbor tile's memory module.
+  using AllocateInfo = std::pair<mlir::Operation *, TileID>;
+  llvm::SmallVector<AllocateInfo> &getAllocates() { return allocates; }
+
 protected:
   PlacementResult result;
+  llvm::SmallVector<AllocateInfo> allocates;
+  const AIETargetModel *targetModel = nullptr;
+  TileAvailability availability;
 };
 
 // Sequential placement algorithm
@@ -357,6 +383,208 @@ private:
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
+};
+
+// SA temperature schedule with windowed acceptance tracking.
+class SASchedule {
+public:
+  SASchedule() = default;
+  SASchedule(double startTemp, int movesPerIter, int maxIters, int greedyIters)
+      : temperature(startTemp), movesPerIter(movesPerIter),
+        maxIters(maxIters), greedyIters(greedyIters),
+        windowSize(std::max(movesPerIter, 100)) {}
+
+  double getTemperature() const { return temperature; }
+  int getIteration() const { return currIteration; }
+  int getMovesPerIter() const { return movesPerIter; }
+  bool isGreedy() const { return inGreedyStage; }
+  void setCoolingFactor(double cf) { coolingFactor = cf; }
+
+  bool limitReached() const {
+    return currIteration >= maxIters ||
+           (inGreedyStage && currGreedyIteration >= greedyIters);
+  }
+
+  double getAcceptanceRatio() const {
+    int total = acceptCount + rejectCount;
+    return (total == 0) ? 1.0
+                        : static_cast<double>(acceptCount) / total;
+  }
+
+  void recordAccept() {
+    history.push_back(1);
+    acceptCount++;
+    trimWindow();
+  }
+
+  void recordReject() {
+    history.push_back(0);
+    rejectCount++;
+    trimWindow();
+  }
+
+  void cool() {
+    temperature *= coolingFactor;
+    if (inGreedyStage) {
+      currGreedyIteration++;
+    } else if (getAcceptanceRatio() < 0.005 || temperature < 1e-8) {
+      inGreedyStage = true;
+      temperature = 0.0;
+    }
+    currIteration++;
+  }
+
+private:
+  double temperature = 0.0;
+  int currIteration = 0;
+  int currGreedyIteration = 0;
+  int movesPerIter = 100;
+  int maxIters = 5000;
+  int greedyIters = 100;
+  int windowSize = 100;
+  double coolingFactor = 0.999;
+  bool inGreedyStage = false;
+  std::deque<int> history;
+  int acceptCount = 0;
+  int rejectCount = 0;
+
+  void trimWindow() {
+    while (static_cast<int>(history.size()) > windowSize) {
+      if (history.front() == 1)
+        acceptCount--;
+      else
+        rejectCount--;
+      history.pop_front();
+    }
+  }
+};
+
+// Cascade flows have two valid orientations:
+//   Horizontal: src at (col, row), dst at (col+1, row)
+//   Vertical:   src at (col, row), dst at (col, row-1)
+enum class CascadeOrientation { Horizontal, Vertical };
+
+struct CascadeGroup {
+  llvm::SmallVector<mlir::Operation *> tiles; // ordered: src first, then dst
+  CascadeOrientation orientation = CascadeOrientation::Horizontal;
+};
+
+// Per-net bounding box state for incremental HPWL updates.
+// countAt* tracks how many endpoints sit at each extreme so we can avoid
+// full rescans when an endpoint moves away from a non-unique extreme.
+struct NetBoundingBox {
+  int minCol = 0, maxCol = 0, minRow = 0, maxRow = 0;
+  int countAtMinCol = 0, countAtMaxCol = 0;
+  int countAtMinRow = 0, countAtMaxRow = 0;
+};
+
+struct NetInfo {
+  llvm::SmallVector<mlir::Operation *> endpoints; // producer + all consumers
+  NetBoundingBox bb;
+  bool isMulticast = false; // >4 consumers triggers 2x HPWL penalty
+};
+
+// Simulated annealing placement algorithm
+//
+// Uses HPWL (half-perimeter wire length) cost with incremental bounding-box
+// updates. Nets are derived from ObjectFifo producer/consumer connectivity.
+// All tile types (compute, mem, shim) participate in SA moves. After SA
+// converges, a merge pass collapses mem/shim logical tiles that landed in the
+// same column onto a shared physical tile when DMA capacity permits.
+class SABasedPlacer : public Placer {
+public:
+  explicit SABasedPlacer(unsigned seed = 0) : rngSeed(seed) {}
+
+  mlir::LogicalResult place(DeviceOp device) override;
+  llvm::StringRef getName() const override { return "sa_placer"; }
+
+private:
+  unsigned rngSeed;
+  std::mt19937 rng;
+  SASchedule schedule;
+
+  // Net model
+  llvm::SmallVector<NetInfo> nets;
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
+
+  // SA placement state
+  llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;
+  llvm::DenseMap<TileID, mlir::Operation *> physToLogical;
+  llvm::SmallVector<mlir::Operation *> movableTiles;
+  llvm::DenseSet<mlir::Operation *> constrainedTiles;
+
+  // Tile type for each logical tile (cached for fast lookup)
+  llvm::DenseMap<mlir::Operation *, AIETileType> tileTypes;
+
+  // Static buffer sizes per logical tile
+  llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
+
+  // Cascade groups: tiles connected by cascade_flow that move as a fixed unit
+  llvm::SmallVector<CascadeGroup> cascadeGroups;
+  // Maps a tile to its cascade group index (-1 if not in any group)
+  llvm::DenseMap<mlir::Operation *, int> cascadeGroupOf;
+
+  struct FifoBufferInfo {
+    mlir::Operation *fifoOp;
+    mlir::Operation *producer;
+    llvm::SmallVector<mlir::Operation *> consumers;
+    int64_t sizeBytes;
+    int producerDepth;
+    llvm::SmallVector<int> consumerDepths;
+  };
+  llvm::SmallVector<FifoBufferInfo> fifoBuffers;
+
+  // Resource tracking: full init once, then incremental updates per move
+  void initResourceTracking();
+  int updateResourcePenalty(
+      const llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &oldPlacements);
+  int getResourcePenalty() const { return cachedResourcePenalty; }
+
+  // Add/subtract a single fifo's contribution (sign = +1 or -1)
+  void addFifoContribution(size_t fifoIdx, int sign);
+  // Compute penalty from current maps
+  int computePenaltyFromMaps() const;
+
+  // Reverse index: tile operation -> fifo buffer indices
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToFifoIndices;
+  // Persistent resource state
+  llvm::DenseMap<TileID, int64_t> currentMemUsage;
+  llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
+  int cachedResourcePenalty = 0;
+
+  void buildNetModel(
+      llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
+      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+  int computeNetHPWL(const NetInfo &net) const;
+  int computeTotalHPWL() const;
+  void initBoundingBoxes();
+
+
+  // Returns delta cost; modifies net BBs in place.
+  // Caller must save/restore via backups if move is rejected.
+  int evaluateMove(mlir::Operation *tile, TileID newPos,
+                   llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
+  void revertMove(
+      llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
+  void applyMove(mlir::Operation *tile, TileID newPos);
+
+  bool generateShiftMove(mlir::Operation *&tile, TileID &newPos);
+  bool generateSwapMove(mlir::Operation *&tile1, mlir::Operation *&tile2);
+
+
+  // Cascade group swap: exchange group with tiles at target position
+  bool generateGroupSwapMove(
+      int groupIdx,
+      llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
+  // Compute positions of group members given anchor (src tile) position
+  bool getCascadeGroupPositions(const CascadeGroup &group, TileID anchorPos,
+                                llvm::SmallVector<TileID> &positions) const;
+
+  double estimateInitialTemperature(int numSamples);
+  bool isLegalPosition(mlir::Operation *tile, TileID pos) const;
+
+  // Post-SA: merge mem/shim tiles in the same column when DMA capacity allows
+  mlir::LogicalResult mergeMemShimTiles(DeviceOp device);
 };
 
 } // namespace xilinx::AIE

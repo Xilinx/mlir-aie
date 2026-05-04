@@ -61,7 +61,9 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
            "Placement algorithm to use (default: sequential_placer)",
            "llvm::cl::values("
              "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
-                        "\"sequential_placer\", \"Sequential column-major placement\"))">,
+                        "\"sequential_placer\", \"Sequential column-major placement\"), "
+             "clEnumValN(xilinx::AIE::PlacerType::SABasedPlacer, "
+                        "\"sa_placer\", \"Simulated annealing placement\"))">,
     Option<"clCoresPerCol", "cores-per-col", "int",
            /*default=*/"-1",
            "Limit number of cores per column (-1 = no limit). "
@@ -72,7 +74,10 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
            "MemTile) aie.logical_tile ops to share one physical aie.tile "
            "if combined DMA channel demand fits. When false, each non-core "
            "aie.logical_tile is pinned to its own physical tile. CoreTile "
-           "placement is unaffected.">
+           "placement is unaffected.">,
+    Option<"clSASeed", "sa-seed", "int",
+           /*default=*/"0",
+           "Random seed for SA placer (0 = non-deterministic).">
   ];
 }
 

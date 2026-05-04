@@ -80,6 +80,9 @@ struct AIEPlaceTilesPass
           std::make_shared<SequentialPlacer>(coresPerCol, clMergeLogicalTiles);
       break;
     }
+    case PlacerType::SABasedPlacer:
+      placer = std::make_shared<SABasedPlacer>(clSASeed);
+      break;
     }
 
     placer->initialize(device.getTargetModel());
@@ -97,6 +100,34 @@ struct AIEPlaceTilesPass
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       return signalPassFailure();
+
+    // Generate objectfifo.allocate ops right after their respective objectfifo
+    auto &allocs = placer->getAllocates();
+    if (!allocs.empty()) {
+      // Deduplicate: only emit one allocate per fifo
+      llvm::DenseSet<Operation *> emitted;
+      for (auto &[fifoOp, delegateTileID] : allocs) {
+        if (emitted.count(fifoOp))
+          continue;
+        emitted.insert(fifoOp);
+
+        auto ofOp = dyn_cast<ObjectFifoCreateOp>(fifoOp);
+        if (!ofOp)
+          continue;
+
+        // Insert right after the objectfifo op
+        OpBuilder builder(ofOp->getContext());
+        builder.setInsertionPointAfter(ofOp);
+
+        TileOp delegateTile =
+            TileOp::getOrCreate(builder, device, delegateTileID.col,
+                                delegateTileID.row);
+        ObjectFifoAllocateOp::create(
+            builder, builder.getUnknownLoc(),
+            SymbolRefAttr::get(builder.getContext(), ofOp.getSymName()),
+            delegateTile.getResult());
+      }
+    }
   }
 };
 

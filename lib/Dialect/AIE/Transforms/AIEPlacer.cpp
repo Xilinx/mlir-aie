@@ -86,16 +86,12 @@ void SequentialPlacer::Adjacency::addEdgeFromValues(Value a, Value b) {
     addEdge(aT, bT);
 }
 
-void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
-  this->targetModel = &targetModel;
-  assignedNonCoreTiles.clear();
-
-  for (int col = 0; col < targetModel.columns(); col++) {
-    for (int row = 0; row < targetModel.rows(); row++) {
+void Placer::initialize(const AIETargetModel &tm) {
+  targetModel = &tm;
+  for (int col = 0; col < tm.columns(); col++) {
+    for (int row = 0; row < tm.rows(); row++) {
       TileID id = {col, row};
-      AIETileType type = targetModel.getTileType(col, row);
-
-      switch (type) {
+      switch (tm.getTileType(col, row)) {
       case AIETileType::CoreTile:
         availability.compTiles.push_back(id);
         break;
@@ -108,6 +104,10 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
       }
     }
   }
+}
+
+void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
+  Placer::initialize(targetModel);
 
   // Compute tiles iterate column-major (fill a column top-to-bottom before
   // moving right); non-compute tiles iterate row-major.
@@ -1363,21 +1363,7 @@ void SequentialPlacer::updateChannelUsage(TileID tile, DmaDir direction,
 
 bool SequentialPlacer::hasAvailableChannels(TileID tile, int inputChannels,
                                             int outputChannels) {
-  // Get max channels based on tile type and row
-  int maxIn, maxOut;
-  if (tile.row == 0) {
-    // Shim tiles use ShimMux connections
-    maxIn = targetModel->getNumDestShimMuxConnections(tile.col, tile.row,
-                                                      WireBundle::DMA);
-    maxOut = targetModel->getNumSourceShimMuxConnections(tile.col, tile.row,
-                                                         WireBundle::DMA);
-  } else {
-    // Other tiles use Switchbox connections
-    maxIn = targetModel->getNumDestSwitchboxConnections(tile.col, tile.row,
-                                                        WireBundle::DMA);
-    maxOut = targetModel->getNumSourceSwitchboxConnections(tile.col, tile.row,
-                                                           WireBundle::DMA);
-  }
+  auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
 
   int currentIn = availability.inputChannelsUsed[tile];
   int currentOut = availability.outputChannelsUsed[tile];
