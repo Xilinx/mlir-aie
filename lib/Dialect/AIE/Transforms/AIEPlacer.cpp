@@ -149,8 +149,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       TileID tile{*col, *row};
       if (!fitsBufferCapacity(logicalTile, tile, bufferRequirements)) {
         int64_t need = bufferRequirements.lookup(logicalTile.getOperation());
-        // Stack only contributes when this LogicalTileOp is a CoreTile with
-        // an attached CoreOp; mention it only in that case for accuracy.
         bool includesStack = logicalTile.getTileType() == AIETileType::CoreTile;
         return logicalTile.emitError()
                << "tile (" << tile.col << ", " << tile.row << ") cannot host "
@@ -174,13 +172,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     // Place compute tiles with partial constraint support
     if (logicalTile.getTileType() == AIETileType::CoreTile) {
       std::optional<TileID> placement = std::nullopt;
-      // Track whether buffer capacity was the *only* reason candidates
-      // matching the partial constraints (if any) were skipped, so the
-      // diagnostic on failure can name the actual cause. (On current devices
-      // every CoreTile has the same `getLocalMemorySize()`, so skipping one
-      // by buffer-capacity skips them all - this loop's per-candidate filter
-      // is forward-looking for heterogeneous future devices and feeds the
-      // diagnostic below.)
       bool sawConstraintMatch = false;
       bool allConstraintMatchesFailedBuffer = true;
 
@@ -205,9 +196,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       }
 
       if (!placement) {
-        // Buffer capacity is implicated only when at least one candidate
-        // matched the partial constraints AND every such candidate failed the
-        // buffer filter.
         bool bufferWasCause =
             sawConstraintMatch && allConstraintMatchesFailedBuffer &&
             bufferRequirements.count(logicalTile.getOperation());
@@ -510,29 +498,14 @@ SequentialPlacer::buildChannelRequirements(
   return channelRequirements;
 }
 
-// Sum BufferOp::getAllocationSize() per LogicalTileOp, then add the stack
-// reservation of any CoreOp attached to that LogicalTileOp. The stack lives in
-// the same local data memory as buffers (cf. AIEAssignBuffers reserving
-// `core.getStackSize()` bytes before laying out buffers), so a CoreTile
-// candidate that passes the placer must also leave room for the stack.
-//
-// Buffers attached to physical TileOps are skipped here: those are not part of
-// any placement decision and are still validated downstream by
-// AIEAssignBuffers. Mid-migration IR mixing physical TileOp and LogicalTileOp
-// peers on the same eventual physical tile is therefore validated only for the
-// LogicalTileOp share at this stage; AIEAssignBuffers catches the rest.
-//
-// ObjectFifo-derived buffers are not yet visible at this pass (they are
-// materialized later by objectfifo lowering) and are not counted here. A tile
-// that passes this filter can still overflow once those buffers materialize;
-// AIEAssignBuffers remains the authoritative final check.
+// Sum BufferOp bytes per LogicalTileOp, plus CoreOp stack for CoreTiles.
+// Mirrors AIEAssignBuffers' downstream layout. Skips buffers on physical
+// TileOps (validated downstream) and ObjectFifo-derived buffers (not yet
+// materialized).
 llvm::DenseMap<Operation *, int64_t> SequentialPlacer::buildBufferRequirements(
     ArrayRef<BufferOp> buffers, ArrayRef<LogicalTileOp> logicalTiles) {
   llvm::DenseMap<Operation *, int64_t> bufferRequirements;
 
-  // Seed with stack reservations for CoreTile LogicalTileOps that already
-  // have a CoreOp user. Without a CoreOp the stack attribute does not yet
-  // exist, so don't pre-reserve.
   for (auto lt : logicalTiles) {
     if (lt.getTileType() != AIETileType::CoreTile)
       continue;
@@ -561,13 +534,8 @@ int64_t SequentialPlacer::tileMemoryCapacity(TileID tile) const {
 bool SequentialPlacer::fitsBufferCapacity(
     LogicalTileOp logicalTile, TileID candidate,
     const llvm::DenseMap<Operation *, int64_t> &bufferRequirements) const {
-  // Both CoreTile and MemTile have finite data memory. CoreTile is 1:1 with a
-  // LogicalTileOp, so the per-LogicalTileOp sum *is* the physical-tile demand
-  // and we validate exactly. MemTile may host buffers from multiple
-  // LogicalTileOps (cf. `removeTile` skipping non-CoreTile and the channel
-  // accumulation in `inputChannelsUsed`); we still validate the per-tile sum
-  // as a *necessary* upper bound here, but full per-physical-tile accumulation
-  // is left to AIEAssignBuffers and a follow-up PR.
+  // Per-LogicalTileOp upper bound. MemTile sharing across LogicalTileOps is
+  // not accumulated here; AIEAssignBuffers catches that.
   AIETileType type = targetModel->getTileType(candidate.col, candidate.row);
   if (type != AIETileType::CoreTile && type != AIETileType::MemTile)
     return true;

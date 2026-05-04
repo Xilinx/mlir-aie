@@ -114,27 +114,14 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  // Sum `BufferOp::getAllocationSize()` per `LogicalTileOp`, plus the stack
-  // reservation of any attached CoreOp for CoreTile LogicalTileOps (matching
-  // AIEAssignBuffers' downstream layout). Buffers attached to physical TileOp
-  // peers are skipped: those are not part of any placement decision and are
-  // still validated downstream by AIEAssignBuffers. ObjectFifo-derived buffers
-  // are not yet visible at this pass and are not counted; AIEAssignBuffers
-  // remains the authoritative final check.
   llvm::DenseMap<mlir::Operation *, int64_t>
   buildBufferRequirements(llvm::ArrayRef<BufferOp> buffers,
                           llvm::ArrayRef<LogicalTileOp> logicalTiles);
 
-  // Returns true iff placing `logicalTile` at `candidate` would keep its total
-  // buffer allocation (plus stack reservation, for CoreTiles) within the
-  // candidate tile type's data memory capacity. Returns true unconditionally
-  // for tile types without addressable data memory (Shim*).
   bool fitsBufferCapacity(LogicalTileOp logicalTile, TileID candidate,
                           const llvm::DenseMap<mlir::Operation *, int64_t>
                               &bufferRequirements) const;
 
-  // Data memory capacity in bytes for the given physical tile (0 if the tile
-  // has no addressable data memory).
   int64_t tileMemoryCapacity(TileID tile) const;
 };
 

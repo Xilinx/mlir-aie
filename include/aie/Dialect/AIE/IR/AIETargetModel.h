@@ -257,10 +257,8 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
-  /// Return the size (in bytes) of the data memory addressable from the given
-  /// tile type: `getLocalMemorySize()` for CoreTile, `getMemTileSize()` for
-  /// MemTile, 0 otherwise. Centralizes the dispatch used by AIEAssignBuffers
-  /// and AIEPlacer so per-tile-type capacity stays consistent across passes.
+  /// Return the size (in bytes) of the data memory for the given tile type:
+  /// CoreTile -> getLocalMemorySize, MemTile -> getMemTileSize, else 0.
   uint32_t getDataMemorySize(AIETileType tileType) const;
 
   /// Return the size (in bits) of the accumulator/cascade.

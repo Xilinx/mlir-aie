@@ -208,9 +208,7 @@ module @mixed_channels_exceed_capacity {
 
 // -----
 
-// Pinned CoreTile with a buffer that exceeds L1 (npu1: 64KB). Error names the
-// tile, the requested bytes (buffer + 1024-byte default stack reservation),
-// and the available capacity.
+// Pinned CoreTile buffer exceeds L1 (npu1: 64KB).
 module @buffer_overflow_pinned {
   aie.device(npu1) {
     // CHECK: error: tile (2, 3) cannot host 132096 bytes of buffers + stack (capacity 65536)
@@ -222,8 +220,7 @@ module @buffer_overflow_pinned {
 
 // -----
 
-// Unconstrained CoreTile whose buffer exceeds L1 — every candidate fails the
-// capacity filter, so placement is unsatisfiable.
+// Unconstrained CoreTile, buffer exceeds L1 on every candidate.
 module @buffer_overflow_unconstrained {
   aie.device(npu1) {
     // CHECK: error: no available compute tiles for placement (buffer capacity exceeded on every candidate)
@@ -235,9 +232,7 @@ module @buffer_overflow_unconstrained {
 
 // -----
 
-// Multiple individually-fitting buffers that together overflow L1 — exercises
-// the per-LogicalTileOp summation in buildBufferRequirements. Each buffer is
-// 32KB; together with the 1KB stack they exceed npu1's 64KB.
+// Per-LogicalTileOp summation: 2 * 32KB + 1KB stack > 64KB.
 module @buffer_overflow_sum {
   aie.device(npu1) {
     // CHECK: error: tile (2, 3) cannot host 66560 bytes of buffers + stack (capacity 65536)
@@ -250,9 +245,7 @@ module @buffer_overflow_sum {
 
 // -----
 
-// MemTile-pinned LogicalTileOp whose buffer exceeds the MemTile capacity
-// (npu1: 512KB / 0x80000). Validates the per-LogicalTileOp upper-bound check
-// for MemTiles. 200000 i32 elements = 800000 bytes > 524288 bytes.
+// MemTile per-LogicalTileOp upper bound (npu1: 512KB).
 module @memtile_buffer_overflow {
   aie.device(npu1) {
     // CHECK: error: tile (0, 1) cannot host 800000 bytes of buffers (capacity 524288)
@@ -263,8 +256,7 @@ module @memtile_buffer_overflow {
 
 // -----
 
-// Pinned CoreTile on AIE2P (npu2). Same overflow shape exercises the
-// target-model dispatch on a different architecture.
+// AIE2P (npu2) target-model dispatch.
 module @buffer_overflow_npu2 {
   aie.device(npu2) {
     // CHECK: error: tile (2, 3) cannot host 132096 bytes of buffers + stack (capacity 65536)

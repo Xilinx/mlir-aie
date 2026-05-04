@@ -39,11 +39,7 @@ module @buffer_fits_unconstrained {
 
 // -----
 
-// Multiple buffers on the same logical tile sum together against capacity.
-// 4 * memref<8192xi32> = 4 * 32KB = 128KB of buffers + 1KB stack would exceed
-// npu1's 64KB CoreTile L1, but each buffer is 32KB on its own. This case uses
-// 3 * 8KB = 24KB + 1KB stack = 25KB which fits comfortably; it pins the
-// summation behaviour without overflowing.
+// Multiple buffers on one tile sum against capacity (3 * 8KB + 1KB stack).
 // CHECK-LABEL: @multi_buffer_sum_fits
 module @multi_buffer_sum_fits {
   aie.device(npu1) {
@@ -59,12 +55,7 @@ module @multi_buffer_sum_fits {
 
 // -----
 
-// Buffer attached to a physical aie.tile (not aie.logical_tile) is silently
-// ignored by the placer's buffer-capacity check: such buffers are not part of
-// any placement decision and remain AIEAssignBuffers' responsibility. The
-// 256KB physical-tile buffer here would overflow if it were counted, but the
-// placer must accept this IR unchanged (a separate logical_tile with a small
-// buffer placed normally proves the rest of the pipeline still runs).
+// Buffers on physical aie.tile are skipped (validated by AIEAssignBuffers).
 // CHECK-LABEL: @physical_tile_buffer_skipped
 module @physical_tile_buffer_skipped {
   aie.device(npu1) {
@@ -81,9 +72,7 @@ module @physical_tile_buffer_skipped {
 
 // -----
 
-// MemTile-pinned LogicalTileOp with a buffer that fits in the MemTile capacity
-// (npu1 MemTile = 512KB). Validates that MemTile placements pass the new
-// per-LogicalTileOp upper-bound check.
+// MemTile per-LogicalTileOp upper bound (npu1 MemTile = 512KB).
 // CHECK-LABEL: @memtile_buffer_fits
 module @memtile_buffer_fits {
   aie.device(npu1) {
@@ -96,9 +85,7 @@ module @memtile_buffer_fits {
 
 // -----
 
-// Same shape on AIE2P (npu2), exercising the target-model dispatch on a
-// different architecture. npu2 CoreTile L1 is also 64KB; a 4KB buffer plus
-// 1KB default stack fits with room to spare.
+// AIE2P (npu2) target-model dispatch.
 // CHECK-LABEL: @buffer_fits_npu2
 module @buffer_fits_npu2 {
   aie.device(npu2) {
