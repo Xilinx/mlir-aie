@@ -119,6 +119,25 @@ module @two_pinned_tiles_independent_l1 {
 
 // -----
 
+// Two LogicalTileOps both pinned at (2, 3) collapse onto one physical
+// CoreTile. Their buffers must accumulate against that tile's L1: 8KB +
+// 8KB + 1KB stack = 17KB, well under 64KB.
+// CHECK-LABEL: @two_pinned_same_tile_l1_accumulates_fits
+module @two_pinned_same_tile_l1_accumulates_fits {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[T:.*]] = aie.tile(2, 3)
+    %t1 = aie.logical_tile<CoreTile>(2, 3)
+    %b1 = aie.buffer(%t1) : memref<2048xi32>
+    aie.core(%t1) { aie.end }
+    %t2 = aie.logical_tile<CoreTile>(2, 3)
+    %b2 = aie.buffer(%t2) : memref<2048xi32>
+    aie.core(%t2) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
 // Two unconstrained CoreTiles, each with L1 buffers. removeTile + buffer
 // filter must cooperate so the second tile picks a distinct physical tile.
 // CHECK-LABEL: @two_unconstrained_tiles_distinct_placement

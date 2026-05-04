@@ -29,6 +29,7 @@ struct TileAvailability {
 
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
+  llvm::DenseMap<TileID, int64_t> bufferBytesUsed;
 
   void removeTile(TileID tile, AIETileType type);
 };

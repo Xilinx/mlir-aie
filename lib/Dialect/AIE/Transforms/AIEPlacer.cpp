@@ -149,18 +149,25 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       TileID tile{*col, *row};
       if (!fitsBufferCapacity(logicalTile, tile, bufferRequirements)) {
         int64_t need = bufferRequirements.lookup(logicalTile.getOperation());
+        int64_t already = availability.bufferBytesUsed.lookup(tile);
         bool includesStack = logicalTile.getTileType() == AIETileType::CoreTile;
-        return logicalTile.emitError()
-               << "tile (" << tile.col << ", " << tile.row << ") requires "
-               << need << " bytes for buffers"
-               << (includesStack ? " + stack" : "") << ", but only "
-               << tileMemoryCapacity(tile) << " bytes available";
+        auto diag = logicalTile.emitError()
+                    << "tile (" << tile.col << ", " << tile.row << ") requires "
+                    << need << " bytes for buffers"
+                    << (includesStack ? " + stack" : "");
+        if (already > 0)
+          diag << " (plus " << already
+               << " bytes already charged from earlier placements)";
+        diag << ", but only " << tileMemoryCapacity(tile) << " bytes available";
+        return failure();
       }
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
                                                channelRequirements, true)))
         return failure();
 
       result[logicalTile] = tile;
+      availability.bufferBytesUsed[tile] +=
+          bufferRequirements.lookup(logicalTile.getOperation());
       // Only remove fully constrained compute tiles from availability.
       // Mem/Shim may still host additional logical tiles as long as
       // channel/DMA capacity permits.
@@ -218,6 +225,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
 
       result[logicalTile] = *placement;
+      availability.bufferBytesUsed[*placement] +=
+          bufferRequirements.lookup(logicalTile.getOperation());
     }
 
     if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
@@ -543,18 +552,19 @@ int64_t SequentialPlacer::tileMemoryCapacity(TileID tile) const {
 bool SequentialPlacer::fitsBufferCapacity(
     LogicalTileOp logicalTile, TileID candidate,
     const llvm::DenseMap<Operation *, int64_t> &bufferRequirements) const {
-  // Per-LogicalTileOp upper bound. Shim tiles have no data memory and never
-  // host BufferOps, so they trivially fit.
-  // TODO(#2864): MemTile sharing across LogicalTileOps is not accumulated
-  // here; an inputChannelsUsed-style per-physical-MemTile accumulator would
-  // catch that earlier. AIEAssignBuffers still catches the overflow today.
+  // Shim tiles have no data memory and never host BufferOps; trivially fit.
+  // For Core/Mem tiles, accumulate the candidate's already-charged bytes
+  // (from prior LogicalTileOps placed at the same physical tile, possible
+  // for MemTile sharing or for two CoreTile LogicalTileOps pinned to the
+  // same coordinates) and check the sum against capacity. Symmetric with
+  // the inputChannelsUsed/outputChannelsUsed accumulator.
   AIETileType type = targetModel->getTileType(candidate.col, candidate.row);
   if (type != AIETileType::CoreTile && type != AIETileType::MemTile)
     return true;
   auto it = bufferRequirements.find(logicalTile.getOperation());
-  if (it == bufferRequirements.end())
-    return true;
-  return it->second <= tileMemoryCapacity(candidate);
+  int64_t need = (it != bufferRequirements.end()) ? it->second : 0;
+  int64_t already = availability.bufferBytesUsed.lookup(candidate);
+  return need + already <= tileMemoryCapacity(candidate);
 }
 
 void SequentialPlacer::buildObjectFifoGroups(

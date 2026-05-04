@@ -293,3 +293,38 @@ module @buffer_overflow_second_of_two {
     aie.core(%t2) { aie.end }
   }
 }
+
+// -----
+
+// Two LogicalTileOps both pinned at (2, 3): individual budgets fit
+// (33KB each < 64KB), but the placer collapses them onto one physical
+// CoreTile so the L1 demand sums to ~67KB. The per-physical-tile
+// accumulator must catch it; without it, AIEAssignBuffers would report
+// the overflow downstream against a tile the user never wrote.
+module @buffer_overflow_two_pinned_same_tile {
+  aie.device(npu1) {
+    // CHECK: error: tile (2, 3) requires 33792 bytes for buffers + stack (plus 33792 bytes already charged from earlier placements), but only 65536 bytes available
+    %t1 = aie.logical_tile<CoreTile>(2, 3)
+    %b1 = aie.buffer(%t1) : memref<8192xi32>
+    aie.core(%t1) { aie.end }
+    %t2 = aie.logical_tile<CoreTile>(2, 3)
+    %b2 = aie.buffer(%t2) : memref<8192xi32>
+    aie.core(%t2) { aie.end }
+  }
+}
+
+// -----
+
+// Same accumulation for MemTile sharing across LogicalTileOps. The
+// existing placer permits multiple MemTile LogicalTileOps to land on
+// one physical MemTile (cf. `removeTile` not removing MemTile in the
+// constrained branch); summed buffer bytes must respect MemTile capacity.
+module @buffer_overflow_two_pinned_same_memtile {
+  aie.device(npu1) {
+    // CHECK: error: tile (0, 1) requires 400000 bytes for buffers (plus 400000 bytes already charged from earlier placements), but only 524288 bytes available
+    %m1 = aie.logical_tile<MemTile>(0, 1)
+    %b1 = aie.buffer(%m1) : memref<100000xi32>
+    %m2 = aie.logical_tile<MemTile>(0, 1)
+    %b2 = aie.buffer(%m2) : memref<100000xi32>
+  }
+}
