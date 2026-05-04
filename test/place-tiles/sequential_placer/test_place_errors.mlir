@@ -212,7 +212,7 @@ module @mixed_channels_exceed_capacity {
 module @buffer_adjacency_both_pinned_violation {
   aie.device(npu1) {
     // CHECK: error: tile (0, 2) violates shared-L1 buffer adjacency
-    // CHECK: note: buffer-affinity consumer peer at (3, 5)
+    // CHECK: note: shared-L1 buffer consumer peer placed at (3, 5)
     %owner = aie.logical_tile<CoreTile>(0, 2)
     %buf   = aie.buffer(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
@@ -231,8 +231,8 @@ module @buffer_adjacency_both_pinned_violation {
 // memory-affinity slot relative to the owner.
 module @buffer_adjacency_unsatisfiable_column {
   aie.device(npu1) {
-    // CHECK: error: no compute tile available matching constraint (3, ?) with valid shared-L1 buffer adjacency
-    // CHECK: note: buffer-affinity owner peer at (0, 2)
+    // CHECK: error: no compute tile available matching constraint (3, ?) and shared-L1 buffer adjacency
+    // CHECK: note: shared-L1 buffer owner peer placed at (0, 2)
     %owner = aie.logical_tile<CoreTile>(0, 2)
     %buf   = aie.buffer(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }
@@ -259,7 +259,7 @@ module @buffer_adjacency_star_oversubscribed {
     %c2 = aie.logical_tile<CoreTile>(?, ?)
     %c3 = aie.logical_tile<CoreTile>(?, ?)
     // CHECK: error: no available compute tiles for placement (shared-L1 buffer adjacency unsatisfiable)
-    // CHECK: note: buffer-affinity owner peer at (1, 3)
+    // CHECK: note: shared-L1 buffer owner peer placed at (1, 3)
     %c4 = aie.logical_tile<CoreTile>(?, ?)
     aie.core(%c1) {
       %i = arith.constant 0 : index

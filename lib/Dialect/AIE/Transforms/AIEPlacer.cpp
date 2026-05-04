@@ -199,8 +199,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           diag << "no compute tile available matching constraint ("
                << (col ? std::to_string(*col) : "?") << ", "
                << (row ? std::to_string(*row) : "?") << ")"
-               << (adjacencyWasCause ? " with valid shared-L1 buffer adjacency"
-                                     : "");
+               << (adjacencyWasCause ? " and shared-L1 buffer adjacency" : "");
         } else {
           diag << "no available compute tiles for placement"
                << (adjacencyWasCause
@@ -602,8 +601,8 @@ void SequentialPlacer::attachBufferPeerNotes(
     if (!peerPos)
       continue;
     diag.attachNote(peer.getLoc())
-        << "buffer-affinity " << (thisIsConsumer ? "owner" : "consumer")
-        << " peer at (" << peerPos->col << ", " << peerPos->row << ")";
+        << "shared-L1 buffer " << (thisIsConsumer ? "owner" : "consumer")
+        << " peer placed at (" << peerPos->col << ", " << peerPos->row << ")";
   }
 }
 
