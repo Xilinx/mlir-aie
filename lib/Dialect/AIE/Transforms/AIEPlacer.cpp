@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
@@ -130,9 +131,12 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       objectFifoLinks.push_back(link);
   });
 
-  // Phase 2: Build channel requirements from ObjectFifo connectivity
+  // Phase 2: Build channel requirements from ObjectFifo connectivity, and
+  // memory-affinity adjacency from cross-tile L1 buffer accesses.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
+
+  auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
 
   // Phase 3: Place constrained tiles then compute tiles
   size_t nextCompIdx = 0;
@@ -142,6 +146,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     auto row = logicalTile.tryGetRow();
     if (col && row) {
       TileID tile{*col, *row};
+      if (!satisfiesBufferAdjacency(logicalTile, tile, bufferAdjacency)) {
+        auto diag = logicalTile.emitError()
+                    << "tile (" << tile.col << ", " << tile.row
+                    << ") violates shared-L1 buffer adjacency";
+        attachBufferPeerNotes(diag, logicalTile, bufferAdjacency);
+        return failure();
+      }
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
                                                channelRequirements, true)))
         return failure();
@@ -158,6 +169,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     // Place compute tiles with partial constraint support
     if (logicalTile.getTileType() == AIETileType::CoreTile) {
       std::optional<TileID> placement = std::nullopt;
+      bool sawConstraintMatch = false;
+      bool allConstraintMatchesFailedAdjacency = true;
 
       for (size_t i = nextCompIdx; i < availability.compTiles.size(); ++i) {
         TileID candidate = availability.compTiles[i];
@@ -167,6 +180,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           continue;
         if (row && candidate.row != *row)
           continue;
+        sawConstraintMatch = true;
+        if (!satisfiesBufferAdjacency(logicalTile, candidate, bufferAdjacency))
+          continue;
+        allConstraintMatchesFailedAdjacency = false;
 
         // Found valid tile - swap to nextCompIdx position and use
         std::swap(availability.compTiles[i],
@@ -176,14 +193,25 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       }
 
       if (!placement) {
+        bool adjacencyWasCause =
+            sawConstraintMatch && allConstraintMatchesFailedAdjacency &&
+            bufferAdjacency.tileToEdges.count(logicalTile.getOperation());
+        InFlightDiagnostic diag = logicalTile.emitError();
         if (col || row) {
-          return logicalTile.emitError()
-                 << "no compute tile available matching constraint ("
-                 << (col ? std::to_string(*col) : "?") << ", "
-                 << (row ? std::to_string(*row) : "?") << ")";
+          diag << "no compute tile available matching constraint ("
+               << (col ? std::to_string(*col) : "?") << ", "
+               << (row ? std::to_string(*row) : "?") << ")"
+               << (adjacencyWasCause ? " with valid shared-L1 buffer adjacency"
+                                     : "");
+        } else {
+          diag << "no available compute tiles for placement"
+               << (adjacencyWasCause
+                       ? " (shared-L1 buffer adjacency unsatisfiable)"
+                       : "");
         }
-        return logicalTile.emitError(
-            "no available compute tiles for placement");
+        if (adjacencyWasCause)
+          attachBufferPeerNotes(diag, logicalTile, bufferAdjacency);
+        return failure();
       }
 
       if (failed(validateAndUpdateChannelUsage(logicalTile, *placement,
@@ -469,6 +497,122 @@ SequentialPlacer::buildChannelRequirements(
   }
 
   return channelRequirements;
+}
+
+// Walk view-like aliasing memref ops back to the underlying BufferOp; stop at
+// anything else (block argument, function call, unrecognized producer).
+static BufferOp traceToBuffer(Value val) {
+  for (Operation *op = val.getDefiningOp(); op;) {
+    if (auto buf = dyn_cast<BufferOp>(op))
+      return buf;
+    if (auto view = dyn_cast<ViewLikeOpInterface>(op)) {
+      val = view.getViewSource();
+      op = val.getDefiningOp();
+      continue;
+    }
+    return nullptr;
+  }
+  return nullptr;
+}
+
+// Look up a peer's known position: from this placement run if already placed,
+// otherwise from a fully-pinned `(col, row)` constraint. Unconstrained and
+// not-yet-placed peers return nullopt and the predicate defers.
+static std::optional<TileID>
+resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
+  auto it = placed.find(peer.getOperation());
+  if (it != placed.end())
+    return it->second;
+  auto col = peer.tryGetCol();
+  auto row = peer.tryGetRow();
+  if (col && row)
+    return TileID{*col, *row};
+  return std::nullopt;
+}
+
+SequentialPlacer::BufferAdjacency
+SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
+  BufferAdjacency adjacency;
+
+  // Cores attached to physical TileOps don't need placement and therefore
+  // don't contribute consumer-side adjacency constraints either.
+  for (auto consumer : logicalTiles) {
+    if (consumer.getTileType() != AIETileType::CoreTile)
+      continue;
+    CoreOp core = nullptr;
+    for (Operation *user : consumer.getResult().getUsers())
+      if (auto c = dyn_cast<CoreOp>(user)) {
+        core = c;
+        break;
+      }
+    if (!core)
+      continue;
+
+    // De-dup multiple references to the same owner from one consumer body.
+    llvm::SmallDenseSet<Operation *, 4> seenOwners;
+    core.getBody().walk([&](Operation *op) {
+      for (Value operand : op->getOperands()) {
+        BufferOp buf = traceToBuffer(operand);
+        if (!buf)
+          continue;
+        auto owner = dyn_cast_or_null<TileLike>(buf.getTile().getDefiningOp());
+        if (!owner)
+          continue;
+        if (owner.getOperation() == consumer.getOperation())
+          continue;
+        if (!seenOwners.insert(owner.getOperation()).second)
+          continue;
+        unsigned idx = adjacency.edges.size();
+        adjacency.edges.push_back({consumer, owner});
+        adjacency.tileToEdges[consumer.getOperation()].push_back(idx);
+        if (isa<LogicalTileOp>(owner.getOperation()))
+          adjacency.tileToEdges[owner.getOperation()].push_back(idx);
+      }
+    });
+  }
+  return adjacency;
+}
+
+bool SequentialPlacer::satisfiesBufferAdjacency(
+    LogicalTileOp logicalTile, TileID candidate,
+    const BufferAdjacency &adjacency) const {
+  auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
+  if (it == adjacency.tileToEdges.end())
+    return true;
+
+  for (unsigned idx : it->second) {
+    auto [consumer, owner] = adjacency.edges[idx];
+    bool thisIsConsumer = consumer.getOperation() == logicalTile.getOperation();
+    TileLike peer = thisIsConsumer ? owner : TileLike(consumer);
+    auto peerPos = resolvePeerPosition(peer, result);
+    if (!peerPos)
+      continue;
+    TileID consumerPos = thisIsConsumer ? candidate : *peerPos;
+    TileID ownerPos = thisIsConsumer ? *peerPos : candidate;
+    if (!targetModel->isLegalMemAffinity(consumerPos.col, consumerPos.row,
+                                         ownerPos.col, ownerPos.row))
+      return false;
+  }
+  return true;
+}
+
+void SequentialPlacer::attachBufferPeerNotes(
+    InFlightDiagnostic &diag, LogicalTileOp logicalTile,
+    const BufferAdjacency &adjacency) const {
+  auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
+  if (it == adjacency.tileToEdges.end())
+    return;
+  for (unsigned idx : it->second) {
+    auto [consumer, owner] = adjacency.edges[idx];
+    bool thisIsConsumer = consumer.getOperation() == logicalTile.getOperation();
+    TileLike peer = thisIsConsumer ? owner : TileLike(consumer);
+    auto peerPos = resolvePeerPosition(peer, result);
+    if (!peerPos)
+      continue;
+    diag.attachNote(peer.getLoc())
+        << "buffer-affinity " << (thisIsConsumer ? "owner" : "consumer")
+        << " peer at (" << peerPos->col << ", " << peerPos->row << ")";
+  }
 }
 
 void SequentialPlacer::buildObjectFifoGroups(
