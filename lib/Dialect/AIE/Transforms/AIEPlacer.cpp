@@ -498,6 +498,17 @@ SequentialPlacer::buildChannelRequirements(
   return channelRequirements;
 }
 
+// Pre-placement: walk the LogicalTileOp's users for an attached CoreOp.
+// Local to the placer because the relationship is only meaningful in the
+// short window between IR construction and placement; not a property of
+// the op itself.
+static CoreOp findAttachedCoreOp(LogicalTileOp lt) {
+  for (Operation *user : lt.getResult().getUsers())
+    if (auto core = dyn_cast<CoreOp>(user))
+      return core;
+  return nullptr;
+}
+
 // Sum BufferOp bytes per LogicalTileOp, plus CoreOp stack for CoreTiles.
 // Mirrors AIEAssignBuffers' downstream layout. Skips buffers on physical
 // TileOps (validated downstream) and ObjectFifo-derived buffers (not yet
@@ -509,7 +520,7 @@ llvm::DenseMap<Operation *, int64_t> SequentialPlacer::buildBufferRequirements(
   for (auto lt : logicalTiles) {
     if (lt.getTileType() != AIETileType::CoreTile)
       continue;
-    if (auto core = lt.getCoreOp())
+    if (auto core = findAttachedCoreOp(lt))
       bufferRequirements[lt.getOperation()] += core.getStackSize();
   }
 
