@@ -114,8 +114,10 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  // Cross-tile L1 buffer accesses: consumer must satisfy isLegalMemAffinity
-  // of owner. Same shape as CascadeAdjacency in #3042; TODO: factor a generic
+  // Cross-tile L1 buffer access: consumer LTO's core must pass
+  // targetModel->isLegalMemAffinity(coreCol=consumerCol, coreRow=consumerRow,
+  //                                 memCol=ownerCol,     memRow=ownerRow).
+  // Same shape as CascadeAdjacency (#3042); TODO: factor a generic
   // Adjacency<Predicate> once both have landed.
   struct BufferAdjacency {
     llvm::SmallVector<std::pair<LogicalTileOp, TileLike>, 4> edges;
