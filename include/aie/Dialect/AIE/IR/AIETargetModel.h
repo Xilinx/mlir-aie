@@ -257,12 +257,14 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
-  /// Return the data bus width (in bits) for load/store operations of a compute core.
+  /// Return the data bus width (in bits) for load/store operations of a compute
+  /// core.
   virtual uint32_t getComputeTileLoadStoreBusWidth() const = 0;
 
   // NOTE: Maybe this should be set to 4-byte alignment, since DMA on Memtile
   // seems to handle unaligned access.
-  /// Return the data bus width (in bits) for load/store operations of a memory tile.
+  /// Return the data bus width (in bits) for load/store operations of a memory
+  /// tile.
   virtual uint32_t getMemTileLoadStoreBusWidth() const = 0;
 
   /// Return the size (in bits) of the accumulator/cascade.
@@ -564,7 +566,7 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
-  uint32_t getMemTileLoadStoreBusWidth() const override { return 256; }  
+  uint32_t getMemTileLoadStoreBusWidth() const override { return 256; }
 
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
