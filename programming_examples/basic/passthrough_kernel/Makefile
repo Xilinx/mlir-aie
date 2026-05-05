@@ -104,7 +104,7 @@ build/generated_txn.h: build/aie2_lineBased_8b_${data_size}.mlir build/passThrou
 # and generate both XCLBIN and C++ TXN in one invocation.
 build/dynsize/aie_dynamic.mlir: ${srcdir}/passthrough_kernel_dynamic.py
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
 
 build/dynsize/final_dynamic.xclbin build/dynsize/generated_txn.h &: build/dynsize/aie_dynamic.mlir build/passThrough.cc.o
 	mkdir -p build/dynsize

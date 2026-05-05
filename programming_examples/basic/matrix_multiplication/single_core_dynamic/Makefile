@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=single_core_dynamic
 targetname=single_core_dynamic
 
-# Dynamic design always uses bf16->f32, m=k=n=32, npu2 only
+# Dynamic design always uses bf16->f32, m=k=n=32
 m=32
 k=32
 n=32
@@ -21,7 +21,7 @@ K?=128
 N?=128
 dtype_in=bf16
 dtype_out=f32
-devicename=npu2
+devicename?=npu2
 
 kernels=mm_${m}x${k}x${n}
 

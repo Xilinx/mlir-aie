@@ -8,16 +8,25 @@
 #
 """Dynamic passthrough TXN generation using the same IRON API as the static example."""
 
-from aie.iron.device import NPU2
+import argparse
+
+from aie.iron.device import NPU1, NPU2
 
 from passthrough_kernel import my_passthrough_kernel
 
 if __name__ == "__main__":
+    p = argparse.ArgumentParser()
+    p.add_argument("-d", "--device", choices=["npu", "npu2"], default="npu2")
+    p.add_argument("-i1s", "--in1_size", type=int, default=4096)
+    p.add_argument("-os", "--out_size", type=int, default=4096)
+    args = p.parse_args()
+
+    dev = NPU2() if args.device == "npu2" else NPU1()
     print(
         my_passthrough_kernel(
-            NPU2(),
-            4096,
-            4096,
+            dev,
+            args.in1_size,
+            args.out_size,
             0,
             dynamic_txn=True,
         )

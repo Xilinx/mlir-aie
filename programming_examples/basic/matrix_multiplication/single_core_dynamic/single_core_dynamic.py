@@ -114,7 +114,7 @@ def main():
         prog="AIE Dynamic Matrix Multiplication MLIR Design (Single Core)",
         description="Emits MLIR code for a dynamic matrix multiplication design",
     )
-    argparser.add_argument("--dev", type=str, choices=["npu2"], default="npu2")
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu2")
     argparser.add_argument("-M", type=int, default=128)
     argparser.add_argument("-K", type=int, default=128)
     argparser.add_argument("-N", type=int, default=128)
@@ -388,7 +388,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size, dynamic_txn
     enable_tracing = trace_size > 0
 
     with mlir_mod_ctx() as ctx:
-        dev_ty = AIEDevice.npu2
+        dev_ty = AIEDevice.npu2 if dev == "npu2" else AIEDevice.npu1
 
         @device(dev_ty)
         def device_body():
