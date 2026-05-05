@@ -74,8 +74,8 @@ void emitIncrementOpCount(OpBuilder &builder, Location loc) {
 }
 
 // Emit: aie_runtime::txn_append_write32(txn, addr, val)
-void emitTxnWrite32(OpBuilder &builder, Location loc, Value txnVec,
-                           Value addr, Value val) {
+void emitTxnWrite32(OpBuilder &builder, Location loc, Value txnVec, Value addr,
+                    Value val) {
   auto u32 = castToU32(builder, loc, addr);
   auto u32v = castToU32(builder, loc, val);
   emitc::CallOpaqueOp::create(builder, loc, TypeRange{},
@@ -86,7 +86,7 @@ void emitTxnWrite32(OpBuilder &builder, Location loc, Value txnVec,
 
 // Emit: aie_runtime::txn_append_maskwrite32(txn, addr, val, mask)
 void emitTxnMaskWrite32(OpBuilder &builder, Location loc, Value txnVec,
-                               Value addr, Value val, Value mask) {
+                        Value addr, Value val, Value mask) {
   auto u32a = castToU32(builder, loc, addr);
   auto u32v = castToU32(builder, loc, val);
   auto u32m = castToU32(builder, loc, mask);
@@ -97,9 +97,8 @@ void emitTxnMaskWrite32(OpBuilder &builder, Location loc, Value txnVec,
 }
 
 // Emit: aie_runtime::txn_append_sync(txn, col, row, dir, chan, ncol, nrow)
-void emitTxnSync(OpBuilder &builder, Location loc, Value txnVec,
-                        Value col, Value row, Value dir, Value chan, Value ncol,
-                        Value nrow) {
+void emitTxnSync(OpBuilder &builder, Location loc, Value txnVec, Value col,
+                 Value row, Value dir, Value chan, Value ncol, Value nrow) {
   auto u32col = castToU32(builder, loc, col);
   auto u32row = castToU32(builder, loc, row);
   auto u32dir = castToU32(builder, loc, dir);
@@ -114,8 +113,8 @@ void emitTxnSync(OpBuilder &builder, Location loc, Value txnVec,
 
 // Emit: aie_runtime::txn_append_address_patch(txn, addr, arg_idx, arg_plus)
 void emitTxnAddressPatch(OpBuilder &builder, Location loc, Value txnVec,
-                                uint32_t addr, int32_t argIdx, int32_t argPlus,
-                                Value dynArgPlus) {
+                         uint32_t addr, int32_t argIdx, int32_t argPlus,
+                         Value dynArgPlus) {
   auto addrVal = createU32Constant(builder, loc, addr);
   auto idxVal = createU32Constant(builder, loc, static_cast<uint32_t>(argIdx));
   Value plusVal;
@@ -133,7 +132,7 @@ void emitTxnAddressPatch(OpBuilder &builder, Location loc, Value txnVec,
 // Emit: aie_runtime::txn_append_blockwrite(txn, addr, data, count)
 // For blockwrite, we emit the data as an inline array literal.
 void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
-                              uint32_t addr, DenseIntElementsAttr data) {
+                       uint32_t addr, DenseIntElementsAttr data) {
   // Build inline array data string: "uint32_t data_N[] = {0x..., 0x..., ...};"
   std::string arrayStr = "{";
   llvm::raw_string_ostream ss(arrayStr);
@@ -164,9 +163,9 @@ void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
 // sequence back into the exact static blockwrite layout while keeping the
 // first payload word parameterized.
 void emitTxnBlockWriteDynamicFirstWord(OpBuilder &builder, Location loc,
-                                              Value txnVec, uint32_t addr,
-                                              DenseIntElementsAttr data,
-                                              Value dynamicFirstWord) {
+                                       Value txnVec, uint32_t addr,
+                                       DenseIntElementsAttr data,
+                                       Value dynamicFirstWord) {
   auto *ctx = builder.getContext();
   auto u32Type = getU32Type(ctx);
   auto arrayType = emitc::ArrayType::get(
@@ -650,8 +649,8 @@ private:
     if (isa<AIE::EndOp>(op))
       return success();
 
-    if (isa<AIEX::NpuControlPacketOp, AIEX::NpuPushQueueOp,
-            AIEX::NpuWriteBdOp>(op))
+    if (isa<AIEX::NpuControlPacketOp, AIEX::NpuPushQueueOp, AIEX::NpuWriteBdOp>(
+            op))
       return op->emitOpError("not supported in dynamic TXN C++ generation");
 
     if (op->getNumRegions() != 0)

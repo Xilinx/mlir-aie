@@ -128,15 +128,15 @@ inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
                                      int32_t arg_idx, uint32_t arg_plus) {
   size_t pos = txn.size();
   txn.resize(pos + 12, 0);
-  txn[pos + 0] = TXN_OPC_DDR_PATCH;               // opcode
-  txn[pos + 1] = 12 * sizeof(uint32_t);            // payload size in bytes
+  txn[pos + 0] = TXN_OPC_DDR_PATCH;     // opcode
+  txn[pos + 1] = 12 * sizeof(uint32_t); // payload size in bytes
   // pos+2..4 are reserved (zero)
-  txn[pos + 5] = 0;                                // action (0 = patch)
-  txn[pos + 6] = addr;                             // register address to patch
+  txn[pos + 5] = 0;    // action (0 = patch)
+  txn[pos + 6] = addr; // register address to patch
   // pos+7 is reserved (zero)
-  txn[pos + 8] = static_cast<uint32_t>(arg_idx);   // buffer argument index
+  txn[pos + 8] = static_cast<uint32_t>(arg_idx); // buffer argument index
   // pos+9 is reserved (zero)
-  txn[pos + 10] = arg_plus;                        // byte offset into buffer
+  txn[pos + 10] = arg_plus; // byte offset into buffer
   // pos+11 is reserved (zero)
 }
 

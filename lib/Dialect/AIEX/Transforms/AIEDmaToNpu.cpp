@@ -811,9 +811,8 @@ public:
     // Guard against underflow when sizes[3] == 0, matching the static path's
     // `if (rcVal < 0) rcVal = 0` check.
     Value rcSub = arith::SubIOp::create(rewriter, loc, inSize3, cst(1));
-    Value rcGtZero = arith::CmpIOp::create(rewriter, loc,
-                                           arith::CmpIPredicate::sgt,
-                                           inSize3, cst(0));
+    Value rcGtZero = arith::CmpIOp::create(
+        rewriter, loc, arith::CmpIPredicate::sgt, inSize3, cst(0));
     Value repeatCount =
         arith::SelectOp::create(rewriter, loc, rcGtZero, rcSub, cst(0));
 

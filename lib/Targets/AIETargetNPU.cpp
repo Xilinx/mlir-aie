@@ -86,9 +86,9 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
                         NpuAddressPatchOp op) {
-  aie_runtime::txn_append_address_patch(
-      instructions, op.getAddr(), op.getArgIdx(),
-      static_cast<uint32_t>(op.getArgPlus()));
+  aie_runtime::txn_append_address_patch(instructions, op.getAddr(),
+                                        op.getArgIdx(),
+                                        static_cast<uint32_t>(op.getArgPlus()));
 }
 
 LogicalResult appendBlockWrite(std::vector<uint32_t> &instructions,

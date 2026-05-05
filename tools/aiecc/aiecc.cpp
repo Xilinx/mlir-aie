@@ -3912,7 +3912,8 @@ static LogicalResult generateCppTxnCode(ModuleOp moduleOp, StringRef tmpDirName,
     return success();
   }
 
-  // AIETranslateToCppTxn clones the module internally, so no need to clone here.
+  // AIETranslateToCppTxn clones the module internally, so no need to clone
+  // here.
   std::string outputFileName = formatString(cppTxnName, devName);
 
   std::error_code ec;

@@ -481,9 +481,7 @@ class Runtime(Resolvable):
                         default_tasks = True
                         current_task_group = default_task_group
                     action_kind = "wait" if task.will_wait() else "free"
-                    task_group_actions[current_task_group].append(
-                        (action_kind, task)
-                    )
+                    task_group_actions[current_task_group].append((action_kind, task))
                 else:
                     task.resolve()
                 if isinstance(task, FinishTaskGroupTask):
