@@ -100,13 +100,19 @@ build/generated_txn.h: build/aie2_lineBased_8b_${data_size}.mlir build/passThrou
 
 # Generate parameterized C++ TXN from dynamic Python design.
 # The generated function takes buffer_length as a runtime parameter.
+# Uses aiecc to run the full pipeline (placement, objectFIFO lowering, etc.)
+# and generate both XCLBIN and C++ TXN in one invocation.
 build/dynsize/aie_dynamic.mlir: ${srcdir}/passthrough_kernel_dynamic.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/dynsize/generated_txn.h: build/dynsize/aie_dynamic.mlir
-	mkdir -p ${@D}
-	aie-translate --aie-generate-txn-cpp $< > $@
+build/dynsize/final_dynamic.xclbin build/dynsize/generated_txn.h &: build/dynsize/aie_dynamic.mlir build/passThrough.cc.o
+	mkdir -p build/dynsize
+	cp build/passThrough.cc.o build/dynsize/
+	cd build/dynsize && aiecc --aie-generate-xclbin --xclbin-name=final_dynamic.xclbin \
+		--aie-generate-txn-cpp --txn-cpp-name=generated_txn.h \
+		--no-xchesscc --no-xbridge \
+		$(<:%=../../%)
 
 # Build the dynamic test executable (reuses test.cpp with USE_DYNAMIC_TXN)
 ${targetname}_dynamic_${data_size}.exe: ${srcdir}/test.cpp build/dynsize/generated_txn.h
@@ -148,9 +154,9 @@ compare_dynamic_static_txn.exe: ${srcdir}/compare_txn.cpp build/dynsize/generate
 compare_dynamic_static_txn: compare_dynamic_static_txn.exe build/insts_${data_size}.bin
 	./$< build/insts_${data_size}.bin
 
-# Run with dynamically generated TXN (uses same XCLBIN)
-run_dynamic: ${targetname}_dynamic_${data_size}.exe build/final_${data_size}.xclbin
-	${powershell} ./$< -x build/final_${data_size}.xclbin -k MLIR_AIE
+# Run with dynamically generated TXN and its own XCLBIN
+run_dynamic: ${targetname}_dynamic_${data_size}.exe build/dynsize/final_dynamic.xclbin
+	${powershell} ./$< -x build/dynsize/final_dynamic.xclbin -k MLIR_AIE
 
 # Build XCLBIN at max size, then run at multiple sizes without recompilation
 run_dynamic_sizes: ${targetname}_dynsize.exe build/final_${data_size}.xclbin
