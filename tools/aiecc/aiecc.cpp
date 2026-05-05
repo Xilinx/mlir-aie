@@ -1523,40 +1523,33 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   }
 
   // Step 5: Convert SCF to CF in aie.core bodies only.
-  // We use applyPartialConversion with a custom ConversionTarget that marks
-  // RuntimeSequenceOp as legal. This prevents the SCF→CF pass from descending
-  // into aie.runtime_sequence, where scf.if regions may end with aiex ops
-  // (e.g. aiex.npu.sync) that are not proper SCF terminators. The runtime
-  // sequence SCF ops are handled later by AIEXToStandardPass. The
-  // IsolatedFromAbove trait alone does NOT prevent applyPartialConversion from
-  // walking into RuntimeSequenceOp - we must explicitly mark it legal.
+  // Walk each CoreOp and apply the conversion within its region. This avoids
+  // touching aie.runtime_sequence (which preserves SCF for EmitC codegen)
+  // without needing fragile ConversionTarget exclusion lists.
   {
     MLIRContext *ctx = moduleOp.getContext();
-    ConversionTarget scfTarget(*ctx);
-    // Mark all dialects legal by default so only SCF ops trigger conversion
-    scfTarget.addLegalDialect<cf::ControlFlowDialect>();
-    scfTarget.addLegalDialect<scf::SCFDialect>();
-    scfTarget.addLegalDialect<arith::ArithDialect>();
-    scfTarget.addLegalDialect<func::FuncDialect>();
-    scfTarget.addLegalDialect<memref::MemRefDialect>();
-    scfTarget.addLegalDialect<xilinx::AIE::AIEDialect>();
-    scfTarget.addLegalDialect<xilinx::AIEX::AIEXDialect>();
-    scfTarget.addLegalOp<ModuleOp>();
-    // Mark RuntimeSequenceOp as legal with all its nested ops - this prevents
-    // the converter from descending into runtime_sequence and trying to lower
-    // SCF ops that have non-standard terminators (aiex ops) in their regions.
-    scfTarget.addLegalOp<xilinx::AIE::RuntimeSequenceOp>();
-    scfTarget.markOpRecursivelyLegal<xilinx::AIE::RuntimeSequenceOp>();
-    // Mark SCF ops as illegal inside aie.core bodies (not inside
-    // runtime_sequence)
-    scfTarget.addIllegalDialect<scf::SCFDialect>();
-    RewritePatternSet scfPatterns(ctx);
-    populateSCFToControlFlowConversionPatterns(scfPatterns);
-    if (failed(applyPartialConversion(moduleOp, scfTarget,
-                                      std::move(scfPatterns)))) {
-      llvm::errs() << "Error: SCF to CF conversion failed\n";
+    LogicalResult coreConvResult = success();
+    moduleOp.walk([&](xilinx::AIE::CoreOp coreOp) {
+      if (failed(coreConvResult))
+        return;
+      ConversionTarget scfTarget(*ctx);
+      scfTarget.addLegalDialect<cf::ControlFlowDialect>();
+      scfTarget.addLegalDialect<arith::ArithDialect>();
+      scfTarget.addLegalDialect<func::FuncDialect>();
+      scfTarget.addLegalDialect<memref::MemRefDialect>();
+      scfTarget.addLegalDialect<xilinx::AIE::AIEDialect>();
+      scfTarget.addLegalDialect<xilinx::AIEX::AIEXDialect>();
+      scfTarget.addIllegalDialect<scf::SCFDialect>();
+      RewritePatternSet scfPatterns(ctx);
+      populateSCFToControlFlowConversionPatterns(scfPatterns);
+      if (failed(applyPartialConversion(coreOp, scfTarget,
+                                        std::move(scfPatterns)))) {
+        coreOp.emitError("SCF to CF conversion failed");
+        coreConvResult = failure();
+      }
+    });
+    if (failed(coreConvResult))
       return failure();
-    }
   }
 
   if (verbose) {
