@@ -36,6 +36,15 @@ from aie.ir import IndexType, IntegerType, InsertionPoint
 from aie.extras import types as T
 
 
+def make_port_event(code, channel: int, master: bool = True):
+    try:
+        return trace_utils.events.PortEvent(
+            code, WireBundle.DMA, channel, master=master
+        )
+    except TypeError:
+        return trace_utils.events.PortEvent(code, channel, master=master)
+
+
 def main():
     argparser = argparse.ArgumentParser(
         prog="AIE Dynamic Matrix Multiplication MLIR Design (Single Core, Placed)",
@@ -266,19 +275,19 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                         shim=shim_tile,
                         trace_size=trace_size,
                         coretile_events=[
-                            trace_utils.events.PortEvent(
+                            make_port_event(
                                 trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                                port_number=1,
+                                0,
                                 master=True,
                             ),
-                            trace_utils.events.PortEvent(
+                            make_port_event(
                                 trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                                port_number=2,
+                                1,
                                 master=True,
                             ),
-                            trace_utils.events.PortEvent(
+                            make_port_event(
                                 trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                                port_number=1,
+                                0,
                                 master=False,
                             ),
                             trace_utils.events.CoreEvent.INSTR_EVENT_0,

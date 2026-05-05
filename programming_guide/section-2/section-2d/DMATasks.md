@@ -124,9 +124,24 @@ Waiting on DMAs associated with more than one object fifo:
 dma_wait(of_in, of_out)  
 ```
 
+##### **Automatic Linearization of Contiguous Accesses**
+
+A contiguous row-major access—one where `strides[0] == 1` and each outer stride equals the product of the inner sizes—is automatically folded to canonical linear form by the compiler. This means you can always write the natural multidimensional form and let the compiler handle it.
+
+For example, transferring a `height × width` image or a `H × W × C` activation tensor:
+```python
+# 2D image: naturally expressed, compiler linearizes to [1,1,1,height*width]
+npu_dma_memcpy_nd(of_in, 0, buf, sizes=[1, 1, height, width], strides=[0, 0, width, 1])
+
+# 3D activation tensor: naturally expressed, compiler linearizes to [1,1,1,H*W*C]
+npu_dma_memcpy_nd(of_in, 0, buf, sizes=[1, H, W, C], strides=[0, W*C, C, 1])
+```
+
+The linearized form uses a wider hardware buffer-length register, so the total transfer size is not subject to the hardware d0 dimension size limit that applies to ND transfers.
+
 #### **Best Practices for Data Movement and Synchronization with `npu_dma_memcpy_nd`**
 
-- **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly synchronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory. 
+- **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly synchronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory.
 - **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `npu_dma_memcpy_nd`.
 - **Minimize Synchronization Overhead**: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.
 

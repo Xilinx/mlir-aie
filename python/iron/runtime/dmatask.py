@@ -8,11 +8,13 @@
 """DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
 from ... import ir  # type: ignore
+from ...ir import Value  # type: ignore
 
-from ...dialects._aiex_ops_gen import dma_start_task  # type: ignore
+from ...dialects.arith import ExtUIOp
+from ...dialects.aiex import dma_free_task, dma_start_task, dma_wait, npu_dma_memcpy_nd
 from ...dialects.aiex import shim_dma_single_bd_task
 from ..dataflow import ObjectFifoHandle
-from .data import RuntimeData
+from .data import RuntimeData, RuntimeScalar
 from ...helpers.taplib import TensorAccessPattern
 from .task import RuntimeTask
 from .taskgroup import RuntimeTaskGroup
@@ -23,9 +25,12 @@ class DMATask(RuntimeTask):
         self,
         object_fifo: ObjectFifoHandle,
         rt_data: RuntimeData,
-        tap: TensorAccessPattern,
+        tap: TensorAccessPattern | None = None,
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
+        offset=None,
+        sizes=None,
+        strides=None,
     ):
         """A RuntimeTask that will resolve to a DMA Operation.
 
@@ -41,6 +46,15 @@ class DMATask(RuntimeTask):
         self._tap = tap
         self._wait = wait
         self._task = None
+        self._offset = offset
+        self._sizes = sizes
+        self._strides = strides
+        self._bd_id = None
+        if tap and not (offset is None and sizes is None and strides is None):
+            raise ValueError(
+                "DMATask can take either a TensorAccessPattern OR "
+                "(offset and/or sizes and/or strides), but not both."
+            )
         RuntimeTask.__init__(self, task_group)
 
     def will_wait(self) -> bool:
@@ -60,15 +74,114 @@ class DMATask(RuntimeTask):
             raise ValueError("Cannot get task before it is created (during resolve())")
         return self._task
 
+    @property
+    def bd_id(self) -> int:
+        if self._bd_id is None:
+            raise ValueError("Cannot get bd_id before it is assigned.")
+        return self._bd_id
+
+    @property
+    def bd_allocation_key(self):
+        tile = self._object_fifo.endpoint.tile
+        if tile.col is not None and tile.row is not None:
+            return (tile.col, tile.row, tile.tile_type)
+        return id(tile)
+
+    def uses_direct_npu_dma(self) -> bool:
+        return any(
+            self._contains_runtime_values(v)
+            for v in (self._offset, self._sizes, self._strides)
+        )
+
+    def emit_wait(self) -> None:
+        if self.uses_direct_npu_dma():
+            dma_wait(self._object_fifo.op)
+            return
+        from ...dialects.aiex import dma_await_task
+
+        dma_await_task(self._task)
+
+    def emit_free(self) -> None:
+        if self.uses_direct_npu_dma():
+            return
+        dma_free_task(self._task)
+
+    @staticmethod
+    def _contains_runtime_values(value) -> bool:
+        if isinstance(value, (RuntimeScalar, Value)):
+            return True
+        if isinstance(value, (list, tuple)):
+            return any(DMATask._contains_runtime_values(v) for v in value)
+        return False
+
+    @staticmethod
+    def _resolve_runtime_values(value):
+        if isinstance(value, RuntimeScalar):
+            return DMATask._to_i64_value(value.op)
+        if isinstance(value, Value):
+            return DMATask._to_i64_value(value)
+        if isinstance(value, list):
+            return [DMATask._resolve_runtime_values(v) for v in value]
+        if isinstance(value, tuple):
+            return tuple(DMATask._resolve_runtime_values(v) for v in value)
+        return value
+
+    @staticmethod
+    def _to_i64_value(value: Value) -> Value:
+        i64_ty = ir.IntegerType.get_signless(64)
+        if value.type == i64_ty:
+            return value
+        return ExtUIOp(i64_ty, value).result
+
     def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
+        bd_id: int | None = None,
     ) -> None:
+        if self.uses_direct_npu_dma():
+            if bd_id is None:
+                raise ValueError("Direct NPU DMA lowering requires an assigned bd_id.")
+            self._bd_id = bd_id
+
+            if self._tap is not None:
+                self._task = npu_dma_memcpy_nd(
+                    self._object_fifo.op,
+                    bd_id,
+                    self._rt_data.op,
+                    tap=self._tap,
+                    issue_token=self._wait,
+                )
+                return
+
+            sizes = self._resolve_runtime_values(self._sizes)
+            if sizes is None:
+                raise ValueError(
+                    "Direct NPU DMA lowering requires explicit sizes or a tap."
+                )
+            strides = self._resolve_runtime_values(self._strides)
+            offset = self._resolve_runtime_values(self._offset)
+            if offset is None:
+                offset = 0
+            offsets = [0, 0, 0, offset]
+            self._task = npu_dma_memcpy_nd(
+                self._object_fifo.op,
+                bd_id,
+                self._rt_data.op,
+                offsets=offsets,
+                sizes=sizes,
+                strides=strides,
+                issue_token=self._wait,
+            )
+            return
+
         self._task = shim_dma_single_bd_task(
             self._object_fifo.op,
             self._rt_data.op,
             tap=self._tap,
+            offset=self._offset,
+            sizes=self._sizes,
+            strides=self._strides,
             issue_token=self._wait,
         )
         dma_start_task(self._task)

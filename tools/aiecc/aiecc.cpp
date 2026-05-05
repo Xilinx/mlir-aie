@@ -165,8 +165,11 @@ static cl::opt<bool> noXbridge("no-xbridge",
 static cl::opt<bool> xchesscc("xchesscc", cl::desc("Compile using xchesscc"),
                               cl::init(true), cl::cat(aieCompilerOptions));
 
-static cl::opt<bool> noXchesscc("no-xchesscc", cl::desc("Compile using peano"),
-                                cl::init(false), cl::cat(aieCompilerOptions));
+static cl::opt<bool> noXchesscc(
+    "no-xchesscc",
+    cl::desc("Compile using peano (also disables xbridge; incompatible with "
+             "--aiesim)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
                             cl::init(false), cl::cat(aieCompilerOptions));
@@ -210,6 +213,11 @@ static cl::opt<std::string> allocScheme(
         "Allocation scheme for AIE buffers (basic-sequential, bank-aware, "
         "or empty string for bank-aware with fallback to basic-sequential)"),
     cl::init(""), cl::cat(aieCompilerOptions));
+
+static cl::opt<int> coresPerCol(
+    "cores-per-col",
+    cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
+    cl::init(-1), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
@@ -1148,12 +1156,15 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
   // Prefer canonical link_files ArrayAttr (populated by AIEAssignCoreLinkFiles,
   // which runs as part of the resource-allocation pipeline).
   if (auto filesAttr = coreOp.getLinkFiles()) {
-    for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-      info.linkFiles.push_back(f.getValue().str());
+    for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+      if (!f.getValue().empty())
+        info.linkFiles.push_back(f.getValue().str());
+    }
   } else if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
     // Fallback: deprecated core-level link_with was not migrated by the pass
     // (e.g., pipeline was not run). Treat it as a single-element list.
-    info.linkFiles.push_back(linkWithAttr.getValue().str());
+    if (!linkWithAttr.getValue().empty())
+      info.linkFiles.push_back(linkWithAttr.getValue().str());
   }
 
   if (auto elfAttr = coreOp.getElfFileAttr()) {
@@ -1310,6 +1321,58 @@ static LogicalResult runPipelineWithRepeater(PassManager &pm, ModuleOp moduleOp,
 //===----------------------------------------------------------------------===//
 // In-Memory Pass Execution
 //===----------------------------------------------------------------------===//
+
+/// Check if the module contains any aie.logical_tile ops.
+static bool hasLogicalTileOps(ModuleOp moduleOp) {
+  bool found = false;
+  moduleOp.walk([&](xilinx::AIE::LogicalTileOp) {
+    found = true;
+    return WalkResult::interrupt();
+  });
+  return found;
+}
+
+/// Run tile placement pass in-memory, only when logical tile ops exist.
+/// This converts aie.logical_tile ops to aie.tile ops and must run before
+/// all other passes (trace lowering, resource allocation, routing) because
+/// downstream passes require physical tile coordinates.
+static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
+                                          StringRef tmpDirName) {
+  if (!hasLogicalTileOps(moduleOp))
+    return success();
+
+  MLIRContext *ctx = moduleOp.getContext();
+  PassManager pm(ctx);
+
+  if (verbose) {
+    pm.enableVerifier(true);
+    SmallString<128> crashFile(tmpDirName);
+    sys::path::append(crashFile, "placement_crash.mlir");
+    pm.enableCrashReproducerGeneration(crashFile);
+  }
+
+  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
+  placeTilesOpts.clCoresPerCol = coresPerCol;
+  devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
+
+  if (verbose) {
+    llvm::outs() << "Running tile placement pipeline in-memory\n";
+    llvm::outs().flush();
+  }
+
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "tile placement",
+                                     tmpDirName))) {
+    llvm::errs() << "Error: Tile placement pipeline failed\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Tile placement pipeline completed successfully\n";
+  }
+
+  return success();
+}
 
 /// Check if the module contains any aie.trace ops.
 static bool hasTraceOps(ModuleOp moduleOp) {
@@ -2340,8 +2403,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   if (xbridge) {
     // xbridge linking: generate BCF, extract link_with, link with
-    // xchesscc_wrapper Note: xbridge works with both xchesscc and
-    // peano-compiled object files
+    // xchesscc_wrapper. Note: xbridge only supports xchesscc-compiled objects;
+    // Peano-compiled objects must use the Peano linker path (--no-xbridge).
 
     // Generate BCF file
     SmallString<128> bcfPath(tmpDirName);
@@ -3073,6 +3136,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       // Search order: current working directory, tmpDirName, input file
       // directory
       for (const auto &linkWithFile : linkWithFiles) {
+        if (linkWithFile.empty())
+          continue;
         SmallString<256> srcPath;
         if (sys::path::is_absolute(linkWithFile)) {
           srcPath = linkWithFile;
@@ -3189,6 +3254,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       // Handle external object files specified via link_files (or deprecated
       // link_with). Search order: absolute, cwd, tmpDirName, input file dir.
       for (const auto &lf : core.linkFiles) {
+        if (lf.empty())
+          continue;
         SmallString<256> srcLinkWith;
         if (sys::path::is_absolute(lf)) {
           srcLinkWith = lf;
@@ -5239,6 +5306,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
+  // Step 0: Run tile placement (only when logical tile ops exist)
+  // This converts aie.logical_tile -> aie.tile before any other passes.
+  if (failed(runPlacementPipeline(moduleOp, tmpDirName))) {
+    return failure();
+  }
+
   // Step 1a: Run trace lowering (only when trace ops exist)
   if (failed(runTraceLoweringPipeline(moduleOp, tmpDirName))) {
     return failure();
@@ -5676,6 +5749,10 @@ int main(int argc, char **argv) {
   }
   if (noXchesscc) {
     xchesscc = false;
+    // Without xchesscc, linking would use the Peano-compiled object path.
+    // xbridge does not support linking Peano-compiled objects, so disable it
+    // automatically to keep the behavior consistent with the supported flow.
+    xbridge = false;
   }
   if (noCompile) {
     compile = false;
@@ -5690,10 +5767,16 @@ int main(int argc, char **argv) {
     compileHost = false;
   }
 
-  // Validate: aiesim requires xbridge
+  // Validate: aiesim requires xbridge; since --no-xchesscc disables xbridge,
+  // it is also incompatible with --aiesim.
   if (aiesim && !xbridge) {
-    llvm::errs()
-        << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
+    if (noXchesscc)
+      llvm::errs() << "Error: AIE Simulation (--aiesim) is incompatible with "
+                      "--no-xchesscc because xbridge is required for aiesim "
+                      "and --no-xchesscc disables xbridge\n";
+    else
+      llvm::errs()
+          << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
     return 1;
   }
 

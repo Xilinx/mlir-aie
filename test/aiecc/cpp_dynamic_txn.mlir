@@ -16,8 +16,9 @@
 // - Dynamic npu.rtp_write (SSA value)
 // - arith ops (divui, muli, minsi, extui, trunci, cmpi, select)
 //
-// RuntimeSequenceOp has IsolatedFromAbove, so SCF→CF skips it while
-// still converting core body SCF ops for LLVM lowering.
+// aiecc explicitly keeps aie.runtime_sequence legal during the module-level
+// SCF→CF conversion, so runtime-sequence SCF is preserved while core body SCF
+// still lowers for LLVM code generation.
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,7 +30,7 @@
 // CHECK: Compilation completed successfully
 
 // Also test unified compilation (XCLBIN + TXN from same MLIR):
-// RUN: aiecc --no-xchesscc --no-xbridge --peano %PEANO_INSTALL_DIR% \
+// RUN: aiecc --no-xchesscc --no-xbridge --peano %PEANO_INSTALL_DIR \
 // RUN:   --aie-generate-xclbin --xclbin-name=%t.xclbin \
 // RUN:   --aie-generate-txn-cpp --txn-cpp-name=%t_unified.h \
 // RUN:   --verbose %s 2>&1 | FileCheck %s --check-prefix=UNIFIED

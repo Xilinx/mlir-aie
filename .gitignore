@@ -16,6 +16,8 @@ include/**/Makefile
 lib/**/Makefile
 
 CLAUDE.md
+AGENTS.md
+.codex/
 /platforms/vck190_bare/petalinux/build
 /platforms/vck190_bare/petalinux/components
 /platforms/vck190_bare/petalinux/images

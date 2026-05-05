@@ -10,8 +10,9 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.util import np_ndarray_type_get_shape
+from aie.iron.controlflow import range_
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -572,16 +573,22 @@ def bottleneck4AIEs():
                 set_lock(lock2, 1)
                 set_lock(lock4, 1)
 
+                tap_act_in = TensorTiler2D.simple_tiler(
+                    (tensorInH, tensorInW * tensorL1InC)
+                )[0]
                 in_act_task = shim_dma_single_bd_task(
-                    of_inOF_act_L3L2, inputFromL3, sizes=[1, 1, 1, activationsIn]
+                    of_inOF_act_L3L2, inputFromL3, tap=tap_act_in
                 )
                 in_wts_task = shim_dma_single_bd_task(
                     inOF_wts_0_L3L2, weightsFromL3, sizes=[1, 1, 1, totalWeights]
                 )
+                tap_act_out = TensorTiler2D.simple_tiler(
+                    (tensorInH, tensorInW * tensorL3OutC)
+                )[0]
                 out_task = shim_dma_single_bd_task(
                     outOFL2L3,
                     outputToL3,
-                    sizes=[1, 1, 1, acitivationsOut],
+                    tap=tap_act_out,
                     issue_token=True,
                 )
 

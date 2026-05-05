@@ -12,7 +12,6 @@ from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2
-from aie.iron.placers import SequentialPlacer
 
 
 def ceildiv(a, b):
@@ -134,7 +133,7 @@ def my_matmul(M, K, N, m, k, n):
     dev_ty = NPU2()
     my_program = Program(dev_ty, rt)
 
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 

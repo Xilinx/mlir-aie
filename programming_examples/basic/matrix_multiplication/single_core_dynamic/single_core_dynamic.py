@@ -43,37 +43,70 @@ from aie.extras.dialects.arith import constant
 import aie.utils.trace as trace_utils
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
-from aie.ir import IndexType, IntegerType, InsertionPoint, Block
+from aie.ir import (
+    AttrBuilder,
+    Block,
+    IndexType,
+    InsertionPoint,
+    IntegerType,
+    Operation,
+    StringAttr,
+)
 from aie.extras import types as T
 
 # Number of tile rows per BD-group block. Limited by the 16-BD budget
 # per channel (8 BDs per pingpong half, 2 halves per block).
 ROWS_PER_BLOCK = 4
 
+
+def make_port_event(code, channel: int, master: bool = True):
+    try:
+        return trace_utils.events.PortEvent(
+            code, WireBundle.DMA, channel, master=master
+        )
+    except TypeError:
+        return trace_utils.events.PortEvent(code, channel, master=master)
+
+
 # Trace events for performance profiling. Used by both the dynamic and
 # static runtime_sequence paths.
 TRACE_EVENTS = [
-    trace_utils.events.PortEvent(
-        trace_utils.events.CoreEvent.PORT_RUNNING_0,
-        port_number=1,
-        master=True,
-    ),
-    trace_utils.events.PortEvent(
-        trace_utils.events.CoreEvent.PORT_RUNNING_1,
-        port_number=2,
-        master=True,
-    ),
-    trace_utils.events.PortEvent(
-        trace_utils.events.CoreEvent.PORT_RUNNING_2,
-        port_number=1,
-        master=False,
-    ),
+    make_port_event(trace_utils.events.CoreEvent.PORT_RUNNING_0, 0, master=True),
+    make_port_event(trace_utils.events.CoreEvent.PORT_RUNNING_1, 1, master=True),
+    make_port_event(trace_utils.events.CoreEvent.PORT_RUNNING_2, 0, master=False),
     trace_utils.events.CoreEvent.INSTR_EVENT_0,
     trace_utils.events.CoreEvent.INSTR_EVENT_1,
     trace_utils.events.CoreEvent.MEMORY_STALL,
     trace_utils.events.CoreEvent.LOCK_STALL,
     trace_utils.events.CoreEvent.INSTR_VECTOR,
 ]
+
+
+def emit_dynamic_rtp_write(buffer_name: str, index: int, dyn_value):
+    ctx = dyn_value.context
+    Operation.create(
+        "aiex.npu.rtp_write",
+        operands=[dyn_value],
+        attributes={
+            "buffer": AttrBuilder.get("FlatSymbolRefAttr")(buffer_name, context=ctx),
+            "index": AttrBuilder.get("UI32Attr")(index, context=ctx),
+        },
+    )
+
+
+def declare_external_func(name: str, inputs, *, outputs=None, link_with=None):
+    try:
+        return external_func(
+            name=name,
+            inputs=inputs,
+            outputs=outputs,
+            link_with=link_with,
+        )
+    except TypeError:
+        fn = external_func(name=name, inputs=inputs, outputs=outputs)
+        if link_with is not None:
+            fn.operation.attributes["link_with"] = StringAttr.get(link_with)
+        return fn
 
 
 def main():
@@ -187,8 +220,8 @@ def _emit_dynamic_sequence(
         tiles = MulIOp(M_div_m, N_div_n).result
 
         # Write RTP values via symbolic buffer reference
-        npu_rtp_write("rtp", 0, K_div_k)
-        npu_rtp_write("rtp", 1, tiles)
+        emit_dynamic_rtp_write("rtp", 0, K_div_k)
+        emit_dynamic_rtp_write("rtp", 1, tiles)
 
         # ceildiv(M_div_m, rows_per_block) as SSA:
         #   (M_div_m + rows_per_block - 1) / rows_per_block
@@ -229,7 +262,7 @@ def _emit_dynamic_sequence(
 
                 # Guard: skip this pingpong half if num_tile_rows <= 0
                 has_rows = CmpIOp(CmpIPredicate.sgt, num_tile_rows, c0).result
-                guard_if = IfOp(has_rows, results_=[i32_ty], has_else=True)
+                guard_if = IfOp(has_rows, results_=[i32_ty], hasElse=True)
 
                 with InsertionPoint(guard_if.then_block):
                     # C_row_offset = row_base * m * N
@@ -297,7 +330,7 @@ def _emit_dynamic_sequence(
                                 num_tile_rows,
                                 arith_constant(i32_ty, tile_row),
                             ).result
-                            row_if = IfOp(has_more, has_else=False)
+                            row_if = IfOp(has_more, hasElse=False)
                             with InsertionPoint(row_if.then_block):
                                 _emit_ab_bds(row_base, tile_row, a_bd_id, b_bd_id)
                                 yield_([])
@@ -306,7 +339,7 @@ def _emit_dynamic_sequence(
                     # Use npu_sync directly (instead of dma_wait inside scf.if)
                     # to avoid block terminator issues with partial conversion.
                     not_first = CmpIOp(CmpIPredicate.eq, current_first_batch, c0).result
-                    sync_if = IfOp(not_first, has_else=False)
+                    sync_if = IfOp(not_first, hasElse=False)
                     with InsertionPoint(sync_if.then_block):
                         npu_sync(column=0, row=0, direction=0, channel=0)
                         yield_([])
@@ -364,12 +397,12 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size, dynamic_txn
             c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
             # AIE Core Function declarations
-            zero = external_func(
+            zero = declare_external_func(
                 f"zero_{dtype_out_str}",
                 inputs=[c_ty],
                 link_with=f"mm_{m}x{k}x{n}.o",
             )
-            matmul = external_func(
+            matmul = declare_external_func(
                 f"matmul_{dtype_in_str}_{dtype_out_str}",
                 inputs=[a_ty, b_ty, c_ty],
                 link_with=f"mm_{m}x{k}x{n}.o",

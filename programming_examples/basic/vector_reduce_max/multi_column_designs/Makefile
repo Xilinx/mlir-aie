@@ -72,13 +72,15 @@ build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+		--aie-generate-npu-insts --npu-insts-name=insts.bin \
+		$(if $(filter col_wise_%,$(aie_py_src)),--cores-per-col 2) $(<:%=../%)
 
 build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+		--aie-generate-npu-insts --npu-insts-name=insts.bin \
+		$(if $(filter col_wise_%,$(aie_py_src)),--cores-per-col 2) $(<:%=../%)
 ${targetname}.exe: ${srcdir}/../test.cpp
 	rm -rf _build
 	mkdir -p _build
@@ -96,9 +98,9 @@ run: ${targetname}.exe build/final.xclbin build/insts.bin
 run_py: build/final.xclbin build/insts.bin
 	${powershell} python3 ${srcdir}/../test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
-trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
+trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace.mlir --output trace_vector_reduce_max.json
+	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace.mlir.prj/input_with_addresses.mlir --output trace_vector_reduce_max.json
 	${srcdir}/../../../../python/utils/trace/get_trace_summary.py --input trace_vector_reduce_max.json
 
 clean_trace:

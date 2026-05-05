@@ -643,6 +643,19 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     The hardware only supports a single static offset, and this offset is calculated at compile time.
     Thus, all offsets can be equivalently expressed with the lowest dimension only.
 
+    #### Automatic Linearization of Contiguous Accesses
+
+    A canonicalization pattern automatically folds a contiguous row-major access pattern into
+    the canonical linear form `[s3, 1, 1, N][st3, 0, 0, 1]`, where N is the product of the
+    inner three sizes. An access is contiguous when `strides[0] == 1` and each outer stride
+    equals the product of the inner sizes (i.e. a standard row-major scan).
+
+    This means users can express naturally multidimensional accesses such as a 2D image
+    `[1, 1, height, width][0, 0, width, 1]` or a 3D activation tensor
+    `[1, H, W, C][0, W*C, C, 1]` without worrying about hardware dimension size limits.
+    The compiler will fold them to the linear form, which uses a wider hardware register
+    and avoids the 10-bit d0 wrap-size constraint that applies to ND transfers.
+
     #### Packet Header Attribute
     The optional `packet` attribute defines the packet header and packet type that gets issued per DMA BD.
     If the attribute is set, then every time the DMA BD gets issued, a packet header is generated prior to the transmission of data.
@@ -707,6 +720,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 def AIE_NpuDmaWaitOp: AIEX_Op<"npu.dma_wait", []> {
@@ -815,7 +829,7 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", [AttrSizedOperandSegments]> {
     the static attributes serve as placeholders (typically 0) and the SSA values
     are used instead.
 
-    Static syntax (unchanged): `aiex.npu.write32 {address = 123 : ui32, value = 456 : ui32}`
+    Static syntax: `aiex.npu.write32 {address = 123 : ui32, value = 456 : ui32}`
     Dynamic syntax: `aiex.npu.write32(%addr, %val) {address = 0 : ui32, value = 0 : ui32} : i32, i32`
   }];
   let extraClassDeclaration = [{
@@ -872,7 +886,7 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", [AttrSizedOperandSegments]>
     Optionally, SSA values can be provided for 'dyn_address', 'dyn_value', and
     'dyn_mask' to enable runtime-parameterized sequences.
 
-    Static syntax (unchanged): `aiex.npu.maskwrite32 {address = 123 : ui32, ...}`
+    Static syntax: `aiex.npu.maskwrite32 {address = 123 : ui32, ...}`
     Dynamic syntax: `aiex.npu.maskwrite32(%addr, %val, %mask) {address = 0 : ui32, ...} : i32, i32, i32`
   }];
   let extraClassDeclaration = [{

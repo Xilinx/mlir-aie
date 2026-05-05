@@ -10,11 +10,11 @@ import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
+from aie.extras import types as T
 
 
-def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
+def my_passthrough_kernel(dev, in1_size, out_size, trace_size, dynamic_txn=False):
     in1_dtype = np.uint8
     out_dtype = np.uint8
 
@@ -53,48 +53,86 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-        rt.enable_trace(trace_size)
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), b_out, wait=True)
+    if dynamic_txn:
+        with rt.sequence(vector_type, vector_type, vector_type, T.i32) as (
+            a_in,
+            b_out,
+            _,
+            buffer_length,
+        ):
+            rt.enable_trace(trace_size)
+            rt.start(my_worker)
+            rt.fill(of_in.prod(), a_in, sizes=[1, 1, 1, buffer_length])
+            rt.drain(
+                of_out.cons(),
+                b_out,
+                sizes=[1, 1, 1, buffer_length],
+                wait=True,
+            )
+    else:
+        with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
+            rt.enable_trace(trace_size)
+            rt.start(my_worker)
+            rt.fill(of_in.prod(), a_in)
+            rt.drain(of_out.cons(), b_out, wait=True)
 
     # Place components (assign the resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
-p = argparse.ArgumentParser()
-p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument(
-    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
-)
-p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
-p.add_argument(
-    "-t",
-    "--trace_size",
-    required=False,
-    dest="trace_size",
-    default=0,
-    help="Trace buffer size",
-)
-opts = p.parse_args(sys.argv[1:])
-
-if opts.device == "npu":
-    dev = NPU1Col1()
-elif opts.device == "npu2":
-    dev = NPU2()
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
-
-in1_size = int(opts.in1_size)
-if in1_size % 64 != 0 or in1_size < 512:
-    print(
-        "In1 buffer size ("
-        + str(in1_size)
-        + ") must be a multiple of 64 and greater than or equal to 512"
+def main(argv=None):
+    p = argparse.ArgumentParser()
+    p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+    p.add_argument(
+        "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
     )
-    raise ValueError
-out_size = int(opts.out_size)
-trace_size = int(opts.trace_size)
+    p.add_argument(
+        "-os", "--out_size", required=True, dest="out_size", help="Output size"
+    )
+    p.add_argument(
+        "-t",
+        "--trace_size",
+        required=False,
+        dest="trace_size",
+        default=0,
+        help="Trace buffer size",
+    )
+    p.add_argument(
+        "--dynamic-txn",
+        action="store_true",
+        default=False,
+        help="Emit a runtime-parameterized runtime_sequence for TXN C++ generation",
+    )
+    opts = p.parse_args(sys.argv[1:] if argv is None else argv)
 
-print(my_passthrough_kernel(dev, in1_size, out_size, trace_size))
+    if opts.device == "npu":
+        dev = NPU1Col1()
+    elif opts.device == "npu2":
+        dev = NPU2()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
+
+    in1_size = int(opts.in1_size)
+    if in1_size % 64 != 0 or in1_size < 512:
+        print(
+            "In1 buffer size ("
+            + str(in1_size)
+            + ") must be a multiple of 64 and greater than or equal to 512"
+        )
+        raise ValueError
+    out_size = int(opts.out_size)
+    trace_size = int(opts.trace_size)
+
+    print(
+        my_passthrough_kernel(
+            dev,
+            in1_size,
+            out_size,
+            trace_size,
+            dynamic_txn=opts.dynamic_txn,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

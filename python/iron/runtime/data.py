@@ -70,7 +70,8 @@ class RuntimeScalar:
         """Construct a handle to a scalar Runtime parameter.
 
         Args:
-            mlir_type (MlirType): The MLIR type of the scalar (e.g. IntegerType.get_signless(32)).
+            mlir_type (MlirType): The MLIR type of the scalar, or a zero-arg
+                callable that produces one within an active MLIR context.
         """
         self._mlir_type = mlir_type
         self._op = None
@@ -78,6 +79,8 @@ class RuntimeScalar:
     @property
     def mlir_type(self) -> MlirType:
         """The MLIR type of this scalar."""
+        if callable(self._mlir_type):
+            return self._mlir_type()
         return self._mlir_type
 
     @property

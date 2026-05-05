@@ -5,7 +5,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -47,8 +47,8 @@ LogicalResult AIETranslateToCppTxn(ModuleOp module, llvm::raw_ostream &output) {
   {
     PassManager pm(ctx);
     // Skip materialize pass: the runtime_sequence is already in final form
-    // (no aiex.run calls to inline). Also, materialize uses
-    // applyPatternsGreedily which won't enter IsolatedFromAbove regions.
+    // (no aiex.run calls to inline) and this translation path only needs the
+    // shared NPU lowering pipeline before EmitC conversion.
     populateNpuLoweringPipeline(pm, /*skipMaterialize=*/true);
 
     if (failed(pm.run(*clonedModule)))

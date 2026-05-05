@@ -10,6 +10,7 @@ import argparse
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron.controlflow import range_
 
 
@@ -147,37 +148,29 @@ def my_matmul(dev):
 
             # To/from AIE-array data movement
 
+            A_taps = TensorTiler2D.group_tiler(
+                (M, K), (m, k), (M_div_m_div_n_cores, K_div_k), prune_step=False
+            )
+            b_tap = TensorTiler2D.simple_tiler(
+                (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
+            )[0]
+
             @runtime_sequence(
                 np.ndarray[(A_sz,), dtype_in],
                 np.ndarray[(B_sz,), dtype_in],
                 np.ndarray[(C_sz,), dtype_out],
             )
             def sequence(A, B, C):
-                npu_dma_memcpy_nd(
-                    metadata=inB_fifo,
-                    bd_id=2,
-                    mem=B,
-                    sizes=[M_div_m_div_n_cores, 1, 1, K],
-                    strides=[0, 0, 0, 1],
-                )
-                for i in range(n_cores):
-                    A_offset = i * M_div_m_div_n_cores * m * K
+                npu_dma_memcpy_nd(metadata=inB_fifo, bd_id=2, mem=B, tap=b_tap)
+                for i, a_tap in enumerate(A_taps):
                     C_offset = i * M_div_m_div_n_cores * m
-                    npu_dma_memcpy_nd(
-                        metadata=memA_fifos[i],
-                        bd_id=1,
-                        mem=A,
-                        offsets=[0, 0, 0, A_offset],
-                        sizes=[M_div_m_div_n_cores, K_div_k, m, k],
-                        strides=[m_x_K, k, K, 1],
-                    )
+                    npu_dma_memcpy_nd(metadata=memA_fifos[i], bd_id=1, mem=A, tap=a_tap)
                     npu_dma_memcpy_nd(
                         metadata=outC_fifos[i],
                         bd_id=0,
                         mem=C,
                         offsets=[0, 0, 0, C_offset],
                         sizes=[1, 1, 1, C_sz_div_n_cores],
-                        strides=[0, 0, 0, 1],
                     )
                 dma_wait(*outC_fifos)
 

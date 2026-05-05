@@ -268,7 +268,7 @@ def my_matmul(
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [compute_tile2]
         if enable_tracing:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
+            trace_utils.configure_trace(tiles_to_trace)
 
         # Set up compute tiles
 
@@ -300,11 +300,7 @@ def my_matmul(
         def sequence(A, B, C):
 
             if enable_tracing:
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace,
-                    shim_tile,
-                    trace_size,
-                )
+                trace_utils.start_trace(trace_size=trace_size)
 
             # This example uses only does 2 tile rows to prevent exhaustion of BDs.
             # In general, we do 2-4 at a time to reuse BDs.
@@ -386,8 +382,6 @@ def my_matmul(
                         dma_free_task(b_tasks[-2])
 
             dma_await_task(c_tasks[-1])
-
-            trace_utils.gen_trace_done_aie2(shim_tile)
 
     if generate_taps:
         # If generate taps is true, return a representation of tensor access patterns

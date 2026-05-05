@@ -25,36 +25,25 @@ from brevitas.quant.fixed_point import (
 )
 
 sys.path.append("..")
-from mb_utils import convert_to_numpy
+import mb_utils
 
 torch.use_deterministic_algorithms(True)
 import json
-
-
-# Function to read scale factors from JSON file
-def read_scale_factors(file_path):
-    with open(file_path, "r") as file:
-        return json.load(file)
-
-
-# Function to write scale factors to JSON file
-def write_scale_factors(file_path, scale_factors):
-    with open(file_path, "w") as file:
-        json.dump(scale_factors, file, indent=4)
-
 
 log_dir = "log/"
 data_dir = "data/"
 
 # Read the existing scale factors
 scale_factor_file = "scale_factors_fused_bn8+bn9.json"
-scale_factors = read_scale_factors(data_dir + scale_factor_file)
+scale_factors = mb_utils.read_scale_factors(data_dir + scale_factor_file)
 
 torch.manual_seed(0)
 vectorSize = 8
 
-tensorInW = 7
-tensorInH = 7  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
+# tensorInW = 7
+# tensorInH = 7  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
+tensorInW = 14
+tensorInH = 14  # 7 NOLF set to 6 for debug to avoid needing dynamic objFIFO
 tensorInC = 80  # NOLF to avoid L1 overflow due to weights
 
 # config for bn8
@@ -110,22 +99,12 @@ InC_vec = math.floor(tensorInC / vectorSize)
 OutC_vec = math.floor(tensorOutC / vectorSize)
 
 
-def main(opts):
-    design = "mobilenet_bottleneck_A_bn8_bn9"
-    xclbin_path = opts.xclbin
-    insts_path = opts.instr
+def main():
+    print("Running torch reference model for bottleneck_A_subblocks for bn8_9 ...")
 
-    log_folder = "log/"
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-    num_iter = 1
-    npu_time_total = 0
-    npu_time_min = 9999999
-    npu_time_max = 0
-    trace_size = 16384
-    enable_trace = False
-    trace_file = "log/trace_" + design + ".txt"
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
     # ------------------------------------------------------
@@ -157,11 +136,6 @@ def main(opts):
     # Initialize activation, weights, scaling factor for int8 model
     # ------------------------------------------------------
     input = torch.randn(1, InC_vec * vectorSize, tensorInH, tensorInW)
-    # ------------------------------------------------------
-    # Get device, load the xclbin & kernel and register them
-    # ------------------------------------------------------
-    npu_kernel = NPUKernel(xclbin_path, insts_path)
-    kernel_handle = DefaultNPURuntime.load(npu_kernel)
 
     class QuantBottleneck0(nn.Module):
         def __init__(
@@ -431,7 +405,7 @@ def main(opts):
     scale_factors["BN9"]["conv1x1_2"] = int(block_9_combined_scale3.item())
     scale_factors["BN9"]["skip_add"] = int(block_9_combined_scale_skip.item())
 
-    write_scale_factors(log_dir + scale_factor_file, scale_factors)
+    mb_utils.write_scale_factors(log_dir + scale_factor_file, scale_factors)
 
     atol = block_9_skip_add
     # ------------------------------------------------------
@@ -458,14 +432,15 @@ def main(opts):
         float_datatype=True
     )
 
-    golden_output.tofile(log_folder + "/golden_output.txt", sep=",", format="%d")
+    print("Writing golden output txt file.")
+    golden_output.tofile(log_dir + "/golden_output.txt", sep=",", format="%d")
     ds = DataShaper()
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-    before_input.tofile(
-        log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
-    )
+
+    print("Writing input txt file.")
+    before_input.tofile(log_dir + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-    ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt.txt", sep=",", format="%d")
+    ifm_mem_fmt.tofile(log_dir + "/after_ifm_mem_fmt.txt", sep=",", format="%d")
 
     # **************************** bn8 ****************************
     bn8_wts1 = ds.reorder_mat(
@@ -495,90 +470,13 @@ def main(opts):
 
     total_wts = np.concatenate((bn8_total_wts, bn9_total_wts), axis=None)
 
-    total_wts.tofile(
-        log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d"
-    )
+    print("Writing weights txt files.")
+    total_wts.tofile(log_dir + "/after_weights_mem_fmt_final.txt", sep=",", format="%d")
     print(total_wts.shape)
     print(input.shape)
 
-    # ------------------------------------------------------
-    # Setup buffers run loop
-    # ------------------------------------------------------
-    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-    in2 = iron.tensor(total_wts, dtype=dtype_wts)
-    out = iron.zeros(shape_out, dtype=dtype_out)
-    buffers = [in1, in2, out]
-
-    trace_config = None
-    if enable_trace:
-        trace_config = TraceConfig(
-            trace_size=trace_size,
-            trace_file=trace_file,
-            trace_after_last_tensor=False,
-            enable_ctrl_pkts=False,
-            last_tensor_shape=out.shape,
-            last_tensor_dtype=out.dtype,
-        )
-        HostRuntime.prepare_args_for_trace(buffers, trace_config)
-
-    # ------------------------------------------------------
-    # Main run loop
-    # ------------------------------------------------------
-    for i in range(num_iter):
-        start = time.time_ns()
-        DefaultNPURuntime.run(kernel_handle, buffers)
-        stop = time.time_ns()
-        npu_time = stop - start
-        npu_time_total = npu_time_total + npu_time
-
-    # ------------------------------------------------------
-    # Reorder output data-layout
-    # ------------------------------------------------------
-    aie_output = out.numpy()  # .astype(dtype_out)
-    temp_out = aie_output.reshape(shape_out)
-    temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
-    ofm_mem_fmt = temp_out.reshape(shape_out_final)
-    ofm_mem_fmt.tofile(
-        log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
-    )
-    ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
-    print(ofm_mem_fmt_out)
-    # ------------------------------------------------------
-    # Compare the AIE output and the golden reference
-    # ------------------------------------------------------
-    print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
-    golden = convert_to_numpy(golden_output)
-    ofm_mem_fmt_out = convert_to_numpy(ofm_mem_fmt_out)
-    max_diff_int = np.max((golden) - (ofm_mem_fmt_out))
-    print("atol: {} max difference (int): {}".format(atol, max_diff_int))
-    mismatch_indices = np.where(golden != ofm_mem_fmt_out)
-
-    # Extract mismatch values
-    mismatch_values_golden = golden[mismatch_indices]
-    mismatch_values_ofm = ofm_mem_fmt_out[mismatch_indices]
-
-    # Print mismatch indices and corresponding values
-    print("golden shape: ", golden.shape)
-    print("Output shape: ", ofm_mem_fmt_out.shape)
-    print("Mismatch indices and corresponding values:")
-    for idx, (golden_value, ofm_value) in zip(
-        zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)
-    ):
-        print(f"Index: {idx}, Golden value: {golden_value}, OFM value: {ofm_value}")
-    if np.allclose(
-        ofm_mem_fmt_out,
-        golden_output,
-        rtol=0,
-        atol=1,
-    ):
-        print("\nPASS!\n")
-        exit(0)
-    else:
-        print("\nFailed.\n")
-        exit(-1)
+    print("Done.")
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
-    opts = p.parse_args(sys.argv[1:])
-    main(opts)
+    main()

@@ -10,6 +10,7 @@ from typing import Callable
 from ... import ir  # type: ignore
 from ...dialects.aiex import npu_rtp_write
 
+from ..buffer import Buffer
 from ..resolvable import Resolvable
 from ..worker import Worker
 from .data import RuntimeScalar
@@ -79,11 +80,22 @@ class InlineOpRuntimeTask(RuntimeTask):
         self._args = args
         RuntimeTask.__init__(self, task_group)
 
+    @staticmethod
+    def _resolve_buffers(obj, loc, ip):
+        """Recursively resolve any Buffer instances found in obj (handles nested lists/tuples)."""
+        if isinstance(obj, Buffer):
+            obj.resolve(loc=loc, ip=ip)
+        elif isinstance(obj, (list, tuple)):
+            for item in obj:
+                InlineOpRuntimeTask._resolve_buffers(item, loc, ip)
+
     def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
+        for arg in self._args:
+            InlineOpRuntimeTask._resolve_buffers(arg, loc, ip)
         self._fn(*self._args)
 
 

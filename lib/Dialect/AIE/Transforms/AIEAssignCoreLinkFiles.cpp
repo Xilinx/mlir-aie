@@ -52,7 +52,8 @@ struct AIEAssignCoreLinkFilesPass
     DenseMap<StringRef, SmallVector<StringRef, 2>> funcToObjs;
     for (auto funcOp : device.getOps<mlir::func::FuncOp>()) {
       if (auto attr = funcOp->getAttrOfType<mlir::StringAttr>("link_with")) {
-        funcToObjs[funcOp.getName()].push_back(attr.getValue());
+        if (!attr.getValue().empty())
+          funcToObjs[funcOp.getName()].push_back(attr.getValue());
       }
     }
 
@@ -72,10 +73,12 @@ struct AIEAssignCoreLinkFilesPass
 
       // Migrate deprecated core-level attr: warn, consume it, and add to set.
       if (auto lw = core.getLinkWith()) {
-        core.emitWarning(
-            "link_with on aie.core is deprecated; attach link_with to "
-            "the func.func declaration instead");
-        needed.insert(lw.value());
+        if (!lw.value().empty()) {
+          core.emitWarning(
+              "link_with on aie.core is deprecated; attach link_with to "
+              "the func.func declaration instead");
+          needed.insert(lw.value());
+        }
         core->removeAttr("link_with");
       }
 

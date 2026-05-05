@@ -76,9 +76,10 @@ aiecc --aie-generate-xclbin --xclbin-name=final_dynamic.xclbin \
       aie_gemm_dynamic.mlir
 ```
 
-This works because `aie.runtime_sequence` has the `IsolatedFromAbove` trait, which:
-- Prevents the SCF-to-CF pass from entering the runtime sequence (preserving SCF ops for C++ codegen)
-- Prevents constant hoisting across the isolation boundary
+This works because `aiecc` explicitly marks `aie.runtime_sequence` legal for
+the module-level SCF-to-CF conversion, which:
+- Preserves SCF ops in the runtime sequence for C++ codegen
+- Still lowers `aie.core` bodies for normal code generation
 - Allows both XCLBIN and TXN generation from the same MLIR with identical buffer addresses
 
 #### XCLBIN Path (hardware configuration)
@@ -126,6 +127,143 @@ The generated C++ function `generate_txn_sequence(M, K, N)` returns a `std::vect
 6. Read result buffer
 ```
 
+### Detailed TXN Walkthrough
+
+The dynamic TXN path does not generate a new GEMM kernel. It generates the
+instruction stream that tells the already-compiled kernel how many 32x32x32
+tiles to process and how to move those tiles through shim DMA.
+
+#### 1. Fixed compute kernel
+
+The AIE core kernel in `aie_kernels/aie2p/mm.cc` is fixed at a
+**32x32x32 bf16->f32** tile shape. It uses `aie::mmul` and accumulates one
+output tile across multiple K-slices.
+
+The dynamic part is therefore not the math itself. The dynamic part is:
+
+- how many output tiles exist: `(M / 32) * (N / 32)`
+- how many K tiles each output tile accumulates: `K / 32`
+- which regions of the host buffers A, B, and C each DMA descriptor covers
+
+#### 2. Core-side runtime control
+
+Inside `single_core_dynamic.py`, the core reads two RTP values at runtime:
+
+- `rtp[0] = K_div_k`
+- `rtp[1] = total_tiles`
+
+Those values control the nested loops on the core:
+
+- outer loop over output tiles
+- inner loop over K accumulation steps
+
+So one fixed ELF can execute many GEMM sizes as long as M, K, and N remain
+multiples of 32.
+
+#### 3. Runtime sequence as a parameterized TXN program
+
+With `--dynamic-txn`, the runtime sequence itself takes `M`, `K`, and `N` as
+SSA values:
+
+```mlir
+aie.runtime_sequence(A, B, C, M, K, N)
+```
+
+The runtime sequence computes:
+
+- `M_div_m = M / 32`
+- `K_div_k = K / 32`
+- `N_div_n = N / 32`
+- `tiles = M_div_m * N_div_n`
+
+It then writes RTP values and emits DMA orchestration. The important thing is
+that the orchestration is still written in high-level MLIR using `arith`, `scf`,
+and `aiex.npu.dma_memcpy_nd`.
+
+#### 4. What NPU lowering turns that into
+
+Each `aiex.npu.dma_memcpy_nd` expands into explicit descriptor programming:
+
+- BD register writes (`npu.write32`)
+- host address patching (`npu.address_patch`)
+- queue setup and completion-token configuration (`npu.maskwrite32`)
+- completion waits (`npu.sync`)
+
+This is why the emitted C++ is verbose: by the time EmitC runs, the compiler is
+no longer expressing “copy a multidimensional slice”; it is expressing exact NPU
+transaction words.
+
+#### 5. What the generated C++ function does
+
+The emitted function has the shape:
+
+```cpp
+std::vector<uint32_t> generate_txn_sequence(int32_t M, int32_t K, int32_t N)
+```
+
+Conceptually it does:
+
+1. Compute `M/32`, `K/32`, `N/32`, and `tiles`.
+2. Emit two RTP writes.
+3. Loop over tile-row blocks.
+4. For each ping-pong half-block:
+   - compute DMA descriptor fields,
+   - append BD programming writes,
+   - append address patches,
+   - append queue pushes,
+   - append syncs as needed.
+5. Prepend the TXN header and return the word vector.
+
+The generated code is mechanically lowered from MLIR, so it contains many local
+temporaries (`v17`, `v18`, …). These are just SSA values printed as C++ locals.
+#### 6. Ping-pong scheduling
+
+The dynamic sequence processes output rows in blocks:
+
+- `rows_per_block = 4`
+- each ping-pong half handles up to 2 tile rows
+- two BD banks are alternated so one half-block can execute while the next is
+  being prepared
+
+The schedule looks like:
+
+- program output C DMA
+- program A and B input DMAs for one or two tile rows
+- optionally wait for the previous batch before BD reuse
+- push DMA queues
+- continue to the next half-block
+
+This is what lets one core stream larger GEMMs while reusing a fixed microkernel.
+
+#### 7. Why this feature matters
+
+Without runtime-parameterized TXN generation, you typically need:
+
+- one XCLBIN
+- one fixed instruction stream
+- one fixed problem size
+
+With this feature, you get:
+
+- one XCLBIN
+- one fixed core ELF
+- one generated host function that builds a fresh instruction stream for each
+  runtime `M`, `K`, `N`
+
+In practice, that means the expensive parts stay fixed:
+
+- placement
+- routing
+- core code generation
+- XCLBIN creation
+
+while the cheap part changes at runtime:
+
+- the transaction stream that sets RTPs and programs DMA descriptors
+
+That is the core value of the feature: **compile once, vary GEMM shape at
+runtime by regenerating only the TXN program**.
+
 ## Design Variants
 
 | File | Description |
@@ -133,7 +271,6 @@ The generated C++ function `generate_txn_sequence(M, K, N)` returns a `std::vect
 | `single_core_dynamic.py` | Low-level dialect with `--dynamic-txn` flag |
 | `single_core_dynamic_placed.py` | Placed API variant |
 | `single_core_dynamic_iron.py` | IRON high-level API variant |
-| `dynamic_gemm_txn.h` | Hand-written C++ TXN encoder (reference) |
 
 ## Key Design Decisions
 
@@ -143,7 +280,9 @@ The generated C++ function `generate_txn_sequence(M, K, N)` returns a `std::vect
 
 **Pingpong DMA pattern**: Two sets of BDs (even/odd) overlap compute and data movement. Each half-block processes up to 2 tile rows. The `scf.for` in the runtime_sequence iterates over tile-row blocks, with `scf.if` guards for boundary conditions.
 
-**IsolatedFromAbove**: The `aie.runtime_sequence` is marked `IsolatedFromAbove` so the module-level SCF-to-CF pass (needed for core compilation) doesn't enter it. The EmitC path needs the SCF ops preserved to generate C++ for/if statements.
+**SCF preservation**: `aiecc` explicitly keeps `aie.runtime_sequence` legal
+during the module-level SCF-to-CF conversion, so SCF stays available for the
+EmitC path while `aie.core` regions continue through the normal lowering flow.
 
 ## Constraints
 
@@ -159,8 +298,7 @@ single_core_dynamic/
 ├── single_core_dynamic.py      # Python design (static + --dynamic-txn)
 ├── single_core_dynamic_placed.py
 ├── single_core_dynamic_iron.py
-├── test_dynamic.cpp            # Test harness (hand-written & auto-generated paths)
-├── dynamic_gemm_txn.h          # Hand-written C++ TXN encoder
+├── test_dynamic.cpp            # Test harness (auto-generated TXN path)
 ├── Makefile
 ├── tests/
 │   ├── run_strix_makefile.lit

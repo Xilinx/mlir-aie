@@ -121,6 +121,8 @@ def ConvertAIEXToEmitC : Pass<"convert-aiex-to-emitc", "mlir::ModuleOp"> {
   let constructor = "xilinx::createConvertAIEXToEmitCPass()";
   let dependentDialects = ["mlir::emitc::EmitCDialect",
                            "mlir::arith::ArithDialect",
+                           "mlir::func::FuncDialect",
+                           "mlir::memref::MemRefDialect",
                            "mlir::scf::SCFDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect"];

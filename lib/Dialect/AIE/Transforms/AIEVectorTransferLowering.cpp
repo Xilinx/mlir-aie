@@ -64,12 +64,10 @@ struct AIEVectorTransferLoweringPass
     vector::populateVectorTransferLoweringPatterns(patterns, maxRank);
 
     // Disable cross-region constant CSE to prevent the greedy rewriter from
-    // hoisting arith.constant ops from inside aie.runtime_sequence (which has
-    // IsolatedFromAbove) up to the aie.device scope. Without this, the default
-    // cseConstants=true causes constants to be moved from the runtime_sequence
-    // body into the device scope, making aie.core bodies reference device-scope
-    // values. This breaks AIECoreToStandardPass which cannot clone the core
-    // body into a func.func when the core references values defined outside it.
+    // hoisting arith.constant ops from inside aie.runtime_sequence up to the
+    // enclosing aie.device scope. Without this, the default cseConstants=true
+    // can make aie.core bodies reference device-scope values, which breaks
+    // AIECoreToStandardPass when it clones the core body into a func.func.
     GreedyRewriteConfig config;
     config.enableConstantCSE(false);
 

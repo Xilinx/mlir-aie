@@ -82,7 +82,6 @@ def AIE_DeviceOp: AIE_Op<"device", [
 }
 
 def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
-    Pure,
     SkipAccessibilityCheckTrait,
     DeclareOpInterfaceMethods<TileLike>,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
@@ -1038,6 +1037,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       $_state.addOperands(buffer);

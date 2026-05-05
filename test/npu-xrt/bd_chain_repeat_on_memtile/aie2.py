@@ -72,7 +72,7 @@ def my_passthrough_kernel(in1_size, out_size):
         compute_tiles = [ComputeTile2, ComputeTile3]
 
         tiles_to_trace = compute_tiles + [MemTile, ShimTile]
-        trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+        trace_utils.configure_trace(tiles_to_trace)
 
         # AIE-array data movement with object fifos
         of_in = object_fifo(
@@ -137,6 +137,8 @@ def my_passthrough_kernel(in1_size, out_size):
 
         @runtime_sequence(full_vector_ty, full_output_vector_ty, full_vector_ty)
         def sequence(inTensor, outTensor, notUsed):
+            trace_utils.start_trace()
+
             in_task = shim_dma_single_bd_task(of_in, inTensor, sizes=[1, 1, 1, N])
             dma_start_task(in_task)
 
@@ -146,8 +148,6 @@ def my_passthrough_kernel(in1_size, out_size):
             dma_start_task(out_task)
             dma_await_task(out_task)
             dma_free_task(in_task)
-
-            trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 in1_size = 16384

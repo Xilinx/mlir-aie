@@ -12,7 +12,6 @@ import sys
 import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
@@ -23,7 +22,7 @@ data_height = 3
 data_width = 16
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def exercise_5b(input0, output):
     # Define tile size
     tile_height = 3
@@ -80,7 +79,7 @@ def exercise_5b(input0, output):
     my_program = Program(iron.get_current_device(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

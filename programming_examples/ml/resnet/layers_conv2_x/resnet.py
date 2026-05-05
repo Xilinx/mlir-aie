@@ -8,7 +8,6 @@ import numpy as np
 import sys
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col3, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -204,19 +203,6 @@ conv3_kernels_call = [
     conv2dk1_skip_ui8,
 ]
 
-# runtime parameters
-rtp = []
-for i in range(3):
-    rtp.append([])
-    for j in range(2, 6):
-        rtp[i].append(
-            Buffer(
-                np.ndarray[(16,), np.dtype[np.int32]],
-                name=f"rtpComputeTile{i}{j}",
-                use_write_rtp=True,
-            )
-        )
-
 # Cores - we move in a snake-like pattern, that depends on
 # shared memory between neighbors, so we'll explicitly place all cores
 cores = [
@@ -225,6 +211,23 @@ cores = [
     [Tile(2, 2), Tile(2, 3), Tile(2, 4), Tile(2, 5)],
 ]
 
+
+# Runtime parameters: one RTP buffer per worker that reads RTPs.
+# Only conv1_fn (cores[i][0]) and conv1_skip_fn (cores[i][2]) use RTPs;
+# conv2_fn workers hard-code scale=1 and need no buffer.
+def make_rtp(col, row):
+    return Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        name=f"rtpComputeTile{col}{row}",
+        use_write_rtp=True,
+    )
+
+
+# rtp_conv1[i]      -> buffer for conv1_fn worker in column i
+# rtp_conv1_skip[i] -> buffer for conv1_skip_fn worker in column i
+rtp_conv1 = [make_rtp(cores[i][0].col, cores[i][0].row) for i in range(n_cols)]
+rtp_conv1_skip = [make_rtp(cores[i][2].col, cores[i][2].row) for i in range(n_cols)]
+
 # input tensor (with broadcast for skip connection)
 act1_fifo_names = ["act1_00_02_01", "act1_04_15_11", "act1_13_22_21"]
 act1_fifos = []
@@ -232,17 +235,17 @@ skip_fifos = []
 
 act1_fifos.append(ObjectFifo(laye1_act_sizes[0], name=act1_fifo_names[0]))
 skip_fifos.append(
-    act1_fifos[0].cons(4).forward(placement=Tile(0, 1), depth=2, name="skip_0")
+    act1_fifos[0].cons(4).forward(tile=Tile(0, 1), depth=2, name="skip_0")
 )
 
 for i in range(1, repeat + 1):
     act1_fifos.append(ObjectFifo(laye1_act_sizes[i], name=act1_fifo_names[i]))
     if i == 1:
-        placement = Tile(0, 1)
+        skip_tile = Tile(0, 1)
     else:
-        placement = Tile(i, 1)
+        skip_tile = Tile(i, 1)
     skip_fifos.append(
-        act1_fifos[-1].cons(4).forward(placement=placement, depth=2, name=f"skip_{i}")
+        act1_fifos[-1].cons(4).forward(tile=skip_tile, depth=2, name=f"skip_{i}")
     )
 
 act2_fifo_names = ["act2_02_03_05", "act2_15_12_14", "act2_22_23_25"]
@@ -280,7 +283,7 @@ for i in range(n_cols):
             depths=[1, 1, 1],
             obj_types=[layer1_wts_sizes[i], weightsLayer2_ty, layer3_wts_sizes[i]],
             names=[f"wts_buf_{i}{j}" for j in range(3)],
-            placement=Tile(i, 1),
+            tile=Tile(i, 1),
         )
     )
 
@@ -467,7 +470,6 @@ def conv1_skip_fn(
 # Create workers and place each one on a particular compute core
 workers = []
 for i in range(n_cols):
-    placement = cores[i][0]
     w = Worker(
         conv1_fn,
         [
@@ -475,10 +477,10 @@ for i in range(n_cols):
             act1_fifos[i].cons(),
             act2_fifos[i].prod(),
             conv1_kernels_call[i],
-            rtp[placement.col][placement.row - 2],
+            rtp_conv1[i],
             i,
         ],
-        placement=placement,
+        tile=cores[i][0],
     )
     workers.append(w)
     w = Worker(
@@ -490,14 +492,9 @@ for i in range(n_cols):
             conv2dk3,
             False,
         ],
-        placement=cores[i][1],
+        tile=cores[i][1],
     )
     workers.append(w)
-    placement = cores[i][2]
-    if i == 0:
-        skip_rtp = rtp[0][3]
-    else:
-        skip_rtp = rtp[placement.col][placement.row - 2]
     w = Worker(
         conv1_skip_fn,
         [
@@ -507,10 +504,10 @@ for i in range(n_cols):
             conv3_out_fifos[i].prod(),
             skip_fifos[i].cons(),
             conv3_kernels_call[i],
-            skip_rtp,
+            rtp_conv1_skip[i],
             i,
         ],
-        placement=placement,
+        tile=cores[i][2],
         stack_size=0xA00,
     )
     workers.append(w)
@@ -523,7 +520,7 @@ for i in range(n_cols):
             conv2dk3,
             True,
         ],
-        placement=cores[i][3],
+        tile=cores[i][3],
     )
     workers.append(w)
 
@@ -535,35 +532,28 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     outputToL3,
 ):
 
-    # Set runtime parameters
-    def set_rtps(rtp):
-        # Only set RTPs for tiles that actually read them (conv1_fn and conv1_skip_fn
-        # workers). conv2_fn workers use a hardcoded scale=1 and have no RTP arg,
-        # so their corresponding buffers are never placed/resolved.
+    # Set runtime parameters for conv1_fn workers (scale)
+    # and conv1_skip_fn workers (scale, skipScale, [skipConvScale for col 0])
+    def set_rtps(rtp_conv1, rtp_conv1_skip):
+        rtp_conv1[0][0] = 1  # col 0 conv1 scale
+        rtp_conv1[1][0] = 1  # col 1 conv1 scale
+        rtp_conv1[2][0] = 1  # col 2 conv1 scale
 
-        # col 0: conv1_fn at Tile(0,2) → rtp[0][0]; conv1_skip_fn at Tile(0,4) → rtp[0][3]
-        rtp[0][0][0] = 1
-        rtp[0][3][0] = 1
-        rtp[0][3][1] = 0
-        rtp[0][3][2] = 1
+        rtp_conv1_skip[0][0] = 1  # col 0 skip scale
+        rtp_conv1_skip[0][1] = 0  # col 0 skipScale
+        rtp_conv1_skip[0][2] = 1  # col 0 skipConvScale (init only)
+        rtp_conv1_skip[1][0] = 1  # col 1 skip scale
+        rtp_conv1_skip[1][1] = 0  # col 1 skipScale
+        rtp_conv1_skip[2][0] = 1  # col 2 skip scale
+        rtp_conv1_skip[2][1] = 0  # col 2 skipScale
 
-        # col 1: conv1_fn at Tile(1,5) → rtp[1][3]; conv1_skip_fn at Tile(1,3) → rtp[1][1]
-        rtp[1][3][0] = 1
-        rtp[1][1][0] = 1
-        rtp[1][1][1] = 0
-
-        # col 2: conv1_fn at Tile(2,2) → rtp[2][0]; conv1_skip_fn at Tile(2,4) → rtp[2][2]
-        rtp[2][0][0] = 1
-        rtp[2][2][0] = 1
-        rtp[2][2][1] = 0
-
-    rt.inline_ops(set_rtps, [rtp])
+    rt.inline_ops(set_rtps, [rtp_conv1, rtp_conv1_skip])
 
     # Start workers
     rt.start(*workers)
 
     # Fill/drain input/output object FIFOs
-    rt.fill(act1_fifos[0].prod(), inputFromL3, placement=Tile(0, 0))
+    rt.fill(act1_fifos[0].prod(), inputFromL3, tile=Tile(0, 0))
 
     tap = TensorAccessPattern(
         (totalWeights_complete,),
@@ -571,7 +561,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         sizes=[1, 1, 1, totalWeights_init],
         strides=[0, 0, 0, 1],
     )
-    rt.fill(wts_fifos[0].prod(), weightsFromL3, tap, placement=Tile(0, 0))
+    rt.fill(wts_fifos[0].prod(), weightsFromL3, tap, tile=Tile(0, 0))
 
     tap = TensorAccessPattern(
         (totalWeights_complete,),
@@ -579,7 +569,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         sizes=[1, 1, 1, totalWeights_rest],
         strides=[0, 0, 0, 1],
     )
-    rt.fill(wts_fifos[1].prod(), weightsFromL3, tap, placement=Tile(1, 0))
+    rt.fill(wts_fifos[1].prod(), weightsFromL3, tap, tile=Tile(1, 0))
 
     tap = TensorAccessPattern(
         (totalWeights_complete,),
@@ -587,11 +577,11 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         sizes=[1, 1, 1, totalWeights_rest],
         strides=[0, 0, 0, 1],
     )
-    rt.fill(wts_fifos[2].prod(), weightsFromL3, tap, placement=Tile(2, 0))
-    rt.drain(outOFL2L3.cons(), outputToL3, placement=Tile(1, 0), wait=True)
+    rt.fill(wts_fifos[2].prod(), weightsFromL3, tap, tile=Tile(2, 0))
+    rt.drain(outOFL2L3.cons(), outputToL3, tile=Tile(1, 0), wait=True)
 
 # Place components (assign them resources on the device) and generate an MLIR module
-module = Program(dev, rt).resolve_program(SequentialPlacer())
+module = Program(dev, rt).resolve_program()
 
 # Print the generated MLIR
 print(module)

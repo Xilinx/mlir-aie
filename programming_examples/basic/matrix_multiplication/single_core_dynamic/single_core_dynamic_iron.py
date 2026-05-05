@@ -16,7 +16,6 @@ import argparse
 import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, Buffer, str_to_dtype
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
@@ -244,7 +243,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
     my_program = Program(dev_ty, rt)
 
     # Place components and generate MLIR module
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 

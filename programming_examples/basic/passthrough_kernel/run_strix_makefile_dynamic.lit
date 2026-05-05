@@ -7,4 +7,5 @@
 // RUN: cd test_dynamic_stx
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile devicename=npu2
+// RUN: make -f %S/Makefile compare_dynamic_static_txn devicename=npu2
 // RUN: %run_on_npu2% make -f %S/Makefile run_dynamic devicename=npu2

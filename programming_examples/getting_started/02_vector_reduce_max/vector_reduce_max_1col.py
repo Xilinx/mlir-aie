@@ -12,7 +12,6 @@ import os
 import aie.iron as iron
 from aie.iron import ExternalFunction
 from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.dialects.scf import if_, else_
@@ -22,9 +21,8 @@ from aie.utils.config import cxx_header_path
 # JIT decorator for IRON
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
-#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit(is_placed=False)
+@iron.jit
 def vector_reduce_max(input0, output):
     element_type = output.dtype
 
@@ -175,7 +173,7 @@ def vector_reduce_max(input0, output):
     # --------------------------------------------------------------------------
 
     my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

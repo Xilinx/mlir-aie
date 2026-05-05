@@ -82,12 +82,12 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.bin
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --output trace_passthrough_kernel.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir.prj/input_with_addresses.mlir --output trace_passthrough_kernel.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_passthrough_kernel.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
-	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --output trace_${targetname}.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir.prj/input_with_addresses.mlir --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
 # --- Dynamic TXN generation targets ---
@@ -109,13 +109,13 @@ build/dynsize/generated_txn.h: build/dynsize/aie_dynamic.mlir
 	aie-translate --aie-generate-txn-cpp $< > $@
 
 # Build the dynamic test executable (reuses test.cpp with USE_DYNAMIC_TXN)
-${targetname}_dynamic_${data_size}.exe: ${srcdir}/test.cpp build/generated_txn.h
+${targetname}_dynamic_${data_size}.exe: ${srcdir}/test.cpp build/dynsize/generated_txn.h
 	rm -rf _build_dynamic
 	mkdir -p _build_dynamic
 	cd _build_dynamic && ${powershell} cmake `${getwslpath} ${srcdir}` \
 		-DTARGET_NAME=${targetname}_dynamic \
 		-DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} \
-		-DCMAKE_CXX_FLAGS="-DUSE_DYNAMIC_TXN -I${CURDIR}/build -I$(shell cd ${srcdir}/../../.. && pwd)/include"
+		-DCMAKE_CXX_FLAGS="-DUSE_DYNAMIC_TXN -I${CURDIR}/build/dynsize -I$(shell cd ${srcdir}/../../.. && pwd)/include"
 	cd _build_dynamic && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build_dynamic/${targetname}_dynamic.exe $@
@@ -139,6 +139,15 @@ else
 	cp _build_dynsize/${targetname}_dynsize $@
 endif
 
+compare_dynamic_static_txn.exe: ${srcdir}/compare_txn.cpp build/dynsize/generated_txn.h build/insts_${data_size}.bin
+	${CXX} -std=c++17 -O2 -DIN1_SIZE=${in1_size} \
+		-Ibuild/dynsize -I$(shell cd ${srcdir}/../../.. && pwd)/include \
+		$< -o $@
+
+.PHONY: compare_dynamic_static_txn
+compare_dynamic_static_txn: compare_dynamic_static_txn.exe build/insts_${data_size}.bin
+	./$< build/insts_${data_size}.bin
+
 # Run with dynamically generated TXN (uses same XCLBIN)
 run_dynamic: ${targetname}_dynamic_${data_size}.exe build/final_${data_size}.xclbin
 	${powershell} ./$< -x build/final_${data_size}.xclbin -k MLIR_AIE
@@ -155,4 +164,4 @@ clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json
 
 clean: clean_trace
-	rm -rf build _build _build_dynamic ${targetname}*.exe
+	rm -rf build _build _build_dynamic _build_dynsize ${targetname}*.exe

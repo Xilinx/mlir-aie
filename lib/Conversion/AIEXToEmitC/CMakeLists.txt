@@ -18,8 +18,10 @@ add_mlir_conversion_library(MLIRAIEXToEmitC
   LINK_LIBS PUBLIC
   AIE
   AIEX
+  MLIRArithToEmitC
   MLIREmitCDialect
   MLIRArithDialect
+  MLIRSCFToEmitC
   MLIRSCFDialect
   MLIRTransforms
 )

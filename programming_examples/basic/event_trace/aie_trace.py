@@ -8,12 +8,9 @@
 #
 # ===-----------------------------------------------------------------------===#
 #
-# Python equivalent of aie_trace.mlir using declarative trace ops:
-# - aie.trace for trace configuration
-# - aie.trace.event for specifying events to capture
-# - aie.trace.start_config in runtime sequence
-#
-# This will be incrementally lowered by trace passes
+# Python example using the declarative trace API:
+# - configure_trace() outside runtime_sequence to set up trace ops
+# - start_trace() inside runtime_sequence to activate tracing
 #
 # Usage:
 #   python3 aie_trace.py > aie_trace_from_py.mlir
@@ -27,6 +24,16 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.iron.controlflow import range_
+
+import aie.utils.trace as trace_utils
+from aie.utils.trace.events import (
+    PortEvent,
+    MemTilePortEvent,
+    CoreEvent,
+    MemEvent,
+    ShimTileEvent,
+    MemTileEvent,
+)
 
 
 def build_aie_trace():
@@ -86,76 +93,54 @@ def build_aie_trace():
         # TRACE CONFIGURATION
         # ==================================================================
 
-        # Trace configuration for compute tile (0,2) - core events
-        @trace(tile_0_2, "core_trace")
-        def core_trace_body():
-            trace_mode(TraceMode.EventTime)
-            trace_packet(1, TracePacketType.Core)
-            trace_event("INSTR_EVENT_0")
-            trace_event("INSTR_EVENT_1")
-            trace_event("INSTR_VECTOR")
-            trace_event("MEMORY_STALL")
-            trace_event("STREAM_STALL")
-            trace_event("LOCK_STALL")
-            trace_event("PORT_RUNNING_0")
-            trace_event("PORT_RUNNING_1")
-            trace_port(0, WireBundle.DMA, 0, DMAChannelDir.S2MM)
-            trace_port(1, WireBundle.DMA, 0, DMAChannelDir.MM2S)
-            trace_start(broadcast=15)
-            trace_stop(broadcast=14)
+        # List tiles to trace. Listing the same core tile twice enables
+        # tracing both its core and memory.
+        tiles_to_trace = [tile_0_2, tile_0_2, mem_tile_0_1, shim_noc_tile_0_0]
 
-        # Trace configuration for compute tile (0,2) - memory events
-        @trace(tile_0_2, "mem_trace")
-        def mem_trace_body():
-            trace_packet(3, TracePacketType.Mem)
-            trace_event("DMA_S2MM_0_START_TASK")
-            trace_event("DMA_S2MM_1_START_TASK")
-            trace_event("DMA_MM2S_0_START_TASK")
-            trace_event("DMA_S2MM_0_FINISHED_TASK")
-            trace_event("DMA_S2MM_1_FINISHED_TASK")
-            trace_event("DMA_MM2S_0_FINISHED_TASK")
-            trace_event("DMA_S2MM_0_STREAM_STARVATION")
-            trace_event("DMA_S2MM_1_STREAM_STARVATION")
-            trace_start(event="BROADCAST_15")
-            trace_stop(event="BROADCAST_14")
-
-        # Trace configuration for mem tile (0,1)
-        @trace(mem_tile_0_1, "memtile_trace")
-        def memtile_trace_body():
-            trace_packet(4, TracePacketType.MemTile)
-            trace_event("PORT_RUNNING_0")
-            trace_event("PORT_RUNNING_1")
-            trace_event("PORT_RUNNING_2")
-            trace_event("PORT_RUNNING_3")
-            trace_event("PORT_RUNNING_4")
-            trace_event("PORT_RUNNING_5")
-            trace_event("PORT_RUNNING_6")
-            trace_event("PORT_RUNNING_7")
-            trace_port(0, WireBundle.DMA, 0, DMAChannelDir.MM2S)
-            trace_port(1, WireBundle.DMA, 1, DMAChannelDir.MM2S)
-            trace_port(2, WireBundle.DMA, 0, DMAChannelDir.S2MM)
-            trace_port(3, WireBundle.DMA, 1, DMAChannelDir.S2MM)
-            trace_port(4, WireBundle.DMA, 2, DMAChannelDir.S2MM)
-            trace_port(5, WireBundle.DMA, 3, DMAChannelDir.S2MM)
-            trace_port(6, WireBundle.DMA, 4, DMAChannelDir.S2MM)
-            trace_port(7, WireBundle.DMA, 5, DMAChannelDir.S2MM)
-            trace_start(broadcast=15)
-            trace_stop(broadcast=14)
-
-        # Trace configuration for shim tile (0,0)
-        @trace(shim_noc_tile_0_0, "shim_trace")
-        def shim_trace_body():
-            trace_packet(2, TracePacketType.ShimTile)
-            trace_event("DMA_S2MM_0_START_TASK")
-            trace_event("DMA_S2MM_1_START_TASK")
-            trace_event("DMA_MM2S_0_START_TASK")
-            trace_event("DMA_S2MM_0_FINISHED_TASK")
-            trace_event("DMA_S2MM_1_FINISHED_TASK")
-            trace_event("DMA_MM2S_0_FINISHED_TASK")
-            trace_event("DMA_S2MM_0_STREAM_STARVATION")
-            trace_event("DMA_S2MM_1_STREAM_STARVATION")
-            trace_start(event="TRUE")
-            trace_stop(event="NONE")
+        # Event settings are optional; defaults are used if not specified.
+        trace_utils.configure_trace(
+            tiles_to_trace,
+            coretile_events=[
+                CoreEvent.INSTR_EVENT_0,
+                CoreEvent.INSTR_EVENT_1,
+                CoreEvent.INSTR_VECTOR,
+                CoreEvent.MEMORY_STALL,
+                CoreEvent.STREAM_STALL,
+                CoreEvent.LOCK_STALL,
+                PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+                PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False),
+            ],
+            coremem_events=[
+                MemEvent.DMA_S2MM_0_START_TASK,
+                MemEvent.DMA_S2MM_1_START_TASK,
+                MemEvent.DMA_MM2S_0_START_TASK,
+                MemEvent.DMA_S2MM_0_FINISHED_TASK,
+                MemEvent.DMA_S2MM_1_FINISHED_TASK,
+                MemEvent.DMA_MM2S_0_FINISHED_TASK,
+                MemEvent.DMA_S2MM_0_STREAM_STARVATION,
+                MemEvent.DMA_S2MM_1_STREAM_STARVATION,
+            ],
+            memtile_events=[
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.DMA, 0, False),
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, WireBundle.DMA, 1, False),
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, WireBundle.DMA, 0, True),
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_3, WireBundle.DMA, 1, True),
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, WireBundle.DMA, 2, True),
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_5, WireBundle.DMA, 3, True),
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, WireBundle.DMA, 4, True),
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, WireBundle.DMA, 5, True),
+            ],
+            shimtile_events=[
+                ShimTileEvent.DMA_S2MM_0_START_TASK,
+                ShimTileEvent.DMA_S2MM_1_START_TASK,
+                ShimTileEvent.DMA_MM2S_0_START_TASK,
+                ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+                ShimTileEvent.DMA_S2MM_1_FINISHED_TASK,
+                ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+                ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
+                ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
+            ],
+        )
 
         # ==================================================================
         # RUNTIME SEQUENCE WITH TRACE ACTIVATION
@@ -164,10 +149,7 @@ def build_aie_trace():
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             # Start trace configuration
-            trace_start_config("core_trace")
-            trace_start_config("mem_trace")
-            trace_start_config("memtile_trace")
-            trace_start_config("shim_trace")
+            trace_utils.start_trace(trace_size=8192)
 
             # Configure DMA tasks for input, factor, and output
             in_task = shim_dma_single_bd_task(

@@ -75,21 +75,17 @@ int main(int argc, const char *argv[]) {
 #ifdef USE_DYNAMIC_TXN
   // If --dynamic-size is given, override the compiled-in buffer sizes
   // and generate TXN instructions for that size at runtime.
-  // BD addresses are hardware constants for NPU2 shim tile (0,0).
-  constexpr uint32_t INPUT_BD_ADDR = 118784;  // 0x1D000
-  constexpr uint32_t OUTPUT_BD_ADDR = 118816; // 0x1D020
   if (myargs.dynamic_size > 0) {
     uint32_t size_bytes = myargs.dynamic_size;
     in1_volume = size_bytes / sizeof(DATATYPE_IN1);
     out_volume = size_bytes / sizeof(DATATYPE_OUT);
     myargs.generate_instr = [size_bytes]() {
-      return generate_txn_sequence(size_bytes / 4, INPUT_BD_ADDR,
-                                   OUTPUT_BD_ADDR);
+      return generate_txn_sequence(size_bytes);
     };
   } else {
     myargs.generate_instr = []() {
       // Default: use compile-time size
-      return generate_txn_sequence(IN1_SIZE / 4, INPUT_BD_ADDR, OUTPUT_BD_ADDR);
+      return generate_txn_sequence(IN1_SIZE);
     };
   }
 #endif
