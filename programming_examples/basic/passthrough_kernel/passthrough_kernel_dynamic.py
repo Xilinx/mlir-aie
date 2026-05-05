@@ -12,7 +12,6 @@ from aie.iron.device import NPU2
 
 from passthrough_kernel import my_passthrough_kernel
 
-
 if __name__ == "__main__":
     print(
         my_passthrough_kernel(
