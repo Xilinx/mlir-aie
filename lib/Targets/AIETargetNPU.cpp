@@ -44,45 +44,39 @@ reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
 
 // Thin wrappers that extract MLIR attributes and delegate to TxnEncoding.h.
 
-void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
-  if (op.hasDynamicOperands()) {
-    op.emitOpError("cannot translate dynamic operands to binary; use "
-                   "--aie-generate-txn-cpp instead");
-    return;
-  }
+LogicalResult appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
+  if (op.hasDynamicOperands())
+    return op.emitOpError("cannot translate dynamic operands to binary; use "
+                          "--aie-generate-txn-cpp instead");
   aie_runtime::txn_append_sync(instructions, op.getColumn(), op.getRow(),
                                static_cast<uint32_t>(op.getDirection()),
                                op.getChannel(), op.getColumnNum(),
                                op.getRowNum());
+  return success();
 }
 
-void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
-  if (op.hasDynamicOperands()) {
-    op.emitOpError("cannot translate dynamic operands to binary; use "
-                   "--aie-generate-txn-cpp instead");
-    return;
-  }
-  if (op.getBuffer()) {
-    op.emitOpError("Cannot translate symbolic address");
-    return;
-  }
+LogicalResult appendWrite32(std::vector<uint32_t> &instructions,
+                            NpuWrite32Op op) {
+  if (op.hasDynamicOperands())
+    return op.emitOpError("cannot translate dynamic operands to binary; use "
+                          "--aie-generate-txn-cpp instead");
+  if (op.getBuffer())
+    return op.emitOpError("Cannot translate symbolic address");
   aie_runtime::txn_append_write32(instructions, *op.getAbsoluteAddress(),
                                   op.getValue());
+  return success();
 }
 
-void appendMaskWrite32(std::vector<uint32_t> &instructions,
-                       NpuMaskWrite32Op op) {
-  if (op.hasDynamicOperands()) {
-    op.emitOpError("cannot translate dynamic operands to binary; use "
-                   "--aie-generate-txn-cpp instead");
-    return;
-  }
-  if (op.getBuffer()) {
-    op.emitOpError("Cannot translate symbolic address");
-    return;
-  }
+LogicalResult appendMaskWrite32(std::vector<uint32_t> &instructions,
+                                NpuMaskWrite32Op op) {
+  if (op.hasDynamicOperands())
+    return op.emitOpError("cannot translate dynamic operands to binary; use "
+                          "--aie-generate-txn-cpp instead");
+  if (op.getBuffer())
+    return op.emitOpError("Cannot translate symbolic address");
   aie_runtime::txn_append_maskwrite32(instructions, *op.getAbsoluteAddress(),
                                       op.getValue(), op.getMask());
+  return success();
 }
 
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
@@ -96,7 +90,8 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
                                         op.getArgIdx(), op.getArgPlus());
 }
 
-void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
+LogicalResult appendBlockWrite(std::vector<uint32_t> &instructions,
+                               NpuBlockWriteOp op) {
   std::optional<uint32_t> address = op.getAbsoluteAddress();
   DenseIntElementsAttr data = op.getDataWords();
 
@@ -118,6 +113,7 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
     size_t headerPos = instructions.size() - 4 - payload.size();
     instructions[headerPos + 1] = (*col & 0xff) | ((*row & 0xff) << 8);
   }
+  return success();
 }
 
 void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
@@ -155,24 +151,29 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   }
 
   uint32_t count = 0;
+  LogicalResult result = success();
   for (Block &block : seq.getBody()) {
     for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuSyncOp>([&](auto op) {
             count++;
-            appendSync(instructions, op);
+            if (failed(appendSync(instructions, op)))
+              result = failure();
           })
           .Case<NpuWrite32Op>([&](auto op) {
             count++;
-            appendWrite32(instructions, op);
+            if (failed(appendWrite32(instructions, op)))
+              result = failure();
           })
           .Case<NpuBlockWriteOp>([&](auto op) {
             count++;
-            appendBlockWrite(instructions, op);
+            if (failed(appendBlockWrite(instructions, op)))
+              result = failure();
           })
           .Case<NpuMaskWrite32Op>([&](auto op) {
             count++;
-            appendMaskWrite32(instructions, op);
+            if (failed(appendMaskWrite32(instructions, op)))
+              result = failure();
           })
           .Case<NpuLoadPdiOp>([&](auto op) {
             count++;
@@ -188,6 +189,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           });
     }
   }
+  if (failed(result))
+    return failure();
 
   // Prepend the TXN header (inserts 4 words at the front).
   aie_runtime::txn_prepend_header(instructions, count, devInfo);

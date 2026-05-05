@@ -85,7 +85,7 @@ class DMATask(RuntimeTask):
         tile = self._object_fifo.endpoint.tile
         if tile.col is not None and tile.row is not None:
             return (tile.col, tile.row, tile.tile_type)
-        return id(tile)
+        return ("unplaced", tile.tile_type)
 
     def uses_direct_npu_dma(self) -> bool:
         return any(

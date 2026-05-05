@@ -594,6 +594,8 @@ private:
       if (auto absAddr = blockWrite.getAbsoluteAddress())
         addr = *absAddr;
       auto data = blockWrite.getDataWords();
+      if (!data)
+        return failure();
       emitTxnBlockWrite(builder, opLoc, txnVec, addr, data);
       return success();
     }

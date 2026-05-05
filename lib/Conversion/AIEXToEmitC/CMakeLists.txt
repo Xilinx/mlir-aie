@@ -7,7 +7,7 @@ add_mlir_conversion_library(MLIRAIEXToEmitC
   AIEXToEmitC.cpp
 
   ADDITIONAL_HEADER_DIRS
-  $(CMAKE_CURRENT_SRC_DIR)/../../../../include/aie/Conversion/AIEXToEmitC
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../../include/aie/Conversion/AIEXToEmitC
 
   DEPENDS
   MLIRAIEConversionPassIncGen

@@ -804,11 +804,18 @@ public:
           arith::SelectOp::create(rewriter, loc, active, hwIterSize, zeroVal);
     }
 
-    // repeat_count for queue push = inputSizes[3] - 1
+    // repeat_count for queue push = max(inputSizes[3] - 1, 0)
     // The hardware queue push field encodes the number of *additional* repeats
     // (i.e., total_count - 1), matching the static path's use of
     // getHardwareStridesWraps which sets sizes[3] = inputSizes[3] - 1.
-    Value repeatCount = arith::SubIOp::create(rewriter, loc, inSize3, cst(1));
+    // Guard against underflow when sizes[3] == 0, matching the static path's
+    // `if (rcVal < 0) rcVal = 0` check.
+    Value rcSub = arith::SubIOp::create(rewriter, loc, inSize3, cst(1));
+    Value rcGtZero = arith::CmpIOp::create(rewriter, loc,
+                                           arith::CmpIPredicate::sgt,
+                                           inSize3, cst(0));
+    Value repeatCount =
+        arith::SelectOp::create(rewriter, loc, rcGtZero, rcSub, cst(0));
 
     // buffer_length = hwD0Size * d1_size * d2_size
     Value bufLen = arith::MulIOp::create(rewriter, loc, hwD0Size, hwD1Size);

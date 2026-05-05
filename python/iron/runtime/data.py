@@ -92,4 +92,6 @@ class RuntimeScalar:
 
     @op.setter
     def op(self, op):
+        if self._op is not None:
+            raise ValueError("Cannot set operation for RuntimeScalar more than once.")
         self._op = op

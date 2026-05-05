@@ -41,7 +41,6 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Dynamic GEMM Test");
   options.add_options()("help,h", "produce help message")(
       "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
-(
       "kernel,k", "the kernel name in the XCLBIN",
       cxxopts::value<std::string>()->default_value("MLIR_AIE"))(
       "verbosity,v", "the verbosity of the output",

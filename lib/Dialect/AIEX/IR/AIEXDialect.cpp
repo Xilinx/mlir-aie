@@ -821,12 +821,12 @@ LogicalResult AIEX::NpuWrite32Op::verify() {
     auto addrType = getDynAddress().getType();
     auto valType = getDynValue().getType();
     if (auto intType = dyn_cast<IntegerType>(addrType)) {
-      if (intType.getWidth() != 32 && intType.getWidth() != 64)
-        return emitOpError("dynamic address must be 32-bit or 64-bit integer");
+      if (intType.getWidth() != 32)
+        return emitOpError("dynamic address must be a 32-bit integer");
     }
     if (auto intType = dyn_cast<IntegerType>(valType)) {
-      if (intType.getWidth() != 32 && intType.getWidth() != 64)
-        return emitOpError("dynamic value must be 32-bit or 64-bit integer");
+      if (intType.getWidth() != 32)
+        return emitOpError("dynamic value must be a 32-bit integer");
     }
   }
   return success();
@@ -1016,9 +1016,8 @@ LogicalResult AIEX::NpuMaskWrite32Op::verify() {
   if (hasAddr) {
     for (Value v : {getDynAddress(), getDynValue(), getDynMask()}) {
       if (auto intType = dyn_cast<IntegerType>(v.getType())) {
-        if (intType.getWidth() != 32 && intType.getWidth() != 64)
-          return emitOpError(
-              "dynamic operands must be 32-bit or 64-bit integers");
+        if (intType.getWidth() != 32)
+          return emitOpError("dynamic operands must be 32-bit integers");
       }
     }
   }
@@ -1106,8 +1105,9 @@ LogicalResult AIEX::NpuSyncOp::verify() {
   if (hasAny) {
     for (Value v : {getDynColumn(), getDynRow(), getDynDirection(),
                     getDynChannel(), getDynColumnNum(), getDynRowNum()}) {
-      if (!v.getType().isSignlessInteger())
-        return emitOpError("all dynamic operands must be signless integers");
+      if (!v.getType().isSignlessInteger(32))
+        return emitOpError(
+            "all dynamic operands must be 32-bit signless integers");
     }
   }
   return success();
