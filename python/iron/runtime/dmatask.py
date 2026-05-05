@@ -103,6 +103,8 @@ class DMATask(RuntimeTask):
 
     def emit_free(self) -> None:
         if self.uses_direct_npu_dma():
+            # Direct NPU DMA tasks do not use dma_free_task; synchronization
+            # is handled by dma_wait in emit_wait().
             return
         dma_free_task(self._task)
 

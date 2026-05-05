@@ -86,8 +86,9 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
                         NpuAddressPatchOp op) {
-  aie_runtime::txn_append_address_patch(instructions, op.getAddr(),
-                                        op.getArgIdx(), op.getArgPlus());
+  aie_runtime::txn_append_address_patch(
+      instructions, op.getAddr(), op.getArgIdx(),
+      static_cast<uint32_t>(op.getArgPlus()));
 }
 
 LogicalResult appendBlockWrite(std::vector<uint32_t> &instructions,
@@ -150,6 +151,9 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return failure();
   }
 
+  // Reserve header space up front so txn_prepend_header can overwrite in-place.
+  aie_runtime::txn_init(instructions);
+
   uint32_t count = 0;
   LogicalResult result = success();
   for (Block &block : seq.getBody()) {
@@ -192,7 +196,7 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   if (failed(result))
     return failure();
 
-  // Prepend the TXN header (inserts 4 words at the front).
+  // Finalize the TXN header (overwrites the 4 reserved words).
   aie_runtime::txn_prepend_header(instructions, count, devInfo);
   return success();
 }

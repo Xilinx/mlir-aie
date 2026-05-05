@@ -8,7 +8,8 @@
 """Runtime: orchestrates host-side data movement and worker execution for an IRON program."""
 
 from __future__ import annotations
-from collections import defaultdict
+import bisect
+from collections import defaultdict, deque
 from contextlib import contextmanager
 import logging
 import numpy as np
@@ -46,11 +47,11 @@ class _RuntimeBdIdAllocator:
     def __init__(self, max_bd_ids_per_key: int = 16):
         self._max_bd_ids_per_key = max_bd_ids_per_key
         self._next_id = defaultdict(int)
-        self._free_ids = defaultdict(list)
+        self._free_ids = defaultdict(deque)
 
     def allocate(self, key) -> int:
         if self._free_ids[key]:
-            return self._free_ids[key].pop(0)
+            return self._free_ids[key].popleft()
         bd_id = self._next_id[key]
         if bd_id >= self._max_bd_ids_per_key:
             raise ValueError(
@@ -63,17 +64,13 @@ class _RuntimeBdIdAllocator:
         free_ids = self._free_ids[key]
         if bd_id in free_ids:
             return
-        free_ids.append(bd_id)
-        free_ids.sort()
+        bisect.insort(free_ids, bd_id)
 
 
 class Runtime(Resolvable):
     """A Runtime contains that operations and structure of all operations that
     need to be taken care of by the host/runtime in order to run a program.
     """
-
-    # Used to generate unique task group IDs within this Runtime.
-    __task_group_index = 0
 
     def __init__(
         self,
@@ -95,6 +92,7 @@ class Runtime(Resolvable):
         self._trace_workers = None
         self._strict_task_groups = strict_task_groups
         self._ddr_id = 4
+        self.__task_group_index = 0
 
     @contextmanager
     def sequence(self, *input_types):
@@ -122,7 +120,10 @@ class Runtime(Resolvable):
                 elif callable(t):
                     items.append(RuntimeScalar(t))
                 else:
-                    items.append(RuntimeData(t))
+                    raise TypeError(
+                        f"Unsupported sequence argument type: {type(t).__name__}. "
+                        f"Expected np.ndarray type, ir.Type, or callable."
+                    )
             self._sequence_items = items
             self._rt_data = [i for i in items if isinstance(i, RuntimeData)]
             if len(items) == 1:
@@ -490,7 +491,7 @@ class Runtime(Resolvable):
 
             if self._strict_task_groups and default_tasks and task_group_tasks:
                 raise Exception(
-                    f"Mixing explicit task groups and the default task group is prohibitted. "
+                    f"Mixing explicit task groups and the default task group is prohibited. "
                     f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
                 )
 

@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <algorithm>
-#include <iterator>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/AIEUtils.h"
@@ -98,7 +97,11 @@ struct AIEDMATasksToNPUPass
   LogicalResult verifyBdInBlock(Block &block) {
     auto bd_ops = block.getOps<AIE::DMABDOp>();
     // Exactly one BD op per block
-    int n_bd_ops = std::distance(bd_ops.begin(), bd_ops.end());
+    int n_bd_ops = 0;
+    for ([[maybe_unused]] auto op : bd_ops) {
+      if (++n_bd_ops > 1)
+        break;
+    }
     if (n_bd_ops < 1) {
       auto error = block.getTerminator()->emitError(
           "Block ending in this terminator does not contain a required "
@@ -133,7 +136,11 @@ struct AIEDMATasksToNPUPass
 
   LogicalResult verifyOptionalLocksInBlock(Block &block) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
-    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
+    int n_lock_ops = 0;
+    for ([[maybe_unused]] auto op : lock_ops) {
+      if (++n_lock_ops > 2)
+        break;
+    }
     // Allow exactly 0 or 2 lock ops (acquire and release)
     if (n_lock_ops != 0 && n_lock_ops != 2) {
       AIE::UseLockOp lock_op = *lock_ops.begin();
@@ -183,7 +190,11 @@ struct AIEDMATasksToNPUPass
   std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
   getOptionalLockOpsForBlock(Block &block) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
-    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
+    int n_lock_ops = 0;
+    for ([[maybe_unused]] auto op : lock_ops) {
+      if (++n_lock_ops > 2)
+        break;
+    }
     if (n_lock_ops != 2) {
       return std::nullopt;
     }

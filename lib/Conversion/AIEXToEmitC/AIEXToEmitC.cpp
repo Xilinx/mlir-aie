@@ -48,12 +48,12 @@ using namespace xilinx;
 namespace {
 
 // Shared helper: get the emitc opaque type for uint32_t
-static emitc::OpaqueType getU32Type(MLIRContext *ctx) {
+emitc::OpaqueType getU32Type(MLIRContext *ctx) {
   return emitc::OpaqueType::get(ctx, "uint32_t");
 }
 
 // Shared helper: create a uint32_t constant
-static Value createU32Constant(OpBuilder &builder, Location loc, uint32_t val) {
+Value createU32Constant(OpBuilder &builder, Location loc, uint32_t val) {
   auto u32Type = getU32Type(builder.getContext());
   return emitc::ConstantOp::create(
       builder, loc, u32Type,
@@ -61,7 +61,7 @@ static Value createU32Constant(OpBuilder &builder, Location loc, uint32_t val) {
 }
 
 // Shared helper: cast an SSA value to uint32_t using static_cast
-static Value castToU32(OpBuilder &builder, Location loc, Value val) {
+Value castToU32(OpBuilder &builder, Location loc, Value val) {
   auto u32Type = getU32Type(builder.getContext());
   if (val.getType() == u32Type)
     return val;
@@ -69,12 +69,12 @@ static Value castToU32(OpBuilder &builder, Location loc, Value val) {
 }
 
 // Emit: op_count++
-static void emitIncrementOpCount(OpBuilder &builder, Location loc) {
+void emitIncrementOpCount(OpBuilder &builder, Location loc) {
   emitc::VerbatimOp::create(builder, loc, "op_count++;");
 }
 
 // Emit: aie_runtime::txn_append_write32(txn, addr, val)
-static void emitTxnWrite32(OpBuilder &builder, Location loc, Value txnVec,
+void emitTxnWrite32(OpBuilder &builder, Location loc, Value txnVec,
                            Value addr, Value val) {
   auto u32 = castToU32(builder, loc, addr);
   auto u32v = castToU32(builder, loc, val);
@@ -85,7 +85,7 @@ static void emitTxnWrite32(OpBuilder &builder, Location loc, Value txnVec,
 }
 
 // Emit: aie_runtime::txn_append_maskwrite32(txn, addr, val, mask)
-static void emitTxnMaskWrite32(OpBuilder &builder, Location loc, Value txnVec,
+void emitTxnMaskWrite32(OpBuilder &builder, Location loc, Value txnVec,
                                Value addr, Value val, Value mask) {
   auto u32a = castToU32(builder, loc, addr);
   auto u32v = castToU32(builder, loc, val);
@@ -97,7 +97,7 @@ static void emitTxnMaskWrite32(OpBuilder &builder, Location loc, Value txnVec,
 }
 
 // Emit: aie_runtime::txn_append_sync(txn, col, row, dir, chan, ncol, nrow)
-static void emitTxnSync(OpBuilder &builder, Location loc, Value txnVec,
+void emitTxnSync(OpBuilder &builder, Location loc, Value txnVec,
                         Value col, Value row, Value dir, Value chan, Value ncol,
                         Value nrow) {
   auto u32col = castToU32(builder, loc, col);
@@ -113,7 +113,7 @@ static void emitTxnSync(OpBuilder &builder, Location loc, Value txnVec,
 }
 
 // Emit: aie_runtime::txn_append_address_patch(txn, addr, arg_idx, arg_plus)
-static void emitTxnAddressPatch(OpBuilder &builder, Location loc, Value txnVec,
+void emitTxnAddressPatch(OpBuilder &builder, Location loc, Value txnVec,
                                 uint32_t addr, int32_t argIdx, int32_t argPlus,
                                 Value dynArgPlus) {
   auto addrVal = createU32Constant(builder, loc, addr);
@@ -132,20 +132,20 @@ static void emitTxnAddressPatch(OpBuilder &builder, Location loc, Value txnVec,
 
 // Emit: aie_runtime::txn_append_blockwrite(txn, addr, data, count)
 // For blockwrite, we emit the data as an inline array literal.
-static void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
+void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
                               uint32_t addr, DenseIntElementsAttr data) {
   // Build inline array data string: "uint32_t data_N[] = {0x..., 0x..., ...};"
   std::string arrayStr = "{";
+  llvm::raw_string_ostream ss(arrayStr);
   bool first = true;
   for (auto d : data) {
     if (!first)
-      arrayStr += ", ";
+      ss << ", ";
     uint32_t word = d.getZExtValue();
-    llvm::raw_string_ostream ss(arrayStr);
     ss << llvm::format("0x%08Xu", word);
     first = false;
   }
-  arrayStr += "}";
+  ss << "}";
 
   // Emit blockwrite via VerbatimOp since arrays don't map cleanly to emitc.
   std::string stmt = "{\n  static const uint32_t _bd_data[] = " + arrayStr +
@@ -163,7 +163,7 @@ static void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
 //   write32(base, dynamic_len)
 // sequence back into the exact static blockwrite layout while keeping the
 // first payload word parameterized.
-static void emitTxnBlockWriteDynamicFirstWord(OpBuilder &builder, Location loc,
+void emitTxnBlockWriteDynamicFirstWord(OpBuilder &builder, Location loc,
                                               Value txnVec, uint32_t addr,
                                               DenseIntElementsAttr data,
                                               Value dynamicFirstWord) {
@@ -173,16 +173,16 @@ static void emitTxnBlockWriteDynamicFirstWord(OpBuilder &builder, Location loc,
       ctx, SmallVector<int64_t>{static_cast<int64_t>(data.size())}, u32Type);
 
   std::string arrayInit = "{";
+  llvm::raw_string_ostream ss(arrayInit);
   bool first = true;
   for (auto d : data) {
     if (!first)
-      arrayInit += ", ";
+      ss << ", ";
     uint32_t word = d.getZExtValue();
-    llvm::raw_string_ostream ss(arrayInit);
     ss << llvm::format("0x%08Xu", word);
     first = false;
   }
-  arrayInit += "}";
+  ss << "}";
 
   auto arrayVar = emitc::VariableOp::create(
       builder, loc, arrayType, emitc::OpaqueAttr::get(ctx, arrayInit));
@@ -223,10 +223,8 @@ struct ConvertAIEXToEmitCPass
       sequences.push_back({seq, device});
     });
 
-    if (sequences.empty()) {
-      moduleOp.emitError("No runtime sequences found");
-      return signalPassFailure();
-    }
+    if (sequences.empty())
+      return;
 
     // We'll build a new module body with emitc ops.
     OpBuilder builder(ctx);
@@ -319,6 +317,7 @@ private:
     OpBuilder funcBuilder = OpBuilder::atBlockBegin(funcBlock);
 
     emitc::VerbatimOp::create(funcBuilder, loc, "std::vector<uint32_t> txn;");
+    emitc::VerbatimOp::create(funcBuilder, loc, "aie_runtime::txn_init(txn);");
     emitc::VerbatimOp::create(funcBuilder, loc, "uint32_t op_count = 0;");
     Value txnVec =
         emitc::LiteralOp::create(funcBuilder, loc, txnVecType, "txn");
@@ -450,6 +449,10 @@ private:
                           addrPatch.getAddr(), addrPatch.getArgIdx(),
                           addrPatch.getArgPlus(), dynPlus);
 
+      // The addrPatch (nextIt) and write32 (nextNextIt) are consumed by the
+      // fusion — their data is folded into emitTxnBlockWriteDynamicFirstWord
+      // and emitTxnAddressPatch. Setting it = nextNextIt lets the loop's
+      // ++it advance past the write32.
       it = nextNextIt;
     }
     return success();
@@ -645,6 +648,10 @@ private:
 
     if (isa<AIE::EndOp>(op))
       return success();
+
+    if (isa<AIEX::NpuControlPacketOp, AIEX::NpuPushQueueOp,
+            AIEX::NpuWriteBdOp>(op))
+      return op->emitOpError("not supported in dynamic TXN C++ generation");
 
     if (op->getNumRegions() != 0)
       return op->emitOpError(

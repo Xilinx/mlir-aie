@@ -125,15 +125,19 @@ inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
 
 // Append a 12-word address_patch (DDR_PATCH) instruction.
 inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
-                                     int32_t arg_idx, int32_t arg_plus) {
+                                     int32_t arg_idx, uint32_t arg_plus) {
   size_t pos = txn.size();
   txn.resize(pos + 12, 0);
-  txn[pos + 0] = TXN_OPC_DDR_PATCH;
-  txn[pos + 1] = 12 * sizeof(uint32_t); // operation size
-  txn[pos + 5] = 0;                     // action
-  txn[pos + 6] = addr;
-  txn[pos + 8] = static_cast<uint32_t>(arg_idx);
-  txn[pos + 10] = static_cast<uint32_t>(arg_plus);
+  txn[pos + 0] = TXN_OPC_DDR_PATCH;               // opcode
+  txn[pos + 1] = 12 * sizeof(uint32_t);            // payload size in bytes
+  // pos+2..4 are reserved (zero)
+  txn[pos + 5] = 0;                                // action (0 = patch)
+  txn[pos + 6] = addr;                             // register address to patch
+  // pos+7 is reserved (zero)
+  txn[pos + 8] = static_cast<uint32_t>(arg_idx);   // buffer argument index
+  // pos+9 is reserved (zero)
+  txn[pos + 10] = arg_plus;                        // byte offset into buffer
+  // pos+11 is reserved (zero)
 }
 
 // Append a 4-word loadpdi instruction.
@@ -152,20 +156,23 @@ inline void txn_append_preempt(std::vector<uint32_t> &txn, uint32_t level) {
   txn.push_back(TXN_OPC_PREEMPT | (level << 8));
 }
 
-// Prepend a 4-word TXN header. Call this AFTER all instructions are appended.
+// Reserve 4 placeholder words for the TXN header. Call this BEFORE appending
+// any instructions, so that the header space is already allocated.
+inline void txn_init(std::vector<uint32_t> &txn) { txn.resize(4, 0); }
+
+// Finalize the 4-word TXN header in-place. Call this AFTER all instructions
+// are appended. The first 4 words must have been reserved by txn_init().
 // `op_count` is the number of operations appended.
 inline void txn_prepend_header(std::vector<uint32_t> &txn, uint32_t op_count,
                                TxnDeviceInfo info = {}) {
-  uint32_t header[4];
-  header[0] = (static_cast<uint32_t>(info.numRows) << 24) |
-              (static_cast<uint32_t>(info.devGen) << 16) |
-              (static_cast<uint32_t>(info.minor) << 8) |
-              static_cast<uint32_t>(info.major);
-  header[1] = (static_cast<uint32_t>(info.numMemTileRows) << 8) |
-              static_cast<uint32_t>(info.numCols);
-  header[2] = op_count;
-  header[3] = static_cast<uint32_t>((txn.size() + 4) * sizeof(uint32_t));
-  txn.insert(txn.begin(), header, header + 4);
+  txn[0] = (static_cast<uint32_t>(info.numRows) << 24) |
+           (static_cast<uint32_t>(info.devGen) << 16) |
+           (static_cast<uint32_t>(info.minor) << 8) |
+           static_cast<uint32_t>(info.major);
+  txn[1] = (static_cast<uint32_t>(info.numMemTileRows) << 8) |
+           static_cast<uint32_t>(info.numCols);
+  txn[2] = op_count;
+  txn[3] = static_cast<uint32_t>(txn.size() * sizeof(uint32_t));
 }
 
 } // namespace aie_runtime
