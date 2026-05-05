@@ -11,9 +11,14 @@ static std::vector<uint32_t> loadWords(const char *path) {
   if (!f.is_open())
     throw std::runtime_error(std::string("failed to open: ") + path);
   auto sz = f.tellg();
+  if (sz < 0)
+    throw std::runtime_error(std::string("failed to determine size of: ") +
+                             path);
   f.seekg(0, std::ios::beg);
   std::vector<uint32_t> data(static_cast<size_t>(sz) / sizeof(uint32_t));
   f.read(reinterpret_cast<char *>(data.data()), sz);
+  if (f.gcount() != sz)
+    throw std::runtime_error(std::string("short read from: ") + path);
   return data;
 }
 

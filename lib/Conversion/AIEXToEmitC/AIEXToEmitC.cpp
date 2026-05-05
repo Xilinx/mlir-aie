@@ -247,7 +247,7 @@ struct ConvertAIEXToEmitCPass
 
     SmallVector<Operation *> toErase;
     for (auto &op : moduleOp.getBody()->getOperations()) {
-      if (!isa<func::FuncOp>(op) && !isa<emitc::IncludeOp>(op))
+      if (!isa<emitc::FuncOp>(op) && !isa<emitc::IncludeOp>(op))
         toErase.push_back(&op);
     }
     for (auto *op : llvm::reverse(toErase))
@@ -312,7 +312,8 @@ private:
 
     builder.setInsertionPointToEnd(moduleOp.getBody());
     std::string funcName = "generate_txn_" + seqName.str();
-    auto funcOp = func::FuncOp::create(builder, loc, funcName, funcType);
+    auto funcOp = emitc::FuncOp::create(builder, loc, funcName, funcType);
+    funcOp.setSpecifiersAttr(builder.getStrArrayAttr({"inline"}));
     Block *funcBlock = funcOp.addEntryBlock();
     OpBuilder funcBuilder = OpBuilder::atBlockBegin(funcBlock);
 
@@ -344,7 +345,7 @@ private:
             std::to_string(devGen) + ", " + std::to_string(tm.rows()) + ", " +
             std::to_string(tm.columns()) + ", " +
             std::to_string(tm.getNumMemTileRows()) + "});");
-    func::ReturnOp::create(funcBuilder, loc, ValueRange{txnVec});
+    emitc::ReturnOp::create(funcBuilder, loc, txnVec);
     return success();
   }
 

@@ -640,13 +640,19 @@ static bool executeCommand(ArrayRef<std::string> command,
 static std::string formatString(StringRef formatStr, StringRef deviceName,
                                 StringRef seqName = "") {
   std::string result = formatStr.str();
-  size_t pos = result.find("{0}");
-  if (pos != std::string::npos) {
-    result.replace(pos, 3, deviceName.str());
+  std::string devStr = deviceName.str();
+  size_t pos = 0;
+  while ((pos = result.find("{0}", pos)) != std::string::npos) {
+    result.replace(pos, 3, devStr);
+    pos += devStr.size();
   }
-  pos = result.find("{1}");
-  if (pos != std::string::npos && !seqName.empty()) {
-    result.replace(pos, 3, seqName.str());
+  if (!seqName.empty()) {
+    std::string seqStr = seqName.str();
+    pos = 0;
+    while ((pos = result.find("{1}", pos)) != std::string::npos) {
+      result.replace(pos, 3, seqStr);
+      pos += seqStr.size();
+    }
   }
   return result;
 }
@@ -774,7 +780,7 @@ static std::string discoverPeanoInstallDir() {
 }
 
 // Cached Peano install directory
-static std::optional<std::string> cachedPeanoDir;
+static std::string cachedPeanoDir;
 static std::once_flag peanoDirFlag;
 
 // Discover aietools installation directory by finding xchesscc in PATH
@@ -842,13 +848,13 @@ static StringRef getAietoolsDir() {
 static StringRef getPeanoInstallDir() {
   std::call_once(peanoDirFlag, [] {
     cachedPeanoDir = discoverPeanoInstallDir();
-    if (verbose && !cachedPeanoDir->empty()) {
+    if (verbose && !cachedPeanoDir.empty()) {
       std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Discovered Peano installation: " << *cachedPeanoDir
+      llvm::outs() << "Discovered Peano installation: " << cachedPeanoDir
                    << "\n";
     }
   });
-  return *cachedPeanoDir;
+  return cachedPeanoDir;
 }
 
 // Downgrade LLVM IR for compatibility with Chess toolchain's older LLVM.
@@ -3889,7 +3895,8 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 //===----------------------------------------------------------------------===//
 
 /// Generate C++ code that builds TXN instruction binaries at runtime.
-/// This clones the module, runs NPU lowering + EmitC conversion, and emits C++.
+/// Delegates to AIETranslateToCppTxn which clones the module internally,
+/// runs NPU lowering + EmitC conversion, and emits C++.
 static LogicalResult generateCppTxnCode(ModuleOp moduleOp, StringRef tmpDirName,
                                         StringRef devName) {
   if (!generateCppTxn)
@@ -3905,10 +3912,7 @@ static LogicalResult generateCppTxnCode(ModuleOp moduleOp, StringRef tmpDirName,
     return success();
   }
 
-  // Clone the module since the pipeline is destructive
-  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
-
-  // Use AIETranslateToCppTxn which runs NPU lowering + EmitC conversion
+  // AIETranslateToCppTxn clones the module internally, so no need to clone here.
   std::string outputFileName = formatString(cppTxnName, devName);
 
   std::error_code ec;
@@ -3919,7 +3923,7 @@ static LogicalResult generateCppTxnCode(ModuleOp moduleOp, StringRef tmpDirName,
     return failure();
   }
 
-  if (failed(xilinx::AIE::AIETranslateToCppTxn(*clonedModule, outFile))) {
+  if (failed(xilinx::AIE::AIETranslateToCppTxn(moduleOp, outFile))) {
     llvm::errs() << "Error generating C++ TXN code\n";
     return failure();
   }

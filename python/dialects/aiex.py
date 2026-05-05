@@ -201,7 +201,6 @@ def npu_sync_dynamic(
 
 
 # Override auto-generated npu_rtp_write to support SSA values
-_orig_npu_rtp_write = npu_rtp_write
 
 
 def npu_rtp_write(buffer, index, value, *, loc=None, ip=None):

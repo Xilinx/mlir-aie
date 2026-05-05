@@ -80,6 +80,10 @@ int main(int argc, const char *argv[]) {
   int K = vm["K"].as<int>();
   int N = vm["N"].as<int>();
 
+  if (M <= 0 || K <= 0 || N <= 0) {
+    std::cerr << "Error: M, K, N must be positive\n";
+    return 1;
+  }
   if (M % 32 != 0 || K % 32 != 0 || N % 32 != 0) {
     std::cerr << "Error: M, K, N must be multiples of 32\n";
     return 1;

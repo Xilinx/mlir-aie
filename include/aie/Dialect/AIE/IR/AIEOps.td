@@ -2238,6 +2238,11 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
 
     Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
+
+    Note: This op is NOT `IsolatedFromAbove` — it can reference values defined
+    in the parent `DeviceOp`. However, the EmitC (C++ codegen) path only
+    supports capturing `arith.constant` values from the outer scope. Referencing
+    other external value types will produce errors during the EmitC conversion.
   }];
   let arguments = (
     ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name

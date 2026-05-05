@@ -40,6 +40,9 @@ class DMATask(RuntimeTask):
             tap (TensorAccessPattern): The access pattern associated with the operation.
             task_group (RuntimeTaskGroup | None, optional): The task group associated with the operation. Defaults to None.
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
+            offset (int | None, optional): Byte offset into the runtime buffer for the start of the transfer. Mutually exclusive with ``tap``. Defaults to None.
+            sizes (list[int] | None, optional): Multi-dimensional transfer sizes (up to 4D) describing the shape of each DMA tile. Mutually exclusive with ``tap``. Defaults to None.
+            strides (list[int] | None, optional): Multi-dimensional strides (in element granularity) corresponding to ``sizes``. Mutually exclusive with ``tap``. Defaults to None.
         """
         self._object_fifo = object_fifo
         self._rt_data = rt_data
