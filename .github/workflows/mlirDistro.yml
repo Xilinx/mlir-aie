@@ -69,12 +69,16 @@ jobs:
             sudo apt install jq
             # Authenticated request to avoid the unauthenticated 60/hr per-IP
             # rate limit, which silently produced LLVM_PROJECT_COMMIT=null and
-            # broke the wheel build for weeks.
-            RESPONSE=$(curl -fsSL \
+            # broke the wheel build. --fail-with-body keeps the response body
+            # on HTTP error so future failures surface the actual cause in
+            # the CI log instead of hiding behind a silent curl.
+            RESPONSE=$(curl --fail-with-body -sSL \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               https://api.github.com/repos/llvm/llvm-project/commits/main) || {
-              echo "::error::Failed to fetch latest LLVM commit from GitHub API."
+              echo "::error::GitHub API request failed."
+              echo "Response body:"
+              echo "$RESPONSE"
               exit 1
             }
             LLVM_PROJECT_COMMIT=$(echo "$RESPONSE" | jq -r '.sha')
