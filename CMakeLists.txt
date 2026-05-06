@@ -172,7 +172,6 @@ include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
-add_definitions(${LLVM_DEFINITIONS})
 
 cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
   "Enables building of Python bindings." ON "MLIR_ENABLE_BINDINGS_PYTHON" OFF)
@@ -205,6 +204,20 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
   endif()
 endif()
+
+# Detect whether PyTorch is importable by the configured Python interpreter.
+# Used to enable/skip lit tests that require torch (# REQUIRES: pytorch).
+execute_process(
+  COMMAND ${Python3_EXECUTABLE} -c "import torch"
+  RESULT_VARIABLE _torch_result
+  OUTPUT_QUIET ERROR_QUIET
+)
+if(_torch_result EQUAL 0)
+  set(AIE_ENABLE_PYTORCH ON)
+else()
+  set(AIE_ENABLE_PYTORCH OFF)
+endif()
+message(STATUS "PyTorch available for testing: ${AIE_ENABLE_PYTORCH}")
 
 cmake_dependent_option(AIECC_COMPILE
   "Set aiecc to compile." ON "NOT AIE_COMPILER STREQUAL NONE" OFF)

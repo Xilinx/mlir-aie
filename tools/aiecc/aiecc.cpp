@@ -49,6 +49,8 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <random>
+
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
@@ -160,8 +162,11 @@ static cl::opt<bool> noXbridge("no-xbridge",
 static cl::opt<bool> xchesscc("xchesscc", cl::desc("Compile using xchesscc"),
                               cl::init(true), cl::cat(aieCompilerOptions));
 
-static cl::opt<bool> noXchesscc("no-xchesscc", cl::desc("Compile using peano"),
-                                cl::init(false), cl::cat(aieCompilerOptions));
+static cl::opt<bool> noXchesscc(
+    "no-xchesscc",
+    cl::desc("Compile using peano (also disables xbridge; incompatible with "
+             "--aiesim)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
                             cl::init(false), cl::cat(aieCompilerOptions));
@@ -205,6 +210,11 @@ static cl::opt<std::string> allocScheme(
         "Allocation scheme for AIE buffers (basic-sequential, bank-aware, "
         "or empty string for bank-aware with fallback to basic-sequential)"),
     cl::init(""), cl::cat(aieCompilerOptions));
+
+static cl::opt<int> coresPerCol(
+    "cores-per-col",
+    cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
+    cl::init(-1), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
@@ -303,7 +313,7 @@ static cl::opt<bool> dryRun("n",
 
 static cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Use dynamic object FIFOs"),
-                                     cl::init(false),
+                                     cl::init(true),
                                      cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> packetSwObjFifos("packet-sw-objFifos",
@@ -1296,6 +1306,58 @@ static LogicalResult runPipelineWithRepeater(PassManager &pm, ModuleOp moduleOp,
 // In-Memory Pass Execution
 //===----------------------------------------------------------------------===//
 
+/// Check if the module contains any aie.logical_tile ops.
+static bool hasLogicalTileOps(ModuleOp moduleOp) {
+  bool found = false;
+  moduleOp.walk([&](xilinx::AIE::LogicalTileOp) {
+    found = true;
+    return WalkResult::interrupt();
+  });
+  return found;
+}
+
+/// Run tile placement pass in-memory, only when logical tile ops exist.
+/// This converts aie.logical_tile ops to aie.tile ops and must run before
+/// all other passes (trace lowering, resource allocation, routing) because
+/// downstream passes require physical tile coordinates.
+static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
+                                          StringRef tmpDirName) {
+  if (!hasLogicalTileOps(moduleOp))
+    return success();
+
+  MLIRContext *ctx = moduleOp.getContext();
+  PassManager pm(ctx);
+
+  if (verbose) {
+    pm.enableVerifier(true);
+    SmallString<128> crashFile(tmpDirName);
+    sys::path::append(crashFile, "placement_crash.mlir");
+    pm.enableCrashReproducerGeneration(crashFile);
+  }
+
+  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
+  placeTilesOpts.clCoresPerCol = coresPerCol;
+  devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
+
+  if (verbose) {
+    llvm::outs() << "Running tile placement pipeline in-memory\n";
+    llvm::outs().flush();
+  }
+
+  if (failed(runPipelineWithRepeater(pm, moduleOp, "tile placement",
+                                     tmpDirName))) {
+    llvm::errs() << "Error: Tile placement pipeline failed\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Tile placement pipeline completed successfully\n";
+  }
+
+  return success();
+}
+
 /// Check if the module contains any aie.trace ops.
 static bool hasTraceOps(ModuleOp moduleOp) {
   bool found = false;
@@ -1325,6 +1387,7 @@ static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp,
   }
 
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  devicePm.addPass(xilinx::AIE::createAIEInsertTraceFlowsPass());
   devicePm.addPass(xilinx::AIE::createAIETraceToConfigPass());
   devicePm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
   devicePm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
@@ -1519,6 +1582,7 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
     devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
     devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
     devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
+    devicePm.addPass(createCanonicalizerPass());
     devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
     devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
     devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
@@ -2289,8 +2353,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   if (xbridge) {
     // xbridge linking: generate BCF, extract link_with, link with
-    // xchesscc_wrapper Note: xbridge works with both xchesscc and
-    // peano-compiled object files
+    // xchesscc_wrapper. Note: xbridge only supports xchesscc-compiled objects;
+    // Peano-compiled objects must use the Peano linker path (--no-xbridge).
 
     // Generate BCF file
     SmallString<128> bcfPath(tmpDirName);
@@ -3386,6 +3450,26 @@ static LogicalResult generateKernelsJson(StringRef jsonPath,
   return writeJsonToFile(jsonPath, llvm::json::Value(std::move(kernelsData)));
 }
 
+/// Generate a UUID v4 string (matches Python's uuid.uuid4())
+static std::string generateUUID() {
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
+
+  uint32_t data[4];
+  for (int i = 0; i < 4; i++)
+    data[i] = dis(gen);
+
+  // Set version to 4 (random UUID)
+  data[1] = (data[1] & 0xFFFF0FFF) | 0x4000;
+  // Set variant to RFC 4122
+  data[2] = (data[2] & 0x3FFFFFFF) | 0x80000000;
+
+  return llvm::formatv("{0:x-8}-{1:x-4}-{2:x-4}-{3:x-4}-{4:x-12}", data[0],
+                       data[1] >> 16, data[1] & 0xFFFF, data[2] >> 16,
+                       ((uint64_t)(data[2] & 0xFFFF) << 32) | data[3]);
+}
+
 static LogicalResult generatePartitionJson(StringRef jsonPath,
                                            StringRef devName, StringRef pdiPath,
                                            xilinx::AIE::DeviceOp deviceOp) {
@@ -3413,8 +3497,11 @@ static LogicalResult generatePartitionJson(StringRef jsonPath,
        {"dpu_kernel_ids", llvm::json::Array{xclbinKernelId.getValue()}},
        {"pre_cdo_groups", llvm::json::Array{std::string("0xC1")}}});
 
+  // Generate unique UUID for this PDI (matches Python aiecc behavior)
+  std::string pdiUUID = generateUUID();
+
   llvm::json::Object pdiEntry(
-      {{"uuid", "00000000-0000-0000-0000-000000000000"},
+      {{"uuid", pdiUUID},
        {"file_name", pdiPath.str()},
        {"cdo_groups", llvm::json::Array{std::move(cdoGroup)}}});
 
@@ -3523,10 +3610,13 @@ static LogicalResult extractAndMergePartition(StringRef inputXclbin,
     return failure();
   }
 
-  // Append new PDIs to input PDIs
-  for (auto &pdi : *newPDIs) {
-    inputPDIs->push_back(std::move(pdi));
+  // Append only the first PDI from new partition (matches Python aiecc
+  // behavior)
+  if (newPDIs->size() == 0) {
+    llvm::errs() << "Error: New partition has no PDIs\n";
+    return failure();
   }
+  inputPDIs->push_back(std::move((*newPDIs)[0]));
 
   // Write merged partition JSON
   std::error_code ec;
@@ -5112,6 +5202,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
+  // Step 0: Run tile placement (only when logical tile ops exist)
+  // This converts aie.logical_tile -> aie.tile before any other passes.
+  if (failed(runPlacementPipeline(moduleOp, tmpDirName))) {
+    return failure();
+  }
+
   // Step 1a: Run trace lowering (only when trace ops exist)
   if (failed(runTraceLoweringPipeline(moduleOp, tmpDirName))) {
     return failure();
@@ -5542,6 +5638,10 @@ int main(int argc, char **argv) {
   }
   if (noXchesscc) {
     xchesscc = false;
+    // Without xchesscc, linking would use the Peano-compiled object path.
+    // xbridge does not support linking Peano-compiled objects, so disable it
+    // automatically to keep the behavior consistent with the supported flow.
+    xbridge = false;
   }
   if (noCompile) {
     compile = false;
@@ -5556,10 +5656,16 @@ int main(int argc, char **argv) {
     compileHost = false;
   }
 
-  // Validate: aiesim requires xbridge
+  // Validate: aiesim requires xbridge; since --no-xchesscc disables xbridge,
+  // it is also incompatible with --aiesim.
   if (aiesim && !xbridge) {
-    llvm::errs()
-        << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
+    if (noXchesscc)
+      llvm::errs() << "Error: AIE Simulation (--aiesim) is incompatible with "
+                      "--no-xchesscc because xbridge is required for aiesim "
+                      "and --no-xchesscc disables xbridge\n";
+    else
+      llvm::errs()
+          << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
     return 1;
   }
 

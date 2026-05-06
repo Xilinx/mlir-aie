@@ -49,6 +49,7 @@ cmake_parse_arguments(ARG "STATIC" "" "" ${ARGN})
 
   if(WIN32)
     list(FILTER libsources EXCLUDE REGEX xaie_amdair)
+    list(FILTER libsources EXCLUDE REGEX xaie_sim\.c$)
   endif()
 
   include_directories(

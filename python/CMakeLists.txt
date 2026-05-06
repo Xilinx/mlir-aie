@@ -489,7 +489,7 @@ set(HAS_MLIR_RUNTIME_LIBRARIES ON PARENT_SCOPE)
 foreach(r ${_runtime_deps})
   if(NOT TARGET ${r})
     set(HAS_MLIR_RUNTIME_LIBRARIES OFF PARENT_SCOPE)
-    break()
+    continue()
   endif()
   # build dir lib/
   add_custom_command(
@@ -506,10 +506,9 @@ foreach(r ${_runtime_deps})
     "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs"
   )
   # install dir
-  install(IMPORTED_RUNTIME_ARTIFACTS
-    ${r}
+  install(FILES
+    $<TARGET_FILE:${r}>
     COMPONENT aie-python
-    LIBRARY
     DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
   )
 endforeach()

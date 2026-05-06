@@ -13,11 +13,10 @@ import time
 
 import aie.iron as iron
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron import ExternalFunction
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def my_reduce_min(input_tensor, output_tensor):
 
     num_elements = input_tensor.numel()
@@ -61,7 +60,7 @@ def my_reduce_min(input_tensor, output_tensor):
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def main():

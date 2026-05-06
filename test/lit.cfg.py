@@ -188,6 +188,8 @@ if config.xrt_python_bindings:
 if config.has_mlir_runtime_libraries:
     config.available_features.add("has_mlir_runtime_libraries")
 
+if config.pytorch:
+    config.available_features.add("pytorch")
 
 if "LIT_AVAILABLE_FEATURES" in os.environ:
     for feature in os.environ["LIT_AVAILABLE_FEATURES"].split():

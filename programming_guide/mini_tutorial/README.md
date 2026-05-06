@@ -23,7 +23,7 @@ def core_fn(buff):
         buff[i] = buff[i] + 1
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [buffer]) # placement can be enforced: placement=Tile(1, 3)
+my_worker = Worker(core_fn, [buffer]) # tile can be specified: tile=Tile(1, 3)
 ```
 More on the Worker in [Section 1](../section-1/README.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 

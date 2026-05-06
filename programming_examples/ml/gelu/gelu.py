@@ -13,7 +13,6 @@ import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import Tile, NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 
@@ -116,7 +115,7 @@ def my_gelu(dev, size, num_columns, num_channels):
         rt.finish_task_group(tg)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 p = argparse.ArgumentParser()

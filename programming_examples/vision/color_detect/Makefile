@@ -55,7 +55,7 @@ ifeq ($(device),npu)
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
-else
+else ifeq ($(device),npu2)
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 endif

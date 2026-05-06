@@ -63,7 +63,7 @@ build/final.xclbin: build/${targetname}.mlir build/kernels.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 	            --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
+				--no-xchesscc --no-xbridge --dynamic-objFifos=false \
 				--aie-generate-npu --npu-insts-name=insts.bin $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp

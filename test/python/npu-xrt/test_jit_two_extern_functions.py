@@ -24,11 +24,11 @@ import pytest
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
-from aie.iron.placers import SequentialPlacer
+
 from aie.iron.controlflow import range_
 
 
-@jit(is_placed=False)
+@jit
 def add_then_scale(input, output, add_func, scale_func):
     """Apply add_func then scale_func sequentially on each tile."""
     num_elements = np.size(input)
@@ -64,7 +64,7 @@ def add_then_scale(input, output, add_func, scale_func):
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def test_two_external_functions_different_objects():

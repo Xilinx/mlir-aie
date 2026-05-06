@@ -9,17 +9,6 @@ on:
     # Runs at midnight (00:00) every day
     - cron: '0 0 * * *'
 
-concurrency:
-  # Merge queue runs share a single group key (serialized, never cancelled).
-  # PR runs use a per-PR key (cancelled when the same PR gets a new push).
-  # Push/schedule/workflow_dispatch runs use the SHA-based key.
-  group: >-
-    ci-lint-and-format-${{
-    github.event_name == 'merge_group' && 'merge-queue' ||
-    github.event.number || github.sha
-    }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
-
 env:
   # Run apt package manager in the CI in non-interactive mode.
   # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question

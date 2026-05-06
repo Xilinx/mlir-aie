@@ -9,7 +9,6 @@ import numpy as np
 import sys
 
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
 
 N = 4096
@@ -47,7 +46,7 @@ with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
 my_program = Program(dev, rt)
 
 # Place components (assign them resources on the device) and generate an MLIR module
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 # Print the generated MLIR
 print(module)
