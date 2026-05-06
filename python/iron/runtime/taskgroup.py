@@ -5,10 +5,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""RuntimeTaskGroup: a tag for grouping related RuntimeTasks for concurrent execution."""
 
 
 class RuntimeTaskGroup:
-    """A RuntimeTaskGroup is a structured tag to indicated groupings of RuntimeTasks."""
+    """A RuntimeTaskGroup is a structured tag to indicate groupings of RuntimeTasks."""
 
     def __init__(self, id: int):
         """Construct a RuntimeTaskGroup

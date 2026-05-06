@@ -40,7 +40,7 @@ class RuntimeData:
         return np_ndarray_type_get_dtype(self._arr_type)
 
     @property
-    def arr_type(self) -> np.ndarray:
+    def arr_type(self) -> type[np.ndarray]:
         """The tensor type of the buffer."""
         return self._arr_type
 

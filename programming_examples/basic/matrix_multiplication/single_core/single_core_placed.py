@@ -19,7 +19,6 @@ from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
 
-
 microkernel_mac_dim_map = {
     "npu": {
         "bf16": (4, 8, 4),
@@ -175,11 +174,16 @@ def my_matmul(
 
         # AIE Core Function declarations
         func_type = "" if vectorized else "scalar_"
-        zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
+        zero = external_func(
+            f"zero_{func_type}{dtype_out_str}",
+            inputs=[c_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
+        )
         matmul_func_name = f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
         matmul = external_func(
             matmul_func_name,
             inputs=[a_ty, b_ty, c_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
         )
 
         # Tile declarations
@@ -264,12 +268,12 @@ def my_matmul(
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [compute_tile2]
         if enable_tracing:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
+            trace_utils.configure_trace(tiles_to_trace)
 
         # Set up compute tiles
 
         # Compute tile 2
-        @core(compute_tile2, f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
+        @core(compute_tile2, stack_size=0xD00)
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
@@ -296,11 +300,7 @@ def my_matmul(
         def sequence(A, B, C):
 
             if enable_tracing:
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace,
-                    shim_tile,
-                    trace_size,
-                )
+                trace_utils.start_trace(trace_size=trace_size)
 
             # This example uses only does 2 tile rows to prevent exhaustion of BDs.
             # In general, we do 2-4 at a time to reuse BDs.
@@ -382,8 +382,6 @@ def my_matmul(
                         dma_free_task(b_tasks[-2])
 
             dma_await_task(c_tasks[-1])
-
-            trace_utils.gen_trace_done_aie2(shim_tile)
 
     if generate_taps:
         # If generate taps is true, return a representation of tensor access patterns

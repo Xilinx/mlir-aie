@@ -82,7 +82,6 @@ def AIE_DeviceOp: AIE_Op<"device", [
 }
 
 def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
-    Pure,
     SkipAccessibilityCheckTrait,
     DeclareOpInterfaceMethods<TileLike>,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
@@ -398,7 +397,12 @@ def AIE_CoreOp: AIE_Op<"core", [
   let arguments = (
     ins Index:$tile,
     DefaultValuedAttr<AIEI32Attr, "0x400">:$stack_size,
+    // Deprecated: attach link_with to func.func declarations instead and run
+    // aie-assign-core-link-files to populate link_files.
     OptionalAttr<StrAttr>:$link_with,
+    // Populated by aie-assign-core-link-files; consumed by BCF/ldscript emitters
+    // and the aiecc driver.  Specifying both link_with and link_files is an error.
+    OptionalAttr<StrArrayAttr>:$link_files,
     OptionalAttr<StrAttr>:$elf_file,
     OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering
   );
@@ -422,6 +426,18 @@ def AIE_CoreOp: AIE_Op<"core", [
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.
+
+    **External object files.**  The preferred mechanism is to attach a `link_with`
+    string attribute to each `func.func` declaration for an externally-defined
+    function, then run the `aie-assign-core-link-files` pass.  That pass traces
+    direct `func.call` edges from each core and writes the aggregated, de-duplicated
+    list of object file paths into the `link_files` attribute on this op.  The
+    BCF/ldscript emitters and the aiecc driver consume `link_files`.
+
+    The core-level `link_with` attribute is deprecated and kept only for
+    backward compatibility.  It is migrated by `aie-assign-core-link-files`
+    (its value is folded into `link_files` and then removed).  Specifying both
+    `link_with` and `link_files` on the same CoreOp is a verifier error.
 
     Examples:
     ```
@@ -1021,6 +1037,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       $_state.addOperands(buffer);

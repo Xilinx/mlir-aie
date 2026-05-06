@@ -14,7 +14,7 @@ module @passThroughLine_aie2 {
 
  	aie.device(npu) {
         // declare kernel external kernel function 
-        func.func private @passThroughLine(%in: memref<512xui8>, %out: memref<512xui8>, %tilewidth: i32) -> ()
+        func.func private @passThroughLine(%in: memref<512xui8>, %out: memref<512xui8>, %tilewidth: i32) -> () attributes {link_with = "passThrough.cc.o"}
         
         // Declare tile object of the AIE class located at position col 1, row 4
         %tile00 = aie.tile(0, 0)
@@ -44,7 +44,7 @@ module @passThroughLine_aie2 {
                 aie.objectfifo.release @outOF(Produce, 1)
             }
             aie.end
-        } { link_with="passThrough.cc.o" } // indicate kernel object name used by this core
+        } // indicate kernel object name used by this core
 
         aie.runtime_sequence(%in : memref<1152xi32>, %arg1 : memref<1xi32>, %out : memref<1152xi32>) {
             %c0 = arith.constant 0 : i64

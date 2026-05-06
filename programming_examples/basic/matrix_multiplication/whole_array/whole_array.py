@@ -16,7 +16,6 @@ from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
 from aie.iron import str_to_dtype
 
-
 microkernel_mac_dim_map = {
     "npu": {
         "bf16": (4, 8, 4),
@@ -222,10 +221,15 @@ def my_matmul(
 
         # AIE Core Function declarations
         scalar_suffix = "_scalar" if use_scalar else ""
-        zero = external_func(f"zero{scalar_suffix}_{dtype_out_str}", inputs=[C_l1_ty])
+        zero = external_func(
+            f"zero{scalar_suffix}_{dtype_out_str}",
+            inputs=[C_l1_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
+        )
         matmul = external_func(
             f"matmul{scalar_suffix}_{dtype_in_str}_{dtype_out_str}",
             inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
         )
 
         # Tile declarations as tile[row][col]
@@ -397,7 +401,7 @@ def my_matmul(
                 # Exceding the stack size leads to wrong results from the kernel, but no error is triggered.
                 # Stack usage can be checked as explained here:
                 # https://github.com/Xilinx/llvm-aie/issues/487#issuecomment-2969438585
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
+                @core(core_tiles[row][col], stack_size=0xD00)
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (

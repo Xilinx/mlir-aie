@@ -23,14 +23,14 @@ aie.device(xcvc1902) {
   %buf13_1 = aie.buffer(%tile13) { sym_name = "b" } : memref<4096xi32>
   %lock13_3 = aie.lock(%tile13, 3) { sym_name = "output_lock" }
 
-  func.func private @func(%A: memref<2xi32>, %B: memref<4096xi32>) -> ()
+  func.func private @func(%A: memref<2xi32>, %B: memref<4096xi32>) -> () attributes {link_with = "kernel.o"}
 
   %core13 = aie.core(%tile13) {
     aie.use_lock(%lock13_3, "Acquire", 1) // acquire
     func.call @func(%buf13_0, %buf13_1) : (memref<2xi32>, memref<4096xi32>) -> ()
     aie.use_lock(%lock13_3, "Release", 0) // release for write
     aie.end
-  } { link_with="kernel.o" }
+  }
   
 }
 }

@@ -14,7 +14,7 @@ module {
     aie.objectfifo @infactor(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1xi32>> 
     aie.objectfifo @in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1024xi16>> 
     aie.objectfifo @out(%tile_0_2, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xi16>> 
-    func.func private @vector_scalar_mul_vector(memref<1024xi16>, memref<1024xi16>, memref<1xi32>, i32)
+    func.func private @vector_scalar_mul_vector(memref<1024xi16>, memref<1024xi16>, memref<1xi32>, i32) attributes {link_with = "scale.o"}
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c9223372036854775807 = arith.constant 9223372036854775807 : index
@@ -38,7 +38,7 @@ module {
         aie.objectfifo.release @infactor(Consume, 1)
       }
       aie.end
-    } {link_with = "scale.o"}
+    }
     aie.packet_flow(1) {
       aie.packet_source<%tile_0_2, Trace : 0>
       aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>

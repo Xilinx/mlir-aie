@@ -34,7 +34,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     %lock_b_ping = aie.lock(%t73, 5) // b_ping
     %lock_b_pong = aie.lock(%t73, 6) // b_pong
 
-    func.func private @func(%A: memref<64xi32>, %B: memref<64xi32>, %C: i32) -> ()
+    func.func private @func(%A: memref<64xi32>, %B: memref<64xi32>, %C: i32) -> () attributes {link_with = "kernel.o"}
 
     %c13 = aie.core(%t73) {
       %buffer_size =  arith.constant 64 : i32
@@ -64,7 +64,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       }
 
       aie.end
-    } { link_with="kernel.o" }
+    }
 
     // Tile DMA
     %m73 = aie.mem(%t73) {

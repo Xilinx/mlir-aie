@@ -36,8 +36,8 @@ def packet_switch_kernel(dev, in_out_size):
         # Size of input vector + 4 bytes for the packet header (used in memtile_0_1 DMA logic)
         vector_with_packet_ty = np.ndarray[(in_out_size + 4,), in_out_ty]
 
-        add_func = external_func("add", [vector_ty, vector_ty])
-        mult_func = external_func("mul", [vector_ty, vector_ty])
+        add_func = external_func("add", [vector_ty, vector_ty], link_with="add_mul.o")
+        mult_func = external_func("mul", [vector_ty, vector_ty], link_with="add_mul.o")
 
         ShimTile_0_0 = tile(0, 0)
         MemTile_0_1 = tile(0, 1)
@@ -159,7 +159,7 @@ def packet_switch_kernel(dev, in_out_size):
         )
 
         # core_0_2 compute
-        @core(CT_0_2, "add_mul.o")
+        @core(CT_0_2)
         def core_body():
             for _ in range_(sys.maxsize):
                 # Acquire locks to read core02_buff_in and write core02_buff_out
@@ -193,7 +193,7 @@ def packet_switch_kernel(dev, in_out_size):
                 EndOp()
 
         # core_0_3 compute
-        @core(CT_0_3, "add_mul.o")
+        @core(CT_0_3)
         def core_body():
             for _ in range_(sys.maxsize):
                 # Acquire locks to read core03_buff_in and write core03_buff_out

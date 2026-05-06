@@ -14,11 +14,11 @@ import tempfile
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
-from aie.iron.placers import SequentialPlacer
+
 from aie.iron.controlflow import range_
 
 
-@jit(is_placed=False)
+@jit
 def transform_with_internal_func_with_options(input, output):
     """Transform kernel that creates ExternalFunction internally with compiler options."""
     if input.shape != output.shape:
@@ -93,10 +93,10 @@ def transform_with_internal_func_with_options(input, output):
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-@jit(is_placed=False)
+@jit
 def transform_with_internal_func_from_file(input, output):
     """Transform kernel that creates ExternalFunction internally from a file."""
     if input.shape != output.shape:
@@ -107,15 +107,13 @@ def transform_with_internal_func_from_file(input, output):
 
     # Create a temporary file with the source code inside the function
     with tempfile.NamedTemporaryFile(mode="w", suffix=".cc", delete=False) as f:
-        f.write(
-            """extern "C" {
+        f.write("""extern "C" {
             void internal_add_from_file(int* input, int* output, int tile_size) {
                 for (int i = 0; i < tile_size; i++) {
                     output[i] = input[i] + 42;
                 }
             }
-        }"""
-        )
+        }""")
         temp_file_path = f.name
 
     # Create ExternalFunction inside the transform from a file
@@ -177,10 +175,10 @@ def transform_with_internal_func_from_file(input, output):
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-@jit(is_placed=False)
+@jit
 def transform_with_internal_func(input, output):
     """Transform kernel that creates ExternalFunction internally."""
     if input.shape != output.shape:
@@ -254,7 +252,7 @@ def transform_with_internal_func(input, output):
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def test_transform_with_internal_func_with_options_inside():

@@ -1,10 +1,10 @@
 module {
   aie.device(npu1) {
-    func.func private @matmul_scalar_4x2x4_4x8x4_i32_i32(memref<2x4x4x8xi32, 2 : i32>, memref<4x2x8x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
+    func.func private @matmul_scalar_4x2x4_4x8x4_i32_i32(memref<2x4x4x8xi32, 2 : i32>, memref<4x2x8x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) attributes {link_with = "mm.o"}
     // <trace>
-    func.func private @event_0()
-    func.func private @event_1()
-    func.func private @flush_trace()
+    func.func private @event_0() attributes {link_with = "mm.o"}
+    func.func private @event_1() attributes {link_with = "mm.o"}
+    func.func private @flush_trace() attributes {link_with = "mm.o"}
     // </trace>
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
@@ -88,7 +88,7 @@ module {
       func.call @flush_trace() : () -> ()
       // </trace>
       cf.br ^bb1
-    } {link_with = "mm.o"}
+    }
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_0, DMA : 1, %tile_1_1, DMA : 0)
     aie.flow(%tile_2_1, DMA : 0, %tile_0_0, DMA : 0)

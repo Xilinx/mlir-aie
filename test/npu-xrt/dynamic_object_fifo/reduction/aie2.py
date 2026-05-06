@@ -9,7 +9,7 @@
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe
 import numpy as np
@@ -43,10 +43,12 @@ def reduction():
             of_out = object_fifo("out", ComputeTile, ShimTile, 2, tile_ty)
 
             # AIE Core Function declarations
-            add_10_i32 = external_func("add_10_i32", inputs=[tile_ty, tile_ty, tile_ty])
+            add_10_i32 = external_func(
+                "add_10_i32", inputs=[tile_ty, tile_ty, tile_ty], link_with="kernel.o"
+            )
 
             # Set up compute tiles
-            @core(ComputeTile, "kernel.o")
+            @core(ComputeTile)
             def core_body():
                 for _ in range_(sys.maxsize):
                     elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)

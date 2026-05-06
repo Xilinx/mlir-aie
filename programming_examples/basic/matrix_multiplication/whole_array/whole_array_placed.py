@@ -15,7 +15,6 @@ from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D, TensorAccessSequence
 from aie.iron import str_to_dtype
 
-
 microkernel_mac_dim_map = {
     "npu": {
         "bf16": (4, 8, 4),
@@ -211,11 +210,16 @@ def my_matmul(
         C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
         # AIE Core Function declarations
-        zero = external_func(f"zero_{dtype_out_str}", inputs=[C_l1_ty])
+        zero = external_func(
+            f"zero_{dtype_out_str}",
+            inputs=[C_l1_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
+        )
         matmul_vectorized_func_name = f"matmul_{dtype_in_str}_{dtype_out_str}"
         matmul = external_func(
             matmul_vectorized_func_name,
             inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
         )
 
         # Tile declarations as tile[row][col]
@@ -364,7 +368,7 @@ def my_matmul(
         for row in range(n_aie_rows):
             for col in range(n_aie_cols):
 
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
+                @core(core_tiles[row][col], stack_size=0xD00)
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (

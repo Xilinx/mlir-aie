@@ -39,6 +39,11 @@ from .._mlir_libs._aie import (
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
     transaction_binary_to_mlir,
+    tile_like_is_core_tile,
+    tile_like_is_mem_tile,
+    tile_like_is_shim_noc_tile,
+    tile_like_is_shim_pl_tile,
+    tile_like_is_shim_tile,
 )
 from ..extras import types as T
 from ..extras.meta import region_op
@@ -88,7 +93,23 @@ class npu_write_rtp(NpuWriteRTPOp):
 
 
 class external_func(FuncOp):
-    def __init__(self, name: str, inputs, outputs=None, visibility="private"):
+    """A ``func.func`` declaration for an externally-defined AIE core function.
+
+    Args:
+        name: Symbol name of the function.
+        inputs: List of input types (numpy dtypes or MLIR types).
+        outputs: List of output types.  Defaults to [].
+        visibility: MLIR symbol visibility.  Defaults to ``"private"``.
+        link_with: Optional path to the object file (``.o``) that implements
+            this function.  Sets the ``link_with`` string attribute on the
+            generated ``func.func`` op; the ``aie-assign-core-link-files`` pass
+            reads this attribute and propagates it into the CoreOp's
+            ``link_files`` attribute for the linker.
+    """
+
+    def __init__(
+        self, name: str, inputs, outputs=None, visibility="private", link_with=None
+    ):
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
@@ -102,6 +123,8 @@ class external_func(FuncOp):
         super().__init__(
             name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
         )
+        if link_with is not None:
+            self.operation.attributes["link_with"] = StringAttr.get(link_with)
 
     def __call__(self, *call_args):
         return call(self, call_args)
@@ -190,15 +213,17 @@ def _objectFifo_depth_attr(x, context):
 
 @register_attribute_builder("TraceEventAttr")
 def _trace_event_attr(x, context):
-    """Build TraceEventAttr from string or StringAttr."""
+    """Build TraceEventAttr from string, Enum, or GenericEvent."""
     if isinstance(x, str):
         return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
     elif isinstance(x, StringAttr):
         return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
-    elif isinstance(x, IntEnum):
-        return Attribute.parse(f'#aie.trace_event<"{str(x)}">', context=context)
+    elif hasattr(x, "code"):  # GenericEvent, PortEvent, etc. - check before Enum
+        return Attribute.parse(f'#aie.trace_event<"{x.code.name}">', context=context)
+    elif hasattr(x, "name") and hasattr(x, "value"):  # Enum (CoreEvent, MemEvent, etc.)
+        return Attribute.parse(f'#aie.trace_event<"{x.name}">', context=context)
     else:
-        # Assume it's already an Attribute (could be an enum)
+        # Assume it's already an Attribute
         return x
 
 
@@ -274,11 +299,17 @@ class Core(CoreOp):
     def __init__(
         self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
     ):
+        if link_with is not None:
+            raise TypeError(
+                "Core() no longer accepts link_with. "
+                "Set link_with= on each external_func() declaration instead; "
+                "the aie-assign-core-link-files pass aggregates them onto the core."
+            )
         super().__init__(
             result=T.index(),
             tile=tile,
             stack_size=stack_size,
-            link_with=link_with,
+            link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
 
@@ -554,8 +585,8 @@ class packetflow(PacketFlowOp):
 core = region_op(Core, terminator=lambda *_: EndOp())
 device = region_op(Device, terminator=lambda *_: EndOp())
 trace = region_op(
-    lambda tile, sym_name, *, buffer_size=None, loc=None, ip=None: TraceOp(
-        tile, sym_name, buffer_size=buffer_size, loc=loc, ip=ip
+    lambda tile, sym_name, *, loc=None, ip=None: TraceOp(
+        tile, sym_name, loc=loc, ip=ip
     ),
     terminator=lambda *_: EndOp(),
 )
@@ -599,6 +630,28 @@ def trace_edge_event(slot, event, trigger, *, loc=None, ip=None):
 
 def trace_start_config(name, *, loc=None, ip=None):
     return TraceStartConfigOp(trace_config=name, loc=loc, ip=ip)
+
+
+def trace_host_config(
+    buffer_size,
+    *,
+    arg_idx=4,
+    routing=TraceShimRouting.Single,
+    loc=None,
+    ip=None,
+):
+    if isinstance(routing, str):
+        if routing == "single":
+            routing = TraceShimRouting.Single
+        else:
+            raise ValueError(f"Unknown routing strategy: {routing}.")
+    return TraceHostConfigOp(
+        buffer_size=buffer_size,
+        arg_idx=arg_idx,
+        routing=routing,
+        loc=loc,
+        ip=ip,
+    )
 
 
 switchbox = region_op(
@@ -1007,9 +1060,67 @@ class TileOp(TileOp):
             [self], sym_name=sym_name, annot=annot, device=device
         )
 
+    # TileLike interface methods
+    def is_core_tile(self):
+        """Returns True if this is a core tile."""
+        return tile_like_is_core_tile(self.operation)
+
+    def is_mem_tile(self):
+        """Returns True if this is a mem tile."""
+        return tile_like_is_mem_tile(self.operation)
+
+    def is_shim_noc_tile(self):
+        """Returns True if this is a shim NOC tile."""
+        return tile_like_is_shim_noc_tile(self.operation)
+
+    def is_shim_pl_tile(self):
+        """Returns True if this is a shim PL tile."""
+        return tile_like_is_shim_pl_tile(self.operation)
+
+    def is_shim_tile(self):
+        """Returns True if this is a shim tile (NOC or PL)."""
+        return tile_like_is_shim_tile(self.operation)
+
 
 def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
     return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class LogicalTileOp(LogicalTileOp):
+    # TileLike interface methods
+    def is_core_tile(self):
+        """Returns True if this is a core tile."""
+        return tile_like_is_core_tile(self.operation)
+
+    def is_mem_tile(self):
+        """Returns True if this is a mem tile."""
+        return tile_like_is_mem_tile(self.operation)
+
+    def is_shim_noc_tile(self):
+        """Returns True if this is a shim NOC tile."""
+        return tile_like_is_shim_noc_tile(self.operation)
+
+    def is_shim_pl_tile(self):
+        """Returns True if this is a shim PL tile."""
+        return tile_like_is_shim_pl_tile(self.operation)
+
+    def is_shim_tile(self):
+        """Returns True if this is a shim tile (NOC or PL)."""
+        return tile_like_is_shim_tile(self.operation)
+
+
+def logical_tile(
+    tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None
+):
+    return LogicalTileOp(
+        tile_type=tile_type,
+        col=col,
+        row=row,
+        allocation_scheme=allocation_scheme,
+        loc=loc,
+        ip=ip,
+    )
 
 
 # BDChainOp

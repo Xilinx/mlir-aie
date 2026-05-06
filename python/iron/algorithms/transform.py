@@ -5,10 +5,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
+
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.iron as iron
@@ -171,7 +172,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16):
         rt.drain(of_out.cons(), output_seq_arg, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
@@ -369,29 +370,78 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
         rt.finish_task_group(tg_out)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def transform(func, input, output, *params, tile_size=16):
-    """Transform input to output using tiled processing."""
+    """Apply ``func`` to ``input`` and write results to ``output`` using tiled processing on a single AIE core.
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        input: Input tensor (NPU-accessible).
+        output: Output tensor (NPU-accessible, same shape and dtype as ``input``).
+        *params: Additional parameters forwarded to ``func``.
+        tile_size (int, optional): Number of elements per tile. Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
 
     return _transform_gen(func, [input], output, *params, tile_size=tile_size)
 
 
 def transform_binary(func, first, second, output, *params, tile_size=16):
-    """Transform binary inputs to output using tiled processing."""
+    """Apply ``func`` to ``first`` and ``second`` and write results to ``output`` using tiled processing on a single AIE core.
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        first: First input tensor (NPU-accessible).
+        second: Second input tensor (NPU-accessible, same shape and dtype as ``first``).
+        output: Output tensor (NPU-accessible, same shape and dtype as inputs).
+        *params: Additional parameters forwarded to ``func``.
+        tile_size (int, optional): Number of elements per tile. Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
 
     return _transform_gen(func, [first, second], output, *params, tile_size=tile_size)
 
 
 def transform_parallel(func, input, output, *params, tile_size=16):
-    """Parallel unary transform across multiple AIE tiles."""
+    """Apply ``func`` to ``input`` in parallel across all available NPU columns.
+
+    Distributes the input tensor evenly across columns; each column processes
+    ``tile_size`` elements per iteration.
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        input: Input tensor (NPU-accessible).
+        output: Output tensor (NPU-accessible, same shape and dtype as ``input``).
+        *params: Additional parameters forwarded to ``func``.
+        tile_size (int, optional): Number of elements per tile per column. Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
 
     return _transform_parallel_gen(func, [input], output, *params, tile_size=tile_size)
 
 
 def transform_parallel_binary(func, first, second, output, *params, tile_size=16):
-    """Parallel binary transform across multiple AIE tiles."""
+    """Apply ``func`` to ``first`` and ``second`` in parallel across all available NPU columns.
+
+    Args:
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        first: First input tensor (NPU-accessible).
+        second: Second input tensor (NPU-accessible, same shape and dtype as ``first``).
+        output: Output tensor (NPU-accessible, same shape and dtype as inputs).
+        *params: Additional parameters forwarded to ``func``.
+        tile_size (int, optional): Number of elements per tile per column. Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
 
     return _transform_parallel_gen(
         func, [first, second], output, *params, tile_size=tile_size

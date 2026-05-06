@@ -48,13 +48,19 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
 
         suffix = "_bfloat16" if dtype_str == "bf16" else ""
         reduce_max_vector = external_func(
-            f"reduce_max_vector{suffix}", inputs=[op_ty, out_ty, np.int32]
+            f"reduce_max_vector{suffix}",
+            inputs=[op_ty, out_ty, np.int32],
+            link_with="reduce_max.cc.o",
         )
         reduce_max_scalar = external_func(
-            f"reduce_max_scalar{suffix}", inputs=[int_ty, out_ty, np.int32]
+            f"reduce_max_scalar{suffix}",
+            inputs=[int_ty, out_ty, np.int32],
+            link_with="reduce_max.cc.o",
         )
         compute_max = external_func(
-            f"compute_max{suffix}", inputs=[out_ty, out_ty, out_ty]
+            f"compute_max{suffix}",
+            inputs=[out_ty, out_ty, out_ty],
+            link_with="reduce_max.cc.o",
         )
         min_val = (
             np.array([bfloat16(float("-inf"))], dtype=dtype)
@@ -116,7 +122,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             tiles_to_trace = [cores[0]]
 
         if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_trace(tiles_to_trace)
 
         # AIE-array data movement with object fifos
         of_out = object_fifo("out", cores[0], ShimTile, buffer_depth, out_ty)
@@ -136,7 +142,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 initial_value=min_val,
             )
 
-            @core(cores[i], "reduce_max.cc.o")
+            @core(cores[i])
             def core_body():
                 elem_out = out_fifos[i].acquire(ObjectFifoPort.Produce, 1)
                 for _ in range_(num_iter):
@@ -157,11 +163,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         @runtime_sequence(in_ty, out_ty)
         def sequence(A, C):
             if n_cores > 1 and trace_size > 0:
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
-                    trace_size=trace_size,
-                )
+                trace_utils.start_trace(trace_size=trace_size)
 
             in_task = shim_dma_single_bd_task(inA, A, sizes=[1, 1, 1, N])
             out_task = shim_dma_single_bd_task(
@@ -169,8 +171,6 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
             )
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)
-
-            trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 if len(sys.argv) < 4:

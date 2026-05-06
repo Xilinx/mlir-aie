@@ -32,9 +32,9 @@ module @hdiff_tri_AIE {
   aie.objectfifo.register_external_buffers @obj_in (%t70, {%ext_buffer_in0}) : (memref<1536xi32>)
   aie.objectfifo.register_external_buffers @obj_out_flux (%t70, {%ext_buffer_out}) : (memref<512xi32>)
 
-  func.func private @hdiff_lap(%AL: memref<256xi32>,%BL: memref<256xi32>, %CL:  memref<256xi32>, %DL: memref<256xi32>, %EL:  memref<256xi32>,  %OLL1: memref<256xi32>,  %OLL2: memref<256xi32>,  %OLL3: memref<256xi32>,  %OLL4: memref<256xi32>) -> ()
-  func.func private @hdiff_flux1(%AF: memref<256xi32>,%BF: memref<256xi32>, %CF:  memref<256xi32>,   %OLF1: memref<256xi32>,  %OLF2: memref<256xi32>,  %OLF3: memref<256xi32>,  %OLF4: memref<256xi32>,  %OFI1: memref<512xi32>,  %OFI2: memref<512xi32>,  %OFI3: memref<512xi32>,  %OFI4: memref<512xi32>,  %OFI5: memref<512xi32>) -> ()
-  func.func private @hdiff_flux2( %Inter1: memref<512xi32>,%Inter2: memref<512xi32>, %Inter3: memref<512xi32>,%Inter4: memref<512xi32>,%Inter5: memref<512xi32>,  %Out: memref<256xi32>) -> ()
+  func.func private @hdiff_lap(%AL: memref<256xi32>,%BL: memref<256xi32>, %CL:  memref<256xi32>, %DL: memref<256xi32>, %EL:  memref<256xi32>,  %OLL1: memref<256xi32>,  %OLL2: memref<256xi32>,  %OLL3: memref<256xi32>,  %OLL4: memref<256xi32>) -> () attributes {link_with = "hdiff_lap.o"}
+  func.func private @hdiff_flux1(%AF: memref<256xi32>,%BF: memref<256xi32>, %CF:  memref<256xi32>,   %OLF1: memref<256xi32>,  %OLF2: memref<256xi32>,  %OLF3: memref<256xi32>,  %OLF4: memref<256xi32>,  %OFI1: memref<512xi32>,  %OFI2: memref<512xi32>,  %OFI3: memref<512xi32>,  %OFI4: memref<512xi32>,  %OFI5: memref<512xi32>) -> () attributes {link_with = "hdiff_flux1.o"}
+  func.func private @hdiff_flux2( %Inter1: memref<512xi32>,%Inter2: memref<512xi32>, %Inter3: memref<512xi32>,%Inter4: memref<512xi32>,%Inter5: memref<512xi32>,  %Out: memref<256xi32>) -> () attributes {link_with = "hdiff_flux2.o"}
 
   %c13 = aie.core(%t71) {
     %lb = arith.constant 0 : index
@@ -62,7 +62,7 @@ module @hdiff_tri_AIE {
     aie.objectfifo.release @obj_in (Consume, 4)
 
     aie.end
-  } { link_with="hdiff_lap.o" }
+  }
 
   %c14 = aie.core(%t72) {
     %lb = arith.constant 0 : index
@@ -97,7 +97,7 @@ module @hdiff_tri_AIE {
     aie.objectfifo.release @obj_in (Consume, 4)
 
     aie.end
-  } { link_with="hdiff_flux1.o" }
+  }
 
   %c15 = aie.core(%t73) {
     %lb = arith.constant 0 : index
@@ -123,5 +123,5 @@ module @hdiff_tri_AIE {
     aie.use_lock(%lock73_14, "Acquire", 0) // stop the timer
 
     aie.end
-  } { link_with="hdiff_flux2.o" }
+  }
 }

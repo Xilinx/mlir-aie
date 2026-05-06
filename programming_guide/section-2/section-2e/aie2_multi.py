@@ -1,4 +1,4 @@
-# section-2/section-2d/aie2_multi.py -*- Python -*-
+# section-2/section-2e/aie2_multi.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -9,7 +9,6 @@ import numpy as np
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
@@ -52,7 +51,7 @@ of_outs = of_out.prod().join(
 def core_fn(of_in, of_out):
     elem_in = of_in.acquire(1)
     elem_out = of_out.acquire(1)
-    for i in range_(data_size):
+    for i in range_(tile_size):
         elem_out[i] = elem_in[i] + 1
     of_in.release(1)
     of_out.release(1)
@@ -82,7 +81,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_out, _):
 my_program = Program(dev, rt)
 
 # Place components (assign them resources on the device) and generate an MLIR module
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 # Print the generated MLIR
 print(module)

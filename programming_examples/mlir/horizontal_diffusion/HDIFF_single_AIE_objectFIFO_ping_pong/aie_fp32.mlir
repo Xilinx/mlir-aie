@@ -28,7 +28,7 @@ module @hdiff_single_AIE_fp32{
   aie.objectfifo.register_external_buffers @obj_in (%t70, {%ext_buffer_in0}) : (memref<1536xf32>)
   aie.objectfifo.register_external_buffers @obj_out (%t70, {%ext_buffer_out}) : (memref<512xf32>)
 
-  func.func private @vec_hdiff_fp32(%A: memref<256xf32>,%B: memref<256xf32>, %C:  memref<256xf32>, %D: memref<256xf32>, %E:  memref<256xf32>,  %O: memref<256xf32>) -> ()
+  func.func private @vec_hdiff_fp32(%A: memref<256xf32>,%B: memref<256xf32>, %C:  memref<256xf32>, %D: memref<256xf32>, %E:  memref<256xf32>,  %O: memref<256xf32>) -> () attributes {link_with = "hdiff_fp32.o"}
 
   %c13 = aie.core(%t71) {
     
@@ -56,7 +56,7 @@ module @hdiff_single_AIE_fp32{
     aie.objectfifo.release @obj_in (Consume, 4)
 
     aie.end
-  } { link_with="hdiff_fp32.o" }
+  }
 
 }
 

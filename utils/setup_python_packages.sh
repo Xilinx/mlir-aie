@@ -20,7 +20,7 @@ python3 -m pip install -r python/requirements.txt
 python3 -m pip install -r python/requirements_dev.txt
 
 # This installs the pre-commit hooks defined in .pre-commit-config.yaml
-pre-commit install
+pre-commit install --hook-type pre-commit --hook-type pre-push
 
 # This creates an ipykernel (for use in notebooks) using the ironenv venv
 python3 -m ipykernel install --user --name ironenv

@@ -13,6 +13,62 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
+  let summary =
+      "Infer per-core link_files from func-level link_with attributes";
+  let description = [{
+    Walks each aie.core and collects the set of external object files it needs
+    by tracing direct func.call edges to func.func declarations that carry a
+    "link_with" string attribute.  The result is stored in the CoreOp's
+    "link_files" StrArrayAttr.
+
+    Only direct calls (func.call) are resolved.  Indirect calls
+    (func.call_indirect) inside a core body emit a warning and are not
+    resolved; add a direct func.call to the required func.func declaration
+    so the pass can trace the dependency.
+
+    Core-level "link_with" (deprecated) is also migrated: its value is
+    folded into the set and the attribute is removed from the CoreOp.
+
+    func.func declarations that carry "link_with" but are never called from
+    any core emit a warning; their object files will not appear in any
+    core's link_files.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignCoreLinkFilesPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
+  let summary = "Place logical tiles onto physical AIE tiles";
+  let description = [{
+    Sequential placer algorithm places core tiles in a
+    column-major order and places fifo-connected Shim/Mem tiles
+    near its core tiles. One or more aie.logical_tile operation is mapped
+    to one aie.tile.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
+
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options = [
+    Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
+           /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
+           "Placement algorithm to use (default: sequential_placer)",
+           "llvm::cl::values("
+             "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
+                        "\"sequential_placer\", \"Sequential column-major placement\"))">,
+    Option<"clCoresPerCol", "cores-per-col", "int",
+           /*default=*/"-1",
+           "Limit number of cores per column (-1 = no limit). "
+           "Spreads cores across columns for better trace packet routing.">
+  ];
+}
+
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{
@@ -392,6 +448,57 @@ def AIETraceRegPackWrites : Pass<"aie-trace-pack-reg-writes", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIETraceRegPackWritesPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
+  let summary = "Insert packet flows and runtime sequence trace setup";
+  let description = [{
+    For each aie.trace operation, this pass:
+    - Creates packet flows from trace ports to shim DMA
+    - Groups traces by target shim (minimizes shim usage, ideally 1)
+    - Inserts shim buffer descriptors and DMA control setup per shim tile
+    - Inserts per-tile timer control register writes
+    - Inserts per-shim broadcast and DMA control setup
+
+    All trace configuration is injected at the beginning of the runtime
+    sequence, before user data transfer operations.
+
+    By default, multiple trace streams are routed to the same shim DMA
+    channel and drained by a single buffer descriptor. With
+    `distribute-channels`, traces are round-robin distributed across two
+    S2MM DMA channels per shim tile, each with its own BD. Both channels
+    share the same host buffer argument (arg_idx) and are split by offset:
+    channel 0 starts at the base offset, channel 1 at base + buffer_size.
+    The host must allocate 2x buffer_size for the trace buffer.
+
+    With `lateral-routing`, trace destinations are redirected from columns
+    with active cores to spare shim NOC columns, reducing data path
+    perturbation. Use `lateral-target-col` to force a specific target.
+  }];
+  
+  let constructor = "xilinx::AIE::createAIEInsertTraceFlowsPass()";
+
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+
+  let options = [
+    Option<"clShimChannel", "shim-channel", "int", "1",
+           "S2MM DMA channel to use for trace (default: 1)">,
+    Option<"clDefaultBdId", "default-bd-id", "int", "15",
+           "Buffer descriptor ID for trace (default: 15)">,
+    Option<"clPacketIdStart", "packet-id-start", "int", "1",
+           "Starting packet ID for trace flows (default: 1)">,
+    Option<"clTraceBurstLength", "burst-length", "int", "64",
+           "DMA burst length for trace transfers (default: 64 bytes)">,
+    Option<"clDistributeChannels", "distribute-channels", "bool", "false",
+           "Distribute traces across multiple S2MM channels per shim tile">,
+    Option<"clLateralRouting", "lateral-routing", "bool", "false",
+           "Route traces to spare columns to minimize data path perturbation">,
+    Option<"clLateralTargetCol", "lateral-target-col", "int", "-1",
+           "Force lateral routing target column (-1 = auto-detect nearest spare)">
   ];
 }
 

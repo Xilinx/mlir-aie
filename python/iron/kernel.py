@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+"""Kernel and ExternalFunction: wrappers for pre-compiled and C++ AIE compute kernels."""
 
 import hashlib
 import logging
@@ -21,55 +22,104 @@ from .buffer import Buffer
 
 
 class BaseKernel(Resolvable):
-    """Base class for kernel-like objects that resolve to FuncOp."""
+    """Base class for AIE core functions that resolve to a func.func declaration.
+
+    Subclasses:
+        Kernel: wraps a pre-compiled object file.
+        ExternalFunction: compiles C/C++ source at JIT time.
+    """
 
     def __init__(self, name: str, arg_types: list[type[np.ndarray] | np.dtype] = []):
-        """Initialize base kernel.
-
+        """
         Args:
-            name (str): The name of the function
-            arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
+            name: Symbol name of the function.
+            arg_types: Type signature of the function arguments.  Defaults to [].
         """
         if not name:
-            raise ValueError("The name of a kernel cannot be empty or null.")
+            raise ValueError("Kernel name cannot be empty.")
         self._name = name
         self._arg_types = arg_types
         self._op: FuncOp | None = None
 
+    def tile_size(self, arg_index: int = 0) -> int:
+        """Return the first dimension of the array argument at ``arg_index``.
+
+        Args:
+            arg_index: Index into ``arg_types``.  Defaults to 0.
+        """
+        if not self._arg_types:
+            raise ValueError("No argument types defined.")
+        if arg_index >= len(self._arg_types):
+            raise ValueError(
+                f"Argument index {arg_index} out of range "
+                f"(max: {len(self._arg_types) - 1})"
+            )
+        arg = self._arg_types[arg_index]
+
+        # numpy array type, e.g. np.ndarray[(16,), np.dtype[np.int32]]
+        if hasattr(arg, "__args__") and len(arg.__args__) > 0:
+            shape_arg = arg.__args__[0]
+            if isinstance(shape_arg, tuple) and len(shape_arg) > 0:
+                return shape_arg[0]
+
+        # MLIR MemRefType
+        if hasattr(arg, "shape") and len(arg.shape) > 0:
+            return arg.shape[0]
+
+        raise ValueError(
+            f"Argument {arg_index} does not have a shape or is not an array type."
+        )
+
+    def arg_types(self) -> list:
+        """Return a copy of the argument type list."""
+        return self._arg_types.copy()
+
     def __call__(self, *args, **kwargs):
-        """Call the kernel with the given arguments."""
+        """Emit a func.call to this kernel, validating argument count."""
         if not self._op:
-            raise ValueError("Need to resolve kernel before it can be called")
-        arg_ops = []
-        for a in args:
-            if isinstance(a, Buffer):
-                arg_ops.append(a.op)
-            else:
-                arg_ops.append(a)
+            raise ValueError("Kernel must be resolved before it can be called.")
+        if len(args) != len(self._arg_types):
+            raise ValueError(
+                f"Kernel '{self._name}' expects {len(self._arg_types)} "
+                f"argument(s), but {len(args)} were provided."
+            )
+        arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
         call(self._op, arg_ops, **kwargs)
 
 
 class Kernel(BaseKernel):
+    """An AIE core function backed by a pre-compiled object file.
+
+    Use :class:`ExternalFunction` instead when you want to compile from
+    C/C++ source at JIT time.
+
+    ``resolve()`` emits a ``func.func private`` declaration with a
+    ``link_with`` attribute naming ``object_file_name``.  The
+    ``aie-assign-core-link-files`` pass propagates this into the CoreOp's
+    ``link_files`` attribute so the linker knows which file to include.
+    """
+
     def __init__(
         self,
         name: str,
-        bin_name: str,
+        object_file_name: str,
         arg_types: list[type[np.ndarray] | np.dtype] = [],
     ) -> None:
-        """A Kernel is an externally defined function that eventually resolves to a FuncOp. If it is called,
-        a CallOp will be generated.
-
+        """
         Args:
-            name (str): The name of the function
-            bin_name (str): The name of the binary (used for linking to a compute core)
-            arg_types (list[type[np.ndarray]  |  np.dtype], optional): The type signature of the function. Defaults to [].
+            name: Symbol name of the function as it appears in the object file.
+            object_file_name: Filename of the pre-compiled object file
+                (e.g. ``"add_one.o"``).  Must be on the linker search path
+                at compile time.
+            arg_types: Type signature of the function arguments.  Defaults to [].
         """
         super().__init__(name, arg_types)
-        self._bin_name = bin_name
+        self._object_file_name = object_file_name
 
     @property
-    def bin_name(self) -> str:
-        return self._bin_name
+    def object_file_name(self) -> str:
+        """Filename of the compiled object file."""
+        return self._object_file_name
 
     def resolve(
         self,
@@ -77,11 +127,25 @@ class Kernel(BaseKernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if not self._op:
-            self._op = external_func(self._name, inputs=self._arg_types)
+            self._op = external_func(
+                self._name, inputs=self._arg_types, link_with=self._object_file_name
+            )
 
 
 class ExternalFunction(Kernel):
-    _instances = set()
+    """An AIE core function compiled from C/C++ source at JIT time.
+
+    Each instance is registered in ``_instances`` at construction time so that
+    the ``@jit`` decorator can discover and compile all source files before
+    invoking the MLIR compilation pipeline.  ``_instances`` is cleared at the
+    start of each ``@jit`` call to prevent stale registrations from a previous
+    (possibly failed) run.
+
+    Use the base :class:`Kernel` class instead when you have a pre-built
+    object file.
+    """
+
+    _instances: set = set()  # Registry of all live ExternalFunction instances.
 
     def __init__(
         self,
@@ -92,108 +156,51 @@ class ExternalFunction(Kernel):
         arg_types: list[type[np.ndarray] | np.dtype] = [],
         include_dirs: list[str] = [],
         compile_flags: list[str] = [],
-        debug: bool = False,
     ) -> None:
-        """An ExternalFunction is a C/C++ source file that gets compiled to an object file and eventually resolves to a FuncOp.
-        If it is called, a CallOp will be generated.
-
+        """
         Args:
-            name (str): The name of the function
-            object_file_name (str, optional): The name of the object file. If None, it will be name.o.
-            source_file (str): Path to the C/C++ source file
-            source_string (str): C/C++ source code as a string
-            arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
-            include_dirs (list[str], optional): Additional include directories. Defaults to [].
-            compile_flags (list[str], optional): Additional compilation flags. Defaults to [].
-            debug (bool, optional): Enable debug logging. Defaults to False.
+            name: Symbol name of the function as it will appear in the object
+                file.
+            object_file_name: Output object file name.  Defaults to
+                ``<name>.o``.
+            source_file: Path to a C/C++ source file on disk.  Mutually
+                exclusive with ``source_string``.
+            source_string: Inline C/C++ source code.  Mutually exclusive with
+                ``source_file``.
+            arg_types: Type signature of the function arguments.  Defaults to
+                [].
+            include_dirs: Additional ``-I`` directories passed to the Peano
+                compiler.  Defaults to [].
+            compile_flags: Additional flags passed verbatim to the Peano
+                compiler.  Defaults to [].
         """
         if not object_file_name:
             object_file_name = f"{name}.o"
         super().__init__(name, object_file_name, arg_types)
 
-        self._setup_source(source_file, source_string)
-        self._include_dirs = include_dirs
-        self._compile_flags = compile_flags
-        self._compiled = False
-        self._arg_types = arg_types
-        self._op: FuncOp | None = None
-        self._debug = debug
-
-        if self._debug:
-            logger.debug("Initializing ExternalFunction: %s", name)
-            logger.debug("Source file: %s", source_file)
-            logger.debug("Include dirs: %s", include_dirs)
-            logger.debug("Compile flags: %s", compile_flags)
-
-        # Track this instance for JIT compilation
-        ExternalFunction._instances.add(self)
-
-    def _setup_source(self, source_file: str | None, source_string: str | None) -> None:
-        """Set up the source file for compilation."""
         if source_file is not None:
             self._source_file = source_file
             self._source_string = None
-        else:
-            if source_string is None:
-                raise ValueError("source_file or source_string must be provided")
+        elif source_string is not None:
             self._source_file = None
             self._source_string = source_string
+        else:
+            raise ValueError("source_file or source_string must be provided.")
 
-    def __enter__(self):
-        """Enter the context."""
-        return self
+        self._include_dirs = include_dirs
+        self._compile_flags = compile_flags
+        self._compiled = False
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        """Exit the context."""
-        pass
-
-    def tile_size(self, arg_index: int = 0) -> int:
-        """Get the tile size from the specified array argument type.
-
-        Args:
-            arg_index (int): Index of the argument to get tile size from. Defaults to 0.
-
-        Returns:
-            int: The tile size (first dimension) of the specified argument.
-        """
-        if not self._arg_types:
-            raise ValueError("No argument types defined")
-        if arg_index >= len(self._arg_types):
-            raise ValueError(
-                f"Argument index {arg_index} out of range (max: {len(self._arg_types) - 1})"
-            )
-
-        arg = self._arg_types[arg_index]
-
-        # Handle numpy array types like np.ndarray[(16,), np.dtype[np.int32]]
-        if hasattr(arg, "__args__") and len(arg.__args__) > 0:
-            # For types like np.ndarray[(16,), np.dtype[np.int32]], the shape is in __args__[0]
-            shape_arg = arg.__args__[0]
-            if isinstance(shape_arg, tuple) and len(shape_arg) > 0:
-                return shape_arg[0]
-
-        # Handle MLIR types like MemRefType(memref<16xi32>)
-        if (
-            hasattr(arg, "shape")
-            and hasattr(arg.shape, "__len__")
-            and len(arg.shape) > 0
-        ):
-            return arg.shape[0]
-
-        raise ValueError(
-            f"Argument {arg_index} does not have a shape or is not an array type"
-        )
-
-    def arg_types(self) -> list:
-        """Get the argument types of the ExternalFunction."""
-        return self._arg_types.copy()
+        # Register this instance so the @jit decorator can compile it.
+        ExternalFunction._instances.add(self)
 
     def __call__(self, *args, **kwargs):
-        """Call the ExternalFunction with argument validation."""
+        """Call with argument count and type validation before emitting MLIR."""
         if len(args) != len(self._arg_types):
             raise ValueError(
-                f"ExternalFunction '{self._name}' expects {len(self._arg_types)} argument(s), "
-                f"but {len(args)} were provided."
+                f"ExternalFunction '{self._name}' expects "
+                f"{len(self._arg_types)} argument(s), but {len(args)} "
+                f"were provided."
             )
         for i, (arg, expected_ty) in enumerate(zip(args, self._arg_types)):
             self._validate_arg(i, arg, expected_ty)
@@ -201,15 +208,12 @@ class ExternalFunction(Kernel):
 
     def _validate_arg(self, index: int, arg, expected_ty) -> None:
         """Validate a single argument against its expected type."""
-        # Scalar types (np.int32, np.float32, etc.)
         if isinstance(expected_ty, type) and issubclass(expected_ty, np.generic):
             if not isinstance(arg, (int, float, np.integer, np.floating)):
                 raise ValueError(
                     f"Argument {index}: expected scalar, got {type(arg).__name__}"
                 )
             return
-
-        # Array types - check shape and dtype
         if hasattr(expected_ty, "__args__") and hasattr(arg, "shape"):
             expected_shape = expected_ty.__args__[0]
             expected_dtype = expected_ty.__args__[1].__args__[0]
@@ -220,27 +224,18 @@ class ExternalFunction(Kernel):
                 )
 
     def __hash__(self):
-        """
-        Compute a hash for the ExternalFunction based on its properties.
-        This allows ExternalFunction instances to be used in cache keys.
-        """
-        # Create a string representation of the function's key properties
+        """Hash based on source content and compiler options for cache keying."""
+        # TODO: extend to cover included headers (issue #2543)
         hash_parts = [
             self._name,
             str(self._arg_types),
             str(sorted(self._include_dirs)),
             str(sorted(self._compile_flags)),
         ]
-
-        # Include source content for uniqueness
-        # TODO: This solution needs to be extended to handle headers. See https://github.com/Xilinx/mlir-aie/issues/2543
         if self._source_string:
             hash_parts.append(self._source_string)
         elif self._source_file:
             with open(self._source_file, "r") as f:
-                file_content = f.read()
-            hash_parts.append(file_content)
-
-        # Create hash from combined string
+                hash_parts.append(f.read())
         combined = "|".join(hash_parts)
         return int(hashlib.sha256(combined.encode("utf-8")).hexdigest()[:8], 16)

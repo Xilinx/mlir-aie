@@ -15,11 +15,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define REL_WRITE 0
-#define REL_READ 1
-
 #include <aie_api/aie.hpp>
 
+// NOTE: Both kernels below are hardcoded for N=4096 elements. The Python
+// design file (saxpy.py) must be called with a tensor of exactly this size.
+// Calling with any other size will produce silently incorrect results.
 extern "C" {
 void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, bfloat16 *restrict z) {
   event0();
@@ -39,6 +39,10 @@ void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, bfloat16 *restrict z) {
   event1();
 }
 
+// saxpy_scalar: a non-vectorized reference implementation of SAXPY.
+// Useful for verifying correctness and understanding the algorithm before
+// examining the vectorized version above. Can be selected from Python by
+// changing the ExternalFunction name from "saxpy" to "saxpy_scalar".
 void saxpy_scalar(bfloat16 *x, bfloat16 *y, bfloat16 *z) {
   event0();
   float a = 3.f;

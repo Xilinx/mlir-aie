@@ -29,8 +29,8 @@ module @tutorial_8 {
 
     // declare 2 kernel functions name "extern_kernel1" and "extern_kernel2"
     // with one positional function argument, in this case mapped to a memref
-    func.func private @extern_kernel1() -> ()
-    func.func private @extern_kernel2(%b: memref<256xi32>) -> ()
+    func.func private @extern_kernel1() -> () attributes {link_with = "kernel1.o"}
+    func.func private @extern_kernel2(%b: memref<256xi32>) -> () attributes {link_with = "kernel2.o"}
 
     // Declare shared lock (belonging to tile(2,4), lock ID=1)
     // %lock13_1 = aie.lock(%tile13, 1) { sym_name = "lock_13_1" }
@@ -49,7 +49,7 @@ module @tutorial_8 {
 
         // aie.use_lock(%lock13_1, "Release", 1)
         aie.end
-    } { link_with="kernel1.o" }
+    }
 
     // Define core algorithm for tile(2,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
@@ -74,6 +74,6 @@ module @tutorial_8 {
         // This release means our 2nd core is done
         aie.use_lock(%lock13_2, "Release", 1)
         aie.end
-    } { link_with="kernel2.o" }
+    }
 
 }

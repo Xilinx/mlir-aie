@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""Worker and WorkerRuntimeBarrier: compute-core tasks and runtime synchronization primitives."""
+
 import sys
 from typing import Callable
 
@@ -12,27 +14,27 @@ from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
 from ..dialects.aiex import set_lock_value, LockAction
 from ..helpers.dialects.scf import _for as range_
-from .device import PlacementTile, AnyComputeTile, Tile
+from .device import Tile, AnyComputeTile
+from ..dialects._aie_enum_gen import AIETileType  # type: ignore
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
-from .kernel import Kernel, ExternalFunction
 from .buffer import Buffer
 from .resolvable import Resolvable
 
 
 class Worker(ObjectFifoEndpoint):
-    """_summary_
-    Worker is an object that takes a `core_fn` and a set of arguments.
-    A Worker must be placed on a Compute Core.
-    """
+    """A task to be run on an AIE compute core.
 
-    """This variable is the current core if resolving() within the Worker, or None otherwise."""
+    A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO handles,
+    Buffers, Kernels, etc.). Each Worker is placed on a single compute tile, either
+    explicitly via ``tile`` or automatically by the ``--aie-place-tiles`` compiler pass.
+    """
 
     def __init__(
         self,
         core_fn: Callable | None,
         fn_args: list = [],
-        placement: PlacementTile | None = AnyComputeTile,
+        tile: Tile = AnyComputeTile,
         while_true: bool = True,
         stack_size: int = None,
         allocation_scheme: str = None,
@@ -44,17 +46,24 @@ class Worker(ObjectFifoEndpoint):
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
             fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
-            placement (PlacementTile | None, optional): The placement for the Worker. Defaults to AnyComputeTile.
+            tile (Tile, optional): The compute tile for the Worker. Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
-                Will override any allocation scheme set on the tile given as placement.
+                Will override any allocation scheme set on the tile.
             trace (int, optional): If >0, enable tracing for this worker.
+            trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.
 
         Raises:
             ValueError: Parameters are validated.
         """
-        self._tile = placement
+        tile = tile.copy()
+        if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
+            raise ValueError(
+                f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
+            )
+        tile.tile_type = AIETileType.CoreTile
+        self._tile = tile
         self._while_true = while_true
         self.stack_size = stack_size
         self.allocation_scheme = allocation_scheme
@@ -73,22 +82,25 @@ class Worker(ObjectFifoEndpoint):
             self.core_fn = do_nothing_core_fun
         else:
             self.core_fn = core_fn
-        self.link_with: str | None = None
         self.fn_args = fn_args
-        bin_names = set()
         self._fifos = []
         self._buffers = []
         self._barriers = []
 
         # Check arguments to the core. Some information is saved for resolution.
         for arg in self.fn_args:
-            if isinstance(arg, (Kernel, ExternalFunction)):
-                bin_names.add(arg.bin_name)
-            elif isinstance(arg, ObjectFifoHandle):
+            if isinstance(arg, ObjectFifoHandle):
                 arg.endpoint = self
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
                 self._buffers.append(arg)
+                # Buffers are placed on the same tile as the Worker
+                if arg._tile is not None and arg._tile is not self._tile:
+                    raise ValueError(
+                        f"Buffer '{arg._name}' is already placed on {arg._tile}; "
+                        f"cannot reassign to {self._tile}"
+                    )
+                arg._tile = self._tile
             elif isinstance(arg, ObjectFifo):
                 # This is an easy error to make, so we catch it early
                 raise ValueError(
@@ -98,26 +110,10 @@ class Worker(ObjectFifoEndpoint):
                 )
             elif isinstance(arg, WorkerRuntimeBarrier):
                 self._barriers.append(arg)
-            # We assume other arguments are metaprogramming (e.g, Python args)
-            # This could allow some errors to sink through, but we allow it for now.
-            # TODO: this could be cleaned up through creation of a MetaArgs struct, so you
-            # could access values through meta.my_var within the function.
-
-        if len(bin_names) > 1:
-            raise ValueError(
-                f"Currently, only one binary per works is supported. Found: {bin_names}"
-            )
-        if len(bin_names) == 1:
-            self.link_with = list(bin_names)[0]
-
-    def place(self, tile: Tile) -> None:
-        """Set the placement of the Worker.
-
-        Args:
-            tile (Tile): The placement location.
-        """
-        tile.allocation_scheme = self.allocation_scheme
-        ObjectFifoEndpoint.place(self, tile)
+            # Kernel/ExternalFunction instances are valid fn_args — they resolve to
+            # func.call ops when invoked inside core_fn and carry link_with on their
+            # func.func declaration. Other unrecognized args are assumed to be
+            # metaprogramming values (Python scalars, etc.).
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
@@ -130,7 +126,7 @@ class Worker(ObjectFifoEndpoint):
 
     @property
     def buffers(self) -> list[Buffer]:
-        """Returns a list of Buffer given to the Worker via fn_args.
+        """Returns a list of Buffers given to the Worker via fn_args.
 
         Returns:
             list[Buffer]: Buffer used by the Worker.
@@ -145,7 +141,6 @@ class Worker(ObjectFifoEndpoint):
         if not self._tile:
             raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
-        my_link = self.link_with
 
         # Create the necessary locks for the core operation to synchronize with the runtime sequence
         # and register them in the corresponding barriers.
@@ -153,7 +148,7 @@ class Worker(ObjectFifoEndpoint):
             l = lock(my_tile)
             barrier._add_worker_lock(l)
 
-        @core(my_tile, link_with=my_link, stack_size=self.stack_size)
+        @core(my_tile, stack_size=self.stack_size)
         def core_body():
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)
@@ -163,6 +158,11 @@ class WorkerRuntimeBarrier:
     """A barrier allowing individual workers to synchronize with the runtime sequence."""
 
     def __init__(self, initial_value: int = 0):
+        """Initialize a WorkerRuntimeBarrier.
+
+        Args:
+            initial_value (int, optional): The initial lock value. Defaults to 0.
+        """
         self.initial_value = initial_value
         self.worker_locks = []
 
@@ -210,6 +210,12 @@ class _BarrierSetOp(Resolvable):
     """A resolvable instance of a WorkerRuntimeBarrier. This should not be used directly."""
 
     def __init__(self, barrier: WorkerRuntimeBarrier, value: int):
+        """Construct a _BarrierSetOp.
+
+        Args:
+            barrier (WorkerRuntimeBarrier): The barrier whose value will be set.
+            value (int): The value to set.
+        """
         self.barrier: WorkerRuntimeBarrier = barrier
         self.value: int = value
 

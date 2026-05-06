@@ -9,20 +9,22 @@
 #
 # ===-----------------------------------------------------------------------===#
 #
-# REQUIRES: ryzen_ai_npu1, xrt_python_bindings
+# REQUIRES: ryzen_ai_npu2, xrt_python_bindings
 #
 
 # Build the test
-# RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/vector_scalar_mul.cc -o vector_scalar_mul.o
+# RUN: xchesscc_wrapper aie2p -I %aietools/include -c %S/vector_scalar_mul.cc -o vector_scalar_mul.o
 # RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 
-# Run the test
-# RUN: %run_on_npu1% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace-sz 8192 --mlir %S/aie.mlir | FileCheck %s
+# Run the test (input_with_addresses.mlir contains the lowered npu_write ops)
+# RUN: %run_on_npu2% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace-sz 8192 --mlir aie.mlir.prj/input_with_addresses.mlir | FileCheck %s
 # CHECK: PASS!
 import numpy as np
+import subprocess
 import sys
 from pathlib import Path
 from aie.utils.trace import parse_trace
+import aie.utils.trace as trace_mod
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
@@ -108,31 +110,127 @@ def main(opts):
     if not trace_events:
         print("ERROR: Failed to generate trace events (empty or False returned).")
         errors += 1
-        instr_event_0_count = 0
-        instr_event_1_count = 0
     else:
-        instr_event_0_count = sum(
+        # Count events from each trace type
+        # Core trace: INSTR_EVENT_0, INSTR_EVENT_1
+        core_instr_event_0 = sum(
             1
             for event in trace_events
             if event.get("name") == "INSTR_EVENT_0" and event.get("ph") == "B"
         )
-        instr_event_1_count = sum(
+        core_instr_event_1 = sum(
             1
             for event in trace_events
             if event.get("name") == "INSTR_EVENT_1" and event.get("ph") == "B"
         )
 
-    if opts.verbosity >= 1:
-        print(f"INSTR_EVENT_0 count: {instr_event_0_count}")
-        print(f"INSTR_EVENT_1 count: {instr_event_1_count}")
+        # Mem trace (core memory): DMA_S2MM_0_START_TASK
+        mem_dma_start = sum(
+            1
+            for event in trace_events
+            if event.get("name") == "DMA_S2MM_0_START_TASK" and event.get("ph") == "B"
+        )
 
-    # Verify expected counts. The kernel is expected to generate 4 of each event.
-    if instr_event_0_count < 4:
-        print(f"ERROR: Expected 4 INSTR_EVENT_0 events, found {instr_event_0_count}")
-        errors += 1
-    if instr_event_1_count < 4:
-        print(f"ERROR: Expected 4 INSTR_EVENT_1 events, found {instr_event_1_count}")
-        errors += 1
+        # Memtile trace: PORT_RUNNING_0
+        memtile_port_running = sum(
+            1
+            for event in trace_events
+            if event.get("name") == "PORT_RUNNING_0" and event.get("ph") == "B"
+        )
+
+        # Shim trace: DMA_MM2S_0_START_TASK
+        shim_dma_start = sum(
+            1
+            for event in trace_events
+            if event.get("name") == "DMA_MM2S_0_START_TASK" and event.get("ph") == "B"
+        )
+
+        if opts.verbosity >= 1:
+            print(f"Core trace - INSTR_EVENT_0 count: {core_instr_event_0}")
+            print(f"Core trace - INSTR_EVENT_1 count: {core_instr_event_1}")
+            print(f"Mem trace - DMA_S2MM_0_START_TASK count: {mem_dma_start}")
+            print(f"Memtile trace - PORT_RUNNING_0 count: {memtile_port_running}")
+            print(f"Shim trace - DMA_MM2S_0_START_TASK count: {shim_dma_start}")
+
+        # Verify expected counts - kernel runs 4 iterations
+        if core_instr_event_0 < 4:
+            print(
+                f"ERROR: Core trace - Expected >= 4 INSTR_EVENT_0, found {core_instr_event_0}"
+            )
+            errors += 1
+        if core_instr_event_1 < 4:
+            print(
+                f"ERROR: Core trace - Expected >= 4 INSTR_EVENT_1, found {core_instr_event_1}"
+            )
+            errors += 1
+        if mem_dma_start < 1:
+            print(
+                f"ERROR: Mem trace - Expected >= 1 DMA_S2MM_0_START_TASK, found {mem_dma_start}"
+            )
+            errors += 1
+        if memtile_port_running < 1:
+            print(
+                f"ERROR: Memtile trace - Expected >= 1 PORT_RUNNING_0, found {memtile_port_running}"
+            )
+            errors += 1
+        if shim_dma_start < 1:
+            print(
+                f"ERROR: Shim trace - Expected >= 1 DMA_MM2S_0_START_TASK, found {shim_dma_start}"
+            )
+            errors += 1
+
+    # Run CLI trace parse scripts to validate file-based path
+    if opts.mlir and Path(opts.mlir).exists() and Path("trace.txt").exists():
+        trace_pkg_dir = Path(trace_mod.__file__).parent
+        parse_script = trace_pkg_dir / "parse.py"
+        summary_script = trace_pkg_dir / "get_trace_summary.py"
+
+        print("\nRunning trace parse CLI validation:")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(parse_script),
+                "--input",
+                "trace.txt",
+                "--mlir",
+                opts.mlir,
+                "--output",
+                "trace.json",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            print(f"ERROR: parse.py failed (rc={result.returncode})")
+            if result.stderr:
+                print(f"  stderr: {result.stderr.strip()}")
+            errors += 1
+        else:
+            print("  parse.py: OK")
+
+        if Path("trace.json").exists():
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(summary_script),
+                    "--input",
+                    "trace.json",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                print(f"ERROR: get_trace_summary.py failed (rc={result.returncode})")
+                if result.stderr:
+                    print(f"  stderr: {result.stderr.strip()}")
+                errors += 1
+            else:
+                print("  get_trace_summary.py: OK")
+                if result.stdout.strip():
+                    print(f"  {result.stdout.strip()}")
+        else:
+            print("ERROR: trace.json not generated by parse.py")
+            errors += 1
 
     # Final result
     if errors == 0:

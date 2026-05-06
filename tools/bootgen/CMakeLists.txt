@@ -137,6 +137,10 @@ else()
 endif()
 if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_definitions(bootgen-lib PRIVATE YY_NO_UNISTD_H)
+  # Enable correct unwind semantics on MSVC
+  target_compile_options(bootgen-lib PRIVATE /EHsc)
+  # Suppress MSVC warning noise
+  target_compile_options(bootgen-lib PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
 target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
@@ -156,6 +160,10 @@ add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
 target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  target_compile_options(bootgen PRIVATE /EHsc)
+  target_compile_options(bootgen PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
+endif()
 target_compile_definitions(bootgen PRIVATE OPENSSL_USE_APPLINK)
 target_link_libraries(bootgen PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::applink)
 install(TARGETS bootgen)
@@ -168,6 +176,9 @@ if (NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(cdo_driver_mlir_aie PRIVATE -Wno-cast-qual -Wno-sign-compare)
 endif()
 
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  target_compile_options(cdo_driver_mlir_aie PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
+endif()
 install(
   TARGETS cdo_driver_mlir_aie
   DESTINATION lib

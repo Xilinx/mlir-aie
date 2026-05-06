@@ -10,6 +10,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron.controlflow import range_
 
 
@@ -29,7 +30,9 @@ def passThroughAIE2(dev, width, height):
 
         # AIE Core Function declarations
         passThroughLine = external_func(
-            "passThroughLine", inputs=[line_ty, line_ty, np.int32]
+            "passThroughLine",
+            inputs=[line_ty, line_ty, np.int32],
+            link_with="passThrough.cc.o",
         )
 
         # Tile declarations
@@ -46,7 +49,7 @@ def passThroughAIE2(dev, width, height):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "passThrough.cc.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 for _ in range_(height):
@@ -139,14 +142,12 @@ def passThroughAIE2(dev, width, height):
                 )
                 NpuWrite32(0, 0, 0x1D20C, 0x3)
 
+            tap = TensorTiler2D.simple_tiler((height, lineWidthInBytes))[0]
             in_task = shim_dma_single_bd_task(
-                of_in, inTensor, sizes=[1, 1, 1, tensorSize], issue_token=True
+                of_in, inTensor, tap=tap, issue_token=True
             )
             out_task = shim_dma_single_bd_task(
-                of_out,
-                outTensor,
-                sizes=[1, 1, 1, tensorSize],
-                issue_token=True,
+                of_out, outTensor, tap=tap, issue_token=True
             )
 
             dma_start_task(in_task, out_task)

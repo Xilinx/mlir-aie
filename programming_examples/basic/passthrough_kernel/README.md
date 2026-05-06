@@ -10,7 +10,7 @@
 
 # Passthrough Kernel:
 
-This IRON design flow example, called "Passthrough Kernel", demonstrates a simple AIE implementation for vectorized memcpy on a vector of integers. In this design, a single AIE core performs the memcpy operation on a vector with a default length `4096`. The kernel is configured to work on `1024` element-sized subvectors and is invoked multiple times to complete the full copy. The example consists of two primary design files: `aie2.py` and `passThrough.cc`, and a testbench `test.cpp` or `test.py`.
+This IRON design flow example, called "Passthrough Kernel", demonstrates a simple AIE implementation for vectorized memcpy on a vector of integers. In this design, a single AIE core performs the memcpy operation on a vector with a default length `4096`. The kernel is configured to work on `1024` element-sized subvectors and is invoked multiple times to complete the full copy. The example consists of two primary design files: `passthrough_kernel.py` and `passThrough.cc`, and a testbench `test.cpp` or `test.py`.
 
 ## Source Files Overview
 

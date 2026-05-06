@@ -36,7 +36,7 @@ include ${srcdir}/../../makefile-common
 #------------------------------------------------------------------------------
 
 # Target device: npu (AIE2) or npu2 (AIE2P)
-devicename ?= npu
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 # Runtime library path (for npu/AIE2 only)
 aie2_runtime_dir = ${MLIR_AIE_DIR}/aie_runtime_lib/AIE2
@@ -127,7 +127,7 @@ profile: ${targetname}.exe build/final.xclbin
 # Run with hardware tracing enabled
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir --output trace_softmax.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir.prj/input_with_addresses.mlir --output trace_softmax.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_softmax.json
 
 # Remove all build artifacts

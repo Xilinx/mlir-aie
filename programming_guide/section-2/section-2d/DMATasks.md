@@ -8,16 +8,16 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2g - Runtime Data Movement</ins>
+# <ins>Section 2d - Runtime Data Movement</ins>
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
     * [Section 2b - Key Object FIFO Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
-    * [Section 2d - Programming for multiple cores](../section-2d/)
-    * [Section 2e - Practical Examples](../section-2e/)
-    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
-    * Section 2g - Runtime Data Movement
+    * Section 2d - Runtime Data Movement
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
 
 -----
 
@@ -124,9 +124,24 @@ Waiting on DMAs associated with more than one object fifo:
 dma_wait(of_in, of_out)  
 ```
 
+##### **Automatic Linearization of Contiguous Accesses**
+
+A contiguous row-major access—one where `strides[0] == 1` and each outer stride equals the product of the inner sizes—is automatically folded to canonical linear form by the compiler. This means you can always write the natural multidimensional form and let the compiler handle it.
+
+For example, transferring a `height × width` image or a `H × W × C` activation tensor:
+```python
+# 2D image: naturally expressed, compiler linearizes to [1,1,1,height*width]
+npu_dma_memcpy_nd(of_in, 0, buf, sizes=[1, 1, height, width], strides=[0, 0, width, 1])
+
+# 3D activation tensor: naturally expressed, compiler linearizes to [1,1,1,H*W*C]
+npu_dma_memcpy_nd(of_in, 0, buf, sizes=[1, H, W, C], strides=[0, W*C, C, 1])
+```
+
+The linearized form uses a wider hardware buffer-length register, so the total transfer size is not subject to the hardware d0 dimension size limit that applies to ND transfers.
+
 #### **Best Practices for Data Movement and Synchronization with `npu_dma_memcpy_nd`**
 
-- **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly synchronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory. 
+- **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly synchronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory.
 - **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `npu_dma_memcpy_nd`.
 - **Minimize Synchronization Overhead**: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.
 
@@ -153,7 +168,7 @@ def shim_dma_single_bd_task(
     issue_token: bool = False,
 )
 ```
-- **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFIFO. This argument is called `alloc` becuase the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
+- **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFIFO. This argument is called `alloc` because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
 - **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
 - **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
 - **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
@@ -162,7 +177,7 @@ def shim_dma_single_bd_task(
 - **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
 - **`burst_length`** (optional): The configuration of the burst length for the DMA task. If `0`, defaults to the highest available value.
 
-The strides and strides express data transformations analogously to those described in [Section 2C](../section-2c).
+The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c).
 
 **Example Usage**:
 ```python
@@ -227,7 +242,7 @@ dma_free_task(in_task, out_task)
 
 #### **Conclusion**
 
-The `npu_dma_memcpy_nd` and `dma_wait` functions are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
+Both the `npu_dma_memcpy_nd`/`dma_wait` interface and the `shim_dma_single_bd_task`/`dma_await_task`/`dma_free_task` interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 
 -----
 [[Up](./README.md)]

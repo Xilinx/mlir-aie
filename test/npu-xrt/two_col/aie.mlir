@@ -31,7 +31,7 @@ module {
     aie.objectfifo @objFifo_out3(%4, {%1}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo @objFifo_out4(%5, {%1}, 2 : i32) : !aie.objectfifo<memref<128xui8>>
     aie.objectfifo.link [@objFifo_out1, @objFifo_out2, @objFifo_out3, @objFifo_out4] -> [@objFifo_out0] ([0, 128, 256, 384] [])
-    func.func private @thresholdLine(%in: memref<128xui8>, %out: memref<128xui8>, %lineWidth: i32,  %thresholdValue: i32, %maxValue: i32, %thresholdType: i8) -> ()
+    func.func private @thresholdLine(%in: memref<128xui8>, %out: memref<128xui8>, %lineWidth: i32,  %thresholdValue: i32, %maxValue: i32, %thresholdType: i8) -> () attributes {link_with = "threshold.o"}
     %24 = aie.core(%2) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
@@ -55,7 +55,7 @@ module {
         aie.objectfifo.release @objFifo_out1(Produce, 1)
       }
       aie.end
-    } {link_with = "threshold.o"}
+    }
     %34 = aie.core(%3) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
@@ -79,7 +79,7 @@ module {
         aie.objectfifo.release @objFifo_out2(Produce, 1)
       }
       aie.end
-    } {link_with = "threshold.o"}
+    }
     %44 = aie.core(%4) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
@@ -103,7 +103,7 @@ module {
         aie.objectfifo.release @objFifo_out3(Produce, 1)
       }
       aie.end
-    } {link_with = "threshold.o"}
+    }
     %54 = aie.core(%5) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
@@ -127,7 +127,7 @@ module {
         aie.objectfifo.release @objFifo_out4(Produce, 1)
       }
       aie.end
-    } {link_with = "threshold.o"}
+    }
     aie.runtime_sequence(%in : memref<2048xi32>, %buf : memref<32xi32>, %out : memref<2048xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64

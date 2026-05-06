@@ -398,7 +398,7 @@ module @hdiff_large_0 {
   aie.objectfifo.register_external_buffers(%tile47_0, %buf_out_31_2_shim_47  : !aie.objectfifo<memref<256xi32>>, {%ext_buffer_out_31_2}) : (memref<512xi32>)
 
 
-  func.func private @vec_hdiff(%A: memref<256xi32>,%B: memref<256xi32>, %C:  memref<256xi32>, %D: memref<256xi32>, %E:  memref<256xi32>,  %O: memref<256xi32>) -> ()
+  func.func private @vec_hdiff(%A: memref<256xi32>,%B: memref<256xi32>, %C:  memref<256xi32>, %D: memref<256xi32>, %E:  memref<256xi32>,  %O: memref<256xi32>) -> () attributes {link_with = "hdiff.o"}
 
   %core0_2 = aie.core(%tile0_2) {
     %lb = arith.constant 0 : index
@@ -420,7 +420,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_0_shim_2: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core1_2 = aie.core(%tile1_2) {
     %lb = arith.constant 0 : index
@@ -442,7 +442,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_1_shim_2: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core2_2 = aie.core(%tile2_2) {
     %lb = arith.constant 0 : index
@@ -464,7 +464,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_2_shim_3: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core3_2 = aie.core(%tile3_2) {
     %lb = arith.constant 0 : index
@@ -486,7 +486,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_3_shim_3: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core4_2 = aie.core(%tile4_2) {
     %lb = arith.constant 0 : index
@@ -508,7 +508,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_4_shim_6: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core5_2 = aie.core(%tile5_2) {
     %lb = arith.constant 0 : index
@@ -530,7 +530,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_5_shim_6: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core6_2 = aie.core(%tile6_2) {
     %lb = arith.constant 0 : index
@@ -552,7 +552,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_6_shim_7: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core7_2 = aie.core(%tile7_2) {
     %lb = arith.constant 0 : index
@@ -574,7 +574,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_7_shim_7: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core8_2 = aie.core(%tile8_2) {
     %lb = arith.constant 0 : index
@@ -596,7 +596,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_8_shim_10: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core9_2 = aie.core(%tile9_2) {
     %lb = arith.constant 0 : index
@@ -618,7 +618,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_9_shim_10: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core10_2 = aie.core(%tile10_2) {
     %lb = arith.constant 0 : index
@@ -640,7 +640,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_10_shim_11: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core11_2 = aie.core(%tile11_2) {
     %lb = arith.constant 0 : index
@@ -662,7 +662,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_11_shim_11: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core12_2 = aie.core(%tile12_2) {
     %lb = arith.constant 0 : index
@@ -684,7 +684,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_12_shim_18: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core13_2 = aie.core(%tile13_2) {
     %lb = arith.constant 0 : index
@@ -706,7 +706,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_13_shim_18: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core14_2 = aie.core(%tile14_2) {
     %lb = arith.constant 0 : index
@@ -728,7 +728,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_14_shim_19: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core15_2 = aie.core(%tile15_2) {
     %lb = arith.constant 0 : index
@@ -750,7 +750,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_15_shim_19: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core16_2 = aie.core(%tile16_2) {
     %lb = arith.constant 0 : index
@@ -772,7 +772,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_16_shim_26: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core17_2 = aie.core(%tile17_2) {
     %lb = arith.constant 0 : index
@@ -794,7 +794,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_17_shim_26: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core18_2 = aie.core(%tile18_2) {
     %lb = arith.constant 0 : index
@@ -816,7 +816,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_18_shim_27: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core19_2 = aie.core(%tile19_2) {
     %lb = arith.constant 0 : index
@@ -838,7 +838,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_19_shim_27: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core20_2 = aie.core(%tile20_2) {
     %lb = arith.constant 0 : index
@@ -860,7 +860,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_20_shim_34: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core21_2 = aie.core(%tile21_2) {
     %lb = arith.constant 0 : index
@@ -882,7 +882,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_21_shim_34: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core22_2 = aie.core(%tile22_2) {
     %lb = arith.constant 0 : index
@@ -904,7 +904,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_22_shim_35: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core23_2 = aie.core(%tile23_2) {
     %lb = arith.constant 0 : index
@@ -926,7 +926,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_23_shim_35: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core24_2 = aie.core(%tile24_2) {
     %lb = arith.constant 0 : index
@@ -948,7 +948,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_24_shim_42: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core25_2 = aie.core(%tile25_2) {
     %lb = arith.constant 0 : index
@@ -970,7 +970,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_25_shim_42: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core26_2 = aie.core(%tile26_2) {
     %lb = arith.constant 0 : index
@@ -992,7 +992,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_26_shim_43: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core27_2 = aie.core(%tile27_2) {
     %lb = arith.constant 0 : index
@@ -1014,7 +1014,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_27_shim_43: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core28_2 = aie.core(%tile28_2) {
     %lb = arith.constant 0 : index
@@ -1036,7 +1036,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_28_shim_46: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core29_2 = aie.core(%tile29_2) {
     %lb = arith.constant 0 : index
@@ -1058,7 +1058,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_29_shim_46: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core30_2 = aie.core(%tile30_2) {
     %lb = arith.constant 0 : index
@@ -1080,7 +1080,7 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_30_shim_47: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
   %core31_2 = aie.core(%tile31_2) {
     %lb = arith.constant 0 : index
@@ -1102,6 +1102,6 @@ module @hdiff_large_0 {
 
   aie.objectfifo.release<Consume>(%buf_in_31_shim_47: !aie.objectfifo<memref<256xi32>>, 4)
   aie.end
- } { link_with="hdiff.o" }
+ }
 
 }

@@ -5,11 +5,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+"""Compilation utilities: MLIR module compilation, kernel linking, and cache management."""
 
 import os
 from pathlib import Path
 
-from .link import merge_object_files
 from .utils import (
     compile_cxx_core_function,
     compile_mlir_module,

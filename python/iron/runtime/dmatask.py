@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
 from ... import ir  # type: ignore
 
@@ -43,7 +44,7 @@ class DMATask(RuntimeTask):
         RuntimeTask.__init__(self, task_group)
 
     def will_wait(self) -> bool:
-        """If this tasks shoudl conclude with an await operation."""
+        """Whether this task should conclude with an await operation."""
         return self._wait
 
     @property

@@ -31,7 +31,7 @@ module @test_chess_05_shim_dma_core_function {
     %lock_b_read = aie.lock(%t73, 6)
     %lock_done = aie.lock(%t73, 7)
 
-    func.func private @func(%A: memref<16xi32>, %B: memref<16xi32>) -> ()
+    func.func private @func(%A: memref<16xi32>, %B: memref<16xi32>) -> () attributes {link_with = "kernel.o"}
 
     %c13 = aie.core(%t73) {
 
@@ -54,7 +54,7 @@ module @test_chess_05_shim_dma_core_function {
       }
 
       aie.end
-    } { link_with="kernel.o" }
+    }
 
     // Tile DMA
     %m73 = aie.mem(%t73) {

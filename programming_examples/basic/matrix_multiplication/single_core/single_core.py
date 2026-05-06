@@ -15,7 +15,6 @@ import aie.utils.trace as trace_utils
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
 
-
 microkernel_mac_dim_map = {
     "npu": {
         "bf16": (4, 8, 4),
@@ -146,11 +145,16 @@ def my_matmul(
 
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"
-            zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
+            zero = external_func(
+                f"zero_{func_type}{dtype_out_str}",
+                inputs=[c_ty],
+                link_with=f"mm_{m}x{k}x{n}.o",
+            )
             matmul_func_name = f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
             matmul = external_func(
                 matmul_func_name,
                 inputs=[a_ty, b_ty, c_ty],
+                link_with=f"mm_{m}x{k}x{n}.o",
             )
 
             # Tile declarations
@@ -236,7 +240,37 @@ def my_matmul(
             # Set up a packet-switched flow from core to shim for tracing information
             tiles_to_trace = [compute_tile2]
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
+                trace_utils.configure_trace(
+                    tiles_to_trace,
+                    coretile_events=[
+                        # captures input A (PORT_RUNNING_0, DMA channel 0, master for inputs)
+                        trace_utils.events.PortEvent(
+                            trace_utils.events.CoreEvent.PORT_RUNNING_0,
+                            trace_utils.events.WireBundle.DMA,
+                            0,
+                            True,
+                        ),
+                        # captures input B (PORT_RUNNING_1, DMA channel 1, master for inputs)
+                        trace_utils.events.PortEvent(
+                            trace_utils.events.CoreEvent.PORT_RUNNING_1,
+                            trace_utils.events.WireBundle.DMA,
+                            1,
+                            True,
+                        ),
+                        # captures output C (PORT_RUNNING_2, DMA channel 0, slave for outputs)
+                        trace_utils.events.PortEvent(
+                            trace_utils.events.CoreEvent.PORT_RUNNING_2,
+                            trace_utils.events.WireBundle.DMA,
+                            0,
+                            False,
+                        ),
+                        trace_utils.events.CoreEvent.INSTR_EVENT_0,
+                        trace_utils.events.CoreEvent.INSTR_EVENT_1,
+                        trace_utils.events.CoreEvent.MEMORY_STALL,
+                        trace_utils.events.CoreEvent.LOCK_STALL,
+                        trace_utils.events.CoreEvent.INSTR_VECTOR,
+                    ],
+                )
 
             # The stack size choice is an important choice!
             # The Peano compiler uses a stack size in this kernel greater than the default one
@@ -244,7 +278,7 @@ def my_matmul(
             # Exceding the stack size leads to wrong results from the kernel, but no error is triggered.
             # Stack usage can be checked as explained here:
             # https://github.com/Xilinx/llvm-aie/issues/487#issuecomment-2969438585
-            @core(compute_tile2, f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
+            @core(compute_tile2, stack_size=0xD00)
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547
@@ -273,36 +307,7 @@ def my_matmul(
             def sequence(A, B, C):
 
                 if enable_tracing:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace=tiles_to_trace,
-                        shim=shim_tile,
-                        trace_size=trace_size,
-                        coretile_events=[
-                            # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
-                            trace_utils.events.PortEvent(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                                port_number=1,
-                                master=True,
-                            ),
-                            # captures input B (PORT_RUNNING_1, at port number 2, master for inputs)
-                            trace_utils.events.PortEvent(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                                port_number=2,
-                                master=True,
-                            ),
-                            # captures output C (PORT_RUNNING_2, at port number 1, slave for outputs)
-                            trace_utils.events.PortEvent(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                                port_number=1,
-                                master=False,
-                            ),
-                            trace_utils.events.CoreEvent.INSTR_EVENT_0,
-                            trace_utils.events.CoreEvent.INSTR_EVENT_1,
-                            trace_utils.events.CoreEvent.MEMORY_STALL,
-                            trace_utils.events.CoreEvent.LOCK_STALL,
-                            trace_utils.events.CoreEvent.INSTR_VECTOR,
-                        ],
-                    )
+                    trace_utils.start_trace(trace_size=trace_size)
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 4

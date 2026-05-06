@@ -34,9 +34,9 @@ module @idct {
   aie.objectfifo.register_external_buffers @of_in (%t70, {%buffer_in}) : (memref<512xi16>)
   aie.objectfifo.register_external_buffers @of_out (%t70, {%buffer_out}) : (memref<512xi16>)
 
-  func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "dequant.o"}
+  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "idct_horizontal.o"}
+  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> () attributes {link_with = "idct_vertical.o"}
   func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = aie.core(%t73) {
@@ -63,7 +63,7 @@ module @idct {
     }
 
     aie.end
-  } { link_with="dequant.o" }
+  }
 
   %c74 = aie.core(%t74) {
     %lb = arith.constant 0 : index
@@ -89,7 +89,7 @@ module @idct {
     }
 
     aie.end
-  } { link_with="idct_horizontal.o" }
+  }
 
   %c75 = aie.core(%t75) {
     %lb = arith.constant 0 : index
@@ -115,5 +115,5 @@ module @idct {
     }
 
     aie.end
-  } { link_with="idct_vertical.o" }
+  }
 }

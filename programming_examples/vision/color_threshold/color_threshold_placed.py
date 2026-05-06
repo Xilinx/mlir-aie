@@ -29,6 +29,7 @@ def color_threshold(dev, width, height):
         thresholdLine = external_func(
             "thresholdLine",
             inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
+            link_with="threshold.cc.o",
         )
 
         # Tile declarations
@@ -103,7 +104,7 @@ def color_threshold(dev, width, height):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "threshold.cc.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 # RTPs written from the instruction stream must be synchronized with the runtime sequence
@@ -129,7 +130,7 @@ def color_threshold(dev, width, height):
                 outOOB_L1L2_0.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 3
-        @core(ComputeTile3, "threshold.cc.o")
+        @core(ComputeTile3)
         def core_body():
             for _ in range_(sys.maxsize):
                 # RTPs written from the instruction stream must be synchronized with the runtime sequence
@@ -155,7 +156,7 @@ def color_threshold(dev, width, height):
                 outOOB_L1L2_1.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 4
-        @core(ComputeTile4, "threshold.cc.o")
+        @core(ComputeTile4)
         def core_body():
             for _ in range_(sys.maxsize):
                 # RTPs written from the instruction stream must be synchronized with the runtime sequence
@@ -181,7 +182,7 @@ def color_threshold(dev, width, height):
                 outOOB_L1L2_2.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 5
-        @core(ComputeTile5, "threshold.cc.o")
+        @core(ComputeTile5)
         def core_body():
             for _ in range_(sys.maxsize):
                 # RTPs written from the instruction stream must be synchronized with the runtime sequence

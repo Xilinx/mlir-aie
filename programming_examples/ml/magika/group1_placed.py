@@ -46,9 +46,10 @@ class group1_x1:
         group1_func = external_func(
             f"group1_{id}_kernel",
             inputs=[din_ty, dout_ty],
+            link_with=_objectArchive,
         )
 
-        @core(self.computeTile, self.objectArchive)
+        @core(self.computeTile)
         def core_body():
             for _ in range_(sys.maxsize):
                 do = self.dout.acquire(ObjectFifoPort.Produce, 1)
@@ -104,14 +105,16 @@ class group1_x2:
         group1a_func = external_func(
             f"group1_{id1}_kernel",
             inputs=[din_ty, dout2_ty],
+            link_with=_objectArchive,
         )
 
         group1b_func = external_func(
             f"group1_{id2}_kernel",
             inputs=[din_ty, dout2_ty, dout_ty],
+            link_with=_objectArchive,
         )
 
-        @core(self.computeTile1, self.objectArchive)
+        @core(self.computeTile1)
         def core_body():
             for _ in range_(sys.maxsize):
                 do = self.of_int.acquire(ObjectFifoPort.Produce, 1)
@@ -120,7 +123,7 @@ class group1_x2:
                 self.din.release(ObjectFifoPort.Consume, 1)
                 self.of_int.release(ObjectFifoPort.Produce, 1)
 
-        @core(self.computeTile2, self.objectArchive)
+        @core(self.computeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 do = self.dout.acquire(ObjectFifoPort.Produce, 1)
@@ -188,19 +191,22 @@ class group1_x3:
         group1a_func = external_func(
             f"group1_{id1}_kernel",
             inputs=[din_ty, dout2_ty],
+            link_with=_objectArchive,
         )
 
         group1b_func = external_func(
             f"group1_{id2}_kernel",
             inputs=[din_ty, dout2_ty, dout2_ty, dout_ty],
+            link_with=_objectArchive,
         )
 
         group1c_func = external_func(
             f"group1_{id3}_kernel",
             inputs=[din_ty, dout2_ty],
+            link_with=_objectArchive,
         )
 
-        @core(self.computeTile1, self.objectArchive)
+        @core(self.computeTile1)
         def core_body():
             for _ in range_(sys.maxsize):
                 do = self.of_int.acquire(ObjectFifoPort.Produce, 1)
@@ -209,7 +215,7 @@ class group1_x3:
                 self.din.release(ObjectFifoPort.Consume, 1)
                 self.of_int.release(ObjectFifoPort.Produce, 1)
 
-        @core(self.computeTile2, self.objectArchive)
+        @core(self.computeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 do = self.dout.acquire(ObjectFifoPort.Produce, 1)
@@ -222,7 +228,7 @@ class group1_x3:
                 self.of_int3.release(ObjectFifoPort.Consume, 1)
                 self.dout.release(ObjectFifoPort.Produce, 1)
 
-        @core(self.computeTile3, self.objectArchive)
+        @core(self.computeTile3)
         def core_body():
             for _ in range_(sys.maxsize):
                 do = self.of_int2.acquire(ObjectFifoPort.Produce, 1)

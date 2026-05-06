@@ -60,6 +60,7 @@ def conv2dk1(dev):
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1.o",
             )
 
             # Tile declarations
@@ -98,7 +99,7 @@ def conv2dk1(dev):
             )
 
             # Compute tile 2
-            @core(ComputeTile2, "conv2dk1.o", stack_size=0xA00)
+            @core(ComputeTile2, stack_size=0xA00)
             def core_body():
                 y_dim = 32
                 x_dim = 32

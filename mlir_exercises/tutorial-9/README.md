@@ -15,14 +15,14 @@ MLIR gives us the ability to leverage different dialects such as [arith](https:/
 
 Specifically, to support external functions, we use the operators `func.func` and `func.call` as follows:
 ```
-func.func private @extern_kernel(%b: memref<256xi32>) -> ()
+func.func private @extern_kernel(%b: memref<256xi32>) -> () attributes {link_with = "kernel.o"}
 
 %core14 = AIE.core(%tile14) {
     func.call @extern_kernel(%buf) : (memref<256xi32>) -> ()
     AIE.end
-} { link_with="kernel.o"}
+}
 ```
-In this MLIR code snippet, we see that we first call `func.func` to declare a private function whose function signature matches that of the AIE C/C++ function. The function name after the @ (e.g. `@external_kernel`) should match the C function name and the number of arguments should match the number of C function arguments.  C++ name mangling is not supported.  Argument types are converted according to the MLIR ['bare pointer' calling convention](https://mlir.llvm.org/docs/TargetLLVMIR/#bare-pointer-calling-convention-for-ranked-memref) (see below). 
+In this MLIR code snippet, we see that we first call `func.func` to declare a private function whose function signature matches that of the AIE C/C++ function. The function name after the @ (e.g. `@external_kernel`) should match the C function name and the number of arguments should match the number of C function arguments.  C++ name mangling is not supported.  Argument types are converted according to the MLIR ['bare pointer' calling convention](https://mlir.llvm.org/docs/TargetLLVMIR/#bare-pointer-calling-convention-for-ranked-memref) (see below).
 
 | MLIR type   | C type      |
 | ----------- | ----------- |
@@ -31,9 +31,9 @@ In this MLIR code snippet, we see that we first call `func.func` to declare a pr
 | Memref      | C pointer   |
 | index       | int64_t     |
 
-Then, within the `AIE.core` operator, we use `func.call` to call the previously defined function from within our core, being sure to pass the appropriate function arguments. In this case, we pass in the the `AIE.buffer` `%buf`. 
+Then, within the `AIE.core` operator, we use `func.call` to call the previously defined function from within our core, being sure to pass the appropriate function arguments. In this case, we pass in the the `AIE.buffer` `%buf`.
 
-The final step is to tell our tools where to look for the object code that the function whose name we defined in `func.func`/ `func.call`. Using the additional operator definition `link_with="kernel.o"`, we point to the file `kernel.o` in the current directory and link it in to create the final kernel object file.
+The final step is to tell our tools where to look for the object code that the function whose name we defined in `func.func`/ `func.call`. Using the `link_with` attribute on the `func.func` declaration (e.g. `attributes {link_with = "kernel.o"}`), we point to the file `kernel.o` in the current directory and link it in to create the final kernel object file.
 > Note that this allows us to call the function multiple times within the `AIE.core` or even separate functions in the same `AIE.core` if they are both defined within the single linked object file.
 
 ## <ins>Kernel object file generation</ins>

@@ -13,6 +13,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+#include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -24,11 +25,16 @@ namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEPlaceTilesPass(const AIEPlaceTilesOptions &options);
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferAddressesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferAddressesPass(
     const AIEAssignBufferAddressesOptions &options);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEAssignCoreLinkFilesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIECanonicalizeDevicePass();
@@ -66,6 +72,7 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIETraceRegPackWritesPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

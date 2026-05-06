@@ -29,7 +29,7 @@ module @hdiff_multi_AIE{
   aie.objectfifo.register_external_buffers @obj_in (%t70, {%ext_buffer_in0}) : (memref<1536xf32>)
   aie.objectfifo.register_external_buffers @obj_out_flux (%t70, {%ext_buffer_out}) : (memref<512xf32>)
 
-  func.func private @hdiff_lap_fp32(%AL: memref<256xf32>,%BL: memref<256xf32>, %CL:  memref<256xf32>, %DL: memref<256xf32>, %EL:  memref<256xf32>,  %OLL1: memref<256xf32>,  %OLL2: memref<256xf32>,  %OLL3: memref<256xf32>,  %OLL4: memref<256xf32>) -> ()
+  func.func private @hdiff_lap_fp32(%AL: memref<256xf32>,%BL: memref<256xf32>, %CL:  memref<256xf32>, %DL: memref<256xf32>, %EL:  memref<256xf32>,  %OLL1: memref<256xf32>,  %OLL2: memref<256xf32>,  %OLL3: memref<256xf32>,  %OLL4: memref<256xf32>) -> () attributes {link_with = "hdiff_lap_fp32.o"}
   
   %c13 = aie.core(%t71) {
     
@@ -60,9 +60,9 @@ module @hdiff_multi_AIE{
     aie.objectfifo.release @obj_in (Consume, 4)
 
     aie.end
-  } { link_with="hdiff_lap_fp32.o" }
+  }
 
-func.func private @hdiff_flux_fp32(%AF: memref<256xf32>,%BF: memref<256xf32>, %CF:  memref<256xf32>,   %OLF1: memref<256xf32>,  %OLF2: memref<256xf32>,  %OLF3: memref<256xf32>,  %OLF4: memref<256xf32>,  %OF: memref<256xf32>) -> ()
+func.func private @hdiff_flux_fp32(%AF: memref<256xf32>,%BF: memref<256xf32>, %CF:  memref<256xf32>,   %OLF1: memref<256xf32>,  %OLF2: memref<256xf32>,  %OLF3: memref<256xf32>,  %OLF4: memref<256xf32>,  %OF: memref<256xf32>) -> () attributes {link_with = "hdiff_flux_fp32.o"}
   
   %c14 = aie.core(%t72) {
     
@@ -95,7 +95,7 @@ func.func private @hdiff_flux_fp32(%AF: memref<256xf32>,%BF: memref<256xf32>, %C
     aie.objectfifo.release @obj_in (Consume, 4)
 
     aie.end
-  } { link_with="hdiff_flux_fp32.o" }
+  }
 
 
 

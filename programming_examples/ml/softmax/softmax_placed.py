@@ -46,7 +46,7 @@ def vector_softmax(dev, trace_size, N):
         # AIE Core Function declarations
 
         softmax_bf16_vector = external_func(
-            "softmax_bf16", inputs=[tile_ty, tile_ty, np.int32]
+            "softmax_bf16", inputs=[tile_ty, tile_ty, np.int32], link_with="kernels.a"
         )
 
         # Tile declarations
@@ -86,15 +86,15 @@ def vector_softmax(dev, trace_size, N):
         object_fifo_link(inA, inA_fifos, [], of_a_offsets)
         object_fifo_link(outC_fifos, outC, of_c_offsets, [])
 
-        # Set up a packet-switched flow from core to shim for tracing information
+        # Set up tracing
         tiles_to_trace = [cores[0]]
         if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_trace(tiles_to_trace)
 
         # Set up compute tiles
         for i in range(n_cores):
             # Compute tile i
-            @core(cores[i], "kernels.a")
+            @core(cores[i])
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles):
@@ -113,13 +113,7 @@ def vector_softmax(dev, trace_size, N):
         def sequence(A, C):
 
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
-                    trace_size=trace_size,
-                    trace_offset=N_in_bytes,
-                    ddr_id=1,
-                )
+                trace_utils.start_trace(trace_size=trace_size)
 
             in_task = shim_dma_single_bd_task(inA, A, sizes=[1, 1, 1, N])
             out_task = shim_dma_single_bd_task(
@@ -130,8 +124,6 @@ def vector_softmax(dev, trace_size, N):
             )
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)
-
-            trace_utils.gen_trace_done_aie2(cores[0])
 
 
 def main():

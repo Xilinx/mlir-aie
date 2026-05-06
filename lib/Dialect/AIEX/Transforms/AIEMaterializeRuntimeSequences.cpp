@@ -506,6 +506,54 @@ struct InlineRuntimeCallsPattern : RewritePattern {
   }
 };
 
+/// Validate all aiex.run ops inside a aiex.configure op against the referenced
+/// device. This must be called sequentially (before any parallel pass
+/// execution) because it performs cross-DeviceOp symbol table lookups.
+/// Placing this validation in RunOp::verify() is unsafe: MLIR's pass manager
+/// may invoke op verifiers concurrently on sibling DeviceOps, causing a data
+/// race on the referenced device's symbol table.
+static LogicalResult verifyRunOpsInConfigureOp(ConfigureOp configureOp,
+                                               AIE::DeviceOp referencedDev) {
+  if (configureOp.getBody().empty())
+    return success();
+  for (RunOp runOp : configureOp.getBody().front().getOps<RunOp>()) {
+    auto seqName = runOp.getRuntimeSequenceSymbol();
+    Operation *maybeSeq = SymbolTable::lookupSymbolIn(referencedDev, seqName);
+    if (!maybeSeq) {
+      auto err = runOp.emitError()
+                 << "No such runtime sequence for device '"
+                 << referencedDev.getSymName() << "': '" << seqName << "'";
+      err.attachNote(referencedDev.getLoc())
+          << "This device does not have a '" << seqName << "' runtime sequence";
+      return failure();
+    }
+    auto runtimeSeq = llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeSeq);
+    if (!runtimeSeq) {
+      return runOp.emitError()
+             << "'" << seqName << "' is not a runtime sequence";
+    }
+
+    // Validate argument count and types against the callee signature.
+    // An empty body region (no blocks) means the sequence takes no arguments.
+    Region &calleeRegion = runtimeSeq.getBody();
+    unsigned numCalleeArgs =
+        calleeRegion.empty() ? 0 : calleeRegion.getNumArguments();
+    ValueRange args = runOp.getArgs();
+    if (numCalleeArgs != args.size())
+      return runOp.emitOpError() << "argument count mismatch: expected "
+                                 << numCalleeArgs << " but got " << args.size();
+    for (unsigned i = 0; i < numCalleeArgs; i++) {
+      Type expected = calleeRegion.front().getArgument(i).getType();
+      Type actual = args[i].getType();
+      if (expected != actual)
+        return runOp.emitOpError()
+               << "argument " << i << " type mismatch: expected " << expected
+               << " but got " << actual;
+    }
+  }
+  return success();
+}
+
 struct AIEMaterializeRuntimeSequencesPass
     : xilinx::AIEX::impl::AIEMaterializeRuntimeSequencesBase<
           AIEMaterializeRuntimeSequencesPass> {
@@ -520,6 +568,24 @@ struct AIEMaterializeRuntimeSequencesPass
            deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
         if (failed(runtimeSequenceOp.verifyBeforeMaterialization())) {
           return signalPassFailure();
+        }
+
+        // Validate aiex.run ops inside aiex.configure ops. This cross-device
+        // check is performed here (sequentially) rather than in RunOp::verify()
+        // to avoid a race condition: MLIR's pass manager runs verifiers on
+        // sibling DeviceOps concurrently, and looking up symbols in a sibling
+        // DeviceOp from a verifier causes a data race on its symbol table.
+        for (ConfigureOp configureOp :
+             runtimeSequenceOp.getOps<ConfigureOp>()) {
+          AIE::DeviceOp referencedDev = configureOp.getReferencedDeviceOp();
+          if (!referencedDev) {
+            // ConfigureOp::verify() already reported the error (no such
+            // device, not a device, or device type mismatch) at parse time;
+            // this is a safety net if verification was disabled.
+            return signalPassFailure();
+          }
+          if (failed(verifyRunOpsInConfigureOp(configureOp, referencedDev)))
+            return signalPassFailure();
         }
       }
 

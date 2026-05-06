@@ -9,7 +9,7 @@
 
 module {
   aie.device(npu1_1col) {
-    func.func private @vector_scalar_mul_vector(memref<1024xi16>, memref<1024xi16>, memref<1xi32>, i32)
+    func.func private @vector_scalar_mul_vector(memref<1024xi16>, memref<1024xi16>, memref<1xi32>, i32) attributes {link_with = "scale.o"}
     %shim_noc_tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     aie.objectfifo @in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1024xi16>> 
@@ -38,7 +38,7 @@ module {
         aie.objectfifo.release @infactor(Consume, 1)
       }
       aie.end
-    } {link_with = "scale.o"}
+    }
     aie.packet_flow(1) {
       aie.packet_source<%tile_0_2, Trace : 0>
       aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>

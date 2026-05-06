@@ -8,9 +8,9 @@
 module {
   aie.device(npu1) {
     // <trace>
-    func.func private @flush_trace()
-    func.func private @event_0()
-    func.func private @event_1()
+    func.func private @flush_trace() attributes {link_with = "mm.o"}
+    func.func private @event_0() attributes {link_with = "mm.o"}
+    func.func private @event_1() attributes {link_with = "mm.o"}
     // </trace>
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
@@ -150,7 +150,7 @@ module {
       func.call @flush_trace() : () -> ()
       // </trace>
       cf.br ^bb1
-    } {link_with = "mm.o"}
+    }
     %mem_1_2 = aie.mem(%tile_1_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -243,7 +243,7 @@ module {
       func.call @flush_trace() : () -> ()
       // </trace>
       cf.br ^bb1
-    } {link_with = "mm.o"}
+    }
     %mem_2_2 = aie.mem(%tile_2_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -336,7 +336,7 @@ module {
       func.call @flush_trace() : () -> ()
       // </trace>
       cf.br ^bb1
-    } {link_with = "mm.o"}
+    }
     %mem_3_2 = aie.mem(%tile_3_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -430,7 +430,7 @@ module {
       func.call @flush_trace() : () -> ()
       // </trace>
       cf.br ^bb1
-    } {link_with = "mm.o"}
+    }
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_0, DMA : 1, %tile_1_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_2, DMA : 0)

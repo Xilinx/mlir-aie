@@ -78,6 +78,7 @@ def conv2dk14(
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk14.o",
             )
 
             # Tile declarations
@@ -154,10 +155,22 @@ def conv2dk14(
             )
             object_fifo_link(of_out_02_L2, of_outOFL2L3)
 
-            # Set up a packet-switched flow from core to shim for tracing information
+            # Set up tracing
             tiles_to_trace = [ComputeTile2]
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+                trace_utils.configure_trace(
+                    tiles_to_trace,
+                    coretile_events=[
+                        CoreEvent.INSTR_EVENT_0,
+                        CoreEvent.INSTR_EVENT_1,
+                        CoreEvent.INSTR_VECTOR,
+                        PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+                        PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 1, True),
+                        PortEvent(CoreEvent.PORT_RUNNING_2, WireBundle.DMA, 0, False),
+                        CoreEvent.MEMORY_STALL,
+                        CoreEvent.LOCK_STALL,
+                    ],
+                )
 
             # Set up compute tiles
 
@@ -169,7 +182,7 @@ def conv2dk14(
             )
 
             # Compute tile 2
-            @core(ComputeTile2, "conv2dk14.o", stack_size=0xC00)
+            @core(ComputeTile2, stack_size=0xC00)
             def core_body():
                 y_dim = height // kernel_size
                 x_blocks = 4
@@ -208,21 +221,7 @@ def conv2dk14(
             def sequence(I, W, O):
 
                 if trace_size > 0:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace=tiles_to_trace,
-                        shim=ShimTile,
-                        trace_size=trace_size,
-                        coretile_events=[
-                            CoreEvent.INSTR_EVENT_0,
-                            CoreEvent.INSTR_EVENT_1,
-                            CoreEvent.INSTR_VECTOR,
-                            PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                            PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
-                            PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
-                            CoreEvent.MEMORY_STALL,
-                            CoreEvent.LOCK_STALL,
-                        ],
-                    )
+                    trace_utils.start_trace(trace_size=trace_size)
 
                 rtp2[0] = 14
 
@@ -250,8 +249,6 @@ def conv2dk14(
 
                 dma_start_task(in_act_task, in_wts_task, out_task)
                 dma_await_task(in_act_task, out_task)
-
-                trace_utils.gen_trace_done_aie2(ShimTile)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

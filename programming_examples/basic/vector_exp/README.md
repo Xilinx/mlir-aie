@@ -46,7 +46,7 @@ env use_placed=1 make
 
 To compile the C++ testbench:
 ```shell
-make text_exp.exe
+make vector_exp.exe
 ```
 
 To run the design:

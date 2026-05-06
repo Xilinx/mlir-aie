@@ -60,9 +60,10 @@ class group0a:
         group0a_func = external_func(
             "group0a_kernel",
             inputs=[din_ty, dout_ty, lut0a_ty, scalar_ty, scalar_ty],
+            link_with=_objectArchive,
         )
 
-        @core(self.computeTile, self.objectArchive, stack_size=4096)
+        @core(self.computeTile, stack_size=4096)
         def core_body():
             for _ in range_(sys.maxsize):
                 di = self.din.acquire(ObjectFifoPort.Consume, 1)
@@ -123,9 +124,10 @@ class group0b:
         group0b_func = external_func(
             "group0b_kernel",
             inputs=[din_ty, dout_ty, lut0b_a_ty, lut0b_b_ty],
+            link_with=_objectArchive,
         )
 
-        @core(self.computeTile, self.objectArchive)
+        @core(self.computeTile)
         def core_body():
             for _ in range_(sys.maxsize):
                 for ite in range_(32):  # 256/8
@@ -218,30 +220,28 @@ def group0_impl(dev, trace_size):
 
         tiles_to_trace = [ComputeTile2, ComputeTile3, ShimTile]
         if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_trace(
+                tiles_to_trace,
+                coretile_events=[
+                    CoreEvent.INSTR_EVENT_0,
+                    CoreEvent.INSTR_EVENT_1,
+                    CoreEvent.INSTR_VECTOR,
+                    PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+                    PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 1, True),
+                    PortEvent(CoreEvent.PORT_RUNNING_2, WireBundle.DMA, 0, False),
+                    # CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+                    # CoreEvent.LOCK_STALL,
+                    CoreEvent.INSTR_STREAM_PUT,
+                    CoreEvent.STREAM_STALL,
+                ],
+            )
 
         # instruction stream generation
         @runtime_sequence(tensorIn_ty, tensorOut_ty, scalar_ty)
         def sequence(A, C, notUsed):
 
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
-                    trace_size=trace_size,
-                    coretile_events=[
-                        CoreEvent.INSTR_EVENT_0,
-                        CoreEvent.INSTR_EVENT_1,
-                        CoreEvent.INSTR_VECTOR,
-                        PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                        PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
-                        PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
-                        # CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-                        # CoreEvent.LOCK_STALL,
-                        CoreEvent.INSTR_STREAM_PUT,
-                        CoreEvent.STREAM_STALL,
-                    ],
-                )
+                trace_utils.start_trace(trace_size=trace_size)
 
             din_task = shim_dma_single_bd_task(
                 of_din_L3L2, A, sizes=[1, 1, 1, din_size]
@@ -257,8 +257,6 @@ def group0_impl(dev, trace_size):
 
             dma_await_task(dout_task)
             # dma_free_task(din_task)
-
-            trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 if len(sys.argv) < 1:

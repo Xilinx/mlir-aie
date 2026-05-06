@@ -39,10 +39,13 @@ def bfp_conversion():
         conversion_func = external_func(
             "bf16_to_bfp_conversion",
             [tile_bf16_ty, tile_bf16_ty, tile_bfp16_ty, tile_bfp16_ty],
+            link_with="kernel.o",
         )
 
         multiplication_func = external_func(
-            "bfp16_matrix_multiplication", [tile_bfp16_ty, tile_bfp16_ty, tile_bfp16_ty]
+            "bfp16_matrix_multiplication",
+            [tile_bfp16_ty, tile_bfp16_ty, tile_bfp16_ty],
+            link_with="kernel.o",
         )
 
         # Tile declarations
@@ -64,7 +67,7 @@ def bfp_conversion():
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "kernel.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 elem_in1 = of_in1.acquire(ObjectFifoPort.Consume, 1)
@@ -80,7 +83,7 @@ def bfp_conversion():
                 of_intermediate2.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 3
-        @core(ComputeTile3, "kernel.o")
+        @core(ComputeTile3)
         def core_body():
             for _ in range_(sys.maxsize):
                 elem_in1 = of_intermediate1.acquire(ObjectFifoPort.Consume, 1)

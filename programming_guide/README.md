@@ -46,7 +46,7 @@ This IRON AIE programming guide first introduces the language bindings for AIE-a
 * Introduce an example of the first simple program (Vector Scalar Multiplication)
 * Illustrate how to run designs on Ryzen™ AI-enabled hardware
 </details>
-<details><summary><a href="./section-4">Section 4 - Peformance Measurement & Vector Programming</a></summary>
+<details><summary><a href="./section-4">Section 4 - Performance Measurement & Vector Programming</a></summary>
 
 * Introduce performance measurement (timers, trace)
 * Discuss topic of vector programming at the kernel level

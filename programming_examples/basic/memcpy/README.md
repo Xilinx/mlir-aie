@@ -1,8 +1,10 @@
---- 
+---
 
 # **Memcpy**
 
-The `memcpy.py` design is a highly parallel, parameterized design that uses shim DMAs in every NPU column. It enables both compute and bypass modes to help you analyze performance charactaristics.
+> **Exercise Design:** The runtime sequence in `memcpy.py` is intentionally left unoptimized — drain operations run serially rather than in parallel, which limits measured bandwidth. Your task is to restructure the runtime sequence using `task_group()` to achieve full concurrency across all columns and channels. See Step 4 below for guidance, and [getting_started/00_memcpy/memcpy.py](../../../getting_started/00_memcpy/memcpy.py) for the reference solution.
+
+The `memcpy.py` design is a highly parallel, parameterized design that uses shim DMAs in every NPU column. It enables both compute and bypass modes to help you analyze performance characteristics.
 
 ---
 

@@ -9,7 +9,7 @@
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe
 
@@ -45,15 +45,19 @@ def two_core_sliding_window():
 
             # AIE Core Function declarations
             passthrough_10_i32 = external_func(
-                "passthrough_10_i32", inputs=[subtensor_ty, subtensor_ty]
+                "passthrough_10_i32",
+                inputs=[subtensor_ty, subtensor_ty],
+                link_with="kernel.o",
             )
             add_10_i32 = external_func(
-                "add_10_i32", inputs=[subtensor_ty, subtensor_ty, subtensor_ty]
+                "add_10_i32",
+                inputs=[subtensor_ty, subtensor_ty, subtensor_ty],
+                link_with="kernel.o",
             )
 
             # Set up compute tiles
 
-            @core(ComputeTile, "kernel.o")
+            @core(ComputeTile)
             def core_body():
                 for _ in range_(10):
                     elemOut = of_in2.acquire(ObjectFifoPort.Produce, 1)
@@ -62,7 +66,7 @@ def two_core_sliding_window():
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_in2.release(ObjectFifoPort.Produce, 1)
 
-            @core(ComputeTile2, "kernel.o")
+            @core(ComputeTile2)
             def core_body():
                 elemOutPre = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elemInPre = of_in2.acquire(ObjectFifoPort.Consume, 1)

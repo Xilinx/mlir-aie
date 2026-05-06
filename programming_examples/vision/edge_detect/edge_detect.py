@@ -8,7 +8,6 @@ import numpy as np
 import sys
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
@@ -42,12 +41,12 @@ def edge_detect(dev, width, height):
     )
     gray2rgba_line_kernel = Kernel(
         "gray2rgbaLine",
-        "combined_gray2rgba_addWeighted.a",
+        "gray2rgba.cc.o",
         [line_ty, line_bytes_ty, np.int32],
     )
     add_weighted_line_kernel = Kernel(
         "addWeightedLine",
-        "combined_gray2rgba_addWeighted.a",
+        "addWeighted.cc.o",
         [
             line_bytes_ty,
             line_bytes_ty,
@@ -258,7 +257,7 @@ def edge_detect(dev, width, height):
         rt.drain(outOF_L2L3.cons(), O, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 try:

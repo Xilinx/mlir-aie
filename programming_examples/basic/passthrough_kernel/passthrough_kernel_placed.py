@@ -36,7 +36,9 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
 
         # AIE Core Function declarations
         passThroughLine = external_func(
-            "passThroughLine", inputs=[line_ty, line_ty, np.int32]
+            "passThroughLine",
+            inputs=[line_ty, line_ty, np.int32],
+            link_with="passThrough.cc.o",
         )
 
         # Tile declarations
@@ -46,7 +48,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [ComputeTile2, ShimTile]
         if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_trace(tiles_to_trace)
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
@@ -55,7 +57,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "passThrough.cc.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 elemOut = of_out.acquire(ObjectFifoPort.Produce, 1)
@@ -67,11 +69,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
-                    trace_size=trace_size,
-                )
+                trace_utils.start_trace(trace_size=trace_size)
 
             in_task = shim_dma_single_bd_task(
                 of_in, inTensor, sizes=[1, 1, 1, N], issue_token=True
@@ -82,8 +80,6 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
 
             dma_start_task(in_task, out_task)
             dma_await_task(in_task, out_task)
-
-            trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 if len(sys.argv) < 4:

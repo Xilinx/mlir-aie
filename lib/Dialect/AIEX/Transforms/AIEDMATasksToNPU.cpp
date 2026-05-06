@@ -359,8 +359,14 @@ struct AIEDMATasksToNPUPass
       }
 
       // d3 (repeat) is excluded; a repeated linear transfer is still linear.
-      bool isLinearTransfer =
-          AIEX::isLinearTransfer(input_sizes, input_strides);
+      // A contiguous row-major ND access on a shim NOC tile is also lowered
+      // using the wide buffer_length register, exempt from the 10-bit ND
+      // wrap-size limit.  Canonicalization zeroes size-1 strides before this
+      // pass runs, so isContiguousTransfer is sufficient.
+      bool treatAsLinear =
+          isLinearTransfer(input_sizes, input_strides) ||
+          (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
+           isContiguousTransfer(input_sizes, input_strides));
 
       if (dims->size() > 2) {
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
@@ -394,14 +400,14 @@ struct AIEDMATasksToNPUPass
 
       if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
                                     tile.getRow(), input_sizes, input_strides,
-                                    sizes, strides, isLinearTransfer))) {
+                                    sizes, strides, treatAsLinear))) {
         return failure();
       }
 
       iteration_size = sizes[3];
       iteration_stride = strides[3];
 
-      if (!isLinearTransfer) {
+      if (!treatAsLinear) {
         // d0_size, d0_stride
         d0size = sizes[0];
         d0stride = strides[0];

@@ -10,6 +10,7 @@ import argparse
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron.controlflow import range_
 
 
@@ -57,10 +58,15 @@ def my_matmul(dev):
 
             # AIE Core Function declarations
             func_type = "vectorized" if vectorized else "scalar"
-            zero = external_func(f"zero_{func_type}_{dtype_out_str}", inputs=[outC_ty])
+            zero = external_func(
+                f"zero_{func_type}_{dtype_out_str}",
+                inputs=[outC_ty],
+                link_with=f"mv_{m}x{k}.o",
+            )
             matvec = external_func(
                 f"matvec_{func_type}_{dtype_in_str}_{dtype_out_str}",
                 inputs=[A_ty, inB_ty, outC_ty],
+                link_with=f"mv_{m}x{k}.o",
             )
 
             # Tile declarations
@@ -122,7 +128,7 @@ def my_matmul(dev):
             # Set up compute tiles
             for i in range(n_cores):
                 # Compute tile i
-                @core(cores[i], f"mv_{m}x{k}.o")
+                @core(cores[i])
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         elem_out = outC_fifos[i].acquire(
@@ -142,32 +148,27 @@ def my_matmul(dev):
 
             # To/from AIE-array data movement
 
+            A_taps = TensorTiler2D.group_tiler(
+                (M, K), (m, k), (M_div_m_div_n_cores, K_div_k), prune_step=False
+            )
+            b_tap = TensorTiler2D.simple_tiler(
+                (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
+            )[0]
+
             @runtime_sequence(
                 np.ndarray[(A_sz,), dtype_in],
                 np.ndarray[(B_sz,), dtype_in],
                 np.ndarray[(C_sz,), dtype_out],
             )
             def sequence(A, B, C):
-                b_task = shim_dma_single_bd_task(
-                    inB_fifo,
-                    B,
-                    sizes=[M_div_m_div_n_cores, 1, 1, K],
-                    strides=[0, 0, 0, 1],
-                )
+                b_task = shim_dma_single_bd_task(inB_fifo, B, tap=b_tap)
 
                 a_tasks = []
                 c_tasks = []
-                for i in range(n_cores):
-                    A_offset = i * M_div_m_div_n_cores * m * K
+                for i, a_tap in enumerate(A_taps):
                     C_offset = i * M_div_m_div_n_cores * m
 
-                    a_task = shim_dma_single_bd_task(
-                        memA_fifos[i],
-                        A,
-                        offset=A_offset,
-                        sizes=[M_div_m_div_n_cores, K_div_k, m, k],
-                        strides=[m_x_K, k, K, 1],
-                    )
+                    a_task = shim_dma_single_bd_task(memA_fifos[i], A, tap=a_tap)
                     a_tasks.append(a_task)
 
                     c_task = shim_dma_single_bd_task(

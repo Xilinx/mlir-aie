@@ -26,7 +26,9 @@ def row_wise_bias_add(dev, M, N, m, n):
         bias_ty = np.ndarray[(n,), np.dtype[np.float32]]
 
         kernel_func = external_func(
-            f"row_wise_bias_add_f32_f32", inputs=[tensor_ty, bias_ty, tensor_ty]
+            f"row_wise_bias_add_f32_f32",
+            inputs=[tensor_ty, bias_ty, tensor_ty],
+            link_with="kernel.o",
         )
 
         shim_tile = tile(0, 0)
@@ -36,7 +38,7 @@ def row_wise_bias_add(dev, M, N, m, n):
         bias_fifo = object_fifo("bias_fifo", shim_tile, compute_tile, 2, bias_ty)
         out_fifo = object_fifo("out_fifo", compute_tile, shim_tile, 2, tensor_ty)
 
-        @core(compute_tile, "kernel.o")
+        @core(compute_tile)
         def core_body():
             for _ in range_(0xFFFFFFFF):
                 for _ in range_(N // n):

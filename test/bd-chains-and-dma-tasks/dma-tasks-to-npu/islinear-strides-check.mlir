@@ -12,13 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-dma-tasks-to-npu --split-input-file %s | FileCheck %s
+// RUN: aie-opt --canonicalize --aie-dma-tasks-to-npu --split-input-file %s | FileCheck %s
 
 // -----
 
-// Test 1: sizes=[1,1,8] with non-zero outer strides -> ND path (d0_size=8).
+// Test 1: sizes=[1,1,8] with non-zero outer strides; canonicalization zeroes
+// size-1 strides so this becomes a contiguous (linear) transfer.
 // CHECK-LABEL: aiex.npu.writebd
-// CHECK-SAME:  d0_size = 8 : i32
+// CHECK-SAME:  d0_size = 0 : i32
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)

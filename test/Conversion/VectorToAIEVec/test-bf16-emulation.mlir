@@ -176,6 +176,31 @@ func.func @test_scalar_unchanged(%a: f32, %b: f32) -> f32 {
 
 // -----
 
+// Test: vector.reduction is NOT demoted (scalar bf16_to_fp unsupported on
+// older Peano; keeping reductions in f32 is safe since vector inputs are
+// already demoted by binary patterns)
+// CHECK-LABEL: func @test_reduction_not_demoted
+// CHECK-NOT: arith.truncf
+// CHECK: vector.reduction <add>, %{{.*}} : vector<16xf32> into f32
+// CHECK-NOT: arith.extf
+func.func @test_reduction_not_demoted(%a: vector<16xf32>) -> f32 {
+  %0 = vector.reduction <add>, %a : vector<16xf32> into f32
+  return %0 : f32
+}
+
+// -----
+
+// Test: vector.multi_reduction is NOT demoted
+// CHECK-LABEL: func @test_multi_reduction_not_demoted
+// CHECK-NOT: arith.truncf {{.*}} : vector<4x16xf32> to vector<4x16xbf16>
+// CHECK: vector.multi_reduction <add>, %{{.*}}, %{{.*}} [1] : vector<4x16xf32> to vector<4xf32>
+func.func @test_multi_reduction_not_demoted(%a: vector<4x16xf32>, %acc: vector<4xf32>) -> vector<4xf32> {
+  %0 = vector.multi_reduction <add>, %a, %acc [1] : vector<4x16xf32> to vector<4xf32>
+  return %0 : vector<4xf32>
+}
+
+// -----
+
 // Test: negf demotion
 // CHECK-LABEL: func @test_negf
 // CHECK: arith.truncf {{.*}} : vector<16xf32> to vector<16xbf16>

@@ -11,15 +11,19 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
+// A non-contiguous strided access with d0 > 1023 must still be rejected.
+// sizes=[1,1,1080,1920], strides=[0,0,1921,1]: stride1=1921 != sizes0=1920,
+// so this is NOT a contiguous row scan and cannot be exempted.
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%in : memref<1920x1080xi32>, %buf : memref<32xi32>, %out : memref<1920x1080xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c1920 = arith.constant 1920 : i64
+      %c1921 = arith.constant 1921 : i64
       %c1080 = arith.constant 1080 : i64
       // expected-error@+1 {{Size 0 exceeds the [0:1023] range}}
-      aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1920,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<1920x1080xi32>
+      aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1921,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<1920x1080xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)

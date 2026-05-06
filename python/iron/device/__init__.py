@@ -1,3 +1,12 @@
+# __init__.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""Device representations for supported AMD Ryzen AI NPU targets."""
+
 from .device import (
     Device,
     NPU1,
@@ -14,4 +23,4 @@ from .device import (
     NPU2Col7,
     XCVC1902,
 )
-from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, PlacementTile, Tile
+from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, Tile

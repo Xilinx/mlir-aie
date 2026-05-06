@@ -10,8 +10,9 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.util import np_ndarray_type_get_shape
+from aie.iron.controlflow import range_
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -147,6 +148,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_i8.o",
             )
             conv2dk3 = external_func(
                 "conv2dk3_ui8",
@@ -165,6 +167,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk3.o",
             )
             conv2dk1_skip_init_i8 = external_func(
                 "conv2dk1_skip_init_i8",
@@ -182,6 +185,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_skip_init.o",
             )
             conv2dk1_ui8 = external_func(
                 "conv2dk1_ui8",
@@ -194,6 +198,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_ui8.o",
             )
 
             conv2dk1_skip_ui8 = external_func(
@@ -210,6 +215,7 @@ def resnet_conv_x():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_skip.o",
             )
 
             ShimTile00 = tile(0, 0)
@@ -579,7 +585,7 @@ def resnet_conv_x():
             # # 1x1 conv2d
             for i in range(n_cols):
 
-                @core(cores[i][0], conv1_kernels[i])
+                @core(cores[i][0])
                 def core_body():
                     for _ in range_(sys.maxsize):
 
@@ -623,7 +629,7 @@ def resnet_conv_x():
             # 3x3 conv2d OFM 0-31
             for i in range(n_cols):
 
-                @core(cores[i][1], "conv2dk3.o")
+                @core(cores[i][1])
                 def core_body():
                     scale = 1
                     for _ in range_(sys.maxsize):
@@ -715,7 +721,7 @@ def resnet_conv_x():
 
             for i in range(n_cols):
 
-                @core(cores[i][3], "conv2dk3.o")
+                @core(cores[i][3])
                 def core_body():
                     scale = 1
                     for _ in range_(sys.maxsize):
@@ -807,7 +813,7 @@ def resnet_conv_x():
             # # 1x1 conv2d and add skip
             for i in range(n_cols):
 
-                @core(cores[i][2], conv3_kernels[i], stack_size=0xA00)
+                @core(cores[i][2], stack_size=0xA00)
                 def core_body():
                     for _ in range_(sys.maxsize):
 
@@ -896,10 +902,13 @@ def resnet_conv_x():
                 rtpComputeTile24[0] = 1
                 rtpComputeTile24[1] = 0
 
+                tap_act_in = TensorTiler2D.simple_tiler(
+                    (tensorInH, tensorInW * tensorInCInit)
+                )[0]
                 act1_0_task = shim_dma_single_bd_task(
                     act1_fifos[0],
                     inputFromL3,
-                    sizes=[1, 1, 1, activationsIn],
+                    tap=tap_act_in,
                 )
 
                 wts_0_task = shim_dma_single_bd_task(
@@ -922,11 +931,11 @@ def resnet_conv_x():
                     sizes=[1, 1, 1, totalWeights_rest],
                 )
 
+                tap_act_out = TensorTiler2D.simple_tiler(
+                    (tensorInH, tensorInW * tensorInCRest)
+                )[0]
                 out_task = shim_dma_single_bd_task(
-                    outOFL2L3,
-                    outputToL3,
-                    sizes=[1, 1, 1, acitivationsOut],
-                    issue_token=True,
+                    outOFL2L3, outputToL3, tap=tap_act_out, issue_token=True
                 )
 
                 dma_start_task(

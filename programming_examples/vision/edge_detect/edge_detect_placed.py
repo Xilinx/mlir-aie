@@ -9,8 +9,9 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.iron.controlflow import range_
 from aie.extras.context import mlir_mod_ctx
+from aie.helpers.taplib import TensorTiler2D
+from aie.iron.controlflow import range_
 
 
 def edge_detect(dev, width, height):
@@ -34,18 +35,24 @@ def edge_detect(dev, width, height):
 
         # AIE Core Function declarations
         rgba2gray_line = external_func(
-            "rgba2grayLine", inputs=[line_bytes_ty, line_ty, np.int32]
+            "rgba2grayLine",
+            inputs=[line_bytes_ty, line_ty, np.int32],
+            link_with="rgba2gray.cc.o",
         )
         filter2d_line = external_func(
             "filter2dLine",
             inputs=[line_ty, line_ty, line_ty, line_ty, np.int32, tensor_3x3_ty],
+            link_with="filter2d.cc.o",
         )
         threshold_line = external_func(
             "thresholdLine",
             inputs=[line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
+            link_with="threshold.cc.o",
         )
         gray2rgba_line = external_func(
-            "gray2rgbaLine", inputs=[line_ty, line_bytes_ty, np.int32]
+            "gray2rgbaLine",
+            inputs=[line_ty, line_bytes_ty, np.int32],
+            link_with="gray2rgba.cc.o",
         )
         add_weighted_line = external_func(
             "addWeightedLine",
@@ -58,6 +65,7 @@ def edge_detect(dev, width, height):
                 np.int16,
                 np.int8,
             ],
+            link_with="addWeighted.cc.o",
         )
 
         # Tile declarations
@@ -136,7 +144,7 @@ def edge_detect(dev, width, height):
         # Set up compute tiles
 
         # Compute tile 2
-        @core(ComputeTile2, "rgba2gray.cc.o")
+        @core(ComputeTile2)
         def core_body():
             for _ in range_(sys.maxsize):
                 elem_in = inOF_L3L2.acquire(ObjectFifoPort.Consume, 1)
@@ -148,7 +156,7 @@ def edge_detect(dev, width, height):
                 OF_2to3.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 3
-        @core(ComputeTile3, "filter2d.cc.o")
+        @core(ComputeTile3)
         def core_body():
             v0 = 0
             v1 = 4096
@@ -207,7 +215,7 @@ def edge_detect(dev, width, height):
                 OF_3to4.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 4
-        @core(ComputeTile4, "threshold.cc.o")
+        @core(ComputeTile4)
         def core_body():
             v_thr = 10
             v_max = 255
@@ -223,7 +231,7 @@ def edge_detect(dev, width, height):
                 OF_4to5.release(ObjectFifoPort.Produce, 1)
 
         # Compute tile 5
-        @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
+        @core(ComputeTile5)
         def core_body():
             for _ in range_(sys.maxsize):
                 elem_in = OF_4to5.acquire(ObjectFifoPort.Consume, 1)
@@ -257,15 +265,12 @@ def edge_detect(dev, width, height):
                 outOF_L1L2.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
+        tap = TensorTiler2D.simple_tiler((height, lineWidthInBytes))[0]
+
         @runtime_sequence(tensor_ty, tensor_16x16_ty, tensor_ty)
         def sequence(I, B, O):
-            in_task = shim_dma_single_bd_task(inOF_L3L2, I, sizes=[1, 1, 1, tensorSize])
-            out_task = shim_dma_single_bd_task(
-                outOF_L2L3,
-                O,
-                sizes=[1, 1, 1, tensorSize],
-                issue_token=True,
-            )
+            in_task = shim_dma_single_bd_task(inOF_L3L2, I, tap=tap)
+            out_task = shim_dma_single_bd_task(outOF_L2L3, O, tap=tap, issue_token=True)
 
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)

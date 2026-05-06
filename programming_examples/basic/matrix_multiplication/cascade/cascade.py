@@ -136,18 +136,25 @@ def my_matmul(
         C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
         # AIE Core Function declarations
-        zero_scalar = external_func(f"zero_scalar_{dtype_out_str}", inputs=[C_l1_ty])
+        zero_scalar = external_func(
+            f"zero_scalar_{dtype_out_str}",
+            inputs=[C_l1_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
+        )
         matmul_scalar_cascade_get_only = external_func(
             f"matmul_scalar_cascade_get_only_{dtype_in_str}_{dtype_out_str}",
             inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
         )
         matmul_scalar_cascade_put_only = external_func(
             f"matmul_scalar_cascade_put_only_{dtype_in_str}_{dtype_out_str}",
             inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
         )
         matmul_scalar_cascade_put_get = external_func(
             f"matmul_scalar_cascade_put_get_{dtype_in_str}_{dtype_out_str}",
             inputs=[A_l1_ty, B_l1_ty, C_l1_ty],
+            link_with=f"mm_{m}x{k}x{n}.o",
         )
 
         # Tile declarations as tile[row][col]
@@ -278,7 +285,7 @@ def my_matmul(
         for row in range(n_aie_rows):
             for col in range(n_aie_cols):
 
-                @core(core_tiles[row][col], f"mm_{m}x{k}x{n}.o")
+                @core(core_tiles[row][col])
                 def core_body():
                     for _ in range_(0xFFFFFFFF):
                         loop = (

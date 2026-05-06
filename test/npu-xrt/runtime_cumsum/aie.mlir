@@ -34,8 +34,8 @@ module {
     aie.device(npu1_1col) {
 
         // AIE Core Function declarations
-        func.func private @sum(memref<16xi32>, memref<16xi32>)
-        func.func private @zero(memref<16xi32>)
+        func.func private @sum(memref<16xi32>, memref<16xi32>) attributes {link_with = "sum.o"}
+        func.func private @zero(memref<16xi32>) attributes {link_with = "sum.o"}
 
         %shim_noc_tile_0_0 = aie.tile(0, 0)
         %mem_tile_0_1 = aie.tile(0, 1)
@@ -87,7 +87,7 @@ module {
                 aie.objectfifo.release @out(Produce, 1)
             }
             aie.end
-        } {link_with = "sum.o"}
+        }
 
         aie.runtime_sequence @sequence(%xy: memref<128xi32>) {
             aiex.npu.rtp_write(@rtp2, 0, 1)

@@ -114,12 +114,12 @@ aie.device(npu1_3col) {
     aie.objectfifo @outOFL2L3(%tile24, {%tile10}, 2 : i32) : !aie.objectfifo<memref<32x1x256xui8>> //32x1x64
 
   // ___________________________Kernel Call___________________________
-    func.func private @conv2dk1_i8(memref<32x1x64xi8>, memref<4096xi8>, memref<32x1x64xui8>,i32,i32,i32,i32) -> ()
-    func.func private @conv2dk3_ui8(memref<32x1x64xui8>,memref<32x1x64xui8>, memref<32x1x64xui8>,  memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> ()
-    func.func private @conv2dk1_skip_init_i8(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<32768xi8>,memref<32x1x256xui8>,memref<32x1x64xi8>,i32,i32,i32,i32,i32,i32,i32) -> ()
+    func.func private @conv2dk1_i8(memref<32x1x64xi8>, memref<4096xi8>, memref<32x1x64xui8>,i32,i32,i32,i32) -> () attributes {link_with = "conv2dk1_i8.o"}
+    func.func private @conv2dk3_ui8(memref<32x1x64xui8>,memref<32x1x64xui8>, memref<32x1x64xui8>,  memref<36864xi8>,memref<32x1x32xui8>,i32,i32,i32,i32,i32,i32,i32,i32) -> () attributes {link_with = "conv2dk3.o"}
+    func.func private @conv2dk1_skip_init_i8(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<32768xi8>,memref<32x1x256xui8>,memref<32x1x64xi8>,i32,i32,i32,i32,i32,i32,i32) -> () attributes {link_with = "conv2dk1_skip_init.o"}
 
-    func.func private @conv2dk1_ui8(memref<32x1x256xui8>, memref<16384xi8>, memref<32x1x64xui8>,i32,i32,i32,i32) -> ()
-    func.func private @conv2dk1_skip_ui8(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<16384xi8>,memref<32x1x256xui8>,memref<32x1x256xui8>,i32,i32,i32,i32,i32) -> ()
+    func.func private @conv2dk1_ui8(memref<32x1x256xui8>, memref<16384xi8>, memref<32x1x64xui8>,i32,i32,i32,i32) -> () attributes {link_with = "conv2dk1_ui8.o"}
+    func.func private @conv2dk1_skip_ui8(memref<32x1x32xui8>,memref<32x1x32xui8>, memref<16384xi8>,memref<32x1x256xui8>,memref<32x1x256xui8>,i32,i32,i32,i32,i32) -> () attributes {link_with = "conv2dk1_skip.o"}
   // ___________________________Bottleneck 1___________________________
     // 1x1 conv
     aie.core(%tile02) {
@@ -156,7 +156,7 @@ aie.device(npu1_3col) {
         aie.objectfifo.release @wts_buf_00(Consume, 1)
       }
       aie.end
-    } { link_with="conv2dk1_i8.o" }
+    }
 
     // 3x3 conv
     aie.core(%tile03) {
@@ -239,7 +239,7 @@ aie.device(npu1_3col) {
       }
         // aie.objectfifo.release<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1)
       aie.end
-    } { link_with="conv2dk3.o" }
+    }
 
     // 3x3 conv
     aie.core(%tile04) {
@@ -321,7 +321,7 @@ aie.device(npu1_3col) {
         }
         aie.end
 
-    } { link_with="conv2dk3.o" }
+    }
 
     // 1x1 conv with skip
     aie.core(%tile05) {
@@ -373,7 +373,7 @@ aie.device(npu1_3col) {
         aie.objectfifo.release @wts_buf_02(Consume, 1)
       }
       aie.end
-    } { link_with="conv2dk1_skip_init.o" }
+    }
   // ___________________________Bottleneck 2___________________________
     // 1x1 conv
     aie.core(%tile15) {
@@ -410,7 +410,7 @@ aie.device(npu1_3col) {
         aie.objectfifo.release @wts_buf_10(Consume, 1)
       }
       aie.end
-    } { link_with="conv2dk1_ui8.o" }
+    }
 
     // 3x3 conv
     aie.core(%tile12) {
@@ -493,7 +493,7 @@ aie.device(npu1_3col) {
       }
         // aie.objectfifo.release<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1)
       aie.end
-    } { link_with="conv2dk3.o" }
+    }
 
     // 3x3 conv
     aie.core(%tile14) {
@@ -575,7 +575,7 @@ aie.device(npu1_3col) {
         }
         aie.end
 
-    } { link_with="conv2dk3.o" }
+    }
 
     // 1x1 conv with skip
     aie.core(%tile13) {
@@ -624,7 +624,7 @@ aie.device(npu1_3col) {
           aie.objectfifo.release @wts_buf_12(Consume, 1)
         }
         aie.end
-      } { link_with="conv2dk1_skip.o" }
+      }
 
 
   // ___________________________Bottleneck 3___________________________
@@ -663,7 +663,7 @@ aie.device(npu1_3col) {
         aie.objectfifo.release @wts_buf_20(Consume, 1)
       }
       aie.end
-    } { link_with="conv2dk1_ui8.o" }
+    }
 
     // 3x3 conv
     aie.core(%tile23) {
@@ -746,7 +746,7 @@ aie.device(npu1_3col) {
       }
         // aie.objectfifo.release<Consume>(%inOF_wts_0_L3L2 : !aie.objectfifo<memref<32x32x3x3xi32>>, 1)
       aie.end
-    } { link_with="conv2dk3.o" }
+    }
 
     // 3x3 conv
     aie.core(%tile25) {
@@ -828,7 +828,7 @@ aie.device(npu1_3col) {
           }
         aie.end
 
-    } { link_with="conv2dk3.o" }
+    }
 
     // 1x1 conv with skip
     aie.core(%tile24) {
@@ -877,7 +877,7 @@ aie.device(npu1_3col) {
         aie.objectfifo.release @wts_buf_22(Consume, 1)
       }
       aie.end
-    } { link_with="conv2dk1_skip.o" }
+    }
 
 
   aie.runtime_sequence(%in0 : memref<16384xi32>, %wts0 : memref<53248xi32>, %out : memref<65536xi32>) {

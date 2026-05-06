@@ -1,10 +1,12 @@
-# globalbuffer.py -*- Python -*-
+# buffer.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""Named memory region accessible by both Workers and the Runtime."""
+
 import numpy as np
 from typing import Sequence
 
@@ -14,17 +16,16 @@ from ..helpers.util import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
-from .device import PlacementTile
+from .device import Tile
 from .resolvable import Resolvable, NotResolvedError
-from .placeable import Placeable
 
 
-class Buffer(Resolvable, Placeable):
+class Buffer(Resolvable):
     """A buffer that is available both to Workers and to the Runtime for operations.
     This is often used for Runtime Parameters.
     """
 
-    """This is used to generate unique names if none is given during construction"""
+    # Used to generate unique names when none is provided during construction.
     __gbuf_index = 0
 
     def __init__(
@@ -32,7 +33,7 @@ class Buffer(Resolvable, Placeable):
         type: type[np.ndarray] | None = None,
         initial_value: np.ndarray | None = None,
         name: str | None = None,
-        placement: PlacementTile | None = None,
+        tile: Tile | None = None,
         use_write_rtp: bool = False,
     ):
         """A Buffer is a memory region declared at the top-level of the design, allowing it to
@@ -42,11 +43,11 @@ class Buffer(Resolvable, Placeable):
             type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.
             initial_value (np.ndarray | None, optional): An initial value to set the buffer to. Should be of same datatype and shape as the buffer. Defaults to None.
             name (str | None, optional): The name of the buffer. If none is given, a unique name will be generated. Defaults to None.
-            placement (PlacementTile | None, optional): A placement location for the buffer. Defaults to None.
+            tile (Tile | None, optional): The tile for the buffer. Automatically set to the Worker's tile when the buffer is passed in the Worker's fn_args list. Defaults to None.
             use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations will be generated. Otherwise, traditional write/read operations will be used. Defaults to False.
 
         Raises:
-            ValueError: Arguments are validated.
+            ValueError: If neither ``type`` nor ``initial_value`` is provided.
         """
         if type is None and initial_value is None:
             raise ValueError("Must provide either type, initial value, or both.")
@@ -59,7 +60,12 @@ class Buffer(Resolvable, Placeable):
         if not self._name:
             self._name = f"buf_{self.__get_index()}"
         self._use_write_rtp = use_write_rtp
-        Placeable.__init__(self, placement)
+        self._tile = tile
+
+    @property
+    def tile(self) -> Tile | None:
+        """The tile this buffer is on."""
+        return self._tile
 
     @classmethod
     def __get_index(cls) -> int:
@@ -70,12 +76,12 @@ class Buffer(Resolvable, Placeable):
     @property
     def shape(self) -> Sequence[int]:
         """The shape of the buffer"""
-        return np_ndarray_type_get_shape(self._obj_type)
+        return np_ndarray_type_get_shape(self._arr_type)
 
     @property
     def dtype(self) -> np.dtype:
         """The per-element datatype of the buffer."""
-        return np_ndarray_type_get_dtype(self._obj_type)
+        return np_ndarray_type_get_dtype(self._arr_type)
 
     @property
     def op(self):
@@ -85,14 +91,14 @@ class Buffer(Resolvable, Placeable):
 
     def __getitem__(self, idx):
         if self._op is None:
-            return AttributeError(
+            raise AttributeError(
                 "Cannot index into Buffer before it has been resolved."
             )
         return self._op[idx]
 
     def __setitem__(self, idx, source):
         if self._op is None:
-            return AttributeError(
+            raise AttributeError(
                 "Cannot index into Buffer before it has been resolved."
             )
         else:

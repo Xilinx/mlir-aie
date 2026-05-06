@@ -9,7 +9,7 @@
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe
 
@@ -41,12 +41,14 @@ def sliding_window():
 
             # AIE Core Function declarations
             add_10_i32 = external_func(
-                "add_10_i32", inputs=[memRef_ty, memRef_ty, memRef_ty]
+                "add_10_i32",
+                inputs=[memRef_ty, memRef_ty, memRef_ty],
+                link_with="kernel.o",
             )
 
             # Set up compute tiles
 
-            @core(ComputeTile, "kernel.o")
+            @core(ComputeTile)
             def core_body():
                 elemOutPre = of_out.acquire(ObjectFifoPort.Produce, 1)
                 elemInPre = of_in.acquire(ObjectFifoPort.Consume, 1)

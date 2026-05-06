@@ -10,8 +10,9 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.controlflow import range_
+from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.util import np_ndarray_type_get_shape
+from aie.iron.controlflow import range_
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -105,6 +106,7 @@ def bottleneck4AIEs():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1.o",
             )
             conv2dk3 = external_func(
                 "conv2dk3_ui8",
@@ -123,6 +125,7 @@ def bottleneck4AIEs():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk3.o",
             )
             conv2dk1_skip = external_func(
                 "conv2dk1_skip_i8",
@@ -138,6 +141,7 @@ def bottleneck4AIEs():
                     np.int32,
                     np.int32,
                 ],
+                link_with="conv2dk1_skip.o",
             )
 
             ShimTile = tile(0, 0)
@@ -242,7 +246,7 @@ def bottleneck4AIEs():
             )
 
             # 1x1 conv2d
-            @core(ComputeTile2, "conv2dk1.o")
+            @core(ComputeTile2)
             def core_body():
                 for _ in range_(sys.maxsize):
                     use_lock(lock2, LockAction.Acquire, value=1)
@@ -270,7 +274,7 @@ def bottleneck4AIEs():
                     of_wts_buf_00.release(ObjectFifoPort.Consume, 1)
 
             # 3x3 conv2d OFM 0-31
-            @core(ComputeTile3, "conv2dk3.o")
+            @core(ComputeTile3)
             def core_body():
                 scale = 11
                 for _ in range_(sys.maxsize):
@@ -353,7 +357,7 @@ def bottleneck4AIEs():
                     wts_buf_01.release(ObjectFifoPort.Consume, 1)
 
             # 3x3 conv2d OFM 32-63
-            @core(ComputeTile5, "conv2dk3.o")
+            @core(ComputeTile5)
             def core_body():
                 scale = 11
                 for _ in range_(sys.maxsize):
@@ -435,7 +439,7 @@ def bottleneck4AIEs():
                     wts_buf_01.release(ObjectFifoPort.Consume, 1)
 
             # # 1x1 conv2d and add skip
-            @core(ComputeTile4, "conv2dk1_skip.o", stack_size=0xA00)
+            @core(ComputeTile4, stack_size=0xA00)
             def core_body():
                 for _ in range_(sys.maxsize):
 
@@ -569,16 +573,22 @@ def bottleneck4AIEs():
                 set_lock(lock2, 1)
                 set_lock(lock4, 1)
 
+                tap_act_in = TensorTiler2D.simple_tiler(
+                    (tensorInH, tensorInW * tensorL1InC)
+                )[0]
                 in_act_task = shim_dma_single_bd_task(
-                    of_inOF_act_L3L2, inputFromL3, sizes=[1, 1, 1, activationsIn]
+                    of_inOF_act_L3L2, inputFromL3, tap=tap_act_in
                 )
                 in_wts_task = shim_dma_single_bd_task(
                     inOF_wts_0_L3L2, weightsFromL3, sizes=[1, 1, 1, totalWeights]
                 )
+                tap_act_out = TensorTiler2D.simple_tiler(
+                    (tensorInH, tensorInW * tensorL3OutC)
+                )[0]
                 out_task = shim_dma_single_bd_task(
                     outOFL2L3,
                     outputToL3,
-                    sizes=[1, 1, 1, acitivationsOut],
+                    tap=tap_act_out,
                     issue_token=True,
                 )
 

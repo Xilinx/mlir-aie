@@ -39,6 +39,7 @@ def design():
             concat_func = external_func(
                 "concat",
                 inputs=[a_ty, b_ty, c_ty, np.int32, np.int32, np.int32],
+                link_with="kernel.o",
             )
 
             # Tile declarations as tile[row][col]
@@ -52,7 +53,7 @@ def design():
             fifo_c = object_fifo("fifo_c", tiles[2][0], tiles[0][0], 2, c_ty)
 
             # Core
-            @core(tiles[2][0], "kernel.o")
+            @core(tiles[2][0])
             def core_body():
                 for _ in range_(0, 0xFFFFFFFF):
                     elem_c = fifo_c.acquire(ObjectFifoPort.Produce, 1)

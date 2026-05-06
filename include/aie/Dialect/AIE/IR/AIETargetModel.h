@@ -406,6 +406,12 @@ public:
   /// Return nullopt if the field does not fit in a 32-bit register.
   std::optional<uint32_t> getFieldMask(const BitFieldInfo &field) const;
 
+  /// Return a mapping from tile coordinates to controller IDs.
+  /// When columnWiseUniqueIDs is true (default), IDs are unique within each
+  /// column. Otherwise they are globally unique across the device.
+  llvm::DenseMap<TileID, int>
+  getTileToControllerIdMap(bool columnWiseUniqueIDs = true) const;
+
   /// Resolve stream switch port specification to port index.
   /// Return Port index for stream switch register, or nullopt if invalid
   std::optional<uint32_t> resolvePortValue(llvm::StringRef value, TileID tile,

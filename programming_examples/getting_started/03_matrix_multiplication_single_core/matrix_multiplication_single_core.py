@@ -11,7 +11,6 @@ import os
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.config import cxx_header_path
@@ -20,9 +19,8 @@ from aie.utils.config import cxx_header_path
 # JIT decorator for IRON
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
-#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit(is_placed=False)
+@iron.jit
 def matrix_multiplication_single_core(input0, input1, output):
     # Problem size
     # - matrix0 shapes: (M, K)
@@ -46,7 +44,9 @@ def matrix_multiplication_single_core(input0, input1, output):
 
     # The following ObjectFIFOs route m*k-, k*n-, and m*n-sized subtiles
     # (objects) to/from the compute cores via mem tiles, rearranging their data
-    # into r*s-, s*t-, and r*t-sized sub-subtiles.
+    # into r*s-, s*t-, and r*t-sized sub-subtiles. The data layout transformations
+    # performed by the mem tile DMAs are explained in detail in
+    # programming_guide/section-2/section-2c/ (Data Layout Transformations).
 
     fifo_A_L3L2 = ObjectFifo(a_ty, name="A_L3L2")
     tap_A_L2L1 = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
@@ -61,6 +61,16 @@ def matrix_multiplication_single_core(input0, input1, output):
     )
 
     fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
+    # tap_C_L1L2 describes the inverse tiling transform that unpacks the C tile
+    # from the kernel's intrinsic layout (r*t sub-tiles) back to row-major order.
+    # TensorAccessPattern arguments (see programming_guide/section-2/section-2c/
+    # for a full explanation of n-dimensional data layout transformations):
+    #   tensor_dims : logical shape of one C tile — (m, n)
+    #   offset      : 0 (start from the beginning of the tile)
+    #   sizes       : [m//r, r, n//t, t] — iterate over (m/r) groups of r rows,
+    #                 each with (n/t) groups of t columns → visits all r*t sub-tiles
+    #   strides     : [r*n, t, r*t, 1] — step sizes matching the sub-tile layout
+    #                 produced by the MMUL kernel intrinsic
     tap_C_L1L2 = TensorAccessPattern(
         tensor_dims=(m, n),
         offset=0,
@@ -113,7 +123,9 @@ def matrix_multiplication_single_core(input0, input1, output):
     # The data movement patterns from DRAM divide the input matrices (sizes
     # M*K, K*N) into m*k- and k*n-sized subtiles and produce output into C in
     # m*n-sized subtiles. Each single "task group" encompasses all data
-    # movement required for a single row of the output matrix.
+    # movement required for a single row of the output matrix. See
+    # programming_guide/section-2/section-2f/ for practical examples of
+    # multi-level (L3→L2→L1) data movement patterns.
 
     a_taps = TensorTiler2D.group_tiler(
         (M, K), (m, k), (1, K // k), pattern_repeat=(N // n)
@@ -144,7 +156,7 @@ def matrix_multiplication_single_core(input0, input1, output):
     # --------------------------------------------------------------------------
 
     my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():
