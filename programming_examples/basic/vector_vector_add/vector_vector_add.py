@@ -12,12 +12,11 @@ import numpy as np
 import aie.iron as iron
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def vector_vector_add(input0, input1, output):
     if input0.shape != input1.shape:
         raise ValueError(
@@ -81,7 +80,7 @@ def vector_vector_add(input0, input1, output):
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def main():

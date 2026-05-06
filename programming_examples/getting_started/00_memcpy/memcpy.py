@@ -13,7 +13,6 @@ import time
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.utils.config import cxx_header_path
 
@@ -27,9 +26,8 @@ from aie.utils.config import cxx_header_path
 # JIT decorator for IRON
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
-#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit(is_placed=False)
+@iron.jit
 def my_memcpy(input0, output):
     # --------------------------------------------------------------------------
     # Configuration
@@ -178,7 +176,7 @@ def my_memcpy(input0, output):
     # --------------------------------------------------------------------------
 
     my_program = Program(device, rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

@@ -67,6 +67,26 @@ module @missing_stop {
 
 // -----
 
+// Test: LogicalTileOp must be resolved before insert-trace-flows
+module @unresolved_logical_tile {
+  aie.device(npu1_1col) {
+    // expected-error@+1 {{LogicalTileOp must be resolved to TileOp before running -aie-insert-trace-flows (run -aie-place-tiles first)}}
+    %tile = aie.logical_tile<CoreTile>(?, ?)
+    aie.trace @core_trace(%tile) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 65536
+      aie.trace.start_config @core_trace
+    }
+  }
+}
+
+// -----
+
 // Test: Trace ops without runtime_sequence
 module @no_runtime_seq {
   // expected-error@+1 {{aie.trace ops found but no runtime_sequence defined}}
@@ -77,6 +97,32 @@ module @no_runtime_seq {
       aie.trace.event<"INSTR_EVENT_0">
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
+    }
+  }
+}
+
+// -----
+
+// Test: Both S2MM channels used, no lateral routing -- error
+module @shim_full_no_lateral {
+  // expected-error@+1 {{no S2MM channels available on shim tile at column 0}}
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    %tile00 = aie.tile(0, 0)
+
+    aie.flow(%tile02, DMA : 0, %tile00, DMA : 0)
+    aie.flow(%tile02, DMA : 1, %tile00, DMA : 1)
+
+    aie.trace @trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 8192
+      aie.trace.start_config @trace
     }
   }
 }

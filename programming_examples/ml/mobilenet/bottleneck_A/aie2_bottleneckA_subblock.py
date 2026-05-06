@@ -11,6 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
+from aie.helpers.taplib import TensorTiler2D
 
 # from aie.dialects.memref import *
 from aie.extras.dialects import *
@@ -662,16 +663,16 @@ def mobilenetV3BottleneckASubblock(
         )
 
         # instruction stream generation
-        activationsInSize32b = (tensorInW * tensorInH * tensorInC) // 4
-        activationsOutSize32b = (tensorOutW * tensorOutH * tensorOutC) // 4
-        totalWeightsSize32b = (
+        activationsInSize = tensorInW * tensorInH * tensorInC
+        activationsOutSize = tensorOutW * tensorOutH * tensorOutC
+        totalWeightsSize = (
             1 * 1 * tensorL1InC * tensorL1OutC
             + 3 * 3 * tensorL2OutC * 1
             + 1 * 1 * tensorL3InC * tensorL3OutC
-        ) // 4
-        activationsInL3_ty = MemRefType.get((activationsInSize32b,), int32_ty)
-        weightsInL3_ty = MemRefType.get((totalWeightsSize32b,), int32_ty)
-        activationsOutL3_ty = MemRefType.get((activationsOutSize32b,), int32_ty)
+        )
+        activationsInL3_ty = MemRefType.get((activationsInSize,), int8_ty)
+        weightsInL3_ty = MemRefType.get((totalWeightsSize,), int8_ty)
+        activationsOutL3_ty = MemRefType.get((activationsOutSize,), int8_ty)
 
         # @FuncOp.from_py_func(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
         @runtime_sequence(activationsInL3_ty, weightsInL3_ty, activationsOutL3_ty)
@@ -685,22 +686,22 @@ def mobilenetV3BottleneckASubblock(
             NpuWriteRTPOp("rtp", index=2, value=scaleFactor3)
             NpuWriteRTPOp("rtp", index=3, value=scaleFactorAdd)
 
+            tap_act_in = TensorTiler2D.simple_tiler((tensorInH, tensorInW * tensorInC))[
+                0
+            ]
             npu_dma_memcpy_nd(
-                metadata="act_in",
-                bd_id=0,
-                mem=inputFromL3,
-                sizes=[1, 1, 1, activationsInSize32b],
+                metadata="act_in", bd_id=0, mem=inputFromL3, tap=tap_act_in
             )
+            tap_act_out = TensorTiler2D.simple_tiler(
+                (tensorOutH, tensorOutW * tensorOutC)
+            )[0]
             npu_dma_memcpy_nd(
-                metadata="act_out",
-                bd_id=2,
-                mem=outputToL3,
-                sizes=[1, 1, 1, activationsOutSize32b],
+                metadata="act_out", bd_id=2, mem=outputToL3, tap=tap_act_out
             )
             npu_dma_memcpy_nd(
                 metadata="wts_OF_L3L1",
                 bd_id=1,
                 mem=weightsFromL3,
-                sizes=[1, 1, 1, totalWeightsSize32b],
+                sizes=[1, 1, 1, totalWeightsSize],
             )
             npu_sync(column=0, row=0, direction=0, channel=0)

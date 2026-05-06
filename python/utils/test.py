@@ -99,10 +99,11 @@ def create_default_argparser():
         help="Output buffer size in bytes",
     )
     p.add_argument(
-        "--trace-after-output",
-        dest="trace_after_output",
-        action="store_true",
-        help="Trace after output",
+        "--ddr-id",
+        dest="ddr_id",
+        type=int,
+        default=4,
+        help="DDR buffer index for trace (0-4, or -1 to append after last tensor)",
     )
     p.add_argument(
         "--enable-ctrl-pkts",
@@ -120,7 +121,7 @@ def create_npu_kernel(opts):
         trace_config = TraceConfig(
             trace_size=trace_size,
             trace_file=getattr(opts, "trace_file", "trace.txt"),
-            trace_after_last_tensor=getattr(opts, "trace_after_output", False),
+            ddr_id=getattr(opts, "ddr_id", 4),
             enable_ctrl_pkts=getattr(opts, "enable_ctrl_pkts", False),
         )
     opts.npu_kernel = NPUKernel(

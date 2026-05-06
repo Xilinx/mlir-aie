@@ -81,43 +81,39 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                 of_factor.release(ObjectFifoPort.Consume, 1)
 
         # Set up a packet-switched flow from core to shim for tracing information
+        # tiles_to_trace contains ComputeTile2 twice: once for core trace, once for mem trace
         tiles_to_trace = [ComputeTile2, ComputeTile2]
         if trace_size > 0:
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_trace(
+                tiles_to_trace,
+                coretile_events=[
+                    CoreEvent.INSTR_EVENT_0,
+                    CoreEvent.INSTR_EVENT_1,
+                    CoreEvent.INSTR_VECTOR,
+                    PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+                    PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 1, True),
+                    PortEvent(CoreEvent.PORT_RUNNING_2, WireBundle.DMA, 0, False),
+                    CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
+                    CoreEvent.LOCK_STALL,
+                ],
+                coremem_events=[
+                    MemEvent.GROUP_MEMORY_CONFLICT,
+                    MemEvent.DMA_MM2S_0_FINISHED_BD,
+                    MemEvent.DMA_S2MM_0_FINISHED_BD,
+                    MemEvent.DMA_S2MM_1_FINISHED_BD,
+                    MemEvent.LOCK_3_REL,
+                    MemEvent.DMA_MM2S_0_STREAM_BACKPRESSURE,
+                    MemEvent.LOCK_SEL0_ACQ_GE,
+                    MemEvent.LOCK_SEL1_ACQ_EQ,
+                ],
+            )
             trace_utils.configure_packet_ctrl_flow([ComputeTile2], CtrlShimTile)
 
-        trace_size_int32 = trace_size // np.dtype(np.int32).itemsize
-
         # To/from AIE-array data movement
-        # @runtime_sequence(tensor_ty, scalar_ty, tensor_ty, ctrl_pkt_ty, trace_ty)
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
-                    trace_size=trace_size_int32,
-                    coretile_events=[
-                        CoreEvent.INSTR_EVENT_0,
-                        CoreEvent.INSTR_EVENT_1,
-                        CoreEvent.INSTR_VECTOR,
-                        PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
-                        PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
-                        PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
-                        CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-                        CoreEvent.LOCK_STALL,
-                    ],
-                    coremem_events=[
-                        MemEvent.GROUP_MEMORY_CONFLICT,
-                        MemEvent.DMA_MM2S_0_FINISHED_BD,
-                        MemEvent.DMA_S2MM_0_FINISHED_BD,
-                        MemEvent.DMA_S2MM_1_FINISHED_BD,
-                        MemEvent.LOCK_3_REL,
-                        MemEvent.DMA_MM2S_0_STREAM_BACKPRESSURE,
-                        MemEvent.LOCK_SEL0_ACQ_GE,
-                        MemEvent.LOCK_SEL1_ACQ_EQ,
-                    ],
-                )
+                trace_utils.start_trace(trace_size=trace_size)
 
             in_task = shim_dma_single_bd_task(
                 of_in, A, sizes=[1, 1, 1, tensor_size], issue_token=True
@@ -136,8 +132,6 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                 trace_utils.config_ctrl_pkts_aie(
                     [ComputeTile2], CtrlShimTile, output_offset=trace_size, num_pkts=2
                 )
-
-                trace_utils.gen_trace_done_aie2(ShimTile)
 
 
 if len(sys.argv) < 5:

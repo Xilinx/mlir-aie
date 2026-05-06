@@ -39,6 +39,11 @@ from .._mlir_libs._aie import (
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
     transaction_binary_to_mlir,
+    tile_like_is_core_tile,
+    tile_like_is_mem_tile,
+    tile_like_is_shim_noc_tile,
+    tile_like_is_shim_pl_tile,
+    tile_like_is_shim_tile,
 )
 from ..extras import types as T
 from ..extras.meta import region_op
@@ -632,7 +637,6 @@ def trace_host_config(
     *,
     arg_idx=4,
     routing=TraceShimRouting.Single,
-    trace_after_last_tensor=False,
     loc=None,
     ip=None,
 ):
@@ -645,7 +649,6 @@ def trace_host_config(
         buffer_size=buffer_size,
         arg_idx=arg_idx,
         routing=routing,
-        trace_after_last_tensor=trace_after_last_tensor,
         loc=loc,
         ip=ip,
     )
@@ -1081,6 +1084,43 @@ class TileOp(TileOp):
 
 def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
     return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+
+
+@_cext.register_operation(_Dialect, replace=True)
+class LogicalTileOp(LogicalTileOp):
+    # TileLike interface methods
+    def is_core_tile(self):
+        """Returns True if this is a core tile."""
+        return tile_like_is_core_tile(self.operation)
+
+    def is_mem_tile(self):
+        """Returns True if this is a mem tile."""
+        return tile_like_is_mem_tile(self.operation)
+
+    def is_shim_noc_tile(self):
+        """Returns True if this is a shim NOC tile."""
+        return tile_like_is_shim_noc_tile(self.operation)
+
+    def is_shim_pl_tile(self):
+        """Returns True if this is a shim PL tile."""
+        return tile_like_is_shim_pl_tile(self.operation)
+
+    def is_shim_tile(self):
+        """Returns True if this is a shim tile (NOC or PL)."""
+        return tile_like_is_shim_tile(self.operation)
+
+
+def logical_tile(
+    tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None
+):
+    return LogicalTileOp(
+        tile_type=tile_type,
+        col=col,
+        row=row,
+        allocation_scheme=allocation_scheme,
+        loc=loc,
+        ip=ip,
+    )
 
 
 # BDChainOp

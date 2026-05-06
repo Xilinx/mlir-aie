@@ -10,7 +10,6 @@ import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
@@ -75,7 +74,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, trace_size):
     my_program = Program(dev, rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 # Parse module arguments

@@ -25,6 +25,8 @@ from .aie2 import (
     MemTileEvent,
 )
 
+from aie.dialects.aie import WireBundle, DMAChannelDir
+
 
 # We use the packet type field in the packet header to help differentiate the tile
 # that the packet came from. Since packet types don't inherently have meaning, we
@@ -85,8 +87,36 @@ class GenericEvent:
 
 
 class BasePortEvent(GenericEvent):
+    """
+    Base class for port monitoring events.
+
+    Port events (PORT_RUNNING_N, PORT_IDLE_N, PORT_STALLED_N, PORT_TLAST_N) monitor
+    activity on stream switch ports. The suffix N (0-7) determines which hardware
+    monitor slot is configured to watch the specified physical port.
+
+    Args:
+        code: The port event (e.g., CoreEvent.PORT_RUNNING_0). The suffix determines
+              which monitor slot (0-7) is configured.
+        port: Port bundle type (WireBundle.DMA, WireBundle.North, etc.)
+        channel: Channel number within the bundle (e.g., 0 for DMA channel 0)
+        master: True for input to tile (S2MM), False for output from tile (MM2S)
+
+    Example:
+        # Monitor DMA channel 0 input with PORT_RUNNING_0
+        PortEvent(CoreEvent.PORT_RUNNING_0, port=WireBundle.DMA, channel=0, master=True)
+
+        # Monitor DMA channel 1 output with PORT_RUNNING_1
+        PortEvent(CoreEvent.PORT_RUNNING_1, port=WireBundle.DMA, channel=1, master=False)
+    """
+
     def __init__(
-        self, code, port_number, master=True, enum_class=None, valid_codes=None
+        self,
+        code,
+        port: WireBundle,
+        channel: int,
+        master: bool = True,
+        enum_class=None,
+        valid_codes=None,
     ):
         # For backwards compatibility, allow integer as event
         if isinstance(code, int) and enum_class:
@@ -94,56 +124,92 @@ class BasePortEvent(GenericEvent):
         if valid_codes:
             assert code in valid_codes
 
-        self.event_number = int(code.name.split("_")[-1])
-        self.port_number = port_number
+        # Extract slot number from event name: PORT_RUNNING_0 -> 0
+        self.slot = int(code.name.split("_")[-1])
+        self.port = port
+        self.channel = channel
         self.master = master
         super().__init__(code)
 
-    def get_register_writes(self):
-        def master(port):
-            return port | (1 << 5)
-
-        def slave(port):
-            return port
-
-        # 0x3FF00: Stream switch event port selection 0
-        # 0x3FF04: Stream switch event port selection 1
-        base_addr = self.get_base_address()
-        address = base_addr if self.event_number < 4 else base_addr + 4
-        value = master(self.port_number) if self.master else slave(self.port_number)
-
-        value = (value & 0xFF) << 8 * (self.event_number % 4)
-
-        ret = {base_addr: 0, base_addr + 4: 0}
-        ret[address] = value
-
-        return ret
-
-    def get_base_address(self):
-        raise NotImplementedError
+    @property
+    def direction(self) -> DMAChannelDir:
+        """Get direction as DMAChannelDir enum."""
+        return DMAChannelDir.S2MM if self.master else DMAChannelDir.MM2S
 
 
 class PortEvent(BasePortEvent):
-    def __init__(self, code, port_number, master=True):
-        super().__init__(code, port_number, master, CoreEvent, PortEventCodes)
+    """
+    Configure a port monitor slot for core tile tracing.
 
-    def get_base_address(self):
-        return 0x3FF00
+    Example:
+        # Monitor DMA channel 0 input with PORT_RUNNING_0
+        PortEvent(CoreEvent.PORT_RUNNING_0, port=WireBundle.DMA, channel=0, master=True)
+    """
+
+    def __init__(
+        self,
+        code,
+        port: WireBundle,
+        channel: int,
+        master: bool = True,
+    ):
+        super().__init__(
+            code,
+            port=port,
+            channel=channel,
+            master=master,
+            enum_class=CoreEvent,
+            valid_codes=PortEventCodes,
+        )
 
 
 class MemTilePortEvent(BasePortEvent):
-    def __init__(self, code, port_number, master=True):
-        super().__init__(code, port_number, master, MemTileEvent, MemTilePortEventCodes)
+    """
+    Configure a port monitor slot for mem tile tracing.
 
-    def get_base_address(self):
-        return 0xB0F00
+    Example:
+        # Monitor DMA channel 0 output with PORT_RUNNING_0
+        MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, port=WireBundle.DMA, channel=0, master=False)
+    """
+
+    def __init__(
+        self,
+        code,
+        port: WireBundle,
+        channel: int,
+        master: bool = True,
+    ):
+        super().__init__(
+            code,
+            port=port,
+            channel=channel,
+            master=master,
+            enum_class=MemTileEvent,
+            valid_codes=MemTilePortEventCodes,
+        )
 
 
 class ShimTilePortEvent(BasePortEvent):
-    def __init__(self, code, port_number, master=True):
-        super().__init__(
-            code, port_number, master, ShimTileEvent, ShimTilePortEventCodes
-        )
+    """
+    Configure a port monitor slot for shim tile tracing.
 
-    def get_base_address(self):
-        return 0x3FF00
+    Example:
+        # Monitor South port channel 2 input with PORT_RUNNING_0
+        ShimTilePortEvent(ShimTileEvent.PORT_RUNNING_0, port=WireBundle.South, channel=2, master=True)
+    """
+
+    def __init__(
+        self,
+        code,
+        port: WireBundle,
+        channel: int,
+        master: bool = True,
+    ):
+        super().__init__(
+            code,
+            port=port,
+            channel=channel,
+            master=master,
+            enum_class=ShimTileEvent,
+            valid_codes=ShimTilePortEventCodes,
+        )

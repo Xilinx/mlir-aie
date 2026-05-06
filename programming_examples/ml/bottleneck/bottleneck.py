@@ -16,7 +16,6 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import AnyMemTile, NPU1Col1, NPU2, Tile
 from aie.iron.controlflow import range_
 
@@ -138,7 +137,7 @@ def bottleneck4AIEs():
     # AIE-array data movement with object fifos
     of_inOF_act_L3L2 = ObjectFifo(tensorLayer1In_ty, name="inOF_act_L3L2")
     of_skip_buf = of_inOF_act_L3L2.cons(4).forward(
-        depth=2, placement=AnyMemTile, name="skip_buf"
+        depth=2, tile=AnyMemTile, name="skip_buf"
     )
 
     # weights
@@ -279,7 +278,7 @@ def bottleneck4AIEs():
     worker = Worker(
         worker_conv2dk3_fn,
         fn_args=[wts_buf_01.cons(), of_act_2_3_5.cons(4), act_3_4.prod(), conv2dk3, 0],
-        placement=Tile(0, 3),
+        tile=Tile(0, 3),
     )
     workers.append(worker)
     worker = Worker(
@@ -291,7 +290,7 @@ def bottleneck4AIEs():
             conv2dk3,
             tensorL2OutC // 2,
         ],
-        placement=Tile(0, 5),
+        tile=Tile(0, 5),
     )
     workers.append(worker)
 
@@ -348,7 +347,7 @@ def bottleneck4AIEs():
             rtp4,
             rtp_barrier,
         ],
-        placement=Tile(0, 4),
+        tile=Tile(0, 4),
         stack_size=0xA00,
     )
     workers.append(worker)
@@ -380,7 +379,7 @@ def bottleneck4AIEs():
         rt.drain(outOFL2L3.cons(), outputToL3, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 module = bottleneck4AIEs()

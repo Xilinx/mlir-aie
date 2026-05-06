@@ -451,6 +451,7 @@ jobs:
           name: ${{ github.ref_name }}
           allowUpdates: true
           replacesArtifacts: true
+          omitBodyDuringUpdate: true
           makeLatest: true
 
       - name: Release latest wheels (RTTI ON)
@@ -463,6 +464,7 @@ jobs:
           name: latest-wheels-3
           allowUpdates: true
           replacesArtifacts: false
+          omitBodyDuringUpdate: true
           makeLatest: false
 
       - name: Release latest wheels (RTTI OFF)
@@ -475,4 +477,5 @@ jobs:
           name: latest-wheels-no-rtti
           allowUpdates: true
           replacesArtifacts: false
+          omitBodyDuringUpdate: true
           makeLatest: false

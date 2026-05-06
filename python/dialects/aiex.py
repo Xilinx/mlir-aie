@@ -68,6 +68,14 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
 
+    Note:
+        Contiguous row-major access patterns are automatically folded to canonical linear form
+        by the compiler's canonicalization pass. For example, a 2D image access
+        ``sizes=[1, 1, height, width], strides=[0, 0, width, 1]`` is equivalent to
+        ``sizes=[1, 1, 1, height*width], strides=[0, 0, 0, 1]`` and will be canonicalized
+        to the latter. This means the natural multidimensional form can always be used
+        without concern for the hardware d0 dimension size limit.
+
     Example:
 
         npu_dma_memcpy_nd(of_in, 0, input_buffer, sizes=[1, 1, 1, 30])

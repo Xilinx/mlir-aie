@@ -204,9 +204,10 @@ class XRTHostRuntime(HostRuntime):
                 raise RuntimeError("No kernels found in xclbin")
             kernel_name = kernels[0].get_name()
         else:
-            if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
+            available_kernels = [k.get_name() for k in xclbin.get_kernels()]
+            if kernel_name not in available_kernels:
                 raise HostRuntimeError(
-                    f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
+                    f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                 )
 
         insts = self.read_insts(insts_path)
@@ -399,7 +400,6 @@ class CachedXRTRuntime(XRTHostRuntime):
         gc.collect()  # Make sure contexts are garbage collected.
 
     def _cleanup_entry(self, entry):
-        context = entry["context"]
         handles = entry["handles"]
 
         # Invalidate all handles
@@ -408,8 +408,15 @@ class CachedXRTRuntime(XRTHostRuntime):
             if handle:
                 handle.invalidate()
 
-        # Explicitly delete context
-        del context
+        # Clear kernel cache so pyxrt.kernel objects are released with the context
+        entry["kernels"].clear()
+
+        # Release the hw_context by removing its strong reference from the entry dict.
+        # Simply assigning a local `context = entry["context"]` and then `del context`
+        # only removes the local name — entry["context"] would keep the object alive for
+        # as long as any caller holds a reference to the entry dict (e.g. tests, or the
+        # exception handler).  Deleting the key guarantees the refcount drops here.
+        del entry["context"]
 
     def _evict(self):
         # Pop the oldest item
@@ -417,8 +424,8 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._cleanup_entry(entry)
 
     def _cleanup_insts_entry(self, entry):
-        insts_bo = entry["insts_bo"]
-        del insts_bo
+        # Delete the key (not a local copy) so the refcount drops here.
+        del entry["insts_bo"]
 
     def _evict_insts(self):
         key, entry = self._insts_cache.popitem(last=False)
@@ -542,6 +549,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 entry = {
                     "context": context,
                     "xclbin": xclbin,
+                    "kernels": {},  # kernel_name -> pyxrt.kernel (strong ref, tied to context)
                     "handles": [],
                     "uuid": xclbin_uuid,
                 }
@@ -554,17 +562,25 @@ class CachedXRTRuntime(XRTHostRuntime):
                     raise RuntimeError("No kernels found in xclbin")
                 kernel_name = kernels[0].get_name()
             else:
-                if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
+                available_kernels = [k.get_name() for k in xclbin.get_kernels()]
+                if kernel_name not in available_kernels:
                     raise HostRuntimeError(
-                        f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
+                        f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                     )
 
             insts = self.read_insts(insts_path)
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
-                kernel = pyxrt.ext.kernel(context, insts, kernel_name)
+                ext_kernel_key = (kernel_name, str(insts_path), insts_mtime)
+                if ext_kernel_key not in entry["kernels"]:
+                    entry["kernels"][ext_kernel_key] = pyxrt.ext.kernel(
+                        context, insts, kernel_name
+                    )
+                kernel = entry["kernels"][ext_kernel_key]
             else:
-                kernel = pyxrt.kernel(context, kernel_name)
+                if kernel_name not in entry["kernels"]:
+                    entry["kernels"][kernel_name] = pyxrt.kernel(context, kernel_name)
+                kernel = entry["kernels"][kernel_name]
 
                 # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
                 # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621

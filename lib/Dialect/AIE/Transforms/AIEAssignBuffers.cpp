@@ -160,9 +160,17 @@ void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
   nextAddrInBanks[buffer.getMemBank().value()] = end_addr;
 }
 
+bool isBufferPreAllocated(BufferOp buffer) {
+  auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
+  auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
+  return (addrAttr != nullptr || memBankAttr != nullptr);
+}
+
 // Function that checks whether the given buffer already has a set address
 // attribute. If it does, it finds in which bank the buffer is and checks
-// whether there is enough space left for it. If there is the function
+// whether there is enough space left for it (and ensure the bank match to
+// the mem_bank attribute if given).
+// If there is the function
 // returns true and if not, the function emits a warning that the address
 // will be overwritten and returns false (which will cause the buffer to be
 // added to the list of buffers without addresses, to be completed later on).
@@ -173,6 +181,8 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
   auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
   if (!addrAttr)
     return false;
+  // it is fine if mem_bank is not set
+  auto memBankAttr = buffer->getAttrOfType<IntegerAttr>("mem_bank");
 
   int addr = addrAttr.getInt();
   for (int i = 0; i < numBanks; i++) {
@@ -186,9 +196,18 @@ checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
 
     // the allocator can accomadate this existing allocation
     nextAddrInBanks[i] = addr + buffer.getAllocationSize();
+    if (memBankAttr) {
+      // specified both mem_bank and address, check if they are consistent
+      int mem_bank = memBankAttr.getInt();
+      if (mem_bank != i)
+        return buffer->emitOpError(
+            "mem_bank attribute is inconsistent with address attribute");
+    }
     buffer.setMemBank(i);
+    return true;
   }
-  return true;
+  return buffer->emitOpError(
+      "address attribute does not fall within any bank range");
 }
 
 // Function that checks whether the given buffer already has a set mem_bank
@@ -404,16 +423,32 @@ bool simpleBankAwareAllocation(TileOp tile) {
   // the above.
   for (auto buffer : allBuffers) {
     if (buffer.getTileOp() == tile) {
+
+      if (!isBufferPreAllocated(buffer)) {
+        buffersToAlloc.push_back(buffer);
+        continue;
+      }
+
+      // Buffer has address and/or mem_bank. Try address first.
       auto has_addr = checkAndAddBufferWithAddress(buffer, numBanks,
                                                    nextAddrInBanks, bankLimits);
+      if (failed(has_addr))
+        return false;
+      if (has_addr.value()) {
+        preAllocatedBuffers.push_back(buffer);
+        continue;
+      }
+      // No address, but has mem_bank.
       auto has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
                                                    nextAddrInBanks, bankLimits);
-      if (failed(has_addr) || failed(has_bank))
+      if (failed(has_bank))
         return false;
-      if (!has_addr.value() && !has_bank.value())
-        buffersToAlloc.push_back(buffer);
-      else
+      if (has_bank.value()) {
         preAllocatedBuffers.push_back(buffer);
+        continue;
+      }
+      // Shouldn't reach here since isBufferPreAllocated was true.
+      return false;
     }
   }
 
