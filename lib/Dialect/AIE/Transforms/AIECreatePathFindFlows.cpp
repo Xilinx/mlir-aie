@@ -297,60 +297,61 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
     int flowID = pktFlowOp.IDInt();
-    Port srcPort, destPort;
-    TileOp srcTile, destTile;
-    TileID srcCoords, destCoords;
+    SmallVector<std::pair<TileID, Port>, 4> sources;
 
-    // Pass 1: extract source (order-independent: dest may appear before source)
+    // Pass 1: collect all sources (order-independent; supports fan-in).
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-        srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
-        srcPort = pktSource.port();
-        srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+        auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        sources.push_back({{srcTile.colIndex(), srcTile.rowIndex()},
+                           pktSource.port()});
       }
     }
-    if (!srcTile)
+    if (sources.empty())
       return pktFlowOp.emitOpError("packet_flow has no packet_source");
-    // Pass 2: process each destination using the source extracted above
+    // Pass 2: lower each (source, destination) pair so fan-in flows lay
+    // down switchbox connections for every source, not just the last one.
     for (Operation &Op : b.getOperations()) {
-      if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
-        destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
-        destPort = pktDest.port();
-        destCoords = {destTile.colIndex(), destTile.rowIndex()};
-        // Assign "keep_pkt_header flag"
-        auto keep = pktFlowOp.getKeepPktHeader();
-        keepPktHeaderAttr[{destTile.getTileID(), destPort}] =
-            keep ? BoolAttr::get(Op.getContext(), *keep) : nullptr;
+      auto pktDest = dyn_cast<PacketDestOp>(Op);
+      if (!pktDest)
+        continue;
+      auto destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+      Port destPort = pktDest.port();
+      TileID destCoords = {destTile.colIndex(), destTile.rowIndex()};
+      // Assign "keep_pkt_header flag"
+      auto keep = pktFlowOp.getKeepPktHeader();
+      keepPktHeaderAttr[{destTile.getTileID(), destPort}] =
+          keep ? BoolAttr::get(Op.getContext(), *keep) : nullptr;
 
+      for (auto &[srcCoords, srcPort] : sources) {
         TileID srcSB = {srcCoords.col, srcCoords.row};
-        if (PathEndPoint srcPoint = {srcSB, srcPort};
-            !analyzer.processedFlows[srcPoint]) {
-          SwitchSettings settings = analyzer.flowSolutions[srcPoint];
-          // add connections for all the Switchboxes in SwitchSettings
-          for (const auto &[curr, setting] : settings) {
-            assert(setting.srcs.size() == setting.dsts.size());
-            TileID currTile = {curr.col, curr.row};
-            for (size_t i = 0; i < setting.srcs.size(); i++) {
-              Port src = setting.srcs[i];
-              Port dest = setting.dsts[i];
-              // reject false broadcast
-              if (!findPathToDest(settings, currTile, dest.bundle, dest.channel,
-                                  destCoords, destPort.bundle,
-                                  destPort.channel))
-                continue;
-              Connect connect = {{src.bundle, src.channel},
-                                 {dest.bundle, dest.channel}};
-              if (std::find(switchboxes[currTile].begin(),
-                            switchboxes[currTile].end(),
-                            std::pair{connect, flowID}) ==
-                  switchboxes[currTile].end())
-                switchboxes[currTile].push_back({connect, flowID});
-              // Assign "control packet flows" flag per switchbox, based on
-              // packet flow op attribute
-              auto ctrlPkt = pktFlowOp.getPriorityRoute();
-              ctrlPktFlows[{{currTile, dest}, flowID}] =
-                  ctrlPkt ? *ctrlPkt : false;
-            }
+        PathEndPoint srcPoint = {srcSB, srcPort};
+        if (analyzer.processedFlows[srcPoint])
+          continue;
+        SwitchSettings settings = analyzer.flowSolutions[srcPoint];
+        // add connections for all the Switchboxes in SwitchSettings
+        for (const auto &[curr, setting] : settings) {
+          assert(setting.srcs.size() == setting.dsts.size());
+          TileID currTile = {curr.col, curr.row};
+          for (size_t i = 0; i < setting.srcs.size(); i++) {
+            Port src = setting.srcs[i];
+            Port dest = setting.dsts[i];
+            // reject false broadcast
+            if (!findPathToDest(settings, currTile, dest.bundle, dest.channel,
+                                destCoords, destPort.bundle, destPort.channel))
+              continue;
+            Connect connect = {{src.bundle, src.channel},
+                               {dest.bundle, dest.channel}};
+            if (std::find(switchboxes[currTile].begin(),
+                          switchboxes[currTile].end(),
+                          std::pair{connect, flowID}) ==
+                switchboxes[currTile].end())
+              switchboxes[currTile].push_back({connect, flowID});
+            // Assign "control packet flows" flag per switchbox, based on
+            // packet flow op attribute
+            auto ctrlPkt = pktFlowOp.getPriorityRoute();
+            ctrlPktFlows[{{currTile, dest}, flowID}] =
+                ctrlPkt ? *ctrlPkt : false;
           }
         }
       }

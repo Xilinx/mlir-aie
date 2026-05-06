@@ -37,41 +37,39 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
-    Port srcPort, dstPort;
-    TileOp srcTile, dstTile;
-    TileID srcCoords, dstCoords;
-    // Pass 1: extract source (order-independent: dest may appear before source)
+    SmallVector<std::pair<TileID, Port>, 4> sources;
+    // Pass 1: collect all sources (order-independent; supports fan-in).
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-        srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
-        srcPort = pktSource.port();
-        srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+        auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        sources.push_back({{srcTile.colIndex(), srcTile.rowIndex()},
+                           pktSource.port()});
       }
     }
-    if (!srcTile)
+    if (sources.empty())
       return pktFlowOp.emitOpError("packet_flow has no packet_source");
 
-    // Pass 2: process each destination using the source extracted above
+    bool priorityFlow = pktFlowOp.getPriorityRoute()
+                            ? *pktFlowOp.getPriorityRoute()
+                            : false;
+    // Pass 2: add a flow from every source to every destination so
+    // fan-in topologies are routed (not just the last source).
     for (Operation &Op : b.getOperations()) {
       if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
-        dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
-        dstPort = pktDest.port();
-        dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
-        LLVM_DEBUG(llvm::dbgs()
-                   << "\tAdding Packet Flow: (" << srcCoords.col << ", "
-                   << srcCoords.row << ")"
-                   << stringifyWireBundle(srcPort.bundle) << srcPort.channel
-                   << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
-                   << stringifyWireBundle(dstPort.bundle) << dstPort.channel
-                   << "\n");
-        // todo: support many-to-one & many-to-many?
-        bool priorityFlow =
-            pktFlowOp.getPriorityRoute()
-                ? *pktFlowOp.getPriorityRoute()
-                : false; // Flows such as control packet flows are routed in
-                         // priority, to ensure routing consistency.
-        pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
-                            /*isPktFlow*/ true, priorityFlow);
+        auto dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+        Port dstPort = pktDest.port();
+        TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+        for (auto &[srcCoords, srcPort] : sources) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "\tAdding Packet Flow: (" << srcCoords.col << ", "
+                     << srcCoords.row << ")"
+                     << stringifyWireBundle(srcPort.bundle) << srcPort.channel
+                     << " -> (" << dstCoords.col << ", " << dstCoords.row
+                     << ")" << stringifyWireBundle(dstPort.bundle)
+                     << dstPort.channel << "\n");
+          pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
+                              /*isPktFlow*/ true, priorityFlow);
+        }
       }
     }
   }
