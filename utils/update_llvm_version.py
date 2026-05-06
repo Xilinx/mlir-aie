@@ -21,6 +21,9 @@ EUDSL_INDEX_URL = "https://llvm.github.io/eudsl/"
 EUDSL_SUBMODULE_URL = (
     "https://api.github.com/repos/llvm/eudsl/contents/third_party/llvm-project?ref={}"
 )
+MLIR_DISTRO_RELEASE_URL = (
+    "https://api.github.com/repos/Xilinx/mlir-aie/releases/tags/mlir-distro"
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CLONE_LLVM_SH = REPO_ROOT / "utils" / "clone-llvm.sh"
@@ -220,11 +223,6 @@ def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
     return best_candidate
 
 
-MLIR_DISTRO_RELEASE_URL = (
-    "https://api.github.com/repos/Xilinx/mlir-aie/releases/tags/mlir-distro"
-)
-
-
 def find_wheel_in_distro(commit_hash):
     """Query the mlir-distro GitHub release for a wheel matching this LLVM commit.
 
@@ -283,27 +281,11 @@ def find_wheel_in_distro(commit_hash):
     return None
 
 
-def update_files(
-    new_commit, commit_date, eudsl_version, wheel_version=None, wheel_datetime=None
-):
-    # Use wheel-derived values when available, fall back to commit date.
-    if wheel_datetime:
-        datetime_str = wheel_datetime
-    else:
-        # Fallback: derive from LLVM commit date (may not match the actual
-        # wheel, since mlirDistro.yml uses CI build time instead).
-        datetime_str = commit_date.strftime("%Y%m%d%H")
-        print(
-            "Warning: Using LLVM commit date as DATETIME fallback. "
-            "This may not match the actual wheel version.",
-            file=sys.stderr,
-        )
-
+def update_files(new_commit, commit_date, eudsl_version, wheel_version, wheel_datetime):
     print(f"Updating to LLVM commit: {new_commit}")
     print(f"Commit Date: {commit_date}")
-    print(f"DATETIME: {datetime_str}")
-    if wheel_version:
-        print(f"WHEEL_VERSION prefix: {wheel_version}")
+    print(f"DATETIME: {wheel_datetime}")
+    print(f"WHEEL_VERSION prefix: {wheel_version}")
     print(f"EUDSL Version: {eudsl_version}")
 
     # Update utils/clone-llvm.sh
@@ -314,14 +296,12 @@ def update_files(
             f"LLVM_PROJECT_COMMIT={new_commit}",
             content,
         )
-        content = re.sub(r"DATETIME=\d+", f"DATETIME={datetime_str}", content)
-        # Update the major.minor.patch prefix in WHEEL_VERSION (e.g. 22.0.0 -> 23.0.0).
-        if wheel_version:
-            content = re.sub(
-                r"(WHEEL_VERSION=)\d+\.\d+\.\d+",
-                rf"\g<1>{wheel_version}",
-                content,
-            )
+        content = re.sub(r"DATETIME=\d+", f"DATETIME={wheel_datetime}", content)
+        content = re.sub(
+            r"(WHEEL_VERSION=)\d+\.\d+\.\d+",
+            rf"\g<1>{wheel_version}",
+            content,
+        )
         CLONE_LLVM_SH.write_text(content)
         print(f"Updated {CLONE_LLVM_SH}")
     else:
@@ -432,27 +412,27 @@ def main():
         print("Target LLVM commit matches current commit. No update needed.")
         return
 
+    # 5. Look up the actual wheel in mlir-distro to get the correct DATETIME
+    # and version. If no wheel exists, fail loudly: the resulting PR could not
+    # build, and the failure surfaces that mlir-distro is broken or behind.
+    wheel_info = find_wheel_in_distro(target_commit)
+    if not wheel_info:
+        print(
+            f"Error: No mlir-distro wheel exists for target commit "
+            f"{target_commit[:8]}. The mlir-distro build pipeline may be "
+            "broken or lagging behind upstream. Aborting to avoid creating "
+            "a PR that cannot pass CI.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    wheel_version, wheel_datetime = wheel_info
+
     # Write reason to GITHUB_OUTPUT if available
     if "GITHUB_OUTPUT" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(f"bump_reason={reason}\n")
 
-    # 5. Look up actual wheel in mlir-distro to get correct DATETIME and version
-    wheel_version = None
-    wheel_datetime = None
-    wheel_info = find_wheel_in_distro(target_commit)
-    if wheel_info:
-        wheel_version, wheel_datetime = wheel_info
-    else:
-        print(
-            "Wheel not found in mlir-distro. DATETIME will be derived from "
-            "commit date (may not match actual wheel) and WHEEL_VERSION "
-            "major.minor.patch will not be updated.",
-            file=sys.stderr,
-        )
-
     # 6. Update files
-    # Use target_commit (from Triton/Torch/User) instead of eudsl's LLVM commit
     update_files(
         target_commit, target_date, new_eudsl_version, wheel_version, wheel_datetime
     )

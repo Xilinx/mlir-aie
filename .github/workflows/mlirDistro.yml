@@ -61,14 +61,32 @@ jobs:
     steps:
       - name: Get llvm-project commit
         id: get_llvm_project_commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          
+
           if [ x"${{ inputs.LLVM_COMMIT }}" == x"" ]; then
             sudo apt install jq
-            LLVM_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/llvm/llvm-project/commits/main | jq -r '.sha')
+            # Authenticated request to avoid the unauthenticated 60/hr per-IP
+            # rate limit, which silently produced LLVM_PROJECT_COMMIT=null and
+            # broke the wheel build for weeks.
+            RESPONSE=$(curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/llvm/llvm-project/commits/main) || {
+              echo "::error::Failed to fetch latest LLVM commit from GitHub API."
+              exit 1
+            }
+            LLVM_PROJECT_COMMIT=$(echo "$RESPONSE" | jq -r '.sha')
           else
             LLVM_PROJECT_COMMIT="${{ inputs.llvm_commit }}"
           fi
+
+          if [ -z "$LLVM_PROJECT_COMMIT" ] || [ "$LLVM_PROJECT_COMMIT" = "null" ]; then
+            echo "::error::LLVM_PROJECT_COMMIT is empty or null; refusing to produce broken wheels."
+            exit 1
+          fi
+
           echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT}"
           echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT:0:8}" | tee -a $GITHUB_OUTPUT
           DATETIME=$(date +"%Y%m%d%H")
