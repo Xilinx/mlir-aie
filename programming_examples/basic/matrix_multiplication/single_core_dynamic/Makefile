@@ -55,7 +55,8 @@ TEST_UTILS_DIR ?= $(if $(MLIR_AIE_INSTALL_DIR),${RUNTIME_LIB_ROOT}/test_lib/incl
 # Generate dynamic MLIR with SSA M/K/N parameters in runtime_sequence
 build/dynsize/aie_gemm_dynamic.mlir: ${srcdir}/single_core_dynamic.py
 	mkdir -p ${@D}
-	python3 $< --dynamic-txn -M ${M} -K ${K} -N ${N} > $@
+	python3 $< --dev ${devicename} -M ${M} -K ${K} -N ${N} -m ${m} -k ${k} -n ${n} \
+	    --dtype_in ${dtype_in} --dtype_out ${dtype_out} > $@
 
 # Build XCLBIN and generate C++ TXN in one unified aiecc invocation.
 # The aiecc SCF→CF lowering explicitly keeps aie.runtime_sequence legal, so
