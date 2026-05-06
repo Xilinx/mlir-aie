@@ -1070,21 +1070,26 @@ public:
     uint32_t ctrlOffset = targetModel.getDmaControlAddress(
         tileCol, tileRow, infoOp.getChannelIndex(), channelDir);
 
-    // Handle controller_id for task-complete-token if issuing token
-    if (issueTokenVal) {
-      if (shimTile->hasAttr("controller_id")) {
-        AIE::PacketInfoAttr controllerIdAttr =
-            shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-        uint32_t data = controllerIdAttr.getPktId() << 8;
-        uint32_t mask = 0x00001F00;
-        NpuMaskWrite32Op::create(rewriter, loc, ctrlOffset, data, mask, nullptr,
-                                 nullptr, nullptr);
-      }
-    }
-
     uint32_t queueOffset = ctrlOffset + 0x4;
 
     if (repeatCountDynamic) {
+      // Dynamic-repeat-count path lowers directly to NpuWrite32Op below,
+      // bypassing PushQueuetoWrite32Pattern. Emit the controller_id
+      // task-complete-token maskwrite inline here. (In the static `else`
+      // branch we create an NpuPushQueueOp; PushQueuetoWrite32Pattern
+      // emits the controller_id maskwrite for that case, so emitting it
+      // here too would duplicate the op.)
+      if (issueTokenVal) {
+        if (shimTile->hasAttr("controller_id")) {
+          AIE::PacketInfoAttr controllerIdAttr =
+              shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+          uint32_t data = controllerIdAttr.getPktId() << 8;
+          uint32_t mask = 0x00001F00;
+          NpuMaskWrite32Op::create(rewriter, loc, ctrlOffset, data, mask,
+                                   nullptr, nullptr, nullptr);
+        }
+      }
+
       // Build queue push command as SSA:
       // cmd = (bd_id & 0xF) | ((repeat_count & 0xFF) << 16) |
       //       (issue_token ? 1<<31 : 0)

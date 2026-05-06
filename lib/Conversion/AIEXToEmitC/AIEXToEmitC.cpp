@@ -31,6 +31,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -396,54 +397,92 @@ private:
       if (auto absAddr = blockWrite.getAbsoluteAddress())
         blockAddr = *absAddr;
 
-      // Scan forward for dynamic NpuWrite32Ops whose addresses target
-      // BD words within this blockwrite's range (blockAddr to
-      // blockAddr + 28), followed by an NpuAddressPatchOp.
+      // Scan forward for dynamic NpuWrite32Ops whose constant addresses
+      // target BD words within this blockwrite's range (blockAddr to
+      // blockAddr + 28), terminated by an NpuAddressPatchOp at
+      // blockAddr + 4.
+      //
+      // Pure (side-effect-free) ops are allowed in between, since the
+      // dma-to-npu lowering interleaves arith.constant / andi / shli /
+      // ori ops between the override write32s to compute their dynamic
+      // values. Any non-pure op or any other AIEX TXN op aborts the
+      // fusion attempt and we fall back to per-op emission.
       auto scanIt = std::next(it);
-
-      // Collect dynamic write32 overrides
       SmallVector<std::pair<uint32_t, AIEX::NpuWrite32Op>> dynWrite32s;
+      AIEX::NpuAddressPatchOp matchedPatch = nullptr;
+
       while (scanIt != e) {
-        auto w32 = dyn_cast<AIEX::NpuWrite32Op>(&*scanIt);
-        if (!w32 || !w32.hasDynamicOperands())
+        Operation *cur = &*scanIt;
+
+        if (auto patch = dyn_cast<AIEX::NpuAddressPatchOp>(cur)) {
+          if (patch.getAddr() == blockAddr + 4)
+            matchedPatch = patch;
           break;
-        auto addrConst =
-            w32.getDynAddress().getDefiningOp<arith::ConstantOp>();
-        auto addrAttr = addrConst
-                            ? dyn_cast<IntegerAttr>(addrConst.getValue())
-                            : nullptr;
-        if (!addrAttr)
+        }
+
+        if (auto w32 = dyn_cast<AIEX::NpuWrite32Op>(cur)) {
+          if (!w32.hasDynamicOperands())
+            break;
+          auto addrConst =
+              w32.getDynAddress().getDefiningOp<arith::ConstantOp>();
+          auto addrAttr = addrConst
+                              ? dyn_cast<IntegerAttr>(addrConst.getValue())
+                              : nullptr;
+          if (!addrAttr)
+            break;
+          uint64_t w32Addr = addrAttr.getValue().getZExtValue();
+          if (w32Addr < blockAddr || w32Addr > blockAddr + 28 ||
+              (w32Addr - blockAddr) % 4 != 0)
+            break;
+          uint32_t wordIdx =
+              static_cast<uint32_t>((w32Addr - blockAddr) / 4);
+          dynWrite32s.push_back({wordIdx, w32});
+          ++scanIt;
+          continue;
+        }
+
+        // Any other AIEX TXN op between blockwrite and its address_patch
+        // means this blockwrite is not part of a BD-with-overrides pattern.
+        if (cur->getDialect() &&
+            cur->getDialect()->getNamespace() == "aiex")
           break;
-        uint64_t w32Addr = addrAttr.getValue().getZExtValue();
-        if (w32Addr < blockAddr || w32Addr > blockAddr + 28 ||
-            (w32Addr - blockAddr) % 4 != 0)
+
+        // Allow only pure helper ops to be skipped; bail on anything else
+        // to preserve side effects.
+        if (!isPure(cur))
           break;
-        uint32_t wordIdx =
-            static_cast<uint32_t>((w32Addr - blockAddr) / 4);
-        dynWrite32s.push_back({wordIdx, w32});
+
         ++scanIt;
       }
 
-      // After dynamic write32s, look for the address patch
-      if (scanIt == e || dynWrite32s.empty()) {
-        if (failed(cloneOp(builder, op, mapping, txnVec)))
-          return failure();
-        continue;
-      }
-
-      auto addrPatch = dyn_cast<AIEX::NpuAddressPatchOp>(&*scanIt);
-      if (!addrPatch || addrPatch.getAddr() != blockAddr + 4) {
+      if (!matchedPatch || dynWrite32s.empty()) {
         if (failed(cloneOp(builder, op, mapping, txnVec)))
           return failure();
         continue;
       }
 
       auto data = blockWrite.getDataWords();
-      if (!data) {
+      if (!data)
         return failure();
+
+      // Pre-clone all source ops between the source blockwrite (exclusive)
+      // and the matched address_patch (exclusive), except for the consumed
+      // override NpuWrite32Ops themselves. This ensures each override's
+      // dyn_value SSA ref is materialized in the new IR before we emit
+      // the consolidated `txn_append_blockwrite` call (which assigns those
+      // values into _bd_data[wordIdx]).
+      llvm::SmallPtrSet<Operation *, 8> consumed;
+      for (auto &[idx, w32] : dynWrite32s)
+        consumed.insert(w32.getOperation());
+
+      for (auto innerIt = std::next(it); innerIt != scanIt; ++innerIt) {
+        Operation *innerOp = &*innerIt;
+        if (consumed.contains(innerOp))
+          continue;
+        if (failed(cloneOp(builder, innerOp, mapping, txnVec)))
+          return failure();
       }
 
-      // Build the list of {word_index, dynamic_value} pairs
       SmallVector<std::pair<uint32_t, Value>> dynamicWords;
       for (auto &[wordIdx, w32] : dynWrite32s) {
         dynamicWords.push_back(
@@ -452,14 +491,14 @@ private:
 
       emitTxnBlockWriteDynamicWords(builder, blockWrite.getLoc(), txnVec,
                                     blockAddr, data, dynamicWords);
-      Value dynPlus = addrPatch.getDynArgPlus();
+      Value dynPlus = matchedPatch.getDynArgPlus();
       if (dynPlus)
         dynPlus = mapping.lookupOrDefault(dynPlus);
-      emitTxnAddressPatch(builder, addrPatch.getLoc(), txnVec,
-                          addrPatch.getAddr(), addrPatch.getArgIdx(),
-                          addrPatch.getArgPlus(), dynPlus);
+      emitTxnAddressPatch(builder, matchedPatch.getLoc(), txnVec,
+                          matchedPatch.getAddr(), matchedPatch.getArgIdx(),
+                          matchedPatch.getArgPlus(), dynPlus);
 
-      // All dynamic write32s and the addrPatch are consumed by the fusion.
+      // All overrides + intervening arith ops + addrPatch are consumed.
       // Set it = scanIt so the loop's ++it advances past the addrPatch.
       it = scanIt;
     }
