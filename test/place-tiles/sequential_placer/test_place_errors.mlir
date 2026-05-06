@@ -248,6 +248,11 @@ module @cascade_hybrid_unsatisfiable {
     aie.cascade_flow(%src, %dst)
     aie.core(%src) { aie.end }
     aie.core(%dst) { aie.end }
+  }                                                                                                                                                                                                                                                                         
+}                                                                                                                                                                                                                                                                           
+                                                                                                                                                                                          
+// -----                                                                                                                                                                                                                                                                    
+  
 // Flow-derived MM2S demand exceeds shim capacity.
 module @flow_shim_output_exceeds_capacity {
   aie.device(npu1) {
