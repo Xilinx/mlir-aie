@@ -23,7 +23,9 @@ from .._mlir_libs._aie import *
 from ..helpers.util import v8bfp16ebs8, v16bfp16ebs16
 from ..ir import (
     DictAttr,
+    IndexType,
     IntegerAttr,
+    IntegerType,
     UnitAttr,
     Type,
     Value,
@@ -31,6 +33,7 @@ from ..ir import (
     Attribute,
     AttrBuilder,
 )
+from . import arith as _arith
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
@@ -53,6 +56,35 @@ def dma_wait(*args: ObjectFifoCreateOp | str):
         if isinstance(dma_meta, ObjectFifoCreateOp):
             str_name = dma_meta.sym_name.value
         npu_dma_wait(str_name)
+
+
+def _cast_to_i32(v):
+    """Coerce an SSA Value to i32 for NPU DMA descriptor operands.
+
+    The npu.dma_memcpy_nd op declares offsets/sizes/strides as Variadic<I32>
+    because that matches the underlying NPU descriptor register width.
+    Front-end arithmetic, however, may naturally produce `index` (from
+    scf.for induction vars), `i64` (from wider derivations), or any other
+    signless-integer width. This helper inserts the canonical conversion at
+    the call site so that callers can pass in whatever SSA value falls out
+    of their computation without manual casts.
+    """
+    if not isinstance(v, Value):
+        return v
+    i32 = IntegerType.get_signless(32)
+    vt = v.type
+    if vt == i32:
+        return v
+    if isinstance(vt, IndexType):
+        return _arith.index_cast(i32, v)
+    if isinstance(vt, IntegerType):
+        if vt.width > 32:
+            return _arith.trunci(i32, v)
+        return _arith.extui(i32, v)
+    raise TypeError(
+        f"npu_dma_memcpy_nd offsets/sizes/strides must be index or signless "
+        f"integer, got {vt}"
+    )
 
 
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
@@ -123,6 +155,14 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
             strides
         )
+        # The op operands $offsets/$sizes/$strides are Variadic<I32> (matching
+        # the NPU descriptor register width). Whatever the user's SSA
+        # arithmetic produced (index from scf.for, i64 from a wider compute,
+        # iN from a custom path), normalise it to i32 here so callers do not
+        # have to insert arith.index_cast / trunci / extui themselves.
+        dynamic_offsets = [_cast_to_i32(v) for v in dynamic_offsets]
+        dynamic_sizes = [_cast_to_i32(v) for v in dynamic_sizes]
+        dynamic_strides = [_cast_to_i32(v) for v in dynamic_strides]
         if isinstance(metadata, ObjectFifoCreateOp):
             metadata = metadata.sym_name.value
         super().__init__(

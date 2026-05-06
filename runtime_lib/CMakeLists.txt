@@ -133,6 +133,20 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       TEST_BEFORE_INSTALL true
       TEST_EXCLUDE_FROM_MAIN true
     )
+  else()
+    # Even when the full test_lib ExternalProject is disabled (e.g. wheels
+    # build without VITIS or LibXAIE), the header-only payload that the
+    # programming examples rely on (cxxopts.hpp, test_utils.h,
+    # xrt_test_wrapper.h) must still be installed so host-side test
+    # executables can compile against the install tree.
+    if (NOT WIN32 OR ${target} STREQUAL "x86_64")
+      install(FILES
+          test_lib/cxxopts.hpp
+          test_lib/test_utils.h
+          test_lib/xrt_test_wrapper.h
+          DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${target}/test_lib/include
+      )
+    endif()
   endif()
 endforeach()
 

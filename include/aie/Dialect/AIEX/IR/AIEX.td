@@ -666,9 +666,13 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let arguments = (
     ins AnyRankedOrUnrankedMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
-        Variadic<I64>:$offsets,
-        Variadic<I64>:$sizes,
-        Variadic<I64>:$strides,
+        // i32 matches the NPU descriptor register field width. Front-end
+        // helpers (e.g. the Python npu_dma_memcpy_nd wrapper) are responsible
+        // for casting wider/narrower integers and `index` values to i32 at
+        // the boundary so that the IR remains uniform.
+        Variadic<I32>:$offsets,
+        Variadic<I32>:$sizes,
+        Variadic<I32>:$strides,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,

@@ -22,6 +22,7 @@
 #include "mlir/Conversion/ArithToEmitC/ArithToEmitC.h"
 #include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -271,6 +272,11 @@ struct ConvertAIEXToEmitCPass
     populateEmitCSizeTTypeConversions(typeConverter);
 
     RewritePatternSet patterns(ctx);
+    // Expand arith.ceildivsi / arith.floordivsi into basic arith ops
+    // (cmpi/select/divsi) that the upstream ArithToEmitC patterns know how
+    // to lower. The Python front-end naturally produces these ops from
+    // expressions like `M // m` on SSA i32 runtime-sequence arguments.
+    arith::populateCeilFloorDivExpandOpsPatterns(patterns);
     populateArithToEmitCPatterns(typeConverter, patterns);
     populateSCFToEmitCConversionPatterns(patterns, typeConverter);
 
