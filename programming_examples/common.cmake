@@ -8,6 +8,21 @@
 # This file provides common setup for test_utils library linking
 
 # -----------------------------------------------------------------------------
+# Guard: project() must be called before this file is included, because
+# find_package(XRT) below loads xrt-targets.cmake which calls
+# add_library(... SHARED IMPORTED). Without a prior project() call, CMake
+# has not initialised platform shared-library support and the call either
+# fails ("does not support dynamic linking") or silently downgrades to
+# STATIC. See Xilinx/mlir-aie#3048.
+# -----------------------------------------------------------------------------
+if(NOT PROJECT_NAME)
+  message(FATAL_ERROR
+    "common.cmake must be included after project(). "
+    "Call mlir_aie_init_example() (or your own project() call) first. "
+    "See https://github.com/Xilinx/mlir-aie/issues/3048")
+endif()
+
+# -----------------------------------------------------------------------------
 # Resolve MLIR-AIE root directory
 # -----------------------------------------------------------------------------
 # In WSL, CMake runs on Windows via `powershell.exe cmake`. Therefore, we must
