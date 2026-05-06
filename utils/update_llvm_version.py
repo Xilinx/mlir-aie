@@ -332,6 +332,15 @@ def main():
     parser.add_argument(
         "--llvm-hash", help="Specific LLVM hash to use (overrides auto-detection)."
     )
+    parser.add_argument(
+        "--identify-only",
+        action="store_true",
+        help=(
+            "Identify target commit and check wheel availability without "
+            "modifying files. Writes target_commit, wheel_exists, and "
+            "bump_reason to $GITHUB_OUTPUT. Always exits 0."
+        ),
+    )
     args = parser.parse_args()
 
     check_token()
@@ -394,6 +403,23 @@ def main():
 
         reason = f"Bump to match {source} LLVM {target_commit[:8]} ({target_date})"
         print(f"Found update! {reason}")
+
+    if args.identify_only:
+        # Skip eudsl + file updates; just report target and wheel availability
+        # so the caller can dispatch mlirDistro and re-invoke without --identify-only.
+        wheel_exists = "false"
+        if target_commit == current_commit:
+            print("Target matches current commit; nothing to do.")
+            target_out = ""
+        else:
+            target_out = target_commit
+            wheel_exists = "true" if find_wheel_in_distro(target_commit) else "false"
+        if "GITHUB_OUTPUT" in os.environ:
+            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                f.write(f"target_commit={target_out}\n")
+                f.write(f"wheel_exists={wheel_exists}\n")
+                f.write(f"bump_reason={reason}\n")
+        return
 
     # 4. Find closest eudsl version
     result = find_closest_eudsl_version(target_commit, target_date)

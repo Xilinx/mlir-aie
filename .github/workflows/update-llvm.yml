@@ -17,10 +17,13 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   update-llvm:
     runs-on: ubuntu-latest
+    # Cap total runtime: mlirDistro can take ~1h, leave headroom for the rest.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -29,14 +32,59 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Run update script
-        id: update
+      - name: Identify target LLVM commit
+        id: identify
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "${{ inputs.llvm_hash }}" ]; then
-            python3 utils/update_llvm_version.py --llvm-hash "${{ inputs.llvm_hash }}"
+            python3 utils/update_llvm_version.py --identify-only --llvm-hash "${{ inputs.llvm_hash }}"
           else
-            python3 utils/update_llvm_version.py
+            python3 utils/update_llvm_version.py --identify-only
           fi
+
+      - name: Trigger mlirDistro and wait for wheel
+        if: steps.identify.outputs.target_commit != '' && steps.identify.outputs.wheel_exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET="${{ steps.identify.outputs.target_commit }}"
+          echo "No mlir-distro wheel for $TARGET; dispatching mlirDistro to build one."
+          # Capture timestamp before dispatch so we can disambiguate our run.
+          DISPATCH_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run mlirDistro.yml -f LLVM_COMMIT="$TARGET"
+
+          # Find the run we just dispatched. Filter by event + ref + createdAt
+          # to avoid grabbing an unrelated workflow_dispatch.
+          RUN_ID=""
+          for i in $(seq 1 12); do
+            sleep 5
+            RUN_ID=$(gh run list \
+              --workflow mlirDistro.yml \
+              --event workflow_dispatch \
+              --branch main \
+              --limit 5 \
+              --created ">=$DISPATCH_TS" \
+              --json databaseId,createdAt \
+              --jq 'sort_by(.createdAt) | .[0].databaseId // empty')
+            if [ -n "$RUN_ID" ]; then break; fi
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not locate dispatched mlirDistro run."
+            exit 1
+          fi
+
+          echo "Watching mlirDistro run $RUN_ID..."
+          gh run watch "$RUN_ID" --exit-status --interval 60
+
+      - name: Apply update
+        id: update
+        if: steps.identify.outputs.target_commit != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 utils/update_llvm_version.py --llvm-hash "${{ steps.identify.outputs.target_commit }}"
 
       - name: Check for changes
         id: check_changes
