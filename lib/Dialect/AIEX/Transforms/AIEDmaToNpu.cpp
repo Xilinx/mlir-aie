@@ -824,30 +824,165 @@ public:
     uint32_t bdId = op.getId();
     uint64_t bdAddr = targetModel.getDmaBdAddress(tileCol, tileRow, bdId);
 
-    // --- Compute BD word values for all 8 words ---
-    // Instead of blockwrite (which requires creating a memref::GlobalOp
-    // that's incompatible with ConversionPatternRewriter), emit each BD
-    // word via npu_write32. Static words use constant values; dynamic words
-    // are computed using arith ops.
-
-    // word[2] = packet control (always static)
-    uint32_t pktCtrl = 0;
-    if (auto packetInfo = op.getPacket()) {
-      pktCtrl |= (1u & 0x1) << 30;
-      pktCtrl |= (packetInfo->getPktType() & 0x7) << 16;
-      pktCtrl |= (packetInfo->getPktId() & 0x1f) << 19;
-    }
+    // --- Emit NpuWriteBdOp with placeholder values for dynamic fields,
+    //     then selective NpuWrite32Op overrides for dynamic BD words ---
+    // This produces the same blockwrite TXN format as the static path,
+    // with dynamic words patched via write32 overrides that the EmitC
+    // fusion can fold back into the blockwrite.
 
     uint32_t burstEnc =
         getShimBurstLengthEncoding(targetModel, op.getBurstLength());
 
-    // Helper to emit write32 for a BD word. The BD address is known at
-    // compile time so we use a static address + dynamic value.
-    auto emitBdWord = [&](uint32_t wordIdx, Value wordValue) {
+    // Helper: check if an OpFoldResult is a compile-time constant
+    auto isConst = [](OpFoldResult ofr) {
+      return getConstantIntValue(ofr).has_value();
+    };
+    // Helper: get constant value or 0 as placeholder
+    auto getConstOr0 = [](OpFoldResult ofr) -> int64_t {
+      if (auto v = getConstantIntValue(ofr))
+        return *v;
+      return 0;
+    };
+
+    // Determine which input sizes/strides are dynamic
+    bool d0SizeDyn = !isConst(mixedSizesRev[0]);
+    bool d1SizeDyn = !isConst(mixedSizesRev[1]);
+    bool d2SizeDyn = !isConst(mixedSizesRev[2]);
+    bool d3SizeDyn = !isConst(mixedSizesRev[3]);
+    bool d0StrideDyn = !isConst(mixedStridesRev[0]);
+    bool d1StrideDyn = !isConst(mixedStridesRev[1]);
+    bool d2StrideDyn = !isConst(mixedStridesRev[2]);
+    bool d3StrideDyn = !isConst(mixedStridesRev[3]);
+
+    // Compute static placeholder values for NpuWriteBdOp attributes.
+    // For constant fields, use the actual hardware value; for dynamic
+    // fields, use 0 as placeholder (will be overridden by write32).
+
+    // Compute static hardware values for constant fields (replicating
+    // getHardwareStridesWraps logic for constants only).
+    auto computeStaticHwD0Size = [&]() -> int64_t {
+      if (d0SizeDyn)
+        return 0;
+      int64_t s = getConstOr0(mixedSizesRev[0]);
+      return s * static_cast<int64_t>(elemWidth) /
+             static_cast<int64_t>(addrGran);
+    };
+    auto computeStaticHwD0Stride = [&]() -> int64_t {
+      if (d0StrideDyn)
+        return 0;
+      if (elemWidth < addrGran || elemWidth > addrGran)
+        return 0;
+      return getConstOr0(mixedStridesRev[0]) - 1;
+    };
+    auto computeStaticHwD1Size = [&]() -> int64_t {
+      return d1SizeDyn ? 0 : getConstOr0(mixedSizesRev[1]);
+    };
+    auto computeStaticHwD1Stride = [&]() -> int64_t {
+      if (d1StrideDyn || d1SizeDyn)
+        return 0;
+      int64_t s = getConstOr0(mixedStridesRev[1]);
+      int64_t sz = getConstOr0(mixedSizesRev[1]);
+      if (sz <= 1)
+        return 0;
+      int64_t scaled = s * static_cast<int64_t>(elemWidth) /
+                       static_cast<int64_t>(addrGran);
+      return scaled - 1;
+    };
+    auto computeStaticHwD2Stride = [&]() -> int64_t {
+      if (d2StrideDyn || d2SizeDyn)
+        return 0;
+      int64_t s = getConstOr0(mixedStridesRev[2]);
+      int64_t sz = getConstOr0(mixedSizesRev[2]);
+      if (sz <= 1)
+        return 0;
+      int64_t scaled = s * static_cast<int64_t>(elemWidth) /
+                       static_cast<int64_t>(addrGran);
+      return scaled - 1;
+    };
+    auto computeStaticIterSize = [&]() -> int64_t {
+      if (d3SizeDyn)
+        return 0;
+      int64_t s3 = getConstOr0(mixedSizesRev[3]);
+      if (s3 <= 1)
+        return 0;
+      if (!d3StrideDyn && getConstOr0(mixedStridesRev[3]) <= 0)
+        return 0;
+      return s3 - 1;
+    };
+    auto computeStaticIterStride = [&]() -> int64_t {
+      if (d3StrideDyn || d3SizeDyn)
+        return 0;
+      int64_t s3 = getConstOr0(mixedSizesRev[3]);
+      int64_t st3 = getConstOr0(mixedStridesRev[3]);
+      if (s3 <= 1 || st3 <= 0)
+        return 0;
+      int64_t scaled = st3 * static_cast<int64_t>(elemWidth) /
+                       static_cast<int64_t>(addrGran);
+      return scaled - 1;
+    };
+
+    // Compute static buffer_length for constant fields
+    int64_t staticBufLen = 0;
+    if (!d0SizeDyn && !d1SizeDyn && !d2SizeDyn) {
+      staticBufLen = computeStaticHwD0Size() * getConstOr0(mixedSizesRev[1]) *
+                     getConstOr0(mixedSizesRev[2]);
+    }
+
+    // Build NpuWriteBdOp attrs
+    auto column = IntegerAttr::get(i32ty, tileCol);
+    auto bd_id = IntegerAttr::get(i32ty, bdId);
+    auto buffer_length = IntegerAttr::get(i32ty, staticBufLen);
+    auto buffer_offset = IntegerAttr::get(i32ty, 0);
+    auto enable_packet = zero;
+    auto out_of_order_id = zero;
+    auto packet_id = zero;
+    auto packet_type = zero;
+    if (auto packetInfo = op.getPacket()) {
+      enable_packet = IntegerAttr::get(i32ty, 1);
+      packet_type = IntegerAttr::get(i32ty, packetInfo->getPktType());
+      packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
+    }
+    auto d0_size = IntegerAttr::get(i32ty, computeStaticHwD0Size());
+    auto d0_stride = IntegerAttr::get(i32ty, computeStaticHwD0Stride());
+    auto d1_size = IntegerAttr::get(i32ty, computeStaticHwD1Size());
+    auto d1_stride = IntegerAttr::get(i32ty, computeStaticHwD1Stride());
+    auto d2_size = zero;
+    auto d2_stride = IntegerAttr::get(i32ty, computeStaticHwD2Stride());
+    auto iteration_current = zero;
+    auto iteration_size = IntegerAttr::get(i32ty, computeStaticIterSize());
+    auto iteration_stride = IntegerAttr::get(i32ty, computeStaticIterStride());
+    auto next_bd = zero;
+    auto row = IntegerAttr::get(i32ty, tileRow);
+    auto use_next_bd = zero;
+    auto valid_bd = IntegerAttr::get(i32ty, 1);
+    auto lock_rel_val = zero;
+    auto lock_rel_id = zero;
+    auto lock_acq_enable = zero;
+    auto lock_acq_val = zero;
+    auto lock_acq_id = zero;
+    auto d0_zero_before = IntegerAttr::get(i32ty, op.getD0ZeroBefore());
+    auto d1_zero_before = IntegerAttr::get(i32ty, op.getD1ZeroBefore());
+    auto d2_zero_before = IntegerAttr::get(i32ty, op.getD2ZeroBefore());
+    auto d0_zero_after = IntegerAttr::get(i32ty, op.getD0ZeroAfter());
+    auto d1_zero_after = IntegerAttr::get(i32ty, op.getD1ZeroAfter());
+    auto d2_zero_after = IntegerAttr::get(i32ty, op.getD2ZeroAfter());
+    auto burst_length = IntegerAttr::get(i32ty, op.getBurstLength());
+
+    NpuWriteBdOp::create(
+        rewriter, loc, column, bd_id, buffer_length, buffer_offset,
+        enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
+        d0_stride, d1_size, d1_stride, d2_size, d2_stride, iteration_current,
+        iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
+        lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id,
+        d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
+        d1_zero_after, d2_zero_after, burst_length);
+
+    // --- Emit NpuWrite32Op overrides for dynamic BD words ---
+    // Only emit write32 for words that contain dynamic content.
+    // The address is the BD base + word_index * 4.
+    auto emitDynBdWord = [&](uint32_t wordIdx, Value wordValue) {
       uint32_t wordAddr = static_cast<uint32_t>(bdAddr) + wordIdx * 4;
       Value addrSSA = cst(wordAddr);
-      // Use NpuWrite32Op with dyn_address + dyn_value.
-      // Pass address=0, value=0 as dummy attrs (overridden by dyn_*).
       NpuWrite32Op::create(rewriter, loc,
                            /*address=*/static_cast<uint32_t>(0),
                            /*value=*/static_cast<uint32_t>(0),
@@ -858,36 +993,52 @@ public:
                            /*dyn_value=*/wordValue);
     };
 
-    // word[0] = buffer_length
-    emitBdWord(0, bufLen);
-    // word[1] = 0 (base_addr, patched by address_patch)
-    emitBdWord(1, cst(0));
-    // word[2] = packet control (static)
-    emitBdWord(2, cst(pktCtrl));
-    // word[3] = (d0_size & 0x3FF) << 20 | (d0_stride & 0xFFFFF)
-    emitBdWord(3,
-               buildBdWord(rewriter, loc,
-                           {{hwD0Size, 0x3FF, 20}, {hwD0Stride, 0xFFFFF, 0}}));
-    // word[4] = (burst_len & 0x3) << 30 | (d1_size & 0x3FF) << 20 |
-    //           (d1_stride & 0xFFFFF)
-    {
+    // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic
+    bool word0Dyn = d0SizeDyn || d1SizeDyn || d2SizeDyn;
+    if (word0Dyn) {
+      emitDynBdWord(0, bufLen);
+    }
+
+    // word[3]: d0_size, d0_stride — dynamic if either is dynamic
+    bool word3Dyn = d0SizeDyn || d0StrideDyn;
+    if (word3Dyn) {
+      emitDynBdWord(
+          3, buildBdWord(rewriter, loc,
+                         {{hwD0Size, 0x3FF, 20}, {hwD0Stride, 0xFFFFF, 0}}));
+    }
+
+    // word[4]: burst_length (static), d1_size, d1_stride
+    bool word4Dyn = d1SizeDyn || d1StrideDyn;
+    if (word4Dyn) {
       Value burstVal = cst((burstEnc & 0x3) << 30);
       Value sizeStride = buildBdWord(
           rewriter, loc, {{hwD1Size, 0x3FF, 20}, {hwD1Stride, 0xFFFFF, 0}});
-      emitBdWord(4, arith::OrIOp::create(rewriter, loc, burstVal, sizeStride));
+      emitDynBdWord(4,
+                    arith::OrIOp::create(rewriter, loc, burstVal, sizeStride));
     }
-    // word[5] = (AXCache & 0xF) << 24 | (d2_stride & 0xFFFFF)
-    {
+
+    // word[5]: AXCache (static), d2_stride
+    bool word5Dyn = d2StrideDyn || d2SizeDyn;
+    if (word5Dyn) {
       Value axcache = cst((2u & 0xf) << 24);
-      Value strMasked = buildBdWord(rewriter, loc, {{hwD2Stride, 0xFFFFF, 0}});
-      emitBdWord(5, arith::OrIOp::create(rewriter, loc, axcache, strMasked));
+      Value strMasked =
+          buildBdWord(rewriter, loc, {{hwD2Stride, 0xFFFFF, 0}});
+      emitDynBdWord(
+          5, arith::OrIOp::create(rewriter, loc, axcache, strMasked));
     }
-    // word[6] = (iter_size & 0x3F) << 20 | (iter_stride & 0xFFFFF)
-    emitBdWord(
-        6, buildBdWord(rewriter, loc,
-                       {{hwIterSize, 0x3F, 20}, {hwIterStride, 0xFFFFF, 0}}));
-    // word[7] = valid_bd = 1
-    emitBdWord(7, cst(1u << 25));
+
+    // word[6]: iteration_size, iteration_stride
+    bool word6Dyn = d3SizeDyn || d3StrideDyn;
+    if (word6Dyn) {
+      emitDynBdWord(
+          6,
+          buildBdWord(rewriter, loc,
+                      {{hwIterSize, 0x3F, 20}, {hwIterStride, 0xFFFFF, 0}}));
+    }
+
+    // word[1] (base_addr) and word[2] (packet ctrl) are always static
+    // word[7] (valid_bd) is always static
+    // These are fully handled by the NpuWriteBdOp above.
 
     // --- Address patch ---
     uint64_t patchAddr =

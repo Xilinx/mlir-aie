@@ -156,17 +156,14 @@ void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
   emitIncrementOpCount(builder, loc);
 }
 
-// Emit: blockwrite with a runtime-provided first payload word.
-// This is used to fold the common
-//   blockwrite(payload_with_word0_placeholder)
-//   address_patch(base+4, ...)
-//   write32(base, dynamic_len)
-// sequence back into the exact static blockwrite layout while keeping the
-// first payload word parameterized.
-void emitTxnBlockWriteDynamicFirstWord(OpBuilder &builder, Location loc,
-                                       Value txnVec, uint32_t addr,
-                                       DenseIntElementsAttr data,
-                                       Value dynamicFirstWord) {
+// Emit: blockwrite with runtime-provided dynamic word overrides.
+// Creates the static BD array, overrides specific word indices with dynamic
+// SSA values, then calls txn_append_blockwrite. This generalizes the previous
+// single-word override to support multiple dynamic BD words.
+void emitTxnBlockWriteDynamicWords(
+    OpBuilder &builder, Location loc, Value txnVec, uint32_t addr,
+    DenseIntElementsAttr data,
+    ArrayRef<std::pair<uint32_t, Value>> dynamicWords) {
   auto *ctx = builder.getContext();
   auto u32Type = getU32Type(ctx);
   auto arrayType = emitc::ArrayType::get(
@@ -186,12 +183,15 @@ void emitTxnBlockWriteDynamicFirstWord(OpBuilder &builder, Location loc,
 
   auto arrayVar = emitc::VariableOp::create(
       builder, loc, arrayType, emitc::OpaqueAttr::get(ctx, arrayInit));
-  auto zeroIndex = createU32Constant(builder, loc, 0);
-  auto firstElem = emitc::SubscriptOp::create(
-      builder, loc, cast<TypedValue<emitc::ArrayType>>(arrayVar.getResult()),
-      ValueRange{zeroIndex});
-  emitc::AssignOp::create(builder, loc, firstElem.getResult(),
-                          castToU32(builder, loc, dynamicFirstWord));
+
+  for (auto &[wordIdx, dynVal] : dynamicWords) {
+    auto indexConst = createU32Constant(builder, loc, wordIdx);
+    auto elem = emitc::SubscriptOp::create(
+        builder, loc, cast<TypedValue<emitc::ArrayType>>(arrayVar.getResult()),
+        ValueRange{indexConst});
+    emitc::AssignOp::create(builder, loc, elem.getResult(),
+                            castToU32(builder, loc, dynVal));
+  }
 
   auto addrVal = createU32Constant(builder, loc, addr);
   auto countVal =
@@ -392,49 +392,47 @@ private:
         continue;
       }
 
-      auto nextIt = std::next(it);
-      if (nextIt == e) {
-        if (failed(cloneOp(builder, op, mapping, txnVec)))
-          return failure();
-        continue;
-      }
-
-      auto addrPatch = dyn_cast<AIEX::NpuAddressPatchOp>(&*nextIt);
-      if (!addrPatch) {
-        if (failed(cloneOp(builder, op, mapping, txnVec)))
-          return failure();
-        continue;
-      }
-
-      auto nextNextIt = std::next(nextIt);
-      if (nextNextIt == e) {
-        if (failed(cloneOp(builder, op, mapping, txnVec)))
-          return failure();
-        continue;
-      }
-
-      auto write32 = dyn_cast<AIEX::NpuWrite32Op>(&*nextNextIt);
-      if (!write32 || !write32.hasDynamicOperands()) {
-        if (failed(cloneOp(builder, op, mapping, txnVec)))
-          return failure();
-        continue;
-      }
-
-      auto dynAddrConst =
-          write32.getDynAddress().getDefiningOp<arith::ConstantOp>();
-      auto dynAddrAttr = dynAddrConst
-                             ? dyn_cast<IntegerAttr>(dynAddrConst.getValue())
-                             : nullptr;
-
       uint32_t blockAddr = blockWrite.getAddress();
       if (auto absAddr = blockWrite.getAbsoluteAddress())
         blockAddr = *absAddr;
-      if (!dynAddrAttr || dynAddrAttr.getValue().getZExtValue() != blockAddr) {
+
+      // Scan forward for dynamic NpuWrite32Ops whose addresses target
+      // BD words within this blockwrite's range (blockAddr to
+      // blockAddr + 28), followed by an NpuAddressPatchOp.
+      auto scanIt = std::next(it);
+
+      // Collect dynamic write32 overrides
+      SmallVector<std::pair<uint32_t, AIEX::NpuWrite32Op>> dynWrite32s;
+      while (scanIt != e) {
+        auto w32 = dyn_cast<AIEX::NpuWrite32Op>(&*scanIt);
+        if (!w32 || !w32.hasDynamicOperands())
+          break;
+        auto addrConst =
+            w32.getDynAddress().getDefiningOp<arith::ConstantOp>();
+        auto addrAttr = addrConst
+                            ? dyn_cast<IntegerAttr>(addrConst.getValue())
+                            : nullptr;
+        if (!addrAttr)
+          break;
+        uint64_t w32Addr = addrAttr.getValue().getZExtValue();
+        if (w32Addr < blockAddr || w32Addr > blockAddr + 28 ||
+            (w32Addr - blockAddr) % 4 != 0)
+          break;
+        uint32_t wordIdx =
+            static_cast<uint32_t>((w32Addr - blockAddr) / 4);
+        dynWrite32s.push_back({wordIdx, w32});
+        ++scanIt;
+      }
+
+      // After dynamic write32s, look for the address patch
+      if (scanIt == e || dynWrite32s.empty()) {
         if (failed(cloneOp(builder, op, mapping, txnVec)))
           return failure();
         continue;
       }
-      if (addrPatch.getAddr() != blockAddr + 4) {
+
+      auto addrPatch = dyn_cast<AIEX::NpuAddressPatchOp>(&*scanIt);
+      if (!addrPatch || addrPatch.getAddr() != blockAddr + 4) {
         if (failed(cloneOp(builder, op, mapping, txnVec)))
           return failure();
         continue;
@@ -445,9 +443,15 @@ private:
         return failure();
       }
 
-      emitTxnBlockWriteDynamicFirstWord(
-          builder, blockWrite.getLoc(), txnVec, blockAddr, data,
-          mapping.lookupOrDefault(write32.getDynValue()));
+      // Build the list of {word_index, dynamic_value} pairs
+      SmallVector<std::pair<uint32_t, Value>> dynamicWords;
+      for (auto &[wordIdx, w32] : dynWrite32s) {
+        dynamicWords.push_back(
+            {wordIdx, mapping.lookupOrDefault(w32.getDynValue())});
+      }
+
+      emitTxnBlockWriteDynamicWords(builder, blockWrite.getLoc(), txnVec,
+                                    blockAddr, data, dynamicWords);
       Value dynPlus = addrPatch.getDynArgPlus();
       if (dynPlus)
         dynPlus = mapping.lookupOrDefault(dynPlus);
@@ -455,11 +459,9 @@ private:
                           addrPatch.getAddr(), addrPatch.getArgIdx(),
                           addrPatch.getArgPlus(), dynPlus);
 
-      // The addrPatch (nextIt) and write32 (nextNextIt) are consumed by the
-      // fusion — their data is folded into emitTxnBlockWriteDynamicFirstWord
-      // and emitTxnAddressPatch. Setting it = nextNextIt lets the loop's
-      // ++it advance past the write32.
-      it = nextNextIt;
+      // All dynamic write32s and the addrPatch are consumed by the fusion.
+      // Set it = scanIt so the loop's ++it advances past the addrPatch.
+      it = scanIt;
     }
     return success();
   }
