@@ -7,7 +7,7 @@ numpy>=1.19.5,<2.0; python_version < "3.13"
 numpy>=2.1.0,<3.0; python_version >= "3.13"
 rich
 ml_dtypes
-cloudpickle # required by eudsl when it is vendored instead of installed
+cloudpickle # required by eudsl when it is vendored/bundled instead of installed
 -f https://llvm.github.io/eudsl
 eudsl-python-extras==0.1.0.20260418.906+a736a7d \
   --config-settings=EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie
