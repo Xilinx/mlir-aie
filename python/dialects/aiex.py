@@ -58,29 +58,33 @@ def dma_wait(*args: ObjectFifoCreateOp | str):
         npu_dma_wait(str_name)
 
 
-def _cast_to_i32(v):
-    """Coerce an SSA Value to i32 for NPU DMA descriptor operands.
+def _cast_to_i64(v):
+    """Coerce an SSA Value to i64 for NPU DMA descriptor operands.
 
-    The npu.dma_memcpy_nd op declares offsets/sizes/strides as Variadic<I32>
-    because that matches the underlying NPU descriptor register width.
-    Front-end arithmetic, however, may naturally produce `index` (from
-    scf.for induction vars), `i64` (from wider derivations), or any other
-    signless-integer width. This helper inserts the canonical conversion at
-    the call site so that callers can pass in whatever SSA value falls out
-    of their computation without manual casts.
+    The npu.dma_memcpy_nd op currently declares offsets/sizes/strides as
+    Variadic<I64>. Front-end arithmetic, however, may naturally produce
+    `index` (from scf.for induction vars), `i32` (from runtime_sequence
+    args), or any other signless-integer width. This helper inserts the
+    canonical conversion at the call site so callers can pass in whatever
+    SSA value falls out of their computation without manual casts.
+
+    TODO(future PR): switch this to _cast_to_i64 once AIEX.td tightens the
+    operand type to Variadic<I32> (matching the NPU descriptor register
+    width). AIEDmaToNpu's getAsValue already does width coercion in either
+    direction, so the lowering does not care which width the IR carries.
     """
     if not isinstance(v, Value):
         return v
-    i32 = IntegerType.get_signless(32)
+    i64 = IntegerType.get_signless(64)
     vt = v.type
-    if vt == i32:
+    if vt == i64:
         return v
     if isinstance(vt, IndexType):
-        return _arith.index_cast(i32, v)
+        return _arith.index_cast(i64, v)
     if isinstance(vt, IntegerType):
-        if vt.width > 32:
-            return _arith.trunci(i32, v)
-        return _arith.extui(i32, v)
+        if vt.width > 64:
+            return _arith.trunci(i64, v)
+        return _arith.extui(i64, v)
     raise TypeError(
         f"npu_dma_memcpy_nd offsets/sizes/strides must be index or signless "
         f"integer, got {vt}"
@@ -160,9 +164,9 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         # arithmetic produced (index from scf.for, i64 from a wider compute,
         # iN from a custom path), normalise it to i32 here so callers do not
         # have to insert arith.index_cast / trunci / extui themselves.
-        dynamic_offsets = [_cast_to_i32(v) for v in dynamic_offsets]
-        dynamic_sizes = [_cast_to_i32(v) for v in dynamic_sizes]
-        dynamic_strides = [_cast_to_i32(v) for v in dynamic_strides]
+        dynamic_offsets = [_cast_to_i64(v) for v in dynamic_offsets]
+        dynamic_sizes = [_cast_to_i64(v) for v in dynamic_sizes]
+        dynamic_strides = [_cast_to_i64(v) for v in dynamic_strides]
         if isinstance(metadata, ObjectFifoCreateOp):
             metadata = metadata.sym_name.value
         super().__init__(

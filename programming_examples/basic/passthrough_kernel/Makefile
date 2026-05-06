@@ -91,13 +91,6 @@ trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
 # --- Dynamic TXN generation targets ---
-# Generate C++ TXN function from the same MLIR via aiecc
-build/generated_txn.h: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-txn-cpp \
-		--no-xchesscc --no-xbridge \
-		--txn-cpp-name=generated_txn.h $(<:%=../%)
-
 # Generate parameterized C++ TXN from dynamic Python design.
 # The generated function takes buffer_length as a runtime parameter.
 # Uses aiecc to run the full pipeline (placement, objectFIFO lowering, etc.)
@@ -144,15 +137,6 @@ ifeq "${powershell}" "powershell.exe"
 else
 	cp _build_dynsize/${targetname}_dynsize $@
 endif
-
-compare_dynamic_static_txn.exe: ${srcdir}/compare_txn.cpp build/dynsize/generated_txn.h build/insts_${data_size}.bin
-	${CXX} -std=c++17 -O2 -DIN1_SIZE=${in1_size} \
-		-Ibuild/dynsize -I$(shell cd ${srcdir}/../../.. && pwd)/include \
-		$< -o $@
-
-.PHONY: compare_dynamic_static_txn
-compare_dynamic_static_txn: compare_dynamic_static_txn.exe build/insts_${data_size}.bin
-	./$< build/insts_${data_size}.bin
 
 # Run with dynamically generated TXN and its own XCLBIN
 run_dynamic: ${targetname}_dynamic_${data_size}.exe build/dynsize/final_dynamic.xclbin

@@ -666,13 +666,20 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let arguments = (
     ins AnyRankedOrUnrankedMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
-        // i32 matches the NPU descriptor register field width. Front-end
-        // helpers (e.g. the Python npu_dma_memcpy_nd wrapper) are responsible
-        // for casting wider/narrower integers and `index` values to i32 at
-        // the boundary so that the IR remains uniform.
-        Variadic<I32>:$offsets,
-        Variadic<I32>:$sizes,
-        Variadic<I32>:$strides,
+        //
+        // TODO(future PR): tighten these to Variadic<I32> to match the NPU
+        // descriptor register field width. The dynamic runtime_sequence
+        // Python wrapper currently casts SSA i32 values up to i64 at the
+        // IR boundary so the static-IR corpus (which uses `arith.constant
+        // N : i64`) keeps parsing. AIEDmaToNpu's getAsValue already does
+        // width coercion in either direction, so the eventual switch to
+        // i32 will be a one-line change here once all hand-written MLIR
+        // test inputs (test/aiecc, test/npu-xrt, programming_examples)
+        // and any out-of-tree consumers have been migrated off i64 SSA
+        // constants.
+        Variadic<I64>:$offsets,
+        Variadic<I64>:$sizes,
+        Variadic<I64>:$strides,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
