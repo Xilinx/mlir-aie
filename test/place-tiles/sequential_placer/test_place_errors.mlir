@@ -182,6 +182,41 @@ module @compute_tiles_exhausted {
 
 // -----
 
+// Flow-derived MM2S demand exceeds shim capacity.
+module @flow_shim_output_exceeds_capacity {
+  aie.device(npu1) {
+    // CHECK: error: tile (0, 0) requires 0 input/3 output DMA channels, but only 2 input/2 output available
+    %shim = aie.logical_tile<ShimNOCTile>(0, 0)
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+    %c3 = aie.logical_tile<CoreTile>(?, ?)
+    aie.flow(%shim, DMA : 0, %c1, DMA : 0)
+    aie.flow(%shim, DMA : 1, %c2, DMA : 0)
+    aie.flow(%shim, DMA : 2, %c3, DMA : 0)
+  }
+}
+
+// -----
+
+// Distinct source DMA channels are NOT deduplicated: three flows on channels
+// 0, 1, 2 still consume three MM2S budgets (only same-channel broadcasts
+// dedup). This guards against an over-eager dedup that would mask real
+// capacity overflows.
+module @flow_distinct_channels_no_dedup {
+  aie.device(npu1) {
+    // CHECK: error: tile (0, 0) requires 0 input/3 output DMA channels, but only 2 input/2 output available
+    %shim = aie.logical_tile<ShimNOCTile>(0, 0)
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+    %c3 = aie.logical_tile<CoreTile>(?, ?)
+    aie.flow(%shim, DMA : 0, %c1, DMA : 0)
+    aie.flow(%shim, DMA : 1, %c2, DMA : 0)
+    aie.flow(%shim, DMA : 2, %c3, DMA : 0)
+  }
+}
+
+// -----
+
 // Mixed input/output exceeds capacity
 module @mixed_channels_exceed_capacity {
   aie.device(npu1) {
