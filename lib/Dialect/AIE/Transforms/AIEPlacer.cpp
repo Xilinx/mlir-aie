@@ -135,17 +135,14 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       objectFifoLinks.push_back(link);
     if (auto cf = dyn_cast<CascadeFlowOp>(op))
       cascadeFlows.push_back(cf);
-  });
-
-  // Phase 2: Build channel requirements from ObjectFifo connectivity, and
-  // cascade adjacency constraints from CascadeFlow connectivity.
     if (auto f = dyn_cast<FlowOp>(op))
       flows.push_back(f);
     if (auto pf = dyn_cast<PacketFlowOp>(op))
       pktFlows.push_back(pf);
   });
 
-  // Phase 2: Build channel requirements from ObjectFifo and Flow connectivity
+  // Phase 2: Build channel requirements from ObjectFifo and Flow connectivity,
+  // and cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
   addChannelRequirementsFromFlows(flows, pktFlows, channelRequirements);
