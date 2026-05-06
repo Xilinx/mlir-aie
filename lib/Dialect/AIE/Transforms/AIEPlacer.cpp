@@ -446,15 +446,27 @@ void SequentialPlacer::buildObjectFifoGroups(
 }
 
 // Already-resolved TileOps have no placer-visible budget, so only flows whose
-// endpoints are LogicalTileOps contribute to channelRequirements.
+// endpoints are LogicalTileOps contribute to channelRequirements. A DMA
+// channel is a hardware resource: a broadcast (one source channel feeding
+// multiple destinations) consumes one MM2S channel on the producer regardless
+// of the number of `aie.flow` ops it lowers to, and a merge (multiple sources
+// landing on one destination channel) consumes one S2MM channel on the
+// consumer. Dedup by (tile, channel) so the producer-of-broadcast and
+// consumer-of-merge sides are each counted once.
 void SequentialPlacer::addChannelRequirementsFromFlows(
     ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
     llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements) {
 
-  auto incIfDMA = [&](Operation *tileOp, WireBundle bundle, bool isOutput) {
+  llvm::DenseSet<std::tuple<Operation *, int>> seenSrc, seenDst;
+
+  auto incIfDMA = [&](Operation *tileOp, WireBundle bundle, int channel,
+                      bool isOutput) {
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
     if (bundle != WireBundle::DMA)
+      return;
+    auto &seen = isOutput ? seenSrc : seenDst;
+    if (!seen.insert({tileOp, channel}).second)
       return;
     if (isOutput)
       channelRequirements[tileOp].second++;
@@ -463,20 +475,20 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
   };
 
   for (auto flow : flows) {
-    Operation *srcOp = flow.getSource().getDefiningOp();
-    Operation *dstOp = flow.getDest().getDefiningOp();
-    incIfDMA(srcOp, flow.getSourceBundle(), /*isOutput=*/true);
-    incIfDMA(dstOp, flow.getDestBundle(), /*isOutput=*/false);
+    incIfDMA(flow.getSource().getDefiningOp(), flow.getSourceBundle(),
+             flow.getSourceChannel(), /*isOutput=*/true);
+    incIfDMA(flow.getDest().getDefiningOp(), flow.getDestBundle(),
+             flow.getDestChannel(), /*isOutput=*/false);
   }
 
   for (auto pktFlow : pktFlows) {
     pktFlow.walk([&](Operation *op) {
       if (auto src = dyn_cast<PacketSourceOp>(op)) {
         incIfDMA(src.getTile().getDefiningOp(), src.getBundle(),
-                 /*isOutput=*/true);
+                 src.getChannel(), /*isOutput=*/true);
       } else if (auto dst = dyn_cast<PacketDestOp>(op)) {
         incIfDMA(dst.getTile().getDefiningOp(), dst.getBundle(),
-                 /*isOutput=*/false);
+                 dst.getChannel(), /*isOutput=*/false);
       }
     });
   }

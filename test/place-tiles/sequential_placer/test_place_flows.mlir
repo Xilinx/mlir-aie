@@ -197,3 +197,81 @@ module @flow_mixed_logical_and_tile {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// Broadcast on the source side: three flows fan out from the same shim DMA
+// channel 0. Hardware-wise this is one MM2S channel, so the shim's MM2S
+// budget should account for 1 (not 3). Without dedup, the shim would be
+// counted as needing 3 MM2S channels and exceed npu1's 2-channel limit.
+// CHECK-LABEL: @flow_source_broadcast_dedup
+module @flow_source_broadcast_dedup {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[SHIM:.*]] = aie.tile(0, 0)
+    %shim = aie.logical_tile<ShimNOCTile>(0, 0)
+    // CHECK-DAG: %[[C1:.*]] = aie.tile(0, 2)
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[C2:.*]] = aie.tile(0, 3)
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[C3:.*]] = aie.tile(0, 4)
+    %c3 = aie.logical_tile<CoreTile>(?, ?)
+
+    // Three flows share source DMA channel 0 -> 1 MM2S consumed on shim.
+    aie.flow(%shim, DMA : 0, %c1, DMA : 0)
+    aie.flow(%shim, DMA : 0, %c2, DMA : 0)
+    aie.flow(%shim, DMA : 0, %c3, DMA : 0)
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// Merge on the destination side: two flows from distinct sources land on the
+// same memtile S2MM channel. Hardware-wise this is one S2MM channel, so the
+// memtile's S2MM budget should account for 1 (not 2).
+// CHECK-LABEL: @flow_dest_merge_dedup
+module @flow_dest_merge_dedup {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(0, 1)
+    %mem = aie.logical_tile<MemTile>(?, ?)
+    // CHECK-DAG: %[[C1:.*]] = aie.tile(0, 2)
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[C2:.*]] = aie.tile(0, 3)
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+
+    // Both flows merge onto memtile S2MM channel 0 -> 1 S2MM consumed.
+    aie.flow(%c1, DMA : 0, %mem, DMA : 0)
+    aie.flow(%c2, DMA : 0, %mem, DMA : 0)
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
+// Packet flow broadcast to many destinations on the same dest DMA channel:
+// the source side counts once per (tile, channel) and each PacketDestOp's
+// (tile, channel) pair is also deduplicated.
+// CHECK-LABEL: @packet_flow_dedup
+module @packet_flow_dedup {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(0, 1)
+    %mem = aie.logical_tile<MemTile>(?, ?)
+    // CHECK-DAG: %[[C1:.*]] = aie.tile(0, 2)
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[C2:.*]] = aie.tile(0, 3)
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK-DAG: %[[C3:.*]] = aie.tile(0, 4)
+    %c3 = aie.logical_tile<CoreTile>(?, ?)
+    // Two packet flows share the same memtile MM2S channel 0 -> count once.
+    aie.packet_flow(0x1) {
+      aie.packet_source<%mem, DMA : 0>
+      aie.packet_dest<%c1, DMA : 0>
+      aie.packet_dest<%c2, DMA : 0>
+    }
+    aie.packet_flow(0x2) {
+      aie.packet_source<%mem, DMA : 0>
+      aie.packet_dest<%c3, DMA : 0>
+    }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
