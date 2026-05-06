@@ -884,8 +884,8 @@ public:
       int64_t sz = getConstOr0(mixedSizesRev[1]);
       if (sz <= 1)
         return 0;
-      int64_t scaled = s * static_cast<int64_t>(elemWidth) /
-                       static_cast<int64_t>(addrGran);
+      int64_t scaled =
+          s * static_cast<int64_t>(elemWidth) / static_cast<int64_t>(addrGran);
       return scaled - 1;
     };
     auto computeStaticHwD2Stride = [&]() -> int64_t {
@@ -895,8 +895,8 @@ public:
       int64_t sz = getConstOr0(mixedSizesRev[2]);
       if (sz <= 1)
         return 0;
-      int64_t scaled = s * static_cast<int64_t>(elemWidth) /
-                       static_cast<int64_t>(addrGran);
+      int64_t scaled =
+          s * static_cast<int64_t>(elemWidth) / static_cast<int64_t>(addrGran);
       return scaled - 1;
     };
     auto computeStaticIterSize = [&]() -> int64_t {
@@ -1021,19 +1021,16 @@ public:
     bool word5Dyn = d2StrideDyn || d2SizeDyn;
     if (word5Dyn) {
       Value axcache = cst((2u & 0xf) << 24);
-      Value strMasked =
-          buildBdWord(rewriter, loc, {{hwD2Stride, 0xFFFFF, 0}});
-      emitDynBdWord(
-          5, arith::OrIOp::create(rewriter, loc, axcache, strMasked));
+      Value strMasked = buildBdWord(rewriter, loc, {{hwD2Stride, 0xFFFFF, 0}});
+      emitDynBdWord(5, arith::OrIOp::create(rewriter, loc, axcache, strMasked));
     }
 
     // word[6]: iteration_size, iteration_stride
     bool word6Dyn = d3SizeDyn || d3StrideDyn;
     if (word6Dyn) {
       emitDynBdWord(
-          6,
-          buildBdWord(rewriter, loc,
-                      {{hwIterSize, 0x3F, 20}, {hwIterStride, 0xFFFFF, 0}}));
+          6, buildBdWord(rewriter, loc,
+                         {{hwIterSize, 0x3F, 20}, {hwIterStride, 0xFFFFF, 0}}));
     }
 
     // word[1] (base_addr) and word[2] (packet ctrl) are always static

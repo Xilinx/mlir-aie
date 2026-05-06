@@ -425,17 +425,15 @@ private:
             break;
           auto addrConst =
               w32.getDynAddress().getDefiningOp<arith::ConstantOp>();
-          auto addrAttr = addrConst
-                              ? dyn_cast<IntegerAttr>(addrConst.getValue())
-                              : nullptr;
+          auto addrAttr =
+              addrConst ? dyn_cast<IntegerAttr>(addrConst.getValue()) : nullptr;
           if (!addrAttr)
             break;
           uint64_t w32Addr = addrAttr.getValue().getZExtValue();
           if (w32Addr < blockAddr || w32Addr > blockAddr + 28 ||
               (w32Addr - blockAddr) % 4 != 0)
             break;
-          uint32_t wordIdx =
-              static_cast<uint32_t>((w32Addr - blockAddr) / 4);
+          uint32_t wordIdx = static_cast<uint32_t>((w32Addr - blockAddr) / 4);
           dynWrite32s.push_back({wordIdx, w32});
           ++scanIt;
           continue;
@@ -443,8 +441,7 @@ private:
 
         // Any other AIEX TXN op between blockwrite and its address_patch
         // means this blockwrite is not part of a BD-with-overrides pattern.
-        if (cur->getDialect() &&
-            cur->getDialect()->getNamespace() == "aiex")
+        if (cur->getDialect() && cur->getDialect()->getNamespace() == "aiex")
           break;
 
         // Allow only pure helper ops to be skipped; bail on anything else
