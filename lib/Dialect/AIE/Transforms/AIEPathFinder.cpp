@@ -42,8 +42,8 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
         auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
-        sources.push_back({{srcTile.colIndex(), srcTile.rowIndex()},
-                           pktSource.port()});
+        sources.push_back(
+            {{srcTile.colIndex(), srcTile.rowIndex()}, pktSource.port()});
       }
     }
     if (sources.empty())
