@@ -349,18 +349,9 @@ def my_matmul(
 
                 # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 4
-                # The body below mirrors single_core.py's runtime_sequence.
-                # The only changes from the static version are:
-                #   * range  -> range_   (emits scf.for over an SSA bound)
-                #   * if num_tile_rows <= 0: break
-                #         -> with if_(num_tile_rows > 0, hasElse=False):
-                #   * min(...) -> arith.minsi(...)   (Python min cannot
-                #     bool() an SSA i1, so we call the op directly)
-                #   * the inner `for tile_row in range(num_tile_rows)` is
-                #     unrolled to range(rows_per_block // 2) with an if_
-                #     guard, since bd_id must be a Python-time integer.
-                #   * dma_wait(outC) -> npu_sync(...)   (dma_wait inside
-                #     scf.if has terminator-conversion issues today).
+                # The body below mirrors single_core.py's runtime_sequence,
+                # using shim_dma_single_bd_task (dma_task pattern) instead of
+                # npu_dma_memcpy_nd. BD IDs are auto-assigned by the compiler.
                 for tile_row_block in range_(ceildiv(M_div_m, rows_per_block)):
                     # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
                     # that's what this loop is for
@@ -373,32 +364,35 @@ def my_matmul(
                             tile_row_block * rows_per_block
                             + pingpong * rows_per_block // 2
                         )
-                        bd_id_base = 8 * pingpong
                         num_tile_rows = arith.minsi(
                             constant(rows_per_block // 2, T.i32()),
                             M_div_m - row_base,
                         )
                         with if_(num_tile_rows > 0, hasElse=False):
-                            npu_dma_memcpy_nd(
-                                metadata=outC,
-                                bd_id=bd_id_base,
-                                mem=C,
-                                offsets=[0, 0, 0, C_row_offset],
+                            c_task = shim_dma_single_bd_task(
+                                outC,
+                                C,
+                                offset=C_row_offset,
                                 sizes=[num_tile_rows, N_div_n, m, n],
                                 strides=[m * N, n, N, 1],
+                                transfer_len=N_div_n * m * n,
+                                issue_token=True,
                             )
+                            dma_start_task(c_task)
+
                             for tile_row in range(rows_per_block // 2):
                                 A_row_offset = (row_base + tile_row) * m * K
 
                                 def emit_ab():
-                                    npu_dma_memcpy_nd(
-                                        metadata=inA,
-                                        bd_id=bd_id_base + 2 * tile_row + 1,
-                                        mem=A,
-                                        offsets=[0, 0, 0, A_row_offset],
+                                    a_task = shim_dma_single_bd_task(
+                                        inA,
+                                        A,
+                                        offset=A_row_offset,
                                         sizes=[N_div_n, K_div_k, m, k],
                                         strides=[0, k, K, 1],
+                                        transfer_len=K_div_k * m * k,
                                     )
+                                    dma_start_task(a_task)
 
                                     if not b_col_maj:
                                         B_sizes = [N_div_n, K_div_k, k, n]
@@ -407,13 +401,14 @@ def my_matmul(
                                         B_sizes = [N_div_n, K_div_k, n, k]
                                         B_strides = [n * K, k, K, 1]
 
-                                    npu_dma_memcpy_nd(
-                                        metadata=inB,
-                                        bd_id=bd_id_base + 2 * tile_row + 2,
-                                        mem=B,
+                                    b_task = shim_dma_single_bd_task(
+                                        inB,
+                                        B,
                                         sizes=B_sizes,
                                         strides=B_strides,
+                                        transfer_len=K_div_k * k * n,
                                     )
+                                    dma_start_task(b_task)
 
                                 if tile_row == 0:
                                     emit_ab()

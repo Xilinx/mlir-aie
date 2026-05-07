@@ -14,8 +14,11 @@
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -50,6 +53,93 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
                           "pass first or manually assign an ID.";
       return failure();
     }
+
+    // Check if the first BD has dynamic sizes (SSA operands).
+    // If so, repeat_count must be computed dynamically from dyn_sizes[0]
+    // (the outermost dimension) and emitted as a direct NpuWrite32Op to
+    // the queue register, bypassing NpuPushQueueOp.
+    AIE::DMABDOp firstBd;
+    for (Block &block : task_op.getBody()) {
+      auto bds = block.getOps<AIE::DMABDOp>();
+      if (!bds.empty()) {
+        firstBd = *bds.begin();
+        break;
+      }
+    }
+
+    if (firstBd && !firstBd.getDynSizes().empty()) {
+      // Dynamic repeat_count path — mirrors AIEDmaToNpu.cpp lines 900-934.
+      auto loc = op.getLoc();
+      auto i32ty = rewriter.getIntegerType(32);
+      auto cst = [&](int64_t v) -> Value {
+        return arith::ConstantOp::create(rewriter, loc,
+                                         IntegerAttr::get(i32ty, v));
+      };
+
+      const auto &targetModel = AIE::getTargetModel(op);
+      uint32_t tileCol = tile.getCol();
+      uint32_t tileRow = tile.getRow();
+      auto channelDir = task_op.getDirection();
+      auto channelIdx = task_op.getChannel();
+
+      // Compute dynamic repeat_count from dyn_sizes[0] (outermost dim).
+      // Hardware repeat_count = sizes[0] - 1, clamped >= 0.
+      Value outerSize = firstBd.getDynSizes()[0]; // i64
+      Value outerSize32 =
+          arith::TruncIOp::create(rewriter, loc, i32ty, outerSize);
+      Value one = cst(1);
+      Value repeatCount =
+          arith::SubIOp::create(rewriter, loc, outerSize32, one);
+      Value zero = cst(0);
+      Value isPositive = arith::CmpIOp::create(
+          rewriter, loc, arith::CmpIPredicate::sgt, repeatCount, zero);
+      repeatCount =
+          arith::SelectOp::create(rewriter, loc, isPositive, repeatCount, zero);
+
+      // Build queue command:
+      //   cmd = (bd_id & 0xF) | ((repeat_count & 0xFF) << 16)
+      //       | (issue_token ? 1<<31 : 0)
+      Value bdIdVal = cst(*first_bd_id & 0xF);
+      Value rcShifted = buildBdWord(rewriter, loc, {{repeatCount, 0xFFu, 16u}});
+      Value cmd = arith::OrIOp::create(rewriter, loc, bdIdVal, rcShifted);
+      if (task_op.getIssueToken()) {
+        Value tokenBit = cst(static_cast<int32_t>(0x80000000u));
+        cmd = arith::OrIOp::create(rewriter, loc, cmd, tokenBit);
+      }
+
+      // Emit controller_id maskwrite for issue_token (same as
+      // PushQueuetoWrite32Pattern).
+      uint32_t ctrlOffset = targetModel.getDmaControlAddress(
+          tileCol, tileRow, channelIdx, channelDir);
+      if (task_op.getIssueToken()) {
+        AIE::TileOp shimTile = AIE::TileOp::getOrCreate(
+            rewriter, op->getParentOfType<AIE::DeviceOp>(), tileCol, tileRow);
+        if (shimTile->hasAttr("controller_id")) {
+          auto controllerIdAttr =
+              shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+          uint32_t data = controllerIdAttr.getPktId() << 8;
+          uint32_t mask = 0x00001F00;
+          NpuMaskWrite32Op::create(rewriter, loc, ctrlOffset, data, mask,
+                                   nullptr, nullptr, nullptr);
+        }
+      }
+
+      // Emit NpuWrite32Op to queue register.
+      uint32_t queueOffset = ctrlOffset + 0x4;
+      NpuWrite32Op::create(rewriter, loc,
+                           /*address=*/static_cast<uint32_t>(0),
+                           /*value=*/static_cast<uint32_t>(0),
+                           /*buffer=*/FlatSymbolRefAttr{},
+                           /*column=*/IntegerAttr{},
+                           /*row=*/IntegerAttr{},
+                           /*dyn_address=*/cst(queueOffset),
+                           /*dyn_value=*/cmd);
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    // Static path: emit NpuPushQueueOp (converted to blockwrite by
+    // subsequent AIEDmaToNpu pass).
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
         task_op.getChannel(), task_op.getIssueToken(), task_op.getRepeatCount(),
@@ -165,6 +255,11 @@ struct AIEDMATasksToNPUPass
           .Case<AIE::EndOp>(
               [&](AIE::EndOp lock_op) { return WalkResult::advance(); })
           .Default([&](Operation *inner_op) {
+            // Allow arith dialect ops inside BD blocks; they compute
+            // dynamic operand values (dyn_offset, dyn_len, dyn_sizes,
+            // dyn_strides) consumed by aie.dma_bd.
+            if (inner_op->getDialect()->getNamespace() == "arith")
+              return WalkResult::advance();
             auto error = block.getParentOp()->emitOpError(
                 "Unsupported operation within BD block.");
             error.attachNote(inner_op->getLoc())
@@ -248,12 +343,37 @@ struct AIEDMATasksToNPUPass
       }
 
       unsigned arg_idx = buf_arg.getArgNumber();
-      offset += bd_op.getOffsetInBytes();
-      NpuAddressPatchOp::create(builder, bd_op.getLoc(),
-                                /*addr*/ register_addr,
-                                /*arg_idx*/ arg_idx,
-                                /*arg_plus*/ offset,
-                                /*dyn_arg_plus=*/Value{});
+      // Dynamic-offset path: use the SSA value as dyn_arg_plus, leave the
+      // static byte offset at the subview-derived base only. The runtime
+      // adds dyn_arg_plus on top of arg_plus.
+      if (Value dynOff = bd_op.getDynOffset()) {
+        // dynOff is i64 in element-width units; trunc to i32 (the
+        // dyn_arg_plus operand width) then convert to bytes via mul by
+        // element-width-in-bytes.
+        auto i32ty = builder.getIntegerType(32);
+        Value dynOff32 =
+            arith::TruncIOp::create(builder, bd_op.getLoc(), i32ty, dynOff);
+        int32_t elemBytes = bd_op.getBufferElementTypeWidthInBytes();
+        Value dynBytes = dynOff32;
+        if (elemBytes != 1) {
+          Value mulFactor = arith::ConstantOp::create(
+              builder, bd_op.getLoc(), IntegerAttr::get(i32ty, elemBytes));
+          dynBytes = arith::MulIOp::create(builder, bd_op.getLoc(), dynOff32,
+                                           mulFactor);
+        }
+        NpuAddressPatchOp::create(builder, bd_op.getLoc(),
+                                  /*addr*/ register_addr,
+                                  /*arg_idx*/ arg_idx,
+                                  /*arg_plus*/ static_cast<uint32_t>(offset),
+                                  /*dyn_arg_plus=*/dynBytes);
+      } else {
+        offset += bd_op.getOffsetInBytes();
+        NpuAddressPatchOp::create(builder, bd_op.getLoc(),
+                                  /*addr*/ register_addr,
+                                  /*arg_idx*/ arg_idx,
+                                  /*arg_plus*/ offset,
+                                  /*dyn_arg_plus=*/Value{});
+      }
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -298,11 +418,321 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
+  // Dynamic-operand path: emit NpuWriteBdOp with static placeholder values
+  // for dynamic fields (the subsequent AIEDmaToNpu pass converts this to a
+  // blockwrite), then selective NpuWrite32Op overrides for BD words that
+  // contain dynamic content. This produces the same blockwrite + write32
+  // TXN format as the npu_dma_memcpy_nd path.
+  LogicalResult
+  rewriteSingleBDDynamic(OpBuilder &builder, Block &block, AIE::TileOp &tile,
+                         std::optional<xilinx::AIE::PacketInfoAttr> outerPacket,
+                         AIE::DMABDOp bd_op) {
+    const auto &target_model = AIE::getTargetModel(bd_op);
+    if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow())) {
+      return bd_op->emitOpError(
+          "dynamic operands on aie.dma_bd are only supported on shim NOC "
+          "tiles.");
+    }
+    if (bd_op.getPadDimensions().has_value()) {
+      return bd_op->emitOpError(
+          "pad_dimensions is incompatible with dynamic dma_bd operands.");
+    }
+
+    auto loc = bd_op.getLoc();
+    auto i32ty = builder.getIntegerType(32);
+    auto zero = IntegerAttr::get(i32ty, 0);
+    auto cst = [&](int64_t v) -> Value {
+      return arith::ConstantOp::create(builder, loc,
+                                       IntegerAttr::get(i32ty, v));
+    };
+
+    auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
+    uint64_t elemWidth = buffer_type.getElementType().getIntOrFloatBitWidth();
+    uint32_t addrGran = target_model.getAddressGenGranularity();
+
+    // Build mixedSizesRev / mixedStridesRev (4 elements, innermost-first).
+    SmallVector<OpFoldResult, 4> mixedSizesRev(4, builder.getI64IntegerAttr(1));
+    SmallVector<OpFoldResult, 4> mixedStridesRev(4,
+                                                 builder.getI64IntegerAttr(0));
+    ValueRange dynSizes = bd_op.getDynSizes();
+    ValueRange dynStrides = bd_op.getDynStrides();
+    if (!dynSizes.empty()) {
+      unsigned n = dynSizes.size();
+      for (unsigned i = 0; i < n; ++i) {
+        mixedSizesRev[i] = dynSizes[n - 1 - i];
+        mixedStridesRev[i] = dynStrides[n - 1 - i];
+      }
+    } else if (auto dims = bd_op.getDimensions(); dims && !dims->empty()) {
+      unsigned n = dims->size();
+      for (unsigned i = 0; i < n; ++i) {
+        mixedSizesRev[i] =
+            builder.getI64IntegerAttr((*dims)[n - 1 - i].getSize());
+        mixedStridesRev[i] =
+            builder.getI64IntegerAttr((*dims)[n - 1 - i].getStride());
+      }
+    }
+
+    // Compute dynamic hardware BD encoding via shared utility.
+    HwBdEncoding hw =
+        emitDynamicHwBdEncoding(builder, loc, target_model, buffer_type,
+                                mixedSizesRev, mixedStridesRev);
+
+    // bufLen: prefer dyn_len > hw.bufLen (from dyn_sizes) > static len.
+    Value bufLen;
+    if (Value dynLen = bd_op.getDynLen()) {
+      Value dynLen32 = arith::TruncIOp::create(builder, loc, i32ty, dynLen);
+      bufLen = dynLen32;
+      if (elemWidth != addrGran) {
+        Value scaled =
+            arith::MulIOp::create(builder, loc, dynLen32, cst(elemWidth));
+        bufLen = arith::DivUIOp::create(builder, loc, scaled, cst(addrGran));
+      }
+    } else if (!dynSizes.empty()) {
+      bufLen = hw.bufLen;
+    } else if (bd_op.getLen().has_value()) {
+      bufLen = cst(static_cast<int64_t>(bd_op.getLenInBytes() * 8 / addrGran));
+    } else {
+      uint64_t elemBits = buffer_type.getElementTypeBitWidth();
+      int64_t totalUnits =
+          static_cast<int64_t>(buffer_type.getNumElements() * elemBits) /
+          addrGran;
+      bufLen = cst(totalUnits);
+    }
+
+    // --- Determine which fields are dynamic vs static ---
+    auto isConst = [](OpFoldResult ofr) {
+      return getConstantIntValue(ofr).has_value();
+    };
+    auto getConstOr0 = [](OpFoldResult ofr) -> int64_t {
+      if (auto v = getConstantIntValue(ofr))
+        return *v;
+      return 0;
+    };
+
+    bool d0SizeDyn = !isConst(mixedSizesRev[0]);
+    bool d1SizeDyn = !isConst(mixedSizesRev[1]);
+    bool d2SizeDyn = !isConst(mixedSizesRev[2]);
+    bool d3SizeDyn = !isConst(mixedSizesRev[3]);
+    bool d0StrideDyn = !isConst(mixedStridesRev[0]);
+    bool d1StrideDyn = !isConst(mixedStridesRev[1]);
+    bool d2StrideDyn = !isConst(mixedStridesRev[2]);
+    bool d3StrideDyn = !isConst(mixedStridesRev[3]);
+
+    // --- Compute static placeholder values for NpuWriteBdOp ---
+    // For constant fields use actual hw value; for dynamic fields use 0.
+    auto computeStaticHwD0Size = [&]() -> int64_t {
+      if (d0SizeDyn)
+        return 0;
+      return getConstOr0(mixedSizesRev[0]) * static_cast<int64_t>(elemWidth) /
+             static_cast<int64_t>(addrGran);
+    };
+    auto computeStaticHwD0Stride = [&]() -> int64_t {
+      if (d0StrideDyn)
+        return 0;
+      if (elemWidth < addrGran || elemWidth > addrGran)
+        return 0;
+      return getConstOr0(mixedStridesRev[0]) - 1;
+    };
+    auto computeStaticHwD1Size = [&]() -> int64_t {
+      return d1SizeDyn ? 0 : getConstOr0(mixedSizesRev[1]);
+    };
+    auto computeStaticHwD1Stride = [&]() -> int64_t {
+      if (d1StrideDyn || d1SizeDyn)
+        return 0;
+      int64_t s = getConstOr0(mixedStridesRev[1]);
+      int64_t sz = getConstOr0(mixedSizesRev[1]);
+      if (sz <= 1)
+        return 0;
+      return s * static_cast<int64_t>(elemWidth) /
+                 static_cast<int64_t>(addrGran) -
+             1;
+    };
+    auto computeStaticHwD2Stride = [&]() -> int64_t {
+      if (d2StrideDyn || d2SizeDyn)
+        return 0;
+      int64_t s = getConstOr0(mixedStridesRev[2]);
+      int64_t sz = getConstOr0(mixedSizesRev[2]);
+      if (sz <= 1)
+        return 0;
+      return s * static_cast<int64_t>(elemWidth) /
+                 static_cast<int64_t>(addrGran) -
+             1;
+    };
+    auto computeStaticIterSize = [&]() -> int64_t {
+      if (d3SizeDyn)
+        return 0;
+      int64_t s3 = getConstOr0(mixedSizesRev[3]);
+      if (s3 <= 1)
+        return 0;
+      if (!d3StrideDyn && getConstOr0(mixedStridesRev[3]) <= 0)
+        return 0;
+      return s3 - 1;
+    };
+    auto computeStaticIterStride = [&]() -> int64_t {
+      if (d3StrideDyn || d3SizeDyn)
+        return 0;
+      int64_t s3 = getConstOr0(mixedSizesRev[3]);
+      int64_t st3 = getConstOr0(mixedStridesRev[3]);
+      if (s3 <= 1 || st3 <= 0)
+        return 0;
+      return st3 * static_cast<int64_t>(elemWidth) /
+                 static_cast<int64_t>(addrGran) -
+             1;
+    };
+
+    int64_t staticBufLen = 0;
+    if (!d0SizeDyn && !d1SizeDyn && !d2SizeDyn) {
+      staticBufLen = computeStaticHwD0Size() * getConstOr0(mixedSizesRev[1]) *
+                     getConstOr0(mixedSizesRev[2]);
+    }
+
+    // --- Packet info ---
+    int32_t enable_packet = 0, packet_id = 0, packet_type = 0,
+            out_of_order_id = 0;
+    auto info = bd_op.getPacket().value_or(outerPacket.value_or(nullptr));
+    if (info) {
+      enable_packet = 1;
+      packet_type = info.getPktType();
+      packet_id = info.getPktId();
+    }
+
+    // --- Lock info ---
+    int32_t lock_rel_val = 0, lock_rel_id = 0;
+    int32_t lock_acq_enable = 0, lock_acq_val = 0, lock_acq_id = 0;
+    auto lock_ops = getOptionalLockOpsForBlock(block);
+    if (lock_ops) {
+      auto [acquire_op, release_op] = *lock_ops;
+      AIE::LockOp acq_lock = acquire_op.getLockOp();
+      AIE::LockOp rel_lock = release_op.getLockOp();
+      if (acq_lock.getLockID().has_value()) {
+        lock_acq_id = acq_lock.getLockID().value();
+        lock_acq_val = acquire_op.getLockValue();
+        if (acquire_op.acquireGE())
+          lock_acq_val = -lock_acq_val;
+        lock_acq_enable = 1;
+      }
+      if (rel_lock.getLockID().has_value()) {
+        lock_rel_id = rel_lock.getLockID().value();
+        lock_rel_val = release_op.getLockValue();
+      }
+    }
+
+    // --- Next BD ---
+    uint32_t use_next_bd = 0, next_bd_id = 0;
+    if (bd_op.getNextBdId().has_value()) {
+      next_bd_id = bd_op.getNextBdId().value();
+      use_next_bd = 1;
+    }
+
+    uint32_t bd_id = bd_op.getBdId().value();
+
+    // --- Emit NpuWriteBdOp with static/placeholder values ---
+    // The subsequent AIEDmaToNpu pass converts this to a blockwrite.
+    NpuWriteBdOp::create(
+        builder, loc,
+        /*column=*/IntegerAttr::get(i32ty, tile.getCol()),
+        /*bd_id=*/IntegerAttr::get(i32ty, bd_id),
+        /*buffer_length=*/IntegerAttr::get(i32ty, staticBufLen),
+        /*buffer_offset=*/zero,
+        /*enable_packet=*/IntegerAttr::get(i32ty, enable_packet),
+        /*out_of_order_id=*/IntegerAttr::get(i32ty, out_of_order_id),
+        /*packet_id=*/IntegerAttr::get(i32ty, packet_id),
+        /*packet_type=*/IntegerAttr::get(i32ty, packet_type),
+        /*d0_size=*/IntegerAttr::get(i32ty, computeStaticHwD0Size()),
+        /*d0_stride=*/IntegerAttr::get(i32ty, computeStaticHwD0Stride()),
+        /*d1_size=*/IntegerAttr::get(i32ty, computeStaticHwD1Size()),
+        /*d1_stride=*/IntegerAttr::get(i32ty, computeStaticHwD1Stride()),
+        /*d2_size=*/zero,
+        /*d2_stride=*/IntegerAttr::get(i32ty, computeStaticHwD2Stride()),
+        /*iteration_current=*/zero,
+        /*iteration_size=*/IntegerAttr::get(i32ty, computeStaticIterSize()),
+        /*iteration_stride=*/
+        IntegerAttr::get(i32ty, computeStaticIterStride()),
+        /*next_bd=*/IntegerAttr::get(i32ty, next_bd_id),
+        /*row=*/IntegerAttr::get(i32ty, tile.getRow()),
+        /*use_next_bd=*/IntegerAttr::get(i32ty, use_next_bd),
+        /*valid_bd=*/IntegerAttr::get(i32ty, 1),
+        /*lock_rel_val=*/IntegerAttr::get(i32ty, lock_rel_val),
+        /*lock_rel_id=*/IntegerAttr::get(i32ty, lock_rel_id),
+        /*lock_acq_enable=*/IntegerAttr::get(i32ty, lock_acq_enable),
+        /*lock_acq_val=*/IntegerAttr::get(i32ty, lock_acq_val),
+        /*lock_acq_id=*/IntegerAttr::get(i32ty, lock_acq_id),
+        /*d0_zero_before=*/zero, /*d1_zero_before=*/zero,
+        /*d2_zero_before=*/zero, /*d0_zero_after=*/zero,
+        /*d1_zero_after=*/zero, /*d2_zero_after=*/zero,
+        /*burst_length=*/IntegerAttr::get(i32ty, bd_op.getBurstLength()));
+
+    // --- Emit NpuWrite32Op overrides only for dynamic BD words ---
+    uint64_t bdAddr =
+        target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id);
+
+    auto emitDynBdWord = [&](uint32_t wordIdx, Value wordValue) {
+      uint32_t wordAddr = static_cast<uint32_t>(bdAddr) + wordIdx * 4;
+      NpuWrite32Op::create(builder, loc,
+                           /*address=*/static_cast<uint32_t>(0),
+                           /*value=*/static_cast<uint32_t>(0),
+                           /*buffer=*/FlatSymbolRefAttr{},
+                           /*column=*/IntegerAttr{},
+                           /*row=*/IntegerAttr{},
+                           /*dyn_address=*/cst(wordAddr),
+                           /*dyn_value=*/wordValue);
+    };
+
+    // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic
+    if (d0SizeDyn || d1SizeDyn || d2SizeDyn) {
+      emitDynBdWord(0, bufLen);
+    }
+
+    // word[3]: d0_size, d0_stride
+    if (d0SizeDyn || d0StrideDyn) {
+      emitDynBdWord(3, buildBdWord(builder, loc,
+                                   {{hw.d0Size, 0x3FFu, 20u},
+                                    {hw.d0Stride, 0xFFFFFu, 0u}}));
+    }
+
+    // word[4]: burst_length (static), d1_size, d1_stride
+    if (d1SizeDyn || d1StrideDyn) {
+      uint32_t burstEnc =
+          AIE::getShimBurstLengthEncoding(target_model, bd_op.getBurstLength());
+      Value burstVal = cst(static_cast<int64_t>((burstEnc & 0x3u) << 30));
+      Value sizeStride =
+          buildBdWord(builder, loc,
+                      {{hw.d1Size, 0x3FFu, 20u}, {hw.d1Stride, 0xFFFFFu, 0u}});
+      emitDynBdWord(4,
+                    arith::OrIOp::create(builder, loc, burstVal, sizeStride));
+    }
+
+    // word[5]: AXCache (static), d2_stride
+    if (d2StrideDyn || d2SizeDyn) {
+      Value axcache = cst((2u & 0xfu) << 24);
+      Value strMasked =
+          buildBdWord(builder, loc, {{hw.d2Stride, 0xFFFFFu, 0u}});
+      emitDynBdWord(5, arith::OrIOp::create(builder, loc, axcache, strMasked));
+    }
+
+    // word[6]: iteration_size, iteration_stride
+    if (d3SizeDyn || d3StrideDyn) {
+      emitDynBdWord(6, buildBdWord(builder, loc,
+                                   {{hw.iterSize, 0x3Fu, 20u},
+                                    {hw.iterStride, 0xFFFFFu, 0u}}));
+    }
+
+    return setAddressForSingleBD(builder, bd_op, tile);
+  }
+
   LogicalResult
   rewriteSingleBD(OpBuilder &builder, Block &block, AIE::TileOp &tile,
                   AIE::DMAChannelDir channelDir,
                   std::optional<xilinx::AIE::PacketInfoAttr> packet) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
+
+    // Dispatch to the dynamic-operand path if any SSA operand override is
+    // present. Otherwise fall through to the existing static blockwrite path.
+    if (bd_op.getDynOffset() || bd_op.getDynLen() ||
+        !bd_op.getDynSizes().empty()) {
+      return rewriteSingleBDDynamic(builder, block, tile, packet, bd_op);
+    }
+
     const auto &target_model = AIE::getTargetModel(bd_op);
     auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
     uint32_t addr_granularity = target_model.getAddressGenGranularity();
@@ -595,6 +1025,27 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
+  // Hoist non-BD/lock/end/next_bd ops (e.g. arith ops computing dynamic
+  // operand values) from inside BD blocks to just before the task op.
+  // This ensures the SSA values they define are available after the task
+  // op's region is erased during lowering.
+  void hoistHelperOpsFromBdBlocks(DMAConfigureTaskOp op) {
+    for (Block &block : op.getBody()) {
+      if (shouldSkipBlock(block))
+        continue;
+      SmallVector<Operation *> toHoist;
+      for (Operation &inner : block) {
+        if (!isa<AIE::DMABDOp, AIE::UseLockOp, AIE::NextBDOp, AIE::EndOp>(
+                &inner)) {
+          toHoist.push_back(&inner);
+        }
+      }
+      for (Operation *hoistOp : toHoist) {
+        hoistOp->moveBefore(op);
+      }
+    }
+  }
+
   LogicalResult rewriteSingleDMAConfigureTaskOp(DMAConfigureTaskOp op) {
     OpBuilder builder(op);
     AIE::TileOp tile = op.getTileOp();
@@ -626,6 +1077,10 @@ struct AIEDMATasksToNPUPass
         return failure();
       }
     }
+
+    // Move helper ops (arith, etc.) that compute dynamic BD operands out of
+    // the BD block so they survive the task op's erasure.
+    hoistHelperOpsFromBdBlocks(op);
 
     // Hoist next_bd operations into next_bd_id attribute of the dma_bd
     if (failed(hoistNextBdOpsIntoAttrs(op))) {
@@ -670,6 +1125,7 @@ struct AIEDMATasksToNPUPass
     // Convert DMAStartBD and DMAAwaitBD ops
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
+    target.addLegalDialect<arith::ArithDialect>();
     target.addIllegalOp<DMAStartTaskOp>();
     target.addIllegalOp<DMAAwaitTaskOp>();
     RewritePatternSet patterns(&getContext());

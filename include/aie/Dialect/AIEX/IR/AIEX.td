@@ -1148,7 +1148,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
 }
 
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1198,7 +1198,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::Runt
   ];
 }
 
-def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", []>, Results<(outs Index:$result)> {
   let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
 
   let arguments = (
@@ -1212,7 +1212,7 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"AI
   let assemblyFormat = [{ $alloc regions attr-dict }];
 }
 
-def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", []> {
   let summary = "Free all Buffer Descriptor IDs Associated with the Given Task";
   let description = [{
     This operation informs the static buffer descriptor allocator pass in the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
@@ -1236,7 +1236,7 @@ def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"AIE::RuntimeSequenc
   }];
 }
 
-def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", []> {
   let summary = "Submit a Preconfigured Task to the Task Queue";
   let description = [{
     Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
@@ -1260,7 +1260,7 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"AIE::RuntimeSeque
   }];
 }
 
-def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", []> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
     This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.
