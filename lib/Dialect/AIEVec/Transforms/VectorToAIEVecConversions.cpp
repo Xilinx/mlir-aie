@@ -3477,6 +3477,60 @@ struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
 using LowerExtFOpPattern = LowerExtOpPattern<arith::ExtFOp>;
 using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
 
+// Scalarize a vector arith int<->fp conversion (sitofp / uitofp / fptosi /
+// fptoui). The AIE2/AIE2P GISel legalizers only handle the scalar form of
+// these conversions (libcalls); there is no vector int<->fp instruction.
+// Vector forms reach the legalizer as G_SITOFP/G_FPTOSI on a vector type
+// and abort with "unable to legalize". Lower the vector form here into
+// per-lane extract -> scalar conversion -> insert so each lane goes through
+// the supported scalar path.
+template <typename SrcOpTy>
+struct ScalarizeVectorIntFpConversionOpPattern : OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(adaptor.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(op.getType());
+    if (!srcType || !dstType)
+      return failure(); // already scalar — let the standard path handle it
+    if (srcType.getRank() != 1 || dstType.getRank() != 1)
+      return failure(); // conservative: 1-D vectors only
+    if (srcType.getNumElements() != dstType.getNumElements())
+      return failure();
+
+    Location loc = op.getLoc();
+    Type scalarDstTy = dstType.getElementType();
+    int64_t lanes = srcType.getNumElements();
+
+    // Seed result with a zero vector of the destination type.
+    Value result = arith::ConstantOp::create(rewriter, loc, dstType,
+                                             rewriter.getZeroAttr(dstType));
+
+    for (int64_t i = 0; i < lanes; ++i) {
+      Value scalar = vector::ExtractOp::create(rewriter, loc, adaptor.getIn(),
+                                               ArrayRef<int64_t>{i});
+      Value cvt = SrcOpTy::create(rewriter, loc, scalarDstTy, scalar);
+      result = vector::InsertOp::create(rewriter, loc, cvt, result,
+                                        ArrayRef<int64_t>{i});
+    }
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+using ScalarizeVectorSIToFPOpPattern =
+    ScalarizeVectorIntFpConversionOpPattern<arith::SIToFPOp>;
+using ScalarizeVectorUIToFPOpPattern =
+    ScalarizeVectorIntFpConversionOpPattern<arith::UIToFPOp>;
+using ScalarizeVectorFPToSIOpPattern =
+    ScalarizeVectorIntFpConversionOpPattern<arith::FPToSIOp>;
+using ScalarizeVectorFPToUIOpPattern =
+    ScalarizeVectorIntFpConversionOpPattern<arith::FPToUIOp>;
+
 template <typename SrcOpTy>
 struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
@@ -4685,10 +4739,16 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
         LowerVectorAddIOpToAIEVecAddElemOp,
         LowerVectorSubIOpToAIEVecSubElemOp
       >(patterns.getContext());
-  } else if (backend == TargetBackend::LLVMIR){
-      patterns.add<
-      LowerVectorAddFOpToAIEVecAddElemOp,
-      LowerVectorSubFOpToAIEVecSubElemOp
+  } else if (backend == TargetBackend::LLVMIR) {
+    patterns.add<
+        LowerVectorAddFOpToAIEVecAddElemOp,
+        LowerVectorSubFOpToAIEVecSubElemOp,
+        // AIE2/AIE2P have no vector int<->fp instruction; scalarize so each
+        // lane reaches the supported scalar libcall path.
+        ScalarizeVectorSIToFPOpPattern,
+        ScalarizeVectorUIToFPOpPattern,
+        ScalarizeVectorFPToSIOpPattern,
+        ScalarizeVectorFPToUIOpPattern
       >(patterns.getContext());
   }
   // Add the compound shift+clamp+trunc→SRS pattern with higher benefit
@@ -5200,6 +5260,24 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
       [](arith::SubIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::SubFOp>(
       [](arith::SubFOp op) { return !isa<VectorType>(op.getType()); });
+
+  // AIE2/AIE2P GISel legalize only the scalar form of int<->fp conversions
+  // (libcalls). Vector forms have no legalizer rule and abort with
+  // "unable to legalize G_SITOFP <N x sX>". Mark vector forms illegal here
+  // so the ScalarizeVectorIntFpConversionOpPattern handles them. The
+  // scalarize pattern emits vector.extract / vector.insert / scalar conv
+  // sequences, so those ops must be legal too.
+  if (backend == TargetBackend::LLVMIR) {
+    target.addDynamicallyLegalOp<arith::SIToFPOp>(
+        [](arith::SIToFPOp op) { return !isa<VectorType>(op.getType()); });
+    target.addDynamicallyLegalOp<arith::UIToFPOp>(
+        [](arith::UIToFPOp op) { return !isa<VectorType>(op.getType()); });
+    target.addDynamicallyLegalOp<arith::FPToSIOp>(
+        [](arith::FPToSIOp op) { return !isa<VectorType>(op.getType()); });
+    target.addDynamicallyLegalOp<arith::FPToUIOp>(
+        [](arith::FPToUIOp op) { return !isa<VectorType>(op.getType()); });
+    target.addLegalOp<vector::ExtractOp, vector::InsertOp>();
+  }
 }
 
 static void configureAIEVecV1Legalizations(ConversionTarget &target,
