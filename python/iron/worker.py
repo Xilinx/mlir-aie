@@ -162,7 +162,12 @@ class Worker(ObjectFifoEndpoint):
             dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
         )
         def core_body():
-            for _ in range_(sys.maxsize) if self._while_true else range(1):
+            # Always wrap in an scf.for so the lowered MLIR matches expectations
+            # downstream (placed-API uses the same pattern with bound=1 for
+            # single-shot workers). Using Python range(1) here would emit the
+            # body inline with no scf.for wrapper, which the dataflow lowerer
+            # treats differently and can cause runtime hangs.
+            for _ in range_(sys.maxsize if self._while_true else 1):
                 self.core_fn(*self.fn_args)
 
 
