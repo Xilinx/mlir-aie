@@ -153,6 +153,29 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
+  // Per-kind predicates / labelers shared by all phase-3 call sites below.
+  // Buffer: consumer LTO (edge.first) must satisfy isLegalMemAffinity to the
+  // owner tile (edge.second).
+  auto bufferPred = [this](TileID consumerPos, TileID ownerPos) {
+    return targetModel->isLegalMemAffinity(consumerPos.col, consumerPos.row,
+                                           ownerPos.col, ownerPos.row);
+  };
+  auto bufferLabel = [](bool thisIsConsumer) -> StringRef {
+    return thisIsConsumer ? "shared-L1 buffer owner"
+                          : "shared-L1 buffer consumer";
+  };
+  // Cascade: same predicate as AIELowerCascadeFlowsPass -- src (edge.first)
+  // must be one row North or one column West of dst (edge.second); rows
+  // increase upward, so isSouth(src,dst) means dst is south of src.
+  auto cascadePred = [this](TileID srcPos, TileID dstPos) {
+    return targetModel->isSouth(srcPos.col, srcPos.row, dstPos.col,
+                                dstPos.row) ||
+           targetModel->isEast(srcPos.col, srcPos.row, dstPos.col, dstPos.row);
+  };
+  auto cascadeLabel = [](bool thisIsSrc) -> StringRef {
+    return thisIsSrc ? "cascade destination" : "cascade source";
+  };
+
   // Phase 3: Place constrained tiles then compute tiles
   size_t nextCompIdx = 0;
   for (auto logicalTile : logicalTiles) {
@@ -161,18 +184,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     auto row = logicalTile.tryGetRow();
     if (col && row) {
       TileID tile{*col, *row};
-      if (!satisfiesBufferAdjacency(logicalTile, tile, bufferAdjacency)) {
+      if (!satisfiesAdjacency(logicalTile, tile, bufferAdjacency, bufferPred)) {
         auto diag = logicalTile.emitError()
                     << "tile (" << tile.col << ", " << tile.row
                     << ") violates shared-L1 buffer adjacency";
-        attachBufferPeerNotes(diag, logicalTile, bufferAdjacency);
+        attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         return failure();
       }
-      if (!satisfiesCascadeAdjacency(logicalTile, tile, cascadeAdjacency)) {
+      if (!satisfiesAdjacency(logicalTile, tile, cascadeAdjacency,
+                              cascadePred)) {
         auto diag = logicalTile.emitError()
                     << "tile (" << tile.col << ", " << tile.row
                     << ") violates cascade adjacency";
-        attachCascadePeerNotes(diag, logicalTile, cascadeAdjacency);
+        attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
         return failure();
       }
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
@@ -203,11 +227,12 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         if (row && candidate.row != *row)
           continue;
         sawConstraintMatch = true;
-        if (!satisfiesBufferAdjacency(logicalTile, candidate, bufferAdjacency))
+        if (!satisfiesAdjacency(logicalTile, candidate, bufferAdjacency,
+                                bufferPred))
           continue;
         allConstraintMatchesFailedAdjacency = false;
-        if (!satisfiesCascadeAdjacency(logicalTile, candidate,
-                                       cascadeAdjacency))
+        if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
+                                cascadePred))
           continue;
 
         // Found valid tile - swap to nextCompIdx position and use
@@ -238,9 +263,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << (hasCascade ? " (cascade adjacency unsatisfiable)" : "");
         }
         if (adjacencyWasCause)
-          attachBufferPeerNotes(diag, logicalTile, bufferAdjacency);
+          attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (hasCascade)
-          attachCascadePeerNotes(diag, logicalTile, cascadeAdjacency);
+          attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
         return failure();
       }
 
@@ -473,9 +498,9 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   return std::nullopt;
 }
 
-SequentialPlacer::BufferAdjacency
+SequentialPlacer::Adjacency
 SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
-  BufferAdjacency adjacency;
+  Adjacency adjacency;
   for (auto consumer : logicalTiles) {
     if (consumer.getTileType() != AIETileType::CoreTile)
       continue;
@@ -502,7 +527,7 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
         if (!seenOwners.insert(owner.getOperation()).second)
           continue;
         unsigned idx = adjacency.edges.size();
-        adjacency.edges.push_back({consumer, owner});
+        adjacency.edges.push_back({TileLike(consumer), owner});
         adjacency.tileToEdges[consumer.getOperation()].push_back(idx);
         if (isa<LogicalTileOp>(owner.getOperation()))
           adjacency.tileToEdges[owner.getOperation()].push_back(idx);
@@ -512,9 +537,9 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
   return adjacency;
 }
 
-SequentialPlacer::CascadeAdjacency
+SequentialPlacer::Adjacency
 SequentialPlacer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
-  CascadeAdjacency adjacency;
+  Adjacency adjacency;
   for (auto cf : cascadeFlows) {
     TileLike src = cf.getSourceTileLike();
     TileLike dst = cf.getDestTileLike();
@@ -530,90 +555,46 @@ SequentialPlacer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
   return adjacency;
 }
 
-bool SequentialPlacer::satisfiesBufferAdjacency(
-    LogicalTileOp logicalTile, TileID candidate,
-    const BufferAdjacency &adjacency) const {
+bool SequentialPlacer::satisfiesAdjacency(
+    LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
+    llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const {
   auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
   if (it == adjacency.tileToEdges.end())
     return true;
 
   for (unsigned idx : it->second) {
-    auto [consumer, owner] = adjacency.edges[idx];
-    bool thisIsConsumer = consumer.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsConsumer ? owner : TileLike(consumer);
+    auto [edgeFirst, edgeSecond] = adjacency.edges[idx];
+    bool thisIsFirst = edgeFirst.getOperation() == logicalTile.getOperation();
+    TileLike peer = thisIsFirst ? edgeSecond : edgeFirst;
     auto peerPos = resolvePeerPosition(peer, result);
     if (!peerPos)
       continue;
-    TileID consumerPos = thisIsConsumer ? candidate : *peerPos;
-    TileID ownerPos = thisIsConsumer ? *peerPos : candidate;
-    if (!targetModel->isLegalMemAffinity(consumerPos.col, consumerPos.row,
-                                         ownerPos.col, ownerPos.row))
+    TileID firstPos = thisIsFirst ? candidate : *peerPos;
+    TileID secondPos = thisIsFirst ? *peerPos : candidate;
+    if (!pred(firstPos, secondPos))
       return false;
   }
   return true;
 }
 
-void SequentialPlacer::attachBufferPeerNotes(
+void SequentialPlacer::attachPeerNotes(
     InFlightDiagnostic &diag, LogicalTileOp logicalTile,
-    const BufferAdjacency &adjacency) const {
+    const Adjacency &adjacency,
+    llvm::function_ref<StringRef(bool thisIsFirst)> labelPeer) const {
   auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
   if (it == adjacency.tileToEdges.end())
     return;
   for (unsigned idx : it->second) {
-    auto [consumer, owner] = adjacency.edges[idx];
-    bool thisIsConsumer = consumer.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsConsumer ? owner : TileLike(consumer);
+    auto [edgeFirst, edgeSecond] = adjacency.edges[idx];
+    bool thisIsFirst = edgeFirst.getOperation() == logicalTile.getOperation();
+    TileLike peer = thisIsFirst ? edgeSecond : edgeFirst;
     auto peerPos = resolvePeerPosition(peer, result);
     if (!peerPos)
       continue;
     diag.attachNote(peer.getLoc())
-        << "shared-L1 buffer " << (thisIsConsumer ? "owner" : "consumer")
-        << " peer placed at (" << peerPos->col << ", " << peerPos->row << ")";
+        << labelPeer(thisIsFirst) << " peer placed at (" << peerPos->col << ", "
+        << peerPos->row << ")";
   }
-}
-
-void SequentialPlacer::attachCascadePeerNotes(
-    InFlightDiagnostic &diag, LogicalTileOp logicalTile,
-    const CascadeAdjacency &adjacency) const {
-  auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
-  if (it == adjacency.tileToEdges.end())
-    return;
-  for (unsigned idx : it->second) {
-    auto [edgeSrc, edgeDst] = adjacency.edges[idx];
-    bool thisIsSrc = edgeSrc.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsSrc ? edgeDst : edgeSrc;
-    auto peerPos = resolvePeerPosition(peer, result);
-    if (!peerPos)
-      continue;
-    diag.attachNote(peer.getLoc())
-        << "cascade " << (thisIsSrc ? "destination" : "source")
-        << " peer placed at (" << peerPos->col << ", " << peerPos->row << ")";
-  }
-}
-
-bool SequentialPlacer::satisfiesCascadeAdjacency(
-    LogicalTileOp logicalTile, TileID candidate,
-    const CascadeAdjacency &adjacency) const {
-  auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
-  if (it == adjacency.tileToEdges.end())
-    return true;
-
-  // Same predicate as AIELowerCascadeFlowsPass: src must be one row North
-  // or one column West of dst (rows increase upward).
-  for (unsigned idx : it->second) {
-    auto [edgeSrc, edgeDst] = adjacency.edges[idx];
-    bool thisIsSrc = edgeSrc.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsSrc ? edgeDst : edgeSrc;
-    auto peerPos = resolvePeerPosition(peer, result);
-    if (!peerPos)
-      continue;
-    TileID srcPos = thisIsSrc ? candidate : *peerPos;
-    TileID dstPos = thisIsSrc ? *peerPos : candidate;
-    if (!targetModel->isSouth(srcPos.col, srcPos.row, dstPos.col, dstPos.row) &&
-        !targetModel->isEast(srcPos.col, srcPos.row, dstPos.col, dstPos.row))
-      return false;
-  }
-  return true;
 }
 
 void SequentialPlacer::buildObjectFifoGroups(

@@ -130,46 +130,46 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  // Cross-tile L1 buffer access: consumer LTO's core must pass
-  // targetModel->isLegalMemAffinity(coreCol=consumerCol, coreRow=consumerRow,
-  //                                 memCol=ownerCol,     memRow=ownerRow).
-  // Same shape as CascadeAdjacency (#3042); TODO: factor a generic
-  // Adjacency<Predicate> once both have landed.
-  struct BufferAdjacency {
-    llvm::SmallVector<std::pair<LogicalTileOp, TileLike>, 4> edges;
-    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
-        tileToEdges;
-  };
-
-  // `tileToEdges` indexes into `edges` only for `LogicalTileOp` endpoints
-  // (the ones the placer visits); `TileOp` peers contribute coords via
-  // `TileLike::tryGetCol`/`tryGetRow`.
-  struct CascadeAdjacency {
+  // Per-LTO peer edges indexed by either endpoint. Used by both shared-L1
+  // buffer adjacency (memory affinity) and cascade adjacency (cardinal
+  // direction). `tileToEdges` indexes into `edges` only for `LogicalTileOp`
+  // endpoints (the ones the placer visits); `TileOp` peers contribute coords
+  // via `TileLike::tryGetCol`/`tryGetRow`.
+  struct Adjacency {
     llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
     llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
         tileToEdges;
   };
 
-  BufferAdjacency
-  buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
+  // Cross-tile L1 buffer access: consumer LTO's core must pass
+  // targetModel->isLegalMemAffinity(coreCol=consumerCol, coreRow=consumerRow,
+  //                                 memCol=ownerCol,     memRow=ownerRow).
+  // The first endpoint of each edge is the consumer LTO; the second is the
+  // owner tile.
+  Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
 
-  bool satisfiesBufferAdjacency(LogicalTileOp logicalTile, TileID candidate,
-                                const BufferAdjacency &adjacency) const;
+  // The first endpoint of each edge is the cascade source; the second is the
+  // destination.
+  Adjacency buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
 
-  void attachBufferPeerNotes(mlir::InFlightDiagnostic &diag,
-                             LogicalTileOp logicalTile,
-                             const BufferAdjacency &adjacency) const;
-  CascadeAdjacency
-  buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
+  // Generic adjacency predicate. `pred` returns true iff `(firstPos,
+  // secondPos)` satisfies the constraint, where `first` and `second` are
+  // `adjacency.edges[i].first` and `.second`. Unplaced peers without pin
+  // coords defer; symmetric/asymmetric predicates only need to be checked at
+  // one endpoint each.
+  bool satisfiesAdjacency(
+      LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
+      llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const;
 
-  // Unplaced peers without pin coords defer; symmetric predicate makes one
-  // check per endpoint sufficient.
-  bool satisfiesCascadeAdjacency(LogicalTileOp logicalTile, TileID candidate,
-                                 const CascadeAdjacency &adjacency) const;
+  // Generic peer-note attachment. `labelPeer(thisIsFirst)` returns the
+  // descriptive name of the peer endpoint -- when `logicalTile` is the first
+  // member of the edge, the peer is the second member, and vice versa. The
+  // attached note reads `"<label> peer placed at (col, row)"`.
+  void attachPeerNotes(
+      mlir::InFlightDiagnostic &diag, LogicalTileOp logicalTile,
+      const Adjacency &adjacency,
+      llvm::function_ref<llvm::StringRef(bool thisIsFirst)> labelPeer) const;
 
-  void attachCascadePeerNotes(mlir::InFlightDiagnostic &diag,
-                              LogicalTileOp logicalTile,
-                              const CascadeAdjacency &adjacency) const;
   void addChannelRequirementsFromFlows(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
