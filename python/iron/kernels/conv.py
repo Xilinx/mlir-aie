@@ -13,10 +13,14 @@ from aie.iron.kernel import ExternalFunction
 
 from ._common import (
     _conv_act_dtype_info,
-    _detect_arch,
-    _include_dirs,
-    _kernel_source,
+    _default_source_path,
+    _make_extern,
 )
+
+
+def _i32s(n: int) -> list:
+    """Return a list of *n* ``np.int32`` types — for trailing scalar conv args."""
+    return [np.int32] * n
 
 
 def conv2dk1(
@@ -42,19 +46,13 @@ def conv2dk1(
     func_name, flags = _conv_act_dtype_info(
         "conv2dk1", act_dtype, factory_name="conv2dk1"
     )
-
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[act_dtype]]
     wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, arch, "conv2dk1.cc")
-    arg_types = [in_ty, wt_ty, out_ty, np.int32, np.int32, np.int32, np.int32]
-    return ExternalFunction(
+    return _make_extern(
         func_name,
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("conv2dk1.cc"),
+        [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=flags,
     )
 
@@ -82,34 +80,14 @@ def conv2dk3(
     func_name, flags = _conv_act_dtype_info(
         "conv2dk3", act_dtype, factory_name="conv2dk3"
     )
-
     line_size = input_width * input_channels
     line_ty = np.ndarray[(line_size,), np.dtype[act_dtype]]
     wt_ty = np.ndarray[(3 * 3 * input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, arch, "conv2dk3.cc")
-    arg_types = [
-        line_ty,
-        line_ty,
-        line_ty,
-        wt_ty,
-        out_ty,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-    ]
-    return ExternalFunction(
+    return _make_extern(
         func_name,
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("conv2dk3.cc"),
+        [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=flags,
     )
 
@@ -137,33 +115,16 @@ def conv2dk1_skip(
     func_name, flags = _conv_act_dtype_info(
         "conv2dk1_skip", act_dtype, factory_name="conv2dk1_skip"
     )
-
     half_ch = input_channels // 2
     in0_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
     in1_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
     wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
     skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[act_dtype]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, "aie2", "conv2dk1_skip.cc")
-    arg_types = [
-        in0_ty,
-        in1_ty,
-        wt_ty,
-        out_ty,
-        skip_ty,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-    ]
-    return ExternalFunction(
+    return _make_extern(
         func_name,
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("conv2dk1_skip.cc", subdir="aie2"),
+        [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
     )
 
@@ -186,15 +147,10 @@ def conv2dk1_i8(
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
     wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, arch, "conv2dk1_i8.cc")
-    arg_types = [in_ty, wt_ty, out_ty, np.int32, np.int32, np.int32, np.int32]
-    return ExternalFunction(
+    return _make_extern(
         "conv2dk1_i8",
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("conv2dk1_i8.cc"),
+        [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DINT8_ACT"],
     )
 
@@ -223,24 +179,10 @@ def conv2dk14(
     in_ty = np.ndarray[(tiles * pixels * _RGBA,), np.dtype[np.uint8]]
     wt_ty = np.ndarray[(output_channels * pixels * _RGBA,), np.dtype[np.int8]]
     out_ty = np.ndarray[(output_channels * tiles * _ACC_FACTOR,), np.dtype[np.int8]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, "aie2p", "conv2dk14.cc")
-    arg_types = [
-        in_ty,
-        wt_ty,
-        out_ty,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-    ]
-    return ExternalFunction(
+    return _make_extern(
         "conv2dk14_i8",
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("conv2dk14.cc", subdir="aie2p"),
+        [in_ty, wt_ty, out_ty, *_i32s(5)],
     )
 
 
@@ -267,35 +209,16 @@ def conv2dk1_skip_init(
     func_name, flags = _conv_act_dtype_info(
         "conv2dk1_skip_init", act_dtype, factory_name="conv2dk1_skip_init"
     )
-
     half_ch = input_channels // 2
     in0_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
     in1_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
     wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
     skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[act_dtype]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, "aie2", "conv2dk1_skip_init.cc")
-    arg_types = [
-        in0_ty,
-        in1_ty,
-        wt_ty,
-        out_ty,
-        skip_ty,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-    ]
-    return ExternalFunction(
+    return _make_extern(
         func_name,
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("conv2dk1_skip_init.cc", subdir="aie2"),
+        [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(7)],
         compile_flags=flags,
     )
 
@@ -318,15 +241,10 @@ def bn_conv2dk1_relu(
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
     wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk1_relu.cc")
-    arg_types = [in_ty, wt_ty, out_ty, np.int32, np.int32, np.int32, np.int32]
-    return ExternalFunction(
+    return _make_extern(
         "conv2dk1_relu_i8_ui8",
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
+        [in_ty, wt_ty, out_ty, *_i32s(4)],
     )
 
 
@@ -349,29 +267,10 @@ def bn_conv2dk3(
     line_ty = np.ndarray[(line_size,), np.dtype[np.int8]]
     wt_ty = np.ndarray[(3 * 3 * input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk3.cc")
-    arg_types = [
-        line_ty,
-        line_ty,
-        line_ty,
-        wt_ty,
-        out_ty,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-    ]
-    return ExternalFunction(
+    return _make_extern(
         "conv2dk3_stride2_i8",
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("bottleneck/bn_conv2dk3.cc", subdir="aie2"),
+        [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
     )
 
 
@@ -393,15 +292,10 @@ def bn_conv2dk1_i8(
     in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
     wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk1_i8.cc")
-    arg_types = [in_ty, wt_ty, out_ty, np.int32, np.int32, np.int32, np.int32]
-    return ExternalFunction(
+    return _make_extern(
         "conv2dk1_ui8_i8",
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
+        [in_ty, wt_ty, out_ty, *_i32s(4)],
     )
 
 
@@ -439,25 +333,10 @@ def bn_conv2dk1_skip(
     wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
     skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[skip_dtype]]
-
-    arch = _detect_arch()
-    source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk1_skip.cc")
-    arg_types = [
-        in_ty,
-        wt_ty,
-        out_ty,
-        skip_ty,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-        np.int32,
-    ]
-    return ExternalFunction(
+    return _make_extern(
         func_name,
-        source_file=str(source),
-        arg_types=arg_types,
-        include_dirs=_include_dirs(),
+        _default_source_path("bottleneck/bn_conv2dk1_skip.cc", subdir="aie2"),
+        [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
     )
 
 
@@ -492,51 +371,12 @@ def bn_conv2dk3_dw(
     out_size = (input_width // stride) * output_channels
     out_ty = np.ndarray[(out_size,), np.dtype[np.uint8]]
 
-    arch = _detect_arch()
-    source = _kernel_source(arch, "aie2", "bottleneck/bn_conv2dk3_dw.cc")
-
+    # stride=1 has an extra output split arg (the trailing N int32 count is the same).
+    leading = [line_ty, line_ty, line_ty, wt_ty, out_ty]
     if stride == 1:
-        arg_types = [
-            line_ty,
-            line_ty,
-            line_ty,
-            wt_ty,
-            out_ty,
-            out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ]
-        return ExternalFunction(
-            func_name,
-            source_file=str(source),
-            arg_types=arg_types,
-            include_dirs=_include_dirs(),
-        )
-    else:
-        arg_types = [
-            line_ty,
-            line_ty,
-            line_ty,
-            wt_ty,
-            out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ]
-        return ExternalFunction(
-            func_name,
-            source_file=str(source),
-            arg_types=arg_types,
-            include_dirs=_include_dirs(),
-        )
+        leading.append(out_ty)
+    return _make_extern(
+        func_name,
+        _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
+        [*leading, *_i32s(8)],
+    )

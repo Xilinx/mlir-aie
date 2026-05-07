@@ -112,3 +112,37 @@ def _conv_act_dtype_info(
             f"{factory_name}(): act_dtype must be np.int8 or np.uint8, "
             f"got {act_dtype}"
         )
+
+
+def _require_fixed_tile_size(
+    factory_name: str, tile_size: int, expected: int = 1024
+) -> None:
+    """Raise ValueError when ``tile_size`` does not match a hard-coded C++ loop bound."""
+    if tile_size != expected:
+        raise ValueError(
+            f"{factory_name}() tile_size must be {expected} to match the "
+            f"hard-coded C++ loop bound, got {tile_size}."
+        )
+
+
+def _default_source_path(filename: str, subdir: str | None = None) -> Path:
+    """Return ``_kernel_source(arch, subdir or arch, filename)`` using the active arch."""
+    arch = _detect_arch()
+    return _kernel_source(arch, subdir or arch, filename)
+
+
+def _make_extern(
+    func_name: str,
+    source_path: Path | str,
+    arg_types: list,
+    *,
+    compile_flags: list[str] | None = None,
+) -> ExternalFunction:
+    """Construct an ExternalFunction with the standard include_dirs."""
+    return ExternalFunction(
+        func_name,
+        source_file=str(source_path),
+        arg_types=arg_types,
+        include_dirs=_include_dirs(),
+        compile_flags=compile_flags or [],
+    )

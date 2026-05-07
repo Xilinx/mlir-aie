@@ -12,33 +12,26 @@ from ml_dtypes import bfloat16
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import _detect_arch, _include_dirs, _kernel_source
+from ._common import _default_source_path, _make_extern
 
 
 def _reduce_kernel(
     op: str, tile_size: int, dtype, vectorized: bool
 ) -> ExternalFunction:
     """Shared implementation for :func:`reduce_add` and :func:`reduce_min`."""
-    dtype_np = np.dtype(dtype)
-    is_int32 = dtype_np == np.dtype(np.int32)
-    if not is_int32:
+    if np.dtype(dtype) != np.dtype(np.int32):
         raise ValueError(
             f"reduce_{op}() dtype must be np.int32, got {dtype}. "
             "Only the int32 variant is available in the installed aie_kernels."
         )
 
-    arch = _detect_arch()
     in_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
     out_ty = np.ndarray[(1,), np.dtype[np.int32]]
     func_variant = "vector" if vectorized else "scalar"
-    func_name = f"reduce_{op}_{func_variant}"
-
-    source = _kernel_source(arch, arch, f"reduce_{op}.cc")
-    return ExternalFunction(
-        func_name,
-        source_file=str(source),
-        arg_types=[in_ty, out_ty, np.int32],
-        include_dirs=_include_dirs(),
+    return _make_extern(
+        f"reduce_{op}_{func_variant}",
+        _default_source_path(f"reduce_{op}.cc"),
+        [in_ty, out_ty, np.int32],
     )
 
 
@@ -96,27 +89,21 @@ def reduce_max(
     Raises:
         ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.
     """
-    dtype_np = np.dtype(dtype)
-    is_bf16 = dtype is bfloat16 or dtype_np == np.dtype(bfloat16)
-    is_int32 = dtype_np == np.dtype(np.int32)
+    is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
+    is_int32 = np.dtype(dtype) == np.dtype(np.int32)
     if not is_bf16 and not is_int32:
         raise ValueError(
             f"reduce_max() dtype must be np.int32 or bfloat16, got {dtype}"
         )
 
-    arch = _detect_arch()
     actual_dtype = bfloat16 if is_bf16 else np.int32
     in_ty = np.ndarray[(tile_size,), np.dtype[actual_dtype]]
     out_ty = np.ndarray[(1,), np.dtype[actual_dtype]]
 
     func_variant = "vector" if vectorized else "scalar"
     suffix = "_bfloat16" if is_bf16 else ""
-    func_name = f"reduce_max_{func_variant}{suffix}"
-
-    source = _kernel_source(arch, arch, "reduce_max.cc")
-    return ExternalFunction(
-        func_name,
-        source_file=str(source),
-        arg_types=[in_ty, out_ty, np.int32],
-        include_dirs=_include_dirs(),
+    return _make_extern(
+        f"reduce_max_{func_variant}{suffix}",
+        _default_source_path("reduce_max.cc"),
+        [in_ty, out_ty, np.int32],
     )

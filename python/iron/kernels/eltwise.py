@@ -12,7 +12,12 @@ from ml_dtypes import bfloat16
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import _detect_arch, _dtype_to_bit_width, _include_dirs, _kernel_source
+from ._common import (
+    _default_source_path,
+    _dtype_to_bit_width,
+    _make_extern,
+    _require_fixed_tile_size,
+)
 
 _ELTWISE_FIXED_TILE = 1024
 _RELU_FIXED_TILE = 1024
@@ -22,28 +27,19 @@ def _eltwise_bf16_kernel(
     op: str, tile_size: int, dtype, vectorized: bool
 ) -> ExternalFunction:
     """Shared implementation for :func:`add` and :func:`mul`."""
-    if tile_size != _ELTWISE_FIXED_TILE:
-        raise ValueError(
-            f"{op}() tile_size must be {_ELTWISE_FIXED_TILE} to match the "
-            f"hard-coded C++ loop bound, got {tile_size}."
-        )
+    _require_fixed_tile_size(op, tile_size, _ELTWISE_FIXED_TILE)
     if dtype is not bfloat16:
         raise ValueError(
             f"{op}() dtype must be bfloat16, got {dtype}. "
             "Only the bf16 variant is available in the installed aie_kernels."
         )
 
-    arch = _detect_arch()
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     func_variant = "vector" if vectorized else "scalar"
-    func_name = f"eltwise_{op}_bf16_{func_variant}"
-
-    source = _kernel_source(arch, arch, f"{op}.cc")
-    return ExternalFunction(
-        func_name,
-        source_file=str(source),
-        arg_types=[tile_ty, tile_ty, tile_ty],
-        include_dirs=_include_dirs(),
+    return _make_extern(
+        f"eltwise_{op}_bf16_{func_variant}",
+        _default_source_path(f"{op}.cc"),
+        [tile_ty, tile_ty, tile_ty],
     )
 
 
@@ -61,15 +57,11 @@ def passthrough(tile_size: int = 4096, dtype=np.int32) -> ExternalFunction:
         ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or ``np.int32``.
     """
     bit_width = _dtype_to_bit_width(dtype, factory_name="passthrough")
-
-    arch = _detect_arch()
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
-    source = _kernel_source(arch, arch, "passThrough.cc")
-    return ExternalFunction(
+    return _make_extern(
         "passThroughLine",
-        source_file=str(source),
-        arg_types=[tile_ty, tile_ty, np.int32],
-        include_dirs=_include_dirs(),
+        _default_source_path("passThrough.cc"),
+        [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
     )
 
@@ -93,19 +85,14 @@ def scale(
     if dtype not in (np.int16, np.int32):
         raise ValueError(f"scale() dtype must be np.int16 or np.int32, got {dtype}")
 
-    arch = _detect_arch()
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
     scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
     func_variant = "vector" if vectorized else "scalar"
-    func_name = f"vector_scalar_mul_{func_variant}"
-
     bit_width = 16 if dtype == np.int16 else 32
-    source = _kernel_source(arch, arch, "scale.cc")
-    return ExternalFunction(
-        func_name,
-        source_file=str(source),
-        arg_types=[tile_ty, tile_ty, scalar_ty, np.int32],
-        include_dirs=_include_dirs(),
+    return _make_extern(
+        f"vector_scalar_mul_{func_variant}",
+        _default_source_path("scale.cc"),
+        [tile_ty, tile_ty, scalar_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
     )
 
@@ -160,18 +147,10 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
     Raises:
         ValueError: When ``tile_size`` is not 1024.
     """
-    if tile_size != _RELU_FIXED_TILE:
-        raise ValueError(
-            f"relu() tile_size must be {_RELU_FIXED_TILE} to match the hard-coded "
-            f"C++ loop bound, got {tile_size}."
-        )
-    arch = _detect_arch()
+    _require_fixed_tile_size("relu", tile_size, _RELU_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-
-    source = _kernel_source(arch, arch, "relu.cc")
-    return ExternalFunction(
+    return _make_extern(
         "bf16_relu",
-        source_file=str(source),
-        arg_types=[tile_ty, tile_ty],
-        include_dirs=_include_dirs(),
+        _default_source_path("relu.cc"),
+        [tile_ty, tile_ty],
     )

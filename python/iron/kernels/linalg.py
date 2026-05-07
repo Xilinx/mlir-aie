@@ -12,7 +12,7 @@ from ml_dtypes import bfloat16
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import _detect_arch, _include_dirs, _kernel_source
+from ._common import _default_source_path, _make_extern
 
 _CASCADE_COMBOS = {
     (np.int16, np.int16): "i16_i16",
@@ -29,6 +29,15 @@ _MM_COMBOS = {
     (np.int16, np.int32): ("i16_i32", "i16_i32_ONLY"),
     (bfloat16, bfloat16): ("bf16_bf16", "bf16_bf16_ONLY"),
     (bfloat16, np.float32): ("bf16_f32", "bf16_f32_ONLY"),
+}
+
+# (suffix, _MM_COMBOS-style only_flag) per supported mm_zero output dtype.
+_ZERO_DTYPE_INFO = {
+    np.int8: ("i8", "i8_i8_ONLY"),
+    np.int16: ("i16", "i16_i16_ONLY"),
+    np.int32: ("i32", "i16_i32_ONLY"),
+    np.float32: ("f32", "bf16_f32_ONLY"),
+    bfloat16: ("bf16", "bf16_bf16_ONLY"),
 }
 
 
@@ -58,31 +67,20 @@ def mm(
     """
     key = (input_dtype, output_dtype)
     if key not in _MM_COMBOS:
-        supported = ", ".join(
-            f"({k[0].__name__ if hasattr(k[0], '__name__') else k[0]}, "
-            f"{k[1].__name__ if hasattr(k[1], '__name__') else k[1]})"
-            for k in _MM_COMBOS
-        )
         raise ValueError(
             f"mm(): unsupported (input_dtype, output_dtype) = {key}. "
-            f"Supported combos: {supported}"
+            f"Supported: {list(_MM_COMBOS.keys())}"
         )
 
     suffix, only_flag = _MM_COMBOS[key]
     prefix = "matmul" if vectorized else "matmul_scalar"
-    func_name = f"{prefix}_{suffix}"
-
-    arch = _detect_arch()
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-
-    source = _kernel_source(arch, arch, "mm.cc")
-    return ExternalFunction(
-        func_name,
-        source_file=str(source),
-        arg_types=[a_ty, b_ty, c_ty],
-        include_dirs=_include_dirs(),
+    return _make_extern(
+        f"{prefix}_{suffix}",
+        _default_source_path("mm.cc"),
+        [a_ty, b_ty, c_ty],
         compile_flags=[
             f"-DDIM_M={dim_m}",
             f"-DDIM_K={dim_k}",
@@ -114,41 +112,19 @@ def mm_zero(
     Raises:
         ValueError: When ``output_dtype`` is not supported.
     """
-    _dtype_suffix_map = {
-        np.int8: "i8",
-        np.int16: "i16",
-        np.int32: "i32",
-        np.float32: "f32",
-        bfloat16: "bf16",
-    }
-    if output_dtype not in _dtype_suffix_map:
+    if output_dtype not in _ZERO_DTYPE_INFO:
         raise ValueError(
             f"mm_zero(): unsupported output_dtype {output_dtype}. "
-            f"Supported: {list(_dtype_suffix_map.keys())}"
+            f"Supported: {list(_ZERO_DTYPE_INFO.keys())}"
         )
 
-    suffix = _dtype_suffix_map[output_dtype]
+    suffix, only_flag = _ZERO_DTYPE_INFO[output_dtype]
     prefix = "zero" if vectorized else "zero_scalar"
-    func_name = f"{prefix}_{suffix}"
-
-    arch = _detect_arch()
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-
-    _combo_for_out = {
-        np.int8: "i8_i8_ONLY",
-        np.int16: "i16_i16_ONLY",
-        np.int32: "i16_i32_ONLY",
-        np.float32: "bf16_f32_ONLY",
-        bfloat16: "bf16_bf16_ONLY",
-    }
-    only_flag = _combo_for_out[output_dtype]
-
-    source = _kernel_source(arch, arch, "mm.cc")
-    return ExternalFunction(
-        func_name,
-        source_file=str(source),
-        arg_types=[c_ty],
-        include_dirs=_include_dirs(),
+    return _make_extern(
+        f"{prefix}_{suffix}",
+        _default_source_path("mm.cc"),
+        [c_ty],
         compile_flags=[
             f"-DDIM_M={dim_m}",
             f"-DDIM_K={dim_k}",
@@ -187,19 +163,13 @@ def mv(
         )
 
     prefix = "matvec_vectorized" if vectorized else "matvec_scalar"
-    func_name = f"{prefix}_i16_i32"
-
-    arch = _detect_arch()
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[np.int16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[np.int16]]
     c_ty = np.ndarray[(dim_m,), np.dtype[np.int32]]
-
-    source = _kernel_source(arch, arch, "mv.cc")
-    return ExternalFunction(
-        func_name,
-        source_file=str(source),
-        arg_types=[a_ty, b_ty, c_ty],
-        include_dirs=_include_dirs(),
+    return _make_extern(
+        f"{prefix}_i16_i32",
+        _default_source_path("mv.cc"),
+        [a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
     )
 
@@ -244,19 +214,13 @@ def cascade_mm(
         )
 
     suffix = _CASCADE_COMBOS[key]
-    func_name = f"matmul_scalar_cascade_{cascade_mode}_{suffix}"
-
-    arch = _detect_arch()
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-
-    source = _kernel_source(arch, arch, "cascade_mm.cc")
-    return ExternalFunction(
-        func_name,
-        source_file=str(source),
-        arg_types=[a_ty, b_ty, c_ty],
-        include_dirs=_include_dirs(),
+    return _make_extern(
+        f"matmul_scalar_cascade_{cascade_mode}_{suffix}",
+        _default_source_path("cascade_mm.cc"),
+        [a_ty, b_ty, c_ty],
         compile_flags=[
             f"-DDIM_M={dim_m}",
             f"-DDIM_K={dim_k}",

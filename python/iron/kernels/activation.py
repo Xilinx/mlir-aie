@@ -13,7 +13,12 @@ from ml_dtypes import bfloat16
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import _detect_arch, _include_dirs, _kernel_source
+from ._common import (
+    _detect_arch,
+    _include_dirs,
+    _kernel_source,
+    _require_fixed_tile_size,
+)
 
 _LUT_FIXED_TILE = 1024
 
@@ -53,18 +58,30 @@ def _create_lut_kernel(
             include_dirs=include,
             compile_flags=flags,
         )
-    else:
-        return ExternalFunction(
-            func_name,
-            source_file=str(kernel_path),
-            arg_types=arg_types,
-            include_dirs=include,
-            compile_flags=flags,
-        )
+    return ExternalFunction(
+        func_name,
+        source_file=str(kernel_path),
+        arg_types=arg_types,
+        include_dirs=include,
+        compile_flags=flags,
+    )
+
+
+def _bf16_lut_factory(
+    factory_name: str,
+    func_name: str,
+    kernel_filename: str,
+    tile_size: int,
+    arg_arity: int,
+) -> ExternalFunction:
+    """Build a LUT-backed bf16 kernel whose arg list is N copies of the same tile type."""
+    _require_fixed_tile_size(factory_name, tile_size, _LUT_FIXED_TILE)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(func_name, kernel_filename, [tile_ty] * arg_arity)
 
 
 def softmax(tile_size: int = 1024) -> ExternalFunction:
-    """Softmax activation kernel for bf16 tiles.
+    """Softmax activation kernel for bf16 tiles (tile_size must be 1024).
 
     Args:
         tile_size: Number of elements per tile.
@@ -72,11 +89,7 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
     Returns:
         ExternalFunction configured for the softmax kernel.
     """
-    if tile_size != _LUT_FIXED_TILE:
-        raise ValueError(
-            f"softmax() tile_size must be {_LUT_FIXED_TILE} to match the "
-            f"hard-coded C++ loop bound, got {tile_size}."
-        )
+    _require_fixed_tile_size("softmax", tile_size, _LUT_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
         "softmax_bf16",
@@ -86,88 +99,24 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
 
 
 def gelu(tile_size: int = 1024) -> ExternalFunction:
-    """GELU activation kernel (tanh approximation) for bf16 tiles (must be 1024).
-
-    Args:
-        tile_size: Elements per tile (must be 1024, hard-coded in C++).
-
-    Returns:
-        ExternalFunction configured for the gelu kernel.
-    """
-    if tile_size != _LUT_FIXED_TILE:
-        raise ValueError(
-            f"gelu() tile_size must be {_LUT_FIXED_TILE} to match the "
-            f"hard-coded C++ loop bound, got {tile_size}."
-        )
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "gelu_bf16",
-        "gelu.cc",
-        [tile_ty, tile_ty],
-    )
+    """GELU activation kernel (tanh approximation) for bf16 tiles (must be 1024)."""
+    return _bf16_lut_factory("gelu", "gelu_bf16", "gelu.cc", tile_size, arg_arity=2)
 
 
 def silu(tile_size: int = 1024) -> ExternalFunction:
-    """SiLU (Swish) activation kernel for bf16 tiles (must be 1024).
-
-    Args:
-        tile_size: Elements per tile (must be 1024, hard-coded in C++).
-
-    Returns:
-        ExternalFunction configured for the silu kernel.
-    """
-    if tile_size != _LUT_FIXED_TILE:
-        raise ValueError(
-            f"silu() tile_size must be {_LUT_FIXED_TILE} to match the "
-            f"hard-coded C++ loop bound, got {tile_size}."
-        )
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "silu_bf16",
-        "silu.cc",
-        [tile_ty, tile_ty],
-    )
+    """SiLU (Swish) activation kernel for bf16 tiles (must be 1024)."""
+    return _bf16_lut_factory("silu", "silu_bf16", "silu.cc", tile_size, arg_arity=2)
 
 
 def swiglu(tile_size: int = 1024) -> ExternalFunction:
-    """SwiGLU gated activation kernel for bf16 tiles (must be 1024).
-
-    Args:
-        tile_size: Elements per tile (must be 1024, hard-coded in C++).
-
-    Returns:
-        ExternalFunction configured for the swiglu kernel.
-    """
-    if tile_size != _LUT_FIXED_TILE:
-        raise ValueError(
-            f"swiglu() tile_size must be {_LUT_FIXED_TILE} to match the "
-            f"hard-coded C++ loop bound, got {tile_size}."
-        )
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "swiglu_bf16",
-        "swiglu.cc",
-        [tile_ty, tile_ty, tile_ty, tile_ty],
+    """SwiGLU gated activation kernel for bf16 tiles (must be 1024)."""
+    return _bf16_lut_factory(
+        "swiglu", "swiglu_bf16", "swiglu.cc", tile_size, arg_arity=4
     )
 
 
 def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
-    """Element-wise exponential kernel for bf16 tiles (must be 1024).
-
-    Args:
-        tile_size: Elements per tile (must be 1024, hard-coded in C++).
-
-    Returns:
-        ExternalFunction configured for the bf16_exp kernel.
-    """
-    if tile_size != _LUT_FIXED_TILE:
-        raise ValueError(
-            f"bf16_exp() tile_size must be {_LUT_FIXED_TILE} to match the "
-            f"hard-coded C++ loop bound, got {tile_size}."
-        )
-    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(
-        "exp_bf16_1024",
-        "bf16_exp.cc",
-        [tile_ty, tile_ty],
+    """Element-wise exponential kernel for bf16 tiles (must be 1024)."""
+    return _bf16_lut_factory(
+        "bf16_exp", "exp_bf16_1024", "bf16_exp.cc", tile_size, arg_arity=2
     )
