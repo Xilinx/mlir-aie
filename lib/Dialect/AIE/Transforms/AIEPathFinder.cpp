@@ -63,9 +63,9 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                      << "\tAdding Packet Flow: (" << srcCoords.col << ", "
                      << srcCoords.row << ")"
                      << stringifyWireBundle(srcPort.bundle) << srcPort.channel
-                     << " -> (" << dstCoords.col << ", " << dstCoords.row
-                     << ")" << stringifyWireBundle(dstPort.bundle)
-                     << dstPort.channel << "\n");
+                     << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
+                     << stringifyWireBundle(dstPort.bundle) << dstPort.channel
+                     << "\n");
           pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
                               /*isPktFlow*/ true, priorityFlow);
         }
