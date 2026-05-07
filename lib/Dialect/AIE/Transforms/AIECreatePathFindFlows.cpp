@@ -342,10 +342,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
               continue;
             Connect connect = {{src.bundle, src.channel},
                                {dest.bundle, dest.channel}};
-            if (std::find(switchboxes[currTile].begin(),
-                          switchboxes[currTile].end(),
-                          std::pair{connect, flowID}) ==
-                switchboxes[currTile].end())
+            if (std::find(
+                    switchboxes[currTile].begin(), switchboxes[currTile].end(),
+                    std::pair{connect, flowID}) == switchboxes[currTile].end())
               switchboxes[currTile].push_back({connect, flowID});
             // Assign "control packet flows" flag per switchbox, based on
             // packet flow op attribute
