@@ -3904,10 +3904,9 @@ struct ComputeBxorAndBnegOpPattern : OpConversionPattern<arith::XOrIOp> {
     if (laneSize * elWidth != 512)
       return failure();
 
-    auto lhsConstOp =
-        dyn_cast<arith::ConstantOp>(xorOp.getLhs().getDefiningOp());
-    auto rhsConstOp =
-        dyn_cast<arith::ConstantOp>(xorOp.getRhs().getDefiningOp());
+    // Operands may be block arguments (no defining op); guard before casting.
+    auto lhsConstOp = xorOp.getLhs().getDefiningOp<arith::ConstantOp>();
+    auto rhsConstOp = xorOp.getRhs().getDefiningOp<arith::ConstantOp>();
 
     // If one of operands in xorOp is a constant -1, xorOp will be replaced with
     // aievec::BnegOp.
@@ -4683,7 +4682,14 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
-        LowerVectorSubIOpToAIEVecSubElemOp
+        LowerVectorSubIOpToAIEVecSubElemOp,
+        // Bitwise vector arith → aievec.{bxor,bor,band,bneg} only on CPP:
+        // AIEVecToLLVM has no lowering for those aievec ops, and AIE2/AIE2P
+        // legalize standard G_AND/G_OR/G_XOR on every vector type, so the
+        // LLVMIR path takes the standard arith→llvm route instead.
+        ComputeBxorAndBnegOpPattern,
+        ComputeBorOpPattern,
+        ComputeBandOpPattern
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
@@ -4708,9 +4714,6 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       ComputeCeilOpPattern,
       ComputeFloorOpPattern,
       ComputeNegOpPattern,
-      ComputeBxorAndBnegOpPattern,
-      ComputeBorOpPattern,
-      ComputeBandOpPattern,
       ComputeSignedIntRightShiftOpPattern,
       LowerScalarShRSIToAIEVecUPSSRS,
       ConvertMulIToAIEVecMulElemOpPattern,
@@ -5124,35 +5127,25 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   // Only convert bitwise vector ops to aievec.{bxor,bor,band,bneg} on the
   // CPP (chess) backend. AIEVecToLLVM has no lowering for those aievec ops,
-  // and AIE2/AIE2P legalize standard G_AND/G_OR/G_XOR on every vector type.
+  // and AIE2/AIE2P legalize standard G_AND/G_OR/G_XOR on every vector type,
+  // so the LLVMIR path takes the standard arith→llvm route instead.
   if (backend == TargetBackend::CPP) {
-    target.addDynamicallyLegalOp<arith::XOrIOp>([](arith::XOrIOp xorOp) {
-      auto srcType = dyn_cast<VectorType>(xorOp.getLhs().getType());
+    // Shared predicate for arith.{andi,ori,xori}: illegal iff the operands
+    // are a 512-bit integer vector (then a aievec.{band,bor,bxor} pattern
+    // takes over). Anything else stays legal.
+    auto isNon512BitIntVecBitwiseOp = [](Operation *op) {
+      auto srcType = dyn_cast<VectorType>(op->getOperand(0).getType());
       if (!srcType)
         return true;
-      Type scalarType = srcType.getElementType();
-      if (!isa<IntegerType>(scalarType))
+      if (!isa<IntegerType>(srcType.getElementType()))
         return true;
-
       unsigned laneSize = getVectorLaneSize(srcType);
-      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
+      unsigned elWidth = srcType.getElementTypeBitWidth();
       return laneSize * elWidth != 512;
-    });
-
-    target.addDynamicallyLegalOp<arith::OrIOp>([](arith::OrIOp orOp) {
-      auto srcType = dyn_cast<VectorType>(orOp.getLhs().getType());
-      if (!srcType)
-        return true;
-      Type scalarType = srcType.getElementType();
-      if (!isa<IntegerType>(scalarType))
-        return true;
-
-      unsigned laneSize = getVectorLaneSize(srcType);
-      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-      return laneSize * elWidth != 512;
-    });
+    };
+    target.addDynamicallyLegalOp<arith::XOrIOp>(isNon512BitIntVecBitwiseOp);
+    target.addDynamicallyLegalOp<arith::OrIOp>(isNon512BitIntVecBitwiseOp);
+    target.addDynamicallyLegalOp<arith::AndIOp>(isNon512BitIntVecBitwiseOp);
   }
 
   target.addDynamicallyLegalOp<arith::ShRSIOp>([](arith::ShRSIOp rsOp) {
@@ -5180,22 +5173,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
     return laneSize * elWidth != 512;
   });
-
-  if (backend == TargetBackend::CPP) {
-    target.addDynamicallyLegalOp<arith::AndIOp>([](arith::AndIOp andOp) {
-      auto srcType = dyn_cast<VectorType>(andOp.getLhs().getType());
-      if (!srcType)
-        return true;
-      Type scalarType = srcType.getElementType();
-      if (!isa<IntegerType>(scalarType))
-        return true;
-
-      unsigned laneSize = getVectorLaneSize(srcType);
-      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-      return laneSize * elWidth != 512;
-    });
-  }
 
   if (backend == TargetBackend::CPP) {
     target.addDynamicallyLegalOp<arith::AddIOp>(
