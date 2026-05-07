@@ -110,11 +110,16 @@ _TENSOR_ANNOTATIONS = (In, Out, InOut)
 
 
 def _is_compile_param(annotation) -> bool:
-    """Return True if *annotation* is ``Compile[T]`` (or bare ``Compile``)."""
+    """Return True for ``Compile[T]`` or ``Optional[Compile[T]]``."""
     if annotation is Compile:
         return True
     origin = get_origin(annotation)
-    return origin is Compile
+    if origin is Compile:
+        return True
+    # get_type_hints rewrites `Compile[T] = None` defaults to Optional[...].
+    if origin is typing.Union:
+        return any(_is_compile_param(arg) for arg in get_args(annotation))
+    return False
 
 
 def _is_tensor_param(annotation) -> bool:
@@ -198,10 +203,33 @@ def _compute_hash(
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
 
-    # Compile kwargs — sort for determinism.
+    # For callable kwargs (e.g. Compile[object] lambdas), hash bytecode +
+    # defaults + closure rather than str(v): str(<lambda>) embeds an address
+    # that Python recycles, causing distinct lambdas to alias on disk.
+    def _kwarg_repr(v):
+        if callable(v) and hasattr(v, "__code__"):
+            code = v.__code__
+            closure = (
+                tuple(c.cell_contents for c in v.__closure__)
+                if v.__closure__
+                else None
+            )
+            try:
+                closure_repr = repr(closure)
+            except Exception:
+                closure_repr = "<unhashable closure>"
+            return (
+                "fn:",
+                bytes(code.co_code).hex(),
+                repr(code.co_consts),
+                repr(getattr(v, "__defaults__", None)),
+                closure_repr,
+            )
+        return str(v)
+
     try:
         kwargs_json = json.dumps(
-            {k: str(v) for k, v in sorted(compile_kwargs.items())}
+            {k: _kwarg_repr(v) for k, v in sorted(compile_kwargs.items())}
         ).encode()
     except (TypeError, ValueError):
         kwargs_json = repr(sorted(compile_kwargs.items())).encode()

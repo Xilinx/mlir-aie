@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+
+# RUN: %pytest %s
 """Unit tests for CompilableDesign pure-logic surfaces — no NPU required.
 
 Tests that exercise compile() or end-to-end kernel execution live in
@@ -17,9 +19,9 @@ from pathlib import Path
 
 import pytest
 
-from aie.iron.compile.compilabledesign import CompilableDesign, _compute_hash
-from aie.iron.compile.context import get_compile_arg
-from aie.iron.compile.markers import Compile, In, InOut, Out
+from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
+from aie.utils.compile.jit.context import get_compile_arg
+from aie.utils.compile.jit.markers import Compile, In, InOut, Out
 
 # ---------------------------------------------------------------------------
 # Shared generator factories
@@ -442,9 +444,9 @@ def test_to_json_contains_all_fields():
     data = json.loads(d.to_json())
     assert data["use_cache"] is False
     assert data["compile_kwargs"] == {
-        "M": {"__type__": "int", "__value__": 512},
-        "K": {"__type__": "int", "__value__": 256},
-        "N": {"__type__": "int", "__value__": 128},
+        "M": ["int", 512],
+        "K": ["int", 256],
+        "N": ["int", 128],
     }
     assert data["aiecc_flags"] == ["--verbose"]
     assert data["compile_flags"] == ["-O3"]
@@ -462,10 +464,10 @@ def test_to_json_compile_kwargs_typed_encoding():
     d = CompilableDesign(gen, compile_kwargs={"M": 512, "dtype": np.float32})
     data = json.loads(d.to_json())
     # int values are encoded with type tag
-    assert data["compile_kwargs"]["M"] == {"__type__": "int", "__value__": 512}
-    # unknown types fall back to string with unknown marker
-    assert data["compile_kwargs"]["dtype"]["__type__"] == "unknown"
-    assert isinstance(data["compile_kwargs"]["dtype"]["__value__"], str)
+    assert data["compile_kwargs"]["M"] == ["int", 512]
+    # unknown types fall back to ["str", repr-string]
+    assert data["compile_kwargs"]["dtype"][0] == "str"
+    assert isinstance(data["compile_kwargs"]["dtype"][1], str)
 
 
 def test_from_json_requires_generator():

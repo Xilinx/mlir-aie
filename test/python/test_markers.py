@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+
+# RUN: %pytest %s
 """Unit tests for Compile[T], In, Out, InOut annotation markers — no NPU required."""
 
 import inspect
@@ -12,8 +14,8 @@ from typing import get_args, get_origin
 
 import pytest
 
-from aie.iron.compile.markers import Compile, In, InOut, Out
-from aie.iron.compile.compilabledesign import (
+from aie.utils.compile.jit.markers import Compile, In, InOut, Out
+from aie.utils.compile.jit.compilabledesign import (
     _is_compile_param,
     _is_tensor_param,
     _split_params,

@@ -521,7 +521,17 @@ class CachedXRTRuntime(XRTHostRuntime):
                 xclbin_uuid = xclbin.get_uuid()
 
                 if len(self._context_cache) >= self._cache_size:
-                    self._evict()
+                    if self.npu_str == "npu1":
+                        # Phoenix-only workaround: single-entry LRU eviction
+                        # leaves the firmware in a state where the next submit
+                        # on a freshly-created context fails with EXEC_CMD
+                        # ENOENT. Even retaining one old entry reproduces it;
+                        # only a full drain works. Strix (npu2) handles
+                        # single-entry eviction correctly.
+                        while self._context_cache:
+                            self._evict()
+                    else:
+                        self._evict()
 
                 self._device.register_xclbin(xclbin)
 

@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+
+# RUN: %pytest %s
 """Unit tests for the @compileconfig decorator — no NPU required."""
 
 from __future__ import annotations
@@ -14,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from aie.iron.compile.compilabledesign import CompilableDesign
-from aie.iron.compile.compileconfig import compileconfig
-from aie.iron.compile.markers import Compile, In, Out
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.compile.jit.compileconfig import compileconfig
+from aie.utils.compile.jit.markers import Compile, In, Out
 
 # ---------------------------------------------------------------------------
 # Bare decorator: @compileconfig (no parentheses)

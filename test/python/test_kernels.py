@@ -5,30 +5,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+
+# RUN: %pytest %s
 """Unit tests for aie.iron.kernels factory functions."""
 
-import os
-import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 from ml_dtypes import bfloat16
-
-# ---------------------------------------------------------------------------
-# Path setup: make python/iron/kernels/ discoverable when running against the
-# installed package (which doesn't yet include the kernels subpackage).
-# We extend aie.iron.__path__ so that Python can find the source-tree kernels/
-# directory even when aie.iron itself is loaded from the install tree.
-# ---------------------------------------------------------------------------
-_repo_root = Path(__file__).parents[2]
-_src_iron = _repo_root / "python" / "iron"
-if _src_iron.is_dir():
-    import aie.iron as _iron_pkg
-
-    _src_iron_str = str(_src_iron)
-    if _src_iron_str not in _iron_pkg.__path__:
-        _iron_pkg.__path__.append(_src_iron_str)
 
 from aie.iron.kernel import ExternalFunction
 from aie.iron import kernels

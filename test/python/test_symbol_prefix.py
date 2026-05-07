@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+
+# RUN: %pytest %s
 """Unit tests for ExternalFunction symbol_prefix parameter."""
 
 import pytest

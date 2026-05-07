@@ -193,11 +193,16 @@ def test_runtime_cache_fill(runtime):
         if i == 0:
             first_key = list(runtime._context_cache.keys())[0]
 
-        # Check size
-        expected_size = min(i + 1, limit)
+        # On Phoenix (npu1) the runtime drains the cache entirely at cap+1
+        # (firmware workaround for EXEC_CMD ENOENT after partial eviction);
+        # other NPUs use single-entry LRU eviction, so the cap is held.
+        if runtime.npu_str == "npu1":
+            expected_size = (i + 1) if i < limit else 1
+        else:
+            expected_size = min(i + 1, limit)
         assert len(runtime._context_cache) == expected_size
 
-    # Verify the first one was evicted (since we went to limit + 1)
+    # The first entry is gone either way (Phoenix drained, others LRU-evicted).
     assert first_key not in runtime._context_cache
 
 

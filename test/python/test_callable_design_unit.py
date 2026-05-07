@@ -5,6 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+
+# RUN: %pytest %s
 """Unit tests for CallableDesign and @jit pure-logic surfaces — no NPU required.
 
 Tests that exercise compile() or actual NPU kernel execution live in
@@ -17,10 +19,10 @@ import pytest
 
 from unittest.mock import MagicMock, patch
 
-from aie.iron.compile.compilabledesign import CompilableDesign
-from aie.iron.compile.markers import Compile, In, InOut, Out
-from aie.iron.hostruntime.callabledesign import CallableDesign
-from aie.iron.hostruntime.jit import _JIT_CONFIG_KEYS, jit
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.compile.jit.markers import Compile, In, InOut, Out
+from aie.utils.callabledesign import CallableDesign
+from aie.utils.jit import _JIT_CONFIG_KEYS, jit
 from aie.iron.kernel import ExternalFunction, Kernel
 
 # ---------------------------------------------------------------------------
@@ -362,7 +364,7 @@ def test_trace_config_not_forwarded_to_kernel_as_kwarg():
     with patch.object(
         CompilableDesign, "compile", return_value=(fake_xclbin, fake_insts)
     ):
-        with patch("aie.iron.hostruntime.callabledesign.NPUKernel", FakeKernel):
+        with patch("aie.utils.callabledesign.NPUKernel", FakeKernel):
             a = object()
             cd(a, trace_config=trace_cfg)
 

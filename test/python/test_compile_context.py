@@ -5,13 +5,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
+
+# RUN: %pytest %s
 """Unit tests for compile_context and get_compile_arg — no NPU required."""
 
 import threading
 
 import pytest
 
-from aie.iron.compile.context import (
+from aie.utils.compile.jit.context import (
     compile_context,
     get_compile_arg,
 )
