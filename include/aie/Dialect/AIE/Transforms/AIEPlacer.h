@@ -130,26 +130,59 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  // `tileToEdges` indexes into `edges` only for `LogicalTileOp` endpoints
-  // (the ones the placer visits); `TileOp` peers contribute coords via
-  // `TileLike::tryGetCol`/`tryGetRow`.
-  struct CascadeAdjacency {
+  // Per-LTO peer edges indexed by either endpoint. Used by both shared-L1
+  // buffer adjacency (memory affinity) and cascade adjacency (cardinal
+  // direction). `tileToEdges` indexes into `edges` only for `LogicalTileOp`
+  // endpoints (the ones the placer visits); `TileOp` peers contribute coords
+  // via `TileLike::tryGetCol`/`tryGetRow`.
+  struct Adjacency {
     llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
     llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
         tileToEdges;
+
+    // Append a peer edge and index it on every `LogicalTileOp` endpoint.
+    // Centralizes the invariant that `tileToEdges[op]` lists every edge
+    // mentioning `op`, but only for LTO endpoints (`TileOp` peers carry
+    // their own coords).
+    void addEdge(TileLike first, TileLike second) {
+      unsigned idx = edges.size();
+      edges.push_back({first, second});
+      if (mlir::isa<LogicalTileOp>(first.getOperation()))
+        tileToEdges[first.getOperation()].push_back(idx);
+      if (mlir::isa<LogicalTileOp>(second.getOperation()))
+        tileToEdges[second.getOperation()].push_back(idx);
+    }
   };
 
-  CascadeAdjacency
-  buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
+  // Cross-tile L1 buffer access: consumer LTO's core must pass
+  // targetModel->isLegalMemAffinity(coreCol=consumerCol, coreRow=consumerRow,
+  //                                 memCol=ownerCol,     memRow=ownerRow).
+  // The first endpoint of each edge is the consumer LTO; the second is the
+  // owner tile.
+  Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
 
-  // Unplaced peers without pin coords defer; symmetric predicate makes one
-  // check per endpoint sufficient.
-  bool satisfiesCascadeAdjacency(LogicalTileOp logicalTile, TileID candidate,
-                                 const CascadeAdjacency &adjacency) const;
+  // The first endpoint of each edge is the cascade source; the second is the
+  // destination.
+  Adjacency buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
 
-  void attachCascadePeerNotes(mlir::InFlightDiagnostic &diag,
-                              LogicalTileOp logicalTile,
-                              const CascadeAdjacency &adjacency) const;
+  // Generic adjacency predicate. `pred` returns true iff `(firstPos,
+  // secondPos)` satisfies the constraint, where `first` and `second` are
+  // `adjacency.edges[i].first` and `.second`. Unplaced peers without pin
+  // coords defer; symmetric/asymmetric predicates only need to be checked at
+  // one endpoint each.
+  bool satisfiesAdjacency(
+      LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
+      llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const;
+
+  // Generic peer-note attachment. `labelPeer(thisIsFirst)` returns the
+  // descriptive name of the peer endpoint -- when `logicalTile` is the first
+  // member of the edge, the peer is the second member, and vice versa. The
+  // attached note reads `"<label> peer placed at (col, row)"`.
+  void attachPeerNotes(
+      mlir::InFlightDiagnostic &diag, LogicalTileOp logicalTile,
+      const Adjacency &adjacency,
+      llvm::function_ref<llvm::StringRef(bool thisIsFirst)> labelPeer) const;
+
   void addChannelRequirementsFromFlows(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>>

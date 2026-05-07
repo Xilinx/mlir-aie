@@ -311,3 +311,81 @@ module @mixed_channels_exceed_capacity {
     aie.core(%core) { aie.end }
   }
 }
+
+// -----
+
+// Both endpoints pinned far apart: not memory-affinity neighbors.
+module @buffer_adjacency_both_pinned_violation {
+  aie.device(npu1) {
+    // CHECK: error: tile (0, 2) violates shared-L1 buffer adjacency
+    // CHECK: note: shared-L1 buffer consumer peer placed at (3, 5)
+    %owner = aie.logical_tile<CoreTile>(0, 2)
+    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(3, 5)
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Pinned owner + unconstrained consumer with a column constraint that has no
+// memory-affinity slot relative to the owner.
+module @buffer_adjacency_unsatisfiable_column {
+  aie.device(npu1) {
+    // CHECK: error: no compute tile available matching constraint (3, ?) and shared-L1 buffer adjacency
+    // CHECK: note: shared-L1 buffer owner peer placed at (0, 2)
+    %owner = aie.logical_tile<CoreTile>(0, 2)
+    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(3, ?)
+    aie.core(%consumer) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Star with too many consumers: an owner can host at most 3 cross-tile
+// consumers (W, N, S — E is internal in AIE2). A 4th unconstrained consumer
+// has no affinity slot left.
+module @buffer_adjacency_star_oversubscribed {
+  aie.device(npu1) {
+    %owner = aie.logical_tile<CoreTile>(1, 3)
+    %buf   = aie.buffer(%owner) : memref<16xi32>
+    aie.core(%owner) { aie.end }
+    %c1 = aie.logical_tile<CoreTile>(?, ?)
+    %c2 = aie.logical_tile<CoreTile>(?, ?)
+    %c3 = aie.logical_tile<CoreTile>(?, ?)
+    // CHECK: error: no available compute tiles for placement (shared-L1 buffer adjacency unsatisfiable)
+    // CHECK: note: shared-L1 buffer owner peer placed at (1, 3)
+    %c4 = aie.logical_tile<CoreTile>(?, ?)
+    aie.core(%c1) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    aie.core(%c2) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    aie.core(%c3) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+    aie.core(%c4) {
+      %i = arith.constant 0 : index
+      %v = memref.load %buf[%i] : memref<16xi32>
+      aie.end
+    }
+  }
+}

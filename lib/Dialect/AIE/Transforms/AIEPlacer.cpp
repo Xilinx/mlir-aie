@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Debug.h"
@@ -141,13 +142,39 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       pktFlows.push_back(pf);
   });
 
-  // Phase 2: Build channel requirements from ObjectFifo and Flow connectivity,
+  // Phase 2a: Build placement constraints
+  auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
+
+  // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
   // and cascade adjacency constraints from CascadeFlow connectivity.
   auto channelRequirements =
       buildChannelRequirements(objectFifos, objectFifoLinks);
   addChannelRequirementsFromFlows(flows, pktFlows, channelRequirements);
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
+
+  // Per-kind predicates / labelers shared by all phase-3 call sites below.
+  // Buffer: consumer LTO (edge.first) must satisfy isLegalMemAffinity to the
+  // owner tile (edge.second).
+  auto bufferPred = [this](TileID consumerPos, TileID ownerPos) {
+    return targetModel->isLegalMemAffinity(consumerPos.col, consumerPos.row,
+                                           ownerPos.col, ownerPos.row);
+  };
+  auto bufferLabel = [](bool thisIsConsumer) -> StringRef {
+    return thisIsConsumer ? "shared-L1 buffer owner"
+                          : "shared-L1 buffer consumer";
+  };
+  // Cascade: same predicate as AIELowerCascadeFlowsPass -- src (edge.first)
+  // must be one row North or one column West of dst (edge.second); rows
+  // increase upward, so isSouth(src,dst) means dst is south of src.
+  auto cascadePred = [this](TileID srcPos, TileID dstPos) {
+    return targetModel->isSouth(srcPos.col, srcPos.row, dstPos.col,
+                                dstPos.row) ||
+           targetModel->isEast(srcPos.col, srcPos.row, dstPos.col, dstPos.row);
+  };
+  auto cascadeLabel = [](bool thisIsSrc) -> StringRef {
+    return thisIsSrc ? "cascade destination" : "cascade source";
+  };
 
   // Phase 3: Place constrained tiles then compute tiles
   size_t nextCompIdx = 0;
@@ -157,11 +184,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     auto row = logicalTile.tryGetRow();
     if (col && row) {
       TileID tile{*col, *row};
-      if (!satisfiesCascadeAdjacency(logicalTile, tile, cascadeAdjacency)) {
+      if (!satisfiesAdjacency(logicalTile, tile, bufferAdjacency, bufferPred)) {
+        auto diag = logicalTile.emitError()
+                    << "tile (" << tile.col << ", " << tile.row
+                    << ") violates shared-L1 buffer adjacency";
+        attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
+        return failure();
+      }
+      if (!satisfiesAdjacency(logicalTile, tile, cascadeAdjacency,
+                              cascadePred)) {
         auto diag = logicalTile.emitError()
                     << "tile (" << tile.col << ", " << tile.row
                     << ") violates cascade adjacency";
-        attachCascadePeerNotes(diag, logicalTile, cascadeAdjacency);
+        attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
         return failure();
       }
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
@@ -180,6 +215,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     // Place compute tiles with partial constraint support
     if (logicalTile.getTileType() == AIETileType::CoreTile) {
       std::optional<TileID> placement = std::nullopt;
+      bool sawConstraintMatch = false;
+      bool allConstraintMatchesFailedAdjacency = true;
 
       for (size_t i = nextCompIdx; i < availability.compTiles.size(); ++i) {
         TileID candidate = availability.compTiles[i];
@@ -189,8 +226,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           continue;
         if (row && candidate.row != *row)
           continue;
-        if (!satisfiesCascadeAdjacency(logicalTile, candidate,
-                                       cascadeAdjacency))
+        sawConstraintMatch = true;
+        if (!satisfiesAdjacency(logicalTile, candidate, bufferAdjacency,
+                                bufferPred))
+          continue;
+        allConstraintMatchesFailedAdjacency = false;
+        if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
+                                cascadePred))
           continue;
 
         // Found valid tile - swap to nextCompIdx position and use
@@ -201,6 +243,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       }
 
       if (!placement) {
+        bool adjacencyWasCause =
+            sawConstraintMatch && allConstraintMatchesFailedAdjacency &&
+            bufferAdjacency.tileToEdges.count(logicalTile.getOperation());
         bool hasCascade =
             cascadeAdjacency.tileToEdges.count(logicalTile.getOperation());
         InFlightDiagnostic diag = logicalTile.emitError();
@@ -208,13 +253,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           diag << "no compute tile available matching constraint ("
                << (col ? std::to_string(*col) : "?") << ", "
                << (row ? std::to_string(*row) : "?") << ")"
+               << (adjacencyWasCause ? " and shared-L1 buffer adjacency" : "")
                << (hasCascade ? " and cascade adjacency" : "");
         } else {
           diag << "no available compute tiles for placement"
+               << (adjacencyWasCause
+                       ? " (shared-L1 buffer adjacency unsatisfiable)"
+                       : "")
                << (hasCascade ? " (cascade adjacency unsatisfiable)" : "");
         }
+        if (adjacencyWasCause)
+          attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (hasCascade)
-          attachCascadePeerNotes(diag, logicalTile, cascadeAdjacency);
+          attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
         return failure();
       }
 
@@ -420,6 +471,21 @@ SequentialPlacer::buildChannelRequirements(
   return channelRequirements;
 }
 
+// Walk view-like aliasing memref ops back to the underlying BufferOp.
+static BufferOp traceToBuffer(Value val) {
+  for (Operation *op = val.getDefiningOp(); op;) {
+    if (auto buf = dyn_cast<BufferOp>(op))
+      return buf;
+    if (auto view = dyn_cast<ViewLikeOpInterface>(op)) {
+      val = view.getViewSource();
+      op = val.getDefiningOp();
+      continue;
+    }
+    return nullptr;
+  }
+  return nullptr;
+}
+
 static std::optional<TileID>
 resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   auto it = placed.find(peer.getOperation());
@@ -432,66 +498,94 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   return std::nullopt;
 }
 
-SequentialPlacer::CascadeAdjacency
+SequentialPlacer::Adjacency
+SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
+  Adjacency adjacency;
+  for (auto consumer : logicalTiles) {
+    if (consumer.getTileType() != AIETileType::CoreTile)
+      continue;
+    CoreOp core = nullptr;
+    for (Operation *user : consumer.getResult().getUsers())
+      if (auto c = dyn_cast<CoreOp>(user)) {
+        core = c;
+        break;
+      }
+    if (!core)
+      continue;
+
+    llvm::SmallDenseSet<Operation *, 4> seenOwners;
+    core.getBody().walk([&](Operation *op) {
+      for (Value operand : op->getOperands()) {
+        BufferOp buf = traceToBuffer(operand);
+        if (!buf)
+          continue;
+        auto owner = dyn_cast_or_null<TileLike>(buf.getTile().getDefiningOp());
+        if (!owner)
+          continue;
+        if (owner.getOperation() == consumer.getOperation())
+          continue;
+        if (!seenOwners.insert(owner.getOperation()).second)
+          continue;
+        adjacency.addEdge(TileLike(consumer), owner);
+      }
+    });
+  }
+  return adjacency;
+}
+
+SequentialPlacer::Adjacency
 SequentialPlacer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
-  CascadeAdjacency adjacency;
+  Adjacency adjacency;
   for (auto cf : cascadeFlows) {
     TileLike src = cf.getSourceTileLike();
     TileLike dst = cf.getDestTileLike();
     if (!src || !dst)
       continue;
-    unsigned idx = adjacency.edges.size();
-    adjacency.edges.push_back({src, dst});
-    if (isa<LogicalTileOp>(src.getOperation()))
-      adjacency.tileToEdges[src.getOperation()].push_back(idx);
-    if (isa<LogicalTileOp>(dst.getOperation()))
-      adjacency.tileToEdges[dst.getOperation()].push_back(idx);
+    adjacency.addEdge(src, dst);
   }
   return adjacency;
 }
 
-void SequentialPlacer::attachCascadePeerNotes(
-    InFlightDiagnostic &diag, LogicalTileOp logicalTile,
-    const CascadeAdjacency &adjacency) const {
-  auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
-  if (it == adjacency.tileToEdges.end())
-    return;
-  for (unsigned idx : it->second) {
-    auto [edgeSrc, edgeDst] = adjacency.edges[idx];
-    bool thisIsSrc = edgeSrc.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsSrc ? edgeDst : edgeSrc;
-    auto peerPos = resolvePeerPosition(peer, result);
-    if (!peerPos)
-      continue;
-    diag.attachNote(peer.getLoc())
-        << "cascade " << (thisIsSrc ? "destination" : "source")
-        << " peer placed at (" << peerPos->col << ", " << peerPos->row << ")";
-  }
-}
-
-bool SequentialPlacer::satisfiesCascadeAdjacency(
-    LogicalTileOp logicalTile, TileID candidate,
-    const CascadeAdjacency &adjacency) const {
+bool SequentialPlacer::satisfiesAdjacency(
+    LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
+    llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const {
   auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
   if (it == adjacency.tileToEdges.end())
     return true;
 
-  // Same predicate as AIELowerCascadeFlowsPass: src must be one row North
-  // or one column West of dst (rows increase upward).
   for (unsigned idx : it->second) {
-    auto [edgeSrc, edgeDst] = adjacency.edges[idx];
-    bool thisIsSrc = edgeSrc.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsSrc ? edgeDst : edgeSrc;
+    auto [edgeFirst, edgeSecond] = adjacency.edges[idx];
+    bool thisIsFirst = edgeFirst.getOperation() == logicalTile.getOperation();
+    TileLike peer = thisIsFirst ? edgeSecond : edgeFirst;
     auto peerPos = resolvePeerPosition(peer, result);
     if (!peerPos)
       continue;
-    TileID srcPos = thisIsSrc ? candidate : *peerPos;
-    TileID dstPos = thisIsSrc ? *peerPos : candidate;
-    if (!targetModel->isSouth(srcPos.col, srcPos.row, dstPos.col, dstPos.row) &&
-        !targetModel->isEast(srcPos.col, srcPos.row, dstPos.col, dstPos.row))
+    TileID firstPos = thisIsFirst ? candidate : *peerPos;
+    TileID secondPos = thisIsFirst ? *peerPos : candidate;
+    if (!pred(firstPos, secondPos))
       return false;
   }
   return true;
+}
+
+void SequentialPlacer::attachPeerNotes(
+    InFlightDiagnostic &diag, LogicalTileOp logicalTile,
+    const Adjacency &adjacency,
+    llvm::function_ref<StringRef(bool thisIsFirst)> labelPeer) const {
+  auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
+  if (it == adjacency.tileToEdges.end())
+    return;
+  for (unsigned idx : it->second) {
+    auto [edgeFirst, edgeSecond] = adjacency.edges[idx];
+    bool thisIsFirst = edgeFirst.getOperation() == logicalTile.getOperation();
+    TileLike peer = thisIsFirst ? edgeSecond : edgeFirst;
+    auto peerPos = resolvePeerPosition(peer, result);
+    if (!peerPos)
+      continue;
+    diag.attachNote(peer.getLoc())
+        << labelPeer(thisIsFirst) << " peer placed at (" << peerPos->col << ", "
+        << peerPos->row << ")";
+  }
 }
 
 void SequentialPlacer::buildObjectFifoGroups(
