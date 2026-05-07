@@ -130,6 +130,26 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
+  // `tileToEdges` indexes into `edges` only for `LogicalTileOp` endpoints
+  // (the ones the placer visits); `TileOp` peers contribute coords via
+  // `TileLike::tryGetCol`/`tryGetRow`.
+  struct CascadeAdjacency {
+    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
+        tileToEdges;
+  };
+
+  CascadeAdjacency
+  buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
+
+  // Unplaced peers without pin coords defer; symmetric predicate makes one
+  // check per endpoint sufficient.
+  bool satisfiesCascadeAdjacency(LogicalTileOp logicalTile, TileID candidate,
+                                 const CascadeAdjacency &adjacency) const;
+
+  void attachCascadePeerNotes(mlir::InFlightDiagnostic &diag,
+                              LogicalTileOp logicalTile,
+                              const CascadeAdjacency &adjacency) const;
   void addChannelRequirementsFromFlows(
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
