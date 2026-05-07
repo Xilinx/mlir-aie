@@ -201,16 +201,36 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>      llvm::SmallVector&lt;ObjectFifoCreateOp&gt; &amp;objectFifos,</div>
 <div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>      llvm::SmallVector&lt;ObjectFifoLinkOp&gt; &amp;objectFifoLinks);</div>
 <div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span> </div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>  <span class="keywordtype">void</span> addChannelRequirementsFromFlows(</div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>      llvm::ArrayRef&lt;FlowOp&gt; flows, llvm::ArrayRef&lt;PacketFlowOp&gt; pktFlows,</div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>      llvm::DenseMap&lt;mlir::Operation *, std::pair&lt;int, int&gt;&gt;</div>
-<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>          &amp;channelRequirements);</div>
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>};</div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>  <span class="comment">// `tileToEdges` indexes into `edges` only for `LogicalTileOp` endpoints</span></div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>  <span class="comment">// (the ones the placer visits); `TileOp` peers contribute coords via</span></div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>  <span class="comment">// `TileLike::tryGetCol`/`tryGetRow`.</span></div>
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>  <span class="keyword">struct </span>CascadeAdjacency {</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>    llvm::SmallVector&lt;std::pair&lt;TileLike, TileLike&gt;, 4&gt; edges;</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>    llvm::DenseMap&lt;mlir::Operation *, llvm::SmallVector&lt;unsigned, 2&gt;&gt;</div>
+<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>        tileToEdges;</div>
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>  };</div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span> </div>
+<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>  CascadeAdjacency</div>
+<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>  buildCascadeAdjacency(llvm::ArrayRef&lt;CascadeFlowOp&gt; cascadeFlows);</div>
+<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span> </div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>  <span class="comment">// Unplaced peers without pin coords defer; symmetric predicate makes one</span></div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>  <span class="comment">// check per endpoint sufficient.</span></div>
+<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>  <span class="keywordtype">bool</span> satisfiesCascadeAdjacency(LogicalTileOp logicalTile, <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> candidate,</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>                                 <span class="keyword">const</span> CascadeAdjacency &amp;adjacency) <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span> </div>
+<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>  <span class="keywordtype">void</span> attachCascadePeerNotes(mlir::InFlightDiagnostic &amp;diag,</div>
+<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>                              LogicalTileOp logicalTile,</div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>                              <span class="keyword">const</span> CascadeAdjacency &amp;adjacency) <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>  <span class="keywordtype">void</span> addChannelRequirementsFromFlows(</div>
+<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>      llvm::ArrayRef&lt;FlowOp&gt; flows, llvm::ArrayRef&lt;PacketFlowOp&gt; pktFlows,</div>
+<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>      llvm::DenseMap&lt;mlir::Operation *, std::pair&lt;int, int&gt;&gt;</div>
+<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>          &amp;channelRequirements);</div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>};</div>
 </div>
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span> </div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>} <span class="comment">// namespace xilinx::AIE</span></div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span> </div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span><span class="preprocessor">#endif </span><span class="comment">// AIE_PLACER_H</span></div>
+<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span> </div>
+<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span> </div>
+<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span><span class="preprocessor">#endif </span><span class="comment">// AIE_PLACER_H</span></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetModel_8h_html"><div class="ttname"><a href="AIETargetModel_8h.html">AIETargetModel.h</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html">xilinx::AIE::AIETargetModel</a></div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00058">AIETargetModel.h:58</a></div></div>
@@ -237,13 +257,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html">xilinx::AIE::TileAvailability</a></div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00036">AIEPlacer.h:36</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a05b6fa9b1aab34de73c9906eb1f49ae4"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a05b6fa9b1aab34de73c9906eb1f49ae4">xilinx::AIE::TileAvailability::compTiles</a></div><div class="ttdeci">std::vector&lt; TileID &gt; compTiles</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00037">AIEPlacer.h:37</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a111428d92a77fec0a8d3ddcb0663cb2f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a111428d92a77fec0a8d3ddcb0663cb2f">xilinx::AIE::TileAvailability::outputChannelsUsed</a></div><div class="ttdeci">llvm::DenseMap&lt; TileID, int &gt; outputChannelsUsed</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00041">AIEPlacer.h:41</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4855317fc91d90e59e40d0179d73c8d7"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">xilinx::AIE::TileAvailability::removeTile</a></div><div class="ttdeci">void removeTile(TileID tile, AIETileType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8cpp_source.html#l00671">AIEPlacer.cpp:671</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4855317fc91d90e59e40d0179d73c8d7"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">xilinx::AIE::TileAvailability::removeTile</a></div><div class="ttdeci">void removeTile(TileID tile, AIETileType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8cpp_source.html#l00768">AIEPlacer.cpp:768</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4ac3f889b8d756647a54a1fc942ad343"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4ac3f889b8d756647a54a1fc942ad343">xilinx::AIE::TileAvailability::nonCompTiles</a></div><div class="ttdeci">std::vector&lt; TileID &gt; nonCompTiles</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00038">AIEPlacer.h:38</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_aa3ba079bbcb83e8aa50f0945909261a1"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#aa3ba079bbcb83e8aa50f0945909261a1">xilinx::AIE::TileAvailability::inputChannelsUsed</a></div><div class="ttdeci">llvm::DenseMap&lt; TileID, int &gt; inputChannelsUsed</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00040">AIEPlacer.h:40</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed May 6 2026 21:30:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu May 7 2026 12:48:23 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
