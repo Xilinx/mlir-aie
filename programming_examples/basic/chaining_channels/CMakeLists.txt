@@ -4,7 +4,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.30)
 
 if(NOT DEFINED TARGET_NAME)
   set(TARGET_NAME "chaining_channels")
