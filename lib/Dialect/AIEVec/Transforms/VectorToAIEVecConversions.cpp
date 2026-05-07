@@ -5122,33 +5122,38 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return laneSize != 16;
   });
 
-  target.addDynamicallyLegalOp<arith::XOrIOp>([](arith::XOrIOp xorOp) {
-    auto srcType = dyn_cast<VectorType>(xorOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
+  // Only convert bitwise vector ops to aievec.{bxor,bor,band,bneg} on the
+  // CPP (chess) backend. AIEVecToLLVM has no lowering for those aievec ops,
+  // and AIE2/AIE2P legalize standard G_AND/G_OR/G_XOR on every vector type.
+  if (backend == TargetBackend::CPP) {
+    target.addDynamicallyLegalOp<arith::XOrIOp>([](arith::XOrIOp xorOp) {
+      auto srcType = dyn_cast<VectorType>(xorOp.getLhs().getType());
+      if (!srcType)
+        return true;
+      Type scalarType = srcType.getElementType();
+      if (!isa<IntegerType>(scalarType))
+        return true;
 
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+      unsigned laneSize = getVectorLaneSize(srcType);
+      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-    return laneSize * elWidth != 512;
-  });
+      return laneSize * elWidth != 512;
+    });
 
-  target.addDynamicallyLegalOp<arith::OrIOp>([](arith::OrIOp orOp) {
-    auto srcType = dyn_cast<VectorType>(orOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
+    target.addDynamicallyLegalOp<arith::OrIOp>([](arith::OrIOp orOp) {
+      auto srcType = dyn_cast<VectorType>(orOp.getLhs().getType());
+      if (!srcType)
+        return true;
+      Type scalarType = srcType.getElementType();
+      if (!isa<IntegerType>(scalarType))
+        return true;
 
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+      unsigned laneSize = getVectorLaneSize(srcType);
+      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-    return laneSize * elWidth != 512;
-  });
+      return laneSize * elWidth != 512;
+    });
+  }
 
   target.addDynamicallyLegalOp<arith::ShRSIOp>([](arith::ShRSIOp rsOp) {
     auto srcType = dyn_cast<VectorType>(rsOp.getLhs().getType());
@@ -5176,19 +5181,21 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return laneSize * elWidth != 512;
   });
 
-  target.addDynamicallyLegalOp<arith::AndIOp>([](arith::AndIOp andOp) {
-    auto srcType = dyn_cast<VectorType>(andOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
+  if (backend == TargetBackend::CPP) {
+    target.addDynamicallyLegalOp<arith::AndIOp>([](arith::AndIOp andOp) {
+      auto srcType = dyn_cast<VectorType>(andOp.getLhs().getType());
+      if (!srcType)
+        return true;
+      Type scalarType = srcType.getElementType();
+      if (!isa<IntegerType>(scalarType))
+        return true;
 
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+      unsigned laneSize = getVectorLaneSize(srcType);
+      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-    return laneSize * elWidth != 512;
-  });
+      return laneSize * elWidth != 512;
+    });
+  }
 
   if (backend == TargetBackend::CPP) {
     target.addDynamicallyLegalOp<arith::AddIOp>(
