@@ -139,6 +139,19 @@ private:
     llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
     llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
         tileToEdges;
+
+    // Append a peer edge and index it on every `LogicalTileOp` endpoint.
+    // Centralizes the invariant that `tileToEdges[op]` lists every edge
+    // mentioning `op`, but only for LTO endpoints (`TileOp` peers carry
+    // their own coords).
+    void addEdge(TileLike first, TileLike second) {
+      unsigned idx = edges.size();
+      edges.push_back({first, second});
+      if (mlir::isa<LogicalTileOp>(first.getOperation()))
+        tileToEdges[first.getOperation()].push_back(idx);
+      if (mlir::isa<LogicalTileOp>(second.getOperation()))
+        tileToEdges[second.getOperation()].push_back(idx);
+    }
   };
 
   // Cross-tile L1 buffer access: consumer LTO's core must pass

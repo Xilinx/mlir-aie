@@ -526,11 +526,7 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
           continue;
         if (!seenOwners.insert(owner.getOperation()).second)
           continue;
-        unsigned idx = adjacency.edges.size();
-        adjacency.edges.push_back({TileLike(consumer), owner});
-        adjacency.tileToEdges[consumer.getOperation()].push_back(idx);
-        if (isa<LogicalTileOp>(owner.getOperation()))
-          adjacency.tileToEdges[owner.getOperation()].push_back(idx);
+        adjacency.addEdge(TileLike(consumer), owner);
       }
     });
   }
@@ -545,12 +541,7 @@ SequentialPlacer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
     TileLike dst = cf.getDestTileLike();
     if (!src || !dst)
       continue;
-    unsigned idx = adjacency.edges.size();
-    adjacency.edges.push_back({src, dst});
-    if (isa<LogicalTileOp>(src.getOperation()))
-      adjacency.tileToEdges[src.getOperation()].push_back(idx);
-    if (isa<LogicalTileOp>(dst.getOperation()))
-      adjacency.tileToEdges[dst.getOperation()].push_back(idx);
+    adjacency.addEdge(src, dst);
   }
   return adjacency;
 }
