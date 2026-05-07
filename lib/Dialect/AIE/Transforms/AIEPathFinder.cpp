@@ -49,9 +49,8 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     if (sources.empty())
       return pktFlowOp.emitOpError("packet_flow has no packet_source");
 
-    bool priorityFlow = pktFlowOp.getPriorityRoute()
-                            ? *pktFlowOp.getPriorityRoute()
-                            : false;
+    bool priorityFlow =
+        pktFlowOp.getPriorityRoute() ? *pktFlowOp.getPriorityRoute() : false;
     // Pass 2: add a flow from every source to every destination so
     // fan-in topologies are routed (not just the last source).
     for (Operation &Op : b.getOperations()) {
