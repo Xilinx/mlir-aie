@@ -37,6 +37,7 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 from aie.extras.context import mlir_mod_ctx
 
+from ._dma_size_parser import parse_dma_sizes
 from .context import compile_context
 from .markers import Compile, In, InOut, Out
 
@@ -445,7 +446,7 @@ class CompilableDesign:
         self._xclbin_path = xclbin_path
         self._inst_path = inst_path
         # Parse expected tensor sizes for runtime validation.
-        self._expected_tensor_sizes = self._parse_expected_tensor_sizes(kernel_dir)
+        self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
         return xclbin_path, inst_path
 
     def get_artifacts(self) -> tuple[Path, Path] | None:
@@ -551,7 +552,7 @@ class CompilableDesign:
 
         For parallel/distributed kernels, work is split across N AIE columns
         and each logical tensor maps to N DMA ops of size ``total/N``.
-        ``_parse_expected_tensor_sizes`` returns all N per-column sizes.  To
+        ``parse_dma_sizes`` returns all N per-column sizes.  To
         avoid false positives in this case, validation is skipped for a tensor
         whose element count is an exact non-zero multiple of the expected DMA
         size (i.e. ``actual % expected == 0`` and ``actual > 0``).  A true
@@ -649,66 +650,6 @@ class CompilableDesign:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    def _parse_expected_tensor_sizes(self, kernel_dir: Path) -> list[int] | None:
-        """Parse expected DMA transfer sizes from the lowered MLIR.
-
-        Reads ``input_with_addresses.mlir`` from *kernel_dir* and extracts
-        the element counts for each host-side DMA transfer inside the
-        ``aie.runtime_sequence`` block.
-
-        The lowered MLIR uses ``aie.dma_bd`` with positional arguments::
-
-            aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [...]) {...}
-            #                                       ^^^^
-            #                                   element count
-
-        Only ``aie.dma_bd`` lines that reference a runtime sequence parameter
-        (``%argN``) are counted; tile-internal buffer ops (which reference
-        named SSA values like ``%out_buff_0``) are excluded.
-
-        Returns a list of element counts in transfer order, or ``None`` if the
-        file is absent or unparseable.
-        """
-        mlir_path = kernel_dir / "input_with_addresses.mlir"
-        if not mlir_path.exists():
-            return None
-        try:
-            import re
-
-            text = mlir_path.read_text()
-
-            # Isolate the aie.runtime_sequence body so we only look at the
-            # host-facing DMA descriptors, not tile-internal aie.mem ops.
-            # Use brace counting to find the matching closing brace, because
-            # the sequence body contains nested braces (dma_configure_task_for
-            # regions, attribute dicts, etc.).
-            seq_start = re.search(r"aie\.runtime_sequence\s*\([^)]*\)\s*\{", text)
-            if not seq_start:
-                return None
-            pos = seq_start.end()
-            depth = 1
-            while pos < len(text) and depth > 0:
-                if text[pos] == "{":
-                    depth += 1
-                elif text[pos] == "}":
-                    depth -= 1
-                pos += 1
-            seq_body = text[seq_start.end() : pos - 1]
-
-            # Match aie.dma_bd lines that start with a %argN parameter
-            # (runtime sequence argument), not a named tile buffer.
-            # Format: aie.dma_bd(%argN : memref<...>, <offset>, <count>, [...])
-            # The element count is the integer after the offset.
-            sizes = []
-            for m in re.finditer(
-                r"aie\.dma_bd\s*\(\s*%arg\d+\s*:[^,]+,\s*\d+\s*,\s*(\d+)",
-                seq_body,
-            ):
-                sizes.append(int(m.group(1)))
-            return sizes if sizes else None
-        except Exception:
-            return None
 
     @property
     def generator_name(self) -> str:

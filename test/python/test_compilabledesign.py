@@ -651,28 +651,54 @@ def test_split_runtime_args_path_generator_filters_kernel_objects():
 # ---------------------------------------------------------------------------
 
 
-def test_parse_expected_tensor_sizes_matches_real_mlir_format(tmp_path):
-    """Regex must extract DMA element counts from lowered aie.runtime_sequence MLIR."""
-    gen = _gemm_gen()
-    d = CompilableDesign(gen)
+def test_parse_dma_sizes_matches_real_mlir_format(tmp_path):
+    """Bindings must extract DMA element counts from lowered aie.runtime_sequence MLIR.
+
+    Mirrors the structure aiecc actually emits: aie.dma_bd ops nested inside
+    aiex.dma_configure_task_for regions, with the runtime memref operand
+    coming from the runtime_sequence's own block arguments.
+    """
+    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+
     sample_mlir = """\
 module {
-  aie.device(npu2) {
+  aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
-      aie.dma_configure_task_for @of_in {
+      %0 = aiex.dma_configure_task_for @of_in {
         aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.end
       }
-      aie.dma_configure_task_for @of_out {
+      aiex.dma_start_task(%0)
+      %1 = aiex.dma_configure_task_for @of_out {
         aie.dma_bd(%arg1 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.end
       }
+      aiex.dma_start_task(%1)
+      aiex.dma_await_task(%0)
+      aiex.dma_await_task(%1)
     }
   }
 }
 """
     mlir_path = tmp_path / "input_with_addresses.mlir"
     mlir_path.write_text(sample_mlir)
-    sizes = d._parse_expected_tensor_sizes(tmp_path)
+    sizes = parse_dma_sizes(tmp_path)
     assert sizes == [1024, 1024], f"Expected [1024, 1024], got {sizes}"
+
+
+def test_parse_dma_sizes_returns_none_for_unparseable_text(tmp_path):
+    """Garbage in the file must come back as None, not raise."""
+    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+
+    (tmp_path / "input_with_addresses.mlir").write_text("not actually MLIR\n")
+    assert parse_dma_sizes(tmp_path) is None
+
+
+def test_parse_dma_sizes_returns_none_when_file_missing(tmp_path):
+    """Absent input_with_addresses.mlir must return None, not raise."""
+    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+
+    assert parse_dma_sizes(tmp_path) is None
 
 
 def test_transform_typed_returns_module():
