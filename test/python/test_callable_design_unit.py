@@ -28,48 +28,12 @@ from aie.iron.kernel import ExternalFunction, Kernel
 # ---------------------------------------------------------------------------
 # CallableDesign construction
 # ---------------------------------------------------------------------------
-
-
-def test_wrapping_existing_compilable_design():
-    def gen(a: In, *, M: Compile[int]):
-        pass
-
-    compilable = CompilableDesign(gen, compile_kwargs={"M": 1})
-    cd = CallableDesign(compilable)
-    assert cd.compilable is compilable
-
-
-def test_wrapping_callable_creates_compilable_design():
-    def gen(a: In, *, M: Compile[int]):
-        pass
-
-    cd = CallableDesign(gen, compile_kwargs={"M": 1})
-    assert isinstance(cd.compilable, CompilableDesign)
-    assert cd.compilable.mlir_generator is gen
-
-
-def test_wrapping_path_creates_compilable_design():
-    p = Path("/nonexistent/design.mlir")
-    cd = CallableDesign(p)
-    assert isinstance(cd.compilable, CompilableDesign)
-    assert cd.compilable.mlir_generator == p
-
-
-def test_compile_kwargs_forwarded_to_compilable():
-    def gen(a: In, *, M: Compile[int]):
-        pass
-
-    cd = CallableDesign(gen, compile_kwargs={"M": 256})
-    assert cd.compilable.compile_kwargs == {"M": 256}
-
-
-def test_config_options_forwarded_to_compilable():
-    def gen(a: In):
-        pass
-
-    cd = CallableDesign(gen, use_cache=False, aiecc_flags=["--verbose"])
-    assert cd.compilable.use_cache is False
-    assert "--verbose" in cd.compilable.aiecc_flags
+#
+# Forwarding tests (CallableDesign correctly delegates to its inner
+# CompilableDesign) are covered by the @jit decorator block below, which
+# exercises the same paths via a more realistic surface.  Construction-
+# defaults and split_runtime_args semantics are pinned in
+# test_compilabledesign.py.
 
 
 def test_repr_contains_callable_design():
@@ -78,33 +42,6 @@ def test_repr_contains_callable_design():
 
     cd = CallableDesign(gen, compile_kwargs={"M": 1})
     assert "CallableDesign" in repr(cd)
-
-
-# ---------------------------------------------------------------------------
-# split_runtime_args through CallableDesign
-# ---------------------------------------------------------------------------
-
-
-def test_split_tensors_and_scalars_via_callable_design():
-    def f(a: In, c: Out, alpha: float, *, N: Compile[int]):
-        pass
-
-    cd = CallableDesign(f, compile_kwargs={"N": 256})
-    a, c = object(), object()
-    tensors, scalars = cd.compilable.split_runtime_args((a, c), {"alpha": 0.5})
-    assert tensors == [a, c]
-    assert scalars == {"alpha": 0.5}
-
-
-def test_inout_tensor_via_callable_design():
-    def f(x: InOut, *, M: Compile[int]):
-        pass
-
-    cd = CallableDesign(f, compile_kwargs={"M": 128})
-    obj = object()
-    tensors, scalars = cd.compilable.split_runtime_args((obj,), {})
-    assert tensors == [obj]
-    assert scalars == {}
 
 
 # ---------------------------------------------------------------------------
