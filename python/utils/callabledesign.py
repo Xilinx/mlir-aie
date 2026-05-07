@@ -160,12 +160,12 @@ class CallableDesign:
             sig = _inspect.signature(self.compilable.mlir_generator)
             unbound_required = [
                 name
-                for name in self.compilable._compile_params
+                for name in self.compilable.compile_params
                 if sig.parameters[name].default is _inspect.Parameter.empty
             ]
             if unbound_required:
                 warnings.warn(
-                    f"{self.compilable._generator_name()!r} has Compile[T] "
+                    f"{self.compilable.generator_name!r} has Compile[T] "
                     f"parameters with no defaults and no pre-bound values: "
                     f"{unbound_required}.\n"
                     f"  You must pass these as keyword arguments at every call:\n"
@@ -185,7 +185,7 @@ class CallableDesign:
         call_compile_kwargs: dict[str, Any] = {}
         scalar_runtime_kwargs: dict[str, Any] = {}
 
-        compile_param_names = set(self.compilable._compile_params)
+        compile_param_names = set(self.compilable.compile_params)
         for name, val in runtime_kwargs.items():
             if name in compile_param_names:
                 call_compile_kwargs[name] = val
@@ -254,30 +254,30 @@ class CallableDesign:
         )
 
         # Guard 3-A: tensor params must not appear as runtime kwargs.
-        tensor_names = set(self.compilable._tensor_params)
+        tensor_names = set(self.compilable.tensor_params)
         confused_tensor_kwargs = set(scalar_runtime_kwargs.keys()) & tensor_names
         if confused_tensor_kwargs:
             raise TypeError(
-                f"{self.compilable._generator_name()!r} received tensor "
+                f"{self.compilable.generator_name!r} received tensor "
                 f"param(s) as keyword arguments: {confused_tensor_kwargs}.\n"
                 f"  Params annotated In/Out/InOut must be passed positionally.\n"
                 f"  Compile[T] params (passed as kwargs): "
-                f"{self.compilable._compile_params}."
+                f"{self.compilable.compile_params}."
             )
 
         # Guard 3-C: too many positional args.
         if callable(self.compilable.mlir_generator):
-            max_positional = len(self.compilable._tensor_params) + len(
-                self.compilable._scalar_params
+            max_positional = len(self.compilable.tensor_params) + len(
+                self.compilable.scalar_params
             )
             if len(runtime_args) > max_positional:
                 raise TypeError(
-                    f"{self.compilable._generator_name()!r} takes at most "
+                    f"{self.compilable.generator_name!r} takes at most "
                     f"{max_positional} positional argument(s) "
-                    f"(tensor: {len(self.compilable._tensor_params)}, "
-                    f"scalar: {len(self.compilable._scalar_params)}) "
+                    f"(tensor: {len(self.compilable.tensor_params)}, "
+                    f"scalar: {len(self.compilable.scalar_params)}) "
                     f"but {len(runtime_args)} were given.\n"
-                    f"  Compile[T] parameters {self.compilable._compile_params} "
+                    f"  Compile[T] parameters {self.compilable.compile_params} "
                     f"must be keyword arguments, not positional."
                 )
 
@@ -320,7 +320,7 @@ class CallableDesign:
                 for k, (call, pre) in overridden.items()
             )
             raise TypeError(
-                f"{self.compilable._generator_name()!r} has pre-bound "
+                f"{self.compilable.generator_name!r} has pre-bound "
                 f"Compile[T] value(s) that override call-site value(s): "
                 f"{detail}.\n"
                 f"  Pre-bound values always win. Use bare @iron.jit to "
@@ -426,8 +426,6 @@ class CallableDesign:
             pre-bound values so you can inspect what different configurations
             produce without creating a new ``CallableDesign``.
         """
-        from aie.iron.kernel import ExternalFunction
-
         call_compile_kwargs, _scalar_runtime_kwargs, _ = self._extract_compile_kwargs(
             runtime_kwargs
         )
@@ -443,8 +441,7 @@ class CallableDesign:
             call_compile_kwargs, effective_compile_kwargs
         )
 
-        module = compilable._generate_mlir(ExternalFunction)
-        return str(module)
+        return str(compilable.generate_mlir())
 
     def __repr__(self) -> str:
         return f"CallableDesign({self.compilable!r})"

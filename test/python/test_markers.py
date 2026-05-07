@@ -18,7 +18,7 @@ from aie.utils.compile.jit.markers import Compile, In, InOut, Out
 from aie.utils.compile.jit.compilabledesign import (
     _is_compile_param,
     _is_tensor_param,
-    _split_params,
+    split_params,
 )
 
 # ---------------------------------------------------------------------------
@@ -157,115 +157,115 @@ def test_tensor_markers_are_classes():
 
 
 # ---------------------------------------------------------------------------
-# _split_params — comprehensive signature introspection
+# split_params — comprehensive signature introspection
 # ---------------------------------------------------------------------------
 
 
-def test_split_params_all_compile():
+def testsplit_params_all_compile():
     def f(*, M: Compile[int], K: Compile[int]):
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert compile_params == ["M", "K"]
     assert tensor_params == []
     assert scalar_params == []
 
 
-def test_split_params_all_tensor():
+def testsplit_params_all_tensor():
     def f(a: In, b: Out, c: InOut):
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert compile_params == []
     assert tensor_params == ["a", "b", "c"]
     assert scalar_params == []
 
 
-def test_split_params_all_scalar_annotated():
+def testsplit_params_all_scalar_annotated():
     def f(x: int, y: float, z: str):
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert compile_params == []
     assert tensor_params == []
     assert scalar_params == ["x", "y", "z"]
 
 
-def test_split_params_all_unannotated():
+def testsplit_params_all_unannotated():
     def f(x, y, z):
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert compile_params == []
     assert tensor_params == []
     assert scalar_params == ["x", "y", "z"]
 
 
-def test_split_params_no_params():
+def testsplit_params_no_params():
     def f():
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert compile_params == []
     assert tensor_params == []
     assert scalar_params == []
 
 
-def test_split_params_mixed_all_three():
+def testsplit_params_mixed_all_three():
     def f(a: In, b: Out, alpha: float, *, M: Compile[int], N: Compile[int]):
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert compile_params == ["M", "N"]
     assert tensor_params == ["a", "b"]
     assert scalar_params == ["alpha"]
 
 
-def test_split_params_inout_goes_in_tensor():
+def testsplit_params_inout_goes_in_tensor():
     def f(x: InOut, *, M: Compile[int]):
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert tensor_params == ["x"]
     assert compile_params == ["M"]
 
 
-def test_split_params_preserves_declaration_order_for_tensors():
+def testsplit_params_preserves_declaration_order_for_tensors():
     """Tensor params must come out in the same order as the function signature."""
 
     def f(c: Out, a: In, b: InOut):
         pass
 
-    _, tensor_params, _ = _split_params(f)
+    _, tensor_params, _ = split_params(f)
     assert tensor_params == ["c", "a", "b"]
 
 
-def test_split_params_preserves_declaration_order_for_compile():
+def testsplit_params_preserves_declaration_order_for_compile():
     def f(*, N: Compile[int], M: Compile[int], K: Compile[int]):
         pass
 
-    compile_params, _, _ = _split_params(f)
+    compile_params, _, _ = split_params(f)
     assert compile_params == ["N", "M", "K"]
 
 
-def test_split_params_compile_with_default():
+def testsplit_params_compile_with_default():
     """Parameters with defaults are still categorised correctly."""
     import numpy as np
 
     def f(a: In, *, M: Compile[int], dtype: Compile[type] = np.float32):
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert compile_params == ["M", "dtype"]
     assert tensor_params == ["a"]
     assert scalar_params == []
 
 
-def test_split_params_scalar_with_default():
+def testsplit_params_scalar_with_default():
     def f(a: In, alpha: float = 1.0, *, N: Compile[int] = 512):
         pass
 
-    compile_params, tensor_params, scalar_params = _split_params(f)
+    compile_params, tensor_params, scalar_params = split_params(f)
     assert compile_params == ["N"]
     assert tensor_params == ["a"]
     assert scalar_params == ["alpha"]

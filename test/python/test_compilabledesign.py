@@ -56,39 +56,21 @@ def _inout_gen():
 # ---------------------------------------------------------------------------
 
 
-def test_default_use_cache_is_true():
+@pytest.mark.parametrize(
+    "attr,expected",
+    [
+        ("use_cache", True),
+        ("compile_kwargs", {}),
+        ("compile_flags", []),
+        ("aiecc_flags", []),
+        ("source_files", []),
+        ("include_paths", []),
+        ("object_files", []),
+    ],
+)
+def test_construction_default(attr, expected):
     d = CompilableDesign(_gemm_gen())
-    assert d.use_cache is True
-
-
-def test_default_compile_kwargs_is_empty():
-    d = CompilableDesign(_gemm_gen())
-    assert d.compile_kwargs == {}
-
-
-def test_default_compile_flags_is_empty_list():
-    d = CompilableDesign(_gemm_gen())
-    assert d.compile_flags == []
-
-
-def test_default_aiecc_flags_is_empty_list():
-    d = CompilableDesign(_gemm_gen())
-    assert d.aiecc_flags == []
-
-
-def test_default_source_files_is_empty_list():
-    d = CompilableDesign(_gemm_gen())
-    assert d.source_files == []
-
-
-def test_default_include_paths_is_empty_list():
-    d = CompilableDesign(_gemm_gen())
-    assert d.include_paths == []
-
-
-def test_default_object_files_is_empty_list():
-    d = CompilableDesign(_gemm_gen())
-    assert d.object_files == []
+    assert getattr(d, attr) == expected
 
 
 def test_compile_kwargs_none_becomes_empty_dict():
@@ -103,29 +85,29 @@ def test_compile_kwargs_none_becomes_empty_dict():
 
 def test_compile_params_classified():
     d = CompilableDesign(_gemm_gen())
-    assert d._compile_params == ["M", "K", "N"]
+    assert d.compile_params == ["M", "K", "N"]
 
 
 def test_tensor_params_classified():
     d = CompilableDesign(_gemm_gen())
-    assert d._tensor_params == ["a", "b", "c"]
+    assert d.tensor_params == ["a", "b", "c"]
 
 
 def test_scalar_params_classified():
     d = CompilableDesign(_scalar_gen())
-    assert d._scalar_params == ["alpha"]
+    assert d.scalar_params == ["alpha"]
 
 
 def test_inout_classified_as_tensor():
     d = CompilableDesign(_inout_gen())
-    assert d._tensor_params == ["x"]
+    assert d.tensor_params == ["x"]
 
 
 def test_path_generator_has_empty_param_lists():
     d = CompilableDesign(Path("/nonexistent/design.mlir"))
-    assert d._compile_params == []
-    assert d._tensor_params == []
-    assert d._scalar_params == []
+    assert d.compile_params == []
+    assert d.tensor_params == []
+    assert d.scalar_params == []
 
 
 # ---------------------------------------------------------------------------
@@ -165,19 +147,19 @@ def test_mixed_path_and_str_in_source_files():
 def test_generator_name_callable():
     gen = _gemm_gen()
     d = CompilableDesign(gen)
-    assert d._generator_name() == gen.__name__
+    assert d.generator_name == gen.__name__
 
 
 def test_generator_name_path():
     p = Path("/some/dir/design.mlir")
     d = CompilableDesign(p)
-    assert d._generator_name() == str(p)
+    assert d.generator_name == str(p)
 
 
 def test_generator_name_lambda():
     fn = lambda: None  # noqa: E731
     d = CompilableDesign(fn)
-    assert "<lambda>" in d._generator_name()
+    assert "<lambda>" in d.generator_name
 
 
 # ---------------------------------------------------------------------------

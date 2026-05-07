@@ -127,7 +127,7 @@ def _is_tensor_param(annotation) -> bool:
     return annotation in _TENSOR_ANNOTATIONS
 
 
-def _split_params(generator: Callable) -> tuple[list[str], list[str], list[str]]:
+def split_params(generator: Callable) -> tuple[list[str], list[str], list[str]]:
     """Inspect *generator* and return (compile_params, tensor_params, scalar_params).
 
     * ``compile_params``  — names with ``Compile[T]`` annotation
@@ -348,14 +348,14 @@ class CompilableDesign:
         # Introspect generator signature to split param categories.
         if callable(mlir_generator):
             (
-                self._compile_params,
-                self._tensor_params,
-                self._scalar_params,
-            ) = _split_params(mlir_generator)
+                self.compile_params,
+                self.tensor_params,
+                self.scalar_params,
+            ) = split_params(mlir_generator)
         else:
-            self._compile_params = []
-            self._tensor_params = []
-            self._scalar_params = []
+            self.compile_params = []
+            self.tensor_params = []
+            self.scalar_params = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -388,7 +388,7 @@ class CompilableDesign:
 
             if self.use_cache and xclbin_exists and inst_exists:
                 logger.debug(
-                    "Cache hit for '%s' (hash=%s)", self._generator_name(), cache_hash
+                    "Cache hit for '%s' (hash=%s)", self.generator_name, cache_hash
                 )
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
@@ -396,7 +396,7 @@ class CompilableDesign:
 
             logger.debug(
                 "Cache miss for '%s' (hash=%s); compiling...",
-                self._generator_name(),
+                self.generator_name,
                 cache_hash,
             )
 
@@ -579,8 +579,8 @@ class CompilableDesign:
                 continue
             if actual != expected:
                 param_name = (
-                    self._tensor_params[i]
-                    if i < len(self._tensor_params)
+                    self.tensor_params[i]
+                    if i < len(self.tensor_params)
                     else f"arg[{i}]"
                 )
                 raise RuntimeError(
@@ -597,7 +597,7 @@ class CompilableDesign:
         supply it back to ``from_json``.
         """
         data = {
-            "generator_name": self._generator_name(),
+            "generator_name": self.generator_name,
             "use_cache": self.use_cache,
             "compile_kwargs": {
                 k: _encode_kwarg(v) for k, v in self.compile_kwargs.items()
@@ -710,7 +710,9 @@ class CompilableDesign:
         except Exception:
             return None
 
-    def _generator_name(self) -> str:
+    @property
+    def generator_name(self) -> str:
+        """Human-readable name for the generator (function name or .mlir path)."""
         if isinstance(self.mlir_generator, Path):
             return str(self.mlir_generator)
         return getattr(self.mlir_generator, "__name__", repr(self.mlir_generator))
@@ -741,30 +743,30 @@ class CompilableDesign:
             hints = {}
 
         # Guard 2-A: compile_kwargs must not contain tensor param names.
-        tensor_names = set(self._tensor_params)
+        tensor_names = set(self.tensor_params)
         confused_tensor_keys = set(self.compile_kwargs.keys()) & tensor_names
         if confused_tensor_keys:
             raise TypeError(
-                f"CompilableDesign for {self._generator_name()!r}: "
+                f"CompilableDesign for {self.generator_name!r}: "
                 f"compile_kwargs contains name(s) annotated as runtime tensors "
                 f"(In/Out/InOut), not Compile[T] parameters: {confused_tensor_keys}.\n"
                 f"  Tensor params must be supplied at call time, not compile time.\n"
-                f"  Compile[T] params are: {self._compile_params}."
+                f"  Compile[T] params are: {self.compile_params}."
             )
 
         # Guard 2-B: compile_kwargs must not contain entirely unknown keys.
         known_params = (
-            set(self._compile_params)
-            | set(self._tensor_params)
-            | set(self._scalar_params)
+            set(self.compile_params)
+            | set(self.tensor_params)
+            | set(self.scalar_params)
         )
         unknown_keys = set(self.compile_kwargs.keys()) - known_params
         if unknown_keys:
             raise TypeError(
-                f"CompilableDesign for {self._generator_name()!r}: "
+                f"CompilableDesign for {self.generator_name!r}: "
                 f"compile_kwargs contains key(s) not in the generator signature: "
                 f"{unknown_keys}.\n"
-                f"  Valid Compile[T] params are: {self._compile_params}."
+                f"  Valid Compile[T] params are: {self.compile_params}."
             )
 
         sig = inspect.signature(self.mlir_generator)
@@ -780,7 +782,7 @@ class CompilableDesign:
             compile_only_sig.bind(**self.compile_kwargs)
         except TypeError as exc:
             raise TypeError(
-                f"CompilableDesign for '{self._generator_name()}': "
+                f"CompilableDesign for '{self.generator_name}': "
                 f"compile_kwargs do not match Compile[T] parameters — {exc}"
             ) from exc
 
@@ -791,7 +793,7 @@ class CompilableDesign:
         # plus None placeholders for In/Out/InOut params (which are not
         # available at compile time — the generator must not read them).
         _tensor_placeholders = {
-            name: _TensorPlaceholder(name) for name in self._tensor_params
+            name: _TensorPlaceholder(name) for name in self.tensor_params
         }
         _gen_call_kwargs = {**_tensor_placeholders, **self.compile_kwargs}
 
@@ -808,7 +810,7 @@ class CompilableDesign:
         module = ctx.module if result is None else result
         if not module.operation.verify():
             raise RuntimeError(
-                f"MLIR verification failed for '{self._generator_name()}'"
+                f"MLIR verification failed for '{self.generator_name}'"
             )
         return module
 
@@ -825,6 +827,6 @@ class CompilableDesign:
 
     def __repr__(self) -> str:
         return (
-            f"CompilableDesign(generator={self._generator_name()!r}, "
+            f"CompilableDesign(generator={self.generator_name!r}, "
             f"compile_kwargs={self.compile_kwargs!r})"
         )
