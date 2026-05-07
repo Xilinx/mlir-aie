@@ -123,6 +123,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   SmallVector<LogicalTileOp> logicalTiles;
   SmallVector<ObjectFifoCreateOp> objectFifos;
   SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+  SmallVector<ObjectFifoAllocateOp> objectFifoAllocates;
   SmallVector<CascadeFlowOp> cascadeFlows;
   SmallVector<FlowOp> flows;
   SmallVector<PacketFlowOp> pktFlows;
@@ -134,6 +135,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       objectFifos.push_back(of);
     if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
       objectFifoLinks.push_back(link);
+    if (auto alloc = dyn_cast<ObjectFifoAllocateOp>(op))
+      objectFifoAllocates.push_back(alloc);
     if (auto cf = dyn_cast<CascadeFlowOp>(op))
       cascadeFlows.push_back(cf);
     if (auto f = dyn_cast<FlowOp>(op))
@@ -145,6 +148,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // Phase 2a: Build placement constraints
   auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
   auto lockAdjacency = buildLockAdjacency(logicalTiles);
+  auto ofAllocateAdjacency =
+      buildObjectFifoAllocateAdjacency(objectFifoAllocates);
 
   // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
   // and cascade adjacency constraints from CascadeFlow connectivity.
@@ -168,6 +173,14 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   };
   auto lockLabel = [](bool thisIsConsumer) -> StringRef {
     return thisIsConsumer ? "shared-L1 lock owner" : "shared-L1 lock consumer";
+  };
+  // Objectfifo with `aie.objectfifo.allocate`: the docstring of
+  // ObjectFifoAllocateOp guarantees that every fifo endpoint shares L1 with
+  // the delegate tile. Edge.first is the fifo endpoint (producer or one
+  // consumer); edge.second is the delegate tile.
+  auto ofAllocateLabel = [](bool thisIsEndpoint) -> StringRef {
+    return thisIsEndpoint ? "objectfifo.allocate delegate"
+                          : "objectfifo endpoint";
   };
   // Cascade: same predicate as AIELowerCascadeFlowsPass -- src (edge.first)
   // must be one row North or one column West of dst (edge.second); rows
@@ -203,6 +216,15 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                     << "tile (" << tile.col << ", " << tile.row
                     << ") violates shared-L1 lock adjacency";
         attachPeerNotes(diag, logicalTile, lockAdjacency, lockLabel);
+        return failure();
+      }
+      if (!satisfiesAdjacency(logicalTile, tile, ofAllocateAdjacency,
+                              memAffinityPred)) {
+        auto diag = logicalTile.emitError()
+                    << "tile (" << tile.col << ", " << tile.row
+                    << ") violates objectfifo.allocate shared-L1 adjacency";
+        attachPeerNotes(diag, logicalTile, ofAllocateAdjacency,
+                        ofAllocateLabel);
         return failure();
       }
       if (!satisfiesAdjacency(logicalTile, tile, cascadeAdjacency,
@@ -247,6 +269,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         if (!satisfiesAdjacency(logicalTile, candidate, lockAdjacency,
                                 memAffinityPred))
           continue;
+        if (!satisfiesAdjacency(logicalTile, candidate, ofAllocateAdjacency,
+                                memAffinityPred))
+          continue;
         allConstraintMatchesFailedAdjacency = false;
         if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
                                 cascadePred))
@@ -264,9 +289,11 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
             bufferAdjacency.tileToEdges.count(logicalTile.getOperation());
         bool hasLockEdges =
             lockAdjacency.tileToEdges.count(logicalTile.getOperation());
-        bool memAffinityWasCause = sawConstraintMatch &&
-                                   allConstraintMatchesFailedAdjacency &&
-                                   (hasBufferEdges || hasLockEdges);
+        bool hasOfAllocEdges =
+            ofAllocateAdjacency.tileToEdges.count(logicalTile.getOperation());
+        bool memAffinityWasCause =
+            sawConstraintMatch && allConstraintMatchesFailedAdjacency &&
+            (hasBufferEdges || hasLockEdges || hasOfAllocEdges);
         bool hasCascade =
             cascadeAdjacency.tileToEdges.count(logicalTile.getOperation());
         InFlightDiagnostic diag = logicalTile.emitError();
@@ -280,6 +307,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << (memAffinityWasCause && hasLockEdges
                        ? " and shared-L1 lock adjacency"
                        : "")
+               << (memAffinityWasCause && hasOfAllocEdges
+                       ? " and objectfifo.allocate shared-L1 adjacency"
+                       : "")
                << (hasCascade ? " and cascade adjacency" : "");
         } else {
           diag << "no available compute tiles for placement"
@@ -289,12 +319,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << (memAffinityWasCause && hasLockEdges
                        ? " (shared-L1 lock adjacency unsatisfiable)"
                        : "")
+               << (memAffinityWasCause && hasOfAllocEdges
+                       ? " (objectfifo.allocate shared-L1 adjacency "
+                         "unsatisfiable)"
+                       : "")
                << (hasCascade ? " (cascade adjacency unsatisfiable)" : "");
         }
         if (memAffinityWasCause && hasBufferEdges)
           attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (memAffinityWasCause && hasLockEdges)
           attachPeerNotes(diag, logicalTile, lockAdjacency, lockLabel);
+        if (memAffinityWasCause && hasOfAllocEdges)
+          attachPeerNotes(diag, logicalTile, ofAllocateAdjacency,
+                          ofAllocateLabel);
         if (hasCascade)
           attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
         return failure();
@@ -580,6 +617,39 @@ SequentialPlacer::buildLockAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
       return {};
     return dyn_cast_or_null<TileLike>(lock.getTile().getDefiningOp());
   });
+}
+
+SequentialPlacer::Adjacency SequentialPlacer::buildObjectFifoAllocateAdjacency(
+    ArrayRef<ObjectFifoAllocateOp> allocateOps) {
+  Adjacency adjacency;
+  for (auto allocOp : allocateOps) {
+    auto delegate =
+        dyn_cast_or_null<TileLike>(allocOp.getDelegateTile().getDefiningOp());
+    if (!delegate)
+      continue;
+    ObjectFifoCreateOp fifo = allocOp.getObjectFifo();
+    if (!fifo)
+      continue;
+
+    // Producer endpoint.
+    if (auto producer = dyn_cast_or_null<TileLike>(
+            fifo.getProducerTile().getDefiningOp())) {
+      if (producer.getOperation() != delegate.getOperation())
+        adjacency.addEdge(producer, delegate);
+    }
+
+    // Consumer endpoints; dedup against the delegate but allow multiple
+    // distinct consumers to all add their own edges.
+    for (Value consumerVal : fifo.getConsumerTiles()) {
+      auto consumer = dyn_cast_or_null<TileLike>(consumerVal.getDefiningOp());
+      if (!consumer)
+        continue;
+      if (consumer.getOperation() == delegate.getOperation())
+        continue;
+      adjacency.addEdge(consumer, delegate);
+    }
+  }
+  return adjacency;
 }
 
 SequentialPlacer::Adjacency

@@ -178,6 +178,15 @@ private:
   // `LogicalTileOp` users, which is exactly the gap the placer fills.
   Adjacency buildLockAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
 
+  // `aie.objectfifo.allocate @of (%delegate)` documents that every endpoint
+  // of `@of` (producer + each consumer) shares L1 with the delegate tile.
+  // Edge.first is the fifo endpoint; edge.second is the delegate. Today the
+  // objectfifo lowering pass silently degrades to a DMA fifo when this
+  // contract is violated, ignoring the user's `allocate` intent; the placer
+  // catches this earlier and steers unconstrained endpoints to satisfy it.
+  Adjacency buildObjectFifoAllocateAdjacency(
+      llvm::ArrayRef<ObjectFifoAllocateOp> allocateOps);
+
   // The first endpoint of each edge is the cascade source; the second is the
   // destination.
   Adjacency buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);

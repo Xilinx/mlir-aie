@@ -428,3 +428,44 @@ module @lock_adjacency_unsatisfiable_column {
     }
   }
 }
+
+// -----
+
+// objectfifo.allocate with three pinned endpoints: delegate at (0, 3) shares
+// L1 with producer (0, 2), but consumer at (3, 5) is far away. Placer
+// visits the delegate first; its edge to the consumer fails, so the
+// violation is reported there with peer notes for both endpoints.
+module @of_allocate_consumer_violation {
+  aie.device(npu1) {
+    // CHECK: error: tile (0, 3) violates objectfifo.allocate shared-L1 adjacency
+    // CHECK-DAG: note: objectfifo endpoint peer placed at (0, 2)
+    // CHECK-DAG: note: objectfifo endpoint peer placed at (3, 5)
+    %delegate = aie.logical_tile<CoreTile>(0, 3)
+    %producer = aie.logical_tile<CoreTile>(0, 2)
+    %consumer = aie.logical_tile<CoreTile>(3, 5)
+    aie.core(%delegate) { aie.end }
+    aie.core(%producer) { aie.end }
+    aie.core(%consumer) { aie.end }
+    aie.objectfifo @of_bad_alloc (%producer, {%consumer}, 2 : i32)
+        : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of_bad_alloc (%delegate)
+  }
+}
+
+// -----
+
+// objectfifo.allocate with pinned delegate + unconstrained consumer that has
+// a column constraint with no memory-affinity slot relative to the delegate.
+module @of_allocate_unsatisfiable_column {
+  aie.device(npu1) {
+    // CHECK: error: no compute tile available matching constraint (3, ?) and objectfifo.allocate shared-L1 adjacency
+    // CHECK: note: objectfifo.allocate delegate peer placed at (0, 2)
+    %producer = aie.logical_tile<CoreTile>(0, 2)
+    %consumer = aie.logical_tile<CoreTile>(3, ?)
+    aie.core(%producer) { aie.end }
+    aie.core(%consumer) { aie.end }
+    aie.objectfifo @of_unsat (%producer, {%consumer}, 2 : i32)
+        : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.allocate @of_unsat (%producer)
+  }
+}
