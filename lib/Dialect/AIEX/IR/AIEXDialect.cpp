@@ -30,6 +30,8 @@ using namespace xilinx;
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.cpp.inc"
 
+#include "aie/Dialect/AIEX/IR/AIEXEnums.cpp.inc"
+
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
@@ -747,6 +749,14 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op) {
 }
 
 std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuUpdateFromScratchpadOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress() {
   return ::getAbsoluteAddress(this);
 }
 
