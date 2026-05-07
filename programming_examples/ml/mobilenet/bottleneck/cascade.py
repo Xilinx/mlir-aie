@@ -41,23 +41,23 @@ from aie.iron.controlflow import range_
 # ---------------------------------------------------------------------------
 _InW = 7
 _InH = 7
-_InC = 80           # input channels
-_L1_OutC = 960      # expanded channels (L1 output)
-_InputSplit = 2     # cascade splits: each cascade tile handles half the channels
+_InC = 80  # input channels
+_L1_OutC = 960  # expanded channels (L1 output)
+_InputSplit = 2  # cascade splits: each cascade tile handles half the channels
 _OutputSplit = 2
 _OutputSplit2 = 2
-_L1_SplitC = _L1_OutC // _InputSplit        # 480 channels per cascade tile
-_OC8 = _L1_OutC // (8 * _OutputSplit)      # inner loop count for L1 kernel  = 60
-_L3_OutC = 80       # final projection output channels
+_L1_SplitC = _L1_OutC // _InputSplit  # 480 channels per cascade tile
+_OC8 = _L1_OutC // (8 * _OutputSplit)  # inner loop count for L1 kernel  = 60
+_L3_OutC = 80  # final projection output channels
 _OC8_out = _L3_OutC // (8 * _OutputSplit2)  # inner loop count for L3 kernel = 5
 
 # ---------------------------------------------------------------------------
 # Weight sizes (derived from aie2_bottleneckC.py type definitions)
 # ---------------------------------------------------------------------------
 # L1 split weight per tile:  (InC // InputSplit) * (L1_OutC // OutputSplit)
-_l1_split_wts_sz = (_InC // _InputSplit) * (_L1_OutC // _OutputSplit)   # 40*480 = 19200
+_l1_split_wts_sz = (_InC // _InputSplit) * (_L1_OutC // _OutputSplit)  # 40*480 = 19200
 # L2 DW weight:     3 * 3 * L1_OutC (full depthwise filter)
-_l2_wts_sz = 3 * 3 * _L1_OutC * 1                                        # 8640
+_l2_wts_sz = 3 * 3 * _L1_OutC * 1  # 8640
 # L3 split weight per tile (per put/get chunk):
 #   (L1_OutC // InputSplit) * (L3_OutC // OutputSplit2) = 480 * 40 = 19200
 # Matches placed-API: each MemTile put/get streams 19200-byte chunks to its compute tile.
@@ -78,6 +78,7 @@ _ty_act_out = np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]]
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_wts_arr(data_dir, filename):
     """Load int8 weights from a comma-separated text file; return None if missing."""
@@ -107,6 +108,7 @@ def _make_wts_fifo(wts_ty, depth, name):
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def cascade_bottlenecks(
     act_in: ObjectFifo,
@@ -143,8 +145,14 @@ def cascade_bottlenecks(
     workers = []
 
     (
-        bn13_s1, bn13_s2, bn13_s3, bn13_sAdd,
-        bn14_s1, bn14_s2, bn14_s3, bn14_sAdd,
+        bn13_s1,
+        bn13_s2,
+        bn13_s3,
+        bn13_sAdd,
+        bn14_s1,
+        bn14_s2,
+        bn14_s3,
+        bn14_sAdd,
     ) = scale_factors
 
     # ========================================================================
@@ -155,8 +163,16 @@ def cascade_bottlenecks(
     # L1 PUT: for each input row, loop over OutputSplit weight tiles and OC8
     # inner iterations, putting partial 1x1 results onto the cascade stream.
     def l1_put_fn(
-        of_in, wts_fifo, k,
-        InW, InC, OutC, InputSplit, OutputSplit, OC8, sf1,
+        of_in,
+        wts_fifo,
+        k,
+        InW,
+        InC,
+        OutC,
+        InputSplit,
+        OutputSplit,
+        OC8,
+        sf1,
     ):
         for _ in range_(_InH):
             row_in = of_in.acquire(1)
@@ -169,8 +185,17 @@ def cascade_bottlenecks(
 
     # L1 GET: for each input row, accumulates cascade and produces full L1 output row.
     def l1_get_fn(
-        of_in, of_out, wts_fifo, k,
-        InW, InC, OutC, InputSplit, OutputSplit, OC8, sf1,
+        of_in,
+        of_out,
+        wts_fifo,
+        k,
+        InW,
+        InC,
+        OutC,
+        InputSplit,
+        OutputSplit,
+        OC8,
+        sf1,
     ):
         for _ in range_(_InH):
             row_in = of_in.acquire(1)
@@ -179,9 +204,18 @@ def cascade_bottlenecks(
                 row_wts = wts_fifo.acquire(1)
                 for oc in range_(OC8):
                     k(
-                        row_in, row_wts, row_out,
-                        InW, InC, OutC, sf1,
-                        InputSplit, OutputSplit, WeightIndex, 0, oc,
+                        row_in,
+                        row_wts,
+                        row_out,
+                        InW,
+                        InC,
+                        OutC,
+                        sf1,
+                        InputSplit,
+                        OutputSplit,
+                        WeightIndex,
+                        0,
+                        oc,
                     )
                 wts_fifo.release(1)
             of_in.release(1)
@@ -193,8 +227,22 @@ def cascade_bottlenecks(
         rows = of_in.acquire(2)
         row_out_a = of_out_first.acquire(1)
         row_out_b = of_out_second.acquire(1)
-        k(rows[0], rows[0], rows[1], wts_buf, row_out_a, row_out_b,
-          InW, 1, OutC2, 3, 3, 0, sf2, 0)
+        k(
+            rows[0],
+            rows[0],
+            rows[1],
+            wts_buf,
+            row_out_a,
+            row_out_b,
+            InW,
+            1,
+            OutC2,
+            3,
+            3,
+            0,
+            sf2,
+            0,
+        )
         of_out_first.release(1)
         of_out_second.release(1)
 
@@ -203,8 +251,22 @@ def cascade_bottlenecks(
             rows = of_in.acquire(3)
             row_out_a = of_out_first.acquire(1)
             row_out_b = of_out_second.acquire(1)
-            k(rows[0], rows[1], rows[2], wts_buf, row_out_a, row_out_b,
-              InW, 1, OutC2, 3, 3, 1, sf2, 0)
+            k(
+                rows[0],
+                rows[1],
+                rows[2],
+                wts_buf,
+                row_out_a,
+                row_out_b,
+                InW,
+                1,
+                OutC2,
+                3,
+                3,
+                1,
+                sf2,
+                0,
+            )
             of_in.release(1)
             of_out_first.release(1)
             of_out_second.release(1)
@@ -213,30 +275,73 @@ def cascade_bottlenecks(
         rows = of_in.acquire(2)
         row_out_a = of_out_first.acquire(1)
         row_out_b = of_out_second.acquire(1)
-        k(rows[0], rows[1], rows[1], wts_buf, row_out_a, row_out_b,
-          InW, 1, OutC2, 3, 3, 2, sf2, 0)
+        k(
+            rows[0],
+            rows[1],
+            rows[1],
+            wts_buf,
+            row_out_a,
+            row_out_b,
+            InW,
+            1,
+            OutC2,
+            3,
+            3,
+            2,
+            sf2,
+            0,
+        )
         of_in.release(2)
         of_out_first.release(1)
         of_out_second.release(1)
 
     # L3 PUT: reads first DW split half, puts partial projection result onto cascade.
     def l3_put_fn(
-        of_in, wts_fifo, k,
-        InW, OutC2, OutC3, InputSplit, OutputSplit2, OC8_out, sf3,
+        of_in,
+        wts_fifo,
+        k,
+        InW,
+        OutC2,
+        OutC3,
+        InputSplit,
+        OutputSplit2,
+        OC8_out,
+        sf3,
     ):
         for _ in range_(_InH):
             row_in = of_in.acquire(1)
             for WeightIndex in range_(OutputSplit2):
                 row_wts = wts_fifo.acquire(1)
                 for oc in range_(OC8_out):
-                    k(row_in, row_wts, InW, OutC2, OutC3, InputSplit, WeightIndex, 0, oc)
+                    k(
+                        row_in,
+                        row_wts,
+                        InW,
+                        OutC2,
+                        OutC3,
+                        InputSplit,
+                        WeightIndex,
+                        0,
+                        oc,
+                    )
                 wts_fifo.release(1)
             of_in.release(1)
 
     # L3 GET: reads second DW split half + cascade + skip → final output row.
     def l3_get_fn(
-        of_in, skip_in, act_out, wts_fifo, k,
-        InW, OutC2, OutC3, InputSplit, OutputSplit2, OC8_out, sf3, sfAdd,
+        of_in,
+        skip_in,
+        act_out,
+        wts_fifo,
+        k,
+        InW,
+        OutC2,
+        OutC3,
+        InputSplit,
+        OutputSplit2,
+        OC8_out,
+        sf3,
+        sfAdd,
     ):
         for _ in range_(_InH):
             row_in = of_in.acquire(1)
@@ -246,9 +351,20 @@ def cascade_bottlenecks(
                 row_wts = wts_fifo.acquire(1)
                 for oc in range_(OC8_out):
                     k(
-                        row_in, row_wts, row_out, skip_row,
-                        InW, OutC2, OutC3, sf3, sfAdd,
-                        InputSplit, OutputSplit2, WeightIndex, 0, oc,
+                        row_in,
+                        row_wts,
+                        row_out,
+                        skip_row,
+                        InW,
+                        OutC2,
+                        OutC3,
+                        sf3,
+                        sfAdd,
+                        InputSplit,
+                        OutputSplit2,
+                        WeightIndex,
+                        0,
+                        oc,
                     )
                 wts_fifo.release(1)
             of_in.release(1)
@@ -268,15 +384,15 @@ def cascade_bottlenecks(
         "bn13_1_conv2dk1_i8_ui8_partial_width_put_new",
         "bn13_1_conv2dk1_put.o",
         [
-            _ty_act_in,        # act row in
+            _ty_act_in,  # act row in
             _ty_l1_split_wts,  # weight tile
-            np.int32,          # W
-            np.int32,          # InC
-            np.int32,          # OutC (full)
-            np.int32,          # InputSplit
-            np.int32,          # WeightIndex
-            np.int32,          # x_start
-            np.int32,          # oc (inner oc8 index)
+            np.int32,  # W
+            np.int32,  # InC
+            np.int32,  # OutC (full)
+            np.int32,  # InputSplit
+            np.int32,  # WeightIndex
+            np.int32,  # x_start
+            np.int32,  # oc (inner oc8 index)
         ],
     )
 
@@ -284,18 +400,18 @@ def cascade_bottlenecks(
         "bn13_1_conv2dk1_i8_ui8_partial_width_get_new",
         "bn13_1_conv2dk1_get.o",
         [
-            _ty_act_in,        # act row in
+            _ty_act_in,  # act row in
             _ty_l1_split_wts,  # weight tile
-            _ty_l1_out_full,   # act row out (full 960 channels)
-            np.int32,          # W
-            np.int32,          # InC
-            np.int32,          # OutC (full)
-            np.int32,          # scale (sf1)
-            np.int32,          # InputSplit
-            np.int32,          # OutputSplit
-            np.int32,          # WeightIndex
-            np.int32,          # x_start
-            np.int32,          # oc
+            _ty_l1_out_full,  # act row out (full 960 channels)
+            np.int32,  # W
+            np.int32,  # InC
+            np.int32,  # OutC (full)
+            np.int32,  # scale (sf1)
+            np.int32,  # InputSplit
+            np.int32,  # OutputSplit
+            np.int32,  # WeightIndex
+            np.int32,  # x_start
+            np.int32,  # oc
         ],
     )
 
@@ -303,20 +419,20 @@ def cascade_bottlenecks(
         "bn13_conv2dk3_ui8_out_split",
         "bn13_conv2dk3_dw.o",
         [
-            _ty_l1_out_full,   # row above
-            _ty_l1_out_full,   # row center
-            _ty_l1_out_full,   # row below
-            _ty_l2_wts,        # DW weights (full channels)
+            _ty_l1_out_full,  # row above
+            _ty_l1_out_full,  # row center
+            _ty_l1_out_full,  # row below
+            _ty_l2_wts,  # DW weights (full channels)
             _ty_l1_out_split,  # output first split half
             _ty_l1_out_split,  # output second split half
-            np.int32,          # W
-            np.int32,          # (constant 1)
-            np.int32,          # OutC2 (full DW channels)
-            np.int32,          # kernel H (3)
-            np.int32,          # kernel W (3)
-            np.int32,          # position flag (0=top,1=mid,2=bot)
-            np.int32,          # scale (sf2)
-            np.int32,          # (constant 0)
+            np.int32,  # W
+            np.int32,  # (constant 1)
+            np.int32,  # OutC2 (full DW channels)
+            np.int32,  # kernel H (3)
+            np.int32,  # kernel W (3)
+            np.int32,  # position flag (0=top,1=mid,2=bot)
+            np.int32,  # scale (sf2)
+            np.int32,  # (constant 0)
         ],
     )
 
@@ -326,13 +442,13 @@ def cascade_bottlenecks(
         [
             _ty_l1_out_split,  # act row in (first DW split)
             _ty_l3_split_wts,  # weight tile
-            np.int32,          # W
-            np.int32,          # OutC2 (full DW channels)
-            np.int32,          # OutC3 (final output channels)
-            np.int32,          # InputSplit
-            np.int32,          # WeightIndex
-            np.int32,          # x_start
-            np.int32,          # oc
+            np.int32,  # W
+            np.int32,  # OutC2 (full DW channels)
+            np.int32,  # OutC3 (final output channels)
+            np.int32,  # InputSplit
+            np.int32,  # WeightIndex
+            np.int32,  # x_start
+            np.int32,  # oc
         ],
     )
 
@@ -342,18 +458,18 @@ def cascade_bottlenecks(
         [
             _ty_l1_out_split,  # act row in (second DW split)
             _ty_l3_split_wts,  # weight tile
-            _ty_act_out,       # act row out
-            _ty_act_in,        # skip row in (bn13 input)
-            np.int32,          # W
-            np.int32,          # OutC2 (full DW channels)
-            np.int32,          # OutC3 (final output channels)
-            np.int32,          # scale (sf3)
-            np.int32,          # scale_skip (sfAdd)
-            np.int32,          # InputSplit
-            np.int32,          # OutputSplit2
-            np.int32,          # WeightIndex
-            np.int32,          # x_start
-            np.int32,          # oc
+            _ty_act_out,  # act row out
+            _ty_act_in,  # skip row in (bn13 input)
+            np.int32,  # W
+            np.int32,  # OutC2 (full DW channels)
+            np.int32,  # OutC3 (final output channels)
+            np.int32,  # scale (sf3)
+            np.int32,  # scale_skip (sfAdd)
+            np.int32,  # InputSplit
+            np.int32,  # OutputSplit2
+            np.int32,  # WeightIndex
+            np.int32,  # x_start
+            np.int32,  # oc
         ],
     )
 
@@ -362,8 +478,8 @@ def cascade_bottlenecks(
     # The MemTile splits it into two halves, one per cascade tile.
     # This matches the original object_fifo_link pattern with offsets.
     # repeat_count=InH so the MemTile DMA replays each weight tile once per row.
-    _l1_full_wts_sz = _InC * _L1_OutC           # 80 * 960 = 76800
-    _l3_full_wts_sz = _L1_OutC * _L3_OutC       # 960 * 80 = 76800
+    _l1_full_wts_sz = _InC * _L1_OutC  # 80 * 960 = 76800
+    _l3_full_wts_sz = _L1_OutC * _L3_OutC  # 960 * 80 = 76800
     _ty_l1_full_wts = np.ndarray[(_l1_full_wts_sz,), np.dtype[np.int8]]
     _ty_l3_full_wts = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
 
@@ -376,7 +492,7 @@ def cascade_bottlenecks(
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn13_wts_l1_put", "bn13_wts_l1_get"],
-        placement=Tile(0, 1),   # mem_tile_0_1 in original
+        placement=Tile(0, 1),  # mem_tile_0_1 in original
         repeat_counts=[_InH, _InH],
     )
 
@@ -385,11 +501,11 @@ def cascade_bottlenecks(
     # walks through the half in 2 chunks per row × 7 rows = 14 chunks total.
     bn13_wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1, name="bn13_wts_l3_full")
     bn13_wts_l3_put, bn13_wts_l3_get = bn13_wts_l3_full.cons().split(
-        offsets=[0, _l3_full_wts_sz // 2],   # [0, 38400] matching placed
+        offsets=[0, _l3_full_wts_sz // 2],  # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn13_wts_l3_put", "bn13_wts_l3_get"],
-        placement=Tile(1, 1),   # mem_tile_1_1 in original
+        placement=Tile(1, 1),  # mem_tile_1_1 in original
         repeat_counts=[_InH, _InH],
     )
 
@@ -424,8 +540,8 @@ def cascade_bottlenecks(
     # Pre-establish .cons() ordering on act_in to match placed-API:
     #   {tile_4_5 (l1_put), tile_5_5 (l1_get), mem_tile_5_1 (skip forward)}
     # Order of .cons() calls determines fifo consumer ordering in MLIR.
-    bn13_l1_put_cons = act_in.cons()        # tile_4_5
-    bn13_l1_get_cons = act_in.cons()        # tile_5_5
+    bn13_l1_put_cons = act_in.cons()  # tile_4_5
+    bn13_l1_get_cons = act_in.cons()  # tile_5_5
 
     # Skip fifo: forward bn13 input to the L3 GET tile via MemTile DMA.
     # act_in has 3 consumers: l1_put, l1_get, and the skip forward.
@@ -442,9 +558,15 @@ def cascade_bottlenecks(
             bn13_l1_put_cons,
             bn13_wts_l1_put.cons(),
             bn13_k_l1_put,
-            _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn13_s1,
+            _InW,
+            _InC,
+            _L1_OutC,
+            _InputSplit,
+            _OutputSplit,
+            _OC8,
+            bn13_s1,
         ],
-        placement=Tile(4, 5)
+        placement=Tile(4, 5),
     )
 
     w_bn13_l1_get = Worker(
@@ -454,9 +576,15 @@ def cascade_bottlenecks(
             bn13_of_l1_l2.prod(),
             bn13_wts_l1_get.cons(),
             bn13_k_l1_get,
-            _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn13_s1,
+            _InW,
+            _InC,
+            _L1_OutC,
+            _InputSplit,
+            _OutputSplit,
+            _OC8,
+            bn13_s1,
         ],
-        placement=Tile(5, 5)
+        placement=Tile(5, 5),
     )
 
     w_bn13_l2 = Worker(
@@ -467,9 +595,11 @@ def cascade_bottlenecks(
             bn13_of_l2_l3_second.prod(),
             bn13_l2_wts,
             bn13_k_l2_dw,
-            _InW, _L1_OutC, bn13_s2,
+            _InW,
+            _L1_OutC,
+            bn13_s2,
         ],
-        placement=Tile(5, 4)
+        placement=Tile(5, 4),
     )
 
     w_bn13_l3_put = Worker(
@@ -478,9 +608,15 @@ def cascade_bottlenecks(
             bn13_of_l2_l3_first.cons(),
             bn13_wts_l3_put.cons(),
             bn13_k_l3_put,
-            _InW, _L1_OutC, _L3_OutC, _InputSplit, _OutputSplit2, _OC8_out, bn13_s3,
+            _InW,
+            _L1_OutC,
+            _L3_OutC,
+            _InputSplit,
+            _OutputSplit2,
+            _OC8_out,
+            bn13_s3,
         ],
-        placement=Tile(4, 3)
+        placement=Tile(4, 3),
     )
 
     w_bn13_l3_get = Worker(
@@ -491,10 +627,16 @@ def cascade_bottlenecks(
             act_bn13_out.prod(),
             bn13_wts_l3_get.cons(),
             bn13_k_l3_get,
-            _InW, _L1_OutC, _L3_OutC, _InputSplit, _OutputSplit2, _OC8_out,
-            bn13_s3, bn13_sAdd,
+            _InW,
+            _L1_OutC,
+            _L3_OutC,
+            _InputSplit,
+            _OutputSplit2,
+            _OC8_out,
+            bn13_s3,
+            bn13_sAdd,
         ],
-        placement=Tile(5, 3)
+        placement=Tile(5, 3),
     )
 
     workers += [
@@ -588,7 +730,7 @@ def cascade_bottlenecks(
             _ty_l1_out_split,
             _ty_l3_split_wts,
             _ty_act_out,
-            _ty_act_in,        # skip (bn14 input = bn13 output)
+            _ty_act_in,  # skip (bn14 input = bn13 output)
             np.int32,  # W
             np.int32,  # OutC2
             np.int32,  # OutC3
@@ -610,17 +752,17 @@ def cascade_bottlenecks(
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn14_wts_l1_put", "bn14_wts_l1_get"],
-        placement=Tile(2, 1),   # mem_tile_2_1 in original
+        placement=Tile(2, 1),  # mem_tile_2_1 in original
         repeat_counts=[_InH, _InH],
     )
 
     bn14_wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1, name="bn14_wts_l3_full")
     bn14_wts_l3_put, bn14_wts_l3_get = bn14_wts_l3_full.cons().split(
-        offsets=[0, _l3_full_wts_sz // 2],   # [0, 38400] matching placed
+        offsets=[0, _l3_full_wts_sz // 2],  # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn14_wts_l3_put", "bn14_wts_l3_get"],
-        placement=Tile(3, 1),   # mem_tile_3_1 in original
+        placement=Tile(3, 1),  # mem_tile_3_1 in original
         repeat_counts=[_InH, _InH],
     )
 
@@ -653,8 +795,8 @@ def cascade_bottlenecks(
 
     # Pre-establish .cons() ordering on act_bn13_out to match placed-API:
     #   {tile_6_5 (l1_put), tile_7_5 (l1_get), mem_tile_7_1 (skip forward)}
-    bn14_l1_put_cons = act_bn13_out.cons()        # tile_6_5
-    bn14_l1_get_cons = act_bn13_out.cons()        # tile_7_5
+    bn14_l1_put_cons = act_bn13_out.cons()  # tile_6_5
+    bn14_l1_get_cons = act_bn13_out.cons()  # tile_7_5
 
     # bn14 skip: bn13 output forwarded to bn14 L3 GET via MemTile DMA.
     bn14_skip_fifo = act_bn13_out.cons(depth=6).forward(
@@ -667,9 +809,15 @@ def cascade_bottlenecks(
             bn14_l1_put_cons,
             bn14_wts_l1_put.cons(),
             bn14_k_l1_put,
-            _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn14_s1,
+            _InW,
+            _InC,
+            _L1_OutC,
+            _InputSplit,
+            _OutputSplit,
+            _OC8,
+            bn14_s1,
         ],
-        placement=Tile(6, 5)
+        placement=Tile(6, 5),
     )
 
     w_bn14_l1_get = Worker(
@@ -679,9 +827,15 @@ def cascade_bottlenecks(
             bn14_of_l1_l2.prod(),
             bn14_wts_l1_get.cons(),
             bn14_k_l1_get,
-            _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn14_s1,
+            _InW,
+            _InC,
+            _L1_OutC,
+            _InputSplit,
+            _OutputSplit,
+            _OC8,
+            bn14_s1,
         ],
-        placement=Tile(7, 5)
+        placement=Tile(7, 5),
     )
 
     w_bn14_l2 = Worker(
@@ -692,9 +846,11 @@ def cascade_bottlenecks(
             bn14_of_l2_l3_second.prod(),
             bn14_l2_wts,
             bn14_k_l2_dw,
-            _InW, _L1_OutC, bn14_s2,
+            _InW,
+            _L1_OutC,
+            bn14_s2,
         ],
-        placement=Tile(6, 2)   # original: tile(6,2) — same row as L3 get (5,2)
+        placement=Tile(6, 2),  # original: tile(6,2) — same row as L3 get (5,2)
     )
 
     w_bn14_l3_put = Worker(
@@ -703,9 +859,15 @@ def cascade_bottlenecks(
             bn14_of_l2_l3_first.cons(),
             bn14_wts_l3_put.cons(),
             bn14_k_l3_put,
-            _InW, _L1_OutC, _L3_OutC, _InputSplit, _OutputSplit2, _OC8_out, bn14_s3,
+            _InW,
+            _L1_OutC,
+            _L3_OutC,
+            _InputSplit,
+            _OutputSplit2,
+            _OC8_out,
+            bn14_s3,
         ],
-        placement=Tile(4, 2)
+        placement=Tile(4, 2),
     )
 
     w_bn14_l3_get = Worker(
@@ -716,10 +878,16 @@ def cascade_bottlenecks(
             act_bn14_out.prod(),
             bn14_wts_l3_get.cons(),
             bn14_k_l3_get,
-            _InW, _L1_OutC, _L3_OutC, _InputSplit, _OutputSplit2, _OC8_out,
-            bn14_s3, bn14_sAdd,
+            _InW,
+            _L1_OutC,
+            _L3_OutC,
+            _InputSplit,
+            _OutputSplit2,
+            _OC8_out,
+            bn14_s3,
+            bn14_sAdd,
         ],
-        placement=Tile(5, 2)
+        placement=Tile(5, 2),
     )
 
     workers += [

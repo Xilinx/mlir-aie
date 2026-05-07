@@ -64,9 +64,9 @@ def pipeline_bottlenecks(
     #   L1: in=(14,1,80) int8,   out=(14,1,480) uint8  wts=80*480=38400
     #   L2: in=(14,1,480) uint8, out=(14,1,480) uint8  wts=3*3*480=4320  (DW stride-1)
     #   L3: in=(14,1,480) uint8, out=(14,1,112) int8   wts=480*112=53760
-    bn10_l1_wts_sz = 80 * 480    # 38400
+    bn10_l1_wts_sz = 80 * 480  # 38400
     bn10_l2_wts_sz = 3 * 3 * 480  # 4320
-    bn10_l3_wts_sz = 480 * 112   # 53760
+    bn10_l3_wts_sz = 480 * 112  # 53760
 
     bn10_l1_data = _load_weights(data_dir, "bn10_1_chain.txt")
     bn10_l2_data = _load_weights(data_dir, "bn10_2_chain.txt")
@@ -78,7 +78,7 @@ def pipeline_bottlenecks(
             bn10_l1_data
             if bn10_l1_data is not None
             else np.zeros(bn10_l1_wts_sz, dtype=np.int8)
-        )
+        ),
     )
     bn10_l2_wts = Buffer(
         _i8((bn10_l2_wts_sz,)),
@@ -86,7 +86,7 @@ def pipeline_bottlenecks(
             bn10_l2_data
             if bn10_l2_data is not None
             else np.zeros(bn10_l2_wts_sz, dtype=np.int8)
-        )
+        ),
     )
     bn10_l3_wts = Buffer(
         _i8((bn10_l3_wts_sz,)),
@@ -94,7 +94,7 @@ def pipeline_bottlenecks(
             bn10_l3_data
             if bn10_l3_data is not None
             else np.zeros(bn10_l3_wts_sz, dtype=np.int8)
-        )
+        ),
     )
 
     # Kernel declarations matching aie2_bottleneckBStatic.py external_func signatures.
@@ -172,7 +172,9 @@ def pipeline_bottlenecks(
         for _ in range_(12):
             rows = of_12.acquire(3)
             row_out = of_23.acquire(1)
-            k_l2(rows[0], rows[1], rows[2], wts_buf, row_out, 14, 1, 480, 3, 3, 1, sf2, 0)
+            k_l2(
+                rows[0], rows[1], rows[2], wts_buf, row_out, 14, 1, 480, 3, 3, 1, sf2, 0
+            )
             of_12.release(1)
             of_23.release(1)
         # postamble: bottom row (border=2, replicate last row below)
@@ -216,16 +218,16 @@ def pipeline_bottlenecks(
     # forward() creates the MemTile-side copy, no extra compute tile needed.
     # Pre-establish bn11 L1's .cons() handle BEFORE the forward() so the consumer
     # ordering on act_bn10_out matches placed: {tile_3_2 (l1), mem_tile_2_1 (skip)}.
-    bn11_l1_act_cons = act_bn10_out.cons()      # tile_3_2 first
+    bn11_l1_act_cons = act_bn10_out.cons()  # tile_3_2 first
     # Explicit placement on mem_tile_2_1 to match placed-API.
     bn11_skip_of = act_bn10_out.cons(depth=6).forward(
         name="bn11_skip_of", depth=2, placement=Tile(2, 1)
     )
 
     # b11_OutC1=336, b11_OutC2=336, b11_OutC3=112
-    bn11_l1_wts_sz = 112 * 336   # 37632
+    bn11_l1_wts_sz = 112 * 336  # 37632
     bn11_l2_wts_sz = 3 * 3 * 336  # 3024
-    bn11_l3_wts_sz = 336 * 112   # 37632
+    bn11_l3_wts_sz = 336 * 112  # 37632
 
     bn11_l1_data = _load_weights(data_dir, "bn11_1_chain.txt")
     bn11_l2_data = _load_weights(data_dir, "bn11_2_chain.txt")
@@ -237,7 +239,7 @@ def pipeline_bottlenecks(
             bn11_l1_data
             if bn11_l1_data is not None
             else np.zeros(bn11_l1_wts_sz, dtype=np.int8)
-        )
+        ),
     )
     bn11_l2_wts = Buffer(
         _i8((bn11_l2_wts_sz,)),
@@ -245,7 +247,7 @@ def pipeline_bottlenecks(
             bn11_l2_data
             if bn11_l2_data is not None
             else np.zeros(bn11_l2_wts_sz, dtype=np.int8)
-        )
+        ),
     )
     bn11_l3_wts = Buffer(
         _i8((bn11_l3_wts_sz,)),
@@ -253,7 +255,7 @@ def pipeline_bottlenecks(
             bn11_l3_data
             if bn11_l3_data is not None
             else np.zeros(bn11_l3_wts_sz, dtype=np.int8)
-        )
+        ),
     )
 
     # bn11 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
@@ -334,7 +336,9 @@ def pipeline_bottlenecks(
         for _ in range_(12):
             rows = of_12.acquire(3)
             row_out = of_23.acquire(1)
-            k_l2(rows[0], rows[1], rows[2], wts_buf, row_out, 14, 1, 336, 3, 3, 1, sf2, 0)
+            k_l2(
+                rows[0], rows[1], rows[2], wts_buf, row_out, 14, 1, 336, 3, 3, 1, sf2, 0
+            )
             of_12.release(1)
             of_23.release(1)
         # postamble: bottom row (border=2)
@@ -398,9 +402,9 @@ def pipeline_bottlenecks(
     # Weights concatenated: [dw_wts(3024) | pw_wts(26880)] = 29904 total.
     # DW output: (14,1,336) -> (7,1,336) u8 (stride-2 halves spatial).
     # Source link_with: DW="bn12_conv2dk3_dw_stride2.o", PW="bn12_conv2dk1_ui8.o"
-    bn12_l1_wts_sz = 112 * 336    # 37632
+    bn12_l1_wts_sz = 112 * 336  # 37632
     bn12_dw_wts_sz = 3 * 3 * 336  # 3024
-    bn12_pw_wts_sz = 336 * 80     # 26880
+    bn12_pw_wts_sz = 336 * 80  # 26880
     bn12_l23_wts_sz = bn12_dw_wts_sz + bn12_pw_wts_sz  # 29904
 
     bn12_l1_data = _load_weights(data_dir, "bn12_1_chain.txt")
@@ -413,7 +417,7 @@ def pipeline_bottlenecks(
             bn12_l1_data
             if bn12_l1_data is not None
             else np.zeros(bn12_l1_wts_sz, dtype=np.int8)
-        )
+        ),
     )
     # DW and PW weights are separate buffers (separate chain files)
     bn12_dw_wts = Buffer(
@@ -422,7 +426,7 @@ def pipeline_bottlenecks(
             bn12_dw_data
             if bn12_dw_data is not None
             else np.zeros(bn12_dw_wts_sz, dtype=np.int8)
-        )
+        ),
     )
     bn12_pw_wts = Buffer(
         _i8((bn12_pw_wts_sz,)),
@@ -430,7 +434,7 @@ def pipeline_bottlenecks(
             bn12_pw_data
             if bn12_pw_data is not None
             else np.zeros(bn12_pw_wts_sz, dtype=np.int8)
-        )
+        ),
     )
 
     # bn12 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
@@ -509,7 +513,9 @@ def pipeline_bottlenecks(
 
     # bn12 tile2: interleave DW-stride2 and PW per output row.
     # dw_tmp_prod / dw_tmp_cons are the prod/cons handles of the self-loop fifo.
-    def bn12_l23_fn(of_12, dw_tmp_prod, dw_tmp_cons, act_out, dw_wts, pw_wts, k_dw, k_pw, sf2, sf3):
+    def bn12_l23_fn(
+        of_12, dw_tmp_prod, dw_tmp_cons, act_out, dw_wts, pw_wts, k_dw, k_pw, sf2, sf3
+    ):
         # preamble: top output row (border=0)
         rows = of_12.acquire(2)
         pw_out = act_out.acquire(1)
@@ -556,11 +562,11 @@ def pipeline_bottlenecks(
             bn12_l23_fn,
             [
                 bn12_of_12.cons(),
-                bn12_dw_tmp_of.prod(),     # self-loop fifo (prod side, same tile)
-                bn12_dw_tmp_of.cons(),     # self-loop fifo (cons side, same tile)
+                bn12_dw_tmp_of.prod(),  # self-loop fifo (prod side, same tile)
+                bn12_dw_tmp_of.cons(),  # self-loop fifo (cons side, same tile)
                 act_bn12_out.prod(),
-                bn12_dw_wts,           # DW weights (3024 bytes)
-                bn12_pw_wts,           # PW weights (26880 bytes)
+                bn12_dw_wts,  # DW weights (3024 bytes)
+                bn12_pw_wts,  # PW weights (26880 bytes)
                 k_bn12_dw,
                 k_bn12_pw,
                 bn12_s2,

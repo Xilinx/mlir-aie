@@ -52,11 +52,11 @@ class StaticWeightStream(Resolvable):
         compute_placement=None,
         mm2s_channel: int = 0,
         s2mm_channel: int = 0,
-        ping_pong_buf=None,           # (obj_type, initial_value, name) for second buffer
-        ping_pong_memtile=None,       # MemTile holding the second buffer (may differ)
-        mem_lock_id: int = 0,         # starting lock_id for MemTile (uses id and id+1)
-        comp_lock_id: int = 0,        # starting lock_id for compute tile
-        pp_lock_id: int = 0,          # starting lock_id for ping-pong MemTile
+        ping_pong_buf=None,  # (obj_type, initial_value, name) for second buffer
+        ping_pong_memtile=None,  # MemTile holding the second buffer (may differ)
+        mem_lock_id: int = 0,  # starting lock_id for MemTile (uses id and id+1)
+        comp_lock_id: int = 0,  # starting lock_id for compute tile
+        pp_lock_id: int = 0,  # starting lock_id for ping-pong MemTile
     ):
         self._obj_type = obj_type
         self._initial_value = np.asarray(initial_value, dtype=np.int8)
@@ -96,12 +96,14 @@ class StaticWeightStream(Resolvable):
     def acquire(self, n: int = 1):
         """Wait for the next chunk to arrive. Returns the recv buffer."""
         from aie.dialects.aie import use_lock, LockAction
+
         use_lock(self._comp_cons_lock, LockAction.AcquireGreaterEqual)
         return self._recv_buf
 
     def release(self, n: int = 1):
         """Signal the MemTile DMA to send the next chunk."""
         from aie.dialects.aie import use_lock, LockAction
+
         use_lock(self._comp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
@@ -111,9 +113,18 @@ class StaticWeightStream(Resolvable):
         instance appears in a Worker's fn_args list.
         """
         from aie.dialects.aie import (
-            buffer, lock, flow, memtile_dma, mem,
-            dma_start, dma_bd, next_bd, use_lock,
-            DMAChannelDir, LockAction, WireBundle,
+            buffer,
+            lock,
+            flow,
+            memtile_dma,
+            mem,
+            dma_start,
+            dma_bd,
+            next_bd,
+            use_lock,
+            DMAChannelDir,
+            LockAction,
+            WireBundle,
             EndOp,
         )
 
@@ -127,7 +138,7 @@ class StaticWeightStream(Resolvable):
         # For ping-pong: each buffer gets init=1 (one copy ready to send).
         # For single-buffer: init=repeat_count (pre-load N repeats).
         cons_init = 1 if self._ping_pong_buf is not None else self._repeat_count
-        mem_prod_lock = lock(memtile_op, lock_id=self._mem_lock_id,     init=0)
+        mem_prod_lock = lock(memtile_op, lock_id=self._mem_lock_id, init=0)
         mem_cons_lock = lock(memtile_op, lock_id=self._mem_lock_id + 1, init=cons_init)
 
         wts_buf = buffer(
@@ -138,7 +149,7 @@ class StaticWeightStream(Resolvable):
         )
 
         # --- Compute tile side ---
-        comp_prod_lock = lock(compute_op, lock_id=self._comp_lock_id,     init=1)
+        comp_prod_lock = lock(compute_op, lock_id=self._comp_lock_id, init=1)
         comp_cons_lock = lock(compute_op, lock_id=self._comp_lock_id + 1, init=0)
 
         recv_buf = buffer(
@@ -154,8 +165,12 @@ class StaticWeightStream(Resolvable):
 
         # --- DMA flow: MemTile MM2S → compute S2MM ---
         flow(
-            memtile_op, WireBundle.DMA, self._mm2s_ch,
-            compute_op,  WireBundle.DMA, self._s2mm_ch,
+            memtile_op,
+            WireBundle.DMA,
+            self._mm2s_ch,
+            compute_op,
+            WireBundle.DMA,
+            self._s2mm_ch,
         )
 
         # --- MemTile DMA region (MM2S) ---
@@ -163,37 +178,48 @@ class StaticWeightStream(Resolvable):
             # Two-BD ping-pong: alternates between wts_buf and the second buffer.
             # The second buffer may be on an adjacent MemTile (shared memory access).
             pp_type, pp_data, pp_name = self._ping_pong_buf
-            pp_memtile_op = (self._ping_pong_memtile.op
-                             if self._ping_pong_memtile else memtile_op)
-            pp_prod_lock = lock(pp_memtile_op, lock_id=self._pp_lock_id,     init=0)
+            pp_memtile_op = (
+                self._ping_pong_memtile.op if self._ping_pong_memtile else memtile_op
+            )
+            pp_prod_lock = lock(pp_memtile_op, lock_id=self._pp_lock_id, init=0)
             pp_cons_lock = lock(pp_memtile_op, lock_id=self._pp_lock_id + 1, init=1)
-            pp_buf = buffer(pp_memtile_op, pp_type, pp_name,
-                            initial_value=np.asarray(pp_data, dtype=np.int8))
+            pp_buf = buffer(
+                pp_memtile_op,
+                pp_type,
+                pp_name,
+                initial_value=np.asarray(pp_data, dtype=np.int8),
+            )
 
             @memtile_dma(memtile_op)
             def _mtdma(block):
-                dma_start(DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[3])
-                with block[1]:   # BD1: first buffer
+                dma_start(
+                    DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[3]
+                )
+                with block[1]:  # BD1: first buffer
                     use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
                     dma_bd(wts_buf)
                     use_lock(mem_prod_lock, LockAction.Release)
-                    next_bd(block[2])   # → BD2
-                with block[2]:   # BD2: second buffer (ping-pong)
+                    next_bd(block[2])  # → BD2
+                with block[2]:  # BD2: second buffer (ping-pong)
                     use_lock(pp_cons_lock, LockAction.AcquireGreaterEqual)
                     dma_bd(pp_buf)
                     use_lock(pp_prod_lock, LockAction.Release)
-                    next_bd(block[1])   # → BD1 (alternate forever)
+                    next_bd(block[1])  # → BD1 (alternate forever)
                 with block[3]:
                     EndOp()
+
         else:
+
             @memtile_dma(memtile_op)
             def _mtdma(block):
-                dma_start(DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[2])
+                dma_start(
+                    DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[2]
+                )
                 with block[1]:
                     use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
                     dma_bd(wts_buf)
                     use_lock(mem_prod_lock, LockAction.Release)
-                    next_bd(block[1])   # infinite loop
+                    next_bd(block[1])  # infinite loop
                 with block[2]:
                     EndOp()
 
@@ -205,6 +231,6 @@ class StaticWeightStream(Resolvable):
                 use_lock(comp_prod_lock, LockAction.AcquireGreaterEqual)
                 dma_bd(recv_buf)
                 use_lock(comp_cons_lock, LockAction.Release)
-                next_bd(block[1])   # infinite loop
+                next_bd(block[1])  # infinite loop
             with block[2]:
                 EndOp()

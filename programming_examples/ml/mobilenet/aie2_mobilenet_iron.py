@@ -56,96 +56,104 @@ with open(data_dir + scale_factor_file) as f:
 init_scaleFactor = sf.get("init_scaleFactor", 8)
 
 # bn0–bn9 scale factors (36 total)
-bn0_sf2      = sf.get("bn0_scaleFactor2",     9)
-bn0_sf3      = sf.get("bn0_scaleFactor3",     8)
-bn0_sfAdd    = sf.get("bn0_scaleFactorAdd",   2)
-bn1_sf1      = sf.get("bn1_scaleFactor1",     8)
-bn1_sf2      = sf.get("bn1_scaleFactor2",     8)
-bn1_sf3      = sf.get("bn1_scaleFactor3",    11)
-bn2_sf1      = sf.get("bn2_scaleFactor1",     8)
-bn2_sf2      = sf.get("bn2_scaleFactor2",     8)
-bn2_sf3      = sf.get("bn2_scaleFactor3",    11)
-bn2_sfAdd    = sf.get("bn2_scaleFactorAdd",   0)
-bn3_sf1      = sf.get("bn3_scaleFactor1",     8)
-bn3_sf2      = sf.get("bn3_scaleFactor2",     8)
-bn3_sf3      = sf.get("bn3_scaleFactor3",    11)
-bn4_sf1      = sf.get("bn4_scaleFactor1",     8)
-bn4_sf2      = sf.get("bn4_scaleFactor2",     8)
-bn4_sf3      = sf.get("bn4_scaleFactor3",    11)
-bn4_sfAdd    = sf.get("bn4_scaleFactorAdd",   0)
-bn5_sf1      = sf.get("bn5_scaleFactor1",     8)
-bn5_sf2      = sf.get("bn5_scaleFactor2",     8)
-bn5_sf3      = sf.get("bn5_scaleFactor3",    11)
-bn5_sfAdd    = sf.get("bn5_scaleFactorAdd",   0)
-bn6_sf1      = sf.get("bn6_scaleFactor1",     8)
-bn6_sf2      = sf.get("bn6_scaleFactor2",     8)
-bn6_sf3      = sf.get("bn6_scaleFactor3",    11)
-bn6_sfAdd    = sf.get("bn6_scaleFactorAdd",   0)
-bn7_sf1      = sf.get("bn7_scaleFactor1",     9)
-bn7_sf2      = sf.get("bn7_scaleFactor2",     8)
-bn7_sf3      = sf.get("bn7_scaleFactor3",    11)
-bn8_sf1      = sf.get("bn8_scaleFactor1",     9)
-bn8_sf2      = sf.get("bn8_scaleFactor2",     8)
-bn8_sf3      = sf.get("bn8_scaleFactor3",    11)
-bn8_sfAdd    = sf.get("bn8_scaleFactorAdd",   0)
-bn9_sf1      = sf.get("bn9_scaleFactor1",     9)
-bn9_sf2      = sf.get("bn9_scaleFactor2",     8)
-bn9_sf3      = sf.get("bn9_scaleFactor3",    11)
-bn9_sfAdd    = sf.get("bn9_scaleFactorAdd",   0)
+bn0_sf2 = sf.get("bn0_scaleFactor2", 9)
+bn0_sf3 = sf.get("bn0_scaleFactor3", 8)
+bn0_sfAdd = sf.get("bn0_scaleFactorAdd", 2)
+bn1_sf1 = sf.get("bn1_scaleFactor1", 8)
+bn1_sf2 = sf.get("bn1_scaleFactor2", 8)
+bn1_sf3 = sf.get("bn1_scaleFactor3", 11)
+bn2_sf1 = sf.get("bn2_scaleFactor1", 8)
+bn2_sf2 = sf.get("bn2_scaleFactor2", 8)
+bn2_sf3 = sf.get("bn2_scaleFactor3", 11)
+bn2_sfAdd = sf.get("bn2_scaleFactorAdd", 0)
+bn3_sf1 = sf.get("bn3_scaleFactor1", 8)
+bn3_sf2 = sf.get("bn3_scaleFactor2", 8)
+bn3_sf3 = sf.get("bn3_scaleFactor3", 11)
+bn4_sf1 = sf.get("bn4_scaleFactor1", 8)
+bn4_sf2 = sf.get("bn4_scaleFactor2", 8)
+bn4_sf3 = sf.get("bn4_scaleFactor3", 11)
+bn4_sfAdd = sf.get("bn4_scaleFactorAdd", 0)
+bn5_sf1 = sf.get("bn5_scaleFactor1", 8)
+bn5_sf2 = sf.get("bn5_scaleFactor2", 8)
+bn5_sf3 = sf.get("bn5_scaleFactor3", 11)
+bn5_sfAdd = sf.get("bn5_scaleFactorAdd", 0)
+bn6_sf1 = sf.get("bn6_scaleFactor1", 8)
+bn6_sf2 = sf.get("bn6_scaleFactor2", 8)
+bn6_sf3 = sf.get("bn6_scaleFactor3", 11)
+bn6_sfAdd = sf.get("bn6_scaleFactorAdd", 0)
+bn7_sf1 = sf.get("bn7_scaleFactor1", 9)
+bn7_sf2 = sf.get("bn7_scaleFactor2", 8)
+bn7_sf3 = sf.get("bn7_scaleFactor3", 11)
+bn8_sf1 = sf.get("bn8_scaleFactor1", 9)
+bn8_sf2 = sf.get("bn8_scaleFactor2", 8)
+bn8_sf3 = sf.get("bn8_scaleFactor3", 11)
+bn8_sfAdd = sf.get("bn8_scaleFactorAdd", 0)
+bn9_sf1 = sf.get("bn9_scaleFactor1", 9)
+bn9_sf2 = sf.get("bn9_scaleFactor2", 8)
+bn9_sf3 = sf.get("bn9_scaleFactor3", 11)
+bn9_sfAdd = sf.get("bn9_scaleFactorAdd", 0)
 
 # bn10–bn12 scale factors (10 total)
-bn10_sf1     = sf.get("bn10_scaleFactor1",   10)
-bn10_sf2     = sf.get("bn10_scaleFactor2",    7)
-bn10_sf3     = sf.get("bn10_scaleFactor3",    9)
-bn11_sf1     = sf.get("bn11_scaleFactor1",    9)
-bn11_sf2     = sf.get("bn11_scaleFactor2",    8)
-bn11_sf3     = sf.get("bn11_scaleFactor3",   12)
-bn11_sfAdd   = sf.get("bn11_scaleFactorAdd",  1)
-bn12_sf1     = sf.get("bn12_scaleFactor1",    8)
-bn12_sf2     = sf.get("bn12_scaleFactor2",    8)
-bn12_sf3     = sf.get("bn12_scaleFactor3",    9)
+bn10_sf1 = sf.get("bn10_scaleFactor1", 10)
+bn10_sf2 = sf.get("bn10_scaleFactor2", 7)
+bn10_sf3 = sf.get("bn10_scaleFactor3", 9)
+bn11_sf1 = sf.get("bn11_scaleFactor1", 9)
+bn11_sf2 = sf.get("bn11_scaleFactor2", 8)
+bn11_sf3 = sf.get("bn11_scaleFactor3", 12)
+bn11_sfAdd = sf.get("bn11_scaleFactorAdd", 1)
+bn12_sf1 = sf.get("bn12_scaleFactor1", 8)
+bn12_sf2 = sf.get("bn12_scaleFactor2", 8)
+bn12_sf3 = sf.get("bn12_scaleFactor3", 9)
 
 # bn13–bn14 scale factors (8 total)
-bn13_sf1     = sf.get("bn13_scaleFactor1",   10)
-bn13_sf2     = sf.get("bn13_scaleFactor2",    7)
-bn13_sf3     = sf.get("bn13_scaleFactor3",    9)
-bn13_sfAdd   = sf.get("bn13_scaleFactorAdd",  1)
-bn14_sf1     = sf.get("bn14_scaleFactor1",    9)
-bn14_sf2     = sf.get("bn14_scaleFactor2",    8)
-bn14_sf3     = sf.get("bn14_scaleFactor3",   12)
-bn14_sfAdd   = sf.get("bn14_scaleFactorAdd",  1)
+bn13_sf1 = sf.get("bn13_scaleFactor1", 10)
+bn13_sf2 = sf.get("bn13_scaleFactor2", 7)
+bn13_sf3 = sf.get("bn13_scaleFactor3", 9)
+bn13_sfAdd = sf.get("bn13_scaleFactorAdd", 1)
+bn14_sf1 = sf.get("bn14_scaleFactor1", 9)
+bn14_sf2 = sf.get("bn14_scaleFactor2", 8)
+bn14_sf3 = sf.get("bn14_scaleFactor3", 12)
+bn14_sfAdd = sf.get("bn14_scaleFactorAdd", 1)
 
 # Post-processing scale factors
-post_sf      = sf.get("post_scaleFactor",     8)
-post_fc1_sf  = sf.get("post_FC1_scaleFactor", 9)
-post_fc2_sf  = sf.get("post_FC2_scaleFactor", 9)
+post_sf = sf.get("post_scaleFactor", 8)
+post_fc1_sf = sf.get("post_FC1_scaleFactor", 9)
+post_fc2_sf = sf.get("post_FC2_scaleFactor", 9)
 
 # ---------------------------------------------------------------------------
 # Network dimensions
 # ---------------------------------------------------------------------------
 tensorInW, tensorInH, tensorInC = 224, 224, 8
-init_OutC = 16          # init conv output channels
-init_OutW = 112         # stride-2 output width
+init_OutC = 16  # init conv output channels
+init_OutW = 112  # stride-2 output width
 init_OutH = 112
 
 # Post-processing dimensions
-post_L1_InW   = 7
-post_L1_InH   = 7
-post_L1_InC   = 80
-post_L1_OutC  = 960     # expand 1x1
-post_L1_OutW  = 1       # global avg pool -> 1x1
-post_L1_OutH  = 1
+post_L1_InW = 7
+post_L1_InH = 7
+post_L1_InC = 80
+post_L1_OutC = 960  # expand 1x1
+post_L1_OutW = 1  # global avg pool -> 1x1
+post_L1_OutH = 1
 
-post_L2_InC   = 1280    # after avg pool + 1x1
-post_L2_OutC  = 1280
+post_L2_InC = 1280  # after avg pool + 1x1
+post_L2_OutC = 1280
 post_wts_per_tile = post_L2_OutC * (post_L1_OutC // 4)  # split across 4 tiles
+
 
 # ---------------------------------------------------------------------------
 # Type helpers
 # ---------------------------------------------------------------------------
-def _i8(shape):  return np.ndarray[shape, np.dtype[np.int8]]
-def _u8(shape):  return np.ndarray[shape, np.dtype[np.uint8]]
-def _i32():      return np.int32
+def _i8(shape):
+    return np.ndarray[shape, np.dtype[np.int8]]
+
+
+def _u8(shape):
+    return np.ndarray[shape, np.dtype[np.uint8]]
+
+
+def _i32():
+    return np.int32
 
 
 # ---------------------------------------------------------------------------
@@ -155,8 +163,10 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     # Input / output tensor types (used in runtime sequence)
     # ------------------------------------------------------------------
-    in_ty  = np.ndarray[(tensorInW * tensorInH * tensorInC,), np.dtype[np.int8]]
-    out_ty = np.ndarray[(post_L1_OutW * post_L1_OutH * post_L2_OutC,), np.dtype[np.uint16]]
+    in_ty = np.ndarray[(tensorInW * tensorInH * tensorInC,), np.dtype[np.int8]]
+    out_ty = np.ndarray[
+        (post_L1_OutW * post_L1_OutH * post_L2_OutC,), np.dtype[np.uint16]
+    ]
 
     # ------------------------------------------------------------------
     # Init conv boundary fifos (declared here; owned by orchestrator)
@@ -165,7 +175,7 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     act_in = ObjectFifo(
         np.ndarray[(tensorInW, 1, tensorInC), np.dtype[np.int8]],
-        depth=5,   # Consumer depth=5 to allow 3-row sliding window in init conv
+        depth=5,  # Consumer depth=5 to allow 3-row sliding window in init conv
         name="act_in",
     )
     act_init_out = ObjectFifo(
@@ -200,12 +210,22 @@ def mobilenet_iron():
     k_init = Kernel(
         "conv2dk3_stride2_i8",
         "init_conv2dk3.o",
-        [_i8((tensorInW, 1, tensorInC)),
-         _i8((tensorInW, 1, tensorInC)),
-         _i8((tensorInW, 1, tensorInC)),
-         _i8((init_wts_sz,)),
-         _u8((init_OutW, 1, init_OutC)),
-         _i32(), _i32(), _i32(), _i32(), _i32(), _i32(), _i32(), _i32(), _i32()],
+        [
+            _i8((tensorInW, 1, tensorInC)),
+            _i8((tensorInW, 1, tensorInC)),
+            _i8((tensorInW, 1, tensorInC)),
+            _i8((init_wts_sz,)),
+            _u8((init_OutW, 1, init_OutC)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
 
     def init_fn(act_in, act_out, wts, k, inW, inH, inC, outW, outH, outC, sf):
@@ -219,7 +239,22 @@ def mobilenet_iron():
         for _ in range_(outH - 2):
             rows = act_in.acquire(3)
             row_out = act_out.acquire(1)
-            k(rows[0], rows[1], rows[2], wts, row_out, inW, inC, outC, 3, 3, 1, sf, 0, 0)
+            k(
+                rows[0],
+                rows[1],
+                rows[2],
+                wts,
+                row_out,
+                inW,
+                inC,
+                outC,
+                3,
+                3,
+                1,
+                sf,
+                0,
+                0,
+            )
             act_in.release(2)
             act_out.release(1)
         # Postamble
@@ -232,9 +267,16 @@ def mobilenet_iron():
     w_init = Worker(
         init_fn,
         fn_args=[
-            act_in.cons(depth=5), act_init_out.prod(depth=5), init_wts, k_init,
-            tensorInW, tensorInH, tensorInC,
-            init_OutW, init_OutH, init_OutC,
+            act_in.cons(depth=5),
+            act_init_out.prod(depth=5),
+            init_wts,
+            k_init,
+            tensorInW,
+            tensorInH,
+            tensorInC,
+            init_OutW,
+            init_OutH,
+            init_OutC,
             init_scaleFactor,
         ],
     )
@@ -245,33 +287,71 @@ def mobilenet_iron():
     # Regular family: bn0–bn9
     a_workers, act_bn9_out = regular_bottlenecks(
         act_init_out,
-        bn0_sf2, bn0_sf3,      # bn0: 2-layer block, no sf1 (no expand 1x1)
-        bn1_sf1, bn1_sf2, bn1_sf3,
-        bn2_sf1, bn2_sf2, bn2_sf3, bn2_sfAdd,
-        bn3_sf1, bn3_sf2, bn3_sf3,
-        bn4_sf1, bn4_sf2, bn4_sf3, bn4_sfAdd,
-        bn5_sf1, bn5_sf2, bn5_sf3, bn5_sfAdd,
-        bn6_sf1, bn6_sf2, bn6_sf3, bn6_sfAdd,
-        bn7_sf1, bn7_sf2, bn7_sf3,
-        bn8_sf1, bn8_sf2, bn8_sf3, bn8_sfAdd,
-        bn9_sf1, bn9_sf2, bn9_sf3, bn9_sfAdd,
+        bn0_sf2,
+        bn0_sf3,  # bn0: 2-layer block, no sf1 (no expand 1x1)
+        bn1_sf1,
+        bn1_sf2,
+        bn1_sf3,
+        bn2_sf1,
+        bn2_sf2,
+        bn2_sf3,
+        bn2_sfAdd,
+        bn3_sf1,
+        bn3_sf2,
+        bn3_sf3,
+        bn4_sf1,
+        bn4_sf2,
+        bn4_sf3,
+        bn4_sfAdd,
+        bn5_sf1,
+        bn5_sf2,
+        bn5_sf3,
+        bn5_sfAdd,
+        bn6_sf1,
+        bn6_sf2,
+        bn6_sf3,
+        bn6_sfAdd,
+        bn7_sf1,
+        bn7_sf2,
+        bn7_sf3,
+        bn8_sf1,
+        bn8_sf2,
+        bn8_sf3,
+        bn8_sfAdd,
+        bn9_sf1,
+        bn9_sf2,
+        bn9_sf3,
+        bn9_sfAdd,
         data_dir=data_dir,
     )
 
     # Pipeline family: bn10–bn12
     b_workers, act_bn12_out = pipeline_bottlenecks(
         act_bn9_out,
-        bn10_sf1, bn10_sf2, bn10_sf3,
-        bn11_sf1, bn11_sf2, bn11_sf3, bn11_sfAdd,
-        bn12_sf1, bn12_sf2, bn12_sf3,
+        bn10_sf1,
+        bn10_sf2,
+        bn10_sf3,
+        bn11_sf1,
+        bn11_sf2,
+        bn11_sf3,
+        bn11_sfAdd,
+        bn12_sf1,
+        bn12_sf2,
+        bn12_sf3,
         data_dir=data_dir,
     )
 
     # Cascade family: bn13–bn14
     c_workers, act_bn14_out, wts_fifos = cascade_bottlenecks(
         act_bn12_out,
-        bn13_sf1, bn13_sf2, bn13_sf3, bn13_sfAdd,
-        bn14_sf1, bn14_sf2, bn14_sf3, bn14_sfAdd,
+        bn13_sf1,
+        bn13_sf2,
+        bn13_sf3,
+        bn13_sfAdd,
+        bn14_sf1,
+        bn14_sf2,
+        bn14_sf3,
+        bn14_sfAdd,
         data_dir=data_dir,
     )
 
@@ -283,10 +363,12 @@ def mobilenet_iron():
     # Original: stored on MemTile(4,1), streamed 1/8 at a time to PostL1Tile(6,4).
     # PersistentBuffer replicates this: MemTile holds full weights, DMA streams
     # post_l1_wts_chunk bytes at a time to the small recv buffer on compute tile.
-    PostOutputSplit = 8                             # split output channels (original: 8)
-    PostRepeatChannels = post_L1_InH               # = 7 (original: math.floor(post_L1_InH))
-    post_l1_wts_full_sz = post_L1_OutC * post_L1_InC        # 76800 bytes on MemTile
-    post_l1_wts_chunk = post_l1_wts_full_sz // PostOutputSplit  # 9600 bytes per chunk on compute
+    PostOutputSplit = 8  # split output channels (original: 8)
+    PostRepeatChannels = post_L1_InH  # = 7 (original: math.floor(post_L1_InH))
+    post_l1_wts_full_sz = post_L1_OutC * post_L1_InC  # 76800 bytes on MemTile
+    post_l1_wts_chunk = (
+        post_l1_wts_full_sz // PostOutputSplit
+    )  # 9600 bytes per chunk on compute
 
     post_l1_wts_path = data_dir + "post_conv_chain.txt"
     post_l1_wts_data = None
@@ -307,8 +389,8 @@ def mobilenet_iron():
         compute_placement=Tile(6, 4),
         mm2s_channel=0,
         s2mm_channel=0,
-        mem_lock_id=2,    # MemTile41: lock_id=2 (prod), lock_id=3 (cons)
-        comp_lock_id=0,   # PostL1Tile: lock_id=0 (prod), lock_id=1 (cons)
+        mem_lock_id=2,  # MemTile41: lock_id=2 (prod), lock_id=3 (cons)
+        comp_lock_id=0,  # PostL1Tile: lock_id=0 (prod), lock_id=1 (cons)
     )
 
     act_post_l1_out = ObjectFifo(
@@ -320,23 +402,54 @@ def mobilenet_iron():
     k_post_l1 = Kernel(
         "conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
         "post_conv2dk1_relu_xy_pool_padded_i8_ui8.o",
-        [_i8((post_L1_InW, 1, post_L1_InC)),
-         _i8((post_l1_wts_chunk,)),
-         _i8((post_L1_OutW, 1, post_L2_InC)),
-         _i32(), _i32(), _i32(), _i32(), _i32(), _i32(), _i32(), _i32()],
+        [
+            _i8((post_L1_InW, 1, post_L1_InC)),
+            _i8((post_l1_wts_chunk,)),
+            _i8((post_L1_OutW, 1, post_L2_InC)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
 
     # Post-L1 worker: placed on Tile(6,4) = PostL1Tile (matches original)
-    def post_l1_fn(act_in, act_out, wts_pb, k, inW, inH, inC, outC, outC_padd, sf,
-                   n_splits=PostOutputSplit):
+    def post_l1_fn(
+        act_in,
+        act_out,
+        wts_pb,
+        k,
+        inW,
+        inH,
+        inC,
+        outC,
+        outC_padd,
+        sf,
+        n_splits=PostOutputSplit,
+    ):
         # One full output frame: acquire output, loop over rows then weight splits
         elem_out = act_out.acquire(1)
         for yi in range_(inH):
             elem_in = act_in.acquire(1)
             for wi in range_(n_splits):
                 wts_chunk = wts_pb.acquire(1)
-                k(elem_in, wts_chunk, elem_out, inW, inC, outC, outC_padd, sf,
-                  0, n_splits, 0)      # yIndex, nSplits, wIndex (3 extra ints)
+                k(
+                    elem_in,
+                    wts_chunk,
+                    elem_out,
+                    inW,
+                    inC,
+                    outC,
+                    outC_padd,
+                    sf,
+                    0,
+                    n_splits,
+                    0,
+                )  # yIndex, nSplits, wIndex (3 extra ints)
                 wts_pb.release(1)
             act_in.release(1)
         act_out.release(1)
@@ -344,8 +457,16 @@ def mobilenet_iron():
     w_post_l1 = Worker(
         post_l1_fn,
         fn_args=[
-            act_bn14_out.cons(), act_post_l1_out.prod(), post_l1_pb, k_post_l1,
-            post_L1_InW, post_L1_InH, post_L1_InC, post_L2_InC, post_L2_InC, post_sf,
+            act_bn14_out.cons(),
+            act_post_l1_out.prod(),
+            post_l1_pb,
+            k_post_l1,
+            post_L1_InW,
+            post_L1_InH,
+            post_L1_InC,
+            post_L2_InC,
+            post_L2_InC,
+            post_sf,
         ],
         placement=Tile(6, 4),
     )
@@ -362,7 +483,7 @@ def mobilenet_iron():
         ("FC1_3_chain.txt", "FC2_3_chain.txt"),
     ]
     n_fc_tiles = 4
-    fc_out_per_tile = post_L2_OutC // n_fc_tiles   # 1280/4 = 320
+    fc_out_per_tile = post_L2_OutC // n_fc_tiles  # 1280/4 = 320
 
     # Output fifo: all 4 FC tiles join their results here via MemTile
     act_out_of = ObjectFifo(
@@ -380,8 +501,10 @@ def mobilenet_iron():
     #   PostL2Tile_3(7,3): FC1 on MemTile(4,1), FC2 on MemTile(5,1), flow from MemTile(5,1)
     #   PostL2Tile_4(7,2): FC1 on MemTile(6,1), FC2 on MemTile(7,1), flow from MemTile(7,1)
     PostOutputSplitL2 = 40
-    fc_full_per_tile = post_L2_InC * fc_out_per_tile          # 409,600 bytes per FC half
-    fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2   # 10,240 bytes on compute tile
+    fc_full_per_tile = post_L2_InC * fc_out_per_tile  # 409,600 bytes per FC half
+    fc_recv_per_tile = (
+        fc_full_per_tile // PostOutputSplitL2
+    )  # 10,240 bytes on compute tile
     # co: channels per output element (8 channels per objectfifo element, 40 per inference)
     # Matches original ty_post_Layer2_out_split = memref<8 x uint16>
     co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
@@ -394,24 +517,42 @@ def mobilenet_iron():
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
         names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
-        placement=Tile(6, 1),   # mem_tile_6_1 in placed (matches @act_out)
+        placement=Tile(6, 1),  # mem_tile_6_1 in placed (matches @act_out)
     )
 
-    fc1_memtiles = [Tile(0,1), Tile(2,1), Tile(4,1), Tile(6,1)]   # FC1 MemTiles
-    fc2_memtiles = [Tile(1,1), Tile(3,1), Tile(5,1), Tile(7,1)]   # FC2 MemTiles (serve DMA)
-    fc_comptiles = [Tile(6,3), Tile(7,4), Tile(7,3), Tile(7,2)]   # PostL2 compute tiles
+    fc1_memtiles = [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)]  # FC1 MemTiles
+    fc2_memtiles = [
+        Tile(1, 1),
+        Tile(3, 1),
+        Tile(5, 1),
+        Tile(7, 1),
+    ]  # FC2 MemTiles (serve DMA)
+    fc_comptiles = [
+        Tile(6, 3),
+        Tile(7, 4),
+        Tile(7, 3),
+        Tile(7, 2),
+    ]  # PostL2 compute tiles
 
-    def _u16(shape): return np.ndarray[shape, np.dtype[np.uint16]]
+    def _u16(shape):
+        return np.ndarray[shape, np.dtype[np.uint16]]
+
     # Post-L2 FC: int8 input → uint16 output (matches original ty_post_Layer2_out_split)
     # Output element = co=8 channels (not fc_out_per_tile=320): each element is one
     # WeightIndex-loop iteration's output slice.
     k_post_l2 = Kernel(
         "post_L2_conv2dk1_relu_i16_ui16_pad",
         "post_L2_conv2dk1_relu_ui16_ui16_pad.o",
-        [_i8((1, 1, post_L2_InC)),
-         _i8((fc_recv_per_tile,)),
-         _u16((co,)),
-         _i32(), _i32(), _i32(), _i32(), _i32()],
+        [
+            _i8((1, 1, post_L2_InC)),
+            _i8((fc_recv_per_tile,)),
+            _u16((co,)),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+            _i32(),
+        ],
     )
 
     post_l2_workers = []
@@ -431,18 +572,25 @@ def mobilenet_iron():
         #   MemTile (FC1 ping-pong on adjacent tile): lock_id=0 (prod), lock_id=1 (cons)
         #   Compute tile: lock_id=2 (prod), lock_id=3 (cons)
         fc_pb = StaticWeightStream(
-            obj_type=_i8((fc_full_per_tile,)), initial_value=fc2_data,
+            obj_type=_i8((fc_full_per_tile,)),
+            initial_value=fc2_data,
             name=f"post_l2_fc2_wts_{i}",
-            recv_type=_i8((fc_recv_per_tile,)), repeat_count=PostOutputSplitL2,
-            memtile_placement=fc2_memtiles[i], compute_placement=fc_comptiles[i],
-            mm2s_channel=0, s2mm_channel=1,
+            recv_type=_i8((fc_recv_per_tile,)),
+            repeat_count=PostOutputSplitL2,
+            memtile_placement=fc2_memtiles[i],
+            compute_placement=fc_comptiles[i],
+            mm2s_channel=0,
+            s2mm_channel=1,
             ping_pong_buf=(_i8((fc_full_per_tile,)), fc1_data, f"post_l2_fc1_wts_{i}"),
             ping_pong_memtile=fc1_memtiles[i],
-            mem_lock_id=0, comp_lock_id=2, pp_lock_id=0,
+            mem_lock_id=0,
+            comp_lock_id=2,
+            pp_lock_id=0,
         )
 
-        def post_l2_fn(act_in, act_out, wts_h, k, inC, n_co, sf2, sf1,
-                       n_splits=PostOutputSplitL2):
+        def post_l2_fn(
+            act_in, act_out, wts_h, k, inC, n_co, sf2, sf1, n_splits=PostOutputSplitL2
+        ):
             elem_in = act_in.acquire(1)
             # FC2 pass: acquire output INSIDE loop → unrollForLoops sees objectfifo op
             # → LCM(1)=1 → loop preserved → compact ELF → no CDO overflow
@@ -464,9 +612,14 @@ def mobilenet_iron():
         w = Worker(
             post_l2_fn,
             fn_args=[
-                act_post_l1_out.cons(), act_post_l2_tiles[i].prod(),
-                fc_pb, k_post_l2,
-                post_L2_InC, co, post_fc2_sf, post_fc1_sf,
+                act_post_l1_out.cons(),
+                act_post_l2_tiles[i].prod(),
+                fc_pb,
+                k_post_l2,
+                post_L2_InC,
+                co,
+                post_fc2_sf,
+                post_fc1_sf,
             ],
             placement=fc_comptiles[i],
         )
@@ -476,28 +629,28 @@ def mobilenet_iron():
     # Collect all workers
     # ------------------------------------------------------------------
     all_workers = (
-        [w_init]
-        + a_workers
-        + b_workers
-        + c_workers
-        + [w_post_l1]
-        + post_l2_workers
+        [w_init] + a_workers + b_workers + c_workers + [w_post_l1] + post_l2_workers
     )
 
     # Combined cascade weight tensor — matches test_mobilenet.py API (3 buffers).
     # Layout: bn13_L1(76800) | bn13_L3_put(38400) | bn13_L3_get(38400) |
     #         bn14_L1(76800) | bn14_L3_put(38400) | bn14_L3_get(38400) = 307200
     from aie.helpers.taplib import TensorAccessPattern
-    _L1 = 80 * 960      # 76800
-    _L3h = 480 * 80     # 38400 (half)
-    _L3f = _L3h * 2     # 76800 (full = put+get combined)
-    _cascade_wts_sz = (_L1 + _L3h * 2) * 2   # 307200
+
+    _L1 = 80 * 960  # 76800
+    _L3h = 480 * 80  # 38400 (half)
+    _L3f = _L3h * 2  # 76800 (full = put+get combined)
+    _cascade_wts_sz = (_L1 + _L3h * 2) * 2  # 307200
     cascade_wts_ty = np.ndarray[(_cascade_wts_sz,), np.dtype[np.int8]]
 
     # TAP helpers: slice a sub-tensor from the combined buffer (offset in int8 elements)
     def _wts_tap(offset, size):
-        return TensorAccessPattern((_cascade_wts_sz,), offset=offset,
-                                   sizes=[1, 1, 1, size], strides=[0, 0, 0, 1])
+        return TensorAccessPattern(
+            (_cascade_wts_sz,),
+            offset=offset,
+            sizes=[1, 1, 1, size],
+            strides=[0, 0, 0, 1],
+        )
 
     rt = Runtime()
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
@@ -508,10 +661,24 @@ def mobilenet_iron():
         #   76800..153599: bn13 L3 (38400 put + 38400 get = 76800 combined)
         #   153600..230399: bn14 L1 (76800)
         #   230400..307199: bn14 L3 (38400 put + 38400 get = 76800 combined)
-        rt.fill(wts_fifos[0].prod(), cascade_wts, _wts_tap(0,        _L1),  placement=Tile(4, 0))
-        rt.fill(wts_fifos[1].prod(), cascade_wts, _wts_tap(_L1,      _L3f), placement=Tile(5, 0))
-        rt.fill(wts_fifos[2].prod(), cascade_wts, _wts_tap(_L1+_L3f, _L1),  placement=Tile(6, 0))
-        rt.fill(wts_fifos[3].prod(), cascade_wts, _wts_tap(_L1*2+_L3f, _L3f), placement=Tile(7, 0))
+        rt.fill(
+            wts_fifos[0].prod(), cascade_wts, _wts_tap(0, _L1), placement=Tile(4, 0)
+        )
+        rt.fill(
+            wts_fifos[1].prod(), cascade_wts, _wts_tap(_L1, _L3f), placement=Tile(5, 0)
+        )
+        rt.fill(
+            wts_fifos[2].prod(),
+            cascade_wts,
+            _wts_tap(_L1 + _L3f, _L1),
+            placement=Tile(6, 0),
+        )
+        rt.fill(
+            wts_fifos[3].prod(),
+            cascade_wts,
+            _wts_tap(_L1 * 2 + _L3f, _L3f),
+            placement=Tile(7, 0),
+        )
         rt.drain(act_out_of.cons(), out, wait=True, placement=Tile(7, 0))
 
     # ------------------------------------------------------------------
