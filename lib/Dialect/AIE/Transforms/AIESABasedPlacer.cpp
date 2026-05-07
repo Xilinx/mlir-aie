@@ -283,22 +283,51 @@ void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
                                                     : fb.producerDepth;
 
     // Memory contribution
+    // For MemTile producers: cap per-fifo charge at tile capacity.
+    // When total buffers (sizeBytes * depth) exceed a MemTile's capacity,
+    // the stateful transform auto-spills excess buffers to a neighbor.
+    // We charge only what fits locally; the overflow is assumed to spill.
+    auto capForMemTile = [&](int64_t totalBytes, TileID pos) -> int64_t {
+      if (targetModel->getTileType(pos.col, pos.row) == AIETileType::MemTile) {
+        int64_t capacity = targetModel->getMemTileSize();
+        return std::min(totalBytes, capacity);
+      }
+      return totalBytes;
+    };
+
     if (prodPos == consPos) {
+      // Same tile: use max of producer/consumer size × depth
       int depth = std::max(fb.producerDepth, consDepth);
-      currentMemUsage[prodPos] += sign * fb.sizeBytes * depth;
+      int64_t maxSize = std::max(fb.sizeBytes, fb.consumerSizeBytes);
+      int64_t total = maxSize * depth;
+      currentMemUsage[prodPos] += sign * capForMemTile(total, prodPos);
     } else if (prodIsCore && consIsCore) {
       if (!prodCharged) {
         currentMemUsage[prodPos] += sign * fb.sizeBytes * fb.producerDepth;
         prodCharged = true;
       }
-      currentMemUsage[consPos] += sign * fb.sizeBytes * consDepth;
+      currentMemUsage[consPos] += sign * fb.consumerSizeBytes * consDepth;
     } else if (prodIsCore && !consIsCore) {
       if (!prodCharged) {
         currentMemUsage[prodPos] += sign * fb.sizeBytes * fb.producerDepth;
         prodCharged = true;
       }
     } else if (!prodIsCore && consIsCore) {
-      currentMemUsage[consPos] += sign * fb.sizeBytes * consDepth;
+      // MemTile/Shim producer to CoreTile consumer
+      if (!prodCharged) {
+        int64_t total = fb.sizeBytes * fb.producerDepth;
+        currentMemUsage[prodPos] += sign * capForMemTile(total, prodPos);
+        prodCharged = true;
+      }
+      // Consumer uses consumer element size (may be smaller)
+      currentMemUsage[consPos] += sign * fb.consumerSizeBytes * consDepth;
+    } else if (!prodIsCore && !consIsCore) {
+      // MemTile to MemTile or Shim: charge producer with cap
+      if (!prodCharged) {
+        int64_t total = fb.sizeBytes * fb.producerDepth;
+        currentMemUsage[prodPos] += sign * capForMemTile(total, prodPos);
+        prodCharged = true;
+      }
     }
 
     // DMA contribution
@@ -906,12 +935,22 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
           fb.consumers.push_back(consOp);
       }
 
-      // Compute buffer element size
+      // Compute buffer element size (producer side)
       auto fifoType = llvm::cast<AIEObjectFifoType>(ofOp.getElemType());
       auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
       int64_t elementBits =
           dataLayout.getTypeSizeInBits(elemType.getElementType());
       fb.sizeBytes = elemType.getNumElements() * elementBits / 8;
+
+      // Consumer element size (may differ with consumerElemType)
+      fb.consumerSizeBytes = fb.sizeBytes;
+      if (auto consType = ofOp.getConsumerElemType()) {
+        auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
+        auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
+        int64_t consBits =
+            dataLayout.getTypeSizeInBits(consMemref.getElementType());
+        fb.consumerSizeBytes = consMemref.getNumElements() * consBits / 8;
+      }
 
       // Get per-endpoint depths: [producer, consumer0, consumer1, ...]
       if (auto arrayAttr = dyn_cast<ArrayAttr>(ofOp.getElemNumber())) {

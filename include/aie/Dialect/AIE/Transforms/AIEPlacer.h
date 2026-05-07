@@ -528,7 +528,9 @@ private:
     mlir::Operation *fifoOp;
     mlir::Operation *producer;
     llvm::SmallVector<mlir::Operation *> consumers;
-    int64_t sizeBytes;
+    int64_t sizeBytes;         // producer element size in bytes
+    int64_t consumerSizeBytes; // consumer element size (differs with
+                               // consumerElemType, else same as sizeBytes)
     int producerDepth;
     llvm::SmallVector<int> consumerDepths;
   };
