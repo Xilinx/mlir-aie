@@ -27,7 +27,8 @@ import os
 import sys
 import numpy as np
 
-from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker, PersistentBuffer
+from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from lowlevel_dma import StaticWeightStream
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
@@ -231,7 +232,7 @@ def mobilenet_iron():
     w_init = Worker(
         init_fn,
         fn_args=[
-            act_in.cons(), act_init_out.prod(), init_wts, k_init,
+            act_in.cons(depth=5), act_init_out.prod(depth=5), init_wts, k_init,
             tensorInW, tensorInH, tensorInC,
             init_OutW, init_OutH, init_OutC,
             init_scaleFactor,
@@ -267,7 +268,7 @@ def mobilenet_iron():
     )
 
     # Cascade family: bn13–bn14
-    c_workers, act_bn14_out, wts_fifos, cascade_pairs = cascade_bottlenecks(
+    c_workers, act_bn14_out, wts_fifos = cascade_bottlenecks(
         act_bn12_out,
         bn13_sf1, bn13_sf2, bn13_sf3, bn13_sfAdd,
         bn14_sf1, bn14_sf2, bn14_sf3, bn14_sfAdd,
@@ -296,7 +297,7 @@ def mobilenet_iron():
 
     # Original: PostL1Tile = tile(6,4), MemTile41 = tile(4,1), flow: MemTile41→PostL1Tile
     # Lock IDs matching original: MemTile41 uses lock_id=2,3; PostL1Tile uses lock_id=0,1
-    post_l1_pb = PersistentBuffer(
+    post_l1_pb = StaticWeightStream(
         obj_type=_i8((post_l1_wts_full_sz,)),
         initial_value=post_l1_wts_data,
         name="post_l1_wts",
@@ -343,7 +344,7 @@ def mobilenet_iron():
     w_post_l1 = Worker(
         post_l1_fn,
         fn_args=[
-            act_bn14_out.cons(), act_post_l1_out.prod(), post_l1_pb.cons(), k_post_l1,
+            act_bn14_out.cons(), act_post_l1_out.prod(), post_l1_pb, k_post_l1,
             post_L1_InW, post_L1_InH, post_L1_InC, post_L2_InC, post_L2_InC, post_sf,
         ],
         placement=Tile(6, 4),
@@ -390,9 +391,10 @@ def mobilenet_iron():
     # unrollForLoops sees the objectfifo.acquire inside WeightIndex loop → no unrolling.
     act_post_l2_tiles = act_out_of.prod().join(
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
-        depths=[1] * n_fc_tiles,
+        depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
         names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
+        placement=Tile(6, 1),   # mem_tile_6_1 in placed (matches @act_out)
     )
 
     fc1_memtiles = [Tile(0,1), Tile(2,1), Tile(4,1), Tile(6,1)]   # FC1 MemTiles
@@ -428,7 +430,7 @@ def mobilenet_iron():
         #   MemTile (FC2): lock_id=0 (prod), lock_id=1 (cons)
         #   MemTile (FC1 ping-pong on adjacent tile): lock_id=0 (prod), lock_id=1 (cons)
         #   Compute tile: lock_id=2 (prod), lock_id=3 (cons)
-        fc_pb = PersistentBuffer(
+        fc_pb = StaticWeightStream(
             obj_type=_i8((fc_full_per_tile,)), initial_value=fc2_data,
             name=f"post_l2_fc2_wts_{i}",
             recv_type=_i8((fc_recv_per_tile,)), repeat_count=PostOutputSplitL2,
@@ -463,7 +465,7 @@ def mobilenet_iron():
             post_l2_fn,
             fn_args=[
                 act_post_l1_out.cons(), act_post_l2_tiles[i].prod(),
-                fc_pb.cons(), k_post_l2,
+                fc_pb, k_post_l2,
                 post_L2_InC, co, post_fc2_sf, post_fc1_sf,
             ],
             placement=fc_comptiles[i],
@@ -500,10 +502,7 @@ def mobilenet_iron():
     rt = Runtime()
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)
-        for src, dst in cascade_pairs:
-            rt.cascade_flow(src, dst)
-
-        rt.fill(act_in.prod(), inp, placement=Tile(0, 0))
+        rt.fill(act_in.prod(depth=1), inp, placement=Tile(0, 0))
         # Slice each sub-weight from the combined buffer (offsets in int8 elements):
         #   0..76799:   bn13 L1 (76800)
         #   76800..153599: bn13 L3 (38400 put + 38400 get = 76800 combined)

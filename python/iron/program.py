@@ -74,20 +74,21 @@ class Program:
                     )
 
                 # Collect all tiles
-                from .dataflow.persistentbuffer import PersistentBufferHandle
                 all_tiles = []
                 for w in self._rt.workers:
                     all_tiles.append(w.tile)
-                    # Also include tiles from PersistentBuffer (memtile + compute)
+                    # Generic: any user-side Resolvable in fn_args may declare
+                    # additional tile dependencies via tiles(). Default is [].
                     for arg in w.fn_args:
-                        if isinstance(arg, PersistentBufferHandle):
-                            if arg._pb._memtile: all_tiles.append(arg._pb._memtile)
-                            if arg._pb._compute: all_tiles.append(arg._pb._compute)
-                            if arg._pb._ping_pong_memtile: all_tiles.append(arg._pb._ping_pong_memtile)
+                        if isinstance(arg, Resolvable):
+                            all_tiles.extend(arg.tiles())
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
-                    # Also include any tiles registered via allocate_on()
-                    all_tiles.extend(f._object_fifo._alloc_tile_ops)
+                    # Shared-memory delegate tile (ObjectFifo.delegate_tile kwarg)
+                    # may not appear in any prod/cons endpoint, so pick it up
+                    # explicitly so resolve_tile() runs on it before fifo resolution.
+                    if f._object_fifo._delegate_tile is not None:
+                        all_tiles.append(f._object_fifo._delegate_tile)
 
                 # Resolve tiles
                 for t in all_tiles:
@@ -98,24 +99,22 @@ class Program:
                     f.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                from .dataflow.persistentbuffer import PersistentBufferHandle
                 for w in self._rt.workers:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
                         elif isinstance(arg, Resolvable):
                             arg.resolve()
-                        elif isinstance(arg, PersistentBufferHandle):
-                            # Resolve the underlying PersistentBuffer (emits locks, buffers, DMA)
-                            arg._pb.resolve()
 
                 # Generate core programs
                 for w in self._rt.workers:
                     w.resolve()
 
-                # Resolve cascade flows (must be after worker placement, within device body)
-                for cf in self._rt._cascade_flows:
-                    cf.resolve()
+                # Emit aie.cascade_flow ops for each Worker's outgoing edges.
+                # Must run after worker.resolve() so both tiles are placed.
+                for w in self._rt.workers:
+                    for cf in w._outgoing_cascades:
+                        cf.resolve()
 
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace

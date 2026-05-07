@@ -31,6 +31,7 @@ import numpy as np
 import os
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
+from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.device import Tile, AnyMemTile
 from aie.iron.controlflow import range_
 
@@ -57,8 +58,10 @@ _OC8_out = _L3_OutC // (8 * _OutputSplit2)  # inner loop count for L3 kernel = 5
 _l1_split_wts_sz = (_InC // _InputSplit) * (_L1_OutC // _OutputSplit)   # 40*480 = 19200
 # L2 DW weight:     3 * 3 * L1_OutC (full depthwise filter)
 _l2_wts_sz = 3 * 3 * _L1_OutC * 1                                        # 8640
-# L3 split weight per tile:  (L1_OutC // InputSplit) * (L3_OutC // OutputSplit2)
-_l3_split_wts_sz = (_L1_OutC // _InputSplit) * _L3_OutC  # 480*80 = 38400 (split by InputSplit only)
+# L3 split weight per tile (per put/get chunk):
+#   (L1_OutC // InputSplit) * (L3_OutC // OutputSplit2) = 480 * 40 = 19200
+# Matches placed-API: each MemTile put/get streams 19200-byte chunks to its compute tile.
+_l3_split_wts_sz = (_L1_OutC // _InputSplit) * (_L3_OutC // _OutputSplit2)  # 19200
 
 # ---------------------------------------------------------------------------
 # Type aliases
@@ -124,7 +127,7 @@ def cascade_bottlenecks(
                        optional weight data text files.
 
     Returns:
-        (workers, act_bn14_out, wts_fifos, cascade_pairs) where:
+        (workers, act_bn14_out, wts_fifos) where:
           workers:       flat list of all Worker objects
           act_bn14_out:  output ObjectFifo carrying (7,1,80) int8, depth=2
           wts_fifos:     list of streaming weight ObjectFifos the host DMA writes into:
@@ -132,11 +135,10 @@ def cascade_bottlenecks(
                           bn13_wts_l3_put, bn13_wts_l3_get,
                           bn14_wts_l1_put, bn14_wts_l1_get,
                           bn14_wts_l3_put, bn14_wts_l3_get]
-          cascade_pairs: list of (put_worker, get_worker) tuples:
-                         [(w_bn13_l1_put, w_bn13_l1_get),
-                          (w_bn13_l3_put, w_bn13_l3_get),
-                          (w_bn14_l1_put, w_bn14_l1_get),
-                          (w_bn14_l3_put, w_bn14_l3_get)]
+
+    Cascade flows between put/get worker pairs are constructed as side effects
+    inside this function; they self-register on their source workers and are
+    discovered automatically by Program.resolve().
     """
     workers = []
 
@@ -375,20 +377,21 @@ def cascade_bottlenecks(
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn13_wts_l1_put", "bn13_wts_l1_get"],
         placement=Tile(0, 1),   # mem_tile_0_1 in original
+        repeat_counts=[_InH, _InH],
     )
-    bn13_wts_l1_put.set_repeat_count(_InH)
-    bn13_wts_l1_get.set_repeat_count(_InH)
 
+    # L3 weights: full 76800 split into two 38400-byte halves at offsets [0, 38400].
+    # Each half is delivered as 19200-byte chunks (split_wts_sz) — the MemTile DMA
+    # walks through the half in 2 chunks per row × 7 rows = 14 chunks total.
     bn13_wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1, name="bn13_wts_l3_full")
     bn13_wts_l3_put, bn13_wts_l3_get = bn13_wts_l3_full.cons().split(
-        offsets=[0, _l3_split_wts_sz],
+        offsets=[0, _l3_full_wts_sz // 2],   # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn13_wts_l3_put", "bn13_wts_l3_get"],
         placement=Tile(1, 1),   # mem_tile_1_1 in original
+        repeat_counts=[_InH, _InH],
     )
-    bn13_wts_l3_put.set_repeat_count(_InH)
-    bn13_wts_l3_get.set_repeat_count(_InH)
 
     # L2 weights are static (baked in at compile time, from aie2_bn_13_14.py pattern)
     bn13_l2_wts = _make_static_wts(
@@ -398,20 +401,31 @@ def cascade_bottlenecks(
     # -- Inter-tile activation ObjectFifos for bn13 --
     bn13_of_l1_l2 = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_OutC), np.dtype[np.uint8]],
-        depth=4
+        depth=4,
+        name="bn13_act_layer1_layer2",
+        via_DMA=True,
     )
     bn13_of_l2_l3_first = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-        depth=2
+        depth=2,
+        name="bn13_act_layer2_layer3_first",
     )
     bn13_of_l2_l3_second = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-        depth=2
+        depth=2,
+        name="bn13_act_layer2_layer3_second",
     )
     act_bn13_out = ObjectFifo(
         np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]],
-        depth=2
+        depth=2,
+        name="bn13_act_layer3_bn_14_layer1",
     )
+
+    # Pre-establish .cons() ordering on act_in to match placed-API:
+    #   {tile_4_5 (l1_put), tile_5_5 (l1_get), mem_tile_5_1 (skip forward)}
+    # Order of .cons() calls determines fifo consumer ordering in MLIR.
+    bn13_l1_put_cons = act_in.cons()        # tile_4_5
+    bn13_l1_get_cons = act_in.cons()        # tile_5_5
 
     # Skip fifo: forward bn13 input to the L3 GET tile via MemTile DMA.
     # act_in has 3 consumers: l1_put, l1_get, and the skip forward.
@@ -425,7 +439,7 @@ def cascade_bottlenecks(
     w_bn13_l1_put = Worker(
         l1_put_fn,
         fn_args=[
-            act_in.cons(),
+            bn13_l1_put_cons,
             bn13_wts_l1_put.cons(),
             bn13_k_l1_put,
             _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn13_s1,
@@ -436,7 +450,7 @@ def cascade_bottlenecks(
     w_bn13_l1_get = Worker(
         l1_get_fn,
         fn_args=[
-            act_in.cons(),
+            bn13_l1_get_cons,
             bn13_of_l1_l2.prod(),
             bn13_wts_l1_get.cons(),
             bn13_k_l1_get,
@@ -597,20 +611,18 @@ def cascade_bottlenecks(
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn14_wts_l1_put", "bn14_wts_l1_get"],
         placement=Tile(2, 1),   # mem_tile_2_1 in original
+        repeat_counts=[_InH, _InH],
     )
-    bn14_wts_l1_put.set_repeat_count(_InH)
-    bn14_wts_l1_get.set_repeat_count(_InH)
 
     bn14_wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1, name="bn14_wts_l3_full")
     bn14_wts_l3_put, bn14_wts_l3_get = bn14_wts_l3_full.cons().split(
-        offsets=[0, _l3_split_wts_sz],
+        offsets=[0, _l3_full_wts_sz // 2],   # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn14_wts_l3_put", "bn14_wts_l3_get"],
         placement=Tile(3, 1),   # mem_tile_3_1 in original
+        repeat_counts=[_InH, _InH],
     )
-    bn14_wts_l3_put.set_repeat_count(_InH)
-    bn14_wts_l3_get.set_repeat_count(_InH)
 
     bn14_l2_wts = _make_static_wts(
         data_dir, _l2_wts_sz, "bn14_2_chain.txt", "bn14_l2_wts"
@@ -619,20 +631,30 @@ def cascade_bottlenecks(
     # -- Inter-tile activation ObjectFifos for bn14 --
     bn14_of_l1_l2 = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_OutC), np.dtype[np.uint8]],
-        depth=4
+        depth=4,
+        name="bn14_act_layer1_layer2",
+        via_DMA=True,
     )
     bn14_of_l2_l3_first = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-        depth=2
+        depth=2,
+        name="bn14_act_layer2_layer3_first",
     )
     bn14_of_l2_l3_second = ObjectFifo(
         np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-        depth=2
+        depth=2,
+        name="bn14_act_layer2_layer3_second",
     )
     act_bn14_out = ObjectFifo(
         np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]],
-        depth=2
+        depth=2,
+        name="act_in_C_post",
     )
+
+    # Pre-establish .cons() ordering on act_bn13_out to match placed-API:
+    #   {tile_6_5 (l1_put), tile_7_5 (l1_get), mem_tile_7_1 (skip forward)}
+    bn14_l1_put_cons = act_bn13_out.cons()        # tile_6_5
+    bn14_l1_get_cons = act_bn13_out.cons()        # tile_7_5
 
     # bn14 skip: bn13 output forwarded to bn14 L3 GET via MemTile DMA.
     bn14_skip_fifo = act_bn13_out.cons(depth=6).forward(
@@ -642,7 +664,7 @@ def cascade_bottlenecks(
     w_bn14_l1_put = Worker(
         l1_put_fn,
         fn_args=[
-            act_bn13_out.cons(),
+            bn14_l1_put_cons,
             bn14_wts_l1_put.cons(),
             bn14_k_l1_put,
             _InW, _InC, _L1_OutC, _InputSplit, _OutputSplit, _OC8, bn14_s1,
@@ -653,7 +675,7 @@ def cascade_bottlenecks(
     w_bn14_l1_get = Worker(
         l1_get_fn,
         fn_args=[
-            act_bn13_out.cons(),
+            bn14_l1_get_cons,
             bn14_of_l1_l2.prod(),
             bn14_wts_l1_get.cons(),
             bn14_k_l1_get,
@@ -709,14 +731,14 @@ def cascade_bottlenecks(
     ]
 
     # ========================================================================
-    # Cascade pairs and weight fifos
+    # Cascade flows: directed put→get edges between adjacent compute tiles.
+    # Each CascadeFlow self-registers on its source Worker; Program.resolve()
+    # picks them up automatically — no need to thread a list to the caller.
     # ========================================================================
-    cascade_pairs = [
-        (w_bn13_l1_put, w_bn13_l1_get),
-        (w_bn13_l3_put, w_bn13_l3_get),
-        (w_bn14_l1_put, w_bn14_l1_get),
-        (w_bn14_l3_put, w_bn14_l3_get),
-    ]
+    CascadeFlow(w_bn13_l1_put, w_bn13_l1_get)
+    CascadeFlow(w_bn13_l3_put, w_bn13_l3_get)
+    CascadeFlow(w_bn14_l1_put, w_bn14_l1_get)
+    CascadeFlow(w_bn14_l3_put, w_bn14_l3_get)
 
     # wts_fifos: the full-weight ObjectFifos that the host DMA writes into.
     # The MemTile splits each into two halves via cons().split() above.
@@ -728,4 +750,4 @@ def cascade_bottlenecks(
         bn14_wts_l3_full,
     ]
 
-    return workers, act_bn14_out, wts_fifos, cascade_pairs
+    return workers, act_bn14_out, wts_fifos

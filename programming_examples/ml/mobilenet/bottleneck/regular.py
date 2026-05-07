@@ -225,7 +225,8 @@ def regular_bottlenecks(
     # bn0 output fifo -> bn1
     act_bn0_bn1 = ObjectFifo(
         np.ndarray[(_BN0_IN_W, 1, _BN0_OUT_C), np.dtype[np.int8]],
-        depth=2
+        depth=2,
+        name="act_bn0_bn1",
     )
 
     # Internal self-loop fifo for bn0: DW output row → 1x1 input row (same tile)
@@ -307,7 +308,7 @@ def regular_bottlenecks(
     bn0_worker = Worker(
         bn0_worker_fn,
         fn_args=[
-            act_in.cons(),
+            act_in.cons(depth=3),
             bn0_wts,
             act_bn0_bn1.prod(),
             bn0_act_2_3.prod(),   # self-loop: same Worker is prod and cons
@@ -322,7 +323,8 @@ def regular_bottlenecks(
             bn0_scale2,
             bn0_scale3,
             0,  # scaleAdd (skip residual from same row)
-        ]
+        ],
+        while_true=False,
     )
     workers.append(bn0_worker)
 
@@ -486,7 +488,8 @@ def regular_bottlenecks(
             bn1_scale1,
             bn1_scale2,
             bn1_scale3,
-        ]
+        ],
+        while_true=False,
     )
     workers.append(bn1_worker)
 
@@ -660,7 +663,8 @@ def regular_bottlenecks(
             bn2_scale2,
             bn2_scale3,
             bn2_scaleAdd,
-        ]
+        ],
+        while_true=False,
     )
     workers.append(bn2_worker)
 
@@ -712,7 +716,8 @@ def regular_bottlenecks(
 
     act_bn3_bn4 = ObjectFifo(
         np.ndarray[(_BN3_OUT_W, 1, _BN3_OUT_C), np.dtype[np.int8]],
-        depth=2
+        depth=2,
+        name="act_bn3_bn4",
     )
 
     bn3_act_1_2 = ObjectFifo(
@@ -818,7 +823,8 @@ def regular_bottlenecks(
             bn3_scale1,
             bn3_scale2,
             bn3_scale3,
-        ]
+        ],
+        while_true=False,
     )
     workers.append(bn3_worker)
 
@@ -900,39 +906,41 @@ def regular_bottlenecks(
 
     act_bn5_bn6 = ObjectFifo(
         np.ndarray[(_BN45_OUT_W, 1, _BN5_OUT_C), np.dtype[np.int8]],
-        depth=2
+        depth=2,
+        name="act_bn5_bn6",
     )
 
     # Internal self-loop fifos for bn4+5 fused block.
-    # disable_synchronization=True: no locks needed (same sequential @core).
-    # allocate_on(Tile(0,2)): redirect buffers to init tile's SRAM (same as
-    # original's objectfifo.allocate(L1_tile_for_bn4_5) = tile(0,2)).
+    # disable_synchronization=True: no locks needed (prod==cons in same @core).
+    # delegate_tile=Tile(0,2): the ring buffer for each fifo is allocated on the
+    # init tile's memory module — both prod and cons (same compute tile) have
+    # shared-memory access to it. Matches original placed-API design.
     _bn45_alloc_tile = Tile(0, 2)   # init tile — matches original MLIR
     bn45_act_bn4_1_2 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
-        depth=3, name="bn45_act_bn4_1_2", disable_synchronization=True,
+        depth=3, name="bn45_act_bn4_1_2",
+        disable_synchronization=True, delegate_tile=_bn45_alloc_tile,
     )
-    bn45_act_bn4_1_2.allocate_on(_bn45_alloc_tile)
     bn45_act_bn4_2_3 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
-        depth=1, name="bn45_act_bn4_2_3", disable_synchronization=True,
+        depth=1, name="bn45_act_bn4_2_3",
+        disable_synchronization=True, delegate_tile=_bn45_alloc_tile,
     )
-    bn45_act_bn4_2_3.allocate_on(_bn45_alloc_tile)
     bn45_act_bn4_bn5 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_OUT_C), np.dtype[np.int8]],
-        depth=2, name="bn45_act_bn4_bn5", disable_synchronization=True,
+        depth=2, name="bn45_act_bn4_bn5",
+        disable_synchronization=True, delegate_tile=_bn45_alloc_tile,
     )
-    bn45_act_bn4_bn5.allocate_on(_bn45_alloc_tile)
     bn45_act_bn5_1_2 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
-        depth=3, name="bn45_act_bn5_1_2", disable_synchronization=True,
+        depth=3, name="bn45_act_bn5_1_2",
+        disable_synchronization=True, delegate_tile=_bn45_alloc_tile,
     )
-    bn45_act_bn5_1_2.allocate_on(_bn45_alloc_tile)
     bn45_act_bn5_2_3 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
-        depth=1, name="bn45_act_bn5_2_3", disable_synchronization=True,
+        depth=1, name="bn45_act_bn5_2_3",
+        disable_synchronization=True, delegate_tile=_bn45_alloc_tile,
     )
-    bn45_act_bn5_2_3.allocate_on(_bn45_alloc_tile)
 
     def bn45_worker_fn(
         act_in_fifo,
@@ -1075,7 +1083,8 @@ def regular_bottlenecks(
             bn4_scale1, bn4_scale2, bn4_scale3, bn4_scaleAdd,
             bn5_scale1, bn5_scale2, bn5_scale3, bn5_scaleAdd,
         ],
-        placement=Tile(1, 2),   # original: bn4_5_tile = tile(1,2); L1 alloc on tile(0,2) (adjacent)
+        placement=Tile(1, 2),   # original: bn4_5_tile = tile(1,2); L1 alloc on tile(0,2) (adjacent),
+        while_true=False,
     )
     workers.append(bn45_worker)
 
@@ -1231,7 +1240,8 @@ def regular_bottlenecks(
             bn6_scale1,
             bn6_scale2,
             bn6_scale3,
-        ]
+        ],
+        while_true=False,
     )
     workers.append(bn6_worker)
 
@@ -1283,7 +1293,8 @@ def regular_bottlenecks(
 
     act_bn7_bn8 = ObjectFifo(
         np.ndarray[(_BN7_OUT_W, 1, _BN7_OUT_C), np.dtype[np.int8]],
-        depth=2
+        depth=2,
+        name="act_bn7_bn8",
     )
 
     bn7_act_1_2 = ObjectFifo(
@@ -1406,7 +1417,8 @@ def regular_bottlenecks(
             bn7_scale3,
             bn7_scaleAdd,
         ],
-        placement=Tile(2, 3),   # original: bn7_tile = tile(2,3), adjacent to bn8+9 tile(3,3)
+        placement=Tile(2, 3),   # original: bn7_tile = tile(2,3), adjacent to bn8+9 tile(3,3),
+        while_true=False,
     )
     workers.append(bn7_worker)
 
@@ -1487,45 +1499,47 @@ def regular_bottlenecks(
          np.int32, np.int32, np.int32, np.int32, np.int32],
     )
 
-    # Final output fifo (boundary interface - FIXED type and depth)
-    # Split depth [1, 2]: producer (bn89 tile) gets depth=1 buffer (saves SRAM),
-    # consumer (pipeline bn10 tile) gets depth=2. Matches original act_bn9_bn10 [1,2].
+    # Final output fifo (boundary interface - FIXED type and depth).
+    # Producer (bn89 tile) uses depth=1 to save SRAM (set explicitly at .prod()
+    # below); consumer (pipeline bn10 tile) inherits the fifo's default depth=2.
+    # Matches original act_bn9_bn10 [1,2].
     act_bn9_out = ObjectFifo(
         np.ndarray[(_BN89_OUT_W, 1, _BN9_OUT_C), np.dtype[np.int8]],
-        depth=[1, 2],
+        depth=2,
         name="act_bn9_out",
     )
 
     # Internal self-loop fifos for bn8+9 fused block.
-    # disable_synchronization=True + allocate_on(Tile(3,4)) matches original:
-    #   {disable_synchronization=true} + objectfifo.allocate(tile_3_4)
-    # tile(3,4) is the bn11_l1 pipeline tile — adjacent to bn8+9 compute tile(3,3).
+    # disable_synchronization=True: no locks needed (prod==cons in same @core).
+    # delegate_tile=Tile(3,4): each ring buffer is allocated on the bn11_l1
+    # pipeline tile, which is adjacent to compute tile(3,3) and shares memory
+    # with it. Matches original placed-API design.
     _bn89_alloc_tile = Tile(3, 4)   # pipeline bn11_l1 tile — matches original MLIR
     bn89_act_bn8_1_2 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
-        depth=3, name="bn89_act_bn8_1_2", disable_synchronization=True,
+        depth=3, name="bn89_act_bn8_1_2",
+        disable_synchronization=True, delegate_tile=_bn89_alloc_tile,
     )
-    bn89_act_bn8_1_2.allocate_on(_bn89_alloc_tile)
     bn89_act_bn8_2_3 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
-        depth=1, name="bn89_act_bn8_2_3", disable_synchronization=True,
+        depth=1, name="bn89_act_bn8_2_3",
+        disable_synchronization=True, delegate_tile=_bn89_alloc_tile,
     )
-    bn89_act_bn8_2_3.allocate_on(_bn89_alloc_tile)
     bn89_act_bn8_bn9 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_OUT_C), np.dtype[np.int8]],
-        depth=2, name="bn89_act_bn8_bn9", disable_synchronization=True,
+        depth=2, name="bn89_act_bn8_bn9",
+        disable_synchronization=True, delegate_tile=_bn89_alloc_tile,
     )
-    bn89_act_bn8_bn9.allocate_on(_bn89_alloc_tile)
     bn89_act_bn9_1_2 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
-        depth=3, name="bn89_act_bn9_1_2", disable_synchronization=True,
+        depth=3, name="bn89_act_bn9_1_2",
+        disable_synchronization=True, delegate_tile=_bn89_alloc_tile,
     )
-    bn89_act_bn9_1_2.allocate_on(_bn89_alloc_tile)
     bn89_act_bn9_2_3 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
-        depth=1, name="bn89_act_bn9_2_3", disable_synchronization=True,
+        depth=1, name="bn89_act_bn9_2_3",
+        disable_synchronization=True, delegate_tile=_bn89_alloc_tile,
     )
-    bn89_act_bn9_2_3.allocate_on(_bn89_alloc_tile)
 
     def bn89_worker_fn(
         act_in_fifo,
@@ -1733,7 +1747,7 @@ def regular_bottlenecks(
         fn_args=[
             act_bn7_bn8.cons(),
             bn89_wts,
-            act_bn9_out.prod(),
+            act_bn9_out.prod(depth=1),
             bn89_act_bn8_1_2.prod(),
             bn89_act_bn8_1_2.cons(),
             bn89_act_bn8_2_3.prod(),
@@ -1760,7 +1774,8 @@ def regular_bottlenecks(
             bn8_scale1, bn8_scale2, bn8_scale3, bn8_scaleAdd,
             bn9_scale1, bn9_scale2, bn9_scale3, bn9_scaleAdd,
         ],
-        placement=Tile(3, 3),   # original: bn8_9_tile = tile(3,3); L1 alloc on tile(3,4) (adjacent)
+        placement=Tile(3, 3),   # original: bn8_9_tile = tile(3,3); L1 alloc on tile(3,4) (adjacent),
+        while_true=False,
     )
     workers.append(bn89_worker)
 

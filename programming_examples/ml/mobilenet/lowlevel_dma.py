@@ -1,78 +1,44 @@
-# persistentbuffer.py -*- Python -*-
+# lowlevel_dma.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""PersistentBuffer: static weight store in MemTile, streamed to compute tile via DMA.
+"""User-side helpers that drop down to placed-dialect ops inside an IRON design.
 
-Replaces the placed-API pattern of:
-    buffer(memtile, large_type, name, initial_value=arr)
-    + 4x lock()
-    + flow(memtile, DMA, mm2s_ch, compute, DMA, s2mm_ch)
-    + @memtile_dma (MM2S, loops forever)
-    + @mem (S2MM, loops forever)
-
-The compute tile holds a small receive buffer (full_size // repeat_count bytes).
-The kernel calls acquire/release on the PersistentBufferHandle to synchronize
-with the MemTile DMA — same API as an ObjectFifoHandle.
+Demonstrates that arbitrary lock/BD/flow/DMA programming is possible from the
+high-level IRON API by writing a Resolvable subclass. The library's existing
+``isinstance(arg, Resolvable)`` walk in ``Program.resolve()`` picks these up
+when they appear in a Worker's ``fn_args`` list — no library-side knowledge of
+this helper is required.
 """
 
 import numpy as np
 
-from ..resolvable import Resolvable
+from aie.iron.resolvable import Resolvable
 
 
-class PersistentBufferHandle:
-    """Consumer handle passed as Worker fn_arg.
+class StaticWeightStream(Resolvable):
+    """Stream a pre-loaded MemTile buffer to a compute tile in chunks.
 
-    acquire() acquires the comp_cons_lock (waits for DMA transfer complete).
-    release() releases the comp_prod_lock (signals DMA to re-send).
-    """
+    Lower-level escape hatch for cases where IRON's ``ObjectFifo`` doesn't fit
+    (here: the producer is a static memory region, not a Worker). Emits raw
+    placed-dialect ops:
 
-    def __init__(self, pb: "PersistentBuffer"):
-        self._pb = pb
+      * MemTile holds the full weight tensor as ``aie.buffer(initial_value=...)``
+      * Compute tile holds a small recv buffer
+      * One ``aie.flow`` MemTile→compute, lock pair on each side
+      * ``aie.memtile_dma`` on MemTile loops the source buffer forever
+      * ``aie.mem`` on compute tile loops the recv buffer forever
 
-    def acquire(self, n: int = 1):
-        """Wait for MemTile DMA to deliver the next weight chunk."""
-        from ...dialects.aie import use_lock, LockAction
-        use_lock(self._pb._comp_cons_lock, LockAction.AcquireGreaterEqual)
-        return self._pb._recv_buf
+    Pass an instance directly as a Worker ``fn_arg`` — Program's generic
+    ``Resolvable`` branch picks it up. The kernel calls ``acquire(1)`` /
+    ``release(1)`` on the instance to synchronize with the DMA.
 
-    def release(self, n: int = 1):
-        """Signal MemTile DMA to send the next weight chunk."""
-        from ...dialects.aie import use_lock, LockAction
-        use_lock(self._pb._comp_prod_lock, LockAction.Release)
-
-
-class PersistentBuffer(Resolvable):
-    """Static weight store: full data in MemTile SRAM, streamed to compute tile via DMA.
-
-    The MemTile holds the full weight array (may be > 32KB).
-    The compute tile holds a small receive buffer (full_size // repeat_count bytes).
-    A DMA flow streams one chunk at a time with lock-based synchronization.
-
-    Usage::
-
-        pb = PersistentBuffer(
-            obj_type=np.ndarray[(76800,), np.dtype[np.int8]],
-            recv_type=np.ndarray[(9600,), np.dtype[np.int8]],
-            initial_value=weight_array,
-            name="post_l1_wts",
-            repeat_count=7,
-            memtile_placement=Tile(4,1),
-            compute_placement=Tile(6,4),
-            mm2s_channel=0,
-            s2mm_channel=0,
-        )
-        handle = pb.cons()
-        worker = Worker(fn, [handle, ...])
-
-        # Inside fn:
-        chunk = handle.acquire()   # waits for DMA, returns recv_buf
-        k(chunk, ...)
-        handle.release()           # signals DMA to re-send
+    Optional ping-pong mode: pass ``ping_pong_buf`` to alternate one MM2S
+    channel between two source buffers (BD chain BD1→BD2→BD1...). Used in
+    mobilenet's FC pass to share one DMA channel between FC1 and FC2 weights.
     """
 
     def __init__(
@@ -107,18 +73,44 @@ class PersistentBuffer(Resolvable):
         self._comp_lock_id = comp_lock_id
         self._pp_lock_id = pp_lock_id
 
-        # Set by resolve()
+        # Set by resolve(); used by acquire/release at kernel time.
         self._comp_cons_lock = None
         self._comp_prod_lock = None
         self._recv_buf = None
 
-    def cons(self) -> "PersistentBufferHandle":
-        """Returns a consumer handle to pass as a Worker fn_arg."""
-        return PersistentBufferHandle(self)
+    def tiles(self) -> list:
+        """Tiles this stream depends on (memtile + compute, plus optional ping-pong memtile).
+
+        Program.resolve() resolves these before our resolve() runs so the
+        ``.op`` access in resolve() is valid.
+        """
+        ts = []
+        if self._memtile is not None:
+            ts.append(self._memtile)
+        if self._compute is not None:
+            ts.append(self._compute)
+        if self._ping_pong_memtile is not None:
+            ts.append(self._ping_pong_memtile)
+        return ts
+
+    def acquire(self, n: int = 1):
+        """Wait for the next chunk to arrive. Returns the recv buffer."""
+        from aie.dialects.aie import use_lock, LockAction
+        use_lock(self._comp_cons_lock, LockAction.AcquireGreaterEqual)
+        return self._recv_buf
+
+    def release(self, n: int = 1):
+        """Signal the MemTile DMA to send the next chunk."""
+        from aie.dialects.aie import use_lock, LockAction
+        use_lock(self._comp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
-        """Emit the MemTile buffer/lock/flow/DMA + compute tile DMA ops."""
-        from ...dialects.aie import (
+        """Emit the MemTile buffer/lock/flow/DMA + compute tile DMA ops.
+
+        Called by Program.resolve() via the generic Resolvable branch when this
+        instance appears in a Worker's fn_args list.
+        """
+        from aie.dialects.aie import (
             buffer, lock, flow, memtile_dma, mem,
             dma_start, dma_bd, next_bd, use_lock,
             DMAChannelDir, LockAction, WireBundle,
@@ -130,7 +122,8 @@ class PersistentBuffer(Resolvable):
 
         # --- MemTile side ---
         # Explicit lock_id required: AIEObjectFifoStatefulTransform runs before
-        # AIEAssignLockIDs and requires IDs to be explicitly set.
+        # AIEAssignLockIDs and requires IDs to be explicitly set when raw locks
+        # coexist with ObjectFifo'd locks on the same tile.
         # For ping-pong: each buffer gets init=1 (one copy ready to send).
         # For single-buffer: init=repeat_count (pre-load N repeats).
         cons_init = 1 if self._ping_pong_buf is not None else self._repeat_count
@@ -154,7 +147,7 @@ class PersistentBuffer(Resolvable):
             f"{self._name}_recv",
         )
 
-        # Store for handle use
+        # Stash for acquire/release at kernel time
         self._comp_cons_lock = comp_cons_lock
         self._comp_prod_lock = comp_prod_lock
         self._recv_buf = recv_buf
@@ -167,7 +160,7 @@ class PersistentBuffer(Resolvable):
 
         # --- MemTile DMA region (MM2S) ---
         if self._ping_pong_buf is not None:
-            # Two-BD ping-pong: alternates between wts_buf and ping_pong second buffer.
+            # Two-BD ping-pong: alternates between wts_buf and the second buffer.
             # The second buffer may be on an adjacent MemTile (shared memory access).
             pp_type, pp_data, pp_name = self._ping_pong_buf
             pp_memtile_op = (self._ping_pong_memtile.op
@@ -180,12 +173,12 @@ class PersistentBuffer(Resolvable):
             @memtile_dma(memtile_op)
             def _mtdma(block):
                 dma_start(DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[3])
-                with block[1]:   # BD1: first buffer (FC2)
+                with block[1]:   # BD1: first buffer
                     use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
                     dma_bd(wts_buf)
                     use_lock(mem_prod_lock, LockAction.Release)
                     next_bd(block[2])   # → BD2
-                with block[2]:   # BD2: second buffer (FC1, ping-pong)
+                with block[2]:   # BD2: second buffer (ping-pong)
                     use_lock(pp_cons_lock, LockAction.AcquireGreaterEqual)
                     dma_bd(pp_buf)
                     use_lock(pp_prod_lock, LockAction.Release)

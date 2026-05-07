@@ -47,6 +47,9 @@ class ObjectFifo(Resolvable):
         plio: bool = False,
         pad_dimensions: list[Sequence[int]] | None = None,
         disable_synchronization: bool = False,
+        repeat_count: int | None = None,
+        delegate_tile: PlacementTile | None = None,
+        via_DMA: bool = False,
     ):
         """Construct an ObjectFifo.
 
@@ -57,12 +60,15 @@ class ObjectFifo(Resolvable):
             dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
             dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
             plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
+            disable_synchronization (bool, optional): When True, disables lock-based synchronization on the ObjectFifo. Defaults to False.
+            repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the buffer descriptor this many times without a new DMA transfer from L3. Distinct from ``iter_count`` (BD-chain iteration count). Defaults to None.
+            delegate_tile (PlacementTile | None, optional): Shared-memory delegate tile. When set, the ObjectFifo's underlying buffer pool is allocated on this tile's memory module instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only valid when both producer and consumer have shared-memory access to the delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between adjacent tiles spilling to a neighboring MemTile). The delegate is the storage location, not a producer- or consumer-side concept; the underlying op verifier rejects this if either endpoint cannot share memory with the delegate. Defaults to None.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
         """
         self._depth = depth
-        if isinstance(self._depth, int) and self._depth < 1:
+        if self._depth is not None and self._depth < 1:
             raise ValueError(
                 f"Default ObjectFifo depth must be > 0, but got {self._depth}"
             )
@@ -80,9 +86,13 @@ class ObjectFifo(Resolvable):
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
         self._iter_count: int | None = None
-        self._repeat_count: int | None = None
+        self._repeat_count: int | None = repeat_count
         self._disable_synchronization: bool = disable_synchronization
-        self._alloc_tile_ops: list = []  # tile ops for post-resolve allocate() calls
+        # Delegate tile for shared-memory buffer placement (lowers to aie.objectfifo.allocate).
+        # Must be resolved before resolve() runs — Program.resolve() picks this up via
+        # ObjectFifo._delegate_tile when collecting tiles to assign MLIR ops to.
+        self._delegate_tile: PlacementTile | None = delegate_tile
+        self._via_DMA: bool = via_DMA
 
     @classmethod
     def __get_index(cls) -> int:
@@ -141,24 +151,6 @@ class ObjectFifo(Resolvable):
 
         self._iter_count = iter_count
 
-    def set_repeat_count(self, repeat_count: int):
-        """Set the repeat count on this ObjectFifo.
-
-        ``repeat_count`` causes the MemTile DMA to replay the buffer descriptor
-        ``repeat_count`` times without a new DMA transfer from L3. This is distinct
-        from ``iter_count`` which controls BD-chain iteration count.
-
-        Can be called before or after resolution. Typically used on weight fifos
-        that supply the same weights to multiple row computations, e.g.,
-        cascade-split weight fifos that repeat once per output row.
-
-        Args:
-            repeat_count (int): Number of times to replay the buffer descriptor.
-        """
-        self._repeat_count = repeat_count
-        if self._op is not None:
-            self._op.set_repeat_count(repeat_count)
-
     def __str__(self) -> str:
         prod_endpoint = None
         if self._prod:
@@ -189,12 +181,10 @@ class ObjectFifo(Resolvable):
                     raise ValueError(f"If depth is None, then depth must be specified.")
                 else:
                     depth = self._depth
-            elif isinstance(depth, int) and depth < 1:
+            elif depth < 1:
                 raise ValueError(f"Depth must be > 1, but got {depth}")
         else:
-            # For split-depth fifos ([prod_depth, cons_depth, ...]), extract prod depth
-            prod_depth = self._depth[0] if isinstance(self._depth, list) else self._depth
-            self._prod = ObjectFifoHandle(self, True, prod_depth if depth is None else depth)
+            self._prod = ObjectFifoHandle(self, True, depth)
         return self._prod
 
     def cons(
@@ -219,8 +209,7 @@ class ObjectFifo(Resolvable):
             if self._depth is None:
                 raise ValueError(f"If depth is None, then depth must be specified.")
             else:
-                # For split-depth fifos ([prod_depth, cons_depth, ...]), use cons depth
-                depth = self._depth[-1] if isinstance(self._depth, list) else self._depth
+                depth = self._depth
 
         if dims_from_stream is None:
             dims_from_stream = self._dims_from_stream_per_cons
@@ -324,47 +313,23 @@ class ObjectFifo(Resolvable):
                 padDimensions=self._pad_dimensions,
                 iter_count=self._iter_count,
                 disable_synchronization=self._disable_synchronization or None,
+                via_DMA=self._via_DMA or None,
             )
 
             if self._repeat_count is not None:
                 self._op.set_repeat_count(self._repeat_count)
 
-            # Apply pending allocate_on() calls (redirect buffer to adjacent tile)
-            for alloc_tile in self._alloc_tile_ops:
-                self._op.allocate(alloc_tile.op)
-            self._alloc_tile_ops = []
+            # Shared-memory delegate: redirect the fifo's buffer pool to a tile
+            # whose memory module is shared with both prod and cons. See the
+            # delegate_tile docstring on ObjectFifo for the constraint.
+            if self._delegate_tile is not None:
+                self._op.allocate(self._delegate_tile.op)
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
                 self._prod.endpoint.resolve()
             for con in self._cons:
                 if isinstance(con.endpoint, ObjectFifoLink):
                     con.endpoint.resolve()
-
-    def allocate_on(self, tile) -> None:
-        """Redirect this ObjectFifo's buffer allocation to a neighboring tile.
-
-        Calls ``aie.objectfifo.allocate`` to place the fifo's buffer memory on
-        ``tile`` instead of the default compute tile. Used when a self-loop
-        ObjectFifo's intermediate buffers would exceed the compute tile's local
-        SRAM limit — e.g., fused bottleneck pairs where the combined weight +
-        intermediate activation buffers overflow 64KB.
-
-        Can be called before or after resolution. If called before, the
-        allocation is applied automatically during ``resolve()``. If called
-        after, it calls the MLIR op directly.
-
-        Args:
-            tile: A ``Tile`` object. Must be placed (have a valid column/row).
-        """
-        from ..device import Tile as TileType
-        if isinstance(tile, TileType):
-            if self._op is not None:
-                self._op.allocate(tile.op)
-            else:
-                self._alloc_tile_ops.append(tile)
-        else:
-            # Already a resolved op — call allocate directly
-            self._op.allocate(tile)
 
     def _acquire(
         self,
@@ -413,7 +378,7 @@ class ObjectFifoHandle(Resolvable):
                 raise ValueError(
                     "Must specify either ObjectFifoHandle depth or ObjectFifo default depth; both are None."
                 )
-        if isinstance(depth, int) and depth < 1:
+        if depth < 1:
             raise ValueError(f"Depth must be > 0 but is {depth}")
         self._port: ObjectFifoPort = (
             ObjectFifoPort.Produce if is_prod else ObjectFifoPort.Consume
@@ -540,10 +505,6 @@ class ObjectFifoHandle(Resolvable):
             is_prod=True
         ) + self._object_fifo._get_endpoint(is_prod=False)
 
-    def set_repeat_count(self, repeat_count: int):
-        """Set repeat count on the underlying ObjectFifo. See ObjectFifo.set_repeat_count()."""
-        self._object_fifo.set_repeat_count(repeat_count)
-
     def join(
         self,
         offsets: list[int],
@@ -554,6 +515,7 @@ class ObjectFifoHandle(Resolvable):
         dims_to_stream: list[list[Sequence[int] | None]] | None = None,
         dims_from_stream: list[list[Sequence[int] | None]] | None = None,
         plio: bool = False,
+        repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Construct multiple ObjectFifos which feed data into a ObjectFifoHandle.
         Note that this function is only valid for producer ObjectFifoHandles.
@@ -567,6 +529,7 @@ class ObjectFifoHandle(Resolvable):
             dims_to_stream (list[list[Sequence[int]  |  None]] | None, optional): The dimensionsToStream to assign to each new ObjectFifo. Defaults to None.
             dims_from_stream (list[list[Sequence[int]  |  None]] | None, optional): The dimensionsFromStream to assign to each new ObjectFifo consumer. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
+            repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
 
         Raises:
             ValueError: Arguments are validated
@@ -606,6 +569,11 @@ class ObjectFifoHandle(Resolvable):
                 "Number of dims_from_stream does not match number of offsets"
             )
 
+        if repeat_counts is None:
+            repeat_counts = [None] * num_subfifos
+        elif len(repeat_counts) != num_subfifos:
+            raise ValueError("Number of repeat_counts does not match number of offsets")
+
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
@@ -616,6 +584,7 @@ class ObjectFifoHandle(Resolvable):
                     depth=depths[i],
                     dims_to_stream=dims_to_stream[i],
                     plio=plio,
+                    repeat_count=repeat_counts[i],
                 )
             )
 
@@ -636,6 +605,7 @@ class ObjectFifoHandle(Resolvable):
         dims_to_stream: list[list[Sequence[int]]] | None = None,
         dims_from_stream: list[list[Sequence[int]]] | None = None,
         plio: bool = False,
+        repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
         Note this operation is only valid for ObjectFifoHandles of type consumer.
@@ -649,6 +619,7 @@ class ObjectFifoHandle(Resolvable):
             dims_to_stream (list[list[Sequence[int]]] | None, optional): The dimensions to stream for each new ObjectFifo. Defaults to None.
             dims_from_stream (list[list[Sequence[int]]] | None, optional): The dimensions from stream for each new ObjectFifo. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
+            repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -688,6 +659,11 @@ class ObjectFifoHandle(Resolvable):
                 "Number of dims_from_stream arrays does not match number of offsets"
             )
 
+        if repeat_counts is None:
+            repeat_counts = [None] * num_subfifos
+        elif len(repeat_counts) != num_subfifos:
+            raise ValueError("Number of repeat_counts does not match number of offsets")
+
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
@@ -699,6 +675,7 @@ class ObjectFifoHandle(Resolvable):
                     dims_to_stream=dims_to_stream[i],
                     dims_from_stream_per_cons=dims_from_stream[i],
                     plio=plio,
+                    repeat_count=repeat_counts[i],
                 )
             )
 
@@ -716,6 +693,7 @@ class ObjectFifoHandle(Resolvable):
         dims_to_stream: list[Sequence[int]] | None = None,
         dims_from_stream: list[Sequence[int]] | None = None,
         plio: bool = False,
+        repeat_count: int | None = None,
     ) -> ObjectFifo:
         """This is a special case of the split() operation where an ObjectFifoHandle of type consumer
         is forwarded to the producer of a newly-constructed ObjectFifo.
@@ -728,6 +706,7 @@ class ObjectFifoHandle(Resolvable):
             dims_to_stream (list[Sequence[int]] | None, optional): The dimensions to stream for the new ObjectFifo. Defaults to None.
             dims_from_stream (list[Sequence[int]] | None, optional): The dimensions from stream for the new ObjectFifo. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
+            repeat_count (int | None, optional): MemTile DMA repeat count for the new ObjectFifo (see ObjectFifo.repeat_count). Defaults to None.
 
         Raises:
             ValueError: Arguments are Validated
@@ -759,6 +738,7 @@ class ObjectFifoHandle(Resolvable):
             dims_to_stream=dims_to_stream,
             dims_from_stream=dims_from_stream,
             plio=plio,
+            repeat_counts=[repeat_count] if repeat_count is not None else None,
         )
         return forward_fifo[0]
 

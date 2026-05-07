@@ -214,7 +214,13 @@ def pipeline_bottlenecks(
     # ---- bn11 (with skip) ----
     # bn11 skip: bn10 output forwarded via MemTile DMA to bn11 L3.
     # forward() creates the MemTile-side copy, no extra compute tile needed.
-    bn11_skip_of = act_bn10_out.cons(depth=2).forward(name="bn11_skip_of", depth=2)
+    # Pre-establish bn11 L1's .cons() handle BEFORE the forward() so the consumer
+    # ordering on act_bn10_out matches placed: {tile_3_2 (l1), mem_tile_2_1 (skip)}.
+    bn11_l1_act_cons = act_bn10_out.cons()      # tile_3_2 first
+    # Explicit placement on mem_tile_2_1 to match placed-API.
+    bn11_skip_of = act_bn10_out.cons(depth=6).forward(
+        name="bn11_skip_of", depth=2, placement=Tile(2, 1)
+    )
 
     # b11_OutC1=336, b11_OutC2=336, b11_OutC3=112
     bn11_l1_wts_sz = 112 * 336   # 37632
@@ -356,7 +362,7 @@ def pipeline_bottlenecks(
         Worker(
             bn11_l1_fn,
             [
-                act_bn10_out.cons(),
+                bn11_l1_act_cons,
                 bn11_of_12.prod(),
                 bn11_l1_wts,
                 k_bn11_l1,
@@ -482,14 +488,14 @@ def pipeline_bottlenecks(
         ],
     )
 
-    bn12_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="bn12_of_12")
-    # Local intermediate fifo for DW -> PW handoff on tile2 (depth=1, mirrors self-loop)
-    # Intermediate local buffer for DW->PW on the same tile.
-    # In the placed dialect this is object_fifo(computeTile, computeTile, 1, ty) — a
-    # self-loop. In IRON we use a Buffer on the compute tile instead, which is simpler.
-    bn12_dw_tmp = Buffer(
+    bn12_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="bn12_of_12", via_DMA=True)
+    # Self-loop ObjectFifo for DW->PW handoff on tile2 (depth=1).
+    # Matches placed: aie.objectfifo @act_bn12_2_3(%tile_4_4, {%tile_4_4}, 1) :
+    #   memref<7x1x336xui8>
+    bn12_dw_tmp_of = ObjectFifo(
         _u8((7, 1, 336)),
-        name="bn12_dw_tmp",
+        depth=1,
+        name="act_bn12_2_3",
     )
     act_bn12_out = ObjectFifo(_i8((7, 1, 80)), depth=2, name="act_bn12_out")
 
@@ -502,29 +508,41 @@ def pipeline_bottlenecks(
             of_12.release(1)
 
     # bn12 tile2: interleave DW-stride2 and PW per output row.
-    # dw_tmp is a tile-local Buffer (not an ObjectFifo) for DW->PW handoff.
-    def bn12_l23_fn(of_12, dw_tmp, act_out, dw_wts, pw_wts, k_dw, k_pw, sf2, sf3):
+    # dw_tmp_prod / dw_tmp_cons are the prod/cons handles of the self-loop fifo.
+    def bn12_l23_fn(of_12, dw_tmp_prod, dw_tmp_cons, act_out, dw_wts, pw_wts, k_dw, k_pw, sf2, sf3):
         # preamble: top output row (border=0)
         rows = of_12.acquire(2)
         pw_out = act_out.acquire(1)
+        dw_tmp = dw_tmp_prod.acquire(1)
         k_dw(rows[0], rows[0], rows[1], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 0, sf2, 0)
         of_12.release(1)
-        k_pw(dw_tmp, pw_wts, pw_out, 7, 336, 80, sf3)
+        dw_tmp_prod.release(1)
+        dw_tmp_c = dw_tmp_cons.acquire(1)
+        k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, sf3)
+        dw_tmp_cons.release(1)
         act_out.release(1)
         # middle output rows (border=1): 5 iters
         for _ in range_(5):
             rows = of_12.acquire(3)
             pw_out = act_out.acquire(1)
+            dw_tmp = dw_tmp_prod.acquire(1)
             k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 1, sf2, 0)
             of_12.release(2)
-            k_pw(dw_tmp, pw_wts, pw_out, 7, 336, 80, sf3)
+            dw_tmp_prod.release(1)
+            dw_tmp_c = dw_tmp_cons.acquire(1)
+            k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, sf3)
+            dw_tmp_cons.release(1)
             act_out.release(1)
         # postamble: last output row (border=1, release 3)
         rows = of_12.acquire(3)
         pw_out = act_out.acquire(1)
+        dw_tmp = dw_tmp_prod.acquire(1)
         k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 1, sf2, 0)
         of_12.release(3)
-        k_pw(dw_tmp, pw_wts, pw_out, 7, 336, 80, sf3)
+        dw_tmp_prod.release(1)
+        dw_tmp_c = dw_tmp_cons.acquire(1)
+        k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, sf3)
+        dw_tmp_cons.release(1)
         act_out.release(1)
 
     # Original: bn12_tile_1=tile(3,5), bn12_tile_2=tile(4,4)
@@ -538,7 +556,8 @@ def pipeline_bottlenecks(
             bn12_l23_fn,
             [
                 bn12_of_12.cons(),
-                bn12_dw_tmp,           # tile-local Buffer for DW->PW handoff
+                bn12_dw_tmp_of.prod(),     # self-loop fifo (prod side, same tile)
+                bn12_dw_tmp_of.cons(),     # self-loop fifo (cons side, same tile)
                 act_bn12_out.prod(),
                 bn12_dw_wts,           # DW weights (3024 bytes)
                 bn12_pw_wts,           # PW weights (26880 bytes)
