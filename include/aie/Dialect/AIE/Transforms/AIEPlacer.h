@@ -154,12 +154,29 @@ private:
     }
   };
 
+  // Generic walker: for each `CoreTile` LTO, walk its core body and use
+  // `extractOwner` to map each operand value to the owning `TileLike` (or
+  // null if the operand is irrelevant). For every distinct cross-tile owner,
+  // emit edge `(consumer, owner)`. Used by buffer and lock adjacency, both
+  // of which derive from "core body op references something attached to
+  // another tile".
+  Adjacency buildCoreBodyAdjacency(
+      llvm::ArrayRef<LogicalTileOp> logicalTiles,
+      llvm::function_ref<TileLike(mlir::Value)> extractOwner);
+
   // Cross-tile L1 buffer access: consumer LTO's core must pass
   // targetModel->isLegalMemAffinity(coreCol=consumerCol, coreRow=consumerRow,
   //                                 memCol=ownerCol,     memRow=ownerRow).
   // The first endpoint of each edge is the consumer LTO; the second is the
   // owner tile.
   Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
+
+  // Cross-tile L1 lock access: same `isLegalMemAffinity` rule as buffers,
+  // since AIE2 locks live in the L1 region of their owning tile and are only
+  // visible to memory-affinity neighbors. The `UsesAreAccessible` trait on
+  // `LockOp::verify` enforces this for placed `TileOp` users but skips
+  // `LogicalTileOp` users, which is exactly the gap the placer fills.
+  Adjacency buildLockAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
 
   // The first endpoint of each edge is the cascade source; the second is the
   // destination.

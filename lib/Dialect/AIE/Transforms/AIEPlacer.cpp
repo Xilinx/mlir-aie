@@ -144,6 +144,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
 
   // Phase 2a: Build placement constraints
   auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
+  auto lockAdjacency = buildLockAdjacency(logicalTiles);
 
   // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
   // and cascade adjacency constraints from CascadeFlow connectivity.
@@ -154,15 +155,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
 
   // Per-kind predicates / labelers shared by all phase-3 call sites below.
-  // Buffer: consumer LTO (edge.first) must satisfy isLegalMemAffinity to the
-  // owner tile (edge.second).
-  auto bufferPred = [this](TileID consumerPos, TileID ownerPos) {
+  // Buffer & lock: consumer LTO (edge.first) must satisfy isLegalMemAffinity
+  // to the owner tile (edge.second). Locks live in the same L1 region as
+  // buffers and share the same neighbor-visibility rules.
+  auto memAffinityPred = [this](TileID consumerPos, TileID ownerPos) {
     return targetModel->isLegalMemAffinity(consumerPos.col, consumerPos.row,
                                            ownerPos.col, ownerPos.row);
   };
   auto bufferLabel = [](bool thisIsConsumer) -> StringRef {
     return thisIsConsumer ? "shared-L1 buffer owner"
                           : "shared-L1 buffer consumer";
+  };
+  auto lockLabel = [](bool thisIsConsumer) -> StringRef {
+    return thisIsConsumer ? "shared-L1 lock owner" : "shared-L1 lock consumer";
   };
   // Cascade: same predicate as AIELowerCascadeFlowsPass -- src (edge.first)
   // must be one row North or one column West of dst (edge.second); rows
@@ -184,11 +189,20 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     auto row = logicalTile.tryGetRow();
     if (col && row) {
       TileID tile{*col, *row};
-      if (!satisfiesAdjacency(logicalTile, tile, bufferAdjacency, bufferPred)) {
+      if (!satisfiesAdjacency(logicalTile, tile, bufferAdjacency,
+                              memAffinityPred)) {
         auto diag = logicalTile.emitError()
                     << "tile (" << tile.col << ", " << tile.row
                     << ") violates shared-L1 buffer adjacency";
         attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
+        return failure();
+      }
+      if (!satisfiesAdjacency(logicalTile, tile, lockAdjacency,
+                              memAffinityPred)) {
+        auto diag = logicalTile.emitError()
+                    << "tile (" << tile.col << ", " << tile.row
+                    << ") violates shared-L1 lock adjacency";
+        attachPeerNotes(diag, logicalTile, lockAdjacency, lockLabel);
         return failure();
       }
       if (!satisfiesAdjacency(logicalTile, tile, cascadeAdjacency,
@@ -228,7 +242,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           continue;
         sawConstraintMatch = true;
         if (!satisfiesAdjacency(logicalTile, candidate, bufferAdjacency,
-                                bufferPred))
+                                memAffinityPred))
+          continue;
+        if (!satisfiesAdjacency(logicalTile, candidate, lockAdjacency,
+                                memAffinityPred))
           continue;
         allConstraintMatchesFailedAdjacency = false;
         if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
@@ -243,9 +260,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       }
 
       if (!placement) {
-        bool adjacencyWasCause =
-            sawConstraintMatch && allConstraintMatchesFailedAdjacency &&
+        bool hasBufferEdges =
             bufferAdjacency.tileToEdges.count(logicalTile.getOperation());
+        bool hasLockEdges =
+            lockAdjacency.tileToEdges.count(logicalTile.getOperation());
+        bool memAffinityWasCause = sawConstraintMatch &&
+                                   allConstraintMatchesFailedAdjacency &&
+                                   (hasBufferEdges || hasLockEdges);
         bool hasCascade =
             cascadeAdjacency.tileToEdges.count(logicalTile.getOperation());
         InFlightDiagnostic diag = logicalTile.emitError();
@@ -253,17 +274,27 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           diag << "no compute tile available matching constraint ("
                << (col ? std::to_string(*col) : "?") << ", "
                << (row ? std::to_string(*row) : "?") << ")"
-               << (adjacencyWasCause ? " and shared-L1 buffer adjacency" : "")
+               << (memAffinityWasCause && hasBufferEdges
+                       ? " and shared-L1 buffer adjacency"
+                       : "")
+               << (memAffinityWasCause && hasLockEdges
+                       ? " and shared-L1 lock adjacency"
+                       : "")
                << (hasCascade ? " and cascade adjacency" : "");
         } else {
           diag << "no available compute tiles for placement"
-               << (adjacencyWasCause
+               << (memAffinityWasCause && hasBufferEdges
                        ? " (shared-L1 buffer adjacency unsatisfiable)"
+                       : "")
+               << (memAffinityWasCause && hasLockEdges
+                       ? " (shared-L1 lock adjacency unsatisfiable)"
                        : "")
                << (hasCascade ? " (cascade adjacency unsatisfiable)" : "");
         }
-        if (adjacencyWasCause)
+        if (memAffinityWasCause && hasBufferEdges)
           attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
+        if (memAffinityWasCause && hasLockEdges)
+          attachPeerNotes(diag, logicalTile, lockAdjacency, lockLabel);
         if (hasCascade)
           attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
         return failure();
@@ -498,8 +529,9 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   return std::nullopt;
 }
 
-SequentialPlacer::Adjacency
-SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
+SequentialPlacer::Adjacency SequentialPlacer::buildCoreBodyAdjacency(
+    ArrayRef<LogicalTileOp> logicalTiles,
+    llvm::function_ref<TileLike(Value)> extractOwner) {
   Adjacency adjacency;
   for (auto consumer : logicalTiles) {
     if (consumer.getTileType() != AIETileType::CoreTile)
@@ -516,10 +548,7 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
     llvm::SmallDenseSet<Operation *, 4> seenOwners;
     core.getBody().walk([&](Operation *op) {
       for (Value operand : op->getOperands()) {
-        BufferOp buf = traceToBuffer(operand);
-        if (!buf)
-          continue;
-        auto owner = dyn_cast_or_null<TileLike>(buf.getTile().getDefiningOp());
+        TileLike owner = extractOwner(operand);
         if (!owner)
           continue;
         if (owner.getOperation() == consumer.getOperation())
@@ -531,6 +560,26 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
     });
   }
   return adjacency;
+}
+
+SequentialPlacer::Adjacency
+SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
+  return buildCoreBodyAdjacency(logicalTiles, [](Value v) -> TileLike {
+    BufferOp buf = traceToBuffer(v);
+    if (!buf)
+      return {};
+    return dyn_cast_or_null<TileLike>(buf.getTile().getDefiningOp());
+  });
+}
+
+SequentialPlacer::Adjacency
+SequentialPlacer::buildLockAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
+  return buildCoreBodyAdjacency(logicalTiles, [](Value v) -> TileLike {
+    auto lock = dyn_cast_or_null<LockOp>(v.getDefiningOp());
+    if (!lock)
+      return {};
+    return dyn_cast_or_null<TileLike>(lock.getTile().getDefiningOp());
+  });
 }
 
 SequentialPlacer::Adjacency

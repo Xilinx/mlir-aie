@@ -389,3 +389,42 @@ module @buffer_adjacency_star_oversubscribed {
     }
   }
 }
+
+// -----
+
+// Lock owner and consumer pinned far apart: not memory-affinity neighbors.
+module @lock_adjacency_both_pinned_violation {
+  aie.device(npu1) {
+    // CHECK: error: tile (0, 2) violates shared-L1 lock adjacency
+    // CHECK: note: shared-L1 lock consumer peer placed at (3, 5)
+    %owner = aie.logical_tile<CoreTile>(0, 2)
+    %lock  = aie.lock(%owner, 0) {init = 1 : i32}
+    aie.core(%owner) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(3, 5)
+    aie.core(%consumer) {
+      aie.use_lock(%lock, AcquireGreaterEqual, 1)
+      aie.use_lock(%lock, Release, 1)
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Pinned lock owner + unconstrained consumer with a column constraint that
+// has no memory-affinity slot relative to the owner.
+module @lock_adjacency_unsatisfiable_column {
+  aie.device(npu1) {
+    // CHECK: error: no compute tile available matching constraint (3, ?) and shared-L1 lock adjacency
+    // CHECK: note: shared-L1 lock owner peer placed at (0, 2)
+    %owner = aie.logical_tile<CoreTile>(0, 2)
+    %lock  = aie.lock(%owner, 0) {init = 1 : i32}
+    aie.core(%owner) { aie.end }
+    %consumer = aie.logical_tile<CoreTile>(3, ?)
+    aie.core(%consumer) {
+      aie.use_lock(%lock, AcquireGreaterEqual, 1)
+      aie.use_lock(%lock, Release, 1)
+      aie.end
+    }
+  }
+}
