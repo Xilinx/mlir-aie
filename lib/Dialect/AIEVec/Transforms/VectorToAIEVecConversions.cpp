@@ -3904,7 +3904,6 @@ struct ComputeBxorAndBnegOpPattern : OpConversionPattern<arith::XOrIOp> {
     if (laneSize * elWidth != 512)
       return failure();
 
-    // Operands may be block arguments (no defining op); guard before casting.
     auto lhsConstOp = xorOp.getLhs().getDefiningOp<arith::ConstantOp>();
     auto rhsConstOp = xorOp.getRhs().getDefiningOp<arith::ConstantOp>();
 
@@ -4683,10 +4682,7 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
         LowerVectorSubIOpToAIEVecSubElemOp,
-        // Bitwise vector arith → aievec.{bxor,bor,band,bneg} only on CPP:
-        // AIEVecToLLVM has no lowering for those aievec ops, and AIE2/AIE2P
-        // legalize standard G_AND/G_OR/G_XOR on every vector type, so the
-        // LLVMIR path takes the standard arith→llvm route instead.
+        // CPP-only: AIEVecToLLVM has no lowering for aievec.{bxor,bor,band}.
         ComputeBxorAndBnegOpPattern,
         ComputeBorOpPattern,
         ComputeBandOpPattern
@@ -5125,14 +5121,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return laneSize != 16;
   });
 
-  // Only convert bitwise vector ops to aievec.{bxor,bor,band,bneg} on the
-  // CPP (chess) backend. AIEVecToLLVM has no lowering for those aievec ops,
-  // and AIE2/AIE2P legalize standard G_AND/G_OR/G_XOR on every vector type,
-  // so the LLVMIR path takes the standard arith→llvm route instead.
+  // CPP-only: rewrite 512-bit int vector arith.{andi,ori,xori} to aievec.
   if (backend == TargetBackend::CPP) {
-    // Shared predicate for arith.{andi,ori,xori}: illegal iff the operands
-    // are a 512-bit integer vector (then a aievec.{band,bor,bxor} pattern
-    // takes over). Anything else stays legal.
     auto isNon512BitIntVecBitwiseOp = [](Operation *op) {
       auto srcType = dyn_cast<VectorType>(op->getOperand(0).getType());
       if (!srcType)

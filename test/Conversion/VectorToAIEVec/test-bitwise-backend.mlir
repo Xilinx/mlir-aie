@@ -1,17 +1,21 @@
-// On the CPP (chess) backend, 512-bit integer vector arith.{andi,ori,xori}
-// must be lowered to aievec.{band,bor,bxor}, which the chess emitter knows
-// how to print. On the LLVMIR (Peano) backend, AIEVecToLLVM has no lowering
-// for those aievec ops -- the standard arith→llvm route handles vector AND/OR/XOR
-// natively -- so the arith ops must remain illegal-targeted only on CPP and
-// pass through unchanged on LLVMIR.
+//===- test-bitwise-backend.mlir - bitwise vector legalization per backend -*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+// 512-bit integer vector arith.{andi,ori,xori} → aievec.{band,bor,bxor} only on
+// the CPP (chess) backend; on the LLVMIR (Peano) backend the arith ops must
+// pass through unchanged.
 
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2 target-backend=cpp" \
 // RUN:   | FileCheck %s --check-prefix=CPP
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2 target-backend=llvmir" \
 // RUN:   | FileCheck %s --check-prefix=LLVM
-// AIE2P/LLVMIR is the path the original failure was reported on -- exercise
-// it explicitly so the legalization regression cannot be silently
-// reintroduced.
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p target-backend=llvmir" \
 // RUN:   | FileCheck %s --check-prefix=LLVM
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p target-backend=llvmir" \
@@ -51,7 +55,7 @@ func.func @vec_xori_512(%a: vector<16xi32>, %b: vector<16xi32>) -> vector<16xi32
   return %r : vector<16xi32>
 }
 
-// Non-512-bit vectors stay legal on both backends (no aievec promotion).
+// Non-512-bit vectors and scalars stay legal on both backends.
 
 // CPP-LABEL: func @vec_andi_256(
 // LLVM-LABEL: func @vec_andi_256(
@@ -64,8 +68,6 @@ func.func @vec_andi_256(%a: vector<8xi32>, %b: vector<8xi32>) -> vector<8xi32> {
   return %r : vector<8xi32>
 }
 
-// Scalar bitwise ops are unaffected on both backends.
-
 // CPP-LABEL: func @scalar_andi(
 // LLVM-LABEL: func @scalar_andi(
 func.func @scalar_andi(%a: i32, %b: i32) -> i32 {
@@ -77,9 +79,6 @@ func.func @scalar_andi(%a: i32, %b: i32) -> i32 {
   return %r : i32
 }
 
-// Belt-and-braces global check for the AIE2P/LLVMIR run: no aievec.{band,bor,
-// bxor,bneg} ops anywhere in the output. Anchored by the file-level CHECK so
-// FileCheck won't claim vacuous success.
 // NO-BITWISE-AIEVEC: module
 // NO-BITWISE-AIEVEC-NOT: aievec.band
 // NO-BITWISE-AIEVEC-NOT: aievec.bor
