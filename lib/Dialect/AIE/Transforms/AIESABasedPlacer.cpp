@@ -247,6 +247,8 @@ bool SABasedPlacer::isLegalPosition(Operation *tile, TileID pos) const {
 // Memory capacity tracking
 //===----------------------------------------------------------------------===//
 
+// Overhead per core tile for stack, etc.
+static constexpr int64_t kCoreOverhead = 4096;
 
 // Add a single fifo's contributions to memory and DMA usage maps.
 void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
@@ -298,24 +300,24 @@ void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     if (prodPos == consPos) {
       // Same tile: use max of producer/consumer size × depth
       int depth = std::max(fb.producerDepth, consDepth);
-      int64_t maxSize = std::max(fb.sizeBytes, fb.consumerSizeBytes);
+      int64_t maxSize = std::max(fb.producerSizeBytes, fb.consumerSizeBytes);
       int64_t total = maxSize * depth;
       currentMemUsage[prodPos] += sign * capForMemTile(total, prodPos);
     } else if (prodIsCore && consIsCore) {
       if (!prodCharged) {
-        currentMemUsage[prodPos] += sign * fb.sizeBytes * fb.producerDepth;
+        currentMemUsage[prodPos] += sign * fb.producerSizeBytes * fb.producerDepth;
         prodCharged = true;
       }
       currentMemUsage[consPos] += sign * fb.consumerSizeBytes * consDepth;
     } else if (prodIsCore && !consIsCore) {
       if (!prodCharged) {
-        currentMemUsage[prodPos] += sign * fb.sizeBytes * fb.producerDepth;
+        currentMemUsage[prodPos] += sign * fb.producerSizeBytes * fb.producerDepth;
         prodCharged = true;
       }
     } else if (!prodIsCore && consIsCore) {
       // MemTile/Shim producer to CoreTile consumer
       if (!prodCharged) {
-        int64_t total = fb.sizeBytes * fb.producerDepth;
+        int64_t total = fb.producerSizeBytes * fb.producerDepth;
         currentMemUsage[prodPos] += sign * capForMemTile(total, prodPos);
         prodCharged = true;
       }
@@ -324,7 +326,7 @@ void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     } else if (!prodIsCore && !consIsCore) {
       // MemTile to MemTile or Shim: charge producer with cap
       if (!prodCharged) {
-        int64_t total = fb.sizeBytes * fb.producerDepth;
+        int64_t total = fb.producerSizeBytes * fb.producerDepth;
         currentMemUsage[prodPos] += sign * capForMemTile(total, prodPos);
         prodCharged = true;
       }
@@ -366,7 +368,6 @@ void SABasedPlacer::initResourceTracking() {
     addFifoContribution(i, +1);
 
   // Add static buffers and core overhead
-  constexpr int64_t kCoreOverhead = 4096;
   for (auto &[op, bufSize] : staticBufferSizes) {
     auto posIt = currentPlacement.find(op);
     if (posIt != currentPlacement.end())
@@ -388,10 +389,19 @@ int SABasedPlacer::computePenaltyFromMaps() const {
   int penalty = 0;
 
   // Memory penalty with neighbor spillover
+  int64_t memTileCapacity = targetModel->getMemTileSize();
   for (auto &[tilePos, used] : currentMemUsage) {
-    if (tilePos.row < 2 || used <= coreCapacity)
+    auto tileType = targetModel->getTileType(tilePos.col, tilePos.row);
+    // Skip shim tiles (no data memory to overflow)
+    if (tileType == AIETileType::ShimNOCTile ||
+        tileType == AIETileType::ShimPLTile)
       continue;
-    int64_t overflow = used - coreCapacity;
+    int64_t capacity = (tileType == AIETileType::MemTile)
+                           ? memTileCapacity
+                           : coreCapacity;
+    if (used <= capacity)
+      continue;
+    int64_t overflow = used - capacity;
     TileID neighbors[] = {
         {tilePos.col - 1, tilePos.row},
         {tilePos.col, tilePos.row + 1},
@@ -439,7 +449,6 @@ int SABasedPlacer::updateResourcePenalty(
   }
 
   // Update static buffer and overhead contributions for moved tiles
-  constexpr int64_t kCoreOverhead = 4096;
   for (auto &[op, oldPos] : oldPlacements) {
     // Subtract old static buffer contribution
     auto bufIt = staticBufferSizes.find(op);
@@ -940,10 +949,10 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
       auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
       int64_t elementBits =
           dataLayout.getTypeSizeInBits(elemType.getElementType());
-      fb.sizeBytes = elemType.getNumElements() * elementBits / 8;
+      fb.producerSizeBytes = elemType.getNumElements() * elementBits / 8;
 
       // Consumer element size (may differ with consumerElemType)
-      fb.consumerSizeBytes = fb.sizeBytes;
+      fb.consumerSizeBytes = fb.producerSizeBytes;
       if (auto consType = ofOp.getConsumerElemType()) {
         auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
         auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
@@ -1503,7 +1512,7 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
           if (typeIt != tileTypes.end() &&
               typeIt->second == AIETileType::CoreTile) {
             fifoOnTile.push_back(
-                {fi, fb.sizeBytes * fb.producerDepth});
+                {fi, fb.producerSizeBytes * fb.producerDepth});
           }
         }
         // Consumer side
@@ -1519,7 +1528,7 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
             continue;
           int d = (ci < fb.consumerDepths.size()) ? fb.consumerDepths[ci]
                                                   : fb.producerDepth;
-          fifoOnTile.push_back({fi, fb.sizeBytes * d});
+          fifoOnTile.push_back({fi, fb.producerSizeBytes * d});
         }
       }
 
