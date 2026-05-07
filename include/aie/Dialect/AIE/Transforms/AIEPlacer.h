@@ -137,6 +137,10 @@ private:
   // Adjacency<Predicate> once both have landed.
   struct BufferAdjacency {
     llvm::SmallVector<std::pair<LogicalTileOp, TileLike>, 4> edges;
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
+        tileToEdges;
+  };
+
   // `tileToEdges` indexes into `edges` only for `LogicalTileOp` endpoints
   // (the ones the placer visits); `TileOp` peers contribute coords via
   // `TileLike::tryGetCol`/`tryGetRow`.

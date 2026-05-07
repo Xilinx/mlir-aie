@@ -166,6 +166,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                     << "tile (" << tile.col << ", " << tile.row
                     << ") violates shared-L1 buffer adjacency";
         attachBufferPeerNotes(diag, logicalTile, bufferAdjacency);
+        return failure();
+      }
       if (!satisfiesCascadeAdjacency(logicalTile, tile, cascadeAdjacency)) {
         auto diag = logicalTile.emitError()
                     << "tile (" << tile.col << ", " << tile.row
@@ -226,20 +228,17 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           diag << "no compute tile available matching constraint ("
                << (col ? std::to_string(*col) : "?") << ", "
                << (row ? std::to_string(*row) : "?") << ")"
-               << (adjacencyWasCause ? " and shared-L1 buffer adjacency" : "");
+               << (adjacencyWasCause ? " and shared-L1 buffer adjacency" : "")
+               << (hasCascade ? " and cascade adjacency" : "");
         } else {
           diag << "no available compute tiles for placement"
                << (adjacencyWasCause
                        ? " (shared-L1 buffer adjacency unsatisfiable)"
-                       : "");
+                       : "")
+               << (hasCascade ? " (cascade adjacency unsatisfiable)" : "");
         }
         if (adjacencyWasCause)
           attachBufferPeerNotes(diag, logicalTile, bufferAdjacency);
-               << (hasCascade ? " and cascade adjacency" : "");
-        } else {
-          diag << "no available compute tiles for placement"
-               << (hasCascade ? " (cascade adjacency unsatisfiable)" : "");
-        }
         if (hasCascade)
           attachCascadePeerNotes(diag, logicalTile, cascadeAdjacency);
         return failure();
@@ -447,6 +446,21 @@ SequentialPlacer::buildChannelRequirements(
   return channelRequirements;
 }
 
+// Walk view-like aliasing memref ops back to the underlying BufferOp.
+static BufferOp traceToBuffer(Value val) {
+  for (Operation *op = val.getDefiningOp(); op;) {
+    if (auto buf = dyn_cast<BufferOp>(op))
+      return buf;
+    if (auto view = dyn_cast<ViewLikeOpInterface>(op)) {
+      val = view.getViewSource();
+      op = val.getDefiningOp();
+      continue;
+    }
+    return nullptr;
+  }
+  return nullptr;
+}
+
 static std::optional<TileID>
 resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   auto it = placed.find(peer.getOperation());
@@ -494,6 +508,10 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
           adjacency.tileToEdges[owner.getOperation()].push_back(idx);
       }
     });
+  }
+  return adjacency;
+}
+
 SequentialPlacer::CascadeAdjacency
 SequentialPlacer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
   CascadeAdjacency adjacency;
@@ -552,6 +570,8 @@ void SequentialPlacer::attachBufferPeerNotes(
         << "shared-L1 buffer " << (thisIsConsumer ? "owner" : "consumer")
         << " peer placed at (" << peerPos->col << ", " << peerPos->row << ")";
   }
+}
+
 void SequentialPlacer::attachCascadePeerNotes(
     InFlightDiagnostic &diag, LogicalTileOp logicalTile,
     const CascadeAdjacency &adjacency) const {
