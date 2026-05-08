@@ -204,3 +204,105 @@ module @shimtile_col_constraint {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// Interleaved partial-column hints across two columns must produce
+// row-contiguous packing per column. Regression test for a swap-to-front
+// search bug that could leak (col, row+1) candidates past a moving cursor
+// and place at (col, row+2) instead.
+// CHECK-LABEL: @interleaved_partial_cols_2x2
+module @interleaved_partial_cols_2x2 {
+  aie.device(npu1) {
+    // CHECK-DAG: aie.tile(0, 2)
+    // CHECK-DAG: aie.tile(1, 2)
+    // CHECK-DAG: aie.tile(0, 3)
+    // CHECK-DAG: aie.tile(1, 3)
+    // CHECK-NOT: aie.tile(0, 4)
+    // CHECK-NOT: aie.tile(1, 4)
+    %t1 = aie.logical_tile<CoreTile>(0, ?)
+    %t2 = aie.logical_tile<CoreTile>(1, ?)
+    %t3 = aie.logical_tile<CoreTile>(0, ?)
+    %t4 = aie.logical_tile<CoreTile>(1, ?)
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    aie.core(%t3) { aie.end }
+    aie.core(%t4) { aie.end }
+  }
+}
+
+// -----
+
+// Generalizes the 2-column case to three columns: requests are issued in
+// row-major order across columns, and each column must pack from row 2 up.
+// CHECK-LABEL: @interleaved_partial_cols_3x2
+module @interleaved_partial_cols_3x2 {
+  aie.device(npu1) {
+    // CHECK-DAG: aie.tile(0, 2)
+    // CHECK-DAG: aie.tile(1, 2)
+    // CHECK-DAG: aie.tile(2, 2)
+    // CHECK-DAG: aie.tile(0, 3)
+    // CHECK-DAG: aie.tile(1, 3)
+    // CHECK-DAG: aie.tile(2, 3)
+    // CHECK-NOT: aie.tile({{.*}}, 4)
+    %t1 = aie.logical_tile<CoreTile>(0, ?)
+    %t2 = aie.logical_tile<CoreTile>(1, ?)
+    %t3 = aie.logical_tile<CoreTile>(2, ?)
+    %t4 = aie.logical_tile<CoreTile>(0, ?)
+    %t5 = aie.logical_tile<CoreTile>(1, ?)
+    %t6 = aie.logical_tile<CoreTile>(2, ?)
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    aie.core(%t3) { aie.end }
+    aie.core(%t4) { aie.end }
+    aie.core(%t5) { aie.end }
+    aie.core(%t6) { aie.end }
+  }
+}
+
+// -----
+
+// Column visit order in the request stream should not affect per-column
+// packing. Requesting col 2 before col 0 still packs each column from row 2.
+// CHECK-LABEL: @interleaved_partial_cols_out_of_order
+module @interleaved_partial_cols_out_of_order {
+  aie.device(npu1) {
+    // CHECK-DAG: aie.tile(2, 2)
+    // CHECK-DAG: aie.tile(0, 2)
+    // CHECK-DAG: aie.tile(2, 3)
+    // CHECK-DAG: aie.tile(0, 3)
+    // CHECK-NOT: aie.tile({{.*}}, 4)
+    %t1 = aie.logical_tile<CoreTile>(2, ?)
+    %t2 = aie.logical_tile<CoreTile>(0, ?)
+    %t3 = aie.logical_tile<CoreTile>(2, ?)
+    %t4 = aie.logical_tile<CoreTile>(0, ?)
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    aie.core(%t3) { aie.end }
+    aie.core(%t4) { aie.end }
+  }
+}
+
+// -----
+
+// Interleaved partial-column requests followed by a fully constrained tile
+// in one of the same columns. The partial path runs first and must still
+// pack contiguously; the fully constrained tile then occupies its exact slot.
+// CHECK-LABEL: @mixed_partial_then_full
+module @mixed_partial_then_full {
+  aie.device(npu1) {
+    // CHECK-DAG: aie.tile(0, 2)
+    // CHECK-DAG: aie.tile(1, 2)
+    // CHECK-DAG: aie.tile(0, 3)
+    // CHECK-DAG: aie.tile(1, 3)
+    // CHECK-NOT: aie.tile(0, 4)
+    %t1 = aie.logical_tile<CoreTile>(0, ?)
+    %t2 = aie.logical_tile<CoreTile>(1, ?)
+    %t3 = aie.logical_tile<CoreTile>(0, ?)
+    %t4 = aie.logical_tile<CoreTile>(1, 3)
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    aie.core(%t3) { aie.end }
+    aie.core(%t4) { aie.end }
+  }
+}
