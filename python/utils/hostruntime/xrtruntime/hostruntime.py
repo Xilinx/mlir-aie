@@ -373,6 +373,12 @@ class CachedXRTRuntime(XRTHostRuntime):
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
+        # Memoised read_insts() output keyed by (insts_path, insts_mtime).
+        # Skips the file open+read on every load() call when content is
+        # unchanged.  Cheap (insts files are ~hundreds of bytes); the win
+        # shows up when NPU_CACHE_HOME lives on a slow/networked filesystem
+        # — open+read can be ~290us there vs ~10us on local FS.
+        self._insts_content_cache = OrderedDict()
 
         # Set default from dict if present
         self._cache_size = None
@@ -397,6 +403,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict()
         while self._insts_cache:
             self._evict_insts()
+        self._insts_content_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
 
     def _cleanup_entry(self, entry):
@@ -430,6 +437,24 @@ class CachedXRTRuntime(XRTHostRuntime):
     def _evict_insts(self):
         key, entry = self._insts_cache.popitem(last=False)
         self._cleanup_insts_entry(entry)
+
+    def _read_insts_cached(self, insts_path, insts_mtime):
+        """``read_insts(insts_path)`` memoised by ``(path, mtime)``.
+
+        See ``__init__`` comment: shaves ~280us per load() when insts.bin
+        lives on a networked filesystem (e.g. ``$HOME`` on NFS).  Stale
+        files are detected via mtime so the cache is correct across rebuilds.
+        """
+        key = (str(insts_path), insts_mtime)
+        cached = self._insts_content_cache.get(key)
+        if cached is not None:
+            self._insts_content_cache.move_to_end(key)
+            return cached
+        insts = self.read_insts(insts_path)
+        if len(self._insts_content_cache) >= self._cache_size:
+            self._insts_content_cache.popitem(last=False)
+        self._insts_content_cache[key] = insts
+        return insts
 
     def run(
         self,
@@ -578,7 +603,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                         f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                     )
 
-            insts = self.read_insts(insts_path)
+            insts = self._read_insts_cached(insts_path, insts_mtime)
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
                 ext_kernel_key = (kernel_name, str(insts_path), insts_mtime)
