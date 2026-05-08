@@ -585,24 +585,25 @@ def mobilenet_iron():
         if os.path.exists(data_dir + fc2_f):
             fc2_data = np.fromfile(data_dir + fc2_f, sep=",", dtype=np.int8)
 
-        # Single PersistentBuffer with ping-pong: FC1 on fc2_memtile, FC2 as ping-pong
-        # on fc1_memtile (adjacent MemTile). DMA BD chain alternates: FC2→FC1→FC2→...
-        # This matches original's single DMA flow with two-BD chain from MemTile(N,1).
-        # Lock IDs matching original:
-        #   MemTile (FC2): lock_id=0 (prod), lock_id=1 (cons)
-        #   MemTile (FC1 ping-pong on adjacent tile): lock_id=0 (prod), lock_id=1 (cons)
-        #   Compute tile: lock_id=2 (prod), lock_id=3 (cons)
+        # PersistentBuffer ping-pong, FC1-first to match lowlevel chronologically.
+        # Primary memtile = fc2_memtiles[i] (the *odd* memtile column in
+        # lowlevel — that's where the MM2S DMA flow lives) so we don't collide
+        # with post_L1's MM2S 0 on MemTile(4,1). The data layout differs from
+        # lowlevel (lowlevel puts FC1_x on the even tile, FC2_x on the odd
+        # tile) but the on-wire sequence is what matters: BD1 sends the primary
+        # buffer first, so we put FC1 data in the primary buffer regardless of
+        # which tile holds it.
         fc_pb = StaticWeightStream(
             obj_type=_i8((fc_full_per_tile,)),
-            initial_value=fc2_data,
-            name=f"post_l2_fc2_wts_{i}",
+            initial_value=fc1_data,
+            name=f"post_l2_fc1_wts_{i}",
             recv_type=_i8((fc_recv_per_tile,)),
             repeat_count=PostOutputSplitL2,
             memtile_placement=fc2_memtiles[i],
             compute_placement=fc_comptiles[i],
             mm2s_channel=0,
             s2mm_channel=1,
-            ping_pong_buf=(_i8((fc_full_per_tile,)), fc1_data, f"post_l2_fc1_wts_{i}"),
+            ping_pong_buf=(_i8((fc_full_per_tile,)), fc2_data, f"post_l2_fc2_wts_{i}"),
             ping_pong_memtile=fc1_memtiles[i],
             mem_lock_id=0,
             comp_lock_id=2,
@@ -622,19 +623,14 @@ def mobilenet_iron():
             sf2,
             n_splits=PostOutputSplitL2,
         ):
-            # Match lowlevel postBlockL2: per outer pass, acquire/release act_in
-            # once per FC pass. Lowlevel runtime ping-pongs the FC input through
-            # L3 (avgpool out -> act_out_post_shim_FC FC1 -> L3 -> act_out_post_shim_FC FC2),
-            # so post_L2 sees TWO distinct inputs per inference. Acquiring once and
-            # processing both passes (as the previous iron code did) hangs because
-            # the runtime sends two FC inputs but only one act_in.release fires.
-            # FC2 first (matches PB ping-pong: initial=fc2_data on fc2_memtile,
-            # ping_pong=fc1_data on fc1_memtile -> DMA stream is FC2 then FC1).
+            # Match lowlevel postBlockL2 exactly: FC1 first, then FC2, with
+            # one acquire/release of act_in per pass. Runtime pings FC input
+            # through L3 (avgpool -> FC1 in, FC1 out -> FC2 in).
             elem_in = act_in.acquire(1)
             for _ in range_(n_splits):
                 elem_out = act_out.acquire(1)
                 wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC_fc2, outC, n_co, sf2)
+                k(elem_in, wts, elem_out, 1, inC_fc1, outC, n_co, sf1)
                 wts_h.release(1)
                 act_out.release(1)
             act_in.release(1)
@@ -642,7 +638,7 @@ def mobilenet_iron():
             for _ in range_(n_splits):
                 elem_out = act_out.acquire(1)
                 wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC_fc1, outC, n_co, sf1)
+                k(elem_in, wts, elem_out, 1, inC_fc2, outC, n_co, sf2)
                 wts_h.release(1)
                 act_out.release(1)
             act_in.release(1)
@@ -744,10 +740,10 @@ def mobilenet_iron():
             tile=Tile(3, 0),
         )
         rt.finish_task_group(_tg_drain)
-        # First FC pass: avgpool output (in inp scratch at offset 0) -> FC input.
-        # post_L2 worker computes FC2 first (PB ping-pong: initial=fc2 weights),
-        # so the first FC output is the FC2-of-avgpool result. We round-trip it
-        # through L3 (offset = _post_l1_out_sz) and re-fill as the second FC input.
+        # First FC pass: avgpool output (in inp scratch at offset 0) -> FC1 input.
+        # post_L2 worker now computes FC1 first (matches lowlevel chronologically).
+        # Round-trip the FC1 output through L3 (offset = _post_l1_out_sz) and
+        # re-fill as FC2 input.
         rt.fill(
             act_out_post_shim_FC.prod(),
             inp,
