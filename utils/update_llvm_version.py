@@ -344,8 +344,8 @@ def main():
         action="store_true",
         help=(
             "Identify target commit and check wheel availability without "
-            "modifying files. Writes target_commit, wheel_exists, and "
-            "bump_reason to $GITHUB_OUTPUT. Always exits 0."
+            "modifying files. Reports target_commit, wheel_exists, and "
+            "bump_reason via $GITHUB_OUTPUT instead of mutating files."
         ),
     )
     args = parser.parse_args()
@@ -465,7 +465,9 @@ def main():
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(f"bump_reason={reason}\n")
 
-    # 6. Update files
+    # 6. Update files. Use target_commit (from Triton/Torch/User) instead of
+    # eudsl's LLVM commit: eudsl is allowed to lag, but we want our LLVM commit
+    # to track the upstream we resolved against.
     update_files(
         target_commit, target_date, new_eudsl_version, wheel_version, wheel_datetime
     )

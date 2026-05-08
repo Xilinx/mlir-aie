@@ -1,5 +1,10 @@
 name: MLIR Distro
 
+# When dispatched with DISPATCH_NONCE set, embed the nonce in the run title so
+# callers (e.g. update-llvm.yml) can identify *their* dispatched run via
+# `gh run list --json displayTitle` instead of guessing by timestamp.
+run-name: ${{ inputs.DISPATCH_NONCE && format('MLIR Distro [{0}]', inputs.DISPATCH_NONCE) || 'MLIR Distro' }}
+
 on:
   pull_request:
     paths:
@@ -36,6 +41,11 @@ on:
         type: string
         required: false
         default: 'true'
+      DISPATCH_NONCE:
+        description: 'Optional unique identifier echoed into the run title so callers can locate this dispatched run.'
+        type: string
+        required: false
+        default: ''
 
 
   schedule:
