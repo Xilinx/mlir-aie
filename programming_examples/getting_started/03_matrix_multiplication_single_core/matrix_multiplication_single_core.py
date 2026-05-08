@@ -38,7 +38,6 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 
-
 # Tile size moved to/from the compute cores via mem tiles.
 _TILE_M = _TILE_K = _TILE_N = 64
 # AIE kernel intrinsic sizes — the DMA layout transforms below produce

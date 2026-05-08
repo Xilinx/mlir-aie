@@ -28,7 +28,6 @@ from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import print_cycles_summary
 
-
 _TRACE_JSON = "trace_passthrough_kernel.json"
 
 

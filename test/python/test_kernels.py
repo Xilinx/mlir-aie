@@ -26,7 +26,6 @@ from ml_dtypes import bfloat16
 from aie.iron.kernel import ExternalFunction
 from aie.iron import kernels
 
-
 # ---------------------------------------------------------------------------
 # Spec table
 # ---------------------------------------------------------------------------

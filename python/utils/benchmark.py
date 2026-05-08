@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """Benchmarking helpers for NPU kernel callables."""
+
 from __future__ import annotations
 
 import time
