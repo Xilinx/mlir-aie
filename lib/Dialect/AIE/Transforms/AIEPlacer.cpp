@@ -177,7 +177,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   };
 
   // Phase 3: Place constrained tiles then compute tiles
-  size_t nextCompIdx = 0;
   for (auto logicalTile : logicalTiles) {
     // Place fully constrained tiles at their specified coordinates
     auto col = logicalTile.tryGetCol();
@@ -218,9 +217,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       bool sawConstraintMatch = false;
       bool allConstraintMatchesFailedAdjacency = true;
 
-      for (size_t i = nextCompIdx; i < availability.compTiles.size(); ++i) {
-        TileID candidate = availability.compTiles[i];
-
+      for (TileID candidate : availability.compTiles) {
         // Check partial constraints
         if (col && candidate.col != *col)
           continue;
@@ -235,12 +232,18 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                                 cascadePred))
           continue;
 
-        // Found valid tile - swap to nextCompIdx position and use
-        std::swap(availability.compTiles[i],
-                  availability.compTiles[nextCompIdx]);
-        placement = availability.compTiles[nextCompIdx++];
+        // Found valid tile. Walk the array in sort order (column-major,
+        // ascending row within column) so the first match is the
+        // lowest-row tile in the requested column. Remove from
+        // availability to prevent re-allocation; the previous
+        // swap-to-front scheme could displace lower-row candidates past
+        // a moving cursor and produce non-contiguous row placement when
+        // partial-constraint hints interleaved columns.
+        placement = candidate;
         break;
       }
+      if (placement)
+        availability.removeTile(*placement, AIETileType::CoreTile);
 
       if (!placement) {
         bool adjacencyWasCause =
