@@ -690,37 +690,59 @@ def mobilenet_iron():
             strides=[0, 0, 0, 1],
         )
 
-    # strict_task_groups=False so we can mix the default group (fills/final
-    # drain) with an explicit group used only to force a wait between the
-    # avgpool drain and its re-fill in the post-block round-trip.
-    rt = Runtime(strict_task_groups=False)
+    # Use the gemm-style "one task_group at a time" pattern. Each task_group
+    # holds a batch of fills + a wait=True drain, and finish_task_group()
+    # awaits the drain AND frees every task in the group atomically. This
+    # avoids the previous bug of `dma_free_task` being emitted for tasks
+    # that were never awaited (act_in, weights, FC fills) — which deallocated
+    # their BD IDs while their DMAs were potentially still in flight.
+    rt = Runtime()
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)
-        rt.fill(act_in.prod(depth=1), inp, tile=Tile(0, 0))
+
+        # ---- Group 1: input + weights + avgpool drain ----
+        # All upstream fills + the first sync drain in the same group. By the
+        # time the avgpool drain completes, init_conv has consumed all of
+        # act_in and bn13/14 have consumed their weights, so freeing all of
+        # those at finish_task_group() is safe (causal closure).
+        tg1 = rt.task_group()
+        rt.fill(act_in.prod(depth=1), inp, tile=Tile(0, 0), task_group=tg1)
         # Slice each sub-weight from the combined buffer (offsets in int8 elements):
         #   0..76799:   bn13 L1 (76800)
         #   76800..153599: bn13 L3 (38400 put + 38400 get = 76800 combined)
         #   153600..230399: bn14 L1 (76800)
         #   230400..307199: bn14 L3 (38400 put + 38400 get = 76800 combined)
-        rt.fill(wts_fifos[0].prod(), cascade_wts, _wts_tap(0, _L1), tile=Tile(4, 0))
-        rt.fill(wts_fifos[1].prod(), cascade_wts, _wts_tap(_L1, _L3f), tile=Tile(5, 0))
+        rt.fill(
+            wts_fifos[0].prod(),
+            cascade_wts,
+            _wts_tap(0, _L1),
+            tile=Tile(4, 0),
+            task_group=tg1,
+        )
+        rt.fill(
+            wts_fifos[1].prod(),
+            cascade_wts,
+            _wts_tap(_L1, _L3f),
+            tile=Tile(5, 0),
+            task_group=tg1,
+        )
         rt.fill(
             wts_fifos[2].prod(),
             cascade_wts,
             _wts_tap(_L1 + _L3f, _L1),
             tile=Tile(6, 0),
+            task_group=tg1,
         )
         rt.fill(
             wts_fifos[3].prod(),
             cascade_wts,
             _wts_tap(_L1 * 2 + _L3f, _L3f),
             tile=Tile(7, 0),
+            task_group=tg1,
         )
         # Round-trip the avgpool output through L3 (DDR) — matches original
         # design's shim 30/40 hop. Reuses inp as scratch (input has been fully
-        # consumed by the time PostL1 produces output). drain waits so that the
-        # subsequent fill sees valid data.
-        # 1280 ui16 = 2560 bytes; tap is in i8 (inp dtype) units.
+        # consumed by the time PostL1 produces output).
         # Match lowlevel byte offsets: avgpool/FC1-input scratch starts at byte
         # 2560 (i32 offset 640 in lowlevel arg0); FC1-output/FC2-input scratch
         # starts at byte 5120 (i32 offset 1280).
@@ -731,29 +753,28 @@ def mobilenet_iron():
             sizes=[1, 1, 1, _post_l1_out_sz],
             strides=[0, 0, 0, 1],
         )
-        # Drain into its own task_group + finish so the await is emitted BEFORE
-        # the fill (matches original's `dma_wait("act_out_post_avgpool_shim")`).
-        # iron's default task group defers all awaits to the end of the sequence,
-        # which would let the fill's BD start before the DDR scratch is valid.
-        _tg_drain = rt.task_group()
         rt.drain(
             act_out_post_avgpool_shim.cons(),
             inp,
             tap=_post_l1_scratch_tap,
             wait=True,
-            task_group=_tg_drain,
+            task_group=tg1,
             tile=Tile(3, 0),
         )
-        rt.finish_task_group(_tg_drain)
-        # First FC pass: avgpool output (in inp scratch at offset 0) -> FC1 input.
-        # post_L2 worker now computes FC1 first (matches lowlevel chronologically).
-        # Round-trip the FC1 output through L3 (offset = _post_l1_out_sz) and
-        # re-fill as FC2 input.
+        rt.finish_task_group(tg1)
+
+        # ---- Group 2: FC1 fill + FC1 drain ----
+        # FC1 fill reads the avgpool scratch (drained above). FC1 drain
+        # waits for FC compute to consume the fill, then drains FC1 output
+        # to L3. By finish_task_group, both FC1 fill and FC1 drain have
+        # completed.
+        tg2 = rt.task_group()
         rt.fill(
             act_out_post_shim_FC.prod(),
             inp,
             tap=_post_l1_scratch_tap,
             tile=Tile(4, 0),
+            task_group=tg2,
         )
         _post_fc_out_tap = TensorAccessPattern(
             (tensorInW * tensorInH * tensorInC,),
@@ -761,26 +782,33 @@ def mobilenet_iron():
             sizes=[1, 1, 1, _post_l1_out_sz],
             strides=[0, 0, 0, 1],
         )
-        # Second FC pass: drain first FC output to L3 then re-feed as input.
-        # Wait so the subsequent fill sees the L3 buffer fully written.
-        _tg_fc1 = rt.task_group()
         rt.drain(
             act_out_of.cons(),
             inp,
             tap=_post_fc_out_tap,
             wait=True,
-            task_group=_tg_fc1,
+            task_group=tg2,
             tile=Tile(7, 0),
         )
-        rt.finish_task_group(_tg_fc1)
+        rt.finish_task_group(tg2)
+
+        # ---- Group 3: FC2 fill + FC2 final drain to host ----
+        tg3 = rt.task_group()
         rt.fill(
             act_out_post_shim_FC.prod(),
             inp,
             tap=_post_fc_out_tap,
             tile=Tile(4, 0),
+            task_group=tg3,
         )
-        # Final drain: second FC output -> host buffer.
-        rt.drain(act_out_of.cons(), out, wait=True, tile=Tile(7, 0))
+        rt.drain(
+            act_out_of.cons(),
+            out,
+            wait=True,
+            tile=Tile(7, 0),
+            task_group=tg3,
+        )
+        rt.finish_task_group(tg3)
 
     # ------------------------------------------------------------------
     # Generate MLIR
