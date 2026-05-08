@@ -10,8 +10,6 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
-#include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
@@ -177,7 +175,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   };
 
   // Phase 3: Place constrained tiles then compute tiles
-  size_t nextCompIdx = 0;
   for (auto logicalTile : logicalTiles) {
     // Place fully constrained tiles at their specified coordinates
     auto col = logicalTile.tryGetCol();
@@ -218,10 +215,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       bool sawConstraintMatch = false;
       bool allConstraintMatchesFailedAdjacency = true;
 
-      for (size_t i = nextCompIdx; i < availability.compTiles.size(); ++i) {
-        TileID candidate = availability.compTiles[i];
-
-        // Check partial constraints
+      // compTiles stays sorted column-major / ascending-row, so the first
+      // match is the lowest-row tile in the requested column.
+      for (const TileID &candidate : availability.compTiles) {
         if (col && candidate.col != *col)
           continue;
         if (row && candidate.row != *row)
@@ -234,11 +230,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
                                 cascadePred))
           continue;
-
-        // Found valid tile - swap to nextCompIdx position and use
-        std::swap(availability.compTiles[i],
-                  availability.compTiles[nextCompIdx]);
-        placement = availability.compTiles[nextCompIdx++];
+        placement = candidate;
         break;
       }
 
@@ -274,6 +266,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
 
       result[logicalTile] = *placement;
+      availability.removeTile(*placement, AIETileType::CoreTile);
     }
 
     if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
@@ -283,43 +276,24 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     }
   }
 
-  // Phase 4: Place mem/shim tiles by connectivity groups (ObjectFifo + Flow).
-  // Vector iteration order is stable, so placement is reproducible when
-  // multiple groups compete for the same physical tiles.
-  SmallVector<ConnectivityGroup> groups;
-  buildObjectFifoGroups(objectFifos, objectFifoLinks, groups);
-  buildFlowGroups(flows, pktFlows, groups);
+  // Phase 4: Place each remaining non-core (mem/shim) LTO at the centroid
+  // column of its placed core peers, reached transitively through any
+  // connectivity adjacency.
+  auto objectFifoAdjacency = buildObjectFifoAdjacency(objectFifos);
+  auto flowAdjacency = buildFlowAdjacency(flows, pktFlows);
+  SmallVector<const Adjacency *, 2> connectivityAdjacencies = {
+      &objectFifoAdjacency, &flowAdjacency};
 
-  for (auto &group : groups) {
-    if (failed(placeNonCoreTilesInGroup(group, channelRequirements)))
-      return failure();
-  }
-
-  // Phase 5: Fallback for remaining unplaced non-core tiles
   for (auto logicalTile : logicalTiles) {
-    // Skip already placed tiles
     if (result.count(logicalTile.getOperation()))
       continue;
-
-    // Skip core tiles (handled above) and ShimPLTile (unsupported)
     AIETileType tileType = logicalTile.getTileType();
     if (tileType == AIETileType::CoreTile ||
         tileType == AIETileType::ShimPLTile)
       continue;
-
-    // Use column constraint if specified, otherwise start from column 0
-    auto colConstraint = logicalTile.tryGetCol();
-    int targetCol = colConstraint ? *colConstraint : 0;
-
-    // Find first available tile of matching type (no DMA requirements)
-    auto maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
-                                          0, 0, tileType);
-
-    if (!maybeTile)
-      return logicalTile.emitError()
-             << "no " << stringifyAIETileType(tileType) << " available";
-
-    result[logicalTile] = *maybeTile;
+    if (failed(placeNonCoreTileByCentroid(logicalTile, connectivityAdjacencies,
+                                          channelRequirements)))
+      return failure();
   }
 
   return success();
@@ -588,52 +562,35 @@ void SequentialPlacer::attachPeerNotes(
   }
 }
 
-void SequentialPlacer::buildObjectFifoGroups(
-    ArrayRef<ObjectFifoCreateOp> objectFifos,
-    ArrayRef<ObjectFifoLinkOp> objectFifoLinks,
-    SmallVectorImpl<ConnectivityGroup> &groups) {
+SequentialPlacer::Adjacency SequentialPlacer::buildObjectFifoAdjacency(
+    ArrayRef<ObjectFifoCreateOp> objectFifos) {
+  Adjacency adjacency;
+  for (auto ofOp : objectFifos)
+    for (Value consumer : ofOp.getConsumerTiles())
+      adjacency.addEdgeFromValues(ofOp.getProducerTile(), consumer);
+  return adjacency;
+}
 
-  // Linked fifos share a group ID. Unlinked fifos each get their own.
-  llvm::StringMap<int> fifoToGroup;
-  int nextGroupId = 0;
-  for (auto linkOp : objectFifoLinks) {
-    int groupId = nextGroupId++;
-    for (auto fifoAttr : linkOp.getFifoIns())
-      fifoToGroup[cast<FlatSymbolRefAttr>(fifoAttr).getValue()] = groupId;
-    for (auto fifoAttr : linkOp.getFifoOuts())
-      fifoToGroup[cast<FlatSymbolRefAttr>(fifoAttr).getValue()] = groupId;
+SequentialPlacer::Adjacency
+SequentialPlacer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
+                                     ArrayRef<PacketFlowOp> pktFlows) {
+  Adjacency adjacency;
+  for (auto flow : flows)
+    adjacency.addEdgeFromValues(flow.getSource(), flow.getDest());
+
+  for (auto pktFlow : pktFlows) {
+    SmallVector<Value> srcs, dsts;
+    pktFlow.walk([&](Operation *op) {
+      if (auto src = dyn_cast<PacketSourceOp>(op))
+        srcs.push_back(src.getTile());
+      else if (auto dst = dyn_cast<PacketDestOp>(op))
+        dsts.push_back(dst.getTile());
+    });
+    for (auto s : srcs)
+      for (auto d : dsts)
+        adjacency.addEdgeFromValues(s, d);
   }
-
-  // Map group ID -> index into `groups`. Insertion order = first-encountered
-  // fifo order, which matches IR walk order.
-  llvm::DenseMap<int, size_t> groupIdToIndex;
-
-  auto getOrCreateGroup = [&](int groupId) -> ConnectivityGroup & {
-    auto [it, inserted] = groupIdToIndex.try_emplace(groupId, groups.size());
-    if (inserted)
-      groups.emplace_back();
-    return groups[it->second];
-  };
-
-  auto recordEndpoint = [&](Value tileVal, ConnectivityGroup &group) {
-    auto lt = dyn_cast_or_null<LogicalTileOp>(tileVal.getDefiningOp());
-    if (!lt)
-      return;
-    if (lt.getTileType() == AIETileType::CoreTile)
-      group.coreTiles.push_back(lt);
-    else
-      group.nonCoreTiles.push_back(lt);
-  };
-
-  int unlinkedGroupId = nextGroupId;
-  for (auto ofOp : objectFifos) {
-    auto it = fifoToGroup.find(ofOp.getSymName());
-    int groupId = (it != fifoToGroup.end()) ? it->second : unlinkedGroupId++;
-    ConnectivityGroup &group = getOrCreateGroup(groupId);
-    recordEndpoint(ofOp.getProducerTile(), group);
-    for (Value consumerTile : ofOp.getConsumerTiles())
-      recordEndpoint(consumerTile, group);
-  }
+  return adjacency;
 }
 
 // Already-resolved TileOps have no placer-visible budget, so only flows whose
@@ -685,109 +642,76 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
   }
 }
 
-// MapVector / SetVector preserve insertion order so that group identity and
-// per-group tile order are stable across runs even when DMA capacity is tight.
-void SequentialPlacer::buildFlowGroups(
-    ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
-    SmallVectorImpl<ConnectivityGroup> &groups) {
-
-  llvm::MapVector<LogicalTileOp, llvm::SmallSetVector<LogicalTileOp, 4>> adj;
-
-  auto addEdge = [&](Value srcVal, Value dstVal) {
-    auto srcLT = dyn_cast_or_null<LogicalTileOp>(srcVal.getDefiningOp());
-    auto dstLT = dyn_cast_or_null<LogicalTileOp>(dstVal.getDefiningOp());
-    if (!srcLT || !dstLT)
-      return;
-    adj[srcLT].insert(dstLT);
-    adj[dstLT].insert(srcLT);
-  };
-
-  for (auto flow : flows)
-    addEdge(flow.getSource(), flow.getDest());
-
-  for (auto pktFlow : pktFlows) {
-    SmallVector<Value> srcs, dsts;
-    pktFlow.walk([&](Operation *op) {
-      if (auto src = dyn_cast<PacketSourceOp>(op))
-        srcs.push_back(src.getTile());
-      else if (auto dst = dyn_cast<PacketDestOp>(op))
-        dsts.push_back(dst.getTile());
-    });
-    for (auto s : srcs)
-      for (auto d : dsts)
-        addEdge(s, d);
-  }
-
-  llvm::DenseSet<LogicalTileOp> visited;
-  for (auto &entry : adj) {
-    LogicalTileOp seed = entry.first;
-    if (visited.count(seed))
-      continue;
-    ConnectivityGroup &group = groups.emplace_back();
-    SmallVector<LogicalTileOp> stack{seed};
-    visited.insert(seed);
-    while (!stack.empty()) {
-      LogicalTileOp cur = stack.pop_back_val();
-      if (cur.getTileType() == AIETileType::CoreTile)
-        group.coreTiles.push_back(cur);
-      else
-        group.nonCoreTiles.push_back(cur);
-      for (auto nbr : adj[cur]) {
-        if (visited.insert(nbr).second)
-          stack.push_back(nbr);
-      }
-    }
-  }
-}
-
-LogicalResult SequentialPlacer::placeNonCoreTilesInGroup(
-    const ConnectivityGroup &group,
+LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
+    LogicalTileOp logicalTile,
+    ArrayRef<const Adjacency *> connectivityAdjacencies,
     const llvm::DenseMap<Operation *, std::pair<int, int>>
         &channelRequirements) {
 
-  // Common column = rounded average of placed core endpoints' columns.
+  // BFS the connected component, summing placed-core columns. Walks
+  // through unplaced LTO peers so the centroid sees cores reachable
+  // transitively; TileOp peers terminate the walk.
+  llvm::DenseSet<Operation *> visited;
+  SmallVector<Operation *, 8> queue{logicalTile.getOperation()};
+  visited.insert(logicalTile.getOperation());
+
   int sumCols = 0;
-  int totalCoreEndpoints = 0;
-  for (auto coreTile : group.coreTiles) {
-    auto it = result.find(coreTile.getOperation());
-    if (it == result.end())
-      continue;
-    sumCols += it->second.col;
-    ++totalCoreEndpoints;
+  int placedCoreCount = 0;
+  while (!queue.empty()) {
+    Operation *current = queue.pop_back_val();
+    for (const Adjacency *adj : connectivityAdjacencies) {
+      auto it = adj->tileToEdges.find(current);
+      if (it == adj->tileToEdges.end())
+        continue;
+      for (unsigned idx : it->second) {
+        auto [first, second] = adj->edges[idx];
+        Operation *peerOp = (first.getOperation() == current)
+                                ? second.getOperation()
+                                : first.getOperation();
+        if (!visited.insert(peerOp).second)
+          continue;
+        auto peerLT = dyn_cast<LogicalTileOp>(peerOp);
+        if (!peerLT)
+          continue; // TileOp peer: don't BFS through it.
+        if (peerLT.getTileType() == AIETileType::CoreTile) {
+          if (auto resIt = result.find(peerOp); resIt != result.end()) {
+            sumCols += resIt->second.col;
+            ++placedCoreCount;
+          }
+          // Cores are leaves for centroid: they don't relay between
+          // non-core peers via core-to-core fifos.
+          continue;
+        }
+        queue.push_back(peerOp);
+      }
+    }
   }
-  int groupCommonCol =
-      totalCoreEndpoints > 0
-          ? (sumCols + totalCoreEndpoints / 2) / totalCoreEndpoints
-          : 0;
 
-  for (auto logicalTile : group.nonCoreTiles) {
-    if (result.count(logicalTile.getOperation()))
-      continue;
+  auto colConstraint = logicalTile.tryGetCol();
+  int centroidCol = placedCoreCount > 0
+                        ? (sumCols + placedCoreCount / 2) / placedCoreCount
+                        : 0;
+  int targetCol = colConstraint ? *colConstraint : centroidCol;
 
-    auto it = channelRequirements.find(logicalTile.getOperation());
-    int numInputChannels =
-        it != channelRequirements.end() ? it->second.first : 0;
-    int numOutputChannels =
-        it != channelRequirements.end() ? it->second.second : 0;
+  auto chanIt = channelRequirements.find(logicalTile.getOperation());
+  int numInputChannels =
+      chanIt != channelRequirements.end() ? chanIt->second.first : 0;
+  int numOutputChannels =
+      chanIt != channelRequirements.end() ? chanIt->second.second : 0;
 
-    auto colConstraint = logicalTile.tryGetCol();
-    int targetCol = colConstraint ? *colConstraint : groupCommonCol;
+  auto maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
+                                        numInputChannels, numOutputChannels,
+                                        logicalTile.getTileType());
+  if (!maybeTile)
+    return logicalTile.emitError()
+           << "no " << stringifyAIETileType(logicalTile.getTileType())
+           << " with sufficient DMA capacity";
 
-    auto maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
-                                          numInputChannels, numOutputChannels,
-                                          logicalTile.getTileType());
-
-    if (!maybeTile)
-      return logicalTile.emitError()
-             << "no " << stringifyAIETileType(logicalTile.getTileType())
-             << " with sufficient DMA capacity";
-
-    result[logicalTile] = *maybeTile;
-    if (numInputChannels > 0)
-      updateChannelUsage(*maybeTile, false, numInputChannels);
-    if (numOutputChannels > 0)
-      updateChannelUsage(*maybeTile, true, numOutputChannels);
-  }
+  result[logicalTile] = *maybeTile;
+  if (numInputChannels > 0)
+    updateChannelUsage(*maybeTile, false, numInputChannels);
+  if (numOutputChannels > 0)
+    updateChannelUsage(*maybeTile, true, numOutputChannels);
   return success();
 }
 
