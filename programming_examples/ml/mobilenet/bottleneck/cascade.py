@@ -485,12 +485,12 @@ def cascade_bottlenecks(
     # Explicit MemTile placement matches original design to avoid BD exhaustion.
     # Original: bn13 L1→MemTile(0,1), bn13 L3→MemTile(1,1)
     #           bn14 L1→MemTile(2,1), bn14 L3→MemTile(3,1)
-    bn13_wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1, name="bn13_wts_l1_full")
+    bn13_wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1, name="bn13_wts_L3L2_layer1")
     bn13_wts_l1_put, bn13_wts_l1_get = bn13_wts_l1_full.cons().split(
         offsets=[0, _l1_full_wts_sz // 2],  # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
-        names=["bn13_wts_l1_put", "bn13_wts_l1_get"],
+        names=["bn13_wts_memtile_layer1_put", "bn13_wts_memtile_layer1_get"],
         tile=Tile(0, 1),  # mem_tile_0_1 in original
         repeat_counts=[_InH, _InH],
     )
@@ -498,12 +498,12 @@ def cascade_bottlenecks(
     # L3 weights: full 76800 split into two 38400-byte halves at offsets [0, 38400].
     # Each half is delivered as 19200-byte chunks (split_wts_sz) — the MemTile DMA
     # walks through the half in 2 chunks per row × 7 rows = 14 chunks total.
-    bn13_wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1, name="bn13_wts_l3_full")
+    bn13_wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1, name="bn13_wts_L3L2_layer3")
     bn13_wts_l3_put, bn13_wts_l3_get = bn13_wts_l3_full.cons().split(
         offsets=[0, _l3_full_wts_sz // 2],  # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
-        names=["bn13_wts_l3_put", "bn13_wts_l3_get"],
+        names=["bn13_wts_memtile_layer3_put", "bn13_wts_memtile_layer3_get"],
         tile=Tile(1, 1),  # mem_tile_1_1 in original
         repeat_counts=[_InH, _InH],
     )
@@ -547,7 +547,7 @@ def cascade_bottlenecks(
     # We acquire depth=6 to allow all 7 rows to be buffered before the skip
     # consumer drains them (matching the original bn13_skip depth from source).
     bn13_skip_fifo = act_in.cons(depth=6).forward(
-        name="bn13_skip_fifo", depth=2, tile=Tile(5, 1)  # mem_tile_5_1 in original
+        name="bn13_skip", depth=2, tile=Tile(5, 1)  # mem_tile_5_1 in original
     )
 
     # -- Create bn13 Workers --
@@ -745,22 +745,22 @@ def cascade_bottlenecks(
 
     # -- Weight ObjectFifos for bn14 with explicit MemTile placement --
     # Original: bn14 L1→MemTile(2,1), bn14 L3→MemTile(3,1)
-    bn14_wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1, name="bn14_wts_l1_full")
+    bn14_wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1, name="bn14_wts_L3L2_layer1")
     bn14_wts_l1_put, bn14_wts_l1_get = bn14_wts_l1_full.cons().split(
         offsets=[0, _l1_full_wts_sz // 2],  # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
-        names=["bn14_wts_l1_put", "bn14_wts_l1_get"],
+        names=["bn14_wts_memtile_layer1_put", "bn14_wts_memtile_layer1_get"],
         tile=Tile(2, 1),  # mem_tile_2_1 in original
         repeat_counts=[_InH, _InH],
     )
 
-    bn14_wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1, name="bn14_wts_l3_full")
+    bn14_wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1, name="bn14_wts_L3L2_layer3")
     bn14_wts_l3_put, bn14_wts_l3_get = bn14_wts_l3_full.cons().split(
         offsets=[0, _l3_full_wts_sz // 2],  # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
-        names=["bn14_wts_l3_put", "bn14_wts_l3_get"],
+        names=["bn14_wts_memtile_layer3_put", "bn14_wts_memtile_layer3_get"],
         tile=Tile(3, 1),  # mem_tile_3_1 in original
         repeat_counts=[_InH, _InH],
     )
@@ -799,7 +799,7 @@ def cascade_bottlenecks(
 
     # bn14 skip: bn13 output forwarded to bn14 L3 GET via MemTile DMA.
     bn14_skip_fifo = act_bn13_out.cons(depth=6).forward(
-        name="bn14_skip_fifo", depth=2, tile=Tile(7, 1)  # mem_tile_7_1 in original
+        name="bn14_skip", depth=2, tile=Tile(7, 1)  # mem_tile_7_1 in original
     )
 
     w_bn14_l1_put = Worker(

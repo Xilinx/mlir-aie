@@ -486,8 +486,7 @@ def regular_bottlenecks(
     )
 
     act_bn1_bn2 = ObjectFifo(
-        np.ndarray[(_BN1_OUT_W, 1, _BN1_OUT_C), np.dtype[np.int8]], depth=2
-    )
+        np.ndarray[(_BN1_OUT_W, 1, _BN1_OUT_C), np.dtype[np.int8]], depth=2, name="act_bn1_bn2")
 
     bn1_act_1_2 = ObjectFifo(
         np.ndarray[(_BN1_IN_W, 1, _BN1_DW_CH), np.dtype[np.uint8]],
@@ -701,8 +700,7 @@ def regular_bottlenecks(
     )
 
     act_bn2_bn3 = ObjectFifo(
-        np.ndarray[(_BN2_OUT_W, 1, _BN2_OUT_C), np.dtype[np.int8]], depth=2
-    )
+        np.ndarray[(_BN2_OUT_W, 1, _BN2_OUT_C), np.dtype[np.int8]], depth=2, name="act_bn2_bn3")
 
     bn2_act_1_2 = ObjectFifo(
         np.ndarray[(_BN2_IN_W, 1, _BN2_DW_CH), np.dtype[np.uint8]],
@@ -1246,35 +1244,35 @@ def regular_bottlenecks(
     bn45_act_bn4_1_2 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn45_act_bn4_1_2",
+        name="bn4_bn5_act_bn8_1_2",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
     bn45_act_bn4_2_3 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn45_act_bn4_2_3",
+        name="bn4_bn5_act_bn8_2_3",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
     bn45_act_bn4_bn5 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="bn45_act_bn4_bn5",
+        name="bn4_bn5_act_bn8_bn9",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
     bn45_act_bn5_1_2 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn45_act_bn5_1_2",
+        name="bn4_bn5_act_bn9_1_2",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
     bn45_act_bn5_2_3 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn45_act_bn5_2_3",
+        name="bn4_bn5_act_bn9_2_3",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
@@ -1800,8 +1798,7 @@ def regular_bottlenecks(
     )
 
     act_bn6_bn7 = ObjectFifo(
-        np.ndarray[(_BN6_OUT_W, 1, _BN6_OUT_C), np.dtype[np.int8]], depth=2
-    )
+        np.ndarray[(_BN6_OUT_W, 1, _BN6_OUT_C), np.dtype[np.int8]], depth=2, name="act_bn6_bn7")
 
     bn6_act_1_2 = ObjectFifo(
         np.ndarray[(_BN6_IN_W, 1, _BN6_DW_CH), np.dtype[np.uint8]],
@@ -2338,7 +2335,7 @@ def regular_bottlenecks(
     act_bn9_out = ObjectFifo(
         np.ndarray[(_BN89_OUT_W, 1, _BN9_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="act_bn9_out",
+        name="act_bn9_bn10",
     )
 
     # Internal self-loop fifos for bn8+9 fused block.
@@ -2350,35 +2347,35 @@ def regular_bottlenecks(
     bn89_act_bn8_1_2 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn89_act_bn8_1_2",
+        name="bn8_bn9_act_bn8_1_2",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
     bn89_act_bn8_2_3 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn89_act_bn8_2_3",
+        name="bn8_bn9_act_bn8_2_3",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
     bn89_act_bn8_bn9 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="bn89_act_bn8_bn9",
+        name="bn8_bn9_act_bn8_bn9",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
     bn89_act_bn9_1_2 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn89_act_bn9_1_2",
+        name="bn8_bn9_act_bn9_1_2",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
     bn89_act_bn9_2_3 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn89_act_bn9_2_3",
+        name="bn8_bn9_act_bn9_2_3",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )

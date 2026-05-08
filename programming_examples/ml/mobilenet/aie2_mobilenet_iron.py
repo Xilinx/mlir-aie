@@ -195,7 +195,7 @@ def mobilenet_iron():
     act_init_out = ObjectFifo(
         np.ndarray[(init_OutW, 1, init_OutC), np.dtype[np.uint8]],
         depth=5,
-        name="act_init_out",
+        name="act_init_bn0",
     )
 
     # ------------------------------------------------------------------
@@ -213,7 +213,7 @@ def mobilenet_iron():
     init_wts = Buffer(
         _i8((init_wts_sz,)),
         initial_value=init_wts_data,
-        name="init_wts",
+        name="init_wts_static",  # match lowlevel sym_name
     )
 
     # ------------------------------------------------------------------
@@ -400,7 +400,7 @@ def mobilenet_iron():
     post_l1_pb = StaticWeightStream(
         obj_type=_i8((post_l1_wts_full_sz,)),
         initial_value=post_l1_wts_data,
-        name="post_l1_wts",
+        name="post_L1_wts_buff",
         recv_type=_i8((post_l1_wts_chunk,)),
         repeat_count=PostRepeatChannels,
         memtile_placement=Tile(4, 1),
@@ -527,7 +527,7 @@ def mobilenet_iron():
     act_out_of = ObjectFifo(
         np.ndarray[(post_L2_OutC,), np.dtype[np.uint16]],
         depth=2,
-        name="act_post_out",
+        name="act_out",
     )
 
     # FC weights: ping-pong design matching original.
@@ -554,7 +554,7 @@ def mobilenet_iron():
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
-        names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
+        names=[f"post_L2_out_core{i+1}" for i in range(n_fc_tiles)],  # match lowlevel @post_L2_out_core1..4
         tile=Tile(6, 1),  # mem_tile_6_1 in placed (matches @act_out)
     )
 

@@ -151,9 +151,9 @@ def pipeline_bottlenecks(
     )
 
     # Internal fifos (depth=4 for L1->L2 matching source OF_b10_act_layer1_layer2)
-    bn10_of_12 = ObjectFifo(_u8((14, 1, 480)), depth=4, name="bn10_of_12")
-    bn10_of_23 = ObjectFifo(_u8((14, 1, 480)), depth=2, name="bn10_of_23")
-    act_bn10_out = ObjectFifo(_i8((14, 1, 112)), depth=2, name="act_bn10_out")
+    bn10_of_12 = ObjectFifo(_u8((14, 1, 480)), depth=4, name="OF_b10_act_layer1_layer2")
+    bn10_of_23 = ObjectFifo(_u8((14, 1, 480)), depth=2, name="OF_b10_act_layer2_layer3")
+    act_bn10_out = ObjectFifo(_i8((14, 1, 112)), depth=2, name="OF_b10_layer3_bn_11_layer1")
 
     def bn10_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
         for _ in range_(14):
@@ -222,7 +222,7 @@ def pipeline_bottlenecks(
     bn11_l1_act_cons = act_bn10_out.cons()  # tile_3_2 first
     # Explicit placement on mem_tile_2_1 to match placed-API.
     bn11_skip_of = act_bn10_out.cons(depth=6).forward(
-        name="bn11_skip_of", depth=2, tile=Tile(2, 1)
+        name="OF_b11_skip", depth=2, tile=Tile(2, 1)
     )
 
     # b11_OutC1=336, b11_OutC2=336, b11_OutC3=112
@@ -315,9 +315,9 @@ def pipeline_bottlenecks(
         ],
     )
 
-    bn11_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="bn11_of_12")
-    bn11_of_23 = ObjectFifo(_u8((14, 1, 336)), depth=2, name="bn11_of_23")
-    act_bn11_out = ObjectFifo(_i8((14, 1, 112)), depth=2, name="act_bn11_out")
+    bn11_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="OF_b11_act_layer1_layer2")
+    bn11_of_23 = ObjectFifo(_u8((14, 1, 336)), depth=2, name="OF_b11_act_layer2_layer3")
+    act_bn11_out = ObjectFifo(_i8((14, 1, 112)), depth=2, name="OF_b11_layer3_bn_12_layer1")
 
     def bn11_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
         for _ in range_(14):
@@ -497,7 +497,7 @@ def pipeline_bottlenecks(
         ],
     )
 
-    bn12_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="bn12_of_12", via_DMA=True)
+    bn12_of_12 = ObjectFifo(_u8((14, 1, 336)), depth=4, name="OF_b12_act_layer1_layer2", via_DMA=True)
     # Self-loop ObjectFifo for DW->PW handoff on tile2 (depth=1).
     # Matches placed: aie.objectfifo @act_bn12_2_3(%tile_4_4, {%tile_4_4}, 1) :
     #   memref<7x1x336xui8>
@@ -506,7 +506,7 @@ def pipeline_bottlenecks(
         depth=1,
         name="act_bn12_2_3",
     )
-    act_bn12_out = ObjectFifo(_i8((7, 1, 80)), depth=2, name="act_bn12_out")
+    act_bn12_out = ObjectFifo(_i8((7, 1, 80)), depth=2, name="act_B_C")
 
     def bn12_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
         for _ in range_(14):
