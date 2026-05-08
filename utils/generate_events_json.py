@@ -11,8 +11,8 @@ database containing all events for all architectures.
 The generated JSON file is used by the C++ register database
 (AIERegisterDatabase.cpp) for event name-to-number lookups.
 
-Usage (offline, run manually when aie-rt headers change):
-    python utils/generate_events_json.py -o lib/Dialect/AIE/Util/
+Invoked at build time by the GenerateAIEEventsTD CMake target
+(include/aie/Dialect/AIE/IR/CMakeLists.txt).
 """
 
 import sys, re, argparse, collections, json, os
