@@ -207,10 +207,7 @@ module @shimtile_col_constraint {
 
 // -----
 
-// Interleaved partial-column hints across two columns must produce
-// row-contiguous packing per column. Regression test for a swap-to-front
-// search bug that could leak (col, row+1) candidates past a moving cursor
-// and place at (col, row+2) instead.
+// Interleaved partial-column hints must pack contiguously per column.
 // CHECK-LABEL: @interleaved_partial_cols_2x2
 module @interleaved_partial_cols_2x2 {
   aie.device(npu1) {
@@ -233,8 +230,7 @@ module @interleaved_partial_cols_2x2 {
 
 // -----
 
-// Generalizes the 2-column case to three columns: requests are issued in
-// row-major order across columns, and each column must pack from row 2 up.
+// Three-column generalization.
 // CHECK-LABEL: @interleaved_partial_cols_3x2
 module @interleaved_partial_cols_3x2 {
   aie.device(npu1) {
@@ -262,8 +258,7 @@ module @interleaved_partial_cols_3x2 {
 
 // -----
 
-// Column visit order in the request stream should not affect per-column
-// packing. Requesting col 2 before col 0 still packs each column from row 2.
+// Request order across columns shouldn't affect per-column packing.
 // CHECK-LABEL: @interleaved_partial_cols_out_of_order
 module @interleaved_partial_cols_out_of_order {
   aie.device(npu1) {
@@ -285,9 +280,7 @@ module @interleaved_partial_cols_out_of_order {
 
 // -----
 
-// Interleaved partial-column requests followed by a fully constrained tile
-// in one of the same columns. The partial path runs first and must still
-// pack contiguously; the fully constrained tile then occupies its exact slot.
+// Partial requests interleaved with a fully constrained tile.
 // CHECK-LABEL: @mixed_partial_then_full
 module @mixed_partial_then_full {
   aie.device(npu1) {

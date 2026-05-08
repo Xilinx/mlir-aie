@@ -217,8 +217,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       bool sawConstraintMatch = false;
       bool allConstraintMatchesFailedAdjacency = true;
 
+      // compTiles stays sorted column-major / ascending-row, so the first
+      // match is the lowest-row tile in the requested column.
       for (const TileID &candidate : availability.compTiles) {
-        // Check partial constraints
         if (col && candidate.col != *col)
           continue;
         if (row && candidate.row != *row)
@@ -231,15 +232,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
                                 cascadePred))
           continue;
-
-        // Found valid tile. Walk the array in sort order (column-major,
-        // ascending row within column) so the first match is the
-        // lowest-row tile in the requested column. The previous
-        // swap-to-front scheme could displace lower-row candidates past
-        // a moving cursor and produce non-contiguous row placement when
-        // partial-constraint hints interleaved columns. The chosen tile
-        // is removed from availability after channel validation, mirroring
-        // the fully-constrained path above.
         placement = candidate;
         break;
       }
