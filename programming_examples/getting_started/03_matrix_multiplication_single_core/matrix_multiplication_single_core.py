@@ -3,15 +3,20 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Single-core matmul, ahead-of-time compiled for two preset shapes.
+"""Single-core matmul, optionally AOT-compiled at known shapes.
 
-Demonstrates parametrized AOT: the design is declared once with
-``@iron.compileconfig`` and then specialised at known shapes via
-``CompilableDesign(..., compile_kwargs={...}).compile()``, which produces
-distinct xclbin/insts artifacts on disk.  Each compiled variant is then
-invoked via ``CallableDesign``.  Use this pattern when you know your
-problem sizes in advance and want to ship pre-compiled binaries instead
-of paying JIT compile time on first call.
+The design is decorated with the usual ``@iron.jit`` so callers can use
+it the JIT way (compile-on-first-call).  ``main()`` demonstrates the
+opt-in AOT path: each desired shape is pre-compiled by building a
+``CompilableDesign`` from the JIT generator and calling ``.compile()``
+eagerly.  This produces distinct xclbin/insts artifacts on disk before
+any kernel runs, so subsequent ``matrix_multiplication_single_core(...)``
+calls with matching compile-time kwargs hit the on-disk cache instead
+of paying ``aiecc`` time on first call.
+
+Use this pattern when you know your problem sizes in advance and want
+to ship pre-compiled binaries — without having to change how the design
+is decorated.
 """
 
 import sys
@@ -20,7 +25,6 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
-    CallableDesign,
     Compile,
     CompilableDesign,
     In,
@@ -29,7 +33,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    compileconfig,
     kernels,
 )
 from aie.iron.controlflow import range_
@@ -45,7 +48,7 @@ _TILE_M = _TILE_K = _TILE_N = 64
 _R, _S, _T = 4, 4, 4
 
 
-@compileconfig
+@iron.jit
 def matrix_multiplication_single_core(
     input0: In,
     input1: In,
@@ -152,23 +155,31 @@ def matrix_multiplication_single_core(
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def _run_variant(M: int, K: int, N: int, element_type) -> None:
-    """AOT-compile the design at (M,K,N,dtype), then run + verify."""
-    print(f"\n=== Compiling matmul {M}x{K}x{N} {np.dtype(element_type).name} ===")
+def aot_compile(M: int, K: int, N: int, element_type) -> None:
+    """Pre-compile the JIT design for one shape and print the artifact paths."""
     design = CompilableDesign(
-        matrix_multiplication_single_core.mlir_generator,
+        matrix_multiplication_single_core.compilable.mlir_generator,
         compile_kwargs={"M": M, "K": K, "N": N, "element_type": element_type},
     )
     xclbin, insts = design.compile()
-    print(f"  xclbin: {xclbin}")
-    print(f"  insts:  {insts}")
+    print(f"  AOT compiled matmul {M}x{K}x{N} {np.dtype(element_type).name}")
+    print(f"    xclbin: {xclbin}")
+    print(f"    insts:  {insts}")
 
+
+def run_and_verify(M: int, K: int, N: int, element_type) -> None:
+    print(f"\n=== Running matmul {M}x{K}x{N} {np.dtype(element_type).name} ===")
     input0 = iron.randint(0, 256, (M, K), dtype=element_type, device="npu")
     input1 = iron.randint(0, 256, (K, N), dtype=element_type, device="npu")
     output = iron.zeros(M * N, dtype=element_type, device="npu")
     ref = np.matmul(input0.numpy(), input1.numpy())
 
-    CallableDesign(design)(input0, input1, output)
+    # Same JIT-decorated function — because the AOT step above already
+    # populated the on-disk cache for these compile_kwargs, this call hits
+    # the cache instead of paying aiecc time.
+    matrix_multiplication_single_core(
+        input0, input1, output, M=M, K=K, N=N, element_type=element_type
+    )
 
     e = np.equal(ref.flatten(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
@@ -179,10 +190,24 @@ def _run_variant(M: int, K: int, N: int, element_type) -> None:
 
 
 def main():
-    # Two pre-compiled shape variants — both produced eagerly before any
-    # kernel is launched, then dispatched at runtime via CallableDesign.
-    _run_variant(M=256, K=256, N=256, element_type=np.int16)
-    _run_variant(M=512, K=512, N=512, element_type=np.int16)
+    shapes = [
+        dict(M=256, K=256, N=256, element_type=np.int16),
+        dict(M=512, K=512, N=512, element_type=np.int16),
+    ]
+
+    # AOT phase: pre-compile both shapes upfront so the artifacts exist on
+    # disk before any kernel runs.  This is purely opt-in — the @iron.jit
+    # decorator above means callers who skip this step would simply pay the
+    # compile cost on first invocation instead.
+    print("=== AOT pre-compile phase ===")
+    for kw in shapes:
+        aot_compile(**kw)
+
+    # Runtime dispatch.  Each call uses the same JIT-decorated function and
+    # finds its compiled artifact already in the on-disk cache.
+    for kw in shapes:
+        run_and_verify(**kw)
+
     print("\nAll variants PASS!")
 
 

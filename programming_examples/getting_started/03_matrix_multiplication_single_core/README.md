@@ -1,12 +1,13 @@
 # Getting Started: Single Core Matrix Multiplication
 
-This example multiplies two input matrices of 16-bit integers, `A` and `B`, to
-produce a 16-bit integer output matrix `C`. The example ships two pre-compiled
-shape variants — `256x256x256` and `512x512x512` — to demonstrate
-**parametrized ahead-of-time (AOT) compilation**. A single AI Engine core
-computes each matrix product. Since these matrices do not fit into an AI
-Engine core's memory, the design splits the input and output into sub-tiles
-processed individually.
+This example multiplies two input matrices of 16-bit integers, `A` and `B`,
+to produce a 16-bit integer output matrix `C`. The same `@iron.jit`-decorated
+design is **AOT-compiled** for two shapes — `256x256x256` and `512x512x512` —
+demonstrating that any JIT design can be *opt-in* pre-compiled when the
+problem sizes are known in advance, without changing how the design is
+decorated. A single AI Engine core computes each matrix product. Since
+these matrices do not fit into an AI Engine core's memory, the design
+splits the input and output into sub-tiles processed individually.
 
 ![Matrix Multiplication AxB = C](diagrams/matmul.svg)
 
@@ -16,13 +17,14 @@ For more versions of the matrix multiplication design, with customizable paramet
 
 This design consists of the following:
 
-* `matrix_multiplication_single_core.py`: The NPU design and host driver. The
-  generator is decorated with `@iron.compileconfig`, which lets the host
-  driver build a `CompilableDesign` per shape, call `.compile()` eagerly to
-  produce distinct xclbin/insts artifacts on disk, and then dispatch each
-  variant via `CallableDesign`. Use this pattern when you know your problem
-  sizes in advance and want to ship pre-compiled binaries instead of paying
-  JIT compile time on first call.
+* `matrix_multiplication_single_core.py`: The NPU design and host driver.
+  The generator carries the usual `@iron.jit` decorator. The host driver
+  shows the opt-in AOT path: for each desired shape, it builds a
+  `CompilableDesign` from the JIT generator (via
+  `matrix_multiplication_single_core.compilable.mlir_generator`) and calls
+  `.compile()` eagerly. This populates the on-disk cache before any kernel
+  runs, so the subsequent normal calls through the JIT-decorated function
+  hit the cache instead of paying `aiecc` time on first invocation.
 * The MMUL kernel itself comes from the IRON kernel library
   ([`aie.iron.kernels.mm`](../../../python/iron/kernels/linalg.py)), which
   wraps [`aie_kernels/aie2/mm.cc`](../../../aie_kernels/aie2/mm.cc) — no
