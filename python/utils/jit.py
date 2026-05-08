@@ -102,7 +102,10 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
                     stacklevel=2,
                 )
 
-        # Guard: Compile[T] params must be keyword-only (unless pre-bound).
+        # Guard: Compile[T] params must be keyword-only (unless pre-bound or
+        # have a signature default).  Pre-bound and defaulted params are exempt
+        # because callers can omit them at the call site, so positional-vs-
+        # keyword ambiguity does not arise.
         sig = _inspect.signature(mlir_generator)
         non_kw_compile_params = [
             name
@@ -113,6 +116,8 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
                 _inspect.Parameter.VAR_KEYWORD,
             )
             and name not in compile_kwargs  # pre-bound params are exempt
+            and sig.parameters[name].default
+            is _inspect.Parameter.empty  # defaults exempt
         ]
         if non_kw_compile_params:
             raise TypeError(

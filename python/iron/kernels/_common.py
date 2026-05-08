@@ -28,8 +28,15 @@ def _detect_arch() -> str:
 
         device = _iron.get_current_device()
         return resolve_target_arch(device)
-    except Exception:
-        _log.debug("_detect_arch: falling back to aie2", exc_info=True)
+    except (ImportError, RuntimeError, AttributeError, ValueError):
+        # ImportError: iron not built; RuntimeError: no active device set;
+        # AttributeError/ValueError: unrecognised device.  Anything else (e.g.
+        # OSError from a misconfigured install) bubbles up so the user sees it.
+        _log.warning(
+            "_detect_arch: no active device or unrecognised device; "
+            "falling back to 'aie2'",
+            exc_info=True,
+        )
         return "aie2"
 
 

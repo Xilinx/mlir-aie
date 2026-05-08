@@ -59,7 +59,15 @@ def _evict_xrt_context(xclbin_path: Path) -> None:
         if entry is not None:
             DefaultNPURuntime._cleanup_entry(entry)
     except Exception:
-        pass
+        # Eviction must not raise: we're already on a recovery path from an
+        # EINVAL.  But silence is dangerous — without this log a broken
+        # _context_cache would keep recycling into the retry forever.
+        logger.warning(
+            "_evict_xrt_context: failed to evict %s; retry may reuse a stale "
+            "hardware context",
+            xclbin_path,
+            exc_info=True,
+        )
 
 
 class CallableDesign:
@@ -335,6 +343,16 @@ class CallableDesign:
         # Use the generator (or its string path) as the cache key identity.
         # For Path generators: wrap in an object with __name__ so that
         # _create_function_cache_key does not crash (it accesses .__name__).
+        #
+        # Cache-key divergence (intentional): the in-process key here keys on
+        # (generator, runtime_args, compile_kwargs), so different tensor shapes
+        # take separate slots even when compile_kwargs match.  The on-disk key
+        # in CompilableDesign._compute_cache_hash keys only on
+        # (generator, compile_kwargs, source_files, flags) — tensors are
+        # runtime data, irrelevant to the compiled artifact.
+        # Together they defend against a generator that omits Compile[T] for
+        # shape: the on-disk artifact may be reused, but the in-process slot
+        # changes, so validate_tensor_args() runs and surfaces the mismatch.
         generator = compilable.mlir_generator
         if callable(generator):
             cache_fn = generator
@@ -379,12 +397,25 @@ class CallableDesign:
         try:
             return kernel(*tensor_args, **remaining_scalars)
         except RuntimeError as exc:
-            # IOCTL EINVAL (err=-22) means the XRT hw_context backing this
-            # NPUKernel is invalid (stale context from the XRT context cache).
-            # Evict both the Python kernel cache entry AND the XRT context cache
-            # entry so the retry creates a genuinely fresh hardware context.
-            if "err=-22" not in str(exc) and "Invalid argument" not in str(exc):
+            # IOCTL EINVAL means the XRT hw_context backing this NPUKernel is
+            # invalid (stale context from the XRT context cache).  We accept
+            # two XRT formats:
+            #   * "err=-22"           — numeric IOCTL errno from libxrt
+            #   * "...XRT...Invalid argument..." — string form via xrt::error
+            # Plain "Invalid argument" without an XRT marker is too generic
+            # (could be any Python RuntimeError) and is *not* treated as EINVAL.
+            msg = str(exc)
+            is_xrt_einval = "err=-22" in msg or (
+                "Invalid argument" in msg and ("XRT" in msg or "xrt" in msg)
+            )
+            if not is_xrt_einval:
                 raise
+            logger.warning(
+                "XRT IOCTL EINVAL detected for %r; evicting hw_context and "
+                "retrying once. Original error: %s",
+                self.compilable.generator_name,
+                msg,
+            )
 
             # Evict Python kernel cache entry.
             self._kernel_cache.pop(cache_key, None)

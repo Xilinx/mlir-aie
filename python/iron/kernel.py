@@ -199,6 +199,7 @@ class ExternalFunction(Kernel):
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
         self._compiled = False
+        self._cached_digest: str | None = None
 
         # Register this instance so the @jit decorator can compile it.
         ExternalFunction._instances.add(self)
@@ -236,7 +237,15 @@ class ExternalFunction(Kernel):
         """Return a 64-bit hex SHA-256 digest of this instance's content.
 
         Used by both ``__hash__`` and ``__eq__`` so the two are consistent.
+        Memoised on the instance: source-file reads and stat() calls would
+        otherwise run on every dict lookup and noticeably regress hot
+        compile-cache paths.  Instance state is treated as immutable after
+        construction; mutating ``_source_*`` / ``_include_dirs`` /
+        ``_compile_flags`` / ``_arg_types`` afterwards is not supported.
         """
+        if self._cached_digest is not None:
+            return self._cached_digest
+
         from pathlib import Path as _Path
 
         include_dir_mtimes = []
@@ -261,7 +270,8 @@ class ExternalFunction(Kernel):
                     parts.append(f.read())
             except OSError:
                 parts.append(f"<unreadable:{self._source_file}>")
-        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]  # 64-bit
+        self._cached_digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+        return self._cached_digest
 
     def __hash__(self) -> int:
         """Content-based hash for use as a dict/set key and in cache signatures."""

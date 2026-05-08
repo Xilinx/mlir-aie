@@ -211,9 +211,7 @@ def _compute_hash(
         if callable(v) and hasattr(v, "__code__"):
             code = v.__code__
             closure = (
-                tuple(c.cell_contents for c in v.__closure__)
-                if v.__closure__
-                else None
+                tuple(c.cell_contents for c in v.__closure__) if v.__closure__ else None
             )
             try:
                 closure_repr = repr(closure)
@@ -258,17 +256,25 @@ def _compute_hash(
 
     # Platform/hardware identifier — only for callable generators.
     # A static .mlir file is architecture-agnostic; compiled kernels are not.
+    #
+    # Each fallback below collapses a missing/unresolvable component to a
+    # constant string ("unknown" / "absent" / "path:..."), which means hashes
+    # remain stable across machines that share the same misconfiguration.  We
+    # log at WARNING so that a true environment problem surfaces rather than
+    # silently producing a stale-but-stable cache hit.
     if not isinstance(generator, Path):
         try:
             from aie.utils import DefaultNPURuntime
+            from aie.utils.compile.utils import resolve_target_arch
 
             device = (
                 DefaultNPURuntime.device() if DefaultNPURuntime is not None else None
             )
-            from aie.utils.compile.utils import resolve_target_arch
-
             target_arch = resolve_target_arch(device)
-        except Exception:
+        except (ImportError, AttributeError, RuntimeError, ValueError) as exc:
+            logger.warning(
+                "_compute_hash: target_arch unresolved (%s); using 'unknown'", exc
+            )
             target_arch = "unknown"
 
         try:
@@ -276,12 +282,18 @@ def _compute_hash(
 
             peano_cxx = _config.peano_cxx_path()
             peano_mtime = str(Path(peano_cxx).stat().st_mtime)
-        except Exception:
+        except (ImportError, AttributeError, FileNotFoundError, OSError) as exc:
             try:
                 from aie.utils import config as _config
 
                 peano_mtime = f"path:{_config.peano_install_dir()}"
-            except Exception:
+                logger.warning(
+                    "_compute_hash: peano cxx unavailable (%s); "
+                    "keying on install dir path only",
+                    exc,
+                )
+            except (ImportError, AttributeError) as exc2:
+                logger.warning("_compute_hash: peano absent (%s)", exc2)
                 peano_mtime = "absent"
 
         try:
@@ -291,7 +303,8 @@ def _compute_hash(
             aiecc_mtime = (
                 str(Path(_aiecc_path).stat().st_mtime) if _aiecc_path else "absent"
             )
-        except Exception:
+        except (FileNotFoundError, OSError) as exc:
+            logger.warning("_compute_hash: aiecc absent (%s)", exc)
             aiecc_mtime = "absent"
 
         h.update(
@@ -571,7 +584,10 @@ class CompilableDesign:
         ):
             try:
                 actual = int(np.size(tensor))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
+                # Non-array-like tensor argument (e.g. a scalar passed by mistake);
+                # skip rather than raise so the kernel call surfaces the real
+                # type error.
                 continue
             # Skip if actual is an exact positive multiple of expected — this
             # covers parallel/distributed kernels where one logical tensor maps
@@ -596,6 +612,11 @@ class CompilableDesign:
 
         The generator callable itself cannot be serialised; callers must
         supply it back to ``from_json``.
+
+        Note:
+            The on-the-wire format is internal to ``CompilableDesign``;
+            ``compile_kwargs`` are encoded as ``[type, value]`` pairs (not a
+            dict).  Do not treat the output as a stable public schema.
         """
         data = {
             "generator_name": self.generator_name,
@@ -697,9 +718,7 @@ class CompilableDesign:
 
         # Guard 2-B: compile_kwargs must not contain entirely unknown keys.
         known_params = (
-            set(self.compile_params)
-            | set(self.tensor_params)
-            | set(self.scalar_params)
+            set(self.compile_params) | set(self.tensor_params) | set(self.scalar_params)
         )
         unknown_keys = set(self.compile_kwargs.keys()) - known_params
         if unknown_keys:
@@ -750,9 +769,7 @@ class CompilableDesign:
 
         module = ctx.module if result is None else result
         if not module.operation.verify():
-            raise RuntimeError(
-                f"MLIR verification failed for '{self.generator_name}'"
-            )
+            raise RuntimeError(f"MLIR verification failed for '{self.generator_name}'")
         return module
 
     def __hash__(self) -> int:

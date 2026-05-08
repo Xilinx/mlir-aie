@@ -27,7 +27,10 @@ parsing context allows unregistered dialects.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
@@ -73,6 +76,14 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
                 sizes.append(int(op.attributes["len"].value))
         return sizes or None
     except Exception:
+        # Treat any binding/parsing failure as "validation unavailable" rather
+        # than crashing the caller — runtime tensor validation is best-effort.
+        # Logged so a binding regression doesn't silently disable validation.
+        logger.debug(
+            "parse_dma_sizes: failed to parse %s; tensor validation disabled",
+            mlir_path,
+            exc_info=True,
+        )
         return None
 
 
