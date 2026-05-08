@@ -3904,10 +3904,8 @@ struct ComputeBxorAndBnegOpPattern : OpConversionPattern<arith::XOrIOp> {
     if (laneSize * elWidth != 512)
       return failure();
 
-    auto lhsConstOp =
-        dyn_cast<arith::ConstantOp>(xorOp.getLhs().getDefiningOp());
-    auto rhsConstOp =
-        dyn_cast<arith::ConstantOp>(xorOp.getRhs().getDefiningOp());
+    auto lhsConstOp = xorOp.getLhs().getDefiningOp<arith::ConstantOp>();
+    auto rhsConstOp = xorOp.getRhs().getDefiningOp<arith::ConstantOp>();
 
     // If one of operands in xorOp is a constant -1, xorOp will be replaced with
     // aievec::BnegOp.
@@ -4683,7 +4681,11 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
-        LowerVectorSubIOpToAIEVecSubElemOp
+        LowerVectorSubIOpToAIEVecSubElemOp,
+        // CPP-only: AIEVecToLLVM has no lowering for aievec.{bxor,bor,band}.
+        ComputeBxorAndBnegOpPattern,
+        ComputeBorOpPattern,
+        ComputeBandOpPattern
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
@@ -4708,9 +4710,6 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       ComputeCeilOpPattern,
       ComputeFloorOpPattern,
       ComputeNegOpPattern,
-      ComputeBxorAndBnegOpPattern,
-      ComputeBorOpPattern,
-      ComputeBandOpPattern,
       ComputeSignedIntRightShiftOpPattern,
       LowerScalarShRSIToAIEVecUPSSRS,
       ConvertMulIToAIEVecMulElemOpPattern,
@@ -5122,33 +5121,22 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return laneSize != 16;
   });
 
-  target.addDynamicallyLegalOp<arith::XOrIOp>([](arith::XOrIOp xorOp) {
-    auto srcType = dyn_cast<VectorType>(xorOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-    return laneSize * elWidth != 512;
-  });
-
-  target.addDynamicallyLegalOp<arith::OrIOp>([](arith::OrIOp orOp) {
-    auto srcType = dyn_cast<VectorType>(orOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-    return laneSize * elWidth != 512;
-  });
+  // CPP-only: rewrite 512-bit int vector arith.{andi,ori,xori} to aievec.
+  if (backend == TargetBackend::CPP) {
+    auto isNon512BitIntVecBitwiseOp = [](Operation *op) {
+      auto srcType = dyn_cast<VectorType>(op->getOperand(0).getType());
+      if (!srcType)
+        return true;
+      if (!isa<IntegerType>(srcType.getElementType()))
+        return true;
+      unsigned laneSize = getVectorLaneSize(srcType);
+      unsigned elWidth = srcType.getElementTypeBitWidth();
+      return laneSize * elWidth != 512;
+    };
+    target.addDynamicallyLegalOp<arith::XOrIOp>(isNon512BitIntVecBitwiseOp);
+    target.addDynamicallyLegalOp<arith::OrIOp>(isNon512BitIntVecBitwiseOp);
+    target.addDynamicallyLegalOp<arith::AndIOp>(isNon512BitIntVecBitwiseOp);
+  }
 
   target.addDynamicallyLegalOp<arith::ShRSIOp>([](arith::ShRSIOp rsOp) {
     auto srcType = dyn_cast<VectorType>(rsOp.getLhs().getType());
@@ -5170,20 +5158,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
       return true;
 
     Type scalarType = srcType.getElementType();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-    return laneSize * elWidth != 512;
-  });
-
-  target.addDynamicallyLegalOp<arith::AndIOp>([](arith::AndIOp andOp) {
-    auto srcType = dyn_cast<VectorType>(andOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
-
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
