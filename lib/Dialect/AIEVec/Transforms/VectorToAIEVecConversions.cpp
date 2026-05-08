@@ -5263,19 +5263,26 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   // AIE2/AIE2P GISel legalize only the scalar form of int<->fp conversions
   // (libcalls). Vector forms have no legalizer rule and abort with
-  // "unable to legalize G_SITOFP <N x sX>". Mark vector forms illegal here
-  // so the ScalarizeVectorIntFpConversionOpPattern handles them. The
-  // scalarize pattern emits vector.extract / vector.insert / scalar conv
-  // sequences, so those ops must be legal too.
+  // "unable to legalize G_SITOFP <N x sX>". Mark the vector forms that
+  // ScalarizeVectorIntFpConversionOpPattern can rewrite (1-D vectors) as
+  // illegal so the pattern fires. Scalar and >1-D vector forms stay legal:
+  // scalar reaches the supported libcall path directly, and >1-D forms
+  // pass through to surface a clearer error from a later stage instead of
+  // aborting this conversion. The scalarize pattern emits vector.extract /
+  // vector.insert / scalar conv sequences, so those ops must be legal too.
   if (backend == TargetBackend::LLVMIR) {
+    auto isRank1Vector = [](Type t) {
+      auto vt = dyn_cast<VectorType>(t);
+      return vt && vt.getRank() == 1;
+    };
     target.addDynamicallyLegalOp<arith::SIToFPOp>(
-        [](arith::SIToFPOp op) { return !isa<VectorType>(op.getType()); });
+        [=](arith::SIToFPOp op) { return !isRank1Vector(op.getType()); });
     target.addDynamicallyLegalOp<arith::UIToFPOp>(
-        [](arith::UIToFPOp op) { return !isa<VectorType>(op.getType()); });
+        [=](arith::UIToFPOp op) { return !isRank1Vector(op.getType()); });
     target.addDynamicallyLegalOp<arith::FPToSIOp>(
-        [](arith::FPToSIOp op) { return !isa<VectorType>(op.getType()); });
+        [=](arith::FPToSIOp op) { return !isRank1Vector(op.getType()); });
     target.addDynamicallyLegalOp<arith::FPToUIOp>(
-        [](arith::FPToUIOp op) { return !isa<VectorType>(op.getType()); });
+        [=](arith::FPToUIOp op) { return !isRank1Vector(op.getType()); });
     target.addLegalOp<vector::ExtractOp, vector::InsertOp>();
   }
 }
