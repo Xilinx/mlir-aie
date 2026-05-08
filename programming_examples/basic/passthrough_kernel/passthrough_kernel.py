@@ -5,20 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Passthrough kernel — Iron API + ``@iron.jit`` + ``aie.iron.kernels``.
-
-Same dataflow as the placed variant (one ObjectFifo in, one out, one compute
-core calling ``passThroughLine``) but uses Iron's high-level ``Worker``/
-``Runtime``/``Program`` builders so placement is automatic, ``@iron.jit`` so
-kernel compilation and xclbin generation happen on the first call, and the
-``aie.iron.kernels.passthrough`` factory so the C++ kernel wiring (source
-path, include dirs, ``-DBIT_WIDTH=8``) does not need to be repeated here.
-
-When ``--trace_size > 0``, a ``TraceConfig`` is passed at call time; the JIT
-runtime writes the trace buffer to ``trace.txt``, this script then parses it
-to ``trace_passthrough_kernel.json`` and prints the per-tile cycle summary —
-matching the placed-flow ``make trace_py`` output.
-"""
+"""Passthrough kernel — Iron API + ``@iron.jit`` variant."""
 
 import argparse
 import sys
@@ -39,7 +26,7 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.utils.trace import TraceConfig
-from aie.utils.trace.utils import get_cycles_summary
+from aie.utils.trace.utils import print_cycles_summary
 
 
 _TRACE_JSON = "trace_passthrough_kernel.json"
@@ -53,26 +40,14 @@ def my_passthrough_kernel(
     n: Compile[int],
     trace_config: Compile[TraceConfig | None] = None,
 ):
-    """Passthrough generator specialised on element count.
-
-    Mirrors the placed variant: input is streamed through a depth-2
-    ObjectFifo as four sub-tensors of ``n // 4`` elements each so DMA
-    transfers overlap with compute on the double-buffered FIFO.
-
-    ``trace_config`` enables hardware tracing when supplied; the runtime
-    writes the trace buffer to ``trace_config.trace_file`` after execution.
-    """
     in1_dtype = np.uint8
-    line_size = n // 4  # chop input in 4 sub-tensors (matches placed)
+    line_size = n // 4
     line_type = np.ndarray[(line_size,), np.dtype[in1_dtype]]
     vector_type = np.ndarray[(n,), np.dtype[in1_dtype]]
 
     of_in = ObjectFifo(line_type, name="in")
     of_out = ObjectFifo(line_type, name="out")
 
-    # Kernel-library factory wires source path, include dirs, and
-    # -DBIT_WIDTH=8 automatically for the requested dtype.  The kernel
-    # operates on one ``line_size``-element tile at a time.
     pass_through_line = kernels.passthrough(tile_size=line_size, dtype=in1_dtype)
 
     def core_fn(of_in, of_out, pass_through_line):
@@ -98,22 +73,6 @@ def my_passthrough_kernel(
         rt.drain(of_out.cons(), b_out, wait=True)
 
     return Program(iron.get_current_device(), rt).resolve_program()
-
-
-def _print_trace_summary(json_path: str) -> None:
-    """Mirror get_trace_summary.py's per-tile summary output."""
-    cycles = get_cycles_summary(json_path)
-    for entry in cycles:
-        print(entry[0])
-        runs = len(entry) - 1
-        print(f"Total number of full kernel invocations is {runs}")
-        if runs > 0:
-            samples = entry[1:]
-            print(
-                "First/Min/Avg/Max cycles is "
-                f"{entry[1]}/ {min(samples)}/ "
-                f"{sum(samples) / runs}/ {max(samples)}"
-            )
 
 
 def main():
@@ -155,9 +114,6 @@ def main():
     in1_dtype = np.uint8
     n_elems = in1_size // np.dtype(in1_dtype).itemsize
 
-    # The actual NPU device class is auto-detected by DefaultNPURuntime;
-    # opts.dev only selects the device-name string the runtime uses for
-    # tensor allocation (matching the original CLI for compatibility).
     in_tensor = iron.tensor(
         np.arange(0, n_elems, dtype=in1_dtype), dtype=in1_dtype, device=opts.dev
     )
@@ -165,10 +121,8 @@ def main():
 
     trace_config = TraceConfig(trace_size=trace_size) if trace_size > 0 else None
 
-    # Trace runs do a single invocation: the runtime overwrites trace.txt
-    # on every call so timing-loop iterations would only retain the last
-    # sample anyway.
     if trace_config is not None:
+        # trace.txt is overwritten each call, so only one iteration is meaningful
         warmup, iters = 0, 1
     else:
         warmup, iters = opts.warmup, opts.iters
@@ -201,8 +155,6 @@ def main():
         print(f"Max NPU time: {npu_time_max:.1f}us.")
 
     if trace_config is not None:
-        # Parse trace.txt → JSON and print the per-tile cycle summary,
-        # mirroring `parse.py` + `get_trace_summary.py` of the placed flow.
         if trace_config.physical_mlir_path is None:
             sys.exit(
                 "trace requested but physical_mlir_path was not set by the JIT "
@@ -211,7 +163,7 @@ def main():
         trace_config.trace_to_json(
             trace_config.physical_mlir_path, output_name=_TRACE_JSON
         )
-        _print_trace_summary(_TRACE_JSON)
+        print_cycles_summary(_TRACE_JSON)
 
     print("PASS!")
 

@@ -26,9 +26,6 @@ use_placed?=0
 .PHONY: all run run_py trace trace_py clean clean_trace
 
 ifeq (${use_placed}, 1)
-# -----------------------------------------------------------------------------
-# Placed (raw aie/aiex dialect) flow: python -> MLIR text -> aiecc -> xclbin
-# -----------------------------------------------------------------------------
 aie_py_src=${targetname}_placed.py
 
 all: build/final_${data_size}.xclbin
@@ -92,10 +89,6 @@ trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
 else
-# -----------------------------------------------------------------------------
-# Default flow (Iron API + @iron.jit): the python script JIT-compiles and runs
-# the kernel in one invocation — no separate aiecc / xclbin / .exe step.
-# -----------------------------------------------------------------------------
 aie_py_src=${targetname}.py
 
 all:
