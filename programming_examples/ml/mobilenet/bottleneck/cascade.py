@@ -7,7 +7,8 @@
 """Cascade bottleneck blocks (bn13-bn14) for MobileNet V3 IRON API rewrite.
 
 bn13 and bn14 each use 5 compute tiles, 2 of which use cascade streams (put/get
-pairs). Kernel names and signatures are derived from aie2_bottleneckC.py.
+pairs). Same logical shape as a regular 1x1 -> DW -> 1x1+skip block, but each
+1x1 conv is split across two cascade-connected compute tiles.
 
 Architecture overview (cascade-split convolutions):
   Layer-1 PUT tile:  1x1-relu conv on first input half, puts onto cascade stream
@@ -27,37 +28,40 @@ import numpy as np
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.dataflow.cascadeflow import CascadeFlow
-from aie.iron.device import Tile, AnyMemTile
 from aie.iron.controlflow import range_
 
 from bottleneck._common import load_wts
+from network_spec import block as nsblock
 
 # ---------------------------------------------------------------------------
-# Dimensions (from aie2_bottleneckC.py)
+# Algorithm dimensions — derived from network_spec (bn13 and bn14 share shape)
 # ---------------------------------------------------------------------------
-_InW = 7
-_InH = 7
-_InC = 80  # input channels
-_L1_OutC = 960  # expanded channels (L1 output)
+_BN13 = nsblock("bn13")
+_InW, _InH, _InC = _BN13.layers[0].in_shape  # (7, 7, 80)
+_L1_OutC = _BN13.layers[0].out_shape[2]  # 960 expansion channels
+_L3_OutC = _BN13.layers[-1].out_shape[2]  # 80 final projection channels
+
+# ---------------------------------------------------------------------------
+# Cascade-split parameters (placement strategy, not algorithm shape)
+# ---------------------------------------------------------------------------
 _InputSplit = 2  # cascade splits: each cascade tile handles half the channels
 _OutputSplit = 2
 _OutputSplit2 = 2
 _L1_SplitC = _L1_OutC // _InputSplit  # 480 channels per cascade tile
 _OC8 = _L1_OutC // (8 * _OutputSplit)  # inner loop count for L1 kernel  = 60
-_L3_OutC = 80  # final projection output channels
 _OC8_out = _L3_OutC // (8 * _OutputSplit2)  # inner loop count for L3 kernel = 5
 
 # ---------------------------------------------------------------------------
-# Weight sizes (derived from aie2_bottleneckC.py type definitions)
+# Weight sizes
 # ---------------------------------------------------------------------------
-# L1 split weight per tile:  (InC // InputSplit) * (L1_OutC // OutputSplit)
-_l1_split_wts_sz = (_InC // _InputSplit) * (_L1_OutC // _OutputSplit)  # 40*480 = 19200
-# L2 DW weight:     3 * 3 * L1_OutC (full depthwise filter)
+_l1_split_wts_sz = (_InC // _InputSplit) * (_L1_OutC // _OutputSplit)  # 40*480
 _l2_wts_sz = 3 * 3 * _L1_OutC * 1  # 8640
-# L3 split weight per tile (per put/get chunk):
-#   (L1_OutC // InputSplit) * (L3_OutC // OutputSplit2) = 480 * 40 = 19200
-# Matches placed-API: each MemTile put/get streams 19200-byte chunks to its compute tile.
 _l3_split_wts_sz = (_L1_OutC // _InputSplit) * (_L3_OutC // _OutputSplit2)  # 19200
+
+# Full L1/L3 weight tensors (host → MemTile, then split into halves).
+_l1_full_wts_sz = _InC * _L1_OutC  # 80*960 = 76800
+_l3_full_wts_sz = _L1_OutC * _L3_OutC  # 960*80 = 76800
+
 
 # ---------------------------------------------------------------------------
 # Type aliases
@@ -69,17 +73,23 @@ _ty_l1_split_wts = np.ndarray[(_l1_split_wts_sz,), np.dtype[np.int8]]
 _ty_l2_wts = np.ndarray[(_l2_wts_sz,), np.dtype[np.int8]]
 _ty_l3_split_wts = np.ndarray[(_l3_split_wts_sz,), np.dtype[np.int8]]
 _ty_act_out = np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]]
-
-# Full L1/L3 weight tensors (host → MemTile, then split into halves).
-_l1_full_wts_sz = _InC * _L1_OutC  # 80*960  = 76800
-_l3_full_wts_sz = _L1_OutC * _L3_OutC  # 960*80  = 76800
 _ty_l1_full_wts = np.ndarray[(_l1_full_wts_sz,), np.dtype[np.int8]]
 _ty_l3_full_wts = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Module-level helpers
 # ---------------------------------------------------------------------------
+def _sf_key(blk_name):
+    return blk_name.upper()
+
+
+def _layer_sf(blk, sf, idx):
+    return sf[_sf_key(blk.name)][blk.layers[idx].sf_key]
+
+
+def _skip_sf(blk, sf):
+    return sf[_sf_key(blk.name)][blk.skip_sf_key]
 
 
 def _make_static_wts(data_dir, size, filename, name):
@@ -92,10 +102,383 @@ def _make_static_wts(data_dir, size, filename, name):
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Worker function bodies (shared between bn13 and bn14 — different kernels and tiles)
 # ---------------------------------------------------------------------------
+# L1 PUT: for each input row, loop over OutputSplit weight tiles and OC8 inner
+# iterations, putting partial 1x1 results onto the cascade stream.
+def _l1_put_fn(
+    of_in,
+    wts_fifo,
+    k,
+    InW,
+    InC,
+    OutC,
+    InputSplit,
+    OutputSplit,
+    OC8,
+    sf1,
+):
+    for _ in range_(_InH):
+        row_in = of_in.acquire(1)
+        for WeightIndex in range_(OutputSplit):
+            row_wts = wts_fifo.acquire(1)
+            for oc in range_(OC8):
+                k(row_in, row_wts, InW, InC, OutC, InputSplit, WeightIndex, 0, oc)
+            wts_fifo.release(1)
+        of_in.release(1)
 
 
+# L1 GET: for each input row, accumulates cascade and produces full L1 output row.
+def _l1_get_fn(
+    of_in,
+    of_out,
+    wts_fifo,
+    k,
+    InW,
+    InC,
+    OutC,
+    InputSplit,
+    OutputSplit,
+    OC8,
+    sf1,
+):
+    for _ in range_(_InH):
+        row_in = of_in.acquire(1)
+        row_out = of_out.acquire(1)
+        for WeightIndex in range_(OutputSplit):
+            row_wts = wts_fifo.acquire(1)
+            for oc in range_(OC8):
+                k(
+                    row_in,
+                    row_wts,
+                    row_out,
+                    InW,
+                    InC,
+                    OutC,
+                    sf1,
+                    InputSplit,
+                    OutputSplit,
+                    WeightIndex,
+                    0,
+                    oc,
+                )
+            wts_fifo.release(1)
+        of_in.release(1)
+        of_out.release(1)
+
+
+# L2 DW: depthwise 3x3 producing two split-channel output rows.
+def _l2_fn(of_in, of_out_first, of_out_second, wts_buf, k, InW, OutC2, sf2):
+    def _dw(top, mid, bot, border):
+        row_out_a = of_out_first.acquire(1)
+        row_out_b = of_out_second.acquire(1)
+        k(
+            top,
+            mid,
+            bot,
+            wts_buf,
+            row_out_a,
+            row_out_b,
+            InW,
+            1,
+            OutC2,
+            3,
+            3,
+            border,
+            sf2,
+            0,
+        )
+        of_out_first.release(1)
+        of_out_second.release(1)
+
+    # ── preamble: top row (zero-pad above) ──
+    rows = of_in.acquire(2)
+    _dw(rows[0], rows[0], rows[1], border=0)
+    # ── middle rows ──
+    for _ in range_(_InH - 2):
+        rows = of_in.acquire(3)
+        _dw(rows[0], rows[1], rows[2], border=1)
+        of_in.release(1)
+    # ── postamble: last row (zero-pad below) ──
+    rows = of_in.acquire(2)
+    _dw(rows[0], rows[1], rows[1], border=2)
+    of_in.release(2)
+
+
+# L3 PUT: reads first DW split half, puts partial projection result onto cascade.
+def _l3_put_fn(
+    of_in,
+    wts_fifo,
+    k,
+    InW,
+    OutC2,
+    OutC3,
+    InputSplit,
+    OutputSplit2,
+    OC8_out,
+    sf3,
+):
+    for _ in range_(_InH):
+        row_in = of_in.acquire(1)
+        for WeightIndex in range_(OutputSplit2):
+            row_wts = wts_fifo.acquire(1)
+            for oc in range_(OC8_out):
+                k(
+                    row_in,
+                    row_wts,
+                    InW,
+                    OutC2,
+                    OutC3,
+                    InputSplit,
+                    WeightIndex,
+                    0,
+                    oc,
+                )
+            wts_fifo.release(1)
+        of_in.release(1)
+
+
+# L3 GET: reads second DW split half + cascade + skip → final output row.
+def _l3_get_fn(
+    of_in,
+    skip_in,
+    act_out,
+    wts_fifo,
+    k,
+    InW,
+    OutC2,
+    OutC3,
+    InputSplit,
+    OutputSplit2,
+    OC8_out,
+    sf3,
+    sfAdd,
+):
+    for _ in range_(_InH):
+        row_in = of_in.acquire(1)
+        row_out = act_out.acquire(1)
+        skip_row = skip_in.acquire(1)
+        for WeightIndex in range_(OutputSplit2):
+            row_wts = wts_fifo.acquire(1)
+            for oc in range_(OC8_out):
+                k(
+                    row_in,
+                    row_wts,
+                    row_out,
+                    skip_row,
+                    InW,
+                    OutC2,
+                    OutC3,
+                    sf3,
+                    sfAdd,
+                    InputSplit,
+                    OutputSplit2,
+                    WeightIndex,
+                    0,
+                    oc,
+                )
+            wts_fifo.release(1)
+        of_in.release(1)
+        act_out.release(1)
+        skip_in.release(1)
+
+
+# ---------------------------------------------------------------------------
+# build_cascade — one full cascade block (5 compute workers + 2 weight fifos)
+# ---------------------------------------------------------------------------
+def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
+    """One full cascade block (5 compute workers + 2 weight fifos).
+
+    blk:         Block from network_spec.NETWORK (bn13 or bn14).
+    l3_get_sym:  L3 GET kernel symbol name (the one outlier whose name doesn't
+                 follow the `{name}_...` template — it has the form
+                 `bn_<N>_2_conv2dk1_..._get_new`).
+    act_in:      activation input ObjectFifo (drives L1 PUT and L1 GET)
+    skip_in:     ObjectFifo whose .cons() forwards a skip row to L3 GET
+                 (often the same as act_in; for bn14 it's bn13's output)
+    tiles:       dict with keys: l1_put, l1_get, l2, l3_put, l3_get,
+                                 mem_l1, mem_l3, mem_skip
+    Returns (out_fifo, wts_l1_full, wts_l3_full, [workers]).
+    """
+    name = blk.name
+    s1, s2, s3 = (_layer_sf(blk, sf, i) for i in (0, 1, 2))
+    s_add = _skip_sf(blk, sf)
+
+    k_l1_put = Kernel(
+        f"{name}_1_conv2dk1_i8_ui8_partial_width_put_new",
+        f"{name}_1_conv2dk1_put.o",
+        [_ty_act_in, _ty_l1_split_wts] + [np.int32] * 7,
+    )
+    k_l1_get = Kernel(
+        f"{name}_1_conv2dk1_i8_ui8_partial_width_get_new",
+        f"{name}_1_conv2dk1_get.o",
+        [_ty_act_in, _ty_l1_split_wts, _ty_l1_out_full] + [np.int32] * 9,
+    )
+    k_l2_dw = Kernel(
+        f"{name}_conv2dk3_ui8_out_split",
+        f"{name}_conv2dk3_dw.o",
+        [
+            _ty_l1_out_full,
+            _ty_l1_out_full,
+            _ty_l1_out_full,
+            _ty_l2_wts,
+            _ty_l1_out_split,
+            _ty_l1_out_split,
+        ]
+        + [np.int32] * 8,
+    )
+    k_l3_put = Kernel(
+        f"{name}_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new",
+        f"{name}_conv2dk1_put.o",
+        [_ty_l1_out_split, _ty_l3_split_wts] + [np.int32] * 7,
+    )
+    k_l3_get = Kernel(
+        l3_get_sym,
+        f"{name}_conv2dk1_skip_get.o",
+        [_ty_l1_out_split, _ty_l3_split_wts, _ty_act_out, _ty_act_in] + [np.int32] * 10,
+    )
+
+    # Streaming weight fifos (Shim → MemTile → split → put/get tiles)
+    wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1)
+    wts_l1_put_h, wts_l1_get_h = wts_l1_full.cons().split(
+        offsets=[0, _l1_full_wts_sz // 2],
+        depths=[1, 1],
+        obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
+        tile=tiles["mem_l1"],
+        repeat_counts=[_InH, _InH],
+    )
+    wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1)
+    wts_l3_put_h, wts_l3_get_h = wts_l3_full.cons().split(
+        offsets=[0, _l3_full_wts_sz // 2],
+        depths=[1, 1],
+        obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
+        tile=tiles["mem_l3"],
+        repeat_counts=[_InH, _InH],
+    )
+
+    # L2 DW weights are static (compile-time bake-in)
+    l2_wts = _make_static_wts(
+        data_dir, _l2_wts_sz, f"{name}_2_chain.txt", f"{name}_2_wts_static"
+    )
+
+    of_l1_l2 = ObjectFifo(
+        np.ndarray[(_InW, 1, _L1_OutC), np.dtype[np.uint8]],
+        depth=4,
+        via_DMA=True,
+    )
+    of_l2_l3_first = ObjectFifo(
+        np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
+        depth=2,
+    )
+    of_l2_l3_second = ObjectFifo(
+        np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
+        depth=2,
+    )
+    out_fifo = ObjectFifo(
+        np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]],
+        depth=2,
+    )
+
+    # Pre-establish .cons() ordering to match expected MLIR placement.
+    l1_put_cons = act_in.cons()
+    l1_get_cons = act_in.cons()
+    # depth=6 on the cons handle lets the skip path buffer enough rows to
+    # outlive the 5-tile cascade pipeline lag (l1_put → l1_get → l2 → l3_put → l3_get).
+    skip_fifo = skip_in.cons(depth=6).forward(depth=2, tile=tiles["mem_skip"])
+
+    bws = [
+        Worker(
+            _l1_put_fn,
+            fn_args=[
+                l1_put_cons,
+                wts_l1_put_h.cons(),
+                k_l1_put,
+                _InW,
+                _InC,
+                _L1_OutC,
+                _InputSplit,
+                _OutputSplit,
+                _OC8,
+                s1,
+            ],
+            tile=tiles["l1_put"],
+        ),
+        Worker(
+            _l1_get_fn,
+            fn_args=[
+                l1_get_cons,
+                of_l1_l2.prod(),
+                wts_l1_get_h.cons(),
+                k_l1_get,
+                _InW,
+                _InC,
+                _L1_OutC,
+                _InputSplit,
+                _OutputSplit,
+                _OC8,
+                s1,
+            ],
+            tile=tiles["l1_get"],
+        ),
+        Worker(
+            _l2_fn,
+            fn_args=[
+                of_l1_l2.cons(),
+                of_l2_l3_first.prod(),
+                of_l2_l3_second.prod(),
+                l2_wts,
+                k_l2_dw,
+                _InW,
+                _L1_OutC,
+                s2,
+            ],
+            tile=tiles["l2"],
+        ),
+        Worker(
+            _l3_put_fn,
+            fn_args=[
+                of_l2_l3_first.cons(),
+                wts_l3_put_h.cons(),
+                k_l3_put,
+                _InW,
+                _L1_OutC,
+                _L3_OutC,
+                _InputSplit,
+                _OutputSplit2,
+                _OC8_out,
+                s3,
+            ],
+            tile=tiles["l3_put"],
+        ),
+        Worker(
+            _l3_get_fn,
+            fn_args=[
+                of_l2_l3_second.cons(),
+                skip_fifo.cons(),
+                out_fifo.prod(),
+                wts_l3_get_h.cons(),
+                k_l3_get,
+                _InW,
+                _L1_OutC,
+                _L3_OutC,
+                _InputSplit,
+                _OutputSplit2,
+                _OC8_out,
+                s3,
+                s_add,
+            ],
+            tile=tiles["l3_get"],
+        ),
+    ]
+    # Cascade flows: L1 put→get and L3 put→get share streams between adjacent tiles.
+    CascadeFlow(bws[0], bws[1])
+    CascadeFlow(bws[3], bws[4])
+    return out_fifo, wts_l1_full, wts_l3_full, bws
+
+
+# ---------------------------------------------------------------------------
+# Public entry point — bn13 + bn14, dispatched from network_spec.NETWORK
+# ---------------------------------------------------------------------------
 def cascade_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
@@ -103,436 +486,39 @@ def cascade_bottlenecks(
     placement: dict,
     data_dir: str,
 ) -> tuple:
-    """Build bn13 and bn14 from the scale-factor JSON.
+    """Build bn13 and bn14 from network_spec.NETWORK + scale-factor JSON.
 
     Each block has 5 compute workers and 2 cascade stream put/get pairs.
-    Cascade flows are constructed inside `_make_cascade_block` and self-register
-    on their source workers; they're picked up automatically by Program.resolve().
-
-    Args:
-        act_in:   Input ObjectFifo carrying (7,1,80) int8 activations, depth=2.
-        sf:       Scale-factor JSON dict (uses keys "BN13" and "BN14").
-        data_dir: Directory containing compiled kernel .o files and weight data.
+    Cascade flows are constructed inside `build_cascade` and self-register on
+    their source workers; they're picked up automatically by Program.resolve().
 
     Returns:
         (workers, act_bn14_out, wts_fifos) where wts_fifos is the 4 full-weight
         ObjectFifos the host DMA writes into (bn13_l1, bn13_l3, bn14_l1, bn14_l3).
     """
     workers = []
-    bn13_s1, bn13_s2, bn13_s3, bn13_sAdd = (
-        sf["BN13"]["conv1x1_1"],
-        sf["BN13"]["conv3x3"],
-        sf["BN13"]["conv1x1_2"],
-        sf["BN13"]["skip_add"],
-    )
-    bn14_s1, bn14_s2, bn14_s3, bn14_sAdd = (
-        sf["BN14"]["conv1x1_1"],
-        sf["BN14"]["conv3x3"],
-        sf["BN14"]["conv1x1_2"],
-        sf["BN14"]["skip_add"],
-    )
-
-    # ========================================================================
-    # Shared worker function bodies
-    # (Same logic for bn13 and bn14 — different kernels and tiles.)
-    # ========================================================================
-
-    # L1 PUT: for each input row, loop over OutputSplit weight tiles and OC8
-    # inner iterations, putting partial 1x1 results onto the cascade stream.
-    def l1_put_fn(
-        of_in,
-        wts_fifo,
-        k,
-        InW,
-        InC,
-        OutC,
-        InputSplit,
-        OutputSplit,
-        OC8,
-        sf1,
-    ):
-        for _ in range_(_InH):
-            row_in = of_in.acquire(1)
-            for WeightIndex in range_(OutputSplit):
-                row_wts = wts_fifo.acquire(1)
-                for oc in range_(OC8):
-                    k(row_in, row_wts, InW, InC, OutC, InputSplit, WeightIndex, 0, oc)
-                wts_fifo.release(1)
-            of_in.release(1)
-
-    # L1 GET: for each input row, accumulates cascade and produces full L1 output row.
-    def l1_get_fn(
-        of_in,
-        of_out,
-        wts_fifo,
-        k,
-        InW,
-        InC,
-        OutC,
-        InputSplit,
-        OutputSplit,
-        OC8,
-        sf1,
-    ):
-        for _ in range_(_InH):
-            row_in = of_in.acquire(1)
-            row_out = of_out.acquire(1)
-            for WeightIndex in range_(OutputSplit):
-                row_wts = wts_fifo.acquire(1)
-                for oc in range_(OC8):
-                    k(
-                        row_in,
-                        row_wts,
-                        row_out,
-                        InW,
-                        InC,
-                        OutC,
-                        sf1,
-                        InputSplit,
-                        OutputSplit,
-                        WeightIndex,
-                        0,
-                        oc,
-                    )
-                wts_fifo.release(1)
-            of_in.release(1)
-            of_out.release(1)
-
-    # L2 DW: depthwise 3x3 producing two split-channel output rows.
-    def l2_fn(of_in, of_out_first, of_out_second, wts_buf, k, InW, OutC2, sf2):
-        def _dw(top, mid, bot, border):
-            row_out_a = of_out_first.acquire(1)
-            row_out_b = of_out_second.acquire(1)
-            k(
-                top,
-                mid,
-                bot,
-                wts_buf,
-                row_out_a,
-                row_out_b,
-                InW,
-                1,
-                OutC2,
-                3,
-                3,
-                border,
-                sf2,
-                0,
-            )
-            of_out_first.release(1)
-            of_out_second.release(1)
-
-        # ── preamble: top row (zero-pad above) ──
-        rows = of_in.acquire(2)
-        _dw(rows[0], rows[0], rows[1], border=0)
-        # ── middle rows ──
-        for _ in range_(_InH - 2):
-            rows = of_in.acquire(3)
-            _dw(rows[0], rows[1], rows[2], border=1)
-            of_in.release(1)
-        # ── postamble: last row (zero-pad below) ──
-        rows = of_in.acquire(2)
-        _dw(rows[0], rows[1], rows[1], border=2)
-        of_in.release(2)
-
-    # L3 PUT: reads first DW split half, puts partial projection result onto cascade.
-    def l3_put_fn(
-        of_in,
-        wts_fifo,
-        k,
-        InW,
-        OutC2,
-        OutC3,
-        InputSplit,
-        OutputSplit2,
-        OC8_out,
-        sf3,
-    ):
-        for _ in range_(_InH):
-            row_in = of_in.acquire(1)
-            for WeightIndex in range_(OutputSplit2):
-                row_wts = wts_fifo.acquire(1)
-                for oc in range_(OC8_out):
-                    k(
-                        row_in,
-                        row_wts,
-                        InW,
-                        OutC2,
-                        OutC3,
-                        InputSplit,
-                        WeightIndex,
-                        0,
-                        oc,
-                    )
-                wts_fifo.release(1)
-            of_in.release(1)
-
-    # L3 GET: reads second DW split half + cascade + skip → final output row.
-    def l3_get_fn(
-        of_in,
-        skip_in,
-        act_out,
-        wts_fifo,
-        k,
-        InW,
-        OutC2,
-        OutC3,
-        InputSplit,
-        OutputSplit2,
-        OC8_out,
-        sf3,
-        sfAdd,
-    ):
-        for _ in range_(_InH):
-            row_in = of_in.acquire(1)
-            row_out = act_out.acquire(1)
-            skip_row = skip_in.acquire(1)
-            for WeightIndex in range_(OutputSplit2):
-                row_wts = wts_fifo.acquire(1)
-                for oc in range_(OC8_out):
-                    k(
-                        row_in,
-                        row_wts,
-                        row_out,
-                        skip_row,
-                        InW,
-                        OutC2,
-                        OutC3,
-                        sf3,
-                        sfAdd,
-                        InputSplit,
-                        OutputSplit2,
-                        WeightIndex,
-                        0,
-                        oc,
-                    )
-                wts_fifo.release(1)
-            of_in.release(1)
-            act_out.release(1)
-            skip_in.release(1)
-
-    # Skip connections are forwarded via MemTile DMA using ObjectFifo.forward().
-    # No separate copy worker is needed.
-
-    def _make_cascade_block(
-        name,
-        l3_get_sym,
-        act_in,
-        skip_in,
-        scales,
-        tiles,
-    ):
-        """One full cascade block (5 compute workers + 2 weight fifos).
-
-        name:        kernel name prefix shared by L1/L2/L3-PUT, e.g. "bn13".
-        l3_get_sym:  L3 GET kernel symbol name (the one outlier whose name doesn't
-                     follow the `{name}_...` template — it has the form
-                     `bn_<N>_2_conv2dk1_..._get_new`).
-        act_in:      the activation input ObjectFifo (drives L1 PUT and L1 GET)
-        skip_in:     ObjectFifo whose .cons() forwards a skip row to L3 GET (often
-                     the same as act_in; for bn14 it's bn13's output)
-        scales:      (s1, s2, s3, s_add)
-        tiles:       dict with keys: l1_put, l1_get, l2, l3_put, l3_get,
-                                     mem_l1, mem_l3, mem_skip
-        Returns (out_fifo, wts_l1_full, wts_l3_full, [workers]).
-        """
-        s1, s2, s3, s_add = scales
-
-        k_l1_put = Kernel(
-            f"{name}_1_conv2dk1_i8_ui8_partial_width_put_new",
-            f"{name}_1_conv2dk1_put.o",
-            [_ty_act_in, _ty_l1_split_wts] + [np.int32] * 7,
-        )
-        k_l1_get = Kernel(
-            f"{name}_1_conv2dk1_i8_ui8_partial_width_get_new",
-            f"{name}_1_conv2dk1_get.o",
-            [_ty_act_in, _ty_l1_split_wts, _ty_l1_out_full] + [np.int32] * 9,
-        )
-        k_l2_dw = Kernel(
-            f"{name}_conv2dk3_ui8_out_split",
-            f"{name}_conv2dk3_dw.o",
-            [
-                _ty_l1_out_full,
-                _ty_l1_out_full,
-                _ty_l1_out_full,
-                _ty_l2_wts,
-                _ty_l1_out_split,
-                _ty_l1_out_split,
-            ]
-            + [np.int32] * 8,
-        )
-        k_l3_put = Kernel(
-            f"{name}_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new",
-            f"{name}_conv2dk1_put.o",
-            [_ty_l1_out_split, _ty_l3_split_wts] + [np.int32] * 7,
-        )
-        k_l3_get = Kernel(
-            l3_get_sym,
-            f"{name}_conv2dk1_skip_get.o",
-            [_ty_l1_out_split, _ty_l3_split_wts, _ty_act_out, _ty_act_in]
-            + [np.int32] * 10,
-        )
-
-        # Streaming weight fifos (Shim → MemTile → split → put/get tiles)
-        wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1)
-        wts_l1_put_h, wts_l1_get_h = wts_l1_full.cons().split(
-            offsets=[0, _l1_full_wts_sz // 2],
-            depths=[1, 1],
-            obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
-            tile=tiles["mem_l1"],
-            repeat_counts=[_InH, _InH],
-        )
-        wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1)
-        wts_l3_put_h, wts_l3_get_h = wts_l3_full.cons().split(
-            offsets=[0, _l3_full_wts_sz // 2],
-            depths=[1, 1],
-            obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
-            tile=tiles["mem_l3"],
-            repeat_counts=[_InH, _InH],
-        )
-
-        # L2 DW weights are static (compile-time bake-in)
-        l2_wts = _make_static_wts(
-            data_dir, _l2_wts_sz, f"{name}_2_chain.txt", f"{name}_2_wts_static"
-        )
-
-        of_l1_l2 = ObjectFifo(
-            np.ndarray[(_InW, 1, _L1_OutC), np.dtype[np.uint8]],
-            depth=4,
-            via_DMA=True,
-        )
-        of_l2_l3_first = ObjectFifo(
-            np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-            depth=2,
-        )
-        of_l2_l3_second = ObjectFifo(
-            np.ndarray[(_InW, 1, _L1_SplitC), np.dtype[np.uint8]],
-            depth=2,
-        )
-        out_fifo = ObjectFifo(
-            np.ndarray[(_InW, 1, _L3_OutC), np.dtype[np.int8]],
-            depth=2,
-        )
-
-        # Pre-establish .cons() ordering to match expected MLIR placement.
-        l1_put_cons = act_in.cons()
-        l1_get_cons = act_in.cons()
-        # depth=6 on the cons handle lets the skip path buffer enough rows to
-        # outlive the 5-tile cascade pipeline lag (l1_put → l1_get → l2 → l3_put → l3_get).
-        skip_fifo = skip_in.cons(depth=6).forward(depth=2, tile=tiles["mem_skip"])
-
-        bws = [
-            Worker(
-                l1_put_fn,
-                fn_args=[
-                    l1_put_cons,
-                    wts_l1_put_h.cons(),
-                    k_l1_put,
-                    _InW,
-                    _InC,
-                    _L1_OutC,
-                    _InputSplit,
-                    _OutputSplit,
-                    _OC8,
-                    s1,
-                ],
-                tile=tiles["l1_put"],
-            ),
-            Worker(
-                l1_get_fn,
-                fn_args=[
-                    l1_get_cons,
-                    of_l1_l2.prod(),
-                    wts_l1_get_h.cons(),
-                    k_l1_get,
-                    _InW,
-                    _InC,
-                    _L1_OutC,
-                    _InputSplit,
-                    _OutputSplit,
-                    _OC8,
-                    s1,
-                ],
-                tile=tiles["l1_get"],
-            ),
-            Worker(
-                l2_fn,
-                fn_args=[
-                    of_l1_l2.cons(),
-                    of_l2_l3_first.prod(),
-                    of_l2_l3_second.prod(),
-                    l2_wts,
-                    k_l2_dw,
-                    _InW,
-                    _L1_OutC,
-                    s2,
-                ],
-                tile=tiles["l2"],
-            ),
-            Worker(
-                l3_put_fn,
-                fn_args=[
-                    of_l2_l3_first.cons(),
-                    wts_l3_put_h.cons(),
-                    k_l3_put,
-                    _InW,
-                    _L1_OutC,
-                    _L3_OutC,
-                    _InputSplit,
-                    _OutputSplit2,
-                    _OC8_out,
-                    s3,
-                ],
-                tile=tiles["l3_put"],
-            ),
-            Worker(
-                l3_get_fn,
-                fn_args=[
-                    of_l2_l3_second.cons(),
-                    skip_fifo.cons(),
-                    out_fifo.prod(),
-                    wts_l3_get_h.cons(),
-                    k_l3_get,
-                    _InW,
-                    _L1_OutC,
-                    _L3_OutC,
-                    _InputSplit,
-                    _OutputSplit2,
-                    _OC8_out,
-                    s3,
-                    s_add,
-                ],
-                tile=tiles["l3_get"],
-            ),
-        ]
-        # Cascade flows: L1 put→get and L3 put→get share streams between adjacent tiles.
-        CascadeFlow(bws[0], bws[1])
-        CascadeFlow(bws[3], bws[4])
-        return out_fifo, wts_l1_full, wts_l3_full, bws
 
     # bn13: cascade-split bottleneck (5 compute workers).
-    act_bn13_out, bn13_wts_l1_full, bn13_wts_l3_full, bn13_workers = (
-        _make_cascade_block(
-            "bn13",
-            l3_get_sym="bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
-            act_in=act_in,
-            skip_in=act_in,
-            scales=(bn13_s1, bn13_s2, bn13_s3, bn13_sAdd),
-            tiles=placement["bn13"],
-        )
+    act_bn13_out, bn13_wts_l1_full, bn13_wts_l3_full, bn13_workers = build_cascade(
+        nsblock("bn13"),
+        l3_get_sym="bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
+        act_in=act_in,
+        skip_in=act_in,
+        sf=sf,
+        data_dir=data_dir,
+        tiles=placement["bn13"],
     )
     workers += bn13_workers
 
     # bn14: cascade-split bottleneck (5 compute workers, skip = bn13 output).
-    act_bn14_out, bn14_wts_l1_full, bn14_wts_l3_full, bn14_workers = (
-        _make_cascade_block(
-            "bn14",
-            l3_get_sym="bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
-            act_in=act_bn13_out,
-            skip_in=act_bn13_out,
-            scales=(bn14_s1, bn14_s2, bn14_s3, bn14_sAdd),
-            tiles=placement["bn14"],
-        )
+    act_bn14_out, bn14_wts_l1_full, bn14_wts_l3_full, bn14_workers = build_cascade(
+        nsblock("bn14"),
+        l3_get_sym="bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
+        act_in=act_bn13_out,
+        skip_in=act_bn13_out,
+        sf=sf,
+        data_dir=data_dir,
+        tiles=placement["bn14"],
     )
     workers += bn14_workers
 
@@ -542,5 +528,4 @@ def cascade_bottlenecks(
         bn14_wts_l1_full,
         bn14_wts_l3_full,
     ]
-
     return workers, act_bn14_out, wts_fifos

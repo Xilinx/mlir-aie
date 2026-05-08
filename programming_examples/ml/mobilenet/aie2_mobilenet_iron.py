@@ -40,6 +40,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from bottleneck.regular import regular_bottlenecks
 from bottleneck.pipeline import pipeline_bottlenecks
 from bottleneck.cascade import cascade_bottlenecks
+from network_spec import block as nsblock
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -59,23 +60,18 @@ post_fc1_sf = sf["POST"]["FC1"]
 post_fc2_sf = sf["POST"]["FC2"]
 
 # ---------------------------------------------------------------------------
-# Network dimensions
+# Network dimensions — derived from network_spec.NETWORK (single source of truth)
 # ---------------------------------------------------------------------------
-tensorInW, tensorInH, tensorInC = 224, 224, 8
-init_OutC = 16  # init conv output channels
-init_OutW = 112  # stride-2 output width
-init_OutH = 112
+tensorInW, tensorInH, tensorInC = nsblock("init").layers[0].in_shape
+init_OutW, init_OutH, init_OutC = nsblock("init").layers[0].out_shape
 
 # Post-processing dimensions
-post_L1_InW = 7
-post_L1_InH = 7
-post_L1_InC = 80
-post_L1_OutC = 960  # expand 1x1
-post_L1_OutW = 1  # global avg pool -> 1x1
-post_L1_OutH = 1
+post_L1_InW, post_L1_InH, post_L1_InC = nsblock("post_l1").layers[0].in_shape
+post_L1_OutW, post_L1_OutH, _ = nsblock("post_l1").layers[0].out_shape
+post_L1_OutC = 960  # expand-1x1 width before padding to L2_InC (kernel-internal)
 
-post_L2_InC = 1280  # after avg pool + 1x1
-post_L2_OutC = 1280
+post_L2_InC = nsblock("post_l2").layers[0].in_shape[2]
+post_L2_OutC = nsblock("post_l2").layers[-1].out_shape[2]
 post_wts_per_tile = post_L2_OutC * (post_L1_OutC // 4)  # split across 4 tiles
 
 
