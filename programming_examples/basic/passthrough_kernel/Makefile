@@ -21,14 +21,15 @@ trace_size = 8192
 CHESS ?= false
 
 data_size = in1_size
-aie_py_src=${targetname}.py
 use_placed?=0
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+.PHONY: all run run_py trace trace_py clean clean_trace
 
-.PHONY: all template clean
+ifeq (${use_placed}, 1)
+# -----------------------------------------------------------------------------
+# Placed (raw aie/aiex dialect) flow: python -> MLIR text -> aiecc -> xclbin
+# -----------------------------------------------------------------------------
+aie_py_src=${targetname}_placed.py
 
 all: build/final_${data_size}.xclbin
 
@@ -71,11 +72,11 @@ ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
 run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.bin
-	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE 
+	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE
 
 run_py: build/final_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
@@ -89,6 +90,27 @@ trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
 	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir.prj/input_with_addresses.mlir --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
+
+else
+# -----------------------------------------------------------------------------
+# Default flow (Iron API + @iron.jit): the python script JIT-compiles and runs
+# the kernel in one invocation — no separate aiecc / xclbin / .exe step.
+# -----------------------------------------------------------------------------
+aie_py_src=${targetname}.py
+
+all:
+	@echo "JIT mode: kernel compiles on first 'make run' / 'make run_py'."
+
+run: run_py
+
+run_py:
+	${powershell} python3 ${srcdir}/${aie_py_src} -d ${devicename} -i1s ${in1_size} -os ${out_size}
+
+trace: trace_py
+
+trace_py:
+	${powershell} python3 ${srcdir}/${aie_py_src} -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size}
+endif
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json
