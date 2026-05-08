@@ -18,6 +18,7 @@ source_file_mtimes + flags)`` — no MLIR generation needed for a cache lookup.
 from __future__ import annotations
 
 import builtins
+import functools
 import hashlib
 import inspect
 import json
@@ -128,6 +129,47 @@ def _is_tensor_param(annotation) -> bool:
     return annotation in _TENSOR_ANNOTATIONS
 
 
+@functools.lru_cache(maxsize=None)
+def _introspect_generator(generator: Callable):
+    """Memoise ``(hints, signature, (compile, tensor, scalar))`` for a generator.
+
+    All three derived values are pure functions of the generator's source —
+    the same answer for every call of the same function object — but
+    ``typing.get_type_hints`` and ``inspect.signature`` together cost
+    ~40us per invocation.  Memoising shaves both ``split_params`` and
+    ``CompilableDesign.split_runtime_args`` to a dict lookup on the JIT
+    hot path.
+
+    The returned param tuples are immutable; callers that need lists copy.
+    """
+    try:
+        hints = typing.get_type_hints(generator)
+    except Exception as exc:
+        logger.debug("get_type_hints failed for %r: %s", generator, exc)
+        hints = {}
+
+    sig = inspect.signature(generator)
+    compile_params: list[str] = []
+    tensor_params: list[str] = []
+    scalar_params: list[str] = []
+    for name, param in sig.parameters.items():
+        ann = hints.get(name, param.annotation)
+        if ann is inspect.Parameter.empty:
+            scalar_params.append(name)
+        elif _is_compile_param(ann):
+            compile_params.append(name)
+        elif _is_tensor_param(ann):
+            tensor_params.append(name)
+        else:
+            scalar_params.append(name)
+
+    return hints, sig, (
+        tuple(compile_params),
+        tuple(tensor_params),
+        tuple(scalar_params),
+    )
+
+
 def split_params(generator: Callable) -> tuple[list[str], list[str], list[str]]:
     """Inspect *generator* and return (compile_params, tensor_params, scalar_params).
 
@@ -140,33 +182,8 @@ def split_params(generator: Callable) -> tuple[list[str], list[str], list[str]]:
     correctly.  Falls back to ``inspect.signature`` annotations on any error
     (e.g. when the generator's globals are not resolvable at call time).
     """
-    compile_params: list[str] = []
-    tensor_params: list[str] = []
-    scalar_params: list[str] = []
-
-    # get_type_hints() evaluates string annotations (from __future__ import
-    # annotations / PEP 563). Falls back to {} on any resolution error.
-    try:
-        hints = typing.get_type_hints(generator)
-    except Exception as exc:
-        logger.debug("get_type_hints failed for %r: %s", generator, exc)
-        hints = {}
-
-    sig = inspect.signature(generator)
-    for name, param in sig.parameters.items():
-        # Prefer the resolved hint; fall back to the raw annotation.
-        ann = hints.get(name, param.annotation)
-        if ann is inspect.Parameter.empty:
-            # Unannotated — treat as scalar.
-            scalar_params.append(name)
-        elif _is_compile_param(ann):
-            compile_params.append(name)
-        elif _is_tensor_param(ann):
-            tensor_params.append(name)
-        else:
-            scalar_params.append(name)
-
-    return compile_params, tensor_params, scalar_params
+    _, _, (cp, tp, sp) = _introspect_generator(generator)
+    return list(cp), list(tp), list(sp)
 
 
 def _compute_hash(
@@ -359,14 +376,20 @@ class CompilableDesign:
         self._inst_path: Path | None = None
         self._expected_tensor_sizes: list[int] | None = None
 
-        # Introspect generator signature to split param categories.
+        # Introspect generator signature to split param categories.  Cache
+        # hints+sig on self so split_runtime_args / _generate_mlir reuse the
+        # same memoised intro instead of re-running typing.get_type_hints
+        # and inspect.signature on every call.
         if callable(mlir_generator):
-            (
-                self.compile_params,
-                self.tensor_params,
-                self.scalar_params,
-            ) = split_params(mlir_generator)
+            self._hints, self._sig, (cp, tp, sp) = _introspect_generator(
+                mlir_generator
+            )
+            self.compile_params = list(cp)
+            self.tensor_params = list(tp)
+            self.scalar_params = list(sp)
         else:
+            self._hints = {}
+            self._sig = None
             self.compile_params = []
             self.tensor_params = []
             self.scalar_params = []
@@ -495,14 +518,9 @@ class CompilableDesign:
         tensor_args = []
         scalar_kwargs = dict(runtime_kwargs)
 
-        # Use get_type_hints() to resolve stringified annotations
-        # (from __future__ import annotations / PEP 563).
-        try:
-            hints = typing.get_type_hints(self.mlir_generator)
-        except Exception:
-            hints = {}
-
-        sig = inspect.signature(self.mlir_generator)
+        # Reuse the cached intro from __init__ — same generator, same hints/sig.
+        hints = self._hints
+        sig = self._sig
         params = [
             (name, p)
             for name, p in sig.parameters.items()
@@ -699,10 +717,8 @@ class CompilableDesign:
             return ctx.module
 
         # Validate that all Compile[T] params are supplied.
-        try:
-            hints = typing.get_type_hints(self.mlir_generator)
-        except Exception:
-            hints = {}
+        # Reuse the cached intro from __init__ — same generator, same hints.
+        hints = self._hints
 
         # Guard 2-A: compile_kwargs must not contain tensor param names.
         tensor_names = set(self.tensor_params)
@@ -729,7 +745,7 @@ class CompilableDesign:
                 f"  Valid Compile[T] params are: {self.compile_params}."
             )
 
-        sig = inspect.signature(self.mlir_generator)
+        sig = self._sig
         compile_only_params = {
             name: p
             for name, p in sig.parameters.items()
