@@ -9,7 +9,6 @@
 
 import argparse
 import sys
-import time
 
 import numpy as np
 
@@ -25,6 +24,7 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
+from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import print_cycles_summary
 
@@ -127,23 +127,15 @@ def main():
     else:
         warmup, iters = opts.warmup, opts.iters
 
-    e2e_total = npu_total = 0.0
-    e2e_max = npu_max = 0.0
-    e2e_min = npu_min = float("inf")
-    for i in range(warmup + iters):
-        start = time.perf_counter()
-        _, result = my_passthrough_kernel(
-            in_tensor, out_tensor, n=n_elems, trace_config=trace_config
-        )
-        e2e_us = (time.perf_counter() - start) * 1_000_000
-        npu_us = result.npu_time / 1_000.0
-        if i >= warmup:
-            e2e_total += e2e_us
-            e2e_min = min(e2e_min, e2e_us)
-            e2e_max = max(e2e_max, e2e_us)
-            npu_total += npu_us
-            npu_min = min(npu_min, npu_us)
-            npu_max = max(npu_max, npu_us)
+    bench = run_iters(
+        my_passthrough_kernel,
+        in_tensor,
+        out_tensor,
+        n=n_elems,
+        trace_config=trace_config,
+        warmup=warmup,
+        iters=iters,
+    )
 
     expected = in_tensor.numpy()
     computed = out_tensor.numpy()
@@ -152,15 +144,8 @@ def main():
         print(f"FAIL! {mismatches} mismatches out of {expected.size}")
         sys.exit(1)
 
-    if iters > 0:
-        print(
-            f"\nNPU time     (avg/min/max us): "
-            f"{npu_total / iters:.1f} / {npu_min:.1f} / {npu_max:.1f}"
-        )
-        print(
-            f"End-to-end   (avg/min/max us): "
-            f"{e2e_total / iters:.1f} / {e2e_min:.1f} / {e2e_max:.1f}"
-        )
+    print()
+    print_benchmark(bench)
 
     if trace_config is not None:
         if trace_config.physical_mlir_path is None:
