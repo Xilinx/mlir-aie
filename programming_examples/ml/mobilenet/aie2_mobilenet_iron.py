@@ -661,31 +661,38 @@ def mobilenet_iron():
         # tile) but the on-wire sequence is what matters: BD1 sends the primary
         # buffer first, so we put FC1 data in the primary buffer regardless of
         # which tile holds it.
-        # Map iron buffer names to lowlevel sym_names by tile coord:
-        #   post_l2_fc1_wts_{i} (on fc2_memtiles[i]) -> mem_X1_buff
-        #     (i=0: (1,1)->mem_11_buff, i=1: (3,1)->mem_31_buff, etc.)
-        #   post_l2_fc2_wts_{i} (on fc1_memtiles[i]) -> mem_X1_buff
-        #     (i=0: (0,1)->mem_01_buff, i=1: (2,1)->mem_21_buff, etc.)
-        #   recv buf (on fc_comptiles[i]) -> mem_L2_wts_core{i+1}
-        _fc1_buf_name = f"mem_{2*i + 1}1_buff"  # (1,1),(3,1),(5,1),(7,1)
-        _fc2_buf_name = f"mem_{2*i}1_buff"      # (0,1),(2,1),(4,1),(6,1)
+        # Match lowlevel byte-for-byte: lowlevel puts FC1 data in the EVEN-col
+        # memtile buffer (mem_01/21/41/61_buff), FC2 data in the ODD-col
+        # memtile buffer (mem_11/31/51/71_buff), with DMA on the ODD memtile
+        # whose BD chain reads EVEN-memtile buffer FIRST (cross-memtile),
+        # then ODD-memtile buffer SECOND (intra-memtile).
+        #
+        # In iron's StaticWeightStream: memtile_placement holds the DMA AND
+        # the "primary" buf; ping_pong_memtile holds the "pp" buf. To match
+        # lowlevel:
+        #   - primary buf (on odd memtile) = fc2_data, name = mem_X1_buff (odd X)
+        #   - pp buf      (on even memtile) = fc1_data, name = mem_X1_buff (even X)
+        #   - BD chain reads PP first, primary second  (fc1_first_via_pp=True)
+        _odd_name  = f"mem_{2*i + 1}1_buff"  # (1,1),(3,1),(5,1),(7,1) - FC2 data
+        _even_name = f"mem_{2*i}1_buff"      # (0,1),(2,1),(4,1),(6,1) - FC1 data
         _recv_name = f"mem_L2_wts_core{i + 1}"
         fc_pb = StaticWeightStream(
             obj_type=_i8((fc_full_per_tile,)),
-            initial_value=fc1_data,
-            name=_fc1_buf_name,
+            initial_value=fc2_data,           # primary on ODD now holds FC2
+            name=_odd_name,
             recv_name=_recv_name,
             recv_type=_i8((fc_recv_per_tile,)),
             repeat_count=PostOutputSplitL2,
-            memtile_placement=fc2_memtiles[i],
+            memtile_placement=fc2_memtiles[i],   # ODD memtile, DMA here
             compute_placement=fc_comptiles[i],
             mm2s_channel=0,
             s2mm_channel=1,
-            ping_pong_buf=(_i8((fc_full_per_tile,)), fc2_data, _fc2_buf_name),
-            ping_pong_memtile=fc1_memtiles[i],
+            ping_pong_buf=(_i8((fc_full_per_tile,)), fc1_data, _even_name),
+            ping_pong_memtile=fc1_memtiles[i],   # EVEN memtile holds PP/FC1
             mem_lock_id=0,
             comp_lock_id=2,
             pp_lock_id=0,
+            pp_first=True,                       # BD1 reads PP buf (FC1) first
         )
 
         def post_l2_fn(

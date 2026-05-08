@@ -58,6 +58,7 @@ class StaticWeightStream(Resolvable):
         comp_lock_id: int = 0,  # starting lock_id for compute tile
         pp_lock_id: int = 0,  # starting lock_id for ping-pong MemTile
         recv_name: str | None = None,  # explicit recv-side buffer sym_name (default: f"{name}_recv")
+        pp_first: bool = False,  # if True, BD1 reads pp_buf first then primary (matches lowlevel cross-then-intra order)
     ):
         self._obj_type = obj_type
         self._initial_value = np.asarray(initial_value, dtype=np.int8)
@@ -74,6 +75,7 @@ class StaticWeightStream(Resolvable):
         self._comp_lock_id = comp_lock_id
         self._pp_lock_id = pp_lock_id
         self._recv_name = recv_name if recv_name is not None else f"{name}_recv"
+        self._pp_first = pp_first
 
         # Set by resolve(); used by acquire/release at kernel time.
         self._comp_cons_lock = None
@@ -192,23 +194,46 @@ class StaticWeightStream(Resolvable):
                 initial_value=np.asarray(pp_data, dtype=np.int8),
             )
 
-            @memtile_dma(memtile_op)
-            def _mtdma(block):
-                dma_start(
-                    DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[3]
-                )
-                with block[1]:  # BD1: first buffer
-                    use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
-                    dma_bd(wts_buf)
-                    use_lock(mem_prod_lock, LockAction.Release)
-                    next_bd(block[2])  # → BD2
-                with block[2]:  # BD2: second buffer (ping-pong)
-                    use_lock(pp_cons_lock, LockAction.AcquireGreaterEqual)
-                    dma_bd(pp_buf)
-                    use_lock(pp_prod_lock, LockAction.Release)
-                    next_bd(block[1])  # → BD1 (alternate forever)
-                with block[3]:
-                    EndOp()
+            # If pp_first=True, the BD chain reads the PP buffer FIRST then
+            # the primary buffer SECOND (matches lowlevel's
+            # cross-memtile-first / intra-memtile-second pattern). Otherwise
+            # the original primary-first order applies.
+            if self._pp_first:
+                @memtile_dma(memtile_op)
+                def _mtdma(block):
+                    dma_start(
+                        DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[3]
+                    )
+                    with block[1]:  # BD1: pp_buf (cross-memtile)
+                        use_lock(pp_cons_lock, LockAction.AcquireGreaterEqual)
+                        dma_bd(pp_buf)
+                        use_lock(pp_prod_lock, LockAction.Release)
+                        next_bd(block[2])  # → BD2
+                    with block[2]:  # BD2: primary buf (intra-memtile)
+                        use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
+                        dma_bd(wts_buf)
+                        use_lock(mem_prod_lock, LockAction.Release)
+                        next_bd(block[1])  # → BD1 (alternate forever)
+                    with block[3]:
+                        EndOp()
+            else:
+                @memtile_dma(memtile_op)
+                def _mtdma(block):
+                    dma_start(
+                        DMAChannelDir.MM2S, self._mm2s_ch, dest=block[1], chain=block[3]
+                    )
+                    with block[1]:  # BD1: primary buffer (intra-memtile)
+                        use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
+                        dma_bd(wts_buf)
+                        use_lock(mem_prod_lock, LockAction.Release)
+                        next_bd(block[2])  # → BD2
+                    with block[2]:  # BD2: pp buffer (cross-memtile)
+                        use_lock(pp_cons_lock, LockAction.AcquireGreaterEqual)
+                        dma_bd(pp_buf)
+                        use_lock(pp_prod_lock, LockAction.Release)
+                        next_bd(block[1])  # → BD1 (alternate forever)
+                    with block[3]:
+                        EndOp()
 
         else:
 
