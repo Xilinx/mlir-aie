@@ -1,10 +1,12 @@
 # Getting Started: Single Core Matrix Multiplication
 
-This example multiplies two input matrices of 16-bit integers, `A` and `B`, to 
-produce a 16-bit integer output matrix `C`. All matrices are of size `512x512`.
-We use a single AI Engine core to compute the matrix product. Since these
-matrices do not fit into a AI Engine core's memory, we split the input and
-output into sub-tiles that are processed individually.
+This example multiplies two input matrices of 16-bit integers, `A` and `B`, to
+produce a 16-bit integer output matrix `C`. The example ships two pre-compiled
+shape variants — `256x256x256` and `512x512x512` — to demonstrate
+**parametrized ahead-of-time (AOT) compilation**. A single AI Engine core
+computes each matrix product. Since these matrices do not fit into an AI
+Engine core's memory, the design splits the input and output into sub-tiles
+processed individually.
 
 ![Matrix Multiplication AxB = C](diagrams/matmul.svg)
 
@@ -14,15 +16,17 @@ For more versions of the matrix multiplication design, with customizable paramet
 
 This design consists of the following:
 
-* `matrix_multiplication_single_core.py`: The NPU design for this application,
-  which describes which cores of the NPU we will use, how to route data between
-  cores, and what program to run on each core. This design leverages the IRON
-  JIT decorator to compile the design into a binary to run on the NPU, as well as 
-  to describe the program that runs on the CPU (host) that calculates a correct 
-  reference output, verifies and times our NPU design's execution.
-* `matrix_multiplication.cc`: A C++ kernel that exposes a function for 
-  efficiently multiplying matrices using the 
-  [AIE API](https://xilinx.github.io/aie_api/index.html).
+* `matrix_multiplication_single_core.py`: The NPU design and host driver. The
+  generator is decorated with `@iron.compileconfig`, which lets the host
+  driver build a `CompilableDesign` per shape, call `.compile()` eagerly to
+  produce distinct xclbin/insts artifacts on disk, and then dispatch each
+  variant via `CallableDesign`. Use this pattern when you know your problem
+  sizes in advance and want to ship pre-compiled binaries instead of paying
+  JIT compile time on first call.
+* The MMUL kernel itself comes from the IRON kernel library
+  ([`aie.iron.kernels.mm`](../../../python/iron/kernels/linalg.py)), which
+  wraps [`aie_kernels/aie2/mm.cc`](../../../aie_kernels/aie2/mm.cc) — no
+  per-example C++ file is needed.
 * `run.lit`: lit test that runs the design on different NPU devices.
 
 ## Problem Size, Tile Size and Intrinsic Size
@@ -138,7 +142,13 @@ tensor access pattern for the ouptut C then undoes this tiling to produce a
 regular row-major tile as the output moves out of the computation core.
 Note that all of these tiles are arranged in row-major order.
 
-![The 64x64 tiles of A, B and C, are tiled into tiles of size 8x2, 2x8 and 8x8, respectively, to allow processing using the VMAC intrinsics.](./diagrams/matmul_l2l1.svg)
+![The 64x64 tiles of A, B and C, are tiled into intrinsic-sized sub-tiles to allow processing using the VMAC intrinsics.](./diagrams/matmul_l2l1.svg)
+
+> Note: the figure above shows the original `8x2` / `2x8` / `8x8` sub-tile
+> layout. The current example uses the IRON kernel library's `kernels.mm()`
+> for `(int16, int16)`, which generates a `4x4x4` MMUL — so the actual
+> `r/s/t` constants in the source are `(4, 4, 4)`. Other dtype pairs use
+> different intrinsic sizes (see `aie_kernels/aie2/mm.cc`).
 
 ## Ryzen™ AI Usage
 

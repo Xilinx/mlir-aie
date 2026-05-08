@@ -2,25 +2,50 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Single-core matmul, ahead-of-time compiled for two preset shapes.
+
+Demonstrates parametrized AOT: the design is declared once with
+``@iron.compileconfig`` and then specialised at known shapes via
+``CompilableDesign(..., compile_kwargs={...}).compile()``, which produces
+distinct xclbin/insts artifacts on disk.  Each compiled variant is then
+invoked via ``CallableDesign``.  Use this pattern when you know your
+problem sizes in advance and want to ship pre-compiled binaries instead
+of paying JIT compile time on first call.
+"""
+
+import sys
 
 import numpy as np
-import sys
-import os
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out, jit
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import (
+    CallableDesign,
+    Compile,
+    CompilableDesign,
+    In,
+    Out,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    compileconfig,
+    kernels,
+)
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
-from aie.utils.config import cxx_header_path
 
 
-# JIT decorator for IRON
-# Decorator to compile an IRON kernel into a binary to run on the NPU.
-# Parameters:
-#     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit
+# Tile size moved to/from the compute cores via mem tiles.
+_TILE_M = _TILE_K = _TILE_N = 64
+# AIE kernel intrinsic sizes — the DMA layout transforms below produce
+# r*s / s*t / r*t sub-tiles, which MUST match what the kernels.mm() factory
+# generates for the chosen (input_dtype, output_dtype). For (int16, int16) the
+# library compiles a 4x4x4 vectorized MMUL (see aie_kernels/aie2/mm.cc).
+_R, _S, _T = 4, 4, 4
+
+
+@compileconfig
 def matrix_multiplication_single_core(
     input0: In,
     input1: In,
@@ -29,31 +54,22 @@ def matrix_multiplication_single_core(
     M: Compile[int],
     K: Compile[int],
     N: Compile[int],
-    element_type: Compile[type]
+    element_type: Compile[type],
 ):
-    # Problem size
-    # - matrix0 shapes: (M, K)
-    # - matrix1 shapes: (K, N)
-    m, k, n = 64, 64, 64  # Tile size moved to/from the compute cores via mem tiles
-    r, s, t = 8, 2, 8  # AIE kernel intrinsic size
-
-    # --------------------------------------------------------------------------
-    # In-Array Data Movement
-    # --------------------------------------------------------------------------
+    m, k, n = _TILE_M, _TILE_K, _TILE_N
+    r, s, t = _R, _S, _T
 
     A_ty = np.ndarray[(M, K), np.dtype[element_type]]
     B_ty = np.ndarray[(K, N), np.dtype[element_type]]
     C_ty = np.ndarray[(M, N), np.dtype[element_type]]
-    a_ty = np.ndarray[(m, k), np.dtype[element_type]]
-    b_ty = np.ndarray[(k, n), np.dtype[element_type]]
-    c_ty = np.ndarray[(m, n), np.dtype[element_type]]
+    # Tile types are flat to match the kernels.mm() ExternalFunction signature.
+    a_ty = np.ndarray[(m * k,), np.dtype[element_type]]
+    b_ty = np.ndarray[(k * n,), np.dtype[element_type]]
+    c_ty = np.ndarray[(m * n,), np.dtype[element_type]]
 
-    # The following ObjectFIFOs route m*k-, k*n-, and m*n-sized subtiles
-    # (objects) to/from the compute cores via mem tiles, rearranging their data
-    # into r*s-, s*t-, and r*t-sized sub-subtiles. The data layout transformations
-    # performed by the mem tile DMAs are explained in detail in
-    # programming_guide/section-2/section-2c/ (Data Layout Transformations).
-
+    # The DMA-level layout transformations rearrange m*k / k*n / m*n tiles
+    # into r*s / s*t / r*t sub-tiles for the MMUL intrinsic.  See
+    # programming_guide/section-2/section-2c/ for n-D layout transformations.
     fifo_A_L3L2 = ObjectFifo(a_ty, name="A_L3L2")
     tap_A_L2L1 = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
     fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
@@ -67,16 +83,8 @@ def matrix_multiplication_single_core(
     )
 
     fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
-    # tap_C_L1L2 describes the inverse tiling transform that unpacks the C tile
-    # from the kernel's intrinsic layout (r*t sub-tiles) back to row-major order.
-    # TensorAccessPattern arguments (see programming_guide/section-2/section-2c/
-    # for a full explanation of n-dimensional data layout transformations):
-    #   tensor_dims : logical shape of one C tile — (m, n)
-    #   offset      : 0 (start from the beginning of the tile)
-    #   sizes       : [m//r, r, n//t, t] — iterate over (m/r) groups of r rows,
-    #                 each with (n/t) groups of t columns → visits all r*t sub-tiles
-    #   strides     : [r*n, t, r*t, 1] — step sizes matching the sub-tile layout
-    #                 produced by the MMUL kernel intrinsic
+    # Inverse tiling that unpacks C from the kernel's r*t sub-tile layout
+    # back to row-major.
     tap_C_L1L2 = TensorAccessPattern(
         tensor_dims=(m, n),
         offset=0,
@@ -87,28 +95,20 @@ def matrix_multiplication_single_core(
         dims_to_stream=tap_C_L1L2.transformation_dims, name="C_L2L3"
     )
 
-    # --------------------------------------------------------------------------
-    # Task each core will run
-    # --------------------------------------------------------------------------
-
-    # The kernel repeatedly acquires one subtile of A and B, multiplies them,
-    # and accumulates the result on top of C. As these tiles come in, the DMAs
-    # will have rearranged them into r*s-, s*t-, and r*t-sized subtiles, which
-    # the computation kernel relies on.
-
-    matmul_kernel = ExternalFunction(
-        "matrix_multiplication",
-        source_file=os.path.join(os.path.dirname(__file__), "matrix_multiplication.cc"),
-        arg_types=[a_ty, b_ty, c_ty],
-        include_dirs=[cxx_header_path()],
+    matmul_kernel = kernels.mm(
+        dim_m=m,
+        dim_k=k,
+        dim_n=n,
+        input_dtype=element_type,
+        output_dtype=element_type,
+        vectorized=True,
     )
 
     def core_fn(of_a, of_b, of_c, matmul):
         for _ in range_(M // m * N // n):
             elem_out = of_c.acquire(1)
-            for i in range_(m):
-                for j in range_(n):
-                    elem_out[i, j] = 0
+            for i in range_(m * n):
+                elem_out[i] = 0
             for _ in range_(K // k):
                 elem_in_a = of_a.acquire(1)
                 elem_in_b = of_b.acquire(1)
@@ -122,17 +122,9 @@ def matrix_multiplication_single_core(
         [fifo_A_L2L1.cons(), fifo_B_L2L1.cons(), fifo_C_L1L2.prod(), matmul_kernel],
     )
 
-    # --------------------------------------------------------------------------
-    # DRAM-NPU data movement and work dispatch
-    # --------------------------------------------------------------------------
-
-    # The data movement patterns from DRAM divide the input matrices (sizes
-    # M*K, K*N) into m*k- and k*n-sized subtiles and produce output into C in
-    # m*n-sized subtiles. Each single "task group" encompasses all data
-    # movement required for a single row of the output matrix. See
-    # programming_guide/section-2/section-2f/ for practical examples of
-    # multi-level (L3→L2→L1) data movement patterns.
-
+    # Each task group encompasses all data movement for one row of output
+    # tiles. See programming_guide/section-2/section-2f/ for multi-level
+    # (L3→L2→L1) data-movement patterns.
     a_taps = TensorTiler2D.group_tiler(
         (M, K), (m, k), (1, K // k), pattern_repeat=(N // n)
     )
@@ -157,47 +149,41 @@ def matrix_multiplication_single_core(
             )
             rt.finish_task_group(task_group)
 
-    # --------------------------------------------------------------------------
-    # Place and generate MLIR program
-    # --------------------------------------------------------------------------
-
-    my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def main():
-    # Define tensor shapes and data types
-    M, K, N = 512, 512, 512
-    element_type = np.int16
+def _run_variant(M: int, K: int, N: int, element_type) -> None:
+    """AOT-compile the design at (M,K,N,dtype), then run + verify."""
+    print(f"\n=== Compiling matmul {M}x{K}x{N} {np.dtype(element_type).name} ===")
+    design = CompilableDesign(
+        matrix_multiplication_single_core.mlir_generator,
+        compile_kwargs={"M": M, "K": K, "N": N, "element_type": element_type},
+    )
+    xclbin, insts = design.compile()
+    print(f"  xclbin: {xclbin}")
+    print(f"  insts:  {insts}")
 
-    # Construct an input tensors and an output zeroed tensor
-    # The two tensors are in memory accessible to the NPU
     input0 = iron.randint(0, 256, (M, K), dtype=element_type, device="npu")
     input1 = iron.randint(0, 256, (K, N), dtype=element_type, device="npu")
     output = iron.zeros(M * N, dtype=element_type, device="npu")
+    ref = np.matmul(input0.numpy(), input1.numpy())
 
-    # Generate reference pattern
-    ref_vec = np.matmul(input0.numpy(), input1.numpy())
+    CallableDesign(design)(input0, input1, output)
 
-    # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
-    # to the kernel will use the same compiled kernel and loaded code objects
-    matrix_multiplication_single_core(
-        input0, input1, output, M=M, K=K, N=N, element_type=element_type
-    )
-
-    # Check the correctness of the result
-    e = np.equal(ref_vec.flatten(), output.numpy())
+    e = np.equal(ref.flatten(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
-
-    # If the result is correct, exit with a success code
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nfailed.\n")
+    if errors:
+        print(f"  FAIL: {errors} mismatches")
         sys.exit(1)
+    print(f"  PASS")
+
+
+def main():
+    # Two pre-compiled shape variants — both produced eagerly before any
+    # kernel is launched, then dispatched at runtime via CallableDesign.
+    _run_variant(M=256, K=256, N=256, element_type=np.int16)
+    _run_variant(M=512, K=512, N=512, element_type=np.int16)
+    print("\nAll variants PASS!")
 
 
 if __name__ == "__main__":
