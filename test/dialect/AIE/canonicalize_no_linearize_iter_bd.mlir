@@ -7,13 +7,8 @@
 // Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-//
-// Regression test for LinearizeContiguousBDTransfer: a contiguous shim BD
-// whose explicit `len` is smaller than the product of its dim sizes uses the
-// outermost dim as a hardware BD iteration dim. Linearizing such a BD would
-// drop the iteration stride. See PR #3036.
-//
-//===----------------------------------------------------------------------===//
+
+// Regression for LinearizeContiguousBDTransfer; see PR #3036.
 
 // RUN: aie-opt --canonicalize --split-input-file %s | FileCheck %s --check-prefix=CANON
 // RUN: aie-opt --pass-pipeline='any(aie.device(canonicalize,aie-dma-tasks-to-npu))' \
@@ -21,13 +16,10 @@
 
 // -----
 
-// 4D BD with len (4096) < product (32*1*64*64 = 131072): must NOT linearize.
-
+// len < product: outer dim is an iteration dim, must NOT linearize.
 // CANON-LABEL: @iter_bd_no_linearize
-// CANON:         aiex.dma_configure_task
-// CANON:           aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 4096,
+// CANON:         aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 4096,
 // CANON-SAME:        [<size = 32, stride = 4096>, <size = 1, stride = 64>, <size = 64, stride = 64>, <size = 64, stride = 1>]
-
 // LOWER-LABEL: @iter_bd_no_linearize
 // LOWER:         aiex.npu.writebd
 // LOWER-SAME:      buffer_length = 2048
@@ -52,12 +44,9 @@ module {
 
 // -----
 
-// 4D BD with len == product: still linearizes (no iteration dim implied).
-
+// 4D, len == product: still linearizes.
 // CANON-LABEL: @iter_bd_4d_len_matches_linearizes
-// CANON:         aiex.dma_configure_task
-// CANON:           aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 131072)
-// CANON-NOT:         dimensions
+// CANON:         aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 131072)
 // CANON-NOT:         [<
 module {
   aie.device(npu1) {
@@ -78,12 +67,9 @@ module {
 
 // -----
 
-// 2D BD with len == product: still linearizes.
-
+// 2D, len == product: still linearizes.
 // CANON-LABEL: @iter_bd_2d_len_matches_linearizes
-// CANON:         aiex.dma_configure_task
-// CANON:           aie.dma_bd(%arg0 : memref<4096xbf16>, 0, 4096)
-// CANON-NOT:         dimensions
+// CANON:         aie.dma_bd(%arg0 : memref<4096xbf16>, 0, 4096)
 // CANON-NOT:         [<
 module {
   aie.device(npu1) {

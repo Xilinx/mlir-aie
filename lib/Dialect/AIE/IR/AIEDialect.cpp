@@ -2424,14 +2424,12 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     if (dims->size() == 1 && dims->front().getStride() == 1)
       return mlir::failure();
 
-    // Compute total element count from all dimension sizes.
     int64_t product = 1;
     for (BDDimLayoutAttr dim : *dims)
       product *= dim.getSize();
 
-    // If len < product, the outermost dim is a BD iteration dim (per-
-    // iteration transfer = len, repeat count/stride from the outer dim).
-    // Linearizing would drop the iteration stride.
+    // len < product means the outermost dim is a BD iteration dim;
+    // linearizing would drop the iteration stride.
     if (auto lenVal = op.getLen())
       if (static_cast<int64_t>(*lenVal) != product)
         return mlir::failure();
