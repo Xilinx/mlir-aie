@@ -20,7 +20,9 @@ from aie.utils.config import cxx_header_path
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def saxpy(input0: In, input1: In, output: Out, *, N: Compile[int], element_type: Compile[type]):
+def saxpy(
+    input0: In, input1: In, output: Out, *, N: Compile[int], element_type: Compile[type]
+):
 
     # --------------------------------------------------------------------------
     # In-Array Data Movement

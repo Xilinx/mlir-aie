@@ -163,10 +163,14 @@ def _introspect_generator(generator: Callable):
         else:
             scalar_params.append(name)
 
-    return hints, sig, (
-        tuple(compile_params),
-        tuple(tensor_params),
-        tuple(scalar_params),
+    return (
+        hints,
+        sig,
+        (
+            tuple(compile_params),
+            tuple(tensor_params),
+            tuple(scalar_params),
+        ),
     )
 
 
@@ -381,9 +385,7 @@ class CompilableDesign:
         # same memoised intro instead of re-running typing.get_type_hints
         # and inspect.signature on every call.
         if callable(mlir_generator):
-            self._hints, self._sig, (cp, tp, sp) = _introspect_generator(
-                mlir_generator
-            )
+            self._hints, self._sig, (cp, tp, sp) = _introspect_generator(mlir_generator)
             self.compile_params = list(cp)
             self.tensor_params = list(tp)
             self.scalar_params = list(sp)

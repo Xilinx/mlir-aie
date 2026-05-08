@@ -149,9 +149,7 @@ def main():
     trace_size = opts.trace_size
 
     if in1_size % 64 != 0 or in1_size < 512:
-        sys.exit(
-            f"in1_size ({in1_size}) must be a multiple of 64 and >= 512"
-        )
+        sys.exit(f"in1_size ({in1_size}) must be a multiple of 64 and >= 512")
     assert out_size == in1_size, "out_size must equal in1_size"
 
     in1_dtype = np.uint8

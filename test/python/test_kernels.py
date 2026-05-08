@@ -77,14 +77,20 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=4,
         expected_name="vector_scalar_mul_vector",
         name_variants=[
-            (dict(tile_size=1024, dtype=np.int32, vectorized=True),
-             "vector_scalar_mul_vector"),
-            (dict(tile_size=1024, dtype=np.int32, vectorized=False),
-             "vector_scalar_mul_scalar"),
+            (
+                dict(tile_size=1024, dtype=np.int32, vectorized=True),
+                "vector_scalar_mul_vector",
+            ),
+            (
+                dict(tile_size=1024, dtype=np.int32, vectorized=False),
+                "vector_scalar_mul_scalar",
+            ),
         ],
         invalid_kwargs=[
-            (dict(tile_size=1024, dtype=np.float32),
-             "dtype must be np.int16 or np.int32"),
+            (
+                dict(tile_size=1024, dtype=np.float32),
+                "dtype must be np.int16 or np.int32",
+            ),
         ],
     ),
     KernelSpec(
@@ -94,10 +100,14 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="eltwise_add_bf16_vector",
         name_variants=[
-            (dict(tile_size=1024, dtype=bfloat16, vectorized=True),
-             "eltwise_add_bf16_vector"),
-            (dict(tile_size=1024, dtype=bfloat16, vectorized=False),
-             "eltwise_add_bf16_scalar"),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=True),
+                "eltwise_add_bf16_vector",
+            ),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=False),
+                "eltwise_add_bf16_scalar",
+            ),
         ],
         invalid_kwargs=[
             (dict(tile_size=1024, dtype=np.float32), "dtype must be bfloat16"),
@@ -110,10 +120,14 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="eltwise_mul_bf16_vector",
         name_variants=[
-            (dict(tile_size=1024, dtype=bfloat16, vectorized=True),
-             "eltwise_mul_bf16_vector"),
-            (dict(tile_size=1024, dtype=bfloat16, vectorized=False),
-             "eltwise_mul_bf16_scalar"),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=True),
+                "eltwise_mul_bf16_vector",
+            ),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=False),
+                "eltwise_mul_bf16_scalar",
+            ),
         ],
         invalid_kwargs=[
             (dict(tile_size=1024, dtype=np.float32), "dtype must be bfloat16"),
@@ -166,19 +180,29 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="reduce_max_vector",
         name_variants=[
-            (dict(tile_size=1024, dtype=np.int32, vectorized=True),
-             "reduce_max_vector"),
-            (dict(tile_size=1024, dtype=np.int32, vectorized=False),
-             "reduce_max_scalar"),
-            (dict(tile_size=1024, dtype=bfloat16, vectorized=True),
-             "reduce_max_vector_bfloat16"),
-            (dict(tile_size=1024, dtype=bfloat16, vectorized=False),
-             "reduce_max_scalar_bfloat16"),
+            (
+                dict(tile_size=1024, dtype=np.int32, vectorized=True),
+                "reduce_max_vector",
+            ),
+            (
+                dict(tile_size=1024, dtype=np.int32, vectorized=False),
+                "reduce_max_scalar",
+            ),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=True),
+                "reduce_max_vector_bfloat16",
+            ),
+            (
+                dict(tile_size=1024, dtype=bfloat16, vectorized=False),
+                "reduce_max_scalar_bfloat16",
+            ),
             (dict(tile_size=1024, dtype=bfloat16), "reduce_max_vector_bfloat16"),
         ],
         invalid_kwargs=[
-            (dict(tile_size=1024, dtype=np.float32),
-             "dtype must be np.int32 or bfloat16"),
+            (
+                dict(tile_size=1024, dtype=np.float32),
+                "dtype must be np.int32 or bfloat16",
+            ),
         ],
         shape_checks=[
             (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
@@ -353,16 +377,17 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="matmul_i16_i16",
         name_variants=[
-            (dict(input_dtype=np.int16, output_dtype=np.int16, vectorized=True),
-             "matmul_i16_i16"),
-            (dict(input_dtype=np.int16, output_dtype=np.int16, vectorized=False),
-             "matmul_scalar_i16_i16"),
-            (dict(input_dtype=bfloat16, output_dtype=bfloat16),
-             "matmul_bf16_bf16"),
-            (dict(input_dtype=np.int8, output_dtype=np.int8),
-             "matmul_i8_i8"),
-            (dict(input_dtype=bfloat16, output_dtype=np.float32),
-             "matmul_bf16_f32"),
+            (
+                dict(input_dtype=np.int16, output_dtype=np.int16, vectorized=True),
+                "matmul_i16_i16",
+            ),
+            (
+                dict(input_dtype=np.int16, output_dtype=np.int16, vectorized=False),
+                "matmul_scalar_i16_i16",
+            ),
+            (dict(input_dtype=bfloat16, output_dtype=bfloat16), "matmul_bf16_bf16"),
+            (dict(input_dtype=np.int8, output_dtype=np.int8), "matmul_i8_i8"),
+            (dict(input_dtype=bfloat16, output_dtype=np.float32), "matmul_bf16_f32"),
         ],
         invalid_kwargs=[
             (dict(input_dtype=np.float64, output_dtype=np.float64), "unsupported"),
@@ -408,15 +433,15 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="matmul_scalar_cascade_get_only_i16_i16",
         name_variants=[
-            (dict(cascade_mode="get_only"),
-             "matmul_scalar_cascade_get_only_i16_i16"),
-            (dict(cascade_mode="put_only"),
-             "matmul_scalar_cascade_put_only_i16_i16"),
-            (dict(cascade_mode="put_get"),
-             "matmul_scalar_cascade_put_get_i16_i16"),
-            (dict(input_dtype=bfloat16, output_dtype=bfloat16,
-                  cascade_mode="get_only"),
-             "matmul_scalar_cascade_get_only_bf16_bf16"),
+            (dict(cascade_mode="get_only"), "matmul_scalar_cascade_get_only_i16_i16"),
+            (dict(cascade_mode="put_only"), "matmul_scalar_cascade_put_only_i16_i16"),
+            (dict(cascade_mode="put_get"), "matmul_scalar_cascade_put_get_i16_i16"),
+            (
+                dict(
+                    input_dtype=bfloat16, output_dtype=bfloat16, cascade_mode="get_only"
+                ),
+                "matmul_scalar_cascade_get_only_bf16_bf16",
+            ),
         ],
         invalid_kwargs=[
             (dict(cascade_mode="invalid"), "cascade_mode"),
@@ -638,8 +663,7 @@ _SHAPES = _flat(KERNEL_SPECS, "shape_checks")
     _SHAPES,
     ids=_flat_ids(_SHAPES, "shape"),
 )
-def test_arg_shape(spec: KernelSpec, kwargs: dict, arg_idx: int,
-                   expected_shape: tuple):
+def test_arg_shape(spec: KernelSpec, kwargs: dict, arg_idx: int, expected_shape: tuple):
     ef = spec.factory(**kwargs)
     arg = ef._arg_types[arg_idx]
     assert arg.__args__[0] == expected_shape
@@ -653,8 +677,7 @@ _TILE_SIZES = _flat(KERNEL_SPECS, "tile_size_checks")
     _TILE_SIZES,
     ids=_flat_ids(_TILE_SIZES, "ts"),
 )
-def test_tile_size_at_arg_0(spec: KernelSpec, kwargs: dict,
-                            expected_tile_size: int):
+def test_tile_size_at_arg_0(spec: KernelSpec, kwargs: dict, expected_tile_size: int):
     ef = spec.factory(**kwargs)
     assert ef.tile_size(0) == expected_tile_size
 
@@ -664,8 +687,7 @@ def test_tile_size_at_arg_0(spec: KernelSpec, kwargs: dict,
     ARG_COUNT_OVERRIDES,
     ids=[f"{r[0].name}-argc{i}" for i, r in enumerate(ARG_COUNT_OVERRIDES)],
 )
-def test_arg_count_override(spec: KernelSpec, kwargs: dict,
-                            expected_arg_count: int):
+def test_arg_count_override(spec: KernelSpec, kwargs: dict, expected_arg_count: int):
     """Variant arg_counts (e.g. bn_conv2dk3_dw stride=1 has an extra arg)."""
     ef = spec.factory(**kwargs)
     assert len(ef._arg_types) == expected_arg_count

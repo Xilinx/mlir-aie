@@ -23,7 +23,13 @@ from aie.helpers.dialects.scf import if_, else_
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def vector_reduce_max(input0: In, output: Out, *, in_tensor_size: Compile[int], element_type: Compile[type]):
+def vector_reduce_max(
+    input0: In,
+    output: Out,
+    *,
+    in_tensor_size: Compile[int],
+    element_type: Compile[type],
+):
 
     n_cores = 4
     N = 2048
@@ -196,7 +202,9 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    vector_reduce_max(input0, output, in_tensor_size=in_tensor_size, element_type=element_type)
+    vector_reduce_max(
+        input0, output, in_tensor_size=in_tensor_size, element_type=element_type
+    )
 
     # Check the correctness of the result and print.
     # Initialize to -inf so the reference is correct for all-negative inputs.

@@ -21,7 +21,16 @@ from aie.utils.config import cxx_header_path
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def matrix_multiplication_single_core(input0: In, input1: In, output: Out, *, M: Compile[int], K: Compile[int], N: Compile[int], element_type: Compile[type]):
+def matrix_multiplication_single_core(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    M: Compile[int],
+    K: Compile[int],
+    N: Compile[int],
+    element_type: Compile[type]
+):
     # Problem size
     # - matrix0 shapes: (M, K)
     # - matrix1 shapes: (K, N)
@@ -172,7 +181,9 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    matrix_multiplication_single_core(input0, input1, output, M=M, K=K, N=N, element_type=element_type)
+    matrix_multiplication_single_core(
+        input0, input1, output, M=M, K=K, N=N, element_type=element_type
+    )
 
     # Check the correctness of the result
     e = np.equal(ref_vec.flatten(), output.numpy())
