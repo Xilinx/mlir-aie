@@ -13,12 +13,13 @@ For a version of the memcpy design with customizable parameters, please see [her
 
 This design consists of the following:
 
-* `memcpy.py`: The NPU design for this application,
-  which describes which cores of the NPU we will use, how to route data between
-  cores, and what program to run on each core. This design leverages the IRON
-  JIT decorator to compile the design into a binary to run on the NPU, as well as 
-  to describe the program that runs on the CPU (host) that calculates a correct 
-  reference output, verifies and times our NPU design's execution.
+* `memcpy.py`: The NPU design and host driver. Describes which cores are used,
+  how data is routed between them, and the per-core program. The design uses
+  the IRON `@iron.jit` decorator to compile to an NPU binary on first call.
+  The host driver warms up the JIT cache, runs a 5-iteration benchmark via
+  `aie.utils.benchmark.run_iters`, reports NPU and end-to-end latency, and
+  computes effective bandwidth from the NPU time (the honest number for a
+  memory-bandwidth microbenchmark).
 * `run.lit`: lit tests that run the design on different NPU devices.
 
 ## Step-by-Step Instructions
