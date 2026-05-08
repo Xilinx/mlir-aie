@@ -32,6 +32,37 @@ from lowlevel_dma import StaticWeightStream
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 
+# EXPERIMENT: monkey-patch iron's Device.resolve_tile to emit aie.tile
+# directly (the placed dialect) instead of aie.logical_tile. This eliminates
+# the dialect difference between iron and lowlevel pre-place MLIR. The
+# `--aie-place-tiles` pass becomes a no-op since the tiles are already placed.
+import aie.iron.device.device as _iron_device_module
+from aie.dialects.aie import tile as _aie_tile_op
+
+_orig_resolve_tile = _iron_device_module.Device.resolve_tile
+
+def _resolve_tile_as_TileOp(self, t, loc=None, ip=None):
+    tile_id = id(t)
+    if tile_id in self._resolved_tiles:
+        t.op = self._resolved_tiles[tile_id]
+        return
+    if t.col is not None and t.row is not None:
+        coord = (t.col, t.row)
+        if coord in self._resolved_coords:
+            op = self._resolved_coords[coord]
+            self._resolved_tiles[tile_id] = op
+            t.op = op
+            return
+    if t.tile_type is None and t.col is not None and t.row is not None:
+        t.tile_type = self.get_tile_type(t.col, t.row)
+    op = _aie_tile_op(t.col, t.row, loc=loc, ip=ip)
+    self._resolved_tiles[tile_id] = op
+    if t.col is not None and t.row is not None:
+        self._resolved_coords[(t.col, t.row)] = op
+    t.op = op
+
+_iron_device_module.Device.resolve_tile = _resolve_tile_as_TileOp
+
 # Import bottleneck modules (new IRON organization)
 import importlib.util, pathlib
 
