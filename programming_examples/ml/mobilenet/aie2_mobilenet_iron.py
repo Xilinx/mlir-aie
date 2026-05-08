@@ -34,6 +34,7 @@ from aie.iron.controlflow import range_
 
 # Allow importing the local bottleneck/ package when running this file directly.
 import pathlib
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from bottleneck.regular import regular_bottlenecks
@@ -53,7 +54,7 @@ with open(data_dir + scale_factor_file) as f:
 # JSON layout: {"BN<n>": {"conv1x1_1": int, "conv3x3": int, "conv1x1_2": int, "skip_add": int}, ...}
 # Direct dict access (no .get with default) — a missing key fails loud, never silent.
 init_scaleFactor = sf["INIT"]["conv3x3"]
-post_sf     = sf["POST"]["conv1x1_1"]
+post_sf = sf["POST"]["conv1x1_1"]
 post_fc1_sf = sf["POST"]["FC1"]
 post_fc2_sf = sf["POST"]["FC2"]
 
@@ -119,47 +120,61 @@ def _require_wts(path, expected_size):
 # Re-targeting the design = editing this dict (and only this dict).
 # ---------------------------------------------------------------------------
 PLACEMENT = {
-    "init":   Tile(0, 2),
-    "post_l1":      {"compute":  Tile(6, 4), "memtile":  Tile(4, 1)},
+    "init": Tile(0, 2),
+    "post_l1": {"compute": Tile(6, 4), "memtile": Tile(4, 1)},
     "post_l2": {
         "fc1_memtiles": [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)],
         "fc2_memtiles": [Tile(1, 1), Tile(3, 1), Tile(5, 1), Tile(7, 1)],
-        "compute":      [Tile(6, 3), Tile(7, 4), Tile(7, 3), Tile(7, 2)],
+        "compute": [Tile(6, 3), Tile(7, 4), Tile(7, 3), Tile(7, 2)],
         "join_memtile": Tile(6, 1),
     },
     "shim": {
-        "input":              Tile(0, 0),
-        "wts":                [Tile(c, 0) for c in (4, 5, 6, 7)],
-        "scratch_drain":      Tile(3, 0),
-        "fc_fill":            Tile(4, 0),
-        "fc_drain":           Tile(7, 0),
+        "input": Tile(0, 0),
+        "wts": [Tile(c, 0) for c in (4, 5, 6, 7)],
+        "scratch_drain": Tile(3, 0),
+        "fc_fill": Tile(4, 0),
+        "fc_drain": Tile(7, 0),
     },
     "regular": {
-        "bn0":     Tile(0, 3),
-        "bn1":     Tile(0, 4),
-        "bn2":     Tile(0, 5),
-        "bn3":     Tile(1, 3),
-        "bn4_5":   {"compute": Tile(1, 2), "alloc": Tile(0, 2)},  # alloc on init tile
-        "bn6":     Tile(1, 4),
-        "bn7":     Tile(2, 3),
-        "bn8_9":   {"compute": Tile(3, 3), "alloc": Tile(3, 4)},  # alloc on bn11 L1 tile
+        "bn0": Tile(0, 3),
+        "bn1": Tile(0, 4),
+        "bn2": Tile(0, 5),
+        "bn3": Tile(1, 3),
+        "bn4_5": {"compute": Tile(1, 2), "alloc": Tile(0, 2)},  # alloc on init tile
+        "bn6": Tile(1, 4),
+        "bn7": Tile(2, 3),
+        "bn8_9": {"compute": Tile(3, 3), "alloc": Tile(3, 4)},  # alloc on bn11 L1 tile
     },
     "pipeline": {
-        "bn10":   {"l1": Tile(1, 5), "l2": Tile(2, 4), "l3": Tile(2, 5)},
-        "bn11":   {"l1": Tile(3, 2), "l2": Tile(3, 4), "l3": Tile(2, 2),
-                   "mem_skip": Tile(2, 1)},
-        "bn12":   {"l1": Tile(3, 5), "l23": Tile(4, 4)},
+        "bn10": {"l1": Tile(1, 5), "l2": Tile(2, 4), "l3": Tile(2, 5)},
+        "bn11": {
+            "l1": Tile(3, 2),
+            "l2": Tile(3, 4),
+            "l3": Tile(2, 2),
+            "mem_skip": Tile(2, 1),
+        },
+        "bn12": {"l1": Tile(3, 5), "l23": Tile(4, 4)},
     },
     "cascade": {
         "bn13": {
-            "l1_put": Tile(4, 5), "l1_get": Tile(5, 5), "l2": Tile(5, 4),
-            "l3_put": Tile(4, 3), "l3_get": Tile(5, 3),
-            "mem_l1": Tile(0, 1), "mem_l3": Tile(1, 1), "mem_skip": Tile(5, 1),
+            "l1_put": Tile(4, 5),
+            "l1_get": Tile(5, 5),
+            "l2": Tile(5, 4),
+            "l3_put": Tile(4, 3),
+            "l3_get": Tile(5, 3),
+            "mem_l1": Tile(0, 1),
+            "mem_l3": Tile(1, 1),
+            "mem_skip": Tile(5, 1),
         },
         "bn14": {
-            "l1_put": Tile(6, 5), "l1_get": Tile(7, 5), "l2": Tile(6, 2),
-            "l3_put": Tile(4, 2), "l3_get": Tile(5, 2),
-            "mem_l1": Tile(2, 1), "mem_l3": Tile(3, 1), "mem_skip": Tile(7, 1),
+            "l1_put": Tile(6, 5),
+            "l1_get": Tile(7, 5),
+            "l2": Tile(6, 2),
+            "l3_put": Tile(4, 2),
+            "l3_get": Tile(5, 2),
+            "mem_l1": Tile(2, 1),
+            "mem_l3": Tile(3, 1),
+            "mem_skip": Tile(7, 1),
         },
     },
 }
@@ -283,7 +298,7 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     # Bottleneck blocks
     # ------------------------------------------------------------------
-    a_workers, act_bn9_out  = regular_bottlenecks(
+    a_workers, act_bn9_out = regular_bottlenecks(
         act_init_out, sf, placement=PLACEMENT["regular"], data_dir=data_dir
     )
     b_workers, act_bn12_out = pipeline_bottlenecks(
@@ -301,7 +316,7 @@ def mobilenet_iron():
     # MemTile(4,1) and stream 9600 B chunks via StaticWeightStream.
     PostOutputSplit = 8
     PostRepeatChannels = post_L1_InH  # = 7
-    post_l1_wts_full_sz = post_L1_OutC * post_L1_InC      # 76800 B on MemTile
+    post_l1_wts_full_sz = post_L1_OutC * post_L1_InC  # 76800 B on MemTile
     post_l1_wts_chunk = post_l1_wts_full_sz // PostOutputSplit  # 9600 B per chunk
 
     post_l1_wts_data = _require_wts(
@@ -372,8 +387,19 @@ def mobilenet_iron():
             elem_in = act_in.acquire(1)
             for wi in range_(n_splits):
                 wts_chunk = wts_pb.acquire(1)
-                k(elem_in, wts_chunk, elem_out, inW, inC, outC, outC_padd,
-                  sf, yi, n_splits, wi)
+                k(
+                    elem_in,
+                    wts_chunk,
+                    elem_out,
+                    inW,
+                    inC,
+                    outC,
+                    outC_padd,
+                    sf,
+                    yi,
+                    n_splits,
+                    wi,
+                )
                 wts_pb.release(1)
             act_in.release(1)
         act_out.release(1)
@@ -389,7 +415,7 @@ def mobilenet_iron():
             post_L1_InH,
             post_L1_InC,
             post_L1_OutC,  # outC=960 (pre-pad)
-            post_L2_InC,   # outC_padd=1280 (next layer's input width)
+            post_L2_InC,  # outC_padd=1280 (next layer's input width)
             post_sf,
         ],
         tile=PLACEMENT["post_l1"]["compute"],
@@ -427,7 +453,7 @@ def mobilenet_iron():
     # on the even-column MemTile, FC2 on the odd-column MemTile that hosts the
     # MM2S DMA — keeps DMA off (4,1) which post_L1 owns).
     PostOutputSplitL2 = 40
-    fc_full_per_tile = post_L2_InC * fc_out_per_tile        # 409600 B per FC half
+    fc_full_per_tile = post_L2_InC * fc_out_per_tile  # 409600 B per FC half
     fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2  # 10240 B on compute
     # `co` = channels per ObjectFifo element (one WeightIndex iteration's output slice).
     co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
@@ -543,8 +569,8 @@ def mobilenet_iron():
     #   bn13_L1(76800) | bn13_L3(76800) | bn14_L1(76800) | bn14_L3(76800)
     from aie.helpers.taplib import TensorAccessPattern
 
-    _BN_L1_SZ = 80 * 960          # 76800 bytes per L1 weight chunk
-    _BN_L3_SZ = 480 * 80 * 2      # 76800 bytes per L3 weight chunk (put+get)
+    _BN_L1_SZ = 80 * 960  # 76800 bytes per L1 weight chunk
+    _BN_L3_SZ = 480 * 80 * 2  # 76800 bytes per L3 weight chunk (put+get)
     _CASCADE_OFFSETS = [0, _BN_L1_SZ, 2 * _BN_L1_SZ, 3 * _BN_L1_SZ]
     _CASCADE_SIZES = [_BN_L1_SZ, _BN_L3_SZ, _BN_L1_SZ, _BN_L3_SZ]
     _cascade_wts_sz_i32 = sum(_CASCADE_SIZES) // 4  # 76800 i32 = 307200 bytes
@@ -574,13 +600,16 @@ def mobilenet_iron():
         # act_in and bn13/14 have consumed their weights, so freeing all of
         # those at finish_task_group() is safe (causal closure).
         tg1 = rt.task_group()
-        rt.fill(act_in.prod(depth=1), inp, tile=PLACEMENT["shim"]["input"],
-                task_group=tg1)
+        rt.fill(
+            act_in.prod(depth=1), inp, tile=PLACEMENT["shim"]["input"], task_group=tg1
+        )
         # bn13/14 L1+L3 weight chunks from the combined cascade buffer
         for fifo, off, sz, shim in zip(
             wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, PLACEMENT["shim"]["wts"]
         ):
-            rt.fill(fifo.prod(), cascade_wts, _wts_tap(off, sz), tile=shim, task_group=tg1)
+            rt.fill(
+                fifo.prod(), cascade_wts, _wts_tap(off, sz), tile=shim, task_group=tg1
+            )
         # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
         # as scratch — input is fully consumed by the time PostL1 emits output.
         # Offsets/sizes are i32 elements (4 bytes each):

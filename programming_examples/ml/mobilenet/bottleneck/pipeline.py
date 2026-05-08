@@ -27,9 +27,19 @@ def _wts_buf(data_dir, filename, sz):
 
 
 def _make_3tile_pipeline_block(
-    name, act_in, in_w, in_h, in_c,
-    l1_out_c, l2_out_c, l3_out_c, scales, tiles,
-    data_dir, skip_in=None, scale_add=None,
+    name,
+    act_in,
+    in_w,
+    in_h,
+    in_c,
+    l1_out_c,
+    l2_out_c,
+    l3_out_c,
+    scales,
+    tiles,
+    data_dir,
+    skip_in=None,
+    scale_add=None,
 ):
     """3-tile pipelined bottleneck: 1x1-relu → DW-3x3-stride1 → 1x1[-skip].
 
@@ -99,7 +109,21 @@ def _make_3tile_pipeline_block(
         for _ in range_(in_h - 2):
             rows = of_12.acquire(3)
             row_out = of_23.acquire(1)
-            k(rows[0], rows[1], rows[2], wts, row_out, in_w, 1, l2_out_c, 3, 3, 1, s2, 0)
+            k(
+                rows[0],
+                rows[1],
+                rows[2],
+                wts,
+                row_out,
+                in_w,
+                1,
+                l2_out_c,
+                3,
+                3,
+                1,
+                s2,
+                0,
+            )
             of_12.release(1)
             of_23.release(1)
         rows = of_12.acquire(2)
@@ -109,6 +133,7 @@ def _make_3tile_pipeline_block(
         of_23.release(1)
 
     if has_skip:
+
         def l3_fn(of_23, skip_h, out_f, wts, k):
             for _ in range_(in_h):
                 r_in = of_23.acquire(1)
@@ -118,7 +143,9 @@ def _make_3tile_pipeline_block(
                 skip_h.release(1)
                 of_23.release(1)
                 out_f.release(1)
+
     else:
+
         def l3_fn(of_23, out_f, wts, k):
             for _ in range_(in_h):
                 r_in = of_23.acquire(1)
@@ -138,11 +165,19 @@ def _make_3tile_pipeline_block(
         Worker(l2_fn, [of_12.cons(), of_23.prod(), l2_wts, k_l2], tile=tiles["l2"]),
     ]
     if has_skip:
-        workers.append(Worker(l3_fn, [of_23.cons(), skip_h, out_fifo.prod(),
-                                       l3_wts, k_l3], tile=tiles["l3"]))
+        workers.append(
+            Worker(
+                l3_fn,
+                [of_23.cons(), skip_h, out_fifo.prod(), l3_wts, k_l3],
+                tile=tiles["l3"],
+            )
+        )
     else:
-        workers.append(Worker(l3_fn, [of_23.cons(), out_fifo.prod(), l3_wts, k_l3],
-                              tile=tiles["l3"]))
+        workers.append(
+            Worker(
+                l3_fn, [of_23.cons(), out_fifo.prod(), l3_wts, k_l3], tile=tiles["l3"]
+            )
+        )
     return out_fifo, workers
 
 
@@ -160,21 +195,33 @@ def pipeline_bottlenecks(
     """
     workers = []
     bn10_s1, bn10_s2, bn10_s3 = (
-        sf["BN10"]["conv1x1_1"], sf["BN10"]["conv3x3"], sf["BN10"]["conv1x1_2"],
+        sf["BN10"]["conv1x1_1"],
+        sf["BN10"]["conv3x3"],
+        sf["BN10"]["conv1x1_2"],
     )
     bn11_s1, bn11_s2, bn11_s3, bn11_sAdd = (
-        sf["BN11"]["conv1x1_1"], sf["BN11"]["conv3x3"],
-        sf["BN11"]["conv1x1_2"], sf["BN11"]["skip_add"],
+        sf["BN11"]["conv1x1_1"],
+        sf["BN11"]["conv3x3"],
+        sf["BN11"]["conv1x1_2"],
+        sf["BN11"]["skip_add"],
     )
     bn12_s1, bn12_s2, bn12_s3 = (
-        sf["BN12"]["conv1x1_1"], sf["BN12"]["conv3x3"], sf["BN12"]["conv1x1_2"],
+        sf["BN12"]["conv1x1_1"],
+        sf["BN12"]["conv3x3"],
+        sf["BN12"]["conv1x1_2"],
     )
 
     # ---- bn10 ----
     # b10_InW=14, InC=80, OutC1=480, OutC3=112; stride-1 DW; no skip.
     act_bn10_out, ws = _make_3tile_pipeline_block(
-        "bn10", act_in, in_w=14, in_h=14, in_c=80,
-        l1_out_c=480, l2_out_c=480, l3_out_c=112,
+        "bn10",
+        act_in,
+        in_w=14,
+        in_h=14,
+        in_c=80,
+        l1_out_c=480,
+        l2_out_c=480,
+        l3_out_c=112,
         scales=(bn10_s1, bn10_s2, bn10_s3),
         tiles=placement["bn10"],
         data_dir=data_dir,
@@ -190,12 +237,19 @@ def pipeline_bottlenecks(
         depth=2, tile=placement["bn11"]["mem_skip"]
     )
     act_bn11_out, ws = _make_3tile_pipeline_block(
-        "bn11", act_bn10_out, in_w=14, in_h=14, in_c=112,
-        l1_out_c=336, l2_out_c=336, l3_out_c=112,
+        "bn11",
+        act_bn10_out,
+        in_w=14,
+        in_h=14,
+        in_c=112,
+        l1_out_c=336,
+        l2_out_c=336,
+        l3_out_c=112,
         scales=(bn11_s1, bn11_s2, bn11_s3),
         tiles={k: placement["bn11"][k] for k in ("l1", "l2", "l3")},
         data_dir=data_dir,
-        skip_in=bn11_skip_of, scale_add=bn11_sAdd,
+        skip_in=bn11_skip_of,
+        scale_add=bn11_sAdd,
     )
     workers += ws
 
@@ -204,16 +258,16 @@ def pipeline_bottlenecks(
     # DW + PW kernels are interleaved per output row via a depth-1 self-loop fifo.
     # Weights for L2+L3 are stored in one combined buffer and sliced by memref_view
     # (matches lowlevel's single 29904 B buffer with views at offsets 0 / 3024).
-    bn12_l1_wts_sz = 112 * 336      # 37632
+    bn12_l1_wts_sz = 112 * 336  # 37632
     # bn12 dimensions
-    BN12_IN_W,  BN12_IN_H,  BN12_IN_C  = 14, 14, 112  # L1 input
-    BN12_L1_C  = 336                                  # DW channels
-    BN12_OUT_W                          = 7           # stride-2 halves spatial
-    BN12_OUT_C                          = 80
-    BN12_OUT_H                          = 7
+    BN12_IN_W, BN12_IN_H, BN12_IN_C = 14, 14, 112  # L1 input
+    BN12_L1_C = 336  # DW channels
+    BN12_OUT_W = 7  # stride-2 halves spatial
+    BN12_OUT_C = 80
+    BN12_OUT_H = 7
 
-    bn12_dw_wts_sz = 3 * 3 * BN12_L1_C            # 3024
-    bn12_pw_wts_sz = BN12_L1_C * BN12_OUT_C       # 26880
+    bn12_dw_wts_sz = 3 * 3 * BN12_L1_C  # 3024
+    bn12_pw_wts_sz = BN12_L1_C * BN12_OUT_C  # 26880
     bn12_l23_wts_sz = bn12_dw_wts_sz + bn12_pw_wts_sz  # 29904
 
     # Prefer the combined chain file; fall back to concat of per-layer files.
@@ -226,22 +280,25 @@ def pipeline_bottlenecks(
     bn12_l1_wts = _wts_buf(data_dir, "bn12_1_chain.txt", bn12_l1_wts_sz)
     bn12_l23_wts = Buffer(_i8((bn12_l23_wts_sz,)), initial_value=bn12_l23_data)
 
-    bn12_in_ty   = _i8((BN12_IN_W, 1, BN12_IN_C))
-    bn12_l1_ty   = _u8((BN12_IN_W, 1, BN12_L1_C))
-    bn12_dw_ty   = _u8((BN12_OUT_W, 1, BN12_L1_C))
-    bn12_out_ty  = _i8((BN12_OUT_W, 1, BN12_OUT_C))
+    bn12_in_ty = _i8((BN12_IN_W, 1, BN12_IN_C))
+    bn12_l1_ty = _u8((BN12_IN_W, 1, BN12_L1_C))
+    bn12_dw_ty = _u8((BN12_OUT_W, 1, BN12_L1_C))
+    bn12_out_ty = _i8((BN12_OUT_W, 1, BN12_OUT_C))
 
     k_bn12_l1 = Kernel(
-        "bn12_conv2dk1_relu_i8_ui8", "bn12_conv2dk1_fused_relu.o",
+        "bn12_conv2dk1_relu_i8_ui8",
+        "bn12_conv2dk1_fused_relu.o",
         [bn12_in_ty, _i8((bn12_l1_wts_sz,)), bn12_l1_ty] + [np.int32] * 4,
     )
     k_bn12_dw = Kernel(
-        "bn12_conv2dk3_dw_stride2_relu_ui8_ui8", "bn12_conv2dk3_dw_stride2.o",
+        "bn12_conv2dk3_dw_stride2_relu_ui8_ui8",
+        "bn12_conv2dk3_dw_stride2.o",
         [bn12_l1_ty, bn12_l1_ty, bn12_l1_ty, _i8((bn12_dw_wts_sz,)), bn12_dw_ty]
         + [np.int32] * 8,
     )
     k_bn12_pw = Kernel(
-        "bn12_conv2dk1_ui8_i8", "bn12_conv2dk1_ui8.o",
+        "bn12_conv2dk1_ui8_i8",
+        "bn12_conv2dk1_ui8.o",
         [bn12_dw_ty, _i8((bn12_pw_wts_sz,)), bn12_out_ty] + [np.int32] * 4,
     )
 
@@ -274,8 +331,21 @@ def pipeline_bottlenecks(
         # preamble: top output row (border=0)
         rows = of_12.acquire(2)
         dw_tmp = dw_tmp_prod.acquire(1)
-        k_dw(rows[0], rows[0], rows[1], dw_wts, dw_tmp,
-             BN12_IN_W, 1, BN12_L1_C, 3, 3, 0, bn12_s2, 0)
+        k_dw(
+            rows[0],
+            rows[0],
+            rows[1],
+            dw_wts,
+            dw_tmp,
+            BN12_IN_W,
+            1,
+            BN12_L1_C,
+            3,
+            3,
+            0,
+            bn12_s2,
+            0,
+        )
         of_12.release(1)
         dw_tmp_prod.release(1)
         _pw()
@@ -283,28 +353,65 @@ def pipeline_bottlenecks(
         for _ in range_(BN12_OUT_H - 2):
             rows = of_12.acquire(3)
             dw_tmp = dw_tmp_prod.acquire(1)
-            k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp,
-                 BN12_IN_W, 1, BN12_L1_C, 3, 3, 1, bn12_s2, 0)
+            k_dw(
+                rows[0],
+                rows[1],
+                rows[2],
+                dw_wts,
+                dw_tmp,
+                BN12_IN_W,
+                1,
+                BN12_L1_C,
+                3,
+                3,
+                1,
+                bn12_s2,
+                0,
+            )
             of_12.release(2)
             dw_tmp_prod.release(1)
             _pw()
         # postamble: last output row (border=1, release 3 to drain L1 fully)
         rows = of_12.acquire(3)
         dw_tmp = dw_tmp_prod.acquire(1)
-        k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp,
-             BN12_IN_W, 1, BN12_L1_C, 3, 3, 1, bn12_s2, 0)
+        k_dw(
+            rows[0],
+            rows[1],
+            rows[2],
+            dw_wts,
+            dw_tmp,
+            BN12_IN_W,
+            1,
+            BN12_L1_C,
+            3,
+            3,
+            1,
+            bn12_s2,
+            0,
+        )
         of_12.release(3)
         dw_tmp_prod.release(1)
         _pw()
 
     workers += [
-        Worker(bn12_l1_fn,
-               [act_bn11_out.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1],
-               tile=placement["bn12"]["l1"]),
-        Worker(bn12_l23_fn,
-               [bn12_of_12.cons(), bn12_dw_tmp_of.prod(), bn12_dw_tmp_of.cons(),
-                act_bn12_out.prod(), bn12_l23_wts, k_bn12_dw, k_bn12_pw],
-               tile=placement["bn12"]["l23"]),
+        Worker(
+            bn12_l1_fn,
+            [act_bn11_out.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1],
+            tile=placement["bn12"]["l1"],
+        ),
+        Worker(
+            bn12_l23_fn,
+            [
+                bn12_of_12.cons(),
+                bn12_dw_tmp_of.prod(),
+                bn12_dw_tmp_of.cons(),
+                act_bn12_out.prod(),
+                bn12_l23_wts,
+                k_bn12_dw,
+                k_bn12_pw,
+            ],
+            tile=placement["bn12"]["l23"],
+        ),
     ]
 
     return workers, act_bn12_out
