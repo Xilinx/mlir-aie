@@ -683,6 +683,9 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
             sumCols += resIt->second.col;
             ++placedCoreCount;
           }
+          // Cores are leaves for centroid: they don't relay between
+          // non-core peers via core-to-core fifos.
+          continue;
         }
         queue.push_back(peerOp);
       }
