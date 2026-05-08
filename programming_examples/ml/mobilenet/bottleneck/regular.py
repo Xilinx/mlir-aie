@@ -788,7 +788,10 @@ def regular_bottlenecks(
         f_1x1_skip(
             row_l2, wts_l3, row_out, rows_in[0], in_w, dw_ch, out_c, scale3, scale_add
         )
-        act_in_fifo.release(2)
+        # Sliding window: release only 1 of the 2 acquired rows; rows_in[1]
+        # carries over as next iter's [0]. Producer (bn1/bn6) only emits 1
+        # row per iter; releasing 2 here would consume 2x and deadlock.
+        act_in_fifo.release(1)
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
@@ -832,7 +835,8 @@ def regular_bottlenecks(
                 scale3,
                 scale_add,
             )
-            act_in_fifo.release(2)
+            # Sliding window: release only 1 row per iter (matching producer).
+            act_in_fifo.release(1)
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
@@ -2133,7 +2137,10 @@ def regular_bottlenecks(
         f_1x1_skip(
             row_l2, wts_l3, row_out, rows_in[0], in_w, dw_ch, out_c, scale3, scale_add
         )
-        act_in_fifo.release(2)
+        # Sliding window: release only 1 of the 2 acquired rows; rows_in[1]
+        # carries over as next iter's [0]. Producer (bn1/bn6) only emits 1
+        # row per iter; releasing 2 here would consume 2x and deadlock.
+        act_in_fifo.release(1)
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
@@ -2177,7 +2184,8 @@ def regular_bottlenecks(
                 scale3,
                 scale_add,
             )
-            act_in_fifo.release(2)
+            # Sliding window: release only 1 row per iter (matching producer).
+            act_in_fifo.release(1)
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
