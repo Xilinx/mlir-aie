@@ -2429,18 +2429,12 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     for (BDDimLayoutAttr dim : *dims)
       product *= dim.getSize();
 
-    // If the op has an explicit len that disagrees with the total dims product,
-    // the outermost dimension is a BD iteration (d3) dimension — len covers
-    // only the inner dims (per-iteration transfer), while the outermost dim
-    // controls how many times the BD is re-issued with address advancement.
-    // Linearizing would collapse the iteration into len, but the iteration
-    // stride (address advancement) would be lost, causing the hardware to
-    // repeatedly transfer only the first len elements instead of sweeping
-    // across the full buffer.  Bail out in this case.
-    if (auto lenVal = op.getLen()) {
+    // If len < product, the outermost dim is a BD iteration dim (per-
+    // iteration transfer = len, repeat count/stride from the outer dim).
+    // Linearizing would drop the iteration stride.
+    if (auto lenVal = op.getLen())
       if (static_cast<int64_t>(*lenVal) != product)
         return mlir::failure();
-    }
     int32_t len = static_cast<int32_t>(product);
 
     // Drop the dimensions attribute in-place; all other attributes (offset,
