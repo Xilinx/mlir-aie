@@ -242,8 +242,10 @@ def mobilenet_iron():
         rows = act_in.acquire(2)
         row_out = act_out.acquire(1)
         k(rows[0], rows[0], rows[1], wts, row_out, inW, inC, outC, 3, 3, 0, sf, 0, 0)
-        act_in.release(1)
+        # Preamble release order: lowlevel releases output BEFORE input
+        # (aie2_mobilenet.py:108-109). Middle iter does the opposite (in then out).
         act_out.release(1)
+        act_in.release(1)
         for _ in range_(outH - 1):
             rows = act_in.acquire(3)
             row_out = act_out.acquire(1)
@@ -719,10 +721,13 @@ def mobilenet_iron():
         # consumed by the time PostL1 produces output). drain waits so that the
         # subsequent fill sees valid data.
         # 1280 ui16 = 2560 bytes; tap is in i8 (inp dtype) units.
+        # Match lowlevel byte offsets: avgpool/FC1-input scratch starts at byte
+        # 2560 (i32 offset 640 in lowlevel arg0); FC1-output/FC2-input scratch
+        # starts at byte 5120 (i32 offset 1280).
         _post_l1_out_sz = post_L1_OutW * post_L1_OutH * post_L2_InC * 2
         _post_l1_scratch_tap = TensorAccessPattern(
             (tensorInW * tensorInH * tensorInC,),
-            offset=0,
+            offset=_post_l1_out_sz,
             sizes=[1, 1, 1, _post_l1_out_sz],
             strides=[0, 0, 0, 1],
         )
@@ -752,7 +757,7 @@ def mobilenet_iron():
         )
         _post_fc_out_tap = TensorAccessPattern(
             (tensorInW * tensorInH * tensorInC,),
-            offset=_post_l1_out_sz,
+            offset=_post_l1_out_sz * 2,
             sizes=[1, 1, 1, _post_l1_out_sz],
             strides=[0, 0, 0, 1],
         )

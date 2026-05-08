@@ -352,13 +352,16 @@ def pipeline_bottlenecks(
     #   call(bn11_conv2dk1_skip,
     #        [elemIn, wts, elemOut, elementSkipsIn, W, C2, C3, scale, skipScale])
     def bn11_l3_fn(of_23, skip_in, act_out, wts_buf, k_l3, sf3, sfAdd):
+        # Mirror lowlevel acquire/release order (subblockStatic.py:405-438):
+        #   acquire of_act_2_3, acquire actOut, acquire actIn, call,
+        #   release actIn, release of_act_2_3, release actOut.
         for _ in range_(14):
             row_23 = of_23.acquire(1)
-            skip_row = skip_in.acquire(1)
             row_out = act_out.acquire(1)
+            skip_row = skip_in.acquire(1)
             k_l3(row_23, wts_buf, row_out, skip_row, 14, 336, 112, sf3, sfAdd)
-            of_23.release(1)
             skip_in.release(1)
+            of_23.release(1)
             act_out.release(1)
 
     # Original: bn11_tile_1=tile(3,2), bn11_tile_2=tile(3,4), bn11_tile_3=tile(2,2)
@@ -516,37 +519,42 @@ def pipeline_bottlenecks(
     def bn12_l23_fn(
         of_12, dw_tmp_prod, dw_tmp_cons, act_out, dw_wts, pw_wts, k_dw, k_pw, sf2, sf3
     ):
+        # NOTE: lowlevel acquires `act_bn12_out` (PW output buffer) LAZILY,
+        # only after the DW step releases its inputs. The earlier eager
+        # acquire here held an `of_12` slot while waiting on `act_out`,
+        # which can deadlock if the downstream chain depends on of_12 being
+        # drained. Defer the act_out acquire to just before the PW call.
         # preamble: top output row (border=0)
         rows = of_12.acquire(2)
-        pw_out = act_out.acquire(1)
         dw_tmp = dw_tmp_prod.acquire(1)
         k_dw(rows[0], rows[0], rows[1], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 0, sf2, 0)
         of_12.release(1)
         dw_tmp_prod.release(1)
         dw_tmp_c = dw_tmp_cons.acquire(1)
+        pw_out = act_out.acquire(1)
         k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, sf3)
         dw_tmp_cons.release(1)
         act_out.release(1)
         # middle output rows (border=1): 5 iters
         for _ in range_(5):
             rows = of_12.acquire(3)
-            pw_out = act_out.acquire(1)
             dw_tmp = dw_tmp_prod.acquire(1)
             k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 1, sf2, 0)
             of_12.release(2)
             dw_tmp_prod.release(1)
             dw_tmp_c = dw_tmp_cons.acquire(1)
+            pw_out = act_out.acquire(1)
             k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, sf3)
             dw_tmp_cons.release(1)
             act_out.release(1)
         # postamble: last output row (border=1, release 3)
         rows = of_12.acquire(3)
-        pw_out = act_out.acquire(1)
         dw_tmp = dw_tmp_prod.acquire(1)
         k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 1, sf2, 0)
         of_12.release(3)
         dw_tmp_prod.release(1)
         dw_tmp_c = dw_tmp_cons.acquire(1)
+        pw_out = act_out.acquire(1)
         k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, sf3)
         dw_tmp_cons.release(1)
         act_out.release(1)

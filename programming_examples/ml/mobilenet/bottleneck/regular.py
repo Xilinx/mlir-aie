@@ -843,9 +843,12 @@ def regular_bottlenecks(
         act_12_cons.release(2)
         act_23_prod.release(1)
 
-        row_in = act_in_fifo.acquire(1)
+        # Mirror lowlevel acquire/release order (subblockStatic.py:405-438):
+        # acquire L2, acquire out, acquire skip, call, release skip, release L2,
+        # release out.
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
+        row_in = act_in_fifo.acquire(1)
         f_1x1_skip(
             row_l2, wts_l3, row_out, row_in, in_w, dw_ch, out_c, scale3, scale_add
         )
@@ -2154,9 +2157,12 @@ def regular_bottlenecks(
         act_12_cons.release(2)
         act_23_prod.release(1)
 
-        row_in = act_in_fifo.acquire(1)
+        # Mirror lowlevel acquire/release order (subblockStatic.py:405-438):
+        # acquire L2, acquire out, acquire skip, call, release skip, release L2,
+        # release out.
         row_l2 = act_23_cons.acquire(1)
         row_out = act_out_fifo.acquire(1)
+        row_in = act_in_fifo.acquire(1)
         f_1x1_skip(
             row_l2, wts_l3, row_out, row_in, in_w, dw_ch, out_c, scale3, scale_add
         )
