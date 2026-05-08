@@ -32,37 +32,6 @@ from lowlevel_dma import StaticWeightStream
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 
-# EXPERIMENT: monkey-patch iron's Device.resolve_tile to emit aie.tile
-# directly (the placed dialect) instead of aie.logical_tile. This eliminates
-# the dialect difference between iron and lowlevel pre-place MLIR. The
-# `--aie-place-tiles` pass becomes a no-op since the tiles are already placed.
-import aie.iron.device.device as _iron_device_module
-from aie.dialects.aie import tile as _aie_tile_op
-
-_orig_resolve_tile = _iron_device_module.Device.resolve_tile
-
-def _resolve_tile_as_TileOp(self, t, loc=None, ip=None):
-    tile_id = id(t)
-    if tile_id in self._resolved_tiles:
-        t.op = self._resolved_tiles[tile_id]
-        return
-    if t.col is not None and t.row is not None:
-        coord = (t.col, t.row)
-        if coord in self._resolved_coords:
-            op = self._resolved_coords[coord]
-            self._resolved_tiles[tile_id] = op
-            t.op = op
-            return
-    if t.tile_type is None and t.col is not None and t.row is not None:
-        t.tile_type = self.get_tile_type(t.col, t.row)
-    op = _aie_tile_op(t.col, t.row, loc=loc, ip=ip)
-    self._resolved_tiles[tile_id] = op
-    if t.col is not None and t.row is not None:
-        self._resolved_coords[(t.col, t.row)] = op
-    t.op = op
-
-_iron_device_module.Device.resolve_tile = _resolve_tile_as_TileOp
-
 # Import bottleneck modules (new IRON organization)
 import importlib.util, pathlib
 
@@ -221,12 +190,10 @@ def mobilenet_iron():
     act_in = ObjectFifo(
         np.ndarray[(tensorInW, 1, tensorInC), np.dtype[np.int8]],
         depth=5,  # Consumer depth=5 to allow 3-row sliding window in init conv
-        name="act_in",
     )
     act_init_out = ObjectFifo(
         np.ndarray[(init_OutW, 1, init_OutC), np.dtype[np.uint8]],
         depth=5,
-        name="act_init_bn0",
     )
 
     # ------------------------------------------------------------------
@@ -244,17 +211,6 @@ def mobilenet_iron():
     init_wts = Buffer(
         _i8((init_wts_sz,)),
         initial_value=init_wts_data,
-        name="init_wts_static",  # match lowlevel sym_name
-    )
-
-    # RTP buffer for init tile (matches lowlevel @rtp_init on tile 0,2).
-    # Lowlevel writes [8] at idx 0; kernel doesn't read it (scale factors are
-    # inlined as i32 args), but the write32 might serve as hardware-init.
-    rtp_init = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_init",
     )
 
     # ------------------------------------------------------------------
@@ -283,7 +239,7 @@ def mobilenet_iron():
         ],
     )
 
-    def init_fn(act_in, act_out, wts, _rtp, k, inW, inH, inC, outW, outH, outC, sf):
+    def init_fn(act_in, act_out, wts, k, inW, inH, inC, outW, outH, outC, sf):
         # Match lowlevel initConv exactly: preamble + (outH - 1) middle iters,
         # then a trailing release(1) to drain the final input row. The earlier
         # iron postamble call (index=2) would leave one shim BD un-released and
@@ -324,7 +280,6 @@ def mobilenet_iron():
             act_in.cons(depth=5),
             act_init_out.prod(depth=5),
             init_wts,
-            rtp_init,  # RTP buffer placement; kernel doesn't read it
             k_init,
             tensorInW,
             tensorInH,
@@ -341,7 +296,7 @@ def mobilenet_iron():
     # Bottleneck blocks
     # ------------------------------------------------------------------
     # Regular family: bn0–bn9
-    a_workers, act_bn9_out, a_rtps = regular_bottlenecks(
+    a_workers, act_bn9_out = regular_bottlenecks(
         act_init_out,
         bn0_sf2,
         bn0_sf3,
@@ -386,7 +341,7 @@ def mobilenet_iron():
     )
 
     # Pipeline family: bn10–bn12
-    b_workers, act_bn12_out, b_rtps = pipeline_bottlenecks(
+    b_workers, act_bn12_out = pipeline_bottlenecks(
         act_bn9_out,
         bn10_sf1,
         bn10_sf2,
@@ -402,7 +357,7 @@ def mobilenet_iron():
     )
 
     # Cascade family: bn13–bn14
-    c_workers, act_bn14_out, wts_fifos, c_rtps = cascade_bottlenecks(
+    c_workers, act_bn14_out, wts_fifos = cascade_bottlenecks(
         act_bn12_out,
         bn13_sf1,
         bn13_sf2,
@@ -437,21 +392,16 @@ def mobilenet_iron():
     if post_l1_wts_data is None:
         post_l1_wts_data = np.zeros(post_l1_wts_full_sz, dtype=np.int8)
 
-    # Original: PostL1Tile = tile(6,4), MemTile41 = tile(4,1), flow: MemTile41→PostL1Tile
-    # Lock IDs matching original: MemTile41 uses lock_id=2,3; PostL1Tile uses lock_id=0,1
     post_l1_pb = StaticWeightStream(
         obj_type=_i8((post_l1_wts_full_sz,)),
         initial_value=post_l1_wts_data,
-        name="post_L1_wts_buff",
-        recv_name="post_L1_tile_buff",  # match lowlevel sym_name on compute tile
+        name="post_L1_wts",
         recv_type=_i8((post_l1_wts_chunk,)),
         repeat_count=PostRepeatChannels,
         memtile_placement=Tile(4, 1),
         compute_placement=Tile(6, 4),
-        mm2s_channel=0,
-        s2mm_channel=0,
-        mem_lock_id=2,  # MemTile41: lock_id=2 (prod), lock_id=3 (cons)
-        comp_lock_id=0,  # PostL1Tile: lock_id=0 (prod), lock_id=1 (cons)
+        mem_lock_id=2,
+        comp_lock_id=0,
     )
 
     # Match original: round-trip avgpool output through L3 (DDR) so it can be
@@ -465,12 +415,10 @@ def mobilenet_iron():
     act_out_post_avgpool_shim = ObjectFifo(
         _post_l1_out_ty,
         depth=2,
-        name="act_out_post_avgpool_shim",
     )
     act_out_post_shim_FC = ObjectFifo(
         _post_l1_out_ty,
         depth=2,
-        name="act_out_post_shim_FC",
     )
 
     k_post_l1 = Kernel(
@@ -494,7 +442,6 @@ def mobilenet_iron():
     # Post-L1 worker: placed on Tile(6,4) = PostL1Tile (matches original)
     def post_l1_fn(
         act_in,
-        _rtp,
         act_out,
         wts_pb,
         k,
@@ -529,17 +476,10 @@ def mobilenet_iron():
             act_in.release(1)
         act_out.release(1)
 
-    rtp_post_L1 = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_post_L1",
-    )
     w_post_l1 = Worker(
         post_l1_fn,
         fn_args=[
             act_bn14_out.cons(),
-            rtp_post_L1,
             act_out_post_avgpool_shim.prod(),
             post_l1_pb,
             k_post_l1,
@@ -578,7 +518,6 @@ def mobilenet_iron():
     act_out_of = ObjectFifo(
         np.ndarray[(post_L2_OutC,), np.dtype[np.uint16]],
         depth=2,
-        name="act_out",
     )
 
     # FC weights: ping-pong design matching original.
@@ -653,46 +592,23 @@ def mobilenet_iron():
         if os.path.exists(data_dir + fc2_f):
             fc2_data = np.fromfile(data_dir + fc2_f, sep=",", dtype=np.int8)
 
-        # PersistentBuffer ping-pong, FC1-first to match lowlevel chronologically.
-        # Primary memtile = fc2_memtiles[i] (the *odd* memtile column in
-        # lowlevel — that's where the MM2S DMA flow lives) so we don't collide
-        # with post_L1's MM2S 0 on MemTile(4,1). The data layout differs from
-        # lowlevel (lowlevel puts FC1_x on the even tile, FC2_x on the odd
-        # tile) but the on-wire sequence is what matters: BD1 sends the primary
-        # buffer first, so we put FC1 data in the primary buffer regardless of
-        # which tile holds it.
-        # Match lowlevel byte-for-byte: lowlevel puts FC1 data in the EVEN-col
-        # memtile buffer (mem_01/21/41/61_buff), FC2 data in the ODD-col
-        # memtile buffer (mem_11/31/51/71_buff), with DMA on the ODD memtile
-        # whose BD chain reads EVEN-memtile buffer FIRST (cross-memtile),
-        # then ODD-memtile buffer SECOND (intra-memtile).
-        #
-        # In iron's StaticWeightStream: memtile_placement holds the DMA AND
-        # the "primary" buf; ping_pong_memtile holds the "pp" buf. To match
-        # lowlevel:
-        #   - primary buf (on odd memtile) = fc2_data, name = mem_X1_buff (odd X)
-        #   - pp buf      (on even memtile) = fc1_data, name = mem_X1_buff (even X)
-        #   - BD chain reads PP first, primary second  (fc1_first_via_pp=True)
-        _odd_name  = f"mem_{2*i + 1}1_buff"  # (1,1),(3,1),(5,1),(7,1) - FC2 data
-        _even_name = f"mem_{2*i}1_buff"      # (0,1),(2,1),(4,1),(6,1) - FC1 data
-        _recv_name = f"mem_L2_wts_core{i + 1}"
+        # FC weights: ping-pong across two adjacent memtiles. Primary = FC1
+        # (consumed first), ping-pong = FC2. DMA + primary share fc2_memtiles[i]
+        # (odd column) to avoid colliding with post_L1's MM2S on (4,1).
         fc_pb = StaticWeightStream(
             obj_type=_i8((fc_full_per_tile,)),
-            initial_value=fc2_data,           # primary on ODD now holds FC2
-            name=_odd_name,
-            recv_name=_recv_name,
+            initial_value=fc1_data,
+            name=f"fc1_wts_{i}",
             recv_type=_i8((fc_recv_per_tile,)),
             repeat_count=PostOutputSplitL2,
-            memtile_placement=fc2_memtiles[i],   # ODD memtile, DMA here
+            memtile_placement=fc2_memtiles[i],
             compute_placement=fc_comptiles[i],
-            mm2s_channel=0,
             s2mm_channel=1,
-            ping_pong_buf=(_i8((fc_full_per_tile,)), fc1_data, _even_name),
-            ping_pong_memtile=fc1_memtiles[i],   # EVEN memtile holds PP/FC1
+            ping_pong_buf=(_i8((fc_full_per_tile,)), fc2_data, f"fc2_wts_{i}"),
+            ping_pong_memtile=fc1_memtiles[i],
             mem_lock_id=0,
             comp_lock_id=2,
             pp_lock_id=0,
-            pp_first=True,                       # BD1 reads PP buf (FC1) first
         )
 
         def post_l2_fn(
@@ -725,93 +641,22 @@ def mobilenet_iron():
                 act_out.release(1)
             act_in.release(1)
 
-        def post_l2_fn_rtp(
-            act_in,
-            _rtp,
-            act_out,
-            wts_h,
-            k,
-            inC_fc1,
-            inC_fc2,
-            outC,
-            n_co,
-            sf1,
-            sf2,
-            n_splits=PostOutputSplitL2,
-        ):
-            # Same as post_l2_fn but with a placement-only _rtp arg.
-            elem_in = act_in.acquire(1)
-            for _ in range_(n_splits):
-                elem_out = act_out.acquire(1)
-                wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC_fc1, outC, n_co, sf1)
-                wts_h.release(1)
-                act_out.release(1)
-            act_in.release(1)
-            elem_in = act_in.acquire(1)
-            for _ in range_(n_splits):
-                elem_out = act_out.acquire(1)
-                wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC_fc2, outC, n_co, sf2)
-                wts_h.release(1)
-                act_out.release(1)
-            act_in.release(1)
-
-        # Only FC tiles 0 and 1 get RTPs in lowlevel.
-        if i == 0:
-            _post_l2_rtp = Buffer(
-                np.ndarray[(16,), np.dtype[np.int32]],
-                initial_value=np.zeros(16, dtype=np.int32),
-                use_write_rtp=True,
-                name="rtp_post_L2_C1",
-            )
-            _rtp_post_L2_C1 = _post_l2_rtp  # save for runtime sequence
-        elif i == 1:
-            _post_l2_rtp = Buffer(
-                np.ndarray[(16,), np.dtype[np.int32]],
-                initial_value=np.zeros(16, dtype=np.int32),
-                use_write_rtp=True,
-                name="rtp_post_L2_C2",
-            )
-            _rtp_post_L2_C2 = _post_l2_rtp
-        else:
-            _post_l2_rtp = None
-
-        if _post_l2_rtp is not None:
-            w = Worker(
-                post_l2_fn_rtp,
-                fn_args=[
-                    act_out_post_shim_FC.cons(),
-                    _post_l2_rtp,
-                    act_post_l2_tiles[i].prod(),
-                    fc_pb,
-                    k_post_l2,
-                    post_L1_OutC,
-                    post_L2_InC,
-                    post_L2_OutC,
-                    co,
-                    post_fc1_sf,
-                    post_fc2_sf,
-                ],
-                tile=fc_comptiles[i],
-            )
-        else:
-            w = Worker(
-                post_l2_fn,
-                fn_args=[
-                    act_out_post_shim_FC.cons(),
-                    act_post_l2_tiles[i].prod(),
-                    fc_pb,
-                    k_post_l2,
-                    post_L1_OutC,
-                    post_L2_InC,
-                    post_L2_OutC,
-                    co,
-                    post_fc1_sf,
-                    post_fc2_sf,
-                ],
-                tile=fc_comptiles[i],
-            )
+        w = Worker(
+            post_l2_fn,
+            fn_args=[
+                act_out_post_shim_FC.cons(),
+                act_post_l2_tiles[i].prod(),
+                fc_pb,
+                k_post_l2,
+                post_L1_OutC,
+                post_L2_InC,
+                post_L2_OutC,
+                co,
+                post_fc1_sf,
+                post_fc2_sf,
+            ],
+            tile=fc_comptiles[i],
+        )
         post_l2_workers.append(w)
 
     # ------------------------------------------------------------------
@@ -821,23 +666,18 @@ def mobilenet_iron():
         [w_init] + a_workers + b_workers + c_workers + [w_post_l1] + post_l2_workers
     )
 
-    # Combined cascade weight tensor — matches test_mobilenet.py API (3 buffers).
-    # Layout: bn13_L1(76800) | bn13_L3_put(38400) | bn13_L3_get(38400) |
-    #         bn14_L1(76800) | bn14_L3_put(38400) | bn14_L3_get(38400) = 307200
+    # Combined cascade weight tensor — test_mobilenet.py concatenates 4 chunks
+    # into a single buffer in this exact order:
+    #   bn13_L1(76800) | bn13_L3(76800) | bn14_L1(76800) | bn14_L3(76800)
     from aie.helpers.taplib import TensorAccessPattern
 
-    _L1 = 80 * 960  # 76800 bytes
-    _L3h = 480 * 80  # 38400 (half) bytes
-    _L3f = _L3h * 2  # 76800 (full = put+get combined) bytes
-    # Match lowlevel arg1 size EXACTLY: lowlevel declares memref<96000xi32>
-    # = 384000 bytes (allocates 76800 bytes of padding past the 4 weight
-    # chunks at 4*76800=307200). Use the same i32-element view.
-    _cascade_wts_sz_i32 = 96000  # = 384000 bytes (matches lowlevel exactly)
+    _BN_L1_SZ = 80 * 960          # 76800 bytes per L1 weight chunk
+    _BN_L3_SZ = 480 * 80 * 2      # 76800 bytes per L3 weight chunk (put+get)
+    _CASCADE_OFFSETS = [0, _BN_L1_SZ, 2 * _BN_L1_SZ, 3 * _BN_L1_SZ]
+    _CASCADE_SIZES = [_BN_L1_SZ, _BN_L3_SZ, _BN_L1_SZ, _BN_L3_SZ]
+    _cascade_wts_sz_i32 = sum(_CASCADE_SIZES) // 4  # 76800 i32 = 307200 bytes
     cascade_wts_ty = np.ndarray[(_cascade_wts_sz_i32,), np.dtype[np.int32]]
 
-    # TAP helpers: slice a sub-tensor from the combined buffer.
-    # Offsets/sizes are in i32 elements (4 bytes each), matching lowlevel's
-    # `npu.dma_memcpy_nd(%arg1[0..19200][...]) : memref<96000xi32>`.
     def _wts_tap(byte_offset, byte_size):
         return TensorAccessPattern(
             (_cascade_wts_sz_i32,),
@@ -856,61 +696,6 @@ def mobilenet_iron():
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)
 
-        # RTP writes (mirror lowlevel's 60 npu.rtp_write ops). Kernels don't
-        # read RTPs (scale factors are inlined), but the write32 ops might
-        # have a hardware-init side effect.
-        # rtp_init at (0,2)
-        def _set_rtp_init(b):
-            b[0] = 8
-        rt.inline_ops(_set_rtp_init, [rtp_init])
-        # bn0..bn7, bn8_9, bn4_5 RTPs from regular_bottlenecks
-        _RTP_VALUES = {
-            "rtp_bn0": [9, 8, 2, 8, 7, 7],
-            # rtp_bn1: declared but no writes
-            "rtp_bn2": [8, 8, 11, 1],
-            "rtp_bn3": [7, 8, 8, 0],
-            "rtp_bn4_5_tile": [9, 7, 11, 0, 9, 7, 11, 1],
-            "rtp_bn6": [8, 7, 8, 0],
-            "rtp_bn7": [9, 7, 12, 0],
-            "rtp_bn8_bn9": [9, 7, 12, 0, 9, 7, 12, 1],
-            "bn10_1_rtp": [8],
-            "bn10_2_rtp": [7],
-            "bn10_3_rtp": [9],
-            "bn11_1_rtp": [9],
-            "bn11_2_rtp": [8],
-            "bn11_3_rtp": [12, 1],
-            "bn12_1_rtp": [8],
-            "bn12_2_rtp": [8, 9],
-            "rtp_bn13_tile_layer1_get": [9],
-            "rtp_bn13_tile_layer2": [8],
-            "rtp_bn13_tile_layer3_get": [12, 0],
-            "rtp_bn14_tile_layer1_get": [9],
-            "rtp_bn14_tile_layer2": [7],
-            "rtp_bn14_tile_layer3_get": [13, 1],
-        }
-        _all_module_rtps = {**a_rtps, **b_rtps, **c_rtps}
-        for _rtp_name, _vals in _RTP_VALUES.items():
-            if _rtp_name not in _all_module_rtps:
-                continue
-            _buf = _all_module_rtps[_rtp_name]
-            def _make_setter(values):
-                def _setter(b):
-                    for idx, v in enumerate(values):
-                        b[idx] = v
-                return _setter
-            rt.inline_ops(_make_setter(_vals), [_buf])
-        # post_L1
-        def _set_rtp_post_L1(b):
-            b[0] = 8
-        rt.inline_ops(_set_rtp_post_L1, [rtp_post_L1])
-        # post_L2 C1 (tile (6,3)) and C2 (tile (7,4)) only
-        def _set_rtp_post_L2_C1(b):
-            b[0] = 9
-        rt.inline_ops(_set_rtp_post_L2_C1, [_rtp_post_L2_C1])
-        def _set_rtp_post_L2_C2(b):
-            b[0] = 11
-        rt.inline_ops(_set_rtp_post_L2_C2, [_rtp_post_L2_C2])
-
         # ---- Group 1: input + weights + avgpool drain ----
         # All upstream fills + the first sync drain in the same group. By the
         # time the avgpool drain completes, init_conv has consumed all of
@@ -918,39 +703,11 @@ def mobilenet_iron():
         # those at finish_task_group() is safe (causal closure).
         tg1 = rt.task_group()
         rt.fill(act_in.prod(depth=1), inp, tile=Tile(0, 0), task_group=tg1)
-        # Slice each sub-weight from the combined buffer (offsets in int8 elements):
-        #   0..76799:   bn13 L1 (76800)
-        #   76800..153599: bn13 L3 (38400 put + 38400 get = 76800 combined)
-        #   153600..230399: bn14 L1 (76800)
-        #   230400..307199: bn14 L3 (38400 put + 38400 get = 76800 combined)
-        rt.fill(
-            wts_fifos[0].prod(),
-            cascade_wts,
-            _wts_tap(0, _L1),
-            tile=Tile(4, 0),
-            task_group=tg1,
-        )
-        rt.fill(
-            wts_fifos[1].prod(),
-            cascade_wts,
-            _wts_tap(_L1, _L3f),
-            tile=Tile(5, 0),
-            task_group=tg1,
-        )
-        rt.fill(
-            wts_fifos[2].prod(),
-            cascade_wts,
-            _wts_tap(_L1 + _L3f, _L1),
-            tile=Tile(6, 0),
-            task_group=tg1,
-        )
-        rt.fill(
-            wts_fifos[3].prod(),
-            cascade_wts,
-            _wts_tap(_L1 * 2 + _L3f, _L3f),
-            tile=Tile(7, 0),
-            task_group=tg1,
-        )
+        # bn13/14 L1+L3 weight chunks from the combined cascade buffer
+        for fifo, off, sz, shim in zip(
+            wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, [Tile(c, 0) for c in (4, 5, 6, 7)]
+        ):
+            rt.fill(fifo.prod(), cascade_wts, _wts_tap(off, sz), tile=shim, task_group=tg1)
         # Round-trip the avgpool output through L3 (DDR) — matches original
         # design's shim 30/40 hop. Reuses inp as scratch (input has been fully
         # consumed by the time PostL1 produces output).

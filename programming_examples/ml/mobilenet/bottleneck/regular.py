@@ -176,7 +176,7 @@ def regular_bottlenecks(
     _bn0_wts_size = 3 * 3 * _BN0_DW_CH * 1 + 1 * 1 * _BN0_DW_CH * _BN0_OUT_C
     bn0_wts_arr = _load_wts("bn0_chain.txt")
     bn0_wts = Buffer(
-        np.ndarray[(_bn0_wts_size,), np.dtype[np.int8]], initial_value=bn0_wts_arr, name="bn0_wts_static")
+        np.ndarray[(_bn0_wts_size,), np.dtype[np.int8]], initial_value=bn0_wts_arr)
 
     # Kernel definitions for bn0
     bn0_dw_ty_in = np.ndarray[(_BN0_IN_W, 1, _BN0_IN_C), np.dtype[np.uint8]]
@@ -224,19 +224,16 @@ def regular_bottlenecks(
     act_bn0_bn1 = ObjectFifo(
         np.ndarray[(_BN0_IN_W, 1, _BN0_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="act_bn0_bn1",
     )
 
     # Internal self-loop fifo for bn0: DW output row → 1x1 input row (same tile)
     bn0_act_2_3 = ObjectFifo(
         np.ndarray[(_BN0_IN_W, 1, _BN0_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn0_act_2_3",
     )
 
     def bn0_worker_fn(
         act_in_fifo,
-        _rtp,
         wts_buf,
         act_out_fifo,
         act_23_prod,  # bn0_act_2_3.prod()
@@ -370,18 +367,10 @@ def regular_bottlenecks(
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
-    _rtp_bn0_buf = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_bn0",
-    )
-
     bn0_worker = Worker(
         bn0_worker_fn,
         fn_args=[
             act_in.cons(depth=3),
-            _rtp_bn0_buf,
             bn0_wts,
             act_bn0_bn1.prod(),
             bn0_act_2_3.prod(),  # self-loop: same Worker is prod and cons
@@ -417,7 +406,7 @@ def regular_bottlenecks(
 
     bn1_wts_arr = _load_wts("bn1_chain.txt")
     bn1_wts = Buffer(
-        np.ndarray[(_bn1_wts_size,), np.dtype[np.int8]], initial_value=bn1_wts_arr, name="bn1_wts_static")
+        np.ndarray[(_bn1_wts_size,), np.dtype[np.int8]], initial_value=bn1_wts_arr)
 
     bn1_l1_in_ty = np.ndarray[(_BN1_IN_W, 1, _BN1_IN_C), np.dtype[np.int8]]
     bn1_l1_wts_ty = np.ndarray[(_bn1_l1_wts_size,), np.dtype[np.int8]]
@@ -493,22 +482,19 @@ def regular_bottlenecks(
     )
 
     act_bn1_bn2 = ObjectFifo(
-        np.ndarray[(_BN1_OUT_W, 1, _BN1_OUT_C), np.dtype[np.int8]], depth=2, name="act_bn1_bn2")
+        np.ndarray[(_BN1_OUT_W, 1, _BN1_OUT_C), np.dtype[np.int8]], depth=2)
 
     bn1_act_1_2 = ObjectFifo(
         np.ndarray[(_BN1_IN_W, 1, _BN1_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn1_act_1_2",
     )
     bn1_act_2_3 = ObjectFifo(
         np.ndarray[(_BN1_OUT_W, 1, _BN1_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn1_act_2_3",
     )
 
     def bn1_worker_fn(
         act_in_fifo,
-        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -606,18 +592,10 @@ def regular_bottlenecks(
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
-    _rtp_bn1_buf = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_bn1",
-    )
-
     bn1_worker = Worker(
         bn1_worker_fn,
         fn_args=[
             act_bn0_bn1.cons(),
-            _rtp_bn1_buf,
             bn1_wts,
             act_bn1_bn2.prod(),
             bn1_act_1_2.prod(),
@@ -656,7 +634,7 @@ def regular_bottlenecks(
 
     bn2_wts_arr = _load_wts("bn2_chain.txt")
     bn2_wts = Buffer(
-        np.ndarray[(_bn2_wts_size,), np.dtype[np.int8]], initial_value=bn2_wts_arr, name="bn2_wts_static")
+        np.ndarray[(_bn2_wts_size,), np.dtype[np.int8]], initial_value=bn2_wts_arr)
 
     bn2_l1_in_ty = np.ndarray[(_BN2_IN_W, 1, _BN2_IN_C), np.dtype[np.int8]]
     bn2_l1_wts_ty = np.ndarray[(_bn2_l1_wts_size,), np.dtype[np.int8]]
@@ -715,22 +693,19 @@ def regular_bottlenecks(
     )
 
     act_bn2_bn3 = ObjectFifo(
-        np.ndarray[(_BN2_OUT_W, 1, _BN2_OUT_C), np.dtype[np.int8]], depth=2, name="act_bn2_bn3")
+        np.ndarray[(_BN2_OUT_W, 1, _BN2_OUT_C), np.dtype[np.int8]], depth=2)
 
     bn2_act_1_2 = ObjectFifo(
         np.ndarray[(_BN2_IN_W, 1, _BN2_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn2_act_1_2",
     )
     bn2_act_2_3 = ObjectFifo(
         np.ndarray[(_BN2_OUT_W, 1, _BN2_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn2_act_2_3",
     )
 
     def bn2_worker_fn(
         act_in_fifo,
-        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -874,18 +849,10 @@ def regular_bottlenecks(
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
-    _rtp_bn2_buf = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_bn2",
-    )
-
     bn2_worker = Worker(
         bn2_worker_fn,
         fn_args=[
             act_bn1_bn2.cons(),
-            _rtp_bn2_buf,
             bn2_wts,
             act_bn2_bn3.prod(),
             bn2_act_1_2.prod(),
@@ -925,7 +892,7 @@ def regular_bottlenecks(
 
     bn3_wts_arr = _load_wts("bn3_chain.txt")
     bn3_wts = Buffer(
-        np.ndarray[(_bn3_wts_size,), np.dtype[np.int8]], initial_value=bn3_wts_arr, name="bn3_wts_static")
+        np.ndarray[(_bn3_wts_size,), np.dtype[np.int8]], initial_value=bn3_wts_arr)
 
     bn3_l1_in_ty = np.ndarray[(_BN3_IN_W, 1, _BN3_IN_C), np.dtype[np.int8]]
     bn3_l1_wts_ty = np.ndarray[(_bn3_l1_wts_size,), np.dtype[np.int8]]
@@ -984,23 +951,19 @@ def regular_bottlenecks(
     act_bn3_bn4 = ObjectFifo(
         np.ndarray[(_BN3_OUT_W, 1, _BN3_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="act_bn3_bn4",
     )
 
     bn3_act_1_2 = ObjectFifo(
         np.ndarray[(_BN3_IN_W, 1, _BN3_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn3_act_1_2",
     )
     bn3_act_2_3 = ObjectFifo(
         np.ndarray[(_BN3_OUT_W, 1, _BN3_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn3_act_2_3",
     )
 
     def bn3_worker_fn(
         act_in_fifo,
-        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -1098,18 +1061,10 @@ def regular_bottlenecks(
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
-    _rtp_bn3_buf = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_bn3",
-    )
-
     bn3_worker = Worker(
         bn3_worker_fn,
         fn_args=[
             act_bn2_bn3.cons(),
-            _rtp_bn3_buf,
             bn3_wts,
             act_bn3_bn4.prod(),
             bn3_act_1_2.prod(),
@@ -1157,7 +1112,7 @@ def regular_bottlenecks(
 
     bn45_wts_arr = _load_wts("bn4_5_chain.txt")
     bn45_wts = Buffer(
-        np.ndarray[(_bn45_wts_size,), np.dtype[np.int8]], initial_value=bn45_wts_arr, name="bn4_5_wts_static")
+        np.ndarray[(_bn45_wts_size,), np.dtype[np.int8]], initial_value=bn45_wts_arr)
 
     bn4_l1_in_ty = np.ndarray[(_BN45_IN_W, 1, _BN45_IN_C), np.dtype[np.int8]]
     bn4_l1_wts_ty = np.ndarray[(_bn4_l1_wts,), np.dtype[np.int8]]
@@ -1267,7 +1222,6 @@ def regular_bottlenecks(
     act_bn5_bn6 = ObjectFifo(
         np.ndarray[(_BN45_OUT_W, 1, _BN5_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="act_bn5_bn6",
     )
 
     # Internal self-loop fifos for bn4+5 fused block.
@@ -1279,42 +1233,36 @@ def regular_bottlenecks(
     bn45_act_bn4_1_2 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn4_bn5_act_bn8_1_2",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
     bn45_act_bn4_2_3 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn4_bn5_act_bn8_2_3",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
     bn45_act_bn4_bn5 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN4_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="bn4_bn5_act_bn8_bn9",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
     bn45_act_bn5_1_2 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn4_bn5_act_bn9_1_2",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
     bn45_act_bn5_2_3 = ObjectFifo(
         np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn4_bn5_act_bn9_2_3",
         disable_synchronization=True,
         delegate_tile=_bn45_alloc_tile,
     )
 
     def bn45_worker_fn(
         act_in_fifo,
-        _rtp,
         wts_buf,
         act_out_fifo,
         act_bn4_12_prod,
@@ -1716,18 +1664,10 @@ def regular_bottlenecks(
         act_bn4_bn5_cons.release(1)
         act_out_fifo.release(1)
 
-    _rtp_bn4_5_tile_buf = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_bn4_5_tile",
-    )
-
     bn45_worker = Worker(
         bn45_worker_fn,
         fn_args=[
             act_bn3_bn4.cons(),
-            _rtp_bn4_5_tile_buf,
             bn45_wts,
             act_bn5_bn6.prod(),
             bn45_act_bn4_1_2.prod(),
@@ -1784,7 +1724,7 @@ def regular_bottlenecks(
 
     bn6_wts_arr = _load_wts("bn6_chain.txt")
     bn6_wts = Buffer(
-        np.ndarray[(_bn6_wts_size,), np.dtype[np.int8]], initial_value=bn6_wts_arr, name="bn6_wts_static")
+        np.ndarray[(_bn6_wts_size,), np.dtype[np.int8]], initial_value=bn6_wts_arr)
 
     bn6_l1_in_ty = np.ndarray[(_BN6_IN_W, 1, _BN6_IN_C), np.dtype[np.int8]]
     bn6_l1_wts_ty = np.ndarray[(_bn6_l1_wts_size,), np.dtype[np.int8]]
@@ -1841,22 +1781,19 @@ def regular_bottlenecks(
     )
 
     act_bn6_bn7 = ObjectFifo(
-        np.ndarray[(_BN6_OUT_W, 1, _BN6_OUT_C), np.dtype[np.int8]], depth=2, name="act_bn6_bn7")
+        np.ndarray[(_BN6_OUT_W, 1, _BN6_OUT_C), np.dtype[np.int8]], depth=2)
 
     bn6_act_1_2 = ObjectFifo(
         np.ndarray[(_BN6_IN_W, 1, _BN6_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn6_act_1_2",
     )
     bn6_act_2_3 = ObjectFifo(
         np.ndarray[(_BN6_OUT_W, 1, _BN6_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn6_act_2_3",
     )
 
     def bn6_worker_fn(
         act_in_fifo,
-        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -1952,18 +1889,10 @@ def regular_bottlenecks(
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
-    _rtp_bn6_buf = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_bn6",
-    )
-
     bn6_worker = Worker(
         bn6_worker_fn,
         fn_args=[
             act_bn5_bn6.cons(),
-            _rtp_bn6_buf,
             bn6_wts,
             act_bn6_bn7.prod(),
             bn6_act_1_2.prod(),
@@ -2002,7 +1931,7 @@ def regular_bottlenecks(
 
     bn7_wts_arr = _load_wts("bn7_chain.txt")
     bn7_wts = Buffer(
-        np.ndarray[(_bn7_wts_size,), np.dtype[np.int8]], initial_value=bn7_wts_arr, name="bn7_wts_static")
+        np.ndarray[(_bn7_wts_size,), np.dtype[np.int8]], initial_value=bn7_wts_arr)
 
     bn7_l1_in_ty = np.ndarray[(_BN7_IN_W, 1, _BN7_IN_C), np.dtype[np.int8]]
     bn7_l1_wts_ty = np.ndarray[(_bn7_l1_wts_size,), np.dtype[np.int8]]
@@ -2063,23 +1992,19 @@ def regular_bottlenecks(
     act_bn7_bn8 = ObjectFifo(
         np.ndarray[(_BN7_OUT_W, 1, _BN7_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="act_bn7_bn8",
     )
 
     bn7_act_1_2 = ObjectFifo(
         np.ndarray[(_BN7_IN_W, 1, _BN7_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn7_act_1_2",
     )
     bn7_act_2_3 = ObjectFifo(
         np.ndarray[(_BN7_OUT_W, 1, _BN7_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn7_act_2_3",
     )
 
     def bn7_worker_fn(
         act_in_fifo,
-        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -2223,18 +2148,10 @@ def regular_bottlenecks(
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
-    _rtp_bn7_buf = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_bn7",
-    )
-
     bn7_worker = Worker(
         bn7_worker_fn,
         fn_args=[
             act_bn6_bn7.cons(),
-            _rtp_bn7_buf,
             bn7_wts,
             act_bn7_bn8.prod(),
             bn7_act_1_2.prod(),
@@ -2283,7 +2200,7 @@ def regular_bottlenecks(
 
     bn89_wts_arr = _load_wts("bn8_9_chain.txt")
     bn89_wts = Buffer(
-        np.ndarray[(_bn89_wts_size,), np.dtype[np.int8]], initial_value=bn89_wts_arr, name="bn8_9_wts_static")
+        np.ndarray[(_bn89_wts_size,), np.dtype[np.int8]], initial_value=bn89_wts_arr)
 
     bn8_l1_in_ty = np.ndarray[(_BN89_IN_W, 1, _BN89_IN_C), np.dtype[np.int8]]
     bn8_l1_wts_ty = np.ndarray[(_bn8_l1_wts,), np.dtype[np.int8]]
@@ -2398,7 +2315,6 @@ def regular_bottlenecks(
     act_bn9_out = ObjectFifo(
         np.ndarray[(_BN89_OUT_W, 1, _BN9_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="act_bn9_bn10",
     )
 
     # Internal self-loop fifos for bn8+9 fused block.
@@ -2410,42 +2326,36 @@ def regular_bottlenecks(
     bn89_act_bn8_1_2 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn8_bn9_act_bn8_1_2",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
     bn89_act_bn8_2_3 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn8_bn9_act_bn8_2_3",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
     bn89_act_bn8_bn9 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN8_OUT_C), np.dtype[np.int8]],
         depth=2,
-        name="bn8_bn9_act_bn8_bn9",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
     bn89_act_bn9_1_2 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
         depth=3,
-        name="bn8_bn9_act_bn9_1_2",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
     bn89_act_bn9_2_3 = ObjectFifo(
         np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
         depth=1,
-        name="bn8_bn9_act_bn9_2_3",
         disable_synchronization=True,
         delegate_tile=_bn89_alloc_tile,
     )
 
     def bn89_worker_fn(
         act_in_fifo,
-        _rtp,
         wts_buf,
         act_out_fifo,
         act_bn8_12_prod,
@@ -2845,18 +2755,10 @@ def regular_bottlenecks(
         act_bn8_bn9_cons.release(1)
         act_out_fifo.release(1)
 
-    _rtp_bn8_bn9_buf = Buffer(
-        np.ndarray[(16,), np.dtype[np.int32]],
-        initial_value=np.zeros(16, dtype=np.int32),
-        use_write_rtp=True,
-        name="rtp_bn8_bn9",
-    )
-
     bn89_worker = Worker(
         bn89_worker_fn,
         fn_args=[
             act_bn7_bn8.cons(),
-            _rtp_bn8_bn9_buf,
             bn89_wts,
             act_bn9_out.prod(depth=1),
             bn89_act_bn8_1_2.prod(),
@@ -2898,5 +2800,4 @@ def regular_bottlenecks(
     )
     workers.append(bn89_worker)
 
-    _rtps = {"rtp_bn0": _rtp_bn0_buf, "rtp_bn1": _rtp_bn1_buf, "rtp_bn2": _rtp_bn2_buf, "rtp_bn3": _rtp_bn3_buf, "rtp_bn4_5_tile": _rtp_bn4_5_tile_buf, "rtp_bn6": _rtp_bn6_buf, "rtp_bn7": _rtp_bn7_buf, "rtp_bn8_bn9": _rtp_bn8_bn9_buf}
-    return workers, act_bn9_out, _rtps
+    return workers, act_bn9_out
