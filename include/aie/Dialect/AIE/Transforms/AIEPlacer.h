@@ -86,13 +86,6 @@ private:
 
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
-  void buildObjectFifoGroups(
-      llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
-      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
-      llvm::DenseMap<int, llvm::SmallVector<ObjectFifoCreateOp>> &groupToFifos,
-      llvm::DenseMap<int, llvm::SmallVector<LogicalTileOp>>
-          &groupToLogicalTiles);
-
   std::optional<TileID> findTileWithCapacity(int targetCol,
                                              std::vector<TileID> &tiles,
                                              int requiredInputChannels,
@@ -113,6 +106,73 @@ private:
   buildChannelRequirements(
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+
+  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
+  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own coords.
+  struct Adjacency {
+    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
+        tileToEdges;
+
+    void addEdge(TileLike first, TileLike second) {
+      unsigned idx = edges.size();
+      edges.push_back({first, second});
+      if (mlir::isa<LogicalTileOp>(first.getOperation()))
+        tileToEdges[first.getOperation()].push_back(idx);
+      if (mlir::isa<LogicalTileOp>(second.getOperation()))
+        tileToEdges[second.getOperation()].push_back(idx);
+    }
+
+    // Convenience for IR walkers: skip if either Value isn't a TileLike.
+    void addEdgeFromValues(mlir::Value a, mlir::Value b) {
+      auto aT = mlir::dyn_cast_or_null<TileLike>(a.getDefiningOp());
+      auto bT = mlir::dyn_cast_or_null<TileLike>(b.getDefiningOp());
+      if (aT && bT)
+        addEdge(aT, bT);
+    }
+  };
+
+  // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
+  Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
+
+  // Edge: (cascade source, dest).
+  Adjacency buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
+
+  // Edge: (producer, consumer_i) per fifo. Linked fifos connect transitively
+  // through the link tile (it's the consumer of every source fifo and the
+  // producer of every destination fifo), so per-fifo emission suffices.
+  Adjacency
+  buildObjectFifoAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // Edge: (src, dst) per `aie.flow`; cross-product per `aie.packet_flow`.
+  Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
+                               llvm::ArrayRef<PacketFlowOp> pktFlows);
+
+  // Place a non-core (mem/shim) LTO near the centroid column of its placed
+  // core peers, reached transitively through `connectivityAdjacencies`.
+  mlir::LogicalResult placeNonCoreTileByCentroid(
+      LogicalTileOp logicalTile,
+      llvm::ArrayRef<const Adjacency *> connectivityAdjacencies,
+      const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
+          &channelRequirements);
+
+  // Pairwise legality check. `pred(firstPos, secondPos)` is evaluated for
+  // every edge mentioning `logicalTile`; unplaced peers defer.
+  bool satisfiesAdjacency(
+      LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
+      llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const;
+
+  // Diagnostic peer notes. `labelPeer(thisIsFirst)` names the peer endpoint
+  // role; the attached note reads "<label> peer placed at (col, row)".
+  void attachPeerNotes(
+      mlir::InFlightDiagnostic &diag, LogicalTileOp logicalTile,
+      const Adjacency &adjacency,
+      llvm::function_ref<llvm::StringRef(bool thisIsFirst)> labelPeer) const;
+
+  void addChannelRequirementsFromFlows(
+      llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
+      llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
+          &channelRequirements);
 };
 
 } // namespace xilinx::AIE
