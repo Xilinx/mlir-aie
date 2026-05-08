@@ -235,14 +235,16 @@ def mobilenet_iron():
     )
 
     def init_fn(act_in, act_out, wts, k, inW, inH, inC, outW, outH, outC, sf):
-        # Preamble: top row (pad above = row 0)
+        # Match lowlevel initConv exactly: preamble + (outH - 1) middle iters,
+        # then a trailing release(1) to drain the final input row. The earlier
+        # iron postamble call (index=2) would leave one shim BD un-released and
+        # caused ERT_CMD_STATE_TIMEOUT.
         rows = act_in.acquire(2)
         row_out = act_out.acquire(1)
         k(rows[0], rows[0], rows[1], wts, row_out, inW, inC, outC, 3, 3, 0, sf, 0, 0)
         act_in.release(1)
         act_out.release(1)
-        # Middle rows (stride-2: 2 input rows per output row)
-        for _ in range_(outH - 2):
+        for _ in range_(outH - 1):
             rows = act_in.acquire(3)
             row_out = act_out.acquire(1)
             k(
@@ -263,12 +265,7 @@ def mobilenet_iron():
             )
             act_in.release(2)
             act_out.release(1)
-        # Postamble
-        rows = act_in.acquire(2)
-        row_out = act_out.acquire(1)
-        k(rows[0], rows[1], rows[1], wts, row_out, inW, inC, outC, 3, 3, 2, sf, 0, 0)
-        act_in.release(2)
-        act_out.release(1)
+        act_in.release(1)
 
     w_init = Worker(
         init_fn,
@@ -285,6 +282,7 @@ def mobilenet_iron():
             init_OutC,
             init_scaleFactor,
         ],
+        tile=Tile(0, 2),  # original: init_tile = tile(0, 2)
     )
 
     # ------------------------------------------------------------------
@@ -491,7 +489,7 @@ def mobilenet_iron():
             post_L2_InC,  # outC_padd = 1280 (padded to next layer's input)
             post_sf,
         ],
-        placement=Tile(6, 4),
+        tile=Tile(6, 4),
     )
 
     # ------------------------------------------------------------------
@@ -540,7 +538,7 @@ def mobilenet_iron():
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
         names=[f"act_post_l2_tile{i}" for i in range(n_fc_tiles)],
-        placement=Tile(6, 1),  # mem_tile_6_1 in placed (matches @act_out)
+        tile=Tile(6, 1),  # mem_tile_6_1 in placed (matches @act_out)
     )
 
     fc1_memtiles = [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)]  # FC1 MemTiles
@@ -624,17 +622,23 @@ def mobilenet_iron():
             sf2,
             n_splits=PostOutputSplitL2,
         ):
-            elem_in = act_in.acquire(1)
-            # FC2 first (matches existing PB ping-pong: initial=fc2_data on fc2_memtile,
+            # Match lowlevel postBlockL2: per outer pass, acquire/release act_in
+            # once per FC pass. Lowlevel runtime ping-pongs the FC input through
+            # L3 (avgpool out -> act_out_post_shim_FC FC1 -> L3 -> act_out_post_shim_FC FC2),
+            # so post_L2 sees TWO distinct inputs per inference. Acquiring once and
+            # processing both passes (as the previous iron code did) hangs because
+            # the runtime sends two FC inputs but only one act_in.release fires.
+            # FC2 first (matches PB ping-pong: initial=fc2_data on fc2_memtile,
             # ping_pong=fc1_data on fc1_memtile -> DMA stream is FC2 then FC1).
-            # Static MLIR will have call sites in the reverse order from lowlevel
-            # (which does FC1 first), but the set of kernel-arg tuples is identical.
+            elem_in = act_in.acquire(1)
             for _ in range_(n_splits):
                 elem_out = act_out.acquire(1)
                 wts = wts_h.acquire(1)
                 k(elem_in, wts, elem_out, 1, inC_fc2, outC, n_co, sf2)
                 wts_h.release(1)
                 act_out.release(1)
+            act_in.release(1)
+            elem_in = act_in.acquire(1)
             for _ in range_(n_splits):
                 elem_out = act_out.acquire(1)
                 wts = wts_h.acquire(1)
@@ -657,7 +661,7 @@ def mobilenet_iron():
                 post_fc1_sf,
                 post_fc2_sf,
             ],
-            placement=fc_comptiles[i],
+            tile=fc_comptiles[i],
         )
         post_l2_workers.append(w)
 
@@ -694,29 +698,25 @@ def mobilenet_iron():
     rt = Runtime(strict_task_groups=False)
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)
-        rt.fill(act_in.prod(depth=1), inp, placement=Tile(0, 0))
+        rt.fill(act_in.prod(depth=1), inp, tile=Tile(0, 0))
         # Slice each sub-weight from the combined buffer (offsets in int8 elements):
         #   0..76799:   bn13 L1 (76800)
         #   76800..153599: bn13 L3 (38400 put + 38400 get = 76800 combined)
         #   153600..230399: bn14 L1 (76800)
         #   230400..307199: bn14 L3 (38400 put + 38400 get = 76800 combined)
-        rt.fill(
-            wts_fifos[0].prod(), cascade_wts, _wts_tap(0, _L1), placement=Tile(4, 0)
-        )
-        rt.fill(
-            wts_fifos[1].prod(), cascade_wts, _wts_tap(_L1, _L3f), placement=Tile(5, 0)
-        )
+        rt.fill(wts_fifos[0].prod(), cascade_wts, _wts_tap(0, _L1), tile=Tile(4, 0))
+        rt.fill(wts_fifos[1].prod(), cascade_wts, _wts_tap(_L1, _L3f), tile=Tile(5, 0))
         rt.fill(
             wts_fifos[2].prod(),
             cascade_wts,
             _wts_tap(_L1 + _L3f, _L1),
-            placement=Tile(6, 0),
+            tile=Tile(6, 0),
         )
         rt.fill(
             wts_fifos[3].prod(),
             cascade_wts,
             _wts_tap(_L1 * 2 + _L3f, _L3f),
-            placement=Tile(7, 0),
+            tile=Tile(7, 0),
         )
         # Round-trip the avgpool output through L3 (DDR) — matches original
         # design's shim 30/40 hop. Reuses inp as scratch (input has been fully
@@ -741,16 +741,45 @@ def mobilenet_iron():
             tap=_post_l1_scratch_tap,
             wait=True,
             task_group=_tg_drain,
-            placement=Tile(3, 0),
+            tile=Tile(3, 0),
         )
         rt.finish_task_group(_tg_drain)
+        # First FC pass: avgpool output (in inp scratch at offset 0) -> FC input.
+        # post_L2 worker computes FC2 first (PB ping-pong: initial=fc2 weights),
+        # so the first FC output is the FC2-of-avgpool result. We round-trip it
+        # through L3 (offset = _post_l1_out_sz) and re-fill as the second FC input.
         rt.fill(
             act_out_post_shim_FC.prod(),
             inp,
             tap=_post_l1_scratch_tap,
-            placement=Tile(4, 0),
+            tile=Tile(4, 0),
         )
-        rt.drain(act_out_of.cons(), out, wait=True, placement=Tile(7, 0))
+        _post_fc_out_tap = TensorAccessPattern(
+            (tensorInW * tensorInH * tensorInC,),
+            offset=_post_l1_out_sz,
+            sizes=[1, 1, 1, _post_l1_out_sz],
+            strides=[0, 0, 0, 1],
+        )
+        # Second FC pass: drain first FC output to L3 then re-feed as input.
+        # Wait so the subsequent fill sees the L3 buffer fully written.
+        _tg_fc1 = rt.task_group()
+        rt.drain(
+            act_out_of.cons(),
+            inp,
+            tap=_post_fc_out_tap,
+            wait=True,
+            task_group=_tg_fc1,
+            tile=Tile(7, 0),
+        )
+        rt.finish_task_group(_tg_fc1)
+        rt.fill(
+            act_out_post_shim_FC.prod(),
+            inp,
+            tap=_post_fc_out_tap,
+            tile=Tile(4, 0),
+        )
+        # Final drain: second FC output -> host buffer.
+        rt.drain(act_out_of.cons(), out, wait=True, tile=Tile(7, 0))
 
     # ------------------------------------------------------------------
     # Generate MLIR

@@ -199,17 +199,17 @@ def pipeline_bottlenecks(
         Worker(
             bn10_l1_fn,
             [act_in.cons(), bn10_of_12.prod(), bn10_l1_wts, k_bn10_l1, bn10_s1],
-            placement=Tile(1, 5),
+            tile=Tile(1, 5),
         ),
         Worker(
             bn10_l2_fn,
             [bn10_of_12.cons(), bn10_of_23.prod(), bn10_l2_wts, k_bn10_l2, bn10_s2],
-            placement=Tile(2, 4),
+            tile=Tile(2, 4),
         ),
         Worker(
             bn10_l3_fn,
             [bn10_of_23.cons(), act_bn10_out.prod(), bn10_l3_wts, k_bn10_l3, bn10_s3],
-            placement=Tile(2, 5),
+            tile=Tile(2, 5),
         ),
     ]
 
@@ -221,7 +221,7 @@ def pipeline_bottlenecks(
     bn11_l1_act_cons = act_bn10_out.cons()  # tile_3_2 first
     # Explicit placement on mem_tile_2_1 to match placed-API.
     bn11_skip_of = act_bn10_out.cons(depth=6).forward(
-        name="bn11_skip_of", depth=2, placement=Tile(2, 1)
+        name="bn11_skip_of", depth=2, tile=Tile(2, 1)
     )
 
     # b11_OutC1=336, b11_OutC2=336, b11_OutC3=112
@@ -372,12 +372,12 @@ def pipeline_bottlenecks(
                 k_bn11_l1,
                 bn11_s1,
             ],
-            placement=Tile(3, 2),
+            tile=Tile(3, 2),
         ),
         Worker(
             bn11_l2_fn,
             [bn11_of_12.cons(), bn11_of_23.prod(), bn11_l2_wts, k_bn11_l2, bn11_s2],
-            placement=Tile(3, 4),
+            tile=Tile(3, 4),
         ),
         Worker(
             bn11_l3_fn,
@@ -390,7 +390,7 @@ def pipeline_bottlenecks(
                 bn11_s3,
                 bn11_sAdd,
             ],
-            placement=Tile(2, 2),
+            tile=Tile(2, 2),
         ),
     ]
 
@@ -556,7 +556,7 @@ def pipeline_bottlenecks(
         Worker(
             bn12_l1_fn,
             [act_bn11_out.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1, bn12_s1],
-            placement=Tile(3, 5),
+            tile=Tile(3, 5),
         ),
         Worker(
             bn12_l23_fn,
@@ -572,7 +572,7 @@ def pipeline_bottlenecks(
                 bn12_s2,
                 bn12_s3,
             ],
-            placement=Tile(4, 4),
+            tile=Tile(4, 4),
         ),
     ]
 

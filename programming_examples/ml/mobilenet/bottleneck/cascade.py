@@ -491,7 +491,7 @@ def cascade_bottlenecks(
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn13_wts_l1_put", "bn13_wts_l1_get"],
-        placement=Tile(0, 1),  # mem_tile_0_1 in original
+        tile=Tile(0, 1),  # mem_tile_0_1 in original
         repeat_counts=[_InH, _InH],
     )
 
@@ -504,7 +504,7 @@ def cascade_bottlenecks(
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn13_wts_l3_put", "bn13_wts_l3_get"],
-        placement=Tile(1, 1),  # mem_tile_1_1 in original
+        tile=Tile(1, 1),  # mem_tile_1_1 in original
         repeat_counts=[_InH, _InH],
     )
 
@@ -547,7 +547,7 @@ def cascade_bottlenecks(
     # We acquire depth=6 to allow all 7 rows to be buffered before the skip
     # consumer drains them (matching the original bn13_skip depth from source).
     bn13_skip_fifo = act_in.cons(depth=6).forward(
-        name="bn13_skip_fifo", depth=2, placement=Tile(5, 1)  # mem_tile_5_1 in original
+        name="bn13_skip_fifo", depth=2, tile=Tile(5, 1)  # mem_tile_5_1 in original
     )
 
     # -- Create bn13 Workers --
@@ -565,7 +565,7 @@ def cascade_bottlenecks(
             _OC8,
             bn13_s1,
         ],
-        placement=Tile(4, 5),
+        tile=Tile(4, 5),
     )
 
     w_bn13_l1_get = Worker(
@@ -583,7 +583,7 @@ def cascade_bottlenecks(
             _OC8,
             bn13_s1,
         ],
-        placement=Tile(5, 5),
+        tile=Tile(5, 5),
     )
 
     w_bn13_l2 = Worker(
@@ -598,7 +598,7 @@ def cascade_bottlenecks(
             _L1_OutC,
             bn13_s2,
         ],
-        placement=Tile(5, 4),
+        tile=Tile(5, 4),
     )
 
     w_bn13_l3_put = Worker(
@@ -615,7 +615,7 @@ def cascade_bottlenecks(
             _OC8_out,
             bn13_s3,
         ],
-        placement=Tile(4, 3),
+        tile=Tile(4, 3),
     )
 
     w_bn13_l3_get = Worker(
@@ -635,7 +635,7 @@ def cascade_bottlenecks(
             bn13_s3,
             bn13_sAdd,
         ],
-        placement=Tile(5, 3),
+        tile=Tile(5, 3),
     )
 
     workers += [
@@ -751,7 +751,7 @@ def cascade_bottlenecks(
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn14_wts_l1_put", "bn14_wts_l1_get"],
-        placement=Tile(2, 1),  # mem_tile_2_1 in original
+        tile=Tile(2, 1),  # mem_tile_2_1 in original
         repeat_counts=[_InH, _InH],
     )
 
@@ -761,7 +761,7 @@ def cascade_bottlenecks(
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         names=["bn14_wts_l3_put", "bn14_wts_l3_get"],
-        placement=Tile(3, 1),  # mem_tile_3_1 in original
+        tile=Tile(3, 1),  # mem_tile_3_1 in original
         repeat_counts=[_InH, _InH],
     )
 
@@ -799,7 +799,7 @@ def cascade_bottlenecks(
 
     # bn14 skip: bn13 output forwarded to bn14 L3 GET via MemTile DMA.
     bn14_skip_fifo = act_bn13_out.cons(depth=6).forward(
-        name="bn14_skip_fifo", depth=2, placement=Tile(7, 1)  # mem_tile_7_1 in original
+        name="bn14_skip_fifo", depth=2, tile=Tile(7, 1)  # mem_tile_7_1 in original
     )
 
     w_bn14_l1_put = Worker(
@@ -816,7 +816,7 @@ def cascade_bottlenecks(
             _OC8,
             bn14_s1,
         ],
-        placement=Tile(6, 5),
+        tile=Tile(6, 5),
     )
 
     w_bn14_l1_get = Worker(
@@ -834,7 +834,7 @@ def cascade_bottlenecks(
             _OC8,
             bn14_s1,
         ],
-        placement=Tile(7, 5),
+        tile=Tile(7, 5),
     )
 
     w_bn14_l2 = Worker(
@@ -849,7 +849,7 @@ def cascade_bottlenecks(
             _L1_OutC,
             bn14_s2,
         ],
-        placement=Tile(6, 2),  # original: tile(6,2) — same row as L3 get (5,2)
+        tile=Tile(6, 2),  # original: tile(6,2) — same row as L3 get (5,2)
     )
 
     w_bn14_l3_put = Worker(
@@ -866,7 +866,7 @@ def cascade_bottlenecks(
             _OC8_out,
             bn14_s3,
         ],
-        placement=Tile(4, 2),
+        tile=Tile(4, 2),
     )
 
     w_bn14_l3_get = Worker(
@@ -886,7 +886,7 @@ def cascade_bottlenecks(
             bn14_s3,
             bn14_sAdd,
         ],
-        placement=Tile(5, 2),
+        tile=Tile(5, 2),
     )
 
     workers += [

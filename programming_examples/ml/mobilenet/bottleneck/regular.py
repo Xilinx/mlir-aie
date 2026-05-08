@@ -389,6 +389,7 @@ def regular_bottlenecks(
             bn0_scale3,
             bn0_scaleAdd,
         ],
+        tile=Tile(0, 3),  # original: bn0_tile = tile(0, 3)
         while_true=False,
     )
     workers.append(bn0_worker)
@@ -620,6 +621,7 @@ def regular_bottlenecks(
             bn1_scale2,
             bn1_scale3,
         ],
+        tile=Tile(0, 4),  # original: bn1_tile = tile(0, 4)
         while_true=False,
     )
     workers.append(bn1_worker)
@@ -874,6 +876,7 @@ def regular_bottlenecks(
             bn2_scale3,
             bn2_scaleAdd,
         ],
+        tile=Tile(0, 5),  # original: bn2_tile = tile(0, 5)
         while_true=False,
     )
     workers.append(bn2_worker)
@@ -1088,6 +1091,7 @@ def regular_bottlenecks(
             bn3_scale2,
             bn3_scale3,
         ],
+        tile=Tile(1, 3),  # original: bn3_tile = tile(1, 3)
         while_true=False,
     )
     workers.append(bn3_worker)
@@ -1713,7 +1717,7 @@ def regular_bottlenecks(
             bn5_scale3,
             bn5_scaleAdd,
         ],
-        placement=Tile(
+        tile=Tile(
             1, 2
         ),  # original: bn4_5_tile = tile(1,2); L1 alloc on tile(0,2) (adjacent),
         while_true=False,
@@ -1926,6 +1930,7 @@ def regular_bottlenecks(
             bn6_scale2,
             bn6_scale3,
         ],
+        tile=Tile(1, 4),  # original: bn6_tile = tile(1, 4)
         while_true=False,
     )
     workers.append(bn6_worker)
@@ -2182,9 +2187,7 @@ def regular_bottlenecks(
             bn7_scale3,
             bn7_scaleAdd,
         ],
-        placement=Tile(
-            2, 3
-        ),  # original: bn7_tile = tile(2,3), adjacent to bn8+9 tile(3,3),
+        tile=Tile(2, 3),  # original: bn7_tile = tile(2,3), adjacent to bn8+9 tile(3,3),
         while_true=False,
     )
     workers.append(bn7_worker)
@@ -2813,7 +2816,7 @@ def regular_bottlenecks(
             bn9_scale3,
             bn9_scaleAdd,
         ],
-        placement=Tile(
+        tile=Tile(
             3, 3
         ),  # original: bn8_9_tile = tile(3,3); L1 alloc on tile(3,4) (adjacent),
         while_true=False,
