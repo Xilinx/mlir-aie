@@ -4,44 +4,45 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Vector exp(x) — IRON + ``@iron.jit``, 4 cores, bfloat16.
+
+Demonstrates the IRON kernel library's LUT-backed bf16 exp kernel
+(``kernels.bf16_exp``).  Each of 4 cores runs the kernel on its own
+1024-element tile; the runtime split/join the work across the cores.
+"""
+
 import sys
+
+import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2
+import aie.iron as iron
+from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
+from aie.utils.verify import count_mismatches
 
-if len(sys.argv) > 2:
-    if sys.argv[1] == "npu":
-        dev = NPU1Col1()
-    elif sys.argv[1] == "npu2":
-        dev = NPU2()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+_TILE = 1024  # hard-coded by kernels.bf16_exp's underlying C++ kernel
+_N_CORES = 4
 
 
-def my_eltwise_exp():
+@iron.jit
+def vector_exp(
+    x: In,
+    y: Out,
+    *,
+    N: Compile[int],
+):
+    n = _TILE
+    n_cores = _N_CORES
+    tiles = (N // n) // n_cores
 
-    N = 65536
-
-    # Tile sizes
-    n = 1024
-    N_div_n = N // n
-
-    n_cores = 4
-    tiles = N_div_n // n_cores
-
-    # Define tensor types
     tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
     memtile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
     tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
 
-    # Generate handle to externally defined kernel function
-    exp_bf16_1024 = Kernel("exp_bf16_1024", "kernels.a", [tile_ty, tile_ty])
+    exp_fn = kernels.bf16_exp(tile_size=n)
 
-    # Dataflow with ObjectFifos
     A_fifo = ObjectFifo(memtile_ty, name="inA")
     C_fifo = ObjectFifo(memtile_ty, name="outC")
     a_fifos = A_fifo.cons().split(
@@ -51,33 +52,51 @@ def my_eltwise_exp():
         offsets=[n * i for i in range(n_cores)], obj_types=[tile_ty] * n_cores
     )
 
-    # Define a task a core might perform
-    def core_fn(a_in, c_out, exp_bf16_1024):
+    def core_fn(a_in, c_out, exp_fn):
         for _ in range_(tiles):
             elem_out = c_out.acquire(1)
             elem_in_a = a_in.acquire(1)
-            exp_bf16_1024(elem_in_a, elem_out)
+            exp_fn(elem_in_a, elem_out)
             a_in.release(1)
             c_out.release(1)
 
-    # Create workers to run the tasks (one per core)
-    workers = []
-    for i in range(n_cores):
-        workers.append(
-            Worker(
-                core_fn, fn_args=[a_fifos[i].cons(), c_fifos[i].prod(), exp_bf16_1024]
-            )
-        )
+    workers = [
+        Worker(core_fn, fn_args=[a_fifos[i].cons(), c_fifos[i].prod(), exp_fn])
+        for i in range(n_cores)
+    ]
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty) as (a_in, c_out):
         rt.start(*workers)
         rt.fill(A_fifo.prod(), a_in)
         rt.drain(C_fifo.cons(), c_out, wait=True)
 
-    # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-print(my_eltwise_exp())
+def main():
+    # Test every possible bfloat16 value by reinterpreting each uint16 as bf16
+    # — matches the C++ testbench this design previously shipped with.
+    N = 65536
+    a_np = np.arange(N, dtype=np.uint16).view(bfloat16)
+
+    a = iron.tensor(a_np, dtype=bfloat16, device="npu")
+    c = iron.zeros(N, dtype=bfloat16, device="npu")
+
+    vector_exp(a, c, N=N)
+
+    # The AIE kernel is a LUT approximation; verify with the canonical
+    # 12.8% relative tolerance, stopping at the first inf/nan (the LUT's
+    # behaviour outside its defined input range isn't part of the contract).
+    with np.errstate(over="ignore", invalid="ignore"):
+        ref = np.exp(a_np.astype(np.float32))
+    errors, n_checked = count_mismatches(c.numpy(), ref)
+
+    if errors:
+        print(f"FAIL: {errors} of {n_checked} samples outside 12.8% relative tolerance")
+        sys.exit(1)
+    print(f"PASS!  ({n_checked} samples verified within 12.8% relative tolerance)")
+
+
+if __name__ == "__main__":
+    main()
