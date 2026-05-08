@@ -40,7 +40,6 @@ from aie.iron import (
     compileconfig,
 )
 from aie.iron.controlflow import range_
-from aie.iron.placers import SequentialPlacer
 
 # ---------------------------------------------------------------------------
 # Shared design: element-wise add of a constant
@@ -84,7 +83,7 @@ def _add_const_design(
         rt.start(worker)
         rt.fill(of_in.prod(), a)
         rt.drain(of_out.cons(), b, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 # ---------------------------------------------------------------------------
