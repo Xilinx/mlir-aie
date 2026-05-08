@@ -13,7 +13,6 @@ import numpy as np
 from aie.iron import CascadeFlow, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1Col2, Tile
 from aie.iron.dataflow.cascadeflow import CascadeFlow as _CascadeFlow
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 

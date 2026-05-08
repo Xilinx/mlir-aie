@@ -29,7 +29,6 @@ import numpy as np
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from lowlevel_dma import StaticWeightStream
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 
@@ -756,7 +755,7 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     # Generate MLIR
     # ------------------------------------------------------------------
-    return Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return Program(NPU2(), rt).resolve_program()
 
 
 if __name__ == "__main__":
