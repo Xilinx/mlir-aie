@@ -216,6 +216,16 @@ def mobilenet_iron():
         name="init_wts_static",  # match lowlevel sym_name
     )
 
+    # RTP buffer for init tile (matches lowlevel @rtp_init on tile 0,2).
+    # Lowlevel writes [8] at idx 0; kernel doesn't read it (scale factors are
+    # inlined as i32 args), but the write32 might serve as hardware-init.
+    rtp_init = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_init",
+    )
+
     # ------------------------------------------------------------------
     # Init conv kernel: 3x3 stride-2, int8 in, uint8 out
     # fn signature from source: (in0, in0, in1, wts, out, W, InC, OutC,
@@ -242,7 +252,7 @@ def mobilenet_iron():
         ],
     )
 
-    def init_fn(act_in, act_out, wts, k, inW, inH, inC, outW, outH, outC, sf):
+    def init_fn(act_in, act_out, wts, _rtp, k, inW, inH, inC, outW, outH, outC, sf):
         # Match lowlevel initConv exactly: preamble + (outH - 1) middle iters,
         # then a trailing release(1) to drain the final input row. The earlier
         # iron postamble call (index=2) would leave one shim BD un-released and
@@ -283,6 +293,7 @@ def mobilenet_iron():
             act_in.cons(depth=5),
             act_init_out.prod(depth=5),
             init_wts,
+            rtp_init,  # RTP buffer placement; kernel doesn't read it
             k_init,
             tensorInW,
             tensorInH,
@@ -299,7 +310,7 @@ def mobilenet_iron():
     # Bottleneck blocks
     # ------------------------------------------------------------------
     # Regular family: bn0–bn9
-    a_workers, act_bn9_out = regular_bottlenecks(
+    a_workers, act_bn9_out, a_rtps = regular_bottlenecks(
         act_init_out,
         bn0_sf2,
         bn0_sf3,
@@ -344,7 +355,7 @@ def mobilenet_iron():
     )
 
     # Pipeline family: bn10–bn12
-    b_workers, act_bn12_out = pipeline_bottlenecks(
+    b_workers, act_bn12_out, b_rtps = pipeline_bottlenecks(
         act_bn9_out,
         bn10_sf1,
         bn10_sf2,
@@ -360,7 +371,7 @@ def mobilenet_iron():
     )
 
     # Cascade family: bn13–bn14
-    c_workers, act_bn14_out, wts_fifos = cascade_bottlenecks(
+    c_workers, act_bn14_out, wts_fifos, c_rtps = cascade_bottlenecks(
         act_bn12_out,
         bn13_sf1,
         bn13_sf2,
@@ -452,6 +463,7 @@ def mobilenet_iron():
     # Post-L1 worker: placed on Tile(6,4) = PostL1Tile (matches original)
     def post_l1_fn(
         act_in,
+        _rtp,
         act_out,
         wts_pb,
         k,
@@ -486,10 +498,17 @@ def mobilenet_iron():
             act_in.release(1)
         act_out.release(1)
 
+    rtp_post_L1 = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_post_L1",
+    )
     w_post_l1 = Worker(
         post_l1_fn,
         fn_args=[
             act_bn14_out.cons(),
+            rtp_post_L1,
             act_out_post_avgpool_shim.prod(),
             post_l1_pb,
             k_post_l1,
@@ -651,9 +670,6 @@ def mobilenet_iron():
             sf2,
             n_splits=PostOutputSplitL2,
         ):
-            # Match lowlevel postBlockL2 exactly: FC1 first, then FC2, with
-            # one acquire/release of act_in per pass. Runtime pings FC input
-            # through L3 (avgpool -> FC1 in, FC1 out -> FC2 in).
             elem_in = act_in.acquire(1)
             for _ in range_(n_splits):
                 elem_out = act_out.acquire(1)
@@ -671,22 +687,93 @@ def mobilenet_iron():
                 act_out.release(1)
             act_in.release(1)
 
-        w = Worker(
-            post_l2_fn,
-            fn_args=[
-                act_out_post_shim_FC.cons(),
-                act_post_l2_tiles[i].prod(),
-                fc_pb,
-                k_post_l2,
-                post_L1_OutC,  # inC for FC1 = 960 (pre-pad)
-                post_L2_InC,  # inC for FC2 = 1280 (padded)
-                post_L2_OutC,  # outC = 1280 (full output channels)
-                co,  # n_co = 8 (chunk size per kernel call)
-                post_fc1_sf,
-                post_fc2_sf,
-            ],
-            tile=fc_comptiles[i],
-        )
+        def post_l2_fn_rtp(
+            act_in,
+            _rtp,
+            act_out,
+            wts_h,
+            k,
+            inC_fc1,
+            inC_fc2,
+            outC,
+            n_co,
+            sf1,
+            sf2,
+            n_splits=PostOutputSplitL2,
+        ):
+            # Same as post_l2_fn but with a placement-only _rtp arg.
+            elem_in = act_in.acquire(1)
+            for _ in range_(n_splits):
+                elem_out = act_out.acquire(1)
+                wts = wts_h.acquire(1)
+                k(elem_in, wts, elem_out, 1, inC_fc1, outC, n_co, sf1)
+                wts_h.release(1)
+                act_out.release(1)
+            act_in.release(1)
+            elem_in = act_in.acquire(1)
+            for _ in range_(n_splits):
+                elem_out = act_out.acquire(1)
+                wts = wts_h.acquire(1)
+                k(elem_in, wts, elem_out, 1, inC_fc2, outC, n_co, sf2)
+                wts_h.release(1)
+                act_out.release(1)
+            act_in.release(1)
+
+        # Only FC tiles 0 and 1 get RTPs in lowlevel.
+        if i == 0:
+            _post_l2_rtp = Buffer(
+                np.ndarray[(16,), np.dtype[np.int32]],
+                initial_value=np.zeros(16, dtype=np.int32),
+                use_write_rtp=True,
+                name="rtp_post_L2_C1",
+            )
+            _rtp_post_L2_C1 = _post_l2_rtp  # save for runtime sequence
+        elif i == 1:
+            _post_l2_rtp = Buffer(
+                np.ndarray[(16,), np.dtype[np.int32]],
+                initial_value=np.zeros(16, dtype=np.int32),
+                use_write_rtp=True,
+                name="rtp_post_L2_C2",
+            )
+            _rtp_post_L2_C2 = _post_l2_rtp
+        else:
+            _post_l2_rtp = None
+
+        if _post_l2_rtp is not None:
+            w = Worker(
+                post_l2_fn_rtp,
+                fn_args=[
+                    act_out_post_shim_FC.cons(),
+                    _post_l2_rtp,
+                    act_post_l2_tiles[i].prod(),
+                    fc_pb,
+                    k_post_l2,
+                    post_L1_OutC,
+                    post_L2_InC,
+                    post_L2_OutC,
+                    co,
+                    post_fc1_sf,
+                    post_fc2_sf,
+                ],
+                tile=fc_comptiles[i],
+            )
+        else:
+            w = Worker(
+                post_l2_fn,
+                fn_args=[
+                    act_out_post_shim_FC.cons(),
+                    act_post_l2_tiles[i].prod(),
+                    fc_pb,
+                    k_post_l2,
+                    post_L1_OutC,
+                    post_L2_InC,
+                    post_L2_OutC,
+                    co,
+                    post_fc1_sf,
+                    post_fc2_sf,
+                ],
+                tile=fc_comptiles[i],
+            )
         post_l2_workers.append(w)
 
     # ------------------------------------------------------------------
@@ -730,6 +817,61 @@ def mobilenet_iron():
     rt = Runtime()
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)
+
+        # RTP writes (mirror lowlevel's 60 npu.rtp_write ops). Kernels don't
+        # read RTPs (scale factors are inlined), but the write32 ops might
+        # have a hardware-init side effect.
+        # rtp_init at (0,2)
+        def _set_rtp_init(b):
+            b[0] = 8
+        rt.inline_ops(_set_rtp_init, [rtp_init])
+        # bn0..bn7, bn8_9, bn4_5 RTPs from regular_bottlenecks
+        _RTP_VALUES = {
+            "rtp_bn0": [9, 8, 2, 8, 7, 7],
+            # rtp_bn1: declared but no writes
+            "rtp_bn2": [8, 8, 11, 1],
+            "rtp_bn3": [7, 8, 8, 0],
+            "rtp_bn4_5_tile": [9, 7, 11, 0, 9, 7, 11, 1],
+            "rtp_bn6": [8, 7, 8, 0],
+            "rtp_bn7": [9, 7, 12, 0],
+            "rtp_bn8_bn9": [9, 7, 12, 0, 9, 7, 12, 1],
+            "bn10_1_rtp": [8],
+            "bn10_2_rtp": [7],
+            "bn10_3_rtp": [9],
+            "bn11_1_rtp": [9],
+            "bn11_2_rtp": [8],
+            "bn11_3_rtp": [12, 1],
+            "bn12_1_rtp": [8],
+            "bn12_2_rtp": [8, 9],
+            "rtp_bn13_tile_layer1_get": [9],
+            "rtp_bn13_tile_layer2": [8],
+            "rtp_bn13_tile_layer3_get": [12, 0],
+            "rtp_bn14_tile_layer1_get": [9],
+            "rtp_bn14_tile_layer2": [7],
+            "rtp_bn14_tile_layer3_get": [13, 1],
+        }
+        _all_module_rtps = {**a_rtps, **b_rtps, **c_rtps}
+        for _rtp_name, _vals in _RTP_VALUES.items():
+            if _rtp_name not in _all_module_rtps:
+                continue
+            _buf = _all_module_rtps[_rtp_name]
+            def _make_setter(values):
+                def _setter(b):
+                    for idx, v in enumerate(values):
+                        b[idx] = v
+                return _setter
+            rt.inline_ops(_make_setter(_vals), [_buf])
+        # post_L1
+        def _set_rtp_post_L1(b):
+            b[0] = 8
+        rt.inline_ops(_set_rtp_post_L1, [rtp_post_L1])
+        # post_L2 C1 (tile (6,3)) and C2 (tile (7,4)) only
+        def _set_rtp_post_L2_C1(b):
+            b[0] = 9
+        rt.inline_ops(_set_rtp_post_L2_C1, [_rtp_post_L2_C1])
+        def _set_rtp_post_L2_C2(b):
+            b[0] = 11
+        rt.inline_ops(_set_rtp_post_L2_C2, [_rtp_post_L2_C2])
 
         # ---- Group 1: input + weights + avgpool drain ----
         # All upstream fills + the first sync drain in the same group. By the

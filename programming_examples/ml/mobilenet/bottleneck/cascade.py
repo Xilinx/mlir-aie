@@ -143,6 +143,44 @@ def cascade_bottlenecks(
     """
     workers = []
 
+    # RTP buffers (mirror lowlevel write32 ops)
+    _rtp_bn13_tile_layer1_get_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn13_tile_layer1_get",
+    )
+    _rtp_bn13_tile_layer2_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn13_tile_layer2",
+    )
+    _rtp_bn13_tile_layer3_get_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn13_tile_layer3_get",
+    )
+    _rtp_bn14_tile_layer1_get_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn14_tile_layer1_get",
+    )
+    _rtp_bn14_tile_layer2_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn14_tile_layer2",
+    )
+    _rtp_bn14_tile_layer3_get_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn14_tile_layer3_get",
+    )
+
     (
         bn13_s1,
         bn13_s2,
@@ -183,8 +221,7 @@ def cascade_bottlenecks(
             of_in.release(1)
 
     # L1 GET: for each input row, accumulates cascade and produces full L1 output row.
-    def l1_get_fn(
-        of_in,
+    def l1_get_fn(of_in, _rtp,
         of_out,
         wts_fifo,
         k,
@@ -221,7 +258,7 @@ def cascade_bottlenecks(
             of_out.release(1)
 
     # L2 DW: depthwise 3x3 producing two split-channel output rows.
-    def l2_fn(of_in, of_out_first, of_out_second, wts_buf, k, InW, OutC2, sf2):
+    def l2_fn(of_in, _rtp, of_out_first, of_out_second, wts_buf, k, InW, OutC2, sf2):
         # preamble: top row (zero-pad above)
         rows = of_in.acquire(2)
         row_out_a = of_out_first.acquire(1)
@@ -327,8 +364,7 @@ def cascade_bottlenecks(
             of_in.release(1)
 
     # L3 GET: reads second DW split half + cascade + skip → final output row.
-    def l3_get_fn(
-        of_in,
+    def l3_get_fn(of_in, _rtp,
         skip_in,
         act_out,
         wts_fifo,
@@ -572,6 +608,7 @@ def cascade_bottlenecks(
         l1_get_fn,
         fn_args=[
             bn13_l1_get_cons,
+        _rtp_bn13_tile_layer1_get_buf,
             bn13_of_l1_l2.prod(),
             bn13_wts_l1_get.cons(),
             bn13_k_l1_get,
@@ -590,6 +627,7 @@ def cascade_bottlenecks(
         l2_fn,
         fn_args=[
             bn13_of_l1_l2.cons(),
+        _rtp_bn13_tile_layer2_buf,
             bn13_of_l2_l3_first.prod(),
             bn13_of_l2_l3_second.prod(),
             bn13_l2_wts,
@@ -622,6 +660,7 @@ def cascade_bottlenecks(
         l3_get_fn,
         fn_args=[
             bn13_of_l2_l3_second.cons(),
+        _rtp_bn13_tile_layer3_get_buf,
             bn13_skip_fifo.cons(),
             act_bn13_out.prod(),
             bn13_wts_l3_get.cons(),
@@ -823,6 +862,7 @@ def cascade_bottlenecks(
         l1_get_fn,
         fn_args=[
             bn14_l1_get_cons,
+        _rtp_bn14_tile_layer1_get_buf,
             bn14_of_l1_l2.prod(),
             bn14_wts_l1_get.cons(),
             bn14_k_l1_get,
@@ -841,6 +881,7 @@ def cascade_bottlenecks(
         l2_fn,
         fn_args=[
             bn14_of_l1_l2.cons(),
+        _rtp_bn14_tile_layer2_buf,
             bn14_of_l2_l3_first.prod(),
             bn14_of_l2_l3_second.prod(),
             bn14_l2_wts,
@@ -873,6 +914,7 @@ def cascade_bottlenecks(
         l3_get_fn,
         fn_args=[
             bn14_of_l2_l3_second.cons(),
+        _rtp_bn14_tile_layer3_get_buf,
             bn14_skip_fifo.cons(),
             act_bn14_out.prod(),
             bn14_wts_l3_get.cons(),
@@ -917,4 +959,4 @@ def cascade_bottlenecks(
         bn14_wts_l3_full,
     ]
 
-    return workers, act_bn14_out, wts_fifos
+    return workers, act_bn14_out, wts_fifos, {"rtp_bn13_tile_layer1_get": _rtp_bn13_tile_layer1_get_buf, "rtp_bn13_tile_layer2": _rtp_bn13_tile_layer2_buf, "rtp_bn13_tile_layer3_get": _rtp_bn13_tile_layer3_get_buf, "rtp_bn14_tile_layer1_get": _rtp_bn14_tile_layer1_get_buf, "rtp_bn14_tile_layer2": _rtp_bn14_tile_layer2_buf, "rtp_bn14_tile_layer3_get": _rtp_bn14_tile_layer3_get_buf}

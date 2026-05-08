@@ -236,6 +236,7 @@ def regular_bottlenecks(
 
     def bn0_worker_fn(
         act_in_fifo,
+        _rtp,
         wts_buf,
         act_out_fifo,
         act_23_prod,  # bn0_act_2_3.prod()
@@ -369,10 +370,18 @@ def regular_bottlenecks(
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
+    _rtp_bn0_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn0",
+    )
+
     bn0_worker = Worker(
         bn0_worker_fn,
         fn_args=[
             act_in.cons(depth=3),
+            _rtp_bn0_buf,
             bn0_wts,
             act_bn0_bn1.prod(),
             bn0_act_2_3.prod(),  # self-loop: same Worker is prod and cons
@@ -499,6 +508,7 @@ def regular_bottlenecks(
 
     def bn1_worker_fn(
         act_in_fifo,
+        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -596,10 +606,18 @@ def regular_bottlenecks(
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
+    _rtp_bn1_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn1",
+    )
+
     bn1_worker = Worker(
         bn1_worker_fn,
         fn_args=[
             act_bn0_bn1.cons(),
+            _rtp_bn1_buf,
             bn1_wts,
             act_bn1_bn2.prod(),
             bn1_act_1_2.prod(),
@@ -712,6 +730,7 @@ def regular_bottlenecks(
 
     def bn2_worker_fn(
         act_in_fifo,
+        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -851,10 +870,18 @@ def regular_bottlenecks(
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
+    _rtp_bn2_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn2",
+    )
+
     bn2_worker = Worker(
         bn2_worker_fn,
         fn_args=[
             act_bn1_bn2.cons(),
+            _rtp_bn2_buf,
             bn2_wts,
             act_bn2_bn3.prod(),
             bn2_act_1_2.prod(),
@@ -969,6 +996,7 @@ def regular_bottlenecks(
 
     def bn3_worker_fn(
         act_in_fifo,
+        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -1066,10 +1094,18 @@ def regular_bottlenecks(
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
+    _rtp_bn3_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn3",
+    )
+
     bn3_worker = Worker(
         bn3_worker_fn,
         fn_args=[
             act_bn2_bn3.cons(),
+            _rtp_bn3_buf,
             bn3_wts,
             act_bn3_bn4.prod(),
             bn3_act_1_2.prod(),
@@ -1274,6 +1310,7 @@ def regular_bottlenecks(
 
     def bn45_worker_fn(
         act_in_fifo,
+        _rtp,
         wts_buf,
         act_out_fifo,
         act_bn4_12_prod,
@@ -1675,10 +1712,18 @@ def regular_bottlenecks(
         act_bn4_bn5_cons.release(1)
         act_out_fifo.release(1)
 
+    _rtp_bn4_5_tile_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn4_5_tile",
+    )
+
     bn45_worker = Worker(
         bn45_worker_fn,
         fn_args=[
             act_bn3_bn4.cons(),
+            _rtp_bn4_5_tile_buf,
             bn45_wts,
             act_bn5_bn6.prod(),
             bn45_act_bn4_1_2.prod(),
@@ -1807,6 +1852,7 @@ def regular_bottlenecks(
 
     def bn6_worker_fn(
         act_in_fifo,
+        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -1902,10 +1948,18 @@ def regular_bottlenecks(
             act_23_cons.release(1)
             act_out_fifo.release(1)
 
+    _rtp_bn6_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn6",
+    )
+
     bn6_worker = Worker(
         bn6_worker_fn,
         fn_args=[
             act_bn5_bn6.cons(),
+            _rtp_bn6_buf,
             bn6_wts,
             act_bn6_bn7.prod(),
             bn6_act_1_2.prod(),
@@ -2021,6 +2075,7 @@ def regular_bottlenecks(
 
     def bn7_worker_fn(
         act_in_fifo,
+        _rtp,
         wts_buf,
         act_out_fifo,
         act_12_prod,
@@ -2160,10 +2215,18 @@ def regular_bottlenecks(
         act_23_cons.release(1)
         act_out_fifo.release(1)
 
+    _rtp_bn7_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn7",
+    )
+
     bn7_worker = Worker(
         bn7_worker_fn,
         fn_args=[
             act_bn6_bn7.cons(),
+            _rtp_bn7_buf,
             bn7_wts,
             act_bn7_bn8.prod(),
             bn7_act_1_2.prod(),
@@ -2374,6 +2437,7 @@ def regular_bottlenecks(
 
     def bn89_worker_fn(
         act_in_fifo,
+        _rtp,
         wts_buf,
         act_out_fifo,
         act_bn8_12_prod,
@@ -2773,10 +2837,18 @@ def regular_bottlenecks(
         act_bn8_bn9_cons.release(1)
         act_out_fifo.release(1)
 
+    _rtp_bn8_bn9_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="rtp_bn8_bn9",
+    )
+
     bn89_worker = Worker(
         bn89_worker_fn,
         fn_args=[
             act_bn7_bn8.cons(),
+            _rtp_bn8_bn9_buf,
             bn89_wts,
             act_bn9_out.prod(depth=1),
             bn89_act_bn8_1_2.prod(),
@@ -2818,4 +2890,5 @@ def regular_bottlenecks(
     )
     workers.append(bn89_worker)
 
-    return workers, act_bn9_out
+    _rtps = {"rtp_bn0": _rtp_bn0_buf, "rtp_bn1": _rtp_bn1_buf, "rtp_bn2": _rtp_bn2_buf, "rtp_bn3": _rtp_bn3_buf, "rtp_bn4_5_tile": _rtp_bn4_5_tile_buf, "rtp_bn6": _rtp_bn6_buf, "rtp_bn7": _rtp_bn7_buf, "rtp_bn8_bn9": _rtp_bn8_bn9_buf}
+    return workers, act_bn9_out, _rtps

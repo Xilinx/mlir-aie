@@ -46,6 +46,56 @@ def pipeline_bottlenecks(
         bn12_s1, bn12_s2, bn12_s3
     """
     workers = []
+
+    # RTP buffers (mirror lowlevel write32 ops)
+    _bn10_1_rtp_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="bn10_1_rtp",
+    )
+    _bn10_2_rtp_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="bn10_2_rtp",
+    )
+    _bn10_3_rtp_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="bn10_3_rtp",
+    )
+    _bn11_1_rtp_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="bn11_1_rtp",
+    )
+    _bn11_2_rtp_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="bn11_2_rtp",
+    )
+    _bn11_3_rtp_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="bn11_3_rtp",
+    )
+    _bn12_1_rtp_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="bn12_1_rtp",
+    )
+    _bn12_2_rtp_buf = Buffer(
+        np.ndarray[(16,), np.dtype[np.int32]],
+        initial_value=np.zeros(16, dtype=np.int32),
+        use_write_rtp=True,
+        name="bn12_2_rtp",
+    )
     (
         bn10_s1,
         bn10_s2,
@@ -152,7 +202,7 @@ def pipeline_bottlenecks(
     bn10_of_23 = ObjectFifo(_u8((14, 1, 480)), depth=2, name="OF_b10_act_layer2_layer3")
     act_bn10_out = ObjectFifo(_i8((14, 1, 112)), depth=2, name="OF_b10_layer3_bn_11_layer1")
 
-    def bn10_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
+    def bn10_l1_fn(act_in, _rtp, of_12, wts_buf, k_l1, sf1):
         for _ in range_(14):
             row_in = act_in.acquire(1)
             row_out = of_12.acquire(1)
@@ -160,7 +210,7 @@ def pipeline_bottlenecks(
             act_in.release(1)
             of_12.release(1)
 
-    def bn10_l2_fn(of_12, of_23, wts_buf, k_l2, sf2):
+    def bn10_l2_fn(of_12, _rtp, of_23, wts_buf, k_l2, sf2):
         # preamble: top row (border=0, replicate row 0 above)
         rows = of_12.acquire(2)
         row_out = of_23.acquire(1)
@@ -182,7 +232,7 @@ def pipeline_bottlenecks(
         of_12.release(2)
         of_23.release(1)
 
-    def bn10_l3_fn(of_23, act_out, wts_buf, k_l3, sf3):
+    def bn10_l3_fn(of_23, _rtp, act_out, wts_buf, k_l3, sf3):
         for _ in range_(14):
             row_in = of_23.acquire(1)
             row_out = act_out.acquire(1)
@@ -196,17 +246,17 @@ def pipeline_bottlenecks(
     workers += [
         Worker(
             bn10_l1_fn,
-            [act_in.cons(), bn10_of_12.prod(), bn10_l1_wts, k_bn10_l1, bn10_s1],
+            [act_in.cons(), _bn10_1_rtp_buf, bn10_of_12.prod(), bn10_l1_wts, k_bn10_l1, bn10_s1],
             tile=Tile(1, 5),
         ),
         Worker(
             bn10_l2_fn,
-            [bn10_of_12.cons(), bn10_of_23.prod(), bn10_l2_wts, k_bn10_l2, bn10_s2],
+            [bn10_of_12.cons(), _bn10_2_rtp_buf, bn10_of_23.prod(), bn10_l2_wts, k_bn10_l2, bn10_s2],
             tile=Tile(2, 4),
         ),
         Worker(
             bn10_l3_fn,
-            [bn10_of_23.cons(), act_bn10_out.prod(), bn10_l3_wts, k_bn10_l3, bn10_s3],
+            [bn10_of_23.cons(), _bn10_3_rtp_buf, act_bn10_out.prod(), bn10_l3_wts, k_bn10_l3, bn10_s3],
             tile=Tile(2, 5),
         ),
     ]
@@ -313,7 +363,7 @@ def pipeline_bottlenecks(
     bn11_of_23 = ObjectFifo(_u8((14, 1, 336)), depth=2, name="OF_b11_act_layer2_layer3")
     act_bn11_out = ObjectFifo(_i8((14, 1, 112)), depth=2, name="OF_b11_layer3_bn_12_layer1")
 
-    def bn11_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
+    def bn11_l1_fn(act_in, _rtp, of_12, wts_buf, k_l1, sf1):
         for _ in range_(14):
             row_in = act_in.acquire(1)
             row_out = of_12.acquire(1)
@@ -321,7 +371,7 @@ def pipeline_bottlenecks(
             act_in.release(1)
             of_12.release(1)
 
-    def bn11_l2_fn(of_12, of_23, wts_buf, k_l2, sf2):
+    def bn11_l2_fn(of_12, _rtp, of_23, wts_buf, k_l2, sf2):
         # preamble: top row (border=0)
         rows = of_12.acquire(2)
         row_out = of_23.acquire(1)
@@ -346,7 +396,7 @@ def pipeline_bottlenecks(
     # bn11 L3 call from source:
     #   call(bn11_conv2dk1_skip,
     #        [elemIn, wts, elemOut, elementSkipsIn, W, C2, C3, scale, skipScale])
-    def bn11_l3_fn(of_23, skip_in, act_out, wts_buf, k_l3, sf3, sfAdd):
+    def bn11_l3_fn(of_23, _rtp, skip_in, act_out, wts_buf, k_l3, sf3, sfAdd):
         # Mirror lowlevel acquire/release order (subblockStatic.py:405-438):
         #   acquire of_act_2_3, acquire actOut, acquire actIn, call,
         #   release actIn, release of_act_2_3, release actOut.
@@ -364,7 +414,7 @@ def pipeline_bottlenecks(
         Worker(
             bn11_l1_fn,
             [
-                bn11_l1_act_cons,
+                bn11_l1_act_cons, _bn11_1_rtp_buf,
                 bn11_of_12.prod(),
                 bn11_l1_wts,
                 k_bn11_l1,
@@ -374,13 +424,13 @@ def pipeline_bottlenecks(
         ),
         Worker(
             bn11_l2_fn,
-            [bn11_of_12.cons(), bn11_of_23.prod(), bn11_l2_wts, k_bn11_l2, bn11_s2],
+            [bn11_of_12.cons(), _bn11_2_rtp_buf, bn11_of_23.prod(), bn11_l2_wts, k_bn11_l2, bn11_s2],
             tile=Tile(3, 4),
         ),
         Worker(
             bn11_l3_fn,
             [
-                bn11_of_23.cons(),
+                bn11_of_23.cons(), _bn11_3_rtp_buf,
                 bn11_skip_of.cons(),
                 act_bn11_out.prod(),
                 bn11_l3_wts,
@@ -500,7 +550,7 @@ def pipeline_bottlenecks(
     )
     act_bn12_out = ObjectFifo(_i8((7, 1, 80)), depth=2, name="act_B_C")
 
-    def bn12_l1_fn(act_in, of_12, wts_buf, k_l1, sf1):
+    def bn12_l1_fn(act_in, _rtp, of_12, wts_buf, k_l1, sf1):
         for _ in range_(14):
             row_in = act_in.acquire(1)
             row_out = of_12.acquire(1)
@@ -513,8 +563,7 @@ def pipeline_bottlenecks(
     # `wts` is the combined L2+L3 (DW+PW) buffer; we slice it via memref_view
     # to match lowlevel's `memref.view %bn12_2_3_wts_static[0]` (DW, 3024 bytes)
     # and `memref.view %bn12_2_3_wts_static[3024]` (PW, 26880 bytes).
-    def bn12_l23_fn(
-        of_12, dw_tmp_prod, dw_tmp_cons, act_out, wts, k_dw, k_pw, sf2, sf3
+    def bn12_l23_fn(of_12, _rtp, dw_tmp_prod, dw_tmp_cons, act_out, wts, k_dw, k_pw, sf2, sf3
     ):
         # memref_view(source, shape, dtype=None, shift=0, ...) — shift is in
         # element units. Both shape entries below are in i8 elements (= bytes).
@@ -566,13 +615,13 @@ def pipeline_bottlenecks(
     workers += [
         Worker(
             bn12_l1_fn,
-            [act_bn11_out.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1, bn12_s1],
+            [act_bn11_out.cons(), _bn12_1_rtp_buf, bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1, bn12_s1],
             tile=Tile(3, 5),
         ),
         Worker(
             bn12_l23_fn,
             [
-                bn12_of_12.cons(),
+                bn12_of_12.cons(), _bn12_2_rtp_buf,
                 bn12_dw_tmp_of.prod(),  # self-loop fifo (prod side, same tile)
                 bn12_dw_tmp_of.cons(),  # self-loop fifo (cons side, same tile)
                 act_bn12_out.prod(),
@@ -586,4 +635,4 @@ def pipeline_bottlenecks(
         ),
     ]
 
-    return workers, act_bn12_out
+    return workers, act_bn12_out, {"bn10_1_rtp": _bn10_1_rtp_buf, "bn10_2_rtp": _bn10_2_rtp_buf, "bn10_3_rtp": _bn10_3_rtp_buf, "bn11_1_rtp": _bn11_1_rtp_buf, "bn11_2_rtp": _bn11_2_rtp_buf, "bn11_3_rtp": _bn11_3_rtp_buf, "bn12_1_rtp": _bn12_1_rtp_buf, "bn12_2_rtp": _bn12_2_rtp_buf}
