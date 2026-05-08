@@ -10,6 +10,7 @@ import os
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.device import Tile
 from aie.iron.controlflow import range_
+from aie.extras.dialects.memref import view as memref_view
 
 
 def _i8(shape):
@@ -411,8 +412,22 @@ def pipeline_bottlenecks(
     bn12_l23_wts_sz = bn12_dw_wts_sz + bn12_pw_wts_sz  # 29904
 
     bn12_l1_data = _load_weights(data_dir, "bn12_1_chain.txt")
-    bn12_dw_data = _load_weights(data_dir, "bn12_2_chain.txt")
-    bn12_pw_data = _load_weights(data_dir, "bn12_3_chain.txt")
+    # Match lowlevel exactly: ONE combined DW+PW buffer of bn12_l23_wts_sz
+    # (29904 = 3024 + 26880) bytes, sliced via memref_view inside the worker.
+    # Lowlevel's MLIR has `bn12_2_3_wts_static : memref<29904xi8>` with
+    # `memref.view` ops at offsets 0 and 3024. Splitting into two Buffers
+    # (the previous design) produced an extra dense<> buffer in iron MLIR.
+    bn12_l23_data_combined = _load_weights(data_dir, "bn12_2_3_chain.txt")
+    if bn12_l23_data_combined is None:
+        # Fallback: concatenate from per-layer chain files in DW||PW order.
+        bn12_dw_data = _load_weights(data_dir, "bn12_2_chain.txt")
+        bn12_pw_data = _load_weights(data_dir, "bn12_3_chain.txt")
+        if bn12_dw_data is not None and bn12_pw_data is not None:
+            bn12_l23_data_combined = np.concatenate(
+                (bn12_dw_data, bn12_pw_data), axis=None
+            )
+        else:
+            bn12_l23_data_combined = np.zeros(bn12_l23_wts_sz, dtype=np.int8)
 
     bn12_l1_wts = Buffer(
         _i8((bn12_l1_wts_sz,)),
@@ -422,22 +437,9 @@ def pipeline_bottlenecks(
             else np.zeros(bn12_l1_wts_sz, dtype=np.int8)
         ),
     )
-    # DW and PW weights are separate buffers (separate chain files)
-    bn12_dw_wts = Buffer(
-        _i8((bn12_dw_wts_sz,)),
-        initial_value=(
-            bn12_dw_data
-            if bn12_dw_data is not None
-            else np.zeros(bn12_dw_wts_sz, dtype=np.int8)
-        ),
-    )
-    bn12_pw_wts = Buffer(
-        _i8((bn12_pw_wts_sz,)),
-        initial_value=(
-            bn12_pw_data
-            if bn12_pw_data is not None
-            else np.zeros(bn12_pw_wts_sz, dtype=np.int8)
-        ),
+    bn12_l23_wts = Buffer(
+        _i8((bn12_l23_wts_sz,)),
+        initial_value=bn12_l23_data_combined,
     )
 
     # bn12 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
@@ -516,9 +518,18 @@ def pipeline_bottlenecks(
 
     # bn12 tile2: interleave DW-stride2 and PW per output row.
     # dw_tmp_prod / dw_tmp_cons are the prod/cons handles of the self-loop fifo.
+    # `wts` is the combined L2+L3 (DW+PW) buffer; we slice it via memref_view
+    # to match lowlevel's `memref.view %bn12_2_3_wts_static[0]` (DW, 3024 bytes)
+    # and `memref.view %bn12_2_3_wts_static[3024]` (PW, 26880 bytes).
     def bn12_l23_fn(
-        of_12, dw_tmp_prod, dw_tmp_cons, act_out, dw_wts, pw_wts, k_dw, k_pw, sf2, sf3
+        of_12, dw_tmp_prod, dw_tmp_cons, act_out, wts, k_dw, k_pw, sf2, sf3
     ):
+        # memref_view(source, shape, dtype=None, shift=0, ...) — shift is in
+        # element units. Both shape entries below are in i8 elements (= bytes).
+        # `wts` is the iron Buffer wrapper; .op gives the underlying buffer op
+        # which has the memref type / works as a Value source for memref.view.
+        dw_wts = memref_view(wts.op, [bn12_dw_wts_sz], shift=0)
+        pw_wts = memref_view(wts.op, [bn12_pw_wts_sz], shift=bn12_dw_wts_sz)
         # NOTE: lowlevel acquires `act_bn12_out` (PW output buffer) LAZILY,
         # only after the DW step releases its inputs. The earlier eager
         # acquire here held an `of_12` slot while waiting on `act_out`,
@@ -573,8 +584,7 @@ def pipeline_bottlenecks(
                 bn12_dw_tmp_of.prod(),  # self-loop fifo (prod side, same tile)
                 bn12_dw_tmp_of.cons(),  # self-loop fifo (cons side, same tile)
                 act_bn12_out.prod(),
-                bn12_dw_wts,  # DW weights (3024 bytes)
-                bn12_pw_wts,  # PW weights (26880 bytes)
+                bn12_l23_wts,  # combined DW (3024) + PW (26880) = 29904 bytes
                 k_bn12_dw,
                 k_bn12_pw,
                 bn12_s2,
