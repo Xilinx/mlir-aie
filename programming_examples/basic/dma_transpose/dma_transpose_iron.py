@@ -11,7 +11,6 @@ import sys
 
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU1Col1, NPU2Col1, AnyComputeTile
-from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib import TensorTiler2D
 
 if len(sys.argv) > 3:
@@ -50,7 +49,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
     my_program = Program(dev, rt)
 
     # Place program components (assign the resources on the device) and generate an MLIR module
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
 
     # Print the generated MLIR
     print(module)

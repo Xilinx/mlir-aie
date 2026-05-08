@@ -7,7 +7,6 @@
 import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.dialects.aiex import v8bfp16ebs8
 
@@ -76,7 +75,7 @@ def my_matmul():
     dev_ty = NPU2()
     my_program = Program(dev_ty, rt)
 
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 

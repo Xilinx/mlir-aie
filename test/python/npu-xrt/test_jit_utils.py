@@ -19,7 +19,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
-from aie.iron.placers import SequentialPlacer
+
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
 from aie.utils.jit import hash_module
@@ -64,7 +64,7 @@ def _build_module(add_value):
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @pytest.fixture(scope="session")
@@ -359,7 +359,7 @@ def _transform(input_tensor, output_tensor, kernel_fn):
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @pytest.mark.parametrize("add_value", [1, 2, 3])

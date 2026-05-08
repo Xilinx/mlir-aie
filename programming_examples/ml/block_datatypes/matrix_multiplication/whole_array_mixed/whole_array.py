@@ -14,7 +14,6 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2
 from aie.iron.device.tile import Tile
-from aie.iron.placers import SequentialPlacer
 
 
 def ceildiv(a, b):
@@ -121,7 +120,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
                 dims_to_stream=dims_to_stream,
-                placement=Tile(2 * i if n_aie_cols == 8 else i, 1),
+                tile=Tile(2 * i if n_aie_cols == 8 else i, 1),
             )
         )
 
@@ -138,7 +137,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
                 dims_to_stream=dims_to_stream,
-                placement=Tile(col, 1),
+                tile=Tile(col, 1),
             )
         )
 
@@ -158,7 +157,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                 obj_types=[C_l1_ty] * n_aie_rows,
                 names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
                 depths=[fifo_depth] * n_aie_rows,
-                placement=Tile(col, 1),
+                tile=Tile(col, 1),
             )
         )
         for j in range(n_aie_rows):
@@ -194,7 +193,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                         zero_kernel,
                         matmul_kernel,
                     ],
-                    placement=Tile(tile_col, tile_row),
+                    tile=Tile(tile_col, tile_row),
                     stack_size=0xD00,
                 )
             )
@@ -244,7 +243,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                         tap=C_tiles[c_index],
                         wait=True,
                         task_group=tg,
-                        placement=Tile(col, 0),
+                        tile=Tile(col, 0),
                     )
                     c_index += 1
 
@@ -260,14 +259,14 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                                 A,
                                 tap=A_tiles[tile_offset],
                                 task_group=tg,
-                                placement=Tile(2 * col if n_aie_cols == 8 else col, 0),
+                                tile=Tile(2 * col if n_aie_cols == 8 else col, 0),
                             )
                         rt.fill(
                             B_l3l2_fifos[col].prod(),
                             B,
                             tap=B_tiles[col],
                             task_group=tg,
-                            placement=Tile(col, 0),
+                            tile=Tile(col, 0),
                         )
 
                 if tb > 0 or (tb == 0 and pingpong > 0):
@@ -278,7 +277,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
     dev_ty = NPU2()
     my_program = Program(dev_ty, rt)
 
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 

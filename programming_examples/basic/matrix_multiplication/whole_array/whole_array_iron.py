@@ -8,7 +8,6 @@ import argparse
 import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU1Col2, NPU1, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
@@ -257,7 +256,7 @@ def my_matmul(
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
                 dims_to_stream=dims_to_stream,
-                placement=Tile(
+                tile=Tile(
                     2 * i if n_aie_cols == 8 else i, 1
                 ),  # alternate columns in full 4x8 NPU2 case
             )
@@ -280,7 +279,7 @@ def my_matmul(
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
                 dims_to_stream=dims_to_stream,
-                placement=Tile(col, 1),
+                tile=Tile(col, 1),
             )
         )
 
@@ -302,7 +301,7 @@ def my_matmul(
                 obj_types=[C_l1_ty] * n_aie_rows,
                 names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
                 depths=[fifo_depth] * n_aie_rows,
-                placement=Tile(col, 1),
+                tile=Tile(col, 1),
             )
         )
         for j in range(n_aie_rows):
@@ -340,7 +339,7 @@ def my_matmul(
                         zero_kernel,
                         matmul_kernel,
                     ],
-                    placement=Tile(tile_col, tile_row),
+                    tile=Tile(tile_col, tile_row),
                     stack_size=0xD00,
                 )
             )
@@ -440,7 +439,7 @@ def my_matmul(
                         tap=C_tiles[c_index],
                         wait=True,
                         task_group=tg,
-                        placement=Tile(col, 0),
+                        tile=Tile(col, 0),
                     )
                     c_index += 1
 
@@ -475,7 +474,7 @@ def my_matmul(
                                 A,
                                 tap=A_tiles[tile_offset],
                                 task_group=tg,
-                                placement=Tile(
+                                tile=Tile(
                                     2 * col if n_aie_cols == 8 else col, 0
                                 ),  # alternate columns in full 4x8 NPU2 case
                             )
@@ -506,7 +505,7 @@ def my_matmul(
                             B,
                             tap=B_tiles[col],
                             task_group=tg,
-                            placement=Tile(col, 0),
+                            tile=Tile(col, 0),
                         )
 
                         # These lines do not change MLIR output at all - they are just for recording data movement
@@ -530,7 +529,7 @@ def my_matmul(
     my_program = Program(dev_ty, rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 
