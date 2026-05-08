@@ -10,12 +10,9 @@ For more versions of the vector reduce max design, with customizable parameters,
 
 This design consists of the following:
 
-* `vector_reduce_max_1col.py`: The NPU design for this application,
-  which describes which cores of the NPU we will use, how to route data between
-  cores, and what program to run on each core. This design leverages the IRON
-  JIT decorator to compile the design into a binary to run on the NPU, as well as 
-  to describe the program that runs on the CPU (host) that calculates a correct 
-  reference output, verifies and times our NPU design's execution.
+* `vector_reduce_max_1col.py`: The NPU design and host driver. Uses the IRON
+  `@iron.jit` decorator to compile to an NPU binary on first call, then
+  computes a CPU reference and verifies the NPU output.
 * `vector_reduce_max.cc`: A C++ implementation of a vectorized `max` reduction operation for AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics, and whose documentation can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).
 * `run.lit`: lit test that runs the design on different NPU devices.
 

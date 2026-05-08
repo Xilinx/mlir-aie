@@ -2,26 +2,23 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Vector reduce-max across 4 cores in one NPU column (cascade reduction)."""
 
-from ml_dtypes import bfloat16
-import numpy as np
 import sys
 
+import numpy as np
+from ml_dtypes import bfloat16
+
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out
-from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer
-from aie.utils.config import cxx_header_path
-from aie.iron.placers import SequentialPlacer
+from aie.iron import Buffer, Compile, ExternalFunction, In, Out
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
+from aie.helpers.dialects.scf import else_, if_
 from aie.helpers.util import np_ndarray_type_get_shape
-from aie.helpers.dialects.scf import if_, else_
+from aie.utils.config import cxx_header_path
 
 
-# JIT decorator for IRON
-# Decorator to compile an IRON kernel into a binary to run on the NPU.
-# Parameters:
-#     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
 def vector_reduce_max(
     input0: In,
@@ -30,32 +27,20 @@ def vector_reduce_max(
     in_tensor_size: Compile[int],
     element_type: Compile[type],
 ):
-
     n_cores = 4
     N = 2048
     elems_per_core = N // n_cores
-
     num_iter = in_tensor_size // N
-
-    # --------------------------------------------------------------------------
-    # In-Array Data Movement
-    # --------------------------------------------------------------------------
 
     in_ty = np.ndarray[(in_tensor_size,), np.dtype[element_type]]
     mem_ty = np.ndarray[(N,), np.dtype[element_type]]
     op_ty = np.ndarray[(elems_per_core,), np.dtype[element_type]]
-    # DMA transfers must be 4-byte aligned; pad to the minimum element count
-    # that satisfies this: ceil(4 / itemsize).
-    _dma_align = 4
+    # DMA transfers must be 4-byte aligned; pad to ceil(4/itemsize) elements.
     _itemsize = np.dtype(element_type).itemsize
-    out_elems = (_dma_align + _itemsize - 1) // _itemsize
+    out_elems = (4 + _itemsize - 1) // _itemsize
     out_ty = np.ndarray[(out_elems,), np.dtype[element_type]]
 
-    # Input A and Output C
     of_in = ObjectFifo(mem_ty, name="of_in")
-
-    in_fifos = []
-    out_fifos = []
 
     if n_cores > 1:
         of_a_offsets = [
@@ -65,9 +50,9 @@ def vector_reduce_max(
     else:
         of_a_offsets = [0]
 
-    # split() distributes one large ObjectFIFO into n_cores smaller ones,
-    # each starting at the given offset. See programming_guide/section-2/section-2b/
-    # for more detail on ObjectFIFO distribute and join patterns.
+    # split() distributes one ObjectFIFO into n_cores smaller ones at the
+    # given offsets. See programming_guide/section-2/section-2b/ for more on
+    # ObjectFIFO distribute/join patterns.
     in_fifos = of_in.cons().split(
         of_a_offsets,
         obj_types=[op_ty] * n_cores,
@@ -75,29 +60,17 @@ def vector_reduce_max(
     )
 
     min_val = np.full(out_elems, bfloat16(float("-inf")), dtype=element_type)
+    out_fifos = []
     nextC_buffers = []
     tmp_buffers = []
     for i in range(n_cores):
         out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
-        nextC_buffers.append(
-            Buffer(
-                type=out_ty,
-                initial_value=min_val,
-            )
-        )
-        tmp_buffers.append(
-            Buffer(
-                type=out_ty,
-                initial_value=min_val,
-            )
-        )
-    # --------------------------------------------------------------------------
-    # Task each core will run
-    # --------------------------------------------------------------------------
+        nextC_buffers.append(Buffer(type=out_ty, initial_value=min_val))
+        tmp_buffers.append(Buffer(type=out_ty, initial_value=min_val))
 
-    # Use ExternalFunction with a 2-element output buffer (4 bytes) for DMA alignment.
-    # kernels.reduce_max() uses a 1-element output which is only 2 bytes for bfloat16,
-    # violating the 4-byte DMA alignment requirement.
+    # kernels.reduce_max() can't be used here: its 1-element output is only
+    # 2 bytes for bfloat16, which violates the 4-byte DMA alignment requirement.
+    # We bind the kernel directly so we can request a multi-element output.
     reduce_max_vector = ExternalFunction(
         "reduce_max_vector_bfloat16",
         source_file=cxx_header_path() + "/aie_kernels/aie2/reduce_max.cc",
@@ -105,9 +78,8 @@ def vector_reduce_max(
         include_dirs=[cxx_header_path()],
     )
 
-    # final_core_body: runs on the last core in the cascade. This core does not
-    # read results from a downstream neighbor — it is the terminal node that
-    # writes the final maximum value to the output ObjectFIFO.
+    # final_core_body runs on the last core in the cascade — it has no
+    # downstream neighbor and writes the final maximum to the output ObjectFIFO.
     def final_core_body(of_in, of_out, reduce_fn, nextC_buffer, tmp_buffer):
         elem_out = of_out.acquire(1)
         for _ in range_(num_iter):
@@ -168,67 +140,40 @@ def vector_reduce_max(
                 )
             )
 
-    # --------------------------------------------------------------------------
-    # DRAM-NPU data movement and work dispatch
-    # --------------------------------------------------------------------------
-
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (a_in, c_out):
         rt.start(*workers)
         rt.fill(of_in.prod(), a_in)
         rt.drain(out_fifos[0].cons(), c_out, wait=True)
 
-    # --------------------------------------------------------------------------
-    # Place and generate MLIR program
-    # --------------------------------------------------------------------------
-
-    my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def main():
-    # Define tensor shapes and data types
     in_size = 524288
-    out_size = 4
     element_type = bfloat16
-
     in_tensor_size = in_size // element_type(0).nbytes
 
-    # Allocate output with enough elements for 4-byte DMA alignment.
-    _dma_align = 4
-    out_elems = (_dma_align + element_type(0).nbytes - 1) // element_type(0).nbytes
+    # Output needs enough elements for 4-byte DMA alignment.
+    out_elems = (4 + element_type(0).nbytes - 1) // element_type(0).nbytes
     input0 = iron.arange(in_tensor_size, dtype=element_type, device="npu")
     output = iron.zeros(out_elems, dtype=element_type, device="npu")
 
-    # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
-    # to the kernel will use the same compiled kernel and loaded code objects
     vector_reduce_max(
         input0, output, in_tensor_size=in_tensor_size, element_type=element_type
     )
 
-    # Check the correctness of the result and print.
-    # Initialize to -inf so the reference is correct for all-negative inputs.
+    # Initialize ref to -inf so all-negative inputs still produce the right max.
     ref_max = bfloat16(float("-inf"))
     for i in input0:
         if i > ref_max:
             ref_max = i
 
-    errors = 0
     if output[0] != ref_max:
-        print(f"Error: {output} != {ref_max}")
-        errors += 1
-    else:
-        print(f"Correct output: {output} == {ref_max}")
-
-    # If the result is correct, exit with a success code
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nfailed.\n")
+        print(f"\nFAIL: {output[0]} != {ref_max}")
         sys.exit(1)
+    print(f"Correct output: {output} == {ref_max}")
+    print("\nPASS!")
 
 
 if __name__ == "__main__":
