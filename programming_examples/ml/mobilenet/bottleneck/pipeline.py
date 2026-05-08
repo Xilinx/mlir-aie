@@ -79,24 +79,21 @@ def pipeline_bottlenecks(
             bn10_l1_data
             if bn10_l1_data is not None
             else np.zeros(bn10_l1_wts_sz, dtype=np.int8)
-        ),
-    )
+        ), name="bn10_1_wts_static")
     bn10_l2_wts = Buffer(
         _i8((bn10_l2_wts_sz,)),
         initial_value=(
             bn10_l2_data
             if bn10_l2_data is not None
             else np.zeros(bn10_l2_wts_sz, dtype=np.int8)
-        ),
-    )
+        ), name="bn10_2_wts_static")
     bn10_l3_wts = Buffer(
         _i8((bn10_l3_wts_sz,)),
         initial_value=(
             bn10_l3_data
             if bn10_l3_data is not None
             else np.zeros(bn10_l3_wts_sz, dtype=np.int8)
-        ),
-    )
+        ), name="bn10_3_wts_static")
 
     # Kernel declarations matching aie2_bottleneckBStatic.py external_func signatures.
     # bn10 L1: (in(14,1,80)i8, wts(38400)i8, out(14,1,480)u8, W, InC, OutC, scale)
@@ -240,24 +237,21 @@ def pipeline_bottlenecks(
             bn11_l1_data
             if bn11_l1_data is not None
             else np.zeros(bn11_l1_wts_sz, dtype=np.int8)
-        ),
-    )
+        ), name="bn11_1_wts_static")
     bn11_l2_wts = Buffer(
         _i8((bn11_l2_wts_sz,)),
         initial_value=(
             bn11_l2_data
             if bn11_l2_data is not None
             else np.zeros(bn11_l2_wts_sz, dtype=np.int8)
-        ),
-    )
+        ), name="bn11_2_wts_static")
     bn11_l3_wts = Buffer(
         _i8((bn11_l3_wts_sz,)),
         initial_value=(
             bn11_l3_data
             if bn11_l3_data is not None
             else np.zeros(bn11_l3_wts_sz, dtype=np.int8)
-        ),
-    )
+        ), name="bn11_3_wts_static")
 
     # bn11 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
     k_bn11_l1 = Kernel(
@@ -435,12 +429,10 @@ def pipeline_bottlenecks(
             bn12_l1_data
             if bn12_l1_data is not None
             else np.zeros(bn12_l1_wts_sz, dtype=np.int8)
-        ),
-    )
+        ), name="bn12_1_wts_static")
     bn12_l23_wts = Buffer(
         _i8((bn12_l23_wts_sz,)),
-        initial_value=bn12_l23_data_combined,
-    )
+        initial_value=bn12_l23_data_combined, name="bn12_2_3_wts_static")
 
     # bn12 L1: (in(14,1,112)i8, wts(37632)i8, out(14,1,336)u8, W, InC, OutC, scale)
     k_bn12_l1 = Kernel(

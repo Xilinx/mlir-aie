@@ -57,6 +57,7 @@ class StaticWeightStream(Resolvable):
         mem_lock_id: int = 0,  # starting lock_id for MemTile (uses id and id+1)
         comp_lock_id: int = 0,  # starting lock_id for compute tile
         pp_lock_id: int = 0,  # starting lock_id for ping-pong MemTile
+        recv_name: str | None = None,  # explicit recv-side buffer sym_name (default: f"{name}_recv")
     ):
         self._obj_type = obj_type
         self._initial_value = np.asarray(initial_value, dtype=np.int8)
@@ -72,6 +73,7 @@ class StaticWeightStream(Resolvable):
         self._mem_lock_id = mem_lock_id
         self._comp_lock_id = comp_lock_id
         self._pp_lock_id = pp_lock_id
+        self._recv_name = recv_name if recv_name is not None else f"{name}_recv"
 
         # Set by resolve(); used by acquire/release at kernel time.
         self._comp_cons_lock = None
@@ -155,7 +157,7 @@ class StaticWeightStream(Resolvable):
         recv_buf = buffer(
             compute_op,
             self._recv_type,
-            f"{self._name}_recv",
+            self._recv_name,
         )
 
         # Stash for acquire/release at kernel time

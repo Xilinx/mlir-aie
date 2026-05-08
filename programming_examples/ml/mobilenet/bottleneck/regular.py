@@ -176,8 +176,7 @@ def regular_bottlenecks(
     _bn0_wts_size = 3 * 3 * _BN0_DW_CH * 1 + 1 * 1 * _BN0_DW_CH * _BN0_OUT_C
     bn0_wts_arr = _load_wts("bn0_chain.txt")
     bn0_wts = Buffer(
-        np.ndarray[(_bn0_wts_size,), np.dtype[np.int8]], initial_value=bn0_wts_arr
-    )
+        np.ndarray[(_bn0_wts_size,), np.dtype[np.int8]], initial_value=bn0_wts_arr, name="bn0_wts_static")
 
     # Kernel definitions for bn0
     bn0_dw_ty_in = np.ndarray[(_BN0_IN_W, 1, _BN0_IN_C), np.dtype[np.uint8]]
@@ -409,8 +408,7 @@ def regular_bottlenecks(
 
     bn1_wts_arr = _load_wts("bn1_chain.txt")
     bn1_wts = Buffer(
-        np.ndarray[(_bn1_wts_size,), np.dtype[np.int8]], initial_value=bn1_wts_arr
-    )
+        np.ndarray[(_bn1_wts_size,), np.dtype[np.int8]], initial_value=bn1_wts_arr, name="bn1_wts_static")
 
     bn1_l1_in_ty = np.ndarray[(_BN1_IN_W, 1, _BN1_IN_C), np.dtype[np.int8]]
     bn1_l1_wts_ty = np.ndarray[(_bn1_l1_wts_size,), np.dtype[np.int8]]
@@ -640,8 +638,7 @@ def regular_bottlenecks(
 
     bn2_wts_arr = _load_wts("bn2_chain.txt")
     bn2_wts = Buffer(
-        np.ndarray[(_bn2_wts_size,), np.dtype[np.int8]], initial_value=bn2_wts_arr
-    )
+        np.ndarray[(_bn2_wts_size,), np.dtype[np.int8]], initial_value=bn2_wts_arr, name="bn2_wts_static")
 
     bn2_l1_in_ty = np.ndarray[(_BN2_IN_W, 1, _BN2_IN_C), np.dtype[np.int8]]
     bn2_l1_wts_ty = np.ndarray[(_bn2_l1_wts_size,), np.dtype[np.int8]]
@@ -897,8 +894,7 @@ def regular_bottlenecks(
 
     bn3_wts_arr = _load_wts("bn3_chain.txt")
     bn3_wts = Buffer(
-        np.ndarray[(_bn3_wts_size,), np.dtype[np.int8]], initial_value=bn3_wts_arr
-    )
+        np.ndarray[(_bn3_wts_size,), np.dtype[np.int8]], initial_value=bn3_wts_arr, name="bn3_wts_static")
 
     bn3_l1_in_ty = np.ndarray[(_BN3_IN_W, 1, _BN3_IN_C), np.dtype[np.int8]]
     bn3_l1_wts_ty = np.ndarray[(_bn3_l1_wts_size,), np.dtype[np.int8]]
@@ -1121,8 +1117,7 @@ def regular_bottlenecks(
 
     bn45_wts_arr = _load_wts("bn4_5_chain.txt")
     bn45_wts = Buffer(
-        np.ndarray[(_bn45_wts_size,), np.dtype[np.int8]], initial_value=bn45_wts_arr
-    )
+        np.ndarray[(_bn45_wts_size,), np.dtype[np.int8]], initial_value=bn45_wts_arr, name="bn4_5_wts_static")
 
     bn4_l1_in_ty = np.ndarray[(_BN45_IN_W, 1, _BN45_IN_C), np.dtype[np.int8]]
     bn4_l1_wts_ty = np.ndarray[(_bn4_l1_wts,), np.dtype[np.int8]]
@@ -1740,8 +1735,7 @@ def regular_bottlenecks(
 
     bn6_wts_arr = _load_wts("bn6_chain.txt")
     bn6_wts = Buffer(
-        np.ndarray[(_bn6_wts_size,), np.dtype[np.int8]], initial_value=bn6_wts_arr
-    )
+        np.ndarray[(_bn6_wts_size,), np.dtype[np.int8]], initial_value=bn6_wts_arr, name="bn6_wts_static")
 
     bn6_l1_in_ty = np.ndarray[(_BN6_IN_W, 1, _BN6_IN_C), np.dtype[np.int8]]
     bn6_l1_wts_ty = np.ndarray[(_bn6_l1_wts_size,), np.dtype[np.int8]]
@@ -1950,8 +1944,7 @@ def regular_bottlenecks(
 
     bn7_wts_arr = _load_wts("bn7_chain.txt")
     bn7_wts = Buffer(
-        np.ndarray[(_bn7_wts_size,), np.dtype[np.int8]], initial_value=bn7_wts_arr
-    )
+        np.ndarray[(_bn7_wts_size,), np.dtype[np.int8]], initial_value=bn7_wts_arr, name="bn7_wts_static")
 
     bn7_l1_in_ty = np.ndarray[(_BN7_IN_W, 1, _BN7_IN_C), np.dtype[np.int8]]
     bn7_l1_wts_ty = np.ndarray[(_bn7_l1_wts_size,), np.dtype[np.int8]]
@@ -2219,8 +2212,7 @@ def regular_bottlenecks(
 
     bn89_wts_arr = _load_wts("bn8_9_chain.txt")
     bn89_wts = Buffer(
-        np.ndarray[(_bn89_wts_size,), np.dtype[np.int8]], initial_value=bn89_wts_arr
-    )
+        np.ndarray[(_bn89_wts_size,), np.dtype[np.int8]], initial_value=bn89_wts_arr, name="bn8_9_wts_static")
 
     bn8_l1_in_ty = np.ndarray[(_BN89_IN_W, 1, _BN89_IN_C), np.dtype[np.int8]]
     bn8_l1_wts_ty = np.ndarray[(_bn8_l1_wts,), np.dtype[np.int8]]

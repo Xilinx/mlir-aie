@@ -510,7 +510,7 @@ def cascade_bottlenecks(
 
     # L2 weights are static (baked in at compile time, from aie2_bn_13_14.py pattern)
     bn13_l2_wts = _make_static_wts(
-        data_dir, _l2_wts_sz, "bn13_2_chain.txt", "bn13_l2_wts"
+        data_dir, _l2_wts_sz, "bn13_2_chain.txt", "bn13_2_wts_static"
     )
 
     # -- Inter-tile activation ObjectFifos for bn13 --
@@ -766,7 +766,7 @@ def cascade_bottlenecks(
     )
 
     bn14_l2_wts = _make_static_wts(
-        data_dir, _l2_wts_sz, "bn14_2_chain.txt", "bn14_l2_wts"
+        data_dir, _l2_wts_sz, "bn14_2_chain.txt", "bn14_2_wts_static"
     )
 
     # -- Inter-tile activation ObjectFifos for bn14 --

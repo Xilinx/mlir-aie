@@ -401,6 +401,7 @@ def mobilenet_iron():
         obj_type=_i8((post_l1_wts_full_sz,)),
         initial_value=post_l1_wts_data,
         name="post_L1_wts_buff",
+        recv_name="post_L1_tile_buff",  # match lowlevel sym_name on compute tile
         recv_type=_i8((post_l1_wts_chunk,)),
         repeat_count=PostRepeatChannels,
         memtile_placement=Tile(4, 1),
@@ -610,17 +611,27 @@ def mobilenet_iron():
         # tile) but the on-wire sequence is what matters: BD1 sends the primary
         # buffer first, so we put FC1 data in the primary buffer regardless of
         # which tile holds it.
+        # Map iron buffer names to lowlevel sym_names by tile coord:
+        #   post_l2_fc1_wts_{i} (on fc2_memtiles[i]) -> mem_X1_buff
+        #     (i=0: (1,1)->mem_11_buff, i=1: (3,1)->mem_31_buff, etc.)
+        #   post_l2_fc2_wts_{i} (on fc1_memtiles[i]) -> mem_X1_buff
+        #     (i=0: (0,1)->mem_01_buff, i=1: (2,1)->mem_21_buff, etc.)
+        #   recv buf (on fc_comptiles[i]) -> mem_L2_wts_core{i+1}
+        _fc1_buf_name = f"mem_{2*i + 1}1_buff"  # (1,1),(3,1),(5,1),(7,1)
+        _fc2_buf_name = f"mem_{2*i}1_buff"      # (0,1),(2,1),(4,1),(6,1)
+        _recv_name = f"mem_L2_wts_core{i + 1}"
         fc_pb = StaticWeightStream(
             obj_type=_i8((fc_full_per_tile,)),
             initial_value=fc1_data,
-            name=f"post_l2_fc1_wts_{i}",
+            name=_fc1_buf_name,
+            recv_name=_recv_name,
             recv_type=_i8((fc_recv_per_tile,)),
             repeat_count=PostOutputSplitL2,
             memtile_placement=fc2_memtiles[i],
             compute_placement=fc_comptiles[i],
             mm2s_channel=0,
             s2mm_channel=1,
-            ping_pong_buf=(_i8((fc_full_per_tile,)), fc2_data, f"post_l2_fc2_wts_{i}"),
+            ping_pong_buf=(_i8((fc_full_per_tile,)), fc2_data, _fc2_buf_name),
             ping_pong_memtile=fc1_memtiles[i],
             mem_lock_id=0,
             comp_lock_id=2,
