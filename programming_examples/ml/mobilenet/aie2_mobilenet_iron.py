@@ -32,11 +32,9 @@ from lowlevel_dma import StaticWeightStream
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 
-# Import bottleneck modules (new IRON organization)
-import importlib.util, pathlib
-
-_here = pathlib.Path(__file__).parent
-sys.path.insert(0, str(_here))
+# Allow importing the local bottleneck/ package when running this file directly.
+import pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from bottleneck.regular import regular_bottlenecks
 from bottleneck.pipeline import pipeline_bottlenecks
@@ -95,23 +93,32 @@ def _i32():
     return np.int32
 
 
+def _require_wts(path, expected_size):
+    """Load int8 weights from `path`; raise if missing or wrong size.
+
+    Silent zero-fill on missing files used to compile a numerically-broken
+    design that ran fine but produced wrong output — fail loud instead.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"weight file not found: {path}")
+    arr = np.fromfile(path, sep=",", dtype=np.int8)
+    if arr.size != expected_size:
+        raise ValueError(
+            f"{path}: expected {expected_size} int8 elements, got {arr.size}"
+        )
+    return arr
+
+
 # ---------------------------------------------------------------------------
 # Design top-level function
 # ---------------------------------------------------------------------------
 def mobilenet_iron():
-    # ------------------------------------------------------------------
-    # Input / output tensor types (used in runtime sequence)
-    # ------------------------------------------------------------------
-    # Match lowlevel runtime arg types EXACTLY: lowlevel declares all three
-    # runtime args as memref<...xi32> (i32 element view of the underlying byte
-    # buffers). Iron previously used i8/ui16 native element types -- same
-    # physical bytes but different MLIR element-level interpretation. Switch
-    # to i32 to match lowlevel.
-    #   arg0 (act_in / scratch): 401408 bytes = 100352 i32
-    #   arg2 (final FC2 output): 2560 bytes  = 640   i32
+    # Runtime arg types: i32 element view over the underlying byte buffers.
+    #   arg0 (act_in / scratch):  100352 i32 = 401408 bytes
+    #   arg2 (final FC2 output):    640 i32 =   2560 bytes
     in_ty = np.ndarray[(tensorInW * tensorInH * tensorInC // 4,), np.dtype[np.int32]]
     out_ty = np.ndarray[
-        (post_L1_OutW * post_L1_OutH * post_L2_OutC * 2 // 4,),  # 1*1*1280*2/4 = 640 i32
+        (post_L1_OutW * post_L1_OutH * post_L2_OutC * 2 // 4,),
         np.dtype[np.int32],
     ]
 
@@ -134,12 +141,7 @@ def mobilenet_iron():
     # 3x3 stride-2 conv: InC=8, OutC=16 -> wts = 3*3*8*16 = 1152
     # ------------------------------------------------------------------
     init_wts_sz = 3 * 3 * tensorInC * init_OutC  # 1152
-    init_wts_data = None
-    init_wts_path = data_dir + "init_chain.txt"
-    if os.path.exists(init_wts_path):
-        init_wts_data = np.fromfile(init_wts_path, sep=",", dtype=np.int8)
-    if init_wts_data is None:
-        init_wts_data = np.zeros(init_wts_sz, dtype=np.int8)
+    init_wts_data = _require_wts(data_dir + "init_chain.txt", init_wts_sz)
 
     init_wts = Buffer(
         _i8((init_wts_sz,)),
@@ -173,15 +175,12 @@ def mobilenet_iron():
     )
 
     def init_fn(act_in, act_out, wts, k, inW, inH, inC, outW, outH, outC, sf):
-        # Match lowlevel initConv exactly: preamble + (outH - 1) middle iters,
-        # then a trailing release(1) to drain the final input row. The earlier
-        # iron postamble call (index=2) would leave one shim BD un-released and
-        # caused ERT_CMD_STATE_TIMEOUT.
+        # 2-phase: preamble (border=0) + (outH-1) middle iters; trailing
+        # release(1) drains the last input row. Preamble releases output BEFORE
+        # input; middle iter does the opposite (in then out).
         rows = act_in.acquire(2)
         row_out = act_out.acquire(1)
         k(rows[0], rows[0], rows[1], wts, row_out, inW, inC, outC, 3, 3, 0, sf, 0, 0)
-        # Preamble release order: lowlevel releases output BEFORE input
-        # (aie2_mobilenet.py:108-109). Middle iter does the opposite (in then out).
         act_out.release(1)
         act_in.release(1)
         for _ in range_(outH - 1):
@@ -222,7 +221,7 @@ def mobilenet_iron():
             init_OutC,
             init_scaleFactor,
         ],
-        tile=Tile(0, 2),  # original: init_tile = tile(0, 2)
+        tile=Tile(0, 2),
     )
 
     # ------------------------------------------------------------------
@@ -238,23 +237,16 @@ def mobilenet_iron():
     # Post-processing L1: avg pool + expand 1x1 conv
     # Input:  (7,1,80) int8   Output: (1,1,960) int8
     # ------------------------------------------------------------------
-    # Post-L1 weights: 960*80 = 76800 bytes — too large for compute tile.
-    # Original: stored on MemTile(4,1), streamed 1/8 at a time to PostL1Tile(6,4).
-    # PersistentBuffer replicates this: MemTile holds full weights, DMA streams
-    # post_l1_wts_chunk bytes at a time to the small recv buffer on compute tile.
-    PostOutputSplit = 8  # split output channels (original: 8)
-    PostRepeatChannels = post_L1_InH  # = 7 (original: math.floor(post_L1_InH))
-    post_l1_wts_full_sz = post_L1_OutC * post_L1_InC  # 76800 bytes on MemTile
-    post_l1_wts_chunk = (
-        post_l1_wts_full_sz // PostOutputSplit
-    )  # 9600 bytes per chunk on compute
+    # 76800 B of L1 weights are too large for the compute tile. Stage them on
+    # MemTile(4,1) and stream 9600 B chunks via StaticWeightStream.
+    PostOutputSplit = 8
+    PostRepeatChannels = post_L1_InH  # = 7
+    post_l1_wts_full_sz = post_L1_OutC * post_L1_InC      # 76800 B on MemTile
+    post_l1_wts_chunk = post_l1_wts_full_sz // PostOutputSplit  # 9600 B per chunk
 
-    post_l1_wts_path = data_dir + "post_conv_chain.txt"
-    post_l1_wts_data = None
-    if os.path.exists(post_l1_wts_path):
-        post_l1_wts_data = np.fromfile(post_l1_wts_path, sep=",", dtype=np.int8)
-    if post_l1_wts_data is None:
-        post_l1_wts_data = np.zeros(post_l1_wts_full_sz, dtype=np.int8)
+    post_l1_wts_data = _require_wts(
+        data_dir + "post_conv_chain.txt", post_l1_wts_full_sz
+    )
 
     post_l1_pb = StaticWeightStream(
         obj_type=_i8((post_l1_wts_full_sz,)),
@@ -268,13 +260,11 @@ def mobilenet_iron():
         comp_lock_id=0,
     )
 
-    # Match original: round-trip avgpool output through L3 (DDR) so it can be
-    # re-broadcast to all 4 PostL2 FC tiles. A single compute->4-compute fan-out
-    # exceeds stream-switch routing capacity from tile(6,4); the original design
-    # uses shim DMAs to drain to DDR via shim(3,0) and re-fill from shim(4,0).
-    # Element type is uint16 — kernel `post_conv2dk1_relu_xy_pool_padded_i8_ui8.o`
-    # writes 2 bytes per output channel; declaring i8 here would halve the DMA
-    # transfer size and deadlock the consumer kernel which expects 2560 B.
+    # Round-trip avgpool output through L3 (DDR) so it can be re-broadcast to
+    # all 4 PostL2 FC tiles — a direct compute→4-compute fan-out exceeds
+    # stream-switch routing capacity from tile(6,4). Element type is uint16:
+    # the kernel writes 2 bytes per output channel; declaring i8 here would
+    # halve the DMA transfer size and deadlock the consumer.
     _post_l1_out_ty = np.ndarray[(post_L2_InC,), np.dtype[np.uint16]]
     act_out_post_avgpool_shim = ObjectFifo(
         _post_l1_out_ty,
@@ -303,7 +293,6 @@ def mobilenet_iron():
         ],
     )
 
-    # Post-L1 worker: placed on Tile(6,4) = PostL1Tile (matches original)
     def post_l1_fn(
         act_in,
         act_out,
@@ -317,25 +306,14 @@ def mobilenet_iron():
         sf,
         n_splits=PostOutputSplit,
     ):
-        # One full output frame: acquire output, loop over rows then weight splits
+        # One full output frame: acquire output, loop over rows then weight splits.
         elem_out = act_out.acquire(1)
         for yi in range_(inH):
             elem_in = act_in.acquire(1)
             for wi in range_(n_splits):
                 wts_chunk = wts_pb.acquire(1)
-                k(
-                    elem_in,
-                    wts_chunk,
-                    elem_out,
-                    inW,
-                    inC,
-                    outC,
-                    outC_padd,
-                    sf,
-                    yi,  # yIndex (was hardcoded 0 — kernel kept overwriting row 0)
-                    n_splits,
-                    wi,  # WeightIndex (was hardcoded 0 — kernel kept the same weight chunk)
-                )
+                k(elem_in, wts_chunk, elem_out, inW, inC, outC, outC_padd,
+                  sf, yi, n_splits, wi)
                 wts_pb.release(1)
             act_in.release(1)
         act_out.release(1)
@@ -350,12 +328,13 @@ def mobilenet_iron():
             post_L1_InW,
             post_L1_InH,
             post_L1_InC,
-            post_L1_OutC,  # outC = 960 (pre-pad). Lowlevel passes 960 here, iron
-            post_L2_InC,  # outC_padd = 1280 (padded to next layer's input)
+            post_L1_OutC,  # outC=960 (pre-pad)
+            post_L2_InC,   # outC_padd=1280 (next layer's input width)
             post_sf,
         ],
         tile=Tile(6, 4),
-        # Match lowlevel's `@core(PostL1Tile, dynamic_objfifo_lowering=True)`.
+        # dynamic_objfifo_lowering keeps the inner loop intact instead of
+        # unrolling for ping-pong; kernel uses runtime modulo indexing.
         # Without this attribute, the static objfifo lowering UNROLLS the
         # inner loops to handle ping-pong buffer alternation explicitly,
         # producing 15 func.call ops in 9 basic blocks (lowlevel keeps the
@@ -393,45 +372,27 @@ def mobilenet_iron():
     #   PostL2Tile_3(7,3): FC1 on MemTile(4,1), FC2 on MemTile(5,1), flow from MemTile(5,1)
     #   PostL2Tile_4(7,2): FC1 on MemTile(6,1), FC2 on MemTile(7,1), flow from MemTile(7,1)
     PostOutputSplitL2 = 40
-    fc_full_per_tile = post_L2_InC * fc_out_per_tile  # 409,600 bytes per FC half
-    fc_recv_per_tile = (
-        fc_full_per_tile // PostOutputSplitL2
-    )  # 10,240 bytes on compute tile
-    # co: channels per output element (8 channels per objectfifo element, 40 per inference)
-    # Matches original ty_post_Layer2_out_split = memref<8 x uint16>
+    fc_full_per_tile = post_L2_InC * fc_out_per_tile        # 409600 B per FC half
+    fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2  # 10240 B on compute
+    # `co` = channels per ObjectFifo element (one WeightIndex iteration's output slice).
     co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
 
-    # Split the output fifo into 4 segments, one per FC tile.
-    # Each element = 8 channels (co), depth=1 — matches original design.
-    # unrollForLoops sees the objectfifo.acquire inside WeightIndex loop → no unrolling.
+    # Split the output fifo into 4 channel-segments, one per FC tile.
     act_post_l2_tiles = act_out_of.prod().join(
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
-        names=[f"post_L2_out_core{i+1}" for i in range(n_fc_tiles)],  # match lowlevel @post_L2_out_core1..4
-        tile=Tile(6, 1),  # mem_tile_6_1 in placed (matches @act_out)
+        tile=Tile(6, 1),
     )
 
-    fc1_memtiles = [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)]  # FC1 MemTiles
-    fc2_memtiles = [
-        Tile(1, 1),
-        Tile(3, 1),
-        Tile(5, 1),
-        Tile(7, 1),
-    ]  # FC2 MemTiles (serve DMA)
-    fc_comptiles = [
-        Tile(6, 3),
-        Tile(7, 4),
-        Tile(7, 3),
-        Tile(7, 2),
-    ]  # PostL2 compute tiles
+    fc1_memtiles = [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)]  # FC1 weight buffers
+    fc2_memtiles = [Tile(1, 1), Tile(3, 1), Tile(5, 1), Tile(7, 1)]  # FC2 weight buffers + DMA
+    fc_comptiles = [Tile(6, 3), Tile(7, 4), Tile(7, 3), Tile(7, 2)]  # PostL2 compute tiles
 
     def _u16(shape):
         return np.ndarray[shape, np.dtype[np.uint16]]
 
-    # Post-L2 FC: int8 input → uint16 output (matches original ty_post_Layer2_out_split)
-    # Output element = co=8 channels (not fc_out_per_tile=320): each element is one
-    # WeightIndex-loop iteration's output slice.
+    # Post-L2 FC: uint16 input (avgpool output) → uint16 output, in `co`-element slices.
     k_post_l2 = Kernel(
         "post_L2_conv2dk1_relu_i16_ui16_pad",
         "post_L2_conv2dk1_relu_ui16_ui16_pad.o",
@@ -449,12 +410,8 @@ def mobilenet_iron():
 
     post_l2_workers = []
     for i, (fc1_f, fc2_f) in enumerate(fc_wts_filenames):
-        fc1_data = np.zeros(fc_full_per_tile, dtype=np.int8)
-        fc2_data = np.zeros(fc_full_per_tile, dtype=np.int8)
-        if os.path.exists(data_dir + fc1_f):
-            fc1_data = np.fromfile(data_dir + fc1_f, sep=",", dtype=np.int8)
-        if os.path.exists(data_dir + fc2_f):
-            fc2_data = np.fromfile(data_dir + fc2_f, sep=",", dtype=np.int8)
+        fc1_data = _require_wts(data_dir + fc1_f, fc_full_per_tile)
+        fc2_data = _require_wts(data_dir + fc2_f, fc_full_per_tile)
 
         # FC weights: ping-pong across two adjacent memtiles. Primary = FC1
         # (consumed first), ping-pong = FC2. DMA + primary share fc2_memtiles[i]
@@ -488,22 +445,18 @@ def mobilenet_iron():
             sf2,
             n_splits=PostOutputSplitL2,
         ):
-            elem_in = act_in.acquire(1)
-            for _ in range_(n_splits):
-                elem_out = act_out.acquire(1)
-                wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC_fc1, outC, n_co, sf1)
-                wts_h.release(1)
-                act_out.release(1)
-            act_in.release(1)
-            elem_in = act_in.acquire(1)
-            for _ in range_(n_splits):
-                elem_out = act_out.acquire(1)
-                wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC_fc2, outC, n_co, sf2)
-                wts_h.release(1)
-                act_out.release(1)
-            act_in.release(1)
+            # Two FC passes (FC1 then FC2) sharing the same inner ping-pong loop.
+            # The outer Python for-loop is inlined at codegen time → emits two
+            # copies of the inner range_ loop, same MLIR as a manual unroll.
+            for inC, sf in ((inC_fc1, sf1), (inC_fc2, sf2)):
+                elem_in = act_in.acquire(1)
+                for _ in range_(n_splits):
+                    elem_out = act_out.acquire(1)
+                    wts = wts_h.acquire(1)
+                    k(elem_in, wts, elem_out, 1, inC, outC, n_co, sf)
+                    wts_h.release(1)
+                    act_out.release(1)
+                act_in.release(1)
 
         w = Worker(
             post_l2_fn,
@@ -572,13 +525,12 @@ def mobilenet_iron():
             wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, [Tile(c, 0) for c in (4, 5, 6, 7)]
         ):
             rt.fill(fifo.prod(), cascade_wts, _wts_tap(off, sz), tile=shim, task_group=tg1)
-        # Round-trip the avgpool output through L3 (DDR) — matches original
-        # design's shim 30/40 hop. Reuses inp as scratch (input has been fully
-        # consumed by the time PostL1 produces output).
-        # All offsets/sizes are in i32 elements (4 bytes), matching lowlevel:
-        #   avgpool/FC1-input scratch: i32 offset 640 = byte 2560 (1280 ui16)
-        #   FC1-output/FC2-input scratch: i32 offset 1280 = byte 5120
-        #   transfer length: i32 640 = bytes 2560 = 1280 ui16
+        # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
+        # as scratch — input is fully consumed by the time PostL1 emits output.
+        # Offsets/sizes are i32 elements (4 bytes each):
+        #   avgpool / FC1-input scratch: i32 offset 640  (byte 2560)
+        #   FC1-output / FC2-input scratch: i32 offset 1280 (byte 5120)
+        #   transfer length: 640 i32 = 2560 B = 1280 ui16
         _post_l1_out_sz_i32 = post_L1_OutW * post_L1_OutH * post_L2_InC * 2 // 4  # 640
         _inp_sz_i32 = tensorInW * tensorInH * tensorInC // 4  # 100352
         _post_l1_scratch_tap = TensorAccessPattern(

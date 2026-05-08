@@ -28,12 +28,13 @@ Tile placements (col, row):
 """
 
 import numpy as np
-import os
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.device import Tile, AnyMemTile
 from aie.iron.controlflow import range_
+
+from bottleneck._common import load_wts
 
 # ---------------------------------------------------------------------------
 # Dimensions (from aie2_bottleneckC.py)
@@ -85,29 +86,13 @@ _ty_l3_full_wts = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
 # ---------------------------------------------------------------------------
 
 
-def _load_wts_arr(data_dir, filename):
-    """Load int8 weights from a comma-separated text file; return None if missing."""
-    path = os.path.join(data_dir, filename)
-    if os.path.exists(path):
-        return np.fromfile(path, sep=",", dtype=np.int8)
-    return None
-
-
 def _make_static_wts(data_dir, size, filename, name):
     """Create a static Buffer for weights (L2 DW, baked into tile at compile time)."""
-    arr = _load_wts_arr(data_dir, filename)
-    if arr is None:
-        arr = np.zeros((size,), dtype=np.int8)
     return Buffer(
         np.ndarray[(size,), np.dtype[np.int8]],
-        initial_value=arr,
+        initial_value=load_wts(data_dir, filename, size),
         name=name,
     )
-
-
-def _make_wts_fifo(wts_ty, depth, name):
-    """Create a streaming ObjectFifo for split weight delivery (L1 and L3)."""
-    return ObjectFifo(wts_ty, depth=depth, name=name)
 
 
 # ---------------------------------------------------------------------------
@@ -121,32 +106,20 @@ def cascade_bottlenecks(
     *,
     data_dir: str,
 ) -> tuple:
-    """Implement bn13 and bn14 cascade bottleneck blocks.
+    """Build bn13 and bn14 from the scale-factor JSON.
 
-    Each block has 5 compute workers plus a skip-forwarder worker,
-    with 2 cascade stream put/get pairs per block (4 cascade pairs total).
+    Each block has 5 compute workers and 2 cascade stream put/get pairs.
+    Cascade flows are constructed inside `_make_cascade_block` and self-register
+    on their source workers; they're picked up automatically by Program.resolve().
 
     Args:
-        act_in:        Input ObjectFifo carrying (7,1,80) int8 activations, depth=2.
-        *scale_factors: Eight scale factors in order:
-                        bn13_s1, bn13_s2, bn13_s3, bn13_sAdd,
-                        bn14_s1, bn14_s2, bn14_s3, bn14_sAdd.
-        data_dir:      Directory containing compiled kernel .o files and
-                       optional weight data text files.
+        act_in:   Input ObjectFifo carrying (7,1,80) int8 activations, depth=2.
+        sf:       Scale-factor JSON dict (uses keys "BN13" and "BN14").
+        data_dir: Directory containing compiled kernel .o files and weight data.
 
     Returns:
-        (workers, act_bn14_out, wts_fifos) where:
-          workers:       flat list of all Worker objects
-          act_bn14_out:  output ObjectFifo carrying (7,1,80) int8, depth=2
-          wts_fifos:     list of streaming weight ObjectFifos the host DMA writes into:
-                         [bn13_wts_l1_put, bn13_wts_l1_get,
-                          bn13_wts_l3_put, bn13_wts_l3_get,
-                          bn14_wts_l1_put, bn14_wts_l1_get,
-                          bn14_wts_l3_put, bn14_wts_l3_get]
-
-    Cascade flows between put/get worker pairs are constructed as side effects
-    inside this function; they self-register on their source workers and are
-    discovered automatically by Program.resolve().
+        (workers, act_bn14_out, wts_fifos) where wts_fifos is the 4 full-weight
+        ObjectFifos the host DMA writes into (bn13_l1, bn13_l3, bn14_l1, bn14_l3).
     """
     workers = []
     bn13_s1, bn13_s2, bn13_s3, bn13_sAdd = (
@@ -374,21 +347,23 @@ def cascade_bottlenecks(
     # No separate copy worker is needed.
 
     def _make_cascade_block(
-        name, act_in, skip_in, scales, tiles,
+        name, l3_get_sym, act_in, skip_in, scales, tiles,
     ):
         """One full cascade block (5 compute workers + 2 weight fifos).
 
-        name:     "bn13" or "bn14"
-        act_in:   the activation input ObjectFifo (drives L1 PUT and L1 GET)
-        skip_in:  ObjectFifo whose .cons() forwards a skip row to L3 GET (often
-                  the same as act_in, but for bn14 it is bn13's output)
-        scales:   (s1, s2, s3, s_add)
-        tiles:    dict with keys: l1_put, l1_get, l2, l3_put, l3_get,
-                                   mem_l1, mem_l3, mem_skip
+        name:        kernel name prefix shared by L1/L2/L3-PUT, e.g. "bn13".
+        l3_get_sym:  L3 GET kernel symbol name (the one outlier whose name doesn't
+                     follow the `{name}_...` template — it has the form
+                     `bn_<N>_2_conv2dk1_..._get_new`).
+        act_in:      the activation input ObjectFifo (drives L1 PUT and L1 GET)
+        skip_in:     ObjectFifo whose .cons() forwards a skip row to L3 GET (often
+                     the same as act_in; for bn14 it's bn13's output)
+        scales:      (s1, s2, s3, s_add)
+        tiles:       dict with keys: l1_put, l1_get, l2, l3_put, l3_get,
+                                     mem_l1, mem_l3, mem_skip
         Returns (out_fifo, wts_l1_full, wts_l3_full, [workers]).
         """
         s1, s2, s3, s_add = scales
-        n = name[2:]  # "13" or "14"  (kernel sym names use bn_13_2_..., bn_14_2_...)
 
         k_l1_put = Kernel(
             f"{name}_1_conv2dk1_i8_ui8_partial_width_put_new",
@@ -412,7 +387,7 @@ def cascade_bottlenecks(
             [_ty_l1_out_split, _ty_l3_split_wts] + [np.int32] * 7,
         )
         k_l3_get = Kernel(
-            f"bn_{n}_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
+            l3_get_sym,
             f"{name}_conv2dk1_skip_get.o",
             [_ty_l1_out_split, _ty_l3_split_wts, _ty_act_out, _ty_act_in]
             + [np.int32] * 10,
@@ -503,7 +478,9 @@ def cascade_bottlenecks(
 
     # bn13: cascade-split bottleneck (5 compute workers).
     act_bn13_out, bn13_wts_l1_full, bn13_wts_l3_full, bn13_workers = _make_cascade_block(
-        "bn13", act_in, skip_in=act_in,
+        "bn13",
+        l3_get_sym="bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
+        act_in=act_in, skip_in=act_in,
         scales=(bn13_s1, bn13_s2, bn13_s3, bn13_sAdd),
         tiles={
             "l1_put": Tile(4, 5), "l1_get": Tile(5, 5), "l2": Tile(5, 4),
@@ -513,10 +490,11 @@ def cascade_bottlenecks(
     )
     workers += bn13_workers
 
-
     # bn14: cascade-split bottleneck (5 compute workers, skip = bn13 output).
     act_bn14_out, bn14_wts_l1_full, bn14_wts_l3_full, bn14_workers = _make_cascade_block(
-        "bn14", act_bn13_out, skip_in=act_bn13_out,
+        "bn14",
+        l3_get_sym="bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
+        act_in=act_bn13_out, skip_in=act_bn13_out,
         scales=(bn14_s1, bn14_s2, bn14_s3, bn14_sAdd),
         tiles={
             "l1_put": Tile(6, 5), "l1_get": Tile(7, 5), "l2": Tile(6, 2),

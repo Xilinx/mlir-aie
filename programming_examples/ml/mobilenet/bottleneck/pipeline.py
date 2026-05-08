@@ -6,39 +6,17 @@
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
 import numpy as np
-import os
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.device import Tile
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
-
-def _i8(shape):
-    return np.ndarray[shape, np.dtype[np.int8]]
-
-
-def _u8(shape):
-    return np.ndarray[shape, np.dtype[np.uint8]]
-
-
-def _i32():
-    return np.int32
-
-
-def _load_weights(data_dir, filename):
-    """Load int8 weights from a comma-separated text file."""
-    path = os.path.join(data_dir, filename)
-    if os.path.exists(path):
-        return np.fromfile(path, sep=",", dtype=np.int8)
-    return None
+from bottleneck._common import i8 as _i8, u8 as _u8, load_wts as _load_weights
 
 
 def _wts_buf(data_dir, filename, sz):
-    """Buffer with weights loaded from `filename`, or zero-filled if missing."""
-    arr = _load_weights(data_dir, filename)
-    if arr is None:
-        arr = np.zeros(sz, dtype=np.int8)
-    return Buffer(_i8((sz,)), initial_value=arr)
+    """Buffer with weights loaded from `filename`."""
+    return Buffer(_i8((sz,)), initial_value=_load_weights(data_dir, filename, sz))
 
 
 def _make_3tile_pipeline_block(
@@ -73,25 +51,25 @@ def _make_3tile_pipeline_block(
     k_l1 = Kernel(
         f"{name}_conv2dk1_relu_i8_ui8",
         f"{name}_conv2dk1_fused_relu.o",
-        [in_ty, _i8((l1_wts_sz,)), l1_out_ty] + [_i32()] * 4,
+        [in_ty, _i8((l1_wts_sz,)), l1_out_ty] + [np.int32] * 4,
     )
     k_l2 = Kernel(
         f"{name}_conv2dk3_dw_stride1_relu_ui8_ui8",
         f"{name}_conv2dk3_dw.o",
         [l1_out_ty, l1_out_ty, l1_out_ty, _i8((l2_wts_sz,)), l2_out_ty]
-        + [_i32()] * 8,
+        + [np.int32] * 8,
     )
     if has_skip:
         k_l3 = Kernel(
             f"{name}_conv2dk1_skip_ui8_i8_i8",
             f"{name}_conv2dk1_skip.o",
-            [l2_out_ty, _i8((l3_wts_sz,)), out_ty, out_ty] + [_i32()] * 5,
+            [l2_out_ty, _i8((l3_wts_sz,)), out_ty, out_ty] + [np.int32] * 5,
         )
     else:
         k_l3 = Kernel(
             f"{name}_conv2dk1_ui8_i8",
             f"{name}_conv2dk1_ui8.o",
-            [l2_out_ty, _i8((l3_wts_sz,)), out_ty] + [_i32()] * 4,
+            [l2_out_ty, _i8((l3_wts_sz,)), out_ty] + [np.int32] * 4,
         )
 
     of_12 = ObjectFifo(l1_out_ty, depth=4)
@@ -211,36 +189,44 @@ def pipeline_bottlenecks(
     # Weights for L2+L3 are stored in one combined buffer and sliced by memref_view
     # (matches lowlevel's single 29904 B buffer with views at offsets 0 / 3024).
     bn12_l1_wts_sz = 112 * 336      # 37632
-    bn12_dw_wts_sz = 3 * 3 * 336    # 3024
-    bn12_pw_wts_sz = 336 * 80       # 26880
+    # bn12 dimensions
+    BN12_IN_W,  BN12_IN_H,  BN12_IN_C  = 14, 14, 112  # L1 input
+    BN12_L1_C  = 336                                  # DW channels
+    BN12_OUT_W                          = 7           # stride-2 halves spatial
+    BN12_OUT_C                          = 80
+    BN12_OUT_H                          = 7
+
+    bn12_dw_wts_sz = 3 * 3 * BN12_L1_C            # 3024
+    bn12_pw_wts_sz = BN12_L1_C * BN12_OUT_C       # 26880
     bn12_l23_wts_sz = bn12_dw_wts_sz + bn12_pw_wts_sz  # 29904
 
     # Prefer the combined chain file; fall back to concat of per-layer files.
-    bn12_l23_data = _load_weights(data_dir, "bn12_2_3_chain.txt")
-    if bn12_l23_data is None:
-        dw = _load_weights(data_dir, "bn12_2_chain.txt") or np.zeros(bn12_dw_wts_sz, dtype=np.int8)
-        pw = _load_weights(data_dir, "bn12_3_chain.txt") or np.zeros(bn12_pw_wts_sz, dtype=np.int8)
+    try:
+        bn12_l23_data = _load_weights(data_dir, "bn12_2_3_chain.txt", bn12_l23_wts_sz)
+    except FileNotFoundError:
+        dw = _load_weights(data_dir, "bn12_2_chain.txt", bn12_dw_wts_sz)
+        pw = _load_weights(data_dir, "bn12_3_chain.txt", bn12_pw_wts_sz)
         bn12_l23_data = np.concatenate((dw, pw), axis=None)
     bn12_l1_wts = _wts_buf(data_dir, "bn12_1_chain.txt", bn12_l1_wts_sz)
     bn12_l23_wts = Buffer(_i8((bn12_l23_wts_sz,)), initial_value=bn12_l23_data)
 
-    bn12_in_ty   = _i8((14, 1, 112))
-    bn12_l1_ty   = _u8((14, 1, 336))
-    bn12_dw_ty   = _u8((7, 1, 336))   # stride-2 halves spatial
-    bn12_out_ty  = _i8((7, 1, 80))
+    bn12_in_ty   = _i8((BN12_IN_W, 1, BN12_IN_C))
+    bn12_l1_ty   = _u8((BN12_IN_W, 1, BN12_L1_C))
+    bn12_dw_ty   = _u8((BN12_OUT_W, 1, BN12_L1_C))
+    bn12_out_ty  = _i8((BN12_OUT_W, 1, BN12_OUT_C))
 
     k_bn12_l1 = Kernel(
         "bn12_conv2dk1_relu_i8_ui8", "bn12_conv2dk1_fused_relu.o",
-        [bn12_in_ty, _i8((bn12_l1_wts_sz,)), bn12_l1_ty] + [_i32()] * 4,
+        [bn12_in_ty, _i8((bn12_l1_wts_sz,)), bn12_l1_ty] + [np.int32] * 4,
     )
     k_bn12_dw = Kernel(
         "bn12_conv2dk3_dw_stride2_relu_ui8_ui8", "bn12_conv2dk3_dw_stride2.o",
         [bn12_l1_ty, bn12_l1_ty, bn12_l1_ty, _i8((bn12_dw_wts_sz,)), bn12_dw_ty]
-        + [_i32()] * 8,
+        + [np.int32] * 8,
     )
     k_bn12_pw = Kernel(
         "bn12_conv2dk1_ui8_i8", "bn12_conv2dk1_ui8.o",
-        [bn12_dw_ty, _i8((bn12_pw_wts_sz,)), bn12_out_ty] + [_i32()] * 4,
+        [bn12_dw_ty, _i8((bn12_pw_wts_sz,)), bn12_out_ty] + [np.int32] * 4,
     )
 
     bn12_of_12 = ObjectFifo(bn12_l1_ty, depth=4, via_DMA=True)
@@ -248,53 +234,52 @@ def pipeline_bottlenecks(
     act_bn12_out = ObjectFifo(bn12_out_ty, depth=2)
 
     def bn12_l1_fn(act_in, of_12, wts, k):
-        for _ in range_(14):
+        for _ in range_(BN12_IN_H):
             r_in = act_in.acquire(1)
             r_out = of_12.acquire(1)
-            k(r_in, wts, r_out, 14, 112, 336, bn12_s1)
+            k(r_in, wts, r_out, BN12_IN_W, BN12_IN_C, BN12_L1_C, bn12_s1)
             act_in.release(1)
             of_12.release(1)
 
     def bn12_l23_fn(of_12, dw_tmp_prod, dw_tmp_cons, act_out, wts, k_dw, k_pw):
-        # L2+L3 combined buffer sliced via memref_view: DW at 0, PW at +3024.
+        # L2+L3 combined buffer sliced via memref_view: DW at 0, PW at +bn12_dw_wts_sz.
         # act_out.acquire is LAZY (just before the PW call) — eager acquire
         # would hold an of_12 slot while waiting on act_out and risk deadlock.
         dw_wts = memref_view(wts.op, [bn12_dw_wts_sz], shift=0)
         pw_wts = memref_view(wts.op, [bn12_pw_wts_sz], shift=bn12_dw_wts_sz)
+
+        def _pw():
+            dw_tmp_c = dw_tmp_cons.acquire(1)
+            pw_out = act_out.acquire(1)
+            k_pw(dw_tmp_c, pw_wts, pw_out, BN12_OUT_W, BN12_L1_C, BN12_OUT_C, bn12_s3)
+            dw_tmp_cons.release(1)
+            act_out.release(1)
+
         # preamble: top output row (border=0)
         rows = of_12.acquire(2)
         dw_tmp = dw_tmp_prod.acquire(1)
-        k_dw(rows[0], rows[0], rows[1], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 0, bn12_s2, 0)
+        k_dw(rows[0], rows[0], rows[1], dw_wts, dw_tmp,
+             BN12_IN_W, 1, BN12_L1_C, 3, 3, 0, bn12_s2, 0)
         of_12.release(1)
         dw_tmp_prod.release(1)
-        dw_tmp_c = dw_tmp_cons.acquire(1)
-        pw_out = act_out.acquire(1)
-        k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, bn12_s3)
-        dw_tmp_cons.release(1)
-        act_out.release(1)
-        # middle output rows (border=1): 5 iters
-        for _ in range_(5):
+        _pw()
+        # middle output rows (border=1): BN12_OUT_H - 2 iters
+        for _ in range_(BN12_OUT_H - 2):
             rows = of_12.acquire(3)
             dw_tmp = dw_tmp_prod.acquire(1)
-            k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 1, bn12_s2, 0)
+            k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp,
+                 BN12_IN_W, 1, BN12_L1_C, 3, 3, 1, bn12_s2, 0)
             of_12.release(2)
             dw_tmp_prod.release(1)
-            dw_tmp_c = dw_tmp_cons.acquire(1)
-            pw_out = act_out.acquire(1)
-            k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, bn12_s3)
-            dw_tmp_cons.release(1)
-            act_out.release(1)
-        # postamble: last output row (border=1, release 3)
+            _pw()
+        # postamble: last output row (border=1, release 3 to drain L1 fully)
         rows = of_12.acquire(3)
         dw_tmp = dw_tmp_prod.acquire(1)
-        k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp, 14, 1, 336, 3, 3, 1, bn12_s2, 0)
+        k_dw(rows[0], rows[1], rows[2], dw_wts, dw_tmp,
+             BN12_IN_W, 1, BN12_L1_C, 3, 3, 1, bn12_s2, 0)
         of_12.release(3)
         dw_tmp_prod.release(1)
-        dw_tmp_c = dw_tmp_cons.acquire(1)
-        pw_out = act_out.acquire(1)
-        k_pw(dw_tmp_c, pw_wts, pw_out, 7, 336, 80, bn12_s3)
-        dw_tmp_cons.release(1)
-        act_out.release(1)
+        _pw()
 
     workers += [
         Worker(bn12_l1_fn,

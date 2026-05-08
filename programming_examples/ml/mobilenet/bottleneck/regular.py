@@ -7,12 +7,13 @@
 """Regular bottleneck blocks (bn0-bn9) for MobileNet V3 IRON API rewrite."""
 
 import numpy as np
-import os
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.device import Tile
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
+
+from bottleneck._common import i8 as _i8, u8 as _u8, load_wts
 
 # ---------------------------------------------------------------------------
 # Tensor shape constants derived from aie2_bottleneckAStatic.py
@@ -91,17 +92,8 @@ def regular_bottlenecks(
         """Tuple of scale factors for BN<n> in the order requested."""
         return tuple(sf[f"BN{n}"][k] for k in keys)
 
-    # -------------------------------------------------------------------
-    # Helpers
-    # -------------------------------------------------------------------
-    def _load_wts(filename):
-        return np.fromfile(os.path.join(data_dir, filename), sep=",", dtype=np.int8)
-
-    def _i8(shape):
-        return np.ndarray[shape, np.dtype[np.int8]]
-
-    def _u8(shape):
-        return np.ndarray[shape, np.dtype[np.uint8]]
+    def _load_wts(filename, expected_size):
+        return load_wts(data_dir, filename, expected_size)
 
     def _make_3layer_block(
         name, act_in, in_w, in_h, in_c, dw_ch, out_c,
@@ -121,7 +113,7 @@ def regular_bottlenecks(
         has_skip = scale_add is not None
         dw_obj = "dw_stride2" if stride == 2 else "dw_stride1"
 
-        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(f"{name}_chain.txt"))
+        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(f"{name}_chain.txt", wts_sz))
 
         l1_in_ty = _i8((in_w, 1, in_c))
         l1_out_ty = _u8((in_w, 1, dw_ch))
@@ -308,7 +300,7 @@ def regular_bottlenecks(
         wts_sz = dw_wts_sz + skip_wts_sz
         s_dw, s_skip = scales
 
-        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(f"{name}_chain.txt"))
+        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(f"{name}_chain.txt", wts_sz))
 
         in_ty = _u8((in_w, 1, in_c))
         dw_out_ty = _u8((in_w, 1, dw_ch))
@@ -403,7 +395,7 @@ def regular_bottlenecks(
         sa1, sa2, sa3, sa_add = scales_a
         sb1, sb2, sb3, sb_add = scales_b
 
-        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(chain_filename))
+        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(chain_filename, wts_sz))
 
         def _kernels(name, dw_ch, in_c_local, out_c_local, l1_sz, l2_sz, l3_sz):
             l1_in_ty = _i8((in_w, 1, in_c_local))
