@@ -26,14 +26,25 @@ Kernel sources (translated into numpy below):
     aie_kernels/aie2/bottleneck/bn_conv2dk3_dw.cc    (DW 3x3, ui8 -> ui8)
     aie_kernels/aie2/bottleneck/bn_conv2dk3.cc       (init: 3x3 stride-2)
 
-STATUS — golden_output.txt comparison:
-    678/1280 bit-exact matches; mean abs diff = 1.34, max = 9.
-    The algorithm is structurally correct end-to-end (correct shapes through
-    every block, plausible value ranges). Remaining diffs are cumulative
-    rounding drift through 17 layers. Achieving full bit-exactness requires
-    per-block AIE fixtures to localize the divergence — capture them with
-    aie2_iron_per_block.py and use --dump-intermediates here to compare
-    layer-by-layer.
+STATUS — three reference outputs to compare against:
+
+    1. data/golden_output.txt        — brevitas-quantized reference (the
+                                        "ground truth" target).
+    2. data/aie_output.txt           — what the AIE design actually produces
+                                        on this Strix NPU. Differs from golden
+                                        by max=9, mean≈1.5 (a known-acceptable
+                                        gap tracked in mlir-aie issue #3009).
+    3. mobilenet_numpy.run() output  — this file. Differs from AIE by max=11,
+                                        mean=1.5; from golden by max=9, mean=1.3.
+                                        678/1280 bit-exact vs golden, 668/1280
+                                        bit-exact vs AIE.
+
+The numpy reference is structurally correct end-to-end (correct shapes through
+every block, plausible value ranges, all 17 layers wired). It is NOT yet fully
+bit-exact to either reference — closing that gap requires per-block AIE fixtures
+captured via aie2_iron_per_block.py + this file's --dump-intermediates flag, so
+divergence can be localized layer-by-layer. Issue #3009 tracks the AIE-vs-golden
+gap; a follow-up to this file would close the numpy-vs-AIE gap.
 """
 
 import os
@@ -265,21 +276,33 @@ def post_l1_avgpool_conv1x1(x_i8, w_flat, scale, out_padded_c=1280):
 
 
 def _banker_round_div(numer, denom):
-    """Divide each `numer` by `denom`, rounding half-to-even (matches kernel)."""
-    # Kernel does: avg = acc/49.0; if (int)(avg*10) % 10 == 5: round to even; else round half-up
-    # That's banker's rounding for the .5 case; standard +0.5 round-up otherwise.
-    # numpy: use Python's round (banker's) via np.rint after careful scaling.
-    # Simpler/equivalent: q, r = divmod(numer, denom); doubled_r = 2*r;
-    # if doubled_r > denom: round up; if doubled_r < denom: round down;
-    # if doubled_r == denom: round to even (q even -> q, q odd -> q+1).
-    q = numer // denom
-    r = numer - q * denom
-    twice_r = 2 * r
-    round_up = twice_r > denom
-    half = twice_r == denom
-    odd = (q & 1).astype(bool)
-    out = q + round_up.astype(np.int64) + (half & odd).astype(np.int64)
-    return out.astype(np.int64)
+    """Match the kernel's quirky avg rounding (NOT standard banker's):
+
+        float avg = numer / denom;
+        if ((int)(avg * 10) % 10 == 5):
+            # first decimal digit is 5 → round int_part to nearest even
+            int_avg = (int)avg; return int_avg if even else int_avg + 1
+        else:
+            return (int)(avg + 0.5)   # round half-up
+
+    For denom=49 the "first decimal == 5" branch triggers when avg ∈ [0.5, 0.6) ∪
+    [1.5, 1.6) ∪ ... — i.e. NOT actual half-integers (49 is odd so 2r==denom never
+    holds). This is a kernel idiosyncrasy we have to replicate for bit-exactness.
+    """
+    # Integer-only mirror of the C float arithmetic.
+    # first_decimal_digit = (int)(10*numer/denom) % 10   ≡ (10*numer // denom) % 10
+    # int_avg              = numer // denom
+    # round_half_up_result = (int)(avg + 0.5) for avg >= 0
+    #                      = (2*numer + denom) // (2*denom)
+    n = numer.astype(np.int64)
+    d = np.int64(denom)
+    int_avg = n // d
+    first_dec = (10 * n // d) % 10
+    is_5 = first_dec == 5
+    even_avg = (int_avg & 1) == 0
+    banker_result = np.where(even_avg, int_avg, int_avg + 1)
+    half_up_result = (2 * n + d) // (2 * d)
+    return np.where(is_5, banker_result, half_up_result).astype(np.int64)
 
 
 # ---------------------------------------------------------------------------
@@ -532,36 +555,36 @@ def _main():
     out, inter = run(inp, data_dir, scales, return_intermediates=True)
     print(f"\nFinal: shape={out.shape}, dtype={out.dtype}")
 
-    # Validate against golden_output.txt (1280 int8 values per test_mobilenet.py).
-    golden_path = data_dir + "golden_output.txt"
-    if os.path.exists(golden_path):
-        golden = np.loadtxt(golden_path, delimiter=",", dtype=np.int8)
-        if out.size == golden.size:
-            ours = out.flatten()
-            # golden is int8; our output is uint16 [0, 255]. Cast both to int32
-            # to compare values fairly.
-            diff = ours.astype(np.int32) - golden.astype(np.int32) % 256
-            n_match = int((diff == 0).sum())
-            print(f"\nGolden compare: {n_match}/{out.size} bit-exact matches")
-            if n_match == out.size:
-                print("  ✓ BIT-EXACT MATCH")
-            else:
-                print(
-                    f"  diff stats: max_abs={np.abs(diff).max()}, "
-                    f"mean_abs={np.abs(diff).mean():.2f}"
-                )
+    # Compare against both references: brevitas golden + actual AIE output.
+    # See module docstring re: known issue #3009 (AIE-vs-golden delta=9).
+    ours = out.flatten().astype(np.int32)
+    ours[ours > 127] -= 256  # interpret uint8-in-uint16 as int8 for fair cmp
+
+    def _cmp(label, path):
+        if not os.path.exists(path):
+            print(f"\n{label}: skipped ({path} not found)")
+            return
+        ref = np.loadtxt(path, delimiter=",", dtype=np.int8).astype(np.int32)
+        if ref.size != ours.size:
+            print(f"\n{label}: shape mismatch ({ref.size} vs {ours.size})")
+            return
+        diff = ours - ref
+        n_match = int((diff == 0).sum())
+        max_d = int(np.abs(diff).max())
+        mean_d = float(np.abs(diff).mean())
+        verdict = (
+            "✓ BIT-EXACT" if max_d == 0 else f"diff: max={max_d}, mean={mean_d:.2f}"
+        )
+        print(f"\n{label}: {n_match}/{ours.size} matches  {verdict}")
+
+    _cmp("vs brevitas golden (data/golden_output.txt)", data_dir + "golden_output.txt")
+    _cmp("vs AIE actual      (data/aie_output.txt)   ", data_dir + "aie_output.txt")
 
     if args.dump_intermediates:
         os.makedirs(args.dump_intermediates, exist_ok=True)
         for name, tensor in inter.items():
             tensor.tofile(os.path.join(args.dump_intermediates, f"{name}.bin"))
         print(f"\nDumped {len(inter)} intermediates to {args.dump_intermediates}/")
-
-    print(
-        "\nNote: post_l1 (avgpool+1x1) and post_l2 (FC) not yet implemented; "
-        "final-layer validation against data/golden_output.txt requires those "
-        "— landing in follow-up."
-    )
 
 
 if __name__ == "__main__":
