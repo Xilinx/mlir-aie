@@ -144,13 +144,12 @@ tensor access pattern for the ouptut C then undoes this tiling to produce a
 regular row-major tile as the output moves out of the computation core.
 Note that all of these tiles are arranged in row-major order.
 
-![The 64x64 tiles of A, B and C, are tiled into intrinsic-sized sub-tiles to allow processing using the VMAC intrinsics.](./diagrams/matmul_l2l1.svg)
+![The 64x64 tiles of A, B and C, are tiled into intrinsic-sized r*s, s*t, and r*t sub-tiles to allow processing using the VMAC intrinsics.](./diagrams/matmul_l2l1.svg)
 
-> Note: the figure above shows the original `8x2` / `2x8` / `8x8` sub-tile
-> layout. The current example uses the IRON kernel library's `kernels.mm()`
-> for `(int16, int16)`, which generates a `4x4x4` MMUL — so the actual
-> `r/s/t` constants in the source are `(4, 4, 4)`. Other dtype pairs use
-> different intrinsic sizes (see `aie_kernels/aie2/mm.cc`).
+The exact `r`, `s`, `t` values depend on the kernel chosen for the
+`(input_dtype, output_dtype)` pair. The example uses `kernels.mm()` with
+`(int16, int16)`, which selects a `4x4x4` MMUL (see
+`aie_kernels/aie2/mm.cc` for the per-dtype sizes).
 
 ## Ryzen™ AI Usage
 
