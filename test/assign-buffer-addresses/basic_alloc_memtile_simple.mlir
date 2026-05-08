@@ -23,9 +23,9 @@
 // CHECK:   aie.device(npu2) {
 // CHECK:     %mem_tile_3_1 = aie.tile(3, 1)
 // CHECK:     %a = aie.buffer(%mem_tile_3_1) {address = 0 : i32, sym_name = "a"} : memref<2xi32>
-// CHECK:     %b = aie.buffer(%mem_tile_3_1) {address = 32 : i32, sym_name = "b"} : memref<2001xi32>
-// CHECK:     %c = aie.buffer(%mem_tile_3_1) {address = 8064 : i32, sym_name = "c"} : memref<1024xi32>
-// CHECK:     %d = aie.buffer(%mem_tile_3_1) {address = 12160 : i32, sym_name = "d"} : memref<77xi32>
+// CHECK:     %b = aie.buffer(%mem_tile_3_1) {address = 8 : i32, sym_name = "b"} : memref<2001xi32>
+// CHECK:     %c = aie.buffer(%mem_tile_3_1) {address = 8012 : i32, sym_name = "c"} : memref<1024xi32>
+// CHECK:     %d = aie.buffer(%mem_tile_3_1) {address = 12108 : i32, sym_name = "d"} : memref<77xi32>
 // CHECK:     %memtile_dma_3_1 = aie.memtile_dma(%mem_tile_3_1) {
 // CHECK:       aie.end
 // CHECK:     }

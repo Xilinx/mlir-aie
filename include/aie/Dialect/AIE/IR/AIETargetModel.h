@@ -265,7 +265,12 @@ public:
   // seems to handle unaligned access.
   /// Return the data bus width (in bits) for load/store operations of a memory
   /// tile.
-  virtual uint32_t getMemTileLoadStoreBusWidth() const = 0;
+  virtual uint32_t getMemTileLoadStoreBusWidth() const {
+    return 4 * 8; // Simply have buffer to be 4 byte aligned.
+    // Since 4 byte is the minimum access size for DMA.
+    // See discussion in
+    // https://github.com/Xilinx/mlir-aie/pull/3037#discussion_r3176686935
+  }
 
   /// Return the size (in bits) of the accumulator/cascade.
   virtual uint32_t getAccumulatorCascadeSize() const = 0;
@@ -464,7 +469,7 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
-  uint32_t getMemTileLoadStoreBusWidth() const override { return 128; }
+
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
     return 16; // AIE1 has no MemTiles, always 16
@@ -566,7 +571,6 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
-  uint32_t getMemTileLoadStoreBusWidth() const override { return 256; }
 
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
