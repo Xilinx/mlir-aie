@@ -492,6 +492,13 @@ def mobilenet_iron():
             post_sf,
         ],
         tile=Tile(6, 4),
+        # Match lowlevel's `@core(PostL1Tile, dynamic_objfifo_lowering=True)`.
+        # Without this attribute, the static objfifo lowering UNROLLS the
+        # inner loops to handle ping-pong buffer alternation explicitly,
+        # producing 15 func.call ops in 9 basic blocks (lowlevel keeps the
+        # loop intact with 1 call site). The dynamic lowering uses runtime
+        # modulo indexing, preserving the loop structure.
+        dynamic_objfifo_lowering=True,
     )
 
     # ------------------------------------------------------------------
