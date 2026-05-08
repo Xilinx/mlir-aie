@@ -212,7 +212,6 @@ class CallableDesign:
     def _build_compilable(
         self,
         call_compile_kwargs: dict[str, Any],
-        effective_compile_kwargs: dict[str, Any],
     ) -> CompilableDesign:
         """Return a compilable for this call's effective compile kwargs.
 
@@ -221,16 +220,7 @@ class CallableDesign:
         future calls.  Otherwise ``self.compilable`` is returned directly.
         """
         if call_compile_kwargs:
-            return CompilableDesign(
-                self.compilable.mlir_generator,
-                compile_kwargs=effective_compile_kwargs,
-                use_cache=self.compilable.use_cache,
-                compile_flags=self.compilable.compile_flags,
-                source_files=self.compilable.source_files,
-                include_paths=self.compilable.include_paths,
-                aiecc_flags=self.compilable.aiecc_flags,
-                object_files=self.compilable.object_files,
-            )
+            return self.compilable.specialized(**call_compile_kwargs)
         return self.compilable
 
     def __call__(self, *runtime_args, **runtime_kwargs):
@@ -335,9 +325,7 @@ class CallableDesign:
                 f"allow per-call compile parameters.",
             )
 
-        compilable = self._build_compilable(
-            call_compile_kwargs, effective_compile_kwargs
-        )
+        compilable = self._build_compilable(call_compile_kwargs)
 
         # --- In-process kernel cache lookup ---
         # Use the generator (or its string path) as the cache key identity.
@@ -441,6 +429,35 @@ class CallableDesign:
                 self._kernel_cache[cache_key] = kernel
             return kernel(*tensor_args, **remaining_scalars)
 
+    def specialize(self, **compile_kwargs) -> "CallableDesign":
+        """Return a new ``CallableDesign`` with additional ``Compile[T]`` kwargs bound.
+
+        The given kwargs are merged onto any pre-bound ``compile_kwargs`` with
+        call-time values winning — matching ``__call__`` / ``lower`` semantics.
+        Config (``source_files``, ``aiecc_flags``, etc.) is preserved.
+
+        Use together with :meth:`compile` to perform ahead-of-time compilation
+        of a JIT-decorated design at known shapes::
+
+            @iron.jit
+            def matmul(...): ...
+
+            matmul.specialize(M=256, K=256, N=256, element_type=np.int16).compile()
+        """
+        return CallableDesign(
+            self.compilable.specialized(**compile_kwargs),
+            trace_config=self.trace_config,
+        )
+
+    def compile(self) -> tuple[Path, Path]:
+        """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
+
+        Useful for ahead-of-time compilation: pre-warms the on-disk cache so
+        subsequent calls with matching ``compile_kwargs`` hit the cache instead
+        of paying ``aiecc`` time on first invocation.
+        """
+        return self.compilable.compile()
+
     def lower(self, *runtime_args, **runtime_kwargs) -> str:
         """Generate and return the MLIR text for this kernel without compiling.
 
@@ -463,14 +480,7 @@ class CallableDesign:
 
         # For lower(), call-time kwargs override pre-bound values so callers
         # can inspect different configurations without creating a new design.
-        effective_compile_kwargs = {
-            **self.compilable.compile_kwargs,
-            **call_compile_kwargs,
-        }
-
-        compilable = self._build_compilable(
-            call_compile_kwargs, effective_compile_kwargs
-        )
+        compilable = self._build_compilable(call_compile_kwargs)
 
         return str(compilable.generate_mlir())
 

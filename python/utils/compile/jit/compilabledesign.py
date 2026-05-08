@@ -400,6 +400,24 @@ class CompilableDesign:
     # Public API
     # ------------------------------------------------------------------
 
+    def specialized(self, **compile_kwargs) -> "CompilableDesign":
+        """Return a new ``CompilableDesign`` with additional ``Compile[T]`` kwargs bound.
+
+        The given kwargs are merged onto ``self.compile_kwargs`` with call-time
+        values winning.  All other config (``source_files``, ``aiecc_flags``,
+        ``include_paths``, etc.) is preserved.
+        """
+        return CompilableDesign(
+            self.mlir_generator,
+            compile_kwargs={**self.compile_kwargs, **compile_kwargs},
+            use_cache=self.use_cache,
+            compile_flags=self.compile_flags,
+            source_files=self.source_files,
+            include_paths=self.include_paths,
+            aiecc_flags=self.aiecc_flags,
+            object_files=self.object_files,
+        )
+
     def compile(self) -> tuple[Path, Path]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 

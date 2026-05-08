@@ -156,17 +156,13 @@ def add_const_design(
 
 def test_aot_compile_then_run(input_array, N):
     """AOT: compile eagerly, then run via CallableDesign."""
-    design = CompilableDesign(
-        add_const_design.mlir_generator,
-        compile_kwargs={"N": N, "add_value": 3},
-    )
+    design = add_const_design.specialized(N=N, add_value=3)
     xclbin, insts = design.compile()
     assert xclbin.exists()
     assert insts.exists()
 
-    kernel = CallableDesign(design)
     output = iron.zeros(N, dtype=np.int32, device="npu")
-    kernel(input_array, output)
+    CallableDesign(design)(input_array, output)
     output.to("cpu")
     np.testing.assert_array_equal(output.numpy(), input_array.numpy() + 3)
 
