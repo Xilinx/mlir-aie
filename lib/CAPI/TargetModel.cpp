@@ -40,6 +40,11 @@ int aieTargetModelRows(AieTargetModel targetModel) {
   return unwrap(targetModel).rows();
 }
 
+uint32_t aieTargetModelGetTileType(AieTargetModel targetModel, int col,
+                                   int row) {
+  return static_cast<uint32_t>(unwrap(targetModel).getTileType(col, row));
+}
+
 bool aieTargetModelIsCoreTile(AieTargetModel targetModel, int col, int row) {
   return unwrap(targetModel).isCoreTile(col, row);
 }

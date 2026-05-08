@@ -177,7 +177,7 @@ def vector_reduce_max(input0: In, output: Out, *, in_tensor_size: Compile[int], 
     # --------------------------------------------------------------------------
 
     my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

@@ -12,7 +12,6 @@ import os
 import aie.iron as iron
 from aie.iron import Compile, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.utils.config import cxx_header_path
 
 
@@ -77,7 +76,7 @@ def saxpy(input0: In, input1: In, output: Out, *, N: Compile[int], element_type:
     # --------------------------------------------------------------------------
 
     my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

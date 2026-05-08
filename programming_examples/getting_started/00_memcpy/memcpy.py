@@ -170,7 +170,7 @@ def my_memcpy(
     # --------------------------------------------------------------------------
 
     my_program = Program(device, rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

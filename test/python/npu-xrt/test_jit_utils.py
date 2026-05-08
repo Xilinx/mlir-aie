@@ -20,7 +20,6 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
 from aie.iron import Compile, In, Out
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
 from aie.utils.compile.utils import compile_external_kernel
@@ -276,7 +275,7 @@ def _transform(input_tensor: In, output_tensor: Out, *, kernel_fn: Compile[objec
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @pytest.mark.parametrize("add_value", [1, 2, 3])

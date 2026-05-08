@@ -9,7 +9,6 @@ import numpy as np
 import sys
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2, XCVC1902
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
@@ -70,7 +69,7 @@ def my_matrix_add_one():
         rt.drain(of_out.cons(), out_tensor, tap, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 print(my_matrix_add_one())

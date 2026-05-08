@@ -19,7 +19,6 @@ from aie.iron import (
     Buffer,
     str_to_dtype,
 )
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from ml_dtypes import bfloat16
 from aie.iron.controlflow import range_
@@ -191,7 +190,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         )
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 p = argparse.ArgumentParser()

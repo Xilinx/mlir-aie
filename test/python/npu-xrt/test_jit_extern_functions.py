@@ -19,7 +19,7 @@ _skip_float32 = pytest.mark.skip(reason="Peano -O2 float32 FPU pipeline hazard")
 import aie.iron as iron
 from aie.iron import Compile, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
-from aie.iron.placers import SequentialPlacer
+
 from aie.iron.controlflow import range_
 
 
@@ -79,7 +79,7 @@ def transform(
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @pytest.fixture(autouse=True)

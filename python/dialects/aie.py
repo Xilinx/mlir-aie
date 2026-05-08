@@ -1086,6 +1086,43 @@ def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
     return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
 
 
+@_cext.register_operation(_Dialect, replace=True)
+class LogicalTileOp(LogicalTileOp):
+    # TileLike interface methods
+    def is_core_tile(self):
+        """Returns True if this is a core tile."""
+        return tile_like_is_core_tile(self.operation)
+
+    def is_mem_tile(self):
+        """Returns True if this is a mem tile."""
+        return tile_like_is_mem_tile(self.operation)
+
+    def is_shim_noc_tile(self):
+        """Returns True if this is a shim NOC tile."""
+        return tile_like_is_shim_noc_tile(self.operation)
+
+    def is_shim_pl_tile(self):
+        """Returns True if this is a shim PL tile."""
+        return tile_like_is_shim_pl_tile(self.operation)
+
+    def is_shim_tile(self):
+        """Returns True if this is a shim tile (NOC or PL)."""
+        return tile_like_is_shim_tile(self.operation)
+
+
+def logical_tile(
+    tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None
+):
+    return LogicalTileOp(
+        tile_type=tile_type,
+        col=col,
+        row=row,
+        allocation_scheme=allocation_scheme,
+        loc=loc,
+        ip=ip,
+    )
+
+
 # BDChainOp
 
 

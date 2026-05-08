@@ -11,7 +11,6 @@ import os
 import aie.iron as iron
 from aie.iron import Compile, ExternalFunction, In, Out, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.config import cxx_header_path
@@ -154,7 +153,7 @@ def matrix_multiplication_single_core(input0: In, input1: In, output: Out, *, M:
     # --------------------------------------------------------------------------
 
     my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

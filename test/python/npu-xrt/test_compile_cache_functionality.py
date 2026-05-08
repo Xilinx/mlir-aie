@@ -17,7 +17,7 @@ import os
 import aie.iron as iron
 from aie.iron import Compile, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Worker, Runtime, Program
-from aie.iron.placers import SequentialPlacer
+
 from aie.iron.controlflow import range_
 
 # Peano -O2 has an FPU pipeline hazard for float32; skip until upstream fix.
@@ -77,7 +77,7 @@ def transform(
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @pytest.fixture(autouse=True)

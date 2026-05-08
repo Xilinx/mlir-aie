@@ -10,7 +10,6 @@
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 import aie.iron as iron
 
@@ -219,4 +218,4 @@ def for_each(func, tensor, *params, tile_size=16):
             "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
             "before calling for_each."
         )
-    return Program(device, rt).resolve_program(SequentialPlacer())
+    return Program(device, rt).resolve_program()

@@ -559,7 +559,16 @@ struct AIEInsertTraceFlowsPass
                                  << broadcastEventName << "'";
         return signalPassFailure();
       }
-      uint32_t timerCtrlValue = *broadcastEvent << 8;
+      const RegisterInfo *timerReg = targetModel.lookupRegister(
+          "Timer_Control", info.tile.getTileID(), isMemTrace);
+      if (!timerReg)
+        llvm::report_fatal_error("Failed to lookup Timer_Control register");
+      const BitFieldInfo *resetField = timerReg->getField("Reset_Event");
+      if (!resetField)
+        llvm::report_fatal_error(
+            "Failed to lookup Reset_Event field in Timer_Control");
+      uint32_t timerCtrlValue =
+          targetModel.encodeFieldValue(*resetField, *broadcastEvent);
 
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, nullptr,
@@ -611,22 +620,55 @@ struct AIEInsertTraceFlowsPass
                                                 bdAddress, chanDesc.argIdx,
                                                 chanDesc.bufferOffset);
 
-        // 4e. DMA channel configuration
+        // 4e. DMA channel configuration — set Controller_ID from tile attribute
         uint32_t ctrlAddr =
             computeCtrlAddress(DMAChannelDir::S2MM, chanDesc.channel,
                                shimInfo.shimTile, targetModel);
+        ensureControllerIdAttr(shimInfo.shimTile, targetModel);
+        auto ctrlIdAttr =
+            shimInfo.shimTile->getAttrOfType<PacketInfoAttr>("controller_id");
+        std::string ctrlRegName =
+            (chanDesc.channel == 0) ? "DMA_S2MM_0_Ctrl" : "DMA_S2MM_1_Ctrl";
+        const RegisterInfo *ctrlReg = targetModel.lookupRegister(
+            ctrlRegName, shimInfo.shimTile.getTileID());
+        if (!ctrlReg)
+          llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
+                                   ctrlRegName);
+        const BitFieldInfo *ctrlIdField = ctrlReg->getField("Controller_ID");
+        if (!ctrlIdField)
+          llvm::report_fatal_error("Failed to lookup Controller_ID field in " +
+                                   llvm::Twine(ctrlRegName));
+        uint32_t ctrlIdValue =
+            targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.getPktId());
+        auto ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);
+        if (!ctrlIdMask)
+          llvm::report_fatal_error(
+              "Controller_ID field does not fit in 32-bit register");
         xilinx::AIEX::NpuMaskWrite32Op::create(
-            builder, runtimeSeq.getLoc(), ctrlAddr, 3840, 7936, // value, mask
+            builder, runtimeSeq.getLoc(), ctrlAddr, ctrlIdValue, *ctrlIdMask,
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
 
         // Push BD to task queue
-        uint32_t taskQueueAddr =
-            computeTaskQueueAddress(DMAChannelDir::S2MM, chanDesc.channel,
-                                    shimInfo.shimTile, targetModel);
-        uint32_t bdIdWithToken = (1U << 31) | chanDesc.bdId; // enable_token = 1
+        std::string taskQueueRegName = (chanDesc.channel == 0)
+                                           ? "DMA_S2MM_0_Task_Queue"
+                                           : "DMA_S2MM_1_Task_Queue";
+        const RegisterInfo *queueReg = targetModel.lookupRegister(
+            taskQueueRegName, shimInfo.shimTile.getTileID());
+        if (!queueReg)
+          llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
+                                   taskQueueRegName);
+        const BitFieldInfo *tokenField =
+            queueReg->getField("Enable_Token_Issue");
+        const BitFieldInfo *bdIdField = queueReg->getField("Start_BD_ID");
+        if (!tokenField || !bdIdField)
+          llvm::report_fatal_error(
+              "Failed to lookup Enable_Token_Issue or Start_BD_ID fields");
+        uint32_t queueValue =
+            targetModel.encodeFieldValue(*tokenField, 1) |
+            targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
         xilinx::AIEX::NpuWrite32Op::create(
-            builder, runtimeSeq.getLoc(), taskQueueAddr, bdIdWithToken, nullptr,
+            builder, runtimeSeq.getLoc(), queueReg->offset, queueValue, nullptr,
             builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
       }
 
@@ -640,8 +682,19 @@ struct AIEInsertTraceFlowsPass
 
         uint32_t shimTimerCtrlAddr =
             computeTimerCtrlAddress(shimInfo.shimTile, targetModel, false);
+        const RegisterInfo *shimTimerReg = targetModel.lookupRegister(
+            "Timer_Control", shimInfo.shimTile.getTileID(), false);
+        if (!shimTimerReg)
+          llvm::report_fatal_error("Failed to lookup shim Timer_Control");
+        const BitFieldInfo *shimResetField =
+            shimTimerReg->getField("Reset_Event");
+        if (!shimResetField)
+          llvm::report_fatal_error(
+              "Failed to lookup Reset_Event in shim Timer_Control");
+        uint32_t shimTimerCtrlValue =
+            targetModel.encodeFieldValue(*shimResetField, *userEvent1);
         xilinx::AIEX::NpuWrite32Op::create(
-            builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, *userEvent1 << 8,
+            builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, shimTimerCtrlValue,
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
 
@@ -711,19 +764,22 @@ struct AIEInsertTraceFlowsPass
   }
 
 private:
-  // Compute buffer descriptor base address for the buffer address field
+  /// Ensure a tile has a controller_id attribute. If missing, assign one
+  /// using the target model's mapping.
+  void ensureControllerIdAttr(TileOp tile, const AIETargetModel &tm) {
+    if (tile->hasAttr("controller_id"))
+      return;
+    auto idMap = tm.getTileToControllerIdMap();
+    int pktId = idMap[{tile.colIndex(), tile.rowIndex()}];
+    auto pktInfoAttr = PacketInfoAttr::get(tile->getContext(), 0, pktId);
+    tile->setAttr("controller_id", pktInfoAttr);
+  }
+
   uint32_t computeBDAddress(int col, int bdId, TileOp shimTile,
                             const AIETargetModel &tm) {
-    // Use register database to lookup BD0 address, then add stride * bdId
-    // The buffer address field is at offset +4 within each BD descriptor
-    const RegisterInfo *bdReg =
-        tm.lookupRegister("DMA_BD0_0", shimTile.getTileID());
-    if (!bdReg)
-      llvm::report_fatal_error("Failed to lookup DMA_BD0_0 register");
-    const uint32_t BD_STRIDE = 0x20;
-    const uint32_t BUFFER_ADDR_OFFSET = 4; // buffer address is 2nd word in BD
-    return (col << tm.getColumnShift()) |
-           (bdReg->offset + bdId * BD_STRIDE + BUFFER_ADDR_OFFSET);
+    int row = shimTile.getRow();
+    return tm.getDmaBdAddress(col, row, bdId) +
+           tm.getDmaBdAddressOffset(col, row);
   }
 
   // Compute DMA task queue address

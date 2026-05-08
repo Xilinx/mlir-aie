@@ -98,6 +98,49 @@ AIETargetModel::getFieldMask(const BitFieldInfo &field) const {
   return static_cast<uint32_t>(mask);
 }
 
+DenseMap<TileID, int>
+AIETargetModel::getTileToControllerIdMap(bool columnWiseUniqueIDs) const {
+  if (rows() <= 6) {
+    // Controller id combinations chosen to avoid packet flow deadlock due to
+    // single-level LUT bit-masking on packet header. Shim tile ids are < 16
+    // because the TCT actor id field is only 4 bits.
+    SmallVector<SmallVector<int>> validTileIds = {{15, 26, 27, 29, 30, 31},
+                                                  {14, 21, 22, 23, 24, 25},
+                                                  {13, 11, 17, 18, 19, 20},
+                                                  {12, 28, 7, 8, 9, 10}};
+    if (!columnWiseUniqueIDs && columns() > (int)validTileIds.size())
+      llvm::report_fatal_error(
+          "Device has " + llvm::Twine(columns()) + " columns but only " +
+          llvm::Twine(validTileIds.size()) +
+          " globally-unique controller ID sets are defined; "
+          "use column-wise unique IDs mode.");
+    DenseMap<TileID, int> tileIDMap;
+    for (int col = 0; col < columns(); col++) {
+      for (int row = 0; row < rows(); row++) {
+        if (columnWiseUniqueIDs)
+          tileIDMap[{col, row}] = validTileIds[0][row];
+        else
+          tileIDMap[{col, row}] = validTileIds[col][row];
+      }
+    }
+    return tileIDMap;
+  }
+
+  // Devices with more than 6 rows use sequential assignment.
+  assert(columnWiseUniqueIDs &&
+         "Device has more tiles than candidate packet ids; "
+         "use column-wise unique IDs mode.");
+  DenseMap<TileID, int> tileIDMap;
+  int unusedPacketIdFrom = 0;
+  for (int col = 0; col < columns(); col++) {
+    if (columnWiseUniqueIDs)
+      unusedPacketIdFrom = 0;
+    for (int row = 0; row < rows(); row++)
+      tileIDMap[{col, row}] = unusedPacketIdFrom++;
+  }
+  return tileIDMap;
+}
+
 std::optional<uint32_t> AIETargetModel::resolvePortValue(llvm::StringRef value,
                                                          TileID tile,
                                                          bool master) const {
