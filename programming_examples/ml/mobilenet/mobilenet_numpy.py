@@ -401,29 +401,39 @@ def _load_block_weights(blk, data_dir):
         return result
 
     if name in ("bn13", "bn14"):
-        # Cascade blocks: L1 single file, L2 single file, L3 split into put+get.
-        # The cascade physically splits input channels across two compute tiles;
-        # logically the full L3 weight is just put concatenated with get along
-        # the input-channel dim (each half covers ic=0..479 and ic=480..959 of
-        # the (out_c=80, in_c=960) standard OIYX shape).
+        # Cascade blocks: L1 = TWO concatenated halves in one file (PUT then GET);
+        #                 L2 = single DW file;
+        #                 L3 = PUT + GET in SEPARATE files (also concatenated halves).
+        # gen_golden's chunk_weights_depth_cascade lays each cascade chunk out as
+        # an independent OIYXI8O8 block of shape (full OC, IC/InputSplit), then
+        # concatenates them. So a "single OIYXI8O8 (OC, full_IC)" decode mismashes
+        # them — we must split-decode-stitch along the IC axis.
         l1_chain = _load_chain(data_dir, f"{name}_1_chain.txt")
         l2_chain = _load_chain(data_dir, f"{name}_2_chain.txt")
         l3_put = _load_chain(data_dir, f"{name}_3_put_chain.txt")
         l3_get = _load_chain(data_dir, f"{name}_3_get_chain.txt")
         l1_layer, l2_layer, l3_layer = blk.layers
-        # L1: full (out_c=960, in_c=80)
-        w_l1 = _decode_oiyxi8o8(l1_chain, l1_layer.out_shape[2], l1_layer.in_shape[2])
-        # L2: depthwise (960, 3, 3)
+        # L1: file = [put_half | get_half], each half is OIYXI8O8(OC=full, IC=full/2).
+        l1_full_oc = l1_layer.out_shape[2]
+        l1_full_ic = l1_layer.in_shape[2]
+        l1_half = l1_full_ic // 2
+        half_sz = l1_full_oc * l1_half  # bytes per half
+        assert (
+            l1_chain.size == 2 * half_sz
+        ), f"{name} L1: expected {2*half_sz} bytes, got {l1_chain.size}"
+        w_l1_put = _decode_oiyxi8o8(l1_chain[:half_sz], l1_full_oc, l1_half)
+        w_l1_get = _decode_oiyxi8o8(l1_chain[half_sz:], l1_full_oc, l1_half)
+        w_l1 = np.concatenate([w_l1_put, w_l1_get], axis=1)
+        # L2: single DW file (no cascade split for L2 — the kernel produces split
+        # outputs but consumes the full DW weights as one buffer).
         w_l2 = _decode_dw3x3(l2_chain, l2_layer.in_shape[2])
-        # L3: combine put+get along the IC axis.
-        # Each half is (out_c=80, in_c=480) standard OIYX after decode.
+        # L3: SEPARATE files for put and get. Each is OIYXI8O8(OC=full, IC=full/2).
         w_l3_put = _decode_oiyxi8o8(
             l3_put, l3_layer.out_shape[2], l3_layer.in_shape[2] // 2
         )
         w_l3_get = _decode_oiyxi8o8(
             l3_get, l3_layer.out_shape[2], l3_layer.in_shape[2] // 2
         )
-        # Concat along ic: put covers ic[0..479], get covers ic[480..959]
         w_l3 = np.concatenate([w_l3_put, w_l3_get], axis=1)
         return [w_l1, w_l2, w_l3]
 
