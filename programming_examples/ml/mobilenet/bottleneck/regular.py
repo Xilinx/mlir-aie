@@ -14,7 +14,6 @@ from aie.iron.device import Tile
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
-
 # ---------------------------------------------------------------------------
 # Tensor shape constants derived from aie2_bottleneckAStatic.py
 # ---------------------------------------------------------------------------
@@ -105,7 +104,7 @@ def regular_bottlenecks(
     Args:
         act_in: Init conv output fifo, type=(112,1,16) uint8
         *scale_factors: All scale factors for bn0-bn9 in order:
-            bn0_scale2, bn0_scale3,
+            bn0_scale2, bn0_scale3, bn0_scaleAdd,
             bn1_scale1, bn1_scale2, bn1_scale3,
             bn2_scale1, bn2_scale2, bn2_scale3, bn2_scaleAdd,
             bn3_scale1, bn3_scale2, bn3_scale3,
@@ -126,6 +125,7 @@ def regular_bottlenecks(
     (
         bn0_scale2,
         bn0_scale3,
+        bn0_scaleAdd,
         bn1_scale1,
         bn1_scale2,
         bn1_scale3,
@@ -387,7 +387,7 @@ def regular_bottlenecks(
             _BN0_OUT_C,
             bn0_scale2,
             bn0_scale3,
-            0,  # scaleAdd (skip residual from same row)
+            bn0_scaleAdd,
         ],
         while_true=False,
     )
@@ -1330,7 +1330,7 @@ def regular_bottlenecks(
 
         # This is a complex fused pipeline - stub body to make it importable
         # Full pipeline follows the same pattern as bn8+bn9 in aie2_bottleneckA_subblock_fused2Static.py
-        # pre-amble: 2 rows of bn4 L1
+        # pre-amble 0: 2 rows of bn4 L1, row 0 of bn4 L2, row 0 of bn4 L3, row 0 of bn5 L1
         rows_in = act_in_fifo.acquire(2)
         rows_l1 = act_bn4_12_prod.acquire(2)
         f4_1x1_relu(rows_in[0], wts_bn4_l1, rows_l1[0], in_w, in_c, bn4_dw_ch, s4_1)
@@ -1374,24 +1374,110 @@ def regular_bottlenecks(
         act_bn4_bn5_prod.release(1)
 
         row_bn5_in = act_bn4_bn5_cons.acquire(1)
-        row_l1 = act_bn5_12_prod.acquire(1)
-        f5_1x1_relu(row_bn5_in, wts_bn5_l1, row_l1, in_w, bn4_out_c, bn5_dw_ch, s5_1)
+        row_l1_5 = act_bn5_12_prod.acquire(1)
+        f5_1x1_relu(row_bn5_in, wts_bn5_l1, row_l1_5, in_w, bn4_out_c, bn5_dw_ch, s5_1)
         act_bn5_12_prod.release(1)
 
-        # Continue middle and post-amble rows following the same pipeline pattern...
-        # (abbreviated here - the full pipeline mirrors aie2_bottleneckA_subblock_fused2Static)
+        # pre-amble 1: row 2 of bn4 L1, row 1 of bn4 L2, row 1 of bn4 L3,
+        #              row 1 of bn5 L1, row 0 of bn5 L2
+        rows_in = act_in_fifo.acquire(2)
+        row_l1 = act_bn4_12_prod.acquire(1)
+        f4_1x1_relu(rows_in[1], wts_bn4_l1, row_l1, in_w, in_c, bn4_dw_ch, s4_1)
+        act_bn4_12_prod.release(1)
+
+        rows_l1 = act_bn4_12_cons.acquire(3)
+        row_l2 = act_bn4_23_prod.acquire(1)
+        f4_dw(
+            rows_l1[0],
+            rows_l1[1],
+            rows_l1[2],
+            wts_bn4_l2,
+            row_l2,
+            in_w,
+            1,
+            bn4_dw_ch,
+            3,
+            3,
+            1,
+            s4_2,
+            0,
+        )
+        act_bn4_12_cons.release(1)
+        act_bn4_23_prod.release(1)
+
+        row_l2 = act_bn4_23_cons.acquire(1)
+        row_bn4_out = act_bn4_bn5_prod.acquire(1)
+        f4_skip(
+            row_l2,
+            wts_bn4_l3,
+            row_bn4_out,
+            rows_in[0],
+            in_w,
+            bn4_dw_ch,
+            bn4_out_c,
+            s4_3,
+            s4_add,
+        )
+        act_in_fifo.release(1)
+        act_bn4_23_cons.release(1)
+        act_bn4_bn5_prod.release(1)
+
+        rows_bn5_in = act_bn4_bn5_cons.acquire(2)
+        row_l1_5 = act_bn5_12_prod.acquire(1)
+        f5_1x1_relu(
+            rows_bn5_in[1], wts_bn5_l1, row_l1_5, in_w, bn4_out_c, bn5_dw_ch, s5_1
+        )
+        act_bn5_12_prod.release(1)
+
+        rows_l1_5 = act_bn5_12_cons.acquire(2)
+        row_l2_5 = act_bn5_23_prod.acquire(1)
+        f5_dw(
+            rows_l1_5[0],
+            rows_l1_5[0],
+            rows_l1_5[1],
+            wts_bn5_l2,
+            row_l2_5,
+            in_w,
+            1,
+            bn5_dw_ch,
+            3,
+            3,
+            0,
+            s5_2,
+            0,
+        )
+        act_bn5_23_prod.release(1)
+
+        row_l2_5 = act_bn5_23_cons.acquire(1)
+        row_out = act_out_fifo.acquire(1)
+        f5_skip(
+            row_l2_5,
+            wts_bn5_l3,
+            row_out,
+            rows_bn5_in[0],
+            in_w,
+            bn5_dw_ch,
+            bn5_out_c,
+            s5_3,
+            s5_add,
+        )
+        act_bn5_23_cons.release(1)
+        act_bn4_bn5_cons.release(1)
+        act_out_fifo.release(1)
+
+        # middle
         for _ in range_(in_h - 3):
             rows_in = act_in_fifo.acquire(2)
             row_l1 = act_bn4_12_prod.acquire(1)
             f4_1x1_relu(rows_in[1], wts_bn4_l1, row_l1, in_w, in_c, bn4_dw_ch, s4_1)
             act_bn4_12_prod.release(1)
 
-            rows_l1_4 = act_bn4_12_cons.acquire(3)
+            rows_l1 = act_bn4_12_cons.acquire(3)
             row_l2 = act_bn4_23_prod.acquire(1)
             f4_dw(
-                rows_l1_4[0],
-                rows_l1_4[1],
-                rows_l1_4[2],
+                rows_l1[0],
+                rows_l1[1],
+                rows_l1[2],
                 wts_bn4_l2,
                 row_l2,
                 in_w,
@@ -1424,9 +1510,9 @@ def regular_bottlenecks(
             act_bn4_bn5_prod.release(1)
 
             rows_bn5_in = act_bn4_bn5_cons.acquire(2)
-            row_l1 = act_bn5_12_prod.acquire(1)
+            row_l1_5 = act_bn5_12_prod.acquire(1)
             f5_1x1_relu(
-                rows_bn5_in[1], wts_bn5_l1, row_l1, in_w, bn4_out_c, bn5_dw_ch, s5_1
+                rows_bn5_in[1], wts_bn5_l1, row_l1_5, in_w, bn4_out_c, bn5_dw_ch, s5_1
             )
             act_bn5_12_prod.release(1)
 
@@ -1466,6 +1552,128 @@ def regular_bottlenecks(
             act_bn5_23_cons.release(1)
             act_bn4_bn5_cons.release(1)
             act_out_fifo.release(1)
+
+        # post-amble 0: last row of bn4
+        rows_l1 = act_bn4_12_cons.acquire(2)
+        row_l2 = act_bn4_23_prod.acquire(1)
+        f4_dw(
+            rows_l1[0],
+            rows_l1[1],
+            rows_l1[1],
+            wts_bn4_l2,
+            row_l2,
+            in_w,
+            1,
+            bn4_dw_ch,
+            3,
+            3,
+            2,
+            s4_2,
+            0,
+        )
+        act_bn4_12_cons.release(2)
+        act_bn4_23_prod.release(1)
+
+        row_in = act_in_fifo.acquire(1)
+        row_l2 = act_bn4_23_cons.acquire(1)
+        row_bn4_out = act_bn4_bn5_prod.acquire(1)
+        f4_skip(
+            row_l2,
+            wts_bn4_l3,
+            row_bn4_out,
+            row_in,
+            in_w,
+            bn4_dw_ch,
+            bn4_out_c,
+            s4_3,
+            s4_add,
+        )
+        act_in_fifo.release(1)
+        act_bn4_23_cons.release(1)
+        act_bn4_bn5_prod.release(1)
+
+        rows_bn5_in = act_bn4_bn5_cons.acquire(2)
+        row_l1_5 = act_bn5_12_prod.acquire(1)
+        f5_1x1_relu(
+            rows_bn5_in[1], wts_bn5_l1, row_l1_5, in_w, bn4_out_c, bn5_dw_ch, s5_1
+        )
+        act_bn5_12_prod.release(1)
+
+        rows_l1_5 = act_bn5_12_cons.acquire(3)
+        row_l2_5 = act_bn5_23_prod.acquire(1)
+        f5_dw(
+            rows_l1_5[0],
+            rows_l1_5[1],
+            rows_l1_5[2],
+            wts_bn5_l2,
+            row_l2_5,
+            in_w,
+            1,
+            bn5_dw_ch,
+            3,
+            3,
+            1,
+            s5_2,
+            0,
+        )
+        act_bn5_12_cons.release(1)
+        act_bn5_23_prod.release(1)
+
+        row_l2_5 = act_bn5_23_cons.acquire(1)
+        row_out = act_out_fifo.acquire(1)
+        f5_skip(
+            row_l2_5,
+            wts_bn5_l3,
+            row_out,
+            rows_bn5_in[0],
+            in_w,
+            bn5_dw_ch,
+            bn5_out_c,
+            s5_3,
+            s5_add,
+        )
+        act_bn5_23_cons.release(1)
+        act_bn4_bn5_cons.release(1)
+        act_out_fifo.release(1)
+
+        # post-amble 1: last row of bn5
+        rows_l1_5 = act_bn5_12_cons.acquire(2)
+        row_l2_5 = act_bn5_23_prod.acquire(1)
+        f5_dw(
+            rows_l1_5[0],
+            rows_l1_5[1],
+            rows_l1_5[1],
+            wts_bn5_l2,
+            row_l2_5,
+            in_w,
+            1,
+            bn5_dw_ch,
+            3,
+            3,
+            2,
+            s5_2,
+            0,
+        )
+        act_bn5_12_cons.release(2)
+        act_bn5_23_prod.release(1)
+
+        row_bn5_skip = act_bn4_bn5_cons.acquire(1)
+        row_l2_5 = act_bn5_23_cons.acquire(1)
+        row_out = act_out_fifo.acquire(1)
+        f5_skip(
+            row_l2_5,
+            wts_bn5_l3,
+            row_out,
+            row_bn5_skip,
+            in_w,
+            bn5_dw_ch,
+            bn5_out_c,
+            s5_3,
+            s5_add,
+        )
+        act_bn5_23_cons.release(1)
+        act_bn4_bn5_cons.release(1)
+        act_out_fifo.release(1)
 
     bn45_worker = Worker(
         bn45_worker_fn,

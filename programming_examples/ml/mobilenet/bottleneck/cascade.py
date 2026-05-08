@@ -35,7 +35,6 @@ from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.device import Tile, AnyMemTile
 from aie.iron.controlflow import range_
 
-
 # ---------------------------------------------------------------------------
 # Dimensions (from aie2_bottleneckC.py)
 # ---------------------------------------------------------------------------
@@ -488,7 +487,7 @@ def cascade_bottlenecks(
     #           bn14 L1→MemTile(2,1), bn14 L3→MemTile(3,1)
     bn13_wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1, name="bn13_wts_l1_full")
     bn13_wts_l1_put, bn13_wts_l1_get = bn13_wts_l1_full.cons().split(
-        offsets=[0, _l1_split_wts_sz],
+        offsets=[0, _l1_full_wts_sz // 2],  # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn13_wts_l1_put", "bn13_wts_l1_get"],
@@ -748,7 +747,7 @@ def cascade_bottlenecks(
     # Original: bn14 L1→MemTile(2,1), bn14 L3→MemTile(3,1)
     bn14_wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1, name="bn14_wts_l1_full")
     bn14_wts_l1_put, bn14_wts_l1_get = bn14_wts_l1_full.cons().split(
-        offsets=[0, _l1_split_wts_sz],
+        offsets=[0, _l1_full_wts_sz // 2],  # [0, 38400] matching placed
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         names=["bn14_wts_l1_put", "bn14_wts_l1_get"],

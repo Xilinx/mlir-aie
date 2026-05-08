@@ -52,73 +52,80 @@ scale_factor_file = "scale_factors_final.json"
 with open(data_dir + scale_factor_file) as f:
     sf = json.load(f)
 
-# Init conv
-init_scaleFactor = sf.get("init_scaleFactor", 8)
 
-# bn0–bn9 scale factors (36 total)
-bn0_sf2 = sf.get("bn0_scaleFactor2", 9)
-bn0_sf3 = sf.get("bn0_scaleFactor3", 8)
-bn0_sfAdd = sf.get("bn0_scaleFactorAdd", 2)
-bn1_sf1 = sf.get("bn1_scaleFactor1", 8)
-bn1_sf2 = sf.get("bn1_scaleFactor2", 8)
-bn1_sf3 = sf.get("bn1_scaleFactor3", 11)
-bn2_sf1 = sf.get("bn2_scaleFactor1", 8)
-bn2_sf2 = sf.get("bn2_scaleFactor2", 8)
-bn2_sf3 = sf.get("bn2_scaleFactor3", 11)
-bn2_sfAdd = sf.get("bn2_scaleFactorAdd", 0)
-bn3_sf1 = sf.get("bn3_scaleFactor1", 8)
-bn3_sf2 = sf.get("bn3_scaleFactor2", 8)
-bn3_sf3 = sf.get("bn3_scaleFactor3", 11)
-bn4_sf1 = sf.get("bn4_scaleFactor1", 8)
-bn4_sf2 = sf.get("bn4_scaleFactor2", 8)
-bn4_sf3 = sf.get("bn4_scaleFactor3", 11)
-bn4_sfAdd = sf.get("bn4_scaleFactorAdd", 0)
-bn5_sf1 = sf.get("bn5_scaleFactor1", 8)
-bn5_sf2 = sf.get("bn5_scaleFactor2", 8)
-bn5_sf3 = sf.get("bn5_scaleFactor3", 11)
-bn5_sfAdd = sf.get("bn5_scaleFactorAdd", 0)
-bn6_sf1 = sf.get("bn6_scaleFactor1", 8)
-bn6_sf2 = sf.get("bn6_scaleFactor2", 8)
-bn6_sf3 = sf.get("bn6_scaleFactor3", 11)
-bn6_sfAdd = sf.get("bn6_scaleFactorAdd", 0)
-bn7_sf1 = sf.get("bn7_scaleFactor1", 9)
-bn7_sf2 = sf.get("bn7_scaleFactor2", 8)
-bn7_sf3 = sf.get("bn7_scaleFactor3", 11)
-bn8_sf1 = sf.get("bn8_scaleFactor1", 9)
-bn8_sf2 = sf.get("bn8_scaleFactor2", 8)
-bn8_sf3 = sf.get("bn8_scaleFactor3", 11)
-bn8_sfAdd = sf.get("bn8_scaleFactorAdd", 0)
-bn9_sf1 = sf.get("bn9_scaleFactor1", 9)
-bn9_sf2 = sf.get("bn9_scaleFactor2", 8)
-bn9_sf3 = sf.get("bn9_scaleFactor3", 11)
-bn9_sfAdd = sf.get("bn9_scaleFactorAdd", 0)
+# JSON layout: {"BN<n>": {"conv1x1_1": int, "conv3x3": int, "conv1x1_2": int, "skip_add": int}, ...}
+# Mapping to legacy iron names: _sf1 -> conv1x1_1, _sf2 -> conv3x3, _sf3 -> conv1x1_2, _sfAdd -> skip_add.
+# Use direct dict access (no .get fallbacks) so a missing key fails loud rather than silently
+# substituting a wrong default — that bug just cost us a multi-hour debug.
+def _bn(n, key):
+    return sf[f"BN{n}"][key]
 
-# bn10–bn12 scale factors (10 total)
-bn10_sf1 = sf.get("bn10_scaleFactor1", 10)
-bn10_sf2 = sf.get("bn10_scaleFactor2", 7)
-bn10_sf3 = sf.get("bn10_scaleFactor3", 9)
-bn11_sf1 = sf.get("bn11_scaleFactor1", 9)
-bn11_sf2 = sf.get("bn11_scaleFactor2", 8)
-bn11_sf3 = sf.get("bn11_scaleFactor3", 12)
-bn11_sfAdd = sf.get("bn11_scaleFactorAdd", 1)
-bn12_sf1 = sf.get("bn12_scaleFactor1", 8)
-bn12_sf2 = sf.get("bn12_scaleFactor2", 8)
-bn12_sf3 = sf.get("bn12_scaleFactor3", 9)
 
-# bn13–bn14 scale factors (8 total)
-bn13_sf1 = sf.get("bn13_scaleFactor1", 10)
-bn13_sf2 = sf.get("bn13_scaleFactor2", 7)
-bn13_sf3 = sf.get("bn13_scaleFactor3", 9)
-bn13_sfAdd = sf.get("bn13_scaleFactorAdd", 1)
-bn14_sf1 = sf.get("bn14_scaleFactor1", 9)
-bn14_sf2 = sf.get("bn14_scaleFactor2", 8)
-bn14_sf3 = sf.get("bn14_scaleFactor3", 12)
-bn14_sfAdd = sf.get("bn14_scaleFactorAdd", 1)
+init_scaleFactor = sf["INIT"]["conv3x3"]
 
-# Post-processing scale factors
-post_sf = sf.get("post_scaleFactor", 8)
-post_fc1_sf = sf.get("post_FC1_scaleFactor", 9)
-post_fc2_sf = sf.get("post_FC2_scaleFactor", 9)
+# bn0 (no conv1x1_1: it's the first stage with no 1x1 reduction before the dw)
+bn0_sf2 = _bn(0, "conv3x3")
+bn0_sf3 = _bn(0, "conv1x1_2")
+bn0_sfAdd = _bn(0, "skip_add")
+
+bn1_sf1 = _bn(1, "conv1x1_1")
+bn1_sf2 = _bn(1, "conv3x3")
+bn1_sf3 = _bn(1, "conv1x1_2")
+bn2_sf1 = _bn(2, "conv1x1_1")
+bn2_sf2 = _bn(2, "conv3x3")
+bn2_sf3 = _bn(2, "conv1x1_2")
+bn2_sfAdd = _bn(2, "skip_add")
+bn3_sf1 = _bn(3, "conv1x1_1")
+bn3_sf2 = _bn(3, "conv3x3")
+bn3_sf3 = _bn(3, "conv1x1_2")
+bn4_sf1 = _bn(4, "conv1x1_1")
+bn4_sf2 = _bn(4, "conv3x3")
+bn4_sf3 = _bn(4, "conv1x1_2")
+bn4_sfAdd = _bn(4, "skip_add")
+bn5_sf1 = _bn(5, "conv1x1_1")
+bn5_sf2 = _bn(5, "conv3x3")
+bn5_sf3 = _bn(5, "conv1x1_2")
+bn5_sfAdd = _bn(5, "skip_add")
+bn6_sf1 = _bn(6, "conv1x1_1")
+bn6_sf2 = _bn(6, "conv3x3")
+bn6_sf3 = _bn(6, "conv1x1_2")
+bn6_sfAdd = _bn(6, "skip_add")
+bn7_sf1 = _bn(7, "conv1x1_1")
+bn7_sf2 = _bn(7, "conv3x3")
+bn7_sf3 = _bn(7, "conv1x1_2")
+bn7_sfAdd = _bn(7, "skip_add")
+bn8_sf1 = _bn(8, "conv1x1_1")
+bn8_sf2 = _bn(8, "conv3x3")
+bn8_sf3 = _bn(8, "conv1x1_2")
+bn8_sfAdd = _bn(8, "skip_add")
+bn9_sf1 = _bn(9, "conv1x1_1")
+bn9_sf2 = _bn(9, "conv3x3")
+bn9_sf3 = _bn(9, "conv1x1_2")
+bn9_sfAdd = _bn(9, "skip_add")
+
+bn10_sf1 = _bn(10, "conv1x1_1")
+bn10_sf2 = _bn(10, "conv3x3")
+bn10_sf3 = _bn(10, "conv1x1_2")
+bn11_sf1 = _bn(11, "conv1x1_1")
+bn11_sf2 = _bn(11, "conv3x3")
+bn11_sf3 = _bn(11, "conv1x1_2")
+bn11_sfAdd = _bn(11, "skip_add")
+bn12_sf1 = _bn(12, "conv1x1_1")
+bn12_sf2 = _bn(12, "conv3x3")
+bn12_sf3 = _bn(12, "conv1x1_2")
+
+bn13_sf1 = _bn(13, "conv1x1_1")
+bn13_sf2 = _bn(13, "conv3x3")
+bn13_sf3 = _bn(13, "conv1x1_2")
+bn13_sfAdd = _bn(13, "skip_add")
+bn14_sf1 = _bn(14, "conv1x1_1")
+bn14_sf2 = _bn(14, "conv3x3")
+bn14_sf3 = _bn(14, "conv1x1_2")
+bn14_sfAdd = _bn(14, "skip_add")
+
+post_sf = sf["POST"]["conv1x1_1"]
+post_fc1_sf = sf["POST"]["FC1"]
+post_fc2_sf = sf["POST"]["FC2"]
 
 # ---------------------------------------------------------------------------
 # Network dimensions
@@ -288,7 +295,8 @@ def mobilenet_iron():
     a_workers, act_bn9_out = regular_bottlenecks(
         act_init_out,
         bn0_sf2,
-        bn0_sf3,  # bn0: 2-layer block, no sf1 (no expand 1x1)
+        bn0_sf3,
+        bn0_sfAdd,  # bn0: 2-layer block, no sf1 (no expand 1x1)
         bn1_sf1,
         bn1_sf2,
         bn1_sf3,
@@ -310,10 +318,13 @@ def mobilenet_iron():
         bn6_sf1,
         bn6_sf2,
         bn6_sf3,
-        bn6_sfAdd,
+        # bn6 is stride-2 (no residual skip) — regular.py signature does not
+        # take bn6_scaleAdd. Including it here would shift every subsequent
+        # scale-factor arg by one (caused bn7 relu/dw/skip to read wrong sf).
         bn7_sf1,
         bn7_sf2,
         bn7_sf3,
+        bn7_sfAdd,
         bn8_sf1,
         bn8_sf2,
         bn8_sf3,
@@ -393,10 +404,23 @@ def mobilenet_iron():
         comp_lock_id=0,  # PostL1Tile: lock_id=0 (prod), lock_id=1 (cons)
     )
 
-    act_post_l1_out = ObjectFifo(
-        np.ndarray[(post_L1_OutW, 1, post_L2_InC), np.dtype[np.int8]],
+    # Match original: round-trip avgpool output through L3 (DDR) so it can be
+    # re-broadcast to all 4 PostL2 FC tiles. A single compute->4-compute fan-out
+    # exceeds stream-switch routing capacity from tile(6,4); the original design
+    # uses shim DMAs to drain to DDR via shim(3,0) and re-fill from shim(4,0).
+    # Element type is uint16 — kernel `post_conv2dk1_relu_xy_pool_padded_i8_ui8.o`
+    # writes 2 bytes per output channel; declaring i8 here would halve the DMA
+    # transfer size and deadlock the consumer kernel which expects 2560 B.
+    _post_l1_out_ty = np.ndarray[(post_L2_InC,), np.dtype[np.uint16]]
+    act_out_post_avgpool_shim = ObjectFifo(
+        _post_l1_out_ty,
         depth=2,
-        name="act_post_l1_out",
+        name="act_out_post_avgpool_shim",
+    )
+    act_out_post_shim_FC = ObjectFifo(
+        _post_l1_out_ty,
+        depth=2,
+        name="act_out_post_shim_FC",
     )
 
     k_post_l1 = Kernel(
@@ -405,7 +429,7 @@ def mobilenet_iron():
         [
             _i8((post_L1_InW, 1, post_L1_InC)),
             _i8((post_l1_wts_chunk,)),
-            _i8((post_L1_OutW, 1, post_L2_InC)),
+            np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
             _i32(),
             _i32(),
             _i32(),
@@ -446,10 +470,10 @@ def mobilenet_iron():
                     outC,
                     outC_padd,
                     sf,
-                    0,
+                    yi,  # yIndex (was hardcoded 0 — kernel kept overwriting row 0)
                     n_splits,
-                    0,
-                )  # yIndex, nSplits, wIndex (3 extra ints)
+                    wi,  # WeightIndex (was hardcoded 0 — kernel kept the same weight chunk)
+                )
                 wts_pb.release(1)
             act_in.release(1)
         act_out.release(1)
@@ -458,14 +482,14 @@ def mobilenet_iron():
         post_l1_fn,
         fn_args=[
             act_bn14_out.cons(),
-            act_post_l1_out.prod(),
+            act_out_post_avgpool_shim.prod(),
             post_l1_pb,
             k_post_l1,
             post_L1_InW,
             post_L1_InH,
             post_L1_InC,
-            post_L2_InC,
-            post_L2_InC,
+            post_L1_OutC,  # outC = 960 (pre-pad). Lowlevel passes 960 here, iron
+            post_L2_InC,  # outC_padd = 1280 (padded to next layer's input)
             post_sf,
         ],
         placement=Tile(6, 4),
@@ -544,7 +568,7 @@ def mobilenet_iron():
         "post_L2_conv2dk1_relu_i16_ui16_pad",
         "post_L2_conv2dk1_relu_ui16_ui16_pad.o",
         [
-            _i8((1, 1, post_L2_InC)),
+            np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
             _i8((fc_recv_per_tile,)),
             _u16((co,)),
             _i32(),
@@ -589,22 +613,33 @@ def mobilenet_iron():
         )
 
         def post_l2_fn(
-            act_in, act_out, wts_h, k, inC, n_co, sf2, sf1, n_splits=PostOutputSplitL2
+            act_in,
+            act_out,
+            wts_h,
+            k,
+            inC_fc1,
+            inC_fc2,
+            outC,
+            n_co,
+            sf1,
+            sf2,
+            n_splits=PostOutputSplitL2,
         ):
             elem_in = act_in.acquire(1)
-            # FC2 pass: acquire output INSIDE loop → unrollForLoops sees objectfifo op
-            # → LCM(1)=1 → loop preserved → compact ELF → no CDO overflow
+            # FC2 first (matches existing PB ping-pong: initial=fc2_data on fc2_memtile,
+            # ping_pong=fc1_data on fc1_memtile -> DMA stream is FC2 then FC1).
+            # Static MLIR will have call sites in the reverse order from lowlevel
+            # (which does FC1 first), but the set of kernel-arg tuples is identical.
             for _ in range_(n_splits):
                 elem_out = act_out.acquire(1)
                 wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC, n_co, n_co, sf2)
+                k(elem_in, wts, elem_out, 1, inC_fc2, outC, n_co, sf2)
                 wts_h.release(1)
                 act_out.release(1)
-            # FC1 pass (ping-pong second)
             for _ in range_(n_splits):
                 elem_out = act_out.acquire(1)
                 wts = wts_h.acquire(1)
-                k(elem_in, wts, elem_out, 1, inC, n_co, n_co, sf1)
+                k(elem_in, wts, elem_out, 1, inC_fc1, outC, n_co, sf1)
                 wts_h.release(1)
                 act_out.release(1)
             act_in.release(1)
@@ -612,14 +647,16 @@ def mobilenet_iron():
         w = Worker(
             post_l2_fn,
             fn_args=[
-                act_post_l1_out.cons(),
+                act_out_post_shim_FC.cons(),
                 act_post_l2_tiles[i].prod(),
                 fc_pb,
                 k_post_l2,
-                post_L2_InC,
-                co,
-                post_fc2_sf,
+                post_L1_OutC,  # inC for FC1 = 960 (pre-pad)
+                post_L2_InC,  # inC for FC2 = 1280 (padded)
+                post_L2_OutC,  # outC = 1280 (full output channels)
+                co,  # n_co = 8 (chunk size per kernel call)
                 post_fc1_sf,
+                post_fc2_sf,
             ],
             placement=fc_comptiles[i],
         )
@@ -652,7 +689,10 @@ def mobilenet_iron():
             strides=[0, 0, 0, 1],
         )
 
-    rt = Runtime()
+    # strict_task_groups=False so we can mix the default group (fills/final
+    # drain) with an explicit group used only to force a wait between the
+    # avgpool drain and its re-fill in the post-block round-trip.
+    rt = Runtime(strict_task_groups=False)
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)
         rt.fill(act_in.prod(depth=1), inp, placement=Tile(0, 0))
@@ -678,6 +718,38 @@ def mobilenet_iron():
             cascade_wts,
             _wts_tap(_L1 * 2 + _L3f, _L3f),
             placement=Tile(7, 0),
+        )
+        # Round-trip the avgpool output through L3 (DDR) — matches original
+        # design's shim 30/40 hop. Reuses inp as scratch (input has been fully
+        # consumed by the time PostL1 produces output). drain waits so that the
+        # subsequent fill sees valid data.
+        # 1280 ui16 = 2560 bytes; tap is in i8 (inp dtype) units.
+        _post_l1_out_sz = post_L1_OutW * post_L1_OutH * post_L2_InC * 2
+        _post_l1_scratch_tap = TensorAccessPattern(
+            (tensorInW * tensorInH * tensorInC,),
+            offset=0,
+            sizes=[1, 1, 1, _post_l1_out_sz],
+            strides=[0, 0, 0, 1],
+        )
+        # Drain into its own task_group + finish so the await is emitted BEFORE
+        # the fill (matches original's `dma_wait("act_out_post_avgpool_shim")`).
+        # iron's default task group defers all awaits to the end of the sequence,
+        # which would let the fill's BD start before the DDR scratch is valid.
+        _tg_drain = rt.task_group()
+        rt.drain(
+            act_out_post_avgpool_shim.cons(),
+            inp,
+            tap=_post_l1_scratch_tap,
+            wait=True,
+            task_group=_tg_drain,
+            placement=Tile(3, 0),
+        )
+        rt.finish_task_group(_tg_drain)
+        rt.fill(
+            act_out_post_shim_FC.prod(),
+            inp,
+            tap=_post_l1_scratch_tap,
+            placement=Tile(4, 0),
         )
         rt.drain(act_out_of.cons(), out, wait=True, placement=Tile(7, 0))
 
