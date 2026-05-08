@@ -217,7 +217,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       bool sawConstraintMatch = false;
       bool allConstraintMatchesFailedAdjacency = true;
 
-      for (TileID candidate : availability.compTiles) {
+      for (const TileID &candidate : availability.compTiles) {
         // Check partial constraints
         if (col && candidate.col != *col)
           continue;
@@ -234,16 +234,15 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
 
         // Found valid tile. Walk the array in sort order (column-major,
         // ascending row within column) so the first match is the
-        // lowest-row tile in the requested column. Remove from
-        // availability to prevent re-allocation; the previous
+        // lowest-row tile in the requested column. The previous
         // swap-to-front scheme could displace lower-row candidates past
         // a moving cursor and produce non-contiguous row placement when
-        // partial-constraint hints interleaved columns.
+        // partial-constraint hints interleaved columns. The chosen tile
+        // is removed from availability after channel validation, mirroring
+        // the fully-constrained path above.
         placement = candidate;
         break;
       }
-      if (placement)
-        availability.removeTile(*placement, AIETileType::CoreTile);
 
       if (!placement) {
         bool adjacencyWasCause =
@@ -277,6 +276,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
 
       result[logicalTile] = *placement;
+      availability.removeTile(*placement, AIETileType::CoreTile);
     }
 
     if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
