@@ -9,9 +9,8 @@ import numpy as np
 import sys
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out
-from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer
-from aie.utils.config import cxx_header_path
+from aie.iron import Compile, In, Out
+from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer, kernels
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -43,13 +42,14 @@ def vector_reduce_max(
 
     in_ty = np.ndarray[(in_tensor_size,), np.dtype[element_type]]
     mem_ty = np.ndarray[(N,), np.dtype[element_type]]
-    op_ty = np.ndarray[(elems_per_core,), np.dtype[element_type]]
-    # DMA transfers must be 4-byte aligned; pad to the minimum element count
-    # that satisfies this: ceil(4 / itemsize).
-    _dma_align = 4
-    _itemsize = np.dtype(element_type).itemsize
-    out_elems = (_dma_align + _itemsize - 1) // _itemsize
-    out_ty = np.ndarray[(out_elems,), np.dtype[element_type]]
+
+    # Build the reduction kernel up front so its arg types drive the FIFO/Buffer
+    # types — guarantees the example's data layout matches what the kernel
+    # consumes/produces (the bf16 output is padded to 2 elements internally to
+    # satisfy 4-byte shim-DMA alignment).
+    reduce_max_vector = kernels.reduce_max(tile_size=elems_per_core, dtype=element_type)
+    op_ty, out_ty, _ = reduce_max_vector.arg_types()
+    out_elems = out_ty.__args__[0][0]
 
     # Input A and Output C
     of_in = ObjectFifo(mem_ty, name="of_in")
@@ -94,16 +94,6 @@ def vector_reduce_max(
     # --------------------------------------------------------------------------
     # Task each core will run
     # --------------------------------------------------------------------------
-
-    # Use ExternalFunction with a 2-element output buffer (4 bytes) for DMA alignment.
-    # kernels.reduce_max() uses a 1-element output which is only 2 bytes for bfloat16,
-    # violating the 4-byte DMA alignment requirement.
-    reduce_max_vector = ExternalFunction(
-        "reduce_max_vector_bfloat16",
-        source_file=cxx_header_path() + "/aie_kernels/aie2/reduce_max.cc",
-        arg_types=[op_ty, out_ty, np.int32],
-        include_dirs=[cxx_header_path()],
-    )
 
     # final_core_body: runs on the last core in the cascade. This core does not
     # read results from a downstream neighbor — it is the terminal node that

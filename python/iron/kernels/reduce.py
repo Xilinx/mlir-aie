@@ -12,7 +12,7 @@ from ml_dtypes import bfloat16
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import _default_source_path, _make_extern
+from ._common import _default_source_path, _make_extern, _min_dma_aligned_elems
 
 
 def _reduce_kernel(
@@ -26,7 +26,7 @@ def _reduce_kernel(
         )
 
     in_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
-    out_ty = np.ndarray[(1,), np.dtype[np.int32]]
+    out_ty = np.ndarray[(_min_dma_aligned_elems(np.int32),), np.dtype[np.int32]]
     func_variant = "vector" if vectorized else "scalar"
     return _make_extern(
         f"reduce_{op}_{func_variant}",
@@ -98,7 +98,10 @@ def reduce_max(
 
     actual_dtype = bfloat16 if is_bf16 else np.int32
     in_ty = np.ndarray[(tile_size,), np.dtype[actual_dtype]]
-    out_ty = np.ndarray[(1,), np.dtype[actual_dtype]]
+    # The C++ kernel writes one scalar; the output tile must still be at least
+    # 4 bytes for shim-DMA alignment, so bfloat16 callers get out_size=2 even
+    # though they only read the first element.
+    out_ty = np.ndarray[(_min_dma_aligned_elems(actual_dtype),), np.dtype[actual_dtype]]
 
     func_variant = "vector" if vectorized else "scalar"
     suffix = "_bfloat16" if is_bf16 else ""

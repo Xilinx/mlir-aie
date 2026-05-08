@@ -132,6 +132,18 @@ def _require_fixed_tile_size(
         )
 
 
+def _min_dma_aligned_elems(dtype, align: int = 4) -> int:
+    """Return the minimum element count whose byte size is a multiple of *align*.
+
+    The NPU shim DMA requires a 4-byte alignment.  A 1-element output tile is
+    fine for ``int32`` (4 bytes) but only 2 bytes for ``bfloat16`` — kernels
+    whose C++ side writes a single value still need a Python tile type with
+    enough elements to satisfy the alignment.
+    """
+    itemsize = np.dtype(dtype).itemsize
+    return max(1, (align + itemsize - 1) // itemsize)
+
+
 def _default_source_path(filename: str, subdir: str | None = None) -> Path:
     """Return ``_kernel_source(arch, subdir or arch, filename)`` using the active arch."""
     arch = _detect_arch()

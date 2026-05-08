@@ -150,6 +150,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[
             (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
+            # int32 output: 1 element = 4 bytes → already DMA-aligned.
+            (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
         ],
         tile_size_checks=[(dict(tile_size=2048, dtype=np.int32), 2048)],
     ),
@@ -169,6 +171,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[
             (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
+            (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
         ],
         tile_size_checks=[(dict(tile_size=2048, dtype=np.int32), 2048)],
     ),
@@ -205,6 +208,10 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         shape_checks=[
             (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
+            # int32: out is 4-byte aligned with a single element.
+            (dict(tile_size=2048, dtype=np.int32), 1, (1,)),
+            # bfloat16: out must be padded to 2 elements (4 bytes) for DMA alignment.
+            (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
         ],
     ),
     # ----- activation -----
