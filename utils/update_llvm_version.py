@@ -21,9 +21,6 @@ EUDSL_INDEX_URL = "https://llvm.github.io/eudsl/"
 EUDSL_SUBMODULE_URL = (
     "https://api.github.com/repos/llvm/eudsl/contents/third_party/llvm-project?ref={}"
 )
-MLIR_DISTRO_RELEASE_URL = (
-    "https://api.github.com/repos/Xilinx/mlir-aie/releases/tags/mlir-distro"
-)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CLONE_LLVM_SH = REPO_ROOT / "utils" / "clone-llvm.sh"
@@ -223,6 +220,11 @@ def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
     return best_candidate
 
 
+MLIR_DISTRO_RELEASE_URL = (
+    "https://api.github.com/repos/Xilinx/mlir-aie/releases/tags/mlir-distro"
+)
+
+
 def find_wheel_in_distro(commit_hash):
     """Query the mlir-distro GitHub release for a wheel matching this LLVM commit.
 
@@ -239,8 +241,13 @@ def find_wheel_in_distro(commit_hash):
     """
     commit_short = commit_hash[:8]
     # Match base 'mlir-' wheels (not mlir_no_rtti or mlir_native_tools).
+    # The optional `-<digits>(_<digits>)?` segment tolerates the PEP 427 build
+    # tag that mlirDistro.yml stamps on non-canonical (PR / cron) uploads to
+    # keep their asset names unique. Canonical workflow_dispatch wheels in the
+    # mlir-distro release have no build tag, so this remains a noop for them.
     pattern = re.compile(
-        rf"^mlir-(\d+\.\d+\.\d+)\.(\d{{10}})\+{re.escape(commit_short)}-"
+        rf"^mlir-(\d+\.\d+\.\d+)\.(\d{{10}})\+{re.escape(commit_short)}"
+        rf"(?:-\d+(?:_\d+)?)?-py3-none-"
     )
     try:
         # First, get the release ID.
