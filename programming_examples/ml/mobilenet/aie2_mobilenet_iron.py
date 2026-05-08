@@ -53,76 +53,9 @@ with open(data_dir + scale_factor_file) as f:
 
 
 # JSON layout: {"BN<n>": {"conv1x1_1": int, "conv3x3": int, "conv1x1_2": int, "skip_add": int}, ...}
-# Mapping to legacy iron names: _sf1 -> conv1x1_1, _sf2 -> conv3x3, _sf3 -> conv1x1_2, _sfAdd -> skip_add.
-# Use direct dict access (no .get fallbacks) so a missing key fails loud rather than silently
-# substituting a wrong default — that bug just cost us a multi-hour debug.
-def _bn(n, key):
-    return sf[f"BN{n}"][key]
-
-
+# Direct dict access (no .get with default) — a missing key fails loud, never silent.
 init_scaleFactor = sf["INIT"]["conv3x3"]
-
-# bn0 (no conv1x1_1: it's the first stage with no 1x1 reduction before the dw)
-bn0_sf2 = _bn(0, "conv3x3")
-bn0_sf3 = _bn(0, "conv1x1_2")
-bn0_sfAdd = _bn(0, "skip_add")
-
-bn1_sf1 = _bn(1, "conv1x1_1")
-bn1_sf2 = _bn(1, "conv3x3")
-bn1_sf3 = _bn(1, "conv1x1_2")
-bn2_sf1 = _bn(2, "conv1x1_1")
-bn2_sf2 = _bn(2, "conv3x3")
-bn2_sf3 = _bn(2, "conv1x1_2")
-bn2_sfAdd = _bn(2, "skip_add")
-bn3_sf1 = _bn(3, "conv1x1_1")
-bn3_sf2 = _bn(3, "conv3x3")
-bn3_sf3 = _bn(3, "conv1x1_2")
-bn4_sf1 = _bn(4, "conv1x1_1")
-bn4_sf2 = _bn(4, "conv3x3")
-bn4_sf3 = _bn(4, "conv1x1_2")
-bn4_sfAdd = _bn(4, "skip_add")
-bn5_sf1 = _bn(5, "conv1x1_1")
-bn5_sf2 = _bn(5, "conv3x3")
-bn5_sf3 = _bn(5, "conv1x1_2")
-bn5_sfAdd = _bn(5, "skip_add")
-bn6_sf1 = _bn(6, "conv1x1_1")
-bn6_sf2 = _bn(6, "conv3x3")
-bn6_sf3 = _bn(6, "conv1x1_2")
-bn6_sfAdd = _bn(6, "skip_add")
-bn7_sf1 = _bn(7, "conv1x1_1")
-bn7_sf2 = _bn(7, "conv3x3")
-bn7_sf3 = _bn(7, "conv1x1_2")
-bn7_sfAdd = _bn(7, "skip_add")
-bn8_sf1 = _bn(8, "conv1x1_1")
-bn8_sf2 = _bn(8, "conv3x3")
-bn8_sf3 = _bn(8, "conv1x1_2")
-bn8_sfAdd = _bn(8, "skip_add")
-bn9_sf1 = _bn(9, "conv1x1_1")
-bn9_sf2 = _bn(9, "conv3x3")
-bn9_sf3 = _bn(9, "conv1x1_2")
-bn9_sfAdd = _bn(9, "skip_add")
-
-bn10_sf1 = _bn(10, "conv1x1_1")
-bn10_sf2 = _bn(10, "conv3x3")
-bn10_sf3 = _bn(10, "conv1x1_2")
-bn11_sf1 = _bn(11, "conv1x1_1")
-bn11_sf2 = _bn(11, "conv3x3")
-bn11_sf3 = _bn(11, "conv1x1_2")
-bn11_sfAdd = _bn(11, "skip_add")
-bn12_sf1 = _bn(12, "conv1x1_1")
-bn12_sf2 = _bn(12, "conv3x3")
-bn12_sf3 = _bn(12, "conv1x1_2")
-
-bn13_sf1 = _bn(13, "conv1x1_1")
-bn13_sf2 = _bn(13, "conv3x3")
-bn13_sf3 = _bn(13, "conv1x1_2")
-bn13_sfAdd = _bn(13, "skip_add")
-bn14_sf1 = _bn(14, "conv1x1_1")
-bn14_sf2 = _bn(14, "conv3x3")
-bn14_sf3 = _bn(14, "conv1x1_2")
-bn14_sfAdd = _bn(14, "skip_add")
-
-post_sf = sf["POST"]["conv1x1_1"]
+post_sf     = sf["POST"]["conv1x1_1"]
 post_fc1_sf = sf["POST"]["FC1"]
 post_fc2_sf = sf["POST"]["FC2"]
 
@@ -295,79 +228,10 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     # Bottleneck blocks
     # ------------------------------------------------------------------
-    # Regular family: bn0–bn9
-    a_workers, act_bn9_out = regular_bottlenecks(
-        act_init_out,
-        bn0_sf2,
-        bn0_sf3,
-        bn0_sfAdd,  # bn0: 2-layer block, no sf1 (no expand 1x1)
-        bn1_sf1,
-        bn1_sf2,
-        bn1_sf3,
-        bn2_sf1,
-        bn2_sf2,
-        bn2_sf3,
-        bn2_sfAdd,
-        bn3_sf1,
-        bn3_sf2,
-        bn3_sf3,
-        bn4_sf1,
-        bn4_sf2,
-        bn4_sf3,
-        bn4_sfAdd,
-        bn5_sf1,
-        bn5_sf2,
-        bn5_sf3,
-        bn5_sfAdd,
-        bn6_sf1,
-        bn6_sf2,
-        bn6_sf3,
-        # bn6 is stride-2 (no residual skip) — regular.py signature does not
-        # take bn6_scaleAdd. Including it here would shift every subsequent
-        # scale-factor arg by one (caused bn7 relu/dw/skip to read wrong sf).
-        bn7_sf1,
-        bn7_sf2,
-        bn7_sf3,
-        bn7_sfAdd,
-        bn8_sf1,
-        bn8_sf2,
-        bn8_sf3,
-        bn8_sfAdd,
-        bn9_sf1,
-        bn9_sf2,
-        bn9_sf3,
-        bn9_sfAdd,
-        data_dir=data_dir,
-    )
-
-    # Pipeline family: bn10–bn12
-    b_workers, act_bn12_out = pipeline_bottlenecks(
-        act_bn9_out,
-        bn10_sf1,
-        bn10_sf2,
-        bn10_sf3,
-        bn11_sf1,
-        bn11_sf2,
-        bn11_sf3,
-        bn11_sfAdd,
-        bn12_sf1,
-        bn12_sf2,
-        bn12_sf3,
-        data_dir=data_dir,
-    )
-
-    # Cascade family: bn13–bn14
+    a_workers, act_bn9_out  = regular_bottlenecks(act_init_out, sf, data_dir=data_dir)
+    b_workers, act_bn12_out = pipeline_bottlenecks(act_bn9_out, sf, data_dir=data_dir)
     c_workers, act_bn14_out, wts_fifos = cascade_bottlenecks(
-        act_bn12_out,
-        bn13_sf1,
-        bn13_sf2,
-        bn13_sf3,
-        bn13_sfAdd,
-        bn14_sf1,
-        bn14_sf2,
-        bn14_sf3,
-        bn14_sfAdd,
-        data_dir=data_dir,
+        act_bn12_out, sf, data_dir=data_dir
     )
 
     # ------------------------------------------------------------------

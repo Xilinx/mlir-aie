@@ -80,70 +80,16 @@ _BN9_OUT_C = 80
 
 def regular_bottlenecks(
     act_in: ObjectFifo,
-    *scale_factors: int,
+    sf: dict,
+    *,
     data_dir: str,
 ) -> tuple[list, ObjectFifo]:
-    """Implement bn0-bn9 regular bottleneck blocks.
-
-    Args:
-        act_in: Init conv output fifo, type=(112,1,16) uint8
-        *scale_factors: All scale factors for bn0-bn9 in order:
-            bn0_scale2, bn0_scale3, bn0_scaleAdd,
-            bn1_scale1, bn1_scale2, bn1_scale3,
-            bn2_scale1, bn2_scale2, bn2_scale3, bn2_scaleAdd,
-            bn3_scale1, bn3_scale2, bn3_scale3,
-            bn4_scale1, bn4_scale2, bn4_scale3, bn4_scaleAdd,
-            bn5_scale1, bn5_scale2, bn5_scale3, bn5_scaleAdd,
-            bn6_scale1, bn6_scale2, bn6_scale3,
-            bn7_scale1, bn7_scale2, bn7_scale3, bn7_scaleAdd,
-            bn8_scale1, bn8_scale2, bn8_scale3, bn8_scaleAdd,
-            bn9_scale1, bn9_scale2, bn9_scale3, bn9_scaleAdd,
-        data_dir: Directory containing kernel .o files and weight data
-
-    Returns:
-        (workers, act_bn9_out): List of all Workers and the output ObjectFifo
-    """
+    """Build bn0..bn9 from the scale-factor JSON. Returns (workers, act_bn9_out)."""
     workers = []
 
-    # Unpack scale factors
-    (
-        bn0_scale2,
-        bn0_scale3,
-        bn0_scaleAdd,
-        bn1_scale1,
-        bn1_scale2,
-        bn1_scale3,
-        bn2_scale1,
-        bn2_scale2,
-        bn2_scale3,
-        bn2_scaleAdd,
-        bn3_scale1,
-        bn3_scale2,
-        bn3_scale3,
-        bn4_scale1,
-        bn4_scale2,
-        bn4_scale3,
-        bn4_scaleAdd,
-        bn5_scale1,
-        bn5_scale2,
-        bn5_scale3,
-        bn5_scaleAdd,
-        bn6_scale1,
-        bn6_scale2,
-        bn6_scale3,
-        bn7_scale1,
-        bn7_scale2,
-        bn7_scale3,
-        bn7_scaleAdd,
-        bn8_scale1,
-        bn8_scale2,
-        bn8_scale3,
-        bn8_scaleAdd,
-        bn9_scale1,
-        bn9_scale2,
-        bn9_scale3,
-        bn9_scaleAdd,
-    ) = scale_factors
+    def s(n, *keys):
+        """Tuple of scale factors for BN<n> in the order requested."""
+        return tuple(sf[f"BN{n}"][k] for k in keys)
 
     # -------------------------------------------------------------------
     # Helpers
@@ -667,7 +613,7 @@ def regular_bottlenecks(
     # bn0: stride-1 DW-3x3 + 1x1-skip (2-layer, unique to first stage)
     act_bn0_bn1, w = _make_2layer_skip_block(
         "bn0", act_in, _BN0_IN_W, _BN0_IN_H, _BN0_IN_C, _BN0_DW_CH, _BN0_OUT_C,
-        scales=(bn0_scale2, bn0_scale3), scale_add=bn0_scaleAdd,
+        scales=s(0, "conv3x3", "conv1x1_2"), scale_add=sf["BN0"]["skip_add"],
         tile=Tile(0, 3),
     )
     workers.append(w)
@@ -676,7 +622,7 @@ def regular_bottlenecks(
     # bn1: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
     act_bn1_bn2, w = _make_3layer_block(
         "bn1", act_bn0_bn1, _BN1_IN_W, _BN1_IN_H, _BN1_IN_C, _BN1_DW_CH, _BN1_OUT_C,
-        stride=2, scales=(bn1_scale1, bn1_scale2, bn1_scale3), scale_add=None,
+        stride=2, scales=s(1, "conv1x1_1", "conv3x3", "conv1x1_2"), scale_add=None,
         tile=Tile(0, 4),
     )
     workers.append(w)
@@ -685,7 +631,7 @@ def regular_bottlenecks(
     # bn2: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
     act_bn2_bn3, w = _make_3layer_block(
         "bn2", act_bn1_bn2, _BN2_IN_W, _BN2_IN_H, _BN2_IN_C, _BN2_DW_CH, _BN2_OUT_C,
-        stride=1, scales=(bn2_scale1, bn2_scale2, bn2_scale3), scale_add=bn2_scaleAdd,
+        stride=1, scales=s(2, "conv1x1_1", "conv3x3", "conv1x1_2"), scale_add=sf["BN2"]["skip_add"],
         tile=Tile(0, 5),
     )
     workers.append(w)
@@ -694,7 +640,7 @@ def regular_bottlenecks(
     # bn3: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
     act_bn3_bn4, w = _make_3layer_block(
         "bn3", act_bn2_bn3, _BN3_IN_W, _BN3_IN_H, _BN3_IN_C, _BN3_DW_CH, _BN3_OUT_C,
-        stride=2, scales=(bn3_scale1, bn3_scale2, bn3_scale3), scale_add=None,
+        stride=2, scales=s(3, "conv1x1_1", "conv3x3", "conv1x1_2"), scale_add=None,
         tile=Tile(1, 3),
     )
     workers.append(w)
@@ -705,8 +651,8 @@ def regular_bottlenecks(
         ("bn4", "bn5"), "bn4_5_chain.txt", act_bn3_bn4,
         _BN45_IN_W, _BN45_IN_H, _BN45_IN_C,
         _BN4_DW_CH, _BN4_OUT_C, _BN5_DW_CH, _BN5_OUT_C,
-        scales_a=(bn4_scale1, bn4_scale2, bn4_scale3, bn4_scaleAdd),
-        scales_b=(bn5_scale1, bn5_scale2, bn5_scale3, bn5_scaleAdd),
+        scales_a=s(4, "conv1x1_1", "conv3x3", "conv1x1_2", "skip_add"),
+        scales_b=s(5, "conv1x1_1", "conv3x3", "conv1x1_2", "skip_add"),
         compute_tile=Tile(1, 2),
         alloc_tile=Tile(0, 2),  # init tile (adjacent shared memory)
     )
@@ -716,7 +662,7 @@ def regular_bottlenecks(
     # bn6: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
     act_bn6_bn7, w = _make_3layer_block(
         "bn6", act_bn5_bn6, _BN6_IN_W, _BN6_IN_H, _BN6_IN_C, _BN6_DW_CH, _BN6_OUT_C,
-        stride=2, scales=(bn6_scale1, bn6_scale2, bn6_scale3), scale_add=None,
+        stride=2, scales=s(6, "conv1x1_1", "conv3x3", "conv1x1_2"), scale_add=None,
         tile=Tile(1, 4),
     )
     workers.append(w)
@@ -725,7 +671,7 @@ def regular_bottlenecks(
     # bn7: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
     act_bn7_bn8, w = _make_3layer_block(
         "bn7", act_bn6_bn7, _BN7_IN_W, _BN7_IN_H, _BN7_IN_C, _BN7_DW_CH, _BN7_OUT_C,
-        stride=1, scales=(bn7_scale1, bn7_scale2, bn7_scale3), scale_add=bn7_scaleAdd,
+        stride=1, scales=s(7, "conv1x1_1", "conv3x3", "conv1x1_2"), scale_add=sf["BN7"]["skip_add"],
         tile=Tile(2, 3),
     )
     workers.append(w)
@@ -736,8 +682,8 @@ def regular_bottlenecks(
         ("bn8", "bn9"), "bn8_9_chain.txt", act_bn7_bn8,
         _BN89_IN_W, _BN89_IN_H, _BN89_IN_C,
         _BN8_DW_CH, _BN8_OUT_C, _BN9_DW_CH, _BN9_OUT_C,
-        scales_a=(bn8_scale1, bn8_scale2, bn8_scale3, bn8_scaleAdd),
-        scales_b=(bn9_scale1, bn9_scale2, bn9_scale3, bn9_scaleAdd),
+        scales_a=s(8, "conv1x1_1", "conv3x3", "conv1x1_2", "skip_add"),
+        scales_b=s(9, "conv1x1_1", "conv3x3", "conv1x1_2", "skip_add"),
         compute_tile=Tile(3, 3),
         alloc_tile=Tile(3, 4),  # bn11 L1 tile (adjacent shared memory)
         out_prod_depth=1,       # bn89 boundary: prod side depth=1 (cons inherits 2)

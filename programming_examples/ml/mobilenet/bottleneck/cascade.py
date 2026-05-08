@@ -117,7 +117,8 @@ def _make_wts_fifo(wts_ty, depth, name):
 
 def cascade_bottlenecks(
     act_in: ObjectFifo,
-    *scale_factors: int,
+    sf: dict,
+    *,
     data_dir: str,
 ) -> tuple:
     """Implement bn13 and bn14 cascade bottleneck blocks.
@@ -148,18 +149,14 @@ def cascade_bottlenecks(
     discovered automatically by Program.resolve().
     """
     workers = []
-
-    # RTP buffers (mirror lowlevel write32 ops)
-    (
-        bn13_s1,
-        bn13_s2,
-        bn13_s3,
-        bn13_sAdd,
-        bn14_s1,
-        bn14_s2,
-        bn14_s3,
-        bn14_sAdd,
-    ) = scale_factors
+    bn13_s1, bn13_s2, bn13_s3, bn13_sAdd = (
+        sf["BN13"]["conv1x1_1"], sf["BN13"]["conv3x3"],
+        sf["BN13"]["conv1x1_2"], sf["BN13"]["skip_add"],
+    )
+    bn14_s1, bn14_s2, bn14_s3, bn14_sAdd = (
+        sf["BN14"]["conv1x1_1"], sf["BN14"]["conv3x3"],
+        sf["BN14"]["conv1x1_2"], sf["BN14"]["skip_add"],
+    )
 
     # ========================================================================
     # Shared worker function bodies

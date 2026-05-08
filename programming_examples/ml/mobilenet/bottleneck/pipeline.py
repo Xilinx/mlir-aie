@@ -163,31 +163,22 @@ def _make_3tile_pipeline_block(
 
 def pipeline_bottlenecks(
     act_in: ObjectFifo,
-    *scale_factors: int,
+    sf: dict,
+    *,
     data_dir: str,
 ) -> tuple:
-    """Returns (workers, act_bn12_out)
-
-    scale_factors order:
-        bn10_s1, bn10_s2, bn10_s3,
-        bn11_s1, bn11_s2, bn11_s3, bn11_sAdd,
-        bn12_s1, bn12_s2, bn12_s3
-    """
+    """Build bn10..bn12 from the scale-factor JSON. Returns (workers, act_bn12_out)."""
     workers = []
-
-    # RTP buffers (mirror lowlevel write32 ops)
-    (
-        bn10_s1,
-        bn10_s2,
-        bn10_s3,
-        bn11_s1,
-        bn11_s2,
-        bn11_s3,
-        bn11_sAdd,
-        bn12_s1,
-        bn12_s2,
-        bn12_s3,
-    ) = scale_factors
+    bn10_s1, bn10_s2, bn10_s3 = (
+        sf["BN10"]["conv1x1_1"], sf["BN10"]["conv3x3"], sf["BN10"]["conv1x1_2"],
+    )
+    bn11_s1, bn11_s2, bn11_s3, bn11_sAdd = (
+        sf["BN11"]["conv1x1_1"], sf["BN11"]["conv3x3"],
+        sf["BN11"]["conv1x1_2"], sf["BN11"]["skip_add"],
+    )
+    bn12_s1, bn12_s2, bn12_s3 = (
+        sf["BN12"]["conv1x1_1"], sf["BN12"]["conv3x3"], sf["BN12"]["conv1x1_2"],
+    )
 
     # ---- bn10 ----
     # b10_InW=14, InC=80, OutC1=480, OutC3=112; stride-1 DW; no skip.
