@@ -110,6 +110,62 @@ def _require_wts(path, expected_size):
 
 
 # ---------------------------------------------------------------------------
+# Tile placement — single source of truth.
+#
+# Compute tiles use rows 2-5 of columns 0-7 (Strix layout). MemTiles live on
+# row 1; shim DMA endpoints on row 0. Adjacent rows in the same column share
+# memory, which we exploit for fused-pair self-loop fifos and L2→L3 handoffs.
+#
+# Re-targeting the design = editing this dict (and only this dict).
+# ---------------------------------------------------------------------------
+PLACEMENT = {
+    "init":   Tile(0, 2),
+    "post_l1":      {"compute":  Tile(6, 4), "memtile":  Tile(4, 1)},
+    "post_l2": {
+        "fc1_memtiles": [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)],
+        "fc2_memtiles": [Tile(1, 1), Tile(3, 1), Tile(5, 1), Tile(7, 1)],
+        "compute":      [Tile(6, 3), Tile(7, 4), Tile(7, 3), Tile(7, 2)],
+        "join_memtile": Tile(6, 1),
+    },
+    "shim": {
+        "input":              Tile(0, 0),
+        "wts":                [Tile(c, 0) for c in (4, 5, 6, 7)],
+        "scratch_drain":      Tile(3, 0),
+        "fc_fill":            Tile(4, 0),
+        "fc_drain":           Tile(7, 0),
+    },
+    "regular": {
+        "bn0":     Tile(0, 3),
+        "bn1":     Tile(0, 4),
+        "bn2":     Tile(0, 5),
+        "bn3":     Tile(1, 3),
+        "bn4_5":   {"compute": Tile(1, 2), "alloc": Tile(0, 2)},  # alloc on init tile
+        "bn6":     Tile(1, 4),
+        "bn7":     Tile(2, 3),
+        "bn8_9":   {"compute": Tile(3, 3), "alloc": Tile(3, 4)},  # alloc on bn11 L1 tile
+    },
+    "pipeline": {
+        "bn10":   {"l1": Tile(1, 5), "l2": Tile(2, 4), "l3": Tile(2, 5)},
+        "bn11":   {"l1": Tile(3, 2), "l2": Tile(3, 4), "l3": Tile(2, 2),
+                   "mem_skip": Tile(2, 1)},
+        "bn12":   {"l1": Tile(3, 5), "l23": Tile(4, 4)},
+    },
+    "cascade": {
+        "bn13": {
+            "l1_put": Tile(4, 5), "l1_get": Tile(5, 5), "l2": Tile(5, 4),
+            "l3_put": Tile(4, 3), "l3_get": Tile(5, 3),
+            "mem_l1": Tile(0, 1), "mem_l3": Tile(1, 1), "mem_skip": Tile(5, 1),
+        },
+        "bn14": {
+            "l1_put": Tile(6, 5), "l1_get": Tile(7, 5), "l2": Tile(6, 2),
+            "l3_put": Tile(4, 2), "l3_get": Tile(5, 2),
+            "mem_l1": Tile(2, 1), "mem_l3": Tile(3, 1), "mem_skip": Tile(7, 1),
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Design top-level function
 # ---------------------------------------------------------------------------
 def mobilenet_iron():
@@ -221,16 +277,20 @@ def mobilenet_iron():
             init_OutC,
             init_scaleFactor,
         ],
-        tile=Tile(0, 2),
+        tile=PLACEMENT["init"],
     )
 
     # ------------------------------------------------------------------
     # Bottleneck blocks
     # ------------------------------------------------------------------
-    a_workers, act_bn9_out  = regular_bottlenecks(act_init_out, sf, data_dir=data_dir)
-    b_workers, act_bn12_out = pipeline_bottlenecks(act_bn9_out, sf, data_dir=data_dir)
+    a_workers, act_bn9_out  = regular_bottlenecks(
+        act_init_out, sf, placement=PLACEMENT["regular"], data_dir=data_dir
+    )
+    b_workers, act_bn12_out = pipeline_bottlenecks(
+        act_bn9_out, sf, placement=PLACEMENT["pipeline"], data_dir=data_dir
+    )
     c_workers, act_bn14_out, wts_fifos = cascade_bottlenecks(
-        act_bn12_out, sf, data_dir=data_dir
+        act_bn12_out, sf, placement=PLACEMENT["cascade"], data_dir=data_dir
     )
 
     # ------------------------------------------------------------------
@@ -254,8 +314,8 @@ def mobilenet_iron():
         name="post_L1_wts",
         recv_type=_i8((post_l1_wts_chunk,)),
         repeat_count=PostRepeatChannels,
-        memtile_placement=Tile(4, 1),
-        compute_placement=Tile(6, 4),
+        memtile_placement=PLACEMENT["post_l1"]["memtile"],
+        compute_placement=PLACEMENT["post_l1"]["compute"],
         mem_lock_id=2,
         comp_lock_id=0,
     )
@@ -332,7 +392,7 @@ def mobilenet_iron():
             post_L2_InC,   # outC_padd=1280 (next layer's input width)
             post_sf,
         ],
-        tile=Tile(6, 4),
+        tile=PLACEMENT["post_l1"]["compute"],
         # dynamic_objfifo_lowering keeps the inner loop intact instead of
         # unrolling for ping-pong; kernel uses runtime modulo indexing.
         # Without this attribute, the static objfifo lowering UNROLLS the
@@ -363,14 +423,9 @@ def mobilenet_iron():
         depth=2,
     )
 
-    # FC weights: ping-pong design matching original.
-    # Each PostL2Tile gets FC1 (409,600 bytes) and FC2 (409,600 bytes) on separate MemTiles.
-    # Compute tile receive buffer: 10,240 bytes = 1/40 of one FC half at a time.
-    # Original assignments:
-    #   PostL2Tile_1(6,3): FC1 on MemTile(0,1), FC2 on MemTile(1,1), flow from MemTile(1,1)
-    #   PostL2Tile_2(7,4): FC1 on MemTile(2,1), FC2 on MemTile(3,1), flow from MemTile(3,1)
-    #   PostL2Tile_3(7,3): FC1 on MemTile(4,1), FC2 on MemTile(5,1), flow from MemTile(5,1)
-    #   PostL2Tile_4(7,2): FC1 on MemTile(6,1), FC2 on MemTile(7,1), flow from MemTile(7,1)
+    # FC weights: ping-pong across two adjacent MemTiles per compute tile (FC1
+    # on the even-column MemTile, FC2 on the odd-column MemTile that hosts the
+    # MM2S DMA — keeps DMA off (4,1) which post_L1 owns).
     PostOutputSplitL2 = 40
     fc_full_per_tile = post_L2_InC * fc_out_per_tile        # 409600 B per FC half
     fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2  # 10240 B on compute
@@ -382,12 +437,12 @@ def mobilenet_iron():
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
-        tile=Tile(6, 1),
+        tile=PLACEMENT["post_l2"]["join_memtile"],
     )
 
-    fc1_memtiles = [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)]  # FC1 weight buffers
-    fc2_memtiles = [Tile(1, 1), Tile(3, 1), Tile(5, 1), Tile(7, 1)]  # FC2 weight buffers + DMA
-    fc_comptiles = [Tile(6, 3), Tile(7, 4), Tile(7, 3), Tile(7, 2)]  # PostL2 compute tiles
+    fc1_memtiles = PLACEMENT["post_l2"]["fc1_memtiles"]
+    fc2_memtiles = PLACEMENT["post_l2"]["fc2_memtiles"]
+    fc_comptiles = PLACEMENT["post_l2"]["compute"]
 
     def _u16(shape):
         return np.ndarray[shape, np.dtype[np.uint16]]
@@ -519,10 +574,11 @@ def mobilenet_iron():
         # act_in and bn13/14 have consumed their weights, so freeing all of
         # those at finish_task_group() is safe (causal closure).
         tg1 = rt.task_group()
-        rt.fill(act_in.prod(depth=1), inp, tile=Tile(0, 0), task_group=tg1)
+        rt.fill(act_in.prod(depth=1), inp, tile=PLACEMENT["shim"]["input"],
+                task_group=tg1)
         # bn13/14 L1+L3 weight chunks from the combined cascade buffer
         for fifo, off, sz, shim in zip(
-            wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, [Tile(c, 0) for c in (4, 5, 6, 7)]
+            wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, PLACEMENT["shim"]["wts"]
         ):
             rt.fill(fifo.prod(), cascade_wts, _wts_tap(off, sz), tile=shim, task_group=tg1)
         # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
@@ -545,7 +601,7 @@ def mobilenet_iron():
             tap=_post_l1_scratch_tap,
             wait=True,
             task_group=tg1,
-            tile=Tile(3, 0),
+            tile=PLACEMENT["shim"]["scratch_drain"],
         )
         rt.finish_task_group(tg1)
 
@@ -559,7 +615,7 @@ def mobilenet_iron():
             act_out_post_shim_FC.prod(),
             inp,
             tap=_post_l1_scratch_tap,
-            tile=Tile(4, 0),
+            tile=PLACEMENT["shim"]["fc_fill"],
             task_group=tg2,
         )
         _post_fc_out_tap = TensorAccessPattern(
@@ -574,7 +630,7 @@ def mobilenet_iron():
             tap=_post_fc_out_tap,
             wait=True,
             task_group=tg2,
-            tile=Tile(7, 0),
+            tile=PLACEMENT["shim"]["fc_drain"],
         )
         rt.finish_task_group(tg2)
 
@@ -584,14 +640,14 @@ def mobilenet_iron():
             act_out_post_shim_FC.prod(),
             inp,
             tap=_post_fc_out_tap,
-            tile=Tile(4, 0),
+            tile=PLACEMENT["shim"]["fc_fill"],
             task_group=tg3,
         )
         rt.drain(
             act_out_of.cons(),
             out,
             wait=True,
-            tile=Tile(7, 0),
+            tile=PLACEMENT["shim"]["fc_drain"],
             task_group=tg3,
         )
         rt.finish_task_group(tg3)

@@ -20,11 +20,7 @@ Weight delivery:
   L1 and L3 split weights are streamed via ObjectFifos (Shim → MemTile → tiles).
   L2 DW weights are static Buffers (baked into the tile at compile time).
 
-Tile placements (col, row):
-  bn13: l1_put=Tile(4,5), l1_get=Tile(5,5), l2=Tile(5,4),
-        l3_put=Tile(4,3), l3_get=Tile(5,3)
-  bn14: l1_put=Tile(6,5), l1_get=Tile(7,5), l2=Tile(6,2),
-        l3_put=Tile(4,2), l3_get=Tile(5,2)
+Tile placements live in PLACEMENT["cascade"] in aie2_mobilenet_iron.py.
 """
 
 import numpy as np
@@ -104,6 +100,7 @@ def cascade_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
+    placement: dict,
     data_dir: str,
 ) -> tuple:
     """Build bn13 and bn14 from the scale-factor JSON.
@@ -197,77 +194,26 @@ def cascade_bottlenecks(
 
     # L2 DW: depthwise 3x3 producing two split-channel output rows.
     def l2_fn(of_in, of_out_first, of_out_second, wts_buf, k, InW, OutC2, sf2):
-        # preamble: top row (zero-pad above)
-        rows = of_in.acquire(2)
-        row_out_a = of_out_first.acquire(1)
-        row_out_b = of_out_second.acquire(1)
-        k(
-            rows[0],
-            rows[0],
-            rows[1],
-            wts_buf,
-            row_out_a,
-            row_out_b,
-            InW,
-            1,
-            OutC2,
-            3,
-            3,
-            0,
-            sf2,
-            0,
-        )
-        of_out_first.release(1)
-        of_out_second.release(1)
-
-        # middle rows
-        for _ in range_(_InH - 2):
-            rows = of_in.acquire(3)
+        def _dw(top, mid, bot, border):
             row_out_a = of_out_first.acquire(1)
             row_out_b = of_out_second.acquire(1)
-            k(
-                rows[0],
-                rows[1],
-                rows[2],
-                wts_buf,
-                row_out_a,
-                row_out_b,
-                InW,
-                1,
-                OutC2,
-                3,
-                3,
-                1,
-                sf2,
-                0,
-            )
-            of_in.release(1)
+            k(top, mid, bot, wts_buf, row_out_a, row_out_b,
+              InW, 1, OutC2, 3, 3, border, sf2, 0)
             of_out_first.release(1)
             of_out_second.release(1)
 
-        # last row (zero-pad below)
+        # ── preamble: top row (zero-pad above) ──
         rows = of_in.acquire(2)
-        row_out_a = of_out_first.acquire(1)
-        row_out_b = of_out_second.acquire(1)
-        k(
-            rows[0],
-            rows[1],
-            rows[1],
-            wts_buf,
-            row_out_a,
-            row_out_b,
-            InW,
-            1,
-            OutC2,
-            3,
-            3,
-            2,
-            sf2,
-            0,
-        )
+        _dw(rows[0], rows[0], rows[1], border=0)
+        # ── middle rows ──
+        for _ in range_(_InH - 2):
+            rows = of_in.acquire(3)
+            _dw(rows[0], rows[1], rows[2], border=1)
+            of_in.release(1)
+        # ── postamble: last row (zero-pad below) ──
+        rows = of_in.acquire(2)
+        _dw(rows[0], rows[1], rows[1], border=2)
         of_in.release(2)
-        of_out_first.release(1)
-        of_out_second.release(1)
 
     # L3 PUT: reads first DW split half, puts partial projection result onto cascade.
     def l3_put_fn(
@@ -433,6 +379,8 @@ def cascade_bottlenecks(
         # Pre-establish .cons() ordering to match expected MLIR placement.
         l1_put_cons = act_in.cons()
         l1_get_cons = act_in.cons()
+        # depth=6 on the cons handle lets the skip path buffer enough rows to
+        # outlive the 5-tile cascade pipeline lag (l1_put → l1_get → l2 → l3_put → l3_get).
         skip_fifo = skip_in.cons(depth=6).forward(depth=2, tile=tiles["mem_skip"])
 
         bws = [
@@ -482,11 +430,7 @@ def cascade_bottlenecks(
         l3_get_sym="bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
         act_in=act_in, skip_in=act_in,
         scales=(bn13_s1, bn13_s2, bn13_s3, bn13_sAdd),
-        tiles={
-            "l1_put": Tile(4, 5), "l1_get": Tile(5, 5), "l2": Tile(5, 4),
-            "l3_put": Tile(4, 3), "l3_get": Tile(5, 3),
-            "mem_l1": Tile(0, 1), "mem_l3": Tile(1, 1), "mem_skip": Tile(5, 1),
-        },
+        tiles=placement["bn13"],
     )
     workers += bn13_workers
 
@@ -496,11 +440,7 @@ def cascade_bottlenecks(
         l3_get_sym="bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
         act_in=act_bn13_out, skip_in=act_bn13_out,
         scales=(bn14_s1, bn14_s2, bn14_s3, bn14_sAdd),
-        tiles={
-            "l1_put": Tile(6, 5), "l1_get": Tile(7, 5), "l2": Tile(6, 2),
-            "l3_put": Tile(4, 2), "l3_get": Tile(5, 2),
-            "mem_l1": Tile(2, 1), "mem_l3": Tile(3, 1), "mem_skip": Tile(7, 1),
-        },
+        tiles=placement["bn14"],
     )
     workers += bn14_workers
 

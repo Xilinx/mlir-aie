@@ -4,6 +4,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
+"""Pipeline bottleneck blocks (bn10-bn12) for MobileNet V3 IRON API rewrite.
+
+bn10 and bn11 are 3-tile pipelines (1x1-relu → DW3x3 → 1x1[-skip]); bn11 adds
+an element-wise skip-add fused into L3. bn12 is a 2-tile design with a fused
+DW-stride2 + 1x1 worker on the second tile (interleaved per output row via a
+depth-1 self-loop fifo).
+"""
 
 import numpy as np
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
@@ -143,9 +150,14 @@ def pipeline_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
+    placement: dict,
     data_dir: str,
 ) -> tuple:
-    """Build bn10..bn12 from the scale-factor JSON. Returns (workers, act_bn12_out)."""
+    """Build bn10..bn12 from the scale-factor JSON.
+
+    `placement` keys: bn10/bn11 (each with .l1/.l2/.l3, bn11 also .mem_skip),
+    bn12 (with .l1/.l23). Returns (workers, act_bn12_out).
+    """
     workers = []
     bn10_s1, bn10_s2, bn10_s3 = (
         sf["BN10"]["conv1x1_1"], sf["BN10"]["conv3x3"], sf["BN10"]["conv1x1_2"],
@@ -164,7 +176,7 @@ def pipeline_bottlenecks(
         "bn10", act_in, in_w=14, in_h=14, in_c=80,
         l1_out_c=480, l2_out_c=480, l3_out_c=112,
         scales=(bn10_s1, bn10_s2, bn10_s3),
-        tiles={"l1": Tile(1, 5), "l2": Tile(2, 4), "l3": Tile(2, 5)},
+        tiles=placement["bn10"],
         data_dir=data_dir,
     )
     workers += ws
@@ -172,12 +184,16 @@ def pipeline_bottlenecks(
     # ---- bn11 (with skip) ----
     # Same shape as bn10 but L3 fuses 1x1 with element-wise skip add. The skip
     # path forwards bn10's output through a MemTile so L3 can read it directly.
-    bn11_skip_of = act_bn10_out.cons(depth=6).forward(depth=2, tile=Tile(2, 1))
+    # depth=6 on the cons handle lets the skip path buffer enough rows to
+    # outlive bn11's 3-tile L1→L2→L3 pipeline lag (1 + 1 + ping-pong slack).
+    bn11_skip_of = act_bn10_out.cons(depth=6).forward(
+        depth=2, tile=placement["bn11"]["mem_skip"]
+    )
     act_bn11_out, ws = _make_3tile_pipeline_block(
         "bn11", act_bn10_out, in_w=14, in_h=14, in_c=112,
         l1_out_c=336, l2_out_c=336, l3_out_c=112,
         scales=(bn11_s1, bn11_s2, bn11_s3),
-        tiles={"l1": Tile(3, 2), "l2": Tile(3, 4), "l3": Tile(2, 2)},
+        tiles={k: placement["bn11"][k] for k in ("l1", "l2", "l3")},
         data_dir=data_dir,
         skip_in=bn11_skip_of, scale_add=bn11_sAdd,
     )
@@ -284,11 +300,11 @@ def pipeline_bottlenecks(
     workers += [
         Worker(bn12_l1_fn,
                [act_bn11_out.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1],
-               tile=Tile(3, 5)),
+               tile=placement["bn12"]["l1"]),
         Worker(bn12_l23_fn,
                [bn12_of_12.cons(), bn12_dw_tmp_of.prod(), bn12_dw_tmp_of.cons(),
                 act_bn12_out.prod(), bn12_l23_wts, k_bn12_dw, k_bn12_pw],
-               tile=Tile(4, 4)),
+               tile=placement["bn12"]["l23"]),
     ]
 
     return workers, act_bn12_out
