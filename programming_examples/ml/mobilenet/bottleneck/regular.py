@@ -28,70 +28,54 @@ _BN0_OUT_C = 16
 #   input  (112,1,16) int8
 #   output (56,1,24) int8
 _BN1_IN_W, _BN1_IN_H, _BN1_IN_C = 112, 112, 16
-_BN1_DW_STRIDE = 2
 _BN1_DW_CH = 64
 _BN1_OUT_C = 24
-_BN1_OUT_W = _BN1_IN_W // _BN1_DW_STRIDE  # 56
 
 # bn2: 3-layer (1x1-relu -> DW-stride1 3x3 -> 1x1-skip)
 #   input  (56,1,24) int8
 #   output (56,1,24) int8
 _BN2_IN_W, _BN2_IN_H, _BN2_IN_C = 56, 56, 24
-_BN2_DW_STRIDE = 1
 _BN2_DW_CH = 72
 _BN2_OUT_C = 24
-_BN2_OUT_W = _BN2_IN_W // _BN2_DW_STRIDE  # 56
 
 # bn3: 3-layer (1x1-relu -> DW-stride2 3x3 -> 1x1, no skip)
 #   input  (56,1,24) int8
 #   output (28,1,40) int8
 _BN3_IN_W, _BN3_IN_H, _BN3_IN_C = 56, 56, 24
-_BN3_DW_STRIDE = 2
 _BN3_DW_CH = 72
 _BN3_OUT_C = 40
-_BN3_OUT_W = _BN3_IN_W // _BN3_DW_STRIDE  # 28
 
 # bn4+bn5 (fused pair, same tile): both stride-1, with skip
 #   input  (28,1,40) int8
 #   output (28,1,40) int8
 _BN45_IN_W, _BN45_IN_H, _BN45_IN_C = 28, 28, 40
-_BN4_DW_STRIDE = 1
 _BN4_DW_CH = 120
 _BN4_OUT_C = 40
-_BN5_DW_STRIDE = 1
 _BN5_DW_CH = 120
 _BN5_OUT_C = 40
-_BN45_OUT_W = _BN45_IN_W  # 28
 
 # bn6: 3-layer (1x1-relu -> DW-stride2 3x3 -> 1x1, no skip)
 #   input  (28,1,40) int8
 #   output (14,1,80) int8
 _BN6_IN_W, _BN6_IN_H, _BN6_IN_C = 28, 28, 40
-_BN6_DW_STRIDE = 2
 _BN6_DW_CH = 240
 _BN6_OUT_C = 80
-_BN6_OUT_W = _BN6_IN_W // _BN6_DW_STRIDE  # 14
 
 # bn7: 3-layer (1x1-relu -> DW-stride1 3x3 -> 1x1-skip)
 #   input  (14,1,80) int8
 #   output (14,1,80) int8
 _BN7_IN_W, _BN7_IN_H, _BN7_IN_C = 14, 14, 80
-_BN7_DW_STRIDE = 1
 _BN7_DW_CH = 200
 _BN7_OUT_C = 80
-_BN7_OUT_W = _BN7_IN_W  # 14
 
 # bn8+bn9 (fused pair, same tile): both stride-1, with skip
 #   input  (14,1,80) int8
 #   output (14,1,80) int8
 _BN89_IN_W, _BN89_IN_H, _BN89_IN_C = 14, 14, 80
-_BN8_DW_STRIDE = 1
 _BN8_DW_CH = 184
 _BN8_OUT_C = 80
-_BN9_DW_STRIDE = 1
 _BN9_DW_CH = 184
 _BN9_OUT_C = 80
-_BN89_OUT_W = _BN89_IN_W  # 14
 
 
 def regular_bottlenecks(
@@ -162,2642 +146,603 @@ def regular_bottlenecks(
     ) = scale_factors
 
     # -------------------------------------------------------------------
-    # Helper: load weight numpy array from a text file
+    # Helpers
     # -------------------------------------------------------------------
     def _load_wts(filename):
         return np.fromfile(os.path.join(data_dir, filename), sep=",", dtype=np.int8)
 
-    # ===================================================================
-    # bn0: stride-1 DW-3x3 + 1x1-skip (2-layer, unique structure)
-    #   Layer2 (DW 3x3 stride-1): in=(112,1,16) uint8 -> out=(112,1,16) uint8
-    #   Layer3 (1x1 skip):        in=(112,1,16) uint8 -> out=(112,1,16) int8
-    # Weights: bn0_chain.txt  layout: [3*3*16, 1*1*16*16]
-    # ===================================================================
-    _bn0_wts_size = 3 * 3 * _BN0_DW_CH * 1 + 1 * 1 * _BN0_DW_CH * _BN0_OUT_C
-    bn0_wts_arr = _load_wts("bn0_chain.txt")
-    bn0_wts = Buffer(
-        np.ndarray[(_bn0_wts_size,), np.dtype[np.int8]], initial_value=bn0_wts_arr)
+    def _i8(shape):
+        return np.ndarray[shape, np.dtype[np.int8]]
 
-    # Kernel definitions for bn0
-    bn0_dw_ty_in = np.ndarray[(_BN0_IN_W, 1, _BN0_IN_C), np.dtype[np.uint8]]
-    bn0_dw_ty_out = np.ndarray[(_BN0_IN_W, 1, _BN0_DW_CH), np.dtype[np.uint8]]
-    bn0_dw_wts_ty = np.ndarray[(3 * 3 * _BN0_DW_CH * 1,), np.dtype[np.int8]]
-    bn0_skip_ty_out = np.ndarray[(_BN0_IN_W, 1, _BN0_OUT_C), np.dtype[np.int8]]
-    bn0_skip_wts_ty = np.ndarray[(1 * 1 * _BN0_DW_CH * _BN0_OUT_C,), np.dtype[np.int8]]
+    def _u8(shape):
+        return np.ndarray[shape, np.dtype[np.uint8]]
 
-    bn0_conv2dk3_dw = Kernel(
-        "bn0_conv2dk3_dw_stride1_relu_ui8_ui8",
-        "bn0_conv2dk3_dw_stride1.o",
-        [
-            bn0_dw_ty_in,
-            bn0_dw_ty_in,
-            bn0_dw_ty_in,
-            bn0_dw_wts_ty,
-            bn0_dw_ty_out,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn0_conv2dk1_skip = Kernel(
-        "bn0_conv2dk1_skip_ui8_ui8_i8",
-        "bn0_conv2dk1_skipui8.o",
-        [
-            bn0_dw_ty_out,
-            bn0_skip_wts_ty,
-            bn0_skip_ty_out,
-            bn0_dw_ty_in,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-
-    # bn0 output fifo -> bn1
-    act_bn0_bn1 = ObjectFifo(
-        np.ndarray[(_BN0_IN_W, 1, _BN0_OUT_C), np.dtype[np.int8]],
-        depth=2,
-    )
-
-    # Internal self-loop fifo for bn0: DW output row → 1x1 input row (same tile)
-    bn0_act_2_3 = ObjectFifo(
-        np.ndarray[(_BN0_IN_W, 1, _BN0_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-    )
-
-    def bn0_worker_fn(
-        act_in_fifo,
-        wts_buf,
-        act_out_fifo,
-        act_23_prod,  # bn0_act_2_3.prod()
-        act_23_cons,  # bn0_act_2_3.cons()
-        f_dw,
-        f_skip,
-        in_w,
-        in_h,
-        in_c,
-        dw_c,
-        out_c,
-        scale2,
-        scale3,
-        scale_add,
+    def _make_3layer_block(
+        name, act_in, in_w, in_h, in_c, dw_ch, out_c,
+        stride, scales, scale_add, tile,
     ):
-        # Slice combined weight buffer into per-layer views.
-        # wts_buf is an IRON Buffer; .op gives the resolved MLIR memref Value.
-        dw_wts_size = 3 * 3 * dw_c * 1
-        skip_wts_size = 1 * 1 * dw_c * out_c
-        wts_dw = memref_view(wts_buf.op, [dw_wts_size], shift=0)
-        wts_skip = memref_view(wts_buf.op, [skip_wts_size], shift=dw_wts_size)
+        """1x1-relu -> DW-3x3 -> (1x1 or 1x1-skip).
 
-        # pre-amble: top row
-        rows_in = act_in_fifo.acquire(2)
-        row_out = act_23_prod.acquire(1)
-        f_dw(
-            rows_in[0],
-            rows_in[0],
-            rows_in[1],
-            wts_dw,
-            row_out,
-            in_w,
-            1,
-            dw_c,
-            3,
-            3,
-            0,
-            scale2,
-            0,
+        scales = (s1, s2, s3); scale_add: int (skip) or None (no skip).
+        Returns (out_fifo, worker).
+        """
+        out_w = in_w // stride
+        l1_sz = in_c * dw_ch
+        l2_sz = 9 * dw_ch
+        l3_sz = dw_ch * out_c
+        wts_sz = l1_sz + l2_sz + l3_sz
+        s1, s2, s3 = scales
+        has_skip = scale_add is not None
+        dw_obj = "dw_stride2" if stride == 2 else "dw_stride1"
+
+        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(f"{name}_chain.txt"))
+
+        l1_in_ty = _i8((in_w, 1, in_c))
+        l1_out_ty = _u8((in_w, 1, dw_ch))
+        l2_out_ty = _u8((out_w, 1, dw_ch))
+        l3_out_ty = _i8((out_w, 1, out_c))
+
+        k_1x1_relu = Kernel(
+            f"{name}_conv2dk1_relu_i8_ui8",
+            f"{name}_conv2dk1_fused_relu.o",
+            [l1_in_ty, _i8((l1_sz,)), l1_out_ty,
+             np.int32, np.int32, np.int32, np.int32],
         )
-        act_23_prod.release(1)
-
-        row_dw = act_23_cons.acquire(1)
-        row_final = act_out_fifo.acquire(1)
-        f_skip(
-            row_dw,
-            wts_skip,
-            row_final,
-            rows_in[0],
-            in_w,
-            dw_c,
-            out_c,
-            scale3,
-            scale_add,
+        k_dw = Kernel(
+            f"{name}_conv2dk3_{dw_obj}_relu_ui8_ui8",
+            f"{name}_conv2dk3_{dw_obj}.o",
+            [l1_out_ty, l1_out_ty, l1_out_ty, _i8((l2_sz,)), l2_out_ty]
+            + [np.int32] * 8,
         )
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-        # middle rows
-        for _ in range_(in_h - 2):
-            rows_in = act_in_fifo.acquire(3)
-            row_out = act_23_prod.acquire(1)
-            f_dw(
-                rows_in[0],
-                rows_in[1],
-                rows_in[2],
-                wts_dw,
-                row_out,
-                in_w,
-                1,
-                dw_c,
-                3,
-                3,
-                1,
-                scale2,
-                0,
+        if has_skip:
+            k_l3 = Kernel(
+                f"{name}_conv2dk1_skip_ui8_i8_i8",
+                f"{name}_conv2dk1_skip.o",
+                [l2_out_ty, _i8((l3_sz,)), l3_out_ty, l3_out_ty] + [np.int32] * 5,
             )
-            act_23_prod.release(1)
-
-            row_dw = act_23_cons.acquire(1)
-            row_final = act_out_fifo.acquire(1)
-            f_skip(
-                row_dw,
-                wts_skip,
-                row_final,
-                rows_in[1],
-                in_w,
-                dw_c,
-                out_c,
-                scale3,
-                scale_add,
+        else:
+            k_l3 = Kernel(
+                f"{name}_conv2dk1_ui8_i8",
+                f"{name}_conv2dk1_i8.o",
+                [l2_out_ty, _i8((l3_sz,)), l3_out_ty]
+                + [np.int32, np.int32, np.int32, np.int32],
             )
+
+        out_fifo = ObjectFifo(l3_out_ty, depth=2)
+        f12 = ObjectFifo(_u8((in_w, 1, dw_ch)), depth=3)
+        f23 = ObjectFifo(_u8((out_w, 1, dw_ch)), depth=1)
+
+        if has_skip:
+            assert stride == 1, f"{name}: skip+stride-2 not implemented"
+
+            def worker_fn(act_in_fifo, wts, out_f, p12, c12, p23, c23,
+                          k_pw, k_dw, k_skip):
+                wts_l1 = memref_view(wts.op, [l1_sz], shift=0)
+                wts_l2 = memref_view(wts.op, [l2_sz], shift=l1_sz)
+                wts_l3 = memref_view(wts.op, [l3_sz], shift=l1_sz + l2_sz)
+
+                # preamble
+                rows_in = act_in_fifo.acquire(2)
+                rows_l1 = p12.acquire(2)
+                k_pw(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, s1)
+                k_pw(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, s1)
+                p12.release(2)
+
+                rows_l1 = c12.acquire(2)
+                row_l2 = p23.acquire(1)
+                k_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_l2, row_l2,
+                     in_w, 1, dw_ch, 3, 3, 0, s2, 0)
+                p23.release(1)
+
+                row_l2 = c23.acquire(1)
+                row_out = out_f.acquire(1)
+                k_skip(row_l2, wts_l3, row_out, rows_in[0],
+                       in_w, dw_ch, out_c, s3, scale_add)
+                act_in_fifo.release(1)
+                c23.release(1)
+                out_f.release(1)
+
+                # middle
+                for _ in range_(in_h - 2):
+                    rows_in = act_in_fifo.acquire(2)
+                    row_l1 = p12.acquire(1)
+                    k_pw(rows_in[1], wts_l1, row_l1, in_w, in_c, dw_ch, s1)
+                    p12.release(1)
+
+                    rows_l1 = c12.acquire(3)
+                    row_l2 = p23.acquire(1)
+                    k_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_l2, row_l2,
+                         in_w, 1, dw_ch, 3, 3, 1, s2, 0)
+                    c12.release(1)
+                    p23.release(1)
+
+                    row_l2 = c23.acquire(1)
+                    row_out = out_f.acquire(1)
+                    k_skip(row_l2, wts_l3, row_out, rows_in[0],
+                           in_w, dw_ch, out_c, s3, scale_add)
+                    act_in_fifo.release(1)
+                    c23.release(1)
+                    out_f.release(1)
+
+                # last row (postamble)
+                rows_l1 = c12.acquire(2)
+                row_l2 = p23.acquire(1)
+                k_dw(rows_l1[0], rows_l1[1], rows_l1[1], wts_l2, row_l2,
+                     in_w, 1, dw_ch, 3, 3, 2, s2, 0)
+                c12.release(2)
+                p23.release(1)
+
+                row_l2 = c23.acquire(1)
+                row_out = out_f.acquire(1)
+                row_in = act_in_fifo.acquire(1)
+                k_skip(row_l2, wts_l3, row_out, row_in,
+                       in_w, dw_ch, out_c, s3, scale_add)
+                act_in_fifo.release(1)
+                c23.release(1)
+                out_f.release(1)
+
+        else:
+            # No-skip variant; works for stride 1 or 2.
+            out_h = in_h // stride
+            pad_first = 0  # always 0 for first iter
+
+            def worker_fn(act_in_fifo, wts, out_f, p12, c12, p23, c23,
+                          k_pw, k_dw, k_l3):
+                wts_l1 = memref_view(wts.op, [l1_sz], shift=0)
+                wts_l2 = memref_view(wts.op, [l2_sz], shift=l1_sz)
+                wts_l3 = memref_view(wts.op, [l3_sz], shift=l1_sz + l2_sz)
+
+                # preamble
+                rows_in = act_in_fifo.acquire(2)
+                rows_l1 = p12.acquire(2)
+                k_pw(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, s1)
+                k_pw(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, s1)
+                p12.release(2)
+                act_in_fifo.release(2)
+
+                rows_l1 = c12.acquire(2)
+                row_l2 = p23.acquire(1)
+                k_dw(rows_l1[0], rows_l1[0], rows_l1[1], wts_l2, row_l2,
+                     in_w, 1, dw_ch, 3, 3, pad_first, s2, 0)
+                c12.release(1)
+                p23.release(1)
+
+                row_l2 = c23.acquire(1)
+                row_out = out_f.acquire(1)
+                k_l3(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, s3)
+                c23.release(1)
+                out_f.release(1)
+
+                # middle
+                for _ in range_(out_h - 1):
+                    rows_in = act_in_fifo.acquire(2)
+                    rows_l1 = p12.acquire(2)
+                    k_pw(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, s1)
+                    k_pw(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, s1)
+                    p12.release(2)
+                    act_in_fifo.release(2)
+
+                    rows_l1 = c12.acquire(3)
+                    row_l2 = p23.acquire(1)
+                    k_dw(rows_l1[0], rows_l1[1], rows_l1[2], wts_l2, row_l2,
+                         in_w, 1, dw_ch, 3, 3, 1, s2, 0)
+                    c12.release(2)
+                    p23.release(1)
+
+                    row_l2 = c23.acquire(1)
+                    row_out = out_f.acquire(1)
+                    k_l3(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, s3)
+                    c23.release(1)
+                    out_f.release(1)
+
+        worker = Worker(
+            worker_fn,
+            fn_args=[
+                act_in.cons(), wts_buf, out_fifo.prod(),
+                f12.prod(), f12.cons(), f23.prod(), f23.cons(),
+                k_1x1_relu, k_dw, k_l3,
+            ],
+            tile=tile,
+            while_true=False,
+        )
+        return out_fifo, worker
+
+    def _make_2layer_skip_block(
+        name, act_in, in_w, in_h, in_c, dw_ch, out_c,
+        scales, scale_add, tile,
+    ):
+        """DW-3x3-stride1 -> 1x1-skip (the bn0 shape).
+
+        Input is uint8 (init-conv output); output is int8.
+        scales = (s_dw, s_skip).
+        Returns (out_fifo, worker).
+        """
+        dw_wts_sz = 9 * dw_ch
+        skip_wts_sz = dw_ch * out_c
+        wts_sz = dw_wts_sz + skip_wts_sz
+        s_dw, s_skip = scales
+
+        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(f"{name}_chain.txt"))
+
+        in_ty = _u8((in_w, 1, in_c))
+        dw_out_ty = _u8((in_w, 1, dw_ch))
+        out_ty = _i8((in_w, 1, out_c))
+
+        k_dw = Kernel(
+            f"{name}_conv2dk3_dw_stride1_relu_ui8_ui8",
+            f"{name}_conv2dk3_dw_stride1.o",
+            [in_ty, in_ty, in_ty, _i8((dw_wts_sz,)), dw_out_ty] + [np.int32]*8,
+        )
+        k_skip = Kernel(
+            f"{name}_conv2dk1_skip_ui8_ui8_i8",
+            f"{name}_conv2dk1_skipui8.o",
+            [dw_out_ty, _i8((skip_wts_sz,)), out_ty, in_ty] + [np.int32]*5,
+        )
+
+        out_fifo = ObjectFifo(out_ty, depth=2)
+        f23 = ObjectFifo(dw_out_ty, depth=1)
+
+        def worker_fn(act_in_fifo, wts, out_f, p23, c23, k_dw, k_skip):
+            wts_dw = memref_view(wts.op, [dw_wts_sz], shift=0)
+            wts_skip = memref_view(wts.op, [skip_wts_sz], shift=dw_wts_sz)
+
+            # preamble: top row
+            rows_in = act_in_fifo.acquire(2)
+            row_out = p23.acquire(1)
+            k_dw(rows_in[0], rows_in[0], rows_in[1], wts_dw, row_out,
+                 in_w, 1, dw_ch, 3, 3, 0, s_dw, 0)
+            p23.release(1)
+            row_dw = c23.acquire(1)
+            row_final = out_f.acquire(1)
+            k_skip(row_dw, wts_skip, row_final, rows_in[0],
+                   in_w, dw_ch, out_c, s_skip, scale_add)
+            c23.release(1)
+            out_f.release(1)
+
+            # middle
+            for _ in range_(in_h - 2):
+                rows_in = act_in_fifo.acquire(3)
+                row_out = p23.acquire(1)
+                k_dw(rows_in[0], rows_in[1], rows_in[2], wts_dw, row_out,
+                     in_w, 1, dw_ch, 3, 3, 1, s_dw, 0)
+                p23.release(1)
+                row_dw = c23.acquire(1)
+                row_final = out_f.acquire(1)
+                k_skip(row_dw, wts_skip, row_final, rows_in[1],
+                       in_w, dw_ch, out_c, s_skip, scale_add)
+                act_in_fifo.release(1)
+                c23.release(1)
+                out_f.release(1)
+
+            # last row
+            rows_in = act_in_fifo.acquire(2)
+            row_out = p23.acquire(1)
+            k_dw(rows_in[0], rows_in[1], rows_in[1], wts_dw, row_out,
+                 in_w, 1, dw_ch, 3, 3, 2, s_dw, 0)
+            p23.release(1)
+            row_dw = c23.acquire(1)
+            row_final = out_f.acquire(1)
+            k_skip(row_dw, wts_skip, row_final, rows_in[1],
+                   in_w, dw_ch, out_c, s_skip, scale_add)
+            act_in_fifo.release(2)
+            c23.release(1)
+            out_f.release(1)
+
+        worker = Worker(
+            worker_fn,
+            fn_args=[act_in.cons(depth=3), wts_buf, out_fifo.prod(),
+                     f23.prod(), f23.cons(), k_dw, k_skip],
+            tile=tile,
+            while_true=False,
+        )
+        return out_fifo, worker
+
+    def _make_fused_pair_block(
+        names, chain_filename, act_in, in_w, in_h, in_c,
+        a_dw_ch, a_out_c, b_dw_ch, b_out_c,
+        scales_a, scales_b, compute_tile, alloc_tile,
+        out_depth=2, out_prod_depth=None,
+    ):
+        """Two stride-1 3-layer blocks fused on one compute tile (a → b chain).
+
+        scales_a = (s1,s2,s3,s_add); scales_b same. Returns (out_fifo, worker).
+        """
+        name_a, name_b = names
+        a_l1, a_l2, a_l3 = in_c * a_dw_ch, 9 * a_dw_ch, a_dw_ch * a_out_c
+        b_l1, b_l2, b_l3 = a_out_c * b_dw_ch, 9 * b_dw_ch, b_dw_ch * b_out_c
+        offs = [0, a_l1, a_l1 + a_l2, a_l1 + a_l2 + a_l3,
+                a_l1 + a_l2 + a_l3 + b_l1,
+                a_l1 + a_l2 + a_l3 + b_l1 + b_l2]
+        wts_sz = a_l1 + a_l2 + a_l3 + b_l1 + b_l2 + b_l3
+        sa1, sa2, sa3, sa_add = scales_a
+        sb1, sb2, sb3, sb_add = scales_b
+
+        wts_buf = Buffer(_i8((wts_sz,)), initial_value=_load_wts(chain_filename))
+
+        def _kernels(name, dw_ch, in_c_local, out_c_local, l1_sz, l2_sz, l3_sz):
+            l1_in_ty = _i8((in_w, 1, in_c_local))
+            l1_out_ty = _u8((in_w, 1, dw_ch))
+            l2_out_ty = _u8((in_w, 1, dw_ch))  # stride-1 keeps width
+            l3_out_ty = _i8((in_w, 1, out_c_local))
+            return (
+                Kernel(f"{name}_conv2dk1_relu_i8_ui8",
+                       f"{name}_conv2dk1_fused_relu.o",
+                       [l1_in_ty, _i8((l1_sz,)), l1_out_ty] + [np.int32]*4),
+                Kernel(f"{name}_conv2dk3_dw_stride1_relu_ui8_ui8",
+                       f"{name}_conv2dk3_dw_stride1.o",
+                       [l1_out_ty, l1_out_ty, l1_out_ty, _i8((l2_sz,)), l2_out_ty]
+                       + [np.int32]*8),
+                Kernel(f"{name}_conv2dk1_skip_ui8_i8_i8",
+                       f"{name}_conv2dk1_skip.o",
+                       [l2_out_ty, _i8((l3_sz,)), l3_out_ty, l3_out_ty]
+                       + [np.int32]*5),
+            )
+
+        ka_pw, ka_dw, ka_skip = _kernels(name_a, a_dw_ch, in_c, a_out_c,
+                                         a_l1, a_l2, a_l3)
+        kb_pw, kb_dw, kb_skip = _kernels(name_b, b_dw_ch, a_out_c, b_out_c,
+                                         b_l1, b_l2, b_l3)
+
+        out_fifo = ObjectFifo(_i8((in_w, 1, b_out_c)), depth=out_depth)
+        # Self-loop fifos colocated on alloc_tile (no synchronization — single core).
+        def _of(ch, depth):
+            return ObjectFifo(_u8((in_w, 1, ch)), depth=depth,
+                              disable_synchronization=True, delegate_tile=alloc_tile)
+        f_a12 = _of(a_dw_ch, 3)
+        f_a23 = _of(a_dw_ch, 1)
+        f_a_b = ObjectFifo(_i8((in_w, 1, a_out_c)), depth=2,
+                           disable_synchronization=True, delegate_tile=alloc_tile)
+        f_b12 = _of(b_dw_ch, 3)
+        f_b23 = _of(b_dw_ch, 1)
+
+        def worker_fn(act_in_fifo, wts, out_f,
+                      a12p, a12c, a23p, a23c, abp, abc, b12p, b12c, b23p, b23c,
+                      ka_pw, ka_dw, ka_skip, kb_pw, kb_dw, kb_skip):
+            wa1 = memref_view(wts.op, [a_l1], shift=offs[0])
+            wa2 = memref_view(wts.op, [a_l2], shift=offs[1])
+            wa3 = memref_view(wts.op, [a_l3], shift=offs[2])
+            wb1 = memref_view(wts.op, [b_l1], shift=offs[3])
+            wb2 = memref_view(wts.op, [b_l2], shift=offs[4])
+            wb3 = memref_view(wts.op, [b_l3], shift=offs[5])
+
+            # Pre-amble 0: emit a-block rows 0,1 of L1; 0 of L2,L3; 0 of b L1.
+            rows_in = act_in_fifo.acquire(2)
+            rows_l1 = a12p.acquire(2)
+            ka_pw(rows_in[0], wa1, rows_l1[0], in_w, in_c, a_dw_ch, sa1)
+            ka_pw(rows_in[1], wa1, rows_l1[1], in_w, in_c, a_dw_ch, sa1)
+            a12p.release(2)
+            rows_l1 = a12c.acquire(2)
+            row_l2 = a23p.acquire(1)
+            ka_dw(rows_l1[0], rows_l1[0], rows_l1[1], wa2, row_l2,
+                  in_w, 1, a_dw_ch, 3, 3, 0, sa2, 0)
+            a23p.release(1)
+            row_l2 = a23c.acquire(1)
+            row_a_out = abp.acquire(1)
+            ka_skip(row_l2, wa3, row_a_out, rows_in[0],
+                    in_w, a_dw_ch, a_out_c, sa3, sa_add)
             act_in_fifo.release(1)
-            act_23_cons.release(1)
-            act_out_fifo.release(1)
+            a23c.release(1)
+            abp.release(1)
+            row_b_in = abc.acquire(1)
+            row_l1_b = b12p.acquire(1)
+            kb_pw(row_b_in, wb1, row_l1_b, in_w, a_out_c, b_dw_ch, sb1)
+            b12p.release(1)
 
-        # last row
-        rows_in = act_in_fifo.acquire(2)
-        row_out = act_23_prod.acquire(1)
-        f_dw(
-            rows_in[0],
-            rows_in[1],
-            rows_in[1],
-            wts_dw,
-            row_out,
-            in_w,
-            1,
-            dw_c,
-            3,
-            3,
-            2,
-            scale2,
-            0,
+            # Pre-amble 1: a-block emits row 1 of L2,L3; b-block emits L1[1], L2[0], L3[0].
+            rows_in = act_in_fifo.acquire(2)
+            row_l1 = a12p.acquire(1)
+            ka_pw(rows_in[1], wa1, row_l1, in_w, in_c, a_dw_ch, sa1)
+            a12p.release(1)
+            rows_l1 = a12c.acquire(3)
+            row_l2 = a23p.acquire(1)
+            ka_dw(rows_l1[0], rows_l1[1], rows_l1[2], wa2, row_l2,
+                  in_w, 1, a_dw_ch, 3, 3, 1, sa2, 0)
+            a12c.release(1)
+            a23p.release(1)
+            row_l2 = a23c.acquire(1)
+            row_a_out = abp.acquire(1)
+            ka_skip(row_l2, wa3, row_a_out, rows_in[0],
+                    in_w, a_dw_ch, a_out_c, sa3, sa_add)
+            act_in_fifo.release(1)
+            a23c.release(1)
+            abp.release(1)
+            rows_b_in = abc.acquire(2)
+            row_l1_b = b12p.acquire(1)
+            kb_pw(rows_b_in[1], wb1, row_l1_b, in_w, a_out_c, b_dw_ch, sb1)
+            b12p.release(1)
+            rows_l1_b = b12c.acquire(2)
+            row_l2_b = b23p.acquire(1)
+            kb_dw(rows_l1_b[0], rows_l1_b[0], rows_l1_b[1], wb2, row_l2_b,
+                  in_w, 1, b_dw_ch, 3, 3, 0, sb2, 0)
+            b23p.release(1)
+            row_l2_b = b23c.acquire(1)
+            row_out = out_f.acquire(1)
+            kb_skip(row_l2_b, wb3, row_out, rows_b_in[0],
+                    in_w, b_dw_ch, b_out_c, sb3, sb_add)
+            b23c.release(1)
+            abc.release(1)
+            out_f.release(1)
+
+            # Middle: in_h - 3 fully-pipelined iterations.
+            for _ in range_(in_h - 3):
+                rows_in = act_in_fifo.acquire(2)
+                row_l1 = a12p.acquire(1)
+                ka_pw(rows_in[1], wa1, row_l1, in_w, in_c, a_dw_ch, sa1)
+                a12p.release(1)
+                rows_l1 = a12c.acquire(3)
+                row_l2 = a23p.acquire(1)
+                ka_dw(rows_l1[0], rows_l1[1], rows_l1[2], wa2, row_l2,
+                      in_w, 1, a_dw_ch, 3, 3, 1, sa2, 0)
+                a12c.release(1)
+                a23p.release(1)
+                row_l2 = a23c.acquire(1)
+                row_a_out = abp.acquire(1)
+                ka_skip(row_l2, wa3, row_a_out, rows_in[0],
+                        in_w, a_dw_ch, a_out_c, sa3, sa_add)
+                act_in_fifo.release(1)
+                a23c.release(1)
+                abp.release(1)
+                rows_b_in = abc.acquire(2)
+                row_l1_b = b12p.acquire(1)
+                kb_pw(rows_b_in[1], wb1, row_l1_b, in_w, a_out_c, b_dw_ch, sb1)
+                b12p.release(1)
+                rows_l1_b = b12c.acquire(3)
+                row_l2_b = b23p.acquire(1)
+                kb_dw(rows_l1_b[0], rows_l1_b[1], rows_l1_b[2], wb2, row_l2_b,
+                      in_w, 1, b_dw_ch, 3, 3, 1, sb2, 0)
+                b12c.release(1)
+                b23p.release(1)
+                row_l2_b = b23c.acquire(1)
+                row_out = out_f.acquire(1)
+                kb_skip(row_l2_b, wb3, row_out, rows_b_in[0],
+                        in_w, b_dw_ch, b_out_c, sb3, sb_add)
+                b23c.release(1)
+                abc.release(1)
+                out_f.release(1)
+
+            # Postamble 0: a-block last DW row + skip; b-block another middle iter.
+            rows_l1 = a12c.acquire(2)
+            row_l2 = a23p.acquire(1)
+            ka_dw(rows_l1[0], rows_l1[1], rows_l1[1], wa2, row_l2,
+                  in_w, 1, a_dw_ch, 3, 3, 2, sa2, 0)
+            a12c.release(2)
+            a23p.release(1)
+            row_in = act_in_fifo.acquire(1)
+            row_l2 = a23c.acquire(1)
+            row_a_out = abp.acquire(1)
+            ka_skip(row_l2, wa3, row_a_out, row_in,
+                    in_w, a_dw_ch, a_out_c, sa3, sa_add)
+            act_in_fifo.release(1)
+            a23c.release(1)
+            abp.release(1)
+            rows_b_in = abc.acquire(2)
+            row_l1_b = b12p.acquire(1)
+            kb_pw(rows_b_in[1], wb1, row_l1_b, in_w, a_out_c, b_dw_ch, sb1)
+            b12p.release(1)
+            rows_l1_b = b12c.acquire(3)
+            row_l2_b = b23p.acquire(1)
+            kb_dw(rows_l1_b[0], rows_l1_b[1], rows_l1_b[2], wb2, row_l2_b,
+                  in_w, 1, b_dw_ch, 3, 3, 1, sb2, 0)
+            b12c.release(1)
+            b23p.release(1)
+            row_l2_b = b23c.acquire(1)
+            row_out = out_f.acquire(1)
+            kb_skip(row_l2_b, wb3, row_out, rows_b_in[0],
+                    in_w, b_dw_ch, b_out_c, sb3, sb_add)
+            b23c.release(1)
+            abc.release(1)
+            out_f.release(1)
+
+            # Postamble 1: b-block's last DW row + skip.
+            rows_l1_b = b12c.acquire(2)
+            row_l2_b = b23p.acquire(1)
+            kb_dw(rows_l1_b[0], rows_l1_b[1], rows_l1_b[1], wb2, row_l2_b,
+                  in_w, 1, b_dw_ch, 3, 3, 2, sb2, 0)
+            b12c.release(2)
+            b23p.release(1)
+            row_b_skip = abc.acquire(1)
+            row_l2_b = b23c.acquire(1)
+            row_out = out_f.acquire(1)
+            kb_skip(row_l2_b, wb3, row_out, row_b_skip,
+                    in_w, b_dw_ch, b_out_c, sb3, sb_add)
+            b23c.release(1)
+            abc.release(1)
+            out_f.release(1)
+
+        out_prod = out_fifo.prod(depth=out_prod_depth) if out_prod_depth else out_fifo.prod()
+        worker = Worker(
+            worker_fn,
+            fn_args=[
+                act_in.cons(), wts_buf, out_prod,
+                f_a12.prod(), f_a12.cons(), f_a23.prod(), f_a23.cons(),
+                f_a_b.prod(), f_a_b.cons(),
+                f_b12.prod(), f_b12.cons(), f_b23.prod(), f_b23.cons(),
+                ka_pw, ka_dw, ka_skip, kb_pw, kb_dw, kb_skip,
+            ],
+            tile=compute_tile,
+            while_true=False,
         )
-        act_23_prod.release(1)
+        return out_fifo, worker
 
-        row_dw = act_23_cons.acquire(1)
-        row_final = act_out_fifo.acquire(1)
-        f_skip(
-            row_dw,
-            wts_skip,
-            row_final,
-            rows_in[1],
-            in_w,
-            dw_c,
-            out_c,
-            scale3,
-            scale_add,
-        )
-        act_in_fifo.release(2)
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-    bn0_worker = Worker(
-        bn0_worker_fn,
-        fn_args=[
-            act_in.cons(depth=3),
-            bn0_wts,
-            act_bn0_bn1.prod(),
-            bn0_act_2_3.prod(),  # self-loop: same Worker is prod and cons
-            bn0_act_2_3.cons(),
-            bn0_conv2dk3_dw,
-            bn0_conv2dk1_skip,
-            _BN0_IN_W,
-            _BN0_IN_H,
-            _BN0_IN_C,
-            _BN0_DW_CH,
-            _BN0_OUT_C,
-            bn0_scale2,
-            bn0_scale3,
-            bn0_scaleAdd,
-        ],
-        tile=Tile(0, 3),  # original: bn0_tile = tile(0, 3)
-        while_true=False,
+    # bn0: stride-1 DW-3x3 + 1x1-skip (2-layer, unique to first stage)
+    act_bn0_bn1, w = _make_2layer_skip_block(
+        "bn0", act_in, _BN0_IN_W, _BN0_IN_H, _BN0_IN_C, _BN0_DW_CH, _BN0_OUT_C,
+        scales=(bn0_scale2, bn0_scale3), scale_add=bn0_scaleAdd,
+        tile=Tile(0, 3),
     )
-    workers.append(bn0_worker)
+    workers.append(w)
 
-    # ===================================================================
+
     # bn1: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    #   input  (112,1,16) int8  [from bn0]
-    #   L1 out (112,1,64) uint8
-    #   L2 out (56,1,64)  uint8
-    #   L3 out (56,1,24)  int8
-    # Weights: bn1_chain.txt  layout: [1*1*64*16, 3*3*64, 1*1*24*64]
-    # ===================================================================
-    _bn1_l1_wts_size = 1 * 1 * _BN1_DW_CH * _BN1_IN_C
-    _bn1_l2_wts_size = 3 * 3 * _BN1_DW_CH * 1
-    _bn1_l3_wts_size = 1 * 1 * _BN1_DW_CH * _BN1_OUT_C
-    _bn1_wts_size = _bn1_l1_wts_size + _bn1_l2_wts_size + _bn1_l3_wts_size
-
-    bn1_wts_arr = _load_wts("bn1_chain.txt")
-    bn1_wts = Buffer(
-        np.ndarray[(_bn1_wts_size,), np.dtype[np.int8]], initial_value=bn1_wts_arr)
-
-    bn1_l1_in_ty = np.ndarray[(_BN1_IN_W, 1, _BN1_IN_C), np.dtype[np.int8]]
-    bn1_l1_wts_ty = np.ndarray[(_bn1_l1_wts_size,), np.dtype[np.int8]]
-    bn1_l1_out_ty = np.ndarray[(_BN1_IN_W, 1, _BN1_DW_CH), np.dtype[np.uint8]]
-    bn1_l2_wts_ty = np.ndarray[(_bn1_l2_wts_size,), np.dtype[np.int8]]
-    bn1_l2_out_ty = np.ndarray[(_BN1_OUT_W, 1, _BN1_DW_CH), np.dtype[np.uint8]]
-    bn1_l3_wts_ty = np.ndarray[(_bn1_l3_wts_size,), np.dtype[np.int8]]
-    bn1_l3_out_ty = np.ndarray[(_BN1_OUT_W, 1, _BN1_OUT_C), np.dtype[np.int8]]
-
-    bn1_conv2dk1_relu = Kernel(
-        "bn1_conv2dk1_relu_i8_ui8",
-        "bn1_conv2dk1_fused_relu.o",
-        [
-            bn1_l1_in_ty,
-            bn1_l1_wts_ty,
-            bn1_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    act_bn1_bn2, w = _make_3layer_block(
+        "bn1", act_bn0_bn1, _BN1_IN_W, _BN1_IN_H, _BN1_IN_C, _BN1_DW_CH, _BN1_OUT_C,
+        stride=2, scales=(bn1_scale1, bn1_scale2, bn1_scale3), scale_add=None,
+        tile=Tile(0, 4),
     )
-    bn1_conv2dk3_dw_stride2 = Kernel(
-        "bn1_conv2dk3_dw_stride2_relu_ui8_ui8",
-        "bn1_conv2dk3_dw_stride2.o",
-        [
-            bn1_l1_out_ty,
-            bn1_l1_out_ty,
-            bn1_l1_out_ty,
-            bn1_l2_wts_ty,
-            bn1_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn1_conv2dk3_dw_stride1 = Kernel(
-        "bn1_conv2dk3_dw_stride1_relu_ui8_ui8",
-        "bn1_conv2dk3_dw_stride1.o",
-        [
-            bn1_l1_out_ty,
-            bn1_l1_out_ty,
-            bn1_l1_out_ty,
-            bn1_l2_wts_ty,
-            bn1_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn1_conv2dk1 = Kernel(
-        "bn1_conv2dk1_ui8_i8",
-        "bn1_conv2dk1_i8.o",
-        [
-            bn1_l2_out_ty,
-            bn1_l3_wts_ty,
-            bn1_l3_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
+    workers.append(w)
 
-    act_bn1_bn2 = ObjectFifo(
-        np.ndarray[(_BN1_OUT_W, 1, _BN1_OUT_C), np.dtype[np.int8]], depth=2)
 
-    bn1_act_1_2 = ObjectFifo(
-        np.ndarray[(_BN1_IN_W, 1, _BN1_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-    )
-    bn1_act_2_3 = ObjectFifo(
-        np.ndarray[(_BN1_OUT_W, 1, _BN1_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-    )
-
-    def bn1_worker_fn(
-        act_in_fifo,
-        wts_buf,
-        act_out_fifo,
-        act_12_prod,
-        act_12_cons,
-        act_23_prod,
-        act_23_cons,
-        f_1x1_relu,
-        f_dw_stride2,
-        f_1x1,
-        in_w,
-        in_h,
-        in_c,
-        dw_ch,
-        out_c,
-        scale1,
-        scale2,
-        scale3,
-    ):
-        out_w = in_w // 2
-        out_h = in_h // 2
-
-        # Slice combined weight buffer into per-layer views.
-        wts_l1 = memref_view(wts_buf.op, [_bn1_l1_wts_size], shift=0)
-        wts_l2 = memref_view(wts_buf.op, [_bn1_l2_wts_size], shift=_bn1_l1_wts_size)
-        wts_l3 = memref_view(
-            wts_buf.op, [_bn1_l3_wts_size], shift=_bn1_l1_wts_size + _bn1_l2_wts_size
-        )
-
-        # pre-amble: acquire 2 input rows, produce 2 L1 rows
-        rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_12_prod.release(2)
-        act_in_fifo.release(2)
-
-        rows_l1 = act_12_cons.acquire(2)
-        row_l2 = act_23_prod.acquire(1)
-        f_dw_stride2(
-            rows_l1[0],
-            rows_l1[0],
-            rows_l1[1],
-            wts_l2,
-            row_l2,
-            in_w,
-            1,
-            dw_ch,
-            3,
-            3,
-            0,
-            scale2,
-            0,
-        )
-        act_12_cons.release(1)
-        act_23_prod.release(1)
-
-        row_l2 = act_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-        # middle
-        for _ in range_(out_h - 1):
-            rows_in = act_in_fifo.acquire(2)
-            rows_l1 = act_12_prod.acquire(2)
-            f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
-            f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
-            act_12_prod.release(2)
-            act_in_fifo.release(2)
-
-            rows_l1 = act_12_cons.acquire(3)
-            row_l2 = act_23_prod.acquire(1)
-            f_dw_stride2(
-                rows_l1[0],
-                rows_l1[1],
-                rows_l1[2],
-                wts_l2,
-                row_l2,
-                in_w,
-                1,
-                dw_ch,
-                3,
-                3,
-                1,
-                scale2,
-                0,
-            )
-            act_12_cons.release(2)
-            act_23_prod.release(1)
-
-            row_l2 = act_23_cons.acquire(1)
-            row_out = act_out_fifo.acquire(1)
-            f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
-            act_23_cons.release(1)
-            act_out_fifo.release(1)
-
-    bn1_worker = Worker(
-        bn1_worker_fn,
-        fn_args=[
-            act_bn0_bn1.cons(),
-            bn1_wts,
-            act_bn1_bn2.prod(),
-            bn1_act_1_2.prod(),
-            bn1_act_1_2.cons(),
-            bn1_act_2_3.prod(),
-            bn1_act_2_3.cons(),
-            bn1_conv2dk1_relu,
-            bn1_conv2dk3_dw_stride2,
-            bn1_conv2dk1,
-            _BN1_IN_W,
-            _BN1_IN_H,
-            _BN1_IN_C,
-            _BN1_DW_CH,
-            _BN1_OUT_C,
-            bn1_scale1,
-            bn1_scale2,
-            bn1_scale3,
-        ],
-        tile=Tile(0, 4),  # original: bn1_tile = tile(0, 4)
-        while_true=False,
-    )
-    workers.append(bn1_worker)
-
-    # ===================================================================
     # bn2: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    #   input  (56,1,24) int8
-    #   L1 out (56,1,72) uint8
-    #   L2 out (56,1,72) uint8
-    #   L3 out (56,1,24) int8
-    # Weights: bn2_chain.txt  layout: [1*1*72*24, 3*3*72, 1*1*24*72]
-    # ===================================================================
-    _bn2_l1_wts_size = 1 * 1 * _BN2_DW_CH * _BN2_IN_C
-    _bn2_l2_wts_size = 3 * 3 * _BN2_DW_CH * 1
-    _bn2_l3_wts_size = 1 * 1 * _BN2_DW_CH * _BN2_OUT_C
-    _bn2_wts_size = _bn2_l1_wts_size + _bn2_l2_wts_size + _bn2_l3_wts_size
-
-    bn2_wts_arr = _load_wts("bn2_chain.txt")
-    bn2_wts = Buffer(
-        np.ndarray[(_bn2_wts_size,), np.dtype[np.int8]], initial_value=bn2_wts_arr)
-
-    bn2_l1_in_ty = np.ndarray[(_BN2_IN_W, 1, _BN2_IN_C), np.dtype[np.int8]]
-    bn2_l1_wts_ty = np.ndarray[(_bn2_l1_wts_size,), np.dtype[np.int8]]
-    bn2_l1_out_ty = np.ndarray[(_BN2_IN_W, 1, _BN2_DW_CH), np.dtype[np.uint8]]
-    bn2_l2_wts_ty = np.ndarray[(_bn2_l2_wts_size,), np.dtype[np.int8]]
-    bn2_l2_out_ty = np.ndarray[(_BN2_OUT_W, 1, _BN2_DW_CH), np.dtype[np.uint8]]
-    bn2_l3_wts_ty = np.ndarray[(_bn2_l3_wts_size,), np.dtype[np.int8]]
-    bn2_l3_out_ty = np.ndarray[(_BN2_OUT_W, 1, _BN2_OUT_C), np.dtype[np.int8]]
-
-    bn2_conv2dk1_relu = Kernel(
-        "bn2_conv2dk1_relu_i8_ui8",
-        "bn2_conv2dk1_fused_relu.o",
-        [
-            bn2_l1_in_ty,
-            bn2_l1_wts_ty,
-            bn2_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    act_bn2_bn3, w = _make_3layer_block(
+        "bn2", act_bn1_bn2, _BN2_IN_W, _BN2_IN_H, _BN2_IN_C, _BN2_DW_CH, _BN2_OUT_C,
+        stride=1, scales=(bn2_scale1, bn2_scale2, bn2_scale3), scale_add=bn2_scaleAdd,
+        tile=Tile(0, 5),
     )
-    bn2_conv2dk3_dw_stride1 = Kernel(
-        "bn2_conv2dk3_dw_stride1_relu_ui8_ui8",
-        "bn2_conv2dk3_dw_stride1.o",
-        [
-            bn2_l1_out_ty,
-            bn2_l1_out_ty,
-            bn2_l1_out_ty,
-            bn2_l2_wts_ty,
-            bn2_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn2_conv2dk1_skip = Kernel(
-        "bn2_conv2dk1_skip_ui8_i8_i8",
-        "bn2_conv2dk1_skip.o",
-        [
-            bn2_l2_out_ty,
-            bn2_l3_wts_ty,
-            bn2_l3_out_ty,
-            bn2_l3_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
+    workers.append(w)
 
-    act_bn2_bn3 = ObjectFifo(
-        np.ndarray[(_BN2_OUT_W, 1, _BN2_OUT_C), np.dtype[np.int8]], depth=2)
 
-    bn2_act_1_2 = ObjectFifo(
-        np.ndarray[(_BN2_IN_W, 1, _BN2_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-    )
-    bn2_act_2_3 = ObjectFifo(
-        np.ndarray[(_BN2_OUT_W, 1, _BN2_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-    )
-
-    def bn2_worker_fn(
-        act_in_fifo,
-        wts_buf,
-        act_out_fifo,
-        act_12_prod,
-        act_12_cons,
-        act_23_prod,
-        act_23_cons,
-        f_1x1_relu,
-        f_dw,
-        f_1x1_skip,
-        in_w,
-        in_h,
-        in_c,
-        dw_ch,
-        out_c,
-        scale1,
-        scale2,
-        scale3,
-        scale_add,
-    ):
-        # Slice combined weight buffer into per-layer views.
-        wts_l1 = memref_view(wts_buf.op, [_bn2_l1_wts_size], shift=0)
-        wts_l2 = memref_view(wts_buf.op, [_bn2_l2_wts_size], shift=_bn2_l1_wts_size)
-        wts_l3 = memref_view(
-            wts_buf.op, [_bn2_l3_wts_size], shift=_bn2_l1_wts_size + _bn2_l2_wts_size
-        )
-
-        # pre-amble: 2 rows
-        rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_12_prod.release(2)
-
-        rows_l1 = act_12_cons.acquire(2)
-        row_l2 = act_23_prod.acquire(1)
-        f_dw(
-            rows_l1[0],
-            rows_l1[0],
-            rows_l1[1],
-            wts_l2,
-            row_l2,
-            in_w,
-            1,
-            dw_ch,
-            3,
-            3,
-            0,
-            scale2,
-            0,
-        )
-        act_23_prod.release(1)
-
-        row_l2 = act_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f_1x1_skip(
-            row_l2, wts_l3, row_out, rows_in[0], in_w, dw_ch, out_c, scale3, scale_add
-        )
-        # Sliding window: release only 1 of the 2 acquired rows; rows_in[1]
-        # carries over as next iter's [0]. Producer (bn1/bn6) only emits 1
-        # row per iter; releasing 2 here would consume 2x and deadlock.
-        act_in_fifo.release(1)
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-        # middle
-        for _ in range_(in_h - 2):
-            rows_in = act_in_fifo.acquire(2)
-            row_l1 = act_12_prod.acquire(1)
-            f_1x1_relu(rows_in[1], wts_l1, row_l1, in_w, in_c, dw_ch, scale1)
-            act_12_prod.release(1)
-
-            rows_l1 = act_12_cons.acquire(3)
-            row_l2 = act_23_prod.acquire(1)
-            f_dw(
-                rows_l1[0],
-                rows_l1[1],
-                rows_l1[2],
-                wts_l2,
-                row_l2,
-                in_w,
-                1,
-                dw_ch,
-                3,
-                3,
-                1,
-                scale2,
-                0,
-            )
-            act_12_cons.release(1)
-            act_23_prod.release(1)
-
-            row_l2 = act_23_cons.acquire(1)
-            row_out = act_out_fifo.acquire(1)
-            f_1x1_skip(
-                row_l2,
-                wts_l3,
-                row_out,
-                rows_in[0],
-                in_w,
-                dw_ch,
-                out_c,
-                scale3,
-                scale_add,
-            )
-            # Sliding window: release only 1 row per iter (matching producer).
-            act_in_fifo.release(1)
-            act_23_cons.release(1)
-            act_out_fifo.release(1)
-
-        # last row
-        rows_l1 = act_12_cons.acquire(2)
-        row_l2 = act_23_prod.acquire(1)
-        f_dw(
-            rows_l1[0],
-            rows_l1[1],
-            rows_l1[1],
-            wts_l2,
-            row_l2,
-            in_w,
-            1,
-            dw_ch,
-            3,
-            3,
-            2,
-            scale2,
-            0,
-        )
-        act_12_cons.release(2)
-        act_23_prod.release(1)
-
-        # Mirror lowlevel acquire/release order (subblockStatic.py:405-438):
-        # acquire L2, acquire out, acquire skip, call, release skip, release L2,
-        # release out.
-        row_l2 = act_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        row_in = act_in_fifo.acquire(1)
-        f_1x1_skip(
-            row_l2, wts_l3, row_out, row_in, in_w, dw_ch, out_c, scale3, scale_add
-        )
-        act_in_fifo.release(1)
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-    bn2_worker = Worker(
-        bn2_worker_fn,
-        fn_args=[
-            act_bn1_bn2.cons(),
-            bn2_wts,
-            act_bn2_bn3.prod(),
-            bn2_act_1_2.prod(),
-            bn2_act_1_2.cons(),
-            bn2_act_2_3.prod(),
-            bn2_act_2_3.cons(),
-            bn2_conv2dk1_relu,
-            bn2_conv2dk3_dw_stride1,
-            bn2_conv2dk1_skip,
-            _BN2_IN_W,
-            _BN2_IN_H,
-            _BN2_IN_C,
-            _BN2_DW_CH,
-            _BN2_OUT_C,
-            bn2_scale1,
-            bn2_scale2,
-            bn2_scale3,
-            bn2_scaleAdd,
-        ],
-        tile=Tile(0, 5),  # original: bn2_tile = tile(0, 5)
-        while_true=False,
-    )
-    workers.append(bn2_worker)
-
-    # ===================================================================
     # bn3: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    #   input  (56,1,24) int8
-    #   L1 out (56,1,72) uint8
-    #   L2 out (28,1,72) uint8
-    #   L3 out (28,1,40) int8
-    # Weights: bn3_chain.txt  layout: [1*1*72*24, 3*3*72, 1*1*40*72]
-    # ===================================================================
-    _bn3_l1_wts_size = 1 * 1 * _BN3_DW_CH * _BN3_IN_C
-    _bn3_l2_wts_size = 3 * 3 * _BN3_DW_CH * 1
-    _bn3_l3_wts_size = 1 * 1 * _BN3_DW_CH * _BN3_OUT_C
-    _bn3_wts_size = _bn3_l1_wts_size + _bn3_l2_wts_size + _bn3_l3_wts_size
-
-    bn3_wts_arr = _load_wts("bn3_chain.txt")
-    bn3_wts = Buffer(
-        np.ndarray[(_bn3_wts_size,), np.dtype[np.int8]], initial_value=bn3_wts_arr)
-
-    bn3_l1_in_ty = np.ndarray[(_BN3_IN_W, 1, _BN3_IN_C), np.dtype[np.int8]]
-    bn3_l1_wts_ty = np.ndarray[(_bn3_l1_wts_size,), np.dtype[np.int8]]
-    bn3_l1_out_ty = np.ndarray[(_BN3_IN_W, 1, _BN3_DW_CH), np.dtype[np.uint8]]
-    bn3_l2_wts_ty = np.ndarray[(_bn3_l2_wts_size,), np.dtype[np.int8]]
-    bn3_l2_out_ty = np.ndarray[(_BN3_OUT_W, 1, _BN3_DW_CH), np.dtype[np.uint8]]
-    bn3_l3_wts_ty = np.ndarray[(_bn3_l3_wts_size,), np.dtype[np.int8]]
-    bn3_l3_out_ty = np.ndarray[(_BN3_OUT_W, 1, _BN3_OUT_C), np.dtype[np.int8]]
-
-    bn3_conv2dk1_relu = Kernel(
-        "bn3_conv2dk1_relu_i8_ui8",
-        "bn3_conv2dk1_fused_relu.o",
-        [
-            bn3_l1_in_ty,
-            bn3_l1_wts_ty,
-            bn3_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    act_bn3_bn4, w = _make_3layer_block(
+        "bn3", act_bn2_bn3, _BN3_IN_W, _BN3_IN_H, _BN3_IN_C, _BN3_DW_CH, _BN3_OUT_C,
+        stride=2, scales=(bn3_scale1, bn3_scale2, bn3_scale3), scale_add=None,
+        tile=Tile(1, 3),
     )
-    bn3_conv2dk3_dw_stride2 = Kernel(
-        "bn3_conv2dk3_dw_stride2_relu_ui8_ui8",
-        "bn3_conv2dk3_dw_stride2.o",
-        [
-            bn3_l1_out_ty,
-            bn3_l1_out_ty,
-            bn3_l1_out_ty,
-            bn3_l2_wts_ty,
-            bn3_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    workers.append(w)
+
+
+    # bn4+bn5: fused pair on one tile (stride-1 with skip on both)
+    act_bn5_bn6, w = _make_fused_pair_block(
+        ("bn4", "bn5"), "bn4_5_chain.txt", act_bn3_bn4,
+        _BN45_IN_W, _BN45_IN_H, _BN45_IN_C,
+        _BN4_DW_CH, _BN4_OUT_C, _BN5_DW_CH, _BN5_OUT_C,
+        scales_a=(bn4_scale1, bn4_scale2, bn4_scale3, bn4_scaleAdd),
+        scales_b=(bn5_scale1, bn5_scale2, bn5_scale3, bn5_scaleAdd),
+        compute_tile=Tile(1, 2),
+        alloc_tile=Tile(0, 2),  # init tile (adjacent shared memory)
     )
-    bn3_conv2dk1 = Kernel(
-        "bn3_conv2dk1_ui8_i8",
-        "bn3_conv2dk1_i8.o",
-        [
-            bn3_l2_out_ty,
-            bn3_l3_wts_ty,
-            bn3_l3_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
+    workers.append(w)
 
-    act_bn3_bn4 = ObjectFifo(
-        np.ndarray[(_BN3_OUT_W, 1, _BN3_OUT_C), np.dtype[np.int8]],
-        depth=2,
-    )
 
-    bn3_act_1_2 = ObjectFifo(
-        np.ndarray[(_BN3_IN_W, 1, _BN3_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-    )
-    bn3_act_2_3 = ObjectFifo(
-        np.ndarray[(_BN3_OUT_W, 1, _BN3_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-    )
-
-    def bn3_worker_fn(
-        act_in_fifo,
-        wts_buf,
-        act_out_fifo,
-        act_12_prod,
-        act_12_cons,
-        act_23_prod,
-        act_23_cons,
-        f_1x1_relu,
-        f_dw_stride2,
-        f_1x1,
-        in_w,
-        in_h,
-        in_c,
-        dw_ch,
-        out_c,
-        scale1,
-        scale2,
-        scale3,
-    ):
-        out_w = in_w // 2
-        out_h = in_h // 2
-
-        # Slice combined weight buffer into per-layer views.
-        wts_l1 = memref_view(wts_buf.op, [_bn3_l1_wts_size], shift=0)
-        wts_l2 = memref_view(wts_buf.op, [_bn3_l2_wts_size], shift=_bn3_l1_wts_size)
-        wts_l3 = memref_view(
-            wts_buf.op, [_bn3_l3_wts_size], shift=_bn3_l1_wts_size + _bn3_l2_wts_size
-        )
-
-        # pre-amble
-        rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_12_prod.release(2)
-        act_in_fifo.release(2)
-
-        rows_l1 = act_12_cons.acquire(2)
-        row_l2 = act_23_prod.acquire(1)
-        f_dw_stride2(
-            rows_l1[0],
-            rows_l1[0],
-            rows_l1[1],
-            wts_l2,
-            row_l2,
-            in_w,
-            1,
-            dw_ch,
-            3,
-            3,
-            0,
-            scale2,
-            0,
-        )
-        act_12_cons.release(1)
-        act_23_prod.release(1)
-
-        row_l2 = act_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-        # middle
-        for _ in range_(out_h - 1):
-            rows_in = act_in_fifo.acquire(2)
-            rows_l1 = act_12_prod.acquire(2)
-            f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
-            f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
-            act_12_prod.release(2)
-            act_in_fifo.release(2)
-
-            rows_l1 = act_12_cons.acquire(3)
-            row_l2 = act_23_prod.acquire(1)
-            f_dw_stride2(
-                rows_l1[0],
-                rows_l1[1],
-                rows_l1[2],
-                wts_l2,
-                row_l2,
-                in_w,
-                1,
-                dw_ch,
-                3,
-                3,
-                1,
-                scale2,
-                0,
-            )
-            act_12_cons.release(2)
-            act_23_prod.release(1)
-
-            row_l2 = act_23_cons.acquire(1)
-            row_out = act_out_fifo.acquire(1)
-            f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
-            act_23_cons.release(1)
-            act_out_fifo.release(1)
-
-    bn3_worker = Worker(
-        bn3_worker_fn,
-        fn_args=[
-            act_bn2_bn3.cons(),
-            bn3_wts,
-            act_bn3_bn4.prod(),
-            bn3_act_1_2.prod(),
-            bn3_act_1_2.cons(),
-            bn3_act_2_3.prod(),
-            bn3_act_2_3.cons(),
-            bn3_conv2dk1_relu,
-            bn3_conv2dk3_dw_stride2,
-            bn3_conv2dk1,
-            _BN3_IN_W,
-            _BN3_IN_H,
-            _BN3_IN_C,
-            _BN3_DW_CH,
-            _BN3_OUT_C,
-            bn3_scale1,
-            bn3_scale2,
-            bn3_scale3,
-        ],
-        tile=Tile(1, 3),  # original: bn3_tile = tile(1, 3)
-        while_true=False,
-    )
-    workers.append(bn3_worker)
-
-    # ===================================================================
-    # bn4+bn5: fused pair on one tile, both stride-1 with skip
-    #   input  (28,1,40) int8
-    #   output (28,1,40) int8
-    # Weights: bn4_5_chain.txt  layout:
-    #   [1*1*120*40, 3*3*120, 1*1*40*120,  1*1*120*40, 3*3*120, 1*1*40*120]
-    # ===================================================================
-    _bn4_l1_wts = 1 * 1 * _BN4_DW_CH * _BN45_IN_C
-    _bn4_l2_wts = 3 * 3 * _BN4_DW_CH * 1
-    _bn4_l3_wts = 1 * 1 * _BN4_DW_CH * _BN4_OUT_C
-    _bn5_l1_wts = 1 * 1 * _BN5_DW_CH * _BN4_OUT_C
-    _bn5_l2_wts = 3 * 3 * _BN5_DW_CH * 1
-    _bn5_l3_wts = 1 * 1 * _BN5_DW_CH * _BN5_OUT_C
-    _bn45_wts_size = (
-        _bn4_l1_wts
-        + _bn4_l2_wts
-        + _bn4_l3_wts
-        + _bn5_l1_wts
-        + _bn5_l2_wts
-        + _bn5_l3_wts
-    )
-
-    bn45_wts_arr = _load_wts("bn4_5_chain.txt")
-    bn45_wts = Buffer(
-        np.ndarray[(_bn45_wts_size,), np.dtype[np.int8]], initial_value=bn45_wts_arr)
-
-    bn4_l1_in_ty = np.ndarray[(_BN45_IN_W, 1, _BN45_IN_C), np.dtype[np.int8]]
-    bn4_l1_wts_ty = np.ndarray[(_bn4_l1_wts,), np.dtype[np.int8]]
-    bn4_l1_out_ty = np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]]
-    bn4_l2_wts_ty = np.ndarray[(_bn4_l2_wts,), np.dtype[np.int8]]
-    bn4_l2_out_ty = np.ndarray[(_BN45_OUT_W, 1, _BN4_DW_CH), np.dtype[np.uint8]]
-    bn4_l3_wts_ty = np.ndarray[(_bn4_l3_wts,), np.dtype[np.int8]]
-    bn4_l3_out_ty = np.ndarray[(_BN45_OUT_W, 1, _BN4_OUT_C), np.dtype[np.int8]]
-    bn5_l1_out_ty = np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]]
-    bn5_l2_out_ty = np.ndarray[(_BN45_OUT_W, 1, _BN5_DW_CH), np.dtype[np.uint8]]
-
-    bn4_conv2dk1_relu = Kernel(
-        "bn4_conv2dk1_relu_i8_ui8",
-        "bn4_conv2dk1_fused_relu.o",
-        [
-            bn4_l1_in_ty,
-            bn4_l1_wts_ty,
-            bn4_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn4_conv2dk3_dw_stride1 = Kernel(
-        "bn4_conv2dk3_dw_stride1_relu_ui8_ui8",
-        "bn4_conv2dk3_dw_stride1.o",
-        [
-            bn4_l1_out_ty,
-            bn4_l1_out_ty,
-            bn4_l1_out_ty,
-            bn4_l2_wts_ty,
-            bn4_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn4_conv2dk1_skip = Kernel(
-        "bn4_conv2dk1_skip_ui8_i8_i8",
-        "bn4_conv2dk1_skip.o",
-        [
-            bn4_l2_out_ty,
-            bn4_l3_wts_ty,
-            bn4_l3_out_ty,
-            bn4_l3_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn5_conv2dk1_relu = Kernel(
-        "bn5_conv2dk1_relu_i8_ui8",
-        "bn5_conv2dk1_fused_relu.o",
-        [
-            bn4_l3_out_ty,
-            np.ndarray[(_bn5_l1_wts,), np.dtype[np.int8]],
-            bn5_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn5_conv2dk3_dw_stride1 = Kernel(
-        "bn5_conv2dk3_dw_stride1_relu_ui8_ui8",
-        "bn5_conv2dk3_dw_stride1.o",
-        [
-            bn5_l1_out_ty,
-            bn5_l1_out_ty,
-            bn5_l1_out_ty,
-            np.ndarray[(_bn5_l2_wts,), np.dtype[np.int8]],
-            bn5_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn5_conv2dk1_skip = Kernel(
-        "bn5_conv2dk1_skip_ui8_i8_i8",
-        "bn5_conv2dk1_skip.o",
-        [
-            bn5_l2_out_ty,
-            np.ndarray[(_bn5_l3_wts,), np.dtype[np.int8]],
-            np.ndarray[(_BN45_OUT_W, 1, _BN5_OUT_C), np.dtype[np.int8]],
-            np.ndarray[(_BN45_OUT_W, 1, _BN5_OUT_C), np.dtype[np.int8]],
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-
-    act_bn5_bn6 = ObjectFifo(
-        np.ndarray[(_BN45_OUT_W, 1, _BN5_OUT_C), np.dtype[np.int8]],
-        depth=2,
-    )
-
-    # Internal self-loop fifos for bn4+5 fused block.
-    # disable_synchronization=True: no locks needed (prod==cons in same @core).
-    # delegate_tile=Tile(0,2): the ring buffer for each fifo is allocated on the
-    # init tile's memory module — both prod and cons (same compute tile) have
-    # shared-memory access to it. Matches original placed-API design.
-    _bn45_alloc_tile = Tile(0, 2)  # init tile — matches original MLIR
-    bn45_act_bn4_1_2 = ObjectFifo(
-        np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-        disable_synchronization=True,
-        delegate_tile=_bn45_alloc_tile,
-    )
-    bn45_act_bn4_2_3 = ObjectFifo(
-        np.ndarray[(_BN45_IN_W, 1, _BN4_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-        disable_synchronization=True,
-        delegate_tile=_bn45_alloc_tile,
-    )
-    bn45_act_bn4_bn5 = ObjectFifo(
-        np.ndarray[(_BN45_IN_W, 1, _BN4_OUT_C), np.dtype[np.int8]],
-        depth=2,
-        disable_synchronization=True,
-        delegate_tile=_bn45_alloc_tile,
-    )
-    bn45_act_bn5_1_2 = ObjectFifo(
-        np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-        disable_synchronization=True,
-        delegate_tile=_bn45_alloc_tile,
-    )
-    bn45_act_bn5_2_3 = ObjectFifo(
-        np.ndarray[(_BN45_IN_W, 1, _BN5_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-        disable_synchronization=True,
-        delegate_tile=_bn45_alloc_tile,
-    )
-
-    def bn45_worker_fn(
-        act_in_fifo,
-        wts_buf,
-        act_out_fifo,
-        act_bn4_12_prod,
-        act_bn4_12_cons,
-        act_bn4_23_prod,
-        act_bn4_23_cons,
-        act_bn4_bn5_prod,
-        act_bn4_bn5_cons,
-        act_bn5_12_prod,
-        act_bn5_12_cons,
-        act_bn5_23_prod,
-        act_bn5_23_cons,
-        f4_1x1_relu,
-        f4_dw,
-        f4_skip,
-        f5_1x1_relu,
-        f5_dw,
-        f5_skip,
-        in_w,
-        in_h,
-        in_c,
-        bn4_dw_ch,
-        bn4_out_c,
-        bn5_dw_ch,
-        bn5_out_c,
-        s4_1,
-        s4_2,
-        s4_3,
-        s4_add,
-        s5_1,
-        s5_2,
-        s5_3,
-        s5_add,
-    ):
-        # Slice combined weight buffer into per-layer views.
-        wts_bn4_l1 = memref_view(wts_buf.op, [_bn4_l1_wts], shift=0)
-        wts_bn4_l2 = memref_view(wts_buf.op, [_bn4_l2_wts], shift=_bn4_l1_wts)
-        wts_bn4_l3 = memref_view(
-            wts_buf.op, [_bn4_l3_wts], shift=_bn4_l1_wts + _bn4_l2_wts
-        )
-        wts_bn5_l1 = memref_view(
-            wts_buf.op, [_bn5_l1_wts], shift=_bn4_l1_wts + _bn4_l2_wts + _bn4_l3_wts
-        )
-        wts_bn5_l2 = memref_view(
-            wts_buf.op,
-            [_bn5_l2_wts],
-            shift=_bn4_l1_wts + _bn4_l2_wts + _bn4_l3_wts + _bn5_l1_wts,
-        )
-        wts_bn5_l3 = memref_view(
-            wts_buf.op,
-            [_bn5_l3_wts],
-            shift=_bn4_l1_wts + _bn4_l2_wts + _bn4_l3_wts + _bn5_l1_wts + _bn5_l2_wts,
-        )
-
-        # This is a complex fused pipeline - stub body to make it importable
-        # Full pipeline follows the same pattern as bn8+bn9 in aie2_bottleneckA_subblock_fused2Static.py
-        # pre-amble 0: 2 rows of bn4 L1, row 0 of bn4 L2, row 0 of bn4 L3, row 0 of bn5 L1
-        rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_bn4_12_prod.acquire(2)
-        f4_1x1_relu(rows_in[0], wts_bn4_l1, rows_l1[0], in_w, in_c, bn4_dw_ch, s4_1)
-        f4_1x1_relu(rows_in[1], wts_bn4_l1, rows_l1[1], in_w, in_c, bn4_dw_ch, s4_1)
-        act_bn4_12_prod.release(2)
-
-        rows_l1 = act_bn4_12_cons.acquire(2)
-        row_l2 = act_bn4_23_prod.acquire(1)
-        f4_dw(
-            rows_l1[0],
-            rows_l1[0],
-            rows_l1[1],
-            wts_bn4_l2,
-            row_l2,
-            in_w,
-            1,
-            bn4_dw_ch,
-            3,
-            3,
-            0,
-            s4_2,
-            0,
-        )
-        act_bn4_23_prod.release(1)
-
-        row_l2 = act_bn4_23_cons.acquire(1)
-        row_bn4_out = act_bn4_bn5_prod.acquire(1)
-        f4_skip(
-            row_l2,
-            wts_bn4_l3,
-            row_bn4_out,
-            rows_in[0],
-            in_w,
-            bn4_dw_ch,
-            bn4_out_c,
-            s4_3,
-            s4_add,
-        )
-        act_in_fifo.release(1)
-        act_bn4_23_cons.release(1)
-        act_bn4_bn5_prod.release(1)
-
-        row_bn5_in = act_bn4_bn5_cons.acquire(1)
-        row_l1_5 = act_bn5_12_prod.acquire(1)
-        f5_1x1_relu(row_bn5_in, wts_bn5_l1, row_l1_5, in_w, bn4_out_c, bn5_dw_ch, s5_1)
-        act_bn5_12_prod.release(1)
-
-        # pre-amble 1: row 2 of bn4 L1, row 1 of bn4 L2, row 1 of bn4 L3,
-        #              row 1 of bn5 L1, row 0 of bn5 L2
-        rows_in = act_in_fifo.acquire(2)
-        row_l1 = act_bn4_12_prod.acquire(1)
-        f4_1x1_relu(rows_in[1], wts_bn4_l1, row_l1, in_w, in_c, bn4_dw_ch, s4_1)
-        act_bn4_12_prod.release(1)
-
-        rows_l1 = act_bn4_12_cons.acquire(3)
-        row_l2 = act_bn4_23_prod.acquire(1)
-        f4_dw(
-            rows_l1[0],
-            rows_l1[1],
-            rows_l1[2],
-            wts_bn4_l2,
-            row_l2,
-            in_w,
-            1,
-            bn4_dw_ch,
-            3,
-            3,
-            1,
-            s4_2,
-            0,
-        )
-        act_bn4_12_cons.release(1)
-        act_bn4_23_prod.release(1)
-
-        row_l2 = act_bn4_23_cons.acquire(1)
-        row_bn4_out = act_bn4_bn5_prod.acquire(1)
-        f4_skip(
-            row_l2,
-            wts_bn4_l3,
-            row_bn4_out,
-            rows_in[0],
-            in_w,
-            bn4_dw_ch,
-            bn4_out_c,
-            s4_3,
-            s4_add,
-        )
-        act_in_fifo.release(1)
-        act_bn4_23_cons.release(1)
-        act_bn4_bn5_prod.release(1)
-
-        rows_bn5_in = act_bn4_bn5_cons.acquire(2)
-        row_l1_5 = act_bn5_12_prod.acquire(1)
-        f5_1x1_relu(
-            rows_bn5_in[1], wts_bn5_l1, row_l1_5, in_w, bn4_out_c, bn5_dw_ch, s5_1
-        )
-        act_bn5_12_prod.release(1)
-
-        rows_l1_5 = act_bn5_12_cons.acquire(2)
-        row_l2_5 = act_bn5_23_prod.acquire(1)
-        f5_dw(
-            rows_l1_5[0],
-            rows_l1_5[0],
-            rows_l1_5[1],
-            wts_bn5_l2,
-            row_l2_5,
-            in_w,
-            1,
-            bn5_dw_ch,
-            3,
-            3,
-            0,
-            s5_2,
-            0,
-        )
-        act_bn5_23_prod.release(1)
-
-        row_l2_5 = act_bn5_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f5_skip(
-            row_l2_5,
-            wts_bn5_l3,
-            row_out,
-            rows_bn5_in[0],
-            in_w,
-            bn5_dw_ch,
-            bn5_out_c,
-            s5_3,
-            s5_add,
-        )
-        act_bn5_23_cons.release(1)
-        act_bn4_bn5_cons.release(1)
-        act_out_fifo.release(1)
-
-        # middle
-        for _ in range_(in_h - 3):
-            rows_in = act_in_fifo.acquire(2)
-            row_l1 = act_bn4_12_prod.acquire(1)
-            f4_1x1_relu(rows_in[1], wts_bn4_l1, row_l1, in_w, in_c, bn4_dw_ch, s4_1)
-            act_bn4_12_prod.release(1)
-
-            rows_l1 = act_bn4_12_cons.acquire(3)
-            row_l2 = act_bn4_23_prod.acquire(1)
-            f4_dw(
-                rows_l1[0],
-                rows_l1[1],
-                rows_l1[2],
-                wts_bn4_l2,
-                row_l2,
-                in_w,
-                1,
-                bn4_dw_ch,
-                3,
-                3,
-                1,
-                s4_2,
-                0,
-            )
-            act_bn4_12_cons.release(1)
-            act_bn4_23_prod.release(1)
-
-            row_l2 = act_bn4_23_cons.acquire(1)
-            row_bn4_out = act_bn4_bn5_prod.acquire(1)
-            f4_skip(
-                row_l2,
-                wts_bn4_l3,
-                row_bn4_out,
-                rows_in[0],
-                in_w,
-                bn4_dw_ch,
-                bn4_out_c,
-                s4_3,
-                s4_add,
-            )
-            act_in_fifo.release(1)
-            act_bn4_23_cons.release(1)
-            act_bn4_bn5_prod.release(1)
-
-            rows_bn5_in = act_bn4_bn5_cons.acquire(2)
-            row_l1_5 = act_bn5_12_prod.acquire(1)
-            f5_1x1_relu(
-                rows_bn5_in[1], wts_bn5_l1, row_l1_5, in_w, bn4_out_c, bn5_dw_ch, s5_1
-            )
-            act_bn5_12_prod.release(1)
-
-            rows_l1_5 = act_bn5_12_cons.acquire(3)
-            row_l2_5 = act_bn5_23_prod.acquire(1)
-            f5_dw(
-                rows_l1_5[0],
-                rows_l1_5[1],
-                rows_l1_5[2],
-                wts_bn5_l2,
-                row_l2_5,
-                in_w,
-                1,
-                bn5_dw_ch,
-                3,
-                3,
-                1,
-                s5_2,
-                0,
-            )
-            act_bn5_12_cons.release(1)
-            act_bn5_23_prod.release(1)
-
-            row_l2_5 = act_bn5_23_cons.acquire(1)
-            row_out = act_out_fifo.acquire(1)
-            f5_skip(
-                row_l2_5,
-                wts_bn5_l3,
-                row_out,
-                rows_bn5_in[0],
-                in_w,
-                bn5_dw_ch,
-                bn5_out_c,
-                s5_3,
-                s5_add,
-            )
-            act_bn5_23_cons.release(1)
-            act_bn4_bn5_cons.release(1)
-            act_out_fifo.release(1)
-
-        # post-amble 0: last row of bn4
-        rows_l1 = act_bn4_12_cons.acquire(2)
-        row_l2 = act_bn4_23_prod.acquire(1)
-        f4_dw(
-            rows_l1[0],
-            rows_l1[1],
-            rows_l1[1],
-            wts_bn4_l2,
-            row_l2,
-            in_w,
-            1,
-            bn4_dw_ch,
-            3,
-            3,
-            2,
-            s4_2,
-            0,
-        )
-        act_bn4_12_cons.release(2)
-        act_bn4_23_prod.release(1)
-
-        row_in = act_in_fifo.acquire(1)
-        row_l2 = act_bn4_23_cons.acquire(1)
-        row_bn4_out = act_bn4_bn5_prod.acquire(1)
-        f4_skip(
-            row_l2,
-            wts_bn4_l3,
-            row_bn4_out,
-            row_in,
-            in_w,
-            bn4_dw_ch,
-            bn4_out_c,
-            s4_3,
-            s4_add,
-        )
-        act_in_fifo.release(1)
-        act_bn4_23_cons.release(1)
-        act_bn4_bn5_prod.release(1)
-
-        rows_bn5_in = act_bn4_bn5_cons.acquire(2)
-        row_l1_5 = act_bn5_12_prod.acquire(1)
-        f5_1x1_relu(
-            rows_bn5_in[1], wts_bn5_l1, row_l1_5, in_w, bn4_out_c, bn5_dw_ch, s5_1
-        )
-        act_bn5_12_prod.release(1)
-
-        rows_l1_5 = act_bn5_12_cons.acquire(3)
-        row_l2_5 = act_bn5_23_prod.acquire(1)
-        f5_dw(
-            rows_l1_5[0],
-            rows_l1_5[1],
-            rows_l1_5[2],
-            wts_bn5_l2,
-            row_l2_5,
-            in_w,
-            1,
-            bn5_dw_ch,
-            3,
-            3,
-            1,
-            s5_2,
-            0,
-        )
-        act_bn5_12_cons.release(1)
-        act_bn5_23_prod.release(1)
-
-        row_l2_5 = act_bn5_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f5_skip(
-            row_l2_5,
-            wts_bn5_l3,
-            row_out,
-            rows_bn5_in[0],
-            in_w,
-            bn5_dw_ch,
-            bn5_out_c,
-            s5_3,
-            s5_add,
-        )
-        act_bn5_23_cons.release(1)
-        act_bn4_bn5_cons.release(1)
-        act_out_fifo.release(1)
-
-        # post-amble 1: last row of bn5
-        rows_l1_5 = act_bn5_12_cons.acquire(2)
-        row_l2_5 = act_bn5_23_prod.acquire(1)
-        f5_dw(
-            rows_l1_5[0],
-            rows_l1_5[1],
-            rows_l1_5[1],
-            wts_bn5_l2,
-            row_l2_5,
-            in_w,
-            1,
-            bn5_dw_ch,
-            3,
-            3,
-            2,
-            s5_2,
-            0,
-        )
-        act_bn5_12_cons.release(2)
-        act_bn5_23_prod.release(1)
-
-        row_bn5_skip = act_bn4_bn5_cons.acquire(1)
-        row_l2_5 = act_bn5_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f5_skip(
-            row_l2_5,
-            wts_bn5_l3,
-            row_out,
-            row_bn5_skip,
-            in_w,
-            bn5_dw_ch,
-            bn5_out_c,
-            s5_3,
-            s5_add,
-        )
-        act_bn5_23_cons.release(1)
-        act_bn4_bn5_cons.release(1)
-        act_out_fifo.release(1)
-
-    bn45_worker = Worker(
-        bn45_worker_fn,
-        fn_args=[
-            act_bn3_bn4.cons(),
-            bn45_wts,
-            act_bn5_bn6.prod(),
-            bn45_act_bn4_1_2.prod(),
-            bn45_act_bn4_1_2.cons(),
-            bn45_act_bn4_2_3.prod(),
-            bn45_act_bn4_2_3.cons(),
-            bn45_act_bn4_bn5.prod(),
-            bn45_act_bn4_bn5.cons(),
-            bn45_act_bn5_1_2.prod(),
-            bn45_act_bn5_1_2.cons(),
-            bn45_act_bn5_2_3.prod(),
-            bn45_act_bn5_2_3.cons(),
-            bn4_conv2dk1_relu,
-            bn4_conv2dk3_dw_stride1,
-            bn4_conv2dk1_skip,
-            bn5_conv2dk1_relu,
-            bn5_conv2dk3_dw_stride1,
-            bn5_conv2dk1_skip,
-            _BN45_IN_W,
-            _BN45_IN_H,
-            _BN45_IN_C,
-            _BN4_DW_CH,
-            _BN4_OUT_C,
-            _BN5_DW_CH,
-            _BN5_OUT_C,
-            bn4_scale1,
-            bn4_scale2,
-            bn4_scale3,
-            bn4_scaleAdd,
-            bn5_scale1,
-            bn5_scale2,
-            bn5_scale3,
-            bn5_scaleAdd,
-        ],
-        tile=Tile(
-            1, 2
-        ),  # original: bn4_5_tile = tile(1,2); L1 alloc on tile(0,2) (adjacent),
-        while_true=False,
-    )
-    workers.append(bn45_worker)
-
-    # ===================================================================
     # bn6: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    #   input  (28,1,40) int8
-    #   L1 out (28,1,240) uint8
-    #   L2 out (14,1,240) uint8
-    #   L3 out (14,1,80)  int8
-    # Weights: bn6_chain.txt  layout: [1*1*240*40, 3*3*240, 1*1*80*240]
-    # ===================================================================
-    _bn6_l1_wts_size = 1 * 1 * _BN6_DW_CH * _BN6_IN_C
-    _bn6_l2_wts_size = 3 * 3 * _BN6_DW_CH * 1
-    _bn6_l3_wts_size = 1 * 1 * _BN6_DW_CH * _BN6_OUT_C
-    _bn6_wts_size = _bn6_l1_wts_size + _bn6_l2_wts_size + _bn6_l3_wts_size
-
-    bn6_wts_arr = _load_wts("bn6_chain.txt")
-    bn6_wts = Buffer(
-        np.ndarray[(_bn6_wts_size,), np.dtype[np.int8]], initial_value=bn6_wts_arr)
-
-    bn6_l1_in_ty = np.ndarray[(_BN6_IN_W, 1, _BN6_IN_C), np.dtype[np.int8]]
-    bn6_l1_wts_ty = np.ndarray[(_bn6_l1_wts_size,), np.dtype[np.int8]]
-    bn6_l1_out_ty = np.ndarray[(_BN6_IN_W, 1, _BN6_DW_CH), np.dtype[np.uint8]]
-    bn6_l2_wts_ty = np.ndarray[(_bn6_l2_wts_size,), np.dtype[np.int8]]
-    bn6_l2_out_ty = np.ndarray[(_BN6_OUT_W, 1, _BN6_DW_CH), np.dtype[np.uint8]]
-    bn6_l3_wts_ty = np.ndarray[(_bn6_l3_wts_size,), np.dtype[np.int8]]
-    bn6_l3_out_ty = np.ndarray[(_BN6_OUT_W, 1, _BN6_OUT_C), np.dtype[np.int8]]
-
-    bn6_conv2dk1_relu = Kernel(
-        "bn6_conv2dk1_relu_i8_ui8",
-        "bn6_conv2dk1_fused_relu.o",
-        [
-            bn6_l1_in_ty,
-            bn6_l1_wts_ty,
-            bn6_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    act_bn6_bn7, w = _make_3layer_block(
+        "bn6", act_bn5_bn6, _BN6_IN_W, _BN6_IN_H, _BN6_IN_C, _BN6_DW_CH, _BN6_OUT_C,
+        stride=2, scales=(bn6_scale1, bn6_scale2, bn6_scale3), scale_add=None,
+        tile=Tile(1, 4),
     )
-    bn6_conv2dk3_dw_stride2 = Kernel(
-        "bn6_conv2dk3_dw_stride2_relu_ui8_ui8",
-        "bn6_conv2dk3_dw_stride2.o",
-        [
-            bn6_l1_out_ty,
-            bn6_l1_out_ty,
-            bn6_l1_out_ty,
-            bn6_l2_wts_ty,
-            bn6_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn6_conv2dk1 = Kernel(
-        "bn6_conv2dk1_ui8_i8",
-        "bn6_conv2dk1_i8.o",
-        [
-            bn6_l2_out_ty,
-            bn6_l3_wts_ty,
-            bn6_l3_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
+    workers.append(w)
 
-    act_bn6_bn7 = ObjectFifo(
-        np.ndarray[(_BN6_OUT_W, 1, _BN6_OUT_C), np.dtype[np.int8]], depth=2)
 
-    bn6_act_1_2 = ObjectFifo(
-        np.ndarray[(_BN6_IN_W, 1, _BN6_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-    )
-    bn6_act_2_3 = ObjectFifo(
-        np.ndarray[(_BN6_OUT_W, 1, _BN6_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-    )
-
-    def bn6_worker_fn(
-        act_in_fifo,
-        wts_buf,
-        act_out_fifo,
-        act_12_prod,
-        act_12_cons,
-        act_23_prod,
-        act_23_cons,
-        f_1x1_relu,
-        f_dw_stride2,
-        f_1x1,
-        in_w,
-        in_h,
-        in_c,
-        dw_ch,
-        out_c,
-        scale1,
-        scale2,
-        scale3,
-    ):
-        out_w = in_w // 2
-        out_h = in_h // 2
-
-        # Slice combined weight buffer into per-layer views.
-        wts_l1 = memref_view(wts_buf.op, [_bn6_l1_wts_size], shift=0)
-        wts_l2 = memref_view(wts_buf.op, [_bn6_l2_wts_size], shift=_bn6_l1_wts_size)
-        wts_l3 = memref_view(
-            wts_buf.op, [_bn6_l3_wts_size], shift=_bn6_l1_wts_size + _bn6_l2_wts_size
-        )
-
-        rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_12_prod.release(2)
-        act_in_fifo.release(2)
-
-        rows_l1 = act_12_cons.acquire(2)
-        row_l2 = act_23_prod.acquire(1)
-        f_dw_stride2(
-            rows_l1[0],
-            rows_l1[0],
-            rows_l1[1],
-            wts_l2,
-            row_l2,
-            in_w,
-            1,
-            dw_ch,
-            3,
-            3,
-            0,
-            scale2,
-            0,
-        )
-        act_12_cons.release(1)
-        act_23_prod.release(1)
-
-        row_l2 = act_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-        for _ in range_(out_h - 1):
-            rows_in = act_in_fifo.acquire(2)
-            rows_l1 = act_12_prod.acquire(2)
-            f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
-            f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
-            act_12_prod.release(2)
-            act_in_fifo.release(2)
-
-            rows_l1 = act_12_cons.acquire(3)
-            row_l2 = act_23_prod.acquire(1)
-            f_dw_stride2(
-                rows_l1[0],
-                rows_l1[1],
-                rows_l1[2],
-                wts_l2,
-                row_l2,
-                in_w,
-                1,
-                dw_ch,
-                3,
-                3,
-                1,
-                scale2,
-                0,
-            )
-            act_12_cons.release(2)
-            act_23_prod.release(1)
-
-            row_l2 = act_23_cons.acquire(1)
-            row_out = act_out_fifo.acquire(1)
-            f_1x1(row_l2, wts_l3, row_out, out_w, dw_ch, out_c, scale3)
-            act_23_cons.release(1)
-            act_out_fifo.release(1)
-
-    bn6_worker = Worker(
-        bn6_worker_fn,
-        fn_args=[
-            act_bn5_bn6.cons(),
-            bn6_wts,
-            act_bn6_bn7.prod(),
-            bn6_act_1_2.prod(),
-            bn6_act_1_2.cons(),
-            bn6_act_2_3.prod(),
-            bn6_act_2_3.cons(),
-            bn6_conv2dk1_relu,
-            bn6_conv2dk3_dw_stride2,
-            bn6_conv2dk1,
-            _BN6_IN_W,
-            _BN6_IN_H,
-            _BN6_IN_C,
-            _BN6_DW_CH,
-            _BN6_OUT_C,
-            bn6_scale1,
-            bn6_scale2,
-            bn6_scale3,
-        ],
-        tile=Tile(1, 4),  # original: bn6_tile = tile(1, 4)
-        while_true=False,
-    )
-    workers.append(bn6_worker)
-
-    # ===================================================================
     # bn7: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    #   input  (14,1,80) int8
-    #   L1 out (14,1,200) uint8
-    #   L2 out (14,1,200) uint8
-    #   L3 out (14,1,80)  int8
-    # Weights: bn7_chain.txt  layout: [1*1*200*80, 3*3*200, 1*1*80*200]
-    # ===================================================================
-    _bn7_l1_wts_size = 1 * 1 * _BN7_DW_CH * _BN7_IN_C
-    _bn7_l2_wts_size = 3 * 3 * _BN7_DW_CH * 1
-    _bn7_l3_wts_size = 1 * 1 * _BN7_DW_CH * _BN7_OUT_C
-    _bn7_wts_size = _bn7_l1_wts_size + _bn7_l2_wts_size + _bn7_l3_wts_size
-
-    bn7_wts_arr = _load_wts("bn7_chain.txt")
-    bn7_wts = Buffer(
-        np.ndarray[(_bn7_wts_size,), np.dtype[np.int8]], initial_value=bn7_wts_arr)
-
-    bn7_l1_in_ty = np.ndarray[(_BN7_IN_W, 1, _BN7_IN_C), np.dtype[np.int8]]
-    bn7_l1_wts_ty = np.ndarray[(_bn7_l1_wts_size,), np.dtype[np.int8]]
-    bn7_l1_out_ty = np.ndarray[(_BN7_IN_W, 1, _BN7_DW_CH), np.dtype[np.uint8]]
-    bn7_l2_wts_ty = np.ndarray[(_bn7_l2_wts_size,), np.dtype[np.int8]]
-    bn7_l2_out_ty = np.ndarray[(_BN7_OUT_W, 1, _BN7_DW_CH), np.dtype[np.uint8]]
-    bn7_l3_wts_ty = np.ndarray[(_bn7_l3_wts_size,), np.dtype[np.int8]]
-    bn7_l3_out_ty = np.ndarray[(_BN7_OUT_W, 1, _BN7_OUT_C), np.dtype[np.int8]]
-
-    bn7_conv2dk1_relu = Kernel(
-        "bn7_conv2dk1_relu_i8_ui8",
-        "bn7_conv2dk1_fused_relu.o",
-        [
-            bn7_l1_in_ty,
-            bn7_l1_wts_ty,
-            bn7_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    act_bn7_bn8, w = _make_3layer_block(
+        "bn7", act_bn6_bn7, _BN7_IN_W, _BN7_IN_H, _BN7_IN_C, _BN7_DW_CH, _BN7_OUT_C,
+        stride=1, scales=(bn7_scale1, bn7_scale2, bn7_scale3), scale_add=bn7_scaleAdd,
+        tile=Tile(2, 3),
     )
-    bn7_conv2dk3_dw_stride1 = Kernel(
-        "bn7_conv2dk3_dw_stride1_relu_ui8_ui8",
-        "bn7_conv2dk3_dw_stride1.o",
-        [
-            bn7_l1_out_ty,
-            bn7_l1_out_ty,
-            bn7_l1_out_ty,
-            bn7_l2_wts_ty,
-            bn7_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    workers.append(w)
+
+
+    # bn8+bn9: fused pair on one tile (stride-1 with skip on both); final output.
+    act_bn9_out, w = _make_fused_pair_block(
+        ("bn8", "bn9"), "bn8_9_chain.txt", act_bn7_bn8,
+        _BN89_IN_W, _BN89_IN_H, _BN89_IN_C,
+        _BN8_DW_CH, _BN8_OUT_C, _BN9_DW_CH, _BN9_OUT_C,
+        scales_a=(bn8_scale1, bn8_scale2, bn8_scale3, bn8_scaleAdd),
+        scales_b=(bn9_scale1, bn9_scale2, bn9_scale3, bn9_scaleAdd),
+        compute_tile=Tile(3, 3),
+        alloc_tile=Tile(3, 4),  # bn11 L1 tile (adjacent shared memory)
+        out_prod_depth=1,       # bn89 boundary: prod side depth=1 (cons inherits 2)
     )
-    bn7_conv2dk1_skip = Kernel(
-        "bn7_conv2dk1_skip_ui8_i8_i8",
-        "bn7_conv2dk1_skip.o",
-        [
-            bn7_l2_out_ty,
-            bn7_l3_wts_ty,
-            bn7_l3_out_ty,
-            bn7_l3_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
+    workers.append(w)
 
-    act_bn7_bn8 = ObjectFifo(
-        np.ndarray[(_BN7_OUT_W, 1, _BN7_OUT_C), np.dtype[np.int8]],
-        depth=2,
-    )
-
-    bn7_act_1_2 = ObjectFifo(
-        np.ndarray[(_BN7_IN_W, 1, _BN7_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-    )
-    bn7_act_2_3 = ObjectFifo(
-        np.ndarray[(_BN7_OUT_W, 1, _BN7_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-    )
-
-    def bn7_worker_fn(
-        act_in_fifo,
-        wts_buf,
-        act_out_fifo,
-        act_12_prod,
-        act_12_cons,
-        act_23_prod,
-        act_23_cons,
-        f_1x1_relu,
-        f_dw,
-        f_1x1_skip,
-        in_w,
-        in_h,
-        in_c,
-        dw_ch,
-        out_c,
-        scale1,
-        scale2,
-        scale3,
-        scale_add,
-    ):
-        # Slice combined weight buffer into per-layer views.
-        wts_l1 = memref_view(wts_buf.op, [_bn7_l1_wts_size], shift=0)
-        wts_l2 = memref_view(wts_buf.op, [_bn7_l2_wts_size], shift=_bn7_l1_wts_size)
-        wts_l3 = memref_view(
-            wts_buf.op, [_bn7_l3_wts_size], shift=_bn7_l1_wts_size + _bn7_l2_wts_size
-        )
-
-        # pre-amble: 2 rows
-        rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_12_prod.acquire(2)
-        f_1x1_relu(rows_in[0], wts_l1, rows_l1[0], in_w, in_c, dw_ch, scale1)
-        f_1x1_relu(rows_in[1], wts_l1, rows_l1[1], in_w, in_c, dw_ch, scale1)
-        act_12_prod.release(2)
-
-        rows_l1 = act_12_cons.acquire(2)
-        row_l2 = act_23_prod.acquire(1)
-        f_dw(
-            rows_l1[0],
-            rows_l1[0],
-            rows_l1[1],
-            wts_l2,
-            row_l2,
-            in_w,
-            1,
-            dw_ch,
-            3,
-            3,
-            0,
-            scale2,
-            0,
-        )
-        act_23_prod.release(1)
-
-        row_l2 = act_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f_1x1_skip(
-            row_l2, wts_l3, row_out, rows_in[0], in_w, dw_ch, out_c, scale3, scale_add
-        )
-        # Sliding window: release only 1 of the 2 acquired rows; rows_in[1]
-        # carries over as next iter's [0]. Producer (bn1/bn6) only emits 1
-        # row per iter; releasing 2 here would consume 2x and deadlock.
-        act_in_fifo.release(1)
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-        # middle
-        for _ in range_(in_h - 2):
-            rows_in = act_in_fifo.acquire(2)
-            row_l1 = act_12_prod.acquire(1)
-            f_1x1_relu(rows_in[1], wts_l1, row_l1, in_w, in_c, dw_ch, scale1)
-            act_12_prod.release(1)
-
-            rows_l1 = act_12_cons.acquire(3)
-            row_l2 = act_23_prod.acquire(1)
-            f_dw(
-                rows_l1[0],
-                rows_l1[1],
-                rows_l1[2],
-                wts_l2,
-                row_l2,
-                in_w,
-                1,
-                dw_ch,
-                3,
-                3,
-                1,
-                scale2,
-                0,
-            )
-            act_12_cons.release(1)
-            act_23_prod.release(1)
-
-            row_l2 = act_23_cons.acquire(1)
-            row_out = act_out_fifo.acquire(1)
-            f_1x1_skip(
-                row_l2,
-                wts_l3,
-                row_out,
-                rows_in[0],
-                in_w,
-                dw_ch,
-                out_c,
-                scale3,
-                scale_add,
-            )
-            # Sliding window: release only 1 row per iter (matching producer).
-            act_in_fifo.release(1)
-            act_23_cons.release(1)
-            act_out_fifo.release(1)
-
-        # last row
-        rows_l1 = act_12_cons.acquire(2)
-        row_l2 = act_23_prod.acquire(1)
-        f_dw(
-            rows_l1[0],
-            rows_l1[1],
-            rows_l1[1],
-            wts_l2,
-            row_l2,
-            in_w,
-            1,
-            dw_ch,
-            3,
-            3,
-            2,
-            scale2,
-            0,
-        )
-        act_12_cons.release(2)
-        act_23_prod.release(1)
-
-        # Mirror lowlevel acquire/release order (subblockStatic.py:405-438):
-        # acquire L2, acquire out, acquire skip, call, release skip, release L2,
-        # release out.
-        row_l2 = act_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        row_in = act_in_fifo.acquire(1)
-        f_1x1_skip(
-            row_l2, wts_l3, row_out, row_in, in_w, dw_ch, out_c, scale3, scale_add
-        )
-        act_in_fifo.release(1)
-        act_23_cons.release(1)
-        act_out_fifo.release(1)
-
-    bn7_worker = Worker(
-        bn7_worker_fn,
-        fn_args=[
-            act_bn6_bn7.cons(),
-            bn7_wts,
-            act_bn7_bn8.prod(),
-            bn7_act_1_2.prod(),
-            bn7_act_1_2.cons(),
-            bn7_act_2_3.prod(),
-            bn7_act_2_3.cons(),
-            bn7_conv2dk1_relu,
-            bn7_conv2dk3_dw_stride1,
-            bn7_conv2dk1_skip,
-            _BN7_IN_W,
-            _BN7_IN_H,
-            _BN7_IN_C,
-            _BN7_DW_CH,
-            _BN7_OUT_C,
-            bn7_scale1,
-            bn7_scale2,
-            bn7_scale3,
-            bn7_scaleAdd,
-        ],
-        tile=Tile(2, 3),  # original: bn7_tile = tile(2,3), adjacent to bn8+9 tile(3,3),
-        while_true=False,
-    )
-    workers.append(bn7_worker)
-
-    # ===================================================================
-    # bn8+bn9: fused pair on one tile, both stride-1 with skip
-    #   input  (14,1,80) int8
-    #   output (14,1,80) int8
-    # Weights: bn8_9_chain.txt  layout:
-    #   [1*1*184*80, 3*3*184, 1*1*80*184,  1*1*184*80, 3*3*184, 1*1*80*184]
-    # ===================================================================
-    _bn8_l1_wts = 1 * 1 * _BN8_DW_CH * _BN89_IN_C
-    _bn8_l2_wts = 3 * 3 * _BN8_DW_CH * 1
-    _bn8_l3_wts = 1 * 1 * _BN8_DW_CH * _BN8_OUT_C
-    _bn9_l1_wts = 1 * 1 * _BN9_DW_CH * _BN8_OUT_C
-    _bn9_l2_wts = 3 * 3 * _BN9_DW_CH * 1
-    _bn9_l3_wts = 1 * 1 * _BN9_DW_CH * _BN9_OUT_C
-    _bn89_wts_size = (
-        _bn8_l1_wts
-        + _bn8_l2_wts
-        + _bn8_l3_wts
-        + _bn9_l1_wts
-        + _bn9_l2_wts
-        + _bn9_l3_wts
-    )
-
-    bn89_wts_arr = _load_wts("bn8_9_chain.txt")
-    bn89_wts = Buffer(
-        np.ndarray[(_bn89_wts_size,), np.dtype[np.int8]], initial_value=bn89_wts_arr)
-
-    bn8_l1_in_ty = np.ndarray[(_BN89_IN_W, 1, _BN89_IN_C), np.dtype[np.int8]]
-    bn8_l1_wts_ty = np.ndarray[(_bn8_l1_wts,), np.dtype[np.int8]]
-    bn8_l1_out_ty = np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]]
-    bn8_l2_wts_ty = np.ndarray[(_bn8_l2_wts,), np.dtype[np.int8]]
-    bn8_l2_out_ty = np.ndarray[(_BN89_OUT_W, 1, _BN8_DW_CH), np.dtype[np.uint8]]
-    bn8_l3_wts_ty = np.ndarray[(_bn8_l3_wts,), np.dtype[np.int8]]
-    bn8_l3_out_ty = np.ndarray[(_BN89_OUT_W, 1, _BN8_OUT_C), np.dtype[np.int8]]
-    bn9_l1_out_ty = np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]]
-    bn9_l2_out_ty = np.ndarray[(_BN89_OUT_W, 1, _BN9_DW_CH), np.dtype[np.uint8]]
-    bn9_l3_out_ty = np.ndarray[(_BN89_OUT_W, 1, _BN9_OUT_C), np.dtype[np.int8]]
-
-    bn8_conv2dk1_relu = Kernel(
-        "bn8_conv2dk1_relu_i8_ui8",
-        "bn8_conv2dk1_fused_relu.o",
-        [
-            bn8_l1_in_ty,
-            bn8_l1_wts_ty,
-            bn8_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn8_conv2dk3_dw_stride1 = Kernel(
-        "bn8_conv2dk3_dw_stride1_relu_ui8_ui8",
-        "bn8_conv2dk3_dw_stride1.o",
-        [
-            bn8_l1_out_ty,
-            bn8_l1_out_ty,
-            bn8_l1_out_ty,
-            bn8_l2_wts_ty,
-            bn8_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn8_conv2dk1_skip = Kernel(
-        "bn8_conv2dk1_skip_ui8_i8_i8",
-        "bn8_conv2dk1_skip.o",
-        [
-            bn8_l2_out_ty,
-            bn8_l3_wts_ty,
-            bn8_l3_out_ty,
-            bn8_l1_in_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn9_conv2dk1_relu = Kernel(
-        "bn9_conv2dk1_relu_i8_ui8",
-        "bn9_conv2dk1_fused_relu.o",
-        [
-            bn8_l3_out_ty,
-            np.ndarray[(_bn9_l1_wts,), np.dtype[np.int8]],
-            bn9_l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn9_conv2dk3_dw_stride1 = Kernel(
-        "bn9_conv2dk3_dw_stride1_relu_ui8_ui8",
-        "bn9_conv2dk3_dw_stride1.o",
-        [
-            bn9_l1_out_ty,
-            bn9_l1_out_ty,
-            bn9_l1_out_ty,
-            np.ndarray[(_bn9_l2_wts,), np.dtype[np.int8]],
-            bn9_l2_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-    bn9_conv2dk1_skip = Kernel(
-        "bn9_conv2dk1_skip_ui8_i8_i8",
-        "bn9_conv2dk1_skip.o",
-        [
-            bn9_l2_out_ty,
-            np.ndarray[(_bn9_l3_wts,), np.dtype[np.int8]],
-            bn9_l3_out_ty,
-            bn8_l3_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
-    )
-
-    # Final output fifo (boundary interface - FIXED type and depth).
-    # Producer (bn89 tile) uses depth=1 to save SRAM (set explicitly at .prod()
-    # below); consumer (pipeline bn10 tile) inherits the fifo's default depth=2.
-    # Matches original act_bn9_bn10 [1,2].
-    act_bn9_out = ObjectFifo(
-        np.ndarray[(_BN89_OUT_W, 1, _BN9_OUT_C), np.dtype[np.int8]],
-        depth=2,
-    )
-
-    # Internal self-loop fifos for bn8+9 fused block.
-    # disable_synchronization=True: no locks needed (prod==cons in same @core).
-    # delegate_tile=Tile(3,4): each ring buffer is allocated on the bn11_l1
-    # pipeline tile, which is adjacent to compute tile(3,3) and shares memory
-    # with it. Matches original placed-API design.
-    _bn89_alloc_tile = Tile(3, 4)  # pipeline bn11_l1 tile — matches original MLIR
-    bn89_act_bn8_1_2 = ObjectFifo(
-        np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-        disable_synchronization=True,
-        delegate_tile=_bn89_alloc_tile,
-    )
-    bn89_act_bn8_2_3 = ObjectFifo(
-        np.ndarray[(_BN89_IN_W, 1, _BN8_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-        disable_synchronization=True,
-        delegate_tile=_bn89_alloc_tile,
-    )
-    bn89_act_bn8_bn9 = ObjectFifo(
-        np.ndarray[(_BN89_IN_W, 1, _BN8_OUT_C), np.dtype[np.int8]],
-        depth=2,
-        disable_synchronization=True,
-        delegate_tile=_bn89_alloc_tile,
-    )
-    bn89_act_bn9_1_2 = ObjectFifo(
-        np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
-        depth=3,
-        disable_synchronization=True,
-        delegate_tile=_bn89_alloc_tile,
-    )
-    bn89_act_bn9_2_3 = ObjectFifo(
-        np.ndarray[(_BN89_IN_W, 1, _BN9_DW_CH), np.dtype[np.uint8]],
-        depth=1,
-        disable_synchronization=True,
-        delegate_tile=_bn89_alloc_tile,
-    )
-
-    def bn89_worker_fn(
-        act_in_fifo,
-        wts_buf,
-        act_out_fifo,
-        act_bn8_12_prod,
-        act_bn8_12_cons,
-        act_bn8_23_prod,
-        act_bn8_23_cons,
-        act_bn8_bn9_prod,
-        act_bn8_bn9_cons,
-        act_bn9_12_prod,
-        act_bn9_12_cons,
-        act_bn9_23_prod,
-        act_bn9_23_cons,
-        f8_1x1_relu,
-        f8_dw,
-        f8_skip,
-        f9_1x1_relu,
-        f9_dw,
-        f9_skip,
-        in_w,
-        in_h,
-        in_c,
-        bn8_dw_ch,
-        bn8_out_c,
-        bn9_dw_ch,
-        bn9_out_c,
-        s8_1,
-        s8_2,
-        s8_3,
-        s8_add,
-        s9_1,
-        s9_2,
-        s9_3,
-        s9_add,
-    ):
-        # Slice combined weight buffer into per-layer views.
-        wts_bn8_l1 = memref_view(wts_buf.op, [_bn8_l1_wts], shift=0)
-        wts_bn8_l2 = memref_view(wts_buf.op, [_bn8_l2_wts], shift=_bn8_l1_wts)
-        wts_bn8_l3 = memref_view(
-            wts_buf.op, [_bn8_l3_wts], shift=_bn8_l1_wts + _bn8_l2_wts
-        )
-        wts_bn9_l1 = memref_view(
-            wts_buf.op, [_bn9_l1_wts], shift=_bn8_l1_wts + _bn8_l2_wts + _bn8_l3_wts
-        )
-        wts_bn9_l2 = memref_view(
-            wts_buf.op,
-            [_bn9_l2_wts],
-            shift=_bn8_l1_wts + _bn8_l2_wts + _bn8_l3_wts + _bn9_l1_wts,
-        )
-        wts_bn9_l3 = memref_view(
-            wts_buf.op,
-            [_bn9_l3_wts],
-            shift=_bn8_l1_wts + _bn8_l2_wts + _bn8_l3_wts + _bn9_l1_wts + _bn9_l2_wts,
-        )
-
-        # pre-amble 0: 2 rows of bn8 L1, row 0 of bn8 L2, row 0 of bn8 L3, row 0 of bn9 L1
-        rows_in = act_in_fifo.acquire(2)
-        rows_l1 = act_bn8_12_prod.acquire(2)
-        f8_1x1_relu(rows_in[0], wts_bn8_l1, rows_l1[0], in_w, in_c, bn8_dw_ch, s8_1)
-        f8_1x1_relu(rows_in[1], wts_bn8_l1, rows_l1[1], in_w, in_c, bn8_dw_ch, s8_1)
-        act_bn8_12_prod.release(2)
-
-        rows_l1 = act_bn8_12_cons.acquire(2)
-        row_l2 = act_bn8_23_prod.acquire(1)
-        f8_dw(
-            rows_l1[0],
-            rows_l1[0],
-            rows_l1[1],
-            wts_bn8_l2,
-            row_l2,
-            in_w,
-            1,
-            bn8_dw_ch,
-            3,
-            3,
-            0,
-            s8_2,
-            0,
-        )
-        act_bn8_23_prod.release(1)
-
-        row_l2 = act_bn8_23_cons.acquire(1)
-        row_bn8_out = act_bn8_bn9_prod.acquire(1)
-        f8_skip(
-            row_l2,
-            wts_bn8_l3,
-            row_bn8_out,
-            rows_in[0],
-            in_w,
-            bn8_dw_ch,
-            bn8_out_c,
-            s8_3,
-            s8_add,
-        )
-        act_in_fifo.release(1)
-        act_bn8_23_cons.release(1)
-        act_bn8_bn9_prod.release(1)
-
-        row_bn9_in = act_bn8_bn9_cons.acquire(1)
-        row_l1_9 = act_bn9_12_prod.acquire(1)
-        f9_1x1_relu(row_bn9_in, wts_bn9_l1, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1)
-        act_bn9_12_prod.release(1)
-
-        # pre-amble 1: row 2 of bn8 L1, row 1 of bn8 L2, row 1 of bn8 L3,
-        #              row 1 of bn9 L1, row 0 of bn9 L2
-        rows_in = act_in_fifo.acquire(2)
-        row_l1 = act_bn8_12_prod.acquire(1)
-        f8_1x1_relu(rows_in[1], wts_bn8_l1, row_l1, in_w, in_c, bn8_dw_ch, s8_1)
-        act_bn8_12_prod.release(1)
-
-        rows_l1 = act_bn8_12_cons.acquire(3)
-        row_l2 = act_bn8_23_prod.acquire(1)
-        f8_dw(
-            rows_l1[0],
-            rows_l1[1],
-            rows_l1[2],
-            wts_bn8_l2,
-            row_l2,
-            in_w,
-            1,
-            bn8_dw_ch,
-            3,
-            3,
-            1,
-            s8_2,
-            0,
-        )
-        act_bn8_12_cons.release(1)
-        act_bn8_23_prod.release(1)
-
-        row_l2 = act_bn8_23_cons.acquire(1)
-        row_bn8_out = act_bn8_bn9_prod.acquire(1)
-        f8_skip(
-            row_l2,
-            wts_bn8_l3,
-            row_bn8_out,
-            rows_in[0],
-            in_w,
-            bn8_dw_ch,
-            bn8_out_c,
-            s8_3,
-            s8_add,
-        )
-        act_in_fifo.release(1)
-        act_bn8_23_cons.release(1)
-        act_bn8_bn9_prod.release(1)
-
-        rows_bn9_in = act_bn8_bn9_cons.acquire(2)
-        row_l1_9 = act_bn9_12_prod.acquire(1)
-        f9_1x1_relu(
-            rows_bn9_in[1], wts_bn9_l1, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1
-        )
-        act_bn9_12_prod.release(1)
-
-        rows_l1_9 = act_bn9_12_cons.acquire(2)
-        row_l2_9 = act_bn9_23_prod.acquire(1)
-        f9_dw(
-            rows_l1_9[0],
-            rows_l1_9[0],
-            rows_l1_9[1],
-            wts_bn9_l2,
-            row_l2_9,
-            in_w,
-            1,
-            bn9_dw_ch,
-            3,
-            3,
-            0,
-            s9_2,
-            0,
-        )
-        act_bn9_23_prod.release(1)
-
-        row_l2_9 = act_bn9_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f9_skip(
-            row_l2_9,
-            wts_bn9_l3,
-            row_out,
-            rows_bn9_in[0],
-            in_w,
-            bn9_dw_ch,
-            bn9_out_c,
-            s9_3,
-            s9_add,
-        )
-        act_bn9_23_cons.release(1)
-        act_bn8_bn9_cons.release(1)
-        act_out_fifo.release(1)
-
-        # middle
-        for _ in range_(in_h - 3):
-            rows_in = act_in_fifo.acquire(2)
-            row_l1 = act_bn8_12_prod.acquire(1)
-            f8_1x1_relu(rows_in[1], wts_bn8_l1, row_l1, in_w, in_c, bn8_dw_ch, s8_1)
-            act_bn8_12_prod.release(1)
-
-            rows_l1 = act_bn8_12_cons.acquire(3)
-            row_l2 = act_bn8_23_prod.acquire(1)
-            f8_dw(
-                rows_l1[0],
-                rows_l1[1],
-                rows_l1[2],
-                wts_bn8_l2,
-                row_l2,
-                in_w,
-                1,
-                bn8_dw_ch,
-                3,
-                3,
-                1,
-                s8_2,
-                0,
-            )
-            act_bn8_12_cons.release(1)
-            act_bn8_23_prod.release(1)
-
-            row_l2 = act_bn8_23_cons.acquire(1)
-            row_bn8_out = act_bn8_bn9_prod.acquire(1)
-            f8_skip(
-                row_l2,
-                wts_bn8_l3,
-                row_bn8_out,
-                rows_in[0],
-                in_w,
-                bn8_dw_ch,
-                bn8_out_c,
-                s8_3,
-                s8_add,
-            )
-            act_in_fifo.release(1)
-            act_bn8_23_cons.release(1)
-            act_bn8_bn9_prod.release(1)
-
-            rows_bn9_in = act_bn8_bn9_cons.acquire(2)
-            row_l1_9 = act_bn9_12_prod.acquire(1)
-            f9_1x1_relu(
-                rows_bn9_in[1], wts_bn9_l1, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1
-            )
-            act_bn9_12_prod.release(1)
-
-            rows_l1_9 = act_bn9_12_cons.acquire(3)
-            row_l2_9 = act_bn9_23_prod.acquire(1)
-            f9_dw(
-                rows_l1_9[0],
-                rows_l1_9[1],
-                rows_l1_9[2],
-                wts_bn9_l2,
-                row_l2_9,
-                in_w,
-                1,
-                bn9_dw_ch,
-                3,
-                3,
-                1,
-                s9_2,
-                0,
-            )
-            act_bn9_12_cons.release(1)
-            act_bn9_23_prod.release(1)
-
-            row_l2_9 = act_bn9_23_cons.acquire(1)
-            row_out = act_out_fifo.acquire(1)
-            f9_skip(
-                row_l2_9,
-                wts_bn9_l3,
-                row_out,
-                rows_bn9_in[0],
-                in_w,
-                bn9_dw_ch,
-                bn9_out_c,
-                s9_3,
-                s9_add,
-            )
-            act_bn9_23_cons.release(1)
-            act_bn8_bn9_cons.release(1)
-            act_out_fifo.release(1)
-
-        # post-amble 0: last row of bn8
-        rows_l1 = act_bn8_12_cons.acquire(2)
-        row_l2 = act_bn8_23_prod.acquire(1)
-        f8_dw(
-            rows_l1[0],
-            rows_l1[1],
-            rows_l1[1],
-            wts_bn8_l2,
-            row_l2,
-            in_w,
-            1,
-            bn8_dw_ch,
-            3,
-            3,
-            2,
-            s8_2,
-            0,
-        )
-        act_bn8_12_cons.release(2)
-        act_bn8_23_prod.release(1)
-
-        row_in = act_in_fifo.acquire(1)
-        row_l2 = act_bn8_23_cons.acquire(1)
-        row_bn8_out = act_bn8_bn9_prod.acquire(1)
-        f8_skip(
-            row_l2,
-            wts_bn8_l3,
-            row_bn8_out,
-            row_in,
-            in_w,
-            bn8_dw_ch,
-            bn8_out_c,
-            s8_3,
-            s8_add,
-        )
-        act_in_fifo.release(1)
-        act_bn8_23_cons.release(1)
-        act_bn8_bn9_prod.release(1)
-
-        rows_bn9_in = act_bn8_bn9_cons.acquire(2)
-        row_l1_9 = act_bn9_12_prod.acquire(1)
-        f9_1x1_relu(
-            rows_bn9_in[1], wts_bn9_l1, row_l1_9, in_w, bn8_out_c, bn9_dw_ch, s9_1
-        )
-        act_bn9_12_prod.release(1)
-
-        rows_l1_9 = act_bn9_12_cons.acquire(3)
-        row_l2_9 = act_bn9_23_prod.acquire(1)
-        f9_dw(
-            rows_l1_9[0],
-            rows_l1_9[1],
-            rows_l1_9[2],
-            wts_bn9_l2,
-            row_l2_9,
-            in_w,
-            1,
-            bn9_dw_ch,
-            3,
-            3,
-            1,
-            s9_2,
-            0,
-        )
-        act_bn9_12_cons.release(1)
-        act_bn9_23_prod.release(1)
-
-        row_l2_9 = act_bn9_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f9_skip(
-            row_l2_9,
-            wts_bn9_l3,
-            row_out,
-            rows_bn9_in[0],
-            in_w,
-            bn9_dw_ch,
-            bn9_out_c,
-            s9_3,
-            s9_add,
-        )
-        act_bn9_23_cons.release(1)
-        act_bn8_bn9_cons.release(1)
-        act_out_fifo.release(1)
-
-        # post-amble 1: last row of bn9
-        rows_l1_9 = act_bn9_12_cons.acquire(2)
-        row_l2_9 = act_bn9_23_prod.acquire(1)
-        f9_dw(
-            rows_l1_9[0],
-            rows_l1_9[1],
-            rows_l1_9[1],
-            wts_bn9_l2,
-            row_l2_9,
-            in_w,
-            1,
-            bn9_dw_ch,
-            3,
-            3,
-            2,
-            s9_2,
-            0,
-        )
-        act_bn9_12_cons.release(2)
-        act_bn9_23_prod.release(1)
-
-        row_bn9_skip = act_bn8_bn9_cons.acquire(1)
-        row_l2_9 = act_bn9_23_cons.acquire(1)
-        row_out = act_out_fifo.acquire(1)
-        f9_skip(
-            row_l2_9,
-            wts_bn9_l3,
-            row_out,
-            row_bn9_skip,
-            in_w,
-            bn9_dw_ch,
-            bn9_out_c,
-            s9_3,
-            s9_add,
-        )
-        act_bn9_23_cons.release(1)
-        act_bn8_bn9_cons.release(1)
-        act_out_fifo.release(1)
-
-    bn89_worker = Worker(
-        bn89_worker_fn,
-        fn_args=[
-            act_bn7_bn8.cons(),
-            bn89_wts,
-            act_bn9_out.prod(depth=1),
-            bn89_act_bn8_1_2.prod(),
-            bn89_act_bn8_1_2.cons(),
-            bn89_act_bn8_2_3.prod(),
-            bn89_act_bn8_2_3.cons(),
-            bn89_act_bn8_bn9.prod(),
-            bn89_act_bn8_bn9.cons(),
-            bn89_act_bn9_1_2.prod(),
-            bn89_act_bn9_1_2.cons(),
-            bn89_act_bn9_2_3.prod(),
-            bn89_act_bn9_2_3.cons(),
-            bn8_conv2dk1_relu,
-            bn8_conv2dk3_dw_stride1,
-            bn8_conv2dk1_skip,
-            bn9_conv2dk1_relu,
-            bn9_conv2dk3_dw_stride1,
-            bn9_conv2dk1_skip,
-            _BN89_IN_W,
-            _BN89_IN_H,
-            _BN89_IN_C,
-            _BN8_DW_CH,
-            _BN8_OUT_C,
-            _BN9_DW_CH,
-            _BN9_OUT_C,
-            bn8_scale1,
-            bn8_scale2,
-            bn8_scale3,
-            bn8_scaleAdd,
-            bn9_scale1,
-            bn9_scale2,
-            bn9_scale3,
-            bn9_scaleAdd,
-        ],
-        tile=Tile(
-            3, 3
-        ),  # original: bn8_9_tile = tile(3,3); L1 alloc on tile(3,4) (adjacent),
-        while_true=False,
-    )
-    workers.append(bn89_worker)
 
     return workers, act_bn9_out
