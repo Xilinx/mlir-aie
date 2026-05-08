@@ -169,9 +169,17 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     # Input / output tensor types (used in runtime sequence)
     # ------------------------------------------------------------------
-    in_ty = np.ndarray[(tensorInW * tensorInH * tensorInC,), np.dtype[np.int8]]
+    # Match lowlevel runtime arg types EXACTLY: lowlevel declares all three
+    # runtime args as memref<...xi32> (i32 element view of the underlying byte
+    # buffers). Iron previously used i8/ui16 native element types -- same
+    # physical bytes but different MLIR element-level interpretation. Switch
+    # to i32 to match lowlevel.
+    #   arg0 (act_in / scratch): 401408 bytes = 100352 i32
+    #   arg2 (final FC2 output): 2560 bytes  = 640   i32
+    in_ty = np.ndarray[(tensorInW * tensorInH * tensorInC // 4,), np.dtype[np.int32]]
     out_ty = np.ndarray[
-        (post_L1_OutW * post_L1_OutH * post_L2_OutC,), np.dtype[np.uint16]
+        (post_L1_OutW * post_L1_OutH * post_L2_OutC * 2 // 4,),  # 1*1*1280*2/4 = 640 i32
+        np.dtype[np.int32],
     ]
 
     # ------------------------------------------------------------------
@@ -682,18 +690,23 @@ def mobilenet_iron():
     #         bn14_L1(76800) | bn14_L3_put(38400) | bn14_L3_get(38400) = 307200
     from aie.helpers.taplib import TensorAccessPattern
 
-    _L1 = 80 * 960  # 76800
-    _L3h = 480 * 80  # 38400 (half)
-    _L3f = _L3h * 2  # 76800 (full = put+get combined)
-    _cascade_wts_sz = (_L1 + _L3h * 2) * 2  # 307200
-    cascade_wts_ty = np.ndarray[(_cascade_wts_sz,), np.dtype[np.int8]]
+    _L1 = 80 * 960  # 76800 bytes
+    _L3h = 480 * 80  # 38400 (half) bytes
+    _L3f = _L3h * 2  # 76800 (full = put+get combined) bytes
+    # Match lowlevel arg1 size EXACTLY: lowlevel declares memref<96000xi32>
+    # = 384000 bytes (allocates 76800 bytes of padding past the 4 weight
+    # chunks at 4*76800=307200). Use the same i32-element view.
+    _cascade_wts_sz_i32 = 96000  # = 384000 bytes (matches lowlevel exactly)
+    cascade_wts_ty = np.ndarray[(_cascade_wts_sz_i32,), np.dtype[np.int32]]
 
-    # TAP helpers: slice a sub-tensor from the combined buffer (offset in int8 elements)
-    def _wts_tap(offset, size):
+    # TAP helpers: slice a sub-tensor from the combined buffer.
+    # Offsets/sizes are in i32 elements (4 bytes each), matching lowlevel's
+    # `npu.dma_memcpy_nd(%arg1[0..19200][...]) : memref<96000xi32>`.
+    def _wts_tap(byte_offset, byte_size):
         return TensorAccessPattern(
-            (_cascade_wts_sz,),
-            offset=offset,
-            sizes=[1, 1, 1, size],
+            (_cascade_wts_sz_i32,),
+            offset=byte_offset // 4,
+            sizes=[1, 1, 1, byte_size // 4],
             strides=[0, 0, 0, 1],
         )
 
@@ -750,14 +763,16 @@ def mobilenet_iron():
         # Round-trip the avgpool output through L3 (DDR) — matches original
         # design's shim 30/40 hop. Reuses inp as scratch (input has been fully
         # consumed by the time PostL1 produces output).
-        # Match lowlevel byte offsets: avgpool/FC1-input scratch starts at byte
-        # 2560 (i32 offset 640 in lowlevel arg0); FC1-output/FC2-input scratch
-        # starts at byte 5120 (i32 offset 1280).
-        _post_l1_out_sz = post_L1_OutW * post_L1_OutH * post_L2_InC * 2
+        # All offsets/sizes are in i32 elements (4 bytes), matching lowlevel:
+        #   avgpool/FC1-input scratch: i32 offset 640 = byte 2560 (1280 ui16)
+        #   FC1-output/FC2-input scratch: i32 offset 1280 = byte 5120
+        #   transfer length: i32 640 = bytes 2560 = 1280 ui16
+        _post_l1_out_sz_i32 = post_L1_OutW * post_L1_OutH * post_L2_InC * 2 // 4  # 640
+        _inp_sz_i32 = tensorInW * tensorInH * tensorInC // 4  # 100352
         _post_l1_scratch_tap = TensorAccessPattern(
-            (tensorInW * tensorInH * tensorInC,),
-            offset=_post_l1_out_sz,
-            sizes=[1, 1, 1, _post_l1_out_sz],
+            (_inp_sz_i32,),
+            offset=_post_l1_out_sz_i32,
+            sizes=[1, 1, 1, _post_l1_out_sz_i32],
             strides=[0, 0, 0, 1],
         )
         rt.drain(
@@ -784,9 +799,9 @@ def mobilenet_iron():
             task_group=tg2,
         )
         _post_fc_out_tap = TensorAccessPattern(
-            (tensorInW * tensorInH * tensorInC,),
-            offset=_post_l1_out_sz * 2,
-            sizes=[1, 1, 1, _post_l1_out_sz],
+            (_inp_sz_i32,),
+            offset=_post_l1_out_sz_i32 * 2,  # i32 offset 1280
+            sizes=[1, 1, 1, _post_l1_out_sz_i32],
             strides=[0, 0, 0, 1],
         )
         rt.drain(
