@@ -387,8 +387,8 @@ else ()
     COMPONENT aie-python
   )
 
-  # Note: events_database.json is now checked into
-  # lib/Dialect/AIE/Util/ and handled by the regdb CMake target there.
+  # Note: events_database.json is generated at build time by the
+  # GenerateAIEEventsTD target (include/aie/Dialect/AIE/IR/CMakeLists.txt).
   # Python trace event enums are sourced from the TableGen-generated
   # _aie_enum_gen.py bindings (no separate generation step needed).
 

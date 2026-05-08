@@ -15,7 +15,7 @@ under architecture-agnostic names (CoreEvent, etc.) for convenience.
 Use get_events_for_device() to select the correct architecture.
 """
 
-from enum import Enum, IntEnum
+from enum import IntEnum
 from types import SimpleNamespace
 import typing
 
@@ -23,7 +23,6 @@ from aie.dialects._aie_enum_gen import (
     CoreEventAIE,
     MemEventAIE,
     ShimTileEventAIE,
-    MemTileEventAIE,
     CoreEventAIE2,
     MemEventAIE2,
     ShimTileEventAIE2,
@@ -63,7 +62,7 @@ def get_events_for_device(device: str):
             CoreEvent=CoreEventAIE,
             MemEvent=MemEventAIE,
             ShimTileEvent=ShimTileEventAIE,
-            MemTileEvent=MemTileEventAIE,
+            MemTileEvent=None,  # AIE1 has no mem tiles
         )
     elif "npu2p" in device:
         return SimpleNamespace(
@@ -98,13 +97,6 @@ class GenericEvent:
     def __init__(
         self, code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent]
     ):
-        # For backwards compatibility, allow plain integer as event.
-        # IntEnum is a subclass of int, so check Enum first to avoid
-        # accidentally converting typed event enums to CoreEvent.
-        if isinstance(code, Enum):
-            pass
-        elif isinstance(code, int):
-            code = CoreEvent(code)
         self.code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent] = code
 
     def get_register_writes(self):
@@ -152,9 +144,6 @@ class BasePortEvent(GenericEvent):
         enum_class=None,
         valid_codes=None,
     ):
-        # For backwards compatibility, allow integer as event
-        if isinstance(code, int) and enum_class:
-            code = enum_class(code)
         if valid_codes:
             assert code in valid_codes
 

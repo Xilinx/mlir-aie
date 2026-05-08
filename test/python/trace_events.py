@@ -26,8 +26,9 @@
 # CHECK: Edge case: Arch-specific events
 # CHECK: AIE1.MemEvent has WATCHPOINT_0
 # CHECK: AIE2.MemEvent has WATCHPOINT_0
-# CHECK: AIE2 has MemTileEvent, AIE1 does not
-# CHECK: AIE2P has MemTileEvent, AIE1 does not
+# CHECK: AIE1 MemTileEvent is None (no mem tiles in AIE1)
+# CHECK: AIE2 has MemTileEvent
+# CHECK: AIE2P has MemTileEvent
 # CHECK: Edge case: Events not present in arch raise AttributeError
 # CHECK: AIE1.CoreEvent.EDGE_DETECTION_EVENT_0 does not exist
 # CHECK: AIE2.CoreEvent.SRS_SATURATE does not exist
@@ -134,18 +135,18 @@ def test_edge_cases():
     assert hasattr(aie2.MemEvent, "WATCHPOINT_0"), "AIE2 should have WATCHPOINT_0"
     print("AIE2.MemEvent has WATCHPOINT_0")
 
-    # MemTileEvent only has events in AIE2/AIE2P
-    aie1_memtile_events = [e for e in aie1.MemTileEvent]
-    assert len(aie1_memtile_events) == 0, "AIE1 MemTileEvent should be empty"
-    print("AIE2 has MemTileEvent, AIE1 does not")
+    # AIE1 has no mem tiles
+    assert aie1.MemTileEvent is None, "AIE1 should not have MemTileEvent"
+    print("AIE1 MemTileEvent is None (no mem tiles in AIE1)")
 
     # AIE2/AIE2P have actual MemTileEvent events
     aie2_memtile_events = [e for e in aie2.MemTileEvent]
     assert len(aie2_memtile_events) > 0, "AIE2 MemTileEvent should have events"
+    print("AIE2 has MemTileEvent")
 
     aie2p_memtile_events = [e for e in aie2p.MemTileEvent]
     assert len(aie2p_memtile_events) > 0, "AIE2P MemTileEvent should have events"
-    print("AIE2P has MemTileEvent, AIE1 does not")
+    print("AIE2P has MemTileEvent")
 
     print("Edge case: Events not present in arch raise AttributeError")
 
