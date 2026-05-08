@@ -6,12 +6,9 @@ This example implements a SAXPY kernel, which given single-precision (i.e. `bflo
 
 This design consists of the following:
 
-* `saxpy.py`: The NPU design for this application,
-  which describes which cores of the NPU we will use, how to route data between
-  cores, and what program to run on each core. This design leverages the IRON
-  JIT decorator to compile the design into a binary to run on the NPU, as well as 
-  to describe the program that runs on the CPU (host) that calculates a correct 
-  reference output, verifies and times our NPU design's execution.
+* `saxpy.py`: The NPU design and host driver. Uses the IRON `@iron.jit`
+  decorator to compile to an NPU binary on first call. The host driver
+  computes a CPU reference and verifies the NPU output.
 * `saxpy.cc`: Contains both a scalar C++ SAXPY kernel (saxpy_scalar) and a vectorized kernel (saxpy) that exposes efficient 
   vector operations on the AI Engine using the 
   [AIE API](https://xilinx.github.io/aie_api/index.html).

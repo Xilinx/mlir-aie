@@ -2,12 +2,14 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+"""SAXPY (Z = a*X + Y) demo with a custom .cc kernel."""
 
-from ml_dtypes import bfloat16
-import numpy as np
-import sys
 import os
+import sys
+
+import numpy as np
+from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import Compile, ExternalFunction, In, Out
@@ -15,32 +17,16 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.utils.config import cxx_header_path
 
 
-# JIT decorator for IRON
-# Decorator to compile an IRON kernel into a binary to run on the NPU.
-# Parameters:
-#     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
 def saxpy(
     input0: In, input1: In, output: Out, *, N: Compile[int], element_type: Compile[type]
 ):
-
-    # --------------------------------------------------------------------------
-    # In-Array Data Movement
-    # --------------------------------------------------------------------------
-
     in_ty = np.ndarray[(N,), np.dtype[element_type]]
     out_ty = np.ndarray[(N,), np.dtype[element_type]]
 
     of_x = ObjectFifo(in_ty, name="x")
     of_y = ObjectFifo(in_ty, name="y")
     of_z = ObjectFifo(out_ty, name="z")
-
-    # --------------------------------------------------------------------------
-    # Task each core will run
-    # --------------------------------------------------------------------------
-
-    # The kernel acquires input tensors X and Y, and output tensor Z, performs the
-    # SAXPY operation on X and Y, and writes the result in Z.
 
     saxpy_kernel = ExternalFunction(
         "saxpy",
@@ -62,10 +48,6 @@ def saxpy(
         core_body, fn_args=[of_x.cons(), of_y.cons(), of_z.prod(), saxpy_kernel]
     )
 
-    # --------------------------------------------------------------------------
-    # DRAM-NPU data movement and work dispatch
-    # --------------------------------------------------------------------------
-
     rt = Runtime()
     with rt.sequence(in_ty, in_ty, out_ty) as (a_x, a_y, c_z):
         rt.start(worker)
@@ -73,49 +55,27 @@ def saxpy(
         rt.fill(of_y.prod(), a_y)
         rt.drain(of_z.cons(), c_z, wait=True)
 
-    # --------------------------------------------------------------------------
-    # Place and generate MLIR program
-    # --------------------------------------------------------------------------
-
-    my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def main():
-    # Define tensor shapes and data types.
-    # NOTE: saxpy.cc hardcodes the loop bound to 4096 elements. This value
-    # must match data_size or the kernel will produce silently wrong results.
+    # NOTE: saxpy.cc hardcodes the loop bound to 4096 elements.
+    # data_size must match or the kernel produces silently wrong results.
     data_size = 4096
     element_type = bfloat16
 
-    # Construct an input tensor and an output zeroed tensor
-    # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(data_size, dtype=element_type, device="npu")
     input1 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
-    # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
-    # to the kernel will use the same compiled kernel and loaded code objects
     saxpy(input0, input1, output, N=data_size, element_type=element_type)
 
-    # Check the correctness of the result and print any mismatches
     ref_vec = [3 * input0[i] + input1[i] for i in range(data_size)]
-
-    errors = 0
-    for index, (actual, ref) in enumerate(zip(output, ref_vec)):
-        if actual != ref:
-            print(f"Error at {index}: {actual} != {ref}")
-            errors += 1
-
-    # If the result is correct, exit with a success code
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nfailed.\n")
+    errors = sum(1 for actual, ref in zip(output, ref_vec) if actual != ref)
+    if errors:
+        print(f"\nFAIL: {errors} mismatches")
         sys.exit(1)
+    print("\nPASS!")
 
 
 if __name__ == "__main__":
