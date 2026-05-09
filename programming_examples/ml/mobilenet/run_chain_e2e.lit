@@ -1,0 +1,30 @@
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Per-chain IRON e2e correctness on the NPU2.
+//
+// Builds and runs:
+//   pipeline = bn10 -> bn11 -> bn12  (uses pipeline_bottlenecks)
+//   cascade  = bn13 -> bn14          (uses cascade_bottlenecks)
+//
+// Each chain uses the brevitas-calibrated scales + weights from
+// bottleneck_B/data and bottleneck_C/data, and is compared bit-exact against
+// that subdir's golden_output.txt.
+//
+// Verified locally — both chains pass with atol=0.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: mkdir -p test_stx
+// RUN: cd test_stx
+// RUN: cp %S/mb_utils.py .
+//
+// RUN: bash %S/run_chain_e2e.sh pipeline %S | tee %t.pipeline.log
+// RUN: FileCheck --check-prefix=PIPELINE %s < %t.pipeline.log
+// PIPELINE: PASS_CHAIN_E2E pipeline
+// PIPELINE-NOT: FAIL_CHAIN_E2E
+//
+// RUN: bash %S/run_chain_e2e.sh cascade %S | tee %t.cascade.log
+// RUN: FileCheck --check-prefix=CASCADE %s < %t.cascade.log
+// CASCADE: PASS_CHAIN_E2E cascade
+// CASCADE-NOT: FAIL_CHAIN_E2E
