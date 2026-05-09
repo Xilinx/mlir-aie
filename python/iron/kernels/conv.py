@@ -62,14 +62,20 @@ def conv2dk3(
     input_channels: int = 64,
     output_channels: int = 64,
     act_dtype=np.int8,
+    weight_output_channels: int | None = None,
 ) -> ExternalFunction:
     """3x3 convolution kernel.
 
     Args:
         input_width: Spatial width of the input.
         input_channels: Number of input channels.
-        output_channels: Number of output channels.
+        output_channels: Number of output channels produced by this call.
         act_dtype: Activation data type (``np.int8`` or ``np.uint8``).
+        weight_output_channels: Total number of output channels stored in the
+            weights buffer. Defaults to ``output_channels``. Set higher than
+            ``output_channels`` when the weights buffer is shared across
+            multiple workers that each produce a slice of the output (the
+            ``channel_offset`` runtime arg selects a worker's slice).
 
     Returns:
         ExternalFunction configured for the conv2dk3 kernel.
@@ -80,9 +86,13 @@ def conv2dk3(
     func_name, flags = _conv_act_dtype_info(
         "conv2dk3", act_dtype, factory_name="conv2dk3"
     )
+    if weight_output_channels is None:
+        weight_output_channels = output_channels
     line_size = input_width * input_channels
     line_ty = np.ndarray[(line_size,), np.dtype[act_dtype]]
-    wt_ty = np.ndarray[(3 * 3 * input_channels * output_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[
+        (3 * 3 * input_channels * weight_output_channels,), np.dtype[np.int8]
+    ]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
     return _make_extern(
         func_name,
@@ -191,6 +201,7 @@ def conv2dk1_skip_init(
     input_channels: int = 64,
     output_channels: int = 64,
     act_dtype=np.int8,
+    skip_input_channels: int | None = None,
 ) -> ExternalFunction:
     """1x1 convolution kernel with skip-init connection.
 
@@ -199,6 +210,9 @@ def conv2dk1_skip_init(
         input_channels: Number of input channels.
         output_channels: Number of output channels.
         act_dtype: Activation data type (``np.int8`` or ``np.uint8``).
+        skip_input_channels: Number of input channels for the skip-projection
+            1x1 conv whose weights are concatenated after the main conv
+            weights in the same buffer. Defaults to ``input_channels``.
 
     Returns:
         ExternalFunction configured for the conv2dk1_skip_init kernel.
@@ -209,12 +223,15 @@ def conv2dk1_skip_init(
     func_name, flags = _conv_act_dtype_info(
         "conv2dk1_skip_init", act_dtype, factory_name="conv2dk1_skip_init"
     )
+    if skip_input_channels is None:
+        skip_input_channels = input_channels
     half_ch = input_channels // 2
+    total_in_ch = input_channels + skip_input_channels
     in0_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
     in1_ty = np.ndarray[(input_width * half_ch,), np.dtype[np.uint8]]
-    wt_ty = np.ndarray[(input_channels * output_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[(total_in_ch * output_channels,), np.dtype[np.int8]]
     out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
-    skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[act_dtype]]
+    skip_ty = np.ndarray[(input_width * skip_input_channels,), np.dtype[act_dtype]]
     return _make_extern(
         func_name,
         _default_source_path("conv2dk1_skip_init.cc", subdir="aie2"),

@@ -34,14 +34,24 @@ logger = logging.getLogger(__name__)
 
 
 def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
-    """Return per-transfer element counts from ``input_with_addresses.mlir``.
+    """Return per-host-arg total element counts from ``input_with_addresses.mlir``.
+
+    The returned list is indexed by host-facing block-argument position of the
+    enclosing ``aie.runtime_sequence``.  Each entry is the sum of every
+    ``aie.dma_bd`` ``len`` whose first operand resolves to that block argument
+    — designs that fan a single host buffer out to multiple per-column DMAs
+    (e.g. distinct weights slices per AIE column) thus see ``len_col0 +
+    len_col1 + ...`` for that arg, which matches the size of the host-side
+    tensor the caller passed in.
 
     Args:
         kernel_dir: Directory aiecc wrote its lowered MLIR into.
 
     Returns:
-        A list of element counts in transfer order, or ``None`` when the
-        file is absent or unparseable.
+        A list of per-arg total element counts (length = number of host args
+        in the runtime sequence), or ``None`` when the file is absent or
+        unparseable.  Args with no associated DMA (e.g. unused buffers) get
+        a ``0``.
     """
     mlir_path = kernel_dir / "input_with_addresses.mlir"
     if not mlir_path.exists():
@@ -64,17 +74,24 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         if seq is None:
             return None
         seq_block = seq.regions[0].blocks[0]
+        block_args = list(seq_block.arguments)
 
-        sizes: list[int] = []
+        per_arg_totals = [0] * len(block_args)
         for op in _walk(seq):
             if op.name != "aie.dma_bd" or len(op.operands) == 0:
                 continue
             # First operand is the memref being transferred.  When it owns to
             # the runtime_sequence's own block, it's a host-facing %argN
             # rather than a tile-internal named buffer.
-            if op.operands[0].owner == seq_block:
-                sizes.append(int(op.attributes["len"].value))
-        return sizes or None
+            host_operand = op.operands[0]
+            if host_operand.owner != seq_block:
+                continue
+            ln = int(op.attributes["len"].value)
+            for i, ba in enumerate(block_args):
+                if ba == host_operand:
+                    per_arg_totals[i] += ln
+                    break
+        return per_arg_totals if any(per_arg_totals) else None
     except Exception:
         # Treat any binding/parsing failure as "validation unavailable" rather
         # than crashing the caller — runtime tensor validation is best-effort.

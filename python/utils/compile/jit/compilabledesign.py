@@ -597,18 +597,14 @@ class CompilableDesign:
     def validate_tensor_args(self, tensor_args: list) -> None:
         """Validate that *tensor_args* element counts match the compiled kernel.
 
-        Compares each tensor's element count against the DMA transfer sizes
-        extracted from the compiled ``aiex.runtime_sequence``.  Raises
-        ``RuntimeError`` with a clear message if a mismatch is detected.
+        Compares each tensor's element count against the per-host-arg total
+        DMA byte count extracted from the compiled ``aiex.runtime_sequence``.
+        ``parse_dma_sizes`` already sums multi-DMA fan-outs (e.g. one host
+        weights buffer split across N AIE columns) so a single equality check
+        per tensor is sufficient.
 
-        For parallel/distributed kernels, work is split across N AIE columns
-        and each logical tensor maps to N DMA ops of size ``total/N``.
-        ``parse_dma_sizes`` returns all N per-column sizes.  To
-        avoid false positives in this case, validation is skipped for a tensor
-        whose element count is an exact non-zero multiple of the expected DMA
-        size (i.e. ``actual % expected == 0`` and ``actual > 0``).  A true
-        mismatch (e.g. 1000 elements vs 128-element DMA) does not divide
-        evenly, so the error is still raised.
+        Args with no associated DMA (entry == 0) are skipped — those are
+        runtime params not directly transferred by the design.
 
         No-op when expected sizes are unavailable (e.g. offline compilation
         or when ``input_with_addresses.mlir`` was not produced).
@@ -620,17 +616,14 @@ class CompilableDesign:
         for i, (tensor, expected) in enumerate(
             zip(tensor_args, self._expected_tensor_sizes)
         ):
+            if expected == 0:
+                continue
             try:
                 actual = int(np.size(tensor))
             except (TypeError, ValueError, AttributeError):
                 # Non-array-like tensor argument (e.g. a scalar passed by mistake);
                 # skip rather than raise so the kernel call surfaces the real
                 # type error.
-                continue
-            # Skip if actual is an exact positive multiple of expected — this
-            # covers parallel/distributed kernels where one logical tensor maps
-            # to multiple per-column DMA ops each of size (total / N).
-            if actual > 0 and expected > 0 and actual % expected == 0:
                 continue
             if actual != expected:
                 param_name = (
