@@ -384,37 +384,25 @@ def pipeline_bottlenecks(
     `placement` keys: bn10/bn11 (each with .l1/.l2/.l3, bn11 also .mem_skip),
     bn12 (with .l1/.l23). Returns (workers, act_bn12_out).
     """
+    # bn10 / bn11 share the 3-tile builder; bn11 adds a MemTile-forwarded skip.
+    # depth=6 on the bn10 cons handle lets the skip path buffer enough rows to
+    # outlive bn11's L1→L2→L3 lag (1 + 1 + ping-pong slack).
+    P3 = (("bn10", False), ("bn11", True))
+
     workers = []
+    act = act_in
+    for name, has_skip in P3:
+        tiles = placement[name]
+        skip_in = None
+        if has_skip:
+            skip_in = act.cons(depth=6).forward(depth=2, tile=tiles["mem_skip"])
+            tiles = {k: tiles[k] for k in ("l1", "l2", "l3")}
+        act, ws = build_3tile_pipeline(
+            nsblock(name), act, sf, data_dir=data_dir, tiles=tiles, skip_in=skip_in
+        )
+        workers += ws
 
-    # ---- bn10 (no skip) ----
-    act, ws = build_3tile_pipeline(
-        nsblock("bn10"),
-        act_in,
-        sf,
-        data_dir=data_dir,
-        tiles=placement["bn10"],
-    )
-    workers += ws
-
-    # ---- bn11 (with skip) ----
-    # Same shape as bn10 but L3 fuses 1x1 with element-wise skip add. The skip
-    # path forwards bn10's output through a MemTile so L3 can read it directly.
-    # depth=6 on the cons handle lets the skip path buffer enough rows to
-    # outlive bn11's 3-tile L1→L2→L3 pipeline lag (1 + 1 + ping-pong slack).
-    bn11_skip_of = act.cons(depth=6).forward(
-        depth=2, tile=placement["bn11"]["mem_skip"]
-    )
-    act, ws = build_3tile_pipeline(
-        nsblock("bn11"),
-        act,
-        sf,
-        data_dir=data_dir,
-        tiles={k: placement["bn11"][k] for k in ("l1", "l2", "l3")},
-        skip_in=bn11_skip_of,
-    )
-    workers += ws
-
-    # ---- bn12 (2-tile: L1 on one tile, fused DW-stride2 + 1x1 on a second tile) ----
+    # bn12 (2-tile): L1 on one tile, fused DW-stride2 + 1x1 on a second tile.
     act, ws = build_bn12_2tile(
         nsblock("bn12"), act, sf, data_dir=data_dir, tiles=placement["bn12"]
     )

@@ -496,36 +496,25 @@ def cascade_bottlenecks(
         (workers, act_bn14_out, wts_fifos) where wts_fifos is the 4 full-weight
         ObjectFifos the host DMA writes into (bn13_l1, bn13_l3, bn14_l1, bn14_l3).
     """
+    # Each cascade block has 5 compute workers; act_in/skip_in feed forward
+    # from the previous block's output (bn13 sees the global act_in twice).
+    SCHEDULE = ("bn13", "bn14")
+
     workers = []
+    wts_fifos = []
+    act = act_in
+    for name in SCHEDULE:
+        l3_get_sym = f"bn_{name[2:]}_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new"
+        act, wts_l1_full, wts_l3_full, ws = build_cascade(
+            nsblock(name),
+            l3_get_sym=l3_get_sym,
+            act_in=act,
+            skip_in=act,
+            sf=sf,
+            data_dir=data_dir,
+            tiles=placement[name],
+        )
+        workers += ws
+        wts_fifos += [wts_l1_full, wts_l3_full]
 
-    # bn13: cascade-split bottleneck (5 compute workers).
-    act_bn13_out, bn13_wts_l1_full, bn13_wts_l3_full, bn13_workers = build_cascade(
-        nsblock("bn13"),
-        l3_get_sym="bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
-        act_in=act_in,
-        skip_in=act_in,
-        sf=sf,
-        data_dir=data_dir,
-        tiles=placement["bn13"],
-    )
-    workers += bn13_workers
-
-    # bn14: cascade-split bottleneck (5 compute workers, skip = bn13 output).
-    act_bn14_out, bn14_wts_l1_full, bn14_wts_l3_full, bn14_workers = build_cascade(
-        nsblock("bn14"),
-        l3_get_sym="bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
-        act_in=act_bn13_out,
-        skip_in=act_bn13_out,
-        sf=sf,
-        data_dir=data_dir,
-        tiles=placement["bn14"],
-    )
-    workers += bn14_workers
-
-    wts_fifos = [
-        bn13_wts_l1_full,
-        bn13_wts_l3_full,
-        bn14_wts_l1_full,
-        bn14_wts_l3_full,
-    ]
-    return workers, act_bn14_out, wts_fifos
+    return workers, act, wts_fifos

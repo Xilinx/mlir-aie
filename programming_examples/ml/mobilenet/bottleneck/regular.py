@@ -705,69 +705,41 @@ def regular_bottlenecks(
     bn6, bn7, bn8_9 (with .compute/.alloc).
     Returns (workers, act_bn9_out).
     """
+    # Schedule: each row is one call into a builder. Pair entries fuse two
+    # bns onto one tile via build_fused_pair; "skip" uses build_2layer_skip;
+    # everything else is a plain build_3layer.
+    PAIRS = {
+        "bn4_5": ("bn4", "bn5", {}),
+        # bn89 boundary: prod side depth=1 (cons inherits 2)
+        "bn8_9": ("bn8", "bn9", {"out_prod_depth": 1}),
+    }
+    SKIP = {"bn0"}
+    SCHEDULE = ("bn0", "bn1", "bn2", "bn3", "bn4_5", "bn6", "bn7", "bn8_9")
+
     workers = []
-
-    # bn0: stride-1 DW-3x3 + 1x1-skip (2-layer, unique to first stage)
-    act, w = build_2layer_skip(
-        nsblock("bn0"), act_in, sf, data_dir=data_dir, tile=placement["bn0"]
-    )
-    workers.append(w)
-
-    # bn1: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(
-        nsblock("bn1"), act, sf, data_dir=data_dir, tile=placement["bn1"]
-    )
-    workers.append(w)
-
-    # bn2: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    act, w = build_3layer(
-        nsblock("bn2"), act, sf, data_dir=data_dir, tile=placement["bn2"]
-    )
-    workers.append(w)
-
-    # bn3: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(
-        nsblock("bn3"), act, sf, data_dir=data_dir, tile=placement["bn3"]
-    )
-    workers.append(w)
-
-    # bn4+bn5: fused pair on one tile (stride-1 with skip on both)
-    act, w = build_fused_pair(
-        nsblock("bn4"),
-        nsblock("bn5"),
-        "bn4_5_chain.txt",
-        act,
-        sf,
-        data_dir=data_dir,
-        compute_tile=placement["bn4_5"]["compute"],
-        alloc_tile=placement["bn4_5"]["alloc"],
-    )
-    workers.append(w)
-
-    # bn6: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(
-        nsblock("bn6"), act, sf, data_dir=data_dir, tile=placement["bn6"]
-    )
-    workers.append(w)
-
-    # bn7: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    act, w = build_3layer(
-        nsblock("bn7"), act, sf, data_dir=data_dir, tile=placement["bn7"]
-    )
-    workers.append(w)
-
-    # bn8+bn9: fused pair on one tile (stride-1 with skip on both); final output.
-    act, w = build_fused_pair(
-        nsblock("bn8"),
-        nsblock("bn9"),
-        "bn8_9_chain.txt",
-        act,
-        sf,
-        data_dir=data_dir,
-        compute_tile=placement["bn8_9"]["compute"],
-        alloc_tile=placement["bn8_9"]["alloc"],
-        out_prod_depth=1,  # bn89 boundary: prod side depth=1 (cons inherits 2)
-    )
-    workers.append(w)
+    act = act_in
+    for name in SCHEDULE:
+        if name in PAIRS:
+            first, second, extra = PAIRS[name]
+            act, w = build_fused_pair(
+                nsblock(first),
+                nsblock(second),
+                f"{name}_chain.txt",
+                act,
+                sf,
+                data_dir=data_dir,
+                compute_tile=placement[name]["compute"],
+                alloc_tile=placement[name]["alloc"],
+                **extra,
+            )
+        elif name in SKIP:
+            act, w = build_2layer_skip(
+                nsblock(name), act, sf, data_dir=data_dir, tile=placement[name]
+            )
+        else:
+            act, w = build_3layer(
+                nsblock(name), act, sf, data_dir=data_dir, tile=placement[name]
+            )
+        workers.append(w)
 
     return workers, act

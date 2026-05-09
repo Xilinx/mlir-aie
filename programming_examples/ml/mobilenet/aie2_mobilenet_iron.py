@@ -29,7 +29,7 @@ import numpy as np
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from lowlevel_dma import StaticWeightStream
-from aie.iron.device import NPU2, Tile
+from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 
 # Allow importing the local bottleneck/ package when running this file directly.
@@ -40,7 +40,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from bottleneck.regular import regular_bottlenecks
 from bottleneck.pipeline import pipeline_bottlenecks
 from bottleneck.cascade import cascade_bottlenecks
+from bottleneck._common import i8, u8, load_wts
 from network_spec import block as nsblock
+
+_I32 = np.int32
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -68,112 +71,15 @@ init_OutW, init_OutH, init_OutC = nsblock("init").layers[0].out_shape
 # Post-processing dimensions
 post_L1_InW, post_L1_InH, post_L1_InC = nsblock("post_l1").layers[0].in_shape
 post_L1_OutW, post_L1_OutH, _ = nsblock("post_l1").layers[0].out_shape
-post_L1_OutC = 960  # expand-1x1 width before padding to L2_InC (kernel-internal)
+post_L1_OutC = nsblock("post_l1").layers[0].expand_oc  # kernel-internal pre-pad
 
 post_L2_InC = nsblock("post_l2").layers[0].in_shape[2]
 post_L2_OutC = nsblock("post_l2").layers[-1].out_shape[2]
 post_wts_per_tile = post_L2_OutC * (post_L1_OutC // 4)  # split across 4 tiles
 
 
-# ---------------------------------------------------------------------------
-# Type helpers
-# ---------------------------------------------------------------------------
-def _i8(shape):
-    return np.ndarray[shape, np.dtype[np.int8]]
-
-
-def _u8(shape):
-    return np.ndarray[shape, np.dtype[np.uint8]]
-
-
-def _i32():
-    return np.int32
-
-
-def _require_wts(path, expected_size):
-    """Load int8 weights from `path`; raise if missing or wrong size.
-
-    Silent zero-fill on missing files used to compile a numerically-broken
-    design that ran fine but produced wrong output — fail loud instead.
-    """
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"weight file not found: {path}")
-    arr = np.fromfile(path, sep=",", dtype=np.int8)
-    if arr.size != expected_size:
-        raise ValueError(
-            f"{path}: expected {expected_size} int8 elements, got {arr.size}"
-        )
-    return arr
-
-
-# ---------------------------------------------------------------------------
-# Tile placement — single source of truth.
-#
-# Compute tiles use rows 2-5 of columns 0-7 (Strix layout). MemTiles live on
-# row 1; shim DMA endpoints on row 0. Adjacent rows in the same column share
-# memory, which we exploit for fused-pair self-loop fifos and L2→L3 handoffs.
-#
-# Re-targeting the design = editing this dict (and only this dict).
-# ---------------------------------------------------------------------------
-PLACEMENT = {
-    "init": Tile(0, 2),
-    "post_l1": {"compute": Tile(6, 4), "memtile": Tile(4, 1)},
-    "post_l2": {
-        "fc1_memtiles": [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)],
-        "fc2_memtiles": [Tile(1, 1), Tile(3, 1), Tile(5, 1), Tile(7, 1)],
-        "compute": [Tile(6, 3), Tile(7, 4), Tile(7, 3), Tile(7, 2)],
-        "join_memtile": Tile(6, 1),
-    },
-    "shim": {
-        "input": Tile(0, 0),
-        "wts": [Tile(c, 0) for c in (4, 5, 6, 7)],
-        "scratch_drain": Tile(3, 0),
-        "fc_fill": Tile(4, 0),
-        "fc_drain": Tile(7, 0),
-    },
-    "regular": {
-        "bn0": Tile(0, 3),
-        "bn1": Tile(0, 4),
-        "bn2": Tile(0, 5),
-        "bn3": Tile(1, 3),
-        "bn4_5": {"compute": Tile(1, 2), "alloc": Tile(0, 2)},  # alloc on init tile
-        "bn6": Tile(1, 4),
-        "bn7": Tile(2, 3),
-        "bn8_9": {"compute": Tile(3, 3), "alloc": Tile(3, 4)},  # alloc on bn11 L1 tile
-    },
-    "pipeline": {
-        "bn10": {"l1": Tile(1, 5), "l2": Tile(2, 4), "l3": Tile(2, 5)},
-        "bn11": {
-            "l1": Tile(3, 2),
-            "l2": Tile(3, 4),
-            "l3": Tile(2, 2),
-            "mem_skip": Tile(2, 1),
-        },
-        "bn12": {"l1": Tile(3, 5), "l23": Tile(4, 4)},
-    },
-    "cascade": {
-        "bn13": {
-            "l1_put": Tile(4, 5),
-            "l1_get": Tile(5, 5),
-            "l2": Tile(5, 4),
-            "l3_put": Tile(4, 3),
-            "l3_get": Tile(5, 3),
-            "mem_l1": Tile(0, 1),
-            "mem_l3": Tile(1, 1),
-            "mem_skip": Tile(5, 1),
-        },
-        "bn14": {
-            "l1_put": Tile(6, 5),
-            "l1_get": Tile(7, 5),
-            "l2": Tile(6, 2),
-            "l3_put": Tile(4, 2),
-            "l3_get": Tile(5, 2),
-            "mem_l1": Tile(2, 1),
-            "mem_l3": Tile(3, 1),
-            "mem_skip": Tile(7, 1),
-        },
-    },
-}
+# Physical tile placement lives in placement.py (algorithm/mapping split).
+from placement import PLACEMENT
 
 
 # ---------------------------------------------------------------------------
@@ -214,10 +120,10 @@ def mobilenet_iron(collect_only: bool = False):
     # 3x3 stride-2 conv: InC=8, OutC=16 -> wts = 3*3*8*16 = 1152
     # ------------------------------------------------------------------
     init_wts_sz = 3 * 3 * tensorInC * init_OutC  # 1152
-    init_wts_data = _require_wts(data_dir + "init_chain.txt", init_wts_sz)
+    init_wts_data = load_wts(data_dir, "init_chain.txt", init_wts_sz)
 
     init_wts = Buffer(
-        _i8((init_wts_sz,)),
+        i8((init_wts_sz,)),
         initial_value=init_wts_data,
     )
 
@@ -230,20 +136,20 @@ def mobilenet_iron(collect_only: bool = False):
         "conv2dk3_stride2_i8",
         "init_conv2dk3.o",
         [
-            _i8((tensorInW, 1, tensorInC)),
-            _i8((tensorInW, 1, tensorInC)),
-            _i8((tensorInW, 1, tensorInC)),
-            _i8((init_wts_sz,)),
-            _u8((init_OutW, 1, init_OutC)),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
+            i8((tensorInW, 1, tensorInC)),
+            i8((tensorInW, 1, tensorInC)),
+            i8((tensorInW, 1, tensorInC)),
+            i8((init_wts_sz,)),
+            u8((init_OutW, 1, init_OutC)),
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
         ],
     )
 
@@ -321,15 +227,13 @@ def mobilenet_iron(collect_only: bool = False):
     post_l1_wts_full_sz = post_L1_OutC * post_L1_InC  # 76800 B on MemTile
     post_l1_wts_chunk = post_l1_wts_full_sz // PostOutputSplit  # 9600 B per chunk
 
-    post_l1_wts_data = _require_wts(
-        data_dir + "post_conv_chain.txt", post_l1_wts_full_sz
-    )
+    post_l1_wts_data = load_wts(data_dir, "post_conv_chain.txt", post_l1_wts_full_sz)
 
     post_l1_pb = StaticWeightStream(
-        obj_type=_i8((post_l1_wts_full_sz,)),
+        obj_type=i8((post_l1_wts_full_sz,)),
         initial_value=post_l1_wts_data,
         name="post_L1_wts",
-        recv_type=_i8((post_l1_wts_chunk,)),
+        recv_type=i8((post_l1_wts_chunk,)),
         repeat_count=PostRepeatChannels,
         memtile_placement=PLACEMENT["post_l1"]["memtile"],
         compute_placement=PLACEMENT["post_l1"]["compute"],
@@ -356,17 +260,17 @@ def mobilenet_iron(collect_only: bool = False):
         "conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
         "post_conv2dk1_relu_xy_pool_padded_i8_ui8.o",
         [
-            _i8((post_L1_InW, 1, post_L1_InC)),
-            _i8((post_l1_wts_chunk,)),
+            i8((post_L1_InW, 1, post_L1_InC)),
+            i8((post_l1_wts_chunk,)),
             np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
         ],
     )
 
@@ -481,34 +385,34 @@ def mobilenet_iron(collect_only: bool = False):
         "post_L2_conv2dk1_relu_ui16_ui16_pad.o",
         [
             np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
-            _i8((fc_recv_per_tile,)),
+            i8((fc_recv_per_tile,)),
             _u16((co,)),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
-            _i32(),
+            _I32,
+            _I32,
+            _I32,
+            _I32,
+            _I32,
         ],
     )
 
     post_l2_workers = []
     for i, (fc1_f, fc2_f) in enumerate(fc_wts_filenames):
-        fc1_data = _require_wts(data_dir + fc1_f, fc_full_per_tile)
-        fc2_data = _require_wts(data_dir + fc2_f, fc_full_per_tile)
+        fc1_data = load_wts(data_dir, fc1_f, fc_full_per_tile)
+        fc2_data = load_wts(data_dir, fc2_f, fc_full_per_tile)
 
         # FC weights: ping-pong across two adjacent memtiles. Primary = FC1
         # (consumed first), ping-pong = FC2. DMA + primary share fc2_memtiles[i]
         # (odd column) to avoid colliding with post_L1's MM2S on (4,1).
         fc_pb = StaticWeightStream(
-            obj_type=_i8((fc_full_per_tile,)),
+            obj_type=i8((fc_full_per_tile,)),
             initial_value=fc1_data,
             name=f"fc1_wts_{i}",
-            recv_type=_i8((fc_recv_per_tile,)),
+            recv_type=i8((fc_recv_per_tile,)),
             repeat_count=PostOutputSplitL2,
             memtile_placement=fc2_memtiles[i],
             compute_placement=fc_comptiles[i],
             s2mm_channel=1,
-            ping_pong_buf=(_i8((fc_full_per_tile,)), fc2_data, f"fc2_wts_{i}"),
+            ping_pong_buf=(i8((fc_full_per_tile,)), fc2_data, f"fc2_wts_{i}"),
             ping_pong_memtile=fc1_memtiles[i],
             mem_lock_id=0,
             comp_lock_id=2,
