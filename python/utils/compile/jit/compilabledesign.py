@@ -460,6 +460,11 @@ class CompilableDesign:
                 )
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
+                # Populate expected DMA sizes on cache hit too — otherwise
+                # validate_tensor_args silently no-ops for cached designs and
+                # callers see kernel garbage instead of a clear shape error.
+                if self._expected_tensor_sizes is None:
+                    self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
                 return xclbin_path, inst_path
 
             logger.debug(
