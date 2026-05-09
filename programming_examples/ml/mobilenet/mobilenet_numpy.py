@@ -34,17 +34,20 @@ STATUS — three reference outputs to compare against:
                                         on this Strix NPU. Differs from golden
                                         by max=9, mean≈1.5 (a known-acceptable
                                         gap tracked in mlir-aie issue #3009).
-    3. mobilenet_numpy.run() output  — this file. Differs from AIE by max=11,
-                                        mean=1.5; from golden by max=9, mean=1.3.
-                                        678/1280 bit-exact vs golden, 668/1280
-                                        bit-exact vs AIE.
+    3. mobilenet_numpy.run() output  — this file. 929/1280 bit-exact vs golden
+                                        (max=2, mean=0.30); 715/1280 vs AIE.
 
-The numpy reference is structurally correct end-to-end (correct shapes through
-every block, plausible value ranges, all 17 layers wired). It is NOT yet fully
-bit-exact to either reference — closing that gap requires per-block AIE fixtures
-captured via aie2_iron_per_block.py + this file's --dump-intermediates flag, so
-divergence can be localized layer-by-layer. Issue #3009 tracks the AIE-vs-golden
-gap; a follow-up to this file would close the numpy-vs-AIE gap.
+Per-bn / per-chain bit-exactness (verified against brevitas fixtures in
+bottleneck_A/B/C with their own scale_factors.json):
+
+    bn1, bn2, bn3, bn6, bn7, bn8       → 100% BIT-EXACT (bottleneck_A)
+    bn10 → bn11 → bn12 chain           → 100% BIT-EXACT (bottleneck_B)
+    bn13 → bn14 cascade chain          → 100% BIT-EXACT (bottleneck_C)
+
+So all conv1x1, conv1x1_skip, dw3x3, conv3x3, and cascade kernels are correct.
+The remaining max=2 / mean=0.30 gap on the FULL network most likely comes from
+init / bn0 (the unique 2-layer skip block) / post_l1 / post_l2 — blocks for
+which no per-bn brevitas fixture exists in this repo.
 """
 
 import os
