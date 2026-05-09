@@ -10,15 +10,46 @@
 #define AIE_TARGETS_AIETARGETS_H
 
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LogicalResult.h"
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <cstdint>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace xilinx {
 namespace AIE {
+
+// One entry in the sidecar location map produced by AIETranslateNpuToBinary
+// (and AIETranslateControlPacketsToUI32Vec). Each entry describes one
+// transaction operation in the .bin: the byte range it occupies, its opcode,
+// the absolute device address it touches (when applicable), the originating
+// aiex.npu.* op's MLIR Location, and an optional regdb register name resolved
+// from (address, tile-module). The vector is written alongside the .bin as a
+// JSON sidecar (see emitNpuLocmapJSON) so consumers can correlate transaction
+// words back to IRON Python source.
+struct TxnLocEntry {
+  uint32_t byteOffset = 0;
+  uint32_t byteSize = 0;
+  std::string opcodeName;     // "WRITE32", "BLOCKWRITE", etc.
+  std::string sourceOpName;   // "aiex.npu.write32", etc.
+  std::optional<uint64_t> address; // absolute device address when applicable
+  std::string registerName;   // regdb-resolved register name; empty if unknown
+  std::string registerModule; // regdb module: "core_module", "memory_module", etc.
+  std::optional<mlir::Location> loc;
+};
+
+// Serialize a vector of TxnLocEntry as JSON to `output`, with the given
+// device name and binary file basename for the JSON header.
+void emitNpuLocmapJSON(llvm::raw_ostream &output,
+                       llvm::StringRef deviceName,
+                       llvm::StringRef binaryName,
+                       const std::vector<TxnLocEntry> &locmap);
 
 mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module,
                                          llvm::raw_ostream &output,
@@ -42,14 +73,16 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
 mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp,
                                             std::vector<uint32_t> &,
                                             llvm::StringRef deviceName = "",
-                                            llvm::StringRef sequenceName = "");
+                                            llvm::StringRef sequenceName = "",
+                                            std::vector<TxnLocEntry> *locmap = nullptr);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp, std::string &assembly);
 mlir::LogicalResult
 AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
                                     llvm::StringRef deviceName = "",
-                                    llvm::StringRef sequenceName = "");
+                                    llvm::StringRef sequenceName = "",
+                                    std::vector<TxnLocEntry> *locmap = nullptr);
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
                                            int tileCol, int tileRow,

@@ -383,6 +383,22 @@ void registerAIETranslations() {
         return success();
       },
       registerDialects);
+  TranslateFromMLIRRegistration registrationNPULocmap(
+      "aie-npu-to-binary-locmap",
+      "Translate npu instructions to a JSON sidecar mapping each transaction "
+      "word's byte offset to its source MLIR Location (and regdb register "
+      "name where applicable). The .bin itself is not emitted.",
+      [](ModuleOp module, raw_ostream &output) {
+        std::vector<uint32_t> instructions;
+        std::vector<TxnLocEntry> locmap;
+        auto r = AIETranslateNpuToBinary(module, instructions, deviceName,
+                                         sequenceName, &locmap);
+        if (failed(r))
+          return r;
+        emitNpuLocmapJSON(output, deviceName, /*binaryName=*/"", locmap);
+        return success();
+      },
+      registerDialects);
   TranslateFromMLIRRegistration registrationCtrlPkt(
       "aie-ctrlpkt-to-bin", "Translate aiex.control_packet ops to binary",
       [](ModuleOp module, raw_ostream &output) {

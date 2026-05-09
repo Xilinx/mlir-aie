@@ -74,6 +74,7 @@ struct TransactionBinaryOperation {
   std::optional<SyncPayload> sync;
   std::optional<LoadPdiPayload> loadPdi;
   std::optional<AddressPatchPayload> addressPatch;
+  std::optional<mlir::Location> sourceLoc;
 
   TransactionBinaryOperation() = default;
 
@@ -448,14 +449,17 @@ static LogicalResult generateTransactions(AIERTControl &ctl,
 }
 
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
-// ops (npu.write32, npu.maskwrite32, npu.blockwrite).
+// ops (npu.write32, npu.maskwrite32, npu.blockwrite). Each emitted op gets the
+// per-op `sourceLoc` from AIERT's instruction-range bracketing if available;
+// otherwise it falls back to `fallbackLoc` (typically the device location).
 static LogicalResult
-emitTransactionOps(OpBuilder &builder, Location loc,
+emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
                    std::vector<TransactionBinaryOperation> &operations,
                    std::vector<memref::GlobalOp> &global_data) {
 
   // create the txn ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
+    Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
@@ -527,9 +531,11 @@ emitTransactionOps(OpBuilder &builder, Location loc,
 }
 
 // Translate vector of TransactionBinaryOperation to a sequence of control
-// packet ops.
+// packet ops. Each emitted op gets the per-op `sourceLoc` from AIERT's
+// instruction-range bracketing if available; otherwise it falls back to
+// `fallbackLoc`.
 static LogicalResult
-emitControlPacketOps(OpBuilder &builder, Location loc,
+emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
                      std::vector<TransactionBinaryOperation> &operations,
                      std::vector<memref::GlobalOp> &global_data) {
 
@@ -537,6 +543,7 @@ emitControlPacketOps(OpBuilder &builder, Location loc,
 
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
+    Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       AIEX::NpuControlPacketOp::create(
@@ -764,6 +771,17 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   if (!parseTransactionBinary(txn_data, operations)) {
     llvm::errs() << "Failed to parse binary\n";
     return failure();
+  }
+
+  // Attach per-op source locations from AIERT's instruction-range bracketing.
+  // The aie-rt TxnList records one XAie_TxnCmd per serialized binary
+  // operation, so the indices align. Operations beyond the recorded range
+  // (or where no bracket fired) keep std::nullopt and inherit the device
+  // fallback location at emit time.
+  const std::vector<mlir::Location> &instrLocs = ctl.getTxnInstrLocs();
+  for (size_t i = 0, e = operations.size(); i < e; ++i) {
+    if (i < instrLocs.size())
+      operations[i].sourceLoc = instrLocs[i];
   }
 
   if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,

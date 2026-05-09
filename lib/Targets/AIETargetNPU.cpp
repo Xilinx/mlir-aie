@@ -11,6 +11,8 @@
 #include "aie/Targets/AIETargets.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -20,7 +22,11 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/JSON.h"
+#include "llvm/Support/raw_ostream.h"
 
+#include <memory>
 #include <vector>
 
 extern "C" {
@@ -239,9 +245,93 @@ void appendUpdateRegFromScratchpad(std::vector<uint32_t> &instructions,
 
 } // namespace
 
+namespace {
+
+// Lazy-loaded regdb for register-name decoration. Loaded once per process,
+// returns nullptr if the JSON files cannot be located (e.g. install dir not
+// set). Decoration is best-effort.
+static const xilinx::AIE::RegisterDatabase *getRegDB() {
+  static std::unique_ptr<xilinx::AIE::RegisterDatabase> db = []() {
+    return xilinx::AIE::RegisterDatabase::loadAIE2();
+  }();
+  return db.get();
+}
+
+// Decompose an absolute device address into (col, row, offset) using the
+// target model's column/row shifts, then derive the regdb module name from
+// the row's tile type. Looks the (module, offset) up in regdb. Returns the
+// register name on success and writes the module name to *outModule. On any
+// failure returns empty StringRef.
+static llvm::StringRef
+lookupRegisterByAddress(uint64_t address, const AIETargetModel &tm,
+                        const xilinx::AIE::RegisterDatabase *regdb,
+                        std::string &outModule) {
+  outModule.clear();
+  if (!regdb)
+    return {};
+  uint32_t colShift = tm.getColumnShift();
+  uint32_t rowShift = tm.getRowShift();
+  uint8_t col = static_cast<uint8_t>((address >> colShift) & 0xFF);
+  uint8_t row = static_cast<uint8_t>((address >> rowShift) & 0xFF);
+  uint64_t baseMask = (uint64_t{1} << rowShift) - 1;
+  uint32_t offset = static_cast<uint32_t>(address & baseMask);
+
+  // Determine module from tile type.
+  StringRef moduleName;
+  if (tm.isShimNOCTile(col, row) || tm.isShimPLTile(col, row)) {
+    moduleName = "pl_module";
+  } else if (tm.isMemTile(col, row)) {
+    moduleName = "mem_tile_module";
+  } else {
+    // For aie tiles, regdb has both core_module and memory_module. The
+    // offset alone disambiguates. Try core first then memory.
+    if (auto *r = regdb->lookupRegisterByOffset(offset, "core_module")) {
+      outModule = "core_module";
+      return r->name;
+    }
+    if (auto *r = regdb->lookupRegisterByOffset(offset, "memory_module")) {
+      outModule = "memory_module";
+      return r->name;
+    }
+    return {};
+  }
+  if (auto *r = regdb->lookupRegisterByOffset(offset, moduleName)) {
+    outModule = moduleName.str();
+    return r->name;
+  }
+  return {};
+}
+
+static void pushLocEntry(std::vector<TxnLocEntry> *locmap,
+                         uint32_t byteOffsetBefore, uint32_t byteOffsetAfter,
+                         StringRef opcodeName, StringRef sourceOpName,
+                         std::optional<uint64_t> address, mlir::Operation *op,
+                         const AIETargetModel &tm) {
+  if (!locmap)
+    return;
+  TxnLocEntry e;
+  e.byteOffset = byteOffsetBefore;
+  e.byteSize = byteOffsetAfter - byteOffsetBefore;
+  e.opcodeName = opcodeName.str();
+  e.sourceOpName = sourceOpName.str();
+  e.address = address;
+  e.loc = op->getLoc();
+  if (address) {
+    if (auto regName =
+            lookupRegisterByAddress(*address, tm, getRegDB(), e.registerModule);
+        !regName.empty()) {
+      e.registerName = regName.str();
+    }
+  }
+  locmap->push_back(std::move(e));
+}
+
+} // namespace
+
 LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     mlir::ModuleOp moduleOp, std::vector<uint32_t> &instructions,
-    StringRef deviceName, StringRef sequenceName) {
+    StringRef deviceName, StringRef sequenceName,
+    std::vector<TxnLocEntry> *locmap) {
 
   DeviceOp deviceOp =
       DeviceOp::getForSymbolInModuleOrError(moduleOp, deviceName);
@@ -272,44 +362,79 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   if (!seq) {
     return failure();
   }
+
+  auto byteOffset = [&]() -> uint32_t {
+    return static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
+  };
+
   for (Block &block : seq.getBody()) {
     for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuSyncOp>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
             appendSync(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "TCT",
+                         op->getName().getStringRef(), std::nullopt, op, tm);
           })
           .Case<NpuWrite32Op>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
+            uint64_t addr = op.getAbsoluteAddress().value_or(0);
             appendWrite32(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "WRITE32",
+                         op->getName().getStringRef(), addr, op, tm);
           })
           .Case<NpuBlockWriteOp>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
+            uint64_t addr = op.getAbsoluteAddress().value_or(0);
             appendBlockWrite(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "BLOCKWRITE",
+                         op->getName().getStringRef(), addr, op, tm);
           })
           .Case<NpuMaskWrite32Op>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
+            uint64_t addr = op.getAbsoluteAddress().value_or(0);
             appendMaskWrite32(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "MASKWRITE",
+                         op->getName().getStringRef(), addr, op, tm);
           })
           .Case<NpuLoadPdiOp>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
             appendLoadPdi(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "LOAD_PDI",
+                         op->getName().getStringRef(), std::nullopt, op, tm);
           })
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
             appendAddressPatch(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "ADDRESS_PATCH",
+                         op->getName().getStringRef(), op.getAddr(), op, tm);
           })
           .Case<NpuPreemptOp>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
             appendPreempt(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "PREEMPT",
+                         op->getName().getStringRef(), std::nullopt, op, tm);
           })
           .Case<NpuCreateScratchpadOp>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
             appendCreateScratchpad(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "CREATE_SCRATCHPAD",
+                         op->getName().getStringRef(), std::nullopt, op, tm);
           })
           .Case<NpuUpdateFromScratchpadOp>([&](auto op) {
             count++;
+            uint32_t before = byteOffset();
             appendUpdateRegFromScratchpad(instructions, op);
+            pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
+                         op->getName().getStringRef(), std::nullopt, op, tm);
           });
     }
   }
@@ -322,7 +447,7 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
 
 LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     ModuleOp module, std::vector<uint32_t> &instructions, StringRef deviceName,
-    StringRef sequenceName) {
+    StringRef sequenceName, std::vector<TxnLocEntry> *locmap) {
   DeviceOp deviceOp =
       AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
   if (!deviceOp) {
@@ -336,11 +461,15 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     return failure();
   }
 
+  const AIETargetModel &tm = deviceOp.getTargetModel();
   Block &entry = seq.getBody().front();
   for (auto &o : entry) {
     auto packetOp = dyn_cast<AIEX::NpuControlPacketOp>(o);
     if (!packetOp)
       continue;
+
+    uint32_t before =
+        static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
 
     uint32_t size = 0;
     auto data = packetOp.getData();
@@ -385,6 +514,78 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     if (opc == 0x0 || opc == 0x2)
       for (unsigned i = 0; i < size; i++)
         words[i + 2] = data.value()[i];
+
+    uint32_t after =
+        static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
+    pushLocEntry(locmap, before, after, "CONTROL_PACKET",
+                 packetOp->getName().getStringRef(), packetOp.getAddress(),
+                 packetOp, tm);
   }
   return success();
+}
+
+// Render an mlir::Location as a JSON object, recursing into NameLoc and
+// FusedLoc to recover the file:line:col + IRON name structure produced by
+// Phase-1 capture (see python/iron/_loc.py).
+static llvm::json::Value locToJSON(mlir::Location loc) {
+  using namespace llvm;
+  if (auto f = dyn_cast<mlir::FileLineColLoc>(loc))
+    return json::Value(json::Object{
+        {"kind", "file"},
+        {"file", f.getFilename().str()},
+        {"line", static_cast<int64_t>(f.getLine())},
+        {"col", static_cast<int64_t>(f.getColumn())},
+    });
+  if (auto n = dyn_cast<mlir::NameLoc>(loc)) {
+    json::Object o{{"kind", "name"}, {"name", n.getName().str()}};
+    o["child"] = locToJSON(n.getChildLoc());
+    return json::Value(std::move(o));
+  }
+  if (auto fused = dyn_cast<mlir::FusedLoc>(loc)) {
+    json::Array children;
+    for (mlir::Location c : fused.getLocations())
+      children.push_back(locToJSON(c));
+    return json::Value(
+        json::Object{{"kind", "fused"}, {"children", std::move(children)}});
+  }
+  if (auto cs = dyn_cast<mlir::CallSiteLoc>(loc))
+    return json::Value(json::Object{
+        {"kind", "callsite"},
+        {"callee", locToJSON(cs.getCallee())},
+        {"caller", locToJSON(cs.getCaller())},
+    });
+  if (isa<mlir::OpaqueLoc>(loc))
+    return json::Value(json::Object{{"kind", "opaque"}});
+  return json::Value(json::Object{{"kind", "unknown"}});
+}
+
+void xilinx::AIE::emitNpuLocmapJSON(llvm::raw_ostream &output,
+                                    llvm::StringRef deviceName,
+                                    llvm::StringRef binaryName,
+                                    const std::vector<TxnLocEntry> &locmap) {
+  llvm::json::Object root;
+  root["version"] = 1;
+  root["device"] = deviceName.str();
+  root["binary"] = binaryName.str();
+
+  llvm::json::Array opsArr;
+  for (const auto &e : locmap) {
+    llvm::json::Object o;
+    o["byte_offset"] = static_cast<int64_t>(e.byteOffset);
+    o["byte_size"] = static_cast<int64_t>(e.byteSize);
+    o["opcode"] = e.opcodeName;
+    o["source_op"] = e.sourceOpName;
+    if (e.address)
+      o["address"] = llvm::formatv("{0:X}", *e.address).str();
+    if (!e.registerName.empty()) {
+      o["register"] = e.registerName;
+      o["register_module"] = e.registerModule;
+    }
+    if (e.loc)
+      o["loc"] = locToJSON(*e.loc);
+    opsArr.push_back(std::move(o));
+  }
+  root["operations"] = std::move(opsArr);
+
+  output << llvm::formatv("{0:2}\n", llvm::json::Value(std::move(root)));
 }

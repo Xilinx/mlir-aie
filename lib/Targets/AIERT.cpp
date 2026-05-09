@@ -199,7 +199,40 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
 struct xilinx::AIE::AIERTControl::AIERtImpl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
+
+  // One Location per recorded XAie_TxnCmd. Populated by TxnLocBracket scopes.
+  // Indexed by command position in the serialized transaction binary.
+  std::vector<mlir::Location> txnInstrLocs;
 };
+
+// Walk DevInst->TxnList to find the active XAie_TxnInst (single-threaded
+// compilation: at most one) and return its NumCmds. Returns 0 if no
+// transaction is being recorded. The XAie_TxnInst struct and TxnList layout
+// are part of aie-rt's public xaiegbl.h, so this only depends on the public
+// header.
+static uint32_t getActiveTxnNumCmds(XAie_DevInst &devInst) {
+  XAie_List *node = devInst.TxnList.Next;
+  if (!node)
+    return 0;
+  XAie_TxnInst *inst = reinterpret_cast<XAie_TxnInst *>(
+      reinterpret_cast<char *>(node) - offsetof(XAie_TxnInst, Node));
+  return inst->NumCmds;
+}
+
+xilinx::AIE::TxnLocBracket::TxnLocBracket(AIERTControl &c, mlir::Location l)
+    : ctl(c), loc(l), startCmds(c.getCurrentTxnNumCmds()) {}
+
+xilinx::AIE::TxnLocBracket::~TxnLocBracket() {
+  uint32_t endCmds = ctl.getCurrentTxnNumCmds();
+  if (endCmds <= startCmds)
+    return;
+  // Only record meaningful locations. Falling through (no entry) lets the
+  // downstream emitter use its fallback (device.getLoc()), which preserves
+  // the pre-existing behavior for source ops that don't carry a real loc.
+  if (mlir::isa<mlir::UnknownLoc>(loc))
+    return;
+  ctl.recordTxnLocRange(startCmds, endCmds, loc);
+}
 
 xilinx::AIE::AIERTControl::~AIERTControl() = default;
 
@@ -494,6 +527,7 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     Operation &op, int col, int row, int chNum, const DMAChannelDir &channelDir,
     int bdId, int repeatCount) {
+  TxnLocBracket bracket(*this, op.getLoc());
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto tileLoc = XAie_TileLoc(col, row);
@@ -515,6 +549,7 @@ LogicalResult xilinx::AIE::AIERTControl::configureLocksAndBd(Block &block,
   assert(bd.getBdId().has_value() &&
          "DMABDOp must have assigned bd_id; did you forget to run "
          "aie-assign-bd-ids?");
+  TxnLocBracket bracket(*this, bd.getLoc());
   XAie_DmaDesc dmaTileBd;
   auto tileLoc = XAie_TileLoc(col, row);
   TRY_XAIE_API_EMIT_ERROR(bd, XAie_DmaDescInit, &aiert->devInst, &dmaTileBd,
@@ -534,6 +569,7 @@ LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
     if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
+      TxnLocBracket bracket(*this, tileOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreReset, &aiert->devInst, tileLoc);
       TRY_XAIE_API_EMIT_ERROR(tileOp, XAie_CoreUnreset, &aiert->devInst,
                               tileLoc);
@@ -549,6 +585,7 @@ LogicalResult xilinx::AIE::AIERTControl::initLocks(DeviceOp &targetOp) {
   // Set locks with explicit initializers
   targetOp.walk<WalkOrder::PreOrder>([&](LockOp lockOp) {
     if (lockOp.getLockID() && lockOp.getInit()) {
+      TxnLocBracket bracket(*this, lockOp.getLoc());
       auto tileLoc = XAie_TileLoc(lockOp.getTileOp().colIndex(),
                                   lockOp.getTileOp().rowIndex());
       auto locInit = XAie_LockInit(*lockOp.getLockID(), *lockOp.getInit());
@@ -567,6 +604,7 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
     auto initialValue = bufferOp.getInitialValue();
     if (!initialValue)
       return;
+    TxnLocBracket bracket(*this, bufferOp.getLoc());
     mlir::DenseElementsAttr denseInit =
         dyn_cast<mlir::DenseElementsAttr>(initialValue.value());
     if (!denseInit)
@@ -624,15 +662,18 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
            "Only NPU currently supported");
 
     Block &b = switchboxOp.getConnections().front();
-    for (auto connectOp : b.getOps<ConnectOp>())
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
           switchboxOp, XAie_StrmConnCctEnable, &aiert->devInst, tileLoc,
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
           connectOp.sourceIndex(),
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
           connectOp.destIndex());
+    }
 
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      TxnLocBracket bracket(*this, masterSetOp.getLoc());
       int mask = 0;
       int arbiter = -1;
 
@@ -667,6 +708,7 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
     }
 
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
+      TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       int slot = 0;
       Block &block = packetRulesOp.getRules().front();
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
@@ -698,6 +740,7 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
         XAie_TileLoc(muxOp.getTileOp().getCol(), muxOp.getTileOp().getRow());
     Block &b = muxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
+      TxnLocBracket bracket(*this, connectOp.getLoc());
       // demux!
       if (connectOp.getSourceBundle() == WireBundle::North)
         TRY_XAIE_API_EMIT_ERROR(muxOp, XAie_EnableAieToShimDmaStrmPort,
@@ -714,18 +757,21 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
   for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
     Block &b = switchboxOp.getConnections().front();
     auto tileLoc = XAie_TileLoc(switchboxOp.getCol(), 0);
-    for (auto connectOp : b.getOps<ConnectOp>())
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
           switchboxOp, XAie_StrmConnCctEnable, &aiert->devInst, tileLoc,
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
           connectOp.sourceIndex(),
           WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
           connectOp.destIndex());
+    }
   }
 
   // Cascade configuration
   if (isa<AIE2TargetModel>(targetModel)) {
     for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {
+      TxnLocBracket bracket(*this, configOp.getLoc());
       TileOp tile = cast<TileOp>(configOp.getTile().getDefiningOp());
       auto tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());
       TRY_XAIE_API_EMIT_ERROR(
@@ -816,9 +862,11 @@ LogicalResult xilinx::AIE::AIERTControl::addCoreEnable(DeviceOp &targetOp) {
   // Start execution of all the cores.
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     auto tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());
-    if (!tileOp.isShimTile() && tileOp.getCoreOp())
+    if (!tileOp.isShimTile() && tileOp.getCoreOp()) {
+      TxnLocBracket bracket(*this, tileOp.getCoreOp().getLoc());
       TRY_XAIE_API_EMIT_ERROR(targetOp, XAie_CoreEnable, &aiert->devInst,
                               tileLoc);
+    }
   }
   return success();
 }
@@ -1019,6 +1067,7 @@ void xilinx::AIE::AIERTControl::dmaUpdateBdAddr(int col, int row, size_t addr,
 }
 
 void xilinx::AIE::AIERTControl::startTransaction() {
+  aiert->txnInstrLocs.clear();
   TRY_XAIE_API_FATAL_ERROR(XAie_StartTransaction, &aiert->devInst,
                            XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
 }
@@ -1029,4 +1078,24 @@ std::vector<uint8_t> xilinx::AIE::AIERTControl::exportSerializedTransaction() {
   XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
   std::vector<uint8_t> txn_data(txn_ptr, txn_ptr + hdr->TxnSize);
   return txn_data;
+}
+
+const std::vector<mlir::Location> &
+xilinx::AIE::AIERTControl::getTxnInstrLocs() const {
+  return aiert->txnInstrLocs;
+}
+
+uint32_t xilinx::AIE::AIERTControl::getCurrentTxnNumCmds() const {
+  return getActiveTxnNumCmds(aiert->devInst);
+}
+
+void xilinx::AIE::AIERTControl::recordTxnLocRange(uint32_t startCmds,
+                                                  uint32_t endCmds,
+                                                  mlir::Location loc) {
+  if (endCmds <= startCmds)
+    return;
+  if (aiert->txnInstrLocs.size() < endCmds)
+    aiert->txnInstrLocs.resize(endCmds, mlir::UnknownLoc::get(loc.getContext()));
+  for (uint32_t i = startCmds; i < endCmds; ++i)
+    aiert->txnInstrLocs[i] = loc;
 }
