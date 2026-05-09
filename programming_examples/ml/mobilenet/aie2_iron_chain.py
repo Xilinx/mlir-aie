@@ -6,20 +6,23 @@
 # Copyright (C) 2026, Advanced Micro Devices, Inc.
 """Build + emit MLIR for a chained subset of the IRON mobilenet design.
 
-Two preset chains are supported, mirroring the bottleneck_B / bottleneck_C
-brevitas reference designs:
+Three preset chains are supported, mirroring the bottleneck_A / B / C brevitas
+reference designs:
 
-    pipeline   - bn10 -> bn11 -> bn12  (uses pipeline_bottlenecks)
-    cascade    - bn13 -> bn14          (uses cascade_bottlenecks)
+    regular    - bn0 -> bn9    (uses regular_bottlenecks; bn0 input is uint8)
+    pipeline   - bn10 -> bn12  (uses pipeline_bottlenecks)
+    cascade    - bn13 -> bn14  (uses cascade_bottlenecks)
 
-These match the per-chain golden fixtures in bottleneck_{B,C}/data/ so a
+These match the per-chain golden fixtures in bottleneck_{A,B,C}/data/ so a
 hardware run can be compared bit-exact against brevitas.
 
 Usage:
+    python3 aie2_iron_chain.py regular   --data-dir bottleneck_A/data \\
+        --scales-json bottleneck_A/data/scale_factors_chain.json > chain.mlir
     python3 aie2_iron_chain.py pipeline  --data-dir bottleneck_B/data \\
-        --scales-json bottleneck_B/data/scale_factors.json > chain.mlir
+        --scales-json bottleneck_B/data/scale_factors.json       > chain.mlir
     python3 aie2_iron_chain.py cascade   --data-dir bottleneck_C/data \\
-        --scales-json bottleneck_C/data/scale_factors.json > chain.mlir
+        --scales-json bottleneck_C/data/scale_factors.json       > chain.mlir
 """
 
 import os
@@ -34,7 +37,8 @@ from aie.iron.device import NPU2, Tile
 from aie.helpers.taplib import TensorAccessPattern
 
 from network_spec import block as nsblock
-from bottleneck._common import i8 as _i8
+from bottleneck._common import i8 as _i8, u8 as _u8
+from bottleneck.regular import regular_bottlenecks
 from bottleneck.pipeline import pipeline_bottlenecks
 from bottleneck.cascade import cascade_bottlenecks
 
@@ -43,6 +47,19 @@ T = Tile
 # Test placements for chain designs — single-column-ish layouts that don't
 # collide with the main mobilenet's PLACEMENT (which packs every column).
 CHAIN_PLACEMENT = {
+    # Regular bn0..bn9 placement mirrors aie2_mobilenet_iron.py
+    # PLACEMENT["regular"]. The fused-pair alloc tiles (bn4_5, bn8_9) host
+    # disable-sync self-loop fifos and don't need their own worker.
+    "regular": {
+        "bn0": T(0, 3),
+        "bn1": T(0, 4),
+        "bn2": T(0, 5),
+        "bn3": T(1, 3),
+        "bn4_5": {"compute": T(1, 2), "alloc": T(0, 2)},
+        "bn6": T(1, 4),
+        "bn7": T(2, 3),
+        "bn8_9": {"compute": T(3, 3), "alloc": T(3, 4)},
+    },
     # Pipeline placement mirrors aie2_mobilenet_iron.py PLACEMENT["pipeline"] —
     # spread across multiple columns so the AIE memory allocator has room.
     "pipeline": {
@@ -93,12 +110,12 @@ def _chain_iron(mode, data_dir, scales_json):
     with open(scales_json) as f:
         sf = json.load(f)
 
-    if mode == "pipeline":
-        in_blk = nsblock("bn10")
-        out_blk = nsblock("bn12")
+    if mode == "regular":
+        in_blk, out_blk = nsblock("bn0"), nsblock("bn9")
+    elif mode == "pipeline":
+        in_blk, out_blk = nsblock("bn10"), nsblock("bn12")
     elif mode == "cascade":
-        in_blk = nsblock("bn13")
-        out_blk = nsblock("bn14")
+        in_blk, out_blk = nsblock("bn13"), nsblock("bn14")
     else:
         raise ValueError(f"unknown chain mode: {mode!r}")
 
@@ -109,10 +126,19 @@ def _chain_iron(mode, data_dir, scales_json):
     in_ty = np.ndarray[(in_w * in_h * in_c // 4,), np.dtype[np.int32]]
     out_ty = np.ndarray[(out_w * out_h * out_c // 4,), np.dtype[np.int32]]
 
-    # Chain input fifo: int8 row-by-row.
-    act_in = ObjectFifo(_i8((in_w, 1, in_c)), depth=2)
+    # Chain input fifo: bn0 reads uint8 (init output); other chains read int8.
+    in_elem_ty = _u8 if mode == "regular" else _i8
+    act_in = ObjectFifo(in_elem_ty((in_w, 1, in_c)), depth=2)
 
-    if mode == "pipeline":
+    if mode == "regular":
+        workers, act_out = regular_bottlenecks(
+            act_in,
+            sf,
+            placement=CHAIN_PLACEMENT["regular"],
+            data_dir=data_dir,
+        )
+        wts_fifos = []
+    elif mode == "pipeline":
         workers, act_out = pipeline_bottlenecks(
             act_in,
             sf,
@@ -200,7 +226,7 @@ def _chain_iron(mode, data_dir, scales_json):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Build a chained IRON mobilenet subset.")
-    ap.add_argument("mode", choices=["pipeline", "cascade"])
+    ap.add_argument("mode", choices=["regular", "pipeline", "cascade"])
     ap.add_argument("--data-dir", required=True, help="weights directory")
     ap.add_argument("--scales-json", required=True, help="scale_factors JSON path")
     args = ap.parse_args()

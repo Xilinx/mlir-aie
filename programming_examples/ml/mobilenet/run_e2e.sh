@@ -14,6 +14,7 @@ MODE="$1"
 TARGET="$2"
 SRCDIR="$3"
 TAG="${MODE}_${TARGET}"
+ATOL=0   # default — overridden per target below if a known acceptable drift exists.
 
 case "$MODE:$TARGET" in
     block:bn1|block:bn2|block:bn3|block:bn6|block:bn7|block:bn8)
@@ -26,6 +27,15 @@ case "$MODE:$TARGET" in
         DATA_DIR="$STAGE"
         SCALES="${FIX}/scale_factors_per_bn.json"
         BUILDER="aie2_iron_per_block.py ${TARGET}"
+        ;;
+    chain:regular)
+        FIX="${SRCDIR}/bottleneck_A/data"
+        DATA_DIR="$FIX"
+        SCALES="${FIX}/scale_factors_fused.json"
+        BUILDER="aie2_iron_chain.py regular"
+        # Original placed-API chain test (test_bottleneckA.py) accepted atol=14
+        # — same known-acceptable drift tracked in mlir-aie issue #3009.
+        ATOL=14
         ;;
     chain:pipeline)
         FIX="${SRCDIR}/bottleneck_B/data"
@@ -68,4 +78,4 @@ python3 "${SRCDIR}/test_e2e.py" "${MODE}" "${TARGET}" \
     --xclbin "build_${TAG}/${TAG}.xclbin" \
     --insts "build_${TAG}/${TAG}_insts.bin" \
     --fixture-dir "${FIX}" \
-    --atol 0
+    --atol "${ATOL}"

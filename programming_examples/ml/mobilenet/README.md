@@ -41,7 +41,7 @@ design currently differs from brevitas by max=9 (atol=9 in the assertion).
 | Lit test | Hardware? | What it covers |
 |---|---|---|
 | [`run_strix_makefile.lit`](run_strix_makefile.lit) | yes | Full mobilenet end-to-end (atol=9 per #3009) |
-| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone, plus pipeline (bn10..12) and cascade (bn13..14) chains — all bit-exact (atol=0) |
+| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone (atol=0), pipeline (bn10..12) + cascade (bn13..14) chains (atol=0), plus the regular bn0..bn9 chain (atol=14, matches the original perf-benchmark tolerance — see #3009) |
 | [`run_numpy_per_bn.lit`](run_numpy_per_bn.lit) | no | numpy reference vs brevitas — every kernel arithmetic verified bit-exact |
 
 The bit-exact per-block / per-chain results prove the IRON wrapper + AIE

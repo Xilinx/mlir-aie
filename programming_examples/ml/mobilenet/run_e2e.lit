@@ -49,6 +49,12 @@
 // BN8: PASS_E2E block:bn8
 // BN8-NOT: FAIL_E2E
 //
+// RUN: bash %S/run_e2e.sh chain regular %S | tee %t.regular.log
+// RUN: FileCheck --check-prefix=REG %s < %t.regular.log
+// REG: PASS_E2E chain:regular
+// (regular chain runs at atol=14 to match the original — see #3009 known
+//  bottleneck_A drift; bit-exactness is gated on closing init/bn0 propagation)
+//
 // RUN: bash %S/run_e2e.sh chain pipeline %S | tee %t.pipeline.log
 // RUN: FileCheck --check-prefix=PIPE %s < %t.pipeline.log
 // PIPE: PASS_E2E chain:pipeline
