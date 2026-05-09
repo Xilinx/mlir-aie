@@ -1,0 +1,54 @@
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Per-block IRON e2e correctness on the NPU2.
+//
+// For each block this:
+//   1. Stages bottleneck_A's per-bn weights (bnN_single.txt) under the
+//      bnN_chain.txt name our IRON loader expects.
+//   2. Builds a per-block IRON MLIR design via aie2_iron_per_block.py with
+//      the per-bn scales (bottleneck_A/data/scale_factors_per_bn.json) and
+//      the staged weights.
+//   3. Compiles MLIR -> xclbin via aiecc.py (reuses the .o files already
+//      built into ../build/ by the main mobilenet build).
+//   4. Runs the xclbin on the NPU via test_per_block.py and compares the
+//      output to bottleneck_A/data/golden_output_bnN_single.txt (brevitas
+//      reference).
+//
+// Verified locally: all 6 blocks pass with atol=0 (perfect bit-exactness).
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: mkdir -p test_stx
+// RUN: cd test_stx
+// RUN: cp %S/mb_utils.py .
+//
+// RUN: bash %S/run_per_block_e2e.sh bn1 %S | tee %t.bn1.log
+// RUN: FileCheck --check-prefix=BN1 %s < %t.bn1.log
+// BN1: PASS_BN_E2E bn1
+// BN1-NOT: FAIL_BN_E2E
+//
+// RUN: bash %S/run_per_block_e2e.sh bn2 %S | tee %t.bn2.log
+// RUN: FileCheck --check-prefix=BN2 %s < %t.bn2.log
+// BN2: PASS_BN_E2E bn2
+// BN2-NOT: FAIL_BN_E2E
+//
+// RUN: bash %S/run_per_block_e2e.sh bn3 %S | tee %t.bn3.log
+// RUN: FileCheck --check-prefix=BN3 %s < %t.bn3.log
+// BN3: PASS_BN_E2E bn3
+// BN3-NOT: FAIL_BN_E2E
+//
+// RUN: bash %S/run_per_block_e2e.sh bn6 %S | tee %t.bn6.log
+// RUN: FileCheck --check-prefix=BN6 %s < %t.bn6.log
+// BN6: PASS_BN_E2E bn6
+// BN6-NOT: FAIL_BN_E2E
+//
+// RUN: bash %S/run_per_block_e2e.sh bn7 %S | tee %t.bn7.log
+// RUN: FileCheck --check-prefix=BN7 %s < %t.bn7.log
+// BN7: PASS_BN_E2E bn7
+// BN7-NOT: FAIL_BN_E2E
+//
+// RUN: bash %S/run_per_block_e2e.sh bn8 %S | tee %t.bn8.log
+// RUN: FileCheck --check-prefix=BN8 %s < %t.bn8.log
+// BN8: PASS_BN_E2E bn8
+// BN8-NOT: FAIL_BN_E2E

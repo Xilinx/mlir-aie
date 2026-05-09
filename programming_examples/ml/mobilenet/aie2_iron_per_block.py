@@ -104,7 +104,10 @@ def _build_one(block_name, act_in):
         )
         return out_fifo, [w], []
 
-    if block_name in ("bn1", "bn2", "bn3", "bn6", "bn7"):
+    if block_name in ("bn1", "bn2", "bn3", "bn6", "bn7", "bn8"):
+        # bn8 isn't a standalone block in the main mobilenet (it lives in the
+        # bn8_9 fused pair), but its 3-layer shape works as a standalone test
+        # block — useful for matching the bottleneck_A bn8 brevitas fixture.
         out_fifo, w = build_3layer(
             nsblock(block_name),
             act_in,
