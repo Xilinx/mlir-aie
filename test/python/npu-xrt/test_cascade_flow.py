@@ -26,35 +26,37 @@ def test_cascade_flow_construction():
     class _FakeWorker:
         def __init__(self, col, row):
             self.tile = _FakeTile(col, row)
+            self._outgoing_cascades = []
 
     src = _FakeWorker(0, 2)
     dst = _FakeWorker(1, 2)
     cf = _CascadeFlow(src, dst)
     assert cf._src is src
     assert cf._dst is dst
+    assert src._outgoing_cascades == [cf]
 
 
 def test_runtime_cascade_flow_registration():
-    """Runtime.cascade_flow() accumulates CascadeFlow objects."""
+    """CascadeFlow self-registers on its source Worker."""
     n_ty = np.ndarray[(64,), np.dtype[np.int32]]
     of_in = ObjectFifo(n_ty, name="in")
     of_out = ObjectFifo(n_ty, name="out")
 
-    def noop(a, b):
+    def noop(*args):
         pass
 
-    worker_a = Worker(noop, fn_args=[of_in.cons(), of_out.prod()], placement=Tile(0, 2))
-    worker_b = Worker(noop, fn_args=[], placement=Tile(1, 2))
+    worker_a = Worker(noop, fn_args=[of_in.cons(), of_out.prod()], tile=Tile(0, 2))
+    worker_b = Worker(noop, fn_args=[], tile=Tile(1, 2))
+
+    cf = CascadeFlow(worker_a, worker_b)
 
     rt = Runtime()
     with rt.sequence(n_ty, n_ty) as (A, B):
         rt.start(worker_a, worker_b)
-        rt.cascade_flow(worker_a, worker_b)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)
 
-    assert len(rt._cascade_flows) == 1
-    cf = rt._cascade_flows[0]
+    assert worker_a._outgoing_cascades == [cf]
     assert isinstance(cf, _CascadeFlow)
     assert cf._src is worker_a
     assert cf._dst is worker_b
@@ -66,16 +68,17 @@ def test_cascade_flow_mlir_resolve():
     of_in = ObjectFifo(n_ty, name="cf_in")
     of_out = ObjectFifo(n_ty, name="cf_out")
 
-    def noop(a, b):
+    def noop(*args):
         pass
 
-    worker_a = Worker(noop, fn_args=[of_in.cons(), of_out.prod()], placement=Tile(0, 2))
-    worker_b = Worker(noop, fn_args=[], placement=Tile(1, 2))
+    worker_a = Worker(noop, fn_args=[of_in.cons(), of_out.prod()], tile=Tile(0, 2))
+    worker_b = Worker(noop, fn_args=[], tile=Tile(1, 2))
+
+    CascadeFlow(worker_a, worker_b)
 
     rt = Runtime()
     with rt.sequence(n_ty, n_ty) as (A, B):
         rt.start(worker_a, worker_b)
-        rt.cascade_flow(worker_a, worker_b)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)
 

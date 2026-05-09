@@ -19,6 +19,9 @@
 // RUN: cd test_stx
 // RUN: cp %S/mb_utils.py .
 //
+// Build all kernel .o files into ./build/ once; run_e2e.sh symlinks from there.
+// RUN: make -f %S/Makefile objs
+//
 // RUN: bash %S/run_e2e.sh block bn1 %S | tee %t.bn1.log
 // RUN: FileCheck --check-prefix=BN1 %s < %t.bn1.log
 // BN1: PASS_E2E block:bn1

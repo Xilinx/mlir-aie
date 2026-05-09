@@ -64,6 +64,9 @@ python3 ${SRCDIR}/${BUILDER} \
 
 # 2. Compile MLIR -> xclbin (link the .o files from main mobilenet build).
 cd "build_${TAG}"
+# .o files are built once into ../build/ by `make -f %S/Makefile objs` in run_e2e.lit.
+# Fall back to ${SRCDIR}/build/ for local runs that pre-built the main mobilenet.
+ln -sf ../build/*.o . 2>/dev/null || true
 ln -sf "${SRCDIR}/build/"*.o . 2>/dev/null || true
 aiecc.py --aie-generate-xclbin --no-compile-host \
     --xclbin-name="${TAG}.xclbin" \

@@ -64,8 +64,14 @@ OBJ = build/init_conv2dk3.o \
 	build/post_conv2dk1_relu_xy_pool_padded_i8_ui8.o \
 	build/post_L2_conv2dk1_relu_ui16_ui16_pad.o
 
+# Build only the kernel .o files (no MLIR/xclbin). Used by run_e2e.lit to
+# bootstrap kernels on a fresh CI checkout where the main mobilenet hasn't
+# been built yet.
+.PHONY: objs
+objs: $(OBJ)
 
-build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py 
+
+build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
