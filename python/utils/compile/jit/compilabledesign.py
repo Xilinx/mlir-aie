@@ -303,7 +303,18 @@ def _compute_hash(
 
             peano_cxx = _config.peano_cxx_path()
             peano_mtime = str(Path(peano_cxx).stat().st_mtime)
-        except (ImportError, AttributeError, FileNotFoundError, OSError) as exc:
+        except (
+            ImportError,
+            AttributeError,
+            FileNotFoundError,
+            OSError,
+            RuntimeError,
+        ) as exc:
+            # ``peano_cxx_path`` / ``peano_install_dir`` raise ``RuntimeError``
+            # (not ``FileNotFoundError``) when Peano isn't installed — without
+            # ``RuntimeError`` in the tuple, ``hash(design)`` crashes in any
+            # environment without Peano, even though hashing only needs a
+            # stable identity (no actual compile).
             try:
                 from aie.utils import config as _config
 
@@ -313,7 +324,7 @@ def _compute_hash(
                     "keying on install dir path only",
                     exc,
                 )
-            except (ImportError, AttributeError) as exc2:
+            except (ImportError, AttributeError, RuntimeError) as exc2:
                 logger.warning("_compute_hash: peano absent (%s)", exc2)
                 peano_mtime = "absent"
 

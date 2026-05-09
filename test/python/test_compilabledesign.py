@@ -246,6 +246,30 @@ def test_hash_differs_for_different_generators():
     assert hash(d1) != hash(d2)
 
 
+def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
+    """``hash(design)`` must not require Peano to be installed.
+
+    The CI "Build and Test (Release, ...)" matrix doesn't install Peano,
+    yet pytest still imports CompilableDesign and hashes designs as part
+    of its membership / equality checks.  ``_compute_hash`` must fall back
+    to the "absent" sentinel rather than letting the ``RuntimeError`` raised
+    by ``peano_cxx_path`` / ``peano_install_dir`` escape.
+    """
+    import aie.compiler.aiecc.configure as _aiecc_configure
+
+    monkeypatch.setattr(_aiecc_configure, "peano_install_dir", "peano_not_found")
+
+    gen = _gemm_gen()
+    d1 = CompilableDesign(gen, compile_kwargs={"M": 512})
+    d2 = CompilableDesign(gen, compile_kwargs={"M": 512})
+    d3 = CompilableDesign(gen, compile_kwargs={"M": 1024})
+
+    # Neither call should raise; equal-keyed designs must still match,
+    # different-keyed designs must still differ.
+    assert hash(d1) == hash(d2)
+    assert hash(d1) != hash(d3)
+
+
 def test_hash_for_path_generator_uses_path_string():
     d1 = CompilableDesign(Path("/a/design.mlir"))
     d2 = CompilableDesign(Path("/b/design.mlir"))
