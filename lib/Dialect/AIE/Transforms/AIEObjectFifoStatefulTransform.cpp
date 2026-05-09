@@ -773,7 +773,7 @@ struct AIEObjectFifoStatefulTransformPass
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
             /*address*/ nullptr, initValues,
-            /*mem_bank*/ nullptr);
+            /*mem_bank*/ nullptr, /*aligned*/ nullptr);
         buffers.push_back(buff);
       }
       of_elem_index++;
@@ -1480,7 +1480,8 @@ struct AIEObjectFifoStatefulTransformPass
         auto globalNextIndex = BufferOp::create(
             builder, builder.getUnknownLoc(), memrefTy, coreOp.getTile(),
             /*sym_name*/ nullptr, /*address*/ nullptr,
-            /*initial_value*/ nullptr, /*mem_bank*/ nullptr);
+            /*initial_value*/ nullptr, /*mem_bank*/ nullptr,
+            /*aligned*/ nullptr);
 
         // Initialize all counters in the global buffers to 0.
         for (auto i : constantSizes) {
