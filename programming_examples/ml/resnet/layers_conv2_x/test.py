@@ -10,34 +10,20 @@ import torch.nn as nn
 import sys
 import math
 from aie.utils.ml import DataShaper
-import time
 import os
 import numpy as np
-import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
-from pathlib import Path
+
+from resnet import resnet_conv2_x
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
 
-def main(opts):
-    design = "resnet_conv2_x_int8"
-    xclbin_path = opts.xclbin
-    insts_path = opts.instr
-
+def main():
     log_folder = "log/"
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
-
-    num_iter = 1
-    npu_time_total = 0
-    npu_time_min = 9999999
-    npu_time_max = 0
-    trace_size = 16384
-    enable_trace = False
-    trace_file = "log/trace_" + design + ".txt"
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
     # ------------------------------------------------------
@@ -150,12 +136,6 @@ def main(opts):
 
     min = 0
     max = 255
-
-    # ------------------------------------------------------
-    # Get device, load the xclbin & kernel and register them
-    # ------------------------------------------------------
-    npu_kernel = NPUKernel(xclbin_path, insts_path, kernel_name=opts.kernel)
-    kernel_handle = DefaultNPURuntime.load(npu_kernel)
 
     # ------------------------------------------------------
     # Define your golden reference
@@ -430,34 +410,15 @@ def main(opts):
     total_wts3.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
 
     # ------------------------------------------------------
-    # Main run loop
+    # Main run loop — JIT-compile + run the @iron.jit design directly
     # ------------------------------------------------------
-    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-    in2 = iron.tensor(total_wts3, dtype=dtype_wts)
-    out_size = np.prod(shape_out) * dtype_out.itemsize
+    in1 = iron.tensor(ifm_mem_fmt.reshape(-1), dtype=dtype_in)
+    in2 = iron.tensor(total_wts3.reshape(-1), dtype=dtype_wts)
+    out_size = int(np.prod(shape_out) * dtype_out.itemsize)
     out = iron.zeros(out_size, dtype=dtype_out)
 
-    buffers = [in1, in2, out]
-
-    trace_config = None
-    if enable_trace:
-        trace_config = TraceConfig(
-            trace_size=trace_size,
-            trace_file=trace_file,
-            enable_ctrl_pkts=False,
-            last_tensor_shape=out.shape,
-            last_tensor_dtype=out.dtype,
-        )
-        HostRuntime.prepare_args_for_trace(buffers, trace_config)
-    for i in range(num_iter):
-        ret = DefaultNPURuntime.run(kernel_handle, buffers)
-
-        if trace_config:
-            trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
-            trace_buffer = trace_buffer.view(np.uint32)
-            trace_config.write_trace(trace_buffer)
-        aie_output = out.numpy() * block_2_relu_3
-        npu_time_total = npu_time_total + ret.npu_time
+    resnet_conv2_x(in1, in2, out)
+    aie_output = out.numpy() * block_2_relu_3
 
     # ------------------------------------------------------
     # Reorder output data-layout
@@ -473,8 +434,6 @@ def main(opts):
     # ------------------------------------------------------
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
-    print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
-
     if np.allclose(
         ofm_mem_fmt_out.detach().numpy(),
         golden_output.detach().numpy(),
@@ -482,13 +441,11 @@ def main(opts):
         atol=block_2_relu_3,
     ):
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nFailed.\n")
-        exit(-1)
+        sys.exit(-1)
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
-    opts = p.parse_args(sys.argv[1:])
-    main(opts)
+    main()
