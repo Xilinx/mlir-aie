@@ -43,8 +43,6 @@ from bottleneck.cascade import cascade_bottlenecks
 from bottleneck._common import i8, u8, load_wts
 from network_spec import block as nsblock
 
-_I32 = np.int32
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -71,7 +69,7 @@ init_OutW, init_OutH, init_OutC = nsblock("init").layers[0].out_shape
 # Post-processing dimensions
 post_L1_InW, post_L1_InH, post_L1_InC = nsblock("post_l1").layers[0].in_shape
 post_L1_OutW, post_L1_OutH, _ = nsblock("post_l1").layers[0].out_shape
-post_L1_OutC = nsblock("post_l1").layers[0].expand_oc  # kernel-internal pre-pad
+post_L1_OutC = 960  # expand-1x1 width before padding to L2_InC (kernel-internal)
 
 post_L2_InC = nsblock("post_l2").layers[0].in_shape[2]
 post_L2_OutC = nsblock("post_l2").layers[-1].out_shape[2]
@@ -141,15 +139,15 @@ def mobilenet_iron(collect_only: bool = False):
             i8((tensorInW, 1, tensorInC)),
             i8((init_wts_sz,)),
             u8((init_OutW, 1, init_OutC)),
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
     )
 
@@ -263,14 +261,14 @@ def mobilenet_iron(collect_only: bool = False):
             i8((post_L1_InW, 1, post_L1_InC)),
             i8((post_l1_wts_chunk,)),
             np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
     )
 
@@ -387,11 +385,11 @@ def mobilenet_iron(collect_only: bool = False):
             np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
             i8((fc_recv_per_tile,)),
             _u16((co,)),
-            _I32,
-            _I32,
-            _I32,
-            _I32,
-            _I32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
     )
 

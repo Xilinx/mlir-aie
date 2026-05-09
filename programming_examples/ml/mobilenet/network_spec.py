@@ -53,9 +53,6 @@ class Conv:
     stride: int = 1
     activation: Optional[str] = "relu"  # 'relu' | 'relu6' | None
     sf_key: str = ""
-    # Kernel-internal expand width (out_shape's C reflects post-pad width).
-    # Currently used only by post_l1's fused expand+avgpool: 960 -> padded 1280.
-    expand_oc: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -348,7 +345,6 @@ NETWORK: tuple = (
                 (7, 7, 80),
                 (1, 1, 1280),
                 sf_key="conv1x1_1",
-                expand_oc=960,
             ),
         ),
         weight_files=("post_conv_chain.txt",),
