@@ -1,63 +1,95 @@
-# MobileNet V3 Implementation on AI Engine
+# MobileNet V3 on AI Engine (IRON)
 
-## Overview
+End-to-end MobileNet V3 inference on the Strix NPU2 (4×8 compute tiles + a row
+of mem tiles), implemented in the high-level IRON Python API. The full network
+runs depth-first across the array — `init → bn0..bn14 → avgpool → FC1 → FC2` —
+keeping intermediate activations on-chip.
 
-MobileNet V3 is a highly efficient model for mobile and edge devices, designed to provide a good balance between latency and accuracy and targeting a device with 4x8 core tiles and 1 row of mem tiles (Strix).
-This project implements MobileNet V3 on AI Engine with three different mappings of bottleneck blocks:
-
-1. **Bottleneck A**: Each bottleneck block is implemented on a single AI core.
-2. **Bottleneck B**: Each bottleneck block is distributed across three AI cores.
-3. **Bottleneck C**: Each bottleneck block is distributed across five AI cores.
-
-
-## Contents
-
-- `README.md`: This file, providing an overview and setup instructions.
-- `bottlenec_A/`: Implementation of Bottleneck A.
-- `bottlenec_B/`: Implementation of Bottleneck B.
-- `bottlenec_C/`: Implementation of Bottleneck C.
-
-
-## Dataflow Mapping
-
-
-The below figures shows our dataflow mapping of MobileNetV3 on 4x8 AI Engine array.
 <p align="center">
  <picture>
- <source media="(prefers-color-scheme: light)" srcset="./mobilenet_dataflow.png">
- <img alt="block" src="./mobilenet_dataflow.png">
-</picture>
- <h3 align="center">Our depth-first mapping avoid unnecessary off-chip data movement.
- </h3>
+  <source media="(prefers-color-scheme: light)" srcset="./mobilenet_dataflow.png">
+  <img alt="dataflow" src="./mobilenet_dataflow.png">
+ </picture>
 </p>
 
-### Bottleneck A
+## Where to start
 
-In this mapping, each bottleneck block is implemented on a single AI core with some layers combined to balance the pipe and leave enough tile for the fully connected layers at the end.
+Open in this order to grasp the design:
 
-### Bottleneck B
+| File | What it shows |
+|---|---|
+| [`network_spec.py`](network_spec.py) | The whole network in one file — block names, layer kinds, in/out shapes, scale-factor keys |
+| [`mobilenet_numpy.py`](mobilenet_numpy.py) | Pure-numpy reference; bit-exact int8 inference matching the AIE kernels (algorithm onramp) |
+| [`aie2_mobilenet_iron.py`](aie2_mobilenet_iron.py) | Full IRON design — orchestrates init + bottlenecks + post-processing on a fixed PLACEMENT |
+| [`bottleneck/{regular,pipeline,cascade}.py`](bottleneck/) | Three families of bottleneck builders, grouped by tile-mapping strategy |
+| [`aie2_iron_per_block.py`](aie2_iron_per_block.py) | Build any single bottleneck standalone (debugging / profiling) |
+| [`aie2_iron_chain.py`](aie2_iron_chain.py) | Build a chained subset (`pipeline` = bn10..12, `cascade` = bn13..14) |
+| [`dataflow_dot.py`](dataflow_dot.py) | `--dot` flag emits a graphviz of the live design |
 
-In this mapping, each bottleneck block is distributed across three AI cores. This approach balances between computational load and parallelism, potentially offering better performance than Bottleneck A.
+## Build + run end-to-end
 
-### Bottleneck C
-
-In this mapping, each bottleneck block is distributed across five AI cores. This maximizes parallelism and is designed to achieve the best performance by fully utilizing the available AI cores.
-
-## Setup
-
-### Building the Project
-
-To compile and run the chained design:
-```
+```bash
 make run_py
 ```
 
-We have separated the generation of the golden data, weights and scale factors to a separate python program `gen_golden.py`. This writes the data to the `log` folder which should match the ones stored under `data` that the test uses as input stimulus, golden reference, weights, and scale factors. In order to run `gen_golden.py`, we need additional python packages (e.g. torchvision, brevitas) as well as a set of imagenet calibration images. Those calibration images are not part of this repo (details to be shared soon) but the remaining package requirements can be satisfied via:
-```
-python3 -m pip install -r requirements_gen_golden.txt
-```
-To generate the input stimulus, golden reference, weights and scale factors:
-```
-python3 ./gen_golden.py
+This compiles `aie2_mobilenet_iron.py` to xclbin and runs `test_mobilenet.py`
+against `data/golden_output.txt`. Per Xilinx/mlir-aie issue #3009 the AIE
+design currently differs from brevitas by max=9 (atol=9 in the assertion).
+
+## Lit-driven verification
+
+| Lit test | Hardware? | What it covers |
+|---|---|---|
+| [`run_strix_makefile.lit`](run_strix_makefile.lit) | yes | Full mobilenet end-to-end (atol=9 per #3009) |
+| [`run_e2e.lit`](run_e2e.lit) | yes | bn1/2/3/6/7/8 standalone, plus pipeline (bn10..12) and cascade (bn13..14) chains — all bit-exact (atol=0) |
+| [`run_numpy_per_bn.lit`](run_numpy_per_bn.lit) | no | numpy reference vs brevitas — every kernel arithmetic verified bit-exact |
+
+The bit-exact per-block / per-chain results prove the IRON wrapper + AIE
+kernel object files are correct on hardware; the residual gap on the full
+network comes from cross-block effects in `init` / `bn0` / `post_l1` / `post_l2`
+(blocks without a standalone brevitas fixture).
+
+## Regenerating brevitas fixtures
+
+The `data/` files (scale factors, per-block weights, golden outputs) are
+brevitas-quantized references — produced by [`gen_golden.py`](gen_golden.py),
+NOT IRON-specific. To regenerate them:
+
+```bash
+pip install -r requirements_gen_golden.txt    # PyTorch + brevitas + onnx
+python3 gen_golden.py                          # writes data/scale_factors_final.json
+                                               # + data/{bn*,init,post,FC*}_chain.txt
+                                               # + data/golden_output.txt
+                                               # + data/before_ifm_mem_fmt_1x1.txt
 ```
 
+The per-block / per-chain fixtures used by `run_e2e.lit` live under
+`bottleneck_A/data/`, `bottleneck_B/data/`, `bottleneck_C/data/` — each
+calibrated independently by the corresponding `gen_golden*.py` script in
+that subdirectory. Calibration images are not in this repo.
+
+## Repo layout
+
+```
+mobilenet/
+├── aie2_mobilenet_iron.py         # full network (IRON)
+├── aie2_iron_per_block.py         # standalone block builder
+├── aie2_iron_chain.py             # standalone chain builder (pipeline | cascade)
+├── network_spec.py                # declarative algorithm description
+├── mobilenet_numpy.py             # bit-exact numpy reference
+├── dataflow_dot.py                # graphviz emission for --dot
+├── bottleneck/                    # IRON builders by tile-mapping strategy
+│   ├── regular.py                 #   bn0..bn9 (single-tile + fused-pair)
+│   ├── pipeline.py                #   bn10..bn12 (3-tile + bn12 2-tile)
+│   ├── cascade.py                 #   bn13, bn14 (5-tile cascade-split)
+│   └── _common.py                 #   shared helpers
+├── data/                          # brevitas fixtures for the full network
+├── gen_golden.py                  # brevitas reference generator
+├── bottleneck_{A,B,C}/data/       # brevitas fixtures for per-block / per-chain tests
+├── bottleneck_{A,B,C}/gen_golden*.py  # brevitas generators for those fixtures
+├── test_mobilenet.py              # full-network host runtime harness
+├── test_e2e.py                    # per-block / per-chain hardware harness
+├── test_numpy_per_bn.py           # numpy bit-exactness driver
+├── run_e2e.sh                     # build+compile+run shell driver for run_e2e.lit
+└── run_*.lit                      # lit tests (see table above)
+```
