@@ -39,7 +39,15 @@ from bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
 from bottleneck.cascade import build_cascade
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data") + "/"
-SCALE_FACTORS = json.load(open(DATA_DIR + "scale_factors_final.json"))
+SCALE_FACTORS = None  # Lazy-loaded in per_block_iron from --scales-json or default.
+
+
+def _resolve_scales(scales_json_path):
+    """Load the scale_factors JSON. Defaults to the main mobilenet calibration."""
+    if scales_json_path is None:
+        scales_json_path = DATA_DIR + "scale_factors_final.json"
+    with open(scales_json_path) as f:
+        return json.load(f)
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +86,11 @@ TEST_PLACEMENT = {
 # Block-name → builder dispatch.
 _FUSED_PAIRS = {"bn4_5": ("bn4", "bn5"), "bn8_9": ("bn8", "bn9")}
 
+# Set by per_block_iron(); referenced by _build_one to control which weight
+# files and scale factors get baked into the design.
+_DATA_DIR = DATA_DIR
+_SCALES = None
+
 
 def _build_one(block_name, act_in):
     """Dispatch to the right builder. Returns (out_fifo, workers, weight_fifos)."""
@@ -85,8 +98,8 @@ def _build_one(block_name, act_in):
         out_fifo, w = build_2layer_skip(
             nsblock("bn0"),
             act_in,
-            SCALE_FACTORS,
-            data_dir=DATA_DIR,
+            _SCALES,
+            data_dir=_DATA_DIR,
             tile=TEST_PLACEMENT["single_compute"],
         )
         return out_fifo, [w], []
@@ -95,8 +108,8 @@ def _build_one(block_name, act_in):
         out_fifo, w = build_3layer(
             nsblock(block_name),
             act_in,
-            SCALE_FACTORS,
-            data_dir=DATA_DIR,
+            _SCALES,
+            data_dir=_DATA_DIR,
             tile=TEST_PLACEMENT["single_compute"],
         )
         return out_fifo, [w], []
@@ -109,8 +122,8 @@ def _build_one(block_name, act_in):
             nsblock(b),
             chain,
             act_in,
-            SCALE_FACTORS,
-            data_dir=DATA_DIR,
+            _SCALES,
+            data_dir=_DATA_DIR,
             compute_tile=TEST_PLACEMENT["fused_pair"]["compute"],
             alloc_tile=TEST_PLACEMENT["fused_pair"]["alloc"],
         )
@@ -120,8 +133,8 @@ def _build_one(block_name, act_in):
         out_fifo, ws = build_3tile_pipeline(
             nsblock("bn10"),
             act_in,
-            SCALE_FACTORS,
-            data_dir=DATA_DIR,
+            _SCALES,
+            data_dir=_DATA_DIR,
             tiles={k: TEST_PLACEMENT["pipeline_3"][k] for k in ("l1", "l2", "l3")},
         )
         return out_fifo, ws, []
@@ -134,8 +147,8 @@ def _build_one(block_name, act_in):
         out_fifo, ws = build_3tile_pipeline(
             nsblock("bn11"),
             act_in,
-            SCALE_FACTORS,
-            data_dir=DATA_DIR,
+            _SCALES,
+            data_dir=_DATA_DIR,
             tiles={k: TEST_PLACEMENT["pipeline_3"][k] for k in ("l1", "l2", "l3")},
             skip_in=skip_in,
         )
@@ -145,8 +158,8 @@ def _build_one(block_name, act_in):
         out_fifo, ws = build_bn12_2tile(
             nsblock("bn12"),
             act_in,
-            SCALE_FACTORS,
-            data_dir=DATA_DIR,
+            _SCALES,
+            data_dir=_DATA_DIR,
             tiles=TEST_PLACEMENT["pipeline_2"],
         )
         return out_fifo, ws, []
@@ -159,8 +172,8 @@ def _build_one(block_name, act_in):
             l3_get_sym=sym,
             act_in=act_in,
             skip_in=act_in,
-            sf=SCALE_FACTORS,
-            data_dir=DATA_DIR,
+            sf=_SCALES,
+            data_dir=_DATA_DIR,
             tiles=TEST_PLACEMENT["cascade"],
         )
         return out_fifo, ws, [wts_l1, wts_l3]
@@ -171,8 +184,20 @@ def _build_one(block_name, act_in):
     )
 
 
-def per_block_iron(block_name):
-    """Build a standalone IRON design for one bottleneck and return MLIR."""
+def per_block_iron(block_name, data_dir=None, scales_json=None):
+    """Build a standalone IRON design for one bottleneck and return MLIR.
+
+    data_dir / scales_json default to the main mobilenet calibration; pass the
+    bottleneck_A|B|C/data/ path + matching scale_factors.json to build a design
+    that targets the per-bn brevitas fixtures.
+    """
+    global _DATA_DIR, _SCALES
+    _DATA_DIR = (
+        data_dir + "/"
+        if data_dir and not data_dir.endswith("/")
+        else (data_dir or DATA_DIR)
+    )
+    _SCALES = _resolve_scales(scales_json)
     blk = (
         nsblock(block_name)
         if block_name not in _FUSED_PAIRS
@@ -253,7 +278,23 @@ def per_block_iron(block_name):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
-        print(__doc__, file=sys.stderr)
-        sys.exit(0 if "--help" in sys.argv or "-h" in sys.argv else 1)
-    print(per_block_iron(sys.argv[1]))
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Build per-block IRON MLIR.")
+    ap.add_argument(
+        "block", help="block name (bn0..bn3, bn4_5, bn6, bn7, bn8_9, bn10..bn14)"
+    )
+    ap.add_argument(
+        "--data-dir",
+        help="weight files directory (default: ./data). Use this to point at "
+        "bottleneck_A|B|C/data/ for per-bn fixture testing.",
+    )
+    ap.add_argument(
+        "--scales-json",
+        help="scale_factors JSON file path (default: data/scale_factors_final.json). "
+        "Use bottleneck_*/data/scale_factors.json for per-bn fixture testing.",
+    )
+    args = ap.parse_args()
+    print(
+        per_block_iron(args.block, data_dir=args.data_dir, scales_json=args.scales_json)
+    )
