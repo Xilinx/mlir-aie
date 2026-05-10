@@ -81,6 +81,7 @@ def mm(
     input_dtype=np.int16,
     output_dtype=np.int16,
     vectorized: bool = True,
+    b_col_maj: bool = False,
 ) -> ExternalFunction:
     """Matrix-multiply kernel: C += A * B.
 
@@ -91,6 +92,10 @@ def mm(
         input_dtype: Input element type (``np.int8``, ``np.int16``, or ``bfloat16``).
         output_dtype: Output element type.
         vectorized: If ``True`` use the vectorized variant.
+        b_col_maj: If ``True`` compile the kernel with ``-DB_COL_MAJ`` so
+            it consumes B laid out column-major.  Must agree with the
+            design's L2→L1 ``dims_to_stream`` for B; the legacy Makefile
+            adds the same flag based on its ``b_col_maj`` switch.
 
     Returns:
         ExternalFunction configured for the matmul kernel.
@@ -110,16 +115,19 @@ def mm(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
+    compile_flags = [
+        f"-DDIM_M={dim_m}",
+        f"-DDIM_K={dim_k}",
+        f"-DDIM_N={dim_n}",
+        f"-D{only_flag}",
+    ]
+    if b_col_maj:
+        compile_flags.append("-DB_COL_MAJ")
     extern = _make_extern(
         f"{prefix}_{suffix}",
         _default_source_path("mm.cc"),
         [a_ty, b_ty, c_ty],
-        compile_flags=[
-            f"-DDIM_M={dim_m}",
-            f"-DDIM_K={dim_k}",
-            f"-DDIM_N={dim_n}",
-            f"-D{only_flag}",
-        ],
+        compile_flags=compile_flags,
     )
     # Attach the (r, s, t) MMUL micro-kernel dims for the arch the source
     # was just resolved for.  Designs read `kernel.mac_dims` to drive their
