@@ -47,7 +47,14 @@ def _resolve_scales(scales_json_path):
     if scales_json_path is None:
         scales_json_path = DATA_DIR + "scale_factors_final.json"
     with open(scales_json_path) as f:
-        return json.load(f)
+        scales = json.load(f)
+    # CI-INTEGRITY-CHECK: deliberately corrupt BN1's first scale so the
+    # bn1 e2e produces wrong output but still compiles + runs. Confirms CI
+    # is actually executing this design (not a stale xclbin / wrong SHA).
+    # Revert before merging.
+    if "BN1" in scales:
+        scales["BN1"]["conv1x1_1"] += 4
+    return scales
 
 
 # ---------------------------------------------------------------------------
