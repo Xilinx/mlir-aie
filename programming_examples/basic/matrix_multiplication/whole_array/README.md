@@ -24,7 +24,7 @@ At a high level, the code does the following (in order):
 
 1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `aie.runtime_sequence()` op sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Direct Memory Access (DMA) transfers, sets memory access patterns, and performs synchronization.
 
-1. **Generating the Design:** The `_build_design()` function constructs the IRON design and resolves it to an MLIR module. It is invoked through one of three entry points: the `@iron.jit`-decorated `whole_array()` (host run + verify), the `--print-mlir` CLI mode (legacy MLIR-emit pipeline), or the `my_matmul()` shim used by the visualization notebook with `generate_taps=True`.
+1. **Generating the Design:** The `_build_design()` function constructs the IRON design and resolves it to an MLIR module. The `@iron.jit`-decorated `whole_array()` is the single entry point for compilation; `main()` either compiles + runs on hardware or compiles ahead-of-time to caller-specified xclbin/insts paths (used by the Makefile so `test.cpp` + `sweep.sh` can drive the design).  The `generate_taps()` helper calls into the same design body to produce TAP sequences for the visualization notebook.
 
 In summary, this design leverages an AI Engine accelerator to accomplish matrix multiplication efficiently by breaking large matrices into smaller, manageable submatrices. The design uses parallelism, pipelining, and efficient data movement strategies to minimize computation time on the AI Engine array.
 
@@ -34,29 +34,28 @@ With the default configuration, this design will set up an array of AIEs to perf
 
 The Python source ([`whole_array.py`](./whole_array.py)) supports two execution paths:
 
-* **Default (legacy):** emit MLIR for the existing `aiecc` + `test.cpp` pipeline driven by [`makefile-common`](../makefile-common). All existing lit configs and the matmul sweep go through this path. You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu).
+* **`make`-driven, with `test.cpp` host harness:** the Makefile invokes Python with `--xclbin-path` / `--insts-path` so the JIT pipeline writes artifacts straight to `build/`; `test.cpp` then runs against them. All existing lit configs and the matmul sweep go through this path. You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu).
 
   ```shell
   make
-  make whole_array.exe
   make run
   ```
 
-* **`@iron.jit` direct-run:** invoke the script with `--jit` and it compiles + runs on the attached NPU in one step, verifying against a numpy reference. Useful for fast iteration and avoids the C++ test harness entirely.
+* **Direct Python run + verify:** invoke the script with no `--xclbin-path` and it compiles + runs on the attached NPU in one step, verifying against a numpy reference. Useful for fast iteration and avoids the C++ test harness entirely.
 
   ```shell
-  python3 whole_array.py --jit                   # default 4-col i16/i32, 512x512x512
-  python3 whole_array.py --jit --c-col-maj 1     # column-major C output
-  python3 whole_array.py --jit --b-col-maj 1     # column-major B input
-  python3 whole_array.py --jit --dtype_in bf16 --dtype_out bf16
-  python3 whole_array.py --help                  # full flag list
+  python3 whole_array.py                            # default 4-col i16/i16, 512x512x512
+  python3 whole_array.py --c-col-maj 1              # column-major C output
+  python3 whole_array.py --b-col-maj 1              # column-major B input
+  python3 whole_array.py --dtype_in bf16 --dtype_out bf16
+  python3 whole_array.py --help                     # full flag list
   ```
 
-The same design body backs both paths — the `--jit` flag selects the host-run/verify mode, otherwise the script prints MLIR to stdout for the legacy pipeline.
+Both paths share one design body and one set of `@iron.jit` compile machinery — the only difference is whether artifacts land in `build/` (for `test.cpp`) or in the JIT cache (for direct run).
 
 ## Detailed Design Explanation
 
-The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file, which uses the IRON high-level builders (`Worker` / `Runtime` / `Program`) and is decorated with `@iron.jit` for the direct-run path. The design is linked against a compute microkernel which is implemented in C++. The accompanying [notebook](./mat_mul_whole_array_visualization.ipynb) provides data-movement visualization for the runtime sequence (driven by the same source file with `--generate-taps`).
+The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file, which uses the IRON high-level builders (`Worker` / `Runtime` / `Program`) and is decorated with `@iron.jit`. The design is linked against a compute microkernel which is implemented in C++. The accompanying [notebook](./mat_mul_whole_array_visualization.ipynb) provides data-movement visualization for the runtime sequence (driven by the same source file via the `generate_taps()` helper).
 The following sections elaborate on each of the steps outlined in the high-level summary above.
 
 > Note: The term "tile" has two distinct meanings in the following discussion that should be distinguishable from context:

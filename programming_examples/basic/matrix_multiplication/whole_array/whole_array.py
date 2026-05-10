@@ -6,23 +6,21 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 """Whole-array matrix multiply — Iron API design with ``@iron.jit`` compilation.
 
-A 4×N_cols AIE array computes ``C = A @ B`` (optionally with ``B`` column-major
+A 4xN_cols AIE array computes ``C = A @ B`` (optionally with ``B`` column-major
 or ``C`` column-major).  Each compute tile owns one (m, n) output sub-tile and
-streams (m, k) × (k, n) inputs through three layers of ObjectFifos.
+streams (m, k) x (k, n) inputs through three layers of ObjectFifos.
 
-This script has two modes:
+The script has two modes:
 
-* default — emits MLIR to stdout for the legacy ``aiecc`` + ``test.cpp``
-  pipeline driven by ``makefile-common`` (used by every existing lit config
-  and the matmul sweep).  This is the default so existing ``make run``
-  invocations keep working unchanged.
-* ``--jit`` — JIT-compiles the design via ``@iron.jit``, runs it on the
-  attached NPU, then verifies against ``A @ B`` computed on the host.
-
-The design body is shared between the two paths.
+* ``--xclbin-path=... --insts-path=...`` — compile the design ahead-of-time
+  and write artifacts to the given paths (bypasses the JIT cache).  Used by
+  ``makefile-common`` so ``test.cpp`` + ``sweep.sh`` can drive the design
+  via ``make``.
+* default — JIT-compile + run on the attached NPU + verify against numpy.
 """
 
 import argparse
+import shutil
 import sys
 
 import numpy as np
@@ -31,7 +29,6 @@ import aie.iron as iron
 from aie.iron import (
     Compile,
     In,
-    Kernel,
     ObjectFifo,
     Out,
     Program,
@@ -44,32 +41,18 @@ from aie.iron.controlflow import range_
 from aie.iron.device import NPU1, NPU1Col1, NPU1Col2, NPU2, Tile
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import count_mismatches
 
-# bf16 BFP-16 emulation needs (8, 8, 8) on NPU2; kernels.mm doesn't expose the
-# AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 toggle yet, so this single override
-# stays local instead of going through kernels.mm(...).mac_dims.
-_BF16_EMULATED_MAC_DIMS_NPU2 = (8, 8, 8)
 
-# Per-(arch, dtype_in) (r, s, t) micro-kernel dims for the legacy --print-mlir
-# path (which binds against the combined mm_MxKxN.o produced by makefile-common
-# and so cannot ask kernels.mm.mac_dims, since that would query the active host
-# device rather than the requested target dev_str).
-_LEGACY_MAC_DIMS = {
-    "npu": {"bf16": (4, 8, 4), "i8": (4, 8, 8), "i16": (4, 4, 4)},
-    "npu2": {
-        "bf16": {True: (8, 8, 8), False: (4, 8, 8)},
-        "i8": (8, 8, 8),
-        "i16": (4, 4, 8),
-    },
-}
-
-
-def _legacy_mac_dims(dev_str, dtype_in_str, emulate_bf16_mmul_with_bfp16):
-    entry = _LEGACY_MAC_DIMS[dev_str][dtype_in_str]
-    if isinstance(entry, dict):
-        return entry[emulate_bf16_mmul_with_bfp16]
-    return entry
+def _device_for(dev_str, n_aie_cols):
+    if dev_str == "npu":
+        if n_aie_cols == 1:
+            return NPU1Col1()
+        if n_aie_cols == 2:
+            return NPU1Col2()
+        return NPU1()
+    return NPU2()
 
 
 def ceildiv(a, b):
@@ -90,26 +73,11 @@ def _build_design(
     b_col_maj,
     c_col_maj,
     emulate_bf16_mmul_with_bfp16,
+    use_chess,
     *,
-    for_jit,
     generate_taps=False,
 ):
-    """Build the whole-array matmul IRON design and resolve to MLIR.
-
-    Shared by the JIT entry point and the ``--print-mlir`` path.  Two
-    branch points based on ``for_jit``:
-
-    * Kernel binding — JIT uses ``kernels.mm/mm_zero`` (ExternalFunction;
-      the JIT pipeline compiles each from ``mm.cc`` on first call).  The
-      legacy MLIR-emit path uses ``Kernel(name, "mm_MxKxN.o", ...)`` so the
-      emitted ``link_with`` matches the combined object file built by
-      ``makefile-common``'s existing rule (consumed by ``test.cpp`` + the
-      matmul sweep).
-    * L1 ObjectFifo element type — ``kernels.mm`` declares 1D arg types,
-      so the JIT path uses 1D L1 types to match.  The legacy path keeps the
-      original 2D ``(m, k)``-style L1 types so the emitted MLIR is
-      byte-identical to what the pre-port iron variant produced.
-    """
+    """Build the whole-array matmul IRON design and resolve to MLIR."""
     dev_str = "npu2" if isinstance(dev, NPU2) else "npu"
 
     n_aie_rows = 4
@@ -125,33 +93,21 @@ def _build_design(
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
-    # mac_dims: JIT path binds the matmul kernel up front (with the right
-    # b_col_maj/c_col_maj flags) and reads .mac_dims off it.  Two separate
-    # kernels.mm() calls would each register an ExternalFunction with the
-    # same `matmul_*.o` filename — the second .o overwrites the first, and
-    # whichever flag-set wins is undefined.  Legacy path can't query the
-    # active device (dev is a static label, possibly not the host) so it
-    # uses the local (arch, dtype) table.
-    if for_jit:
-        matmul_kernel = kernels.mm(
-            dim_m=m,
-            dim_k=k,
-            dim_n=n,
-            input_dtype=dtype_in,
-            output_dtype=dtype_out,
-            b_col_maj=bool(b_col_maj),
-            c_col_maj=bool(c_col_maj),
-        )
-        if (
-            dev_str == "npu2"
-            and dtype_in_str == "bf16"
-            and emulate_bf16_mmul_with_bfp16
-        ):
-            r, s, t = _BF16_EMULATED_MAC_DIMS_NPU2
-        else:
-            r, s, t = matmul_kernel.mac_dims
-    else:
-        r, s, t = _legacy_mac_dims(dev_str, dtype_in_str, emulate_bf16_mmul_with_bfp16)
+    matmul_kernel = kernels.mm(
+        dim_m=m,
+        dim_k=k,
+        dim_n=n,
+        input_dtype=dtype_in,
+        output_dtype=dtype_out,
+        b_col_maj=bool(b_col_maj),
+        c_col_maj=bool(c_col_maj),
+        use_chess=use_chess,
+        emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
+    )
+    zero_kernel = kernels.mm_zero(
+        dim_m=m, dim_k=k, dim_n=n, output_dtype=dtype_out, use_chess=use_chess
+    )
+    r, s, t = matmul_kernel.mac_dims
 
     if dev_str == "npu" and n_aie_cols > 4:
         raise AssertionError("Invalid configuration: NPU (Phoenix/Hawk) has 4 columns")
@@ -160,7 +116,6 @@ def _build_design(
             "Invalid configuration: NPU2 (Strix/Strix Halo/Krackan) has 8 columns"
         )
 
-    # Tiling preconditions
     assert (
         M % (m * n_aie_rows) == 0
     ), "A must be tileable into (m * n_aie_rows, k)-sized blocks"
@@ -175,25 +130,12 @@ def _build_design(
     fifo_depth = 2
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
-    # When using more AIE columns than n_aie_rows (4) (NPU2 only), restrict
-    # shim/mem tiles to n_aie_rows — there are only n_aie_rows row tiles for A.
     if n_aie_cols > n_aie_rows:
         n_shim_mem_A = n_aie_rows
     else:
         n_shim_mem_A = n_aie_cols
 
-    # Integer division when n_aie_cols < 4, otherwise 1
     n_A_tiles_per_shim = n_aie_rows // n_aie_cols if n_aie_cols < 4 else 1
-
-    if dev_str == "npu":
-        if n_aie_cols == 1:
-            dev_ty = NPU1Col1()
-        elif n_aie_cols == 2:
-            dev_ty = NPU1Col2()
-        elif n_aie_cols == 4:
-            dev_ty = NPU1()
-    else:
-        dev_ty = NPU2()
 
     A_taps = []
     B_taps = []
@@ -205,34 +147,15 @@ def _build_design(
     A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
     B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
     C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
-    # L1 ObjectFifo element types are 2D in both modes — same as the pre-port
-    # iron variant.  The JIT path's kernels.mm helper declares 1D arg types,
-    # but BaseKernel.__call__ silently inserts a memref.collapse_shape to
-    # bridge a contiguous N-D arg to a 1-D kernel signature, so designs can
-    # keep their natural 2D L1 shape regardless of which mode is in use.
+    # L1 ObjectFifo elements are 2D; BaseKernel.__call__ inserts a
+    # memref.collapse_shape to bridge to kernels.mm's 1D arg signature.
     A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
     B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
-    if for_jit:
-        # matmul_kernel already bound above (for the .mac_dims read).
-        # kernels.mm() compiles its .o with -DMATMUL_ONLY and kernels.mm_zero()
-        # with -DZERO_ONLY, so the two .o files have disjoint symbol sets and
-        # link cleanly together.
-        zero_kernel = kernels.mm_zero(dim_m=m, dim_k=k, dim_n=n, output_dtype=dtype_out)
-    else:
-        # Legacy: bind against the combined object file the Makefile builds.
-        zero_kernel = Kernel(f"zero_{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [C_l1_ty])
-        matmul_kernel = Kernel(
-            f"matmul_{dtype_in_str}_{dtype_out_str}",
-            f"mm_{m}x{k}x{n}.o",
-            [A_l1_ty, B_l1_ty, C_l1_ty],
-        )
-
     tiles = [[(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)]
     core_tiles = tiles[2:]
 
-    # ObjectFifos: L3↔L2 and L2↔L1 for A, B; L1↔L2↔L3 for C.
     A_l3l2_fifos = [None] * n_shim_mem_A
     A_l2l1_fifos = [None] * n_aie_rows
     B_l3l2_fifos = [None] * n_aie_cols
@@ -240,7 +163,6 @@ def _build_design(
     C_l1l2_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
     C_l2l3_fifos = [None] * n_aie_cols
 
-    # Input A
     for i in range(n_shim_mem_A):
         A_l3l2_fifos[i] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
         start_row = i * n_A_tiles_per_shim
@@ -262,14 +184,12 @@ def _build_design(
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
                 dims_to_stream=dims_to_stream,
-                # alternate columns in the full 4x8 NPU2 case
                 tile=Tile(2 * i if n_aie_cols == 8 else i, 1),
             )
         )
         for j in range(stop_row - start_row):
             A_l2l1_fifos[j + start_row] = a_tmp_fifos[j]
 
-    # Input B + Output C (per column)
     for col in range(n_aie_cols):
         B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         if b_col_maj:
@@ -313,7 +233,6 @@ def _build_design(
         for j in range(n_aie_rows):
             C_l1l2_fifos[j][col] = c_tmp_fifos[j]
 
-    # Per-core task: zero accumulator, then K/k iters of matmul-accumulate.
     def core_fn(in_a, in_b, out_c, zero, matmul):
         loop = range(1)  # Workaround for issue #1547
         if n_tiles_per_core > 1:
@@ -349,12 +268,9 @@ def _build_design(
                 )
             )
 
-    # BD-budget split: at most 4 transfer-block rows per sync, halved when
-    # writing column-major C since each tile-group covers more BDs.
     tb_max_n_rows = 4 if not c_col_maj else 2
     tb_n_rows = tb_max_n_rows // 2
 
-    # Tilers for A, B, C
     A_tiles = TensorTiler2D.group_tiler(
         (M, K),
         (m * n_A_tiles_per_shim, k),
@@ -379,19 +295,9 @@ def _build_design(
             tile_group_col_major=True,
             prune_step=False,
         )
-    # C output tiler:
-    #   row-major: walk (M, N) row-major, tile = (m*n_aie_rows, n) — the
-    #     full vertical block of compute tiles fits in one tile dim.
-    #   col-major: walk (N, M) row-major (= (M, N) column-major); tile is
-    #     ONE compute tile (n, m), and the n_aie_rows vertical compute
-    #     tiles are exposed via tile_group_repeats.  Splitting n_aie_rows
-    #     out of the tile dim is what lets TensorTiler emit the dialect's
-    #     [N//n//n_aie_cols, n_aie_rows, n, m] / [M*n*n_aie_cols, m, M, 1]
-    #     pattern (the L2-internal compute-tile-stack would otherwise be
-    #     hidden inside an opaque (m*n_aie_rows) dim and not appear in the
-    #     resulting DMA descriptor).  iter_col_major=True puts TAP order
-    #     in the (col-fast, row_block-slow) shape the runtime expects.
     if c_col_maj:
+        # Splitting n_aie_rows out of the tile dim is what lets TensorTiler emit
+        # the (col-fast, row_block-slow) DMA pattern; iter_col_major matches it.
         C_tiles = TensorTiler2D.step_tiler(
             (N, M),
             (n, m),
@@ -471,10 +377,10 @@ def _build_design(
             TensorAccessSequence.from_taps(C_taps),
         )
 
-    return Program(dev_ty, rt).resolve_program()
+    return Program(dev, rt).resolve_program()
 
 
-@iron.jit
+@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
 def whole_array(
     A: In,
     B: In,
@@ -492,11 +398,10 @@ def whole_array(
     b_col_maj: Compile[int] = 0,
     c_col_maj: Compile[int] = 0,
     emulate_bf16_mmul_with_bfp16: Compile[bool] = False,
+    use_chess: Compile[bool] = False,
 ):
-    """JIT entry point: compiles the whole-array matmul on first call."""
-    dev = iron.get_current_device()
     return _build_design(
-        dev,
+        iron.get_current_device(),
         M,
         K,
         N,
@@ -509,23 +414,11 @@ def whole_array(
         b_col_maj,
         c_col_maj,
         emulate_bf16_mmul_with_bfp16,
-        for_jit=True,
+        use_chess,
     )
 
 
-def _device_for_emit(dev_str, n_aie_cols):
-    """Resolve the iron device object for the --print-mlir path."""
-    if dev_str == "npu":
-        if n_aie_cols == 1:
-            return NPU1Col1()
-        if n_aie_cols == 2:
-            return NPU1Col2()
-        if n_aie_cols == 4:
-            return NPU1()
-    return NPU2()
-
-
-def my_matmul(
+def generate_taps(
     M,
     K,
     N,
@@ -538,19 +431,11 @@ def my_matmul(
     b_col_maj=0,
     c_col_maj=0,
     emulate_bf16_mmul_with_bfp16=False,
-    trace_size=0,
-    generate_taps=False,
     dev="npu",
 ):
-    """Backward-compat entry point used by ``mat_mul_whole_array_visualization.ipynb``.
-
-    Forwards to :func:`_build_design` with ``for_jit=False`` (the legacy
-    MLIR-emit path that the notebook expects).  ``trace_size`` is accepted
-    for signature compatibility with the pre-port ``my_matmul`` but is
-    not currently wired through (the visualization path only consumes
-    ``generate_taps=True``).
-    """
-    dev_obj = _device_for_emit(dev, n_aie_cols)
+    """Return ``(A_taps, B_taps, C_taps)`` for the visualization notebook."""
+    dev_obj = _device_for(dev, n_aie_cols)
+    set_current_device(dev_obj)
     return _build_design(
         dev_obj,
         M,
@@ -565,20 +450,13 @@ def my_matmul(
         b_col_maj,
         c_col_maj,
         emulate_bf16_mmul_with_bfp16,
-        for_jit=False,
-        generate_taps=generate_taps,
+        use_chess=False,
+        generate_taps=True,
     )
 
 
 def _make_argparser():
-    p = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication (Whole Array)",
-        description=(
-            "Default: emit MLIR for the legacy aiecc + test.cpp pipeline.  "
-            "--jit instead JIT-compiles the design and runs it on the "
-            "attached NPU, verifying the result against numpy."
-        ),
-    )
+    p = argparse.ArgumentParser(prog="AIE Matrix Multiplication (Whole Array)")
     p.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
     p.add_argument("-M", type=int, default=512)
     p.add_argument("-K", type=int, default=512)
@@ -589,7 +467,9 @@ def _make_argparser():
     p.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=4)
     p.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     p.add_argument("--c-col-maj", type=int, choices=[0, 1], default=0)
-    p.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
+    p.add_argument(
+        "--emulate-bf16-mmul-with-bfp16", type=int, choices=[0, 1], default=0
+    )
     p.add_argument("--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16")
     p.add_argument(
         "--dtype_out",
@@ -597,58 +477,31 @@ def _make_argparser():
         choices=["bf16", "i8", "i16", "f32", "i32"],
         default="i16",
     )
-    p.add_argument("--trace_size", type=int, default=0)
+    p.add_argument("--use-chess", type=int, choices=[0, 1], default=0)
     p.add_argument(
-        "--jit",
-        action="store_true",
-        help=(
-            "JIT-compile the design and run on the attached NPU, verifying "
-            "the result against numpy.  Without this flag, emit MLIR to "
-            "stdout for the legacy aiecc + test.cpp pipeline (driven by "
-            "makefile-common's mlir_target rule — the default so existing "
-            "lit configs and the matmul sweep work unchanged)."
-        ),
+        "--xclbin-path",
+        type=str,
+        default=None,
+        help="Compile-only mode: write the xclbin here (paired with --insts-path).",
     )
-    p.add_argument(
-        "--generate-taps",
-        action="store_true",
-        help="Return TensorAccessPattern objects (used by the visualization notebook).",
-    )
+    p.add_argument("--insts-path", type=str, default=None)
     p.add_argument("-w", "--warmup", type=int, default=2)
     p.add_argument("-i", "--iters", type=int, default=5)
     return p
 
 
-def _numpy_reference(A_np, B_np, b_col_maj, dtype_out):
-    """Compute the host-side reference C = A @ B (or A @ B.T if b_col_maj)."""
-    B_logical = B_np.T if b_col_maj else B_np
-    # Promote ints to int64 for accumulation, then cast back; bf16/f32 stay float.
-    if np.issubdtype(A_np.dtype, np.integer):
-        ref = (A_np.astype(np.int64) @ B_logical.astype(np.int64)).astype(dtype_out)
-    else:
-        ref = (A_np.astype(np.float32) @ B_logical.astype(np.float32)).astype(dtype_out)
-    return ref
-
-
 def _validate_shape_args(opts):
-    """Surface common config errors as clean messages instead of stack traces.
-
-    The design + TensorTiler2D have a number of divisibility preconditions
-    that show up as raw AssertionError / ValueError otherwise.
-    """
     n_aie_rows = 4
     if opts.M % (opts.m * n_aie_rows) != 0:
         sys.exit(
-            f"-M {opts.M} must be a multiple of -m × n_aie_rows ({opts.m} × {n_aie_rows} = {opts.m * n_aie_rows})"
+            f"-M {opts.M} must be a multiple of -m * n_aie_rows ({opts.m} * {n_aie_rows} = {opts.m * n_aie_rows})"
         )
     if opts.K % opts.k != 0:
         sys.exit(f"-K {opts.K} must be a multiple of -k {opts.k}")
     if opts.N % (opts.n * opts.n_aie_cols) != 0:
         sys.exit(
-            f"-N {opts.N} must be a multiple of -n × --n-aie-cols ({opts.n} × {opts.n_aie_cols} = {opts.n * opts.n_aie_cols})"
+            f"-N {opts.N} must be a multiple of -n * --n-aie-cols ({opts.n} * {opts.n_aie_cols} = {opts.n * opts.n_aie_cols})"
         )
-    # tb_max_n_rows = 4 (no c_col_maj yet); tb_n_rows = 2.  The C tiler
-    # demands M//m//n_aie_rows be divisible by tb_n_rows.
     tb_n_rows = 2
     n_row_blocks = opts.M // opts.m // n_aie_rows
     if n_row_blocks % tb_n_rows != 0:
@@ -666,59 +519,40 @@ def _validate_shape_args(opts):
         )
 
 
-def main():
-    opts = _make_argparser().parse_args()
-    _validate_shape_args(opts)
+def _numpy_reference(A_np, B_np, b_col_maj, dtype_out):
+    B_logical = B_np.T if b_col_maj else B_np
+    if np.issubdtype(A_np.dtype, np.integer):
+        return (A_np.astype(np.int64) @ B_logical.astype(np.int64)).astype(dtype_out)
+    return (A_np.astype(np.float32) @ B_logical.astype(np.float32)).astype(dtype_out)
 
-    if opts.generate_taps:
-        # Pure design-introspection mode (no run, no print).
-        return _build_design(
-            _device_for_emit(opts.dev, opts.n_aie_cols),
-            opts.M,
-            opts.K,
-            opts.N,
-            opts.m,
-            opts.k,
-            opts.n,
-            opts.n_aie_cols,
-            opts.dtype_in,
-            opts.dtype_out,
-            opts.b_col_maj,
-            opts.c_col_maj,
-            opts.emulate_bf16_mmul_with_bfp16,
-            for_jit=False,
-            generate_taps=True,
-        )
 
-    if not opts.jit:
-        # Default: legacy MLIR-emit path used by makefile-common's mlir_target
-        # rule (consumed by aiecc + test.cpp).  Default so the existing 43
-        # lit configs and the matmul sweep keep working unchanged.
-        print(
-            _build_design(
-                _device_for_emit(opts.dev, opts.n_aie_cols),
-                opts.M,
-                opts.K,
-                opts.N,
-                opts.m,
-                opts.k,
-                opts.n,
-                opts.n_aie_cols,
-                opts.dtype_in,
-                opts.dtype_out,
-                opts.b_col_maj,
-                opts.c_col_maj,
-                opts.emulate_bf16_mmul_with_bfp16,
-                for_jit=False,
-            )
-        )
-        return
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev, opts.n_aie_cols))
+    spec = whole_array.specialize(
+        M=opts.M,
+        K=opts.K,
+        N=opts.N,
+        m=opts.m,
+        k=opts.k,
+        n=opts.n,
+        n_aie_cols=opts.n_aie_cols,
+        dtype_in_str=opts.dtype_in,
+        dtype_out_str=opts.dtype_out,
+        b_col_maj=opts.b_col_maj,
+        c_col_maj=opts.c_col_maj,
+        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
+        use_chess=bool(opts.use_chess),
+    )
+    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
-    # --jit: JIT host-run path: build inputs, run, verify.
+
+def _run_and_verify(opts):
     dtype_in = str_to_dtype(opts.dtype_in)
     dtype_out = str_to_dtype(opts.dtype_out)
 
-    rng = np.random.default_rng(1726250518)  # match the C++ harness seed
+    rng = np.random.default_rng(1726250518)
     if np.issubdtype(dtype_in, np.integer):
         info = np.iinfo(dtype_in)
         A_np = rng.integers(
@@ -727,10 +561,6 @@ def main():
         B_shape = (opts.N, opts.K) if opts.b_col_maj else (opts.K, opts.N)
         B_np = rng.integers(info.min // 4, info.max // 4, size=B_shape, dtype=dtype_in)
     else:
-        # bf16 / f32: uniform [0, 4) — matches the C++ harness's get_random
-        # for these dtypes.  Uniform-positive avoids the cancellation that
-        # zero-mean inputs cause in K-direction reductions, which would
-        # exaggerate relative error past the canonical bf16 tolerances.
         A_np = (rng.random((opts.M, opts.K)) * 4.0).astype(dtype_in)
         B_shape = (opts.N, opts.K) if opts.b_col_maj else (opts.K, opts.N)
         B_np = (rng.random(B_shape) * 4.0).astype(dtype_in)
@@ -756,12 +586,12 @@ def main():
         dtype_out_str=opts.dtype_out,
         b_col_maj=opts.b_col_maj,
         c_col_maj=opts.c_col_maj,
-        emulate_bf16_mmul_with_bfp16=opts.emulate_bf16_mmul_with_bfp16,
+        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
+        use_chess=bool(opts.use_chess),
         warmup=opts.warmup,
         iters=opts.iters,
     )
 
-    # When c_col_maj=1 the device writes C in column-major (= (N, M) physical).
     expected_logical = _numpy_reference(A_np, B_np, opts.b_col_maj, dtype_out)
     if opts.c_col_maj:
         actual = C_t.numpy().reshape(opts.N, opts.M)
@@ -771,13 +601,9 @@ def main():
         expected = expected_logical
 
     if np.issubdtype(dtype_out, np.integer):
-        # Integer matmul is exact — any mismatch is a real bug.  Matches C++
-        # harness which uses get_abs_tol = get_rel_tol = 0 for int dtypes.
         ok = np.array_equal(actual, expected)
     else:
-        # bf16 / f32: matches the C++ harness's per-dtype tolerances —
-        # get_abs_tol<bfloat16_t> = get_abs_tol<float> = 0.5 and
-        # get_rel_tol<bfloat16_t> = get_rel_tol<float>  = 0.05.
+        # bf16 / f32 tolerances match the C++ harness's get_*_tol.
         errors, _ = count_mismatches(actual, expected, rtol=0.05, atol=0.5)
         ok = errors == 0
 
@@ -796,6 +622,17 @@ def main():
         gflops = macs / (1000 * bench.npu.avg_us)
         print(f"NPU GFLOPS                    : {gflops:.2f}")
     print("PASS!")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    _validate_shape_args(opts)
+
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+
+    _run_and_verify(opts)
 
 
 if __name__ == "__main__":

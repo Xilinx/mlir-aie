@@ -480,8 +480,10 @@ class CompilableDesign:
         explicit_paths = xclbin_path is not None
 
         if explicit_paths:
-            xclbin_path = Path(xclbin_path)
-            inst_path = Path(inst_path)
+            # Absolutize so compile_external_kernel's `cwd=kernel_dir` doesn't
+            # turn relative paths into "build/build/foo.cc" etc.
+            xclbin_path = Path(xclbin_path).resolve()
+            inst_path = Path(inst_path).resolve()
             kernel_dir = xclbin_path.parent
             lock_file_path = kernel_dir / ".lock"
         else:
@@ -571,6 +573,7 @@ class CompilableDesign:
                     xclbin_path=xclbin_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
+                    options=list(self.aiecc_flags) if self.aiecc_flags else None,
                 )
 
                 # Verify that the expected output files were actually created.
