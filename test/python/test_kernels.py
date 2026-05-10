@@ -25,6 +25,23 @@ from ml_dtypes import bfloat16
 
 from aie.iron.kernel import ExternalFunction
 from aie.iron import kernels
+from aie.iron.kernels import _common as _kernels_common
+
+
+@pytest.fixture(autouse=True)
+def _isolate_extern_state():
+    """Reset the process-wide ExternalFunction registry + _make_extern cache
+    between tests so cross-test pollution doesn't trip the new auto-prefix-
+    on-collision logic.  Without this, a kernels.X() call in test N+1 sees
+    test N's ExternalFunction still in ``_instances`` with the same
+    ``_original_name`` and gets spuriously prefixed, breaking ``_name``
+    assertions in name-variant tests."""
+    ExternalFunction._instances.clear()
+    _kernels_common._EXTERN_CACHE.clear()
+    yield
+    ExternalFunction._instances.clear()
+    _kernels_common._EXTERN_CACHE.clear()
+
 
 # ---------------------------------------------------------------------------
 # Spec table
@@ -811,3 +828,100 @@ def test_external_function_collision_check_allows_identical_redeclaration():
         arg_types=[],
         compile_flags=["-DA"],
     )
+
+
+# ---------------------------------------------------------------------------
+# kernels.mm + kernels.mm_zero: disjoint symbol sets via -DMATMUL_ONLY /
+# -DZERO_ONLY (added so both helpers can be used in the same design without
+# duplicate-symbol link errors).  The matching gating is in
+# aie_kernels/aie2{,p}/mm.cc.
+# ---------------------------------------------------------------------------
+
+
+def test_mm_carries_matmul_only_flag():
+    """kernels.mm() must compile with -DMATMUL_ONLY so its .o exports only
+    matmul_* (no zero_*).  Otherwise pairing with kernels.mm_zero() collides."""
+    ef = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
+    )
+    assert "-DMATMUL_ONLY" in ef._compile_flags
+
+
+def test_mm_zero_carries_zero_only_flag():
+    """kernels.mm_zero() must compile with -DZERO_ONLY so its .o exports
+    only zero_* (no matmul_*).  Otherwise pairing with kernels.mm() collides."""
+    ef = kernels.mm_zero(dim_m=64, dim_k=64, dim_n=32, output_dtype=np.int16)
+    assert "-DZERO_ONLY" in ef._compile_flags
+
+
+def test_mm_and_mm_zero_have_disjoint_gating_flags():
+    """The two flags are exclusive: mm carries MATMUL_ONLY but not ZERO_ONLY;
+    mm_zero carries ZERO_ONLY but not MATMUL_ONLY.  Together their .o files
+    have non-overlapping symbol sets.  This is the exact test that would have
+    caught the duplicate-symbol footgun the matmul whole_array port hit."""
+    mm_ef = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
+    )
+    mz_ef = kernels.mm_zero(dim_m=64, dim_k=64, dim_n=32, output_dtype=np.int16)
+    assert "-DMATMUL_ONLY" in mm_ef._compile_flags
+    assert "-DZERO_ONLY" not in mm_ef._compile_flags
+    assert "-DZERO_ONLY" in mz_ef._compile_flags
+    assert "-DMATMUL_ONLY" not in mz_ef._compile_flags
+
+
+# ---------------------------------------------------------------------------
+# Auto-prefix on symbol collision (Defense C — see _make_extern in
+# python/iron/kernels/_common.py).
+#
+# Two kernels.X() calls with different parameterizations would otherwise
+# produce two ExternalFunctions with the same C symbol name and trip
+# duplicate-symbol errors at MLIR-verify and link time.  _make_extern now
+# auto-prefixes the second-and-later instance's symbol with the same digest
+# already used for object_file_name disambiguation.  The first call keeps
+# the unprefixed canonical name (preserves byte-identity for existing
+# single-version designs).
+# ---------------------------------------------------------------------------
+
+
+def test_kernels_mm_first_version_keeps_unprefixed_name():
+    """First call (no existing same-named ExternalFunction): no auto-prefix."""
+    ef = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
+    )
+    assert ef._name == ef._original_name == "matmul_i16_i16"
+    assert ef._symbol_prefix is None
+
+
+def test_kernels_mm_two_versions_get_distinct_symbol_names():
+    """Second call (existing same-named ExternalFunction) gets auto-prefixed
+    so MLIR + linker don't see two `func.func @matmul_i16_i16` declarations."""
+    ef1 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
+    ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
+    assert ef1._name != ef2._name
+    # The first one keeps the canonical symbol, the second one is prefixed.
+    assert ef1._name == "matmul_i16_i16"
+    assert ef2._name.endswith("_matmul_i16_i16")
+    assert ef2._symbol_prefix is not None and len(ef2._symbol_prefix) == 8
+
+
+def test_kernels_mm_three_versions_all_distinct_names():
+    """Three distinct parameterizations get three distinct effective names."""
+    efs = [
+        kernels.mm(dim_m=64, dim_k=64, dim_n=32, b_col_maj=False, c_col_maj=False),
+        kernels.mm(dim_m=64, dim_k=64, dim_n=32, b_col_maj=True, c_col_maj=False),
+        kernels.mm(dim_m=64, dim_k=64, dim_n=32, b_col_maj=False, c_col_maj=True),
+    ]
+    names = [e._name for e in efs]
+    assert len(set(names)) == 3
+    # First instance still canonical, others prefixed.
+    assert efs[0]._symbol_prefix is None
+    assert all(e._symbol_prefix is not None for e in efs[1:])
+
+
+def test_kernels_mm_prefixed_object_file_matches_prefixed_name():
+    """The auto-prefixed instance's object_file_name aligns with the prefix
+    so the .o filename advertises the same disambiguation as the symbol."""
+    kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)  # prime the registry
+    ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
+    assert ef2._object_file_name.startswith(ef2._symbol_prefix)
+    assert "matmul_i16_i16" in ef2._object_file_name

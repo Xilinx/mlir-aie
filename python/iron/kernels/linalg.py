@@ -86,6 +86,11 @@ def mm(
 ) -> ExternalFunction:
     """Matrix-multiply kernel: C += A * B.
 
+    The compiled ``.o`` exports only the ``matmul_*`` symbols (the companion
+    ``zero_*`` variants are suppressed via ``-DMATMUL_ONLY``) so it can be
+    safely linked alongside a ``.o`` produced by :func:`mm_zero` for the
+    same shape/dtype without duplicate-symbol errors.
+
     Args:
         dim_m: Number of rows of A / C.
         dim_k: Number of columns of A / rows of B.
@@ -127,6 +132,10 @@ def mm(
         f"-DDIM_K={dim_k}",
         f"-DDIM_N={dim_n}",
         f"-D{only_flag}",
+        # Suppress mm.cc's zero_* symbols so this .o doesn't collide at link
+        # time with one produced by a parallel kernels.mm_zero(...) call.
+        # See aie_kernels/aie2{,p}/mm.cc for the gating macro.
+        "-DMATMUL_ONLY",
     ]
     if b_col_maj:
         compile_flags.append("-DB_COL_MAJ")
@@ -155,6 +164,11 @@ def mm_zero(
     vectorized: bool = True,
 ) -> ExternalFunction:
     """Zero-fill kernel companion for :func:`mm`.
+
+    The compiled ``.o`` exports only the ``zero_*`` symbols (the companion
+    ``matmul_*`` variants are suppressed via ``-DZERO_ONLY``) so it can be
+    safely linked alongside a ``.o`` produced by :func:`mm` for the same
+    shape/dtype without duplicate-symbol errors.
 
     Args:
         dim_m: Number of rows.
@@ -187,6 +201,10 @@ def mm_zero(
             f"-DDIM_K={dim_k}",
             f"-DDIM_N={dim_n}",
             f"-D{only_flag}",
+            # Suppress mm.cc's matmul_* symbols so this .o doesn't collide
+            # at link time with one produced by a parallel kernels.mm(...)
+            # call.  See aie_kernels/aie2{,p}/mm.cc for the gating macro.
+            "-DZERO_ONLY",
         ],
     )
 

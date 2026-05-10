@@ -216,15 +216,10 @@ def _build_design(
 
     if for_jit:
         # matmul_kernel already bound above (for the .mac_dims read).
-        # Bind zero_* against the SAME .o.  Calling kernels.mm_zero() would
-        # compile mm.cc a second time with the same -D{...}_ONLY flag,
-        # leaving both .o files exporting the zero_* symbol and producing
-        # a duplicate-symbol link failure.
-        zero_kernel = Kernel(
-            f"zero_{dtype_out_str}",
-            matmul_kernel.object_file_name,
-            [C_l1_ty],
-        )
+        # kernels.mm() compiles its .o with -DMATMUL_ONLY and kernels.mm_zero()
+        # with -DZERO_ONLY, so the two .o files have disjoint symbol sets and
+        # link cleanly together.
+        zero_kernel = kernels.mm_zero(dim_m=m, dim_k=k, dim_n=n, output_dtype=dtype_out)
     else:
         # Legacy: bind against the combined object file the Makefile builds.
         zero_kernel = Kernel(f"zero_{dtype_out_str}", f"mm_{m}x{k}x{n}.o", [C_l1_ty])

@@ -215,7 +215,31 @@ def _make_extern(
         digest = hashlib.sha256(repr(cache_key).encode()).hexdigest()[:8]
         object_file_name = f"{func_name}_{digest}.o"
     else:
+        digest = None
         object_file_name = None  # ExternalFunction default → ``<name>.o``
+
+    # Auto-prefix the SYMBOL name when an existing ExternalFunction with the
+    # same _original_name is already registered.  Without this, two helper
+    # calls with different parameterizations produce two ExternalFunctions
+    # whose compiled .o files BOTH export the same C symbol — MLIR rejects
+    # the duplicate `func.func` declaration; the linker rejects the duplicate
+    # symbol.  The first call keeps the unprefixed name (preserves byte-
+    # identity for the common single-version case).  Subsequent calls get
+    # `<digest>_<name>` so each parameterization lives at a unique symbol.
+    # The .o file is built and the symbol renamed via the existing
+    # `symbol_prefix` plumbing in ExternalFunction.
+    symbol_prefix = None
+    if digest is not None:
+        for existing in ExternalFunction._instances:
+            if existing._original_name == func_name:
+                symbol_prefix = digest
+                # The auto-suffixed object_file_name we built above already
+                # embeds the same digest; once symbol_prefix is in play,
+                # ExternalFunction.__init__ rebuilds object_file_name from
+                # `<prefix>_<name>.o` if we leave it None — keep the
+                # explicit name so we control its layout.
+                object_file_name = f"{digest}_{func_name}.o"
+                break
 
     extern = ExternalFunction(
         func_name,
@@ -224,6 +248,7 @@ def _make_extern(
         arg_types=arg_types,
         include_dirs=_include_dirs(),
         compile_flags=list(flags_tuple),
+        symbol_prefix=symbol_prefix,
     )
     _EXTERN_CACHE[cache_key] = extern
     return extern

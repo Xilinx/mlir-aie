@@ -943,11 +943,22 @@ extern "C" {
     zero_scalar<ctype_out, DIM_M, DIM_N>(c_out);                               \
   }
 
-#ifndef SCALAR_ONLY
-combos(matmul_vectorized_c_func) combos(zero_vectorized_c_func)
+// MATMUL_ONLY suppresses the zero_* symbols; ZERO_ONLY suppresses the matmul_*
+// symbols.  When both are unset (the historical default — e.g. the legacy
+// Makefile build), all four combos are emitted as before.  These flags let
+// kernels.mm and kernels.mm_zero compile separate .o files with disjoint
+// symbol sets so they can be linked together without duplicate-symbol errors.
+#if !defined(SCALAR_ONLY) && !defined(ZERO_ONLY)
+combos(matmul_vectorized_c_func)
 #endif
-#ifndef VECTORIZED_ONLY
-    combos(matmul_scalar_c_func) combos(zero_scalar_c_func)
+#if !defined(SCALAR_ONLY) && !defined(MATMUL_ONLY)
+    combos(zero_vectorized_c_func)
+#endif
+#if !defined(VECTORIZED_ONLY) && !defined(ZERO_ONLY)
+        combos(matmul_scalar_c_func)
+#endif
+#if !defined(VECTORIZED_ONLY) && !defined(MATMUL_ONLY)
+            combos(zero_scalar_c_func)
 #endif
 
 } // extern "C"
