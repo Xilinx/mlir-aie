@@ -150,18 +150,80 @@ def _default_source_path(filename: str, subdir: str | None = None) -> Path:
     return _kernel_source(arch, subdir or arch, filename)
 
 
+def _arg_type_key(t):
+    """Hashable key for one entry of ``arg_types`` (used by ``_EXTERN_CACHE``)."""
+    if hasattr(t, "__args__"):
+        # np.ndarray[(shape,), np.dtype[T]]
+        shape = t.__args__[0]
+        inner = t.__args__[1]
+        dtype = inner.__args__[0] if hasattr(inner, "__args__") else inner
+        return ("ndarray", tuple(shape), str(dtype))
+    return repr(t)
+
+
+# Cache keyed on the full input parameter tuple.  Identical helper calls
+# (kernels.mm(...) twice with same kwargs) should return the SAME
+# ExternalFunction instance — otherwise both end up in
+# ExternalFunction._instances, both get JIT-compiled, and (because they
+# share the default ``<name>.o`` output filename) the second compilation
+# overwrites the first's object file with whichever just-rebuilt copy
+# wins the race.  The whole_array port hit exactly this footgun: a
+# default-flag kernels.mm() call (just to fetch .mac_dims) and a
+# c_col_maj=True kernels.mm() call for the actual binding produced two
+# differently-flagged ExternalFunctions whose .o files collided on disk.
+_EXTERN_CACHE: dict = {}
+
+
 def _make_extern(
     func_name: str,
-    source_path: Path | str,
+    source_path: "Path | str",
     arg_types: list,
     *,
     compile_flags: list[str] | None = None,
 ) -> ExternalFunction:
-    """Construct an ExternalFunction with the standard include_dirs."""
-    return ExternalFunction(
+    """Construct (or reuse) an ExternalFunction with the standard include_dirs.
+
+    Memoized on (func_name, source_path, arg_types, compile_flags) so
+    repeated calls with identical parameters return the SAME
+    ExternalFunction instance (see ``_EXTERN_CACHE`` for rationale).
+
+    Different parameterizations get distinct instances AND distinct
+    ``object_file_name``s — the latter is auto-suffixed with a short
+    digest of ``compile_flags`` so per-parameterization .o files don't
+    overwrite each other on disk.  The default ``<name>.o`` is preserved
+    when ``compile_flags`` is empty (no parameterization to disambiguate).
+    """
+    flags_tuple = tuple(compile_flags or [])
+    arg_keys = tuple(_arg_type_key(t) for t in arg_types)
+    cache_key = (func_name, str(source_path), arg_keys, flags_tuple)
+    cached = _EXTERN_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # The object_file_name suffix must distinguish every distinct cache_key,
+    # not just compile_flags — otherwise two helper calls with the same
+    # name + flags but different source / arg_types would generate
+    # ExternalFunctions with identical .o filenames and trip the collision
+    # check in ExternalFunction.__init__ (or, if both passed it, would
+    # silently overwrite each other on disk).
+    if flags_tuple or arg_keys or str(source_path):
+        import hashlib
+
+        # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
+        # wide enough that the chance of two distinct cache_keys colliding
+        # is vanishingly small (~2^-32).
+        digest = hashlib.sha256(repr(cache_key).encode()).hexdigest()[:8]
+        object_file_name = f"{func_name}_{digest}.o"
+    else:
+        object_file_name = None  # ExternalFunction default → ``<name>.o``
+
+    extern = ExternalFunction(
         func_name,
+        object_file_name=object_file_name,
         source_file=str(source_path),
         arg_types=arg_types,
         include_dirs=_include_dirs(),
-        compile_flags=compile_flags or [],
+        compile_flags=list(flags_tuple),
     )
+    _EXTERN_CACHE[cache_key] = extern
+    return extern

@@ -83,7 +83,9 @@ def _maybe_collapse_to_match(arg, expected_ty):
     if not isinstance(arg, ir.Value):
         return arg
     arg_ty = arg.type
-    if not (isinstance(arg_ty, ir.MemRefType) and isinstance(expected_ty, ir.MemRefType)):
+    if not (
+        isinstance(arg_ty, ir.MemRefType) and isinstance(expected_ty, ir.MemRefType)
+    ):
         return arg
     arg_mr = arg_ty
     exp_mr = expected_ty
@@ -305,7 +307,33 @@ class ExternalFunction(Kernel):
         self._compiled = False
         self._cached_digest: str | None = None
 
-        # Register this instance so the @jit decorator can compile it.
+        # Defensive: refuse to register a second ExternalFunction with the
+        # same (name, object_file_name) but a different content digest.
+        # The JIT pipeline writes each ExternalFunction's compiled output
+        # to ``object_file_name`` inside the cache directory; two such
+        # writes to the same path silently overwrite each other and
+        # leave the wrong .o linked in.  This was a real footgun caught
+        # while porting the whole_array matmul: a default-flag
+        # kernels.mm() call (just for .mac_dims) and a c_col_maj=True
+        # kernels.mm() call for the actual binding produced two
+        # identically-named ExternalFunctions whose .o files collided.
+        # The kernels.X helpers now memoize + auto-suffix object_file_name
+        # to prevent this from happening through the normal path; this
+        # check catches the same mistake when ExternalFunction is
+        # constructed directly.
+        for existing in ExternalFunction._instances:
+            if (
+                existing._name == effective_name
+                and existing._object_file_name == object_file_name
+                and existing._content_digest() != self._content_digest()
+            ):
+                raise ValueError(
+                    f"ExternalFunction '{effective_name}' would collide with an "
+                    f"already-registered instance: same name and "
+                    f"object_file_name='{object_file_name}' but different "
+                    f"compile_flags / source.  Distinguish them by passing a "
+                    f"distinct `object_file_name=...` or a distinct `name=...`."
+                )
         ExternalFunction._instances.add(self)
 
     def __call__(self, *args, **kwargs):

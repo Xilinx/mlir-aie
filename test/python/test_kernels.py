@@ -697,3 +697,117 @@ def test_arg_count_override(spec: KernelSpec, kwargs: dict, expected_arg_count: 
     """Variant arg_counts (e.g. bn_conv2dk3_dw stride=1 has an extra arg)."""
     ef = spec.factory(**kwargs)
     assert len(ef._arg_types) == expected_arg_count
+
+
+# ---------------------------------------------------------------------------
+# Memoization + collision protection (kernels.X helpers and ExternalFunction)
+#
+# Background: a real bug caught while porting whole_array — calling
+# kernels.mm() twice with different parameters produced two ExternalFunctions
+# with the same default `<name>.o` filename.  Both were registered with the
+# JIT, both got compiled, and the .o files silently overwrote each other.
+# The wrong-flag kernel won the race, producing wrong hardware output.
+#
+# These tests pin down the two defenses:
+#   (A) _make_extern memoizes on the full input parameter set, so identical
+#       helper calls return the SAME instance.  Different parameterizations
+#       get distinct instances AND distinct object_file_names (auto-suffixed
+#       with a digest of compile_flags).
+#   (B) ExternalFunction.__init__ refuses to register two instances with
+#       the same (name, object_file_name) but a different content digest —
+#       a backstop for code that bypasses the helper (constructs
+#       ExternalFunction directly).
+# ---------------------------------------------------------------------------
+
+
+def test_kernels_mm_memoized_same_params_returns_same_instance():
+    """Defense A: identical kernels.mm() calls return the exact same instance."""
+    ef1 = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
+    )
+    ef2 = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
+    )
+    assert ef1 is ef2
+
+
+def test_kernels_mm_different_params_returns_different_instances():
+    """Defense A: different params get distinct instances (no spurious sharing)."""
+    ef_plain = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
+    ef_ccm = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
+    assert ef_plain is not ef_ccm
+
+
+def test_kernels_mm_different_params_have_distinct_object_files():
+    """Defense A: distinct parameterizations get distinct object_file_names so
+    JIT compilation outputs cannot overwrite each other on disk.
+    This is the precise bug that broke whole_array c_col_maj support."""
+    ef_plain = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
+    ef_ccm = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
+    assert ef_plain.object_file_name != ef_ccm.object_file_name
+
+
+def test_kernels_mm_b_and_c_col_maj_independent():
+    """Defense A: (b_col_maj, c_col_maj) tuples produce four distinct instances."""
+    instances = {
+        (b, c): kernels.mm(dim_m=64, dim_k=64, dim_n=32, b_col_maj=b, c_col_maj=c)
+        for b in (False, True)
+        for c in (False, True)
+    }
+    # All four are distinct ExternalFunction instances
+    assert len({id(v) for v in instances.values()}) == 4
+    # And all four have distinct .o filenames
+    assert len({v.object_file_name for v in instances.values()}) == 4
+
+
+def test_external_function_collision_check_fires():
+    """Defense B: directly constructing two ExternalFunctions with the same
+    (name, object_file_name) but different compile_flags is rejected."""
+    # Use a unique source_string so we don't collide with real kernels.X
+    # registrations from other tests in this session.
+    src = "/* dummy */ int sentinel_for_collision_test() { return 0; }"
+    a_ty = np.ndarray[(16,), np.dtype[np.int32]]
+    name = "sentinel_for_collision_test"
+    obj = "sentinel_for_collision_test.o"
+    ExternalFunction(
+        name=name,
+        object_file_name=obj,
+        source_string=src,
+        arg_types=[],
+        compile_flags=["-DA"],
+    )
+    with pytest.raises(ValueError, match="would collide"):
+        ExternalFunction(
+            name=name,
+            object_file_name=obj,
+            source_string=src,
+            arg_types=[],
+            compile_flags=["-DB"],  # different flags → different content digest
+        )
+
+
+def test_external_function_collision_check_allows_identical_redeclaration():
+    """Defense B: re-registering an EXACT duplicate is fine (set semantics).
+
+    Only differing-content collisions are rejected; identical re-instantiation
+    might happen if a helper happens to be called twice without the memoization
+    layer (e.g. by tests).  It must not raise.
+    """
+    src = "/* dummy */ int sentinel_redeclare_ok() { return 0; }"
+    name = "sentinel_redeclare_ok"
+    obj = "sentinel_redeclare_ok.o"
+    ExternalFunction(
+        name=name,
+        object_file_name=obj,
+        source_string=src,
+        arg_types=[],
+        compile_flags=["-DA"],
+    )
+    # Same content → same digest → no collision.
+    ExternalFunction(
+        name=name,
+        object_file_name=obj,
+        source_string=src,
+        arg_types=[],
+        compile_flags=["-DA"],
+    )
