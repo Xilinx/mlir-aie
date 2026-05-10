@@ -25,7 +25,7 @@ include ${current_dir}../../makefile-common
 
 dtype_in?=i16
 dtype_out?=i32
-trace_size?=0
+trace_size?=65536
 emulate_bfloat16_mmul_with_bfp16?=0
 use_chess?=0
 
@@ -63,7 +63,9 @@ endif
 
 target_suffix?=${M}x${K}x${N}
 xclbin_target?=build/final_${target_suffix}.xclbin
+trace_xclbin_target?=build/trace_${target_suffix}.xclbin
 insts_target?=build/insts_${target_suffix}.bin
+trace_insts_target?=build/trace_insts_${target_suffix}.bin
 aie_py_src?=${targetname}.py
 
 runargs?=-v 2 --warmup 1 --iters 1
@@ -83,6 +85,10 @@ all: ${xclbin_target} ${targetname}.exe
 ${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
 	mkdir -p $(@D)
 	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
+
+${trace_xclbin_target} ${trace_insts_target} &: ${srcdir}/${aie_py_src}
+	mkdir -p $(@D)
+	python3 $< ${aieargs} --trace_size=${trace_size} --xclbin-path=${trace_xclbin_target} --insts-path=${trace_insts_target}
 
 ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
 	rm -rf _build
@@ -105,6 +111,18 @@ sign: ${xclbin_target}
 run: ${targetname}.exe ${xclbin_target} ${insts_target}
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs}
 
-.PHONY: clean
-clean:
+.PHONY: trace
+trace: ${targetname}.exe ${trace_xclbin_target} ${trace_insts_target}
+	${powershell} ./$< -x ${trace_xclbin_target} -i ${trace_insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs} -t ${trace_size}
+	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir build/input_with_addresses.mlir --output trace_mm.json
+
+.PHONY: parse_trace
+parse_trace:
+	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir build/input_with_addresses.mlir --output trace_mm.json
+
+.PHONY: clean clean_trace
+clean: clean_trace
 	rm -rf build _build ${targetname}.exe
+
+clean_trace:
+	rm -rf tmpTrace parse*.json trace*json trace.txt
