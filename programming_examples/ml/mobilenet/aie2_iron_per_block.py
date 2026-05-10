@@ -233,7 +233,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(
-                act_in.prod(depth=1),
+                act_in.prod(),
                 inp,
                 tile=TEST_PLACEMENT["shim_input"],
                 task_group=tg,
@@ -263,7 +263,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(
-                act_in.prod(depth=1),
+                act_in.prod(),
                 inp,
                 tile=TEST_PLACEMENT["shim_input"],
                 task_group=tg,
