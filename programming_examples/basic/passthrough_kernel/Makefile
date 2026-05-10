@@ -12,10 +12,8 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_kernel
-in1_size = 4096 # in bytes
-out_size = 4096 # in bytes, should always be equal to in1_size
+in1_size = 4096 # in bytes (also element count, since the kernel is uint8)
 trace_size = 8192
 
 aie_py_src=${targetname}.py
@@ -28,12 +26,12 @@ all:
 run: run_py
 
 run_py:
-	${powershell} python3 ${srcdir}/${aie_py_src} -d ${devicename} -i1s ${in1_size} -os ${out_size}
+	${powershell} python3 ${srcdir}/${aie_py_src} -i1s ${in1_size}
 
 trace: trace_py
 
 trace_py:
-	${powershell} python3 ${srcdir}/${aie_py_src} -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size}
+	${powershell} python3 ${srcdir}/${aie_py_src} -i1s ${in1_size} -t ${trace_size}
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json

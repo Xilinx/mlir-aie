@@ -17,7 +17,7 @@ The example uses the IRON high-level builders (`Worker` / `Runtime` / `Program`)
 ## Source Files
 
 1. [`passthrough_kernel.py`](passthrough_kernel.py) — IRON structural design plus the host-side test driver. Decorated with `@iron.jit`; on first call it compiles the design and runs it on the NPU, then verifies the result against the input.
-1. [`passThrough.cc`](../../../aie_kernels/generic/passThrough.cc) — vectorized memcpy implementation for the AIE core. The C++ wrappers `passThroughLine` / `passThroughTile` are templated on `BIT_WIDTH` (set to `8` here for `uint8_t`).
+1. [`passThrough.cc`](../../../aie_kernels/generic/passThrough.cc) — vectorized memcpy implementation for the AIE core. The C++ wrappers `passThroughLine` / `passThroughTile` are templated on `BIT_WIDTH` (set to `8` here for `uint8_t`). The IRON design references this kernel through the `kernels.passthrough(...)` helper rather than naming the `.cc.o` directly, so there is no manual `aiecc` step to bind the object.
 
 ## Design Overview
 
@@ -31,10 +31,19 @@ The example uses the IRON high-level builders (`Worker` / `Runtime` / `Program`)
 ## Usage
 
 ```shell
-make run        # compile + execute on NPU1 (npu)
-NPU2=1 make run # execute on NPU2 (npu2)
+make run        # compile + execute on the attached NPU (auto-detected)
 make trace      # execute with hardware tracing enabled
 make clean
 ```
 
+The actual NPU generation (NPU1 / NPU2) is auto-detected by the IRON runtime at JIT time, so no device flag is needed.
+
 `make run` reports both NPU latency (from the runtime) and end-to-end Python wall-clock so the host-side overhead delta is visible. `make trace` additionally dumps a per-tile cycle summary parsed from the trace buffer.
+
+For finer-grained benchmarking, invoke the script directly:
+
+```shell
+python3 passthrough_kernel.py -i1s 4096 -w 20 -n 100   # warmup + iters
+```
+
+Run `python3 passthrough_kernel.py --help` for the full flag list.
