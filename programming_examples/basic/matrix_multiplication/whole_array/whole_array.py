@@ -87,6 +87,7 @@ def _build_design(
     dtype_in_str,
     dtype_out_str,
     b_col_maj,
+    c_col_maj,
     emulate_bf16_mmul_with_bfp16,
     *,
     for_jit,
@@ -123,10 +124,23 @@ def _build_design(
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
     ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
 
-    # mac_dims: JIT path can ask kernels.mm.mac_dims (queries the active
-    # device, which IS the JIT target).  Legacy path can't — dev is just a
-    # static label and may not match the host — so use the local table.
+    # mac_dims: JIT path binds the matmul kernel up front (with the right
+    # b_col_maj/c_col_maj flags) and reads .mac_dims off it.  Two separate
+    # kernels.mm() calls would each register an ExternalFunction with the
+    # same `matmul_*.o` filename — the second .o overwrites the first, and
+    # whichever flag-set wins is undefined.  Legacy path can't query the
+    # active device (dev is a static label, possibly not the host) so it
+    # uses the local (arch, dtype) table.
     if for_jit:
+        matmul_kernel = kernels.mm(
+            dim_m=m,
+            dim_k=k,
+            dim_n=n,
+            input_dtype=dtype_in,
+            output_dtype=dtype_out,
+            b_col_maj=bool(b_col_maj),
+            c_col_maj=bool(c_col_maj),
+        )
         if (
             dev_str == "npu2"
             and dtype_in_str == "bf16"
@@ -134,14 +148,7 @@ def _build_design(
         ):
             r, s, t = _BF16_EMULATED_MAC_DIMS_NPU2
         else:
-            mm_for_dims = kernels.mm(
-                dim_m=m,
-                dim_k=k,
-                dim_n=n,
-                input_dtype=dtype_in,
-                output_dtype=dtype_out,
-            )
-            r, s, t = mm_for_dims.mac_dims
+            r, s, t = matmul_kernel.mac_dims
     else:
         r, s, t = _legacy_mac_dims(dev_str, dtype_in_str, emulate_bf16_mmul_with_bfp16)
 
@@ -207,18 +214,11 @@ def _build_design(
     C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
     if for_jit:
-        matmul_kernel = kernels.mm(
-            dim_m=m,
-            dim_k=k,
-            dim_n=n,
-            input_dtype=dtype_in,
-            output_dtype=dtype_out,
-            b_col_maj=bool(b_col_maj),
-        )
-        # Bind zero_* against the SAME .o that kernels.mm produces.  Calling
-        # kernels.mm_zero() instead would compile mm.cc a second time with
-        # the same -D{...}_ONLY flag, leaving both .o files exporting the
-        # zero_* symbol and producing a duplicate-symbol link failure.
+        # matmul_kernel already bound above (for the .mac_dims read).
+        # Bind zero_* against the SAME .o.  Calling kernels.mm_zero() would
+        # compile mm.cc a second time with the same -D{...}_ONLY flag,
+        # leaving both .o files exporting the zero_* symbol and producing
+        # a duplicate-symbol link failure.
         zero_kernel = Kernel(
             f"zero_{dtype_out_str}",
             matmul_kernel.object_file_name,
@@ -295,7 +295,11 @@ def _build_design(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
+            dims_to_stream=(
+                [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+                if not c_col_maj
+                else [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
+            ),
         )
         of_offsets = [m * n * i for i in range(n_aie_rows)]
 
@@ -349,8 +353,9 @@ def _build_design(
                 )
             )
 
-    # BD-budget split: at most 4 transfer-block rows per sync.
-    tb_max_n_rows = 4
+    # BD-budget split: at most 4 transfer-block rows per sync, halved when
+    # writing column-major C since each tile-group covers more BDs.
+    tb_max_n_rows = 4 if not c_col_maj else 2
     tb_n_rows = tb_max_n_rows // 2
 
     # Tilers for A, B, C
@@ -378,13 +383,35 @@ def _build_design(
             tile_group_col_major=True,
             prune_step=False,
         )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N),
-        (m * n_aie_rows, n),
-        tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
-        prune_step=False,
-    )
+    # C output tiler:
+    #   row-major: walk (M, N) row-major, tile = (m*n_aie_rows, n) — the
+    #     full vertical block of compute tiles fits in one tile dim.
+    #   col-major: walk (N, M) row-major (= (M, N) column-major); tile is
+    #     ONE compute tile (n, m), and the n_aie_rows vertical compute
+    #     tiles are exposed via tile_group_repeats.  Splitting n_aie_rows
+    #     out of the tile dim is what lets TensorTiler emit the dialect's
+    #     [N//n//n_aie_cols, n_aie_rows, n, m] / [M*n*n_aie_cols, m, M, 1]
+    #     pattern (the L2-internal compute-tile-stack would otherwise be
+    #     hidden inside an opaque (m*n_aie_rows) dim and not appear in the
+    #     resulting DMA descriptor).  iter_col_major=True puts TAP order
+    #     in the (col-fast, row_block-slow) shape the runtime expects.
+    if c_col_maj:
+        C_tiles = TensorTiler2D.step_tiler(
+            (N, M),
+            (n, m),
+            tile_group_repeats=(N // n // n_aie_cols, n_aie_rows),
+            tile_group_steps=(n_aie_cols, 1),
+            iter_col_major=True,
+            prune_step=False,
+        )
+    else:
+        C_tiles = TensorTiler2D.step_tiler(
+            (M, N),
+            (m * n_aie_rows, n),
+            tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
+            tile_group_steps=(1, n_aie_cols),
+            prune_step=False,
+        )
     c_index = 0
 
     rt = Runtime()
@@ -467,6 +494,7 @@ def whole_array(
     dtype_in_str: Compile[str],
     dtype_out_str: Compile[str],
     b_col_maj: Compile[int] = 0,
+    c_col_maj: Compile[int] = 0,
     emulate_bf16_mmul_with_bfp16: Compile[bool] = False,
 ):
     """JIT entry point: compiles the whole-array matmul on first call."""
@@ -483,6 +511,7 @@ def whole_array(
         dtype_in_str,
         dtype_out_str,
         b_col_maj,
+        c_col_maj,
         emulate_bf16_mmul_with_bfp16,
         for_jit=True,
     )
@@ -518,6 +547,7 @@ def _make_argparser():
     p.add_argument("-n", type=int, default=32)
     p.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4, 8], default=4)
     p.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    p.add_argument("--c-col-maj", type=int, choices=[0, 1], default=0)
     p.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
     p.add_argument("--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16")
     p.add_argument(
@@ -613,6 +643,7 @@ def main():
             opts.dtype_in,
             opts.dtype_out,
             opts.b_col_maj,
+            opts.c_col_maj,
             opts.emulate_bf16_mmul_with_bfp16,
             for_jit=False,
             generate_taps=True,
@@ -635,6 +666,7 @@ def main():
                 opts.dtype_in,
                 opts.dtype_out,
                 opts.b_col_maj,
+                opts.c_col_maj,
                 opts.emulate_bf16_mmul_with_bfp16,
                 for_jit=False,
             )
@@ -678,13 +710,20 @@ def main():
         dtype_in_str=opts.dtype_in,
         dtype_out_str=opts.dtype_out,
         b_col_maj=opts.b_col_maj,
+        c_col_maj=opts.c_col_maj,
         emulate_bf16_mmul_with_bfp16=opts.emulate_bf16_mmul_with_bfp16,
         warmup=opts.warmup,
         iters=opts.iters,
     )
 
-    actual = C_t.numpy().reshape(opts.M, opts.N)
-    expected = _numpy_reference(A_np, B_np, opts.b_col_maj, dtype_out)
+    # When c_col_maj=1 the device writes C in column-major (= (N, M) physical).
+    expected_logical = _numpy_reference(A_np, B_np, opts.b_col_maj, dtype_out)
+    if opts.c_col_maj:
+        actual = C_t.numpy().reshape(opts.N, opts.M)
+        expected = expected_logical.T
+    else:
+        actual = C_t.numpy().reshape(opts.M, opts.N)
+        expected = expected_logical
 
     if np.issubdtype(dtype_out, np.integer):
         ok = np.array_equal(actual, expected)
