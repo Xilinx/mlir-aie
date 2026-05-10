@@ -12,7 +12,7 @@ from ml_dtypes import bfloat16
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import _default_source_path, _make_extern
+from ._common import _default_source_path, _detect_arch, _make_extern
 
 _CASCADE_COMBOS = {
     (np.int16, np.int16): "i16_i16",
@@ -29,6 +29,39 @@ _MM_COMBOS = {
     (np.int16, np.int32): ("i16_i32", "i16_i32_ONLY"),
     (bfloat16, bfloat16): ("bf16_bf16", "bf16_bf16_ONLY"),
     (bfloat16, np.float32): ("bf16_f32", "bf16_f32_ONLY"),
+}
+
+# Per-arch MMUL micro-kernel dimensions (r, s, t) used by aie_kernels/<arch>/mm.cc
+# for each (input_dtype, output_dtype) combo.  These come straight from the
+# `combos(X) X(..., r, s, t)` macros in those files; if the C++ side ever
+# changes (new geometry, new dtype combo, or the bf16 BFP-emulation switch
+# is wired through `kernels.mm`), both tables here AND those macros must
+# move together.  Designs use `kernels.mm(...).mac_dims` to look up the
+# layout the freshly-compiled kernel actually expects (different on AIE2
+# vs AIE2P) instead of hardcoding for one arch.
+_MM_MAC_DIMS = {
+    "aie2": {
+        (np.int8, np.int8): (4, 8, 8),
+        (np.int8, np.int16): (4, 8, 8),
+        (np.int8, np.int32): (4, 8, 8),
+        (np.int16, np.int16): (4, 4, 4),
+        (np.int16, np.int32): (4, 4, 4),
+        (bfloat16, bfloat16): (4, 8, 4),
+        (bfloat16, np.float32): (4, 8, 4),
+    },
+    "aie2p": {
+        (np.int8, np.int8): (8, 8, 8),
+        (np.int8, np.int16): (8, 8, 8),
+        (np.int8, np.int32): (8, 8, 8),
+        (np.int16, np.int16): (4, 4, 8),
+        (np.int16, np.int32): (4, 4, 8),
+        # Default (no BFP emulation): 4x8x8.  With
+        # AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16, the C++ switches to
+        # 8x8x8.  `kernels.mm` doesn't expose that toggle today; if/when
+        # it does, this table needs a parallel branch.
+        (bfloat16, bfloat16): (4, 8, 8),
+        (bfloat16, np.float32): (4, 8, 8),
+    },
 }
 
 # (suffix, _MM_COMBOS-style only_flag) per supported mm_zero output dtype.
@@ -77,7 +110,7 @@ def mm(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-    return _make_extern(
+    extern = _make_extern(
         f"{prefix}_{suffix}",
         _default_source_path("mm.cc"),
         [a_ty, b_ty, c_ty],
@@ -88,6 +121,13 @@ def mm(
             f"-D{only_flag}",
         ],
     )
+    # Attach the (r, s, t) MMUL micro-kernel dims for the arch the source
+    # was just resolved for.  Designs read `kernel.mac_dims` to drive their
+    # DMA layout transforms instead of hardcoding for AIE2 (the regression
+    # from this branch's kernel-library migration that broke matmul on
+    # AIE2P, where i16/i16 uses 4x4x8 instead of 4x4x4).
+    extern.mac_dims = _MM_MAC_DIMS[_detect_arch()][key]
+    return extern
 
 
 def mm_zero(

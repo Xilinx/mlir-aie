@@ -39,11 +39,11 @@ from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 
 # Tile size moved to/from the compute cores via mem tiles.
 _TILE_M = _TILE_K = _TILE_N = 64
-# AIE kernel intrinsic sizes — the DMA layout transforms below produce
-# r*s / s*t / r*t sub-tiles, which MUST match what the kernels.mm() factory
-# generates for the chosen (input_dtype, output_dtype). For (int16, int16) the
-# library compiles a 4x4x4 vectorized MMUL (see aie_kernels/aie2/mm.cc).
-_R, _S, _T = 4, 4, 4
+# AIE kernel intrinsic (r, s, t) used to drive the DMA layout transforms
+# below (r*s / s*t / r*t sub-tiles) is read from `matmul_kernel.mac_dims`
+# inside the design — see aie_kernels/aie2{,p}/mm.cc for the per-arch
+# values (e.g. int16/int16 is 4x4x4 on AIE2 but 4x4x8 on AIE2P, so a
+# hardcoded `_R, _S, _T` would break on whichever arch you didn't pin to).
 
 
 @iron.jit
@@ -58,7 +58,20 @@ def matrix_multiplication_single_core(
     element_type: Compile[type],
 ):
     m, k, n = _TILE_M, _TILE_K, _TILE_N
-    r, s, t = _R, _S, _T
+
+    matmul_kernel = kernels.mm(
+        dim_m=m,
+        dim_k=k,
+        dim_n=n,
+        input_dtype=element_type,
+        output_dtype=element_type,
+        vectorized=True,
+    )
+    # Pull the MMUL geometry from the kernel itself so the DMA layout
+    # transforms below match whatever the freshly-compiled binary expects
+    # (4x4x4 on AIE2, 4x4x8 on AIE2P for i16/i16 — see _MM_MAC_DIMS in
+    # python/iron/kernels/linalg.py).
+    r, s, t = matmul_kernel.mac_dims
 
     A_ty = np.ndarray[(M, K), np.dtype[element_type]]
     B_ty = np.ndarray[(K, N), np.dtype[element_type]]
@@ -94,15 +107,6 @@ def matrix_multiplication_single_core(
     )
     fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
         dims_to_stream=tap_C_L1L2.transformation_dims, name="C_L2L3"
-    )
-
-    matmul_kernel = kernels.mm(
-        dim_m=m,
-        dim_k=k,
-        dim_n=n,
-        input_dtype=element_type,
-        output_dtype=element_type,
-        vectorized=True,
     )
 
     def core_fn(of_a, of_b, of_c, matmul):
