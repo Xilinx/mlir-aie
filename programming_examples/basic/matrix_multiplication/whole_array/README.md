@@ -30,41 +30,33 @@ In summary, this design leverages an AI Engine accelerator to accomplish matrix 
 
 ## Building and Running the Design
 
-With the default configuration, this design will set up an array of AIEs to perform matrix-matrix multiplication on a `int16` input data type (`int32` output). The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c` by default.
+With the default configuration, this design will set up an array of AIEs to perform matrix-matrix multiplication on an `int16` input data type (`int32` output). The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c` by default.
 
-You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu)
+The Python source ([`whole_array.py`](./whole_array.py)) supports two execution paths:
 
-To compile and run the design:
+* **Default (legacy):** emit MLIR for the existing `aiecc` + `test.cpp` pipeline driven by [`makefile-common`](../makefile-common). All existing lit configs and the matmul sweep go through this path. You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu).
 
-```shell
-make
-make whole_array.exe
-make run
-```
+  ```shell
+  make
+  make whole_array.exe
+  make run
+  ```
 
-To compile and run the placed design with tiling:
+* **`@iron.jit` direct-run:** invoke the script with `--jit` and it compiles + runs on the attached NPU in one step, verifying against a numpy reference. Useful for fast iteration and avoids the C++ test harness entirely.
 
-```shell
-env use_placed=1 make
-env use_placed=1 make whole_array.exe
-env use_placed=1 make run
-```
+  ```shell
+  python3 whole_array.py --jit                   # default 4-col i16/i32, 512x512x512
+  python3 whole_array.py --jit --c-col-maj 1     # column-major C output
+  python3 whole_array.py --jit --b-col-maj 1     # column-major B input
+  python3 whole_array.py --jit --dtype_in bf16 --dtype_out bf16
+  python3 whole_array.py --help                  # full flag list
+  ```
 
-To compile and run the placed design with higher-level IRON:
-
-```shell
-env use_iron=1 make
-env use_iron=1 make whole_array.exe
-env use_iron=1 make run
-```
+The same design body backs both paths — the `--jit` flag selects the host-run/verify mode, otherwise the script prints MLIR to stdout for the legacy pipeline.
 
 ## Detailed Design Explanation
 
-The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two placed versions of this design:
-* [`whole_array_placed.py`](./whole_array_placed.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of placed instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
-* [`whole_array_iron.py`](./whole_array_iron.py): This design uses a higher-level version of IRON but is also intended to be functionally equivalent. Note that this design does not support tracing at this time.
-
-It is linked against a compute microkernel which is implemented in C++.
+The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file, which uses the IRON high-level builders (`Worker` / `Runtime` / `Program`) and is decorated with `@iron.jit` for the direct-run path. The design is linked against a compute microkernel which is implemented in C++. The accompanying [notebook](./mat_mul_whole_array_visualization.ipynb) provides data-movement visualization for the runtime sequence (driven by the same source file with `--generate-taps`).
 The following sections elaborate on each of the steps outlined in the high-level summary above.
 
 > Note: The term "tile" has two distinct meanings in the following discussion that should be distinguishable from context:

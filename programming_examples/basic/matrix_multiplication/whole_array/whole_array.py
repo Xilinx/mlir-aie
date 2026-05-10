@@ -44,6 +44,7 @@ from aie.iron.controlflow import range_
 from aie.iron.device import NPU1, NPU1Col1, NPU1Col2, NPU2, Tile
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.verify import count_mismatches
 
 # bf16 BFP-16 emulation needs (8, 8, 8) on NPU2; kernels.mm doesn't expose the
 # AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 toggle yet, so this single override
@@ -686,9 +687,13 @@ def main():
         B_shape = (opts.N, opts.K) if opts.b_col_maj else (opts.K, opts.N)
         B_np = rng.integers(info.min // 4, info.max // 4, size=B_shape, dtype=dtype_in)
     else:
-        A_np = rng.standard_normal((opts.M, opts.K)).astype(dtype_in)
+        # bf16 / f32: uniform [0, 4) — matches the C++ harness's get_random
+        # for these dtypes.  Uniform-positive avoids the cancellation that
+        # zero-mean inputs cause in K-direction reductions, which would
+        # exaggerate relative error past the canonical bf16 tolerances.
+        A_np = (rng.random((opts.M, opts.K)) * 4.0).astype(dtype_in)
         B_shape = (opts.N, opts.K) if opts.b_col_maj else (opts.K, opts.N)
-        B_np = rng.standard_normal(B_shape).astype(dtype_in)
+        B_np = (rng.random(B_shape) * 4.0).astype(dtype_in)
     C_np = np.zeros((opts.M, opts.N), dtype=dtype_out)
 
     A_t = iron.tensor(A_np.reshape(-1), dtype=dtype_in, device="npu")
@@ -726,9 +731,15 @@ def main():
         expected = expected_logical
 
     if np.issubdtype(dtype_out, np.integer):
+        # Integer matmul is exact — any mismatch is a real bug.  Matches C++
+        # harness which uses get_abs_tol = get_rel_tol = 0 for int dtypes.
         ok = np.array_equal(actual, expected)
     else:
-        ok = np.allclose(actual, expected, rtol=1e-2, atol=1e-2)
+        # bf16 / f32: matches the C++ harness's per-dtype tolerances —
+        # get_abs_tol<bfloat16_t> = get_abs_tol<float> = 0.5 and
+        # get_rel_tol<bfloat16_t> = get_rel_tol<float>  = 0.05.
+        errors, _ = count_mismatches(actual, expected, rtol=0.05, atol=0.5)
+        ok = errors == 0
 
     if not ok:
         diffs = (
