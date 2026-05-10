@@ -1156,3 +1156,93 @@ def test_all_chess_set_is_unanimous():
     )
     chess_uses = {getattr(f, "_use_chess", False) for f in (ef1, ef2)}
     assert chess_uses == {True}
+
+
+def test_kernels_mm_emulated_bf16_carries_macro():
+    """emulate_bf16_mmul_with_bfp16=True adds the AIE_API macro on aie2p+bf16."""
+    from aie.utils.hostruntime import set_current_device
+    from aie.iron.device import NPU2Col1
+
+    set_current_device(NPU2Col1())
+    try:
+        ef = kernels.mm(
+            dim_m=64,
+            dim_k=64,
+            dim_n=32,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            emulate_bf16_mmul_with_bfp16=True,
+        )
+        assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in ef._compile_flags
+        assert ef.mac_dims == (8, 8, 8)
+    finally:
+        set_current_device(None)
+
+
+def test_kernels_mm_emulated_bf16_default_off():
+    """Default mac_dims for aie2p bf16/bf16 stays at (4, 8, 8) without the toggle."""
+    from aie.utils.hostruntime import set_current_device
+    from aie.iron.device import NPU2Col1
+
+    set_current_device(NPU2Col1())
+    try:
+        ef = kernels.mm(
+            dim_m=64,
+            dim_k=64,
+            dim_n=32,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+        )
+        assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" not in ef._compile_flags
+        assert ef.mac_dims == (4, 8, 8)
+    finally:
+        set_current_device(None)
+
+
+def test_kernels_mm_emulated_bf16_ignored_for_non_bf16():
+    """The toggle is a no-op for integer dtypes (it's bf16-specific)."""
+    from aie.utils.hostruntime import set_current_device
+    from aie.iron.device import NPU2Col1
+
+    set_current_device(NPU2Col1())
+    try:
+        ef = kernels.mm(
+            dim_m=64,
+            dim_k=64,
+            dim_n=32,
+            input_dtype=np.int16,
+            output_dtype=np.int16,
+            emulate_bf16_mmul_with_bfp16=True,
+        )
+        assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" not in ef._compile_flags
+        assert ef.mac_dims == (4, 4, 8)  # default aie2p i16/i16
+    finally:
+        set_current_device(None)
+
+
+def test_kernels_mm_emulated_bf16_distinct_cache_from_default():
+    """The toggle changes the .o contents; cache must distinguish the two."""
+    from aie.utils.hostruntime import set_current_device
+    from aie.iron.device import NPU2Col1
+
+    set_current_device(NPU2Col1())
+    try:
+        ef_default = kernels.mm(
+            dim_m=64,
+            dim_k=64,
+            dim_n=32,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+        )
+        ef_emulated = kernels.mm(
+            dim_m=64,
+            dim_k=64,
+            dim_n=32,
+            input_dtype=bfloat16,
+            output_dtype=bfloat16,
+            emulate_bf16_mmul_with_bfp16=True,
+        )
+        assert ef_default is not ef_emulated
+        assert ef_default.object_file_name != ef_emulated.object_file_name
+    finally:
+        set_current_device(None)

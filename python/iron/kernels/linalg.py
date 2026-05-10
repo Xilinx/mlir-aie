@@ -32,13 +32,11 @@ _MM_COMBOS = {
 }
 
 # Per-arch MMUL micro-kernel dimensions (r, s, t) used by aie_kernels/<arch>/mm.cc
-# for each (input_dtype, output_dtype) combo.  These come straight from the
-# `combos(X) X(..., r, s, t)` macros in those files; if the C++ side ever
-# changes (new geometry, new dtype combo, or the bf16 BFP-emulation switch
-# is wired through `kernels.mm`), both tables here AND those macros must
-# move together.  Designs use `kernels.mm(...).mac_dims` to look up the
-# layout the freshly-compiled kernel actually expects (different on AIE2
-# vs AIE2P) instead of hardcoding for one arch.
+# for each (input_dtype, output_dtype) combo.  These mirror the
+# `combos(X) X(..., r, s, t)` macros in those files; if the C++ side
+# changes geometry or adds a dtype combo, both tables here AND those macros
+# must move together.  Designs use `kernels.mm(...).mac_dims` to look up
+# the layout the freshly-compiled kernel actually expects.
 _MM_MAC_DIMS = {
     "aie2": {
         (np.int8, np.int8): (4, 8, 8),
@@ -55,13 +53,18 @@ _MM_MAC_DIMS = {
         (np.int8, np.int32): (8, 8, 8),
         (np.int16, np.int16): (4, 4, 8),
         (np.int16, np.int32): (4, 4, 8),
-        # Default (no BFP emulation): 4x8x8.  With
-        # AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16, the C++ switches to
-        # 8x8x8.  `kernels.mm` doesn't expose that toggle today; if/when
-        # it does, this table needs a parallel branch.
         (bfloat16, bfloat16): (4, 8, 8),
         (bfloat16, np.float32): (4, 8, 8),
     },
+}
+
+# AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 swaps the bf16 MMUL implementation
+# on AIE2P from native bf16 mul-acc to BFP16-based emulation, which uses an
+# 8x8x8 micro-kernel instead of the default 4x8x8.  Other (arch, dtype) combos
+# are unaffected by the toggle.
+_MM_EMULATED_BF16_MAC_DIMS_AIE2P = {
+    (bfloat16, bfloat16): (8, 8, 8),
+    (bfloat16, np.float32): (8, 8, 8),
 }
 
 # (suffix, _MM_COMBOS-style only_flag) per supported mm_zero output dtype.
@@ -84,13 +87,13 @@ def mm(
     b_col_maj: bool = False,
     c_col_maj: bool = False,
     use_chess: bool = False,
+    emulate_bf16_mmul_with_bfp16: bool = False,
 ) -> ExternalFunction:
     """Matrix-multiply kernel: C += A * B.
 
-    The compiled ``.o`` exports only the ``matmul_*`` symbols (the companion
-    ``zero_*`` variants are suppressed via ``-DMATMUL_ONLY``) so it can be
-    safely linked alongside a ``.o`` produced by :func:`mm_zero` for the
-    same shape/dtype without duplicate-symbol errors.
+    The compiled ``.o`` exports only the ``matmul_*`` symbols (``zero_*``
+    suppressed via ``-DMATMUL_ONLY``) so it links cleanly alongside a ``.o``
+    produced by :func:`mm_zero` for the same shape/dtype.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -99,22 +102,21 @@ def mm(
         input_dtype: Input element type (``np.int8``, ``np.int16``, or ``bfloat16``).
         output_dtype: Output element type.
         vectorized: If ``True`` use the vectorized variant.
-        b_col_maj: If ``True`` compile the kernel with ``-DB_COL_MAJ`` so
-            it consumes B laid out column-major.  Must agree with the
-            design's L2→L1 ``dims_to_stream`` for B; the legacy Makefile
-            adds the same flag based on its ``b_col_maj`` switch.
-        c_col_maj: If ``True`` compile the kernel with ``-DC_COL_MAJ`` so
-            it writes C laid out column-major.  Must agree with the
-            design's C output ``dims_to_stream`` and DMA descriptors.
-            ``mm.cc`` selects the matching write path via
-            ``#ifdef C_COL_MAJ``; without this flag the kernel emits
-            row-major C regardless of the design's plumbing.
-        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
-            instead of Peano's ``clang++``.  Mirrors the legacy
-            ``makefile-common`` ``use_chess=1`` path.  All
-            ExternalFunctions in a single ``@iron.jit`` design must
-            share the same toolchain choice (mixing peano + chess EFs
-            in one design is rejected at compile time).
+        b_col_maj: If ``True`` compile with ``-DB_COL_MAJ`` so the kernel
+            consumes B laid out column-major.  Must agree with the
+            design's B ``dims_to_stream``.
+        c_col_maj: If ``True`` compile with ``-DC_COL_MAJ`` so the kernel
+            writes C laid out column-major.  Must agree with the design's
+            C output ``dims_to_stream``.
+        use_chess: If ``True`` build with ``xchesscc_wrapper`` instead of
+            Peano's ``clang++``.  All ExternalFunctions in a single
+            ``@iron.jit`` design must share the same toolchain.
+        emulate_bf16_mmul_with_bfp16: AIE2P only, bf16 inputs only.  When
+            ``True`` compile with ``-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16``
+            so the kernel uses BFP16-based emulation of the bf16 MMUL.
+            Changes the micro-kernel dims to (8, 8, 8); designs reading
+            ``.mac_dims`` will see the new geometry automatically.  Ignored
+            for non-bf16 inputs and on AIE2.
 
     Returns:
         ExternalFunction configured for the matmul kernel.
@@ -139,15 +141,18 @@ def mm(
         f"-DDIM_K={dim_k}",
         f"-DDIM_N={dim_n}",
         f"-D{only_flag}",
-        # Suppress mm.cc's zero_* symbols so this .o doesn't collide at link
-        # time with one produced by a parallel kernels.mm_zero(...) call.
-        # See aie_kernels/aie2{,p}/mm.cc for the gating macro.
         "-DMATMUL_ONLY",
     ]
     if b_col_maj:
         compile_flags.append("-DB_COL_MAJ")
     if c_col_maj:
         compile_flags.append("-DC_COL_MAJ")
+    arch = _detect_arch()
+    bf16_emulated = (
+        emulate_bf16_mmul_with_bfp16 and arch == "aie2p" and input_dtype is bfloat16
+    )
+    if bf16_emulated:
+        compile_flags.append("-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16")
     extern = _make_extern(
         f"{prefix}_{suffix}",
         _default_source_path("mm.cc"),
@@ -155,12 +160,10 @@ def mm(
         compile_flags=compile_flags,
         use_chess=use_chess,
     )
-    # Attach the (r, s, t) MMUL micro-kernel dims for the arch the source
-    # was just resolved for.  Designs read `kernel.mac_dims` to drive their
-    # DMA layout transforms instead of hardcoding for AIE2 (the regression
-    # from this branch's kernel-library migration that broke matmul on
-    # AIE2P, where i16/i16 uses 4x4x8 instead of 4x4x4).
-    extern.mac_dims = _MM_MAC_DIMS[_detect_arch()][key]
+    if bf16_emulated:
+        extern.mac_dims = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
+    else:
+        extern.mac_dims = _MM_MAC_DIMS[arch][key]
     return extern
 
 
