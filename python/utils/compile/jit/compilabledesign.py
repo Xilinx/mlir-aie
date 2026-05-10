@@ -285,12 +285,32 @@ def _compute_hash(
     # silently producing a stale-but-stable cache hit.
     if not isinstance(generator, Path):
         try:
+            import aie.iron as _iron
             from aie.utils import DefaultNPURuntime
             from aie.utils.compile.utils import resolve_target_arch
 
-            device = (
-                DefaultNPURuntime.device() if DefaultNPURuntime is not None else None
-            )
+            # Prefer the iron-set current device — this is what
+            # `iron.get_current_device()` returns inside the generator body
+            # AND what `_default_source_path` already uses to pick per-arch
+            # kernel sources.  Falling back to the XRT-detected hardware
+            # device only when no iron device has been set.
+            #
+            # Using DefaultNPURuntime.device() unconditionally (the previous
+            # behaviour) silently broke cross-compile: a Strix-targeted
+            # generator body ran by an iron `set_current_device(NPU2Col1())`
+            # would produce AIE2P MLIR but hash to the same dir as a Phoenix
+            # compile — cache collision unless the design happened to use a
+            # kernel-library factory whose per-arch source-file mtime
+            # masked the issue (e.g. matmul, where aie2/mm.cc and
+            # aie2p/mm.cc differ).
+            try:
+                device = _iron.get_current_device()
+            except (RuntimeError, AttributeError):
+                device = (
+                    DefaultNPURuntime.device()
+                    if DefaultNPURuntime is not None
+                    else None
+                )
             target_arch = resolve_target_arch(device)
         except (ImportError, AttributeError, RuntimeError, ValueError) as exc:
             logger.warning(

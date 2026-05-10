@@ -851,6 +851,77 @@ def test_parse_dma_sizes_returns_none_when_file_missing(tmp_path):
     assert parse_dma_sizes(tmp_path) is None
 
 
+def test_compute_hash_changes_when_active_device_changes_arch():
+    """Cross-compile correctness: switching the iron-active device to a
+    different-arch NPU must change the design's cache-key hash, so a
+    Strix-cross-compile of the same generator doesn't silently collide
+    with a Phoenix compile in the per-design cache directory.
+
+    Regression for the case where _compute_hash used DefaultNPURuntime
+    (XRT-detected hardware, fixed) instead of iron.get_current_device()
+    (override-aware) — designs with no per-arch source files (e.g. an
+    inline passthrough) hit cache collision until the hash started
+    tracking the iron-active device.
+    """
+    import aie.iron as iron
+    from aie.iron.device import NPU1Col1, NPU2Col1
+    from aie.utils.hostruntime import set_current_device
+
+    gen = _gemm_gen()
+    cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
+
+    set_current_device(NPU1Col1())
+    h_phx = cd._compute_cache_hash()
+
+    set_current_device(NPU2Col1())
+    h_strix = cd._compute_cache_hash()
+
+    # Restore Phoenix as the active device for any later test.
+    set_current_device(NPU1Col1())
+
+    assert (
+        h_phx != h_strix
+    ), f"Phoenix and Strix cache hashes must differ; both were {h_phx}"
+
+
+def test_kernels_mm_mac_dims_per_arch():
+    """kernels.mm exposes per-arch MMUL geometry via .mac_dims so designs
+    can drive their DMA layout transforms from the kernel itself instead
+    of hardcoding for one NPU generation.
+
+    Regression for the matmul example that used to hardcode (4, 4, 4)
+    and silently produce garbage on AIE2P, which uses (4, 4, 8) for the
+    same i16/i16 dtype combo.
+    """
+    import numpy as np
+    import aie.iron.kernels as kernels
+    from aie.iron.device import NPU1Col1, NPU2Col1
+    from aie.utils.hostruntime import set_current_device
+
+    set_current_device(NPU1Col1())
+    mm_aie2 = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
+    )
+
+    set_current_device(NPU2Col1())
+    mm_aie2p = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=64, input_dtype=np.int16, output_dtype=np.int16
+    )
+
+    set_current_device(NPU1Col1())
+
+    assert mm_aie2.mac_dims == (
+        4,
+        4,
+        4,
+    ), f"AIE2 i16/i16 mac_dims expected (4, 4, 4), got {mm_aie2.mac_dims}"
+    assert mm_aie2p.mac_dims == (
+        4,
+        4,
+        8,
+    ), f"AIE2P i16/i16 mac_dims expected (4, 4, 8), got {mm_aie2p.mac_dims}"
+
+
 def test_transform_typed_returns_module():
     import numpy as np
     from aie.iron.algorithms import transform_typed
