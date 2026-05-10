@@ -113,10 +113,14 @@ def main():
     in1_dtype = np.uint8
     n_elems = in1_size // np.dtype(in1_dtype).itemsize
 
+    # iron.tensor only knows "npu" / "cpu" — `opts.dev` ('npu' or 'npu2') is
+    # a hardware-pick label, not a TensorClass.DEVICES value.  Auto-detection
+    # via DefaultNPURuntime picks the actual NPU; the `-d` flag is preserved
+    # for the make targets but normalised to "npu" here.
     in_tensor = iron.tensor(
-        np.arange(0, n_elems, dtype=in1_dtype), dtype=in1_dtype, device=opts.dev
+        np.arange(0, n_elems, dtype=in1_dtype), dtype=in1_dtype, device="npu"
     )
-    out_tensor = iron.zeros([n_elems], dtype=in1_dtype, device=opts.dev)
+    out_tensor = iron.zeros([n_elems], dtype=in1_dtype, device="npu")
 
     trace_config = TraceConfig(trace_size=trace_size) if trace_size > 0 else None
 

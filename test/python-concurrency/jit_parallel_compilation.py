@@ -23,34 +23,28 @@ def test_parallel_compilation_subprocess():
 
     # Create a temporary cache directory for this test
     with tempfile.TemporaryDirectory() as temp_cache_dir:
-        # Create a simple test script that does JIT compilation
+        # Create a simple test script that does JIT compilation.
+        # Uses In/Out + Compile[T] (the post-unify-compilation-workflow API);
+        # an unannotated def simple_add(input0, input1, output) would trip
+        # Guard 1-A / TypeError at compile time because tensor params would
+        # be classified as scalar_params and never forwarded to the generator.
         test_script = """
 import sys
 import numpy as np
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 
 from aie.iron.controlflow import range_
 
 @iron.jit
-def simple_add(input0, input1, output):
-    if input0.shape != input1.shape:
-        raise ValueError(f"Input shapes are not equal ({input0.shape} != {input1.shape}).")
-    if input0.shape != output.shape:
-        raise ValueError(f"Input and output shapes are not equal ({input0.shape} != {output.shape}).")
-    if len(np.shape(input0)) != 1:
-        raise ValueError("Function only supports vectors.")
-    num_elements = np.size(input0)
+def simple_add(
+    input0: In, input1: In, output: Out,
+    *, num_elements: Compile[int], dtype: Compile[type],
+):
     n = 16
     if num_elements % n != 0:
         raise ValueError(f"Number of elements ({num_elements}) must be a multiple of {n}.")
     N_div_n = num_elements // n
-
-    if input0.dtype != input1.dtype:
-        raise ValueError(f"Input data types are not the same ({input0.dtype} != {input1.dtype}).")
-    if input0.dtype != output.dtype:
-        raise ValueError(f"Input and output data types are not the same ({input0.dtype} != {output.dtype}).")
-    dtype = input0.dtype
 
     # Define tensor types
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
@@ -96,8 +90,15 @@ try:
     input1 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input0)
 
-    # This should trigger JIT compilation and cache access
-    simple_add(input0, input1, output)
+    if input0.shape != input1.shape or input0.shape != output.shape:
+        raise ValueError("All three tensors must share the same shape.")
+    if input0.dtype != input1.dtype or input0.dtype != output.dtype:
+        raise ValueError("All three tensors must share the same dtype.")
+    if len(input0.shape) != 1:
+        raise ValueError("Function only supports vectors.")
+
+    # This should trigger JIT compilation and cache access.
+    simple_add(input0, input1, output, num_elements=num_elements, dtype=dtype)
     print("SUCCESS")
 except Exception as e:
     print(f"ERROR: {type(e).__name__}: {str(e)}")
