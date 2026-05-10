@@ -26,16 +26,15 @@ Kernel sources (translated into numpy below):
     aie_kernels/aie2/bottleneck/bn_conv2dk3_dw.cc    (DW 3x3, ui8 -> ui8)
     aie_kernels/aie2/bottleneck/bn_conv2dk3.cc       (init: 3x3 stride-2)
 
-STATUS — three reference outputs to compare against:
+STATUS — reference outputs to compare against:
 
     1. data/golden_output.txt        — brevitas-quantized reference (the
-                                        "ground truth" target).
-    2. data/aie_output.txt           — what the AIE design actually produces
-                                        on this Strix NPU. Differs from golden
-                                        by max=9, mean≈1.5 (a known-acceptable
-                                        gap tracked in mlir-aie issue #3009).
-    3. mobilenet_numpy.run() output  — this file. 929/1280 bit-exact vs golden
-                                        (max=2, mean=0.30); 715/1280 vs AIE.
+                                        "ground truth" target). The full AIE
+                                        design matches this within atol=9
+                                        (a known-acceptable gap tracked in
+                                        mlir-aie issue #3009).
+    2. mobilenet_numpy.run() output  — this file. 929/1280 bit-exact vs
+                                        golden (max=2, mean=0.30).
 
 Per-bn / per-chain bit-exactness (verified against brevitas fixtures in
 bottleneck_A/B/C with their own scale_factors.json):
@@ -591,7 +590,6 @@ def _main():
         print(f"\n{label}: {n_match}/{ours.size} matches  {verdict}")
 
     _cmp("vs brevitas golden (data/golden_output.txt)", data_dir + "golden_output.txt")
-    _cmp("vs AIE actual      (data/aie_output.txt)   ", data_dir + "aie_output.txt")
 
     if args.dump_intermediates:
         os.makedirs(args.dump_intermediates, exist_ok=True)
