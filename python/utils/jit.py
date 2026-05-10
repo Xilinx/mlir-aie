@@ -89,17 +89,18 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
 
         compile_params, _, _ = split_params(mlir_generator)
 
-        # Guard 1-A: warn if any compile kwarg doesn't match a Compile[T] param.
+        # Guard 1-A: reject any compile kwarg that doesn't match a Compile[T]
+        # param. Failing fast at decoration time catches typos like @jit(NN=...)
+        # before they silently run a kernel with no value bound.
         if compile_kwargs:
             unknown = set(compile_kwargs.keys()) - set(compile_params)
             if unknown:
-                warnings.warn(
+                raise TypeError(
                     f"@iron.jit received keyword argument(s) that do not match any "
                     f"Compile[T]-annotated parameter of {mlir_generator.__name__!r}: "
-                    f"{unknown}.\n"
+                    f"{sorted(unknown)}.\n"
                     f"  Valid Compile[T] params: {compile_params}.\n"
-                    f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}.",
-                    stacklevel=2,
+                    f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}."
                 )
 
         # Guard: Compile[T] params must be keyword-only (unless pre-bound or

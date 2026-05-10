@@ -36,7 +36,15 @@ def main():
     output = iron.zeros_like(input0)
 
     # JIT compile the algorithm
-    iron.jit(transform_binary)(lambda a, b: a + b, input0, input1, output, tile_size=16)
+    iron.jit(transform_binary)(
+        input0,
+        input1,
+        output,
+        func=lambda a, b: a + b,
+        N=int(input0.shape[0]),
+        dtype=input0.dtype,
+        tile_size=16,
+    )
 
     # Check the correctness of the result
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())

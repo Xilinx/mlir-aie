@@ -12,56 +12,36 @@ import argparse
 import time
 
 import aie.iron as iron
-from aie.iron.algorithms import transform
+from aie.iron import Compile, In, Out
+from aie.iron.algorithms import transform_typed
 
 
-def vector_scalar_mul(input, factor, output):
+@iron.jit
+def vector_scalar_mul(
+    input: In,
+    output: Out,
+    factor: In,
+    *,
+    N: Compile[int],
+    tile_size: Compile[int],
+):
+    in1_dtype = np.int16
 
-    in1_dtype = input.dtype
-    tensor_size = input.numel()
-    num_sub_vectors = 4
-    tile_size = tensor_size // num_sub_vectors
-
-    if input.dtype != np.int16:
-        raise ValueError("Input must be of type int16")
-
-    if factor.dtype != np.int32:
-        raise ValueError("Factor must be of type int32")
-
-    if output.dtype != np.int16:
-        raise ValueError("Output must be of type int16")
-
-    if input.shape != output.shape:
-        raise ValueError(
-            f"Input and output shapes are not the equal ({input.shape} != {output.shape})."
-        )
-
-    if factor.numel() != 1:
-        raise ValueError(f"Factor must be a scalar, but has shape {factor.shape}.")
-
-    vectorized = True
-
-    # Define tensor types
     tile_ty = np.ndarray[(tile_size,), np.dtype[in1_dtype]]
     scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
-
-    # Create a handle to an externally-defined kernel
-    func_type = "vector" if vectorized else "scalar"
 
     kernels_path = os.path.join(os.path.dirname(__file__), "../../../aie_kernels/aie2")
 
     scale_kernel = iron.ExternalFunction(
-        f"vector_scalar_mul_{func_type}",
+        "vector_scalar_mul_vector",
         source_file=os.path.join(kernels_path, "scale.cc"),
         arg_types=[tile_ty, tile_ty, scalar_ty, np.int32],
         include_dirs=[kernels_path],
         compile_flags=["-DBIT_WIDTH=16"],
     )
 
-    # Pass scale kernel to the transform algorithm
-    # tile_size is passed as keyword argument
-    # iron.jit compiles and runs the program
-    iron.jit(transform)(scale_kernel, input, output, factor, tile_size=tile_size)
+    tensor_ty = np.ndarray[(N,), np.dtype[in1_dtype]]
+    return transform_typed(scale_kernel, tensor_ty, scalar_ty, tile_size=tile_size)
 
 
 def main():
@@ -103,12 +83,28 @@ def main():
     factor = iron.tensor([3], dtype=np.int32, device="npu")
     output = iron.tensor((num_elements,), dtype=np.int16, device="npu")
 
+    if input.dtype != np.int16:
+        raise ValueError("Input must be of type int16")
+    if factor.dtype != np.int32:
+        raise ValueError("Factor must be of type int32")
+    if output.dtype != np.int16:
+        raise ValueError("Output must be of type int16")
+    if input.shape != output.shape:
+        raise ValueError(
+            f"Input and output shapes are not the equal ({input.shape} != {output.shape})."
+        )
+    if factor.numel() != 1:
+        raise ValueError(f"Factor must be a scalar, but has shape {factor.shape}.")
+
+    num_sub_vectors = 4
+    tile_size = num_elements // num_sub_vectors
+
     # Main run loop with warmup and measurement iterations
     total_iterations = n_warmup_iterations + n_iterations
     for iter_num in range(total_iterations):
         # Launch the kernel and measure execution time
         start_time = time.perf_counter()
-        vector_scalar_mul(input, factor, output)
+        vector_scalar_mul(input, output, factor, N=num_elements, tile_size=tile_size)
         end_time = time.perf_counter()
 
         # Calculate execution time in microseconds

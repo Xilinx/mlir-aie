@@ -676,11 +676,8 @@ def test_split_runtime_args_path_generator_filters_kernel_objects():
 
 
 def test_parse_dma_sizes_matches_real_mlir_format(tmp_path):
-    """Bindings must extract DMA element counts from lowered aie.runtime_sequence MLIR.
-
-    Mirrors the structure aiecc actually emits: aie.dma_bd ops nested inside
-    aiex.dma_configure_task_for regions, with the runtime memref operand
-    coming from the runtime_sequence's own block arguments.
+    """Reads element counts directly from the runtime_sequence's typed args
+    on a sample matching what aiecc emits.
     """
     from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
@@ -708,6 +705,135 @@ module {
     mlir_path.write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
     assert sizes == [1024, 1024], f"Expected [1024, 1024], got {sizes}"
+
+
+def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
+    """matmul-style: the same host arg can carry several dma_bd ops (one per
+    tile_row reload, or both an MM2S fill and S2MM drain on an InOut buffer).
+    Reading the runtime_sequence arg type — instead of summing dma_bd lens —
+    means this case Just Works without any per-arg accumulator.
+    """
+    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+
+    sample_mlir = """\
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %0 = aiex.dma_configure_task_for @of_in {
+        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.end
+      }
+      %1 = aiex.dma_configure_task_for @of_in_again {
+        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.end
+      }
+    }
+  }
+}
+"""
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    sizes = parse_dma_sizes(tmp_path)
+    assert sizes == [1024], f"Expected [1024] (signature-based), got {sizes}"
+
+
+def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
+    """Multi-column fan-out: one host arg fans into N disjoint per-column
+    DMAs.  The runtime_sequence arg type still reports the full buffer size,
+    no DMA accounting needed.
+    """
+    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+
+    sample_mlir = """\
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %0 = aiex.dma_configure_task_for @of_in_a {
+        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 512, stride = 1>]) {burst_length = 0 : i32}
+        aie.end
+      }
+      %1 = aiex.dma_configure_task_for @of_in_b {
+        aie.dma_bd(%arg0 : memref<1024xi32>, 512, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 512, stride = 1>]) {burst_length = 0 : i32}
+        aie.end
+      }
+    }
+  }
+}
+"""
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    sizes = parse_dma_sizes(tmp_path)
+    assert sizes == [1024], f"Expected [1024] (union), got {sizes}"
+
+
+def test_parse_dma_sizes_picks_uncalled_root_when_helper_present(tmp_path):
+    """If a module declares a main runtime_sequence + a helper invoked via
+    aiex.run, the parser must pick the main (call-graph root) regardless of
+    declaration order — the helper's args must NOT be reported.
+    """
+    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+
+    # Layout matches test/aiecc/cpp_expand_load_pdis.mlir: @main's sequence
+    # @sequence configures @helper-device and runs its sequence @helper_seq.
+    # The helper device is declared FIRST so any "pick first sequence in
+    # source order" heuristic would pick the wrong one; the call-graph-root
+    # algorithm must pick @sequence.
+    sample_mlir = """\
+module {
+  aie.device(npu2) @helper {
+    aie.runtime_sequence @helper_seq(%h0: memref<2048xi32>) {
+    }
+  }
+  aie.device(npu2) @main {
+    aie.runtime_sequence @sequence(%a: memref<1024xi32>, %b: memref<1024xi32>) {
+      aiex.configure @helper {
+        aiex.run @helper_seq(%a) : (memref<1024xi32>)
+      }
+    }
+  }
+}
+"""
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    sizes = parse_dma_sizes(tmp_path)
+    assert sizes == [1024, 1024], f"Expected main's args [1024, 1024], got {sizes}"
+
+
+def test_parse_dma_sizes_returns_none_when_multi_device_has_multiple_roots(tmp_path):
+    """Multi-device modules with more than one top-level runtime_sequence
+    can't be unambiguously matched to a flat host tensor list — bail rather
+    than validate against the wrong signature.
+    """
+    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+
+    sample_mlir = """\
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @dev_a_main(%x: memref<1024xi32>) {
+    }
+  }
+  aie.device(npu2) {
+    aie.runtime_sequence @dev_b_main(%y: memref<2048xi32>) {
+    }
+  }
+}
+"""
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    assert parse_dma_sizes(tmp_path) is None
+
+
+def test_parse_dma_sizes_returns_none_for_dynamic_shape_arg(tmp_path):
+    """A dynamic-dim memref arg means the kernel's host contract isn't a
+    fixed element count — skip validation rather than guess."""
+    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+
+    sample_mlir = """\
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence(%arg0: memref<?xi32>) {
+    }
+  }
+}
+"""
+    (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
+    assert parse_dma_sizes(tmp_path) is None
 
 
 def test_parse_dma_sizes_returns_none_for_unparseable_text(tmp_path):

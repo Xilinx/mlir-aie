@@ -491,6 +491,48 @@ class CachedXRTRuntime(XRTHostRuntime):
 
         return super().run(kernel_handle, args, trace_config, fail_on_error, **kwargs)
 
+    def load_and_run(self, npu_kernel, run_args, **kwargs):
+        """Wrapper around the base implementation that papers over a Phoenix
+        firmware-state quirk: a trace-on run leaves the amdxdna firmware in
+        a state where the next submit on a *different* cached context fails
+        with ``DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=2): No such file
+        or directory`` (EXEC_CMD ENOENT) — even if we evict the failing
+        context and re-create a fresh hw_context for the same xclbin.  This
+        is the same failure mode the partial-eviction workaround at the top
+        of ``load()`` already drains the whole cache to dodge (see comment
+        on ``NPU_CONTEXT_CACHE_SIZE``).
+
+        Workaround: after a trace-on run completes (and the base
+        ``load_and_run`` has already extracted the trace BOs via
+        ``process_trace``), drain the entire context cache on Phoenix so
+        the next call rebuilds from scratch.  Strix (npu2) handles
+        single-entry eviction correctly and isn't affected, so we leave it
+        alone.
+
+        Same-kernel re-runs after their own trace work fine; the bug only
+        bites when switching to a different kernel after a trace, but
+        draining unconditionally on Phoenix is simpler than tracking which
+        contexts are about to be touched next.
+        """
+        handle, ret = super().load_and_run(npu_kernel, run_args, **kwargs)
+        if (
+            npu_kernel.trace_config is not None
+            and getattr(self, "npu_str", None) == "npu1"
+        ):
+            self._drain_for_phoenix_trace_quirk()
+        return handle, ret
+
+    def _drain_for_phoenix_trace_quirk(self):
+        """Drain the full context + insts caches.  Mirrors the
+        partial-eviction workaround at the top of ``load()`` — see comment
+        on ``NPU_CONTEXT_CACHE_SIZE`` for why a single-entry evict isn't
+        enough on Phoenix."""
+        while self._context_cache:
+            self._evict()
+        while self._insts_cache:
+            self._evict_insts()
+        gc.collect()
+
     def load(
         self,
         npu_kernel,

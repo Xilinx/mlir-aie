@@ -13,38 +13,25 @@ import aie.iron as iron
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
+from aie.iron import Compile, In, Out
 from aie.iron.controlflow import range_
 
 
 @iron.jit
-def vector_vector_add(input0, input1, output):
-    if input0.shape != input1.shape:
-        raise ValueError(
-            f"Input shapes are not the equal ({input0.shape} != {input1.shape})."
-        )
-    if input0.shape != output.shape:
-        raise ValueError(
-            f"Input and output shapes are not the equal ({input0.shape} != {output.shape})."
-        )
-    if len(np.shape(input0)) != 1:
-        raise ValueError("Function only supports vectors.")
-    num_elements = np.size(input0)
+def vector_vector_add(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    num_elements: Compile[int],
+    dtype: Compile[type],
+):
     n = 16
     if num_elements % n != 0:
         raise ValueError(
             f"Number of elements ({num_elements}) must be a multiple of {n}."
         )
     N_div_n = num_elements // n
-
-    if input0.dtype != input1.dtype:
-        raise ValueError(
-            f"Input data types are not the same ({input0.dtype} != {input1.dtype})."
-        )
-    if input0.dtype != output.dtype:
-        raise ValueError(
-            f"Input and output data types are not the same ({input0.dtype} != {output.dtype})."
-        )
-    dtype = input0.dtype
 
     buffer_depth = 2
 
@@ -116,9 +103,22 @@ def main():
     input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input0)
 
+    if input0.shape != input1.shape or input0.shape != output.shape:
+        raise ValueError("All three tensors must share the same shape.")
+    if input0.dtype != input1.dtype or input0.dtype != output.dtype:
+        raise ValueError("All three tensors must share the same dtype.")
+    if len(input0.shape) != 1:
+        raise ValueError("Function only supports vectors.")
+
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    vector_vector_add(input0, input1, output)
+    vector_vector_add(
+        input0,
+        input1,
+        output,
+        num_elements=int(np.size(input0)),
+        dtype=input0.dtype,
+    )
 
     # Check the correctness of the result
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())

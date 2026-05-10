@@ -12,19 +12,22 @@ import argparse
 import time
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron import ExternalFunction
 
 
 @iron.jit
-def my_reduce_min(input_tensor, output_tensor):
-
-    num_elements = input_tensor.numel()
-    assert output_tensor.numel() == 1, "Output tensor must be a scalar"
+def my_reduce_min(
+    input_tensor: In,
+    output_tensor: Out,
+    *,
+    num_elements: Compile[int],
+    dtype: Compile[type],
+):
 
     # Define tensor types
-    in_ty = np.ndarray[(num_elements,), np.dtype[input_tensor.dtype]]
-    out_ty = np.ndarray[(1,), np.dtype[output_tensor.dtype]]
+    in_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    out_ty = np.ndarray[(1,), np.dtype[dtype]]
 
     # AIE-array data movement with object fifos
     of_in = ObjectFifo(in_ty, name="in")
@@ -97,6 +100,7 @@ def main():
     # Construct input and output tensors that are accessible to the NPU
     input_tensor = iron.randint(10, 100, (num_elements,), dtype=data_type, device="npu")
     output_tensor = iron.tensor((1,), dtype=data_type, device="npu")
+    assert output_tensor.numel() == 1, "Output tensor must be a scalar"
 
     # Initialize timing variables
     npu_time_total = 0.0
@@ -108,7 +112,12 @@ def main():
     for iter_num in range(total_iterations):
         # Launch the kernel and measure execution time
         start_time = time.perf_counter()
-        my_reduce_min(input_tensor, output_tensor)
+        my_reduce_min(
+            input_tensor,
+            output_tensor,
+            num_elements=int(input_tensor.numel()),
+            dtype=input_tensor.dtype,
+        )
         end_time = time.perf_counter()
 
         # Calculate execution time in microseconds

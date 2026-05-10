@@ -5,20 +5,31 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""Extract per-transfer element counts from aiecc's lowered MLIR.
+"""Extract per-host-arg element counts from aiecc's lowered MLIR.
 
 aiecc writes ``input_with_addresses.mlir`` into the kernel directory as part
-of compilation.  The host-facing ``aie.runtime_sequence`` block contains one
-``aie.dma_bd`` op per per-column DMA transfer; the element count rides on
-the op's ``len`` attribute.
+of compilation.  The host-facing ``aie.runtime_sequence`` carries fully
+typed memref arguments — e.g.::
 
-We parse the file with the AIE MLIR Python bindings rather than regex so the
-extractor is not coupled to the textual custom-assembly form — we read the
-``len`` attribute and the operand structure directly.
+    aie.runtime_sequence @sequence(%arg0: memref<65536xbf16>,
+                                   %arg1: memref<65536xbf16>) {
+      ...
+    }
 
-Only ``aie.dma_bd`` ops whose first operand is a block argument of the
-enclosing ``aie.runtime_sequence`` are counted; tile-internal DMAs that
-reference named buffer SSA values are excluded.
+The argument types ARE the kernel's host-side contract, so we read each
+arg's memref shape and compute the element count.  No need to walk
+``aie.dma_bd`` ops, distinguish host-facing transfers from tile-internal
+DMAs, or fold multi-DMA patterns (fan-out / repeated load / InOut fill+drain)
+back together — the runtime_sequence signature already represents what the
+caller must supply.
+
+Modules can declare more than one ``aie.runtime_sequence`` (helper
+sub-sequences invoked via ``aiex.run @<name>(...)``, or per-device main
+sequences in a multi-device program).  We pick the unique **call-graph
+root** — the runtime_sequence that no other sequence calls — as the
+host-facing entry point.  If there is no unique root (cyclic, or multi-
+device with several roots), we return ``None`` and the caller skips
+validation rather than risk validating against the wrong signature.
 
 The lowered IR may reference unregistered ops or fail strict verification
 (e.g. ``memref.alloca`` outside an ``AutomaticAllocationScope``), so the
@@ -34,24 +45,24 @@ logger = logging.getLogger(__name__)
 
 
 def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
-    """Return per-host-arg total element counts from ``input_with_addresses.mlir``.
+    """Return per-host-arg element counts from ``input_with_addresses.mlir``.
 
-    The returned list is indexed by host-facing block-argument position of the
-    enclosing ``aie.runtime_sequence``.  Each entry is the sum of every
-    ``aie.dma_bd`` ``len`` whose first operand resolves to that block argument
-    — designs that fan a single host buffer out to multiple per-column DMAs
-    (e.g. distinct weights slices per AIE column) thus see ``len_col0 +
-    len_col1 + ...`` for that arg, which matches the size of the host-side
-    tensor the caller passed in.
+    The returned list is indexed by ``aie.runtime_sequence`` argument
+    position.  Each entry is the element count (product of static dims) of
+    that arg's memref type.
 
     Args:
         kernel_dir: Directory aiecc wrote its lowered MLIR into.
 
     Returns:
-        A list of per-arg total element counts (length = number of host args
-        in the runtime sequence), or ``None`` when the file is absent or
-        unparseable.  Args with no associated DMA (e.g. unused buffers) get
-        a ``0``.
+        A list of per-arg element counts (length = number of entry-point
+        runtime_sequence args), or ``None`` when validation can't be
+        performed safely:
+
+        * file is absent or unparseable
+        * no runtime_sequence found, or no unique call-graph root (e.g.
+          multi-device modules with multiple top-level sequences)
+        * any arg has a non-memref type or a dynamic-shape dim
     """
     mlir_path = kernel_dir / "input_with_addresses.mlir"
     if not mlir_path.exists():
@@ -70,32 +81,60 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         with ctx, ir.Location.unknown():
             module = ir.Module.parse(mlir_path.read_text())
 
-        seq = _find_runtime_sequence(module.operation)
-        if seq is None:
-            return None
-        seq_block = seq.regions[0].blocks[0]
-        block_args = list(seq_block.arguments)
+        # Pass 1: collect every runtime_sequence + record aiex.run call edges.
+        all_sequences: list = []
+        named_sequences: dict = {}  # sym_name -> op  (anonymous ones omitted)
+        called: set = set()
+        for op in _walk(module.operation):
+            if op.name == "aie.runtime_sequence":
+                all_sequences.append(op)
+                sym = _get_str_attr(op, "sym_name")
+                if sym is not None:
+                    named_sequences[sym] = op
+            elif op.name == "aiex.run":
+                target = _get_str_attr(op, "runtime_sequence_symbol")
+                if target is not None:
+                    called.add(target)
 
-        per_arg_totals = [0] * len(block_args)
-        for op in _walk(seq):
-            if op.name != "aie.dma_bd" or len(op.operands) == 0:
-                continue
-            # First operand is the memref being transferred.  When it owns to
-            # the runtime_sequence's own block, it's a host-facing %argN
-            # rather than a tile-internal named buffer.
-            host_operand = op.operands[0]
-            if host_operand.owner != seq_block:
-                continue
-            ln = int(op.attributes["len"].value)
-            for i, ba in enumerate(block_args):
-                if ba == host_operand:
-                    per_arg_totals[i] += ln
-                    break
-        return per_arg_totals if any(per_arg_totals) else None
+        if not all_sequences:
+            return None
+
+        # Pass 2: pick the entry point.
+        if len(all_sequences) == 1:
+            # Only one sequence in the module — trivially the root.  Works
+            # whether or not it carries a sym_name.
+            entry = all_sequences[0]
+        else:
+            # Multiple sequences: each must be named so we can reason about
+            # the call graph.  Entry point = the unique root (not called by
+            # any other sequence).  Anything else → bail and skip validation.
+            if len(named_sequences) != len(all_sequences):
+                return None
+            roots = [op for sym, op in named_sequences.items() if sym not in called]
+            if len(roots) != 1:
+                # 0 roots => cyclic; >1 roots => multi-device or multiple
+                # top-level entries — can't unambiguously map host tensors.
+                return None
+            entry = roots[0]
+
+        # Pass 3: read each arg's memref element count.
+        seq_block = entry.regions[0].blocks[0]
+        sizes: list[int] = []
+        for arg in seq_block.arguments:
+            t = arg.type
+            if not isinstance(t, ir.MemRefType):
+                return None
+            if not t.has_static_shape:
+                return None
+            elems = 1
+            for d in t.shape:
+                elems *= d
+            sizes.append(elems)
+        return sizes if sizes else None
     except Exception:
-        # Treat any binding/parsing failure as "validation unavailable" rather
-        # than crashing the caller — runtime tensor validation is best-effort.
-        # Logged so a binding regression doesn't silently disable validation.
+        # Any binding / parsing failure means validation is unavailable
+        # rather than a hard error — a binding regression must not crash
+        # the JIT path.  Logged so the regression is still visible.
         logger.debug(
             "parse_dma_sizes: failed to parse %s; tensor validation disabled",
             mlir_path,
@@ -113,9 +152,14 @@ def _walk(op):
                 yield from _walk(sub.operation)
 
 
-def _find_runtime_sequence(op):
-    """Return the first ``aie.runtime_sequence`` op found, or ``None``."""
-    for descendant in _walk(op):
-        if descendant.name == "aie.runtime_sequence":
-            return descendant
-    return None
+def _get_str_attr(op, name: str) -> str | None:
+    """Return the string value of attribute *name* on *op*, or ``None``.
+
+    Handles both ``StringAttr`` (``sym_name``) and ``FlatSymbolRefAttr``
+    (``aiex.run.runtime_sequence_symbol``); both expose the symbol as
+    ``.value``.
+    """
+    try:
+        return op.attributes[name].value
+    except (KeyError, AttributeError):
+        return None

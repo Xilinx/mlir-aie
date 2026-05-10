@@ -157,10 +157,16 @@ class CallableDesign:
         # combinations per function is naturally bounded in practice.
         self._kernel_cache: dict = {}
 
-        # Warn if any required Compile[T] params are unbound at decoration time.
-        # These must be supplied as kwargs at every call site.
+        # Note (debug-level only) when any required Compile[T] params are
+        # unbound at decoration time — these must be supplied as kwargs at
+        # every call site.  The original wiring used warnings.warn, but
+        # decoration-time noise drowned the rest of the notebook output for
+        # what is, in practice, a perfectly valid pattern (most users always
+        # bind at the call site).  TypeError still fires loudly at compile
+        # time if the caller forgets, which is the actual safety net.
         if (
-            callable(self.compilable.mlir_generator)
+            logger.isEnabledFor(logging.DEBUG)
+            and callable(self.compilable.mlir_generator)
             and not self.compilable.compile_kwargs
         ):
             import inspect as _inspect
@@ -172,14 +178,13 @@ class CallableDesign:
                 if sig.parameters[name].default is _inspect.Parameter.empty
             ]
             if unbound_required:
-                warnings.warn(
-                    f"{self.compilable.generator_name!r} has Compile[T] "
-                    f"parameters with no defaults and no pre-bound values: "
-                    f"{unbound_required}.\n"
-                    f"  You must pass these as keyword arguments at every call:\n"
-                    f"    kernel(..., {', '.join(f'{n}=...' for n in unbound_required)})\n"
-                    f"  Omitting them will raise TypeError at compile time.",
-                    stacklevel=3,
+                logger.debug(
+                    "%r has Compile[T] parameters with no defaults and no "
+                    "pre-bound values: %s. Pass these as keyword arguments at "
+                    "every call site: kernel(..., %s).",
+                    self.compilable.generator_name,
+                    unbound_required,
+                    ", ".join(f"{n}=..." for n in unbound_required),
                 )
 
     def _extract_compile_kwargs(

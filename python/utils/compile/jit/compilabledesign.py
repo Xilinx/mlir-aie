@@ -613,11 +613,12 @@ class CompilableDesign:
     def validate_tensor_args(self, tensor_args: list) -> None:
         """Validate that *tensor_args* element counts match the compiled kernel.
 
-        Compares each tensor's element count against the per-host-arg total
-        DMA byte count extracted from the compiled ``aiex.runtime_sequence``.
-        ``parse_dma_sizes`` already sums multi-DMA fan-outs (e.g. one host
-        weights buffer split across N AIE columns) so a single equality check
-        per tensor is sufficient.
+        Compares each tensor's element count against the per-host-arg
+        addressable footprint extracted from the compiled
+        ``aiex.runtime_sequence``.  ``parse_dma_sizes`` returns
+        ``max(offset + len)`` so multi-column fan-outs, repeated transfers
+        (matmul B reloaded each tile_row), and InOut buffers (for_each_typed
+        fill+drain on the same arg) all give the host-tensor size directly.
 
         Args with no associated DMA (entry == 0) are skipped — those are
         runtime params not directly transferred by the design.

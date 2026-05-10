@@ -37,7 +37,13 @@ def main():
 
     # JIT compile the algorithm
     iron.jit(transform_parallel_binary)(
-        lambda a, b: a + b, input0, input1, output, tile_size=16
+        input0,
+        input1,
+        output,
+        func=lambda a, b: a + b,
+        N=int(input0.shape[0]),
+        dtype=input0.dtype,
+        tile_size=16,
     )
 
     # Check the correctness of the result

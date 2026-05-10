@@ -36,11 +36,13 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     utils/__init__.py
+    utils/benchmark.py
     utils/config.py
     utils/test.py
     utils/ml.py
     utils/npukernel.py
     utils/regdb.py
+    utils/verify.py
     utils/hostruntime/__init__.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py

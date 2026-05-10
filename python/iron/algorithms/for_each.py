@@ -9,7 +9,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, InOut, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 import aie.iron as iron
 
@@ -64,10 +64,41 @@ def for_each_typed(func, tensor_ty, tile_size=16):
         dtype = _dtype
 
     fake_tensor = _TypeDescriptor()
-    return for_each(func, fake_tensor, tile_size=tile_size)
+    return _for_each_real(func, fake_tensor, tile_size=tile_size)
 
 
-def for_each(func, tensor, *params, tile_size=16):
+def for_each(
+    data: InOut,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+):
+    """In-place transform; ``func`` is applied tile-by-tile to ``data``.
+    JIT-friendly: pass to ``iron.jit`` and call with one positional tensor
+    plus the compile-time kwargs::
+
+        iron.jit(for_each)(
+            tensor, func=lambda a: a + 1,
+            N=tensor.shape[0], dtype=tensor.dtype, tile_size=16,
+        )
+
+    Args:
+        data: In-place tensor placeholder (``InOut``).
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        N: Number of elements in ``data``.
+        dtype: Element dtype.
+        tile_size: Number of elements per tile. Defaults to 16.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return for_each_typed(func, tensor_ty, tile_size=tile_size)
+
+
+def _for_each_real(func, tensor, *params, tile_size=16):
     """
     In-place transform. Internally uses separate input/output ObjectFifos,
     but fills and drains to same tensor.

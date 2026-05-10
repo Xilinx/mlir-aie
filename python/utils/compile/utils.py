@@ -160,9 +160,11 @@ def compile_mlir_module(
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
             f.write(str(mlir_module))
-        result = subprocess.run(
-            [aiecc_bin, mlir_file] + args, capture_output=True, text=True
-        )
+        cmd = [aiecc_bin, mlir_file] + args
+        # Mirror compile_external_kernel's "Compiling with: <cmd>" line so
+        # users at DEBUG see the full aiecc invocation, not just its output.
+        logger.debug("Running: %s", " ".join(cmd))
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.stdout:
             logger.debug("%s", result.stdout)
         if result.stderr:

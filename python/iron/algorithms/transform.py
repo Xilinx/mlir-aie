@@ -9,7 +9,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.iron as iron
@@ -387,6 +387,45 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
     return Program(device, rt).resolve_program()
 
 
+def make_param_descriptor(tensor_ty):
+    """Build a fake-tensor descriptor (``.shape``, ``.size``, ``.dtype``) for
+    use as an extra param to :func:`transform_typed` and friends.
+
+    Mirrors :func:`_make_fake_tensor` but skips the tile-divisibility check
+    because params (e.g. a 1-element ``factor`` tensor) are passed through
+    a dedicated ObjectFifo and aren't tiled.
+    """
+    try:
+        shape_arg, dtype_arg = tensor_ty.__args__
+        num_elements = 1
+        for dim in shape_arg:
+            num_elements *= dim
+        dtype = dtype_arg.__args__[0]
+    except Exception as exc:
+        raise TypeError(
+            f"make_param_descriptor expects a numpy ndarray type such as "
+            f"np.ndarray[(1,), np.dtype[np.int32]], got {tensor_ty!r}"
+        ) from exc
+
+    _shape = tuple(shape_arg)
+    _size = num_elements
+    _dtype = dtype
+
+    class _ParamDescriptor:
+        shape = _shape
+        size = _size
+        dtype = _dtype
+
+    return _ParamDescriptor()
+
+
+def _expand_param(param):
+    """Allow callers to pass either a real tensor or a numpy ndarray type."""
+    if hasattr(param, "__args__") and len(getattr(param, "__args__", ())) == 2:
+        return make_param_descriptor(param)
+    return param
+
+
 def _make_fake_tensor(tensor_ty, tile_size, fn_name):
     """Parse a numpy ndarray type descriptor and return a fake tensor object.
 
@@ -435,7 +474,7 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
     return _TypeDescriptor()
 
 
-def transform_typed(func, tensor_ty, tile_size=16):
+def transform_typed(func, tensor_ty, *params, tile_size=16):
     """Apply ``func`` element-wise over a tensor described by *tensor_ty*.
 
     Like :func:`transform` but accepts a numpy ``ndarray`` type descriptor
@@ -453,13 +492,20 @@ def transform_typed(func, tensor_ty, tile_size=16):
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
         tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
+        *params: Additional parameters forwarded to ``func`` (ExternalFunction
+            only).  Each ``param`` may be a real tensor, a numpy ``ndarray``
+            type descriptor (transparently expanded via
+            :func:`make_param_descriptor`), or a numpy scalar type.
         tile_size (int, optional): Number of elements per tile. Defaults to 16.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
     fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_typed")
-    return _transform_gen(func, [fake_tensor], fake_tensor, tile_size=tile_size)
+    expanded_params = tuple(_expand_param(p) for p in params)
+    return _transform_gen(
+        func, [fake_tensor], fake_tensor, *expanded_params, tile_size=tile_size
+    )
 
 
 def transform_binary_typed(func, tensor_ty, tile_size=16):
@@ -504,8 +550,9 @@ def transform_parallel_typed(func, tensor_ty, *params, tile_size=16):
         mlir.ir.Module: The compiled MLIR module.
     """
     fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_parallel_typed")
+    expanded_params = tuple(_expand_param(p) for p in params)
     return _transform_parallel_gen(
-        func, [fake_tensor], fake_tensor, *params, tile_size=tile_size
+        func, [fake_tensor], fake_tensor, *expanded_params, tile_size=tile_size
     )
 
 
@@ -534,76 +581,126 @@ def transform_parallel_binary_typed(func, tensor_ty, tile_size=16):
     )
 
 
-def transform(func, input, output, *params, tile_size=16):
-    """Apply ``func`` to ``input`` and write results to ``output`` using tiled processing on a single AIE core.
+def transform(
+    input: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+):
+    """Apply ``func`` to ``input`` and write results to ``output`` using tiled
+    processing on a single AIE core.  JIT-friendly: pass to ``iron.jit`` and
+    call with positional tensors plus the compile-time kwargs::
+
+        iron.jit(transform)(
+            input, output, func=lambda a: a + 1,
+            N=input.shape[0], dtype=input.dtype, tile_size=16,
+        )
 
     Args:
+        input: Input tensor placeholder (``In`` marker).
+        output: Output tensor placeholder (``Out`` marker, same shape/dtype as
+            ``input``).
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
-        input: Input tensor (NPU-accessible).
-        output: Output tensor (NPU-accessible, same shape and dtype as ``input``).
-        *params: Additional parameters forwarded to ``func``.
-        tile_size (int, optional): Number of elements per tile. Defaults to 16.
+        N: Number of elements in the (1-D) input/output tensors.
+        dtype: Element dtype shared by input and output.
+        tile_size: Number of elements per tile. Defaults to 16.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return transform_typed(func, tensor_ty, tile_size=tile_size)
 
-    return _transform_gen(func, [input], output, *params, tile_size=tile_size)
 
-
-def transform_binary(func, first, second, output, *params, tile_size=16):
-    """Apply ``func`` to ``first`` and ``second`` and write results to ``output`` using tiled processing on a single AIE core.
+def transform_binary(
+    first: In,
+    second: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+):
+    """Apply ``func`` to ``first`` and ``second`` and write results to
+    ``output`` using tiled processing on a single AIE core.  JIT-friendly.
 
     Args:
+        first: First input tensor placeholder (``In``).
+        second: Second input tensor placeholder (``In``, same shape/dtype as
+            ``first``).
+        output: Output tensor placeholder (``Out``, same shape/dtype as inputs).
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
-        first: First input tensor (NPU-accessible).
-        second: Second input tensor (NPU-accessible, same shape and dtype as ``first``).
-        output: Output tensor (NPU-accessible, same shape and dtype as inputs).
-        *params: Additional parameters forwarded to ``func``.
-        tile_size (int, optional): Number of elements per tile. Defaults to 16.
+        N: Number of elements in each tensor.
+        dtype: Element dtype shared by all three tensors.
+        tile_size: Number of elements per tile. Defaults to 16.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return transform_binary_typed(func, tensor_ty, tile_size=tile_size)
 
-    return _transform_gen(func, [first, second], output, *params, tile_size=tile_size)
 
-
-def transform_parallel(func, input, output, *params, tile_size=16):
-    """Apply ``func`` to ``input`` in parallel across all available NPU columns.
+def transform_parallel(
+    input: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+):
+    """Apply ``func`` to ``input`` in parallel across all available NPU
+    columns.  JIT-friendly.
 
     Distributes the input tensor evenly across columns; each column processes
     ``tile_size`` elements per iteration.
 
     Args:
+        input: Input tensor placeholder (``In``).
+        output: Output tensor placeholder (``Out``, same shape/dtype as
+            ``input``).
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
-        input: Input tensor (NPU-accessible).
-        output: Output tensor (NPU-accessible, same shape and dtype as ``input``).
-        *params: Additional parameters forwarded to ``func``.
-        tile_size (int, optional): Number of elements per tile per column. Defaults to 16.
+        N: Number of elements in the (1-D) tensors.
+        dtype: Element dtype shared by input and output.
+        tile_size: Number of elements per tile per column. Defaults to 16.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return transform_parallel_typed(func, tensor_ty, tile_size=tile_size)
 
-    return _transform_parallel_gen(func, [input], output, *params, tile_size=tile_size)
 
-
-def transform_parallel_binary(func, first, second, output, *params, tile_size=16):
-    """Apply ``func`` to ``first`` and ``second`` in parallel across all available NPU columns.
+def transform_parallel_binary(
+    first: In,
+    second: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+):
+    """Apply ``func`` to ``first`` and ``second`` in parallel across all
+    available NPU columns.  JIT-friendly.
 
     Args:
+        first: First input tensor placeholder (``In``).
+        second: Second input tensor placeholder (``In``, same shape/dtype as
+            ``first``).
+        output: Output tensor placeholder (``Out``, same shape/dtype as inputs).
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
-        first: First input tensor (NPU-accessible).
-        second: Second input tensor (NPU-accessible, same shape and dtype as ``first``).
-        output: Output tensor (NPU-accessible, same shape and dtype as inputs).
-        *params: Additional parameters forwarded to ``func``.
-        tile_size (int, optional): Number of elements per tile per column. Defaults to 16.
+        N: Number of elements in each tensor.
+        dtype: Element dtype shared by all three tensors.
+        tile_size: Number of elements per tile per column. Defaults to 16.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-
-    return _transform_parallel_gen(
-        func, [first, second], output, *params, tile_size=tile_size
-    )
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return transform_parallel_binary_typed(func, tensor_ty, tile_size=tile_size)
