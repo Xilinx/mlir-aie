@@ -250,6 +250,40 @@ class TestJitDecorator:
             f"Got: {[str(x.message) for x in unbound_warnings]}"
         )
 
+    def test_guard_1c_unannotated_scalar_with_default_raises(self):
+        """An unannotated non-tensor param with a default value would silently
+        bake the default into the compiled MLIR and ignore per-call overrides.
+        @iron.jit must reject this at decoration time and point users at
+        Compile[T] = default (or, eventually, Rtp[T])."""
+        with pytest.raises(TypeError, match="silently ignored"):
+
+            @jit
+            def gen(x: In, y: Out, *, factor: int = 7, N: Compile[int]):
+                pass
+
+    def test_guard_1c_unannotated_scalar_no_default_is_allowed(self):
+        """No-default unannotated params already error naturally at compile
+        time (TypeError missing kwarg) — they're not silent.  Guard 1-C only
+        rejects the silent-default case, so this should decorate fine."""
+
+        # Should NOT raise at decoration time.
+        @jit
+        def gen(x: In, y: Out, *, factor: int, N: Compile[int]):
+            pass
+
+        assert isinstance(gen, CallableDesign)
+
+    def test_guard_1c_compile_t_with_default_is_allowed(self):
+        """Compile[T] with default IS the supported way to express 'I want a
+        default value, recompile on per-call change'.  Must not be rejected
+        by Guard 1-C."""
+
+        @jit
+        def gen(x: In, y: Out, *, N: Compile[int] = 1024):
+            pass
+
+        assert isinstance(gen, CallableDesign)
+
     def test_jit_creates_distinct_designs_per_decoration(self):
         @jit(M=256)
         def gen_a(a: In, *, M: Compile[int]):

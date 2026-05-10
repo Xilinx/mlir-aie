@@ -87,7 +87,7 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
     if callable(mlir_generator):
         from aie.utils.compile.jit.compilabledesign import split_params
 
-        compile_params, _, _ = split_params(mlir_generator)
+        compile_params, _, scalar_params = split_params(mlir_generator)
 
         # Guard 1-A: reject any compile kwarg that doesn't match a Compile[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)
@@ -102,6 +102,33 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
                     f"  Valid Compile[T] params: {compile_params}.\n"
                     f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}."
                 )
+
+        # Guard 1-C: reject unannotated non-tensor params with default values.
+        # The framework has no plumbing for runtime scalar args yet (RTPs are
+        # tracked as a follow-up — see project memory), so a default value
+        # gets baked into the compiled MLIR at decoration time and any per-
+        # call override is *silently* ignored.  That's the worst kind of bug:
+        # the kernel runs successfully but with the wrong value.  Force the
+        # author to be explicit instead.
+        sig_for_defaults = _inspect.signature(mlir_generator)
+        silent_default_scalars = [
+            name
+            for name in scalar_params
+            if sig_for_defaults.parameters[name].default is not _inspect.Parameter.empty
+        ]
+        if silent_default_scalars:
+            raise TypeError(
+                f"@iron.jit: parameter(s) {silent_default_scalars!r} of "
+                f"{mlir_generator.__name__!r} have default values but no "
+                f"In / Out / InOut / Compile[T] annotation.  The framework has "
+                f"no runtime-scalar plumbing yet, so the default would be "
+                f"baked into the compiled kernel and per-call overrides "
+                f"silently ignored.\n"
+                f"  Fix options:\n"
+                f"    * Use Compile[T] = default to keep the default and "
+                f"recompile on per-call change.\n"
+                f"    * Annotate as In / Out / InOut if it's a tensor."
+            )
 
         # Guard: Compile[T] params must be keyword-only (unless pre-bound or
         # have a signature default).  Pre-bound and defaulted params are exempt
