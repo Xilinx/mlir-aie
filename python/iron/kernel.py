@@ -308,6 +308,7 @@ class ExternalFunction(Kernel):
         compile_flags: list[str] = [],
         *,
         symbol_prefix: str | None = None,
+        use_chess: bool = False,
     ) -> None:
         """
         Args:
@@ -321,14 +322,22 @@ class ExternalFunction(Kernel):
                 ``source_file``.
             arg_types: Type signature of the function arguments.  Defaults to
                 [].
-            include_dirs: Additional ``-I`` directories passed to the Peano
-                compiler.  Defaults to [].
-            compile_flags: Additional flags passed verbatim to the Peano
+            include_dirs: Additional ``-I`` directories passed to the chosen
+                compiler (Peano by default; xchesscc when ``use_chess=True``).
+                Defaults to [].
+            compile_flags: Additional flags passed verbatim to the chosen
                 compiler.  Defaults to [].
             symbol_prefix: Optional prefix for the exported symbol name.  When
                 set, the effective symbol name becomes ``<symbol_prefix>_<name>``
                 and the object file is named accordingly.  The original name is
                 preserved in ``_original_name`` for source file naming.
+            use_chess: When ``True``, this ExternalFunction's source is
+                compiled with ``xchesscc_wrapper`` instead of Peano's
+                ``clang++``.  The JIT compile orchestration auto-detects the
+                design-level toolchain from the registered EFs and switches
+                aiecc's front-end accordingly; mixing chess + peano EFs in
+                one design is rejected loudly because aiecc only invokes one
+                front-end per compile.
         """
         self._original_name = name
         self._symbol_prefix = symbol_prefix
@@ -348,6 +357,7 @@ class ExternalFunction(Kernel):
 
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
+        self._use_chess = use_chess
         self._compiled = False
         self._cached_digest: str | None = None
 
@@ -437,6 +447,10 @@ class ExternalFunction(Kernel):
             str(self._arg_types),
             str(include_dir_mtimes),
             str(sorted(self._compile_flags)),
+            # Toolchain choice (peano vs chess) changes the resulting .o
+            # contents even when name + arg_types + flags + source are
+            # identical, so the digest must distinguish them.
+            f"chess={self._use_chess}",
         ]
         if self._source_string:
             parts.append(self._source_string)

@@ -180,22 +180,31 @@ def _make_extern(
     arg_types: list,
     *,
     compile_flags: list[str] | None = None,
+    use_chess: bool = False,
 ) -> ExternalFunction:
     """Construct (or reuse) an ExternalFunction with the standard include_dirs.
 
-    Memoized on (func_name, source_path, arg_types, compile_flags) so
-    repeated calls with identical parameters return the SAME
-    ExternalFunction instance (see ``_EXTERN_CACHE`` for rationale).
+    Memoized on (func_name, source_path, arg_types, compile_flags,
+    use_chess) so repeated calls with identical parameters return the
+    SAME ExternalFunction instance (see ``_EXTERN_CACHE`` for rationale).
 
     Different parameterizations get distinct instances AND distinct
     ``object_file_name``s — the latter is auto-suffixed with a short
-    digest of ``compile_flags`` so per-parameterization .o files don't
+    digest of the cache key so per-parameterization .o files don't
     overwrite each other on disk.  The default ``<name>.o`` is preserved
-    when ``compile_flags`` is empty (no parameterization to disambiguate).
+    when ``compile_flags`` is empty AND ``use_chess`` is False (no
+    parameterization to disambiguate).
+
+    ``use_chess`` selects the Chess (xchesscc) compiler instead of Peano
+    for this kernel's .o build.  See
+    :class:`aie.iron.kernel.ExternalFunction` for the design-level
+    contract: all EFs in a single ``@iron.jit`` design must share the
+    same toolchain choice (mixed peano/chess is rejected at compile
+    time).
     """
     flags_tuple = tuple(compile_flags or [])
     arg_keys = tuple(_arg_type_key(t) for t in arg_types)
-    cache_key = (func_name, str(source_path), arg_keys, flags_tuple)
+    cache_key = (func_name, str(source_path), arg_keys, flags_tuple, use_chess)
     cached = _EXTERN_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -249,6 +258,7 @@ def _make_extern(
         include_dirs=_include_dirs(),
         compile_flags=list(flags_tuple),
         symbol_prefix=symbol_prefix,
+        use_chess=use_chess,
     )
     _EXTERN_CACHE[cache_key] = extern
     return extern

@@ -509,6 +509,28 @@ class CompilableDesign:
                 # Compile any ExternalFunction kernels created during generation.
                 external_kernels = list(ExternalFunction._instances)
                 ExternalFunction._instances.clear()
+
+                # Auto-detect the design's toolchain choice from the
+                # registered ExternalFunctions.  All EFs in one design must
+                # agree (aiecc itself only invokes one front-end per
+                # compile); a mix would silently produce a broken xclbin.
+                # See test_design_chess_peano_mixed_raises for the test.
+                chess_uses = {getattr(f, "_use_chess", False) for f in external_kernels}
+                if len(chess_uses) > 1:
+                    chess_funcs = [f._name for f in external_kernels if f._use_chess]
+                    peano_funcs = [
+                        f._name for f in external_kernels if not f._use_chess
+                    ]
+                    raise RuntimeError(
+                        "Mixed peano + chess ExternalFunctions in one "
+                        f"@iron.jit design ({self.generator_name!r}): "
+                        f"chess={chess_funcs}, peano={peano_funcs}.  aiecc "
+                        "can only invoke one front-end per compile; pick one "
+                        "toolchain consistently across all kernels.X helper "
+                        "calls in this design."
+                    )
+                use_chess = chess_uses == {True}
+
                 for func in external_kernels:
                     if not func._compiled:
                         compile_external_kernel(func, kernel_dir, target_arch)
@@ -518,6 +540,7 @@ class CompilableDesign:
                     insts_path=inst_path,
                     xclbin_path=xclbin_path,
                     work_dir=kernel_dir,
+                    use_chess=use_chess,
                 )
 
                 # Verify that the expected output files were actually created.

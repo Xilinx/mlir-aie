@@ -975,3 +975,184 @@ def test_arg_dtype_out_of_range_raises():
     ef = kernels.passthrough(tile_size=64, dtype=np.int32)
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_dtype(99)
+
+
+# ---------------------------------------------------------------------------
+# use_chess=True opt-in plumbing through kernels.X → _make_extern →
+# ExternalFunction → JIT compile orchestration (chess infra PR).
+#
+# These tests exercise only the Python plumbing — the actual xchesscc_wrapper
+# invocation is hardware-verified manually (see the chess infra plan).
+# ---------------------------------------------------------------------------
+
+
+def test_kernels_mm_use_chess_carries_flag():
+    """kernels.mm(use_chess=True) propagates the flag onto the ExternalFunction.
+
+    The JIT compile orchestration reads ``ef._use_chess`` to decide between
+    invoking ``xchesscc_wrapper`` and ``clang++`` (and to pick the matching
+    aiecc front-end).  If the flag doesn't make it onto the EF, the kernel
+    silently builds with peano even when the user asked for chess.
+    """
+    ef_chess = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=np.int16,
+        output_dtype=np.int16,
+        use_chess=True,
+    )
+    ef_peano = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=np.int16,
+        output_dtype=np.int16,
+        use_chess=False,
+    )
+    assert ef_chess._use_chess is True
+    assert ef_peano._use_chess is False
+
+
+def test_kernels_mm_default_use_chess_is_false():
+    """Omitting use_chess defaults to peano — chess must be opt-in."""
+    ef = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
+    )
+    assert ef._use_chess is False
+
+
+def test_kernels_mm_chess_distinct_digest_from_peano():
+    """Same params + different toolchain → different content digest.
+
+    Without this distinction, the per-EF .o cache would treat chess- and
+    peano-built objects as interchangeable; the second compile would skip
+    rebuilding even though the toolchain changed, and the wrong .o would
+    end up linked into the xclbin.
+    """
+    ef_chess = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    ef_peano = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
+    assert ef_chess._content_digest() != ef_peano._content_digest()
+
+
+def test_kernels_mm_chess_distinct_object_file_from_peano():
+    """Distinct digest → distinct object_file_name (same disambiguation channel
+    used for compile_flags / b_col_maj / c_col_maj / etc.)."""
+    ef_chess = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    ef_peano = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
+    assert ef_chess.object_file_name != ef_peano.object_file_name
+
+
+def test_kernels_mm_chess_and_peano_get_distinct_instances():
+    """Memoization keys on use_chess: chess and peano variants of the same
+    shape/dtype return distinct ExternalFunctions (not aliased)."""
+    ef_chess = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    ef_peano = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
+    assert ef_chess is not ef_peano
+
+
+def test_kernels_mm_chess_memoized_same_params():
+    """Two identical kernels.mm(use_chess=True) calls return the same instance
+    (the memoization layer must include use_chess in its cache key but not
+    treat each call as new)."""
+    ef1 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    assert ef1 is ef2
+
+
+def test_kernels_mm_chess_triggers_auto_symbol_prefix():
+    """When chess and peano variants of the same kernel coexist, the second
+    one through must get an auto-prefixed symbol — otherwise both .o files
+    export the same symbol and the linker rejects the duplicate.
+
+    Mirrors the existing two-versions test but along the use_chess axis
+    instead of c_col_maj.
+    """
+    ef_first = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
+    ef_second = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    assert ef_first._name != ef_second._name
+    assert ef_first._symbol_prefix is None
+    assert ef_second._symbol_prefix is not None and len(ef_second._symbol_prefix) == 8
+
+
+def test_mm_zero_use_chess_carries_flag():
+    """kernels.mm_zero also forwards use_chess (paired-with-mm requirement)."""
+    ef = kernels.mm_zero(
+        dim_m=64, dim_k=64, dim_n=32, output_dtype=np.int16, use_chess=True
+    )
+    assert ef._use_chess is True
+
+
+def test_mv_use_chess_carries_flag():
+    """kernels.mv also forwards use_chess."""
+    ef = kernels.mv(dim_m=32, dim_k=32, use_chess=True)
+    assert ef._use_chess is True
+
+
+def test_cascade_mm_use_chess_carries_flag():
+    """kernels.cascade_mm also forwards use_chess."""
+    ef = kernels.cascade_mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=np.int16,
+        output_dtype=np.int16,
+        cascade_mode="get_only",
+        use_chess=True,
+    )
+    assert ef._use_chess is True
+
+
+def test_compute_hash_distinguishes_use_chess_literal():
+    """A generator that captures ``use_chess=True`` as a literal must hash
+    differently from one that captures ``use_chess=False``.
+
+    The ``_compute_hash`` function runs BEFORE the generator is invoked, so
+    it can't read ``ef._use_chess`` directly — it relies on bytecode +
+    co_consts for any literal constants the generator carries.  This test
+    pins that behaviour: if Python ever stops emitting the bool literal into
+    co_consts, the design-level cache would silently alias chess and peano
+    builds at the same ``final.xclbin`` and one would overwrite the other
+    on cache miss.
+
+    Closure-captured / global-captured ``use_chess`` is a known limitation
+    (same as for any other closure-captured constant); we don't pin it.
+    """
+    from aie.utils.compile.jit.compilabledesign import _compute_hash
+
+    def gen_chess():
+        return kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+
+    def gen_peano():
+        return kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
+
+    h_chess = _compute_hash(gen_chess, {}, [], [], [], [])
+    h_peano = _compute_hash(gen_peano, {}, [], [], [], [])
+    assert h_chess != h_peano
+
+
+def test_mixed_chess_peano_set_is_detectable():
+    """The orchestration's mixed-mode detection (in CompilableDesign.compile)
+    keys on ``{getattr(f, "_use_chess", False) for f in external_kernels}``;
+    a set of size > 1 means mixed and must trigger the RuntimeError.
+
+    This pins the contract the EFs hold up (each carries ``_use_chess``) so
+    that the orchestration's set comprehension actually produces > 1 element
+    when peano + chess EFs are mixed.  The full RuntimeError raise path is
+    hardware-verified via the chess JIT integration test, not here — it'd
+    require iron device setup and would invoke aiecc.
+    """
+    ef_chess = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    ef_peano = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
+    chess_uses = {getattr(f, "_use_chess", False) for f in (ef_chess, ef_peano)}
+    assert len(chess_uses) == 2  # mixed → orchestration would raise
+
+
+def test_all_chess_set_is_unanimous():
+    """Inverse of the mixed-mode test: an all-chess design has chess_uses == {True}."""
+    ef1 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    ef2 = kernels.mm_zero(
+        dim_m=64, dim_k=64, dim_n=32, output_dtype=np.int16, use_chess=True
+    )
+    chess_uses = {getattr(f, "_use_chess", False) for f in (ef1, ef2)}
+    assert chess_uses == {True}

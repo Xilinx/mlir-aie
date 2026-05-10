@@ -83,6 +83,7 @@ def mm(
     vectorized: bool = True,
     b_col_maj: bool = False,
     c_col_maj: bool = False,
+    use_chess: bool = False,
 ) -> ExternalFunction:
     """Matrix-multiply kernel: C += A * B.
 
@@ -108,6 +109,12 @@ def mm(
             ``mm.cc`` selects the matching write path via
             ``#ifdef C_COL_MAJ``; without this flag the kernel emits
             row-major C regardless of the design's plumbing.
+        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
+            instead of Peano's ``clang++``.  Mirrors the legacy
+            ``makefile-common`` ``use_chess=1`` path.  All
+            ExternalFunctions in a single ``@iron.jit`` design must
+            share the same toolchain choice (mixing peano + chess EFs
+            in one design is rejected at compile time).
 
     Returns:
         ExternalFunction configured for the matmul kernel.
@@ -146,6 +153,7 @@ def mm(
         _default_source_path("mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=compile_flags,
+        use_chess=use_chess,
     )
     # Attach the (r, s, t) MMUL micro-kernel dims for the arch the source
     # was just resolved for.  Designs read `kernel.mac_dims` to drive their
@@ -162,6 +170,7 @@ def mm_zero(
     dim_n: int = 64,
     output_dtype=np.int16,
     vectorized: bool = True,
+    use_chess: bool = False,
 ) -> ExternalFunction:
     """Zero-fill kernel companion for :func:`mm`.
 
@@ -176,6 +185,10 @@ def mm_zero(
         dim_n: Number of columns.
         output_dtype: Element type of the output matrix.
         vectorized: If ``True`` use the vectorized variant.
+        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
+            instead of Peano's ``clang++``.  Must agree with the paired
+            :func:`mm` call's ``use_chess``; mixed peano/chess in one
+            design is rejected at compile time.
 
     Returns:
         ExternalFunction configured for the zero kernel.
@@ -206,6 +219,7 @@ def mm_zero(
             # call.  See aie_kernels/aie2{,p}/mm.cc for the gating macro.
             "-DZERO_ONLY",
         ],
+        use_chess=use_chess,
     )
 
 
@@ -215,6 +229,7 @@ def mv(
     input_dtype=np.int16,
     output_dtype=np.int32,
     vectorized: bool = True,
+    use_chess: bool = False,
 ) -> ExternalFunction:
     """Matrix-vector multiply kernel: c += A * b.
 
@@ -224,6 +239,9 @@ def mv(
         input_dtype: Input element type. Only ``np.int16`` is supported.
         output_dtype: Output element type. Only ``np.int32`` is supported.
         vectorized: If ``True`` use the vectorized variant.
+        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
+            instead of Peano.  See :func:`mm` for the design-level
+            constraint (all EFs in one design must agree).
 
     Returns:
         ExternalFunction configured for the matvec kernel.
@@ -246,6 +264,7 @@ def mv(
         _default_source_path("mv.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
+        use_chess=use_chess,
     )
 
 
@@ -256,6 +275,7 @@ def cascade_mm(
     input_dtype=np.int16,
     output_dtype=np.int16,
     cascade_mode: str = "get_only",
+    use_chess: bool = False,
 ) -> ExternalFunction:
     """Cascade matrix-multiply kernel for multi-core accumulation.
 
@@ -268,6 +288,9 @@ def cascade_mm(
         input_dtype: Input element type.
         output_dtype: Output element type.
         cascade_mode: One of ``"put_only"``, ``"get_only"``, ``"put_get"``.
+        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
+            instead of Peano.  See :func:`mm` for the design-level
+            constraint (all EFs in one design must agree).
 
     Returns:
         ExternalFunction configured for the cascade matmul kernel.
@@ -301,4 +324,5 @@ def cascade_mm(
             f"-DDIM_K={dim_k}",
             f"-DDIM_N={dim_n}",
         ],
+        use_chess=use_chess,
     )
