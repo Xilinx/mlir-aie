@@ -14,11 +14,100 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 from .. import ir  # type: ignore
+from ..dialects import memref  # type: ignore
 from ..extras.dialects.func import FuncOp  # type: ignore
 from ..helpers.dialects.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable
 from .buffer import Buffer
+
+
+def _is_contiguous_row_major(mr):
+    """True iff ``mr`` is a fully-static row-major contiguous memref at offset 0.
+
+    A default memref like ``memref<64x32xi16>`` qualifies; a strided view
+    such as ``memref<64x32xi16, strided<[64, 1]>>`` produced by a slice or
+    a custom layout does not.  We require this before emitting a
+    ``memref.collapse_shape`` because collapse-on-non-contiguous-dims is
+    undefined behaviour at the MLIR level and would silently produce
+    wrong DMAs / loads.
+    """
+    if any(d < 0 for d in mr.shape):
+        return False
+    try:
+        strides, offset = mr.get_strides_and_offset()
+    except Exception:
+        # No expressible stride layout → conservatively refuse.
+        return False
+    if offset != 0:
+        return False
+    expected = []
+    running = 1
+    for d in reversed(mr.shape):
+        expected.append(running)
+        running *= d
+    expected.reverse()
+    return list(strides) == expected
+
+
+def _maybe_collapse_to_match(arg, expected_ty):
+    """Bridge an N-D contiguous memref arg to a 1-D kernel arg signature.
+
+    Iron designs naturally hold multi-dimensional ObjectFifo elements (e.g.
+    a matmul L1 buffer typed ``memref<64x64xi16>``) but the
+    ``aie.iron.kernels.X`` helpers (``mm``, ``mm_zero``, ``passthrough``,
+    ...) declare flat 1-D arg signatures (``memref<4096xi16>``) because the
+    underlying C++ kernels read pointers and re-stride internally.  Without
+    an adapter, the resulting ``func.call`` fails MLIR verification with
+    a memref-shape mismatch even though the bytes line up perfectly.
+
+    This helper inserts a ``memref.collapse_shape`` to flatten such an
+    argument when ALL of the following hold:
+
+      * ``arg`` is a memref-typed Value with rank ≥ 1
+      * ``expected_ty`` is a rank-1 memref
+      * element types match
+      * the source memref is **fully static, row-major contiguous, offset 0**
+        (verified by :func:`_is_contiguous_row_major`)
+      * total static element counts match
+
+    Any other case is returned unchanged so MLIR's existing verification
+    fires on real bugs rather than being silenced here.  In particular,
+    strided views, partial-collapse reshapes, transposes, and rank-
+    preserving permutations are all left alone.
+
+    The collapsed memref aliases the same underlying storage — no copy or
+    allocation is emitted.
+    """
+    # Non-Value args (Python scalars, etc.) pass through.
+    if not isinstance(arg, ir.Value):
+        return arg
+    arg_ty = arg.type
+    if not (isinstance(arg_ty, ir.MemRefType) and isinstance(expected_ty, ir.MemRefType)):
+        return arg
+    arg_mr = arg_ty
+    exp_mr = expected_ty
+    if arg_mr == exp_mr:
+        return arg
+    if arg_mr.element_type != exp_mr.element_type:
+        return arg
+    # Only collapse N-D → 1-D for now; other reshapes (rank-preserving
+    # permutations, partial collapses) are real semantic differences and
+    # should fail loudly.
+    if exp_mr.rank != 1 or arg_mr.rank < 1:
+        return arg
+    if any(d < 0 for d in exp_mr.shape):
+        return arg
+    if not _is_contiguous_row_major(arg_mr):
+        return arg
+    arg_count = 1
+    for d in arg_mr.shape:
+        arg_count *= d
+    if arg_count != exp_mr.shape[0]:
+        return arg
+    # All N input dims collapse into the single output dim.
+    reassociation = [list(range(arg_mr.rank))]
+    return memref.collapse_shape(exp_mr, arg, reassociation)
 
 
 class BaseKernel(Resolvable):
@@ -75,7 +164,17 @@ class BaseKernel(Resolvable):
         return self._arg_types.copy()
 
     def __call__(self, *args, **kwargs):
-        """Emit a func.call to this kernel, validating argument count."""
+        """Emit a func.call to this kernel, validating argument count.
+
+        Each argument is passed through :func:`_maybe_collapse_to_match`
+        before the call.  This silently inserts a ``memref.collapse_shape``
+        when an N-D contiguous memref arg is being fed into a 1-D kernel
+        signature with the same element count and dtype — the typical case
+        when an iron design holds 2-D ObjectFifo elements but the
+        ``aie.iron.kernels.X`` helper declares a flat 1-D arg.  See that
+        helper's docstring for the full set of conditions.  Real shape /
+        dtype mismatches still fail at MLIR verification time.
+        """
         if not self._op:
             raise ValueError("Kernel must be resolved before it can be called.")
         if len(args) != len(self._arg_types):
@@ -84,7 +183,12 @@ class BaseKernel(Resolvable):
                 f"argument(s), but {len(args)} were provided."
             )
         arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
-        call(self._op, arg_ops, **kwargs)
+        expected_input_types = self._op.function_type.value.inputs
+        adapted = [
+            _maybe_collapse_to_match(a, expected_ty)
+            for a, expected_ty in zip(arg_ops, expected_input_types)
+        ]
+        call(self._op, adapted, **kwargs)
 
 
 class Kernel(BaseKernel):
