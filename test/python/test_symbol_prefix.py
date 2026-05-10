@@ -13,6 +13,19 @@ import pytest
 from aie.iron.kernel import ExternalFunction
 
 
+@pytest.fixture(autouse=True)
+def _isolate_extern_state():
+    """Reset the process-wide ExternalFunction registry between tests so the
+    collision check (introduced in 80e3f5a87f) doesn't fire when a later test
+    constructs an EF whose ``(name, object_file_name)`` was already used by an
+    earlier test with a different source / compile_flags.  All tests in this
+    file reuse name ``"mm"`` with prefix ``"op_a"`` but vary source_string,
+    which trips the check without isolation."""
+    ExternalFunction._instances.clear()
+    yield
+    ExternalFunction._instances.clear()
+
+
 def _make_ef(name, symbol_prefix=None, source_string="void f(){}"):
     return ExternalFunction(
         name,
