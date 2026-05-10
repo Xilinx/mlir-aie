@@ -6,20 +6,38 @@
 # Copyright (C) 2026, Advanced Micro Devices, Inc.
 """Emit a graphviz DOT diagram for an IRON design.
 
-Walks a list of `Worker` objects (the design tree), collects ObjectFifos via
-their fn_args, and renders:
+Walks a list of `Worker` objects (the design tree) and collects three kinds
+of inter-tile connection:
 
-  - one node per Worker (labeled with tile coords + first kernel name)
-  - one edge per ObjectFifo (labeled with element shape and depth)
-  - subgraphs grouping workers by tile column (visual spatial layout)
+  - ObjectFifos via worker.fn_args (._object_fifo on each handle)
+  - CascadeFlows via worker._outgoing_cascades
+  - StaticWeightStream-like objects via worker.fn_args
+    (duck-typed by the presence of _memtile + _compute attrs)
+
+Renders:
+
+  - one node per AIE tile, pinned to its (col, row) chip coordinates
+    (shim row 0 at the bottom, memtile row 1 above, compute on top)
+  - ObjectFifo edges: solid black, label = element shape and depth
+  - CascadeFlow edges: dashed red, label = "cascade"
+  - StaticWeightStream edges: dotted blue, label = "static W: <name>"
+    (with an extra hop through the ping-pong memtile if one is configured)
   - colors: shim (row 0) blue, memtile (row 1) green, compute orange
 
+Layout uses the `neato` engine with hard-pinned positions so the diagram
+matches the chip floorplan. The DOT file sets `layout=neato`, so either
+`neato -Tpng` or `dot -Tpng` will pick up the right engine.
+
 Run via the --dot flag on aie2_mobilenet_iron.py:
-  python3 aie2_mobilenet_iron.py --dot | dot -Tpng -o /tmp/m.png
+  python3 aie2_mobilenet_iron.py --dot | neato -Tpng -o /tmp/m.png
 """
 
 import sys
 from collections import defaultdict
+
+# Spatial layout scales (graphviz inches per tile column/row).
+SCALE_X = 1.5
+SCALE_Y = 1.2
 
 
 # ---------------------------------------------------------------------------
@@ -46,20 +64,27 @@ def _kernel_name(arg):
     return n if isinstance(n, str) else None
 
 
-def _worker_label(worker):
-    """Short label: tile coords + first kernel name + while_true marker."""
-    t = worker._tile
-    coord = f"({t.col},{t.row})"
+def _worker_kernel(worker):
+    """Compact kernel-name string for `worker`, or None if it has no kernel arg."""
     kernels = [_kernel_name(a) for a in worker.fn_args if _kernel_name(a) is not None]
-    if kernels:
-        # Strip leading bn-prefix to keep the label compact (already grouped visually).
-        label = kernels[0]
-        for prefix in ("bn0_", "bn1_", "bn10_", "bn11_", "bn12_", "bn13_", "bn14_"):
-            if label.startswith(prefix):
-                label = label[len(prefix) :]
-                break
-        return f"{coord}\\n{label}"
-    return coord
+    if not kernels:
+        return None
+    label = kernels[0]
+    for prefix in ("bn0_", "bn1_", "bn10_", "bn11_", "bn12_", "bn13_", "bn14_"):
+        if label.startswith(prefix):
+            label = label[len(prefix) :]
+            break
+    return label
+
+
+def _node_id(tile):
+    return f"t{tile.col}_{tile.row}"
+
+
+def _tile_pos(tile):
+    # AIE row 0 (shim) is at the bottom of the chip; graphviz Y also grows up,
+    # so row → y is a direct mapping (no flip needed).
+    return f"{tile.col * SCALE_X},{tile.row * SCALE_Y}!"
 
 
 def _fifo_handles(worker):
@@ -68,6 +93,13 @@ def _fifo_handles(worker):
         of = getattr(arg, "_object_fifo", None)
         if of is not None:
             yield arg, of
+
+
+def _static_weight_streams(worker):
+    """Yield StaticWeightStream-like objects in worker.fn_args (duck-typed)."""
+    for arg in worker.fn_args:
+        if hasattr(arg, "_memtile") and hasattr(arg, "_compute"):
+            yield arg
 
 
 # ---------------------------------------------------------------------------
@@ -88,34 +120,54 @@ def emit_dot(workers, out=sys.stdout):
             side = "prod" if handle._is_prod else "cons"
             fifo_endpoints[id(fifo)][side].append(w)
 
-    # 2. Group workers by tile column (visual layout).
-    by_col = defaultdict(list)
+    # 2. Dedup StaticWeightStreams by identity (one stream may be passed to
+    #    several workers' fn_args).
+    static_streams = {}
     for w in workers:
-        by_col[w._tile.col].append(w)
+        for s in _static_weight_streams(w):
+            static_streams[id(s)] = s
 
-    # 3. Emit DOT.
+    # 3. Collect every tile we need to render: workers' tiles, plus any
+    #    memtiles referenced only by static-weight streams.
+    tiles_by_coord = {}  # (col,row) -> tile object
+    workers_by_coord = defaultdict(list)
+    for w in workers:
+        coord = (w._tile.col, w._tile.row)
+        tiles_by_coord[coord] = w._tile
+        workers_by_coord[coord].append(w)
+    for s in static_streams.values():
+        for t in (s._memtile, s._compute, s._ping_pong_memtile):
+            if t is None:
+                continue
+            tiles_by_coord[(t.col, t.row)] = t
+
+    # 4. Emit DOT header.
     print("digraph mobilenet {", file=out)
-    print("  rankdir=TB;", file=out)
-    print("  graph [splines=ortho, nodesep=0.4, ranksep=0.5];", file=out)
+    print("  layout=neato;", file=out)
+    print("  graph [overlap=false, splines=true];", file=out)
     print(
         '  node  [shape=box, style="filled,rounded", fontname="Helvetica"];', file=out
     )
     print('  edge  [fontname="Helvetica", fontsize=9];', file=out)
     print(file=out)
 
-    for col in sorted(by_col):
-        print(f"  subgraph cluster_col{col} {{", file=out)
-        print(f'    label="col {col}"; style=dotted; fontsize=10;', file=out)
-        # Sort within column by row (top to bottom = row 0 → row N).
-        for w in sorted(by_col[col], key=lambda w: w._tile.row):
-            label = _worker_label(w)
-            color = _tile_color(w._tile)
-            print(f'    "w{id(w)}" [label="{label}", fillcolor={color}];', file=out)
-        print("  }", file=out)
+    # 5. Emit one node per tile, pinned to chip coordinates.
+    for coord, tile in sorted(tiles_by_coord.items()):
+        kernels = [
+            k for k in (_worker_kernel(w) for w in workers_by_coord.get(coord, [])) if k
+        ]
+        coord_str = f"({tile.col},{tile.row})"
+        label = coord_str + ("\\n" + "\\n".join(kernels) if kernels else "")
+        color = _tile_color(tile)
+        pos = _tile_pos(tile)
+        print(
+            f'  "{_node_id(tile)}" [label="{label}", fillcolor={color}, pos="{pos}"];',
+            file=out,
+        )
 
     print(file=out)
 
-    # 4. Emit edges. One edge per (producer, consumer) pair per fifo.
+    # 6. ObjectFifo edges (one per producer/consumer pair per fifo).
     for fid, ends in fifo_endpoints.items():
         fifo = seen_fifos[fid]
         shape = "x".join(str(d) for d in fifo.shape)
@@ -126,9 +178,43 @@ def emit_dot(workers, out=sys.stdout):
                 if prod is cons:
                     continue  # self-loop fifo (e.g. bn12_dw_tmp); skip noise
                 print(
-                    f'  "w{id(prod)}" -> "w{id(cons)}" [label={edge_label}];',
+                    f'  "{_node_id(prod._tile)}" -> "{_node_id(cons._tile)}" '
+                    f"[label={edge_label}];",
                     file=out,
                 )
+
+    # 7. CascadeFlow edges (dashed red).
+    for w in workers:
+        for cf in getattr(w, "_outgoing_cascades", []):
+            print(
+                f'  "{_node_id(cf._src._tile)}" -> "{_node_id(cf._dst._tile)}" '
+                f'[label="cascade", style=dashed, color=red];',
+                file=out,
+            )
+
+    # 8. StaticWeightStream edges (dotted blue). Ping-pong memtile, if present,
+    #    is rendered as an extra hop (memtile -> pp_memtile -> compute).
+    for s in static_streams.values():
+        name = getattr(s, "_name", "") or ""
+        edge_label = f'"static W: {name}"'
+        edge_attrs = f"[label={edge_label}, style=dotted, color=blue]"
+        if s._ping_pong_memtile is not None:
+            print(
+                f'  "{_node_id(s._memtile)}" -> '
+                f'"{_node_id(s._ping_pong_memtile)}" {edge_attrs};',
+                file=out,
+            )
+            print(
+                f'  "{_node_id(s._ping_pong_memtile)}" -> '
+                f'"{_node_id(s._compute)}" {edge_attrs};',
+                file=out,
+            )
+        else:
+            print(
+                f'  "{_node_id(s._memtile)}" -> '
+                f'"{_node_id(s._compute)}" {edge_attrs};',
+                file=out,
+            )
 
     print("}", file=out)
 
