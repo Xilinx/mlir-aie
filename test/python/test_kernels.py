@@ -688,8 +688,9 @@ _SHAPES = _flat(KERNEL_SPECS, "shape_checks")
 )
 def test_arg_shape(spec: KernelSpec, kwargs: dict, arg_idx: int, expected_shape: tuple):
     ef = spec.factory(**kwargs)
-    arg = ef._arg_types[arg_idx]
-    assert arg.__args__[0] == expected_shape
+    # Use the public arg_shape() method (which the whats-new notebook also
+    # uses now) — exercises it across every shape_check spec entry.
+    assert ef.arg_shape(arg_idx) == expected_shape
 
 
 _TILE_SIZES = _flat(KERNEL_SPECS, "tile_size_checks")
@@ -925,3 +926,52 @@ def test_kernels_mm_prefixed_object_file_matches_prefixed_name():
     ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef2._object_file_name.startswith(ef2._symbol_prefix)
     assert "matmul_i16_i16" in ef2._object_file_name
+
+
+# ---------------------------------------------------------------------------
+# Public arg_shape() / arg_dtype() introspection methods on BaseKernel.
+# Replace the cryptic ``k.arg_types()[i].__args__[0][0]`` /
+# ``k.arg_types()[i].__args__[1].__args__[0]`` idioms users had to write
+# before.  The whats-new notebook cells 14/15 also use these.
+# ---------------------------------------------------------------------------
+
+
+def test_arg_dtype_returns_numpy_dtype():
+    """arg_dtype() pulls the dtype from a parameterized np.ndarray arg type."""
+    ef = kernels.passthrough(tile_size=4096, dtype=np.int32)
+    assert ef.arg_dtype(0) == np.dtype(np.int32)
+
+
+def test_arg_dtype_distinguishes_per_arg():
+    """Different args can carry different dtypes — arg_dtype handles each."""
+    ef = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int8, output_dtype=np.int32
+    )
+    assert ef.arg_dtype(0) == np.dtype(np.int8)
+    assert ef.arg_dtype(1) == np.dtype(np.int8)
+    assert ef.arg_dtype(2) == np.dtype(np.int32)
+
+
+def test_arg_shape_full_tuple():
+    """arg_shape() returns the complete shape tuple (not just first dim)."""
+    ef = kernels.passthrough(tile_size=2048, dtype=np.int16)
+    assert ef.arg_shape(0) == (2048,)
+
+
+def test_tile_size_equivalent_to_arg_shape_first_dim():
+    """tile_size() is now a convenience wrapper over arg_shape(); confirm."""
+    ef = kernels.passthrough(tile_size=4096, dtype=np.int32)
+    assert ef.tile_size(0) == ef.arg_shape(0)[0]
+
+
+def test_arg_shape_out_of_range_raises():
+    """Out-of-range arg_index gets a clean error — same as tile_size()."""
+    ef = kernels.passthrough(tile_size=64, dtype=np.int32)  # 3 args
+    with pytest.raises(ValueError, match="out of range"):
+        ef.arg_shape(99)
+
+
+def test_arg_dtype_out_of_range_raises():
+    ef = kernels.passthrough(tile_size=64, dtype=np.int32)
+    with pytest.raises(ValueError, match="out of range"):
+        ef.arg_dtype(99)

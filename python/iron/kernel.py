@@ -132,12 +132,8 @@ class BaseKernel(Resolvable):
         self._arg_types = arg_types
         self._op: FuncOp | None = None
 
-    def tile_size(self, arg_index: int = 0) -> int:
-        """Return the first dimension of the array argument at ``arg_index``.
-
-        Args:
-            arg_index: Index into ``arg_types``.  Defaults to 0.
-        """
+    def _resolve_arg(self, arg_index: int):
+        """Validate ``arg_index`` and return the underlying type entry."""
         if not self._arg_types:
             raise ValueError("No argument types defined.")
         if arg_index >= len(self._arg_types):
@@ -145,21 +141,69 @@ class BaseKernel(Resolvable):
                 f"Argument index {arg_index} out of range "
                 f"(max: {len(self._arg_types) - 1})"
             )
-        arg = self._arg_types[arg_index]
+        return self._arg_types[arg_index]
 
-        # numpy array type, e.g. np.ndarray[(16,), np.dtype[np.int32]]
+    def arg_shape(self, arg_index: int = 0) -> tuple[int, ...]:
+        """Return the shape tuple of the array argument at ``arg_index``.
+
+        Works for both ``np.ndarray[(...,), np.dtype[T]]`` parameterized
+        types (the canonical iron kernel signature) and MLIR MemRefType
+        operands.
+
+        Args:
+            arg_index: Index into ``arg_types``.  Defaults to 0.
+
+        Raises:
+            ValueError: When ``arg_index`` is out of range or the
+                argument at that index is not an array type.
+        """
+        arg = self._resolve_arg(arg_index)
         if hasattr(arg, "__args__") and len(arg.__args__) > 0:
             shape_arg = arg.__args__[0]
-            if isinstance(shape_arg, tuple) and len(shape_arg) > 0:
-                return shape_arg[0]
-
-        # MLIR MemRefType
-        if hasattr(arg, "shape") and len(arg.shape) > 0:
-            return arg.shape[0]
-
+            if isinstance(shape_arg, tuple):
+                return shape_arg
+        if hasattr(arg, "shape"):
+            return tuple(arg.shape)
         raise ValueError(
             f"Argument {arg_index} does not have a shape or is not an array type."
         )
+
+    def arg_dtype(self, arg_index: int = 0):
+        """Return the numpy dtype of the array argument at ``arg_index``.
+
+        Args:
+            arg_index: Index into ``arg_types``.  Defaults to 0.
+
+        Raises:
+            ValueError: When ``arg_index`` is out of range or the
+                argument at that index is not an array type.
+        """
+        arg = self._resolve_arg(arg_index)
+        if hasattr(arg, "__args__") and len(arg.__args__) >= 2:
+            dt = arg.__args__[1]
+            return np.dtype(dt.__args__[0]) if hasattr(dt, "__args__") else np.dtype(dt)
+        if hasattr(arg, "dtype"):
+            return np.dtype(arg.dtype)
+        raise ValueError(
+            f"Argument {arg_index} does not have a dtype or is not an array type."
+        )
+
+    def tile_size(self, arg_index: int = 0) -> int:
+        """Return the first dimension of the array argument at ``arg_index``.
+
+        Convenience wrapper over :meth:`arg_shape` for the common case of
+        a 1-D buffer argument.  ``tile_size(i)`` is equivalent to
+        ``arg_shape(i)[0]``.
+
+        Args:
+            arg_index: Index into ``arg_types``.  Defaults to 0.
+        """
+        shape = self.arg_shape(arg_index)
+        if len(shape) == 0:
+            raise ValueError(
+                f"Argument {arg_index} does not have a shape or is not an array type."
+            )
+        return shape[0]
 
     def arg_types(self) -> list:
         """Return a copy of the argument type list."""
