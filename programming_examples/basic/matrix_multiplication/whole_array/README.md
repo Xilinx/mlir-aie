@@ -24,7 +24,7 @@ At a high level, the code does the following (in order):
 
 1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `aie.runtime_sequence()` op sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Direct Memory Access (DMA) transfers, sets memory access patterns, and performs synchronization.
 
-1. **Generating the Design:** The `my_matmul()` function triggers the code generation process and represents the main entry point of the design. The final print statement outputs the MLIR representation of the AIE array configuration.
+1. **Generating the Design:** The `_build_design()` function constructs the IRON design and resolves it to an MLIR module. It is invoked through one of three entry points: the `@iron.jit`-decorated `whole_array()` (host run + verify), the `--print-mlir` CLI mode (legacy MLIR-emit pipeline), or the `my_matmul()` shim used by the visualization notebook with `generate_taps=True`.
 
 In summary, this design leverages an AI Engine accelerator to accomplish matrix multiplication efficiently by breaking large matrices into smaller, manageable submatrices. The design uses parallelism, pipelining, and efficient data movement strategies to minimize computation time on the AI Engine array.
 

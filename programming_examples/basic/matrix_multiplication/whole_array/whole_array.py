@@ -525,6 +525,51 @@ def _device_for_emit(dev_str, n_aie_cols):
     return NPU2()
 
 
+def my_matmul(
+    M,
+    K,
+    N,
+    m,
+    k,
+    n,
+    n_aie_cols,
+    dtype_in_str,
+    dtype_out_str,
+    b_col_maj=0,
+    c_col_maj=0,
+    emulate_bf16_mmul_with_bfp16=False,
+    trace_size=0,
+    generate_taps=False,
+    dev="npu",
+):
+    """Backward-compat entry point used by ``mat_mul_whole_array_visualization.ipynb``.
+
+    Forwards to :func:`_build_design` with ``for_jit=False`` (the legacy
+    MLIR-emit path that the notebook expects).  ``trace_size`` is accepted
+    for signature compatibility with the pre-port ``my_matmul`` but is
+    not currently wired through (the visualization path only consumes
+    ``generate_taps=True``).
+    """
+    dev_obj = _device_for_emit(dev, n_aie_cols)
+    return _build_design(
+        dev_obj,
+        M,
+        K,
+        N,
+        m,
+        k,
+        n,
+        n_aie_cols,
+        dtype_in_str,
+        dtype_out_str,
+        b_col_maj,
+        c_col_maj,
+        emulate_bf16_mmul_with_bfp16,
+        for_jit=False,
+        generate_taps=generate_taps,
+    )
+
+
 def _make_argparser():
     p = argparse.ArgumentParser(
         prog="AIE Matrix Multiplication (Whole Array)",
