@@ -504,12 +504,10 @@ extern "C" {
 // separate .o files with disjoint symbol sets so they can be linked together
 // without duplicate-symbol errors.  See aie2/mm.cc for the same gating.
 #ifndef ZERO_ONLY
-combos(matmul_vectorized_c_func)
-combos(matmul_scalar_c_func)
+combos(matmul_vectorized_c_func) combos(matmul_scalar_c_func)
 #endif
 #ifndef MATMUL_ONLY
-    combos(zero_vectorized_c_func)
-combos(zero_scalar_c_func)
+    combos(zero_vectorized_c_func) combos(zero_scalar_c_func)
 #endif
 
 } // extern "C"
