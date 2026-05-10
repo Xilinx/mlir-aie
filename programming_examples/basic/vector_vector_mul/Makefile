@@ -1,11 +1,11 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
@@ -13,43 +13,27 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
 targetname = vector_vector_mul
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-col = 0
+aie_py_src = ${targetname}.py
 
-aie_py_src=${targetname}.py
-use_placed?=0
+.PHONY: all run run_py vck5000 clean
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+all:
+	@echo "JIT mode: kernel compiles on first 'make run'."
+	@echo "For VCK5000, run 'make vck5000'."
 
-all: build/final.xclbin
+run: run_py
+
+run_py:
+	${powershell} python3 ${srcdir}/${aie_py_src}
+
+# ----------------------------------------------------------------------------
+# VCK5000 path: emit MLIR for XCVC1902, build host via aiecc + test_vck5000.cpp.
+# Unlike the NPU path, VCK5000 does not go through the @iron.jit host runtime.
+# ----------------------------------------------------------------------------
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} > $@
-
-build/final.xclbin: build/aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
-
-${targetname}.exe: ${srcdir}/test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@ 
-endif
-
-
-# Changing variables when we target VCK5000
-vck5000: devicename=xcvc1902
-vck5000: col=6
+	python3 $< --emit-mlir-vck5000 > $@
 
 vck5000: build/aie.mlir
 	aiecc --xchesscc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
@@ -61,10 +45,6 @@ vck5000: build/aie.mlir
 		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
 		-Wl,-R/opt/xaiengine/lib \
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
-
-
-run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe
