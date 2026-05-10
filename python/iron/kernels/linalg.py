@@ -82,6 +82,7 @@ def mm(
     output_dtype=np.int16,
     vectorized: bool = True,
     b_col_maj: bool = False,
+    c_col_maj: bool = False,
 ) -> ExternalFunction:
     """Matrix-multiply kernel: C += A * B.
 
@@ -96,6 +97,12 @@ def mm(
             it consumes B laid out column-major.  Must agree with the
             design's L2→L1 ``dims_to_stream`` for B; the legacy Makefile
             adds the same flag based on its ``b_col_maj`` switch.
+        c_col_maj: If ``True`` compile the kernel with ``-DC_COL_MAJ`` so
+            it writes C laid out column-major.  Must agree with the
+            design's C output ``dims_to_stream`` and DMA descriptors.
+            ``mm.cc`` selects the matching write path via
+            ``#ifdef C_COL_MAJ``; without this flag the kernel emits
+            row-major C regardless of the design's plumbing.
 
     Returns:
         ExternalFunction configured for the matmul kernel.
@@ -123,6 +130,8 @@ def mm(
     ]
     if b_col_maj:
         compile_flags.append("-DB_COL_MAJ")
+    if c_col_maj:
+        compile_flags.append("-DC_COL_MAJ")
     extern = _make_extern(
         f"{prefix}_{suffix}",
         _default_source_path("mm.cc"),
