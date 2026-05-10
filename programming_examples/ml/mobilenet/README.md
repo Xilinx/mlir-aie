@@ -24,7 +24,6 @@ Open in this order to grasp the design:
 | [`bottleneck/{regular,pipeline,cascade}.py`](bottleneck/) | Three families of bottleneck builders, grouped by tile-mapping strategy |
 | [`aie2_iron_per_block.py`](aie2_iron_per_block.py) | Build any single bottleneck standalone (debugging / profiling) |
 | [`aie2_iron_chain.py`](aie2_iron_chain.py) | Build a chained subset (`pipeline` = bn10..12, `cascade` = bn13..14) |
-| [`dataflow_dot.py`](dataflow_dot.py) | `--dot` flag emits a graphviz of the live design |
 
 ## Build + run end-to-end
 
@@ -77,7 +76,6 @@ mobilenet/
 ├── aie2_iron_chain.py             # standalone chain builder (pipeline | cascade)
 ├── network_spec.py                # declarative algorithm description
 ├── mobilenet_numpy.py             # bit-exact numpy reference
-├── dataflow_dot.py                # graphviz emission for --dot
 ├── bottleneck/                    # IRON builders by tile-mapping strategy
 │   ├── regular.py                 #   bn0..bn9 (single-tile + fused-pair)
 │   ├── pipeline.py                #   bn10..bn12 (3-tile + bn12 2-tile)
