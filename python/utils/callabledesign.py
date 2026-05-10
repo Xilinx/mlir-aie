@@ -454,14 +454,23 @@ class CallableDesign:
             trace_config=self.trace_config,
         )
 
-    def compile(self) -> tuple[Path, Path]:
+    def compile(
+        self,
+        xclbin_path: Path | str | None = None,
+        inst_path: Path | str | None = None,
+    ) -> tuple[Path, Path]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
-        Useful for ahead-of-time compilation: pre-warms the on-disk cache so
-        subsequent calls with matching ``compile_kwargs`` hit the cache instead
-        of paying ``aiecc`` time on first invocation.
+        With no arguments, pre-warms the on-disk cache so subsequent calls with
+        matching ``compile_kwargs`` hit the cache instead of paying ``aiecc``
+        time on first invocation.
+
+        With both ``xclbin_path`` and ``inst_path`` set, writes artifacts
+        directly to those paths and bypasses the cache — useful for build
+        systems (e.g. Makefiles) that manage their own dependency tracking.
+        Mixed (only one path given) raises ``ValueError``.
         """
-        return self.compilable.compile()
+        return self.compilable.compile(xclbin_path=xclbin_path, inst_path=inst_path)
 
     def lower(self, *runtime_args, **runtime_kwargs) -> str:
         """Generate and return the MLIR text for this kernel without compiling.

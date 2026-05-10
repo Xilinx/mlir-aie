@@ -937,3 +937,18 @@ def test_transform_typed_returns_module():
         assert hasattr(module, "operation")
     finally:
         set_current_device(None)
+
+
+def test_compile_mixed_explicit_paths_raises():
+    """Passing only one of (xclbin_path, inst_path) is rejected up front."""
+    import pytest
+    from aie.utils.compile.jit.compilabledesign import CompilableDesign
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    with pytest.raises(ValueError, match="must be set together"):
+        cd.compile(xclbin_path="/tmp/foo.xclbin", inst_path=None)
+    with pytest.raises(ValueError, match="must be set together"):
+        cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")

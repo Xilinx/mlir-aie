@@ -449,24 +449,47 @@ class CompilableDesign:
             object_files=self.object_files,
         )
 
-    def compile(self) -> tuple[Path, Path]:
+    def compile(
+        self,
+        xclbin_path: Path | str | None = None,
+        inst_path: Path | str | None = None,
+    ) -> tuple[Path, Path]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
-        Checks the file-system cache first (when ``use_cache=True``).  On a
-        cache miss, calls the generator with ``compile_kwargs``, compiles any
-        ``ExternalFunction`` instances discovered, then invokes ``aiecc``.
+        When both ``xclbin_path`` and ``inst_path`` are given, artifacts are
+        written directly to those paths; the parent directory is used as
+        ``work_dir`` for intermediate files (``.o``, lowered ``.mlir``).  The
+        on-disk cache is bypassed in this mode — the caller is presumed to
+        manage their own dependency tracking (e.g. via a Makefile).
 
-        Returns:
-            ``(xclbin_path, inst_path)`` — paths to the compiled artifacts.
+        When both are ``None`` (the default), behavior is unchanged: artifacts
+        land in ``~/.npu/cache/<hash>/`` and the cache is consulted first.
+
+        Mixed (only one path given) is not supported and raises ``ValueError``.
         """
         from aie.iron.kernel import ExternalFunction
         from aie.utils import DefaultNPURuntime
 
-        cache_hash = self._compute_cache_hash()
-        kernel_dir = NPU_CACHE_HOME / cache_hash
-        lock_file_path = kernel_dir / ".lock"
-        xclbin_path = kernel_dir / "final.xclbin"
-        inst_path = kernel_dir / "insts.bin"
+        if (xclbin_path is None) != (inst_path is None):
+            raise ValueError(
+                "compile(): xclbin_path and inst_path must be set together "
+                "(both paths to write artifacts directly, or both None to use "
+                f"the JIT cache).  Got xclbin_path={xclbin_path!r}, "
+                f"inst_path={inst_path!r}."
+            )
+        explicit_paths = xclbin_path is not None
+
+        if explicit_paths:
+            xclbin_path = Path(xclbin_path)
+            inst_path = Path(inst_path)
+            kernel_dir = xclbin_path.parent
+            lock_file_path = kernel_dir / ".lock"
+        else:
+            cache_hash = self._compute_cache_hash()
+            kernel_dir = NPU_CACHE_HOME / cache_hash
+            lock_file_path = kernel_dir / ".lock"
+            xclbin_path = kernel_dir / "final.xclbin"
+            inst_path = kernel_dir / "insts.bin"
 
         with file_lock(lock_file_path):
             os.makedirs(kernel_dir, exist_ok=True)
@@ -474,7 +497,7 @@ class CompilableDesign:
             xclbin_exists = xclbin_path.exists()
             inst_exists = inst_path.exists()
 
-            if self.use_cache and xclbin_exists and inst_exists:
+            if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 logger.debug(
                     "Cache hit for '%s' (hash=%s)", self.generator_name, cache_hash
                 )
@@ -487,11 +510,18 @@ class CompilableDesign:
                     self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
                 return xclbin_path, inst_path
 
-            logger.debug(
-                "Cache miss for '%s' (hash=%s); compiling...",
-                self.generator_name,
-                cache_hash,
-            )
+            if explicit_paths:
+                logger.debug(
+                    "Compiling '%s' to %s (explicit paths, cache bypassed)",
+                    self.generator_name,
+                    xclbin_path,
+                )
+            else:
+                logger.debug(
+                    "Cache miss for '%s' (hash=%s); compiling...",
+                    self.generator_name,
+                    cache_hash,
+                )
 
             try:
                 mlir_module = self._generate_mlir(ExternalFunction)
