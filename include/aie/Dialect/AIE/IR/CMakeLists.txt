@@ -60,21 +60,29 @@ set(GENERATED_EVENTS_TD_FILES
   "${CMAKE_BINARY_DIR}/include/AIEEventsAIE2P.td.inc"
 )
 
+set(GENERATED_EVENTS_JSON "${CMAKE_BINARY_DIR}/lib/regdb/events_database.json")
+
 add_custom_command(
-  OUTPUT ${GENERATED_EVENTS_TD_FILES}
+  OUTPUT ${GENERATED_EVENTS_TD_FILES} ${GENERATED_EVENTS_JSON}
   COMMAND ${Python3_EXECUTABLE}
     ${AIE_SOURCE_DIR}/utils/generate_events_tablegen.py
     -i ${EVENTS_HEADER_FILES}
     -o ${CMAKE_BINARY_DIR}/include
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/lib/regdb
+  COMMAND ${Python3_EXECUTABLE}
+    ${AIE_SOURCE_DIR}/utils/generate_events_json.py
+    -i ${EVENTS_HEADER_FILES}
+    -o ${CMAKE_BINARY_DIR}/lib/regdb
   DEPENDS
     ${AIE_SOURCE_DIR}/utils/generate_events_tablegen.py
+    ${AIE_SOURCE_DIR}/utils/generate_events_json.py
     ${EVENTS_HEADER_FILES}
-  COMMENT "Generating AIE event enum tablegen files from aie-rt headers"
+  COMMENT "Generating AIE event tablegen and JSON database from aie-rt headers"
   VERBATIM
 )
 
 add_custom_target(GenerateAIEEventsTD
-  DEPENDS ${GENERATED_EVENTS_TD_FILES}
+  DEPENDS ${GENERATED_EVENTS_TD_FILES} ${GENERATED_EVENTS_JSON}
 )
 
 # Add AIE attributes

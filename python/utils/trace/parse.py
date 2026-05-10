@@ -551,6 +551,9 @@ def lookup_event_name_by_type(trace_type, code, events_module):
     else:
         return "Unknown"
 
+    if enum_class is None:
+        return "Unknown"
+
     try:
         return enum_class(code).name
     except ValueError:
