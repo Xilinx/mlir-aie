@@ -83,13 +83,8 @@ from placement import PLACEMENT
 # ---------------------------------------------------------------------------
 # Design top-level function
 # ---------------------------------------------------------------------------
-def mobilenet_iron(collect_only: bool = False):
-    """Build the full mobilenet IRON design.
-
-    By default returns the resolved Program (MLIR module). If `collect_only`
-    is True, instead returns the list of all Workers BEFORE Program resolution
-    — used by dataflow_dot.py to walk the design without lowering it.
-    """
+def mobilenet_iron():
+    """Build the full mobilenet IRON design and return the resolved Program."""
     # Runtime arg types: i32 element view over the underlying byte buffers.
     #   arg0 (act_in / scratch):  100352 i32 = 401408 bytes
     #   arg2 (final FC2 output):    640 i32 =   2560 bytes
@@ -586,18 +581,10 @@ def mobilenet_iron(collect_only: bool = False):
         rt.finish_task_group(tg3)
 
     # ------------------------------------------------------------------
-    # Generate MLIR (or return (workers, device) for graphviz emission)
+    # Generate MLIR
     # ------------------------------------------------------------------
-    if collect_only:
-        return all_workers, NPU2()
     return Program(NPU2(), rt).resolve_program()
 
 
 if __name__ == "__main__":
-    if "--dot" in sys.argv:
-        from dataflow_dot import emit_dot
-
-        workers, device = mobilenet_iron(collect_only=True)
-        emit_dot(workers, device=device)
-        sys.exit(0)
     print(mobilenet_iron())
