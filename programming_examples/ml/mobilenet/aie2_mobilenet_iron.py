@@ -586,10 +586,10 @@ def mobilenet_iron(collect_only: bool = False):
         rt.finish_task_group(tg3)
 
     # ------------------------------------------------------------------
-    # Generate MLIR (or return workers for graphviz emission)
+    # Generate MLIR (or return (workers, device) for graphviz emission)
     # ------------------------------------------------------------------
     if collect_only:
-        return all_workers
+        return all_workers, NPU2()
     return Program(NPU2(), rt).resolve_program()
 
 
@@ -597,6 +597,7 @@ if __name__ == "__main__":
     if "--dot" in sys.argv:
         from dataflow_dot import emit_dot
 
-        emit_dot(mobilenet_iron(collect_only=True))
+        workers, device = mobilenet_iron(collect_only=True)
+        emit_dot(workers, device=device)
         sys.exit(0)
     print(mobilenet_iron())

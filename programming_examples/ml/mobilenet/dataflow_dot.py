@@ -16,8 +16,11 @@ of inter-tile connection:
 
 Renders:
 
-  - one node per AIE tile, pinned to its (col, row) chip coordinates
-    (shim row 0 at the bottom, memtile row 1 above, compute on top)
+  - an underlay grid of every tile in the device (faint, white-filled,
+    dashed-gray border) — only when a `device` is passed to `emit_dot`
+  - one overlay node per AIE tile that the design uses, pinned to its
+    (col, row) chip coordinates (shim row 0 at the bottom, memtile row 1
+    above, compute on top)
   - ObjectFifo edges: solid black, label = element shape and depth
   - CascadeFlow edges: dashed red, label = "cascade"
   - StaticWeightStream edges: dotted blue, label = "static W: <name>"
@@ -105,11 +108,16 @@ def _static_weight_streams(worker):
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
-def emit_dot(workers, out=sys.stdout):
+def emit_dot(workers, out=sys.stdout, device=None):
     """Render the design as graphviz DOT to `out`.
 
     `workers` is a list of IRON Worker objects (e.g. what aie2_mobilenet_iron's
     `mobilenet_iron(collect_only=True)` returns).
+
+    `device`, if provided, is an IRON Device (e.g. NPU2()). When set, every
+    tile in the device's (cols x rows) grid is emitted as a faint underlay
+    node, with the design's worker tiles drawn on top. Without `device`, only
+    the design's tiles appear.
     """
     # 1. Map each fifo to (producer_workers, consumer_workers) by walking handles.
     fifo_endpoints = defaultdict(lambda: {"prod": [], "cons": []})
@@ -151,7 +159,22 @@ def emit_dot(workers, out=sys.stdout):
     print('  edge  [fontname="Helvetica", fontsize=9];', file=out)
     print(file=out)
 
-    # 5. Emit one node per tile, pinned to chip coordinates.
+    # 5. Underlay: faint placeholder for every tile in the device grid that
+    #    the design doesn't use. Skipped entirely when no device is provided.
+    if device is not None:
+        for col in range(device.cols):
+            for row in range(device.rows):
+                if (col, row) in tiles_by_coord:
+                    continue
+                pos = f"{col * SCALE_X},{row * SCALE_Y}!"
+                print(
+                    f'  "t{col}_{row}" [label="({col},{row})", '
+                    f"fillcolor=white, color=gray70, fontcolor=gray60, "
+                    f'fontsize=8, style="dashed,filled,rounded", pos="{pos}"];',
+                    file=out,
+                )
+
+    # 6. Overlay: one node per design tile, pinned to chip coordinates.
     for coord, tile in sorted(tiles_by_coord.items()):
         kernels = [
             k for k in (_worker_kernel(w) for w in workers_by_coord.get(coord, [])) if k
@@ -167,7 +190,7 @@ def emit_dot(workers, out=sys.stdout):
 
     print(file=out)
 
-    # 6. ObjectFifo edges (one per producer/consumer pair per fifo).
+    # 7. ObjectFifo edges (one per producer/consumer pair per fifo).
     for fid, ends in fifo_endpoints.items():
         fifo = seen_fifos[fid]
         shape = "x".join(str(d) for d in fifo.shape)
@@ -183,7 +206,7 @@ def emit_dot(workers, out=sys.stdout):
                     file=out,
                 )
 
-    # 7. CascadeFlow edges (dashed red).
+    # 8. CascadeFlow edges (dashed red).
     for w in workers:
         for cf in getattr(w, "_outgoing_cascades", []):
             print(
@@ -192,7 +215,7 @@ def emit_dot(workers, out=sys.stdout):
                 file=out,
             )
 
-    # 8. StaticWeightStream edges (dotted blue). Ping-pong memtile, if present,
+    # 9. StaticWeightStream edges (dotted blue). Ping-pong memtile, if present,
     #    is rendered as an extra hop (memtile -> pp_memtile -> compute).
     for s in static_streams.values():
         name = getattr(s, "_name", "") or ""
@@ -225,5 +248,5 @@ def emit_dot(workers, out=sys.stdout):
 if __name__ == "__main__":
     import aie2_mobilenet_iron as m
 
-    workers = m.mobilenet_iron(collect_only=True)
-    emit_dot(workers)
+    workers, device = m.mobilenet_iron(collect_only=True)
+    emit_dot(workers, device=device)
