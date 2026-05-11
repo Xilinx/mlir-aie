@@ -720,22 +720,26 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     int requiredOutputChannels, AIETileType requestedType) {
   int maxCol = targetModel->columns();
 
-  // Search columns rightward
-  for (int offset = 0; offset < maxCol; ++offset) {
-    int searchCol = targetCol + offset;
-    if (searchCol >= maxCol)
-      continue;
-
-    for (auto &tile : tiles) {
-      AIETileType tileType = targetModel->getTileType(tile.col, tile.row);
-      if (tileType != requestedType)
+  // Search columns outward from targetCol bidirectionally
+  for (int offset = 0; targetCol + offset < maxCol || targetCol - offset >= 0;
+       ++offset) {
+    for (int dir : {1, -1}) {
+      int searchCol = targetCol + dir * offset;
+      if (dir == -1 && offset == 0)
+        continue; // don't search targetCol twice
+      if (searchCol < 0 || searchCol >= maxCol)
         continue;
 
-      if (tile.col == searchCol) {
-        // Check if tile has capacity for both input and output channels
-        if (hasAvailableChannels(tile, requiredInputChannels,
-                                 requiredOutputChannels)) {
-          return tile;
+      for (auto &tile : tiles) {
+        AIETileType tileType = targetModel->getTileType(tile.col, tile.row);
+        if (tileType != requestedType)
+          continue;
+
+        if (tile.col == searchCol) {
+          if (hasAvailableChannels(tile, requiredInputChannels,
+                                   requiredOutputChannels)) {
+            return tile;
+          }
         }
       }
     }
