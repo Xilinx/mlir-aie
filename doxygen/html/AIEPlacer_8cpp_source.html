@@ -784,88 +784,92 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00720" name="l00720"></a><span class="lineno">  720</span>    <span class="keywordtype">int</span> requiredOutputChannels, AIETileType requestedType) {</div>
 <div class="line"><a id="l00721" name="l00721"></a><span class="lineno">  721</span>  <span class="keywordtype">int</span> maxCol = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">columns</a>();</div>
 <div class="line"><a id="l00722" name="l00722"></a><span class="lineno">  722</span> </div>
-<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>  <span class="comment">// Search columns rightward</span></div>
-<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> offset = 0; offset &lt; maxCol; ++offset) {</div>
-<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span>    <span class="keywordtype">int</span> searchCol = targetCol + offset;</div>
-<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>    <span class="keywordflow">if</span> (searchCol &gt;= maxCol)</div>
-<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>      <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00728" name="l00728"></a><span class="lineno">  728</span> </div>
-<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;tile : tiles) {</div>
-<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>      AIETileType tileType = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a7978e72e26deb93cd9d05879f1bb8b95">getTileType</a>(tile.col, tile.row);</div>
-<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>      <span class="keywordflow">if</span> (tileType != requestedType)</div>
-<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span>        <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span> </div>
-<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span>      <span class="keywordflow">if</span> (tile.col == searchCol) {</div>
-<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span>        <span class="comment">// Check if tile has capacity for both input and output channels</span></div>
-<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span>        <span class="keywordflow">if</span> (hasAvailableChannels(tile, requiredInputChannels,</div>
-<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span>                                 requiredOutputChannels)) {</div>
-<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>          <span class="keywordflow">return</span> tile;</div>
-<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>        }</div>
-<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>      }</div>
-<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>    }</div>
-<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>  }</div>
-<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span> </div>
-<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>  <span class="keywordflow">return</span> std::nullopt;</div>
-<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span>}</div>
-<div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span> </div>
-<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span><span class="keywordtype">void</span> SequentialPlacer::updateChannelUsage(<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tile, <span class="keywordtype">bool</span> isOutput,</div>
-<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span>                                          <span class="keywordtype">int</span> numChannels) {</div>
-<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span>  <span class="keywordflow">if</span> (isOutput) {</div>
-<div class="line"><a id="l00750" name="l00750"></a><span class="lineno">  750</span>    availability.<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#a111428d92a77fec0a8d3ddcb0663cb2f">outputChannelsUsed</a>[tile] += numChannels;</div>
-<div class="line"><a id="l00751" name="l00751"></a><span class="lineno">  751</span>  } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span>    availability.<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#aa3ba079bbcb83e8aa50f0945909261a1">inputChannelsUsed</a>[tile] += numChannels;</div>
-<div class="line"><a id="l00753" name="l00753"></a><span class="lineno">  753</span>  }</div>
-<div class="line"><a id="l00754" name="l00754"></a><span class="lineno">  754</span> </div>
-<div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>  <span class="keywordflow">if</span> (!hasAvailableChannels(tile, 0, 0)) {</div>
-<div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span>    AIETileType type = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a7978e72e26deb93cd9d05879f1bb8b95">getTileType</a>(tile.col, tile.row);</div>
-<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>    availability.<a class="code hl_function" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">removeTile</a>(tile, type);</div>
-<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>  }</div>
-<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>}</div>
-<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span> </div>
-<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span><span class="keywordtype">bool</span> SequentialPlacer::hasAvailableChannels(<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tile, <span class="keywordtype">int</span> inputChannels,</div>
-<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>                                            <span class="keywordtype">int</span> outputChannels) {</div>
-<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>  <span class="comment">// Get max channels based on tile type and row</span></div>
-<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span>  <span class="keywordtype">int</span> maxIn, maxOut;</div>
-<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span>  <span class="keywordflow">if</span> (tile.row == 0) {</div>
-<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span>    <span class="comment">// Shim tiles use ShimMux connections</span></div>
-<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>    maxIn = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae78ec297d20fc5f9aca1e93ba2a92777">getNumDestShimMuxConnections</a>(tile.col, tile.row,</div>
-<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span>                                                      WireBundle::DMA);</div>
-<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span>    maxOut = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a250ac542b01465f2fa67b07476b5b362">getNumSourceShimMuxConnections</a>(tile.col, tile.row,</div>
-<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span>                                                         WireBundle::DMA);</div>
-<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span>  } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span>    <span class="comment">// Other tiles use Switchbox connections</span></div>
-<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span>    maxIn = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">getNumDestSwitchboxConnections</a>(tile.col, tile.row,</div>
-<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span>                                                        WireBundle::DMA);</div>
-<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span>    maxOut = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">getNumSourceSwitchboxConnections</a>(tile.col, tile.row,</div>
-<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span>                                                           WireBundle::DMA);</div>
-<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span>  }</div>
-<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span> </div>
-<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span>  <span class="keywordtype">int</span> currentIn = availability.<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#aa3ba079bbcb83e8aa50f0945909261a1">inputChannelsUsed</a>[tile];</div>
-<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span>  <span class="keywordtype">int</span> currentOut = availability.<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#a111428d92a77fec0a8d3ddcb0663cb2f">outputChannelsUsed</a>[tile];</div>
-<div class="line"><a id="l00781" name="l00781"></a><span class="lineno">  781</span> </div>
-<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span>  <span class="keywordflow">return</span> (currentIn + inputChannels &lt;= maxIn) &amp;&amp;</div>
-<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span>         (currentOut + outputChannels &lt;= maxOut);</div>
-<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span>}</div>
+<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>  <span class="comment">// Search columns outward from targetCol bidirectionally</span></div>
+<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> offset = 0; targetCol + offset &lt; maxCol || targetCol - offset &gt;= 0;</div>
+<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span>       ++offset) {</div>
+<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> dir : {1, -1}) {</div>
+<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>      <span class="keywordtype">int</span> searchCol = targetCol + dir * offset;</div>
+<div class="line"><a id="l00728" name="l00728"></a><span class="lineno">  728</span>      <span class="keywordflow">if</span> (dir == -1 &amp;&amp; offset == 0)</div>
+<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>        <span class="keywordflow">continue</span>; <span class="comment">// don&#39;t search targetCol twice</span></div>
+<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>      <span class="keywordflow">if</span> (searchCol &lt; 0 || searchCol &gt;= maxCol)</div>
+<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span> </div>
+<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;tile : tiles) {</div>
+<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span>        AIETileType tileType = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a7978e72e26deb93cd9d05879f1bb8b95">getTileType</a>(tile.col, tile.row);</div>
+<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span>        <span class="keywordflow">if</span> (tileType != requestedType)</div>
+<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span>          <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span> </div>
+<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>        <span class="keywordflow">if</span> (tile.col == searchCol) {</div>
+<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>          <span class="keywordflow">if</span> (hasAvailableChannels(tile, requiredInputChannels,</div>
+<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>                                   requiredOutputChannels)) {</div>
+<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>            <span class="keywordflow">return</span> tile;</div>
+<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>          }</div>
+<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span>        }</div>
+<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>      }</div>
+<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span>    }</div>
+<div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span>  }</div>
+<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span> </div>
+<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span>  <span class="keywordflow">return</span> std::nullopt;</div>
+<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span>}</div>
+<div class="line"><a id="l00750" name="l00750"></a><span class="lineno">  750</span> </div>
+<div class="line"><a id="l00751" name="l00751"></a><span class="lineno">  751</span><span class="keywordtype">void</span> SequentialPlacer::updateChannelUsage(<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tile, <span class="keywordtype">bool</span> isOutput,</div>
+<div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span>                                          <span class="keywordtype">int</span> numChannels) {</div>
+<div class="line"><a id="l00753" name="l00753"></a><span class="lineno">  753</span>  <span class="keywordflow">if</span> (isOutput) {</div>
+<div class="line"><a id="l00754" name="l00754"></a><span class="lineno">  754</span>    availability.<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#a111428d92a77fec0a8d3ddcb0663cb2f">outputChannelsUsed</a>[tile] += numChannels;</div>
+<div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>  } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span>    availability.<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#aa3ba079bbcb83e8aa50f0945909261a1">inputChannelsUsed</a>[tile] += numChannels;</div>
+<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>  }</div>
+<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span> </div>
+<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>  <span class="keywordflow">if</span> (!hasAvailableChannels(tile, 0, 0)) {</div>
+<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span>    AIETileType type = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a7978e72e26deb93cd9d05879f1bb8b95">getTileType</a>(tile.col, tile.row);</div>
+<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span>    availability.<a class="code hl_function" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">removeTile</a>(tile, type);</div>
+<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>  }</div>
+<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>}</div>
+<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span> </div>
+<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span><span class="keywordtype">bool</span> SequentialPlacer::hasAvailableChannels(<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tile, <span class="keywordtype">int</span> inputChannels,</div>
+<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span>                                            <span class="keywordtype">int</span> outputChannels) {</div>
+<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>  <span class="comment">// Get max channels based on tile type and row</span></div>
+<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span>  <span class="keywordtype">int</span> maxIn, maxOut;</div>
+<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span>  <span class="keywordflow">if</span> (tile.row == 0) {</div>
+<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span>    <span class="comment">// Shim tiles use ShimMux connections</span></div>
+<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span>    maxIn = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae78ec297d20fc5f9aca1e93ba2a92777">getNumDestShimMuxConnections</a>(tile.col, tile.row,</div>
+<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span>                                                      WireBundle::DMA);</div>
+<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span>    maxOut = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a250ac542b01465f2fa67b07476b5b362">getNumSourceShimMuxConnections</a>(tile.col, tile.row,</div>
+<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span>                                                         WireBundle::DMA);</div>
+<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span>  } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span>    <span class="comment">// Other tiles use Switchbox connections</span></div>
+<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span>    maxIn = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">getNumDestSwitchboxConnections</a>(tile.col, tile.row,</div>
+<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span>                                                        WireBundle::DMA);</div>
+<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span>    maxOut = targetModel-&gt;<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">getNumSourceSwitchboxConnections</a>(tile.col, tile.row,</div>
+<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span>                                                           WireBundle::DMA);</div>
+<div class="line"><a id="l00781" name="l00781"></a><span class="lineno">  781</span>  }</div>
+<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span> </div>
+<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span>  <span class="keywordtype">int</span> currentIn = availability.<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#aa3ba079bbcb83e8aa50f0945909261a1">inputChannelsUsed</a>[tile];</div>
+<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span>  <span class="keywordtype">int</span> currentOut = availability.<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#a111428d92a77fec0a8d3ddcb0663cb2f">outputChannelsUsed</a>[tile];</div>
 <div class="line"><a id="l00785" name="l00785"></a><span class="lineno">  785</span> </div>
-<div class="foldopen" id="foldopen00786" data-start="{" data-end="}">
-<div class="line"><a id="l00786" name="l00786"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">  786</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">TileAvailability::removeTile</a>(<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tile, AIETileType type) {</div>
-<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>  <span class="keyword">auto</span> removeFromVector = [&amp;](std::vector&lt;TileID&gt; &amp;vec) {</div>
-<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>    vec.erase(std::remove(vec.begin(), vec.end(), tile), vec.end());</div>
-<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span>  };</div>
-<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span> </div>
-<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span>  <span class="keywordflow">switch</span> (type) {</div>
-<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>  <span class="keywordflow">case</span> AIETileType::CoreTile:</div>
-<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>    removeFromVector(<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#a05b6fa9b1aab34de73c9906eb1f49ae4">compTiles</a>);</div>
-<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span>    <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>  <span class="keywordflow">case</span> AIETileType::MemTile:</div>
-<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span>  <span class="keywordflow">case</span> AIETileType::ShimNOCTile:</div>
-<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span>  <span class="keywordflow">case</span> AIETileType::ShimPLTile:</div>
-<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span>    removeFromVector(<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4ac3f889b8d756647a54a1fc942ad343">nonCompTiles</a>);</div>
-<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span>    <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span>  <span class="keywordflow">default</span>:</div>
-<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span>    <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>  }</div>
-<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>}</div>
+<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>  <span class="keywordflow">return</span> (currentIn + inputChannels &lt;= maxIn) &amp;&amp;</div>
+<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>         (currentOut + outputChannels &lt;= maxOut);</div>
+<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>}</div>
+<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span> </div>
+<div class="foldopen" id="foldopen00790" data-start="{" data-end="}">
+<div class="line"><a id="l00790" name="l00790"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">  790</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">TileAvailability::removeTile</a>(<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tile, AIETileType type) {</div>
+<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span>  <span class="keyword">auto</span> removeFromVector = [&amp;](std::vector&lt;TileID&gt; &amp;vec) {</div>
+<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>    vec.erase(std::remove(vec.begin(), vec.end(), tile), vec.end());</div>
+<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>  };</div>
+<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span> </div>
+<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>  <span class="keywordflow">switch</span> (type) {</div>
+<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span>  <span class="keywordflow">case</span> AIETileType::CoreTile:</div>
+<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span>    removeFromVector(<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#a05b6fa9b1aab34de73c9906eb1f49ae4">compTiles</a>);</div>
+<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span>    <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span>  <span class="keywordflow">case</span> AIETileType::MemTile:</div>
+<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span>  <span class="keywordflow">case</span> AIETileType::ShimNOCTile:</div>
+<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span>  <span class="keywordflow">case</span> AIETileType::ShimPLTile:</div>
+<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>    removeFromVector(<a class="code hl_variable" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4ac3f889b8d756647a54a1fc942ad343">nonCompTiles</a>);</div>
+<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>    <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>  <span class="keywordflow">default</span>:</div>
+<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span>    <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00806" name="l00806"></a><span class="lineno">  806</span>  }</div>
+<div class="line"><a id="l00807" name="l00807"></a><span class="lineno">  807</span>}</div>
 </div>
 <div class="ttc" id="aAIEPlacer_8h_html"><div class="ttname"><a href="AIEPlacer_8h.html">AIEPlacer.h</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html">xilinx::AIE::AIETargetModel</a></div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00058">AIETargetModel.h:58</a></div></div>
@@ -895,13 +899,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a99b99b2f5e14ab0ccf4cd9c2ca6180da"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">xilinx::AIE::src</a></div><div class="ttdeci">PathEndPoint src</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00128">AIEPathFinder.h:128</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a05b6fa9b1aab34de73c9906eb1f49ae4"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a05b6fa9b1aab34de73c9906eb1f49ae4">xilinx::AIE::TileAvailability::compTiles</a></div><div class="ttdeci">std::vector&lt; TileID &gt; compTiles</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00027">AIEPlacer.h:27</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a111428d92a77fec0a8d3ddcb0663cb2f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a111428d92a77fec0a8d3ddcb0663cb2f">xilinx::AIE::TileAvailability::outputChannelsUsed</a></div><div class="ttdeci">llvm::DenseMap&lt; TileID, int &gt; outputChannelsUsed</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00031">AIEPlacer.h:31</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4855317fc91d90e59e40d0179d73c8d7"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">xilinx::AIE::TileAvailability::removeTile</a></div><div class="ttdeci">void removeTile(TileID tile, AIETileType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8cpp_source.html#l00786">AIEPlacer.cpp:786</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4855317fc91d90e59e40d0179d73c8d7"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">xilinx::AIE::TileAvailability::removeTile</a></div><div class="ttdeci">void removeTile(TileID tile, AIETileType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8cpp_source.html#l00790">AIEPlacer.cpp:790</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4ac3f889b8d756647a54a1fc942ad343"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4ac3f889b8d756647a54a1fc942ad343">xilinx::AIE::TileAvailability::nonCompTiles</a></div><div class="ttdeci">std::vector&lt; TileID &gt; nonCompTiles</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00028">AIEPlacer.h:28</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_aa3ba079bbcb83e8aa50f0945909261a1"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#aa3ba079bbcb83e8aa50f0945909261a1">xilinx::AIE::TileAvailability::inputChannelsUsed</a></div><div class="ttdeci">llvm::DenseMap&lt; TileID, int &gt; inputChannelsUsed</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00030">AIEPlacer.h:30</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon May 11 2026 00:06:15 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon May 11 2026 18:25:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
