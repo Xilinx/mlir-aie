@@ -22,7 +22,7 @@ from .kernel import ExternalFunction, Kernel
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
-from .dataflow import ObjectFifo
+from .dataflow import ObjectFifo, CascadeFlow
 from .dtype import str_to_dtype, dtype_to_str
 from aie.utils.compile.jit import (
     CompilableDesign,

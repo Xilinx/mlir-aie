@@ -100,6 +100,12 @@ class Program:
                 for w in self._rt.workers:
                     w.resolve()
 
+                # Emit aie.cascade_flow ops for each Worker's outgoing edges.
+                # Must run after worker.resolve() so both tiles are placed.
+                for w in self._rt.workers:
+                    for cf in w._outgoing_cascades:
+                        cf.resolve()
+
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
                 #      Alternatively, we merge the mechanism for packet routed objfifos so we use unique

@@ -86,6 +86,10 @@ class Worker(ObjectFifoEndpoint):
         self._fifos = []
         self._buffers = []
         self._barriers = []
+        # CascadeFlow objects whose source is this Worker.  Populated by
+        # CascadeFlow(src, dst).__init__ and consumed by Program.resolve()
+        # to emit aie.cascade_flow ops after worker placement.
+        self._outgoing_cascades: list = []
 
         # Check arguments to the core. Some information is saved for resolution.
         for arg in self.fn_args:
