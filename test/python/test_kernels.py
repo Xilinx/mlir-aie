@@ -444,18 +444,12 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="matmul_scalar_cascade_get_only_i16_i16",
         name_variants=[
-            (dict(cascade_mode="get_only"), "matmul_scalar_cascade_get_only_i16_i16"),
-            (dict(cascade_mode="put_only"), "matmul_scalar_cascade_put_only_i16_i16"),
-            (dict(cascade_mode="put_get"), "matmul_scalar_cascade_put_get_i16_i16"),
             (
-                dict(
-                    input_dtype=bfloat16, output_dtype=bfloat16, cascade_mode="get_only"
-                ),
+                dict(input_dtype=bfloat16, output_dtype=bfloat16),
                 "matmul_scalar_cascade_get_only_bf16_bf16",
             ),
         ],
         invalid_kwargs=[
-            (dict(cascade_mode="invalid"), "cascade_mode"),
             (dict(input_dtype=np.int8, output_dtype=np.int8), "unsupported"),
         ],
     ),
@@ -1108,10 +1102,28 @@ def test_cascade_mm_use_chess_carries_flag():
         dim_n=32,
         input_dtype=np.int16,
         output_dtype=np.int16,
-        cascade_mode="get_only",
         use_chess=True,
     )
     assert ef._use_chess is True
+
+
+def test_cascade_mm_exposes_all_modes_and_zero():
+    """kernels.cascade_mm returns a get_only EF with put_only / put_get / zero
+    sibling Kernels pointing at the same .o (one cascade_mm.cc compile, four
+    bindings)."""
+    from aie.iron.kernel import Kernel as _Kernel
+
+    ef = kernels.cascade_mm(dim_m=64, dim_k=64, dim_n=32)
+    assert ef.get_only is ef
+    assert isinstance(ef.put_only, _Kernel)
+    assert isinstance(ef.put_get, _Kernel)
+    assert isinstance(ef.zero, _Kernel)
+    assert ef.put_only._name == "matmul_scalar_cascade_put_only_i16_i16"
+    assert ef.put_get._name == "matmul_scalar_cascade_put_get_i16_i16"
+    assert ef.zero._name == "zero_scalar_i16"
+    # All four bindings reference the same .o.
+    for sibling in (ef.put_only, ef.put_get, ef.zero):
+        assert sibling.object_file_name == ef.object_file_name
 
 
 def test_compute_hash_distinguishes_use_chess_literal():

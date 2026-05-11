@@ -233,12 +233,21 @@ def cascade_mm(
     dim_n: int = 64,
     input_dtype=np.int16,
     output_dtype=np.int16,
-    cascade_mode: str = "get_only",
     use_chess: bool = False,
 ) -> ExternalFunction:
     """Cascade matrix-multiply kernel for multi-core accumulation.
 
-    Available cascade modes: ``"put_only"``, ``"get_only"``, ``"put_get"``.
+    cascade_mm.cc emits all three cascade variants (``get_only``,
+    ``put_only``, ``put_get``) plus a ``zero`` companion in one .o.  The
+    returned ExternalFunction binds the ``get_only`` symbol; the other
+    three are sibling :class:`Kernel`\\s available as attributes:
+
+    * ``.get_only`` — same as the returned EF (top of the cascade chain).
+    * ``.put_only`` — bottom of the chain.
+    * ``.put_get`` — middle of the chain.
+    * ``.zero`` — accumulator initializer.
+
+    Designs typically use all four together, one per row of compute cores.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -246,23 +255,12 @@ def cascade_mm(
         dim_n: Number of columns of B / C.
         input_dtype: Input element type.
         output_dtype: Output element type.
-        cascade_mode: One of ``"put_only"``, ``"get_only"``, ``"put_get"``.
         use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
-            instead of Peano.  See :func:`mm` for the design-level
-            constraint (all EFs in one design must agree).
-
-    Returns:
-        ExternalFunction configured for the cascade matmul kernel.
+            instead of Peano.
 
     Raises:
-        ValueError: When the cascade_mode or dtype combination is not supported.
+        ValueError: When the dtype combination is not supported.
     """
-    valid_modes = ("put_only", "get_only", "put_get")
-    if cascade_mode not in valid_modes:
-        raise ValueError(
-            f"cascade_mm(): cascade_mode must be one of {valid_modes}, "
-            f"got '{cascade_mode}'"
-        )
     key = (input_dtype, output_dtype)
     if key not in _CASCADE_COMBOS:
         raise ValueError(
@@ -274,8 +272,8 @@ def cascade_mm(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[input_dtype]]
     b_ty = np.ndarray[(dim_k * dim_n,), np.dtype[input_dtype]]
     c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-    return _make_extern(
-        f"matmul_scalar_cascade_{cascade_mode}_{suffix}",
+    extern = _make_extern(
+        f"matmul_scalar_cascade_get_only_{suffix}",
         _default_source_path("cascade_mm.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=[
@@ -285,3 +283,16 @@ def cascade_mm(
         ],
         use_chess=use_chess,
     )
+    extern.get_only = extern
+    extern.put_only = Kernel(
+        f"matmul_scalar_cascade_put_only_{suffix}", extern.object_file_name,
+        [a_ty, b_ty, c_ty],
+    )
+    extern.put_get = Kernel(
+        f"matmul_scalar_cascade_put_get_{suffix}", extern.object_file_name,
+        [a_ty, b_ty, c_ty],
+    )
+    extern.zero = Kernel(
+        f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}", extern.object_file_name, [c_ty],
+    )
+    return extern
