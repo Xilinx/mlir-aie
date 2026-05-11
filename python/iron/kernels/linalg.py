@@ -5,12 +5,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""Linear algebra kernel factories: mm, mm_zero, mv, cascade_mm."""
+"""Linear algebra kernel factories: mm, mv, cascade_mm."""
 
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron.kernel import ExternalFunction
+from aie.iron.kernel import ExternalFunction, Kernel
 
 from ._common import _default_source_path, _detect_arch, _make_extern
 
@@ -67,13 +67,14 @@ _MM_EMULATED_BF16_MAC_DIMS_AIE2P = {
     (bfloat16, np.float32): (8, 8, 8),
 }
 
-# (suffix, _MM_COMBOS-style only_flag) per supported mm_zero output dtype.
-_ZERO_DTYPE_INFO = {
-    np.int8: ("i8", "i8_i8_ONLY"),
-    np.int16: ("i16", "i16_i16_ONLY"),
-    np.int32: ("i32", "i16_i32_ONLY"),
-    np.float32: ("f32", "bf16_f32_ONLY"),
-    bfloat16: ("bf16", "bf16_bf16_ONLY"),
+# Suffix for the zero_* symbol per output_dtype (used by kernels.mm to bind
+# the .zero sibling Kernel).
+_ZERO_SUFFIX = {
+    np.int8: "i8",
+    np.int16: "i16",
+    np.int32: "i32",
+    np.float32: "f32",
+    bfloat16: "bf16",
 }
 
 
@@ -91,9 +92,9 @@ def mm(
 ) -> ExternalFunction:
     """Matrix-multiply kernel: C += A * B.
 
-    The compiled ``.o`` exports only the ``matmul_*`` symbols (``zero_*``
-    suppressed via ``-DMATMUL_ONLY``) so it links cleanly alongside a ``.o``
-    produced by :func:`mm_zero` for the same shape/dtype.
+    The compiled ``.o`` exports both the ``matmul_*`` and ``zero_*`` symbols.
+    Use ``kernels.mm(...).zero`` to get a sibling Kernel binding the zero
+    symbol against the same .o, suitable for accumulator initialization.
 
     Args:
         dim_m: Number of rows of A / C.
@@ -141,7 +142,6 @@ def mm(
         f"-DDIM_K={dim_k}",
         f"-DDIM_N={dim_n}",
         f"-D{only_flag}",
-        "-DMATMUL_ONLY",
     ]
     if b_col_maj:
         compile_flags.append("-DB_COL_MAJ")
@@ -164,66 +164,17 @@ def mm(
         extern.mac_dims = _MM_EMULATED_BF16_MAC_DIMS_AIE2P[key]
     else:
         extern.mac_dims = _MM_MAC_DIMS[arch][key]
-    return extern
-
-
-def mm_zero(
-    dim_m: int = 64,
-    dim_k: int = 64,
-    dim_n: int = 64,
-    output_dtype=np.int16,
-    vectorized: bool = True,
-    use_chess: bool = False,
-) -> ExternalFunction:
-    """Zero-fill kernel companion for :func:`mm`.
-
-    The compiled ``.o`` exports only the ``zero_*`` symbols (the companion
-    ``matmul_*`` variants are suppressed via ``-DZERO_ONLY``) so it can be
-    safely linked alongside a ``.o`` produced by :func:`mm` for the same
-    shape/dtype without duplicate-symbol errors.
-
-    Args:
-        dim_m: Number of rows.
-        dim_k: Inner dimension (must match the paired :func:`mm` call).
-        dim_n: Number of columns.
-        output_dtype: Element type of the output matrix.
-        vectorized: If ``True`` use the vectorized variant.
-        use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
-            instead of Peano's ``clang++``.  Must agree with the paired
-            :func:`mm` call's ``use_chess``; mixed peano/chess in one
-            design is rejected at compile time.
-
-    Returns:
-        ExternalFunction configured for the zero kernel.
-
-    Raises:
-        ValueError: When ``output_dtype`` is not supported.
-    """
-    if output_dtype not in _ZERO_DTYPE_INFO:
-        raise ValueError(
-            f"mm_zero(): unsupported output_dtype {output_dtype}. "
-            f"Supported: {list(_ZERO_DTYPE_INFO.keys())}"
-        )
-
-    suffix, only_flag = _ZERO_DTYPE_INFO[output_dtype]
-    prefix = "zero" if vectorized else "zero_scalar"
-    c_ty = np.ndarray[(dim_m * dim_n,), np.dtype[output_dtype]]
-    return _make_extern(
-        f"{prefix}_{suffix}",
-        _default_source_path("mm.cc"),
+    # mm.cc emits both matmul_* and zero_* symbols; expose the zero binding
+    # as a sibling Kernel pointing at the same .o so the design does
+    # `matmul = kernels.mm(...); zero = matmul.zero` instead of a separate
+    # kernels.mm_zero call (which would compile mm.cc a second time).
+    zero_prefix = "zero" if vectorized else "zero_scalar"
+    extern.zero = Kernel(
+        f"{zero_prefix}_{_ZERO_SUFFIX[output_dtype]}",
+        extern.object_file_name,
         [c_ty],
-        compile_flags=[
-            f"-DDIM_M={dim_m}",
-            f"-DDIM_K={dim_k}",
-            f"-DDIM_N={dim_n}",
-            f"-D{only_flag}",
-            # Suppress mm.cc's matmul_* symbols so this .o doesn't collide
-            # at link time with one produced by a parallel kernels.mm(...)
-            # call.  See aie_kernels/aie2{,p}/mm.cc for the gating macro.
-            "-DZERO_ONLY",
-        ],
-        use_chess=use_chess,
     )
+    return extern
 
 
 def mv(
@@ -262,13 +213,18 @@ def mv(
     a_ty = np.ndarray[(dim_m * dim_k,), np.dtype[np.int16]]
     b_ty = np.ndarray[(dim_k,), np.dtype[np.int16]]
     c_ty = np.ndarray[(dim_m,), np.dtype[np.int32]]
-    return _make_extern(
+    extern = _make_extern(
         f"{prefix}_i16_i32",
         _default_source_path("mv.cc"),
         [a_ty, b_ty, c_ty],
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
         use_chess=use_chess,
     )
+    # mv.cc emits both matvec_* and zero_* symbols; expose the zero binding
+    # as a sibling Kernel pointing at the same .o.
+    zero_prefix = "zero_vectorized" if vectorized else "zero_scalar"
+    extern.zero = Kernel(f"{zero_prefix}_i32", extern.object_file_name, [c_ty])
+    return extern
 
 
 def cascade_mm(

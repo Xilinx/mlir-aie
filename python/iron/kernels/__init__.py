@@ -12,7 +12,7 @@ Submodules:
 - :mod:`.reduce` — reduce_add, reduce_min, reduce_max
 - :mod:`.vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - :mod:`.activation` — softmax, gelu, silu, swiglu, bf16_exp
-- :mod:`.linalg` — mm, mm_zero, mv, cascade_mm
+- :mod:`.linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel)
 - :mod:`.conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 
@@ -29,7 +29,7 @@ from .vision import (
     add_weighted,
 )
 from .activation import softmax, gelu, silu, swiglu, bf16_exp
-from .linalg import mm, mm_zero, mv, cascade_mm
+from .linalg import mm, mv, cascade_mm
 from .conv import (
     conv2dk1,
     conv2dk3,
@@ -67,7 +67,6 @@ __all__ = [
     "swiglu",
     "bf16_exp",
     "mm",
-    "mm_zero",
     "mv",
     "cascade_mm",
     "conv2dk1",

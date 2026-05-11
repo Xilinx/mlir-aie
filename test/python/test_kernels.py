@@ -420,18 +420,6 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
     ),
     KernelSpec(
-        name="mm_zero",
-        factory=kernels.mm_zero,
-        kwargs=dict(),
-        arg_count=1,
-        expected_name="zero_i16",
-        name_variants=[
-            (dict(output_dtype=np.int16, vectorized=True), "zero_i16"),
-            (dict(output_dtype=np.int16, vectorized=False), "zero_scalar_i16"),
-        ],
-        invalid_kwargs=[(dict(output_dtype=np.float64), "unsupported")],
-    ),
-    KernelSpec(
         name="mv",
         factory=kernels.mv,
         kwargs=dict(),
@@ -832,42 +820,73 @@ def test_external_function_collision_check_allows_identical_redeclaration():
 
 
 # ---------------------------------------------------------------------------
-# kernels.mm + kernels.mm_zero: disjoint symbol sets via -DMATMUL_ONLY /
-# -DZERO_ONLY (added so both helpers can be used in the same design without
-# duplicate-symbol link errors).  The matching gating is in
-# aie_kernels/aie2{,p}/mm.cc.
+# kernels.mm and kernels.mv expose a `.zero` Kernel attribute pointing at
+# the same .o file (mm.cc / mv.cc emit both matmul_*/matvec_* and zero_*
+# symbols natively).  Designs use `matmul = kernels.mm(...); zero = matmul.zero`
+# — one mm.cc compile, both bindings, no duplicate-symbol footgun.
 # ---------------------------------------------------------------------------
 
 
-def test_mm_carries_matmul_only_flag():
-    """kernels.mm() must compile with -DMATMUL_ONLY so its .o exports only
-    matmul_* (no zero_*).  Otherwise pairing with kernels.mm_zero() collides."""
+def test_mm_zero_attribute_is_kernel():
+    """kernels.mm(...).zero is a Kernel binding the zero symbol."""
+    from aie.iron.kernel import Kernel as _Kernel
+
     ef = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
-    assert "-DMATMUL_ONLY" in ef._compile_flags
+    assert isinstance(ef.zero, _Kernel)
+    assert ef.zero._name == "zero_i16"
 
 
-def test_mm_zero_carries_zero_only_flag():
-    """kernels.mm_zero() must compile with -DZERO_ONLY so its .o exports
-    only zero_* (no matmul_*).  Otherwise pairing with kernels.mm() collides."""
-    ef = kernels.mm_zero(dim_m=64, dim_k=64, dim_n=32, output_dtype=np.int16)
-    assert "-DZERO_ONLY" in ef._compile_flags
-
-
-def test_mm_and_mm_zero_have_disjoint_gating_flags():
-    """The two flags are exclusive: mm carries MATMUL_ONLY but not ZERO_ONLY;
-    mm_zero carries ZERO_ONLY but not MATMUL_ONLY.  Together their .o files
-    have non-overlapping symbol sets.  This is the exact test that would have
-    caught the duplicate-symbol footgun the matmul whole_array port hit."""
-    mm_ef = kernels.mm(
+def test_mm_zero_attribute_shares_object_file():
+    """ef.zero must point at the same .o the mm ExternalFunction will produce —
+    that's the whole point of the attribute pattern (one compile, two bindings)."""
+    ef = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
-    mz_ef = kernels.mm_zero(dim_m=64, dim_k=64, dim_n=32, output_dtype=np.int16)
-    assert "-DMATMUL_ONLY" in mm_ef._compile_flags
-    assert "-DZERO_ONLY" not in mm_ef._compile_flags
-    assert "-DZERO_ONLY" in mz_ef._compile_flags
-    assert "-DMATMUL_ONLY" not in mz_ef._compile_flags
+    assert ef.zero.object_file_name == ef.object_file_name
+
+
+def test_mm_zero_attribute_arg_count():
+    """zero kernel takes one arg (the output buffer to zero)."""
+    ef = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
+    )
+    assert len(ef.zero._arg_types) == 1
+
+
+def test_mm_zero_attribute_scalar_variant():
+    """vectorized=False picks zero_scalar_* instead of zero_*."""
+    ef = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=np.int16,
+        output_dtype=np.int16,
+        vectorized=False,
+    )
+    assert ef.zero._name == "zero_scalar_i16"
+
+
+def test_mv_zero_attribute_is_kernel():
+    """kernels.mv(...).zero is a Kernel binding the zero symbol against the
+    same mv.cc-built .o."""
+    from aie.iron.kernel import Kernel as _Kernel
+
+    ef = kernels.mv(dim_m=32, dim_k=32, vectorized=False)
+    assert isinstance(ef.zero, _Kernel)
+    assert ef.zero._name == "zero_scalar_i32"
+    assert ef.zero.object_file_name == ef.object_file_name
+
+
+def test_mm_no_longer_carries_only_flags():
+    """Sanity: dropping the MATMUL_ONLY/ZERO_ONLY gating means kernels.mm
+    no longer adds those flags to its compile_flags."""
+    ef = kernels.mm(
+        dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
+    )
+    assert "-DMATMUL_ONLY" not in ef._compile_flags
+    assert "-DZERO_ONLY" not in ef._compile_flags
 
 
 # ---------------------------------------------------------------------------
@@ -1075,14 +1094,6 @@ def test_kernels_mm_chess_triggers_auto_symbol_prefix():
     assert ef_second._symbol_prefix is not None and len(ef_second._symbol_prefix) == 8
 
 
-def test_mm_zero_use_chess_carries_flag():
-    """kernels.mm_zero also forwards use_chess (paired-with-mm requirement)."""
-    ef = kernels.mm_zero(
-        dim_m=64, dim_k=64, dim_n=32, output_dtype=np.int16, use_chess=True
-    )
-    assert ef._use_chess is True
-
-
 def test_mv_use_chess_carries_flag():
     """kernels.mv also forwards use_chess."""
     ef = kernels.mv(dim_m=32, dim_k=32, use_chess=True)
@@ -1151,9 +1162,7 @@ def test_mixed_chess_peano_set_is_detectable():
 def test_all_chess_set_is_unanimous():
     """Inverse of the mixed-mode test: an all-chess design has chess_uses == {True}."""
     ef1 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
-    ef2 = kernels.mm_zero(
-        dim_m=64, dim_k=64, dim_n=32, output_dtype=np.int16, use_chess=True
-    )
+    ef2 = kernels.mv(dim_m=32, dim_k=32, use_chess=True)
     chess_uses = {getattr(f, "_use_chess", False) for f in (ef1, ef2)}
     assert chess_uses == {True}
 
