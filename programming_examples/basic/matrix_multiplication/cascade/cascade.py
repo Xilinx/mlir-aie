@@ -107,7 +107,7 @@ def cascade(
     B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
-    fifo_depth = 1
+    fifo_depth = 2
 
     # A: shim → mem → broadcast across columns within a row
     A_l3l2_fifos = [
