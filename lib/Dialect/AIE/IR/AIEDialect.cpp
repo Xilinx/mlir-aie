@@ -2428,8 +2428,8 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     for (BDDimLayoutAttr dim : *dims)
       product *= dim.getSize();
 
-    // len < product means the outermost dim is a BD iteration dim;
-    // linearizing would drop the iteration stride.
+    // len < product: the outermost dim describes a hardware BD iteration
+    // (preserved downstream as iteration_size/stride). Don't fold it away.
     if (auto lenVal = op.getLen())
       if (static_cast<int64_t>(*lenVal) != product)
         return mlir::failure();
