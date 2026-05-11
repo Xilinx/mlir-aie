@@ -147,7 +147,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     // Ensure BD length in bytes fits in the u32 `Len` argument of the libxaie
     // DMA APIs (XAie_DmaSetAddrLen / XAie_DmaSetMultiDimAddr).
     if (foundBd && lenA > std::numeric_limits<uint32_t>::max()) {
-      return memOp.emitOpError("buffer descriptor length in bytes (") << lenA << ") does not fit in 32 bits";
+      return memOp.emitOpError("buffer descriptor length in bytes (")
+             << lenA << ") does not fit in 32 bits";
     }
 
     int acqValue = 0, relValue = 0;
