@@ -1,0 +1,60 @@
+name: Prune release assets
+
+on:
+  schedule:
+    # Daily at 04:17 UTC. Off-the-hour to avoid the GH Actions traffic spike.
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: 'Delete dev-wheels assets older than this many days'
+        type: string
+        default: '30'
+      dry_run:
+        description: 'List what would be deleted without actually deleting'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  prune-dev-wheels:
+    # Why: dev-wheels accumulates indefinitely because PR builds inject a unique
+    # PEP 427 build tag (run_id_attempt) into wheel names — every PR run lands
+    # net-new assets that never collide with existing ones, so nothing is ever
+    # replaced. Without this janitor we hit GitHub's 1000-asset-per-release cap
+    # (already happened, see PR #3054).
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune assets older than ${{ inputs.max_age_days || '30' }} days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAX_AGE_DAYS: ${{ inputs.max_age_days || '30' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d "${MAX_AGE_DAYS} days ago" +%s)
+          echo "cutoff: $(date -u -d "@$cutoff" --iso-8601=seconds)"
+
+          gh api "repos/${{ github.repository }}/releases/tags/dev-wheels" --paginate \
+            -q '.assets[] | "\(.created_at)\t\(.id)\t\(.name)"' > /tmp/assets.tsv
+
+          total=$(wc -l < /tmp/assets.tsv)
+          echo "total dev-wheels assets: $total"
+
+          deleted=0
+          while IFS=$'\t' read -r created_at id name; do
+            asset_ts=$(date -u -d "$created_at" +%s)
+            if [ "$asset_ts" -lt "$cutoff" ]; then
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "would delete: $created_at $name"
+              else
+                gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id" >/dev/null
+                echo "deleted: $created_at $name"
+              fi
+              deleted=$((deleted+1))
+            fi
+          done < /tmp/assets.tsv
+
+          echo "::notice::pruned $deleted of $total dev-wheels assets (dry_run=$DRY_RUN)"

@@ -32,6 +32,14 @@ on:
         required: false
         default: ''
 
+concurrency:
+  # PR runs from the same PR cancel earlier in-flight runs (standard supersede).
+  # workflow_dispatch serializes per-event so the second publish waits for the
+  # first — preventing the upload race that PR #2789 worked around with
+  # `replacesArtifacts: false`.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
 
   get_aie_project_commit:
