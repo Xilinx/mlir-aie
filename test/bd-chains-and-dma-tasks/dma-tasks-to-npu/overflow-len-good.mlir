@@ -5,7 +5,7 @@
 //
 // (c) Copyright 2024 AMD Inc.
 
-// RUN: aie-opt --aie-dma-tasks-to-npu %s
+// RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
 // This test verifies that a dma_bd with a transfer length that would overflow a
 // 32-bit integer when converted to bytes is handled correctly. Without the fix,
@@ -16,6 +16,10 @@
 // In 32-bit words: 4294967296 / 4 = 1073741824 (= 0x40000000).
 // Without overflow fix, the byte count truncates to 0, so len_addr_granularity
 // would be 0 instead of 1073741824, triggering a spurious validation error.
+
+// CHECK-LABEL: aie.runtime_sequence
+// CHECK: aiex.npu.writebd
+// CHECK-SAME: buffer_length = 1073741824 : i32
 
 module {
   aie.device(npu1) {

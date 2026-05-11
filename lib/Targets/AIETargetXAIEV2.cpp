@@ -22,6 +22,8 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Module.h"
 
+#include <limits>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -142,6 +144,11 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         return memOp.emitOpError("DMA contains at least one multi-dimensional "
                                  "buffer descriptor. This is currently only "
                                  "supported for AIE-ML and later devices.");
+    // Ensure BD length in bytes fits in the u32 `Len` argument of the libxaie
+    // DMA APIs (XAie_DmaSetAddrLen / XAie_DmaSetMultiDimAddr).
+    if (foundBd && lenA > std::numeric_limits<uint32_t>::max()) {
+      return memOp.emitOpError("buffer descriptor length in bytes (") << lenA << ") does not fit in 32 bits";
+    }
 
     int acqValue = 0, relValue = 0;
     bool hasAcq = false, hasRel = false;
