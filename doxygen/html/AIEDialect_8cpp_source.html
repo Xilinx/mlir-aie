@@ -2376,7 +2376,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l02294" name="l02294"></a><span class="lineno"> 2294</span>  <span class="keywordflow">if</span> (!isUnrankedMemRef &amp;&amp;</div>
 <div class="line"><a id="l02295" name="l02295"></a><span class="lineno"> 2295</span>      (parentTile.isMemTile() || parentTile.isCoreTile())) {</div>
 <div class="line"><a id="l02296" name="l02296"></a><span class="lineno"> 2296</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {</div>
-<div class="line"><a id="l02297" name="l02297"></a><span class="lineno"> 2297</span>      <span class="keywordtype">int</span> offsetInBytes = *baseAddr + getOffsetInBytes();</div>
+<div class="line"><a id="l02297" name="l02297"></a><span class="lineno"> 2297</span>      int64_t offsetInBytes = *baseAddr + getOffsetInBytes();</div>
 <div class="line"><a id="l02298" name="l02298"></a><span class="lineno"> 2298</span>      <span class="keywordflow">if</span> (offsetInBytes % 4)</div>
 <div class="line"><a id="l02299" name="l02299"></a><span class="lineno"> 2299</span>        <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;bd address must be 4 byte (32b) aligned; got &quot;</span></div>
 <div class="line"><a id="l02300" name="l02300"></a><span class="lineno"> 2300</span>                           <span class="stringliteral">&quot;base+offset: &quot;</span>)</div>
@@ -3225,7 +3225,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon May 11 2026 23:21:15 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon May 11 2026 23:33:04 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
