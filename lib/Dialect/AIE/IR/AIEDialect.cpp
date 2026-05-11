@@ -2424,18 +2424,16 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     if (dims->size() == 1 && dims->front().getStride() == 1)
       return mlir::failure();
 
-    // If the op has no explicit len, compute it from the total element count
-    // across all dims (product of all sizes).  This is always well-defined
-    // when dims is non-empty, so we don't need to fall back to the buffer type.
-    int32_t len;
-    if (auto lenVal = op.getLen()) {
-      len = *lenVal;
-    } else {
-      int64_t product = 1;
-      for (BDDimLayoutAttr dim : *dims)
-        product *= dim.getSize();
-      len = static_cast<int32_t>(product);
-    }
+    int64_t product = 1;
+    for (BDDimLayoutAttr dim : *dims)
+      product *= dim.getSize();
+
+    // len < product: the outermost dim describes a hardware BD iteration
+    // (preserved downstream as iteration_size/stride). Don't fold it away.
+    if (auto lenVal = op.getLen())
+      if (static_cast<int64_t>(*lenVal) != product)
+        return mlir::failure();
+    int32_t len = static_cast<int32_t>(product);
 
     // Drop the dimensions attribute in-place; all other attributes (offset,
     // len, packet, burst_length, bd_id, etc.) are preserved automatically.
