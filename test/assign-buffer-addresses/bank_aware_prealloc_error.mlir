@@ -33,3 +33,17 @@ module @test1 {
     %buf2 = aie.buffer(%tile34) { sym_name = "b", address = 1024 : i32 } : memref<1024xi32>
   }
 }
+
+
+// -----
+
+module @test2 {
+  aie.device(npu1) {
+    // expected-error@+1 {{'aie.tile' op Bank-aware allocation failed.}}
+    %tile34 = aie.tile(3, 4)
+    %buf0 = aie.buffer(%tile34) { sym_name = "a", mem_bank = 2 : i32 } : memref<1024xi32>    
+    // expected-error@+1 {{'aie.buffer' op mem_bank attribute value is out of range}}
+    %buf1 = aie.buffer(%tile34) { sym_name = "b", mem_bank = 4 : i32 } : memref<1024xi32>
+
+  }
+}

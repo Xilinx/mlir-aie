@@ -11,8 +11,8 @@
 // RUN: aie-opt --aie-assign-buffer-addresses='alloc-scheme=basic-sequential' %s | FileCheck %s
 
 // CHECK: aie.buffer(%{{.*}}) {address = 4096 : i32, sym_name = "b"} : memref<1024xi32>
-// CHECK: aie.buffer(%{{.*}}) {address = 12288 : i32, sym_name = "c"} : memref<1024xi32>
-// CHECK: aie.buffer(%{{.*}}) {address = 20000 : i32, sym_name = "d"} : memref<1024xi32>
+// CHECK: aie.buffer(%{{.*}}) {address = 12288 : i32, aligned = false, sym_name = "c"} : memref<1024xi32>
+// CHECK: aie.buffer(%{{.*}}) {address = 20000 : i32, aligned = false, sym_name = "d"} : memref<1024xi32>
 
 module @test {
   aie.device(npu1) {
@@ -21,8 +21,8 @@ module @test {
     %buf0 = aie.buffer(%tile22) : memref<200xi32>
     %buf1 = aie.buffer(%tile22) : memref<100xi32>
     %buf2 = aie.buffer(%tile22) { sym_name = "b", address = 4096 : i32 } : memref<1024xi32>
-    %buf3 = aie.buffer(%tile22) { sym_name = "c", address = 12288 : i32 } : memref<1024xi32>
-    %buf4 = aie.buffer(%tile22) { sym_name = "d", address = 20000 : i32 } : memref<1024xi32>
+    %buf3 = aie.buffer(%tile22) { sym_name = "c", address = 12288 : i32, aligned=false } : memref<1024xi32>
+    %buf4 = aie.buffer(%tile22) { sym_name = "d", address = 20000 : i32, aligned=false } : memref<1024xi32>
     %buf5 = aie.buffer(%tile22) : memref<800xi32>
   }
 }
