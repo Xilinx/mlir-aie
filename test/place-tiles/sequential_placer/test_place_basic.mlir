@@ -204,3 +204,98 @@ module @shimtile_col_constraint {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// Interleaved partial-column hints must pack contiguously per column.
+// CHECK-LABEL: @interleaved_partial_cols_2x2
+module @interleaved_partial_cols_2x2 {
+  aie.device(npu1) {
+    // CHECK-DAG: aie.tile(0, 2)
+    // CHECK-DAG: aie.tile(1, 2)
+    // CHECK-DAG: aie.tile(0, 3)
+    // CHECK-DAG: aie.tile(1, 3)
+    // CHECK-NOT: aie.tile(0, 4)
+    // CHECK-NOT: aie.tile(1, 4)
+    %t1 = aie.logical_tile<CoreTile>(0, ?)
+    %t2 = aie.logical_tile<CoreTile>(1, ?)
+    %t3 = aie.logical_tile<CoreTile>(0, ?)
+    %t4 = aie.logical_tile<CoreTile>(1, ?)
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    aie.core(%t3) { aie.end }
+    aie.core(%t4) { aie.end }
+  }
+}
+
+// -----
+
+// Three-column generalization.
+// CHECK-LABEL: @interleaved_partial_cols_3x2
+module @interleaved_partial_cols_3x2 {
+  aie.device(npu1) {
+    // CHECK-DAG: aie.tile(0, 2)
+    // CHECK-DAG: aie.tile(1, 2)
+    // CHECK-DAG: aie.tile(2, 2)
+    // CHECK-DAG: aie.tile(0, 3)
+    // CHECK-DAG: aie.tile(1, 3)
+    // CHECK-DAG: aie.tile(2, 3)
+    // CHECK-NOT: aie.tile({{.*}}, 4)
+    %t1 = aie.logical_tile<CoreTile>(0, ?)
+    %t2 = aie.logical_tile<CoreTile>(1, ?)
+    %t3 = aie.logical_tile<CoreTile>(2, ?)
+    %t4 = aie.logical_tile<CoreTile>(0, ?)
+    %t5 = aie.logical_tile<CoreTile>(1, ?)
+    %t6 = aie.logical_tile<CoreTile>(2, ?)
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    aie.core(%t3) { aie.end }
+    aie.core(%t4) { aie.end }
+    aie.core(%t5) { aie.end }
+    aie.core(%t6) { aie.end }
+  }
+}
+
+// -----
+
+// Request order across columns shouldn't affect per-column packing.
+// CHECK-LABEL: @interleaved_partial_cols_out_of_order
+module @interleaved_partial_cols_out_of_order {
+  aie.device(npu1) {
+    // CHECK-DAG: aie.tile(2, 2)
+    // CHECK-DAG: aie.tile(0, 2)
+    // CHECK-DAG: aie.tile(2, 3)
+    // CHECK-DAG: aie.tile(0, 3)
+    // CHECK-NOT: aie.tile({{.*}}, 4)
+    %t1 = aie.logical_tile<CoreTile>(2, ?)
+    %t2 = aie.logical_tile<CoreTile>(0, ?)
+    %t3 = aie.logical_tile<CoreTile>(2, ?)
+    %t4 = aie.logical_tile<CoreTile>(0, ?)
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    aie.core(%t3) { aie.end }
+    aie.core(%t4) { aie.end }
+  }
+}
+
+// -----
+
+// Partial requests interleaved with a fully constrained tile.
+// CHECK-LABEL: @mixed_partial_then_full
+module @mixed_partial_then_full {
+  aie.device(npu1) {
+    // CHECK-DAG: aie.tile(0, 2)
+    // CHECK-DAG: aie.tile(1, 2)
+    // CHECK-DAG: aie.tile(0, 3)
+    // CHECK-DAG: aie.tile(1, 3)
+    // CHECK-NOT: aie.tile(0, 4)
+    %t1 = aie.logical_tile<CoreTile>(0, ?)
+    %t2 = aie.logical_tile<CoreTile>(1, ?)
+    %t3 = aie.logical_tile<CoreTile>(0, ?)
+    %t4 = aie.logical_tile<CoreTile>(1, 3)
+    aie.core(%t1) { aie.end }
+    aie.core(%t2) { aie.end }
+    aie.core(%t3) { aie.end }
+    aie.core(%t4) { aie.end }
+  }
+}

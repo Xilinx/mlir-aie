@@ -86,7 +86,7 @@ static std::string tileDMATensorStr(int col, int row, int bdNum) {
 void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
                                     ArrayRef<BDDimLayoutAttr> dims, int col,
                                     int row, int bdNum, int baseAddrA,
-                                    int offsetA, int lenA,
+                                    int64_t offsetA, uint32_t lenA,
                                     int elementWidthInBytes,
                                     const char *errorRetval) {
   // libxaie requires stride in multiples of 32b
