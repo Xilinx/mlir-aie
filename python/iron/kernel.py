@@ -342,6 +342,7 @@ class ExternalFunction(Kernel):
         self._original_name = name
         self._symbol_prefix = symbol_prefix
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
+        object_file_name_explicit = object_file_name is not None
         if not object_file_name:
             object_file_name = f"{effective_name}.o"
         super().__init__(effective_name, object_file_name, arg_types)
@@ -361,33 +362,36 @@ class ExternalFunction(Kernel):
         self._compiled = False
         self._cached_digest: str | None = None
 
-        # Defensive: refuse to register a second ExternalFunction with the
-        # same (name, object_file_name) but a different content digest.
-        # The JIT pipeline writes each ExternalFunction's compiled output
-        # to ``object_file_name`` inside the cache directory; two such
-        # writes to the same path silently overwrite each other and
-        # leave the wrong .o linked in.  This was a real footgun caught
-        # while porting the whole_array matmul: a default-flag
-        # kernels.mm() call (just for .mac_dims) and a c_col_maj=True
-        # kernels.mm() call for the actual binding produced two
-        # identically-named ExternalFunctions whose .o files collided.
-        # The kernels.X helpers now memoize + auto-suffix object_file_name
-        # to prevent this from happening through the normal path; this
-        # check catches the same mistake when ExternalFunction is
-        # constructed directly.
+        # The JIT pipeline writes each ExternalFunction's compiled output to
+        # ``object_file_name`` inside the cache directory; two such writes to
+        # the same path silently overwrite each other and leave the wrong .o
+        # linked in.  Two same-name EFs with different content (e.g. two
+        # kernels.mm() helper calls with different parameterizations) would
+        # otherwise produce identical default .o filenames and collide.
+        # Mirror what kernels.X / _make_extern already does: when the path
+        # was DEFAULTED, auto-suffix it with a short content digest so each
+        # parameterization lives at a distinct .o.  When the user passed an
+        # explicit ``object_file_name=``, silent rename would surprise them
+        # — raise instead so they can disambiguate by name themselves.
         for existing in ExternalFunction._instances:
             if (
                 existing._name == effective_name
                 and existing._object_file_name == object_file_name
                 and existing._content_digest() != self._content_digest()
             ):
-                raise ValueError(
-                    f"ExternalFunction '{effective_name}' would collide with an "
-                    f"already-registered instance: same name and "
-                    f"object_file_name='{object_file_name}' but different "
-                    f"compile_flags / source.  Distinguish them by passing a "
-                    f"distinct `object_file_name=...` or a distinct `name=...`."
-                )
+                if object_file_name_explicit:
+                    raise ValueError(
+                        f"ExternalFunction '{effective_name}' would collide with "
+                        f"an already-registered instance: same name and "
+                        f"explicit object_file_name='{object_file_name}' but "
+                        f"different compile_flags / source.  Distinguish them "
+                        f"by passing a distinct `object_file_name=...` or "
+                        f"`name=...`."
+                    )
+                suffix = self._content_digest()[:8]
+                object_file_name = f"{effective_name}_{suffix}.o"
+                self._object_file_name = object_file_name
+                break
         ExternalFunction._instances.add(self)
 
     def __call__(self, *args, **kwargs):
