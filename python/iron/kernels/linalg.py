@@ -285,14 +285,18 @@ def cascade_mm(
     )
     extern.get_only = extern
     extern.put_only = Kernel(
-        f"matmul_scalar_cascade_put_only_{suffix}", extern.object_file_name,
+        f"matmul_scalar_cascade_put_only_{suffix}",
+        extern.object_file_name,
         [a_ty, b_ty, c_ty],
     )
     extern.put_get = Kernel(
-        f"matmul_scalar_cascade_put_get_{suffix}", extern.object_file_name,
+        f"matmul_scalar_cascade_put_get_{suffix}",
+        extern.object_file_name,
         [a_ty, b_ty, c_ty],
     )
     extern.zero = Kernel(
-        f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}", extern.object_file_name, [c_ty],
+        f"zero_scalar_{_ZERO_SUFFIX[output_dtype]}",
+        extern.object_file_name,
+        [c_ty],
     )
     return extern

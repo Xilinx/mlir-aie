@@ -8,6 +8,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=matrix_vector
 targetname=matrix_vector
 
@@ -19,4 +20,4 @@ N=1
 m=32
 k=32
 
-include $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))/../makefile-common
+include ${srcdir}/../makefile-common
