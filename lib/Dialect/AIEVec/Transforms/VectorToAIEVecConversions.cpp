@@ -5227,11 +5227,11 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
   if (backend == TargetBackend::CPP) {
     target.addDynamicallyLegalOp<arith::AddIOp>(
         [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
+    target.addDynamicallyLegalOp<arith::SubIOp>(
+        [](arith::SubIOp op) { return !isa<VectorType>(op.getType()); });
   }
   target.addDynamicallyLegalOp<arith::AddFOp>(
       [](arith::AddFOp op) { return !isa<VectorType>(op.getType()); });
-  target.addDynamicallyLegalOp<arith::SubIOp>(
-      [](arith::SubIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::SubFOp>(
       [](arith::SubFOp op) { return !isa<VectorType>(op.getType()); });
 
@@ -5549,18 +5549,17 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
       return !laneSizeElWidthPairSet.count(
           std::make_pair(laneSize, resultElWidth));
     });
+    target.addDynamicallyLegalOp<arith::SubIOp>([=](arith::SubIOp op) {
+      auto resultType = dyn_cast<VectorType>(op.getType());
+      if (!resultType)
+        return true;
+      auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+      unsigned laneSize = getVectorLaneSize(resultType);
+
+      return !laneSizeElWidthPairSet.count(
+          std::make_pair(laneSize, resultElWidth));
+    });
   }
-
-  target.addDynamicallyLegalOp<arith::SubIOp>([=](arith::SubIOp op) {
-    auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType)
-      return true;
-    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(resultType);
-
-    return !laneSizeElWidthPairSet.count(
-        std::make_pair(laneSize, resultElWidth));
-  });
 
   target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
