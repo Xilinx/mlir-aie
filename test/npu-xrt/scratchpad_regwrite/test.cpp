@@ -10,6 +10,7 @@
 // UPDATE_REG completes, and the core blocks on lock acquire until then.
 //
 
+#include <cstdint>
 #include <chrono>
 #include <cstring>
 #include <iomanip>

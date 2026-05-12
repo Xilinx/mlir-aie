@@ -989,6 +989,7 @@ def AIE_NpuCreateScratchpadOp: AIEX_Op<"npu.create_scratchpad", []> {
 
     The scratchpad memory contains a `StateTable`, indexed by 32-bit words by the `npu.update_from_scratchpad` op. `StateTable` constraints: max 32 entries, max total scratchpad size 128 bytes.
   }];
+  let hasVerifier = 1;
 }
 
 // XAIE_IO_UPDATE_REG (opcode 12)
@@ -1066,6 +1067,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
   let extraClassDeclaration = [{
     std::optional<uint32_t> getAbsoluteAddress();
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {

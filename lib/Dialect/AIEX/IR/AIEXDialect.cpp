@@ -760,6 +760,60 @@ std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress() {
   return ::getAbsoluteAddress(this);
 }
 
+LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
+  // StateTable has at most 32 entries (32-bit words).
+  constexpr uint32_t kMaxStateTableEntries = 32;
+  if (getStateTableIdx() >= kMaxStateTableEntries)
+    return emitOpError("state_table_idx ")
+           << static_cast<uint32_t>(getStateTableIdx())
+           << " exceeds maximum StateTable index ("
+           << (kMaxStateTableEntries - 1) << ").";
+
+  // Cross-check against any npu.create_scratchpad ops in the same block: the
+  // index must fit within the allocated scratchpad (size in 32-bit words).
+  Block *block = (*this)->getBlock();
+  if (block) {
+    for (auto createOp : block->getOps<AIEX::NpuCreateScratchpadOp>()) {
+      uint32_t sizeBytes = createOp.getSize();
+      uint32_t numEntries = sizeBytes / 4;
+      if (getStateTableIdx() >= numEntries) {
+        return emitOpError("state_table_idx ")
+               << static_cast<uint32_t>(getStateTableIdx())
+               << " is out of bounds for scratchpad of size " << sizeBytes
+               << " bytes (" << numEntries << " entries) created by "
+               << createOp->getName() << ".";
+      }
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuCreateScratchpadOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
+  // Only usage_type == 0 is currently supported by firmware.
+  if (getUsageType() != 0)
+    return emitOpError("usage_type must be 0 (got ")
+           << static_cast<uint32_t>(getUsageType())
+           << "); other layouts are not supported.";
+
+  // The StateTable layout (usage_type 0) has a max of 32 32-bit-word entries,
+  // i.e. a maximum total scratchpad size of 128 bytes.
+  constexpr uint32_t kMaxScratchpadSizeBytes = 128;
+  if (getSize() == 0)
+    return emitOpError("size must be greater than 0.");
+  if (getSize() % 4 != 0)
+    return emitOpError("size (")
+           << getSize() << ") must be a multiple of 4 bytes.";
+  if (getSize() > kMaxScratchpadSizeBytes)
+    return emitOpError("size (")
+           << getSize() << " bytes) exceeds maximum scratchpad size of "
+           << kMaxScratchpadSizeBytes << " bytes.";
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // NpuMaskWrite32Op
 //===----------------------------------------------------------------------===//
