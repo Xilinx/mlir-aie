@@ -22,6 +22,7 @@ using namespace xilinx::AIE;
 
 void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
   this->targetModel = &targetModel;
+  assignedNonCoreTiles.clear();
 
   // Collect all available physical tiles from device
   for (int col = 0; col < targetModel.columns(); col++) {
@@ -708,7 +709,8 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
            << " with sufficient DMA capacity";
 
   result[logicalTile] = *maybeTile;
-  assignedNonCoreTiles.insert(*maybeTile);
+  if (!mergeLogicalTiles)
+    assignedNonCoreTiles.insert(*maybeTile);
   if (numInputChannels > 0)
     updateChannelUsage(*maybeTile, false, numInputChannels);
   if (numOutputChannels > 0)

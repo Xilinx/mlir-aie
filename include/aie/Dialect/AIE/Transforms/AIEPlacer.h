@@ -65,8 +65,13 @@ protected:
 // Core-to-core connections are NOT validated because SequentialPlacer
 // doesn't account for shared memory optimization.
 //
-// Shim/Mem tiles with identical placement constraints and sufficient
-// DMA capacity are merged to the same physical tile.
+// By default (mergeLogicalTiles == true), Shim/Mem logical tiles with
+// identical placement constraints and sufficient combined DMA capacity
+// are merged to the same physical tile via TileOp::getOrCreate during
+// the conversion pattern. CoreTile placement is column-major sequential
+// and never merges. Callers that pre-aggregate non-core logical tiles
+// can pass mergeLogicalTiles == false to make the placer pin each
+// non-core LTO to its own physical tile.
 class SequentialPlacer : public Placer {
 public:
   SequentialPlacer(std::optional<int> coresPerCol = std::nullopt,

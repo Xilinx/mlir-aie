@@ -68,7 +68,11 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
            "Spreads cores across columns for better trace packet routing.">,
     Option<"clMergeLogicalTiles", "merge-logical-tiles", "bool",
            /*default=*/"true",
-           "Allow mapping one or more aie.logical_tile to the same aie.tile.">
+           "When true (default), allow multiple non-core (ShimNOCTile / "
+           "MemTile) aie.logical_tile ops to share one physical aie.tile "
+           "if combined DMA channel demand fits. When false, each non-core "
+           "aie.logical_tile is pinned to its own physical tile. CoreTile "
+           "placement is unaffected.">
   ];
 }
 
