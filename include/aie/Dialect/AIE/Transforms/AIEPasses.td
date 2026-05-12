@@ -65,7 +65,10 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     Option<"clCoresPerCol", "cores-per-col", "int",
            /*default=*/"-1",
            "Limit number of cores per column (-1 = no limit). "
-           "Spreads cores across columns for better trace packet routing.">
+           "Spreads cores across columns for better trace packet routing.">,
+    Option<"clMergeLogicalTiles", "merge-logical-tiles", "bool",
+           /*default=*/"true",
+           "Allow mapping one or more aie.logical_tile to the same aie.tile.">
   ];
 }
 

@@ -708,6 +708,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
            << " with sufficient DMA capacity";
 
   result[logicalTile] = *maybeTile;
+  assignedNonCoreTiles.insert(*maybeTile);
   if (numInputChannels > 0)
     updateChannelUsage(*maybeTile, false, numInputChannels);
   if (numOutputChannels > 0)
@@ -736,6 +737,11 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
           continue;
 
         if (tile.col == searchCol) {
+          // When merge-logical-tiles is disabled, a tile that already
+          // hosts a non-core aie.logical_tile is off-limits even if it
+          // has spare DMA capacity.
+          if (!mergeLogicalTiles && assignedNonCoreTiles.contains(tile))
+            continue;
           if (hasAvailableChannels(tile, requiredInputChannels,
                                    requiredOutputChannels)) {
             return tile;

@@ -69,8 +69,9 @@ protected:
 // DMA capacity are merged to the same physical tile.
 class SequentialPlacer : public Placer {
 public:
-  SequentialPlacer(std::optional<int> coresPerCol = std::nullopt)
-      : coresPerCol(coresPerCol) {}
+  SequentialPlacer(std::optional<int> coresPerCol = std::nullopt,
+                   bool mergeLogicalTiles = true)
+      : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles) {}
 
   void initialize(const AIETargetModel &targetModel) override;
 
@@ -80,6 +81,11 @@ public:
 
 private:
   std::optional<int> coresPerCol;
+  bool mergeLogicalTiles;
+  // Physical tiles already assigned to a non-core aie.logical_tile. Used
+  // only when mergeLogicalTiles == false to forbid mapping a second
+  // non-core aie.logical_tile onto a tile that already hosts one.
+  llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
   TileAvailability availability;
   const AIETargetModel *targetModel = nullptr;
