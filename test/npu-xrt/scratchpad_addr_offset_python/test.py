@@ -70,12 +70,14 @@ def main():
 
         bo_out.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
         mv = bo_out.map()
-        result = np.frombuffer(bytes(mv[:N_OUTPUT * 4]), dtype=np.int32).tolist()
+        result = np.frombuffer(bytes(mv[: N_OUTPUT * 4]), dtype=np.int32).tolist()
 
         status = "PASS" if result == expected else "FAIL"
         if result != expected:
             all_pass = False
-        print(f"Run {run_idx} — offset={offset:2d}  expected={expected}  got={result}  {status}")
+        print(
+            f"Run {run_idx} — offset={offset:2d}  expected={expected}  got={result}  {status}"
+        )
 
     if all_pass:
         print("PASS!")

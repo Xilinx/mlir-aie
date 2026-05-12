@@ -157,8 +157,8 @@ struct AIELowerParametersPass
       builder.setInsertionPoint(syncOp);
       Location loc = syncOp.getLoc();
 
-      NpuCreateScratchpadOp::create(
-          builder, loc, static_cast<uint32_t>(scratchpadSlots * 4));
+      NpuCreateScratchpadOp::create(builder, loc,
+                                    static_cast<uint32_t>(scratchpadSlots * 4));
 
       for (auto &[stateIdx, bufRef] : paramEntries) {
         NpuUpdateFromScratchpadOp::create(
@@ -231,9 +231,8 @@ struct AIELowerParametersPass
     // emit an error.
     DenseMap<StringRef, bool> usedAsCore;
     DenseMap<StringRef, bool> usedAsAddr;
-    module.walk([&](ReadParameterOp op) {
-      usedAsCore[op.getParameter()] = true;
-    });
+    module.walk(
+        [&](ReadParameterOp op) { usedAsCore[op.getParameter()] = true; });
     auto markAddr = [&](Operation *op, FlatSymbolRefAttr ref) {
       if (ref)
         usedAsAddr[ref.getValue()] = true;

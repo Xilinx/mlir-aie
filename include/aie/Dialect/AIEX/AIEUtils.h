@@ -46,9 +46,9 @@ std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
 // an `aiex.parameter`) and `offset_state_table_idx` (IntegerAttr, set by
 // `--aie-lower-parameters`) attributes. The referenced parameter must have
 // type `i32`.
-LogicalResult
-emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder, Operation *bdOp,
-                                       BaseMemRefType bufType,
-                                       uint64_t registerAddr);
+LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
+                                                     Operation *bdOp,
+                                                     BaseMemRefType bufType,
+                                                     uint64_t registerAddr);
 }
 } // namespace xilinx

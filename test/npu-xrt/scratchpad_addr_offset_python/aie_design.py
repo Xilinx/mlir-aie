@@ -73,7 +73,9 @@ def design():
         rt.start(worker)
 
         # Input DMA — offset_parameter patches the BD address at runtime
-        in_tap = TensorAccessPattern((32,), offset=0, sizes=[1, 1, 1, 8], strides=[0, 0, 0, 1])
+        in_tap = TensorAccessPattern(
+            (32,), offset=0, sizes=[1, 1, 1, 8], strides=[0, 0, 0, 1]
+        )
         rt.fill(of_in.prod(), in_tensor, tap=in_tap, offset_parameter=input_offset)
 
         # Output DMA
@@ -85,8 +87,8 @@ def design():
 
     # Insert empty device to force PDI reload
     mlir_text = str(module)
-    empty_device = '  aie.device(npu2) @empty { }\n'
-    mlir_text = mlir_text.replace('module {\n', 'module {\n' + empty_device, 1)
+    empty_device = "  aie.device(npu2) @empty { }\n"
+    mlir_text = mlir_text.replace("module {\n", "module {\n" + empty_device, 1)
     return mlir_text
 
 

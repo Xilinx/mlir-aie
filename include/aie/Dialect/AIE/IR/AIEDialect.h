@@ -67,8 +67,7 @@ uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
 // a symbol with that name before the next call (otherwise the same name will
 // be returned again).
 std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
-                                     llvm::StringRef prefix,
-                                     unsigned &counter);
+                                     llvm::StringRef prefix, unsigned &counter);
 
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);

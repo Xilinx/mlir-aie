@@ -127,10 +127,8 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
   return getShimBurstLength(tm, burstLength).first;
 }
 
-std::string
-xilinx::AIE::generateUniqueSymbolName(mlir::Operation *symbolTableOp,
-                                      llvm::StringRef prefix,
-                                      unsigned &counter) {
+std::string xilinx::AIE::generateUniqueSymbolName(
+    mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
   std::string name;
   do {
     name = (prefix + llvm::Twine(counter++)).str();

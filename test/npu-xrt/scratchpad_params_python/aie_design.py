@@ -76,8 +76,8 @@ def design():
     # so we force a different (empty) PDI first.
     # FIXME: Replace this with the proper IRON abstraction for multiple devices when it becomes available.
     mlir_text = str(module)
-    empty_device = '  aie.device(npu2) @empty { }\n'
-    mlir_text = mlir_text.replace('module {\n', 'module {\n' + empty_device, 1)
+    empty_device = "  aie.device(npu2) @empty { }\n"
+    mlir_text = mlir_text.replace("module {\n", "module {\n" + empty_device, 1)
     return mlir_text
 
 

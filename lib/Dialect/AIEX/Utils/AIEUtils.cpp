@@ -186,8 +186,7 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     return err;
   }
 
-  uint8_t stateIdx =
-      static_cast<uint8_t>(paramOp.getStateTableIdx().value());
+  uint8_t stateIdx = static_cast<uint8_t>(paramOp.getStateTableIdx().value());
   uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
   // Use func=mul with func_arg=elemBytes so the firmware computes
   // StateTable[idx] * elemBytes = byte offset, added into the BD address

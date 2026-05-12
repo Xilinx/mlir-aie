@@ -26,12 +26,13 @@ PYBIND11_MODULE(_parameter_scratchpad, m) {
            }),
            py::arg("buffer"), py::arg("params_path"),
            py::keep_alive<1, 2>()) // prevent GC of buffer while alive
-      .def("write_bytes",
-           [](test_utils::ParameterScratchpad &self, const std::string &name,
-              py::bytes data) {
-             std::string s = data;
-             self.writeBytes(name, s.data(), s.size());
-           },
-           py::arg("name"), py::arg("data"))
+      .def(
+          "write_bytes",
+          [](test_utils::ParameterScratchpad &self, const std::string &name,
+             py::bytes data) {
+            std::string s = data;
+            self.writeBytes(name, s.data(), s.size());
+          },
+          py::arg("name"), py::arg("data"))
       .def("read", &test_utils::ParameterScratchpad::read, py::arg("name"));
 }
