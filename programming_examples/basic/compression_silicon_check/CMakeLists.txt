@@ -1,0 +1,26 @@
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+cmake_minimum_required(VERSION 3.30)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
+include(../../mlir_aie_init.cmake)
+mlir_aie_init_example()
+project(${ProjectName})
+include(../../common.cmake)
+
+add_executable(${currentTarget} test.cpp)
+
+target_include_directories (${currentTarget} PUBLIC ${XRT_INC_DIR})
+
+target_link_directories(${currentTarget} PUBLIC
+    ${XRT_LIB_DIR}
+)
+
+target_link_libraries(${currentTarget} PUBLIC
+    xrt_coreutil
+)
+
+target_link_test_utils(${currentTarget})
