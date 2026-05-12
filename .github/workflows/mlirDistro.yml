@@ -1,5 +1,10 @@
 name: MLIR Distro
 
+# When dispatched with DISPATCH_NONCE set, embed the nonce in the run title so
+# callers (e.g. update-llvm.yml) can identify *their* dispatched run via
+# `gh run list --json displayTitle` instead of guessing by timestamp.
+run-name: ${{ inputs.DISPATCH_NONCE && format('MLIR Distro [{0}]', inputs.DISPATCH_NONCE) || 'MLIR Distro' }}
+
 on:
   pull_request:
     paths:
@@ -36,6 +41,11 @@ on:
         type: string
         required: false
         default: 'true'
+      DISPATCH_NONCE:
+        description: 'Optional unique identifier echoed into the run title so callers can locate this dispatched run.'
+        type: string
+        required: false
+        default: ''
 
 
   schedule:
@@ -45,6 +55,14 @@ on:
   # this is only for debugging this same yamls
   # comment it out when you're not working on these yamls
 #  pull_request:
+
+concurrency:
+  # PR runs from the same PR cancel earlier in-flight runs (standard supersede).
+  # workflow_dispatch and schedule serialize per-event so the second publish
+  # waits for the first — preventing the upload race that PR #2789 worked
+  # around with `replacesArtifacts: false`.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
 
@@ -61,14 +79,36 @@ jobs:
     steps:
       - name: Get llvm-project commit
         id: get_llvm_project_commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          
+
           if [ x"${{ inputs.LLVM_COMMIT }}" == x"" ]; then
             sudo apt install jq
-            LLVM_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/llvm/llvm-project/commits/main | jq -r '.sha')
+            # Authenticated request to avoid the unauthenticated 60/hr per-IP
+            # rate limit, which silently produced LLVM_PROJECT_COMMIT=null and
+            # broke the wheel build. --fail-with-body keeps the response body
+            # on HTTP error so future failures surface the actual cause in
+            # the CI log instead of hiding behind a silent curl.
+            RESPONSE=$(curl --fail-with-body -sSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/llvm/llvm-project/commits/main) || {
+              echo "::error::GitHub API request failed."
+              echo "Response body:"
+              echo "$RESPONSE"
+              exit 1
+            }
+            LLVM_PROJECT_COMMIT=$(echo "$RESPONSE" | jq -r '.sha')
           else
             LLVM_PROJECT_COMMIT="${{ inputs.llvm_commit }}"
           fi
+
+          if [ -z "$LLVM_PROJECT_COMMIT" ] || [ "$LLVM_PROJECT_COMMIT" = "null" ]; then
+            echo "::error::LLVM_PROJECT_COMMIT is empty or null; refusing to produce broken wheels."
+            exit 1
+          fi
+
           echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT}"
           echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT:0:8}" | tee -a $GITHUB_OUTPUT
           DATETIME=$(date +"%Y%m%d%H")
@@ -421,10 +461,36 @@ jobs:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
+      # Inject a PEP 427 build tag so concurrent CI runs (PR re-pushes, sibling
+      # PRs, cron) cannot collide on a release-asset name. The build tag does
+      # not change the wheel's PEP 440 version, so PIP_FIND_LINKS consumers
+      # asking for `mlir==<version>` keep matching; pip uses the build tag only
+      # to break ties among wheels of the same version (higher tag wins).
+      # Skipped on workflow_dispatch so the canonical `mlir-distro` release
+      # keeps deterministic filenames that `find_wheel_in_distro` looks up.
+      - name: Inject build tag for non-canonical wheel uploads
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        working-directory: dist
+        run: |
+          shopt -s nullglob
+          wheels=( *.whl )
+          if [ ${#wheels[@]} -eq 0 ]; then
+            echo "::error::No wheels found in dist/; cannot inject build tag."
+            exit 1
+          fi
+          BUILD_TAG="${{ github.run_id }}_${{ github.run_attempt }}"
+          for w in "${wheels[@]}"; do
+            newname=$(echo "$w" | sed -E "s/-(py3-none-[^-]+)\.whl$/-${BUILD_TAG}-\1.whl/")
+            if [ "$w" != "$newname" ]; then mv "$w" "$newname"; fi
+          done
+          ls -la
+
       - name: Release current commit
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: ncipollo/release-action@v1.12.0
         with:
-          artifacts: "dist/*.whl,dist/*.tar.xz"
+          artifacts: "dist/*.whl"
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ github.event_name == 'workflow_dispatch' && 'mlir-distro' || 'dev-wheels' }}
           name: ${{ github.event_name == 'workflow_dispatch' && 'mlir-distro' || 'dev-wheels' }}

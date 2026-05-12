@@ -17,10 +17,13 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   update-llvm:
     runs-on: ubuntu-latest
+    # Cap total runtime: mlirDistro can take ~1h, leave headroom for the rest.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -29,14 +32,78 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Run update script
-        id: update
+      - name: Identify target LLVM commit
+        id: identify
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -n "${{ inputs.llvm_hash }}" ]; then
-            python3 utils/update_llvm_version.py --llvm-hash "${{ inputs.llvm_hash }}"
+            python3 utils/update_llvm_version.py --identify-only --llvm-hash "${{ inputs.llvm_hash }}"
           else
-            python3 utils/update_llvm_version.py
+            python3 utils/update_llvm_version.py --identify-only
           fi
+
+      # Defensive: identify is contractually required to write wheel_exists
+      # (true|false). An unset value means the script took an unexpected
+      # branch; refuse to proceed silently rather than skip downstream steps.
+      - name: Verify identify outputs
+        run: |
+          if [ -z "${{ steps.identify.outputs.wheel_exists }}" ]; then
+            echo "::error::identify step did not set wheel_exists; refusing to proceed."
+            exit 1
+          fi
+
+      - name: Trigger mlirDistro and wait for wheel
+        if: steps.identify.outputs.target_commit != '' && steps.identify.outputs.wheel_exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET="${{ steps.identify.outputs.target_commit }}"
+          # Per-call nonce so we can deterministically locate the dispatched
+          # run by its display title, even if other workflow_dispatch events
+          # for mlirDistro fire in the same second.
+          NONCE="update-llvm-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$(date +%s)-$RANDOM"
+          echo "No mlir-distro wheel for $TARGET; dispatching mlirDistro (nonce=$NONCE)."
+          DISPATCH_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # `gh workflow run` defaults to the repo's default branch, so the
+          # dispatched mlirDistro run lands on `main` regardless of where this
+          # update-llvm run was triggered. The `--branch main` filter below
+          # mirrors that assumption.
+          gh workflow run mlirDistro.yml -f LLVM_COMMIT="$TARGET" -f DISPATCH_NONCE="$NONCE"
+
+          # Poll up to 5 minutes; GitHub can take a while to materialize a
+          # dispatched run under load. Filter by displayTitle containing our
+          # nonce so we can never pick up an unrelated dispatch.
+          RUN_ID=""
+          for i in $(seq 1 60); do
+            sleep 5
+            RUN_ID=$(gh run list \
+              --workflow mlirDistro.yml \
+              --event workflow_dispatch \
+              --branch main \
+              --limit 20 \
+              --created ">=$DISPATCH_TS" \
+              --json databaseId,displayTitle \
+              --jq ".[] | select(.displayTitle | contains(\"$NONCE\")) | .databaseId" \
+              | head -n1)
+            if [ -n "$RUN_ID" ]; then break; fi
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not locate dispatched mlirDistro run with nonce $NONCE after 5 minutes."
+            exit 1
+          fi
+
+          echo "Watching mlirDistro run $RUN_ID..."
+          gh run watch "$RUN_ID" --exit-status --interval 60
+
+      - name: Apply update
+        id: update
+        if: steps.identify.outputs.target_commit != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 utils/update_llvm_version.py --llvm-hash "${{ steps.identify.outputs.target_commit }}"
 
       - name: Check for changes
         id: check_changes
