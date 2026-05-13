@@ -1,10 +1,12 @@
 # Auxiliary tools used by the wheel-build CI workflows.
-# Platform markers: auditwheel/patchelf are Linux-only (ELF wheel repair);
-# delvewheel is Windows-only (PE wheel repair); pkginfo is cross-platform.
-# Compile with:  uv pip compile --generate-hashes --universal -o ci-tools.lock ci-tools.in
-# (uv is required for --universal to keep the Windows-only delvewheel pin
-#  resolvable from a Linux host; pip-compile would silently drop it.)
+# Linux-only: auditwheel + patchelf (neither has a Windows wheel).
+# delvewheel is only USED on Windows but ships as a pure-Python universal
+# wheel, so we leave it unmarked (installs harmlessly on Linux too). This
+# keeps the lockfile resolvable by plain pip-compile from a Linux host
+# without needing a cross-platform resolver like uv.
+# Compile with:
+#   pip-compile --generate-hashes --allow-unsafe -o ci-tools.lock ci-tools.in
 auditwheel; platform_system == "Linux"
-delvewheel; platform_system == "Windows"
+delvewheel
 patchelf;   platform_system == "Linux"
 pkginfo
