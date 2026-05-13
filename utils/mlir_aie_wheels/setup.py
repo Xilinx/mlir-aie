@@ -322,6 +322,20 @@ class CMakeBuild(build_ext):
                 f'__build_date__ = "{build_date}"\n'
             )
 
+            init_file = aie_pkg_dir / "__init__.py"
+            reexport_marker = "# >>> mlir-aie wheel build metadata"
+            reexport_block = (
+                f"\n{reexport_marker}\n"
+                "from ._version import __version__, __commit__, __build_date__\n"
+                "# <<< mlir-aie wheel build metadata\n"
+            )
+            existing_init = (
+                init_file.read_text(encoding="utf-8") if init_file.exists() else ""
+            )
+            if reexport_marker not in existing_init:
+                with init_file.open("a", encoding="utf-8") as f:
+                    f.write(reexport_block)
+
             build_succeeded = True
         finally:
             if cleanup_build_temp and build_succeeded:
