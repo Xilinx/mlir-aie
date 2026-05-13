@@ -804,6 +804,10 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 1; }
 
+  // AIE2P (NPU2) requires 512-bit alignment for the wider vector load/store
+  // ops (e.g. aie::load_v<int32_t,16>). See issue #2579.
+  uint32_t getComputeTileLoadStoreBusWidth() const override { return 512; }
+
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
 

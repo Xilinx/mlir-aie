@@ -419,7 +419,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     will run in the core. The path specified should is relative to the MLIR
     file.
 
-    This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
+    This op has an optional `stack_size` attribute, to control the amount of memory (in bytes)
     reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data allocations
     in other cores.
@@ -453,7 +453,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     %tile = aie.tile(3, 3)
     aie.core(%tile) {
       aie.end
-    } { stackSize = 2048 : i32, elf_file = "core_33.elf" }
+    } { stack_size = 2048 : i32, elf_file = "core_33.elf" }
     ```
   }];
 

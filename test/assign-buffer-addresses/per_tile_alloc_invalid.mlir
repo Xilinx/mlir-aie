@@ -29,6 +29,6 @@ module @test {
 
     aie.core(%t2) {
       aie.end
-    } {stackSize = 2048}
+    } {stack_size = 2048 : i32}
   }
 }

@@ -49,7 +49,7 @@ module @test_align{
 
       aie.core(%0){
         aie.end
-      }{stackSize = 4096 : i32}
+      }{stack_size = 4096 : i32}
   }
 
 
@@ -67,7 +67,7 @@ module @test_align2{
 
     aie.core(%0) {
       aie.end
-    }{stackSize = 4096 : i32}
+    }{stack_size = 4096 : i32}
 
   }
 
