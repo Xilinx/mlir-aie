@@ -526,6 +526,12 @@ class CompilableDesign:
                 )
 
             try:
+                # _EXTERN_CACHE entries hold MLIR ops bound to a prior compile()'s
+                # MLIR Context; reusing them across contexts segfaults inside
+                # func.function_type.  Clear so the cache is per-compile-pass.
+                from aie.iron.kernels._common import _EXTERN_CACHE
+
+                _EXTERN_CACHE.clear()
                 mlir_module = self._generate_mlir(ExternalFunction)
 
                 # Determine target architecture.
