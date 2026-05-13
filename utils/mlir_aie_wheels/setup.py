@@ -4,10 +4,9 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from pprint import pprint
-from textwrap import dedent
 from typing import Union
 
 from importlib_metadata import files
@@ -308,6 +307,21 @@ class CMakeBuild(build_ext):
             target_dir = Path(install_dir) / "python"
             req_file = Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
             install_eudsl(req_file, target_dir)
+
+            aie_pkg_dir = Path(install_dir) / "python" / "aie"
+            aie_pkg_dir.mkdir(parents=True, exist_ok=True)
+            sha = _git("rev-parse", "--short=7", "HEAD") or "unknown"
+            build_date = (
+                datetime.now(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            )
+            (aie_pkg_dir / "_version.py").write_text(
+                f'__version__ = "{get_version()}"\n'
+                f'__commit__ = "{sha}"\n'
+                f'__build_date__ = "{build_date}"\n'
+            )
+
             build_succeeded = True
         finally:
             if cleanup_build_temp and build_succeeded:
@@ -334,19 +348,50 @@ class InstallWithPth(install):
             pth_file.write("mlir_aie/python")
 
 
+def _git(*args):
+    try:
+        return (
+            subprocess.check_output(
+                ["git", *args],
+                cwd=str(Path(__file__).parent),
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+
+
 def get_version():
     if "AIE_WHEEL_VERSION" in os.environ and os.environ["AIE_WHEEL_VERSION"].lstrip(
         "v"
     ):
         return os.environ["AIE_WHEEL_VERSION"].lstrip("v")
-    release_version = "0.0.1"
-    commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
-    now = datetime.now()
-    timestamp = os.environ.get(
-        "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
+
+    described = _git(
+        "describe", "--tags", "--long", "--abbrev=7", "--match", "v[0-9]*.[0-9]*.[0-9]*"
     )
-    suffix = "" if check_env("ENABLE_RTTI", 1) else "-no_rtti"
-    return f"{release_version}.{timestamp}+{commit_hash}{suffix}"
+    if described:
+        m = re.match(r"^v(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)$", described)
+        if m:
+            major, minor, patch, distance_s, sha = m.groups()
+            distance = int(distance_s)
+            if distance == 0:
+                return f"{major}.{minor}.{patch}"
+            base = f"{major}.{minor}.{int(patch) + 1}"
+            version = f"{base}.dev{distance}"
+            if check_env("AIE_WHEEL_KEEP_LOCAL"):
+                version += f"+g{sha}"
+            return version
+
+    commit_count = _git("rev-list", "--count", "HEAD") or "0"
+    version = f"0.0.0.dev{commit_count}"
+    if check_env("AIE_WHEEL_KEEP_LOCAL"):
+        sha = _git("rev-parse", "--short=7", "HEAD")
+        if sha:
+            version += f"+g{sha}"
+    return version
 
 
 MLIR_AIE_SOURCE_DIR = Path(
@@ -378,11 +423,49 @@ def parse_requirements(filename):
 
 
 setup(
+    name="mlir-aie" if check_env("ENABLE_RTTI", 1) else "mlir-aie-no-rtti",
     version=get_version(),
+    description="An MLIR-based toolchain for AMD AI Engine-enabled devices.",
+    long_description=(
+        (Path(MLIR_AIE_SOURCE_DIR) / "README.md").read_text(encoding="utf-8")
+        if (Path(MLIR_AIE_SOURCE_DIR) / "README.md").exists()
+        else "An MLIR-based toolchain for AMD AI Engine-enabled devices. "
+        "See https://github.com/Xilinx/mlir-aie"
+    ),
+    long_description_content_type="text/markdown",
+    author="AMD Inc.",
+    author_email="joseph.melber@amd.com",
+    url="https://github.com/Xilinx/mlir-aie",
     license="Apache-2.0 WITH LLVM-exception",
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "License :: OSI Approved :: Apache Software License",
+        "Topic :: Software Development :: Compilers",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: Microsoft :: Windows",
+        "Operating System :: MacOS",
+    ],
+    entry_points={
+        "console_scripts": [
+            "aie-lsp-server = aie.tools:aie_lsp_server",
+            "aie-opt = aie.tools:aie_opt",
+            "aie-reset = aie.tools:aie_reset",
+            "aie-translate = aie.tools:aie_translate",
+            "aie-visualize = aie.tools:aie_visualize",
+            "aiecc = aie.tools:aiecc",
+            "aiecc.py = aie.compiler.aiecc.main:main",
+            "bootgen = aie.tools:bootgen",
+            "txn2mlir.py = aie.compiler.txn2mlir.main:main",
+            "xchesscc_wrapper = aie.tools:xchesscc_wrapper",
+        ],
+    },
     include_package_data=True,
-    # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
-    # actually build the wheel.
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
     cmdclass={
         "build_ext": CMakeBuild,
