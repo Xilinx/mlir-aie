@@ -1,0 +1,8 @@
+# Auxiliary tools used by the wheel-build CI workflows
+# (auditwheel/delvewheel for wheel repair, pkginfo for reading wheel metadata,
+# patchelf as auditwheel's ELF mutator).
+# Compile with:  pip-compile --generate-hashes -o ci-tools.lock ci-tools.in
+auditwheel
+delvewheel
+patchelf
+pkginfo
