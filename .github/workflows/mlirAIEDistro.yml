@@ -303,7 +303,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         python -m pip install --upgrade pip
-        pip install delvewheel
+        pip install --require-hashes -r ci-tools.lock
 
         $opensslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
         New-Item -ItemType Directory -Force -Path wheelhouse\repaired_wheel | Out-Null
@@ -328,9 +328,8 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
 
         pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install --require-hashes -r requirements.lock
         pip install -r python/requirements_dev.txt
-        pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
@@ -341,7 +340,7 @@ jobs:
         AIE_WHEEL_VERSION=${{ steps.wheel_version.outputs.version }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
-        pip wheel . -v -w wheelhouse
+        pip wheel . -v -w wheelhouse --no-build-isolation
 
     - name: Clean
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
@@ -364,7 +363,7 @@ jobs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        pip install pkginfo
+        pip install --require-hashes -r ci-tools.lock
         WHL=$(ls wheelhouse/mlir_aie*whl)
         echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
