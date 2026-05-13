@@ -1473,7 +1473,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << opname;
   os << "(" << lhsName;
   if ((lsize == 32) && iType)
-    os << " ," << "undef_v16int32()";
+    os << " ,"
+       << "undef_v16int32()";
   os << " ," << rhsName;
   if ((lsize == 32) && iType)
     os << " , " << "broadcast_zero_s32()";
