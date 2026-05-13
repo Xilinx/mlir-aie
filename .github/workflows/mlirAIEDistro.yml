@@ -266,6 +266,7 @@ jobs:
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
         CIBW_CONTAINER_ENGINE_ARGS="-v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:/host${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}" \
         AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} \
+        AIE_WHEEL_KEEP_LOCAL=1 \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir wheelhouse
@@ -310,6 +311,7 @@ jobs:
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
         AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} \
+        AIE_WHEEL_KEEP_LOCAL=1 \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         pip wheel . -v -w wheelhouse

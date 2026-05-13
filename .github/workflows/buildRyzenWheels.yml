@@ -182,6 +182,7 @@ jobs:
             fi
             export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
             export DATETIME=$(date +"%Y%m%d%H")
+            export AIE_WHEEL_KEEP_LOCAL=1
 
             pushd utils/mlir_aie_wheels
 
@@ -368,7 +369,8 @@ jobs:
             export AIE_PROJECT_COMMIT="${AIE_PROJECT_COMMIT:0:7}"
           fi
           export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
-  
+          export AIE_WHEEL_KEEP_LOCAL=1
+
           # Try to always forward slash paths.
           ROOT_WIN=$(python -c "import os; print(os.getcwd().replace('\\\\', '/'))")
 
