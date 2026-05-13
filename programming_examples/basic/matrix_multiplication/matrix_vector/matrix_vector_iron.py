@@ -13,7 +13,7 @@ from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 
 
-def my_matmul(dev):
+def my_matmul(dev, vectorized):
     M = 288
     K = 288
     m = 32
@@ -24,9 +24,6 @@ def my_matmul(dev):
     M_div_n_cores = M // n_cores
     M_div_m_div_n_cores = M // (m * n_cores)
     K_div_k = K // k
-
-    # FIXME vectorized kernel is currently erroneous
-    vectorized = False
 
     # Define types
     dtype_in = np.dtype[np.int16]
@@ -62,6 +59,12 @@ def my_matmul(dev):
             of_b.release(1)
         of_c.release(1)
 
+    # The vectorized kernel reads A from local memory in a "32-bit-word
+    # transposed" layout (see aie_kernels/aie2/mv.cc). For 2-byte elements
+    # the transpose granularity is 2 elements; the resulting layout packs
+    # rows of each 2-column word slowly, m rows then next 2-col word.
+    a_transform = [(m, 2), (k // 2, 2 * m), (2, 1)] if vectorized else None
+
     # Create object fifos and workers for each core
     memA_fifos = []
     coreA_fifos = []
@@ -71,7 +74,7 @@ def my_matmul(dev):
     for i in range(n_cores):
         a_fifo = ObjectFifo(inA_ty, name=f"memA{i}")
         memA_fifos.append(a_fifo)
-        coreA_fifos.append(a_fifo.cons().forward())  # TODO: transform if vectorized
+        coreA_fifos.append(a_fifo.cons().forward(dims_from_stream=a_transform))
         outC_fifos.append(ObjectFifo(outC_ty, name=f"outC{i}"))
         w = Worker(
             core_fn,
@@ -119,6 +122,6 @@ if __name__ == "__main__":
         prog="AIE Matrix Vector Multiplication MLIR Design",
     )
     argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
+    argparser.add_argument("--scalar", action="store_true", help="use scalar kernel")
     args, _ = argparser.parse_known_args()  # <- ignore the rest args in makefile-common
-    dev = args.dev
-    my_matmul(dev)
+    my_matmul(args.dev, vectorized=not args.scalar)
