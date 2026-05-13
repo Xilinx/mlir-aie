@@ -186,7 +186,9 @@ class Runtime(Resolvable):
 
         in_fifo.endpoint = rt_endpoint
         self._fifos.add(in_fifo)
-        self._tasks.append(DMATask(in_fifo, source, tap, task_group, wait, offset_param_name))
+        self._tasks.append(
+            DMATask(in_fifo, source, tap, task_group, wait, offset_param_name)
+        )
 
     def drain(
         self,
@@ -234,7 +236,9 @@ class Runtime(Resolvable):
 
         out_fifo.endpoint = rt_endpoint
         self._fifos.add(out_fifo)
-        self._tasks.append(DMATask(out_fifo, dest, tap, task_group, wait, offset_param_name))
+        self._tasks.append(
+            DMATask(out_fifo, dest, tap, task_group, wait, offset_param_name)
+        )
 
     def start(self, *args: Worker):
         """A placeholder operation to indicate that one or more Worker should be started on the device.
