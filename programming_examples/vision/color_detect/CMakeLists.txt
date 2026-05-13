@@ -10,36 +10,25 @@
 # -DXRT_LIB_DIR: Path to xrt_coreutil.lib
 # -DTARGET_NAME: Target name to be built
 
-# cmake needs this line
 cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
-include(../../common.cmake)
+include(../../mlir_aie_init.cmake)
+mlir_aie_init_example()
 
-find_program(WSL NAMES powershell.exe)
-
-if (NOT WSL)
+if(NOT WSL)
     set(OpenCV_DIR /usr/include/opencv4 CACHE STRING "Path to OpenCV install")
 else()
     set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
     add_compile_options("/std:c++17")
-endif ()
+endif()
 
 set(COLORDETECT_WIDTH 1920 CACHE STRING "image width")
 set(COLORDETECT_HEIGHT 1080 CACHE STRING "image height")
 
-set(TARGET_NAME test CACHE STRING "Target to be built")
-
-SET (ProjectName ${TARGET_NAME})
-SET (currentTarget ${TARGET_NAME})
-
-if ( WSL )
-	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
-    add_compile_options(/Zc:__cplusplus)
-endif ()
-
 project(${ProjectName})
+include(../../common.cmake)
 
 # Find packages
 find_package(OpenCV REQUIRED)
