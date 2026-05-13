@@ -188,7 +188,7 @@ struct CppEmitter {
     CppEmitter &emitter;
   };
 
-  /// Returns wether the Value is assigned to a C++ variable in the scope.
+  /// Returns whether the Value is assigned to a C++ variable in the scope.
   bool hasValueInScope(Value val);
 
   // Returns whether a label is assigned to the block.
@@ -1473,12 +1473,10 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << opname;
   os << "(" << lhsName;
   if ((lsize == 32) && iType)
-    os << " ,"
-       << "undef_v16int32()";
+    os << " ," << "undef_v16int32()";
   os << " ," << rhsName;
   if ((lsize == 32) && iType)
-    os << " , "
-       << "broadcast_zero_s32()";
+    os << " , " << "broadcast_zero_s32()";
   os << ")";
   return success();
 }
