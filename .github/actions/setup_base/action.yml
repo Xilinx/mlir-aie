@@ -41,7 +41,7 @@ runs:
         limit-access-to-actor: true
         detached: ${{ inputs.DEBUG_DETACHED }}
 
-    - uses: ilammy/msvc-dev-cmd@v1.4.1
+    - uses: ilammy/msvc-dev-cmd@v1
       if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
 
     - name: Set up Visual Studio shell
@@ -56,7 +56,7 @@ runs:
 
     - name: Free disk space
       if: contains(inputs.MATRIX_OS, 'ubuntu')
-      uses: descriptinc/free-disk-space@main
+      uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main as of 2023-09-27
       with:
         tool-cache: true
         android: true
@@ -65,7 +65,7 @@ runs:
         large-packages: true
         swap-storage: false # This frees space on the wrong partition.
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       with:
         python-version: '3.12'
 

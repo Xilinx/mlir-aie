@@ -41,7 +41,7 @@ jobs:
     steps:
 
       - name: Free disk space
-        uses: descriptinc/free-disk-space@main
+        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main as of 2023-09-27
         with:
           tool-cache: true
           android: true
