@@ -31,6 +31,12 @@
 #include <unordered_set>
 #include <vector>
 
+#if !defined(TEST_UTILS_USE_XRT) && defined(__has_include)
+#if __has_include(<xrt/xrt_bo.h>) && __has_include(<xrt/xrt_kernel.h>)
+#define TEST_UTILS_USE_XRT 1
+#endif
+#endif
+
 #ifdef TEST_UTILS_USE_XRT
 #include <xrt/xrt_bo.h>
 #include <xrt/xrt_kernel.h>
