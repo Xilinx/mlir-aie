@@ -1105,6 +1105,54 @@ If 'buffer' is not present and 'column' and 'row' are not present then
 
 
 
+### `aiex.npu.create_scratchpad` (::xilinx::AIEX::NpuCreateScratchpadOp)
+
+_Create a control code scratchpad memory region_
+
+Syntax:
+
+```
+operation ::= `aiex.npu.create_scratchpad` attr-dict
+```
+
+Create a scratchpad memory for data exchange between the host's main memory and the NPU command processor and copy its contents to the command processor's memory.
+
+When the runtime (XRT) observes that this instruction is present in the runtime sequence, it will allocate a scratchpad memory of the specified size on the host.
+When the command processor firmware executes this instruction, it copies the data in the runtime-allocated scratchpad region from the host's main memory to the NPU command processor's memory.
+From there, you can write values from the copy of the scratchpad memory in the command processor to arbitrary locations in the NPU (with restrictions) via the `npu.update_from_scratchpad` op.
+
+The flow of data therefore looks like this:
+```
+                create_scratchpad                                update_from_scratchpad
+[Host memory]  ------------------->  [Command processor memory]  ------------------------>  [NPU partition memory/registers]
+    ^                 |
+    |                 |
+     -----------------
+      XRT sees inst.
+      and allocates
+```
+
+To get a handle on the allocated scratchpad memory from XRT, use the `run.get_ctrl_scratchpad_bo()` method on the `xrt::run` object in your host application (`test.cpp`).
+An example can be found in `test/npu-xrt/scratchpad_regwrite`.
+
+The `usage_type` attribute specifies the scratchpad layout; currently only a value of `0` is supported.
+
+The `size` attribute specifies the size of the scratchpad in bytes.
+
+The host's main memory address is patched into the instruction at runtime by XRT based on the `.ctrl.scratchpad` section in the ELF. The assembler (aiebu) generates patching information for this address when it encounters this opcode.
+
+The scratchpad memory contains a `StateTable`, indexed by 32-bit words by the `npu.update_from_scratchpad` op. `StateTable` constraints: max 32 entries, max total scratchpad size 128 bytes.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>usage_type</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
+</table>
+
+
+
 ### `aiex.npu.dma_memcpy_nd` (::xilinx::AIEX::NpuDmaMemcpyNdOp)
 
 _Half DMA operator_
@@ -1291,6 +1339,12 @@ runtime by the driver or host program.
 
 If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
 
+### Watch Out!
+
+The firmware optimizes out repeated `load_pdi` operations if they refer to the same PDI.
+To force a reload / device reset, intersperse a `load_pdi` to a different PDI between same-device reloads.
+The easiest workaround is to create an empty `aie.device(npu2) @empty {}` and load that before the main device load.
+
 #### Attributes:
 
 <table>
@@ -1438,6 +1492,86 @@ By default, `dma_memcpy_nd` operations only issue tokens for `S2MM` channels, an
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>row_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+
+### `aiex.npu.update_from_scratchpad` (::xilinx::AIEX::NpuUpdateFromScratchpadOp)
+
+_Add a computed value to an 8-byte section of NPU memory from scratchpad state_
+
+Syntax:
+
+```
+operation ::= `aiex.npu.update_from_scratchpad` (`<` $func^ `>`)? attr-dict
+```
+
+Add a computed value based on scratchpad contents to an 8-byte section at the target address.
+
+This instruction reads the contents of scratchpad memory created using the `npu.create_scratchpad` op (the `StateTable`), calculates a value, then adds the result to the memory location or register denoted by the given address as follows:
+
+1. Reads the existing 64-bit value from the register pair:
+
+   ```
+   existing = (*(addr+4) & 0xFFFF) << 32 | (*addr & 0xFFFFFFFC)
+   ```
+
+2. Computes a delta based on the contents of the scratchpad memory created using `npu.create_scratchpad` (the `StateTable`) based on the selected function:
+
+   - `mul`:  `delta = StateTable[state_table_idx] * func_arg`
+   - `incr`: `delta = StateTable[state_table_idx] + func_arg`
+   - `decr`: `delta = StateTable[state_table_idx] - func_arg`
+
+3. Adds the delta to the existing value:
+
+  ```
+  result = existing + delta
+  ```
+
+4. Writes back the lower 48 bits of the result:
+
+   ```
+   *addr     = result & 0xFFFFFFFC    (bits [1:0] forced to 0)
+   *(addr+4) = (*(addr+4) & 0xFFFF0000) | ((result >> 32) & 0xFFFF)
+   ```
+
+### Constraints
+
+- This is always additive. It adds the computed delta to whatever value is already in the register pair. It cannot set an absolute value.
+- The lower 2 bits of the first register are always cleared (4-byte aligned).
+- The upper 16 bits of the second register are preserved unchanged.
+- Always writes 8 contiguous bytes (both registers in the pair).
+
+### Rationale
+
+The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only. 
+Because of this, this always writes 48 bits (size of BD addresses) and the lower bits are zeroed (assuring the value is a multiple of the addressable word size).
+
+### Attributes
+
+- `state_table_idx` is a 32-bit-word index offset into the scratchpad memory. The source value will be read from this offset into the scratchpad.
+- `func` is the function applied to the state table value in firmware, which can be one of `mul`, `incr` or `decr`.
+- `func_arg` is the argument to the function.
+- `address`, `buffer`, `column` and `row` together resolve to the destination address that the value will be written to. 
+  Address resolution is the same as for `npu.write32`:
+  - If `buffer` is specified, `address` is a word offset relative to that
+    buffer's start address.
+  - If `column` and `row` are present, `address` is a local offset within
+    that tile's address space.
+  - Otherwise, `address` is an absolute address into the AIE array.
+
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
+<tr><td><code>func</code></td><td>::xilinx::AIEX::StateTableFuncAttr</td><td>Function to apply between scratchpad value and register pair</td></tr>
+<tr><td><code>func_arg</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 
@@ -3466,6 +3600,18 @@ _Shim tile event enumeration for AIE2P_
 | BROADCAST_A_15 | `125` | BROADCAST_A_15 |
 | USER_EVENT_0 | `126` | USER_EVENT_0 |
 | USER_EVENT_1 | `127` | USER_EVENT_1 |
+
+### StateTableFunc
+
+_Function to apply between scratchpad value and register pair_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Mul | `0` | mul |
+| Incr | `1` | incr |
+| Decr | `2` | decr |
 
 ### TraceMode
 
