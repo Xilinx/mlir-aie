@@ -7,6 +7,7 @@
 # (c) Copyright 2021-2026 Xilinx Inc.
 
 import os
+import shutil
 import sys
 
 # Add shared AIE lit utilities to path
@@ -38,6 +39,10 @@ LitConfigHelper.setup_standard_environment(
     llvm_config, config, config.aie_obj_root, config.vitis_aietools_dir
 )
 
+# Forward the install prefix when tests are run against wheel-installed tools.
+if "MLIR_AIE_INSTALL_DIR" in os.environ:
+    llvm_config.with_system_environment("MLIR_AIE_INSTALL_DIR")
+
 # Basic substitutions
 config.substitutions.append(("%PYTHON", config.python_executable))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -63,6 +68,20 @@ rocm_config = LitConfigHelper.detect_rocm(
 
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
+# Host-side tests should use the host LLVM compiler instead of llvm-aie.
+host_clang = os.path.join(config.llvm_tools_dir, f"clang{config.llvm_exe_ext}")
+if not os.path.exists(host_clang):
+    host_clang = shutil.which("clang") or "clang"
+config.substitutions.append(
+    ("%host_clang", LitConfigHelper._quote_lit_arg(host_clang))
+)
+
+
+# Detect Peano before XRT feature gating for systems without Chess/AIETOOLS.
+early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
+early_peano_config = LitConfigHelper.detect_peano(
+    early_peano_tools_dir, config.peano_install_dir, llvm_config
+)
 
 # Detect XRT and Ryzen AI NPU devices
 xrt_config = LitConfigHelper.detect_xrt(
@@ -71,6 +90,7 @@ xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_bin_dir,
     config.aie_src_root,
     config.vitis_components,
+    has_peano_backend=early_peano_config.found,
 )
 
 # Setup host target triplet and sysroot
@@ -88,6 +108,7 @@ llvm_config.use_default_substitutions()
 # directories.
 config.excludes = [
     "lit.cfg.py",
+    "Inputs",
 ]
 
 config.aie_tools_dir = os.path.join(config.aie_obj_root, "bin")
@@ -102,17 +123,21 @@ if config.vitis_root:
 LitConfigHelper.prepend_path(llvm_config, config.xrt_bin_dir)
 
 peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
+# Keep generic tool substitutions working by making both Peano tools and host
+# LLVM tools discoverable. Host-side tests use %host_clang instead of relying on
+# PATH order to choose the host compiler.
 LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, peano_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, config.aie_tools_dir)
 config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
 
-tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
+tool_dirs = [config.aie_tools_dir]
+if early_peano_config.found:
+    tool_dirs.append(peano_tools_dir)
+tool_dirs.append(config.llvm_tools_dir)
 
-# Detect Peano backend
-peano_config = LitConfigHelper.detect_peano(
-    peano_tools_dir, config.peano_install_dir, llvm_config
-)
+# Reuse the earlier Peano probe after path setup.
+peano_config = early_peano_config
 
 # Detect Chess compiler
 chess_config = LitConfigHelper.detect_chess(
@@ -133,6 +158,29 @@ LitConfigHelper.apply_config_to_lit(
         "aiesim": aiesim_config,
     },
 )
+
+# Keep generic npu-xrt tests on the existing Chess path when Chess is available,
+# but steer them onto the Peano/lld path when Peano is the only AIE backend.
+aiecc_backend_flags = ""
+if "peano" in config.available_features and "chess" not in config.available_features:
+    aiecc_backend_flags = "--no-xchesscc --no-xbridge"
+config.substitutions.append(("%aiecc_backend_flags", aiecc_backend_flags))
+
+# Linux hosted tests need librt/libstdc++. Windows hosted tests link against
+# CMake-built dynamic MSVC libraries. Match CMake's default /MD selection.
+if os.name == "nt":
+    host_link_flags = " ".join(
+        [
+            "-fms-runtime-lib=dll",
+            "-Xlinker",
+            "/NODEFAULTLIB:libucrt",
+            "-Xlinker",
+            "/DEFAULTLIB:ucrt",
+        ]
+    )
+else:
+    host_link_flags = "-lrt -lstdc++"
+config.substitutions.append(("%host_link_flags", host_link_flags))
 
 tools = [
     "aie-opt",
@@ -182,7 +230,9 @@ lit_config.parallelism_groups["npu-xrt"] = 1
 if config.python_passes:
     config.available_features.add("python_passes")
 
-if config.xrt_python_bindings:
+if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
+    config, config.python_executable, "pyxrt"
+):
     config.available_features.add("xrt_python_bindings")
 
 if config.has_mlir_runtime_libraries:

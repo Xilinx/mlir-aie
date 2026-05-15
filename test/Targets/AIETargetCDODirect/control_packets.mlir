@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-ctrlpkt-to-bin -aie-output-binary=false %s |& FileCheck %s
+// RUN: aie-translate --aie-ctrlpkt-to-bin -aie-output-binary=false %s 2>&1 | FileCheck %s
 
 // CHECK: 8000001B
 // CHECK: 0001F000

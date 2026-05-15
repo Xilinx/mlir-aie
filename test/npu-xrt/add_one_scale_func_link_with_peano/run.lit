@@ -26,6 +26,6 @@
 // RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf  -O2 -c %S/scale_kernel.cc -o ./scale_kernel.o
 // RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang --target=aie2p-none-unknown-elf -O2 -c %S/scale_kernel.cc -o ./scale_kernel.o
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --xclbin-name=aie.xclbin --aie-generate-npu-insts --npu-insts-name=insts.bin ./aie_arch.mlir
-// RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+// RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 // RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin

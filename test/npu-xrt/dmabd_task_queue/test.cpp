@@ -8,8 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
 #include <chrono>
+#include <algorithm>
+#include <cstring>
+#include <string>
+#include <vector>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -17,7 +20,6 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <stdfloat>
 
 #include "cxxopts.hpp"
 #include "test_utils.h"

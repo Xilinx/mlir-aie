@@ -22,7 +22,8 @@ def peano_install_dir():
 def peano_cxx_path():
     """Returns the path to the Peano C++ compiler."""
     install_dir = peano_install_dir()
-    peano_cxx = os.path.join(install_dir, "bin", "clang++")
+    exe = ".exe" if os.name == "nt" else ""
+    peano_cxx = os.path.join(install_dir, "bin", f"clang++{exe}")
     if not os.path.isfile(peano_cxx):
         raise RuntimeError(f"Peano compiler not found in {peano_cxx}")
     return peano_cxx
@@ -31,7 +32,8 @@ def peano_cxx_path():
 def peano_linker_path():
     """Returns the path to the Peano linker."""
     install_dir = peano_install_dir()
-    peano_ld = os.path.join(install_dir, "bin", "ld.lld")
+    exe = ".exe" if os.name == "nt" else ""
+    peano_ld = os.path.join(install_dir, "bin", f"ld.lld{exe}")
     if not os.path.isfile(peano_ld):
         raise RuntimeError(f"Peano linker not found in {peano_ld}")
     return peano_ld

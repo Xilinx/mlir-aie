@@ -74,7 +74,7 @@ cmake_dependent_option(ENABLE_PYTHON_TESTS "Enable python tests" ON "AIE_ENABLE_
 set(LibXAIE_FOUND FALSE)
 if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
     message("Test using xaiengine from LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR=${LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR}")
-    set(LibXAIE_ROOT ${LibXAIE_${target}_DIR})
+    set(LibXAIE_ROOT ${LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR})
     find_package(LibXAIE)
 else()
   if(DEFINED VITIS_ROOT)

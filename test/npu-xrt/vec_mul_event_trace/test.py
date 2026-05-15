@@ -9,12 +9,12 @@
 #
 # ===-----------------------------------------------------------------------===#
 #
-# REQUIRES: ryzen_ai_npu2, xrt_python_bindings
+# REQUIRES: ryzen_ai_npu2, xrt_python_bindings, chess
 #
 
 # Build the test
 # RUN: xchesscc_wrapper aie2p -I %aietools/include -c %S/vector_scalar_mul.cc -o vector_scalar_mul.o
-# RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+# RUN: %python aiecc.py %aiecc_backend_flags --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 
 # Run the test (input_with_addresses.mlir contains the lowered npu_write ops)
 # RUN: %run_on_npu2% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace-sz 8192 --mlir aie.mlir.prj/input_with_addresses.mlir | FileCheck %s

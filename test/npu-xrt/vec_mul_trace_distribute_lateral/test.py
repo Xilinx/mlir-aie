@@ -19,7 +19,7 @@
 # With lateral-routing, both channels are routed to column 1's shim
 # (the spare column), keeping trace traffic off the active data path.
 #
-# REQUIRES: ryzen_ai_npu1, xrt_python_bindings
+# REQUIRES: ryzen_ai_npu1, xrt_python_bindings, peano
 #
 # Compile kernel with Peano (aie2 target for Phoenix/NPU1):
 # RUN: %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf -O2 -c %S/vector_scalar_mul.cc -o vector_scalar_mul.o

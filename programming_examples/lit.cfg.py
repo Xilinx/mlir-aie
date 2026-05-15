@@ -56,6 +56,12 @@ rocm_config = LitConfigHelper.detect_rocm(
     config.hsa_dir, config.aieHostTarget, config.enable_board_tests
 )
 
+# Detect Peano before XRT feature gating for systems without Chess/AIETOOLS
+early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
+early_peano_config = LitConfigHelper.detect_peano(
+    early_peano_tools_dir, config.peano_install_dir, llvm_config
+)
+
 # Detect XRT and Ryzen AI NPU devices
 xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_lib_dir,
@@ -63,6 +69,7 @@ xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_bin_dir,
     config.aie_src_root,
     config.vitis_components,
+    has_peano_backend=early_peano_config.found,
 )
 
 # Detect OpenCV
@@ -108,12 +115,13 @@ LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, peano_tools_dir)
 config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
 
-tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
+tool_dirs = [config.aie_tools_dir]
+if early_peano_config.found:
+    tool_dirs.append(peano_tools_dir)
+tool_dirs.append(config.llvm_tools_dir)
 
-# Detect Peano backend
-peano_config = LitConfigHelper.detect_peano(
-    peano_tools_dir, config.peano_install_dir, llvm_config
-)
+# Reuse the earlier Peano probe after path setup.
+peano_config = early_peano_config
 
 # Detect Chess compiler
 chess_config = LitConfigHelper.detect_chess(
