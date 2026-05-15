@@ -380,9 +380,7 @@ class LitConfigHelper:
                             "Running tests on NPU1 with command line: %s", run_on_npu1
                         )
                     else:
-                        logger.warning(
-                            "NPU1 detected but no AIE2 backend is available"
-                        )
+                        logger.warning("NPU1 detected but no AIE2 backend is available")
                 elif any(
                     known in model for known in LitConfigHelper.NPU_MODELS["npu2"]
                 ):

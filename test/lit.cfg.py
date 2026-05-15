@@ -72,9 +72,7 @@ LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 host_clang = os.path.join(config.llvm_tools_dir, f"clang{config.llvm_exe_ext}")
 if not os.path.exists(host_clang):
     host_clang = shutil.which("clang") or "clang"
-config.substitutions.append(
-    ("%host_clang", LitConfigHelper._quote_lit_arg(host_clang))
-)
+config.substitutions.append(("%host_clang", LitConfigHelper._quote_lit_arg(host_clang)))
 
 
 # Detect Peano before XRT feature gating for systems without Chess/AIETOOLS.
