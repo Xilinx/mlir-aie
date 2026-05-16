@@ -1813,11 +1813,20 @@ struct AIEObjectFifoStatefulTransformPass
                                        : !crossTileInfos.at(producer);
 
       if (shouldProcessProducer) {
-        bool requiresAdjacentTileAccessChannels = crossTileInfos.at(producer);
-        int channelIndex = dmaAnalysis.getDMAChannelIndex(
-            producer.getProducerTileOp(), DMAChannelDir::MM2S,
-            requiresAdjacentTileAccessChannels);
-        fifo_dma_channel_index[producer] = channelIndex;
+        // Skip stream-port producers — they use Core ports, not DMA channels
+        bool prodIsStream = false;
+        if (producer.getAieStream()) {
+          int streamEnd = producer.getAieStream().value();
+          prodIsStream = (streamEnd == 0 || streamEnd == 2);
+        }
+        if (!prodIsStream) {
+          bool requiresAdjacentTileAccessChannels =
+              crossTileInfos.at(producer);
+          int channelIndex = dmaAnalysis.getDMAChannelIndex(
+              producer.getProducerTileOp(), DMAChannelDir::MM2S,
+              requiresAdjacentTileAccessChannels);
+          fifo_dma_channel_index[producer] = channelIndex;
+        }
       }
 
       for (auto consumer : consumers) {
@@ -1828,6 +1837,12 @@ struct AIEObjectFifoStatefulTransformPass
                                          : !crossTileInfos.at(consumer);
 
         if (shouldProcessConsumer) {
+          // Skip stream-port consumers — they use Core ports, not DMA channels
+          if (consumer.getAieStream()) {
+            int streamEnd = consumer.getAieStream().value();
+            if (streamEnd == 1 || streamEnd == 2)
+              continue;
+          }
           bool requiresAdjacentTileAccessChannels = crossTileInfos.at(consumer);
           int channelIndex = dmaAnalysis.getDMAChannelIndex(
               consumer.getProducerTileOp(), DMAChannelDir::S2MM,
