@@ -8,18 +8,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
 #include <chrono>
+#include <algorithm>
+#include <cstring>
+#include <string>
+#include <vector>
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <string>
-#include <vector>
 
 #include "cxxopts.hpp"
 #include "test_utils.h"

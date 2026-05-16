@@ -38,6 +38,9 @@ LitConfigHelper.setup_standard_environment(
 # Basic substitutions
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
 config.substitutions.append(
+    ("%aie_runtime_lib%", os.path.join(config.aie_obj_root, "aie_runtime_lib"))
+)
+config.substitutions.append(
     (
         "%host_runtime_lib%",
         os.path.join(config.aie_obj_root, "runtime_lib", config.aieHostTarget),
@@ -139,6 +142,11 @@ LitConfigHelper.apply_config_to_lit(
         "opencv": opencv_config,
     },
 )
+
+LitConfigHelper.setup_host_compiler_substitutions(config)
+LitConfigHelper.setup_aiecc_substitution(config)
+LitConfigHelper.setup_backend_flags_substitution(config)
+LitConfigHelper.setup_host_link_substitution(config)
 
 tools = [
     "aie-opt",

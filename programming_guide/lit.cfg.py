@@ -35,6 +35,22 @@ LitConfigHelper.setup_standard_environment(
     llvm_config, config, config.aie_obj_root, config.vitis_aietools_dir
 )
 
+# Basic substitutions
+config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
+config.substitutions.append(
+    ("%aie_runtime_lib%", os.path.join(config.aie_obj_root, "aie_runtime_lib"))
+)
+config.substitutions.append(
+    (
+        "%host_runtime_lib%",
+        os.path.join(config.aie_obj_root, "runtime_lib", config.aieHostTarget),
+    )
+)
+config.substitutions.append(("%aietools", config.vitis_aietools_dir))
+
+# Not using run_on_board anymore, need more specific per-platform commands
+config.substitutions.append(("%run_on_board", "echo"))
+
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 
@@ -100,6 +116,11 @@ LitConfigHelper.apply_config_to_lit(
         "chess": chess_config,
     },
 )
+
+LitConfigHelper.setup_host_compiler_substitutions(config)
+LitConfigHelper.setup_aiecc_substitution(config)
+LitConfigHelper.setup_backend_flags_substitution(config)
+LitConfigHelper.setup_host_link_substitution(config)
 
 tools = [
     "aie-opt",

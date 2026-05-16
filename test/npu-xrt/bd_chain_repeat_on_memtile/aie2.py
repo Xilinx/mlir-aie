@@ -10,7 +10,7 @@
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.cc.o
 # RUN: %python %S/aie2.py npu > ./aie.mlir
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
-# RUN: %python aiecc.py %aiecc_backend_flags --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --aie-generate-npu-insts --npu-insts-name=insts.bin ./aie.mlir
+# RUN: %aiecc %backend_flags --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --aie-generate-npu-insts --npu-insts-name=insts.bin ./aie.mlir
 # RUN: %run_on_npu1% ./test.exe -x final.xclbin -k MLIR_AIE -i insts.bin | FileCheck %s
 # CHECK: PASS!
 

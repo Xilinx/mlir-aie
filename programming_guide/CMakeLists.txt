@@ -126,6 +126,7 @@ configure_lit_site_cfg(
 set(TEST_DEPENDS
   FileCheck count not
   AIEPythonModules
+  aiecc
   aie-opt
   aie-translate
 )
@@ -135,4 +136,4 @@ add_lit_testsuite(check-programming-guide "Running the programming guide code sa
   DEPENDS ${TEST_DEPENDS}
   ARGS "-sv --timeout 600"
 )
-set_target_properties(check-reference-designs PROPERTIES FOLDER "Programming Guide")
+set_target_properties(check-programming-guide PROPERTIES FOLDER "Programming Guide")

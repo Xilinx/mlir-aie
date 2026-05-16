@@ -39,6 +39,9 @@ LitConfigHelper.setup_standard_environment(
 # Basic substitutions
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
 config.substitutions.append(
+    ("%aie_runtime_lib%", os.path.join(config.aie_obj_root, "aie_runtime_lib"))
+)
+config.substitutions.append(
     (
         "%host_runtime_lib%",
         os.path.join(config.aie_obj_root, "runtime_lib", config.aieHostTarget),
@@ -89,6 +92,9 @@ if config.vitis_root:
     LitConfigHelper.prepend_path(llvm_config, config.vitis_aietools_bin)
     llvm_config.with_environment("VITIS", config.vitis_root)
 
+# Add Vitis components as features
+LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
+
 # Detect Peano backend
 peano_config = LitConfigHelper.detect_peano(
     peano_tools_dir, config.peano_install_dir, llvm_config
@@ -108,6 +114,11 @@ LitConfigHelper.apply_config_to_lit(
     },
 )
 
+LitConfigHelper.setup_host_compiler_substitutions(config)
+LitConfigHelper.setup_aiecc_substitution(config)
+LitConfigHelper.setup_backend_flags_substitution(config)
+LitConfigHelper.setup_host_link_substitution(config)
+
 tool_dirs = [config.aie_tools_dir, peano_tools_dir, config.llvm_tools_dir]
 tools = [
     "aie-opt",
@@ -121,6 +132,9 @@ tools = [
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
+
+if os.name == "nt":
+    LitConfigHelper.add_python_tool_substitutions(config, ["aiecc.py"])
 
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1

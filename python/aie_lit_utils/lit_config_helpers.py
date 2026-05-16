@@ -380,7 +380,9 @@ class LitConfigHelper:
                             "Running tests on NPU1 with command line: %s", run_on_npu1
                         )
                     else:
-                        logger.warning("NPU1 detected but no AIE2 backend is available")
+                        logger.warning(
+                            "NPU1 detected but no AIE2 backend is available"
+                        )
                 elif any(
                     known in model for known in LitConfigHelper.NPU_MODELS["npu2"]
                 ):
@@ -609,6 +611,95 @@ class LitConfigHelper:
             return "aarch64-linux-gnu", sysroot_flag
         else:
             return aie_host_target, ""
+
+    @staticmethod
+    def setup_host_compiler_substitutions(config_obj) -> None:
+        """Add host compiler substitutions for tests that build host executables.
+
+        AIE/Peano tool directories are added to PATH for device-side tools, so
+        host-side tests should not rely on a bare ``clang`` resolving to the
+        host LLVM compiler. This substitution keeps host compilation explicit
+        and preserves Windows executable suffix handling.
+        """
+        host_clang = os.path.join(
+            config_obj.llvm_tools_dir, f"clang{config_obj.llvm_exe_ext}"
+        )
+        if not os.path.exists(host_clang):
+            host_clang = shutil.which("clang") or "clang"
+        config_obj.substitutions.append(
+            ("%host_clang", LitConfigHelper._quote_lit_arg(host_clang))
+        )
+
+    @staticmethod
+    def setup_host_link_substitution(config_obj) -> None:
+        """Add host linker flags for tests that build XRT host executables.
+
+        Linux-hosted tests need librt/libstdc++. Windows-hosted tests link
+        against CMake-built dynamic MSVC libraries, matching CMake's default
+        /MD runtime selection.
+        """
+        if os.name == "nt":
+            host_link_flags = " ".join(
+                [
+                    "-fms-runtime-lib=dll",
+                    "-Xlinker",
+                    "/NODEFAULTLIB:libucrt",
+                    "-Xlinker",
+                    "/DEFAULTLIB:ucrt",
+                ]
+            )
+        else:
+            host_link_flags = "-lrt -lstdc++"
+        config_obj.substitutions.append(("%host_link_flags", host_link_flags))
+
+    @staticmethod
+    def setup_aiecc_substitution(config_obj) -> None:
+        """Add an explicit substitution for the C++ aiecc driver.
+
+        The Python ``aiecc.py`` entry point is now a compatibility wrapper
+        around the C++ driver. Tests that exercise the compiler should invoke
+        the build-tree executable directly so they do not depend on PATH order
+        or a stale installed console script.
+        """
+        aiecc = os.path.join(
+            config_obj.aie_tools_dir, f"aiecc{config_obj.llvm_exe_ext}"
+        )
+        config_obj.substitutions.append(
+            ("%aiecc", LitConfigHelper._quote_lit_arg(aiecc))
+        )
+
+    @staticmethod
+    def setup_backend_flags_substitution(config_obj) -> None:
+        """Add backend-selection flags for generic aiecc-driven tests.
+
+        Keep existing Chess behavior when Chess is available, but steer tests
+        onto the Peano/lld path when Peano is the only detected AIE backend.
+        """
+        backend_flags = ""
+        if (
+            "peano" in config_obj.available_features
+            and "chess" not in config_obj.available_features
+        ):
+            backend_flags = "--no-xchesscc --no-xbridge"
+        config_obj.substitutions.append(("%backend_flags", backend_flags))
+
+    @staticmethod
+    def add_python_tool_substitutions(config_obj, tool_names: List[str]) -> None:
+        """Add explicit substitutions for Python scripts under the AIE bin dir.
+
+        Lit's normal tool discovery can struggle with ``.py`` tool names on
+        Windows, so these substitutions quote the build-tree tool paths
+        directly.
+        """
+        for tool_name in tool_names:
+            config_obj.substitutions.append(
+                (
+                    tool_name,
+                    LitConfigHelper._quote_lit_arg(
+                        os.path.join(config_obj.aie_tools_dir, tool_name)
+                    ),
+                )
+            )
 
     @staticmethod
     def can_import_python_module(

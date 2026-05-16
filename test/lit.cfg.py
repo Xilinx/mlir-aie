@@ -7,7 +7,6 @@
 # (c) Copyright 2021-2026 Xilinx Inc.
 
 import os
-import shutil
 import sys
 
 # Add shared AIE lit utilities to path
@@ -68,12 +67,7 @@ rocm_config = LitConfigHelper.detect_rocm(
 
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
-# Host-side tests should use the host LLVM compiler instead of llvm-aie.
-host_clang = os.path.join(config.llvm_tools_dir, f"clang{config.llvm_exe_ext}")
-if not os.path.exists(host_clang):
-    host_clang = shutil.which("clang") or "clang"
-config.substitutions.append(("%host_clang", LitConfigHelper._quote_lit_arg(host_clang)))
-
+LitConfigHelper.setup_host_compiler_substitutions(config)
 
 # Detect Peano before XRT feature gating for systems without Chess/AIETOOLS.
 early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
@@ -110,6 +104,7 @@ config.excludes = [
 ]
 
 config.aie_tools_dir = os.path.join(config.aie_obj_root, "bin")
+LitConfigHelper.setup_aiecc_substitution(config)
 
 # Setup the PATH with all necessary tool directories
 if config.vitis_root:
@@ -157,28 +152,8 @@ LitConfigHelper.apply_config_to_lit(
     },
 )
 
-# Keep generic npu-xrt tests on the existing Chess path when Chess is available,
-# but steer them onto the Peano/lld path when Peano is the only AIE backend.
-aiecc_backend_flags = ""
-if "peano" in config.available_features and "chess" not in config.available_features:
-    aiecc_backend_flags = "--no-xchesscc --no-xbridge"
-config.substitutions.append(("%aiecc_backend_flags", aiecc_backend_flags))
-
-# Linux hosted tests need librt/libstdc++. Windows hosted tests link against
-# CMake-built dynamic MSVC libraries. Match CMake's default /MD selection.
-if os.name == "nt":
-    host_link_flags = " ".join(
-        [
-            "-fms-runtime-lib=dll",
-            "-Xlinker",
-            "/NODEFAULTLIB:libucrt",
-            "-Xlinker",
-            "/DEFAULTLIB:ucrt",
-        ]
-    )
-else:
-    host_link_flags = "-lrt -lstdc++"
-config.substitutions.append(("%host_link_flags", host_link_flags))
+LitConfigHelper.setup_backend_flags_substitution(config)
+LitConfigHelper.setup_host_link_substitution(config)
 
 tools = [
     "aie-opt",
@@ -196,24 +171,7 @@ if os.name != "nt":
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 if os.name == "nt":
-    # Lit on Windows struggles with substituting tools with a .py extension.
-    # Add these manually and quote them so paths with spaces survive.
-    config.substitutions.append(
-        (
-            "aiecc.py",
-            LitConfigHelper._quote_lit_arg(
-                os.path.join(config.aie_tools_dir, "aiecc.py")
-            ),
-        )
-    )
-    config.substitutions.append(
-        (
-            "txn2mlir.py",
-            LitConfigHelper._quote_lit_arg(
-                os.path.join(config.aie_tools_dir, "txn2mlir.py")
-            ),
-        )
-    )
+    LitConfigHelper.add_python_tool_substitutions(config, ["aiecc.py", "txn2mlir.py"])
 
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1

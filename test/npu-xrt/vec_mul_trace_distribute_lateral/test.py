@@ -27,7 +27,7 @@
 # Pre-lower trace ops with distribute + lateral options, then compile.
 # The trace pipeline in aiecc is a no-op since trace ops are already consumed.
 # RUN: aie-opt %S/aie.mlir -aie-insert-trace-flows="distribute-channels=true lateral-routing=true" -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config -o trace_lowered.mlir
-# RUN: %python aiecc.py --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin trace_lowered.mlir
+# RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin trace_lowered.mlir
 #
 # Run on NPU1 hardware:
 # RUN: %run_on_npu1% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace-sz 16384 --mlir trace_lowered.mlir.prj/input_with_addresses.mlir | FileCheck %s
