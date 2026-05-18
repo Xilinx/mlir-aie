@@ -55,7 +55,7 @@ jobs:
         run: |
           docker system prune -a -f
 
-      - uses: uraimo/run-on-arch-action@v2.5.0
+      - uses: uraimo/run-on-arch-action@v3
         name: Run commands
         id: runcmd
         with:
