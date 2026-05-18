@@ -88,8 +88,8 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a985f2236954a38d1c288e5ccfca39412" id="r_a985f2236954a38d1c288e5ccfca39412"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1SequentialPlacer.html#a985f2236954a38d1c288e5ccfca39412">SequentialPlacer</a> (std::optional&lt; int &gt; coresPerCol=std::nullopt)</td></tr>
-<tr class="separator:a985f2236954a38d1c288e5ccfca39412"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a269f2eef228cc8610ab56683e60e5741" id="r_a269f2eef228cc8610ab56683e60e5741"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1SequentialPlacer.html#a269f2eef228cc8610ab56683e60e5741">SequentialPlacer</a> (std::optional&lt; int &gt; coresPerCol=std::nullopt, <a class="el" href="classbool.html">bool</a> mergeLogicalTiles=true)</td></tr>
+<tr class="separator:a269f2eef228cc8610ab56683e60e5741"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7c7abc33d59bed45d8f97248822500f4" id="r_a7c7abc33d59bed45d8f97248822500f4"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1SequentialPlacer.html#a7c7abc33d59bed45d8f97248822500f4">initialize</a> (const <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;targetModel) override</td></tr>
 <tr class="separator:a7c7abc33d59bed45d8f97248822500f4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa3ff8a52a8b8907725573722bb956387" id="r_aa3ff8a52a8b8907725573722bb956387"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1SequentialPlacer.html#aa3ff8a52a8b8907725573722bb956387">place</a> (DeviceOp device) override</td></tr>
@@ -112,10 +112,10 @@ Additional Inherited Members</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00070">70</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00075">75</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a985f2236954a38d1c288e5ccfca39412" name="a985f2236954a38d1c288e5ccfca39412"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a985f2236954a38d1c288e5ccfca39412">&#9670;&#160;</a></span>SequentialPlacer()</h2>
+<a id="a269f2eef228cc8610ab56683e60e5741" name="a269f2eef228cc8610ab56683e60e5741"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a269f2eef228cc8610ab56683e60e5741">&#9670;&#160;</a></span>SequentialPlacer()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -127,8 +127,18 @@ Additional Inherited Members</h2></td></tr>
           <td class="memname">xilinx::AIE::SequentialPlacer::SequentialPlacer </td>
           <td>(</td>
           <td class="paramtype">std::optional&lt; int &gt;&#160;</td>
-          <td class="paramname"><em>coresPerCol</em> = <code>std::nullopt</code></td><td>)</td>
+          <td class="paramname"><em>coresPerCol</em> = <code>std::nullopt</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
+          <td class="paramname"><em>mergeLogicalTiles</em> = <code>true</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
   </td>
@@ -138,7 +148,7 @@ Additional Inherited Members</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00072">72</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00077">77</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
 
 </div>
 </div>
@@ -168,7 +178,7 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1Placer.html#aacdca77add6e9850b98098be93ec400f">xilinx::AIE::Placer</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00079">79</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00085">85</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
 
 </div>
 </div>
@@ -230,9 +240,9 @@ Additional Inherited Members</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1Placer.html#a13da68c373b3e5100f087d1d7db51b93">xilinx::AIE::Placer</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIEPlacer_8cpp_source.html#l00112">112</a> of file <a class="el" href="AIEPlacer_8cpp_source.html">AIEPlacer.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPlacer_8cpp_source.html#l00113">113</a> of file <a class="el" href="AIEPlacer_8cpp_source.html">AIEPlacer.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIEPlacer_8h_source.html#l00027">xilinx::AIE::TileAvailability::compTiles</a>, <a class="el" href="AIETargetModel_8h_source.html#l00202">xilinx::AIE::AIETargetModel::isEast()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afa8ae188e00d23c5c57cba293521b729">xilinx::AIE::AIETargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00212">xilinx::AIE::AIETargetModel::isSouth()</a>, <a class="el" href="AIEPlacer_8cpp_source.html#l00790">xilinx::AIE::TileAvailability::removeTile()</a>, <a class="el" href="AIEPlacer_8h_source.html#l00056">xilinx::AIE::Placer::result</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIEPlacer_8h_source.html#l00027">xilinx::AIE::TileAvailability::compTiles</a>, <a class="el" href="AIETargetModel_8h_source.html#l00202">xilinx::AIE::AIETargetModel::isEast()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afa8ae188e00d23c5c57cba293521b729">xilinx::AIE::AIETargetModel::isLegalMemAffinity()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00212">xilinx::AIE::AIETargetModel::isSouth()</a>, <a class="el" href="AIEPlacer_8cpp_source.html#l00798">xilinx::AIE::TileAvailability::removeTile()</a>, <a class="el" href="AIEPlacer_8h_source.html#l00056">xilinx::AIE::Placer::result</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
 </div>
 </div>
@@ -243,7 +253,7 @@ Additional Inherited Members</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon May 18 2026 15:10:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon May 18 2026 20:30:42 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

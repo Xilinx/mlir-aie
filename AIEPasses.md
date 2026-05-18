@@ -241,8 +241,9 @@ to one aie.tile.
 #### Options
 
 ```
--placer        : Placement algorithm to use (default: sequential_placer)
--cores-per-col : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
+-placer              : Placement algorithm to use (default: sequential_placer)
+-cores-per-col       : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
+-merge-logical-tiles : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
 ```
 
 ### `-aie-register-objectFifos`
