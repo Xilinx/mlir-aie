@@ -6,5 +6,5 @@
 // RUN: mkdir -p test_iron_scalar
 // RUN: cd test_iron_scalar
 // RUN: make -f %S/../Makefile clean
-// RUN: env use_iron=1 make -f %S/../Makefile aieargs+=--scalar
-// RUN: %run_on_npu1% env use_iron=1 make -f %S/../Makefile run aieargs+=--scalar
+// RUN: env use_iron=1 make -f %S/../Makefile use_scalar=1
+// RUN: %run_on_npu1% env use_iron=1 make -f %S/../Makefile run use_scalar=1
