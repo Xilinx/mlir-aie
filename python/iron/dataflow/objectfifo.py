@@ -253,20 +253,6 @@ class ObjectFifo(Resolvable):
             )
         return [cons.endpoint.tile.op for cons in self._cons]
 
-    def _get_depths(self) -> int | list[int]:
-        if not self._prod:
-            raise ValueError(
-                "Cannot return depths since prod ObjectFifoHandle is not created."
-            )
-        if len(self._cons) == 0:
-            raise ValueError(
-                "Cannot return depths since no cons ObjectFifoHandles are created."
-            )
-        depths = [self._prod.depth] + [con.depth for con in self._cons]
-        if len(set(depths)) == 1:
-            return depths[0]
-        return depths
-
     def _get_endpoint(self, is_prod: bool) -> list[ObjectFifoEndpoint]:
         if is_prod:
             if self._prod:
@@ -290,11 +276,27 @@ class ObjectFifo(Resolvable):
                 for con in self._cons
             ]
 
+            if not self._prod:
+                raise ValueError(
+                    f"ObjectFifo {self.name}: producer handle not created."
+                )
+            if len(self._cons) == 0:
+                raise ValueError(
+                    f"ObjectFifo {self.name}: no consumer handles created."
+                )
+            # Always emit the per-handle ArrayAttr [prod_depth, *cons_depths].
+            # Collapsing to a single int when all are equal triggers the
+            # stateful-transform's auto-minimize path, which sizes each
+            # consumer's ping-pong from max-acquire instead of honoring the
+            # declared depth — silently deadlocking multi-consumer fanout
+            # designs where one consumer must buffer ahead of the others.
+            depths = [self._prod.depth] + [con.depth for con in self._cons]
+
             self._op = object_fifo(
                 self.name,
                 self._prod_tile_op(),
                 self._cons_tiles_ops(),
-                self._get_depths(),
+                depths,
                 np_ndarray_type_to_memref_type(self._obj_type),
                 dimensionsToStream=self._dims_to_stream,
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
