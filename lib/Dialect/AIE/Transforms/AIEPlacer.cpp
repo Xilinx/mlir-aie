@@ -326,156 +326,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       bool allConstraintMatchesFailedAdjacency = true;
       bool computePeerWasCause = false;
 
-      // For each candidate, check whether placing `logicalTile` here keeps
-      // the neighbor-demand satisfiable for both the LTO being placed AND
-      // every already-placed compute peer of the LTO. A LTO with peer
-      // demand N (i.e. N of its compute-peer fifos must use shared neighbor
-      // memory) has slack (totalPeers − N): it can afford at most that
-      // many non-neighbor compute peers without exceeding its DMA budget.
-      auto satisfiesComputePeer = [&](TileID candidate) {
-        // Helper: total compute-peer in/out counts for an LTO from the
-        // pre-built computePeerAdjacency.
-        auto totalPeers = [&](Operation *op) {
-          int in = 0, out = 0;
-          auto it = computePeerAdjacency.tileToEdges.find(op);
-          if (it != computePeerAdjacency.tileToEdges.end())
-            for (unsigned idx : it->second) {
-              auto [f, s] = computePeerAdjacency.edges[idx];
-              if (s.getOperation() == op)
-                ++in;
-              else
-                ++out;
-            }
-          return std::pair<int, int>{in, out};
-        };
-        auto it =
-            computePeerAdjacency.tileToEdges.find(logicalTile.getOperation());
-        if (it == computePeerAdjacency.tileToEdges.end())
-          return true;
-
-        // Self side: count placed peers that would land non-neighbor of
-        // candidate, and reject if that exceeds our slack.
-        int selfNonNeighborIn = 0, selfNonNeighborOut = 0;
-        int selfNeighborIn = 0, selfNeighborOut = 0;
-        for (unsigned idx : it->second) {
-          auto [f, s] = computePeerAdjacency.edges[idx];
-          bool thisIsConsumer = s.getOperation() == logicalTile.getOperation();
-          TileLike peer = thisIsConsumer ? f : s;
-          auto peerPos = resolvePeerPosition(peer, result);
-          if (!peerPos)
-            continue;
-          bool isNeighbor = targetModel->isLegalMemAffinity(
-              candidate.col, candidate.row, peerPos->col, peerPos->row);
-          if (isNeighbor) {
-            if (thisIsConsumer)
-              ++selfNeighborIn;
-            else
-              ++selfNeighborOut;
-          } else {
-            if (thisIsConsumer)
-              ++selfNonNeighborIn;
-            else
-              ++selfNonNeighborOut;
-          }
-        }
-        auto [selfTotalIn, selfTotalOut] =
-            totalPeers(logicalTile.getOperation());
-        int selfNeedIn = needNeighborIn[logicalTile.getOperation()];
-        int selfNeedOut = needNeighborOut[logicalTile.getOperation()];
-        int selfSlackIn = selfTotalIn - selfNeedIn;
-        int selfSlackOut = selfTotalOut - selfNeedOut;
-        if (selfNonNeighborIn > selfSlackIn)
-          return false;
-        if (selfNonNeighborOut > selfSlackOut)
-          return false;
-
-        // Forward-look: even if no placed peer violates slack at this
-        // candidate, future peers still to be placed must land on a
-        // physical compute neighbor of candidate. Count how many of
-        // candidate's physical compute-tile neighbors are still in
-        // availability.compTiles (free slots that a future peer could
-        // occupy). The remaining need after subtracting already-neighbor
-        // placements must fit in those free slots. Free slots can be used
-        // for an IN-peer OR an OUT-peer (not both), so we approximate by
-        // checking the sum.
-        if (selfNeedIn > 0 || selfNeedOut > 0) {
-          int freeNeighborSlots = 0;
-          for (int dr : {-1, 1}) {
-            int nr = candidate.row + dr;
-            if (nr < 0 || nr >= targetModel->rows())
-              continue;
-            if (targetModel->getTileType(candidate.col, nr) !=
-                AIETileType::CoreTile)
-              continue;
-            TileID nb{candidate.col, nr};
-            if (std::find(availability.compTiles.begin(),
-                          availability.compTiles.end(),
-                          nb) != availability.compTiles.end())
-              ++freeNeighborSlots;
-          }
-          int remainingInNeed = std::max(0, selfNeedIn - selfNeighborIn);
-          int remainingOutNeed = std::max(0, selfNeedOut - selfNeighborOut);
-          if (remainingInNeed + remainingOutNeed > freeNeighborSlots)
-            return false;
-        }
-
-        // Symmetric side: for each already-placed compute peer p, placing
-        // logicalTile at candidate adds one non-neighbor entry to p's count
-        // if candidate isn't a neighbor of p. Re-derive p's count using the
-        // current `result` plus this candidate, then check p's slack.
-        for (unsigned idx : it->second) {
-          auto [f, s] = computePeerAdjacency.edges[idx];
-          bool thisIsConsumer = s.getOperation() == logicalTile.getOperation();
-          TileLike peer = thisIsConsumer ? f : s;
-          auto peerLTO = dyn_cast_or_null<LogicalTileOp>(peer.getOperation());
-          if (!peerLTO)
-            continue;
-          auto peerPos = resolvePeerPosition(peer, result);
-          if (!peerPos)
-            continue;
-          // From peer's POV, logicalTile is one of peer's compute peers.
-          // If thisIsConsumer (this LTO consumes from peer), peer is the
-          // producer, so this LTO is one of peer's OUT peers. Else IN.
-          bool logicalIsPeerOut = thisIsConsumer;
-          int peerNeedDir = logicalIsPeerOut
-                                ? needNeighborOut.lookup(peerLTO.getOperation())
-                                : needNeighborIn.lookup(peerLTO.getOperation());
-          auto [peerTotalIn, peerTotalOut] = totalPeers(peerLTO.getOperation());
-          int peerTotalDir = logicalIsPeerOut ? peerTotalOut : peerTotalIn;
-          int peerSlackDir = peerTotalDir - peerNeedDir;
-          // Count peer's currently placed non-neighbor peers in this direction.
-          int peerNonNeighborDir = 0;
-          auto pit =
-              computePeerAdjacency.tileToEdges.find(peerLTO.getOperation());
-          for (unsigned pidx : pit->second) {
-            auto [pf, ps] = computePeerAdjacency.edges[pidx];
-            bool peerIsConsumerHere =
-                ps.getOperation() == peerLTO.getOperation();
-            // Direction in question for peer: logicalIsPeerOut means
-            // peer's OUT direction (peer is producer), so peerIsConsumerHere
-            // must be false.
-            if (logicalIsPeerOut == peerIsConsumerHere)
-              continue;
-            TileLike peerPeer = peerIsConsumerHere ? pf : ps;
-            if (peerPeer.getOperation() == logicalTile.getOperation()) {
-              // The edge to logicalTile we are currently deciding: count
-              // candidate against it.
-              if (!targetModel->isLegalMemAffinity(
-                      peerPos->col, peerPos->row, candidate.col, candidate.row))
-                ++peerNonNeighborDir;
-              continue;
-            }
-            auto pp = resolvePeerPosition(peerPeer, result);
-            if (!pp)
-              continue;
-            if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row,
-                                                 pp->col, pp->row))
-              ++peerNonNeighborDir;
-          }
-          if (peerNonNeighborDir > peerSlackDir)
-            return false;
-        }
-        return true;
+      auto satisfiesComputePeerHere = [&](TileID candidate) {
+        return satisfiesComputePeer(logicalTile, candidate,
+                                    computePeerAdjacency, needNeighborIn,
+                                    needNeighborOut);
       };
 
       // compTiles is sorted column-major top-to-bottom. For high-fanin
@@ -522,7 +376,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
                                 cascadePred))
           continue;
-        if (!satisfiesComputePeer(candidate)) {
+        if (!satisfiesComputePeerHere(candidate)) {
           computePeerWasCause = true;
           continue;
         }
@@ -884,6 +738,154 @@ bool SequentialPlacer::satisfiesAdjacency(
     TileID firstPos = thisIsFirst ? candidate : *peerPos;
     TileID secondPos = thisIsFirst ? *peerPos : candidate;
     if (!pred(firstPos, secondPos))
+      return false;
+  }
+  return true;
+}
+
+std::pair<int, int>
+SequentialPlacer::totalComputePeers(Operation *op, const Adjacency &adjacency) {
+  int in = 0, out = 0;
+  auto it = adjacency.tileToEdges.find(op);
+  if (it == adjacency.tileToEdges.end())
+    return {0, 0};
+  for (unsigned idx : it->second) {
+    auto [f, s] = adjacency.edges[idx];
+    if (s.getOperation() == op)
+      ++in;
+    else
+      ++out;
+  }
+  return {in, out};
+}
+
+bool SequentialPlacer::satisfiesComputePeer(
+    LogicalTileOp logicalTile, TileID candidate,
+    const Adjacency &computePeerAdjacency,
+    const llvm::DenseMap<Operation *, int> &needNeighborIn,
+    const llvm::DenseMap<Operation *, int> &needNeighborOut) const {
+  auto it = computePeerAdjacency.tileToEdges.find(logicalTile.getOperation());
+  if (it == computePeerAdjacency.tileToEdges.end())
+    return true;
+
+  // Self side: count placed peers that would land non-neighbor of candidate,
+  // and reject if that exceeds our slack.
+  int selfNonNeighborIn = 0, selfNonNeighborOut = 0;
+  int selfNeighborIn = 0, selfNeighborOut = 0;
+  for (unsigned idx : it->second) {
+    auto [f, s] = computePeerAdjacency.edges[idx];
+    bool thisIsConsumer = s.getOperation() == logicalTile.getOperation();
+    TileLike peer = thisIsConsumer ? f : s;
+    auto peerPos = resolvePeerPosition(peer, result);
+    if (!peerPos)
+      continue;
+    bool isNeighbor = targetModel->isLegalMemAffinity(
+        candidate.col, candidate.row, peerPos->col, peerPos->row);
+    if (isNeighbor) {
+      if (thisIsConsumer)
+        ++selfNeighborIn;
+      else
+        ++selfNeighborOut;
+    } else {
+      if (thisIsConsumer)
+        ++selfNonNeighborIn;
+      else
+        ++selfNonNeighborOut;
+    }
+  }
+  auto [selfTotalIn, selfTotalOut] =
+      totalComputePeers(logicalTile.getOperation(), computePeerAdjacency);
+  int selfNeedIn = needNeighborIn.lookup(logicalTile.getOperation());
+  int selfNeedOut = needNeighborOut.lookup(logicalTile.getOperation());
+  int selfSlackIn = selfTotalIn - selfNeedIn;
+  int selfSlackOut = selfTotalOut - selfNeedOut;
+  if (selfNonNeighborIn > selfSlackIn)
+    return false;
+  if (selfNonNeighborOut > selfSlackOut)
+    return false;
+
+  // Forward-look: even if no placed peer violates slack at this candidate,
+  // future peers still to be placed must land on a physical compute neighbor
+  // of candidate. Count how many of candidate's physical compute-tile
+  // neighbors are still in availability.compTiles (free slots that a future
+  // peer could occupy). The remaining need after subtracting already-neighbor
+  // placements must fit in those free slots. Free slots can be used for an
+  // IN-peer OR an OUT-peer (not both), so we approximate by checking the sum.
+  if (selfNeedIn > 0 || selfNeedOut > 0) {
+    int freeNeighborSlots = 0;
+    for (int dr : {-1, 1}) {
+      int nr = candidate.row + dr;
+      if (nr < 0 || nr >= targetModel->rows())
+        continue;
+      if (targetModel->getTileType(candidate.col, nr) != AIETileType::CoreTile)
+        continue;
+      TileID nb{candidate.col, nr};
+      if (std::find(availability.compTiles.begin(),
+                    availability.compTiles.end(),
+                    nb) != availability.compTiles.end())
+        ++freeNeighborSlots;
+    }
+    int remainingInNeed = std::max(0, selfNeedIn - selfNeighborIn);
+    int remainingOutNeed = std::max(0, selfNeedOut - selfNeighborOut);
+    if (remainingInNeed + remainingOutNeed > freeNeighborSlots)
+      return false;
+  }
+
+  // Symmetric side: for each already-placed compute peer p, placing
+  // logicalTile at candidate adds one non-neighbor entry to p's count if
+  // candidate isn't a neighbor of p. Re-derive p's count using the current
+  // `result` plus this candidate, then check p's slack.
+  for (unsigned idx : it->second) {
+    auto [f, s] = computePeerAdjacency.edges[idx];
+    bool thisIsConsumer = s.getOperation() == logicalTile.getOperation();
+    TileLike peer = thisIsConsumer ? f : s;
+    auto peerLTO = dyn_cast_or_null<LogicalTileOp>(peer.getOperation());
+    if (!peerLTO)
+      continue;
+    auto peerPos = resolvePeerPosition(peer, result);
+    if (!peerPos)
+      continue;
+    // From peer's POV, logicalTile is one of peer's compute peers. If
+    // thisIsConsumer (this LTO consumes from peer), peer is the producer,
+    // so this LTO is one of peer's OUT peers. Else IN.
+    bool logicalIsPeerOut = thisIsConsumer;
+    int peerNeedDir = logicalIsPeerOut
+                          ? needNeighborOut.lookup(peerLTO.getOperation())
+                          : needNeighborIn.lookup(peerLTO.getOperation());
+    auto [peerTotalIn, peerTotalOut] =
+        totalComputePeers(peerLTO.getOperation(), computePeerAdjacency);
+    int peerTotalDir = logicalIsPeerOut ? peerTotalOut : peerTotalIn;
+    int peerSlackDir = peerTotalDir - peerNeedDir;
+
+    // Count peer's currently placed non-neighbor peers in this direction.
+    auto pit = computePeerAdjacency.tileToEdges.find(peerLTO.getOperation());
+    if (pit == computePeerAdjacency.tileToEdges.end())
+      continue; // peerLTO has no edges in this adjacency; nothing to check.
+    int peerNonNeighborDir = 0;
+    for (unsigned pidx : pit->second) {
+      auto [pf, ps] = computePeerAdjacency.edges[pidx];
+      bool peerIsConsumerHere = ps.getOperation() == peerLTO.getOperation();
+      // Direction in question for peer: logicalIsPeerOut means peer's OUT
+      // direction (peer is producer), so peerIsConsumerHere must be false.
+      if (logicalIsPeerOut == peerIsConsumerHere)
+        continue;
+      TileLike peerPeer = peerIsConsumerHere ? pf : ps;
+      if (peerPeer.getOperation() == logicalTile.getOperation()) {
+        // The edge to logicalTile we are currently deciding: count
+        // candidate against it.
+        if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row,
+                                             candidate.col, candidate.row))
+          ++peerNonNeighborDir;
+        continue;
+      }
+      auto pp = resolvePeerPosition(peerPeer, result);
+      if (!pp)
+        continue;
+      if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row, pp->col,
+                                           pp->row))
+        ++peerNonNeighborDir;
+    }
+    if (peerNonNeighborDir > peerSlackDir)
       return false;
   }
   return true;

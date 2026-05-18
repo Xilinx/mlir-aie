@@ -171,6 +171,26 @@ private:
       LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
       llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const;
 
+  // Compute-peer DMA budget check. Returns true if placing `logicalTile` at
+  // `candidate` keeps the compute-peer neighbor demand satisfiable for BOTH
+  // the LTO being placed AND every already-placed compute peer of the LTO.
+  // A compute LTO with peer demand N (N compute-peer fifos must use shared
+  // neighbor memory to fit DMA budget) has slack (totalComputePeers − N): it
+  // can afford at most that many non-neighbor compute peers. The check also
+  // forward-looks: unplaced peers still need a free physical compute-tile
+  // neighbor of `candidate` to land on.
+  bool satisfiesComputePeer(
+      LogicalTileOp logicalTile, TileID candidate,
+      const Adjacency &computePeerAdjacency,
+      const llvm::DenseMap<mlir::Operation *, int> &needNeighborIn,
+      const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut) const;
+
+  // Compute-peer in/out edge counts for `op`, looked up from a prebuilt
+  // `computePeerAdjacency`. Returns {0, 0} if `op` has no entry. Producer
+  // is edges[idx].first, consumer is .second (per buildComputePeerAdjacency).
+  static std::pair<int, int> totalComputePeers(mlir::Operation *op,
+                                               const Adjacency &adjacency);
+
   // Diagnostic peer notes. `labelPeer(thisIsFirst)` names the peer endpoint
   // role; the attached note reads "<label> peer placed at (col, row)".
   void attachPeerNotes(
