@@ -20,6 +20,9 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-placer"
 
+static std::optional<TileID> resolvePeerPosition(TileLike peer,
+                                                 const PlacementResult &placed);
+
 void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
   this->targetModel = &targetModel;
 
@@ -142,6 +145,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
 
   // Phase 2a: Build placement constraints
   auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
+  auto computePeerAdjacency = buildComputePeerAdjacency(objectFifos);
 
   // Phase 2b: Build channel requirements from ObjectFifo and Flow connectivity,
   // and cascade adjacency constraints from CascadeFlow connectivity.
@@ -150,6 +154,67 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   addChannelRequirementsFromFlows(flows, pktFlows, channelRequirements);
 
   auto cascadeAdjacency = buildCascadeAdjacency(cascadeFlows);
+
+  // Phase 2c: For every compute LTO, compute the minimum number of its
+  // compute-peer producers/consumers that must land on physical neighbors so
+  // the LTO fits its DMA channel budget. A compute→compute ObjectFifo can use
+  // shared neighbor memory (no DMA) when the two endpoints sit on physical-
+  // neighbor compute tiles; otherwise it consumes one DMA channel on each
+  // side. Non-compute-peer fifos (from/to memtile or shim) always need a DMA
+  // channel and already appear in `channelRequirements`, so the headroom left
+  // for compute-peer fifos is (DMA-budget − channelRequirements). If a
+  // Worker has more compute-peer fifos than that headroom, the surplus MUST
+  // come from neighbors.
+  llvm::DenseMap<Operation *, int> needNeighborIn, needNeighborOut;
+  for (auto lt : logicalTiles) {
+    if (lt.getTileType() != AIETileType::CoreTile)
+      continue;
+    int peerIn = 0, peerOut = 0;
+    auto it = computePeerAdjacency.tileToEdges.find(lt.getOperation());
+    if (it != computePeerAdjacency.tileToEdges.end()) {
+      for (unsigned idx : it->second) {
+        auto [first, second] = computePeerAdjacency.edges[idx];
+        // Producer is first, consumer is second (see
+        // buildComputePeerAdjacency).
+        if (second.getOperation() == lt.getOperation())
+          ++peerIn;
+        else
+          ++peerOut;
+      }
+    }
+    int inBudget = lt.getNumDestConnections(WireBundle::DMA);
+    int outBudget = lt.getNumSourceConnections(WireBundle::DMA);
+    auto chanIt = channelRequirements.find(lt.getOperation());
+    int nonPeerIn =
+        chanIt != channelRequirements.end() ? chanIt->second.first : 0;
+    int nonPeerOut =
+        chanIt != channelRequirements.end() ? chanIt->second.second : 0;
+    needNeighborIn[lt.getOperation()] =
+        std::max(0, peerIn - (inBudget - nonPeerIn));
+    needNeighborOut[lt.getOperation()] =
+        std::max(0, peerOut - (outBudget - nonPeerOut));
+  }
+  auto neighborDemand = [&](Operation *op) {
+    return needNeighborIn.lookup(op) + needNeighborOut.lookup(op);
+  };
+  // Each LTO's placement priority bundles its own neighbor demand with that
+  // of its highest-demand compute peer. A peer of a high-fanin Worker needs
+  // to be placed BEFORE unrelated unpinned LTOs so the Worker's adjacent
+  // tiles aren't consumed by neighbors-don't-care cores; otherwise the
+  // peer would be left without a slot adjacent to the high-fanin Worker.
+  auto placementPriority = [&](Operation *op) {
+    int self = neighborDemand(op);
+    int best = 0;
+    auto it = computePeerAdjacency.tileToEdges.find(op);
+    if (it != computePeerAdjacency.tileToEdges.end())
+      for (unsigned idx : it->second) {
+        auto [f, s] = computePeerAdjacency.edges[idx];
+        Operation *peer =
+            (f.getOperation() == op) ? s.getOperation() : f.getOperation();
+        best = std::max(best, neighborDemand(peer));
+      }
+    return std::max(self, best);
+  };
 
   // Per-kind predicates / labelers shared by all phase-3 call sites below.
   // Buffer: consumer LTO (edge.first) must satisfy isLegalMemAffinity to the
@@ -182,10 +247,16 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // for CoreTiles, removed from availability — before any unpinned tile gets
   // to pick from `availability.compTiles`, so unpinned tiles cannot land on a
   // coordinate that a later-iterated pinned tile claims.
+  //
+  // Within the unpinned bucket, place compute LTOs with the highest
+  // neighbor-demand first so a high-fanin Worker grabs an interior tile (with
+  // two compute neighbors) before its producers consume the surrounding
+  // slots. Producers and consumers that the heavy Worker needs as physical
+  // neighbors are then steered to those slots by `computePeerAdjacency`.
   SmallVector<LogicalTileOp> orderedTiles(logicalTiles.begin(),
                                           logicalTiles.end());
   std::stable_sort(orderedTiles.begin(), orderedTiles.end(),
-                   [](LogicalTileOp a, LogicalTileOp b) {
+                   [&](LogicalTileOp a, LogicalTileOp b) {
                      auto rank = [](LogicalTileOp lt) {
                        bool hasCol = lt.tryGetCol().has_value();
                        bool hasRow = lt.tryGetRow().has_value();
@@ -195,7 +266,23 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                          return 1; // partially constrained
                        return 2;   // fully unpinned
                      };
-                     return rank(a) < rank(b);
+                     int ra = rank(a), rb = rank(b);
+                     if (ra != rb)
+                       return ra < rb;
+                     // Same constraint level: high priority first. Priority
+                     // = max(self demand, highest peer demand) so a Worker's
+                     // compute-peer producers/consumers also rise to the
+                     // front and claim the Worker's neighbor tiles before
+                     // unrelated LTOs consume them.
+                     int pa = placementPriority(a.getOperation());
+                     int pb = placementPriority(b.getOperation());
+                     if (pa != pb)
+                       return pa > pb;
+                     // Among equal priority, place the high-demand LTO
+                     // itself first so its peers can be steered to its
+                     // neighbors immediately afterward.
+                     return neighborDemand(a.getOperation()) >
+                            neighborDemand(b.getOperation());
                    });
 
   for (auto logicalTile : orderedTiles) {
@@ -237,10 +324,192 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       std::optional<TileID> placement = std::nullopt;
       bool sawConstraintMatch = false;
       bool allConstraintMatchesFailedAdjacency = true;
+      bool computePeerWasCause = false;
 
-      // compTiles stays sorted column-major / ascending-row, so the first
-      // match is the lowest-row tile in the requested column.
-      for (const TileID &candidate : availability.compTiles) {
+      // For each candidate, check whether placing `logicalTile` here keeps
+      // the neighbor-demand satisfiable for both the LTO being placed AND
+      // every already-placed compute peer of the LTO. A LTO with peer
+      // demand N (i.e. N of its compute-peer fifos must use shared neighbor
+      // memory) has slack (totalPeers − N): it can afford at most that
+      // many non-neighbor compute peers without exceeding its DMA budget.
+      auto satisfiesComputePeer = [&](TileID candidate) {
+        // Helper: total compute-peer in/out counts for an LTO from the
+        // pre-built computePeerAdjacency.
+        auto totalPeers = [&](Operation *op) {
+          int in = 0, out = 0;
+          auto it = computePeerAdjacency.tileToEdges.find(op);
+          if (it != computePeerAdjacency.tileToEdges.end())
+            for (unsigned idx : it->second) {
+              auto [f, s] = computePeerAdjacency.edges[idx];
+              if (s.getOperation() == op)
+                ++in;
+              else
+                ++out;
+            }
+          return std::pair<int, int>{in, out};
+        };
+        auto it =
+            computePeerAdjacency.tileToEdges.find(logicalTile.getOperation());
+        if (it == computePeerAdjacency.tileToEdges.end())
+          return true;
+
+        // Self side: count placed peers that would land non-neighbor of
+        // candidate, and reject if that exceeds our slack.
+        int selfNonNeighborIn = 0, selfNonNeighborOut = 0;
+        int selfNeighborIn = 0, selfNeighborOut = 0;
+        for (unsigned idx : it->second) {
+          auto [f, s] = computePeerAdjacency.edges[idx];
+          bool thisIsConsumer = s.getOperation() == logicalTile.getOperation();
+          TileLike peer = thisIsConsumer ? f : s;
+          auto peerPos = resolvePeerPosition(peer, result);
+          if (!peerPos)
+            continue;
+          bool isNeighbor = targetModel->isLegalMemAffinity(
+              candidate.col, candidate.row, peerPos->col, peerPos->row);
+          if (isNeighbor) {
+            if (thisIsConsumer)
+              ++selfNeighborIn;
+            else
+              ++selfNeighborOut;
+          } else {
+            if (thisIsConsumer)
+              ++selfNonNeighborIn;
+            else
+              ++selfNonNeighborOut;
+          }
+        }
+        auto [selfTotalIn, selfTotalOut] =
+            totalPeers(logicalTile.getOperation());
+        int selfNeedIn = needNeighborIn[logicalTile.getOperation()];
+        int selfNeedOut = needNeighborOut[logicalTile.getOperation()];
+        int selfSlackIn = selfTotalIn - selfNeedIn;
+        int selfSlackOut = selfTotalOut - selfNeedOut;
+        if (selfNonNeighborIn > selfSlackIn)
+          return false;
+        if (selfNonNeighborOut > selfSlackOut)
+          return false;
+
+        // Forward-look: even if no placed peer violates slack at this
+        // candidate, future peers still to be placed must land on a
+        // physical compute neighbor of candidate. Count how many of
+        // candidate's physical compute-tile neighbors are still in
+        // availability.compTiles (free slots that a future peer could
+        // occupy). The remaining need after subtracting already-neighbor
+        // placements must fit in those free slots. Free slots can be used
+        // for an IN-peer OR an OUT-peer (not both), so we approximate by
+        // checking the sum.
+        if (selfNeedIn > 0 || selfNeedOut > 0) {
+          int freeNeighborSlots = 0;
+          for (int dr : {-1, 1}) {
+            int nr = candidate.row + dr;
+            if (nr < 0 || nr >= targetModel->rows())
+              continue;
+            if (targetModel->getTileType(candidate.col, nr) !=
+                AIETileType::CoreTile)
+              continue;
+            TileID nb{candidate.col, nr};
+            if (std::find(availability.compTiles.begin(),
+                          availability.compTiles.end(),
+                          nb) != availability.compTiles.end())
+              ++freeNeighborSlots;
+          }
+          int remainingInNeed = std::max(0, selfNeedIn - selfNeighborIn);
+          int remainingOutNeed = std::max(0, selfNeedOut - selfNeighborOut);
+          if (remainingInNeed + remainingOutNeed > freeNeighborSlots)
+            return false;
+        }
+
+        // Symmetric side: for each already-placed compute peer p, placing
+        // logicalTile at candidate adds one non-neighbor entry to p's count
+        // if candidate isn't a neighbor of p. Re-derive p's count using the
+        // current `result` plus this candidate, then check p's slack.
+        for (unsigned idx : it->second) {
+          auto [f, s] = computePeerAdjacency.edges[idx];
+          bool thisIsConsumer = s.getOperation() == logicalTile.getOperation();
+          TileLike peer = thisIsConsumer ? f : s;
+          auto peerLTO = dyn_cast_or_null<LogicalTileOp>(peer.getOperation());
+          if (!peerLTO)
+            continue;
+          auto peerPos = resolvePeerPosition(peer, result);
+          if (!peerPos)
+            continue;
+          // From peer's POV, logicalTile is one of peer's compute peers.
+          // If thisIsConsumer (this LTO consumes from peer), peer is the
+          // producer, so this LTO is one of peer's OUT peers. Else IN.
+          bool logicalIsPeerOut = thisIsConsumer;
+          int peerNeedDir = logicalIsPeerOut
+                                ? needNeighborOut.lookup(peerLTO.getOperation())
+                                : needNeighborIn.lookup(peerLTO.getOperation());
+          auto [peerTotalIn, peerTotalOut] = totalPeers(peerLTO.getOperation());
+          int peerTotalDir = logicalIsPeerOut ? peerTotalOut : peerTotalIn;
+          int peerSlackDir = peerTotalDir - peerNeedDir;
+          // Count peer's currently placed non-neighbor peers in this direction.
+          int peerNonNeighborDir = 0;
+          auto pit =
+              computePeerAdjacency.tileToEdges.find(peerLTO.getOperation());
+          for (unsigned pidx : pit->second) {
+            auto [pf, ps] = computePeerAdjacency.edges[pidx];
+            bool peerIsConsumerHere =
+                ps.getOperation() == peerLTO.getOperation();
+            // Direction in question for peer: logicalIsPeerOut means
+            // peer's OUT direction (peer is producer), so peerIsConsumerHere
+            // must be false.
+            if (logicalIsPeerOut == peerIsConsumerHere)
+              continue;
+            TileLike peerPeer = peerIsConsumerHere ? pf : ps;
+            if (peerPeer.getOperation() == logicalTile.getOperation()) {
+              // The edge to logicalTile we are currently deciding: count
+              // candidate against it.
+              if (!targetModel->isLegalMemAffinity(
+                      peerPos->col, peerPos->row, candidate.col, candidate.row))
+                ++peerNonNeighborDir;
+              continue;
+            }
+            auto pp = resolvePeerPosition(peerPeer, result);
+            if (!pp)
+              continue;
+            if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row,
+                                                 pp->col, pp->row))
+              ++peerNonNeighborDir;
+          }
+          if (peerNonNeighborDir > peerSlackDir)
+            return false;
+        }
+        return true;
+      };
+
+      // compTiles is sorted column-major top-to-bottom. For high-fanin
+      // LTOs (neighborDemand > 0) the placer needs an INTERIOR tile (with
+      // two compute neighbors) so its compute-peer producers/consumers can
+      // sit on either side. Reorder the candidate iteration for THIS LTO
+      // only to prefer high-neighbor-count rows first; LTOs with no
+      // neighbor demand fall through to the default column-major order so
+      // existing single-worker tests keep landing on (col, 2).
+      auto computeNeighborCount = [&](TileID t) {
+        int n = 0;
+        if (t.row > 0 &&
+            targetModel->getTileType(t.col, t.row - 1) == AIETileType::CoreTile)
+          ++n;
+        if (t.row + 1 < targetModel->rows() &&
+            targetModel->getTileType(t.col, t.row + 1) == AIETileType::CoreTile)
+          ++n;
+        return n;
+      };
+      SmallVector<TileID> orderedCandidates(availability.compTiles.begin(),
+                                            availability.compTiles.end());
+      if (neighborDemand(logicalTile.getOperation()) > 0) {
+        std::stable_sort(orderedCandidates.begin(), orderedCandidates.end(),
+                         [&](TileID a, TileID b) {
+                           if (a.col != b.col)
+                             return a.col < b.col;
+                           int na = computeNeighborCount(a);
+                           int nb = computeNeighborCount(b);
+                           if (na != nb)
+                             return na > nb;
+                           return a.row < b.row;
+                         });
+      }
+      for (const TileID &candidate : orderedCandidates) {
         if (col && candidate.col != *col)
           continue;
         if (row && candidate.row != *row)
@@ -253,6 +522,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
                                 cascadePred))
           continue;
+        if (!satisfiesComputePeer(candidate)) {
+          computePeerWasCause = true;
+          continue;
+        }
         placement = candidate;
         break;
       }
@@ -269,18 +542,28 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << (col ? std::to_string(*col) : "?") << ", "
                << (row ? std::to_string(*row) : "?") << ")"
                << (adjacencyWasCause ? " and shared-L1 buffer adjacency" : "")
-               << (hasCascade ? " and cascade adjacency" : "");
+               << (hasCascade ? " and cascade adjacency" : "")
+               << (computePeerWasCause ? " and compute-peer DMA budget" : "");
         } else {
           diag << "no available compute tiles for placement"
                << (adjacencyWasCause
                        ? " (shared-L1 buffer adjacency unsatisfiable)"
                        : "")
-               << (hasCascade ? " (cascade adjacency unsatisfiable)" : "");
+               << (hasCascade ? " (cascade adjacency unsatisfiable)" : "")
+               << (computePeerWasCause
+                       ? " (compute-peer DMA budget unsatisfiable)"
+                       : "");
         }
         if (adjacencyWasCause)
           attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (hasCascade)
           attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
+        if (computePeerWasCause)
+          attachPeerNotes(diag, logicalTile, computePeerAdjacency,
+                          [](bool thisIsProducer) -> StringRef {
+                            return thisIsProducer ? "compute-peer consumer"
+                                                  : "compute-peer producer";
+                          });
         return failure();
       }
 
@@ -561,6 +844,25 @@ SequentialPlacer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
     if (!src || !dst)
       continue;
     adjacency.addEdge(src, dst);
+  }
+  return adjacency;
+}
+
+SequentialPlacer::Adjacency SequentialPlacer::buildComputePeerAdjacency(
+    ArrayRef<ObjectFifoCreateOp> objectFifos) {
+  Adjacency adjacency;
+  for (auto ofOp : objectFifos) {
+    auto producer =
+        dyn_cast_or_null<LogicalTileOp>(ofOp.getProducerTile().getDefiningOp());
+    if (!producer || producer.getTileType() != AIETileType::CoreTile)
+      continue;
+    for (Value consumerVal : ofOp.getConsumerTiles()) {
+      auto consumer =
+          dyn_cast_or_null<LogicalTileOp>(consumerVal.getDefiningOp());
+      if (!consumer || consumer.getTileType() != AIETileType::CoreTile)
+        continue;
+      adjacency.addEdge(TileLike(producer), TileLike(consumer));
+    }
   }
   return adjacency;
 }

@@ -138,6 +138,15 @@ private:
   // Edge: (cascade source, dest).
   Adjacency buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
 
+  // Edge: (producer LTO, consumer LTO) for every ObjectFifo whose producer
+  // AND consumer are CoreTile LTOs. Used to constrain placement so that
+  // high-fanin compute Workers (those whose total fifo count exceeds the
+  // compute-tile DMA budget) land on tiles with their peer producers as
+  // physical neighbors — the peer fifo then uses shared neighbor memory
+  // instead of a DMA channel.
+  Adjacency
+  buildComputePeerAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
   // Edge: (producer, consumer_i) per fifo. Linked fifos connect transitively
   // through the link tile (it's the consumer of every source fifo and the
   // producer of every destination fifo), so per-fifo emission suffices.
