@@ -14,7 +14,7 @@
 #include "aie_api/aie.hpp"
 
 // The tables _ab and _cd are copies of each other
-// Also, each table has a copy of data seperated by 128-bit
+// Also, each table has a copy of data separated by 128-bit
 // This effectively creates 4 copies of the table (located in 4 (128-bit) banks)
 // This allows the user to use the "gather" read feature and read 4 values from
 // 4 different banks at once Tables entries are in BF16
