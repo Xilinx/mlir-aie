@@ -10,7 +10,6 @@
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 import aie.iron as iron
 
@@ -159,4 +158,4 @@ def for_each(func, tensor, *params, tile_size=16):
         rt.drain(of_out.cons(), tensor_arg, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()

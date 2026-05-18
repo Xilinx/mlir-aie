@@ -17,6 +17,7 @@
 
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h.inc"
+#include "aie/Dialect/AIEX/IR/AIEXEnums.h"
 #include "mlir/IR/Operation.h"
 
 // include TableGen generated Op definitions
@@ -50,6 +51,17 @@ verifyStridesWraps(mlir::Operation *forOp,
                    bool skipTransformationChecks = false);
 bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
                       llvm::ArrayRef<int64_t> strides);
+
+// Returns true when sizes/strides (innermost-first, same convention as
+// NpuDmaMemcpyNdOp) describe a contiguous row-major scan:
+//   strides[0] == 1
+//   for i in 1..2: if sizes[i] > 1 then strides[i] == product of sizes[0..i-1]
+// The repeat dimension (index 3) is excluded.
+// Size-1 dimensions are allowed to carry any stride value because that stride
+// is never applied during the transfer (the loop runs only once).
+// This is the vector-form counterpart of AIE::isContiguousBDTransfer.
+bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
+                          llvm::ArrayRef<int64_t> strides);
 
 } // namespace AIEX
 } // namespace xilinx

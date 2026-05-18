@@ -45,7 +45,7 @@ class bottleneckASubblockFused2Static:
         _tensorInH=14,
         _tensorInC=80,
         _bn8_depthWiseStride=1,
-        bn8_depthWiseChannels=184,
+        _bn8_depthWiseChannels=184,
         _bn9_depthWiseStride=1,
         _bn9_depthWiseChannels=184,
         _tensorOutC=80,
@@ -86,7 +86,7 @@ class bottleneckASubblockFused2Static:
         self.tensorInH = _tensorInH
         self.tensorInC = _tensorInC
         self.bn8_depthWiseStride = _bn8_depthWiseStride
-        self.bn8_depthWiseChannels = bn8_depthWiseChannels
+        self.bn8_depthWiseChannels = _bn8_depthWiseChannels
         self.bn9_depthWiseStride = _bn9_depthWiseStride
         self.bn9_depthWiseChannels = _bn9_depthWiseChannels
         self.tensorOutC = _tensorOutC
@@ -99,7 +99,7 @@ class bottleneckASubblockFused2Static:
         ) // self.bn9_depthWiseStride
 
         self.tensorL8_1InC = _tensorInC
-        self.tensorL8_1OutC = bn8_depthWiseChannels
+        self.tensorL8_1OutC = self.bn8_depthWiseChannels
 
         self.tensorL8_2InC = self.tensorL8_1OutC
         self.tensorL8_2OutC = self.tensorL8_2InC
@@ -804,7 +804,8 @@ class bottleneckASubblockFused2Static:
                 yield_([])
 
 
-def mobilenetV3BottleneckASubblockFused2Static(
+def mobilenetV3BottleneckASubblockFused2(
+    weights_file="data/bn8_9_chain.txt",
     tileRowIndex=2,
     tileColIndex=2,
     tensorInW=56,
@@ -1014,35 +1015,42 @@ def mobilenetV3BottleneckASubblockFused2Static(
         # AIE-array data movement with object fifos
 
         # Input
-        # act_in_tmp = object_fifo(
-        #     "act_in_tmp", ShimTile, ComputeTileForL1, 3, tensorLayer8_1In_ty
-        # )
-        # act_in = object_fifo(
-        #     "act_in",
-        #     ComputeTileForL1,
-        #     ComputeTile,
-        #     3,
-        #     tensorLayer8_1In_ty,
-        #     via_DMA=False,
-        # )
-        # act_in.allocate(ComputeTileForL1)
-        act_in = object_fifo(
-            "act_in",
+        act_in_tmp = object_fifo(
+            # "act_in", ShimTile, ComputeTileForL1, 3, tensorLayer8_1In_ty
+            "act_in_tmp",
             ShimTile,
-            ComputeTile,
+            ComputeTileForL1,
             2,
             tensorLayer8_1In_ty,
         )
+        act_in = object_fifo(
+            "act_in",
+            ComputeTileForL1,
+            ComputeTile,
+            2,  # 3,
+            tensorLayer8_1In_ty,
+            via_DMA=False,
+        )
+        act_in.allocate(ComputeTileForL1)
+        # act_in.allocate(ComputeTileForL1)
+        # TODO
+        # act_in = object_fifo(
+        #     "act_in",
+        #     ShimTile,
+        #     ComputeTile,
+        #     2,
+        #     tensorLayer8_1In_ty,
+        # )
+
         # act_in.set_via_shared_mem(ObjectFifoPort.Produce)
-        # object_fifo_link(act_in_tmp, act_in)
+        object_fifo_link(act_in_tmp, act_in)
 
         # wts
         # wts_OF_L3L2 = object_fifo(
         #     "wts_OF_L3L2", ShimTile, ComputeTile, 1, weightsAllLayers_ty
         # )
 
-        file_path = "weights/"
-        wts_ary = np.fromfile(file_path + "bn8_9_chain.txt", sep=",", dtype=np.int8)
+        wts_ary = np.fromfile(weights_file, sep=",", dtype=np.int8)
 
         wts_OF_L3L2 = buffer(
             ComputeTile,
@@ -1152,8 +1160,8 @@ def mobilenetV3BottleneckASubblockFused2Static(
             NpuWriteRTPOp("rtp", index=7, value=scaleFactorAdd9)
 
             npu_dma_memcpy_nd(
-                # metadata="act_in_tmp",
-                metadata="act_in",
+                metadata="act_in_tmp",
+                # metadata="act_in",
                 bd_id=0,
                 mem=inputFromL3,
                 sizes=[1, 1, 1, activationsInSize32b],
@@ -1171,4 +1179,4 @@ def mobilenetV3BottleneckASubblockFused2Static(
             #     mem=weightsFromL3,
             #     sizes=[1, 1, 1, totalWeightsSize32b],
             # )
-            npu_sync(column=0, row=0, direction=0, channel=0)
+            npu_sync(column=tileColIndex, row=0, direction=0, channel=0)

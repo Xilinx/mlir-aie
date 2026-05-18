@@ -10,7 +10,6 @@ import numpy as np
 import sys
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 import aie.iron as iron
@@ -26,9 +25,8 @@ tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 # JIT decorator for IRON
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
-#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit(is_placed=False)
+@iron.jit
 def aie2p(input0, output):
     # Dataflow with ObjectFifos
     # ObjectFifos represent a dataflow connection between endpoints in the AIE array.
@@ -80,7 +78,7 @@ def aie2p(input0, output):
     # information to be lowered to its MLIR equivalent.
     # At this point, the program is also verified and will report underlying MLIR errors, if any.
     # You can see a list of available placers in python/iron/placers.py
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

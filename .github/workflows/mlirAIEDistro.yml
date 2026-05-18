@@ -32,6 +32,14 @@ on:
         required: false
         default: ''
 
+concurrency:
+  # PR runs from the same PR cancel earlier in-flight runs (standard supersede).
+  # workflow_dispatch serializes per-event so the second publish waits for the
+  # first — preventing the upload race that PR #2789 worked around with
+  # `replacesArtifacts: false`.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
 
   get_aie_project_commit:
@@ -148,7 +156,7 @@ jobs:
         echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
@@ -414,7 +422,7 @@ jobs:
 
     steps:
       - name: Checkout reqs
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           sparse-checkout: |
             python/requirements.txt
@@ -426,7 +434,7 @@ jobs:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
@@ -492,15 +500,38 @@ jobs:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
+      # See mlirDistro.yml for the rationale: a PEP 427 build tag makes the
+      # uploaded asset name unique per CI run so concurrent uploads cannot
+      # collide. Skipped on workflow_dispatch so the canonical `latest-wheels`
+      # release keeps deterministic filenames.
+      - name: Inject build tag for non-canonical wheel uploads
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        working-directory: dist
+        run: |
+          shopt -s nullglob
+          wheels=( *.whl )
+          if [ ${#wheels[@]} -eq 0 ]; then
+            echo "::error::No wheels found in dist/; cannot inject build tag."
+            exit 1
+          fi
+          BUILD_TAG="${{ github.run_id }}_${{ github.run_attempt }}"
+          for w in "${wheels[@]}"; do
+            newname=$(echo "$w" | sed -E "s/-(py3-none-[^-]+)\.whl$/-${BUILD_TAG}-\1.whl/")
+            if [ "$w" != "$newname" ]; then mv "$w" "$newname"; fi
+          done
+          ls -la
+
       - name: Release current commit
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: ncipollo/release-action@v1.12.0
         with:
-          artifacts: "dist/*.whl,dist/*.tar.xz"
+          artifacts: "dist/*.whl"
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
           name: ${{ github.event_name == 'workflow_dispatch' && 'latest-wheels' || 'dev-wheels' }}
           removeArtifacts: false
           allowUpdates: true
-          replacesArtifacts: true
+          replacesArtifacts: false
+          omitBodyDuringUpdate: true
           makeLatest: false

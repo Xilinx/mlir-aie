@@ -45,56 +45,11 @@ int getUnusedPacketIdFrom(DeviceOp device) {
   return unusedPacketIdFrom + 1;
 }
 
-// AIE arch-specific tile id to controller id mapping. Users can use those
-// packet ids for design but run into risk of deadlocking control packet flows.
-DenseMap<AIE::TileID, int>
-getTileToControllerIdMap6RowsOrLess(bool clColumnWiseUniqueIDs,
-                                    const AIETargetModel &targetModel) {
-  // Below column controller id combinations were chosen to avoid packet flow
-  // deadlock due to single-level LUT bit-masking on packet header, which could
-  // fail to differentiate certain packet id combinations. Controller ids for
-  // shim tiles were chosen to be < 16, because when they act as actor id in TCT
-  // tokens, the actor id field only has 4 bits.
-  // FIXME
-  SmallVector<SmallVector<int>> validTileIds = {{15, 26, 27, 29, 30, 31},
-                                                {14, 21, 22, 23, 24, 25},
-                                                {13, 11, 17, 18, 19, 20},
-                                                {12, 28, 7, 8, 9, 10}};
-  DenseMap<AIE::TileID, int> tileIDMap;
-  for (int col = 0; col < targetModel.columns(); col++) {
-    for (int row = 0; row < targetModel.rows(); row++) {
-      if (clColumnWiseUniqueIDs)
-        tileIDMap[{col, row}] = validTileIds[0][row];
-      else
-        tileIDMap[{col, row}] = validTileIds[col][row];
-    }
-  }
-
-  return tileIDMap;
-}
+// Delegate to AIETargetModel::getTileToControllerIdMap.
 DenseMap<AIE::TileID, int>
 getTileToControllerIdMap(bool clColumnWiseUniqueIDs,
                          const AIETargetModel &targetModel) {
-  if (targetModel.rows() <= 6)
-    return getTileToControllerIdMap6RowsOrLess(clColumnWiseUniqueIDs,
-                                               targetModel);
-
-  // Controller id assignment strategy for devices with more than 6 rows.
-  if (!clColumnWiseUniqueIDs)
-    assert(false && "Device has more tiles than the total number of candidate "
-                    "packet ids permitted by the device. Please switch to "
-                    "clColumnWiseUniqueIDs mode for AIEAssignTileCtrlIDsPass.");
-  DenseMap<AIE::TileID, int> tileIDMap;
-
-  int unusedPacketIdFrom = 0;
-  for (int col = 0; col < targetModel.columns(); col++) {
-    if (clColumnWiseUniqueIDs)
-      unusedPacketIdFrom = 0;
-    for (int row = 0; row < targetModel.rows(); row++)
-      tileIDMap[{col, row}] = unusedPacketIdFrom++;
-  }
-
-  return tileIDMap;
+  return targetModel.getTileToControllerIdMap(clColumnWiseUniqueIDs);
 }
 
 // AIE arch-specific row id to shim dma mm2s channel mapping. All shim mm2s

@@ -257,6 +257,21 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
+  /// Return the data bus width (in bits) for load/store operations of a compute
+  /// core.
+  virtual uint32_t getComputeTileLoadStoreBusWidth() const = 0;
+
+  // NOTE: Maybe this should be set to 4-byte alignment, since DMA on Memtile
+  // seems to handle unaligned access.
+  /// Return the data bus width (in bits) for load/store operations of a memory
+  /// tile.
+  virtual uint32_t getMemTileLoadStoreBusWidth() const {
+    return 4 * 8; // Simply have buffer to be 4 byte aligned.
+    // Since 4 byte is the minimum access size for DMA.
+    // See discussion in
+    // https://github.com/Xilinx/mlir-aie/pull/3037#discussion_r3176686935
+  }
+
   /// Return the size (in bits) of the accumulator/cascade.
   virtual uint32_t getAccumulatorCascadeSize() const = 0;
 
@@ -406,6 +421,12 @@ public:
   /// Return nullopt if the field does not fit in a 32-bit register.
   std::optional<uint32_t> getFieldMask(const BitFieldInfo &field) const;
 
+  /// Return a mapping from tile coordinates to controller IDs.
+  /// When columnWiseUniqueIDs is true (default), IDs are unique within each
+  /// column. Otherwise they are globally unique across the device.
+  llvm::DenseMap<TileID, int>
+  getTileToControllerIdMap(bool columnWiseUniqueIDs = true) const;
+
   /// Resolve stream switch port specification to port index.
   /// Return Port index for stream switch register, or nullopt if invalid
   std::optional<uint32_t> resolvePortValue(llvm::StringRef value, TileID tile,
@@ -447,6 +468,8 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
+  uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
+
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
     return 16; // AIE1 has no MemTiles, always 16
@@ -547,6 +570,7 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
+  uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
 
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {

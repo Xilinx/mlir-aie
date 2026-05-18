@@ -16,7 +16,6 @@ from ..dialects.aie import device
 
 from .device import Device
 from .runtime import Runtime
-from .placers import Placer
 from .resolvable import Resolvable
 from ..utils import trace as trace_utils
 
@@ -39,12 +38,11 @@ class Program:
         self._device = device
         self._rt = rt
 
-    def resolve_program(self, placer: Placer | None = None, device_name="main"):
+    def resolve_program(self, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
 
-        Args:
-            placer (Placer | None, optional): The placer that will assign placement to unplaced components.
-                If a placer is not given, all components must be fully placed. Defaults to None.
+        Tiles are emitted as aie.logical_tile ops. The --aie-place-tiles pass
+        in the compilation pipeline converts them to aie.tile ops.
 
         Returns:
             module (Module): The module containing the MLIR context information.
@@ -67,15 +65,17 @@ class Program:
                 # Sort fifos for deterministic resolve
                 all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
 
-                if placer:
-                    # TODO: should maybe just take runtime?
-                    placer.make_placement(
-                        self._device, self._rt, self._rt.workers, all_fifos
-                    )
-
-                # Collect all tiles
+                # Collect all tiles, validating no two workers share the same coordinates
                 all_tiles = []
+                worker_tile_coords = set()
                 for w in self._rt.workers:
+                    if w.tile.col is not None and w.tile.row is not None:
+                        coord = (w.tile.col, w.tile.row)
+                        if coord in worker_tile_coords:
+                            raise ValueError(
+                                f"Multiple workers cannot share the same tile: {w.tile}"
+                            )
+                        worker_tile_coords.add(coord)
                     all_tiles.append(w.tile)
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
@@ -114,10 +114,13 @@ class Program:
                     for w in self._rt._workers:
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
-                if self._rt._trace_size is not None:
-                    trace_shim_tile = self._rt.get_first_cons_shimtile()
-                    trace_utils.configure_packet_tracing_flow(
-                        tiles_to_trace, trace_shim_tile
+                if self._rt._trace_size is not None and self._rt._trace_size > 0:
+                    trace_utils.configure_trace(
+                        tiles_to_trace,
+                        coretile_events=self._rt._coretile_events,
+                        coremem_events=self._rt._coremem_events,
+                        memtile_events=self._rt._memtile_events,
+                        shimtile_events=self._rt._shimtile_events,
                     )
 
                 # In/Out Sequence

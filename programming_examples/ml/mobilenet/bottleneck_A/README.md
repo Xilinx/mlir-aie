@@ -18,8 +18,10 @@ This project implements a bottleneck block for a neural network on a single AI E
 - `aie2_bn_0_1_2_3_4_5_6_7_8_9.py`: Top level design instantiating `aie2_bottleneckAStatic` chain
 - `test_bottleneckA.py`: Testbench host code for the complete chain for stages 0-9
 
-- `aie2_bn_*.py`: Top level design file for single bottleneck stage used for single stage testing (Needs updating)
-- `test_bn_*.py`: Testbench host code for single bottleneck stage tests (Needs updating)
+- `aie2_bn_*.py`: Top level design file for single bottleneck stage used for single stage testing
+- `test_bn_single.py`: Testbench host code for single bottleneck stage tests (0, 1, 2, 3, 6, 7 available)
+- `test_bn_fused2.py`: Testbench host code for 2 fused bottleneck stage tests (8 & 9, 4 & 5)
+- `gen_golden_*.py`: Scripts to generate input stimulus, golden reference, weights and scale factors for the given layer.
 
 The below figures shows our implementation of the bottleneck A mapping using one AIE core.
 <p align="center">
@@ -41,12 +43,17 @@ cd bottleneck_A
 make run_py
 ```
 
-To run some of the single kernel design tests like stage 1:
+To run some of the single kernel design tests where N is the stage number to build and run:
 ```
-make run_py_0
+make run_py_N
 ```
 
-To generate input stimulus, golden reference, weights, and scale factors:
+To generate input stimulus, golden reference, weights, and scale factors for the full A block:
 ```
 python3 ./gen_golden.py
 ```
+The single test stimulus, golden reference, weights, and scale factors can be likewise generated via:
+```
+python3 ./gen_golden_bnN.py
+```
+where N is the layer that you want to generate for.

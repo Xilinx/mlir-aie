@@ -10,6 +10,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron.controlflow import range_
 import aie.utils.trace as trace_utils
 
@@ -85,10 +86,10 @@ def conv2dk1(
             of_outOFL2L3 = object_fifo("outOFL2L3", MemTile, [ShimTile], 2, bufOut_ty)
             object_fifo_link(of_out_02_L2, of_outOFL2L3)
 
-            # Set up a packet-switched flow from core to shim for tracing information
+            # Set up tracing
             tiles_to_trace = [ComputeTile2]
             if trace_size > 0:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+                trace_utils.configure_trace(tiles_to_trace)
 
             # Set up compute tiles
 
@@ -127,19 +128,17 @@ def conv2dk1(
             def sequence(I, W, O):
 
                 if trace_size > 0:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace, ShimTile, trace_size, N_in_bytes, ddr_id=2
-                    )
+                    trace_utils.start_trace(trace_size=trace_size, ddr_id=-1)
 
                 rtp2[0] = 10
 
                 set_lock_value(lock2, 1)
 
+                tap_act_in = TensorTiler2D.simple_tiler((height, width * in_channels))[
+                    0
+                ]
                 in_act_task = shim_dma_single_bd_task(
-                    of_inOF_act_L3L2,
-                    I,
-                    sizes=[1, 1, 1, tensorInSize],
-                    issue_token=True,
+                    of_inOF_act_L3L2, I, tap=tap_act_in, issue_token=True
                 )
                 in_wts_task = shim_dma_single_bd_task(
                     of_inOF_wts_0_L3L2,
@@ -147,17 +146,15 @@ def conv2dk1(
                     sizes=[1, 1, 1, weights],
                     issue_token=True,
                 )
+                tap_act_out = TensorTiler2D.simple_tiler(
+                    (height, width * out_channels)
+                )[0]
                 out_task = shim_dma_single_bd_task(
-                    of_outOFL2L3,
-                    O,
-                    sizes=[1, 1, 1, tensorOutSize],
-                    issue_token=True,
+                    of_outOFL2L3, O, tap=tap_act_out, issue_token=True
                 )
 
                 dma_start_task(in_act_task, in_wts_task, out_task)
                 dma_await_task(in_act_task, in_wts_task, out_task)
-
-                trace_utils.gen_trace_done_aie2(ShimTile)
 
     #    print(ctx.module.operation.verify())
     print(ctx.module)

@@ -476,12 +476,10 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
 
     Attributes:
     - buffer_size: Trace buffer size in bytes
-    - arg_idx (default=4): XRT argument index for trace buffer
+    - arg_idx (default=4): XRT argument index for trace buffer. Set to -1 to
+      append trace data after the last tensor argument in the runtime_sequence.
     - routing (default=single): Shim routing strategy. Currently only 'single'
       is supported, which routes all traces to column 0's shim.
-    - trace_after_last_tensor (default=false): Append trace data to the last
-      tensor argument in the runtime_sequence. When true, buffer_offset is computed
-      from the tensor size. Only valid with routing=single.
 
     Example:
     ```mlir
@@ -495,8 +493,7 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
   let arguments = (ins
     AIEI32Attr:$buffer_size,
     DefaultValuedAttr<AIEI32Attr, "4">:$arg_idx,
-    DefaultValuedAttr<TraceShimRoutingAttr, "TraceShimRouting::Single">:$routing,
-    DefaultValuedAttr<BoolAttr, "false">:$trace_after_last_tensor
+    DefaultValuedAttr<TraceShimRoutingAttr, "TraceShimRouting::Single">:$routing
   );
 
   let hasCustomAssemblyFormat = 1;
