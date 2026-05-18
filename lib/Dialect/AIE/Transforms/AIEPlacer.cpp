@@ -174,8 +174,31 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     return thisIsSrc ? "cascade destination" : "cascade source";
   };
 
-  // Phase 3: Place constrained tiles then compute tiles
-  for (auto logicalTile : logicalTiles) {
+  // Phase 3: Place constrained tiles then compute tiles.
+  //
+  // Process LogicalTileOps in order of how constrained they are: fully pinned
+  // (both col and row) first, partially constrained (col xor row) next, fully
+  // unpinned last. This guarantees every pinned coordinate is recorded — and
+  // for CoreTiles, removed from availability — before any unpinned tile gets
+  // to pick from `availability.compTiles`, so unpinned tiles cannot land on a
+  // coordinate that a later-iterated pinned tile claims.
+  SmallVector<LogicalTileOp> orderedTiles(logicalTiles.begin(),
+                                          logicalTiles.end());
+  std::stable_sort(orderedTiles.begin(), orderedTiles.end(),
+                   [](LogicalTileOp a, LogicalTileOp b) {
+                     auto rank = [](LogicalTileOp lt) {
+                       bool hasCol = lt.tryGetCol().has_value();
+                       bool hasRow = lt.tryGetRow().has_value();
+                       if (hasCol && hasRow)
+                         return 0; // fully pinned
+                       if (hasCol || hasRow)
+                         return 1; // partially constrained
+                       return 2;   // fully unpinned
+                     };
+                     return rank(a) < rank(b);
+                   });
+
+  for (auto logicalTile : orderedTiles) {
     // Place fully constrained tiles at their specified coordinates
     auto col = logicalTile.tryGetCol();
     auto row = logicalTile.tryGetRow();
