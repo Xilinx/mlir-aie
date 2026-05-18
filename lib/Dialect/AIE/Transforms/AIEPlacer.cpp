@@ -809,18 +809,28 @@ bool SequentialPlacer::satisfiesComputePeer(
   // future peers still to be placed must land on a physical compute neighbor
   // of candidate. Count how many of candidate's physical compute-tile
   // neighbors are still in availability.compTiles (free slots that a future
-  // peer could occupy). The remaining need after subtracting already-neighbor
-  // placements must fit in those free slots. Free slots can be used for an
-  // IN-peer OR an OUT-peer (not both), so we approximate by checking the sum.
+  // peer could occupy). Iterate all 4 cardinal directions and ask
+  // isLegalMemAffinity to decide which are actually shared-L1 neighbors --
+  // AIE2 cores share L1 with N, S, and the checkerboard W neighbor (not E).
+  // The remaining need after subtracting already-neighbor placements must fit
+  // in those free slots. Free slots can be used for an IN-peer OR an OUT-peer
+  // (not both), so we approximate by checking the sum.
   if (selfNeedIn > 0 || selfNeedOut > 0) {
     int freeNeighborSlots = 0;
-    for (int dr : {-1, 1}) {
+    for (auto [dc, dr] : {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0},
+                          std::pair{1, 0}}) {
+      int nc = candidate.col + dc;
       int nr = candidate.row + dr;
+      if (nc < 0 || nc >= targetModel->columns())
+        continue;
       if (nr < 0 || nr >= targetModel->rows())
         continue;
-      if (targetModel->getTileType(candidate.col, nr) != AIETileType::CoreTile)
+      if (targetModel->getTileType(nc, nr) != AIETileType::CoreTile)
         continue;
-      TileID nb{candidate.col, nr};
+      if (!targetModel->isLegalMemAffinity(candidate.col, candidate.row, nc,
+                                           nr))
+        continue;
+      TileID nb{nc, nr};
       if (std::find(availability.compTiles.begin(),
                     availability.compTiles.end(),
                     nb) != availability.compTiles.end())
