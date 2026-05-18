@@ -20,7 +20,8 @@
 //      MEMORY_MODULE_DMA_{S2MM,MM2S}_0_CTRL (bit 4)
 //
 // `write_tm` from <aiev2intrin.h> emits an `st.tm` instruction that targets
-// the tile-mapped processor-bus address space (default TMAddrSpaceStart=0x80000).
+// the tile-mapped processor-bus address space (default
+// TMAddrSpaceStart=0x80000).
 //
 // `__builtin_aiev2_sched_barrier()` separates back-to-back `st.tm` operations
 // so the peano backend does not pack them into one VLIW bundle. The hazard
