@@ -1,22 +1,20 @@
 """Python driver for dma_compression on Phoenix npu1.
 
-Runs the IRON design under iron.jit for each compression config and
-validates output. All configs complete in well under one second.
+Runs the IRON design under iron.jit for each of the 15 compression
+configs, validates the output buffer against a per-config expected
+breakdown of (matches / mismatches / untouched-sentinel) elements, and
+also runs a two-dispatch sequential `roundtrip` test that asserts the
+recovered bytes equal the original arange input. Every config completes
+deterministically in well under one second.
 
 Run with:
-    python3 test_dma_compression.py            # all configs + roundtrip
-    python3 test_dma_compression.py both       # just one config
-    python3 test_dma_compression.py -v         # show first 8 elems of each buffer
-
-The `roundtrip` test runs `cmp_only` (raw -> compressed) then `dcmp_only`
-(compressed -> raw) sequentially and asserts the recovered bytes equal the
-original input. This is the true lossless test on non-trivial data;
-individual `cmp_only` / `dcmp_only` / `both` configs only show partial
-matches because the output stream is the compressed form, not the input.
+    python3 test_dma_compression.py                  # all configs + roundtrip
+    python3 test_dma_compression.py both             # just one config
+    python3 test_dma_compression.py lossless_roundtrip
+    python3 test_dma_compression.py -v               # also dump first 8 elems
 """
 
 import argparse
-import os
 import shutil
 import sys
 import time
@@ -24,35 +22,36 @@ from pathlib import Path
 
 import numpy as np
 
-# Multi-config NPU test isolation: clearing the iron.jit xclbin cache + the
-# in-memory _compiled_kernels cache between every config avoids the case
-# where a previous config's hw_context is still bound on the device when the
-# next config tries to register a new xclbin (manifests as err=19 ENODEV
-# from DRM_IOCTL_AMDXDNA_CREATE_HWCTX).
+import aie.iron as iron
+
+from dma_compression import dma_compression, CONFIGS
+
+
 def _isolate_for_next_config():
+    """Reset all iron.jit + XRT state so the next config dispatch starts clean.
+
+    Without this, an earlier config's xclbin hw_context can remain bound on
+    the device when the next config tries to register, surfacing as err=19
+    ENODEV from DRM_IOCTL_AMDXDNA_CREATE_HWCTX.
+    """
     cache = Path.home() / ".npu" / "cache"
     if cache.exists():
         for entry in cache.iterdir():
             shutil.rmtree(entry, ignore_errors=True)
     try:
         from aie.utils.jit import _compiled_kernels
+
         _compiled_kernels.clear()
     except Exception:
         pass
-    # Release any cached XRT hw_contexts so the next config can register a
-    # fresh xclbin without hitting err=19 ENODEV from
-    # DRM_IOCTL_AMDXDNA_CREATE_HWCTX.
     try:
         from aie.utils import _get_default_npu_runtime
+
         rt = _get_default_npu_runtime()
         if rt is not None:
             rt.cleanup()
     except Exception:
         pass
-
-import aie.iron as iron
-
-from dma_compression import dma_compression, CONFIGS, RATIOED_N
 
 
 N = 4096
@@ -65,8 +64,8 @@ SENTINEL = np.uint32(0xDEADBEEF)
 # (de)compression, after a state-machine warm-up. The asymmetric configs
 # (cmp_only, dcmp_only) use ratio-sized shim BDs so neither side hangs.
 EXPECTED = {
-    "base":      dict(matches=4096, mismatches=0,    untouched=0),
-    "cmp_only":  dict(matches=1024, mismatches=1920, untouched=1152),
+    "base": dict(matches=4096, mismatches=0, untouched=0),
+    "cmp_only": dict(matches=1024, mismatches=1920, untouched=1152),
     "dcmp_only": dict(matches=1024, mismatches=3072, untouched=0),
     # `both` with arange input + ratioed out_n: shim S2MM gets compressed
     # bytes from the consumer side; with both directions compressed in the
@@ -74,37 +73,37 @@ EXPECTED = {
     # state-machine warm-up artifact, matches=1043 ~ first 1024 elems), then
     # the remainder are compressor output (garbage when interpreted as int32)
     # and the tail of the output buffer is never written.
-    "both":      dict(matches=1043, mismatches=1901, untouched=1152),
+    "both": dict(matches=1043, mismatches=1901, untouched=1152),
     # Core-side configs (peano `write_tm` in kernel.cc, host enables the
     # Core_Processor_Bus first). Measured outputs are bit-identical to their
     # host-side counterparts (cmp_only / both), confirming the core-side
     # path drives the same DMA register state as `npu_maskwrite32`.
-    "core_cmp_only":  dict(matches=1024, mismatches=1920, untouched=1152),
+    "core_cmp_only": dict(matches=1024, mismatches=1920, untouched=1152),
     "core_dcmp_only": dict(matches=1024, mismatches=3072, untouched=0),
-    "core_both":      dict(matches=1043, mismatches=1901, untouched=1152),
+    "core_both": dict(matches=1043, mismatches=1901, untouched=1152),
     # Memtile configs route through memtile(0,1) instead of compute(0,2);
     # different register addresses (MT_BD4_BASE, MT_S2MM/MM2S_0_CTRL).
     # Measured outputs are bit-identical to compute-tile counterparts —
     # the memtile compression hardware presents the same observable
     # behaviour as the compute-tile one.
-    "memtile_base":      dict(matches=4096, mismatches=0,    untouched=0),
-    "memtile_cmp_only":  dict(matches=1024, mismatches=1920, untouched=1152),
+    "memtile_base": dict(matches=4096, mismatches=0, untouched=0),
+    "memtile_cmp_only": dict(matches=1024, mismatches=1920, untouched=1152),
     "memtile_dcmp_only": dict(matches=1024, mismatches=3072, untouched=0),
-    "memtile_both":      dict(matches=1043, mismatches=1901, untouched=1152),
+    "memtile_both": dict(matches=1043, mismatches=1901, untouched=1152),
     # Single-dispatch lossless roundtrip: shim -> CT -> memtile -> shim,
     # compress on CT MM2S, decompress on memtile S2MM. Both shim ends see
     # raw int32s; expected matches=4096 if the chained compress->decompress
     # is truly lossless.
-    "lossless_roundtrip":       dict(matches=4096, mismatches=0, untouched=0),
-    "multi_base":               dict(matches=4096, mismatches=0, untouched=0),
+    "lossless_roundtrip": dict(matches=4096, mismatches=0, untouched=0),
+    "multi_base": dict(matches=4096, mismatches=0, untouched=0),
     # multi_cmp_only proves DMA compression engages on the inter-tile link:
     # compress on CT(0,2) MM2S, NO decompress on CT(0,3) S2MM, with the
     # consumer-side BD hand-sized to RATIOED_PER_LINE=736 ints/BD so the
     # DMA doesn't stall. Output pattern matches single-tile cmp_only's
     # asymmetric signature, confirming compression actually engages on the
     # CT-to-CT link.
-    "multi_cmp_only":           dict(matches=1024, mismatches=1920, untouched=1152),
-    "multi_lossless_roundtrip": dict(matches=4096, mismatches=0,    untouched=0),
+    "multi_cmp_only": dict(matches=1024, mismatches=1920, untouched=1152),
+    "multi_lossless_roundtrip": dict(matches=4096, mismatches=0, untouched=0),
 }
 
 

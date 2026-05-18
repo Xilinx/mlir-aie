@@ -1,24 +1,48 @@
-"""IRON-style DMA compression probe on Phoenix npu1.
+"""IRON-style DMA compression probes on Phoenix npu1.
 
-Single-tile passthrough (shim -> compute(0,2) -> shim) on Phoenix npu1.
-The data path is DMA-only via `ObjectFifo.forward(tile=compute_tile)`.
-The AIE-ML compute-tile DMA `Enable_Compression` and `*compression_Enable`
-register pair is flipped from the host runtime sequence via
-`aiex.npu.npu_maskwrite32`, surfaced through `Runtime.inline_ops`.
+`dma_compression(in_tensor, out_tensor, config=...)` returns an MLIR
+module for one of 15 configs that exercise AIE-ML DMA `Enable_Compression`
+through different host- and core-side mechanisms and different tile
+topologies. All configs are designed to complete deterministically — no
+expected hangs.
 
-BD layout on tile (0,2) after IRON lowering:
-  BD 0,1 -> S2MM ch 0 (incoming from shim)
-  BD 2,3 -> MM2S ch 0 (outgoing to shim)
+Config families (see README.md for the full table + expected outputs):
 
-Configs (all with arange input, all complete in milliseconds):
-  base       passthrough, no compression                       in=out=4096
-  cmp_only   compression on MM2S only (output side)            in=4096, out=2944
-  dcmp_only  decompression on S2MM only (input side)           in=2944, out=4096
-  both       compress on output + decompress on input          in=4096, out=2944
+  HOST_CONFIGS    base / cmp_only / dcmp_only / both
+                  Single compute tile (0,2), shim -> CT -> shim via
+                  `ObjectFifo.forward(tile=ct)` DMA link. Compression
+                  registers flipped from the host runtime sequence via
+                  `aiex.npu.npu_maskwrite32` + `Runtime.inline_ops`.
 
-The asymmetric configs use a precomputed ratio (~1.39x for arange 0..N-1
-on Phoenix) so the shim BD lengths match the compressed byte count and
-neither side hangs on a BD-length mismatch.
+  CORE_CONFIGS    core_cmp_only / core_dcmp_only / core_both
+                  Same topology as HOST_CONFIGS, but the compression
+                  registers are flipped from inside the core via peano's
+                  `aiev2intrin.h::write_tm` (kernel.cc) with
+                  `__builtin_aiev2_sched_barrier()` between stores.
+                  Peano-side companion to PR #2348's chess-only
+                  `test/npu-xrt/tile_mapped_read/`, closes #2346 gap.
+
+  MEMTILE_CONFIGS memtile_base / memtile_cmp_only / memtile_dcmp_only /
+                  memtile_both
+                  Same shape as HOST_CONFIGS but on memtile(0,1). Memtile
+                  DMA register layout differs from compute-tile (BD?_4
+                  word for compression bit vs BD?_1) but observable
+                  behaviour is identical.
+
+  ROUNDTRIP_CONFIGS lossless_roundtrip / multi_base / multi_cmp_only /
+                    multi_lossless_roundtrip
+                    Two-tile chains. lossless_roundtrip and
+                    multi_lossless_roundtrip prove the AIE-ML compress
+                    -> decompress pipeline is invertible on arbitrary
+                    (arange) input. multi_cmp_only is built from low-
+                    level `aie.mem` / `aie.dma_start` ops to hand-size
+                    the inter-tile consumer BD so an asymmetric
+                    compression test can complete without stalling.
+
+The asymmetric configs use a precomputed ratio (RATIOED_N=2944 for
+arange 0..N-1 on Phoenix, ~1.39x) so shim or inter-tile BD lengths
+match the compressed byte count and neither side hangs on a BD-length
+mismatch.
 """
 
 import os
@@ -59,13 +83,18 @@ MT_MM2S0_CTRL = 0xA0630
 
 BD_STRIDE = 0x20
 COMPRESS_BIT = 0x80000000  # BD?_X bit 31 (X=1 on compute, X=4 on memtile)
-CHAN_BIT = 0x10            # *_CTRL bit 4 (same on compute and memtile)
+CHAN_BIT = 0x10  # *_CTRL bit 4 (same on compute and memtile)
 BD_S2MM = (0, 1)
 BD_MM2S = (2, 3)
 
 HOST_CONFIGS = ("base", "cmp_only", "dcmp_only", "both")
 CORE_CONFIGS = ("core_cmp_only", "core_dcmp_only", "core_both")
-MEMTILE_CONFIGS = ("memtile_base", "memtile_cmp_only", "memtile_dcmp_only", "memtile_both")
+MEMTILE_CONFIGS = (
+    "memtile_base",
+    "memtile_cmp_only",
+    "memtile_dcmp_only",
+    "memtile_both",
+)
 # Two-tile chains via shim -> CT(0,2) -> {memtile(0,1) | CT(0,3)} -> shim.
 #   lossless_roundtrip       : compress on CT(0,2) MM2S + decompress on memtile
 #                              S2MM — proves the cross-tile roundtrip is
@@ -147,13 +176,29 @@ def _build_multi_cmp_only():
     so the BD length matches what the compressor actually emits.
     """
     from aie.dialects.aie import (
-        device, tile, buffer, lock, mem, dma_start, dma_bd, next_bd,
-        use_lock, flow, end as aie_end, core, AIEDevice, DMAChannelDir,
-        LockAction, WireBundle, shim_dma_allocation,
+        device,
+        tile,
+        buffer,
+        lock,
+        mem,
+        dma_start,
+        dma_bd,
+        next_bd,
+        use_lock,
+        flow,
+        end as aie_end,
+        core,
+        AIEDevice,
+        DMAChannelDir,
+        LockAction,
+        WireBundle,
+        shim_dma_allocation,
     )
     from aie.extras.context import mlir_mod_ctx
     from aie.dialects.aiex import (
-        runtime_sequence, shim_dma_single_bd_task, dma_start_task,
+        runtime_sequence,
+        shim_dma_single_bd_task,
+        dma_start_task,
         dma_await_task,
     )
 
@@ -161,9 +206,40 @@ def _build_multi_cmp_only():
     comp_ty = np.ndarray[(RATIOED_PER_LINE,), np.dtype[np.int32]]
     vec_ty_in = np.ndarray[(N,), np.dtype[np.int32]]
     vec_ty_out = np.ndarray[(RATIOED_N,), np.dtype[np.int32]]
-    n_iters = N // LINE_SIZE
+
+    def _emit_passthrough_mem(t, buf0, buf1, full_lock, empty_lock):
+        """2-BD ping-pong S2MM ch0 -> MM2S ch0 on tile `t` (pure DMA)."""
+
+        @mem(t)
+        def _m(block):
+            dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[3])
+            with block[1]:
+                use_lock(empty_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(buf0)
+                use_lock(full_lock, LockAction.Release, value=1)
+                next_bd(block[2])
+            with block[2]:
+                use_lock(empty_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(buf1)
+                use_lock(full_lock, LockAction.Release, value=1)
+                next_bd(block[1])
+            with block[3]:
+                dma_start(DMAChannelDir.MM2S, 0, dest=block[4], chain=block[6])
+            with block[4]:
+                use_lock(full_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(buf0)
+                use_lock(empty_lock, LockAction.Release, value=1)
+                next_bd(block[5])
+            with block[5]:
+                use_lock(full_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(buf1)
+                use_lock(empty_lock, LockAction.Release, value=1)
+                next_bd(block[4])
+            with block[6]:
+                aie_end()
 
     with mlir_mod_ctx() as ctx:
+
         @device(AIEDevice.npu1_1col)
         def _dev():
             shim = tile(COL, 0)
@@ -202,65 +278,14 @@ def _build_multi_cmp_only():
                 for _ in range_(0x7FFFFFFF):
                     pass
 
-            # CT(0,2) mem block: S2MM receives raw 1024-int lines from shim
-            # (cycling 2 BDs); MM2S compresses and emits.
-            @mem(ct2)
-            def _ct2_mem(block):
-                dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[3])
-                with block[1]:
-                    use_lock(ct2_empty, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(ct2_buf0)
-                    use_lock(ct2_full, LockAction.Release, value=1)
-                    next_bd(block[2])
-                with block[2]:
-                    use_lock(ct2_empty, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(ct2_buf1)
-                    use_lock(ct2_full, LockAction.Release, value=1)
-                    next_bd(block[1])
-                with block[3]:
-                    dma_start(DMAChannelDir.MM2S, 0, dest=block[4], chain=block[6])
-                with block[4]:
-                    use_lock(ct2_full, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(ct2_buf0)
-                    use_lock(ct2_empty, LockAction.Release, value=1)
-                    next_bd(block[5])
-                with block[5]:
-                    use_lock(ct2_full, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(ct2_buf1)
-                    use_lock(ct2_empty, LockAction.Release, value=1)
-                    next_bd(block[4])
-                with block[6]:
-                    aie_end()
-
-            # CT(0,3) mem block: S2MM receives RATIOED_PER_LINE int worth of
-            # bytes (the compressed stream from CT(0,2)); MM2S forwards to shim.
-            @mem(ct3)
-            def _ct3_mem(block):
-                dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[3])
-                with block[1]:
-                    use_lock(ct3_empty, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(ct3_buf0)
-                    use_lock(ct3_full, LockAction.Release, value=1)
-                    next_bd(block[2])
-                with block[2]:
-                    use_lock(ct3_empty, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(ct3_buf1)
-                    use_lock(ct3_full, LockAction.Release, value=1)
-                    next_bd(block[1])
-                with block[3]:
-                    dma_start(DMAChannelDir.MM2S, 0, dest=block[4], chain=block[6])
-                with block[4]:
-                    use_lock(ct3_full, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(ct3_buf0)
-                    use_lock(ct3_empty, LockAction.Release, value=1)
-                    next_bd(block[5])
-                with block[5]:
-                    use_lock(ct3_full, LockAction.AcquireGreaterEqual, value=1)
-                    dma_bd(ct3_buf1)
-                    use_lock(ct3_empty, LockAction.Release, value=1)
-                    next_bd(block[4])
-                with block[6]:
-                    aie_end()
+            # CT(0,2): S2MM receives raw lines from shim, MM2S compresses
+            # and emits to CT(0,3). Buffers sized LINE_SIZE (raw).
+            _emit_passthrough_mem(ct2, ct2_buf0, ct2_buf1, ct2_full, ct2_empty)
+            # CT(0,3): S2MM receives RATIOED_PER_LINE ints' worth from the
+            # wire (the compressed stream from CT(0,2)); MM2S forwards to
+            # shim. Buffers sized RATIOED_PER_LINE — the key trick that
+            # avoids a BD-length stall with compress-on / decompress-off.
+            _emit_passthrough_mem(ct3, ct3_buf0, ct3_buf1, ct3_full, ct3_empty)
 
             @runtime_sequence(vec_ty_in, vec_ty_out)
             def _seq(a_in, c_out):
@@ -323,14 +348,20 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
         #   *_base               : neither
         #   *_cmp_only           : producer (CT MM2S) only
         #   *_lossless_roundtrip : producer (CT MM2S) + consumer (S2MM decompress)
-        engage_compress = config in ("multi_cmp_only", "lossless_roundtrip",
-                                     "multi_lossless_roundtrip")
-        engage_decompress = config in ("lossless_roundtrip",
-                                       "multi_lossless_roundtrip")
+        engage_compress = config in (
+            "multi_cmp_only",
+            "lossless_roundtrip",
+            "multi_lossless_roundtrip",
+        )
+        engage_decompress = config in ("lossless_roundtrip", "multi_lossless_roundtrip")
         # Consumer-side TAP: when only compress is on, the consumer DMA on
         # shim receives the compressed byte stream (shorter than raw), so
         # size the shim S2MM to RATIOED_N to avoid a BD-length hang.
-        out_tap_rt = _linear_tap(RATIOED_N) if engage_compress and not engage_decompress else None
+        out_tap_rt = (
+            _linear_tap(RATIOED_N)
+            if engage_compress and not engage_decompress
+            else None
+        )
 
         of_a = ObjectFifo(line_ty, name="a_shim_to_ct")
         of_b = ObjectFifo(line_ty, name="b_ct_to_consumer")
@@ -352,6 +383,7 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
 
         rt = Runtime()
         with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+
             def configure_compression_roundtrip():
                 if engage_compress:
                     # CT(0,2) MM2S compress (sends compressed bytes to consumer)
@@ -400,25 +432,47 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
     # resolve to the same object — no duplicate-symbol link error.
     enables = []
     if config == "core_cmp_only":
-        enables = [ExternalFunction("enable_mm2s_compression", "kernel.o",
-                                    source_file=_KERNEL_CC, arg_types=[])]
+        enables = [
+            ExternalFunction(
+                "enable_mm2s_compression",
+                "kernel.o",
+                source_file=_KERNEL_CC,
+                arg_types=[],
+            )
+        ]
     elif config == "core_dcmp_only":
-        enables = [ExternalFunction("enable_s2mm_decompression", "kernel.o",
-                                    source_file=_KERNEL_CC, arg_types=[])]
+        enables = [
+            ExternalFunction(
+                "enable_s2mm_decompression",
+                "kernel.o",
+                source_file=_KERNEL_CC,
+                arg_types=[],
+            )
+        ]
     elif config == "core_both":
         enables = [
-            ExternalFunction("enable_mm2s_compression", "kernel.o",
-                             source_file=_KERNEL_CC, arg_types=[]),
-            ExternalFunction("enable_s2mm_decompression", "kernel.o",
-                             source_file=_KERNEL_CC, arg_types=[]),
+            ExternalFunction(
+                "enable_mm2s_compression",
+                "kernel.o",
+                source_file=_KERNEL_CC,
+                arg_types=[],
+            ),
+            ExternalFunction(
+                "enable_s2mm_decompression",
+                "kernel.o",
+                source_file=_KERNEL_CC,
+                arg_types=[],
+            ),
         ]
     core_worker = None
     if enables:
+
         def core_body(*enable_fns):
             for fn in enable_fns:
                 fn()
             for _ in range_(sys.maxsize):
                 pass
+
         core_worker = Worker(core_body, list(enables), tile=link_tile)
 
     # Sizing for the shim BDs. Configs with compression on MM2S (output)
@@ -427,7 +481,9 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
     # Suffix (after optional "core_"/"memtile_" prefix) determines which side
     # of the link has compression engaged: "cmp_only" = MM2S out, "dcmp_only"
     # = S2MM in, "both" = both.
-    suffix = config.split("_", 1)[1] if config.startswith(("core_", "memtile_")) else config
+    suffix = (
+        config.split("_", 1)[1] if config.startswith(("core_", "memtile_")) else config
+    )
     has_mm2s_cmp = suffix in ("cmp_only", "both")
     has_s2mm_dcmp = suffix in ("dcmp_only", "both")
     in_tap = _linear_tap(RATIOED_N) if (has_s2mm_dcmp and not has_mm2s_cmp) else None
@@ -439,6 +495,7 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
     rt = Runtime()
     with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
         if is_host_compression and not base_config:
+
             def configure_compression_host():
                 if has_mm2s_cmp:
                     _maskwrite_compress(link_row, link_bd_base, BD_MM2S, link_mm2s_ctrl)
@@ -465,4 +522,6 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
         rt.fill(of_in.prod(), a_in, tap=in_tap)
         rt.drain(of_out.cons(), c_out, tap=out_tap, wait=True)
 
-    return Program(dev if dev is not None else iron.get_current_device(), rt).resolve_program()
+    return Program(
+        dev if dev is not None else iron.get_current_device(), rt
+    ).resolve_program()
