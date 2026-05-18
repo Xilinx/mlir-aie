@@ -307,6 +307,11 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   SmallVector<const Adjacency *, 2> connectivityAdjacencies = {
       &objectFifoAdjacency, &flowAdjacency};
 
+  // Sort the unplaced non-core LTOs by descending channel demand so the
+  // heaviest consumers (e.g. memtile joins that need many input channels)
+  // get first pick of physical tiles before lighter pass-through fifos
+  // crowd into the same column and leave no room.
+  SmallVector<LogicalTileOp> nonCoreOrdered;
   for (auto logicalTile : logicalTiles) {
     if (result.count(logicalTile.getOperation()))
       continue;
@@ -314,6 +319,20 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     if (tileType == AIETileType::CoreTile ||
         tileType == AIETileType::ShimPLTile)
       continue;
+    nonCoreOrdered.push_back(logicalTile);
+  }
+  std::stable_sort(nonCoreOrdered.begin(), nonCoreOrdered.end(),
+                   [&](LogicalTileOp a, LogicalTileOp b) {
+                     auto demand = [&](LogicalTileOp lt) {
+                       auto it = channelRequirements.find(lt.getOperation());
+                       if (it == channelRequirements.end())
+                         return 0;
+                       return it->second.first + it->second.second;
+                     };
+                     return demand(a) > demand(b);
+                   });
+
+  for (auto logicalTile : nonCoreOrdered) {
     if (failed(placeNonCoreTileByCentroid(logicalTile, connectivityAdjacencies,
                                           channelRequirements)))
       return failure();
@@ -744,34 +763,35 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     int targetCol, std::vector<TileID> &tiles, int requiredInputChannels,
     int requiredOutputChannels, AIETileType requestedType) {
-  int maxCol = targetModel->columns();
+  // Choose a physical tile by lexicographic minimum of
+  //   (|col - targetCol|, current load, col, row).
+  // Distance-from-centroid comes first to preserve routing locality: a tile
+  // in the centroid column with any spare capacity beats an idle tile in an
+  // adjacent column. The load tiebreaker spreads logical tiles when more
+  // than one physical tile sits at the same distance (e.g. two centroid-
+  // adjacent columns), avoiding the first-match pile-up that filled a single
+  // column's non-core tile until DMA-full before trying anywhere else.
+  // (col, row) is the final tiebreaker for determinism.
+  std::optional<TileID> best;
+  std::tuple<int, int, int, int> bestKey;
 
-  // Search columns outward from targetCol bidirectionally
-  for (int offset = 0; targetCol + offset < maxCol || targetCol - offset >= 0;
-       ++offset) {
-    for (int dir : {1, -1}) {
-      int searchCol = targetCol + dir * offset;
-      if (dir == -1 && offset == 0)
-        continue; // don't search targetCol twice
-      if (searchCol < 0 || searchCol >= maxCol)
-        continue;
-
-      for (auto &tile : tiles) {
-        AIETileType tileType = targetModel->getTileType(tile.col, tile.row);
-        if (tileType != requestedType)
-          continue;
-
-        if (tile.col == searchCol) {
-          if (hasAvailableChannels(tile, requiredInputChannels,
-                                   requiredOutputChannels)) {
-            return tile;
-          }
-        }
-      }
+  for (auto &tile : tiles) {
+    if (targetModel->getTileType(tile.col, tile.row) != requestedType)
+      continue;
+    if (!hasAvailableChannels(tile, requiredInputChannels,
+                              requiredOutputChannels))
+      continue;
+    int dist = std::abs(tile.col - targetCol);
+    int load = availability.inputChannelsUsed[tile] +
+               availability.outputChannelsUsed[tile];
+    std::tuple<int, int, int, int> key{dist, load, tile.col, tile.row};
+    if (!best || key < bestKey) {
+      best = tile;
+      bestKey = key;
     }
   }
 
-  return std::nullopt;
+  return best;
 }
 
 void SequentialPlacer::updateChannelUsage(TileID tile, bool isOutput,
