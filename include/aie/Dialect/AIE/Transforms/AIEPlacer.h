@@ -26,14 +26,12 @@ enum class PlacerType { SequentialPlacer, SABasedPlacer };
 inline std::pair<int, int> getDMACapacity(const AIETargetModel &tm,
                                           TileID tile) {
   if (tile.row == 0)
-    return {tm.getNumDestShimMuxConnections(tile.col, tile.row,
-                                            WireBundle::DMA),
-            tm.getNumSourceShimMuxConnections(tile.col, tile.row,
-                                              WireBundle::DMA)};
+    return {
+        tm.getNumDestShimMuxConnections(tile.col, tile.row, WireBundle::DMA),
+        tm.getNumSourceShimMuxConnections(tile.col, tile.row, WireBundle::DMA)};
   return {
       tm.getNumDestSwitchboxConnections(tile.col, tile.row, WireBundle::DMA),
-      tm.getNumSourceSwitchboxConnections(tile.col, tile.row,
-                                          WireBundle::DMA)};
+      tm.getNumSourceSwitchboxConnections(tile.col, tile.row, WireBundle::DMA)};
 }
 
 // maps logical tile operations to physical coordinates
@@ -390,9 +388,8 @@ class SASchedule {
 public:
   SASchedule() = default;
   SASchedule(double startTemp, int movesPerIter, int maxIters, int greedyIters)
-      : temperature(startTemp), movesPerIter(movesPerIter),
-        maxIters(maxIters), greedyIters(greedyIters),
-        windowSize(std::max(movesPerIter, 100)) {}
+      : temperature(startTemp), movesPerIter(movesPerIter), maxIters(maxIters),
+        greedyIters(greedyIters), windowSize(std::max(movesPerIter, 100)) {}
 
   double getTemperature() const { return temperature; }
   int getIteration() const { return currIteration; }
@@ -407,8 +404,7 @@ public:
 
   double getAcceptanceRatio() const {
     int total = acceptCount + rejectCount;
-    return (total == 0) ? 1.0
-                        : static_cast<double>(acceptCount) / total;
+    return (total == 0) ? 1.0 : static_cast<double>(acceptCount) / total;
   }
 
   void recordAccept() {
@@ -424,12 +420,32 @@ public:
   }
 
   void cool() {
-    temperature *= coolingFactor;
-    if (inGreedyStage) {
+    // Adaptive cooling based on acceptance ratio (similar to VPR/npu-flow).
+    // When stuck (low acceptance), slow cooling to give more exploration.
+    // When progressing well, cool faster to converge.
+    if (!inGreedyStage) {
+      double ratio = getAcceptanceRatio();
+      // Adaptive factors close to 1.0 since cool() is called per
+      // iteration (every movesPerIter moves). Target: ~60K iterations
+      // total, temperature should reach ~1 around 70% of iterations.
+      double adaptiveFactor;
+      if (ratio > 0.96)
+        adaptiveFactor = 0.995; // accepting too much → cool faster
+      else if (ratio > 0.8)
+        adaptiveFactor = 0.998; // good progress → steady
+      else if (ratio > 0.15)
+        adaptiveFactor = 0.999; // balanced exploration
+      else
+        adaptiveFactor = 0.9998; // stuck → barely cool, keep exploring
+
+      temperature *= adaptiveFactor;
+
+      if (ratio < 0.005 || temperature < 1e-8) {
+        inGreedyStage = true;
+        temperature = 0.0;
+      }
+    } else {
       currGreedyIteration++;
-    } else if (getAcceptanceRatio() < 0.005 || temperature < 1e-8) {
-      inGreedyStage = true;
-      temperature = 0.0;
     }
     currIteration++;
   }
@@ -518,6 +534,8 @@ private:
 
   // Static buffer sizes per logical tile
   llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
+  // Core stack sizes (from CoreOp::getStackSize(), reserved by buffer assignment)
+  llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
 
   // Cascade groups: tiles connected by cascade_flow that move as a fixed unit
   llvm::SmallVector<CascadeGroup> cascadeGroups;
@@ -533,59 +551,66 @@ private:
                                // consumerElemType, else same as producer)
     int producerDepth;
     llvm::SmallVector<int> consumerDepths;
+    bool forcesDMA = false;  // requires DMA even when adjacent (skip shared-mem)
+    bool linkSharedProd = false; // producer buffers shared with link input (skip
+                                 // producer mem charge on MemTile)
   };
   llvm::SmallVector<FifoBufferInfo> fifoBuffers;
 
   // Resource tracking: full init once, then incremental updates per move
   void initResourceTracking();
   int updateResourcePenalty(
-      const llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &oldPlacements);
+      const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
+          &oldPlacements);
   int getResourcePenalty() const { return cachedResourcePenalty; }
 
   // Add/subtract a single fifo's contribution (sign = +1 or -1)
   void addFifoContribution(size_t fifoIdx, int sign);
-  // Compute penalty from current maps
+  // Compute hard penalty from current maps (blocks legality)
   int computePenaltyFromMaps() const;
+  // Soft memory pressure (guides optimization, not legality)
+  int computeMemoryPressure() const;
+  // Cascade violation penalty (hard: blocks legality when > 0)
+  int computeCascadePenalty() const;
+  // Generate objectfifo.allocate ops for:
+  // (A) intratile fifos relocated to neighbor tiles (overflow resolution)
+  // (B) shared-mem fifos where SA chose non-default buffer tile
+  void generateAllocates();
 
   // Reverse index: tile operation -> fifo buffer indices
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToFifoIndices;
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>>
+      tileToFifoIndices;
   // Persistent resource state
   llvm::DenseMap<TileID, int64_t> currentMemUsage;
   llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
+  // Per-fifo shared-mem destination: records which tile was charged for
+  // bidirectional shared-mem fifos, ensuring subtract/add consistency.
+  llvm::DenseMap<size_t, TileID> sharedMemDestination;
   int cachedResourcePenalty = 0;
 
-  void buildNetModel(
-      llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
-      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+  void buildNetModel(llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
+                     llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();
 
-
   // Returns delta cost; modifies net BBs in place.
   // Caller must save/restore via backups if move is rejected.
-  int evaluateMove(mlir::Operation *tile, TileID newPos,
-                   llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
-  void revertMove(
+  int evaluateMove(
+      mlir::Operation *tile, TileID newPos,
       llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
-  void applyMove(mlir::Operation *tile, TileID newPos);
-
+  void
+  revertMove(llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
   bool generateShiftMove(mlir::Operation *&tile, TileID &newPos);
   bool generateSwapMove(mlir::Operation *&tile1, mlir::Operation *&tile2);
-
-
-  // Cascade group swap: exchange group with tiles at target position
-  bool generateGroupSwapMove(
-      int groupIdx,
-      llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
-  // Compute positions of group members given anchor (src tile) position
-  bool getCascadeGroupPositions(const CascadeGroup &group, TileID anchorPos,
-                                llvm::SmallVector<TileID> &positions) const;
 
   double estimateInitialTemperature(int numSamples);
   bool isLegalPosition(mlir::Operation *tile, TileID pos) const;
 
-  // Post-SA: merge mem/shim tiles in the same column when DMA capacity allows
+  // Placement-independent memory weight estimate for initial placement sorting
+  int64_t computeTileMemoryWeight(mlir::Operation *tile) const;
+
+  // Post-SA: merge mem/shim tiles in the same column
   mlir::LogicalResult mergeMemShimTiles(DeviceOp device);
 };
 
