@@ -382,7 +382,7 @@ _UC DMA Chain operation_
 Syntax:
 
 ```
-operation ::= `aiex.cert.uc_dma_chain` $sym_name $body attr-dict
+operation ::= `aiex.cert.uc_dma_chain` ($sym_name^)? $body attr-dict
 ```
 
 This operation defines a chain of uC DMA buffer descriptors. It contains a
