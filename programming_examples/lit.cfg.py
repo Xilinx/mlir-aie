@@ -65,16 +65,6 @@ early_peano_config = LitConfigHelper.detect_peano(
     early_peano_tools_dir, config.peano_install_dir, llvm_config
 )
 
-# Detect XRT and Ryzen AI NPU devices
-xrt_config = LitConfigHelper.detect_xrt(
-    config.xrt_lib_dir,
-    config.xrt_include_dir,
-    config.xrt_bin_dir,
-    config.aie_src_root,
-    config.vitis_components,
-    has_peano_backend=early_peano_config.found,
-)
-
 # Detect OpenCV
 opencv_config = LitConfigHelper.detect_opencv(
     config.opencv_include_dir, config.opencv_lib_dir, config.opencv_libs
@@ -129,6 +119,19 @@ peano_config = early_peano_config
 # Detect Chess compiler
 chess_config = LitConfigHelper.detect_chess(
     config.vitis_root, config.enable_chess_tests, llvm_config
+)
+
+# Peano may gate Ryzen AI features only when it is the active fallback backend.
+can_use_peano_feature_gate = early_peano_config.found and not chess_config.found
+
+# Detect XRT and Ryzen AI NPU devices
+xrt_config = LitConfigHelper.detect_xrt(
+    config.xrt_lib_dir,
+    config.xrt_include_dir,
+    config.xrt_bin_dir,
+    config.aie_src_root,
+    config.vitis_components,
+    can_use_peano_feature_gate=can_use_peano_feature_gate,
 )
 
 # Apply all hardware/tool configurations

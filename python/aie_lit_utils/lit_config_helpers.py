@@ -257,7 +257,7 @@ class LitConfigHelper:
         xrt_bin_dir: str,
         aie_src_root: str,
         vitis_components: Optional[List[str]] = None,
-        has_peano_backend: bool = False,
+        can_use_peano_feature_gate: bool = False,
     ) -> HardwareConfig:
         """
         Detect XRT installation and Ryzen AI NPU hardware.
@@ -268,8 +268,8 @@ class LitConfigHelper:
             xrt_bin_dir: Path to XRT binary directory
             aie_src_root: Path to AIE source root (for the run_on_npu wrapper)
             vitis_components: List of available Vitis components for feature filtering
-            has_peano_backend: Whether a working Peano backend is available for
-                AIE2/AIE2P compilation when Chess/Vitis AIETOOLS are absent
+            can_use_peano_feature_gate: Whether Peano may be used for Ryzen AI
+                feature gating when Vitis AIETOOLS support is absent
 
         Returns:
             HardwareConfig with XRT detection results
@@ -370,7 +370,7 @@ class LitConfigHelper:
                 # Map model to NPU generation and filter by available components
                 # Use substring matching so e.g. "Krackan" matches "Krackan 1"
                 if any(known in model for known in LitConfigHelper.NPU_MODELS["npu1"]):
-                    if "AIE2" in vitis_components or has_peano_backend:
+                    if "AIE2" in vitis_components or can_use_peano_feature_gate:
                         run_on_npu1 = LitConfigHelper._run_on_npu_wrap(
                             aie_src_root, "npu1"
                         )
@@ -384,7 +384,7 @@ class LitConfigHelper:
                 elif any(
                     known in model for known in LitConfigHelper.NPU_MODELS["npu2"]
                 ):
-                    if "AIE2P" in vitis_components or has_peano_backend:
+                    if "AIE2P" in vitis_components or can_use_peano_feature_gate:
                         run_on_npu2 = LitConfigHelper._run_on_npu_wrap(
                             aie_src_root, "npu2"
                         )
