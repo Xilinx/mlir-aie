@@ -20,7 +20,10 @@
 // RUN: cp %S/mb_utils.py .
 //
 // Build all kernel .o files into ./build/ once; run_e2e.sh symlinks from there.
-// RUN: make -f %S/Makefile objs
+// Pass devicename=npu2 explicitly: lit's test env does not propagate NPU2=1
+// from env_setup.sh, so without this the Makefile defaults to npu (aie2) and
+// produces wrong-arch .o files that hang the NPU at dispatch.
+// RUN: make -f %S/Makefile objs devicename=npu2
 //
 // RUN: %run_on_npu2% bash %S/run_e2e.sh block bn1 %S | tee %t.bn1.log
 // RUN: FileCheck --check-prefix=BN1 %s < %t.bn1.log
