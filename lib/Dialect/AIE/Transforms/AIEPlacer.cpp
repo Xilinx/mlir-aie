@@ -375,27 +375,28 @@ SequentialPlacer::buildChannelRequirements(
     fifoNameToOp[ofOp.getSymName()] = ofOp;
   }
 
-  // Build set of ObjectFifos that are involved in links
-  // These will be handled specially for channel counting
-  llvm::DenseSet<llvm::StringRef> linkedFifoNames;
-
+  // For each fifo involved in a link, track which side IS the link tile so we
+  // don't double-count it: the subsequent link loop credits the link tile with
+  // (#sources input + #dests output) and we'd otherwise count the same channels
+  // again in the per-fifo loop below. A linked source fifo terminates at the
+  // link tile on its CONSUMER side; a linked dest fifo originates from the
+  // link tile on its PRODUCER side.
+  llvm::DenseSet<llvm::StringRef> linkedAsSource;
+  llvm::DenseSet<llvm::StringRef> linkedAsDest;
   for (auto linkOp : objectFifoLinks) {
-    for (auto srcFifoAttr : linkOp.getFifoIns()) {
-      auto srcFifoName = cast<FlatSymbolRefAttr>(srcFifoAttr).getValue();
-      linkedFifoNames.insert(srcFifoName);
-    }
-
-    for (auto dstFifoAttr : linkOp.getFifoOuts()) {
-      auto dstFifoName = cast<FlatSymbolRefAttr>(dstFifoAttr).getValue();
-      linkedFifoNames.insert(dstFifoName);
-    }
+    for (auto srcFifoAttr : linkOp.getFifoIns())
+      linkedAsSource.insert(cast<FlatSymbolRefAttr>(srcFifoAttr).getValue());
+    for (auto dstFifoAttr : linkOp.getFifoOuts())
+      linkedAsDest.insert(cast<FlatSymbolRefAttr>(dstFifoAttr).getValue());
   }
 
-  // Count channels for non-linked ObjectFifos normally
+  // Count channels for every ObjectFifo, omitting only the link-tile side of
+  // linked fifos. The off-link-tile endpoint still needs DMA: a shim that
+  // produces a linked source fifo consumes an MM2S channel; a core that
+  // consumes a linked dest fifo consumes an S2MM channel.
   for (auto ofOp : objectFifos) {
-    // Skip linked fifos - they'll be handled separately
-    if (linkedFifoNames.count(ofOp.getSymName()))
-      continue;
+    bool skipConsumerSide = linkedAsSource.count(ofOp.getSymName());
+    bool skipProducerSide = linkedAsDest.count(ofOp.getSymName());
 
     Value producerTile = ofOp.getProducerTile();
     auto *producerOp = producerTile.getDefiningOp();
@@ -415,15 +416,17 @@ SequentialPlacer::buildChannelRequirements(
           consumerLogicalTile.getTileType() == AIETileType::CoreTile)
         continue;
 
-      // This consumer needs a DMA channel
-      if (consumerOp)
+      // This consumer needs a DMA channel (unless it's the link tile, which
+      // the link loop credits separately).
+      if (consumerOp && !skipConsumerSide)
         channelRequirements[consumerOp].first++; // input++
 
       producerNeedsDMA = true;
     }
 
-    // Producer needs ONE output channel if any consumer needs DMA
-    if (producerNeedsDMA && producerOp)
+    // Producer needs ONE output channel if any consumer needs DMA (unless the
+    // producer IS the link tile of an outgoing linked dest fifo).
+    if (producerNeedsDMA && producerOp && !skipProducerSide)
       channelRequirements[producerOp].second++; // output++
   }
 
