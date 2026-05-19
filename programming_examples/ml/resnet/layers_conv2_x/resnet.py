@@ -234,11 +234,19 @@ act1_fifos = []
 skip_fifos = []
 
 act1_fifos.append(ObjectFifo(laye1_act_sizes[0], name=act1_fifo_names[0]))
-skip_fifos.append(act1_fifos[0].cons(4).forward(depth=2, name="skip_0"))
+skip_fifos.append(
+    act1_fifos[0].cons(4).forward(tile=Tile(0, 1), depth=2, name="skip_0")
+)
 
 for i in range(1, repeat + 1):
     act1_fifos.append(ObjectFifo(laye1_act_sizes[i], name=act1_fifo_names[i]))
-    skip_fifos.append(act1_fifos[-1].cons(4).forward(depth=2, name=f"skip_{i}"))
+    if i == 1:
+        skip_tile = Tile(0, 1)
+    else:
+        skip_tile = Tile(i, 1)
+    skip_fifos.append(
+        act1_fifos[-1].cons(4).forward(tile=skip_tile, depth=2, name=f"skip_{i}")
+    )
 
 act2_fifo_names = ["act2_02_03_05", "act2_15_12_14", "act2_22_23_25"]
 act2_fifos = []
@@ -275,6 +283,7 @@ for i in range(n_cols):
             depths=[1, 1, 1],
             obj_types=[layer1_wts_sizes[i], weightsLayer2_ty, layer3_wts_sizes[i]],
             names=[f"wts_buf_{i}{j}" for j in range(3)],
+            tile=Tile(i, 1),
         )
     )
 
@@ -471,6 +480,7 @@ for i in range(n_cols):
             rtp_conv1[i],
             i,
         ],
+        tile=cores[i][0],
     )
     workers.append(w)
     w = Worker(
@@ -482,6 +492,7 @@ for i in range(n_cols):
             conv2dk3,
             False,
         ],
+        tile=cores[i][1],
     )
     workers.append(w)
     w = Worker(
@@ -496,6 +507,7 @@ for i in range(n_cols):
             rtp_conv1_skip[i],
             i,
         ],
+        tile=cores[i][2],
         stack_size=0xA00,
     )
     workers.append(w)
@@ -508,6 +520,7 @@ for i in range(n_cols):
             conv2dk3,
             True,
         ],
+        tile=cores[i][3],
     )
     workers.append(w)
 
@@ -540,7 +553,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     rt.start(*workers)
 
     # Fill/drain input/output object FIFOs
-    rt.fill(act1_fifos[0].prod(), inputFromL3)
+    rt.fill(act1_fifos[0].prod(), inputFromL3, tile=Tile(0, 0))
 
     tap = TensorAccessPattern(
         (totalWeights_complete,),
@@ -548,7 +561,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         sizes=[1, 1, 1, totalWeights_init],
         strides=[0, 0, 0, 1],
     )
-    rt.fill(wts_fifos[0].prod(), weightsFromL3, tap)
+    rt.fill(wts_fifos[0].prod(), weightsFromL3, tap, tile=Tile(0, 0))
 
     tap = TensorAccessPattern(
         (totalWeights_complete,),
@@ -556,7 +569,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         sizes=[1, 1, 1, totalWeights_rest],
         strides=[0, 0, 0, 1],
     )
-    rt.fill(wts_fifos[1].prod(), weightsFromL3, tap)
+    rt.fill(wts_fifos[1].prod(), weightsFromL3, tap, tile=Tile(1, 0))
 
     tap = TensorAccessPattern(
         (totalWeights_complete,),
@@ -564,8 +577,8 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
         sizes=[1, 1, 1, totalWeights_rest],
         strides=[0, 0, 0, 1],
     )
-    rt.fill(wts_fifos[2].prod(), weightsFromL3, tap)
-    rt.drain(outOFL2L3.cons(), outputToL3, wait=True)
+    rt.fill(wts_fifos[2].prod(), weightsFromL3, tap, tile=Tile(2, 0))
+    rt.drain(outOFL2L3.cons(), outputToL3, tile=Tile(1, 0), wait=True)
 
 # Place components (assign them resources on the device) and generate an MLIR module
 module = Program(dev, rt).resolve_program()
