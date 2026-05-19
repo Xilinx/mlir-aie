@@ -9,6 +9,7 @@
 
 from .conv_pipeline import (
     row_at_a_time,
+    row_at_a_time_tiled,
     row_at_a_time_with_skip,
     sliding_3row,
 )

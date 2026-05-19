@@ -16,6 +16,7 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
+from aie.iron.algorithms import row_at_a_time, row_at_a_time_with_skip, sliding_3row
 from aie.iron.device import AnyMemTile, NPU1Col1, NPU2, Tile
 from aie.iron.controlflow import range_
 
@@ -169,25 +170,17 @@ def bottleneck4AIEs():
     def worker_conv2dk1_fn(
         of_wts, of_act_in, of_act_out, conv2dk1_kernel, rtp_buff, barrier
     ):
-        # acquire weights amd rtps once
         barrier.wait_for_value(1)
         scale = rtp_buff[0]
-        element0Weights = of_wts.acquire(1)
-        for _ in range_(tensorInH):
-            element0ActivactionsIn = of_act_in.acquire(1)
-            element0ActivactionsOut = of_act_out.acquire(1)
+
+        def call(r_in, r_out, wts):
             conv2dk1_kernel(
-                element0ActivactionsIn,
-                element0Weights,
-                element0ActivactionsOut,
-                tensorInW,
-                tensorL1InC,
-                tensorL1OutC,
-                scale,
+                r_in, wts, r_out, tensorInW, tensorL1InC, tensorL1OutC, scale
             )
-            of_act_in.release(1)
-            of_act_out.release(1)
-        of_wts.release(1)
+
+        row_at_a_time(
+            of_act_in, of_act_out, n_rows=tensorInH, do_kernel=call, of_wts=of_wts
+        )
 
     worker = Worker(
         worker_conv2dk1_fn,
@@ -206,74 +199,30 @@ def bottleneck4AIEs():
     def worker_conv2dk3_fn(of_wts, of_act_in, of_act_out, conv2dk3_fn, conv_last_arg):
         scale = 11
 
-        # acquire weights and rtps once
-        element0Weights = of_wts.acquire(1)
-        # scale = memref.load(rtpComputeTile3, 0)
-
-        # pre-amble: top row
-        elementActivactionsIn = of_act_in.acquire(2)
-        element0ActivactionsOut = of_act_out.acquire(1)
-        conv2dk3_fn(
-            elementActivactionsIn[0],
-            elementActivactionsIn[0],
-            elementActivactionsIn[1],
-            element0Weights,
-            element0ActivactionsOut,
-            tensorInW,
-            tensorL2InC,
-            tensorL2OutC,
-            3,
-            3,
-            0,
-            scale,
-            conv_last_arg,
-        )
-        of_act_out.release(1)
-
-        # middle
-        for _ in range_(tensorInH - 2):
-            elementActivactionsIn = of_act_in.acquire(3)
-            element0ActivactionsOut = of_act_out.acquire(1)
+        def call(top, mid, bot, r_out, wts, border):
             conv2dk3_fn(
-                elementActivactionsIn[0],
-                elementActivactionsIn[1],
-                elementActivactionsIn[2],
-                element0Weights,
-                element0ActivactionsOut,
+                top,
+                mid,
+                bot,
+                wts,
+                r_out,
                 tensorInW,
                 tensorL2InC,
                 tensorL2OutC,
                 3,
                 3,
-                1,
+                border,
                 scale,
                 conv_last_arg,
             )
-            of_act_in.release(1)
-            of_act_out.release(1)
 
-        # last part
-        elementActivactionsIn = of_act_in.acquire(2)
-        element0ActivactionsOut = of_act_out.acquire(1)
-        conv2dk3_fn(
-            elementActivactionsIn[0],
-            elementActivactionsIn[1],
-            elementActivactionsIn[1],
-            element0Weights,
-            element0ActivactionsOut,
-            tensorInW,
-            tensorL2InC,
-            tensorL2OutC,
-            3,
-            3,
-            2,
-            scale,
-            conv_last_arg,
+        sliding_3row(
+            of_act_in,
+            of_act_out,
+            n_out_rows=tensorInH,
+            do_kernel=call,
+            of_wts=of_wts,
         )
-
-        of_act_in.release(2)
-        of_act_out.release(1)
-        of_wts.release(1)
 
     worker = Worker(
         worker_conv2dk3_fn,
@@ -295,6 +244,9 @@ def bottleneck4AIEs():
     workers.append(worker)
 
     # # 1x1 conv2d and add skip
+    # of_act_in0 and of_act_in1 are two halves of the same input row, joined
+    # lockstep. The helper drives of_act_in0; of_act_in1 is acquired/released
+    # in `call`.
     def worker_conv2dk1_skip_fn(
         of_wts,
         of_act_in0,
@@ -305,35 +257,34 @@ def bottleneck4AIEs():
         rtp_buff,
         barrier,
     ):
-        # acquire weights and rtps once
         barrier.wait_for_value(1)
         scale = rtp_buff[0]
         skipScale = rtp_buff[1]
-        element0Weights = of_wts.acquire(1)
 
-        for _ in range_(tensorInH):
-            element0ActivactionsIn = of_act_in0.acquire(1)
-            element1ActivactionsIn = of_act_in1.acquire(1)
-            elementSkipsIn = of_skip.acquire(1)
-            elementActivactionsOut = of_out.acquire(1)
-
+        def call(r_in0, r_out, r_skip, wts):
+            r_in1 = of_act_in1.acquire(1)
             conv2dk1_skip_fn(
-                element0ActivactionsIn,
-                element1ActivactionsIn,
-                element0Weights,
-                elementActivactionsOut,
-                elementSkipsIn,
+                r_in0,
+                r_in1,
+                wts,
+                r_out,
+                r_skip,
                 tensorInW,
                 tensorL3InC,
                 tensorL3OutC,
                 scale,
                 skipScale,
             )
-            of_out.release(1)
-            of_act_in0.release(1)
             of_act_in1.release(1)
-            of_skip.release(1)
-        of_wts.release(1)
+
+        row_at_a_time_with_skip(
+            of_act_in0,
+            of_out,
+            of_skip,
+            n_rows=tensorInH,
+            do_kernel=call,
+            of_wts=of_wts,
+        )
 
     worker = Worker(
         worker_conv2dk1_skip_fn,

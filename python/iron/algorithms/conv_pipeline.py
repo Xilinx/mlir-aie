@@ -111,3 +111,28 @@ def row_at_a_time_with_skip(of_in, of_out, of_skip, *, n_rows, do_kernel, of_wts
         of_skip.release(1)
     if of_wts is not None:
         of_wts.release(1)
+
+
+def row_at_a_time_tiled(
+    of_in, of_out, *, n_rows, n_tiles_per_row, do_kernel, of_wts=None
+):
+    """Row driver that splits each output row into ``n_tiles_per_row`` tiles.
+
+    For each of ``n_rows`` rows, and for each of ``n_tiles_per_row`` tiles
+    within a row: acquire 1 input tile and 1 output tile, call
+    ``do_kernel(r_in, r_out, wts_view_or_None)``, release both.
+
+    Equivalent to nesting ``row_at_a_time`` inside an outer row loop, but
+    more economical for kernels that already do their own spatial-tile
+    indexing per call.
+    """
+    wts = of_wts.acquire(1) if of_wts is not None else None
+    for _ in range_(n_rows):
+        for _ in range_(n_tiles_per_row):
+            r_in = of_in.acquire(1)
+            r_out = of_out.acquire(1)
+            do_kernel(r_in, r_out, wts)
+            of_in.release(1)
+            of_out.release(1)
+    if of_wts is not None:
+        of_wts.release(1)

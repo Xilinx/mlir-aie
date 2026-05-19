@@ -16,6 +16,7 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
+from aie.iron.algorithms import row_at_a_time_tiled
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
@@ -138,19 +139,17 @@ def conv2dk14(
         # scale = my_rtp[0]
         scale = 14
 
-        elemWts = of_wts.acquire(1)
+        def call(r_in, r_out, wts):
+            conv2dk14_i8(r_in, wts, r_out, x_dim, ci, co, kernel_size, scale)
 
-        for _ in range_(y_dim):
-            for _ in range_(x_blocks):
-                elemIn = of_act.acquire(1)
-                elemOut0 = of_out.acquire(1)
-
-                conv2dk14_i8(
-                    elemIn, elemWts, elemOut0, x_dim, ci, co, kernel_size, scale
-                )
-                of_act.release(1)
-                of_out.release(1)
-        of_wts.release(1)
+        row_at_a_time_tiled(
+            of_act,
+            of_out,
+            n_rows=y_dim,
+            n_tiles_per_row=x_blocks,
+            do_kernel=call,
+            of_wts=of_wts,
+        )
 
     # Create a worker to perform the task
     worker = Worker(
