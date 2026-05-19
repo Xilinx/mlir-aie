@@ -17,6 +17,7 @@ from setuptools.command.install import install
 
 sys.path.append(os.path.dirname(__file__))
 from vendor_eudsl import install_eudsl
+from _version_helper import _git, get_version
 
 
 def check_env(build, default=0):
@@ -360,59 +361,6 @@ class InstallWithPth(install):
         pth_target = os.path.join(self.install_lib, "aie.pth")
         with open(pth_target, "w") as pth_file:
             pth_file.write("mlir_aie/python")
-
-
-def _git(*args):
-    try:
-        return (
-            subprocess.check_output(
-                ["git", *args],
-                cwd=str(Path(__file__).parent),
-                stderr=subprocess.DEVNULL,
-            )
-            .decode()
-            .strip()
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return None
-
-
-def get_version():
-    if "AIE_WHEEL_VERSION" in os.environ and os.environ["AIE_WHEEL_VERSION"].lstrip(
-        "v"
-    ):
-        return os.environ["AIE_WHEEL_VERSION"].lstrip("v")
-
-    described = _git(
-        "describe",
-        "--tags",
-        "--long",
-        "--abbrev=7",
-        "--match",
-        "v[0-9]*.[0-9]*.[0-9]*",
-        "--exclude",
-        "*-*",
-    )
-    if described:
-        m = re.match(r"^v(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)$", described)
-        if m:
-            major, minor, patch, distance_s, sha = m.groups()
-            distance = int(distance_s)
-            if distance == 0:
-                return f"{major}.{minor}.{patch}"
-            base = f"{major}.{minor}.{int(patch) + 1}"
-            version = f"{base}.dev{distance}"
-            if check_env("AIE_WHEEL_KEEP_LOCAL"):
-                version += f"+g{sha}"
-            return version
-
-    commit_count = _git("rev-list", "--count", "HEAD") or "0"
-    version = f"0.0.0.dev{commit_count}"
-    if check_env("AIE_WHEEL_KEEP_LOCAL"):
-        sha = _git("rev-parse", "--short=7", "HEAD")
-        if sha:
-            version += f"+g{sha}"
-    return version
 
 
 MLIR_AIE_SOURCE_DIR = Path(
