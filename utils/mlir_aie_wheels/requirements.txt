@@ -4,8 +4,8 @@ importlib-metadata
 ninja!=1.13.0; platform_system=="Windows"
 numpy
 pip
-pybind11[global]>=2.10.4
+pybind11[global]>=3.0.4
 rich
 setuptools>=61.0
 wheel
-nanobind>=2.5
+nanobind>=2.12.0
