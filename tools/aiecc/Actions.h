@@ -1,0 +1,386 @@
+//===- Actions.h -----------------------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// Named action classes carried by Edges. Lambdas are also valid actions and
+// live at their use sites.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef AIECC_ACTIONS_H
+#define AIECC_ACTIONS_H
+
+#include "Graph.h"
+#include "Utils.h"
+
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/Process.h"
+#include "llvm/Support/Program.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <cctype>
+#include <cstdint>
+#include <cstdlib>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace xilinx::aiecc {
+
+// Lift an IR-to-instruction-stream translator into a graph map action emitting
+// raw bytes. `fill` populates a `std::vector<uint32_t>` from the input item;
+// this wrapper handles failure propagation and the word->byte conversion.
+template <typename In, typename Fill>
+auto emitBinary(Fill fill) {
+  return [fill = std::move(fill)](
+             const Item<In> &item,
+             Item<std::vector<char>> &out) -> mlir::LogicalResult {
+    std::vector<uint32_t> words;
+    if (mlir::failed(fill(item, words)))
+      return mlir::failure();
+    out.value = wordsToBytes(words);
+    return mlir::success();
+  };
+}
+
+// PassPipeline — execute an MLIR pass-pipeline on a clone of the input.
+// Accepts any payload Item::asModule can materialize (ModRef / OpInModule /
+// File).
+//
+// Two construction modes:
+//  - Pre-built form: pass an already-configured PassManager. Use when the
+//    pipeline is fixed and independent of the input IR.
+//  - Builder form: pass a callback `(MLIRContext*, ModuleOp) -> unique_ptr<PM>`
+//    invoked per input. Use when pipeline configuration depends on inspecting
+//    the input module (e.g. target-arch detection). Return nullptr to fail.
+struct PassPipeline {
+  using Builder = std::function<std::unique_ptr<mlir::PassManager>(
+      mlir::MLIRContext *, mlir::ModuleOp)>;
+  mlir::MLIRContext *ctx;
+  Builder build;
+  std::unique_ptr<mlir::PassManager> prebuilt;
+
+  PassPipeline(mlir::MLIRContext *ctx, Builder b)
+      : ctx(ctx), build(std::move(b)) {}
+
+  explicit PassPipeline(std::unique_ptr<mlir::PassManager> pm)
+      : ctx(pm->getContext()), prebuilt(std::move(pm)) {}
+
+  template <typename T>
+  mlir::LogicalResult
+  operator()(const Item<T> &in,
+             Item<mlir::OwningOpRef<mlir::ModuleOp>> &out) const {
+    auto mod = in.asModule(ctx);
+    if (!mod) {
+      llvm::errs() << "aiecc: PassPipeline could not obtain input module\n";
+      return mlir::failure();
+    }
+    mlir::PassManager *pm = prebuilt.get();
+    std::unique_ptr<mlir::PassManager> built;
+    if (!pm) {
+      built = build(ctx, *mod);
+      if (!built) {
+        llvm::errs() << "aiecc: PassPipeline builder returned null\n";
+        return mlir::failure();
+      }
+      pm = built.get();
+    }
+    if (mlir::failed(pm->run(*mod)))
+      return mlir::failure();
+    out.value = std::move(mod);
+    return mlir::success();
+  }
+};
+
+// ShellCommand — declarative external-tool invocation, built fluently:
+//   ShellCommand{"llc"}.flag("--march", arch).arg("--filetype=obj")
+//                      .input().output("-o")
+struct ShellCommand {
+  struct Part {
+    enum Kind { Literal, Slot, SlotList, Output } kind;
+    enum Mode { Path, Value } mode = Path;
+    std::string text;
+    std::string suffix;
+
+    static Part literal(std::string s) {
+      return {Literal, Path, std::move(s), {}};
+    }
+    static Part mkSlot(Mode m, std::string prefix, std::string suffix) {
+      return {Slot, m, std::move(prefix), std::move(suffix)};
+    }
+    static Part mkSlotList(std::string prefix, std::string suffix) {
+      return {SlotList, Value, std::move(prefix), std::move(suffix)};
+    }
+    static Part mkOutput(std::string prefix, bool concat = false) {
+      return {Output, concat ? Value : Path, std::move(prefix), {}};
+    }
+  };
+
+  std::string tool;
+  std::vector<Part> parts;
+
+  inline static std::vector<std::string> searchPaths;
+  inline static std::map<std::string, std::string> toolPathCache;
+
+  // Guards toolPathCache against concurrent resolveTool() calls
+  inline static std::mutex toolCacheMutex;
+
+  // Serializes the --verbose command echo so concurrent invocations don't
+  // interleave their lines on stdout.
+  inline static std::mutex echoMutex;
+
+  inline static bool verbose = false;
+
+  // When true, an empty placeholder output is created so the engine's path
+  // bookkeeping resolves; downstream edges that parse a tool's output won't
+  // have real data.
+  inline static bool dryRun = false;
+
+  // Prepend a directory to the search list; most-recently-added wins.
+  static void addSearchPath(std::string prefix) {
+    searchPaths.push_back(std::move(prefix));
+    toolPathCache.clear();
+  }
+
+  // Register `<dir>/bin` as a search path. Tries (in order): overrideDir,
+  // $<NAME>_INSTALL_DIR, <exe-prefix>/<name>, <exe-grandparent>/<name>.
+  static void addInstallPrefix(llvm::StringRef name,
+                               llvm::StringRef overrideDir = "") {
+    auto tryAdd = [](llvm::StringRef dir) -> bool {
+      if (dir.empty() || !llvm::sys::fs::is_directory(dir))
+        return false;
+      llvm::SmallString<256> binDir(dir);
+      llvm::sys::path::append(binDir, "bin");
+      addSearchPath(std::string(binDir));
+      return true;
+    };
+    if (tryAdd(overrideDir))
+      return;
+    std::string envName = name.upper() + "_INSTALL_DIR";
+    if (const char *env = std::getenv(envName.c_str()))
+      if (tryAdd(env))
+        return;
+    std::string mainExe = llvm::sys::fs::getMainExecutable(
+        nullptr, reinterpret_cast<void *>(&addInstallPrefix));
+    llvm::StringRef prefix =
+        llvm::sys::path::parent_path(llvm::sys::path::parent_path(mainExe));
+    for (auto base : {prefix, llvm::sys::path::parent_path(prefix)}) {
+      llvm::SmallString<256> p(base);
+      llvm::sys::path::append(p, name);
+      if (tryAdd(p))
+        return;
+    }
+  }
+
+  // Absolute paths pass through; basenames look up most-recent prefix
+  // first, then PATH. Results cached for process lifetime.
+  static std::string resolveTool(llvm::StringRef name) {
+    if (llvm::sys::path::is_absolute(name))
+      return name.str();
+    std::lock_guard<std::mutex> lock(toolCacheMutex);
+    auto it = toolPathCache.find(name.str());
+    if (it != toolPathCache.end())
+      return it->second;
+    std::string result;
+    for (auto p = searchPaths.rbegin(); p != searchPaths.rend(); ++p) {
+      llvm::SmallString<256> candidate(*p);
+      llvm::sys::path::append(candidate, name);
+      if (llvm::sys::fs::can_execute(candidate)) {
+        result = std::string(candidate);
+        break;
+      }
+    }
+    if (result.empty())
+      if (auto r = llvm::sys::findProgramByName(name))
+        result = *r;
+    return toolPathCache.emplace(name.str(), std::move(result)).first->second;
+  }
+
+  explicit ShellCommand(std::string t) : tool(std::move(t)) {}
+
+  ShellCommand &arg(std::string a) {
+    parts.push_back(Part::literal(std::move(a)));
+    return *this;
+  }
+
+  // Insert next source's on-disk path; `prefix`/`suffix` bracket into one argv.
+  ShellCommand &input(std::string prefix = "", std::string suffix = "") {
+    parts.push_back(
+        Part::mkSlot(Part::Path, std::move(prefix), std::move(suffix)));
+    return *this;
+  }
+
+  // Insert next source's string value (std::string-payload sources only).
+  ShellCommand &value(std::string prefix = "", std::string suffix = "") {
+    parts.push_back(
+        Part::mkSlot(Part::Value, std::move(prefix), std::move(suffix)));
+    return *this;
+  }
+
+  // Expand next source into zero or more argv entries (one per list element,
+  // each bracketed by prefix/suffix). The source must carry a list payload;
+  // entries are used verbatim and never materialized to disk.
+  ShellCommand &inputs(std::string prefix = "", std::string suffix = "") {
+    parts.push_back(Part::mkSlotList(std::move(prefix), std::move(suffix)));
+    return *this;
+  }
+
+  ShellCommand &output(std::string flagPrefix = "") {
+    parts.push_back(Part::mkOutput(std::move(flagPrefix)));
+    return *this;
+  }
+
+  // Like output(), but concatenates `prefix` and the output path into a single
+  // argv entry (e.g. xclbinutil's `--dump-section SECTION:JSON:<path>`).
+  ShellCommand &outputConcat(std::string prefix) {
+    parts.push_back(Part::mkOutput(std::move(prefix), /*concat=*/true));
+    return *this;
+  }
+
+  // Uniform entry: takes any number of input Items (in bundle declaration
+  // order) followed by the Item<File> output. Each input/value part consumes
+  // the next source in order.
+  template <typename... Args>
+  mlir::LogicalResult operator()(Args &&...args) const {
+    static_assert(sizeof...(Args) >= 1,
+                  "ShellCommand requires at least the output Item<File>&");
+    return invokeImpl(std::forward_as_tuple(std::forward<Args>(args)...),
+                      std::make_index_sequence<sizeof...(Args) - 1>{});
+  }
+
+private:
+  template <typename Tup, std::size_t... I>
+  mlir::LogicalResult invokeImpl(Tup &&tup, std::index_sequence<I...>) const {
+    std::array<const ItemBase *, sizeof...(I)> items = {&std::get<I>(tup)...};
+    auto &out = std::get<sizeof...(I)>(tup);
+    return run(items, out);
+  }
+
+  mlir::LogicalResult run(llvm::ArrayRef<const ItemBase *> sources,
+                          Item<File> &out) const {
+    std::string resolved = resolveTool(tool);
+    if (resolved.empty()) {
+      // A dry run never executes the tool, so a missing tool must not fail the
+      // pipeline: fall back to the bare tool name for the echoed command line.
+      // This keeps metadata-only dry-run flows (e.g. inspecting the generated
+      // kernels JSON) working on machines without XRT/aietools on PATH.
+      if (!dryRun) {
+        llvm::errs() << "aiecc: ShellCommand: tool '" << tool
+                     << "' not found in search paths or PATH\n";
+        return mlir::failure();
+      }
+      resolved = tool;
+    }
+    std::vector<std::string> cmd{std::move(resolved)};
+    cmd.reserve(parts.size() + 2);
+    size_t cursor = 0;
+    for (const auto &p : parts) {
+      switch (p.kind) {
+      case Part::Literal:
+        cmd.push_back(p.text);
+        break;
+      case Part::Slot:
+        if (cursor >= sources.size()) {
+          llvm::errs() << "aiecc: ShellCommand '" << tool
+                       << "': not enough sources for input/value parts\n";
+          return mlir::failure();
+        }
+        cmd.push_back(p.text +
+                      (p.mode == Part::Path ? sources[cursor]->asFile()
+                                            : sources[cursor]->asString()) +
+                      p.suffix);
+        ++cursor;
+        break;
+      case Part::SlotList:
+        if (cursor >= sources.size()) {
+          llvm::errs() << "aiecc: ShellCommand '" << tool
+                       << "': not enough sources for inputs parts\n";
+          return mlir::failure();
+        }
+        for (const auto &entry : sources[cursor]->asArgList())
+          cmd.push_back(p.text + entry + p.suffix);
+        ++cursor;
+        break;
+      case Part::Output:
+        if (p.mode == Part::Value) {
+          cmd.push_back(p.text + out.filePath);
+        } else {
+          if (!p.text.empty())
+            cmd.push_back(p.text);
+          cmd.push_back(out.filePath);
+        }
+        break;
+      }
+    }
+    if (verbose) {
+      // Echo the command on stdout so callers that capture stdout can see it.
+      std::lock_guard<std::mutex> lock(echoMutex);
+      llvm::outs() << "aiecc: exec:";
+      for (const auto &a : cmd)
+        llvm::outs() << ' ' << a;
+      llvm::outs() << '\n';
+      llvm::outs().flush();
+    }
+    if (dryRun) {
+      llvm::outs() << "Dry run - command not executed\n";
+      // Touch an empty output so the path resolves for the engine.
+      std::error_code ec;
+      llvm::raw_fd_ostream f(out.filePath, ec);
+      out.value = File{};
+      return mlir::success();
+    }
+    llvm::SmallVector<llvm::StringRef> argv(cmd.begin(), cmd.end());
+    std::string errMsg;
+    // Capture the tool's stdout+stderr into a temp file so routine chatter
+    // stays hidden; replayed to stderr only on failure or under --verbose.
+    // Redirects are [stdin, stdout, stderr]; std::nullopt inherits, and
+    // pointing stdout and stderr at the same path merges them.
+    llvm::SmallString<128> logPath;
+    int logFd = -1;
+    std::optional<llvm::StringRef> capture;
+    if (!llvm::sys::fs::createTemporaryFile("aiecc-tool", "log", logFd,
+                                            logPath)) {
+      // ExecuteAndWait opens the path itself, so close our handle.
+      llvm::sys::Process::SafelyCloseFileDescriptor(logFd);
+      capture = llvm::StringRef(logPath);
+    }
+    std::array<std::optional<llvm::StringRef>, 3> redirects = {
+        std::nullopt, capture, capture};
+    llvm::ArrayRef<std::optional<llvm::StringRef>> redirectRef;
+    if (capture)
+      redirectRef = redirects;
+    int rc = llvm::sys::ExecuteAndWait(cmd[0], argv, std::nullopt, redirectRef,
+                                       0, 0, &errMsg);
+    if (capture) {
+      if (rc != 0 || verbose)
+        if (auto buf = llvm::MemoryBuffer::getFile(logPath))
+          llvm::errs() << (*buf)->getBuffer();
+      llvm::sys::fs::remove(logPath);
+    }
+    if (rc != 0) {
+      llvm::errs() << "aiecc: '" << cmd[0] << "' failed: " << errMsg << "\n";
+      return mlir::failure();
+    }
+    out.value = File{};
+    return mlir::success();
+  }
+};
+
+} // namespace xilinx::aiecc
+
+#endif // AIECC_ACTIONS_H

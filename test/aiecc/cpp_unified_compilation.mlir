@@ -9,20 +9,15 @@
 
 // Test unified compilation mode (--unified)
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose --unified %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --unified --aie-generate-npu-insts --aie-generate-xclbin --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Device 'main' with 2 core(s)
-// CHECK: Compiling 2 core(s) using unified compilation
-// CHECK: Running unified LLVM lowering pipeline in-memory for all cores
-// CHECK: Unified LLVM lowering pipeline completed successfully
-// CHECK: Generated unified LLVM IR
-// CHECK: Compiled unified object with Peano
-// CHECK: Linking core (0, 2) from unified object
-// CHECK: Generated ELF
-// CHECK: Linking core (1, 2) from unified object
-// CHECK: Generated ELF
-// CHECK: Compilation completed successfully
+// Unified mode: single unified LLVM lowering + one unified object, then both
+// cores are linked from that unified object.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) unifiedLowered_{{.*}}.mlir
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) unifiedObjects_{{.*}}.o
+// CHECK-DAG: exec:{{.*}}elfs_main_core_0_2.elf
+// CHECK-DAG: exec:{{.*}}elfs_main_core_1_2.elf
+// CHECK: wrote edge 'insts_
 
 module {
   aie.device(npu2_4col) {

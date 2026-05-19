@@ -9,16 +9,15 @@
 
 // Test AIE2P (Strix) target compilation
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Found 1 AIE device
-// CHECK: Detected AIE target: AIE2p
-// CHECK: Running resource allocation pipeline in-memory
-// CHECK: Resource allocation pipeline completed successfully
-// CHECK: Running routing pipeline in-memory
-// CHECK: Compiling core (0, 2)
-// CHECK: Compilation completed successfully
+// Pipeline coverage plus AIE2p target detection, verified via the aie2p
+// code-generation triple.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) placed.mlir
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input_physical.mlir
+// CHECK: exec:{{.*}}--march=aie2p
+// CHECK: wrote edge 'insts_
 
 module {
   aie.device(npu2) {

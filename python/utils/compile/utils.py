@@ -213,6 +213,9 @@ def compile_mlir_module(
         args.extend(["--aie-generate-elf", f"--elf-name={elf_path}"])
     if work_dir:
         args.append(f"--tmpdir={work_dir}")
+        # Emit input_with_addresses.mlir into work_dir; the JIT DMA-size
+        # validator (parse_dma_sizes) and the trace parser read it from there.
+        args.append("--aie-generate-input-with-addresses")
     if verbose:
         args.append("--verbose")
     if options:

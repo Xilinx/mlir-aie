@@ -5,10 +5,11 @@
 //===----------------------------------------------------------------------===//
 
 // The host BO count is derived from the runtime_sequence argument count, so a
-// 6-argument sequence emits exactly bo0..bo5.
+// 6-argument sequence emits exactly bo0..bo5. Only the generated kernels JSON
+// metadata is inspected, so this runs the front-end without compiling cores.
 
 // RUN: %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s
-// RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/main_kernels.json
+// RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/kernels_main.json
 
 // CHECK: "name": "bo0"
 // CHECK: "offset": "0x14"

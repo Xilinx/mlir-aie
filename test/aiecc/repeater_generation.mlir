@@ -4,16 +4,28 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not %python aiecc.py --compile --repeater-output-dir=. %s 2>&1 | FileCheck %s
-// RUN: cat ./aiecc_repeater_*.sh | FileCheck --check-prefix=DIAG %s
-// RUN: cat ./aiecc_failure_*.mlir | FileCheck --check-prefix=MLIR %s
+// Verify that a routing (pathfinder) failure writes a resumable checkpoint
+// reproducer: the failed edge's inputs plus a manifest recording the argv to
+// replay just that edge via --resume.
 
-// CHECK: AIECC COMPILATION FAILED
-// CHECK: Intermediate MLIR saved to:
-// CHECK: Repeater script generated:
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: not %python aiecc.py --compile --enable-repeater-scripts --repeater-output-dir=%t/ckpt %s 2>&1 | FileCheck %s
+// RUN: cat %t/ckpt/manifest.json | FileCheck --check-prefix=MANIFEST %s
+// RUN: cat %t/ckpt/input_with_addresses.mlir | FileCheck --check-prefix=MLIR %s
 
-// DIAG: 'aie.rule' op can lead to false packet id match for id 28, which is not supposed to pass through this port
-// DIAG: PASS_PIPELINE='builtin.module(aie.device(aie-create-pathfinder-flows))'
+// The routing failure is reported and a resumable checkpoint is written.
+// CHECK: 'aie.rule' op can lead to false packet id match for id 28, which is not supposed to pass through this port
+// CHECK: aiecc: wrote checkpoint to
+// CHECK: To reproduce, run: aiecc --resume={{.*}}/manifest.json
+
+// The manifest records the resume argv (narrowed to the failed edge) and the
+// captured frontier inputs.
+// MANIFEST: "argv"
+// MANIFEST: "--get=input_physical.mlir"
+// MANIFEST: "frontier"
+// MANIFEST: "input_with_addresses.mlir"
+
+// The captured frontier IR is the pre-routing module holding the unroutable flow.
 // MLIR: aie.packet_flow(28)
 
 // from test/create-packet-flows/badpacket_flow.mlir

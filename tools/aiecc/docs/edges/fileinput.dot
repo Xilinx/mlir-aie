@@ -1,0 +1,18 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// fileInput: seed the graph with an existing on-disk file (no input node).
+digraph fileInput {
+  rankdir=LR;
+  node [shape=box, fontname="monospace", fontsize=10];
+  graph [fontname="monospace", fontsize=11];
+
+  disk [label="design.mlir\n(on disk)", shape=note, color="#bbbbbb"];
+
+  subgraph cluster_out {
+    label="Node<File> (singleton)";
+    style=filled; color="#cfe8ff";
+    o0 [label="key=name\nfilePath=design.mlir"];
+  }
+
+  disk -> o0 [label="fileInput"];
+}

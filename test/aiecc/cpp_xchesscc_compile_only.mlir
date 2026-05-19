@@ -5,20 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Test xchesscc compile-only mode (--no-link)
-// This generates object files without linking to ELF
+// Test xchesscc compile-only mode (--no-link): the core is compiled to an
+// object with xchesscc (Chess intrinsic-wrapper link + xchesscc -c) but is not
+// linked into an ELF, and Peano's llc is never used.
 
 // REQUIRES: chess
 
-// RUN: aiecc --xchesscc --no-link --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --xchesscc --no-link -v %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Found 1 AIE device
-// CHECK: Compiling core
-// CHECK: Applied IR downgrade for Chess
-// CHECK: Linked with chess intrinsic wrapper
-// CHECK: Compiled with xchesscc
-// CHECK: Compilation completed successfully
+// CHECK: chess-llvm-link
+// CHECK-SAME: chess_intrinsic_wrapper
+// CHECK: xchesscc_wrapper aie2 {{.*}} -c {{.*}}-o {{.*}}objects_
+// CHECK-NOT: elfs_
+// CHECK-NOT: {{[^ ]*llc }}
 
 module {
   aie.device(npu1_1col) {

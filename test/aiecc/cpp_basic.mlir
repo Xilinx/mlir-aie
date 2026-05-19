@@ -7,23 +7,21 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s
-// RUN: aiecc --no-xchesscc --no-xbridge -n --verbose %s | FileCheck %s --check-prefix=DRY
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin -n --verbose %s 2>&1 | FileCheck %s --check-prefix=DRY
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=NPU
 
-// CHECK: Successfully parsed input file
-// CHECK: Found 1 AIE device
-// CHECK: Running resource allocation pipeline in-memory
-// CHECK: Resource allocation pipeline completed successfully
-// CHECK: Running routing pipeline in-memory
-// CHECK: Routing pipeline completed successfully
-// CHECK: Compilation completed successfully
+// Pipeline coverage: parse input -> placement/resource allocation -> routing
+// (input_physical) -> per-core compile+link -> npu instruction generation.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) placed.mlir
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input_physical.mlir
+// CHECK: wrote edge 'insts_
 
 // DRY: Dry run - command not executed
-// DRY: Compilation completed successfully
 
-// NPU: Generating NPU instructions for device
-// NPU: Compilation completed successfully
+// NPU: ({{[0-9]+}}/{{[0-9]+}}) npu_program_{{.*}}.bin
+// NPU: wrote edge 'insts_
 
 module {
   aie.device(npu1_1col) {

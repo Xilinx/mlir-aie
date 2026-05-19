@@ -1,0 +1,26 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// filter: a zero-copy view keeping only items whose payload matches.
+// Output items alias their source item (dashed) rather than copying.
+digraph filter {
+  rankdir=LR;
+  node [shape=box, fontname="monospace", fontsize=10];
+  graph [fontname="monospace", fontsize=11];
+
+  subgraph cluster_in {
+    label="Node<T>";
+    style=filled; color="#eeeeee";
+    iA [label="key=a"];
+    iB [label="key=b\n(dropped)", color="#bbbbbb", fontcolor="#999999"];
+    iC [label="key=c"];
+  }
+  subgraph cluster_out {
+    label="Node<T> (view)";
+    style=filled; color="#cfe8ff";
+    oA [label="key=a"];
+    oC [label="key=c"];
+  }
+
+  iA -> oA [label="alias", style=dashed];
+  iC -> oC [style=dashed];
+}

@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s
-// RUN: FileCheck %s --input-file=buffers_xclbin_few.mlir.prj/main_kernels.json
+// RUN: FileCheck %s --input-file=buffers_xclbin_few.mlir.prj/kernels_main.json
 
 // The host BO count is the runtime_sequence argument count, floored at 5 to
 // satisfy the NPU firmware command-chain (xrt::runlist) ABI. A 2-argument

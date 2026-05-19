@@ -14,14 +14,14 @@
 // RUN: not aiecc --garbage %s 2>&1 | FileCheck %s --check-prefix=GARBAGE
 // GARBAGE: {{[Uu]nknown command line argument.*--garbage}}
 
-// A typo'd `--aie-*` option is rejected (the original report from #2989).
+// A typo'd `--aie-*` option is rejected (the case reported in #2989).
 // RUN: not aiecc --aie-genrate-npu-insts %s 2>&1 | FileCheck %s --check-prefix=TYPO
 // TYPO: {{[Uu]nknown command line argument.*--aie-genrate-npu-insts}}
 
 // Anything after `--` is forwarded to host compilation and not validated by
 // aiecc. With --no-compile-host the passthrough args are not consumed at all,
 // which is fine.
-// RUN: aiecc --no-xchesscc --no-xbridge --no-compile-host -n %s -- --garbage 2>&1 | FileCheck %s --check-prefix=PASSTHROUGH
+// RUN: aiecc --no-xchesscc --no-xbridge --no-compile-host -n --verbose %s -- --garbage 2>&1 | FileCheck %s --check-prefix=PASSTHROUGH
 // PASSTHROUGH-NOT: {{[Uu]nknown command line argument}}
 
 module {

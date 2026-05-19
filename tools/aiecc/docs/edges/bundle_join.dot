@@ -1,0 +1,31 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// bundle(a, b).join: zip several nodes by key and fold into one output item.
+digraph bundle_join {
+  rankdir=LR;
+  node [shape=box, fontname="monospace", fontsize=10];
+  graph [fontname="monospace", fontsize=11];
+
+  subgraph cluster_a {
+    label="Node<A>";
+    style=filled; color="#eeeeee";
+    a1 [label="key=a"];
+    a2 [label="key=b"];
+  }
+  subgraph cluster_b {
+    label="Node<B>";
+    style=filled; color="#e8e0ff";
+    b1 [label="key=a"];
+    b2 [label="key=b"];
+  }
+  subgraph cluster_out {
+    label="Node<U> (singleton)";
+    style=filled; color="#cfe8ff";
+    o0 [label="key=name"];
+  }
+
+  a1 -> o0 [label="fn"];
+  a2 -> o0;
+  b1 -> o0;
+  b2 -> o0;
+}

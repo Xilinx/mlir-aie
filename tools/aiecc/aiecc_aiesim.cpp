@@ -7,6 +7,14 @@
 //
 // AIE simulation work folder generation for the C++ aiecc compiler driver.
 //
+// TODO: NON-DECLARATIVE implementation. Unlike the rest of the aiecc driver,
+// this module is a blackbox: it shells out to aie-translate/aie-opt/clang++
+// directly and writes a fixed Work-folder layout (sim/ + ps.so + aiesim.sh)
+// straight to disk, bypassing the graph and the Item abstraction. It is invoked
+// from aiecc.cpp as a single opaque sink (see the --aiesim node). It should be
+// refactored into proper declarative graph edges (one Item per generated
+// artifact).
+//
 //===----------------------------------------------------------------------===//
 
 #include "aiecc_aiesim.h"
@@ -427,7 +435,6 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
       }
 
       // Add host args (source files, -I, -L, -l flags)
-      // This matches Python's: *host_opts from strip_host_args_for_aiesim()
       for (const auto &arg : config.hostArgs) {
         clangCmd.push_back(arg);
       }

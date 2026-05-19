@@ -9,24 +9,21 @@
 
 // Test parallel core compilation with -j option
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose -j 2 %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --verbose -j 2 %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Device 'main' with 2 core(s)
-// CHECK: Compiling 2 core(s) in parallel (2 threads)
-// CHECK: Compiling core
-// CHECK: Compiling core
-// CHECK: Generated ELF
-// CHECK: Generated ELF
-// CHECK: Compilation completed successfully
+// Parallel compilation (-j 2): both cores are compiled and linked.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
+// CHECK-DAG: exec:{{.*}}core_0_2
+// CHECK-DAG: exec:{{.*}}core_1_2
+// CHECK: wrote edge 'insts_
 
 // Parallel per-core slicing must emit the same object as serial compilation.
 // Compile the same design both ways into separate tmpdirs and diff the per-core
 // objects: byte-identical objects pin the slicing equivalence claim.
 // RUN: aiecc --no-xchesscc --no-xbridge --tmpdir=%t.ser %s
 // RUN: aiecc --no-xchesscc --no-xbridge -j 2 --tmpdir=%t.par %s
-// RUN: diff %t.ser/main_core_0_2.o %t.par/main_core_0_2.o
-// RUN: diff %t.ser/main_core_1_2.o %t.par/main_core_1_2.o
+// RUN: diff %t.ser/objects_main_core_0_2.o %t.par/objects_main_core_0_2.o
+// RUN: diff %t.ser/objects_main_core_1_2.o %t.par/objects_main_core_1_2.o
 
 module {
   aie.device(npu2_4col) {
