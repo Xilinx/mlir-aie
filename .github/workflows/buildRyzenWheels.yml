@@ -249,7 +249,7 @@ jobs:
           submodules: "true"
   
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -473,8 +473,8 @@ jobs:
         with:
           artifacts: wheels_off_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: latest-wheels-no-rtti
-          name: latest-wheels-no-rtti
+          tag: latest-wheels-no-rtti-2
+          name: latest-wheels-no-rtti-2
           allowUpdates: true
           replacesArtifacts: false
           omitBodyDuringUpdate: true
