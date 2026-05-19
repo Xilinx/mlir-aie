@@ -96,6 +96,8 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: "true"
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: uraimo/run-on-arch-action@v3
         name: Build mlir-aie
@@ -248,7 +250,9 @@ jobs:
       - uses: actions/checkout@v6
         with:
           submodules: "true"
-  
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
