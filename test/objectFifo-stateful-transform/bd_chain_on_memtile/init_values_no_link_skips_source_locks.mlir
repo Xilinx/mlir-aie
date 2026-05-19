@@ -7,11 +7,13 @@
 //===----------------------------------------------------------------------===//
 
 // An aie.objectfifo with init_values on a MemTile producer and no upstream
-// link has no producer to refill the source-side locks between BD-chain
-// iterations. The lowering must omit the source-side use_lock ops so the
-// chain can be restarted by the channel's task_count (= iter_count - 1)
-// without deadlocking on the second pass. The downstream consumer's locks
-// are unaffected and the DMA stream provides flow control.
+// link has no source-side synchronization to perform: buffers are
+// pre-populated, the BD chain restarts via the channel's task_count
+// (= iter_count - 1), and the downstream stream provides back-pressure.
+// The lowering must skip allocating the producer-side prod/cons locks
+// entirely (freeing those lock IDs) and emit no use_lock ops in the
+// memtile BD chain. The downstream consumer's own split-fifo locks on the
+// core tile are unaffected.
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
@@ -19,6 +21,9 @@
 // CHECK:   aie.device(npu1_1col) {
 // CHECK:     %[[MEM_TILE:.*]] = aie.tile(0, 1)
 // CHECK:     %[[CT:.*]] = aie.tile(0, 2)
+// CHECK-NOT: aie.lock(%[[MEM_TILE]]
+// CHECK-NOT: sym_name = "of_prod_lock_
+// CHECK-NOT: sym_name = "of_cons_lock_
 // CHECK:     %{{.*}} = aie.memtile_dma(%[[MEM_TILE]]) {
 // CHECK:       %{{.*}} = aie.dma_start(MM2S, 0, ^bb1, ^bb{{[0-9]+}}, repeat_count = 3)
 // CHECK-NEXT:  ^bb1:

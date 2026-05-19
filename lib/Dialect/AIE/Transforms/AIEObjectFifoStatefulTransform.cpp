@@ -396,6 +396,12 @@ struct AIEObjectFifoStatefulTransformPass
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
+    // Static-init no-link producer cycled via iter_count: source side needs
+    // no sync; skip allocation to free the lock IDs.
+    if (op.getInitValues().has_value() && op.getIterCount().has_value() &&
+        op.getIterCount().value() > 1 && !getOptionalLinkOp(op).has_value() &&
+        static_cast<int>(op.getInitValues().value().size()) == numElem)
+      return locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
     // if shimTile external buffers are collected from input code
@@ -854,18 +860,7 @@ struct AIEObjectFifoStatefulTransformPass
     int acqMode = 1;
     int relMode = 1;
     auto acqLockAction = LockAction::Acquire;
-    // Static-init producer cycled via iter_count > 1 with no upstream link:
-    // skip source-side locks. The BD chain restarts via the channel's
-    // task_count, but the per-BD lock state never gets replenished (no
-    // upstream S2MM refills the buffers) so the chain would deadlock on
-    // the second pass. Back-pressure to the downstream consumer is handled
-    // by the DMA stream's flow control; source-side locking is unnecessary
-    // for correctness in this configuration.
-    bool isCycledStaticInitProducer =
-        channelDir == DMAChannelDir::MM2S && op.getInitValues().has_value() &&
-        op.getIterCount().has_value() && op.getIterCount().value() > 1 &&
-        !getOptionalLinkOp(op).has_value();
-    if (state.locksPerFifo[op].size() > 0 && !isCycledStaticInitProducer) {
+    if (state.locksPerFifo[op].size() > 0) {
       auto dev = op->getParentOfType<DeviceOp>();
       if (auto &target = dev.getTargetModel();
           target.getTargetArch() == AIEArch::AIE1) {
