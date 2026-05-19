@@ -126,6 +126,8 @@ private:
         tileToEdges;
 
     void addEdge(TileLike first, TileLike second) {
+      if (!first || !second)
+        return;
       unsigned idx = edges.size();
       edges.push_back({first, second});
       if (mlir::isa<LogicalTileOp>(first.getOperation()))
@@ -136,6 +138,8 @@ private:
 
     // Convenience for IR walkers: skip if either Value isn't a TileLike.
     void addEdgeFromValues(mlir::Value a, mlir::Value b) {
+      if (!a || !b)
+        return;
       auto aT = mlir::dyn_cast_or_null<TileLike>(a.getDefiningOp());
       auto bT = mlir::dyn_cast_or_null<TileLike>(b.getDefiningOp());
       if (aT && bT)

@@ -605,9 +605,11 @@ SequentialPlacer::buildChannelRequirements(
   llvm::DenseSet<llvm::StringRef> linkedAsDest;
   for (auto linkOp : objectFifoLinks) {
     for (auto srcFifoAttr : linkOp.getFifoIns())
-      linkedAsSource.insert(cast<FlatSymbolRefAttr>(srcFifoAttr).getValue());
+      if (auto sym = dyn_cast<FlatSymbolRefAttr>(srcFifoAttr))
+        linkedAsSource.insert(sym.getValue());
     for (auto dstFifoAttr : linkOp.getFifoOuts())
-      linkedAsDest.insert(cast<FlatSymbolRefAttr>(dstFifoAttr).getValue());
+      if (auto sym = dyn_cast<FlatSymbolRefAttr>(dstFifoAttr))
+        linkedAsDest.insert(sym.getValue());
   }
 
   // Count channels for every ObjectFifo, omitting only the link-tile side of
@@ -659,7 +661,10 @@ SequentialPlacer::buildChannelRequirements(
 
     // Get link tile from first source fifo's consumer
     for (auto srcFifoAttr : linkOp.getFifoIns()) {
-      auto srcFifoName = cast<FlatSymbolRefAttr>(srcFifoAttr).getValue();
+      auto sym = dyn_cast<FlatSymbolRefAttr>(srcFifoAttr);
+      if (!sym)
+        continue;
+      auto srcFifoName = sym.getValue();
       auto it = fifoNameToOp.find(srcFifoName);
       if (it == fifoNameToOp.end())
         continue;
@@ -708,6 +713,8 @@ static BufferOp traceToBuffer(Value val) {
 
 static std::optional<TileID>
 resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
+  if (!peer)
+    return std::nullopt;
   auto it = placed.find(peer.getOperation());
   if (it != placed.end())
     return it->second;
@@ -1096,9 +1103,11 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
         Operation *peerOp = (first.getOperation() == current)
                                 ? second.getOperation()
                                 : first.getOperation();
+        if (!peerOp)
+          continue;
         if (!visited.insert(peerOp).second)
           continue;
-        auto peerLT = dyn_cast<LogicalTileOp>(peerOp);
+        auto peerLT = dyn_cast_or_null<LogicalTileOp>(peerOp);
         if (!peerLT)
           continue; // TileOp peer: don't BFS through it.
         if (peerLT.getTileType() == AIETileType::CoreTile) {
