@@ -7,6 +7,11 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """High-level algorithm templates built on IRON (transform, for_each, etc.)."""
 
+from .conv_pipeline import (
+    row_at_a_time,
+    row_at_a_time_with_skip,
+    sliding_3row,
+)
 from .for_each import for_each
 from .transform import (
     transform,

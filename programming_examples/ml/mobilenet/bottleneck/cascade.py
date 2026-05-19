@@ -30,7 +30,7 @@ from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.controlflow import range_
 
-from bottleneck._common import load_wts
+from bottleneck._common import load_wts, layer_sf as _layer_sf, skip_sf as _skip_sf
 from network_spec import block as nsblock
 
 # ---------------------------------------------------------------------------
@@ -80,18 +80,6 @@ _ty_l3_full_wts = np.ndarray[(_l3_full_wts_sz,), np.dtype[np.int8]]
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
-def _sf_key(blk_name):
-    return blk_name.upper()
-
-
-def _layer_sf(blk, sf, idx):
-    return sf[_sf_key(blk.name)][blk.layers[idx].sf_key]
-
-
-def _skip_sf(blk, sf):
-    return sf[_sf_key(blk.name)][blk.skip_sf_key]
-
-
 def _make_static_wts(data_dir, size, filename, name):
     """Create a static Buffer for weights (L2 DW, baked into tile at compile time)."""
     return Buffer(

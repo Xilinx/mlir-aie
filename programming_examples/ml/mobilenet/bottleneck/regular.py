@@ -21,39 +21,18 @@ NETWORK and dispatches to the right builder per block.
 
 import numpy as np
 
-from aie.iron import Buffer, Kernel, ObjectFifo, Worker
+from aie.iron import Kernel, ObjectFifo, Worker
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
-from bottleneck._common import i8 as _i8, u8 as _u8, load_wts
+from bottleneck._common import (
+    i8 as _i8,
+    u8 as _u8,
+    layer_sf as _layer_sf,
+    skip_sf as _skip_sf,
+    wts_buffer as _wts_buffer,
+)
 from network_spec import block as nsblock
-
-
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
-def _wts_buffer(data_dir, filename, sz):
-    """Static Buffer holding `sz` bytes of int8 weights from `filename`."""
-    return Buffer(_i8((sz,)), initial_value=load_wts(data_dir, filename, sz))
-
-
-def _sf_key(blk_name):
-    """JSON key for a block — 'bn3' -> 'BN3', 'init' -> 'INIT', 'post_l1' -> 'POST'."""
-    if blk_name.startswith("bn"):
-        return blk_name.upper()
-    if blk_name.startswith("post"):
-        return "POST"
-    return blk_name.upper()
-
-
-def _layer_sf(blk, sf, idx):
-    """Scale factor for blk.layers[idx], looked up via its sf_key."""
-    return sf[_sf_key(blk.name)][blk.layers[idx].sf_key]
-
-
-def _skip_sf(blk, sf):
-    """Scale factor for the skip-add (only valid when blk.skip is True)."""
-    return sf[_sf_key(blk.name)][blk.skip_sf_key]
 
 
 # ---------------------------------------------------------------------------

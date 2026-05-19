@@ -16,32 +16,19 @@ Two module-level builders, dispatched by network_spec.NETWORK:
 
 import numpy as np
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
+from aie.iron.algorithms import row_at_a_time, row_at_a_time_with_skip, sliding_3row
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
-from bottleneck._common import i8 as _i8, u8 as _u8, load_wts as _load_weights
+from bottleneck._common import (
+    i8 as _i8,
+    u8 as _u8,
+    load_wts as _load_weights,
+    layer_sf as _layer_sf,
+    skip_sf as _skip_sf,
+    wts_buffer as _wts_buf,
+)
 from network_spec import block as nsblock
-
-
-# ---------------------------------------------------------------------------
-# Module-level helpers
-# ---------------------------------------------------------------------------
-def _wts_buf(data_dir, filename, sz):
-    """Buffer with weights loaded from `filename`."""
-    return Buffer(_i8((sz,)), initial_value=_load_weights(data_dir, filename, sz))
-
-
-def _sf_key(blk_name):
-    """JSON key for a block — 'bn10' -> 'BN10'."""
-    return blk_name.upper()
-
-
-def _layer_sf(blk, sf, idx):
-    return sf[_sf_key(blk.name)][blk.layers[idx].sf_key]
-
-
-def _skip_sf(blk, sf):
-    return sf[_sf_key(blk.name)][blk.skip_sf_key]
 
 
 # ---------------------------------------------------------------------------
@@ -108,65 +95,32 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles, skip_in=None):
     out_fifo = ObjectFifo(out_ty, depth=2)
 
     def l1_fn(act_in, of_12, wts, k):
-        for _ in range_(in_h):
-            r_in = act_in.acquire(1)
-            r_out = of_12.acquire(1)
+        def call(r_in, r_out, _):
             k(r_in, wts, r_out, in_w, in_c, l1_out_c, s1)
-            act_in.release(1)
-            of_12.release(1)
+
+        row_at_a_time(act_in, of_12, n_rows=in_h, do_kernel=call)
 
     def l2_fn(of_12, of_23, wts, k):
-        rows = of_12.acquire(2)
-        row_out = of_23.acquire(1)
-        k(rows[0], rows[0], rows[1], wts, row_out, in_w, 1, l2_out_c, 3, 3, 0, s2, 0)
-        of_23.release(1)
-        for _ in range_(in_h - 2):
-            rows = of_12.acquire(3)
-            row_out = of_23.acquire(1)
-            k(
-                rows[0],
-                rows[1],
-                rows[2],
-                wts,
-                row_out,
-                in_w,
-                1,
-                l2_out_c,
-                3,
-                3,
-                1,
-                s2,
-                0,
-            )
-            of_12.release(1)
-            of_23.release(1)
-        rows = of_12.acquire(2)
-        row_out = of_23.acquire(1)
-        k(rows[0], rows[1], rows[1], wts, row_out, in_w, 1, l2_out_c, 3, 3, 2, s2, 0)
-        of_12.release(2)
-        of_23.release(1)
+        def call(top, mid, bot, r_out, _, border):
+            k(top, mid, bot, wts, r_out, in_w, 1, l2_out_c, 3, 3, border, s2, 0)
+
+        sliding_3row(of_12, of_23, n_out_rows=in_h, do_kernel=call)
 
     if has_skip:
 
         def l3_fn(of_23, skip_h, out_f, wts, k):
-            for _ in range_(in_h):
-                r_in = of_23.acquire(1)
-                r_out = out_f.acquire(1)
-                r_skip = skip_h.acquire(1)
+            def call(r_in, r_out, r_skip, _):
                 k(r_in, wts, r_out, r_skip, in_w, l2_out_c, l3_out_c, s3, scale_add)
-                skip_h.release(1)
-                of_23.release(1)
-                out_f.release(1)
+
+            row_at_a_time_with_skip(of_23, out_f, skip_h, n_rows=in_h, do_kernel=call)
 
     else:
 
         def l3_fn(of_23, out_f, wts, k):
-            for _ in range_(in_h):
-                r_in = of_23.acquire(1)
-                r_out = out_f.acquire(1)
+            def call(r_in, r_out, _):
                 k(r_in, wts, r_out, in_w, l2_out_c, l3_out_c, s3)
-                of_23.release(1)
-                out_f.release(1)
+
+            row_at_a_time(of_23, out_f, n_rows=in_h, do_kernel=call)
 
     # Pre-establish .cons() handles before any subsequent .cons() in caller.
     l1_in_h = act_in.cons()
