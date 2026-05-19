@@ -216,6 +216,56 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       }
     return std::max(self, best);
   };
+  // Soft-reserve mem-aff neighbor slots of any LTO with neighbor demand for
+  // that LTO's peers. Other LTOs only fall into a reserved slot if no
+  // unreserved slot fits. Without this, unrelated low-demand LTOs (often
+  // peers of a different high-fanin Worker) grab the exact slots the
+  // demand-bearing LTO's in/out peers need to be neighbors -- which then
+  // makes the design unsolvable.
+  llvm::DenseMap<TileID, llvm::SmallVector<Operation *, 2>> reservedFor;
+  auto reserveNeighborSlots = [&](Operation *placedOp, TileID at) {
+    if (neighborDemand(placedOp) <= 0)
+      return;
+    for (auto [dc, dr] : {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0},
+                          std::pair{1, 0}}) {
+      int nc = at.col + dc;
+      int nr = at.row + dr;
+      if (nc < 0 || nc >= targetModel->columns())
+        continue;
+      if (nr < 0 || nr >= targetModel->rows())
+        continue;
+      if (targetModel->getTileType(nc, nr) != AIETileType::CoreTile)
+        continue;
+      if (!targetModel->isLegalMemAffinity(at.col, at.row, nc, nr))
+        continue;
+      reservedFor[TileID{nc, nr}].push_back(placedOp);
+    }
+  };
+  auto isReservedForOther = [&](Operation *lto, TileID candidate) {
+    auto it = reservedFor.find(candidate);
+    if (it == reservedFor.end())
+      return false;
+    auto edgesIt = computePeerAdjacency.tileToEdges.find(lto);
+    for (Operation *owner : it->second) {
+      bool isPeer = false;
+      if (owner == lto)
+        isPeer = true;
+      else if (edgesIt != computePeerAdjacency.tileToEdges.end()) {
+        for (unsigned idx : edgesIt->second) {
+          auto [f, s] = computePeerAdjacency.edges[idx];
+          Operation *peer =
+              (f.getOperation() == lto) ? s.getOperation() : f.getOperation();
+          if (peer == owner) {
+            isPeer = true;
+            break;
+          }
+        }
+      }
+      if (!isPeer)
+        return true;
+    }
+    return false;
+  };
 
   // Per-kind predicates / labelers shared by all phase-3 call sites below.
   // Buffer: consumer LTO (edge.first) must satisfy isLegalMemAffinity to the
@@ -315,8 +365,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       // Only remove fully constrained compute tiles from availability.
       // Mem/Shim may still host additional logical tiles as long as
       // channel/DMA capacity permits.
-      if (logicalTile.getTileType() == AIETileType::CoreTile)
+      if (logicalTile.getTileType() == AIETileType::CoreTile) {
         availability.removeTile(tile, logicalTile.getTileType());
+        reserveNeighborSlots(logicalTile.getOperation(), tile);
+      }
       continue;
     }
 
@@ -364,25 +416,35 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                            return a.row < b.row;
                          });
       }
-      for (const TileID &candidate : orderedCandidates) {
-        if (col && candidate.col != *col)
-          continue;
-        if (row && candidate.row != *row)
-          continue;
-        sawConstraintMatch = true;
-        if (!satisfiesAdjacency(logicalTile, candidate, bufferAdjacency,
-                                bufferPred))
-          continue;
-        allConstraintMatchesFailedAdjacency = false;
-        if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
-                                cascadePred))
-          continue;
-        if (!satisfiesComputePeerHere(candidate)) {
-          computePeerWasCause = true;
-          continue;
+      // Two passes: first prefer candidates that aren't reserved for an
+      // unrelated demand-bearing LTO's peers; fall back to reserved
+      // candidates only if nothing else fits.
+      for (bool allowReserved : {false, true}) {
+        for (const TileID &candidate : orderedCandidates) {
+          if (col && candidate.col != *col)
+            continue;
+          if (row && candidate.row != *row)
+            continue;
+          if (!allowReserved &&
+              isReservedForOther(logicalTile.getOperation(), candidate))
+            continue;
+          sawConstraintMatch = true;
+          if (!satisfiesAdjacency(logicalTile, candidate, bufferAdjacency,
+                                  bufferPred))
+            continue;
+          allConstraintMatchesFailedAdjacency = false;
+          if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
+                                  cascadePred))
+            continue;
+          if (!satisfiesComputePeerHere(candidate)) {
+            computePeerWasCause = true;
+            continue;
+          }
+          placement = candidate;
+          break;
         }
-        placement = candidate;
-        break;
+        if (placement)
+          break;
       }
 
       if (!placement) {
@@ -428,6 +490,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
 
       result[logicalTile] = *placement;
       availability.removeTile(*placement, AIETileType::CoreTile);
+      reserveNeighborSlots(logicalTile.getOperation(), *placement);
     }
 
     if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
