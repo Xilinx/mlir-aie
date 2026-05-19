@@ -473,8 +473,8 @@ jobs:
         with:
           artifacts: wheels_off_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: latest-wheels-no-rtti
-          name: latest-wheels-no-rtti
+          tag: latest-wheels-no-rtti-2
+          name: latest-wheels-no-rtti-2
           allowUpdates: true
           replacesArtifacts: false
           omitBodyDuringUpdate: true
