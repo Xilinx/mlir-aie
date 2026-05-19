@@ -434,7 +434,7 @@ jobs:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
