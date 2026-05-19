@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-    "setuptools>=42",
+    "setuptools>=82.0.1",
     "wheel",
     "ninja",
     # i have no clue why but 3.28 will cause cmake to segfault when detecting ABI compatibility
