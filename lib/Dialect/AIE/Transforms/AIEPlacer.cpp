@@ -779,6 +779,11 @@ SequentialPlacer::Adjacency SequentialPlacer::buildComputePeerAdjacency(
           dyn_cast_or_null<LogicalTileOp>(consumerVal.getDefiningOp());
       if (!consumer || consumer.getTileType() != AIETileType::CoreTile)
         continue;
+      // Self-loops live entirely in the tile's own L1 and consume no DMA
+      // channel, so they should not push the LTO toward a neighbor-heavy
+      // placement.
+      if (producer.getOperation() == consumer.getOperation())
+        continue;
       adjacency.addEdge(TileLike(producer), TileLike(consumer));
     }
   }
