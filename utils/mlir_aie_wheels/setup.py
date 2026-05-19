@@ -384,9 +384,14 @@ def get_version():
         return os.environ["AIE_WHEEL_VERSION"].lstrip("v")
 
     described = _git(
-        "describe", "--tags", "--long", "--abbrev=7",
-        "--match", "v[0-9]*.[0-9]*.[0-9]*",
-        "--exclude", "*-*",
+        "describe",
+        "--tags",
+        "--long",
+        "--abbrev=7",
+        "--match",
+        "v[0-9]*.[0-9]*.[0-9]*",
+        "--exclude",
+        "*-*",
     )
     if described:
         m = re.match(r"^v(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)$", described)
