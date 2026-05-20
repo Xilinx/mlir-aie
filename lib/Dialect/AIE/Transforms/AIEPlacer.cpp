@@ -24,6 +24,25 @@ static std::optional<TileID> resolvePeerPosition(TileLike peer,
                                                  const PlacementResult &placed);
 
 namespace {
+// Invoke `fn(peer, thisIsFirst)` for each edge in `adjacency` that
+// mentions `op`. `peer` is the OTHER endpoint of the edge; `thisIsFirst`
+// is true when `op` is `edge.first` (the producer in compute-peer
+// adjacency, the consumer in buffer adjacency, the source in cascade
+// adjacency -- callers interpret per their own adjacency convention).
+template <typename F>
+void forEachPeer(mlir::Operation *op,
+                 const SequentialPlacer::Adjacency &adjacency, F &&fn) {
+  auto it = adjacency.tileToEdges.find(op);
+  if (it == adjacency.tileToEdges.end())
+    return;
+  for (unsigned idx : it->second) {
+    auto [first, second] = adjacency.edges[idx];
+    bool thisIsFirst = first.getOperation() == op;
+    TileLike peer = thisIsFirst ? second : first;
+    fn(peer, thisIsFirst);
+  }
+}
+
 // Invoke `fn(TileID)` on every CoreTile neighbor of `at` that is a legal
 // shared-L1 mem-affinity neighbor per the target model. Bounds-checks
 // the (col, row) arithmetic and applies both the tile-type and
@@ -207,19 +226,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   for (auto lt : logicalTiles) {
     if (lt.getTileType() != AIETileType::CoreTile)
       continue;
-    int peerIn = 0, peerOut = 0;
-    auto it = computePeerAdjacency.tileToEdges.find(lt.getOperation());
-    if (it != computePeerAdjacency.tileToEdges.end()) {
-      for (unsigned idx : it->second) {
-        auto [first, second] = computePeerAdjacency.edges[idx];
-        // Producer is first, consumer is second (see
-        // buildComputePeerAdjacency).
-        if (second.getOperation() == lt.getOperation())
-          ++peerIn;
-        else
-          ++peerOut;
-      }
-    }
+    auto [peerIn, peerOut] =
+        totalComputePeers(lt.getOperation(), computePeerAdjacency);
     int inBudget = lt.getNumDestConnections(WireBundle::DMA);
     int outBudget = lt.getNumSourceConnections(WireBundle::DMA);
     auto [nonPeerIn, nonPeerOut] =
@@ -236,14 +244,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << " needNeighborOut=" << needNeighborOut[lt.getOperation()]
                << "\n");
   }
-  // The per-place() context bundles demand bookkeeping and soft-
-  // reservation state. Its methods replace the lambdas the original
-  // place() spelled out inline; see PlacementContext in the header.
-  // Soft-reservation: when a demand-bearing LTO is placed, its
-  // mem-affinity neighbor slots are reserved for that LTO's peers.
-  // Other LTOs fall into a reserved slot only if no unreserved slot
-  // fits, preventing unrelated low-demand LTOs from cornering a high-
-  // fanin Worker's neighbors and making the design unsolvable.
+  // The per-place() context bundles demand bookkeeping and the soft-
+  // reservation table. Soft-reservation: when a demand-bearing LTO is
+  // placed, its mem-affinity neighbor slots are reserved for that LTO's
+  // compute peers. Other LTOs fall into a reserved slot only if no
+  // unreserved slot fits, preventing unrelated low-demand LTOs from
+  // cornering a high-fanin Worker's neighbors and making the design
+  // unsolvable.
   PlacementContext ctx{*targetModel, computePeerAdjacency, needNeighborIn,
                        needNeighborOut, /*reservedFor=*/{}};
 
@@ -495,14 +502,10 @@ LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
 int SequentialPlacer::PlacementContext::placementPriority(Operation *op) const {
   int self = neighborDemand(op);
   int best = 0;
-  auto it = computePeerAdjacency.tileToEdges.find(op);
-  if (it != computePeerAdjacency.tileToEdges.end())
-    for (unsigned idx : it->second) {
-      auto [f, s] = computePeerAdjacency.edges[idx];
-      Operation *peer =
-          (f.getOperation() == op) ? s.getOperation() : f.getOperation();
-      best = std::max(best, neighborDemand(peer));
-    }
+  forEachPeer(op, computePeerAdjacency,
+              [&](TileLike peer, bool /*thisIsFirst*/) {
+                best = std::max(best, neighborDemand(peer.getOperation()));
+              });
   return std::max(self, best);
 }
 
@@ -520,22 +523,15 @@ bool SequentialPlacer::PlacementContext::isReservedForOther(
   auto it = reservedFor.find(candidate);
   if (it == reservedFor.end())
     return false;
-  auto edgesIt = computePeerAdjacency.tileToEdges.find(lto);
   for (Operation *owner : it->second) {
-    bool isPeer = false;
     if (owner == lto)
-      isPeer = true;
-    else if (edgesIt != computePeerAdjacency.tileToEdges.end()) {
-      for (unsigned idx : edgesIt->second) {
-        auto [f, s] = computePeerAdjacency.edges[idx];
-        Operation *peer =
-            (f.getOperation() == lto) ? s.getOperation() : f.getOperation();
-        if (peer == owner) {
-          isPeer = true;
-          break;
-        }
-      }
-    }
+      continue; // The LTO's own slot reservation never counts as "other".
+    bool isPeer = false;
+    forEachPeer(lto, computePeerAdjacency,
+                [&](TileLike peer, bool /*thisIsFirst*/) {
+                  if (peer.getOperation() == owner)
+                    isPeer = true;
+                });
     if (!isPeer)
       return true;
   }
@@ -873,38 +869,35 @@ SequentialPlacer::Adjacency SequentialPlacer::buildComputePeerAdjacency(
 bool SequentialPlacer::satisfiesAdjacency(
     LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
     llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const {
-  auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
-  if (it == adjacency.tileToEdges.end())
-    return true;
-
-  for (unsigned idx : it->second) {
-    auto [edgeFirst, edgeSecond] = adjacency.edges[idx];
-    bool thisIsFirst = edgeFirst.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsFirst ? edgeSecond : edgeFirst;
-    auto peerPos = resolvePeerPosition(peer, result);
-    if (!peerPos)
-      continue;
-    TileID firstPos = thisIsFirst ? candidate : *peerPos;
-    TileID secondPos = thisIsFirst ? *peerPos : candidate;
-    if (!pred(firstPos, secondPos))
-      return false;
-  }
-  return true;
+  bool ok = true;
+  forEachPeer(logicalTile.getOperation(), adjacency,
+              [&](TileLike peer, bool thisIsFirst) {
+                if (!ok)
+                  return;
+                auto peerPos = resolvePeerPosition(peer, result);
+                if (!peerPos)
+                  return;
+                TileID firstPos = thisIsFirst ? candidate : *peerPos;
+                TileID secondPos = thisIsFirst ? *peerPos : candidate;
+                if (!pred(firstPos, secondPos))
+                  ok = false;
+              });
+  return ok;
 }
 
 std::pair<int, int>
 SequentialPlacer::totalComputePeers(Operation *op, const Adjacency &adjacency) {
   int in = 0, out = 0;
-  auto it = adjacency.tileToEdges.find(op);
-  if (it == adjacency.tileToEdges.end())
-    return {0, 0};
-  for (unsigned idx : it->second) {
-    auto [f, s] = adjacency.edges[idx];
-    if (s.getOperation() == op)
-      ++in;
-    else
+  forEachPeer(op, adjacency, [&](TileLike /*peer*/, bool thisIsFirst) {
+    // In compute-peer adjacency edge.first = producer, edge.second =
+    // consumer. So `op` being `first` means it's the producer (counts
+    // as OUT); `op` being `second` means it's the consumer (counts
+    // as IN).
+    if (thisIsFirst)
       ++out;
-  }
+    else
+      ++in;
+  });
   return {in, out};
 }
 
@@ -913,35 +906,42 @@ bool SequentialPlacer::satisfiesComputePeer(
     const Adjacency &computePeerAdjacency,
     const llvm::DenseMap<Operation *, int> &needNeighborIn,
     const llvm::DenseMap<Operation *, int> &needNeighborOut) const {
-  auto it = computePeerAdjacency.tileToEdges.find(logicalTile.getOperation());
-  if (it == computePeerAdjacency.tileToEdges.end())
+  // No compute-peer edges => the compute-peer DMA budget constraint is
+  // vacuous for this LTO. (Phase 2c can still populate a non-zero
+  // needNeighborIn/Out for a tile whose non-peer channel count exceeds
+  // its DMA budget, but no neighbor placement can fix that and the
+  // channel validator emits the right error later.)
+  if (!computePeerAdjacency.tileToEdges.count(logicalTile.getOperation()))
     return true;
 
   // Self side: count placed peers that would land non-neighbor of candidate,
-  // and reject if that exceeds our slack.
+  // and reject if that exceeds our slack. In compute-peer adjacency,
+  // edge.first = producer, edge.second = consumer; so `logicalTile` being
+  // the second endpoint (thisIsFirst == false) means it's a consumer
+  // (peer is producing INTO it), which counts toward the IN direction.
   int selfNonNeighborIn = 0, selfNonNeighborOut = 0;
   int selfNeighborIn = 0, selfNeighborOut = 0;
-  for (unsigned idx : it->second) {
-    auto [f, s] = computePeerAdjacency.edges[idx];
-    bool thisIsConsumer = s.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsConsumer ? f : s;
-    auto peerPos = resolvePeerPosition(peer, result);
-    if (!peerPos)
-      continue;
-    bool isNeighbor = targetModel->isLegalMemAffinity(
-        candidate.col, candidate.row, peerPos->col, peerPos->row);
-    if (isNeighbor) {
-      if (thisIsConsumer)
-        ++selfNeighborIn;
-      else
-        ++selfNeighborOut;
-    } else {
-      if (thisIsConsumer)
-        ++selfNonNeighborIn;
-      else
-        ++selfNonNeighborOut;
-    }
-  }
+  forEachPeer(
+      logicalTile.getOperation(), computePeerAdjacency,
+      [&](TileLike peer, bool thisIsFirst) {
+        auto peerPos = resolvePeerPosition(peer, result);
+        if (!peerPos)
+          return;
+        bool isNeighbor = targetModel->isLegalMemAffinity(
+            candidate.col, candidate.row, peerPos->col, peerPos->row);
+        bool thisIsConsumer = !thisIsFirst;
+        if (isNeighbor) {
+          if (thisIsConsumer)
+            ++selfNeighborIn;
+          else
+            ++selfNeighborOut;
+        } else {
+          if (thisIsConsumer)
+            ++selfNonNeighborIn;
+          else
+            ++selfNonNeighborOut;
+        }
+      });
   auto [selfTotalIn, selfTotalOut] =
       totalComputePeers(logicalTile.getOperation(), computePeerAdjacency);
   int selfNeedIn = needNeighborIn.lookup(logicalTile.getOperation());
@@ -979,83 +979,81 @@ bool SequentialPlacer::satisfiesComputePeer(
   // logicalTile at candidate adds one non-neighbor entry to p's count if
   // candidate isn't a neighbor of p. Re-derive p's count using the current
   // `result` plus this candidate, then check p's slack.
-  for (unsigned idx : it->second) {
-    auto [f, s] = computePeerAdjacency.edges[idx];
-    bool thisIsConsumer = s.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsConsumer ? f : s;
-    auto peerLTO = dyn_cast_or_null<LogicalTileOp>(peer.getOperation());
-    if (!peerLTO)
-      continue;
-    auto peerPos = resolvePeerPosition(peer, result);
-    if (!peerPos)
-      continue;
-    // From peer's POV, logicalTile is one of peer's compute peers. If
-    // thisIsConsumer (this LTO consumes from peer), peer is the producer,
-    // so this LTO is one of peer's OUT peers. Else IN.
-    bool logicalIsPeerOut = thisIsConsumer;
-    int peerNeedDir = logicalIsPeerOut
-                          ? needNeighborOut.lookup(peerLTO.getOperation())
-                          : needNeighborIn.lookup(peerLTO.getOperation());
-    auto [peerTotalIn, peerTotalOut] =
-        totalComputePeers(peerLTO.getOperation(), computePeerAdjacency);
-    int peerTotalDir = logicalIsPeerOut ? peerTotalOut : peerTotalIn;
-    int peerSlackDir = peerTotalDir - peerNeedDir;
+  bool symmetricOk = true;
+  forEachPeer(
+      logicalTile.getOperation(), computePeerAdjacency,
+      [&](TileLike peer, bool thisIsFirst) {
+        if (!symmetricOk)
+          return;
+        auto peerLTO = dyn_cast_or_null<LogicalTileOp>(peer.getOperation());
+        if (!peerLTO)
+          return;
+        auto peerPos = resolvePeerPosition(peer, result);
+        if (!peerPos)
+          return;
+        // From peer's POV, logicalTile is one of peer's compute peers.
+        // If logicalTile is the consumer here (thisIsFirst == false),
+        // peer is the producer and logicalTile sits on peer's OUT side.
+        bool logicalIsPeerOut = !thisIsFirst;
+        int peerNeedDir = logicalIsPeerOut
+                              ? needNeighborOut.lookup(peerLTO.getOperation())
+                              : needNeighborIn.lookup(peerLTO.getOperation());
+        auto [peerTotalIn, peerTotalOut] =
+            totalComputePeers(peerLTO.getOperation(), computePeerAdjacency);
+        int peerTotalDir = logicalIsPeerOut ? peerTotalOut : peerTotalIn;
+        int peerSlackDir = peerTotalDir - peerNeedDir;
 
-    // Count peer's currently placed non-neighbor peers in this direction.
-    auto pit = computePeerAdjacency.tileToEdges.find(peerLTO.getOperation());
-    if (pit == computePeerAdjacency.tileToEdges.end())
-      continue; // peerLTO has no edges in this adjacency; nothing to check.
-    int peerNonNeighborDir = 0;
-    for (unsigned pidx : pit->second) {
-      auto [pf, ps] = computePeerAdjacency.edges[pidx];
-      bool peerIsConsumerHere = ps.getOperation() == peerLTO.getOperation();
-      // Direction in question for peer: logicalIsPeerOut means peer's OUT
-      // direction (peer is producer), so peerIsConsumerHere must be false.
-      if (logicalIsPeerOut == peerIsConsumerHere)
-        continue;
-      TileLike peerPeer = peerIsConsumerHere ? pf : ps;
-      if (peerPeer.getOperation() == logicalTile.getOperation()) {
-        // The edge to logicalTile we are currently deciding: count
-        // candidate against it.
-        if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row,
-                                             candidate.col, candidate.row))
-          ++peerNonNeighborDir;
-        continue;
-      }
-      auto pp = resolvePeerPosition(peerPeer, result);
-      if (!pp)
-        continue;
-      if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row, pp->col,
-                                           pp->row))
-        ++peerNonNeighborDir;
-    }
-    if (peerNonNeighborDir > peerSlackDir)
-      return false;
-  }
-  return true;
+        // Count peer's currently placed non-neighbor peers in this direction.
+        int peerNonNeighborDir = 0;
+        forEachPeer(
+            peerLTO.getOperation(), computePeerAdjacency,
+            [&](TileLike peerPeer, bool peerLTOIsFirst) {
+              // peerLTO is the consumer in this edge when it's the
+              // second endpoint (compute-peer convention is
+              // producer=first, consumer=second). logicalIsPeerOut ==
+              // true selects edges where peerLTO is the producer (i.e.
+              // peerLTOIsFirst), so we want the OPPOSITE direction.
+              bool peerIsConsumerHere = !peerLTOIsFirst;
+              if (logicalIsPeerOut == peerIsConsumerHere)
+                return;
+              if (peerPeer.getOperation() == logicalTile.getOperation()) {
+                // The edge to logicalTile we are currently deciding:
+                // count candidate against it.
+                if (!targetModel->isLegalMemAffinity(
+                        peerPos->col, peerPos->row, candidate.col,
+                        candidate.row))
+                  ++peerNonNeighborDir;
+                return;
+              }
+              auto pp = resolvePeerPosition(peerPeer, result);
+              if (!pp)
+                return;
+              if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row,
+                                                   pp->col, pp->row))
+                ++peerNonNeighborDir;
+            });
+        if (peerNonNeighborDir > peerSlackDir)
+          symmetricOk = false;
+      });
+  return symmetricOk;
 }
 
 void SequentialPlacer::attachPeerNotes(
     InFlightDiagnostic &diag, LogicalTileOp logicalTile,
     const Adjacency &adjacency,
     llvm::function_ref<StringRef(bool thisIsFirst)> labelPeer) const {
-  auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
-  if (it == adjacency.tileToEdges.end())
-    return;
   int unplacedCount = 0;
-  for (unsigned idx : it->second) {
-    auto [edgeFirst, edgeSecond] = adjacency.edges[idx];
-    bool thisIsFirst = edgeFirst.getOperation() == logicalTile.getOperation();
-    TileLike peer = thisIsFirst ? edgeSecond : edgeFirst;
-    auto peerPos = resolvePeerPosition(peer, result);
-    if (!peerPos) {
-      ++unplacedCount;
-      continue;
-    }
-    diag.attachNote(peer.getLoc())
-        << labelPeer(thisIsFirst) << " peer placed at (" << peerPos->col << ", "
-        << peerPos->row << ")";
-  }
+  forEachPeer(logicalTile.getOperation(), adjacency,
+              [&](TileLike peer, bool thisIsFirst) {
+                auto peerPos = resolvePeerPosition(peer, result);
+                if (!peerPos) {
+                  ++unplacedCount;
+                  return;
+                }
+                diag.attachNote(peer.getLoc())
+                    << labelPeer(thisIsFirst) << " peer placed at ("
+                    << peerPos->col << ", " << peerPos->row << ")";
+              });
   if (unplacedCount > 0)
     diag.attachNote() << unplacedCount
                       << " additional peer(s) on this LTO are not yet placed "
@@ -1161,21 +1159,15 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   while (!queue.empty()) {
     Operation *current = queue.pop_back_val();
     for (const Adjacency *adj : connectivityAdjacencies) {
-      auto it = adj->tileToEdges.find(current);
-      if (it == adj->tileToEdges.end())
-        continue;
-      for (unsigned idx : it->second) {
-        auto [first, second] = adj->edges[idx];
-        Operation *peerOp = (first.getOperation() == current)
-                                ? second.getOperation()
-                                : first.getOperation();
+      forEachPeer(current, *adj, [&](TileLike peer, bool /*thisIsFirst*/) {
+        Operation *peerOp = peer.getOperation();
         if (!peerOp)
-          continue;
+          return;
         if (!visited.insert(peerOp).second)
-          continue;
+          return;
         auto peerLT = dyn_cast_or_null<LogicalTileOp>(peerOp);
         if (!peerLT)
-          continue; // TileOp peer: don't BFS through it.
+          return; // TileOp peer: don't BFS through it.
         if (peerLT.getTileType() == AIETileType::CoreTile) {
           if (auto resIt = result.find(peerOp); resIt != result.end()) {
             sumCols += resIt->second.col;
@@ -1183,10 +1175,10 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
           }
           // Cores are leaves for centroid: they don't relay between
           // non-core peers via core-to-core fifos.
-          continue;
+          return;
         }
         queue.push_back(peerOp);
-      }
+      });
     }
   }
 

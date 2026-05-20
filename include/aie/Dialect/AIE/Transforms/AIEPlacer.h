@@ -136,6 +136,37 @@ public:
 
   llvm::StringRef getName() const override { return "sequential_placer"; }
 
+  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
+  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own
+  // coords. Public so file-local helpers in AIEPlacer.cpp (notably the
+  // forEachPeer template) can take it by reference.
+  struct Adjacency {
+    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
+        tileToEdges;
+
+    void addEdge(TileLike first, TileLike second) {
+      if (!first || !second)
+        return;
+      unsigned idx = edges.size();
+      edges.push_back({first, second});
+      if (mlir::isa<LogicalTileOp>(first.getOperation()))
+        tileToEdges[first.getOperation()].push_back(idx);
+      if (mlir::isa<LogicalTileOp>(second.getOperation()))
+        tileToEdges[second.getOperation()].push_back(idx);
+    }
+
+    // Convenience for IR walkers: skip if either Value isn't a TileLike.
+    void addEdgeFromValues(mlir::Value a, mlir::Value b) {
+      if (!a || !b)
+        return;
+      auto aT = mlir::dyn_cast_or_null<TileLike>(a.getDefiningOp());
+      auto bT = mlir::dyn_cast_or_null<TileLike>(b.getDefiningOp());
+      if (aT && bT)
+        addEdge(aT, bT);
+    }
+  };
+
 private:
   std::optional<int> coresPerCol;
   bool mergeLogicalTiles;
@@ -170,39 +201,9 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
-  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own coords.
-  struct Adjacency {
-    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
-    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
-        tileToEdges;
-
-    void addEdge(TileLike first, TileLike second) {
-      if (!first || !second)
-        return;
-      unsigned idx = edges.size();
-      edges.push_back({first, second});
-      if (mlir::isa<LogicalTileOp>(first.getOperation()))
-        tileToEdges[first.getOperation()].push_back(idx);
-      if (mlir::isa<LogicalTileOp>(second.getOperation()))
-        tileToEdges[second.getOperation()].push_back(idx);
-    }
-
-    // Convenience for IR walkers: skip if either Value isn't a TileLike.
-    void addEdgeFromValues(mlir::Value a, mlir::Value b) {
-      if (!a || !b)
-        return;
-      auto aT = mlir::dyn_cast_or_null<TileLike>(a.getDefiningOp());
-      auto bT = mlir::dyn_cast_or_null<TileLike>(b.getDefiningOp());
-      if (aT && bT)
-        addEdge(aT, bT);
-    }
-  };
-
-  // Per-place() bookkeeping bundled into one struct so the helpers that
-  // need to reason about neighbor demand and soft-reservations don't
-  // each take 4+ explicit reference parameters. Lives on the stack of
-  // place() for the duration of placement.
+  // Per-place() bookkeeping bundled into one struct holding the per-LTO
+  // neighbor-demand maps and the soft-reservation table. Lives on the
+  // stack of place() for the duration of placement.
   struct PlacementContext {
     const AIETargetModel &targetModel;
     const Adjacency &computePeerAdjacency;
@@ -230,8 +231,7 @@ private:
 
   // Per-call inputs for `findUnconstrainedCoreCandidate`. Bundles the
   // adjacency + demand state that Phase 3 builds for each candidate
-  // filter, so the candidate-search function takes one struct instead
-  // of nine reference parameters.
+  // filter.
   struct UnpinnedPlacementInputs {
     const Adjacency &bufferAdjacency;
     llvm::function_ref<bool(TileID, TileID)> bufferPred;
