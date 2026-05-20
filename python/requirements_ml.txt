@@ -1,2 +1,7 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
+# onnx + onnxruntime drive the bit-exact NPU-vs-ORT host comparisons for
+# the yolo26n example (programming_examples/ml/yolo26n/test_{block,chain}_ort.py
+# and gen_yolo_{data,silu_luts}.py).
+onnx
+onnxruntime
