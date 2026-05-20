@@ -126,6 +126,35 @@ $(BUILD)/yolo_m10_conv2dk1_silu_xy_pool.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
 
+# Phase 3d: c3k2_heavy inner_pair kernels (m6/m8) vectorized.
+# inner_pair_cv1 = 3x3 stride-1, same math as c3k2_small m0_cv1.
+# inner_pair_cv2_skip = 3x3 stride-1 + cross-scale skip-add.
+$(foreach blk,$(C3K2_HEAVY_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv1_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
+$(foreach blk,$(C3K2_HEAVY_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
+$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
+  $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
+    $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv1_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv1_vec.cc ; \
+      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@)))
+
+$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
+  $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
+    $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_vec.cc ; \
+      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@)))
+
+$(foreach blk,$(C3K2_HEAVY_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_heavy_m_0_split_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_m_0_split_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
+$(foreach blk,$(C3K2_HEAVY_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_heavy_cv3_concat2_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_cv3_concat2_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
 # Per-block c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 sharing
 # c3k2_heavy m6/m8 also build per-block variants of). -DKERNEL_SUFFIX=_mN
 # gives each block a uniquely-named symbol.
