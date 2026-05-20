@@ -27,6 +27,15 @@ struct TileAvailability {
   std::vector<TileID> compTiles;
   std::vector<TileID> nonCompTiles; // Memory and shim tiles
 
+  // O(1) membership shadow of `compTiles` used by SequentialPlacer's
+  // satisfiesComputePeer forward-look, which checks whether each of a
+  // candidate's physical compute neighbors is still free. Without it the
+  // forward-look would do an O(|compTiles|) std::find per direction per
+  // candidate per LTO, which scales as O(N * M^2) on large arrays. Must be
+  // kept in sync with `compTiles` by any code that mutates the vector
+  // (initialize(), limitCoresPerColumn(), removeTile()).
+  llvm::DenseSet<TileID> compTilesSet;
+
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
 

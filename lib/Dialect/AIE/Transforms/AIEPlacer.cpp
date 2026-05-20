@@ -66,6 +66,9 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
             compTileCmp);
   std::sort(availability.nonCompTiles.begin(), availability.nonCompTiles.end(),
             rowMajorCmp);
+  availability.compTilesSet.clear();
+  availability.compTilesSet.insert(availability.compTiles.begin(),
+                                   availability.compTiles.end());
 
   // Limit cores per column if specified
   if (coresPerCol.has_value()) {
@@ -109,8 +112,12 @@ void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
                         tilesInCol.begin() + numToTake);
   }
 
-  // Replace availability.compTiles with limited list
+  // Replace availability.compTiles with limited list and rebuild the
+  // O(1) membership shadow used by the forward-look hot path.
   availability.compTiles = limitedTiles;
+  availability.compTilesSet.clear();
+  availability.compTilesSet.insert(availability.compTiles.begin(),
+                                   availability.compTiles.end());
 }
 
 LogicalResult SequentialPlacer::place(DeviceOp device) {
@@ -900,10 +907,7 @@ bool SequentialPlacer::satisfiesComputePeer(
       if (!targetModel->isLegalMemAffinity(candidate.col, candidate.row, nc,
                                            nr))
         continue;
-      TileID nb{nc, nr};
-      if (std::find(availability.compTiles.begin(),
-                    availability.compTiles.end(),
-                    nb) != availability.compTiles.end())
+      if (availability.compTilesSet.contains(TileID{nc, nr}))
         ++freeNeighborSlots;
     }
     int remainingInNeed = std::max(0, selfNeedIn - selfNeighborIn);
@@ -1232,6 +1236,7 @@ void TileAvailability::removeTile(TileID tile, AIETileType type) {
   switch (type) {
   case AIETileType::CoreTile:
     removeFromVector(compTiles);
+    compTilesSet.erase(tile);
     break;
   case AIETileType::MemTile:
   case AIETileType::ShimNOCTile:
