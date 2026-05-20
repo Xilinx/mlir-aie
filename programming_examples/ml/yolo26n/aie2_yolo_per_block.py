@@ -2725,7 +2725,14 @@ def per_block_iron(block_name: str) -> str:
     in_ty = _i32((_n_samples * in_i32_per,))
     out_ty = _i32((_n_samples * out_i32_per,))
 
-    act_in = ObjectFifo(_i8((in_w, 1, in_c)), depth=5)
+    # m8 stage 5's cv1 tile (4,5) is at the L1 ceiling (~57 KB used of 64 KB).
+    # The shim input fifo at depth=5 adds 12 KB more on the consumer side
+    # (5 * 16*1*256 = 20 KB vs depth=2's 8 KB), pushing the allocator over.
+    # m8_stage.py specifically calls this out ("trim act_in's burst depth
+    # from 5 → 2 to keep cv1's L1 within budget"). The chain mode uses
+    # depth=2 on m8's input fifo and fits fine.
+    _act_in_depth = 2 if block_name == "m8" else 5
+    act_in = ObjectFifo(_i8((in_w, 1, in_c)), depth=_act_in_depth)
     out_fifo, workers = _BUILDERS[block_name](act_in, manifest)
 
     rt = Runtime()
