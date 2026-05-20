@@ -178,29 +178,36 @@ def test_runtime_eviction_logic(runtime):
 
 
 def test_runtime_cache_fill(runtime):
-    """Test filling the cache to its capacity."""
+    """Test filling the Python-side cache to its configured capacity."""
 
-    # Ensure cache is empty
-    runtime.cleanup()
+    # Use a deliberately small artificial capacity. On Windows, reserved
+    # resources make the practical limit lower than the nominal cache size.
+    original_size = runtime._cache_size
+    runtime._cache_size = min(original_size, 8)
 
-    input_tensor = iron.arange(32, dtype=np.int32)
+    try:
+        runtime.cleanup()
 
-    # Load kernels up to capacity + 1
-    limit = runtime._cache_size
-    first_key = None
+        input_tensor = iron.arange(32, dtype=np.int32)
 
-    for i in range(limit + 1):
-        transform(input_tensor, input_tensor, lambda x, val=i: x + val)
+        # Load kernels up to the artificial capacity + 1.
+        limit = runtime._cache_size
+        first_key = None
 
-        if i == 0:
-            first_key = list(runtime._context_cache.keys())[0]
+        for i in range(limit + 1):
+            transform(input_tensor, input_tensor, lambda x, val=i: x + val)
 
-        # Check size
-        expected_size = min(i + 1, limit)
-        assert len(runtime._context_cache) == expected_size
+            if i == 0:
+                first_key = list(runtime._context_cache.keys())[0]
 
-    # Verify the first one was evicted (since we went to limit + 1)
-    assert first_key not in runtime._context_cache
+            expected_size = min(i + 1, limit)
+            assert len(runtime._context_cache) == expected_size
+
+        # Verify the first one was evicted (since we went to limit + 1).
+        assert first_key not in runtime._context_cache
+    finally:
+        runtime.cleanup()
+        runtime._cache_size = original_size
 
 
 def test_runtime_mtime_sensitivity(runtime):

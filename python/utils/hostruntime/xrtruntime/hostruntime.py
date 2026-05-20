@@ -268,6 +268,7 @@ class XRTHostRuntime(HostRuntime):
                         kernel_handle.insts,
                         flags=pyxrt.bo.cacheable,
                         group_id=kernel_handle.kernel.group_id(1),
+                        xrt_device=self._device,
                     ).buffer_object()
 
             start = time.time_ns()
@@ -330,19 +331,21 @@ class CachedXRTKernelHandle(XRTKernelHandle):
 
     def invalidate(self):
         """
-        Invalidate the handle and release resources.
+        Invalidate the handle and release resources in dependency order.
         """
         self._is_valid = False
-        if hasattr(self, "context"):
-            del self.context
+        # Instruction BOs and kernels depend on the hardware context. Those must
+        # be released before dropping the handle's context reference.
+        if hasattr(self, "insts_bo"):
+            del self.insts_bo
         if hasattr(self, "kernel"):
             del self.kernel
+        if hasattr(self, "context"):
+            del self.context
         if hasattr(self, "xclbin"):
             del self.xclbin
         if hasattr(self, "insts"):
             del self.insts
-        if hasattr(self, "insts_bo"):
-            del self.insts_bo
 
 
 class CachedXRTRuntime(XRTHostRuntime):
@@ -391,13 +394,20 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     def cleanup(self):
         """
-        Clean up the cache by evicting all entries.
+        Clean up cached XRT resources in dependency order.
         """
-        while self._context_cache:
-            self._evict()
         while self._insts_cache:
             self._evict_insts()
+        while self._context_cache:
+            self._evict()
         gc.collect()  # Make sure contexts are garbage collected.
+
+    def _cleanup_entry_insts(self, entry):
+        """Release instruction BOs owned by a cached context entry."""
+        for insts_key in list(entry.get("insts_keys", ())):
+            insts_entry = self._insts_cache.pop(insts_key, None)
+            if insts_entry is not None:
+                self._cleanup_insts_entry(insts_key, insts_entry)
 
     def _cleanup_entry(self, entry):
         handles = entry["handles"]
@@ -407,6 +417,8 @@ class CachedXRTRuntime(XRTHostRuntime):
             handle = ref()
             if handle:
                 handle.invalidate()
+
+        self._cleanup_entry_insts(entry)
 
         # Clear kernel cache so pyxrt.kernel objects are released with the context
         entry["kernels"].clear()
@@ -422,14 +434,18 @@ class CachedXRTRuntime(XRTHostRuntime):
         # Pop the oldest item
         key, entry = self._context_cache.popitem(last=False)
         self._cleanup_entry(entry)
+        gc.collect()
 
-    def _cleanup_insts_entry(self, entry):
+    def _cleanup_insts_entry(self, insts_key, entry):
+        owner_entry = entry.get("owner_entry")
+        if owner_entry is not None:
+            owner_entry.get("insts_keys", set()).discard(insts_key)
         # Delete the key (not a local copy) so the refcount drops here.
         del entry["insts_bo"]
 
     def _evict_insts(self):
         key, entry = self._insts_cache.popitem(last=False)
-        self._cleanup_insts_entry(entry)
+        self._cleanup_insts_entry(key, entry)
 
     def run(
         self,
@@ -533,15 +549,10 @@ class CachedXRTRuntime(XRTHostRuntime):
                     try:
                         context = pyxrt.hw_context(self._device, xclbin_uuid)
                     except RuntimeError as e:
-                        # If we hit a resource limit (err=-2 usually means EMFILE/ENFILE or similar resource exhaustion)
-                        # and we have items in the cache, try evicting.
-                        if (
-                            "No such file or directory" in str(e)
-                            and self._context_cache
-                            and retries < max_retries
-                        ):
+                        # Context-slot exhaustion is reported differently across XRT backends.
+                        # Evict cached contexts and retry, but only while cached entries remain.
+                        if self._context_cache and retries < max_retries:
                             self._evict()
-                            gc.collect()  # Make sure contexts are garbage collected.
                             retries += 1
                         else:
                             raise e
@@ -551,6 +562,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                     "xclbin": xclbin,
                     "kernels": {},  # kernel_name -> pyxrt.kernel (strong ref, tied to context)
                     "handles": [],
+                    "insts_keys": set(),
                     "uuid": xclbin_uuid,
                 }
                 self._context_cache[context_key] = entry
@@ -599,12 +611,15 @@ class CachedXRTRuntime(XRTHostRuntime):
                         insts,
                         flags=pyxrt.bo.cacheable,
                         group_id=group_id,
+                        xrt_device=self._device,
                     ).buffer_object()
 
                     insts_entry = {
                         "insts_bo": insts_bo,
+                        "owner_entry": entry,
                     }
                     self._insts_cache[insts_key] = insts_entry
+                    entry["insts_keys"].add(insts_key)
 
             kernel_handle = CachedXRTKernelHandle(
                 kernel, xclbin, context, insts, insts_bo

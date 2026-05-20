@@ -29,6 +29,7 @@ class XRTTensor(Tensor):
         device="npu",
         flags=xrt.bo.host_only,
         group_id=0,
+        xrt_device=None,
     ):
         """
         Initialize the XRTTensor.
@@ -41,10 +42,11 @@ class XRTTensor(Tensor):
             device (str, optional): Device string identifier. Defaults to 'npu'.
             flags (optional): XRT buffer object flags. Defaults to xrt.bo.host_only.
             group_id (int, optional): XRT buffer object group ID. Defaults to 0.
+            xrt_device (optional): Existing PyXRT device handle to use for BO allocation.
+                When omitted, a new handle for device index 0 is opened for this tensor.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
-        device_index = 0
-        self.xrt_device = xrt.device(device_index)
+        self.xrt_device = xrt_device if xrt_device is not None else xrt.device(0)
 
         # Extract the shape
         if isinstance(shape_or_data, tuple):
@@ -58,7 +60,7 @@ class XRTTensor(Tensor):
         else:
             # TODO(efficiency): Extra data copy here (when necessary)
             # so we can borrow verification of array-like things from numpy.
-            np_data = np.array(shape_or_data, dtype=dtype, copy=False)
+            np_data = np.asarray(shape_or_data, dtype=dtype)
             self._shape = np_data.shape
 
         # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currently.
