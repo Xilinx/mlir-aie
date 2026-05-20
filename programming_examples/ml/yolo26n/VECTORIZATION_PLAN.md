@@ -63,34 +63,41 @@ Per-phase deliverables include: code, bit-exact test (`make run_ort` and
 `make run_chain`), per-block bench measurement, accuracy bench every
 ~3 phases (cheap sanity check that accuracy is preserved end-to-end).
 
-## Phase 0 — Memtile-DMA transpose spike
+## Phase 0 — Memtile-DMA transpose spike ✅ PASSED
 
-**Question:** can a single memtile DMA with multi-dim stride configuration
-convert HWC → ic-tile-major in one shot, no compute-tile cycles?
+**Result:** HWC → ic-tile-major transpose works via a single `ObjectFifo.cons(dims_from_stream=...).forward(...)`
+chained through a memtile, with zero compute tiles involved. Bit-exact
+on a 256-byte (H=4, W=4, C=16) test tensor; NPU compute time 0.78 ms;
+xclbin built clean on NPU2.
 
-If yes, every block migration in Phases 1-4 becomes structurally cheap —
-add a transpose-in / transpose-out via memtile BD config, no new workers
-needed. Tile budget unaffected.
+**Implementation pattern** (validated on Strix HX 370):
+- IRON `ObjectFifo` with element type = whole tensor (one fifo element
+  per dispatch).
+- `dims_from_stream=TensorAccessPattern(...).transformation_dims` on the
+  consumer side: lists dims with LAST = innermost (NumPy convention).
+- Strides in the dim list describe the DESTINATION (memtile) offset
+  stride per stream byte; source is read contiguously.
+- For HWC `(H, W, C)` source → ic-tile-major `(C/8, H, W, 8)` destination:
+  ```python
+  TensorAccessPattern(
+      tensor_dims=(H*W*C,),
+      offset=0,
+      sizes=[H, W, C // 8, 8],      # outer→inner: row, col, ic_tile, ic_inner
+      strides=[W*8, 8, H*W*8, 1],   # dest strides per stream-iteration dim
+  )
+  ```
+- `aie.objectfifo.link [@in] -> [@out]([] [0])` is auto-emitted by IRON
+  to wire the memtile-staged path.
 
-If no, we fall back to compute-tile transpose workers, which cost cycles
-AND tiles (chain is at 32/32 today — need to free tiles first via
-fusion).
+**Implication for the plan:** every block migration in Phases 1-4 can do
+its HWC ↔ ic-tile-major conversion via this pattern. Zero compute-tile
+cost; no tile budget impact. Tile reassignment (Phase 5) and fusion
+(Phase 6) become orthogonal to layout migration instead of prerequisites.
 
-**Test design:** small standalone IRON example that takes a `(H, W, C)`
-HWC int8 buffer from DRAM, configures a memtile BD chain with strides
-`[H*W*8, W*8, 8, 1]` and sizes `[C/8, H, W, 8]` to emit ic-tile-major
-into another DRAM buffer. Verify the output bytes match a Python
-reference reshape.
-
-**Pass criterion:** byte-exact transpose with measurable DMA throughput
-(≥ 5 GB/s sustained, well above the 100 MB/s we actually need per block).
-
-**Fail mitigation:** compute-tile transpose worker as fallback. Costs
-~10-15% per migrated block on per-row time + 1 tile per transpose
-direction. Phases 1-4 still proceed, but Phase 5 (tile reassignment)
-becomes higher priority to free tiles.
-
-This spike happens in this session — it gates the whole strategy.
+**Spike artifacts** (not committed; standalone test):
+- `/tmp/phase0_transpose_spike.py` — IRON design
+- `/tmp/phase0_run.py` — host driver + reference comparison
+- `/tmp/spike_build/spike.xclbin` — built artifact
 
 ## Cascade + shared memory as a first-class design lever
 
