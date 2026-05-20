@@ -1,159 +1,163 @@
-# m8 megakernel: design plan
+# m8 megakernel: v2 design plan
 
 ## Goal
 
-Collapse m8's 8-tile pipeline into a single megakernel running on one
-tile per sample, then (later) replicate the megakernel tile K-way for
-K-way batch throughput. Per-sample wall-time becomes
-**compute + weight-DMA + I/O-DMA**, with NO inter-tile fifo crossings
-and NO fill/drain overhead.
+Replace m8's 8-tile pipeline (623 ms, 0.1% utilization) with a
+**single-tile megakernel** running all 9 sub-ops sequentially on (5,3),
+using vertically-adjacent neighbors (5,2) and (5,4) to host large
+static weights via `delegate_tile`. Eliminates **all** inter-tile
+fifos and pipeline fill/drain.
 
-## L1 budget (the constraint)
+## Template: mobilenet `bottleneck/regular.py`
 
-AIE2P compute tile = **64 KB L1 SRAM** total for program memory +
-data buffers + fifo slots. Subtract ~8 KB for program/stack overhead
-=> ~56 KB usable for data.
+Direct precedent at `programming_examples/ml/mobilenet/bottleneck/regular.py:474-492`:
 
-### Weight inventory (m8 total)
-
-| Layer | Shape | Bytes |
-|---|---|---:|
-| cv1 (1×1) | 256 × 256 | 65 536 |
-| cv2 (1×1) | 192 × 256 (3×64×256) | 49 152 |
-| m_0_split cv1 (1×1) | 128 × 64 | 8 192 |
-| m_0_split cv2 (1×1) | 128 × 64 | 8 192 |
-| m_0_cv3 (1×1) | 128 × 128 | 16 384 |
-| pair0_cv1 (3×3) | 64 × 64 × 9 | 36 864 |
-| pair0_cv2 (3×3) | 64 × 64 × 9 | 36 864 |
-| pair1_cv1 (3×3) | 64 × 64 × 9 | 36 864 |
-| pair1_cv2 (3×3) | 64 × 64 × 9 | 36 864 |
-| **Total weights** | | **~295 KB** |
-
-**Static-on-tile is impossible** (295 >> 56). All large weight sets must
-be **streamed from memtile** per sample.
-
-### Intermediate activation scratch (per-sample, fully materialized)
-
-| Tensor | Shape | Bytes |
-|---|---|---:|
-| cv1 top  | 16 × 16 × 128 | 4 096 |
-| cv1 bot  | 16 × 16 × 128 | 4 096 |
-| split_a  | 16 × 16 × 64  | 2 048 |
-| split_b  | 16 × 16 × 64  | 2 048 |
-| pair0_out| 16 × 16 × 64  | 2 048 |
-| pair1_out| 16 × 16 × 64  | 2 048 |
-| cv3_out  | 16 × 16 × 128 | 4 096 |
-| **Total scratch** | | **~20 KB** |
-
-### I/O buffer budget
-
-- act_in: 1 row × 256 ch × 16 rows = 4 KB (or batch one row at a time)
-- act_out: 1 row × 256 ch = 256 B per row (4 KB if buffered)
-- Weight stream chunks: 4 KB × 2 concurrent streams = 8 KB
-- LUTs: 8 × 256 B = 2 KB
-- Biases: 9 × small = <2 KB
-
-**Estimated total L1 occupancy: ~20 (scratch) + 8 (streams) + 8 (I/O) + 4 (LUT+bias) = 40 KB. Fits.**
-
-## Weight streaming strategy
-
-Tile has only **2 S2MM channels** per direction, so at most 2 active
-weight streams concurrently. Approach: **serialize** the per-sample
-compute into sub-passes, each pass loads its weights then computes,
-then releases:
-
-```
-PASS 1 (cv1 + m_0_split):
-  - stream cv1 wts (64 KB), compute cv1 for all 16 rows -> top/bot scratch
-  - stream m_0_split wts (16 KB), compute split for all 16 rows -> split_a/b scratch
-PASS 2 (pair0 + pair1):
-  - stream pair0_cv1 wts (36 KB), compute pair0_cv1 -> pair0_mid scratch
-  - stream pair0_cv2 wts (36 KB), compute pair0_cv2 -> pair0_out scratch
-  - stream pair1_cv1 wts (36 KB), compute pair1_cv1 -> pair1_mid scratch
-  - stream pair1_cv2 wts (36 KB), compute pair1_cv2 -> pair1_out scratch
-PASS 3 (cv3 + cv2):
-  - stream cv3 wts (16 KB), compute cv3 over split_b + pair1_out -> cv3_out scratch
-  - stream cv2 wts (48 KB), compute cv2 over top + bot + cv3_out -> act_out
+```python
+def _of(ch, depth):
+    return ObjectFifo(
+        _u8((in_w, 1, ch)),
+        depth=depth,
+        disable_synchronization=True,  # one core, sequential order = implicit sync
+        delegate_tile=alloc_tile,       # spill to chosen tile's L1
+    )
 ```
 
-Sub-passes serialize compute (no overlap with weight DMA *within* a
-sample), but that's fine — the whole thing still runs in
-**~5-10 ms** estimated, vs current 623 ms.
+Single Worker with self-loop ObjectFifos providing sliding 3-row
+windows for the 3×3 convs. We copy this skeleton and substitute m8's
+sub-op composition.
 
-### Weight DMA cost estimate
+## Why we don't write a new .cc kernel
 
-Total weight bytes per sample = 295 KB.
-Memtile DMA bandwidth ~ 500 MB/s effective on AIE2P.
-295 KB / 500 MB/s = **~590 us per sample for weight DMA alone**.
+Every m8 sub-op already has a **per-row vec kernel** that takes 1-3
+input rows and produces 1 output row. We compose them inside the
+megakernel Worker as sequential `k_*(...)` calls — no new C code.
 
-### Compute cost estimate
+| Sub-op | Existing kernel | Source variant |
+|---|---|---|
+| cv1 (1×1, 256→256 split) | `yolo_c3k2_small_cv1_split_streamed_silu_bias_i8_i8` | streamed |
+| m_0_split (1×1 ×2) | `yolo_c3k2_heavy_m_0_split_silu_bias_i8_i8` | static |
+| pair0_cv1 (3×3) | `yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8` | static (used for pair1 today) |
+| pair0_cv2 (3×3+skip) | `yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8` | streamed |
+| pair1_cv1 (3×3) | `yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i8` | streamed |
+| pair1_cv2 (3×3+skip) | `yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8` | static |
+| cv3 (1×1 concat2) | `yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8` | static |
+| cv2 (1×1 concat3) | `yolo_c3k2_small_cv2_concat3_streamed_silu_bias_i8_i8` | streamed |
 
-24M MACs / 32 MAC/cycle / 1 GHz = **~750 us per sample for compute**.
+All vectorized (mmul<4,8,8>) and bit-exact today. Megakernel = Python
+orchestration; no kernel-C rewrites.
 
-### Total estimated per-sample time
+## L1 budget (corrected)
 
-~590 us (weight DMA) + ~750 us (compute) + ~100 us (I/O DMA) +
-overhead = **~1.5-3 ms per sample on 1 tile**.
+AIE2P compute tile = 64 KB total. Subtract ~8 KB program + stack.
+**Usable per-tile: ~56 KB.**
 
-**vs current 623 ms = 200-400x speedup for m8.**
+### Weight inventory
 
-If this lands, m8 is no longer the chain bottleneck — m6 (280 ms) and
-m0 (56 ms) take over and need similar treatment.
+| Layer | Bytes |
+|---|---:|
+| cv1 (256→256, 1×1) | 65 536 |
+| cv2 (384→256, 1×1, 3-concat input) | 98 304 |
+| m_0_split cv1 (128→64) | 8 192 |
+| m_0_split cv2 (128→64) | 8 192 |
+| m_0_cv3 (128→128) | 16 384 |
+| pair0_cv1 (64→64, 3×3) | 36 864 |
+| pair0_cv2 (64→64, 3×3) | 36 864 |
+| pair1_cv1 (64→64, 3×3) | 36 864 |
+| pair1_cv2 (64→64, 3×3) | 36 864 |
+| **Total** | **~344 KB** |
 
-## Replication (Phase 2, if needed)
+### Allocation across (5,2) / (5,3) / (5,4)
 
-If 1-tile megakernel hits the estimate, single-frame latency is already
-near peak. For batched throughput, replicate to K tiles, each handling
-one sample, weights memtile-broadcast.
+Two of the four pair convs go static on neighbors; the other two stream
+from memtile alongside cv1 and cv2.
 
-L1 budget per tile = unchanged (~40 KB).
-Memtile broadcast: 1 weight DMA serves all K tiles in parallel
-=> per-K-sample DMA cost unchanged (~590 us for K samples), but
-per-sample throughput = K / 1.5ms = **~K × 666 sample/sec**.
+| Tile | Static weights | KB |
+|---|---|---:|
+| (5,2) south neighbor | pair0_cv1 (36) + m_0_split cv1 (8) + m_0_split cv2 (8) | 52 |
+| (5,4) north neighbor | pair1_cv2 (36) + m_0_cv3 (16) | 52 |
+| (5,3) compute | sliding-window OFs (~32) + I/O fifos (~8) + active stream chunks (~8) + LUTs+biases (~6) | ~54 |
+| Streamed from memtile per sample | cv1 (64) + pair0_cv2 (36) + pair1_cv1 (36) + cv2 (96) | 232 (DMA, not L1) |
 
-For K=4 tiles: 2.6 K samples/sec = batched fps absurdly high. Chain
-would be limited by other blocks long before this.
+Each tile under the 56 KB ceiling. Neighbor cores stay idle — their
+DMEMs are pure storage that (5,3)'s kernel reads via shared L1.
 
-## Bit-exactness gate
+### Sliding-window OF sizes
 
-Sub-passes compute the same math as the unfused versions, just on
-different data layouts. Bit-exact required at every step:
-1. `make BLOCK=m8 run_ort` -> 0 mismatches
-2. `make chain run_chain` -> 0 mismatches
+| OF (self-loop on (5,3), delegate to (5,2/3/4) as needed) | depth | size |
+|---|---:|---:|
+| top (cv1 → cv2) | 2 | 4 KB |
+| bot_to_cv2 (cv1 → cv2) | 2 | 4 KB |
+| bot (cv1 → m_0_split) | 2 | 4 KB |
+| split_a (m_0_split → pair0_cv1) | 3 | 3 KB |
+| split_b (m_0_split → cv3) | 2 | 2 KB |
+| pair0_mid (pair0_cv1 → pair0_cv2) | 3 | 3 KB |
+| pair0_skip (pair0_cv1 → pair0_cv2) | in_h | 16 KB ← biggest |
+| pair0_out / inner_0_out (pair0_cv2 → pair1_cv1) | 3 | 3 KB |
+| pair1_mid (pair1_cv1 → pair1_cv2) | 3 | 3 KB |
+| pair1_skip (pair1_cv1 → pair1_cv2) | in_h | 16 KB |
+| pair1_out (pair1_cv2 → cv3) | 2 | 2 KB |
+| cv3_out (cv3 → cv2) | 2 | 2 KB |
+
+Two `pair*_skip` fifos at in_h=16 depth are the big ones (each 16 KB).
+Both can be delegated to neighbor tiles to keep (5,3)'s budget under
+control. Probably:
+- pair0_skip → delegated to (5,2)
+- pair1_skip → delegated to (5,4)
+
+Then (5,3)'s sliding-window OF total is ~24 KB.
+
+## Per-sample wall-time estimate
+
+- Compute: 24M MACs / 32 MAC·cycle / 1 GHz = **750 us** at peak vec; realistic ~1.5 ms at 50% utilization
+- Weight DMA: 232 KB / 500 MB/s = **464 us** (or worse under memtile contention — see memtile_bw_bench)
+- I/O DMA: ~100 us
+
+**Estimated per-sample: 1.5-3 ms** vs current 623 ms = **200-400x speedup**.
+
+For 60 fps target (16.7 ms/sample budget across 11 blocks), m8's
+1.5-3 ms is well under fair-share. The chain bottleneck would move to
+m6 (280 ms) — same megakernel treatment can be applied.
 
 ## Open risks
 
-1. **Program memory budget**: a single kernel function doing all 9
-   sub-ops may exceed the tile's I-cache. Mitigation: factor each
-   sub-op into a callable helper; verify .o text-size < some threshold
-   (~16 KB program memory typical).
+1. **Program memory budget (16 KB)** on (5,3) — 9 sub-ops worth of
+   kernel code may overflow. The orchestration is Python-side so it's
+   not in tile progmem. Each `k_*` is a separate .o file linked to its
+   call site; total text on the tile is the sum of the called kernel
+   .o text sizes. If it overflows, fallback: split into 2 megakernel
+   tiles (e.g., (5,3) cv1+split+pair0, (5,4) pair1+cv3+cv2) connected
+   by a single inter-tile fifo — 2-stage pipeline.
 
-2. **Streamed-weight kernel API**: existing IRON `StaticWeightStream`
-   helper handles one weight set per call. The megakernel needs
-   multiple sequential streamed-weight inputs. Either:
-   - (a) wrap each sub-pass in its own kernel call, each with one
-     StaticWeightStream input. The IRON worker body runs them in
-     sequence, passing scratch through Buffers. This is the cleanest
-     wiring and the chosen approach.
-   - (b) make a single kernel call with 6 streamed-weight inputs +
-     6 acquire/release loops internal to the kernel. Probably hits
-     IRON-side restrictions on multi-stream kernels.
+2. **Memtile DMA throughput under contention** — answered by the
+   running `scripts/memtile_bw_bench.py` agent. If sustained < 200 MB/s,
+   the 464 us DMA estimate becomes ~1 ms and we need to consider
+   keeping more weights static (drop cv1 streaming, place those weights
+   on a memtile-staging buffer that loads once at design init).
 
-3. **Memtile contention**: streaming 6 weight sets through one tile's
-   2 S2MM channels means 3 sequential transfers per channel per sample.
-   Memtile can handle it but BD count may grow.
+3. **IRON `delegate_tile` correctness** for cross-tile static Buffers —
+   verified by mobilenet using the same pattern. No risk.
 
-## Sub-task order (next sessions)
+4. **Compile time** — 9 kernels linked into one worker may slow build.
+   Acceptable; this is build-time only.
 
-1. **L1 audit**: run the m8_model.py-style analysis with the proposed
-   megakernel-tile budget; confirm under 56 KB usable.
-2. **Kernel scaffold**: write `kernels/yolo_m8_megakernel_passN_vec.cc`
-   files - one per sub-pass (3 files total). Each takes 1 streamed
-   weight input + scratch buffers + LUTs + biases.
-3. **IRON wiring**: rewrite `scripts/m8_stage.py` to use a single
-   megakernel tile (likely (5,3) or (5,4)) with 3 worker calls in
-   sequence, scratch buffers shared between them, and 6
-   StaticWeightStreams (3 active per pass).
-4. **Single-tile validation**: build standalone, run bit-exact, measure.
-5. **Spatial replication**: only if single-tile is not already fast
-   enough — likely won't be needed for m8 itself.
+## Bit-exactness gate
+
+1. `M8_MEGAKERNEL=1 make BLOCK=m8 run_ort` → 0 mismatches
+2. `M8_MEGAKERNEL=1 make chain run_chain` → 0 mismatches
+
+## Implementation plan
+
+1. **Write `scripts/m8_megakernel.py`** — new builder mirroring mobilenet
+   `regular.py`. Single Worker on (5,3), all OFs self-loop with
+   delegate to (5,2)/(5,4)/(5,3), static weight Buffers on neighbors,
+   StaticWeightStream for the 4 streamed weight sets, sequential
+   per-row kernel calls inside `for _ in range_(in_h)`.
+2. **Hook into `scripts/m8_stage.py`** — at the top of `build()`, if
+   `M8_MEGAKERNEL` env is set, delegate to `m8_megakernel.build()`
+   and return. Leaves the 8-tile path intact as the fallback.
+3. **Build + bit-exact verify** — `make BLOCK=m8` standalone first;
+   then chain.
+4. **Measure** — record m8 standalone latency, chain throughput.
+5. **Stretch goals if perf disappoints**:
+   - Profile which sub-op dominates; cascade-split that one only
+   - Apply same megakernel pattern to m6 (next chain bottleneck)

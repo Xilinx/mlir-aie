@@ -309,5 +309,42 @@ run_chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
 	cd $(SRCDIR) && python3 test_chain_ort.py \
 	    -x $(CHAIN_XCLBIN) -i $(CHAIN_INSTS) -k MLIR_AIE
 
+# --- Memtile -> compute-tile BW microbenchmark (scripts/memtile_bw_bench.py) ---
+BW_SINGLE_MLIR   := $(BUILD)/aie_bw_single.mlir
+BW_SINGLE_XCLBIN := $(BUILD)/final_bw_single.xclbin
+BW_SINGLE_INSTS  := $(BUILD)/insts_bw_single.bin
+BW_DUAL_MLIR     := $(BUILD)/aie_bw_dual.mlir
+BW_DUAL_XCLBIN   := $(BUILD)/final_bw_dual.xclbin
+BW_DUAL_INSTS    := $(BUILD)/insts_bw_dual.bin
+
+$(BW_SINGLE_MLIR): $(SRCDIR)/scripts/memtile_bw_bench.py $(SRCDIR)/lowlevel_dma.py
+	mkdir -p $(BUILD)
+	cd $(SRCDIR) && python3 scripts/memtile_bw_bench.py --mode single > $@
+
+$(BW_DUAL_MLIR): $(SRCDIR)/scripts/memtile_bw_bench.py $(SRCDIR)/lowlevel_dma.py
+	mkdir -p $(BUILD)
+	cd $(SRCDIR) && python3 scripts/memtile_bw_bench.py --mode dual > $@
+
+$(BW_SINGLE_XCLBIN) $(BW_SINGLE_INSTS): $(BW_SINGLE_MLIR)
+	cd $(BUILD) && aiecc.py \
+	    --aie-generate-xclbin --no-compile-host --no-xchesscc --no-xbridge \
+	    --aie-generate-npu-insts --npu-insts-name=$(notdir $(BW_SINGLE_INSTS)) \
+	    --xclbin-name=$(notdir $(BW_SINGLE_XCLBIN)) $(notdir $(BW_SINGLE_MLIR))
+
+$(BW_DUAL_XCLBIN) $(BW_DUAL_INSTS): $(BW_DUAL_MLIR)
+	cd $(BUILD) && aiecc.py \
+	    --aie-generate-xclbin --no-compile-host --no-xchesscc --no-xbridge \
+	    --aie-generate-npu-insts --npu-insts-name=$(notdir $(BW_DUAL_INSTS)) \
+	    --xclbin-name=$(notdir $(BW_DUAL_XCLBIN)) $(notdir $(BW_DUAL_MLIR))
+
+.PHONY: memtile_bw_bench run_memtile_bw_bench
+memtile_bw_bench: $(BW_SINGLE_XCLBIN) $(BW_SINGLE_INSTS) $(BW_DUAL_XCLBIN) $(BW_DUAL_INSTS)
+
+run_memtile_bw_bench: memtile_bw_bench
+	cd $(SRCDIR) && python3 scripts/memtile_bw_run.py --mode single \
+	    -x $(BW_SINGLE_XCLBIN) -i $(BW_SINGLE_INSTS) -k MLIR_AIE
+	cd $(SRCDIR) && python3 scripts/memtile_bw_run.py --mode dual \
+	    -x $(BW_DUAL_XCLBIN) -i $(BW_DUAL_INSTS) -k MLIR_AIE
+
 clean:
 	rm -rf $(BUILD)
