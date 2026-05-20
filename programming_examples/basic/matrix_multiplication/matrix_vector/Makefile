@@ -39,6 +39,10 @@ ifeq (${b_col_maj}, 1)
 	KERNEL_DEFINES+=-DB_COL_MAJ
 endif
 
+ifeq (${use_scalar}, 1)
+	aieargs+=--scalar
+endif
+
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include ${SELF_DIR}../makefile-common
 

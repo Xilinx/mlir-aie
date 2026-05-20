@@ -14,6 +14,7 @@
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 
+
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
@@ -39,6 +40,13 @@ def AIEX_Dialect : Dialect {
 
   let useDefaultTypePrinterParser = 1;
 }
+
+//===----------------------------------------------------------------------===//
+// AIEX Attributes
+//===----------------------------------------------------------------------===//
+
+include "aie/Dialect/AIEX/IR/AIEXAttrs.td"
+
 
 //===----------------------------------------------------------------------===//
 // AIEX Types
@@ -941,6 +949,127 @@ def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
   }];
 }
 
+// XAIE_IO_CREATE_SCRATCHPAD (opcode 10)
+def AIE_NpuCreateScratchpadOp: AIEX_Op<"npu.create_scratchpad", []> {
+  let summary = "Create a control code scratchpad memory region";
+  let arguments = (
+    ins UI32Attr:$size,
+        DefaultValuedOptionalAttr<UI8Attr, "0">:$usage_type
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    Create a scratchpad memory for data exchange between the host's main memory and the NPU command processor and copy its contents to the command processor's memory.
+
+    When the runtime (XRT) observes that this instruction is present in the runtime sequence, it will allocate a scratchpad memory of the specified size on the host.
+    When the command processor firmware executes this instruction, it copies the data in the runtime-allocated scratchpad region from the host's main memory to the NPU command processor's memory.
+    From there, you can write values from the copy of the scratchpad memory in the command processor to arbitrary locations in the NPU (with restrictions) via the `npu.update_from_scratchpad` op.
+
+    The flow of data therefore looks like this:
+    ```
+                    create_scratchpad                                update_from_scratchpad
+    [Host memory]  ------------------->  [Command processor memory]  ------------------------>  [NPU partition memory/registers]
+        ^                 |
+        |                 |
+         -----------------
+          XRT sees inst.
+          and allocates
+    ```
+
+    To get a handle on the allocated scratchpad memory from XRT, use the `run.get_ctrl_scratchpad_bo()` method on the `xrt::run` object in your host application (`test.cpp`).
+    An example can be found in `test/npu-xrt/scratchpad_regwrite`.
+
+    The `usage_type` attribute specifies the scratchpad layout; currently only a value of `0` is supported.
+
+    The `size` attribute specifies the size of the scratchpad in bytes.
+
+    The host's main memory address is patched into the instruction at runtime by XRT based on the `.ctrl.scratchpad` section in the ELF. The assembler (aiebu) generates patching information for this address when it encounters this opcode.
+
+    The scratchpad memory contains a `StateTable`, indexed by 32-bit words by the `npu.update_from_scratchpad` op. `StateTable` constraints: max 32 entries, max total scratchpad size 128 bytes.
+  }];
+  let hasVerifier = 1;
+}
+
+// XAIE_IO_UPDATE_REG (opcode 12)
+def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
+  let summary = "Add a computed value to an 8-byte section of NPU memory from scratchpad state";
+  let arguments = (
+    ins UI8Attr:$state_table_idx,
+        DefaultValuedAttr<StateTableFunc, "StateTableFunc::Incr">:$func,
+        DefaultValuedOptionalAttr<UI32Attr, "0">:$func_arg,
+        UI32Attr:$address,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    (`<` $func^ `>`)? attr-dict
+  }];
+  let description = [{
+    Add a computed value based on scratchpad contents to an 8-byte section at the target address.
+
+    This instruction reads the contents of scratchpad memory created using the `npu.create_scratchpad` op (the `StateTable`), calculates a value, then adds the result to the memory location or register denoted by the given address as follows:
+
+    1. Reads the existing 64-bit value from the register pair:
+       
+       ```
+       existing = (*(addr+4) & 0xFFFF) << 32 | (*addr & 0xFFFFFFFC)
+       ```
+
+    2. Computes a delta based on the contents of the scratchpad memory created using `npu.create_scratchpad` (the `StateTable`) based on the selected function:
+
+       - `mul`:  `delta = StateTable[state_table_idx] * func_arg`
+       - `incr`: `delta = StateTable[state_table_idx] + func_arg`
+       - `decr`: `delta = StateTable[state_table_idx] - func_arg`
+
+    3. Adds the delta to the existing value:
+
+      ```
+      result = existing + delta
+      ```
+
+    4. Writes back the lower 48 bits of the result:
+       
+       ```
+       *addr     = result & 0xFFFFFFFC    (bits [1:0] forced to 0)
+       *(addr+4) = (*(addr+4) & 0xFFFF0000) | ((result >> 32) & 0xFFFF)
+       ```
+
+    ### Constraints
+
+    - This is always additive. It adds the computed delta to whatever value is already in the register pair. It cannot set an absolute value.
+    - The lower 2 bits of the first register are always cleared (4-byte aligned).
+    - The upper 16 bits of the second register are preserved unchanged.
+    - Always writes 8 contiguous bytes (both registers in the pair).
+
+    ### Rationale
+    
+    The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only. 
+    Because of this, this always writes 48 bits (size of BD addresses) and the lower bits are zeroed (assuring the value is a multiple of the addressable word size).
+
+    ### Attributes
+
+    - `state_table_idx` is a 32-bit-word index offset into the scratchpad memory. The source value will be read from this offset into the scratchpad.
+    - `func` is the function applied to the state table value in firmware, which can be one of `mul`, `incr` or `decr`.
+    - `func_arg` is the argument to the function.
+    - `address`, `buffer`, `column` and `row` together resolve to the destination address that the value will be written to. 
+      Address resolution is the same as for `npu.write32`:
+      - If `buffer` is specified, `address` is a word offset relative to that
+        buffer's start address.
+      - If `column` and `row` are present, `address` is a local offset within
+        that tile's address space.
+      - Otherwise, `address` is an absolute address into the AIE array.
+
+  }];
+  let extraClassDeclaration = [{
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
+  let hasVerifier = 1;
+}
+
 def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let summary = "AIE control packet";
   let arguments = (
@@ -1025,6 +1154,12 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     runtime by the driver or host program.
 
     If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
+
+    ### Watch Out!
+
+    The firmware optimizes out repeated `load_pdi` operations if they refer to the same PDI.
+    To force a reload / device reset, intersperse a `load_pdi` to a different PDI between same-device reloads.
+    The easiest workaround is to create an empty `aie.device(npu2) @empty {}` and load that before the main device load.
   }];
   let hasCanonicalizeMethod = 1;
 }

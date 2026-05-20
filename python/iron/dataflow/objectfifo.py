@@ -50,6 +50,7 @@ class ObjectFifo(Resolvable):
         repeat_count: int | None = None,
         delegate_tile: PlacementTile | None = None,
         via_DMA: bool = False,
+        init_values: list[np.ndarray] | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -63,6 +64,7 @@ class ObjectFifo(Resolvable):
             disable_synchronization (bool, optional): When True, disables lock-based synchronization on the ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the buffer descriptor this many times without a new DMA transfer from L3. Distinct from ``iter_count`` (BD-chain iteration count). Defaults to None.
             delegate_tile (PlacementTile | None, optional): Shared-memory delegate tile. When set, the ObjectFifo's underlying buffer pool is allocated on this tile's memory module instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only valid when both producer and consumer have shared-memory access to the delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between adjacent tiles spilling to a neighboring MemTile). The delegate is the storage location, not a producer- or consumer-side concept; the underlying op verifier rejects this if either endpoint cannot share memory with the delegate. Defaults to None.
+            init_values (list[np.ndarray] | None, optional): Per-buffer static initial values for the producer endpoint. One ndarray per producer-side buffer; the producer tile must be able to hold static data at design startup (e.g. a MemTile). Lowers to the ``initValues`` attribute on the underlying ``aie.objectfifo`` op. Defaults to None.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
@@ -93,6 +95,7 @@ class ObjectFifo(Resolvable):
         # ObjectFifo._delegate_tile when collecting tiles to assign MLIR ops to.
         self._delegate_tile: PlacementTile | None = delegate_tile
         self._via_DMA: bool = via_DMA
+        self._init_values: list[np.ndarray] | None = init_values
 
     @classmethod
     def __get_index(cls) -> int:
@@ -314,6 +317,7 @@ class ObjectFifo(Resolvable):
                 iter_count=self._iter_count,
                 disable_synchronization=self._disable_synchronization or None,
                 via_DMA=self._via_DMA or None,
+                initValues=self._init_values,
             )
 
             if self._repeat_count is not None:

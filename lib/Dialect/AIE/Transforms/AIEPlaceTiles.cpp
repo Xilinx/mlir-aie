@@ -63,6 +63,7 @@ struct AIEPlaceTilesPass
 
   AIEPlaceTilesPass(const AIEPlaceTilesOptions &options) {
     clCoresPerCol = options.clCoresPerCol;
+    clMergeLogicalTiles = options.clMergeLogicalTiles;
   }
 
   void runOnOperation() override {
@@ -75,7 +76,8 @@ struct AIEPlaceTilesPass
       std::optional<int> coresPerCol = std::nullopt;
       if (clCoresPerCol >= 0)
         coresPerCol = clCoresPerCol;
-      placer = std::make_shared<SequentialPlacer>(coresPerCol);
+      placer =
+          std::make_shared<SequentialPlacer>(coresPerCol, clMergeLogicalTiles);
       break;
     }
     }

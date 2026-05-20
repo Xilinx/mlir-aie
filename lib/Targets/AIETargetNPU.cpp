@@ -199,6 +199,44 @@ void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
   words[0] = XAIE_IO_PREEMPT | (op.getLevel() << 8);
 }
 
+void appendCreateScratchpad(std::vector<uint32_t> &instructions,
+                            NpuCreateScratchpadOp op) {
+  // XAIE_IO_CREATE_SCRATCHPAD encoding (4 words = 16 bytes):
+  // Byte 0: Opcode (10)
+  // Byte 1: Usage Type
+  // Bytes 2-3: padding
+  // Bytes 4-7: Size
+  // Bytes 8-15: DDR Address (patched at runtime by XRT)
+  auto words = reserveAndGetTail(instructions, 4);
+
+  words[0] = XAIE_IO_CREATE_SCRATCHPAD;
+  words[0] |= (static_cast<uint32_t>(op.getUsageType()) << 8);
+  words[1] = op.getSize();
+  // DDR address words[2] and words[3] are left as 0;
+  // they will be patched at runtime by XRT/aiebu based on the
+  // .ctrl.scratchpad section.
+  words[2] = 0;
+  words[3] = 0;
+}
+
+void appendUpdateRegFromScratchpad(std::vector<uint32_t> &instructions,
+                                   NpuUpdateFromScratchpadOp op) {
+  // XAIE_IO_UPDATE_REG encoding (3 words = 12 bytes):
+  // Byte 0: Opcode (12)
+  // Byte 1: StateTableIdx
+  // Byte 2: Func
+  // Byte 3: padding
+  // Bytes 4-7: FuncArg
+  // Bytes 8-11: RegOff (absolute offset from AIE array base to register pair)
+  auto words = reserveAndGetTail(instructions, 3);
+
+  words[0] = XAIE_IO_UPDATE_REG;
+  words[0] |= (static_cast<uint32_t>(op.getStateTableIdx()) << 8);
+  words[0] |= (static_cast<uint32_t>(op.getFunc()) << 16);
+  words[1] = op.getFuncArg();
+  words[2] = *op.getAbsoluteAddress();
+}
+
 } // namespace
 
 LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
@@ -264,6 +302,14 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           .Case<NpuPreemptOp>([&](auto op) {
             count++;
             appendPreempt(instructions, op);
+          })
+          .Case<NpuCreateScratchpadOp>([&](auto op) {
+            count++;
+            appendCreateScratchpad(instructions, op);
+          })
+          .Case<NpuUpdateFromScratchpadOp>([&](auto op) {
+            count++;
+            appendUpdateRegFromScratchpad(instructions, op);
           });
     }
   }

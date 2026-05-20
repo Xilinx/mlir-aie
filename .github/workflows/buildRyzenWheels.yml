@@ -93,11 +93,11 @@ jobs:
           large-packages: true
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "true"
 
-      - uses: uraimo/run-on-arch-action@v2.7.0
+      - uses: uraimo/run-on-arch-action@v3
         name: Build mlir-aie
         id: runcmd
         with:
@@ -244,12 +244,12 @@ jobs:
             ENABLE_RTTI: OFF
   
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "true"
   
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -473,8 +473,8 @@ jobs:
         with:
           artifacts: wheels_off_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: latest-wheels-no-rtti
-          name: latest-wheels-no-rtti
+          tag: latest-wheels-no-rtti-2
+          name: latest-wheels-no-rtti-2
           allowUpdates: true
           replacesArtifacts: false
           omitBodyDuringUpdate: true

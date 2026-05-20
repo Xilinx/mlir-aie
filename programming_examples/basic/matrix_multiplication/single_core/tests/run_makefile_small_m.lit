@@ -1,0 +1,15 @@
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, peano
+//
+// Regression for mlir-aie #2793: vectorized matmul produced all-zero output
+// for tilings with m=16 (i16/i32). The clang loop pragma min_iteration_count
+// was set to 4 in matmul_vectorized_2x2_mmul, which is violated when m=16
+// (outer z-loop runs only 2 iterations). Guard the smallest valid m here.
+//
+// RUN: mkdir -p test_small_m
+// RUN: cd test_small_m
+// RUN: make -f %S/../Makefile clean
+// RUN: env dtype_in=i16 dtype_out=i32 m=16 k=64 n=16 M=512 K=512 N=512 make -f %S/../Makefile
+// RUN: %run_on_npu1% env dtype_in=i16 dtype_out=i32 m=16 k=64 n=16 M=512 K=512 N=512 make -f %S/../Makefile run
