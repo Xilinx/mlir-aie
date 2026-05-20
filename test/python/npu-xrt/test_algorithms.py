@@ -56,7 +56,14 @@ def test_transform_add_parametrized(add_value):
     "dtype,c_type",
     [
         (np.int32, "int"),
-        (np.float32, "float"),
+        pytest.param(
+            np.float32,
+            "float",
+            marks=pytest.mark.xfail(
+                reason="Peano stack-overflow on certain f32 kernels",
+                strict=False,
+            ),
+        ),
     ],
 )
 def test_transform_different_datatypes_extern(dtype, c_type):
@@ -159,7 +166,19 @@ def test_transform_binary_add():
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int32,
+        pytest.param(
+            np.float32,
+            marks=pytest.mark.xfail(
+                reason="Peano stack-overflow on certain f32 kernels",
+                strict=False,
+            ),
+        ),
+    ],
+)
 def test_transform_binary_different_datatypes(dtype):
     """Test transform_binary algorithm with different datatypes."""
     if np.issubdtype(dtype, np.floating):
@@ -213,7 +232,19 @@ def test_transform_parallel_add_parametrized(add_value):
     assert np.allclose(original + add_value, output.numpy())
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int32,
+        pytest.param(
+            np.float32,
+            marks=pytest.mark.xfail(
+                reason="Peano stack-overflow on certain f32 kernels",
+                strict=False,
+            ),
+        ),
+    ],
+)
 def test_transform_parallel_different_datatypes(dtype):
     """Test transform_parallel algorithm with add operation on different datatypes."""
     if np.issubdtype(dtype, np.floating):
@@ -332,7 +363,19 @@ def test_transform_parallel_binary_add():
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int32,
+        pytest.param(
+            np.float32,
+            marks=pytest.mark.xfail(
+                reason="Peano stack-overflow on certain f32 kernels",
+                strict=False,
+            ),
+        ),
+    ],
+)
 def test_transform_parallel_binary_different_datatypes(dtype):
     """Test transform_parallel_binary algorithm with add operation on different datatypes."""
     if np.issubdtype(dtype, np.floating):
@@ -373,7 +416,19 @@ def test_for_each_add():
     assert np.allclose(original + 1, data.numpy())
 
 
-@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int32,
+        pytest.param(
+            np.float32,
+            marks=pytest.mark.xfail(
+                reason="Peano stack-overflow on certain f32 kernels",
+                strict=False,
+            ),
+        ),
+    ],
+)
 def test_for_each_different_datatypes(dtype):
     """Test for_each algorithm on different datatypes."""
     if np.issubdtype(dtype, np.floating):
@@ -389,7 +444,14 @@ def test_for_each_different_datatypes(dtype):
     "dtype,c_type",
     [
         (np.int32, "int"),
-        (np.float32, "float"),
+        pytest.param(
+            np.float32,
+            "float",
+            marks=pytest.mark.xfail(
+                reason="Peano stack-overflow on certain f32 kernels",
+                strict=False,
+            ),
+        ),
     ],
 )
 def test_for_each_different_datatypes_extern(dtype, c_type):
