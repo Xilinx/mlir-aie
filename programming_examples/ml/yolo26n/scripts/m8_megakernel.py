@@ -138,10 +138,14 @@ def build(act_in_external=None, return_program: bool = True):
     # ------------------------------------------------------------------
     # Streamed weight streams (memtile -> compute tile)
     # ------------------------------------------------------------------
-    # 6 streams. Spread across memtiles 3/4/5 to avoid memtile-bank
-    # contention. Channel pairs allocated 0..5 on the compute tile;
-    # if AIE2P limits us to fewer S2MM channels per tile, IRON will
-    # complain at lowering and we'll multiplex.
+    # AIE2P compute tile has only 2 input DMA channels. With 6 weight
+    # streams + 1 act_in we need 7 — impossible on (5,3) alone.
+    #
+    # PIVOTING the v1 design: this single-tile build won't land. The
+    # actual implementation is moving to 2-tile split + multi-source-on-
+    # one-channel StaticWeightStream extension (in lowlevel_dma.py).
+    # The 1-tile schedule below is preserved as a reference for what
+    # each tile will compute internally.
 
     m_cv1 = B._op_meta(manifest, L_cv1.manifest_name)
     data_cv1, sz_cv1 = _wts_raw(m_cv1)
