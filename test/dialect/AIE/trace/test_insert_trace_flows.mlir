@@ -105,14 +105,17 @@ module @auto_packet_type {
     %tile02 = aie.tile(0, 2)
     %tile01 = aie.tile(0, 1)
     %tile00 = aie.tile(0, 0)
+    // Auto-allocated packet ids go in (col, row) order over the active
+    // trace tile set, so (0, 1) gets id 1 and (0, 2) gets id 2 even
+    // though the IR emits core_trace first.
     aie.trace @core_trace(%tile02) {
-      // CHECK: aie.trace.packet id = 1 type = core
+      // CHECK: aie.trace.packet id = 2 type = core
       aie.trace.event<"INSTR_EVENT_0">
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
     }
     aie.trace @memtile_trace(%tile01) {
-      // CHECK: aie.trace.packet id = 2 type = memtile
+      // CHECK: aie.trace.packet id = 1 type = memtile
       aie.trace.event<"DMA_S2MM_0_START_TASK">
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
