@@ -4,53 +4,52 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
 # <ins> 2-D Array Transpose using AIE DMAs </ins>
 
 This reference design can be run on a Ryzen™ AI NPU.
 
-In the [design](./dma_transpose_iron.py), a 2-D array in a row-major layout is read from external memory to a compute tile with a transposed layout,
+In the [design](./dma_transpose.py), a 2-D array in a row-major layout is read from external memory to a compute tile with a transposed layout,
 by using an implicit copy via the compute tile's Direct Memory Access (DMA). The data is read from and written to external memory through a shim tile.
 
-This data movement transformation can be visualized as a map which shows the order the data the data is streamed (e.g., in transposed layout):
+This data movement transformation can be visualized as a map which shows the order the data is streamed (e.g., in transposed layout):
 <p align="center">
   <img
     src="transpose_data.png">
-    <h3 align="center"> Visualization of the Transpose Data Transformation for M=64, K=32. 
- </h3> 
+    <h3 align="center"> Visualization of the Transpose Data Transformation for M=64, K=32.
+ </h3>
 </p>
 
-The implicit copy is performed using the `ObjectFifo.forward()` function that specifies how input data arriving via `of_in` should be sent further via `of_out` by specifically leveraging a compute tile's (`AnyComputeTile`'s) DMA. 
+The implicit copy is performed using the `ObjectFifo.forward()` function that specifies how input data arriving via `of_in` should be sent further via `of_out` by specifically leveraging a compute tile's (`AnyComputeTile`'s) DMA.
 
-## Design Versions
-* [dma_transpose_iron.py](./dma_transpose_iron.py) shows how to use the current version of IRON
-* [dma_transpose.py](./dma_transpose.py) shows a lower-level version of IRON, where constructors directly correspond to MLIR operations
-* [dma_transpose_placed.py](./dma_transpose_placed.py)
+## Source Files Overview
 
-The `object_fifo_link` operation used explicitly by`dma_transpose.py` and `dma_transpose._placed.py` is described in more depth in [Section-2b](../../../programming_guide/section-2/section-2b/README.md/#object-fifo-link) of the programming guide.
+`dma_transpose.py` is a single `@iron.jit`-decorated design that can either be driven standalone (compile + run + verify end-to-end via `iron.tensor`) or from the `Makefile` in compile-only mode for use with `test.cpp`.
 
-To compile and run the design `dma_transpose_iron.py` for NPU:
+## Usage
+
+### Standalone (no Makefile)
+
 ```shell
-env use_iron=1 make
-make run
+python3 dma_transpose.py
 ```
 
-To compile and run the design `dma_transpose.py` for NPU:
+`-d npu2` for Strix; `-M` / `-K` to override the matrix dimensions.
+
+### Makefile flow (C++ testbench)
+
 ```shell
 make
 make run
 ```
 
-To compile and run the design `dma_transpose_placed.py` for NPU:
-```shell
-env use_placed=1 make
-make run
-```
+For NPU2 (Strix): `make devicename=npu2 && make run devicename=npu2`.
 
-To generate a data visualization of the transpose (like that above), run:
+### Visualize the access pattern
+
 ```shell
 make generate_access_map
 ```
