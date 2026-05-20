@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 
 #include <algorithm>
@@ -68,6 +69,26 @@ void forEachMemAffinityNeighbor(const AIETargetModel &targetModel, TileID at,
   }
 }
 } // namespace
+
+void SequentialPlacer::Adjacency::addEdge(TileLike first, TileLike second) {
+  if (!first || !second)
+    return;
+  unsigned idx = edges.size();
+  edges.push_back({first, second});
+  if (mlir::isa<LogicalTileOp>(first.getOperation()))
+    tileToEdges[first.getOperation()].push_back(idx);
+  if (mlir::isa<LogicalTileOp>(second.getOperation()))
+    tileToEdges[second.getOperation()].push_back(idx);
+}
+
+void SequentialPlacer::Adjacency::addEdgeFromValues(Value a, Value b) {
+  if (!a || !b)
+    return;
+  auto aT = dyn_cast_or_null<TileLike>(a.getDefiningOp());
+  auto bT = dyn_cast_or_null<TileLike>(b.getDefiningOp());
+  if (aT && bT)
+    addEdge(aT, bT);
+}
 
 void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
   this->targetModel = &targetModel;
@@ -186,18 +207,14 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   SmallVector<PacketFlowOp> pktFlows;
 
   device.walk([&](Operation *op) {
-    if (auto lt = dyn_cast<LogicalTileOp>(op))
-      logicalTiles.push_back(lt);
-    else if (auto of = dyn_cast<ObjectFifoCreateOp>(op))
-      objectFifos.push_back(of);
-    else if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
-      objectFifoLinks.push_back(link);
-    else if (auto cf = dyn_cast<CascadeFlowOp>(op))
-      cascadeFlows.push_back(cf);
-    else if (auto f = dyn_cast<FlowOp>(op))
-      flows.push_back(f);
-    else if (auto pf = dyn_cast<PacketFlowOp>(op))
-      pktFlows.push_back(pf);
+    llvm::TypeSwitch<Operation *>(op)
+        .Case<LogicalTileOp>([&](auto lt) { logicalTiles.push_back(lt); })
+        .Case<ObjectFifoCreateOp>([&](auto of) { objectFifos.push_back(of); })
+        .Case<ObjectFifoLinkOp>(
+            [&](auto link) { objectFifoLinks.push_back(link); })
+        .Case<CascadeFlowOp>([&](auto cf) { cascadeFlows.push_back(cf); })
+        .Case<FlowOp>([&](auto f) { flows.push_back(f); })
+        .Case<PacketFlowOp>([&](auto pf) { pktFlows.push_back(pf); });
   });
 
   // Phase 2a: Build placement constraints

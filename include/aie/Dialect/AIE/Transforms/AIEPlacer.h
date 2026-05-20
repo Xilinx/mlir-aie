@@ -145,31 +145,15 @@ public:
     llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
         tileToEdges;
 
-    void addEdge(TileLike first, TileLike second) {
-      if (!first || !second)
-        return;
-      unsigned idx = edges.size();
-      edges.push_back({first, second});
-      if (mlir::isa<LogicalTileOp>(first.getOperation()))
-        tileToEdges[first.getOperation()].push_back(idx);
-      if (mlir::isa<LogicalTileOp>(second.getOperation()))
-        tileToEdges[second.getOperation()].push_back(idx);
-    }
+    void addEdge(TileLike first, TileLike second);
+
+    // Convenience for IR walkers: skip if either Value isn't a TileLike.
+    void addEdgeFromValues(mlir::Value a, mlir::Value b);
 
     // True if `op` has at least one edge in this adjacency. Hides the
     // tileToEdges index from callers that only need the boolean.
     bool hasEdges(mlir::Operation *op) const {
       return tileToEdges.count(op) != 0;
-    }
-
-    // Convenience for IR walkers: skip if either Value isn't a TileLike.
-    void addEdgeFromValues(mlir::Value a, mlir::Value b) {
-      if (!a || !b)
-        return;
-      auto aT = mlir::dyn_cast_or_null<TileLike>(a.getDefiningOp());
-      auto bT = mlir::dyn_cast_or_null<TileLike>(b.getDefiningOp());
-      if (aT && bT)
-        addEdge(aT, bT);
     }
   };
 
