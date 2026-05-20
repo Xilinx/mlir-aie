@@ -1,8 +1,9 @@
 # YOLO26n-cls (INT8) on AI Engine (IRON)
 
 End-to-end YOLO26n classification head inference on the Strix Point NPU2
-(8 columns × 6 rows of compute tiles + a row of mem tiles), implemented in
-the high-level IRON Python API. The full INT8 network — 11 blocks
+(8-column × 6-row array: row 0 shim DMA, row 1 memtile, rows 2–5 the
+4 compute-tile rows = 32 compute tiles total), implemented in the
+high-level IRON Python API. The full INT8 network — 11 blocks
 (`m0..m10`) — runs depth-first across the array, keeping intermediate
 activations on-chip, and emits classification probabilities bit-exactly
 matching the Quark XINT8 ONNX reference.
@@ -24,14 +25,17 @@ to produce the deployment ONNX shipped under [`models/`](models).
 | [`aie2_yolo_per_block.py`](aie2_yolo_per_block.py) | The meat — one builder per block (`_build_m0` … `_build_m10`) using IRON `ObjectFifo` / `Worker` / `Runtime` |
 | [`aie2_yolo_iron_partial.py`](aie2_yolo_iron_partial.py) | Chain orchestrator. `CHAIN_BLOCKS=m0,m1,...` env var selects the span; defaults to the full `m0..m10` chain |
 | [`aie2_yolo_iron.py`](aie2_yolo_iron.py) | Full-network IRON design (m0 → m10 → softmax) for a one-shot non-incremental build |
-| [`kernels/`](kernels) | 40 hand-written AIE2P `.cc` kernels for the four kernel families (conv2dk3_stride2, c3k2_small, c3k2_heavy, PSA m9, head m10) |
+| [`kernels/`](kernels) | 33 hand-written AIE2P `.cc` kernels (+ 7 `.h` headers) across five families: conv2dk3_stride2, c3k2_small, c3k2_heavy, PSA m9, head m10 |
+| [`scripts/`](scripts) | Staged builders that `aie2_yolo_per_block.py` delegates to for the multi-tile blocks: `m8_stage.py` (c3k2_heavy split-pair + streamed weights), `m9_stage.py` (PSA split-attn) |
 | [`notebooks/quark_quantization.ipynb`](notebooks/quark_quantization.ipynb) | Full int8 recipe: FP32 PyTorch → FP32 ONNX → calibration → Quark XINT8 PTQ → accuracy validation |
 | [`notebooks/yoloexploration.ipynb`](notebooks/yoloexploration.ipynb) | Upstream context: loading YOLO26n, running inference, COCO validation |
 
 ## Quickstart
 
 ```bash
-# 1. Activate the mlir-aie env (provides aiecc.py, PEANO_INSTALL_DIR, MLIR_AIE_INSTALL_DIR).
+# 1. Activate the standard mlir-aie environment (XRT + ironenv + env_setup).
+source /opt/xilinx/xrt/setup.sh
+source ../../../ironenv/bin/activate
 source ../../../utils/env_setup.sh ../../../install
 
 # 2. Extract per-block weight binaries + SiLU LUTs from the shipped XINT8 ONNX.
@@ -39,17 +43,15 @@ make data
 
 # 3. Build and run a single block (any of m0..m10):
 make BLOCK=m0
-make run_ort BLOCK=m0      # bit-exact NPU vs ORT
-make BLOCK=m10
-make run_ort BLOCK=m10
+make run_ort BLOCK=m0      # bit-exact NPU vs ORT (m0..m8 supported)
 
-# 4. Build and run the full chain (m0..m10 in a single xclbin):
+# 4. Build and run the full m0..m10 chain (single xclbin):
 make chain
 make run_chain             # bit-exact NPU chain vs ORT, end-to-end
 ```
 
-`make data` is idempotent and gitignored; the resulting `data/` tree is
-~2 MB of per-layer weight/bias/scale bins.
+`make data` is idempotent; the resulting `data/` tree is ~2 MB of
+per-layer weight/bias/scale bins (gitignored).
 
 ## The int8 recipe
 
@@ -83,9 +85,9 @@ walks through:
 5. Evaluate the XINT8 ONNX on the held-out test set, compare to FP32.
 
 The output is `phase1_25k_xint8_acc0.8968.onnx` (1.7 MB, 89.68% test
-accuracy, ~3.2 pp loss from FP32 — typical for static PTQ). This is the
-ONNX shipped under [`models/`](models) and consumed by `gen_yolo_data.py` /
-`gen_yolo_silu_luts.py`.
+accuracy, ~0.3 pp loss from FP32 — well within typical static-PTQ
+overhead). This is the ONNX shipped under [`models/`](models) and
+consumed by `gen_yolo_data.py` / `gen_yolo_silu_luts.py`.
 
 ### 3. Extract per-block kernel inputs
 
@@ -121,9 +123,10 @@ The 11 blocks map to four kernel families:
 | m1 | conv_stride | `yolo_conv2dk3_stride2_silu_bias_oiyxi8o8` (shared, runtime shapes) | 1 |
 | m3, m5, m7 | conv_stride | `yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked` (per-block, weight-streamed for L1) | 1 each |
 | m2, m4 | c3k2_small | `yolo_c3k2_small_{cv1_split, m0_cv1, m0_cv2_skip, cv2_concat3}` | 3 each |
-| m6, m8 | c3k2_heavy | `yolo_c3k2_heavy_{m_0_split, inner_pair_cv1, inner_pair_cv2_skip, cv3_concat2}` (+ streamed variants on m8) | 5 each |
-| m9 | PSA (attention + FFN) | `yolo_m9_{cv1_split, qkv, qk_row, attn_scale, softmax_row, sv_row, pe_add_row, proj_skip_row, ffn_0_silu_row, ffn_1_skip_row, cv2_concat2_streamed}` | 5 |
-| m10 | head | `yolo_m10_{conv2dk1_silu_xy_pool, linear_gemm, softmax}` | 2 |
+| m6 | c3k2_heavy | `yolo_c3k2_heavy_{m_0_split, inner_pair_cv1, inner_pair_cv2_skip, cv3_concat2}` | 5 |
+| m8 | c3k2_heavy (split + weight-streamed) | m6's kernels + `_streamed` + `_pair{0,1}` variants of inner pairs | 8 |
+| m9 | PSA (attention + FFN) | `yolo_m9_{cv1_split, qkv, qkv_pack, qk_pack, qk_row, attn_scale, softmax_row, v_pack, sv_row, sv_row_acc, pe_add_row, proj_skip_row, ffn_0_silu_row, ffn_1_skip_row, cv2_concat2_streamed}` (15 kernels) | 7 |
+| m10 | head | `yolo_m10_{conv2dk1_silu_xy_pool, linear_gemm, softmax}` (3 kernels, fused onto 1 tile) | 1 |
 
 Total: **all 32 of 32** compute tiles used (0,2..7,5 — no spares).
 The grid in `tile_layout.py` is a planning artifact from an earlier
@@ -146,10 +149,12 @@ The IRON builder passes the matching suffixed name into `Kernel(...)`.
 The integration test of record is `test_chain_ort.py`: same seeded RGB
 input fed to both (a) the NPU chain xclbin and (b) ONNX Runtime on the
 XINT8 ONNX, with hard element-wise INT8 equality on the final softmax
-probs. All 11 blocks individually pass `test_block_ort.py --block mN`
-bit-exact, and the full m0..m10 chain passes `test_chain_ort.py`
-bit-exact. The lit test [`run_strix_makefile.lit`](run_strix_makefile.lit)
-exercises both paths end-to-end on NPU2 hardware.
+probs. The conv_stride and c3k2 blocks (m0..m8) each pass
+`test_block_ort.py --block mN` bit-exact standalone; m9 (PSA) and m10
+(head) aren't wired into the standalone tester yet, but the full
+m0..m10 chain passes `test_chain_ort.py` bit-exact, which covers them
+end-to-end. The lit test [`run_strix_makefile.lit`](run_strix_makefile.lit)
+exercises both paths on NPU2 hardware.
 
 ## Build system
 
@@ -190,9 +195,10 @@ with the same flag set as `programming_examples/makefile-common`'s
   trace-driven "lock-stall" hypothesis was wrong). Vectorizing the
   conv2dk3_stride2 + c3k2_inner kernels is the path to the 60 fps target.
 - **Trace flow tile cap**: AIE2 trace packet IDs cap the simultaneously
-  traced workers at 31 — blocks m8 stage 5 (32 workers) and the full
-  chain (~32 workers) can't be traced wholesale. Per-block or
-  per-sub-stage traces work fine.
+  traced workers at 31 — the full m0..m10 chain (32 compute tiles)
+  can't be traced wholesale. Per-block traces and partial-chain traces
+  (via `CHAIN_BLOCKS=...` + `TRACE_BLOCKS=...`) work fine; the chain-wide
+  view requires a two-pass front-half/back-half trace.
 
 ## Repo layout
 
@@ -207,19 +213,23 @@ yolo26n/
 ├── placement.py                       # PLACEMENT[block_name] -> tiles + design rules
 ├── tile_layout.py                     # ASCII tile-map + per-block sizing
 ├── lowlevel_dma.py                    # StaticWeightStream helper for chunked weight DMA
-├── kernels/                           # 40 AIE2P .cc/.h kernels (4 families)
+├── kernels/                           # 33 AIE2P .cc + 7 .h kernel files (5 families)
+├── scripts/
+│   ├── m8_stage.py                    # c3k2_heavy split-pair + streamed weights (m8 chain builder)
+│   └── m9_stage.py                    # PSA split-attn (m9 chain builder)
 ├── gen_yolo_data.py                   # XINT8 ONNX -> data/manifest.json + per-Conv bins
 ├── gen_yolo_silu_luts.py              # XINT8 ONNX -> per-Conv SiLU 256-byte LUT bins
 ├── data/                              # gitignored; regenerated by `make data`
-├── test_block_ort.py                  # per-block NPU vs ORT bit-exact host driver
-├── test_chain_ort.py                  # chain NPU vs ORT bit-exact host driver
+├── test_block_ort.py                  # per-block (m0..m8) NPU vs ORT bit-exact host driver
+├── test_chain_ort.py                  # full m0..m10 chain NPU vs ORT bit-exact host driver
 ├── notebooks/
 │   ├── quark_quantization.ipynb       # full int8 recipe (FP32 -> XINT8)
 │   └── yoloexploration.ipynb          # upstream YOLO26n context + COCO val
 ├── models/
 │   ├── phase1_25k_acc0.9424.pt        # FP32 PyTorch source (3.1 MB)
 │   └── phase1_25k_xint8_acc0.8968.onnx # Quark XINT8 deployment artifact (1.7 MB)
-└── run_strix_makefile.lit             # lit test (m0 end-to-end)
+├── run_strix_makefile.lit             # lit test (m0 per-block + full chain end-to-end)
+└── .gitignore                         # ignore build/ and data/
 ```
 
 ## References
