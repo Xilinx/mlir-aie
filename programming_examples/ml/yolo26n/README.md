@@ -167,12 +167,18 @@ with the same flag set as `programming_examples/makefile-common`'s
 
 ## Known limitations and follow-ups
 
-- **PSA batch-loop**: `aie2_yolo_iron.py` runs one sample per Runtime
-  invocation, matching mobilenet's convention. The Quark XINT8 ONNX
-  declares `batch=4` for the PSA `MatMul` shapes; per-sample-per-invocation
-  inside `attn_core` sees `(nh, S, d)`. Throughput today comes from the host
-  invoking the design B=4 times back-to-back filling the pipeline. A
-  proper in-design batch loop for the PSA block is a follow-up.
+- **Kernel-side batching in PSA m9**: multi-sample dispatch already works
+  end-to-end via `CHAIN_N_SAMPLES=N` in `aie2_yolo_iron_partial.py` (host
+  builds a HW BD-chain that replays the per-sample transfer N times in one
+  XRT call; measured 0.33 fps single-frame vs 0.57 fps at N=15). What's
+  *not* yet done: pushing the batch dimension into the PSA m9 kernel
+  signatures so the attention matmuls compute on `(B, nh, S, d)` instead
+  of B sequential `(nh, S, d)` tensors. The Quark XINT8 ONNX declares
+  `batch=4` for those MatMuls, so the on-chip ops could amortize
+  lock/release and BD-reload overhead by processing the batch dim
+  natively. Whether that's a meaningful win depends on whether per-sample
+  time is dominated by PSA or by the m1/m3/m5/m7 conv stride blocks
+  (current evidence points at the latter, so this is exploratory work).
 - **Vectorization headroom**: all kernels are currently scalar AIE2P C
   loops. End-to-end wall time on a chain run is dominated by m1/m3/m5/m7
   conv compute, not by inter-block lock stalls (early `INSTR_EVENT_0/1`
