@@ -528,18 +528,245 @@ def _build_worker(**kw):
         cv3_out_p, cv3_out_c,
         k_cv1, k_split, k_p0c1, k_p0c2, k_p1c1, k_p1c2, k_cv3, k_cv2,
     ):
-        # TODO(next commit): software-pipelined row schedule body.
-        # Placeholder so the IRON construction can be smoke-tested:
-        # drain inputs + emit zero outputs.
-        for _ in range_(in_h):
-            ri = act_in_c.acquire(1)
-            ro = block_out_p.acquire(1)
+        # ==============================================================
+        # Software-pipelined row schedule
+        # ==============================================================
+        # Schedule (LAG=4):
+        #   iter 0..in_h-1: cv1+split on input row t
+        #   iter 1..in_h:   pair0_cv1 on output row t-1
+        #   iter 2..in_h+1: pair0_cv2 on output row t-2
+        #   iter 3..in_h+2: pair1_cv1 on output row t-3
+        #   iter 4..in_h+3: pair1_cv2 + cv3 + cv2 on output row t-4
+        # Total iters: in_h + 4. Preamble 0..3, steady 4..in_h-1, post in_h..in_h+3.
+
+        def _do_cv1_split(in_row):
+            """cv1 chunked + m_0_split — one iter (consumes 1 row of act_in)."""
+            t_r = top_p.acquire(1)
+            ba_r = bot_p.acquire(1)
+            bb_r = bot_to_cv2_p.acquire(1)
+            for wi in range_(N_CV1_CHUNKS):
+                ck = ws_cv1.acquire(1)
+                k_cv1(in_row, ck, bias_cv1, lut_cv1, t_r, ba_r, bb_r,
+                      in_w, in_c, twoc, N_CV1_CHUNKS, wi, rs_cv1)
+                ws_cv1.release(1)
+            top_p.release(1)
+            bot_p.release(1)
+            bot_to_cv2_p.release(1)
+            # m_0_split (static wts, single call, same iter)
+            bc_r = bot_c.acquire(1)
+            sa_r = split_a_p.acquire(1)
+            sb_r = split_b_p.acquire(1)
+            k_split(bc_r, wts_m0c1, bias_m0c1, lut_m0c1,
+                    wts_m0c2, bias_m0c2, lut_m0c2,
+                    sa_r, sb_r, in_w, c, cp, cp, rs_m0c1, rs_m0c2)
+            bot_c.release(1)
+            split_a_p.release(1)
+            split_b_p.release(1)
+
+        def _do_p0c1(border, sa_top, sa_mid, sa_bot):
+            """pair0_cv1 streamed — one iter; writes pair0_mid + pair0_skip."""
+            mid_r = p0_mid_p.acquire(1)
+            sk_r = p0_skip_p.acquire(1)
+            for wi in range_(N_PAIR_CHUNKS):
+                ck = ws_p0c1.acquire(1)
+                k_p0c1(sa_top, sa_mid, sa_bot, ck, bias_p0c1, lut_p0c1, mid_r,
+                       in_w, cp, cp, 3, 3, border, rs_p0c1, N_PAIR_CHUNKS, wi)
+                ws_p0c1.release(1)
+            # Forward middle (output-row-aligned) split_a as the skip path
             for x in range_(in_w):
-                for kk in range_(out_c):
-                    ro[x, 0, kk] = 0
-            _ = ri[0, 0, 0]
-            act_in_c.release(1)
+                for kk in range_(cp):
+                    sk_r[x, 0, kk] = sa_mid[x, 0, kk]
+            p0_mid_p.release(1)
+            p0_skip_p.release(1)
+
+        def _do_p0c2(border, mid_top, mid_mid, mid_bot, skip_row):
+            """pair0_cv2 streamed + skip-add — one iter; writes inner_0_out."""
+            out_r = inner_0_out_p.acquire(1)
+            for wi in range_(N_PAIR_CHUNKS):
+                ck = ws_p0c2.acquire(1)
+                k_p0c2(mid_top, mid_mid, mid_bot, ck, bias_p0c2, lut_p0c2,
+                       skip_row, out_r, in_w, cp, cp, 3, 3, border, rs_p0c2,
+                       N_PAIR_CHUNKS, wi, SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH)
+                ws_p0c2.release(1)
+            inner_0_out_p.release(1)
+
+        def _do_p1c1(border, po_top, po_mid, po_bot):
+            mid_r = p1_mid_p.acquire(1)
+            sk_r = p1_skip_p.acquire(1)
+            for wi in range_(N_PAIR_CHUNKS):
+                ck = ws_p1c1.acquire(1)
+                k_p1c1(po_top, po_mid, po_bot, ck, bias_p1c1, lut_p1c1, mid_r,
+                       in_w, cp, cp, 3, 3, border, rs_p1c1, N_PAIR_CHUNKS, wi)
+                ws_p1c1.release(1)
+            for x in range_(in_w):
+                for kk in range_(cp):
+                    sk_r[x, 0, kk] = po_mid[x, 0, kk]
+            p1_mid_p.release(1)
+            p1_skip_p.release(1)
+
+        def _do_p1c2(border, p1m_top, p1m_mid, p1m_bot, skip_row):
+            out_r = inner_1_out_p.acquire(1)
+            for wi in range_(N_PAIR_CHUNKS):
+                ck = ws_p1c2.acquire(1)
+                k_p1c2(p1m_top, p1m_mid, p1m_bot, ck, bias_p1c2, lut_p1c2,
+                       skip_row, out_r, in_w, cp, cp, 3, 3, border, rs_p1c2,
+                       N_PAIR_CHUNKS, wi, SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH)
+                ws_p1c2.release(1)
+            inner_1_out_p.release(1)
+
+        def _do_cv3_cv2():
+            """cv3 (static wts) + cv2 (streamed) — one iter; emits block_out row."""
+            # cv3
+            i1_r = inner_1_out_c.acquire(1)
+            sb_r = split_b_c.acquire(1)
+            cv3o_pr = cv3_out_p.acquire(1)
+            k_cv3(i1_r, sb_r, wts_m0c3, bias_m0c3, lut_m0c3, cv3o_pr,
+                  in_w, 2 * cp, c, rs_m0c3)
+            inner_1_out_c.release(1)
+            split_b_c.release(1)
+            cv3_out_p.release(1)
+            # cv2 chunked
+            top_r = top_c.acquire(1)
+            bb_r = bot_to_cv2_c.acquire(1)
+            cv3o_cr = cv3_out_c.acquire(1)
+            out_r = block_out_p.acquire(1)
+            for wi in range_(N_CV2_CHUNKS):
+                ck = ws_cv2.acquire(1)
+                k_cv2(top_r, bb_r, cv3o_cr, ck, bias_cv2, lut_cv2, out_r,
+                      in_w, c, out_c, N_CV2_CHUNKS, wi, rs_cv2)
+                ws_cv2.release(1)
+            top_c.release(1)
+            bot_to_cv2_c.release(1)
+            cv3_out_c.release(1)
             block_out_p.release(1)
+
+        def _drain_act_in():
+            in_r = act_in_c.acquire(1)
+            _do_cv1_split(in_r)
+            act_in_c.release(1)
+
+        # ===== PREAMBLE (iters 0-3) =====
+        # iter 0: cv1+split only
+        _drain_act_in()
+        # iter 1: + pair0_cv1 row 0 (border=0)
+        _drain_act_in()
+        sa = split_a_c.acquire(2)
+        _do_p0c1(0, sa[0], sa[0], sa[1])
+        # iter 2: + pair0_cv2 row 0 (border=0)
+        _drain_act_in()
+        sa = split_a_c.acquire(3)
+        _do_p0c1(1, sa[0], sa[1], sa[2])
+        split_a_c.release(1)
+        pm = p0_mid_c.acquire(2)
+        ps = p0_skip_c.acquire(1)
+        _do_p0c2(0, pm[0], pm[0], pm[1], ps)
+        p0_skip_c.release(1)
+        # iter 3: + pair1_cv1 row 0 (border=0)
+        _drain_act_in()
+        sa = split_a_c.acquire(3)
+        _do_p0c1(1, sa[0], sa[1], sa[2])
+        split_a_c.release(1)
+        pm = p0_mid_c.acquire(3)
+        ps = p0_skip_c.acquire(1)
+        _do_p0c2(1, pm[0], pm[1], pm[2], ps)
+        p0_mid_c.release(1)
+        p0_skip_c.release(1)
+        po = inner_0_out_c.acquire(2)
+        _do_p1c1(0, po[0], po[0], po[1])
+
+        # ===== STEADY STATE iter 4 (pair1_cv2 border=0, cv3+cv2 row 0) =====
+        _drain_act_in()
+        sa = split_a_c.acquire(3)
+        _do_p0c1(1, sa[0], sa[1], sa[2])
+        split_a_c.release(1)
+        pm = p0_mid_c.acquire(3)
+        ps = p0_skip_c.acquire(1)
+        _do_p0c2(1, pm[0], pm[1], pm[2], ps)
+        p0_mid_c.release(1)
+        p0_skip_c.release(1)
+        po = inner_0_out_c.acquire(3)
+        _do_p1c1(1, po[0], po[1], po[2])
+        inner_0_out_c.release(1)
+        p1m = p1_mid_c.acquire(2)
+        p1s = p1_skip_c.acquire(1)
+        _do_p1c2(0, p1m[0], p1m[0], p1m[1], p1s)
+        p1_skip_c.release(1)
+        _do_cv3_cv2()
+
+        # ===== STEADY STATE iter 5..in_h-1 (in_h-5 iters, all border=1) =====
+        for _ in range_(in_h - 5):
+            _drain_act_in()
+            sa = split_a_c.acquire(3)
+            _do_p0c1(1, sa[0], sa[1], sa[2])
+            split_a_c.release(1)
+            pm = p0_mid_c.acquire(3)
+            ps = p0_skip_c.acquire(1)
+            _do_p0c2(1, pm[0], pm[1], pm[2], ps)
+            p0_mid_c.release(1)
+            p0_skip_c.release(1)
+            po = inner_0_out_c.acquire(3)
+            _do_p1c1(1, po[0], po[1], po[2])
+            inner_0_out_c.release(1)
+            p1m = p1_mid_c.acquire(3)
+            p1s = p1_skip_c.acquire(1)
+            _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
+            p1_mid_c.release(1)
+            p1_skip_c.release(1)
+            _do_cv3_cv2()
+
+        # ===== POSTAMBLE iter in_h: cv1+split done; pair0_cv1 row in_h-1 (border=2) =====
+        sa = split_a_c.acquire(2)
+        _do_p0c1(2, sa[0], sa[1], sa[1])
+        split_a_c.release(2)
+        pm = p0_mid_c.acquire(3)
+        ps = p0_skip_c.acquire(1)
+        _do_p0c2(1, pm[0], pm[1], pm[2], ps)
+        p0_mid_c.release(1)
+        p0_skip_c.release(1)
+        po = inner_0_out_c.acquire(3)
+        _do_p1c1(1, po[0], po[1], po[2])
+        inner_0_out_c.release(1)
+        p1m = p1_mid_c.acquire(3)
+        p1s = p1_skip_c.acquire(1)
+        _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
+        p1_mid_c.release(1)
+        p1_skip_c.release(1)
+        _do_cv3_cv2()
+
+        # ===== POSTAMBLE iter in_h+1: pair0_cv2 row in_h-1 (border=2) =====
+        pm = p0_mid_c.acquire(2)
+        ps = p0_skip_c.acquire(1)
+        _do_p0c2(2, pm[0], pm[1], pm[1], ps)
+        p0_mid_c.release(2)
+        p0_skip_c.release(1)
+        po = inner_0_out_c.acquire(3)
+        _do_p1c1(1, po[0], po[1], po[2])
+        inner_0_out_c.release(1)
+        p1m = p1_mid_c.acquire(3)
+        p1s = p1_skip_c.acquire(1)
+        _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
+        p1_mid_c.release(1)
+        p1_skip_c.release(1)
+        _do_cv3_cv2()
+
+        # ===== POSTAMBLE iter in_h+2: pair1_cv1 row in_h-1 (border=2) =====
+        po = inner_0_out_c.acquire(2)
+        _do_p1c1(2, po[0], po[1], po[1])
+        inner_0_out_c.release(2)
+        p1m = p1_mid_c.acquire(3)
+        p1s = p1_skip_c.acquire(1)
+        _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
+        p1_mid_c.release(1)
+        p1_skip_c.release(1)
+        _do_cv3_cv2()
+
+        # ===== POSTAMBLE iter in_h+3: pair1_cv2 row in_h-1 (border=2), final cv3+cv2 =====
+        p1m = p1_mid_c.acquire(2)
+        p1s = p1_skip_c.acquire(1)
+        _do_p1c2(2, p1m[0], p1m[1], p1m[1], p1s)
+        p1_mid_c.release(2)
+        p1_skip_c.release(1)
+        _do_cv3_cv2()
 
     return Worker(
         megakernel_fn,
