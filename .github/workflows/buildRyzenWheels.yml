@@ -52,12 +52,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - python_version: "3.10"
-            ENABLE_RTTI: ON
-
-          - python_version: "3.10"
-            ENABLE_RTTI: OFF
-
           - python_version: "3.11"
             ENABLE_RTTI: ON
 
@@ -213,27 +207,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - python_version: "3.10"
-            ENABLE_RTTI: ON
-  
-          - python_version: "3.10"
-            ENABLE_RTTI: OFF
-  
           - python_version: "3.11"
             ENABLE_RTTI: ON
-  
+
           - python_version: "3.11"
             ENABLE_RTTI: OFF
-  
+
           - python_version: "3.12"
             ENABLE_RTTI: ON
-  
+
           - python_version: "3.12"
             ENABLE_RTTI: OFF
-  
+
           - python_version: "3.13"
             ENABLE_RTTI: ON
-  
+
           - python_version: "3.13"
             ENABLE_RTTI: OFF
   
