@@ -15,7 +15,7 @@ from aie.iron.controlflow import range_
 import aie.iron as iron
 
 
-def _transform_gen(func, inputs: list, output, *params, tile_size=16):
+def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
     """
     General tiled transform to apply a function on inputs and obtain a single output.
     Assumes all input and output shapes are the same.
@@ -29,6 +29,10 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16):
                  Scalar dtypes (np.int32, etc.) are passed as MLIR constants;
                  array types are transferred via ObjectFifos.
         tile_size: Size of each tile processed by a worker (default: 16)
+        trace_size: When > 0, enable per-Worker core trace and a
+            ``trace_size``-byte runtime trace buffer (default: 0).  The kernel
+            (or lambda) is expected to emit event0()/event1() markers; the
+            trace shim records cycles between them.
     """
     is_external_func = isinstance(func, iron.ExternalFunction)
 
@@ -147,7 +151,9 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16):
         + [of_out.prod()]
         + [func]
     )
-    worker = Worker(core_body, fn_args=worker_args)
+    worker = Worker(
+        core_body, fn_args=worker_args, trace=(1 if trace_size > 0 else 0)
+    )
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
@@ -158,6 +164,8 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16):
         output_seq_arg = seq_args[num_inputs]
         param_seq_args = seq_args[num_inputs + 1 :]
 
+        if trace_size > 0:
+            rt.enable_trace(trace_size)
         rt.start(worker)
 
         # Fill all input ObjectFifos
@@ -182,7 +190,9 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16):
     return Program(device, rt).resolve_program()
 
 
-def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
+def _transform_parallel_gen(
+    func, inputs: list, output, *params, tile_size=16, trace_size=0
+):
     """
     General parallel transform to apply a function on inputs and obtain a single output.
     Distributes work across multiple AIE tiles for parallel execution.
@@ -196,6 +206,9 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
                  Scalar dtypes (np.int32, etc.) are passed as MLIR constants;
                  array types are transferred via ObjectFifos.
         tile_size: Size of each tile processed by a worker (default: 16)
+        trace_size: When > 0, enable per-column-Worker core trace and a
+            ``trace_size``-byte runtime trace buffer (default: 0).  Same
+            event0()/event1() expectation as :func:`_transform_gen`.
     """
     is_external_func = isinstance(func, iron.ExternalFunction)
 
@@ -328,6 +341,7 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
             + [of.cons() for of in param_of_list]
             + [of_outs[col].prod()]
             + [func],
+            trace=(1 if trace_size > 0 else 0),
         )
         for col in range(num_columns)
     ]
@@ -353,6 +367,8 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
         output_seq_arg = seq_args[num_inputs]
         param_seq_args = seq_args[num_inputs + 1 :]
 
+        if trace_size > 0:
+            rt.enable_trace(trace_size)
         rt.start(*my_workers)
 
         # Fill input ObjectFifos with data
@@ -474,7 +490,7 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
     return _TypeDescriptor()
 
 
-def transform_typed(func, tensor_ty, *params, tile_size=16):
+def transform_typed(func, tensor_ty, *params, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise over a tensor described by *tensor_ty*.
 
     Like :func:`transform` but accepts a numpy ``ndarray`` type descriptor
@@ -497,6 +513,8 @@ def transform_typed(func, tensor_ty, *params, tile_size=16):
             type descriptor (transparently expanded via
             :func:`make_param_descriptor`), or a numpy scalar type.
         tile_size (int, optional): Number of elements per tile. Defaults to 16.
+        trace_size (int, optional): When > 0, enable Worker core trace and a
+            ``trace_size``-byte runtime trace buffer. Defaults to 0 (off).
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
@@ -504,11 +522,16 @@ def transform_typed(func, tensor_ty, *params, tile_size=16):
     fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_typed")
     expanded_params = tuple(_expand_param(p) for p in params)
     return _transform_gen(
-        func, [fake_tensor], fake_tensor, *expanded_params, tile_size=tile_size
+        func,
+        [fake_tensor],
+        fake_tensor,
+        *expanded_params,
+        tile_size=tile_size,
+        trace_size=trace_size,
     )
 
 
-def transform_binary_typed(func, tensor_ty, tile_size=16):
+def transform_binary_typed(func, tensor_ty, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise over two tensors described by *tensor_ty*.
 
     Like :func:`transform_binary` but accepts a numpy ``ndarray`` type
@@ -520,17 +543,23 @@ def transform_binary_typed(func, tensor_ty, tile_size=16):
         tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
         tile_size (int, optional): Number of elements per tile. Defaults to 16.
+        trace_size (int, optional): When > 0, enable Worker core trace and a
+            ``trace_size``-byte runtime trace buffer. Defaults to 0 (off).
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
     fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_binary_typed")
     return _transform_gen(
-        func, [fake_tensor, fake_tensor], fake_tensor, tile_size=tile_size
+        func,
+        [fake_tensor, fake_tensor],
+        fake_tensor,
+        tile_size=tile_size,
+        trace_size=trace_size,
     )
 
 
-def transform_parallel_typed(func, tensor_ty, *params, tile_size=16):
+def transform_parallel_typed(func, tensor_ty, *params, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise in parallel using a tensor type descriptor.
 
     Like :func:`transform_parallel` but accepts a numpy ``ndarray`` type
@@ -545,6 +574,9 @@ def transform_parallel_typed(func, tensor_ty, *params, tile_size=16):
             ``func`` (ExternalFunction only).
         tile_size (int, optional): Number of elements per tile per column.
             Defaults to 16.
+        trace_size (int, optional): When > 0, enable per-column Worker core
+            trace and a ``trace_size``-byte runtime trace buffer.
+            Defaults to 0 (off).
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
@@ -552,11 +584,16 @@ def transform_parallel_typed(func, tensor_ty, *params, tile_size=16):
     fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_parallel_typed")
     expanded_params = tuple(_expand_param(p) for p in params)
     return _transform_parallel_gen(
-        func, [fake_tensor], fake_tensor, *expanded_params, tile_size=tile_size
+        func,
+        [fake_tensor],
+        fake_tensor,
+        *expanded_params,
+        tile_size=tile_size,
+        trace_size=trace_size,
     )
 
 
-def transform_parallel_binary_typed(func, tensor_ty, tile_size=16):
+def transform_parallel_binary_typed(func, tensor_ty, tile_size=16, trace_size=0):
     """Apply ``func`` over two tensors in parallel using a tensor type descriptor.
 
     Like :func:`transform_parallel_binary` but accepts a numpy ``ndarray``
@@ -569,6 +606,9 @@ def transform_parallel_binary_typed(func, tensor_ty, tile_size=16):
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
         tile_size (int, optional): Number of elements per tile per column.
             Defaults to 16.
+        trace_size (int, optional): When > 0, enable per-column Worker core
+            trace and a ``trace_size``-byte runtime trace buffer.
+            Defaults to 0 (off).
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
@@ -577,7 +617,11 @@ def transform_parallel_binary_typed(func, tensor_ty, tile_size=16):
         tensor_ty, tile_size, "transform_parallel_binary_typed"
     )
     return _transform_parallel_gen(
-        func, [fake_tensor, fake_tensor], fake_tensor, tile_size=tile_size
+        func,
+        [fake_tensor, fake_tensor],
+        fake_tensor,
+        tile_size=tile_size,
+        trace_size=trace_size,
     )
 
 
@@ -589,6 +633,7 @@ def transform(
     N: Compile[int],
     dtype: Compile[type],
     tile_size: Compile[int] = 16,
+    trace_size: Compile[int] = 0,
 ):
     """Apply ``func`` to ``input`` and write results to ``output`` using tiled
     processing on a single AIE core.  JIT-friendly: pass to ``iron.jit`` and
@@ -607,12 +652,14 @@ def transform(
         N: Number of elements in the (1-D) input/output tensors.
         dtype: Element dtype shared by input and output.
         tile_size: Number of elements per tile. Defaults to 16.
+        trace_size: When > 0, enable Worker core trace and a runtime trace
+            buffer of this size in bytes. Defaults to 0 (off).
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-    return transform_typed(func, tensor_ty, tile_size=tile_size)
+    return transform_typed(func, tensor_ty, tile_size=tile_size, trace_size=trace_size)
 
 
 def transform_binary(
@@ -624,6 +671,7 @@ def transform_binary(
     N: Compile[int],
     dtype: Compile[type],
     tile_size: Compile[int] = 16,
+    trace_size: Compile[int] = 0,
 ):
     """Apply ``func`` to ``first`` and ``second`` and write results to
     ``output`` using tiled processing on a single AIE core.  JIT-friendly.
@@ -637,12 +685,16 @@ def transform_binary(
         N: Number of elements in each tensor.
         dtype: Element dtype shared by all three tensors.
         tile_size: Number of elements per tile. Defaults to 16.
+        trace_size: When > 0, enable Worker core trace and a runtime trace
+            buffer of this size in bytes. Defaults to 0 (off).
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-    return transform_binary_typed(func, tensor_ty, tile_size=tile_size)
+    return transform_binary_typed(
+        func, tensor_ty, tile_size=tile_size, trace_size=trace_size
+    )
 
 
 def transform_parallel(
@@ -653,6 +705,7 @@ def transform_parallel(
     N: Compile[int],
     dtype: Compile[type],
     tile_size: Compile[int] = 16,
+    trace_size: Compile[int] = 0,
 ):
     """Apply ``func`` to ``input`` in parallel across all available NPU
     columns.  JIT-friendly.
@@ -668,12 +721,16 @@ def transform_parallel(
         N: Number of elements in the (1-D) tensors.
         dtype: Element dtype shared by input and output.
         tile_size: Number of elements per tile per column. Defaults to 16.
+        trace_size: When > 0, enable per-column Worker core trace and a
+            runtime trace buffer of this size in bytes. Defaults to 0 (off).
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-    return transform_parallel_typed(func, tensor_ty, tile_size=tile_size)
+    return transform_parallel_typed(
+        func, tensor_ty, tile_size=tile_size, trace_size=trace_size
+    )
 
 
 def transform_parallel_binary(
@@ -685,6 +742,7 @@ def transform_parallel_binary(
     N: Compile[int],
     dtype: Compile[type],
     tile_size: Compile[int] = 16,
+    trace_size: Compile[int] = 0,
 ):
     """Apply ``func`` to ``first`` and ``second`` in parallel across all
     available NPU columns.  JIT-friendly.
@@ -698,9 +756,13 @@ def transform_parallel_binary(
         N: Number of elements in each tensor.
         dtype: Element dtype shared by all three tensors.
         tile_size: Number of elements per tile per column. Defaults to 16.
+        trace_size: When > 0, enable per-column Worker core trace and a
+            runtime trace buffer of this size in bytes. Defaults to 0 (off).
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-    return transform_parallel_binary_typed(func, tensor_ty, tile_size=tile_size)
+    return transform_parallel_binary_typed(
+        func, tensor_ty, tile_size=tile_size, trace_size=trace_size
+    )
