@@ -215,6 +215,7 @@ module @cascade_pinned_wrong_direction {
   aie.device(npu1) {
     // CHECK: error: tile (0, 5) violates cascade adjacency
     // CHECK: note: cascade source peer placed at (0, 4)
+    // CHECK: note: cascade adjacency requires the destination tile to be one row South or one column East of the source tile
     %dst = aie.logical_tile<CoreTile>(0, 5)
     %src = aie.logical_tile<CoreTile>(0, 4)
     aie.cascade_flow(%src, %dst)
@@ -323,6 +324,7 @@ module @buffer_adjacency_both_pinned_violation {
   aie.device(npu1) {
     // CHECK: error: tile (0, 2) violates shared-L1 buffer adjacency
     // CHECK: note: shared-L1 buffer consumer peer placed at (3, 5)
+    // CHECK: note: shared-L1 buffer adjacency requires this LTO to be on a tile whose L1 is shared with the buffer owner's tile
     %owner = aie.logical_tile<CoreTile>(0, 2)
     %buf   = aie.buffer(%owner) : memref<16xi32>
     aie.core(%owner) { aie.end }

@@ -354,6 +354,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                     << "tile (" << tile.col << ", " << tile.row
                     << ") violates shared-L1 buffer adjacency";
         attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
+        diag.attachNote()
+            << "shared-L1 buffer adjacency requires this LTO to be on a tile "
+               "whose L1 is shared with the buffer owner's tile (N/S "
+               "neighbor, or W neighbor per the device's checkerboard rule)";
         return failure();
       }
       if (!satisfiesAdjacency(logicalTile, tile, cascadeAdjacency,
@@ -362,6 +366,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                     << "tile (" << tile.col << ", " << tile.row
                     << ") violates cascade adjacency";
         attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
+        diag.attachNote()
+            << "cascade adjacency requires the destination tile to be one row "
+               "South or one column East of the source tile";
         return failure();
       }
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
@@ -482,12 +489,18 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
           attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (hasCascade)
           attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
-        if (computePeerWasCause)
+        if (computePeerWasCause) {
           attachPeerNotes(diag, logicalTile, computePeerAdjacency,
                           [](bool thisIsProducer) -> StringRef {
                             return thisIsProducer ? "compute-peer consumer"
                                                   : "compute-peer producer";
                           });
+          diag.attachNote()
+              << "to fix, pin this LTO to a position that is shared-L1 with "
+                 "the placed compute-peers above, or pin one of those peers "
+                 "to a different coordinate so this LTO's constraints become "
+                 "satisfiable";
+        }
         return failure();
       }
 
