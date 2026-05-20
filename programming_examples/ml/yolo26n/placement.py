@@ -9,8 +9,12 @@ Layout: 8 columns × 6 rows.
   rows 2-5 : compute (4 per col × 8 = 32 tiles)
 Adjacent rows in the same column share memory (we exploit for fused pairs).
 
-Compute tile budget: 28 of 32 used (4 spare on column 2, rows 2; column 3-5
-row 2). See tile_layout.py for the ASCII diagram.
+Compute tile budget: all 32 of 32 used (no spares). Earlier drafts had
+4 spare slots on row 2; m8 grew from 5 to 8 tiles (split inner pairs +
+dedicated cv3/cv2), m9 grew from 5 to 7 (split attn_core, unfused
+proj/ffn/cv2), and m10 fused down to 1 tile — net +4 tiles used.
+See tile_layout.py for the ASCII grid (still showing the earlier draft
+layout; the current PLACEMENT[block] dict below is the source of truth).
 
 Op-to-tile fusion (more than 1 op per tile in multi-conv blocks):
   c3k2_small  (3 tiles): cv1 / m.0_inner_pair / cv2

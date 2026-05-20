@@ -125,8 +125,11 @@ The 11 blocks map to four kernel families:
 | m9 | PSA (attention + FFN) | `yolo_m9_{cv1_split, qkv, qk_row, attn_scale, softmax_row, sv_row, pe_add_row, proj_skip_row, ffn_0_silu_row, ffn_1_skip_row, cv2_concat2_streamed}` | 5 |
 | m10 | head | `yolo_m10_{conv2dk1_silu_xy_pool, linear_gemm, softmax}` | 2 |
 
-Total: **28 of 32** compute tiles used. See `tile_layout.py` for the
-ASCII diagram and per-block weight + peak activation sizing.
+Total: **all 32 of 32** compute tiles used (0,2..7,5 — no spares).
+The grid in `tile_layout.py` is a planning artifact from an earlier
+draft when m8 used 5 tiles and m9 used 5; the current designs grew m8
+to 8 (split inner pairs + dedicated cv3/cv2) and m9 to 7 (split
+attn_core, unfused proj/ffn/cv2), with m10 fused to 1 tile.
 
 ### Kernel symbol mangling
 
