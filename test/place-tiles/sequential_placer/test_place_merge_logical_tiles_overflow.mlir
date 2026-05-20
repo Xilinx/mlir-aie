@@ -20,7 +20,8 @@
 // RUN:   | FileCheck %s --check-prefix=NOMERGE-OOC
 // RUN: aie-opt --aie-place-tiles %s | FileCheck %s --check-prefix=MERGE-OK
 
-// NOMERGE-OOC: error: no ShimNOCTile with sufficient DMA capacity
+// NOMERGE-OOC: error: no ShimNOCTile has sufficient DMA capacity for {{[0-9]+ input/[0-9]+ output channels}}
+// NOMERGE-OOC: note: to fix, pin this ShimNOCTile
 
 // MERGE-OK-LABEL: @nomerge_overflow
 // MERGE-OK:       aie.device(npu1)

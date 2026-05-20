@@ -566,13 +566,14 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     int availOut = maxOut - availability.outputChannelsUsed[tile];
 
     auto diag = logicalTile.emitError();
-    if (isConstrained)
-      diag << "tile (" << tile.col << ", " << tile.row << ") requires ";
-    else
-      diag << "tile requires ";
-    diag << inChannels << " input/" << outChannels
+    diag << "tile (" << tile.col << ", " << tile.row << ") requires "
+         << inChannels << " input/" << outChannels
          << " output DMA channels, but only " << availIn << " input/"
          << availOut << " output available";
+    if (!isConstrained)
+      diag.attachNote() << "placer selected this tile; to fix, pin this LTO "
+                           "to a tile with more spare DMA capacity, or reduce "
+                           "the LTO's DMA fanin (e.g. via memtile staging)";
     return failure();
   }
 
@@ -983,17 +984,25 @@ void SequentialPlacer::attachPeerNotes(
   auto it = adjacency.tileToEdges.find(logicalTile.getOperation());
   if (it == adjacency.tileToEdges.end())
     return;
+  int unplacedCount = 0;
   for (unsigned idx : it->second) {
     auto [edgeFirst, edgeSecond] = adjacency.edges[idx];
     bool thisIsFirst = edgeFirst.getOperation() == logicalTile.getOperation();
     TileLike peer = thisIsFirst ? edgeSecond : edgeFirst;
     auto peerPos = resolvePeerPosition(peer, result);
-    if (!peerPos)
+    if (!peerPos) {
+      ++unplacedCount;
       continue;
+    }
     diag.attachNote(peer.getLoc())
         << labelPeer(thisIsFirst) << " peer placed at (" << peerPos->col << ", "
         << peerPos->row << ")";
   }
+  if (unplacedCount > 0)
+    diag.attachNote() << unplacedCount
+                      << " additional peer(s) on this LTO are not yet placed "
+                         "(placed after this LTO; their positions may "
+                         "subsequently constrain or unblock this placement)";
 }
 
 SequentialPlacer::Adjacency SequentialPlacer::buildObjectFifoAdjacency(
@@ -1135,10 +1144,23 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   auto maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
                                         numInputChannels, numOutputChannels,
                                         logicalTile.getTileType());
-  if (!maybeTile)
-    return logicalTile.emitError()
-           << "no " << stringifyAIETileType(logicalTile.getTileType())
-           << " with sufficient DMA capacity";
+  if (!maybeTile) {
+    StringRef tileTypeName =
+        stringifyAIETileType(logicalTile.getTileType());
+    auto diag = logicalTile.emitError();
+    diag << "no " << tileTypeName << " has sufficient DMA capacity for "
+         << numInputChannels << " input/" << numOutputChannels
+         << " output channels ";
+    if (colConstraint)
+      diag << "at column " << *colConstraint;
+    else
+      diag << "near centroid column " << centroidCol;
+    diag.attachNote() << "to fix, pin this " << tileTypeName
+                      << " to a column with available DMA budget, or rebalance "
+                         "compute peers so the centroid lands on a less-busy "
+                         "column";
+    return failure();
+  }
 
   result[logicalTile] = *maybeTile;
   if (!mergeLogicalTiles)
