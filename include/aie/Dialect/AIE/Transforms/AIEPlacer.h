@@ -156,6 +156,12 @@ public:
         tileToEdges[second.getOperation()].push_back(idx);
     }
 
+    // True if `op` has at least one edge in this adjacency. Hides the
+    // tileToEdges index from callers that only need the boolean.
+    bool hasEdges(mlir::Operation *op) const {
+      return tileToEdges.count(op) != 0;
+    }
+
     // Convenience for IR walkers: skip if either Value isn't a TileLike.
     void addEdgeFromValues(mlir::Value a, mlir::Value b) {
       if (!a || !b)
@@ -181,7 +187,7 @@ private:
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
   std::optional<TileID> findTileWithCapacity(int targetCol,
-                                             std::vector<TileID> &tiles,
+                                             llvm::ArrayRef<TileID> tiles,
                                              int requiredInputChannels,
                                              int requiredOutputChannels,
                                              AIETileType requestedType);
@@ -247,6 +253,14 @@ private:
   // constraint hint) and return failure.
   mlir::LogicalResult enforceAdjacency(LogicalTileOp logicalTile, TileID tile,
                                        const AdjacencyKind &kind);
+
+  // Record that `logicalTile` is placed at `tile`. For CoreTile LTOs
+  // this also removes the tile from availability and asks `ctx` to
+  // soft-reserve the tile's mem-affinity neighbor slots for the LTO's
+  // compute peers. `debugLabel` ("pinned" / "unconstrained") names the
+  // placement path in the LLVM_DEBUG trace.
+  void recordPlacement(LogicalTileOp logicalTile, TileID tile,
+                       PlacementContext &ctx, llvm::StringRef debugLabel);
 
   // Per-call inputs for `findUnconstrainedCoreCandidate`. Bundles the
   // adjacency + demand state that Phase 3 builds for each candidate
@@ -319,6 +333,15 @@ private:
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
+
+  // BFS the connectivity component of `logicalTile` through the given
+  // adjacencies and return the column-average of every placed CoreTile
+  // peer reached transitively. Returns 0 if no placed cores are
+  // reachable (the caller then falls back to a user-supplied column
+  // constraint or column 0).
+  int computeCentroidColumn(
+      LogicalTileOp logicalTile,
+      llvm::ArrayRef<const Adjacency *> connectivityAdjacencies);
 
   // Place a non-core (mem/shim) LTO near the centroid column of its placed
   // core peers, reached transitively through `connectivityAdjacencies`.

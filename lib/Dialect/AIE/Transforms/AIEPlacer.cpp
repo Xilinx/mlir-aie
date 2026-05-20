@@ -350,17 +350,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                                                channelRequirements, true)))
         return failure();
 
-      result[logicalTile] = tile;
-      LLVM_DEBUG(llvm::dbgs() << DEBUG_TYPE << ": placed pinned LTO "
-                              << logicalTile.getLoc() << " at (" << tile.col
-                              << ", " << tile.row << ")\n");
-      // Only remove fully constrained compute tiles from availability.
-      // Mem/Shim may still host additional logical tiles as long as
-      // channel/DMA capacity permits.
-      if (logicalTile.getTileType() == AIETileType::CoreTile) {
-        availability.removeTile(tile, logicalTile.getTileType());
-        ctx.reserveNeighborSlots(logicalTile.getOperation(), tile);
-      }
+      // Only CoreTile placements remove from availability + reserve
+      // neighbor slots; mem/shim may still host additional logical
+      // tiles as long as channel/DMA capacity permits.
+      recordPlacement(logicalTile, tile, ctx, "pinned");
       continue;
     }
 
@@ -384,9 +377,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       if (!placement) {
         bool adjacencyWasCause =
             sawConstraintMatch && allConstraintMatchesFailedAdjacency &&
-            bufferAdjacency.tileToEdges.count(logicalTile.getOperation());
+            bufferAdjacency.hasEdges(logicalTile.getOperation());
         bool hasCascade =
-            cascadeAdjacency.tileToEdges.count(logicalTile.getOperation());
+            cascadeAdjacency.hasEdges(logicalTile.getOperation());
         InFlightDiagnostic diag = logicalTile.emitError();
         if (col || row) {
           diag << "no compute tile available matching constraint ("
@@ -428,13 +421,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                                                channelRequirements, false)))
         return failure();
 
-      result[logicalTile] = *placement;
-      LLVM_DEBUG(llvm::dbgs() << DEBUG_TYPE << ": placed unconstrained LTO "
-                              << logicalTile.getLoc() << " at ("
-                              << placement->col << ", " << placement->row
-                              << ")\n");
-      availability.removeTile(*placement, AIETileType::CoreTile);
-      ctx.reserveNeighborSlots(logicalTile.getOperation(), *placement);
+      recordPlacement(logicalTile, *placement, ctx, "unconstrained");
     }
 
     if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
@@ -893,6 +880,19 @@ LogicalResult SequentialPlacer::enforceAdjacency(LogicalTileOp logicalTile,
   return failure();
 }
 
+void SequentialPlacer::recordPlacement(LogicalTileOp logicalTile, TileID tile,
+                                       PlacementContext &ctx,
+                                       StringRef debugLabel) {
+  result[logicalTile] = tile;
+  LLVM_DEBUG(llvm::dbgs() << DEBUG_TYPE << ": placed " << debugLabel << " LTO "
+                          << logicalTile.getLoc() << " at (" << tile.col << ", "
+                          << tile.row << ")\n");
+  if (logicalTile.getTileType() == AIETileType::CoreTile) {
+    availability.removeTile(tile, AIETileType::CoreTile);
+    ctx.reserveNeighborSlots(logicalTile.getOperation(), tile);
+  }
+}
+
 std::pair<int, int>
 SequentialPlacer::totalComputePeers(Operation *op, const Adjacency &adjacency) {
   int in = 0, out = 0;
@@ -919,7 +919,7 @@ bool SequentialPlacer::satisfiesComputePeer(
   // needNeighborIn/Out for a tile whose non-peer channel count exceeds
   // its DMA budget, but no neighbor placement can fix that and the
   // channel validator emits the right error later.)
-  if (!computePeerAdjacency.tileToEdges.count(logicalTile.getOperation()))
+  if (!computePeerAdjacency.hasEdges(logicalTile.getOperation()))
     return true;
 
   // Self side: count placed peers that would land non-neighbor of candidate,
@@ -1149,15 +1149,14 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
   }
 }
 
-LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
+int SequentialPlacer::computeCentroidColumn(
     LogicalTileOp logicalTile,
-    ArrayRef<const Adjacency *> connectivityAdjacencies,
-    const llvm::DenseMap<Operation *, std::pair<int, int>>
-        &channelRequirements) {
-
+    ArrayRef<const Adjacency *> connectivityAdjacencies) {
   // BFS the connected component, summing placed-core columns. Walks
   // through unplaced LTO peers so the centroid sees cores reachable
-  // transitively; TileOp peers terminate the walk.
+  // transitively; TileOp peers terminate the walk. Cores are leaves
+  // because they don't relay between non-core peers via core-to-core
+  // fifos.
   llvm::DenseSet<Operation *> visited;
   SmallVector<Operation *, 8> queue{logicalTile.getOperation()};
   visited.insert(logicalTile.getOperation());
@@ -1181,19 +1180,26 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
             sumCols += resIt->second.col;
             ++placedCoreCount;
           }
-          // Cores are leaves for centroid: they don't relay between
-          // non-core peers via core-to-core fifos.
           return;
         }
         queue.push_back(peerOp);
       });
     }
   }
+  if (placedCoreCount == 0)
+    return 0;
+  // Round-to-nearest column: +half before truncating.
+  return (sumCols + placedCoreCount / 2) / placedCoreCount;
+}
 
+LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
+    LogicalTileOp logicalTile,
+    ArrayRef<const Adjacency *> connectivityAdjacencies,
+    const llvm::DenseMap<Operation *, std::pair<int, int>>
+        &channelRequirements) {
+  int centroidCol =
+      computeCentroidColumn(logicalTile, connectivityAdjacencies);
   auto colConstraint = logicalTile.tryGetCol();
-  int centroidCol = placedCoreCount > 0
-                        ? (sumCols + placedCoreCount / 2) / placedCoreCount
-                        : 0;
   int targetCol = colConstraint ? *colConstraint : centroidCol;
 
   auto [numInputChannels, numOutputChannels] =
@@ -1236,7 +1242,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
 }
 
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
-    int targetCol, std::vector<TileID> &tiles, int requiredInputChannels,
+    int targetCol, llvm::ArrayRef<TileID> tiles, int requiredInputChannels,
     int requiredOutputChannels, AIETileType requestedType) {
   // Choose a physical tile by lexicographic minimum of
   //   (|col - targetCol|, current load, col, row).
