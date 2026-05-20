@@ -1,5 +1,5 @@
 cmake>=3.31, <4.0
-pybind11>=2.13.0
+pybind11>=3.0.4
 setuptools>=61.0
 wheel
 ninja!=1.13.0
