@@ -241,7 +241,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << "\n");
   }
   PlacementContext ctx{*targetModel, computePeerAdjacency, needNeighborIn,
-                       needNeighborOut, /*reservedFor=*/{}};
+                       needNeighborOut};
 
   // Per-kind predicates / labelers shared by all phase-3 call sites below.
   // Buffer: consumer LTO (edge.first) must satisfy isLegalMemAffinity to the

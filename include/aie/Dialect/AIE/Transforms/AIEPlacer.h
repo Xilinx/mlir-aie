@@ -179,7 +179,8 @@ private:
     const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut;
     // Mutable: each placement of an LTO with neighbor demand reserves
     // its mem-affinity neighbor slots for that LTO's compute peers.
-    llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *, 2>> reservedFor;
+    llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *, 2>>
+        reservedFor{};
 
     int neighborDemand(mlir::Operation *op) const {
       return needNeighborIn.lookup(op) + needNeighborOut.lookup(op);
