@@ -9,9 +9,15 @@
 
 A single AIE compute core scales ``a`` by a runtime scalar ``factor`` to produce
 ``c = a * factor``.  Default config: 4096-element ``int16`` vector tiled into
-four 1024-element sub-vectors.  Driven both as a standalone script (jit + run +
-verify) and from the per-sibling ``Makefile`` via ``--xclbin-path`` /
-``--insts-path`` compile-only mode.
+four 1024-element sub-vectors.  The design body delegates to
+``aie.iron.algorithms.transform_typed``, which handles the
+ObjectFifo / Worker / Runtime plumbing (including trace) for any
+``(input_tile, output_tile, *param_tensors, tile_size)``-shaped
+ExternalFunction.
+
+Driven both as a standalone script (jit + run + verify) and from the per-
+sibling ``Makefile`` via ``--xclbin-path`` / ``--insts-path`` compile-only
+mode.
 """
 
 import argparse
@@ -21,17 +27,8 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import (
-    Compile,
-    ExternalFunction,
-    In,
-    ObjectFifo,
-    Out,
-    Program,
-    Runtime,
-    Worker,
-)
-from aie.iron.controlflow import range_
+from aie.iron import Compile, ExternalFunction, In, Out
+from aie.iron.algorithms import transform_typed
 from aie.iron.device import NPU1Col1, NPU2
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
@@ -76,36 +73,9 @@ def vector_scalar_mul(
         use_chess=use_chess,
     )
 
-    of_in = ObjectFifo(tile_ty, name="in")
-    of_factor = ObjectFifo(scalar_ty, name="infactor")
-    of_out = ObjectFifo(tile_ty, name="out")
-
-    def core_body(of_in, of_factor, of_out, scale_fn):
-        elem_factor = of_factor.acquire(1)
-        for _ in range_(num_sub_vectors):
-            elem_in = of_in.acquire(1)
-            elem_out = of_out.acquire(1)
-            scale_fn(elem_in, elem_out, elem_factor, tile_size)
-            of_in.release(1)
-            of_out.release(1)
-        of_factor.release(1)
-
-    worker = Worker(
-        core_body,
-        fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale],
-        trace=(1 if trace_size > 0 else 0),
+    return transform_typed(
+        scale, tensor_ty, scalar_ty, tile_size=tile_size, trace_size=trace_size
     )
-
-    rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.fill(of_factor.prod(), f_in)
-        rt.drain(of_out.cons(), c_out, wait=True)
-
-    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def _make_argparser():
