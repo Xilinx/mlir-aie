@@ -138,13 +138,36 @@ Mobilenet's `bottleneck/{regular,pipeline,cascade}.py` are three
 placements of the same logical compute exploring these axes — worth
 borrowing patterns from.
 
-## Phase 1 — Pilot: m3 vectorized
+## Phase 1 — Pilot: m1 vectorized (revised; was m3)
 
-m3 is the chain bottleneck (1,675 ms standalone). Vectorizing m3 alone
-moves the chain to m5-bound (~1,663 ms) — small win. But m3 also exercises
-every pattern we need for Phase 2: chunked weight streaming,
-OIYXI8O8 weights, stride-2, bias-as-accumulator-init, banker SRS, SiLU
-LUT.
+**Pivot rationale**: m3 is the bottleneck but uses the *chunked* weight-
+streaming variant, which adds StaticWeightStream + multi-chunk loading
+complexity on top of the vec kernel + layout migration work. m1 uses
+the same `mmul<4, 8, 8>` math but with the *non-chunked* kernel —
+weights fit in tile L1 in one shot. Proving the pattern on m1 first
+lets us port to chunked (m3, m5, m7) mechanically in Phase 2 once the
+inner-loop algorithm is verified bit-exact.
+
+m1's standalone time today is 849 ms — vectorizing it brings the chain's
+next bottleneck (m3) into focus while we apply the same template.
+
+### Pre-Phase-1 audit: weight layout
+
+**Question to answer before writing the kernel:** does the mlir-air-style
+`mmul<4, 8, 8>` inner loop want OIYXI8O8 weights in the exact byte order
+`gen_yolo_data.py` emits today, or does it want a slight re-block (e.g.,
+`(oc_outer, ic_outer, ky, kx, ic_inner, oc_inner)` vs `(oc_outer, ic_outer,
+ky, kx, oc_inner, ic_inner)`)?
+
+If the vec kernel wants a different byte ordering of the same logical
+tensor, **add the re-block to `gen_yolo_data.py` (1× host work) rather
+than do it in the kernel (per-row, every dispatch)**. Same principle as
+why we host-reorder OIYX → OIYXI8O8 today.
+
+This audit happens as the first task of Phase 1, before writing kernel
+code. If the existing layout matches, no change. If not, update
+`reorder_oiyx_to_oiyxi8o8` (or add a sibling function for the new
+layout) and regenerate `data/`.
 
 **Tasks:**
 1. Rewrite `yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked.cc` for
@@ -170,16 +193,26 @@ LUT.
 6. **Per-block bench**: target 150-300 ms (10× over scalar 1,675 ms).
 7. **Chain bit-exact**: `make chain run_chain` still passes 0 mismatches.
 
-## Phase 2 — Extend kernel family
+## Phase 2 — Extend kernel family to chunked variant + remaining sizes
 
-m1 (non-chunked), m5, m7 (chunked) reuse the Phase 1 kernel. The
-`-DKERNEL_SUFFIX=_mN` mangling already handles per-block compilation;
-each block just needs its transpose-in/out memtile-DMA wiring updated
-and its per-block bench re-measured.
+m3, m5, m7 use the chunked weight-streaming variant. Take the Phase 1
+inner-loop kernel (proven on m1) and wrap it in the chunked-load
+pattern: per-row weight DMA from MemTile fills the next chunk of L1
+weight buffer; kernel mmul consumes one chunk at a time; lock-step
+between weight DMA and compute.
 
-After Phase 2: chain steady-state should be m2-bound (~1,094 ms / 1 fps)
-or m6-bound (~628 ms / 1.6 fps) depending on whether m2 was still HWC
-internally. Real progress emerges here.
+The `-DKERNEL_SUFFIX=_mN` mangling already handles per-block
+compilation. Each block needs:
+- New `_chunked_vec.cc` file (one source, three .o via suffix mangling)
+- IRON design updates per block: transpose-in/out memtile fifos +
+  StaticWeightStream chunking config
+
+m3 is the chain bottleneck (1,675 ms), so verify there first; m5 and m7
+follow with the same structural changes.
+
+After Phase 2: chain steady-state should be m2-bound (~1,094 ms / 1 fps).
+The 4 conv_stride blocks have all moved into the 100-300 ms range.
+Real fps progress emerges here.
 
 ## Phase 3 — c3k2 (m2, m4, m6, m8)
 
