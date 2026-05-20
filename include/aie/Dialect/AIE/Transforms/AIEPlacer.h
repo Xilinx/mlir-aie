@@ -68,62 +68,36 @@ protected:
 // Sequential placement algorithm
 //
 // Greedy, single-pass placer that maps each `aie.logical_tile` (LTO) to a
-// physical (col, row). The algorithm runs in four phases:
+// physical (col, row). Four phases:
 //
-//   Phase 1 -- Collect:
-//     Walk the device and bucket the ops the placer needs:
-//     LogicalTileOps, ObjectFifoCreateOps, ObjectFifoLinkOps,
-//     CascadeFlowOps, FlowOps, PacketFlowOps.
+//   1. Collect LogicalTileOp / ObjectFifo* / Cascade* / Flow* / PacketFlow*
+//      from the device.
+//   2. Build per-LTO constraints: buffer/cascade/compute-peer adjacencies,
+//      channel requirements, and needNeighborIn/Out (the minimum number of
+//      compute peers per LTO that MUST land on a shared-L1 neighbor to fit
+//      the per-tile DMA budget).
+//   3. Place compute tiles. Sort by constraint level (pinned -> partial ->
+//      unpinned) then by descending placementPriority. For each LTO:
+//      validate buffer/cascade/compute-peer constraints and channel budget,
+//      then claim the tile. Unpinned candidates are tried in two passes:
+//      first the slots not soft-reserved for another demand-bearing LTO's
+//      peers, then a fallback pass that accepts reserved slots. Each
+//      placement of a demand-bearing LTO soft-reserves its mem-affinity
+//      neighbor slots for that LTO's compute peers.
+//   4. Place each remaining non-core (mem/shim) LTO near the column
+//      centroid of its placed-core peers. With mergeLogicalTiles == true
+//      (default) several non-core LTOs may share one physical tile when
+//      DMA capacity allows; with mergeLogicalTiles == false each non-core
+//      LTO claims its own physical tile.
 //
-//   Phase 2 -- Constraint construction:
-//     Build per-LTO constraints from the collected IR:
-//       * buffer adjacency  (shared-L1 producer/consumer pairs)
-//       * cascade adjacency (cascade source -> destination pairs)
-//       * compute-peer adjacency (compute->compute ObjectFifos)
-//       * channelRequirements (per-LTO {input, output} DMA channel demand)
-//       * needNeighborIn / needNeighborOut (the minimum number of compute
-//         peers per LTO that MUST land on a shared-L1 neighbor to fit the
-//         per-tile DMA budget; this is what drives placement priority and
-//         soft-reservation of neighbor slots).
+// Greedy: once a tile is chosen the decision is final, with no backtracking.
+// If a later LTO's constraints become unsatisfiable given prior placements,
+// the placer emits an error pointing at the LTOs the user can manually pin
+// to break the deadlock.
 //
-//   Phase 3 -- Compute-tile placement:
-//     Sort LogicalTileOps by (constraint level ascending; pinned before
-//     partial before unpinned), then within an equal level by
-//     placementPriority descending (max of self demand vs. highest peer
-//     demand) so high-fanin Workers and their compute peers cluster to the
-//     front of the worklist. Iterate the worklist:
-//       * fully pinned LTO -> validate adjacency + channel capacity at the
-//         pinned coord, accept or fail.
-//       * unpinned or partially-pinned compute tile -> walk candidates
-//         (column-major; for high-demand LTOs additionally re-sorted to
-//         prefer interior rows) in two passes: first only candidates that
-//         aren't soft-reserved by an unrelated demand-bearing LTO's peers,
-//         then a fall-back pass that accepts reserved candidates. Each
-//         candidate is filtered by satisfiesAdjacency (buffer, cascade)
-//         and satisfiesComputePeer (DMA-budget feasibility). On success,
-//         remove the chosen tile from availability and (if the LTO has
-//         neighbor demand) soft-reserve its mem-affinity neighbor slots
-//         for that LTO's compute peers.
-//       * unpinned ShimPLTile -> hard error (no DMAs).
-//
-//   Phase 4 -- Non-core tile placement:
-//     For each remaining non-core (mem/shim) LTO, BFS its connectivity
-//     component to find the centroid column of its placed-core peers,
-//     then pick the tile of the requested type nearest the centroid
-//     column with enough spare DMA capacity. By default (mergeLogicalTiles
-//     == true) multiple non-core LTOs may share a physical tile when
-//     their combined DMA channel usage still fits; with mergeLogicalTiles
-//     == false each non-core LTO claims its own tile.
-//
-// Greedy placement: once a tile is chosen for an LTO the decision is
-// final. The placer does not backtrack. If a later LTO's constraints
-// become unsatisfiable given prior placements, the placer emits an error
-// and asks the user to manually pin tiles to break the deadlock.
-//
-// Core-to-core ObjectFifos are special-cased into the compute-peer
-// constraint subsystem; they aren't counted against the channel budget
-// when the producer and consumer end up on shared-L1 neighbor tiles
-// (the lowering picks the shared-memory path in that case).
+// Compute-to-compute ObjectFifos consume no DMA channel when their endpoints
+// land on shared-L1 neighbor tiles, so they enter the placer as a separate
+// compute-peer adjacency rather than as channel demand.
 class SequentialPlacer : public Placer {
 public:
   SequentialPlacer(std::optional<int> coresPerCol = std::nullopt,
@@ -150,8 +124,7 @@ public:
     // Convenience for IR walkers: skip if either Value isn't a TileLike.
     void addEdgeFromValues(mlir::Value a, mlir::Value b);
 
-    // True if `op` has at least one edge in this adjacency. Hides the
-    // tileToEdges index from callers that only need the boolean.
+    // True if `op` has at least one edge in this adjacency.
     bool hasEdges(mlir::Operation *op) const {
       return tileToEdges.count(op) != 0;
     }
@@ -168,16 +141,11 @@ private:
   TileAvailability availability;
   const AIETargetModel *targetModel = nullptr;
 
-  // DMA channel direction selector. Used in place of a bool flag at
-  // call sites of updateChannelUsage so the call reads as
-  // `updateChannelUsage(tile, DmaDir::Out, n)` instead of relying on
-  // the reader to recall whether `true` means input or output.
+  // DMA channel direction selector.
   enum class DmaDir { In, Out };
 
-  // Whether a placement was specified by the user (pinned via
-  // col/row attributes) or chosen by the placer. Drives whether the
-  // channel-overflow diagnostic includes a "placer selected this tile"
-  // remediation note.
+  // Whether an LTO's placement was pinned by the user (via col/row
+  // attributes) or chosen by the placer.
   enum class PlacementOrigin { Pinned, Selected };
 
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
@@ -203,9 +171,7 @@ private:
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  // Per-place() bookkeeping bundled into one struct holding the per-LTO
-  // neighbor-demand maps and the soft-reservation table. Lives on the
-  // stack of place() for the duration of placement.
+  // Per-place() neighbor-demand maps and soft-reservation table.
   struct PlacementContext {
     const AIETargetModel &targetModel;
     const Adjacency &computePeerAdjacency;

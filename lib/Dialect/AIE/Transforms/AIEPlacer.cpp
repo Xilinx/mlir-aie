@@ -45,11 +45,7 @@ void forEachPeer(mlir::Operation *op,
 }
 
 // Invoke `fn(TileID)` on every CoreTile neighbor of `at` that is a legal
-// shared-L1 mem-affinity neighbor per the target model. Bounds-checks
-// the (col, row) arithmetic and applies both the tile-type and
-// isLegalMemAffinity filters in one place so the placer's hot paths
-// (reserveNeighborSlots, satisfiesComputePeer forward-look) stay
-// declarative.
+// shared-L1 mem-affinity neighbor per the target model.
 template <typename F>
 void forEachMemAffinityNeighbor(const AIETargetModel &targetModel, TileID at,
                                 F &&fn) {
@@ -94,7 +90,6 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
   this->targetModel = &targetModel;
   assignedNonCoreTiles.clear();
 
-  // Collect all available physical tiles from device
   for (int col = 0; col < targetModel.columns(); col++) {
     for (int row = 0; row < targetModel.rows(); row++) {
       TileID id = {col, row};
@@ -114,21 +109,18 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
     }
   }
 
-  // Sort tiles for sequential placement
-  // Compute tiles: column-major (fill column vertically before next column)
+  // Compute tiles iterate column-major (fill a column top-to-bottom before
+  // moving right); non-compute tiles iterate row-major.
   auto compTileCmp = [](TileID a, TileID b) {
     if (a.col != b.col)
       return a.col < b.col;
     return a.row < b.row;
   };
-
-  // Non-compute tiles: row-major
   auto rowMajorCmp = [](TileID a, TileID b) {
     if (a.row != b.row)
       return a.row < b.row;
     return a.col < b.col;
   };
-
   std::sort(availability.compTiles.begin(), availability.compTiles.end(),
             compTileCmp);
   std::sort(availability.nonCompTiles.begin(), availability.nonCompTiles.end(),
@@ -137,50 +129,37 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
   availability.compTilesSet.insert(availability.compTiles.begin(),
                                    availability.compTiles.end());
 
-  // Limit cores per column if specified
   if (coresPerCol.has_value()) {
-    // Calculate max cores per column in the device
     llvm::DenseMap<int, int> coresInColumn;
-    for (const auto &tile : availability.compTiles) {
+    for (const auto &tile : availability.compTiles)
       coresInColumn[tile.col]++;
-    }
     int maxDeviceCoresPerCol = 0;
-    for (const auto &[col, count] : coresInColumn) {
+    for (const auto &[col, count] : coresInColumn)
       maxDeviceCoresPerCol = std::max(maxDeviceCoresPerCol, count);
-    }
     deviceCoresPerCol = maxDeviceCoresPerCol;
-
     limitCoresPerColumn(*coresPerCol, targetModel.columns());
   }
 }
 
 void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
-  // Group compute tiles by column
   llvm::DenseMap<int, std::vector<TileID>> tilesByColumn;
-
-  for (const auto &tile : availability.compTiles) {
+  for (const auto &tile : availability.compTiles)
     tilesByColumn[tile.col].push_back(tile);
-  }
 
-  // Build new limited list, taking only first maxCoresPerCol from each column
+  // Keep the first maxCoresPerCol tiles from each column. The per-column
+  // vectors are already row-sorted because compTiles is column-major.
   std::vector<TileID> limitedTiles;
-
   for (int col = 0; col < numColumns; col++) {
     auto it = tilesByColumn.find(col);
     if (it == tilesByColumn.end())
-      continue; // No tiles in this column
-
+      continue;
     const auto &tilesInCol = it->second;
     size_t numToTake =
         std::min(tilesInCol.size(), static_cast<size_t>(maxCoresPerCol));
-
-    // Take first N tiles from this column (already sorted within column)
     limitedTiles.insert(limitedTiles.end(), tilesInCol.begin(),
                         tilesInCol.begin() + numToTake);
   }
 
-  // Replace availability.compTiles with limited list and rebuild the
-  // O(1) membership shadow used by the forward-look hot path.
   availability.compTiles = limitedTiles;
   availability.compTilesSet.clear();
   availability.compTilesSet.insert(availability.compTiles.begin(),
@@ -261,13 +240,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << " needNeighborOut=" << needNeighborOut[lt.getOperation()]
                << "\n");
   }
-  // The per-place() context bundles demand bookkeeping and the soft-
-  // reservation table. Soft-reservation: when a demand-bearing LTO is
-  // placed, its mem-affinity neighbor slots are reserved for that LTO's
-  // compute peers. Other LTOs fall into a reserved slot only if no
-  // unreserved slot fits, preventing unrelated low-demand LTOs from
-  // cornering a high-fanin Worker's neighbors and making the design
-  // unsolvable.
   PlacementContext ctx{*targetModel, computePeerAdjacency, needNeighborIn,
                        needNeighborOut, /*reservedFor=*/{}};
 
@@ -294,9 +266,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     return thisIsSrc ? "cascade destination" : "cascade source";
   };
 
-  // Bundle each pairwise-legality adjacency with its predicate, peer
-  // label, short error name, and educational hint so the pinned-tile
-  // violation paths can share one enforceAdjacency call per kind.
   AdjacencyKind bufferKind{
       bufferAdjacency, bufferPred, bufferLabel, "shared-L1 buffer",
       "shared-L1 buffer adjacency requires this LTO to be on a tile "
@@ -368,9 +337,6 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
               PlacementOrigin::Pinned)))
         return failure();
 
-      // Only CoreTile placements remove from availability + reserve
-      // neighbor slots; mem/shim may still host additional logical
-      // tiles as long as channel/DMA capacity permits.
       recordPlacement(logicalTile, tile, ctx, "pinned");
       continue;
     }
@@ -619,14 +585,10 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     LogicalTileOp logicalTile, TileID tile,
     const llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements,
     PlacementOrigin origin) {
-
-  // Get channel requirements
   auto [inChannels, outChannels] =
       channelRequirements.lookup(logicalTile.getOperation());
 
-  // Validate capacity
   if (!hasAvailableChannels(tile, inChannels, outChannels)) {
-    // Get max channels
     int maxIn = logicalTile.getNumDestConnections(WireBundle::DMA);
     int maxOut = logicalTile.getNumSourceConnections(WireBundle::DMA);
     int availIn = maxIn - availability.inputChannelsUsed[tile];
@@ -644,7 +606,6 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     return failure();
   }
 
-  // Update channel usage
   if (inChannels > 0)
     updateChannelUsage(tile, DmaDir::In, inChannels);
   if (outChannels > 0)
@@ -915,11 +876,9 @@ void SequentialPlacer::recordPlacement(LogicalTileOp logicalTile, TileID tile,
 std::pair<int, int>
 SequentialPlacer::totalComputePeers(Operation *op, const Adjacency &adjacency) {
   int in = 0, out = 0;
+  // Compute-peer convention: edge.first is the producer (OUT for `op`),
+  // edge.second is the consumer (IN for `op`).
   forEachPeer(op, adjacency, [&](TileLike /*peer*/, bool thisIsFirst) {
-    // In compute-peer adjacency edge.first = producer, edge.second =
-    // consumer. So `op` being `first` means it's the producer (counts
-    // as OUT); `op` being `second` means it's the consumer (counts
-    // as IN).
     if (thisIsFirst)
       ++out;
     else
@@ -941,11 +900,8 @@ bool SequentialPlacer::satisfiesComputePeer(
   if (!computePeerAdjacency.hasEdges(logicalTile.getOperation()))
     return true;
 
-  // Self side: count placed peers that would land non-neighbor of candidate,
-  // and reject if that exceeds our slack. In compute-peer adjacency,
-  // edge.first = producer, edge.second = consumer; so `logicalTile` being
-  // the second endpoint (thisIsFirst == false) means it's a consumer
-  // (peer is producing INTO it), which counts toward the IN direction.
+  // Self side: count placed peers that would land non-neighbor of
+  // candidate, and reject if the count exceeds the slack budget.
   int selfNonNeighborIn = 0, selfNonNeighborOut = 0;
   int selfNeighborIn = 0, selfNeighborOut = 0;
   forEachPeer(
@@ -980,16 +936,13 @@ bool SequentialPlacer::satisfiesComputePeer(
   if (selfNonNeighborOut > selfSlackOut)
     return false;
 
-  // Forward-look: even if no placed peer violates slack at this candidate,
-  // future peers still to be placed must land on a physical compute neighbor
-  // of candidate. Count how many of candidate's physical compute-tile
-  // neighbors are still in availability.compTiles (free slots that a future
-  // peer could occupy). Iterate all 4 cardinal directions and ask
-  // isLegalMemAffinity to decide which are actually shared-L1 neighbors --
-  // AIE2 cores share L1 with N, S, and the checkerboard W neighbor (not E).
-  // The remaining need after subtracting already-neighbor placements must fit
-  // in those free slots. Free slots can be used for an IN-peer OR an OUT-peer
-  // (not both), so we approximate by checking the sum.
+  // Forward-look: even if no placed peer violates slack at this
+  // candidate, future peers still to be placed must land on a physical
+  // compute neighbor of candidate. Count candidate's free shared-L1
+  // compute neighbors (N, S, and the checkerboard W neighbor on AIE2)
+  // and reject if the remaining demand exceeds that count. A free slot
+  // can host an IN-peer OR an OUT-peer (not both); the sum-check is a
+  // conservative approximation.
   if (selfNeedIn > 0 || selfNeedOut > 0) {
     int freeNeighborSlots = 0;
     forEachMemAffinityNeighbor(*targetModel, candidate, [&](TileID nb) {
@@ -1035,17 +988,16 @@ bool SequentialPlacer::satisfiesComputePeer(
         forEachPeer(
             peerLTO.getOperation(), computePeerAdjacency,
             [&](TileLike peerPeer, bool peerLTOIsFirst) {
-              // peerLTO is the consumer in this edge when it's the
-              // second endpoint (compute-peer convention is
-              // producer=first, consumer=second). logicalIsPeerOut ==
-              // true selects edges where peerLTO is the producer (i.e.
-              // peerLTOIsFirst), so we want the OPPOSITE direction.
+              // peerLTO is the consumer of this edge when it sits on
+              // edge.second (compute-peer convention is producer=first,
+              // consumer=second). logicalIsPeerOut selects peer's OUT
+              // edges (peer = producer), which is the opposite role.
               bool peerIsConsumerHere = !peerLTOIsFirst;
               if (logicalIsPeerOut == peerIsConsumerHere)
                 return;
               if (peerPeer.getOperation() == logicalTile.getOperation()) {
-                // The edge to logicalTile we are currently deciding:
-                // count candidate against it.
+                // For the edge currently being decided, score candidate
+                // against peerPos.
                 if (!targetModel->isLegalMemAffinity(
                         peerPos->col, peerPos->row, candidate.col,
                         candidate.row))
