@@ -51,18 +51,18 @@ static Buffers make_buffers(xrt::device &instr_device, xrt::device &io_device,
                             xrt::kernel &kernel,
                             const std::vector<uint32_t> &instr_v) {
   Buffers buffers;
-  buffers.instr = std::make_unique<xrt::bo>(
-      instr_device, instr_v.size() * sizeof(uint32_t), XCL_BO_FLAGS_CACHEABLE,
-      kernel.group_id(1));
-  buffers.in_a = std::make_unique<xrt::bo>(
-      io_device, IN_SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-      kernel.group_id(3));
-  buffers.in_b = std::make_unique<xrt::bo>(
-      io_device, IN_SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-      kernel.group_id(4));
-  buffers.out = std::make_unique<xrt::bo>(
-      io_device, OUT_SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-      kernel.group_id(5));
+  buffers.instr =
+      std::make_unique<xrt::bo>(instr_device, instr_v.size() * sizeof(uint32_t),
+                                XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+  buffers.in_a =
+      std::make_unique<xrt::bo>(io_device, IN_SIZE * sizeof(int32_t),
+                                XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  buffers.in_b =
+      std::make_unique<xrt::bo>(io_device, IN_SIZE * sizeof(int32_t),
+                                XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  buffers.out =
+      std::make_unique<xrt::bo>(io_device, OUT_SIZE * sizeof(int32_t),
+                                XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
   return buffers;
 }
 
@@ -124,7 +124,8 @@ static int run_mode(const cxxopts::ParseResult &vm,
                     const std::string &mode) {
   auto device = xrt::device(0);
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
-  std::string kernel_name = find_kernel_name(xclbin, vm["kernel"].as<std::string>());
+  std::string kernel_name =
+      find_kernel_name(xclbin, vm["kernel"].as<std::string>());
 
   device.register_xclbin(xclbin);
   auto context = std::make_unique<xrt::hw_context>(device, xclbin.get_uuid());
@@ -176,8 +177,9 @@ static int run_mode(const cxxopts::ParseResult &vm,
 int main(int argc, const char *argv[]) {
   cxxopts::Options options("xrt_handle_lifetime");
   test_utils::add_default_options(options);
-  options.add_options()("mode", "Test mode",
-                        cxxopts::value<std::string>()->default_value("ordered"));
+  options.add_options()(
+      "mode", "Test mode",
+      cxxopts::value<std::string>()->default_value("ordered"));
 
   cxxopts::ParseResult vm;
   test_utils::parse_options(argc, argv, options, vm);
