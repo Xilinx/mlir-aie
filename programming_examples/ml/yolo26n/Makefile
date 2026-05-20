@@ -192,6 +192,12 @@ $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_heavy_m_0_split_plus_cv3_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_m_0_split_plus_cv3_vec.cc ; \
     mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
 
+# m8 megakernel: fused cv3+cv2 (m8_back). Computes cv3 once per row
+# (on cv2 chunk 0), reuses cv3 output across the N_CV2_CHUNKS calls.
+$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
+  $(eval $(BUILD)/yolo_m8_back_cv3_cv2_fused_$(blk).o: $(SRCDIR)/kernels/yolo_m8_back_cv3_cv2_fused_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
 # Per-block c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 sharing
 # c3k2_heavy m6/m8 also build per-block variants of). -DKERNEL_SUFFIX=_mN
 # gives each block a uniquely-named symbol.
