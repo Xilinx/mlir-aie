@@ -23,6 +23,33 @@ using namespace xilinx::AIE;
 static std::optional<TileID> resolvePeerPosition(TileLike peer,
                                                  const PlacementResult &placed);
 
+namespace {
+// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that is a legal
+// shared-L1 mem-affinity neighbor per the target model. Bounds-checks
+// the (col, row) arithmetic and applies both the tile-type and
+// isLegalMemAffinity filters in one place so the placer's hot paths
+// (reserveNeighborSlots, satisfiesComputePeer forward-look) stay
+// declarative.
+template <typename F>
+void forEachMemAffinityNeighbor(const AIETargetModel &targetModel, TileID at,
+                                F &&fn) {
+  for (auto [dc, dr] : {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0},
+                        std::pair{1, 0}}) {
+    int nc = at.col + dc;
+    int nr = at.row + dr;
+    if (nc < 0 || nc >= targetModel.columns())
+      continue;
+    if (nr < 0 || nr >= targetModel.rows())
+      continue;
+    if (targetModel.getTileType(nc, nr) != AIETileType::CoreTile)
+      continue;
+    if (!targetModel.isLegalMemAffinity(at.col, at.row, nc, nr))
+      continue;
+    fn(TileID{nc, nr});
+  }
+}
+} // namespace
+
 void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
   this->targetModel = &targetModel;
   assignedNonCoreTiles.clear();
@@ -209,77 +236,16 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                << " needNeighborOut=" << needNeighborOut[lt.getOperation()]
                << "\n");
   }
-  auto neighborDemand = [&](Operation *op) {
-    return needNeighborIn.lookup(op) + needNeighborOut.lookup(op);
-  };
-  // Each LTO's placement priority bundles its own neighbor demand with that
-  // of its highest-demand compute peer. A peer of a high-fanin Worker needs
-  // to be placed BEFORE unrelated unpinned LTOs so the Worker's adjacent
-  // tiles aren't consumed by neighbors-don't-care cores; otherwise the
-  // peer would be left without a slot adjacent to the high-fanin Worker.
-  auto placementPriority = [&](Operation *op) {
-    int self = neighborDemand(op);
-    int best = 0;
-    auto it = computePeerAdjacency.tileToEdges.find(op);
-    if (it != computePeerAdjacency.tileToEdges.end())
-      for (unsigned idx : it->second) {
-        auto [f, s] = computePeerAdjacency.edges[idx];
-        Operation *peer =
-            (f.getOperation() == op) ? s.getOperation() : f.getOperation();
-        best = std::max(best, neighborDemand(peer));
-      }
-    return std::max(self, best);
-  };
-  // Soft-reserve mem-aff neighbor slots of any LTO with neighbor demand for
-  // that LTO's peers. Other LTOs only fall into a reserved slot if no
-  // unreserved slot fits. Without this, unrelated low-demand LTOs (often
-  // peers of a different high-fanin Worker) grab the exact slots the
-  // demand-bearing LTO's in/out peers need to be neighbors -- which then
-  // makes the design unsolvable.
-  llvm::DenseMap<TileID, llvm::SmallVector<Operation *, 2>> reservedFor;
-  auto reserveNeighborSlots = [&](Operation *placedOp, TileID at) {
-    if (neighborDemand(placedOp) <= 0)
-      return;
-    for (auto [dc, dr] : {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0},
-                          std::pair{1, 0}}) {
-      int nc = at.col + dc;
-      int nr = at.row + dr;
-      if (nc < 0 || nc >= targetModel->columns())
-        continue;
-      if (nr < 0 || nr >= targetModel->rows())
-        continue;
-      if (targetModel->getTileType(nc, nr) != AIETileType::CoreTile)
-        continue;
-      if (!targetModel->isLegalMemAffinity(at.col, at.row, nc, nr))
-        continue;
-      reservedFor[TileID{nc, nr}].push_back(placedOp);
-    }
-  };
-  auto isReservedForOther = [&](Operation *lto, TileID candidate) {
-    auto it = reservedFor.find(candidate);
-    if (it == reservedFor.end())
-      return false;
-    auto edgesIt = computePeerAdjacency.tileToEdges.find(lto);
-    for (Operation *owner : it->second) {
-      bool isPeer = false;
-      if (owner == lto)
-        isPeer = true;
-      else if (edgesIt != computePeerAdjacency.tileToEdges.end()) {
-        for (unsigned idx : edgesIt->second) {
-          auto [f, s] = computePeerAdjacency.edges[idx];
-          Operation *peer =
-              (f.getOperation() == lto) ? s.getOperation() : f.getOperation();
-          if (peer == owner) {
-            isPeer = true;
-            break;
-          }
-        }
-      }
-      if (!isPeer)
-        return true;
-    }
-    return false;
-  };
+  // The per-place() context bundles demand bookkeeping and soft-
+  // reservation state. Its methods replace the lambdas the original
+  // place() spelled out inline; see PlacementContext in the header.
+  // Soft-reservation: when a demand-bearing LTO is placed, its
+  // mem-affinity neighbor slots are reserved for that LTO's peers.
+  // Other LTOs fall into a reserved slot only if no unreserved slot
+  // fits, preventing unrelated low-demand LTOs from cornering a high-
+  // fanin Worker's neighbors and making the design unsolvable.
+  PlacementContext ctx{*targetModel, computePeerAdjacency, needNeighborIn,
+                       needNeighborOut, /*reservedFor=*/{}};
 
   // Per-kind predicates / labelers shared by all phase-3 call sites below.
   // Buffer: consumer LTO (edge.first) must satisfy isLegalMemAffinity to the
@@ -339,15 +305,15 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                      // compute-peer producers/consumers also rise to the
                      // front and claim the Worker's neighbor tiles before
                      // unrelated LTOs consume them.
-                     int pa = placementPriority(a.getOperation());
-                     int pb = placementPriority(b.getOperation());
+                     int pa = ctx.placementPriority(a.getOperation());
+                     int pb = ctx.placementPriority(b.getOperation());
                      if (pa != pb)
                        return pa > pb;
                      // Among equal priority, place the high-demand LTO
                      // itself first so its peers can be steered to its
                      // neighbors immediately afterward.
-                     return neighborDemand(a.getOperation()) >
-                            neighborDemand(b.getOperation());
+                     return ctx.neighborDemand(a.getOperation()) >
+                            ctx.neighborDemand(b.getOperation());
                    });
 
   for (auto logicalTile : orderedTiles) {
@@ -391,85 +357,27 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       // channel/DMA capacity permits.
       if (logicalTile.getTileType() == AIETileType::CoreTile) {
         availability.removeTile(tile, logicalTile.getTileType());
-        reserveNeighborSlots(logicalTile.getOperation(), tile);
+        ctx.reserveNeighborSlots(logicalTile.getOperation(), tile);
       }
       continue;
     }
 
     // Place compute tiles with partial constraint support
     if (logicalTile.getTileType() == AIETileType::CoreTile) {
-      std::optional<TileID> placement = std::nullopt;
-      bool sawConstraintMatch = false;
-      bool allConstraintMatchesFailedAdjacency = true;
-      bool computePeerWasCause = false;
-
-      auto satisfiesComputePeerHere = [&](TileID candidate) {
-        return satisfiesComputePeer(logicalTile, candidate,
-                                    computePeerAdjacency, needNeighborIn,
-                                    needNeighborOut);
+      auto isReservedForOtherBound = [&](Operation *lto, TileID candidate) {
+        return ctx.isReservedForOther(lto, candidate);
       };
-
-      // compTiles is sorted column-major top-to-bottom. For high-fanin
-      // LTOs (neighborDemand > 0) the placer needs an INTERIOR tile (with
-      // two compute neighbors) so its compute-peer producers/consumers can
-      // sit on either side. Reorder the candidate iteration for THIS LTO
-      // only to prefer high-neighbor-count rows first; LTOs with no
-      // neighbor demand fall through to the default column-major order so
-      // existing single-worker tests keep landing on (col, 2).
-      auto computeNeighborCount = [&](TileID t) {
-        int n = 0;
-        if (t.row > 0 &&
-            targetModel->getTileType(t.col, t.row - 1) == AIETileType::CoreTile)
-          ++n;
-        if (t.row + 1 < targetModel->rows() &&
-            targetModel->getTileType(t.col, t.row + 1) == AIETileType::CoreTile)
-          ++n;
-        return n;
-      };
-      SmallVector<TileID> orderedCandidates(availability.compTiles.begin(),
-                                            availability.compTiles.end());
-      if (neighborDemand(logicalTile.getOperation()) > 0) {
-        std::stable_sort(orderedCandidates.begin(), orderedCandidates.end(),
-                         [&](TileID a, TileID b) {
-                           if (a.col != b.col)
-                             return a.col < b.col;
-                           int na = computeNeighborCount(a);
-                           int nb = computeNeighborCount(b);
-                           if (na != nb)
-                             return na > nb;
-                           return a.row < b.row;
-                         });
-      }
-      // Two passes: first prefer candidates that aren't reserved for an
-      // unrelated demand-bearing LTO's peers; fall back to reserved
-      // candidates only if nothing else fits.
-      for (bool allowReserved : {false, true}) {
-        for (const TileID &candidate : orderedCandidates) {
-          if (col && candidate.col != *col)
-            continue;
-          if (row && candidate.row != *row)
-            continue;
-          if (!allowReserved &&
-              isReservedForOther(logicalTile.getOperation(), candidate))
-            continue;
-          sawConstraintMatch = true;
-          if (!satisfiesAdjacency(logicalTile, candidate, bufferAdjacency,
-                                  bufferPred))
-            continue;
-          allConstraintMatchesFailedAdjacency = false;
-          if (!satisfiesAdjacency(logicalTile, candidate, cascadeAdjacency,
-                                  cascadePred))
-            continue;
-          if (!satisfiesComputePeerHere(candidate)) {
-            computePeerWasCause = true;
-            continue;
-          }
-          placement = candidate;
-          break;
-        }
-        if (placement)
-          break;
-      }
+      UnpinnedPlacementInputs inputs{
+          bufferAdjacency,    bufferPred,         cascadeAdjacency,
+          cascadePred,        computePeerAdjacency, needNeighborIn,
+          needNeighborOut,    isReservedForOtherBound};
+      auto search =
+          findUnconstrainedCoreCandidate(logicalTile, col, row, inputs);
+      std::optional<TileID> placement = search.placement;
+      bool sawConstraintMatch = search.sawConstraintMatch;
+      bool allConstraintMatchesFailedAdjacency =
+          search.allConstraintMatchesFailedAdjacency;
+      bool computePeerWasCause = search.computePeerWasCause;
 
       if (!placement) {
         bool adjacencyWasCause =
@@ -524,7 +432,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                               << placement->col << ", " << placement->row
                               << ")\n");
       availability.removeTile(*placement, AIETileType::CoreTile);
-      reserveNeighborSlots(logicalTile.getOperation(), *placement);
+      ctx.reserveNeighborSlots(logicalTile.getOperation(), *placement);
     }
 
     if (logicalTile.getTileType() == AIETileType::ShimPLTile) {
@@ -534,9 +442,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     }
   }
 
-  // Phase 4: Place each remaining non-core (mem/shim) LTO at the centroid
-  // column of its placed core peers, reached transitively through any
-  // connectivity adjacency.
+  // Phase 4: place every still-unplaced non-core (mem/shim) LTO at the
+  // centroid column of its placed core peers.
+  return placeNonCoreLogicalTiles(logicalTiles, objectFifos, flows, pktFlows,
+                                  channelRequirements);
+}
+
+LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
+    ArrayRef<LogicalTileOp> logicalTiles, ArrayRef<ObjectFifoCreateOp> objectFifos,
+    ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
+    const llvm::DenseMap<Operation *, std::pair<int, int>>
+        &channelRequirements) {
+  // Connectivity adjacencies (per-fifo and per-flow) drive the centroid
+  // BFS that picks the column near a non-core LTO's compute peers.
   auto objectFifoAdjacency = buildObjectFifoAdjacency(objectFifos);
   auto flowAdjacency = buildFlowAdjacency(flows, pktFlows);
   SmallVector<const Adjacency *, 2> connectivityAdjacencies = {
@@ -571,8 +489,133 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                                           channelRequirements)))
       return failure();
   }
-
   return success();
+}
+
+int SequentialPlacer::PlacementContext::placementPriority(Operation *op) const {
+  int self = neighborDemand(op);
+  int best = 0;
+  auto it = computePeerAdjacency.tileToEdges.find(op);
+  if (it != computePeerAdjacency.tileToEdges.end())
+    for (unsigned idx : it->second) {
+      auto [f, s] = computePeerAdjacency.edges[idx];
+      Operation *peer =
+          (f.getOperation() == op) ? s.getOperation() : f.getOperation();
+      best = std::max(best, neighborDemand(peer));
+    }
+  return std::max(self, best);
+}
+
+void SequentialPlacer::PlacementContext::reserveNeighborSlots(
+    Operation *placedOp, TileID at) {
+  if (neighborDemand(placedOp) <= 0)
+    return;
+  forEachMemAffinityNeighbor(targetModel, at, [&](TileID nb) {
+    reservedFor[nb].push_back(placedOp);
+  });
+}
+
+bool SequentialPlacer::PlacementContext::isReservedForOther(
+    Operation *lto, TileID candidate) const {
+  auto it = reservedFor.find(candidate);
+  if (it == reservedFor.end())
+    return false;
+  auto edgesIt = computePeerAdjacency.tileToEdges.find(lto);
+  for (Operation *owner : it->second) {
+    bool isPeer = false;
+    if (owner == lto)
+      isPeer = true;
+    else if (edgesIt != computePeerAdjacency.tileToEdges.end()) {
+      for (unsigned idx : edgesIt->second) {
+        auto [f, s] = computePeerAdjacency.edges[idx];
+        Operation *peer =
+            (f.getOperation() == lto) ? s.getOperation() : f.getOperation();
+        if (peer == owner) {
+          isPeer = true;
+          break;
+        }
+      }
+    }
+    if (!isPeer)
+      return true;
+  }
+  return false;
+}
+
+SequentialPlacer::UnpinnedSearchResult
+SequentialPlacer::findUnconstrainedCoreCandidate(
+    LogicalTileOp logicalTile, std::optional<int> col, std::optional<int> row,
+    const UnpinnedPlacementInputs &inputs) {
+  UnpinnedSearchResult result;
+  auto neighborDemand = [&](Operation *op) {
+    return inputs.needNeighborIn.lookup(op) +
+           inputs.needNeighborOut.lookup(op);
+  };
+
+  // compTiles is sorted column-major top-to-bottom. For high-fanin LTOs
+  // (neighborDemand > 0) the placer needs an INTERIOR tile (with two
+  // compute neighbors) so its compute-peer producers/consumers can sit
+  // on either side. Reorder the candidate iteration for THIS LTO only
+  // to prefer high-neighbor-count rows first; LTOs with no neighbor
+  // demand fall through to the default column-major order so existing
+  // single-worker tests keep landing on (col, 2).
+  auto computeNeighborCount = [&](TileID t) {
+    int n = 0;
+    if (t.row > 0 &&
+        targetModel->getTileType(t.col, t.row - 1) == AIETileType::CoreTile)
+      ++n;
+    if (t.row + 1 < targetModel->rows() &&
+        targetModel->getTileType(t.col, t.row + 1) == AIETileType::CoreTile)
+      ++n;
+    return n;
+  };
+  SmallVector<TileID> orderedCandidates(availability.compTiles.begin(),
+                                        availability.compTiles.end());
+  if (neighborDemand(logicalTile.getOperation()) > 0) {
+    std::stable_sort(orderedCandidates.begin(), orderedCandidates.end(),
+                     [&](TileID a, TileID b) {
+                       if (a.col != b.col)
+                         return a.col < b.col;
+                       int na = computeNeighborCount(a);
+                       int nb = computeNeighborCount(b);
+                       if (na != nb)
+                         return na > nb;
+                       return a.row < b.row;
+                     });
+  }
+
+  // Two passes: first prefer candidates that aren't reserved for an
+  // unrelated demand-bearing LTO's peers; fall back to reserved
+  // candidates only if nothing else fits.
+  for (bool allowReserved : {false, true}) {
+    for (const TileID &candidate : orderedCandidates) {
+      if (col && candidate.col != *col)
+        continue;
+      if (row && candidate.row != *row)
+        continue;
+      if (!allowReserved &&
+          inputs.isReservedForOther(logicalTile.getOperation(), candidate))
+        continue;
+      result.sawConstraintMatch = true;
+      if (!satisfiesAdjacency(logicalTile, candidate, inputs.bufferAdjacency,
+                              inputs.bufferPred))
+        continue;
+      result.allConstraintMatchesFailedAdjacency = false;
+      if (!satisfiesAdjacency(logicalTile, candidate, inputs.cascadeAdjacency,
+                              inputs.cascadePred))
+        continue;
+      if (!satisfiesComputePeer(logicalTile, candidate,
+                                inputs.computePeerAdjacency,
+                                inputs.needNeighborIn,
+                                inputs.needNeighborOut)) {
+        result.computePeerWasCause = true;
+        continue;
+      }
+      result.placement = candidate;
+      return result;
+    }
+  }
+  return result;
 }
 
 LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
@@ -922,22 +965,10 @@ bool SequentialPlacer::satisfiesComputePeer(
   // (not both), so we approximate by checking the sum.
   if (selfNeedIn > 0 || selfNeedOut > 0) {
     int freeNeighborSlots = 0;
-    for (auto [dc, dr] : {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0},
-                          std::pair{1, 0}}) {
-      int nc = candidate.col + dc;
-      int nr = candidate.row + dr;
-      if (nc < 0 || nc >= targetModel->columns())
-        continue;
-      if (nr < 0 || nr >= targetModel->rows())
-        continue;
-      if (targetModel->getTileType(nc, nr) != AIETileType::CoreTile)
-        continue;
-      if (!targetModel->isLegalMemAffinity(candidate.col, candidate.row, nc,
-                                           nr))
-        continue;
-      if (availability.compTilesSet.contains(TileID{nc, nr}))
+    forEachMemAffinityNeighbor(*targetModel, candidate, [&](TileID nb) {
+      if (availability.compTilesSet.contains(nb))
         ++freeNeighborSlots;
-    }
+    });
     int remainingInNeed = std::max(0, selfNeedIn - selfNeighborIn);
     int remainingOutNeed = std::max(0, selfNeedOut - selfNeighborOut);
     if (remainingInNeed + remainingOutNeed > freeNeighborSlots)
