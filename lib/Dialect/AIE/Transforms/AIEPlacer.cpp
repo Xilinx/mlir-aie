@@ -70,7 +70,7 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
   // Limit cores per column if specified
   if (coresPerCol.has_value()) {
     // Calculate max cores per column in the device
-    std::map<int, int> coresInColumn;
+    llvm::DenseMap<int, int> coresInColumn;
     for (const auto &tile : availability.compTiles) {
       coresInColumn[tile.col]++;
     }
@@ -86,7 +86,7 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
 
 void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
   // Group compute tiles by column
-  std::map<int, std::vector<TileID>> tilesByColumn;
+  llvm::DenseMap<int, std::vector<TileID>> tilesByColumn;
 
   for (const auto &tile : availability.compTiles) {
     tilesByColumn[tile.col].push_back(tile);
@@ -188,11 +188,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     }
     int inBudget = lt.getNumDestConnections(WireBundle::DMA);
     int outBudget = lt.getNumSourceConnections(WireBundle::DMA);
-    auto chanIt = channelRequirements.find(lt.getOperation());
-    int nonPeerIn =
-        chanIt != channelRequirements.end() ? chanIt->second.first : 0;
-    int nonPeerOut =
-        chanIt != channelRequirements.end() ? chanIt->second.second : 0;
+    auto [nonPeerIn, nonPeerOut] =
+        channelRequirements.lookup(lt.getOperation());
     needNeighborIn[lt.getOperation()] =
         std::max(0, peerIn - (inBudget - nonPeerIn));
     needNeighborOut[lt.getOperation()] =
@@ -528,10 +525,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   std::stable_sort(nonCoreOrdered.begin(), nonCoreOrdered.end(),
                    [&](LogicalTileOp a, LogicalTileOp b) {
                      auto demand = [&](LogicalTileOp lt) {
-                       auto it = channelRequirements.find(lt.getOperation());
-                       if (it == channelRequirements.end())
-                         return 0;
-                       return it->second.first + it->second.second;
+                       auto chans =
+                           channelRequirements.lookup(lt.getOperation());
+                       return chans.first + chans.second;
                      };
                      return demand(a) > demand(b);
                    });
@@ -551,12 +547,8 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     bool isConstrained) {
 
   // Get channel requirements
-  auto it = channelRequirements.find(logicalTile.getOperation());
-  int inChannels = 0, outChannels = 0;
-  if (it != channelRequirements.end()) {
-    inChannels = it->second.first;
-    outChannels = it->second.second;
-  }
+  auto [inChannels, outChannels] =
+      channelRequirements.lookup(logicalTile.getOperation());
 
   // Validate capacity
   if (!hasAvailableChannels(tile, inChannels, outChannels)) {
@@ -1133,11 +1125,8 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
                         : 0;
   int targetCol = colConstraint ? *colConstraint : centroidCol;
 
-  auto chanIt = channelRequirements.find(logicalTile.getOperation());
-  int numInputChannels =
-      chanIt != channelRequirements.end() ? chanIt->second.first : 0;
-  int numOutputChannels =
-      chanIt != channelRequirements.end() ? chanIt->second.second : 0;
+  auto [numInputChannels, numOutputChannels] =
+      channelRequirements.lookup(logicalTile.getOperation());
 
   auto maybeTile = findTileWithCapacity(targetCol, availability.nonCompTiles,
                                         numInputChannels, numOutputChannels,
