@@ -184,6 +184,14 @@ $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv2_concat3_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv2_concat3_streamed_vec.cc ; \
     mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
 
+# Option 2 (m8 fusion experiment): split + cv3 fused kernel. Not yet wired
+# into any IRON design — built standalone here to confirm it compiles.
+# Next session: rework scripts/m8_stage.py to use this kernel and remove
+# the cv3 tile (5,4).
+$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_heavy_m_0_split_plus_cv3_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_m_0_split_plus_cv3_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
 # Per-block c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 sharing
 # c3k2_heavy m6/m8 also build per-block variants of). -DKERNEL_SUFFIX=_mN
 # gives each block a uniquely-named symbol.
