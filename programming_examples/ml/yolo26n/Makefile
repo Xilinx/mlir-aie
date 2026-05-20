@@ -106,6 +106,14 @@ $(BUILD)/%.o: $(SRCDIR)/kernels/%.cc
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
 
+# Phase 1 vectorization: build the non-chunked conv2dk3_stride2 .o from
+# the _vec.cc source instead of the scalar .cc. Same symbol name, drop-in.
+# To revert (scalar): delete this rule + rebuild.
+$(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8.o: \
+    $(SRCDIR)/kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
+
 # Per-block c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 sharing
 # c3k2_heavy m6/m8 also build per-block variants of). -DKERNEL_SUFFIX=_mN
 # gives each block a uniquely-named symbol.
