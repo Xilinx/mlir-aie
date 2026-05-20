@@ -179,8 +179,7 @@ private:
     const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut;
     // Mutable: each placement of an LTO with neighbor demand reserves
     // its mem-affinity neighbor slots for that LTO's compute peers.
-    llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *, 2>>
-        reservedFor;
+    llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *, 2>> reservedFor;
 
     int neighborDemand(mlir::Operation *op) const {
       return needNeighborIn.lookup(op) + needNeighborOut.lookup(op);
@@ -255,9 +254,10 @@ private:
   // pass falls back to reserved candidates. Each candidate is filtered
   // by buffer adjacency, cascade adjacency, and the compute-peer DMA
   // budget. Does not mutate placer state.
-  UnpinnedSearchResult findUnconstrainedCoreCandidate(
-      LogicalTileOp logicalTile, std::optional<int> col,
-      std::optional<int> row, const UnpinnedPlacementInputs &inputs);
+  UnpinnedSearchResult
+  findUnconstrainedCoreCandidate(LogicalTileOp logicalTile,
+                                 std::optional<int> col, std::optional<int> row,
+                                 const UnpinnedPlacementInputs &inputs);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
   Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);

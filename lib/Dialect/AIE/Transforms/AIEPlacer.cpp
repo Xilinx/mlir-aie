@@ -49,8 +49,8 @@ void forEachPeer(mlir::Operation *op,
 template <typename F>
 void forEachMemAffinityNeighbor(const AIETargetModel &targetModel, TileID at,
                                 F &&fn) {
-  for (auto [dc, dr] : {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0},
-                        std::pair{1, 0}}) {
+  for (auto [dc, dr] :
+       {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{1, 0}}) {
     int nc = at.col + dc;
     int nr = at.row + dr;
     if (nc < 0 || nc >= targetModel.columns())
@@ -235,8 +235,8 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     LLVM_DEBUG(llvm::dbgs()
                << DEBUG_TYPE << ": LTO " << lt.getLoc() << " peerIn=" << peerIn
                << " peerOut=" << peerOut << " nonPeerIn=" << nonPeerIn
-               << " nonPeerOut=" << nonPeerOut << " => needNeighborIn="
-               << needNeighborIn[lt.getOperation()]
+               << " nonPeerOut=" << nonPeerOut
+               << " => needNeighborIn=" << needNeighborIn[lt.getOperation()]
                << " needNeighborOut=" << needNeighborOut[lt.getOperation()]
                << "\n");
   }
@@ -333,8 +333,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
       if (failed(enforceAdjacency(logicalTile, tile, cascadeKind)))
         return failure();
       if (failed(validateAndUpdateChannelUsage(
-              logicalTile, tile, channelRequirements,
-              PlacementOrigin::Pinned)))
+              logicalTile, tile, channelRequirements, PlacementOrigin::Pinned)))
         return failure();
 
       recordPlacement(logicalTile, tile, ctx, "pinned");
@@ -347,9 +346,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return ctx.isReservedForOther(lto, candidate);
       };
       UnpinnedPlacementInputs inputs{
-          bufferAdjacency,    bufferPred,         cascadeAdjacency,
-          cascadePred,        computePeerAdjacency, needNeighborIn,
-          needNeighborOut,    isReservedForOtherBound};
+          bufferAdjacency,      bufferPred,
+          cascadeAdjacency,     cascadePred,
+          computePeerAdjacency, needNeighborIn,
+          needNeighborOut,      isReservedForOtherBound};
       auto search =
           findUnconstrainedCoreCandidate(logicalTile, col, row, inputs);
       std::optional<TileID> placement = search.placement;
@@ -362,8 +362,7 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         bool adjacencyWasCause =
             sawConstraintMatch && allConstraintMatchesFailedAdjacency &&
             bufferAdjacency.hasEdges(logicalTile.getOperation());
-        bool hasCascade =
-            cascadeAdjacency.hasEdges(logicalTile.getOperation());
+        bool hasCascade = cascadeAdjacency.hasEdges(logicalTile.getOperation());
         InFlightDiagnostic diag = logicalTile.emitError();
         if (col || row) {
           diag << "no compute tile available matching constraint ("
@@ -401,9 +400,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
       }
 
-      if (failed(validateAndUpdateChannelUsage(
-              logicalTile, *placement, channelRequirements,
-              PlacementOrigin::Selected)))
+      if (failed(validateAndUpdateChannelUsage(logicalTile, *placement,
+                                               channelRequirements,
+                                               PlacementOrigin::Selected)))
         return failure();
 
       recordPlacement(logicalTile, *placement, ctx, "unconstrained");
@@ -423,8 +422,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
 }
 
 LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
-    ArrayRef<LogicalTileOp> logicalTiles, ArrayRef<ObjectFifoCreateOp> objectFifos,
-    ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
+    ArrayRef<LogicalTileOp> logicalTiles,
+    ArrayRef<ObjectFifoCreateOp> objectFifos, ArrayRef<FlowOp> flows,
+    ArrayRef<PacketFlowOp> pktFlows,
     const llvm::DenseMap<Operation *, std::pair<int, int>>
         &channelRequirements) {
   // Connectivity adjacencies (per-fifo and per-flow) drive the centroid
@@ -480,9 +480,8 @@ void SequentialPlacer::PlacementContext::reserveNeighborSlots(
     Operation *placedOp, TileID at) {
   if (neighborDemand(placedOp) <= 0)
     return;
-  forEachMemAffinityNeighbor(targetModel, at, [&](TileID nb) {
-    reservedFor[nb].push_back(placedOp);
-  });
+  forEachMemAffinityNeighbor(
+      targetModel, at, [&](TileID nb) { reservedFor[nb].push_back(placedOp); });
 }
 
 bool SequentialPlacer::PlacementContext::isReservedForOther(
@@ -511,8 +510,7 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
     const UnpinnedPlacementInputs &inputs) {
   UnpinnedSearchResult result;
   auto neighborDemand = [&](Operation *op) {
-    return inputs.needNeighborIn.lookup(op) +
-           inputs.needNeighborOut.lookup(op);
+    return inputs.needNeighborIn.lookup(op) + inputs.needNeighborOut.lookup(op);
   };
 
   // compTiles is sorted column-major top-to-bottom. For high-fanin LTOs
@@ -567,10 +565,9 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
       if (!satisfiesAdjacency(logicalTile, candidate, inputs.cascadeAdjacency,
                               inputs.cascadePred))
         continue;
-      if (!satisfiesComputePeer(logicalTile, candidate,
-                                inputs.computePeerAdjacency,
-                                inputs.needNeighborIn,
-                                inputs.needNeighborOut)) {
+      if (!satisfiesComputePeer(
+              logicalTile, candidate, inputs.computePeerAdjacency,
+              inputs.needNeighborIn, inputs.needNeighborOut)) {
         result.computePeerWasCause = true;
         continue;
       }
@@ -904,27 +901,26 @@ bool SequentialPlacer::satisfiesComputePeer(
   // candidate, and reject if the count exceeds the slack budget.
   int selfNonNeighborIn = 0, selfNonNeighborOut = 0;
   int selfNeighborIn = 0, selfNeighborOut = 0;
-  forEachPeer(
-      logicalTile.getOperation(), computePeerAdjacency,
-      [&](TileLike peer, bool thisIsFirst) {
-        auto peerPos = resolvePeerPosition(peer, result);
-        if (!peerPos)
-          return;
-        bool isNeighbor = targetModel->isLegalMemAffinity(
-            candidate.col, candidate.row, peerPos->col, peerPos->row);
-        bool thisIsConsumer = !thisIsFirst;
-        if (isNeighbor) {
-          if (thisIsConsumer)
-            ++selfNeighborIn;
-          else
-            ++selfNeighborOut;
-        } else {
-          if (thisIsConsumer)
-            ++selfNonNeighborIn;
-          else
-            ++selfNonNeighborOut;
-        }
-      });
+  forEachPeer(logicalTile.getOperation(), computePeerAdjacency,
+              [&](TileLike peer, bool thisIsFirst) {
+                auto peerPos = resolvePeerPosition(peer, result);
+                if (!peerPos)
+                  return;
+                bool isNeighbor = targetModel->isLegalMemAffinity(
+                    candidate.col, candidate.row, peerPos->col, peerPos->row);
+                bool thisIsConsumer = !thisIsFirst;
+                if (isNeighbor) {
+                  if (thisIsConsumer)
+                    ++selfNeighborIn;
+                  else
+                    ++selfNeighborOut;
+                } else {
+                  if (thisIsConsumer)
+                    ++selfNonNeighborIn;
+                  else
+                    ++selfNonNeighborOut;
+                }
+              });
   auto [selfTotalIn, selfTotalOut] =
       totalComputePeers(logicalTile.getOperation(), computePeerAdjacency);
   int selfNeedIn = needNeighborIn.lookup(logicalTile.getOperation());
@@ -998,9 +994,9 @@ bool SequentialPlacer::satisfiesComputePeer(
               if (peerPeer.getOperation() == logicalTile.getOperation()) {
                 // For the edge currently being decided, score candidate
                 // against peerPos.
-                if (!targetModel->isLegalMemAffinity(
-                        peerPos->col, peerPos->row, candidate.col,
-                        candidate.row))
+                if (!targetModel->isLegalMemAffinity(peerPos->col, peerPos->row,
+                                                     candidate.col,
+                                                     candidate.row))
                   ++peerNonNeighborDir;
                 return;
               }
@@ -1168,8 +1164,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     ArrayRef<const Adjacency *> connectivityAdjacencies,
     const llvm::DenseMap<Operation *, std::pair<int, int>>
         &channelRequirements) {
-  int centroidCol =
-      computeCentroidColumn(logicalTile, connectivityAdjacencies);
+  int centroidCol = computeCentroidColumn(logicalTile, connectivityAdjacencies);
   auto colConstraint = logicalTile.tryGetCol();
   int targetCol = colConstraint ? *colConstraint : centroidCol;
 
@@ -1180,8 +1175,7 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
                                         numInputChannels, numOutputChannels,
                                         logicalTile.getTileType());
   if (!maybeTile) {
-    StringRef tileTypeName =
-        stringifyAIETileType(logicalTile.getTileType());
+    StringRef tileTypeName = stringifyAIETileType(logicalTile.getTileType());
     auto diag = logicalTile.emitError();
     diag << "no " << tileTypeName << " has sufficient DMA capacity for "
          << numInputChannels << " input/" << numOutputChannels
