@@ -2608,17 +2608,16 @@ def _build_psa(block_name, act_in, manifest):
 def _build_m8_chain(act_in, manifest):
     """Chain builder for m8 — delegates to scripts/m8_stage.py.
 
-    Stage defaults to 4 (full m8). Override via M8_CHAIN_STAGE env var
-    to bisect chain hangs: M8_CHAIN_STAGE=1 adds only cv1, =2 adds
-    cv1+m_0_split, =3 adds the inner_pair_0 split, =4 is the full
-    block. Lower stages won't produce the real m8 output but let us
-    verify pass/hang at each level of m8 buildup inside the chain.
+    Stage defaults to 5 (full m8: cv1 → m_0_split → both inner pairs
+    → cv3 → cv2). Override via M8_CHAIN_STAGE env var to bisect chain
+    hangs: =1 adds only cv1, =2 adds cv1+m_0_split, =3 adds inner_pair_0,
+    =4 adds inner_pair_1, =5 is the full block.
     """
     import os
     import importlib.util
     import pathlib
 
-    stage = int(os.environ.get("M8_CHAIN_STAGE", "4"))
+    stage = int(os.environ.get("M8_CHAIN_STAGE", "5"))
     spec = importlib.util.spec_from_file_location(
         "m8_stage",
         pathlib.Path(__file__).parent / "scripts" / "m8_stage.py",
@@ -2631,15 +2630,14 @@ def _build_m8_chain(act_in, manifest):
 def _build_m9_chain(act_in, manifest):
     """Chain builder for m9 (PSA) — delegates to scripts/m9_stage.py.
 
-    Stage defaults to 1 until higher stages are wired (see
-    scripts/m9_stage.py for the full stage map). Override via
-    M9_CHAIN_STAGE env var.
+    Stage defaults to 10 (full PSA block: cv1 → qkv → attn_core → proj →
+    ffn → cv2). Override via M9_CHAIN_STAGE env var to bisect.
     """
     import os
     import importlib.util
     import pathlib
 
-    stage = int(os.environ.get("M9_CHAIN_STAGE", "1"))
+    stage = int(os.environ.get("M9_CHAIN_STAGE", "10"))
     spec = importlib.util.spec_from_file_location(
         "m9_stage",
         pathlib.Path(__file__).parent / "scripts" / "m9_stage.py",

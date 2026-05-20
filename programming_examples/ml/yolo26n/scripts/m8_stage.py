@@ -1347,7 +1347,9 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         # (4,5)'s shared-mem east neighbor (5,5) is still free for
         # bot_to_cv2_fifo. split_b moves to (5,4) (north shared-mem
         # neighbor of split (5,3)) since (6,3) is now pair1_cv1.
-        drain_specs.append((bot_to_cv2_fifo, t_pair1_cv1))
+        # Note: don't reuse `t_pair1_cv1` here — placement.py moved that
+        # entry to (6,3) (same tile as pair1_cv1_fn), which would collide.
+        drain_specs.append((bot_to_cv2_fifo, Tile(5, 5)))
         drain_specs.append((split_b, Tile(5, 4)))
         if not dummy_mode and os.environ.get("M8_S4_SKIP_CV2") == "1":
             drain_specs.append((pair1_skip, t_pair1_cv2_loc))

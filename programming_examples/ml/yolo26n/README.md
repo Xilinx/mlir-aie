@@ -144,14 +144,9 @@ The integration test of record is `test_chain_ort.py`: same seeded RGB
 input fed to both (a) the NPU chain xclbin and (b) ONNX Runtime on the
 XINT8 ONNX, with hard element-wise INT8 equality on the final softmax
 probs. All 11 blocks individually pass `test_block_ort.py --block mN`
-bit-exact, and the chain currently passes bit-exact for N=15 samples.
-
-> **Note on the chain target.** Building the full `m0..m10` chain MLIR
-> requires two ObjectFifo dialect fixes that are not yet on this branch's
-> base: (1) array-depth init-values printer support, and (2) source-side
-> lock-skip when `iter_count` cycles a static-init producer. These ship
-> separately and will be folded in once they land upstream. Per-block
-> targets (`make BLOCK=mN`) build without them.
+bit-exact, and the full m0..m10 chain passes `test_chain_ort.py`
+bit-exact. The lit test [`run_strix_makefile.lit`](run_strix_makefile.lit)
+exercises both paths end-to-end on NPU2 hardware.
 
 ## Build system
 

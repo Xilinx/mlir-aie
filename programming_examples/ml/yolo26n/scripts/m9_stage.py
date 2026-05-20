@@ -568,7 +568,7 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         # where shift = -(matmul_out_log2 + mul_log2_scale - mul_out_log2).
         import onnx as _onnx
 
-        _onnx_path = HERE.parent.parent / "models" / "phase1_25k_xint8_acc0.8968.onnx"
+        _onnx_path = HERE.parent / "models" / "phase1_25k_xint8_acc0.8968.onnx"
         _onnx_model = _onnx.load(str(_onnx_path))
         _inits = {t.name: t for t in _onnx_model.graph.initializer}
         _q_name = "/model.9/m/m.0/attn/Constant_1_output_0_quantized"
