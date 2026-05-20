@@ -174,6 +174,16 @@ $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
     $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_vec.cc ; \
       mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@)))
 
+# Phase 3f: c3k2_small streamed variants (m8 uses these for its c3k2_small-
+# style cv1/cv2 with weight streaming).
+$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_small_cv1_split_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv1_split_streamed_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
+$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_small_cv2_concat3_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv2_concat3_streamed_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
 # Per-block c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 sharing
 # c3k2_heavy m6/m8 also build per-block variants of). -DKERNEL_SUFFIX=_mN
 # gives each block a uniquely-named symbol.
