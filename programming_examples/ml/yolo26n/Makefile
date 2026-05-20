@@ -120,6 +120,12 @@ $(BUILD)/yolo_m0_conv2dk3_silu_bias.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
 
+# Phase 3c: m10 head conv+pool vectorized (1x1 256->1280 + GAP).
+$(BUILD)/yolo_m10_conv2dk1_silu_xy_pool.o: \
+    $(SRCDIR)/kernels/yolo_m10_conv2dk1_silu_xy_pool_vec.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
+
 # Per-block c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 sharing
 # c3k2_heavy m6/m8 also build per-block variants of). -DKERNEL_SUFFIX=_mN
 # gives each block a uniquely-named symbol.
