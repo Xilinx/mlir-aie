@@ -2612,10 +2612,22 @@ def _build_m8_chain(act_in, manifest):
     → cv3 → cv2). Override via M8_CHAIN_STAGE env var to bisect chain
     hangs: =1 adds only cv1, =2 adds cv1+m_0_split, =3 adds inner_pair_0,
     =4 adds inner_pair_1, =5 is the full block.
+
+    M8_MEGAKERNEL=1 swaps the entire 8-tile build for the single-tile
+    megakernel design in scripts/m8_megakernel.py.
     """
     import os
     import importlib.util
     import pathlib
+
+    if os.environ.get("M8_MEGAKERNEL") == "1":
+        spec = importlib.util.spec_from_file_location(
+            "m8_megakernel",
+            pathlib.Path(__file__).parent / "scripts" / "m8_megakernel.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.build(act_in_external=act_in, return_program=False)
 
     stage = int(os.environ.get("M8_CHAIN_STAGE", "5"))
     spec = importlib.util.spec_from_file_location(
@@ -2702,6 +2714,19 @@ def per_block_iron(block_name: str) -> str:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod.build(stage=stage, return_program=True)
+
+    # m8 megakernel: single-tile fused build (M8_MEGAKERNEL=1).
+    if block_name == "m8":
+        import importlib.util, pathlib, os
+
+        if os.environ.get("M8_MEGAKERNEL") == "1":
+            spec = importlib.util.spec_from_file_location(
+                "m8_megakernel",
+                pathlib.Path(__file__).parent / "scripts" / "m8_megakernel.py",
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.build(return_program=True)
 
     blk = yolo_spec.block(block_name)
     in_w, in_h, in_c_raw = blk.layers[0].in_shape
