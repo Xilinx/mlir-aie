@@ -108,7 +108,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
             // If col is out of bounds, zero-fill that 8-byte slot (zero border).
             // Scalar byte assemblage; compiler should vectorize the 8-byte
             // memcpys into vector loads in the contiguous case.
-            int8_t a_buf[32];
+            alignas(32) int8_t a_buf[32];
             bool any_valid = false;
             for (int p = 0; p < 4; ++p) {
               int col = x_in_base + 2 * p + kx;

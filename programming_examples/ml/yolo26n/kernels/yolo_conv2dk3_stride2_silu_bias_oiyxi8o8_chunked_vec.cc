@@ -104,7 +104,7 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
           int8_t *line_ptr = line[ky];
 
           for (int kx = 0; kx < kernel_width; ++kx) {
-            int8_t a_buf[32];
+            alignas(32) int8_t a_buf[32];
             bool any_valid = false;
             for (int p = 0; p < 4; ++p) {
               int col = x_in_base + 2 * p + kx;
