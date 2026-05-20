@@ -93,11 +93,36 @@ jobs:
           large-packages: true
           swap-storage: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "true"
+          fetch-depth: 0
+          fetch-tags: true
 
-      - uses: uraimo/run-on-arch-action@v2.7.0
+      - name: Compute wheel version on host
+        id: wheel_version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${REF_TYPE}" == "tag" && "${REF_NAME}" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION=$(AIE_WHEEL_KEEP_LOCAL=1 python utils/mlir_aie_wheels/_version_helper.py)
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::computed wheel version is empty" >&2
+            exit 1
+          fi
+          if ! [[ "${VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9.+_-]*$ ]]; then
+            echo "::error::computed wheel version contains unexpected characters: ${VERSION}" >&2
+            exit 1
+          fi
+          echo "Computed AIE_WHEEL_VERSION=${VERSION}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - uses: uraimo/run-on-arch-action@v3
         name: Build mlir-aie
         id: runcmd
         with:
@@ -114,7 +139,7 @@ jobs:
             PIP_RESUME_RETRIES: ${{ env.PIP_RESUME_RETRIES }}
             PIP_TIMEOUT: ${{ env.PIP_TIMEOUT }}
             PIP_DISABLE_PIP_VERSION_CHECK: ${{ env.PIP_DISABLE_PIP_VERSION_CHECK }}
-            AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '""' }}
+            AIE_WHEEL_VERSION: ${{ steps.wheel_version.outputs.version }}
           run: |
             git config --global --add safe.directory $PWD
             MLIR_VERSION=$(git rev-parse --short HEAD)
@@ -182,6 +207,7 @@ jobs:
             fi
             export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
             export DATETIME=$(date +"%Y%m%d%H")
+            export AIE_WHEEL_KEEP_LOCAL=1
 
             pushd utils/mlir_aie_wheels
 
@@ -244,15 +270,41 @@ jobs:
             ENABLE_RTTI: OFF
   
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "true"
-  
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
+
+      - name: Compute wheel version on host
+        id: wheel_version
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${REF_TYPE}" == "tag" && "${REF_NAME}" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION=$(AIE_WHEEL_KEEP_LOCAL=1 python utils/mlir_aie_wheels/_version_helper.py)
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::computed wheel version is empty" >&2
+            exit 1
+          fi
+          if ! [[ "${VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9.+_-]*$ ]]; then
+            echo "::error::computed wheel version contains unexpected characters: ${VERSION}" >&2
+            exit 1
+          fi
+          echo "Computed AIE_WHEEL_VERSION=${VERSION}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up MSVC dev environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -309,8 +361,7 @@ jobs:
       - name: Build mlir-aie wheel
         shell: bash
         env:
-          # Copy Linux job style: tag-aligned versioning only on version tags.
-          AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '' }}
+          AIE_WHEEL_VERSION: ${{ steps.wheel_version.outputs.version }}
           ENABLE_RTTI: ${{ matrix.ENABLE_RTTI }}
           CMAKE_GENERATOR: Ninja
           CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF -DOPENSSL_USE_STATIC_LIBS=TRUE -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF
@@ -368,7 +419,8 @@ jobs:
             export AIE_PROJECT_COMMIT="${AIE_PROJECT_COMMIT:0:7}"
           fi
           export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
-  
+          export AIE_WHEEL_KEEP_LOCAL=1
+
           # Try to always forward slash paths.
           ROOT_WIN=$(python -c "import os; print(os.getcwd().replace('\\\\', '/'))")
 
@@ -473,8 +525,8 @@ jobs:
         with:
           artifacts: wheels_off_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: latest-wheels-no-rtti
-          name: latest-wheels-no-rtti
+          tag: latest-wheels-no-rtti-2
+          name: latest-wheels-no-rtti-2
           allowUpdates: true
           replacesArtifacts: false
           omitBodyDuringUpdate: true

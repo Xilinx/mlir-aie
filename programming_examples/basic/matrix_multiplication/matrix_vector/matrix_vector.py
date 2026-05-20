@@ -7,7 +7,7 @@
 """Matrix-vector multiply — Iron API design with ``@iron.jit`` compilation.
 
 A single AIE compute core computes ``c = A @ b`` (M-row matrix x K-vector).
-Default config: ``M=K=288``, kernel tile ``m=k=32``, scalar mv kernel.
+Default config: ``M=K=288``, kernel tile ``m=k=32``, vectorized mv kernel.
 """
 
 import argparse
@@ -47,6 +47,7 @@ def matrix_vector(
     K: Compile[int],
     m: Compile[int],
     k: Compile[int],
+    vectorized: Compile[bool] = True,
     use_chess: Compile[bool] = False,
 ):
     n_cores = 1
@@ -54,9 +55,9 @@ def matrix_vector(
     M_div_m_div_n_cores = M // (m * n_cores)
     K_div_k = K // k
 
-    # The vectorized mv kernel is currently buggy; the design defaults to the
-    # scalar variant.  Tracked alongside aie_kernels/aie2/mv.cc.
-    matvec_kernel = kernels.mv(dim_m=m, dim_k=k, vectorized=False, use_chess=use_chess)
+    matvec_kernel = kernels.mv(
+        dim_m=m, dim_k=k, vectorized=vectorized, use_chess=use_chess
+    )
     zero_kernel = matvec_kernel.zero
 
     dtype_in = np.dtype[np.int16]
@@ -67,6 +68,14 @@ def matrix_vector(
     inA_ty = np.ndarray[(m, k), dtype_in]
     inB_ty = np.ndarray[(k,), dtype_in]
     outC_ty = np.ndarray[(m,), dtype_out]
+
+    # The vectorized mv kernel reads A in a "32-bit-word transposed" layout
+    # (see aie_kernels/aie2/mv.cc): for 2-byte elements the transpose
+    # granularity is 2 elements, packing rows of each 2-column word slowly,
+    # m rows then the next 2-col word.
+    a_dims_from_stream = (
+        [(m, 2), (k // 2, 2 * m), (2, 1)] if vectorized else None
+    )
 
     def core_fn(of_a, of_b, of_c, zero, matvec):
         elem_out = of_c.acquire(1)
@@ -87,7 +96,7 @@ def matrix_vector(
     for i in range(n_cores):
         a_fifo = ObjectFifo(inA_ty, name=f"memA{i}")
         memA_fifos.append(a_fifo)
-        coreA_fifos.append(a_fifo.cons().forward())
+        coreA_fifos.append(a_fifo.cons().forward(dims_from_stream=a_dims_from_stream))
         outC_fifos.append(ObjectFifo(outC_ty, name=f"outC{i}"))
         workers.append(
             Worker(
@@ -131,6 +140,7 @@ def _make_argparser():
     p.add_argument("-k", type=int, default=32)
     p.add_argument("--dtype_in", type=str, default="i16")
     p.add_argument("--dtype_out", type=str, default="i32")
+    p.add_argument("--scalar", action="store_true", help="use scalar mv kernel")
     p.add_argument("--use-chess", type=int, choices=[0, 1], default=0)
     p.add_argument(
         "--emulate-bf16-mmul-with-bfp16", type=int, choices=[0, 1], default=0
@@ -147,7 +157,12 @@ def _compile_only(opts):
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
     set_current_device(_device_for(opts.dev))
     spec = matrix_vector.specialize(
-        M=opts.M, K=opts.K, m=opts.m, k=opts.k, use_chess=bool(opts.use_chess)
+        M=opts.M,
+        K=opts.K,
+        m=opts.m,
+        k=opts.k,
+        vectorized=not opts.scalar,
+        use_chess=bool(opts.use_chess),
     )
     spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
@@ -171,6 +186,7 @@ def _run_and_verify(opts):
         K=opts.K,
         m=opts.m,
         k=opts.k,
+        vectorized=not opts.scalar,
         use_chess=bool(opts.use_chess),
         warmup=opts.warmup,
         iters=opts.iters,

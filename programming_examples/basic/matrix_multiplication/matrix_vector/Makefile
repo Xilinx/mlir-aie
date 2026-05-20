@@ -21,3 +21,7 @@ m=32
 k=32
 
 include ${srcdir}/../makefile-common
+
+ifeq (${use_scalar}, 1)
+	aieargs+=--scalar
+endif

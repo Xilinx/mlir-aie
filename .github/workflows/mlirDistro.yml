@@ -166,7 +166,7 @@ jobs:
         echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
@@ -191,7 +191,7 @@ jobs:
         MATRIX_ARCH: ${{ matrix.ARCH }}
         EXTRA_KEY: mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       with:
         python-version: '3.12'
 
@@ -393,7 +393,7 @@ jobs:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
