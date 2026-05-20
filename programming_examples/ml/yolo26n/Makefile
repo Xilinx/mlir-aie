@@ -122,6 +122,25 @@ $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
     $(eval $(BUILD)/yolo_c3k2_small_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_$(k).cc ; \
       mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@)))
 
+# Phase 3 vectorization overrides: build m0_cv1 + cv2_concat3 .o from _vec.cc.
+# m2/m4 use the c3k2_small inner kernels directly; m6/m8 c3k2_heavy share the
+# cv1_split + cv2_concat3 kernels (the heavy m0/inner_pair paths are separate).
+$(foreach blk,$(C3K2_SMALL_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_small_m0_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv1_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
+$(foreach blk,$(C3K2_SMALL_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_small_m0_cv2_skip_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv2_skip_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
+$(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_small_cv1_split_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv1_split_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
+$(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
+  $(eval $(BUILD)/yolo_c3k2_small_cv2_concat3_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv2_concat3_vec.cc ; \
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+
 $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
   $(foreach k,$(C3K2_HEAVY_KERNELS), \
     $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k).cc ; \
