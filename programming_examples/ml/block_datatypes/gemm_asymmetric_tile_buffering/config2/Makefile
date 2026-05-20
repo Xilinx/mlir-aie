@@ -28,10 +28,12 @@ N?=1536
 
 # m, k, n: per-core L1 output tile (m_C x n) and reduction step (k).
 # Asymmetry rho = 6 is encoded inside n32_core_placed.py as `DIV = 6`,
-# so the L1 A buffer is (m/6, k/8) v8bfp16ebs8 entries.
-m?=192
-k?=128
-n?=96
+# so the L1 A buffer is (m/6, k/8) v8bfp16ebs8 entries. These are baked
+# into the in-tree microkernel's hand-tuned schedule, so they are fixed
+# (not overridable).
+m=192
+k=128
+n=96
 
 include ${srcdir}/../makefile_common
 

@@ -22,8 +22,8 @@ def ceildiv(a, b):
 
 def main():
     argparser = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication MLIR Design (Quad Core) with bfp16ebs8 weights and bf16 input/output",
-        description="Emits MLIR code for a matrix multiplication design of the given input size using four cores. Only supported in NPU2 devices.",
+        prog="AIE Matrix Multiplication MLIR Design (32 Cores, 8x4 grid) with bfp16ebs8 weights and bf16 input/output",
+        description="Emits MLIR code for a matrix multiplication design of the given input size using 32 cores (8 columns x 4 rows). Only supported in NPU2 devices.",
     )
     argparser.add_argument("-M", type=int, default=0)
     argparser.add_argument("-K", type=int, default=0)

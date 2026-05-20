@@ -8,12 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Host runner for the BFP16-in / BFP16-weight / BF16-out GEMM in this folder.
-// Identical to ../matrix_multiplication/bfp_test.cpp except A and B are
-// pre-shuffled via gemm_atb::layout_transpose_L1_1x2_8x8block (column-major
-// over L1 tiles, each tile rearranged into 1x2 super-blocks of 8x8
-// column-major sub-blocks) instead of the canonical
-// shuffleMatrixForBfp16ebs8(...) layout.
+// Host runner for the pure-BFP16 GEMM configs in this folder (config2 and
+// config3): A, B, and C are all v8bfp16ebs8 on device. Identical to
+// ../matrix_multiplication/bfp_test.cpp except for the ATB-specific layouts:
+//   - A is pre-shuffled via gemm_atb::layout_A_L1_2x1_8x8block,
+//   - B is pre-shuffled via gemm_atb::layout_transpose_L1_1x2_8x8block,
+//   - C is read back as BFP (bfp16ebs8ToFloat) and un-shuffled via
+//     gemm_atb::layout_inverse_C_L1_2x2_8x8block,
+// instead of the canonical shuffleMatrixForBfp16ebs8(...) layout. Each L1
+// tile is rearranged into 8x8 column-major sub-blocks grouped into the
+// super-block shape the ATB schedule expects.
 //
 //===----------------------------------------------------------------------===//
 

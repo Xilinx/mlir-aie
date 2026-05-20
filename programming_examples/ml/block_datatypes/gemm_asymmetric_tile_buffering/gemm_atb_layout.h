@@ -30,6 +30,9 @@ namespace gemm_atb {
 inline std::vector<float>
 layout_transpose_1x2_8x8block(const std::vector<float> &input, int rows,
                               int cols) {
+  assert(rows % 8 == 0 && "rows must be divisible by 8");
+  assert(cols % 8 == 0 && "cols must be divisible by 8");
+  assert((cols / 8) % 2 == 0 && "cols/8 must be divisible by 2 for 1x2 layout");
   std::vector<float> output(rows * cols);
   int block_rows = rows / 8;
   int block_cols = cols / 8;

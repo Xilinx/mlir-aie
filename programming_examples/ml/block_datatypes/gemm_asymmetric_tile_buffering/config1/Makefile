@@ -32,10 +32,11 @@ N?=2048
 
 # m, k, n: per-core L1 output tile (m_C x n) and reduction step (k).
 # Asymmetry rho = m_C / m_A = 4 is encoded inside n32_core_placed.py
-# (A_l1 = (m/4, k), C_l1 = (m, n)).
-m?=128
-k?=64
-n?=128
+# (A_l1 = (m/4, k), C_l1 = (m, n)). These are baked into the in-tree
+# microkernel's hand-tuned schedule, so they are fixed (not overridable).
+m=128
+k=64
+n=128
 
 include ${srcdir}/../makefile_common
 
