@@ -79,19 +79,25 @@ def _static_wts(meta, *, name=None):
     return Buffer(B._i8((sz,)), initial_value=data, name=name), sz
 
 
-def _slf_of(shape, *, depth, name):
+def _slf_of(shape, *, depth, name, delegate=None):
     """Self-loop ObjectFifo: producer == consumer == megakernel worker.
 
     disable_synchronization=True is safe because a single core executes
     both ends sequentially — no inter-core race possible. Saves
     lock-acquire overhead.
+
+    If `delegate` is set, the OF's underlying buffer pool lives on that
+    tile (mobilenet bottleneck/regular.py pattern). Use to spill large
+    sliding-window OFs off the megakernel tile when L1 is tight.
     """
-    return ObjectFifo(
-        B._i8(shape),
-        depth=depth,
-        disable_synchronization=True,
-        name=name,
-    )
+    kwargs = {
+        "depth": depth,
+        "disable_synchronization": True,
+        "name": name,
+    }
+    if delegate is not None:
+        kwargs["delegate_tile"] = delegate
+    return ObjectFifo(B._i8(shape), **kwargs)
 
 
 def build(act_in_external=None, return_program: bool = True):
@@ -136,17 +142,25 @@ def build(act_in_external=None, return_program: bool = True):
     rs_m0c3 = m_m0c3["right_shift"]
 
     # ------------------------------------------------------------------
-    # Streamed weight streams (memtile -> compute tile)
+    # Streamed weight streams — spread across (5,2), (5,3), (5,4)
     # ------------------------------------------------------------------
-    # AIE2P compute tile has only 2 input DMA channels. With 6 weight
-    # streams + 1 act_in we need 7 — impossible on (5,3) alone.
+    # AIE2P limit: 2 input DMA channels per tile. 7 streams (act_in + 6
+    # weights) need 7 channels. Solution: route each stream's recv_buf
+    # to one of three vertically-adjacent tiles (5,2)/(5,3)/(5,4) via
+    # StaticWeightStream.compute_placement; megakernel Worker stays on
+    # (5,3) and reads neighbor recv_bufs via shared L1.
     #
-    # PIVOTING the v1 design: this single-tile build won't land. The
-    # actual implementation is moving to 2-tile split + multi-source-on-
-    # one-channel StaticWeightStream extension (in lowlevel_dma.py).
-    # The 1-tile schedule below is preserved as a reference for what
-    # each tile will compute internally.
+    # Even with 3 tiles (6 channels) we're 1 short, so pair0_cv1+pair0_cv2
+    # and pair1_cv1+pair1_cv2 each collapse to a single ping-pong stream
+    # (same chunk size — 18 KB — so ping-pong works). 4 streams + act_in
+    # = 5 channels. Allocation:
+    #   (5,3):  act_in (auto ch)         + ws_cv2  (ch 1)
+    #   (5,2):  ws_cv1 (ch 0)            + ws_pair0 ping-pong (ch 1)
+    #   (5,4):  ws_pair1 ping-pong (ch 0)
+    t_south = Tile(5, 2)
+    t_north = Tile(5, 4)
 
+    # ws_cv1 — landed on (5,2) south. memtile (5,1). ch 0.
     m_cv1 = B._op_meta(manifest, L_cv1.manifest_name)
     data_cv1, sz_cv1 = _wts_raw(m_cv1)
     chunk_sz_cv1 = sz_cv1 // N_CV1_CHUNKS
@@ -160,93 +174,77 @@ def build(act_in_external=None, return_program: bool = True):
         recv_type=B._i8((chunk_sz_cv1,)),
         repeat_count=in_h,
         memtile_placement=Tile(5, 1),
-        compute_placement=t_compute,
+        compute_placement=t_south,
         mem_lock_id=0,
         comp_lock_id=0,
         mm2s_channel=0,
         s2mm_channel=0,
     )
 
+    # ws_pair0 — ping-pong of pair0_cv1 (primary) and pair0_cv2 (pp).
+    # landed on (5,2) south. memtile (4,1). ch 1.
+    # Per-row chain cycle delivers: p0c1 full (2 chunks of 18 KB), then
+    # p0c2 full (2 chunks of 18 KB). Schedule consumes in that order.
     m_p0c1 = B._op_meta(manifest, L_p0c1.manifest_name)
+    m_p0c2 = B._op_meta(manifest, L_p0c2.manifest_name)
     data_p0c1, sz_p0c1 = _wts_raw(m_p0c1)
-    chunk_sz_p0c1 = sz_p0c1 // N_PAIR_CHUNKS
+    data_p0c2, sz_p0c2 = _wts_raw(m_p0c2)
+    assert sz_p0c1 == sz_p0c2, (sz_p0c1, sz_p0c2)
+    chunk_sz_pair = sz_p0c1 // N_PAIR_CHUNKS
     bias_p0c1 = _bias_buf(m_p0c1, cp, name="m8_mk_p0c1_bias")
+    bias_p0c2 = _bias_buf(m_p0c2, cp, name="m8_mk_p0c2_bias")
     lut_p0c1 = _lut_buf("m.0/m/m.0/cv1", name="m8_mk_p0c1_lut")
+    lut_p0c2 = _lut_buf("m.0/m/m.0/cv2", name="m8_mk_p0c2_lut")
     rs_p0c1 = m_p0c1["right_shift"]
-    ws_p0c1 = StaticWeightStream(
+    rs_p0c2 = m_p0c2["right_shift"]
+    ws_pair0 = StaticWeightStream(
         obj_type=B._i8((sz_p0c1,)),
         initial_value=data_p0c1,
-        name="m8_mk_p0c1_wts_stream",
-        recv_type=B._i8((chunk_sz_p0c1,)),
+        name="m8_mk_pair0_wts_stream",
+        recv_type=B._i8((chunk_sz_pair,)),
         repeat_count=in_h,
         memtile_placement=Tile(4, 1),
-        compute_placement=t_compute,
-        mem_lock_id=0,
-        comp_lock_id=1,
-        mm2s_channel=0,
-        s2mm_channel=1,
-    )
-
-    m_p0c2 = B._op_meta(manifest, L_p0c2.manifest_name)
-    data_p0c2, sz_p0c2 = _wts_raw(m_p0c2)
-    chunk_sz_p0c2 = sz_p0c2 // N_PAIR_CHUNKS
-    bias_p0c2 = _bias_buf(m_p0c2, cp, name="m8_mk_p0c2_bias")
-    lut_p0c2 = _lut_buf("m.0/m/m.0/cv2", name="m8_mk_p0c2_lut")
-    rs_p0c2 = m_p0c2["right_shift"]
-    ws_p0c2 = StaticWeightStream(
-        obj_type=B._i8((sz_p0c2,)),
-        initial_value=data_p0c2,
-        name="m8_mk_p0c2_wts_stream",
-        recv_type=B._i8((chunk_sz_p0c2,)),
-        repeat_count=in_h,
-        memtile_placement=Tile(4, 1),
-        compute_placement=t_compute,
-        mem_lock_id=1,
+        compute_placement=t_south,
+        mem_lock_id=2,
         comp_lock_id=2,
         mm2s_channel=1,
-        s2mm_channel=2,
+        s2mm_channel=1,
+        ping_pong_buf=(B._i8((sz_p0c2,)), data_p0c2, "m8_mk_p0c2_pp"),
+        ping_pong_memtile=Tile(4, 1),
+        pp_lock_id=4,
     )
 
+    # ws_pair1 — ping-pong of pair1_cv1 (primary) and pair1_cv2 (pp).
+    # landed on (5,4) north. memtile (6,1). ch 0.
     m_p1c1 = B._op_meta(manifest, L_p1c1.manifest_name)
+    m_p1c2 = B._op_meta(manifest, L_p1c2.manifest_name)
     data_p1c1, sz_p1c1 = _wts_raw(m_p1c1)
-    chunk_sz_p1c1 = sz_p1c1 // N_PAIR_CHUNKS
+    data_p1c2, sz_p1c2 = _wts_raw(m_p1c2)
+    assert sz_p1c1 == sz_p1c2 == sz_p0c1, (sz_p1c1, sz_p1c2, sz_p0c1)
     bias_p1c1 = _bias_buf(m_p1c1, cp, name="m8_mk_p1c1_bias")
+    bias_p1c2 = _bias_buf(m_p1c2, cp, name="m8_mk_p1c2_bias")
     lut_p1c1 = _lut_buf("m.0/m/m.1/cv1", name="m8_mk_p1c1_lut")
+    lut_p1c2 = _lut_buf("m.0/m/m.1/cv2", name="m8_mk_p1c2_lut")
     rs_p1c1 = m_p1c1["right_shift"]
-    ws_p1c1 = StaticWeightStream(
+    rs_p1c2 = m_p1c2["right_shift"]
+    ws_pair1 = StaticWeightStream(
         obj_type=B._i8((sz_p1c1,)),
         initial_value=data_p1c1,
-        name="m8_mk_p1c1_wts_stream",
-        recv_type=B._i8((chunk_sz_p1c1,)),
+        name="m8_mk_pair1_wts_stream",
+        recv_type=B._i8((chunk_sz_pair,)),
         repeat_count=in_h,
         memtile_placement=Tile(6, 1),
-        compute_placement=t_compute,
+        compute_placement=t_north,
         mem_lock_id=0,
-        comp_lock_id=3,
+        comp_lock_id=0,
         mm2s_channel=0,
-        s2mm_channel=3,
+        s2mm_channel=0,
+        ping_pong_buf=(B._i8((sz_p1c2,)), data_p1c2, "m8_mk_p1c2_pp"),
+        ping_pong_memtile=Tile(6, 1),
+        pp_lock_id=2,
     )
 
-    m_p1c2 = B._op_meta(manifest, L_p1c2.manifest_name)
-    data_p1c2, sz_p1c2 = _wts_raw(m_p1c2)
-    chunk_sz_p1c2 = sz_p1c2 // N_PAIR_CHUNKS
-    bias_p1c2 = _bias_buf(m_p1c2, cp, name="m8_mk_p1c2_bias")
-    lut_p1c2 = _lut_buf("m.0/m/m.1/cv2", name="m8_mk_p1c2_lut")
-    rs_p1c2 = m_p1c2["right_shift"]
-    ws_p1c2 = StaticWeightStream(
-        obj_type=B._i8((sz_p1c2,)),
-        initial_value=data_p1c2,
-        name="m8_mk_p1c2_wts_stream",
-        recv_type=B._i8((chunk_sz_p1c2,)),
-        repeat_count=in_h,
-        memtile_placement=Tile(6, 1),
-        compute_placement=t_compute,
-        mem_lock_id=1,
-        comp_lock_id=4,
-        mm2s_channel=1,
-        s2mm_channel=4,
-    )
-
+    # ws_cv2 — landed on (5,3) compute. memtile (3,1). ch 1.
     m_cv2 = B._op_meta(manifest, L_cv2.manifest_name)
     sz_cv2 = out_c * (3 * c)
     data_cv2 = B._load_bin(m_cv2["weights_file"], np.int8, sz_cv2)
@@ -254,6 +252,7 @@ def build(act_in_external=None, return_program: bool = True):
     bias_cv2 = _bias_buf(m_cv2, out_c, name="m8_mk_cv2_bias")
     lut_cv2 = _lut_buf("cv2", name="m8_mk_cv2_lut")
     rs_cv2 = m_cv2["right_shift"]
+    # ws_cv2 — landed on (5,4) north to free L1 on (5,3). memtile (3,1). ch 1.
     ws_cv2 = StaticWeightStream(
         obj_type=B._i8((sz_cv2,)),
         initial_value=data_cv2,
@@ -261,11 +260,11 @@ def build(act_in_external=None, return_program: bool = True):
         recv_type=B._i8((chunk_sz_cv2,)),
         repeat_count=in_h,
         memtile_placement=Tile(3, 1),
-        compute_placement=t_compute,
+        compute_placement=t_north,
         mem_lock_id=0,
-        comp_lock_id=5,
+        comp_lock_id=2,
         mm2s_channel=0,
-        s2mm_channel=5,
+        s2mm_channel=1,
     )
 
     # ------------------------------------------------------------------
@@ -287,18 +286,43 @@ def build(act_in_external=None, return_program: bool = True):
     #   - inner_1_out: pair1_cv2 -> cv3 same iter; depth 2
     #   - cv3_out: cv3 -> cv2 same iter; depth 2
 
-    top_of = _slf_of((in_w, 1, c), depth=5, name="m8_mk_top")
-    bot_to_cv2_of = _slf_of((in_w, 1, c), depth=5, name="m8_mk_bot_to_cv2")
-    bot_of = _slf_of((in_w, 1, c), depth=2, name="m8_mk_bot")
-    split_a_of = _slf_of((in_w, 1, cp), depth=3, name="m8_mk_split_a")
-    split_b_of = _slf_of((in_w, 1, cp), depth=5, name="m8_mk_split_b")
-    pair0_mid_of = _slf_of((in_w, 1, cp), depth=3, name="m8_mk_p0_mid")
-    pair0_skip_of = _slf_of((in_w, 1, cp), depth=2, name="m8_mk_p0_skip")
-    inner_0_out_of = _slf_of((in_w, 1, cp), depth=3, name="m8_mk_inner0_out")
-    pair1_mid_of = _slf_of((in_w, 1, cp), depth=3, name="m8_mk_p1_mid")
-    pair1_skip_of = _slf_of((in_w, 1, cp), depth=2, name="m8_mk_p1_skip")
-    inner_1_out_of = _slf_of((in_w, 1, cp), depth=2, name="m8_mk_inner1_out")
-    cv3_out_of = _slf_of((in_w, 1, c), depth=2, name="m8_mk_cv3_out")
+    # Big OFs (≥4 KB) delegated to neighbor tiles to free (5,3) L1.
+    # top/bot_to_cv2 are the biggest at 10 KB each.
+    top_of = _slf_of((in_w, 1, c), depth=5, name="m8_mk_top", delegate=t_south)
+    bot_to_cv2_of = _slf_of(
+        (in_w, 1, c), depth=5, name="m8_mk_bot_to_cv2", delegate=t_north
+    )
+    bot_of = _slf_of((in_w, 1, c), depth=2, name="m8_mk_bot", delegate=t_south)
+    cv3_out_of = _slf_of(
+        (in_w, 1, c), depth=2, name="m8_mk_cv3_out", delegate=t_north
+    )
+    split_b_of = _slf_of(
+        (in_w, 1, cp), depth=5, name="m8_mk_split_b", delegate=t_south
+    )
+    # Smaller (1 KB/slot) OFs also delegated to spread L1 — (5,3) must
+    # also hold m_0_split/m_0_cv3 statics + act_in/block_out I/O + LUTs.
+    # pair0 side OFs delegated south; pair1 + cv3 side delegated north.
+    split_a_of = _slf_of(
+        (in_w, 1, cp), depth=3, name="m8_mk_split_a", delegate=t_south
+    )
+    pair0_mid_of = _slf_of(
+        (in_w, 1, cp), depth=3, name="m8_mk_p0_mid", delegate=t_south
+    )
+    pair0_skip_of = _slf_of(
+        (in_w, 1, cp), depth=2, name="m8_mk_p0_skip", delegate=t_south
+    )
+    inner_0_out_of = _slf_of(
+        (in_w, 1, cp), depth=3, name="m8_mk_inner0_out", delegate=t_north
+    )
+    pair1_mid_of = _slf_of(
+        (in_w, 1, cp), depth=3, name="m8_mk_p1_mid", delegate=t_north
+    )
+    pair1_skip_of = _slf_of(
+        (in_w, 1, cp), depth=2, name="m8_mk_p1_skip", delegate=t_north
+    )
+    inner_1_out_of = _slf_of(
+        (in_w, 1, cp), depth=2, name="m8_mk_inner1_out", delegate=t_north
+    )
 
     # ------------------------------------------------------------------
     # Input + Output fifos
@@ -347,49 +371,29 @@ def build(act_in_external=None, return_program: bool = True):
         ]
         + [np.int32] * 6,
     )
-    k_p0c1 = Kernel(
-        f"yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i8_pair0_{BLOCK}",
-        f"yolo_c3k2_heavy_inner_pair_cv1_streamed_pair0_{BLOCK}.o",
+    # k_pair_cv1 / k_pair_cv2 are SHARED between pair0 and pair1 — same
+    # algorithm, only the weight set differs (passed at call time). Using
+    # the unsuffixed _m8 .o files (one shared symbol each) instead of
+    # pair0/pair1-suffixed variants saves ~6 KB of program memory on the
+    # megakernel tile.
+    k_pair_cv1 = Kernel(
+        f"yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i8_{BLOCK}",
+        f"yolo_c3k2_heavy_inner_pair_cv1_streamed_{BLOCK}.o",
         [B._i8((in_w, 1, cp))] * 3
         + [
-            B._i8((chunk_sz_p0c1,)),
+            B._i8((chunk_sz_pair,)),
             B._i32((cp,)),
             B._i8((256,)),
             B._i8((in_w, 1, cp)),
         ]
         + [np.int32] * 9,
     )
-    k_p0c2 = Kernel(
-        f"yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8_pair0_{BLOCK}",
-        f"yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_pair0_{BLOCK}.o",
+    k_pair_cv2 = Kernel(
+        f"yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8_{BLOCK}",
+        f"yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_{BLOCK}.o",
         [B._i8((in_w, 1, cp))] * 3
         + [
-            B._i8((chunk_sz_p0c2,)),
-            B._i32((cp,)),
-            B._i8((256,)),
-            B._i8((in_w, 1, cp)),
-            B._i8((in_w, 1, cp)),
-        ]
-        + [np.int32] * 12,
-    )
-    k_p1c1 = Kernel(
-        f"yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i8_pair1_{BLOCK}",
-        f"yolo_c3k2_heavy_inner_pair_cv1_streamed_pair1_{BLOCK}.o",
-        [B._i8((in_w, 1, cp))] * 3
-        + [
-            B._i8((chunk_sz_p1c1,)),
-            B._i32((cp,)),
-            B._i8((256,)),
-            B._i8((in_w, 1, cp)),
-        ]
-        + [np.int32] * 9,
-    )
-    k_p1c2 = Kernel(
-        f"yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8_pair1_{BLOCK}",
-        f"yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_pair1_{BLOCK}.o",
-        [B._i8((in_w, 1, cp))] * 3
-        + [
-            B._i8((chunk_sz_p1c2,)),
+            B._i8((chunk_sz_pair,)),
             B._i32((cp,)),
             B._i8((256,)),
             B._i8((in_w, 1, cp)),
@@ -433,8 +437,7 @@ def build(act_in_external=None, return_program: bool = True):
         t_compute=t_compute,
         in_w=in_w, in_h=in_h, in_c=in_c, twoc=twoc, c=c, cp=cp, out_c=out_c,
         act_in=act_in, block_out=block_out,
-        ws_cv1=ws_cv1, ws_p0c1=ws_p0c1, ws_p0c2=ws_p0c2,
-        ws_p1c1=ws_p1c1, ws_p1c2=ws_p1c2, ws_cv2=ws_cv2,
+        ws_cv1=ws_cv1, ws_pair0=ws_pair0, ws_pair1=ws_pair1, ws_cv2=ws_cv2,
         wts_m0c1_buf=wts_m0c1_buf, wts_m0c2_buf=wts_m0c2_buf,
         wts_m0c3_buf=wts_m0c3_buf,
         bias_cv1=bias_cv1, lut_cv1=lut_cv1, rs_cv1=rs_cv1,
@@ -453,8 +456,7 @@ def build(act_in_external=None, return_program: bool = True):
         pair1_mid_of=pair1_mid_of, pair1_skip_of=pair1_skip_of,
         inner_1_out_of=inner_1_out_of, cv3_out_of=cv3_out_of,
         k_cv1=k_cv1, k_split=k_split,
-        k_p0c1=k_p0c1, k_p0c2=k_p0c2,
-        k_p1c1=k_p1c1, k_p1c2=k_p1c2,
+        k_pair_cv1=k_pair_cv1, k_pair_cv2=k_pair_cv2,
         k_cv3=k_cv3, k_cv2=k_cv2,
     )
     workers = [worker]
@@ -507,7 +509,7 @@ def _build_worker(**kw):
 
     def megakernel_fn(
         act_in_c, block_out_p,
-        ws_cv1, ws_p0c1, ws_p0c2, ws_p1c1, ws_p1c2, ws_cv2,
+        ws_cv1, ws_pair0, ws_pair1, ws_cv2,
         wts_m0c1, wts_m0c2, wts_m0c3,
         bias_cv1, lut_cv1,
         bias_m0c1, lut_m0c1,
@@ -530,7 +532,7 @@ def _build_worker(**kw):
         p1_skip_p, p1_skip_c,
         inner_1_out_p, inner_1_out_c,
         cv3_out_p, cv3_out_c,
-        k_cv1, k_split, k_p0c1, k_p0c2, k_p1c1, k_p1c2, k_cv3, k_cv2,
+        k_cv1, k_split, k_pair_cv1, k_pair_cv2, k_cv3, k_cv2,
     ):
         # ==============================================================
         # Software-pipelined row schedule
@@ -572,10 +574,10 @@ def _build_worker(**kw):
             mid_r = p0_mid_p.acquire(1)
             sk_r = p0_skip_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
-                ck = ws_p0c1.acquire(1)
-                k_p0c1(sa_top, sa_mid, sa_bot, ck, bias_p0c1, lut_p0c1, mid_r,
+                ck = ws_pair0.acquire(1)
+                k_pair_cv1(sa_top, sa_mid, sa_bot, ck, bias_p0c1, lut_p0c1, mid_r,
                        in_w, cp, cp, 3, 3, border, rs_p0c1, N_PAIR_CHUNKS, wi)
-                ws_p0c1.release(1)
+                ws_pair0.release(1)
             # Forward middle (output-row-aligned) split_a as the skip path
             for x in range_(in_w):
                 for kk in range_(cp):
@@ -587,21 +589,21 @@ def _build_worker(**kw):
             """pair0_cv2 streamed + skip-add — one iter; writes inner_0_out."""
             out_r = inner_0_out_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
-                ck = ws_p0c2.acquire(1)
-                k_p0c2(mid_top, mid_mid, mid_bot, ck, bias_p0c2, lut_p0c2,
+                ck = ws_pair0.acquire(1)
+                k_pair_cv2(mid_top, mid_mid, mid_bot, ck, bias_p0c2, lut_p0c2,
                        skip_row, out_r, in_w, cp, cp, 3, 3, border, rs_p0c2,
                        N_PAIR_CHUNKS, wi, SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH)
-                ws_p0c2.release(1)
+                ws_pair0.release(1)
             inner_0_out_p.release(1)
 
         def _do_p1c1(border, po_top, po_mid, po_bot):
             mid_r = p1_mid_p.acquire(1)
             sk_r = p1_skip_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
-                ck = ws_p1c1.acquire(1)
-                k_p1c1(po_top, po_mid, po_bot, ck, bias_p1c1, lut_p1c1, mid_r,
+                ck = ws_pair1.acquire(1)
+                k_pair_cv1(po_top, po_mid, po_bot, ck, bias_p1c1, lut_p1c1, mid_r,
                        in_w, cp, cp, 3, 3, border, rs_p1c1, N_PAIR_CHUNKS, wi)
-                ws_p1c1.release(1)
+                ws_pair1.release(1)
             for x in range_(in_w):
                 for kk in range_(cp):
                     sk_r[x, 0, kk] = po_mid[x, 0, kk]
@@ -611,11 +613,11 @@ def _build_worker(**kw):
         def _do_p1c2(border, p1m_top, p1m_mid, p1m_bot, skip_row):
             out_r = inner_1_out_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
-                ck = ws_p1c2.acquire(1)
-                k_p1c2(p1m_top, p1m_mid, p1m_bot, ck, bias_p1c2, lut_p1c2,
+                ck = ws_pair1.acquire(1)
+                k_pair_cv2(p1m_top, p1m_mid, p1m_bot, ck, bias_p1c2, lut_p1c2,
                        skip_row, out_r, in_w, cp, cp, 3, 3, border, rs_p1c2,
                        N_PAIR_CHUNKS, wi, SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH)
-                ws_p1c2.release(1)
+                ws_pair1.release(1)
             inner_1_out_p.release(1)
 
         def _do_cv3_cv2():
@@ -777,8 +779,7 @@ def _build_worker(**kw):
         fn_args=[
             kw["act_in"].cons(),
             kw["block_out"].prod(),
-            kw["ws_cv1"], kw["ws_p0c1"], kw["ws_p0c2"],
-            kw["ws_p1c1"], kw["ws_p1c2"], kw["ws_cv2"],
+            kw["ws_cv1"], kw["ws_pair0"], kw["ws_pair1"], kw["ws_cv2"],
             kw["wts_m0c1_buf"], kw["wts_m0c2_buf"], kw["wts_m0c3_buf"],
             kw["bias_cv1"], kw["lut_cv1"],
             kw["bias_m0c1"], kw["lut_m0c1"],
@@ -802,8 +803,7 @@ def _build_worker(**kw):
             kw["inner_1_out_of"].prod(), kw["inner_1_out_of"].cons(),
             kw["cv3_out_of"].prod(), kw["cv3_out_of"].cons(),
             kw["k_cv1"], kw["k_split"],
-            kw["k_p0c1"], kw["k_p0c2"],
-            kw["k_p1c1"], kw["k_p1c2"],
+            kw["k_pair_cv1"], kw["k_pair_cv2"],
             kw["k_cv3"], kw["k_cv2"],
         ],
         tile=kw["t_compute"],
