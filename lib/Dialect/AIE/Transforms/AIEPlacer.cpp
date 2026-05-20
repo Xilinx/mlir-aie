@@ -115,6 +115,9 @@ void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
 
 LogicalResult SequentialPlacer::place(DeviceOp device) {
   // Phase 0: Validate options
+  if (!targetModel)
+    return device.emitError() << "SequentialPlacer::place called before "
+                                 "initialize(); targetModel is null";
   if (coresPerCol.has_value() && *coresPerCol > deviceCoresPerCol) {
     return device.emitError() << "requested cores-per-col (" << *coresPerCol
                               << ") exceeds device capacity ("
@@ -132,15 +135,15 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   device.walk([&](Operation *op) {
     if (auto lt = dyn_cast<LogicalTileOp>(op))
       logicalTiles.push_back(lt);
-    if (auto of = dyn_cast<ObjectFifoCreateOp>(op))
+    else if (auto of = dyn_cast<ObjectFifoCreateOp>(op))
       objectFifos.push_back(of);
-    if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
+    else if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
       objectFifoLinks.push_back(link);
-    if (auto cf = dyn_cast<CascadeFlowOp>(op))
+    else if (auto cf = dyn_cast<CascadeFlowOp>(op))
       cascadeFlows.push_back(cf);
-    if (auto f = dyn_cast<FlowOp>(op))
+    else if (auto f = dyn_cast<FlowOp>(op))
       flows.push_back(f);
-    if (auto pf = dyn_cast<PacketFlowOp>(op))
+    else if (auto pf = dyn_cast<PacketFlowOp>(op))
       pktFlows.push_back(pf);
   });
 
