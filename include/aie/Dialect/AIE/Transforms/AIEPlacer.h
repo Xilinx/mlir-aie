@@ -168,6 +168,18 @@ private:
   TileAvailability availability;
   const AIETargetModel *targetModel = nullptr;
 
+  // DMA channel direction selector. Used in place of a bool flag at
+  // call sites of updateChannelUsage so the call reads as
+  // `updateChannelUsage(tile, DmaDir::Out, n)` instead of relying on
+  // the reader to recall whether `true` means input or output.
+  enum class DmaDir { In, Out };
+
+  // Whether a placement was specified by the user (pinned via
+  // col/row attributes) or chosen by the placer. Drives whether the
+  // channel-overflow diagnostic includes a "placer selected this tile"
+  // remediation note.
+  enum class PlacementOrigin { Pinned, Selected };
+
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
   std::optional<TileID> findTileWithCapacity(int targetCol,
@@ -176,7 +188,7 @@ private:
                                              int requiredOutputChannels,
                                              AIETileType requestedType);
 
-  void updateChannelUsage(TileID tile, bool isOutput, int numChannels);
+  void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
   bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels);
 
@@ -184,7 +196,7 @@ private:
       LogicalTileOp logicalTile, TileID tile,
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements,
-      bool isConstrained);
+      PlacementOrigin origin);
 
   llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
   buildChannelRequirements(

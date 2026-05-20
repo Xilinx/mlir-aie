@@ -363,8 +363,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
       if (failed(enforceAdjacency(logicalTile, tile, cascadeKind)))
         return failure();
-      if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
-                                               channelRequirements, true)))
+      if (failed(validateAndUpdateChannelUsage(
+              logicalTile, tile, channelRequirements,
+              PlacementOrigin::Pinned)))
         return failure();
 
       // Only CoreTile placements remove from availability + reserve
@@ -434,8 +435,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
       }
 
-      if (failed(validateAndUpdateChannelUsage(logicalTile, *placement,
-                                               channelRequirements, false)))
+      if (failed(validateAndUpdateChannelUsage(
+              logicalTile, *placement, channelRequirements,
+              PlacementOrigin::Selected)))
         return failure();
 
       recordPlacement(logicalTile, *placement, ctx, "unconstrained");
@@ -616,7 +618,7 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
 LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
     LogicalTileOp logicalTile, TileID tile,
     const llvm::DenseMap<Operation *, std::pair<int, int>> &channelRequirements,
-    bool isConstrained) {
+    PlacementOrigin origin) {
 
   // Get channel requirements
   auto [inChannels, outChannels] =
@@ -635,7 +637,7 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
          << inChannels << " input/" << outChannels
          << " output DMA channels, but only " << availIn << " input/"
          << availOut << " output available";
-    if (!isConstrained)
+    if (origin == PlacementOrigin::Selected)
       diag.attachNote() << "placer selected this tile; to fix, pin this LTO "
                            "to a tile with more spare DMA capacity, or reduce "
                            "the LTO's DMA fanin (e.g. via memtile staging)";
@@ -644,9 +646,9 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
 
   // Update channel usage
   if (inChannels > 0)
-    updateChannelUsage(tile, false, inChannels);
+    updateChannelUsage(tile, DmaDir::In, inChannels);
   if (outChannels > 0)
-    updateChannelUsage(tile, true, outChannels);
+    updateChannelUsage(tile, DmaDir::Out, outChannels);
 
   return success();
 }
@@ -1252,9 +1254,9 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   if (!mergeLogicalTiles)
     assignedNonCoreTiles.insert(*maybeTile);
   if (numInputChannels > 0)
-    updateChannelUsage(*maybeTile, false, numInputChannels);
+    updateChannelUsage(*maybeTile, DmaDir::In, numInputChannels);
   if (numOutputChannels > 0)
-    updateChannelUsage(*maybeTile, true, numOutputChannels);
+    updateChannelUsage(*maybeTile, DmaDir::Out, numOutputChannels);
   return success();
 }
 
@@ -1297,13 +1299,12 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
   return best;
 }
 
-void SequentialPlacer::updateChannelUsage(TileID tile, bool isOutput,
+void SequentialPlacer::updateChannelUsage(TileID tile, DmaDir direction,
                                           int numChannels) {
-  if (isOutput) {
+  if (direction == DmaDir::Out)
     availability.outputChannelsUsed[tile] += numChannels;
-  } else {
+  else
     availability.inputChannelsUsed[tile] += numChannels;
-  }
 
   if (!hasAvailableChannels(tile, 0, 0)) {
     AIETileType type = targetModel->getTileType(tile.col, tile.row);
