@@ -67,20 +67,63 @@ protected:
 
 // Sequential placement algorithm
 //
-// Places logical tiles to physical tiles using a simple strategy:
-// - Compute tiles: Sequential column-major placement (fill column before next)
-// - Memory/shim tiles: DMA Channel capacity placement near common column
+// Greedy, single-pass placer that maps each `aie.logical_tile` (LTO) to a
+// physical (col, row). The algorithm runs in four phases:
 //
-// Core-to-core connections are NOT validated because SequentialPlacer
-// doesn't account for shared memory optimization.
+//   Phase 1 -- Collect:
+//     Walk the device and bucket the ops the placer needs:
+//     LogicalTileOps, ObjectFifoCreateOps, ObjectFifoLinkOps,
+//     CascadeFlowOps, FlowOps, PacketFlowOps.
 //
-// By default (mergeLogicalTiles == true), Shim/Mem logical tiles with
-// identical placement constraints and sufficient combined DMA capacity
-// are merged to the same physical tile via TileOp::getOrCreate during
-// the conversion pattern. CoreTile placement is column-major sequential
-// and never merges. Callers that pre-aggregate non-core logical tiles
-// can pass mergeLogicalTiles == false to make the placer pin each
-// non-core LTO to its own physical tile.
+//   Phase 2 -- Constraint construction:
+//     Build per-LTO constraints from the collected IR:
+//       * buffer adjacency  (shared-L1 producer/consumer pairs)
+//       * cascade adjacency (cascade source -> destination pairs)
+//       * compute-peer adjacency (compute->compute ObjectFifos)
+//       * channelRequirements (per-LTO {input, output} DMA channel demand)
+//       * needNeighborIn / needNeighborOut (the minimum number of compute
+//         peers per LTO that MUST land on a shared-L1 neighbor to fit the
+//         per-tile DMA budget; this is what drives placement priority and
+//         soft-reservation of neighbor slots).
+//
+//   Phase 3 -- Compute-tile placement:
+//     Sort LogicalTileOps by (constraint level ascending; pinned before
+//     partial before unpinned), then within an equal level by
+//     placementPriority descending (max of self demand vs. highest peer
+//     demand) so high-fanin Workers and their compute peers cluster to the
+//     front of the worklist. Iterate the worklist:
+//       * fully pinned LTO -> validate adjacency + channel capacity at the
+//         pinned coord, accept or fail.
+//       * unpinned or partially-pinned compute tile -> walk candidates
+//         (column-major; for high-demand LTOs additionally re-sorted to
+//         prefer interior rows) in two passes: first only candidates that
+//         aren't soft-reserved by an unrelated demand-bearing LTO's peers,
+//         then a fall-back pass that accepts reserved candidates. Each
+//         candidate is filtered by satisfiesAdjacency (buffer, cascade)
+//         and satisfiesComputePeer (DMA-budget feasibility). On success,
+//         remove the chosen tile from availability and (if the LTO has
+//         neighbor demand) soft-reserve its mem-affinity neighbor slots
+//         for that LTO's compute peers.
+//       * unpinned ShimPLTile -> hard error (no DMAs).
+//
+//   Phase 4 -- Non-core tile placement:
+//     For each remaining non-core (mem/shim) LTO, BFS its connectivity
+//     component to find the centroid column of its placed-core peers,
+//     then pick the tile of the requested type nearest the centroid
+//     column with enough spare DMA capacity. By default (mergeLogicalTiles
+//     == true) multiple non-core LTOs may share a physical tile when
+//     their combined DMA channel usage still fits; with mergeLogicalTiles
+//     == false each non-core LTO claims its own tile.
+//
+// Greedy placement: once a tile is chosen for an LTO the decision is
+// final. The placer does not backtrack. If a later LTO's constraints
+// become unsatisfiable given prior placements, the placer emits an error
+// and asks the user to manually pin tiles to break the deadlock.
+//
+// Core-to-core ObjectFifos are special-cased into the compute-peer
+// constraint subsystem; they aren't counted against the channel budget
+// when the producer and consumer end up on shared-L1 neighbor tiles
+// (the lowering picks the shared-memory path in that case).
 class SequentialPlacer : public Placer {
 public:
   SequentialPlacer(std::optional<int> coresPerCol = std::nullopt,

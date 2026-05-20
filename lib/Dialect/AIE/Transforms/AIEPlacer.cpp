@@ -201,6 +201,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         std::max(0, peerIn - (inBudget - nonPeerIn));
     needNeighborOut[lt.getOperation()] =
         std::max(0, peerOut - (outBudget - nonPeerOut));
+    LLVM_DEBUG(llvm::dbgs()
+               << DEBUG_TYPE << ": LTO " << lt.getLoc() << " peerIn=" << peerIn
+               << " peerOut=" << peerOut << " nonPeerIn=" << nonPeerIn
+               << " nonPeerOut=" << nonPeerOut << " => needNeighborIn="
+               << needNeighborIn[lt.getOperation()]
+               << " needNeighborOut=" << needNeighborOut[lt.getOperation()]
+               << "\n");
   }
   auto neighborDemand = [&](Operation *op) {
     return needNeighborIn.lookup(op) + needNeighborOut.lookup(op);
@@ -376,6 +383,9 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
 
       result[logicalTile] = tile;
+      LLVM_DEBUG(llvm::dbgs() << DEBUG_TYPE << ": placed pinned LTO "
+                              << logicalTile.getLoc() << " at (" << tile.col
+                              << ", " << tile.row << ")\n");
       // Only remove fully constrained compute tiles from availability.
       // Mem/Shim may still host additional logical tiles as long as
       // channel/DMA capacity permits.
@@ -509,6 +519,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
         return failure();
 
       result[logicalTile] = *placement;
+      LLVM_DEBUG(llvm::dbgs() << DEBUG_TYPE << ": placed unconstrained LTO "
+                              << logicalTile.getLoc() << " at ("
+                              << placement->col << ", " << placement->row
+                              << ")\n");
       availability.removeTile(*placement, AIETileType::CoreTile);
       reserveNeighborSlots(logicalTile.getOperation(), *placement);
     }
@@ -1176,6 +1190,11 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   }
 
   result[logicalTile] = *maybeTile;
+  LLVM_DEBUG(llvm::dbgs() << DEBUG_TYPE << ": placed non-core LTO "
+                          << logicalTile.getLoc() << " at (" << maybeTile->col
+                          << ", " << maybeTile->row
+                          << ") (centroid col=" << centroidCol
+                          << ", target col=" << targetCol << ")\n");
   if (!mergeLogicalTiles)
     assignedNonCoreTiles.insert(*maybeTile);
   if (numInputChannels > 0)
