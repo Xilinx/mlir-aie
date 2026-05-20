@@ -277,6 +277,19 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     return thisIsSrc ? "cascade destination" : "cascade source";
   };
 
+  // Bundle each pairwise-legality adjacency with its predicate, peer
+  // label, short error name, and educational hint so the pinned-tile
+  // violation paths can share one enforceAdjacency call per kind.
+  AdjacencyKind bufferKind{
+      bufferAdjacency, bufferPred, bufferLabel, "shared-L1 buffer",
+      "shared-L1 buffer adjacency requires this LTO to be on a tile "
+      "whose L1 is shared with the buffer owner's tile (N/S neighbor, "
+      "or W neighbor per the device's checkerboard rule)"};
+  AdjacencyKind cascadeKind{
+      cascadeAdjacency, cascadePred, cascadeLabel, "cascade",
+      "cascade adjacency requires the destination tile to be one row "
+      "South or one column East of the source tile"};
+
   // Phase 3: Place constrained tiles then compute tiles.
   //
   // Process LogicalTileOps in order of how constrained they are: fully pinned
@@ -329,28 +342,10 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
     auto row = logicalTile.tryGetRow();
     if (col && row) {
       TileID tile{*col, *row};
-      if (!satisfiesAdjacency(logicalTile, tile, bufferAdjacency, bufferPred)) {
-        auto diag = logicalTile.emitError()
-                    << "tile (" << tile.col << ", " << tile.row
-                    << ") violates shared-L1 buffer adjacency";
-        attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
-        diag.attachNote()
-            << "shared-L1 buffer adjacency requires this LTO to be on a tile "
-               "whose L1 is shared with the buffer owner's tile (N/S "
-               "neighbor, or W neighbor per the device's checkerboard rule)";
+      if (failed(enforceAdjacency(logicalTile, tile, bufferKind)))
         return failure();
-      }
-      if (!satisfiesAdjacency(logicalTile, tile, cascadeAdjacency,
-                              cascadePred)) {
-        auto diag = logicalTile.emitError()
-                    << "tile (" << tile.col << ", " << tile.row
-                    << ") violates cascade adjacency";
-        attachPeerNotes(diag, logicalTile, cascadeAdjacency, cascadeLabel);
-        diag.attachNote()
-            << "cascade adjacency requires the destination tile to be one row "
-               "South or one column East of the source tile";
+      if (failed(enforceAdjacency(logicalTile, tile, cascadeKind)))
         return failure();
-      }
       if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
                                                channelRequirements, true)))
         return failure();
@@ -883,6 +878,19 @@ bool SequentialPlacer::satisfiesAdjacency(
                   ok = false;
               });
   return ok;
+}
+
+LogicalResult SequentialPlacer::enforceAdjacency(LogicalTileOp logicalTile,
+                                                 TileID tile,
+                                                 const AdjacencyKind &kind) {
+  if (satisfiesAdjacency(logicalTile, tile, kind.adjacency, kind.pred))
+    return success();
+  auto diag = logicalTile.emitError()
+              << "tile (" << tile.col << ", " << tile.row << ") violates "
+              << kind.name << " adjacency";
+  attachPeerNotes(diag, logicalTile, kind.adjacency, kind.peerLabel);
+  diag.attachNote() << kind.constraintHint;
+  return failure();
 }
 
 std::pair<int, int>

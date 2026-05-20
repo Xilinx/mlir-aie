@@ -229,6 +229,25 @@ private:
     bool isReservedForOther(mlir::Operation *lto, TileID candidate) const;
   };
 
+  // A pairwise-legality adjacency constraint (buffer, cascade, ...)
+  // bundled with everything the placer needs to check it and report a
+  // useful diagnostic when it fails: the edge set, the predicate, the
+  // peer-role label for notes, the short name for the error message,
+  // and the educational hint text appended after the peer notes.
+  struct AdjacencyKind {
+    const Adjacency &adjacency;
+    llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred;
+    llvm::function_ref<llvm::StringRef(bool thisIsFirst)> peerLabel;
+    llvm::StringRef name;           // e.g. "shared-L1 buffer", "cascade"
+    llvm::StringRef constraintHint; // appended as a final attachNote
+  };
+
+  // Check `logicalTile` at `tile` against `kind`'s adjacency. On
+  // failure, emit a fully-formed diagnostic (error + peer notes +
+  // constraint hint) and return failure.
+  mlir::LogicalResult enforceAdjacency(LogicalTileOp logicalTile, TileID tile,
+                                       const AdjacencyKind &kind);
+
   // Per-call inputs for `findUnconstrainedCoreCandidate`. Bundles the
   // adjacency + demand state that Phase 3 builds for each candidate
   // filter.
