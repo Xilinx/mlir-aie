@@ -1,163 +1,117 @@
-# m8 megakernel: v2 design plan
+# m8 megakernel: design plan (v3 — post-Path-X findings)
 
-## Goal
+## TL;DR for the next session
 
-Replace m8's 8-tile pipeline (623 ms, 0.1% utilization) with a
-**single-tile megakernel** running all 9 sub-ops sequentially on (5,3),
-using vertically-adjacent neighbors (5,2) and (5,4) to host large
-static weights via `delegate_tile`. Eliminates **all** inter-tile
-fifos and pipeline fill/drain.
+m8 single-tile megakernel is achievable but requires writing fused C
+kernels (Python-side IRON orchestration blows the 16 KB program memory
+cap on its own). Plan: 3 fused C kernels + simplified Worker.
 
-## Template: mobilenet `bottleneck/regular.py`
+Status: **m8_back done** (cv3+cv2 fused, 4.9 KB .o); m8_front and m8_pair
+remaining; Worker rewrite is the final step.
 
-Direct precedent at `programming_examples/ml/mobilenet/bottleneck/regular.py:474-492`:
+## What we proved out
 
-```python
-def _of(ch, depth):
-    return ObjectFifo(
-        _u8((in_w, 1, ch)),
-        depth=depth,
-        disable_synchronization=True,  # one core, sequential order = implicit sync
-        delegate_tile=alloc_tile,       # spill to chosen tile's L1
-    )
+### Constraints walked (all fit on 3 vertically-adjacent tiles)
+
+| Constraint | Limit per tile | Solution |
+|---|---:|---|
+| L1 SRAM | 64 KB | `delegate_tile` on every sliding-window OF + cv2 stream recv_buf, spread across (5,2)/(5,3)/(5,4) |
+| DMA input channels | 2 | `StaticWeightStream(compute_placement=neighbor)` lands recv_bufs on (5,2)/(5,4); ping-pong of pair0_cv1+cv2 and pair1_cv1+cv2 (same chunk size, both 18 KB) collapses 6 streams → 4 |
+| Program memory | 16 KB | Fuse multi-op orchestration into single C kernels (the open work) |
+
+### Verified IRON capabilities (saved to memory)
+
+- ✅ `StaticWeightStream(compute_placement=neighbor)` — recv_buf lives on a non-Worker tile, Worker reads via shared L1. Used for ws_cv1/ws_pair0 on (5,2), ws_pair1/ws_cv2 on (5,4).
+- ✅ `ObjectFifo(delegate_tile=neighbor, disable_synchronization=True)` — self-loop sliding-window OFs spilled to neighbor L1. Matches mobilenet `bottleneck/regular.py:474-492`.
+- ✅ Same-pair ping-pong via `StaticWeightStream(ping_pong_buf=...)` — two streams on one channel when chunk sizes match.
+
+### Known IRON limitations (also saved to memory)
+
+- ❌ `Buffer(tile=neighbor)` passed to a different-tile Worker — rejected at construction. Use lockless OF + init_values workaround, OR (for weight data) StaticWeightStream's placed-dialect path.
+- ❌ IRON-Python helper functions cost ~5 KB ELF text each after lowering. Single-tile orchestration tops out around 3 sub-ops worth of helpers before busting 16 KB program memory.
+
+## Final design — 1 tile compute, 3 fused C kernels
+
+```
+Tile A (5,3) megakernel Worker calls 3 fused kernels per row:
+  k_m8_front(...)   →  cv1 + m_0_split            (chunks N_CV1_CHUNKS=8)
+  k_m8_pair(...)    →  pair_cv1 + pair_cv2 + skip (used twice: pair0, pair1)
+  k_m8_back(...)    →  cv3 + cv2                  (chunks N_CV2_CHUNKS=8)
 ```
 
-Single Worker with self-loop ObjectFifos providing sliding 3-row
-windows for the 3×3 convs. We copy this skeleton and substitute m8's
-sub-op composition.
+### Weight & I/O layout (verified to fit)
 
-## Why we don't write a new .cc kernel
+| Tile | Resources |
+|---|---|
+| (5,3) compute | act_in OF (ch 0), m_0_split static (16 KB), m_0_cv3 static (16 KB), small sliding OFs (split_a/p0_mid/p0_skip on south, others on north via delegate), all biases + LUTs |
+| (5,2) south | ws_cv1 recv (ch 0, 8 KB), ws_pair0 ping-pong recv (ch 1, 18 KB), delegated OFs: top/bot/bot_to_cv2/split_b/p0_*  |
+| (5,4) north | ws_pair1 ping-pong recv (ch 0, 18 KB), ws_cv2 recv (ch 1, 12 KB), delegated OFs: bot_to_cv2/cv3_out/inner_*/p1_* |
 
-Every m8 sub-op already has a **per-row vec kernel** that takes 1-3
-input rows and produces 1 output row. We compose them inside the
-megakernel Worker as sequential `k_*(...)` calls — no new C code.
+Three memtiles supply weight streams: (5,1)→ws_cv1, (4,1)→ws_pair0, (6,1)→ws_pair1, (3,1)→ws_cv2.
 
-| Sub-op | Existing kernel | Source variant |
-|---|---|---|
-| cv1 (1×1, 256→256 split) | `yolo_c3k2_small_cv1_split_streamed_silu_bias_i8_i8` | streamed |
-| m_0_split (1×1 ×2) | `yolo_c3k2_heavy_m_0_split_silu_bias_i8_i8` | static |
-| pair0_cv1 (3×3) | `yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8` | static (used for pair1 today) |
-| pair0_cv2 (3×3+skip) | `yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8` | streamed |
-| pair1_cv1 (3×3) | `yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i8` | streamed |
-| pair1_cv2 (3×3+skip) | `yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8` | static |
-| cv3 (1×1 concat2) | `yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8` | static |
-| cv2 (1×1 concat3) | `yolo_c3k2_small_cv2_concat3_streamed_silu_bias_i8_i8` | streamed |
+## Fused kernel design notes
 
-All vectorized (mmul<4,8,8>) and bit-exact today. Megakernel = Python
-orchestration; no kernel-C rewrites.
+### m8_back (DONE — kernels/yolo_m8_back_cv3_cv2_fused_vec.cc)
 
-## L1 budget (corrected)
+Combines cv3 (1×1 concat2, 128 oc) + cv2 (1×1 concat3, 256 oc chunked) per call.
+- On cv2 chunk_idx == 0: recompute cv3 → file-scope static `s_cv3_out[16 × 128]`
+- Always: compute this cv2 chunk using `s_cv3_out` as the m0 input
+- Compiles to 2864 bytes text + 2048 bytes bss
 
-AIE2P compute tile = 64 KB total. Subtract ~8 KB program + stack.
-**Usable per-tile: ~56 KB.**
+### m8_front (TODO — similar pattern to m8_back)
 
-### Weight inventory
+cv1 (1×1 split, 256 oc chunked, first-half→top, second-half→bot/bot_to_cv2) + m_0_split (1×1×2, bot→split_a + split_b).
+- Static scratch needed: `s_bot[16 × 128]` (2 KB) holds bot during cv1 chunk loop
+- On cv1 chunk_idx == 0: clear s_bot
+- Always: do this cv1 chunk, writing to top OR (s_bot AND bot_to_cv2)
+- On cv1 chunk_idx == N_CV1_CHUNKS-1: bot is complete, run m_0_split using s_bot → split_a + split_b
 
-| Layer | Bytes |
-|---|---:|
-| cv1 (256→256, 1×1) | 65 536 |
-| cv2 (384→256, 1×1, 3-concat input) | 98 304 |
-| m_0_split cv1 (128→64) | 8 192 |
-| m_0_split cv2 (128→64) | 8 192 |
-| m_0_cv3 (128→128) | 16 384 |
-| pair0_cv1 (64→64, 3×3) | 36 864 |
-| pair0_cv2 (64→64, 3×3) | 36 864 |
-| pair1_cv1 (64→64, 3×3) | 36 864 |
-| pair1_cv2 (64→64, 3×3) | 36 864 |
-| **Total** | **~344 KB** |
+Estimated kernel size: ~3-4 KB text + 2 KB bss.
 
-### Allocation across (5,2) / (5,3) / (5,4)
+### m8_pair (TODO — hardest; sliding window across calls)
 
-Two of the four pair convs go static on neighbors; the other two stream
-from memtile alongside cv1 and cv2.
+pair_cv1 (3×3, 64→64) + pair_cv2 (3×3 + skip, 64→64). Used for both pair0 (with pair0 weights) and pair1 (with pair1 weights — same kernel symbol).
 
-| Tile | Static weights | KB |
-|---|---|---:|
-| (5,2) south neighbor | pair0_cv1 (36) + m_0_split cv1 (8) + m_0_split cv2 (8) | 52 |
-| (5,4) north neighbor | pair1_cv2 (36) + m_0_cv3 (16) | 52 |
-| (5,3) compute | sliding-window OFs (~32) + I/O fifos (~8) + active stream chunks (~8) + LUTs+biases (~6) | ~54 |
-| Streamed from memtile per sample | cv1 (64) + pair0_cv2 (36) + pair1_cv1 (36) + cv2 (96) | 232 (DMA, not L1) |
+Sliding window challenge: pair_cv2(row r) needs pair_cv1(rows r-1, r, r+1). Within ONE kernel call (per row), we only have pair_cv1's row r output. So pair_cv2 can only run when we've accumulated 3 rows of pair_cv1 output.
 
-Each tile under the 56 KB ceiling. Neighbor cores stay idle — their
-DMEMs are pure storage that (5,3)'s kernel reads via shared L1.
+Two approaches:
+1. **Per-call computes pair_cv1 only**; pair_cv2 runs separately on a different call (defeats fusion purpose for pair_cv2).
+2. **Two static scratch arrays** hold the rolling 3 rows of pair_cv1 output AND pair_cv1 skip rows. Per call:
+   - Always: compute pair_cv1(current row), write to scratch slot (current_iter % 3)
+   - If iter ≥ 2: compute pair_cv2 using scratch rows (current-2, current-1, current) + skip
+   - Border handling: rows 0, in_h-1 replicate via static-array index management
 
-### Sliding-window OF sizes
+Approach 2 is the right one — keeps everything in one kernel call per row, manages sliding internally. Estimated 4-5 KB text + 6 KB bss (pair0_mid 3×rows + pair0_skip + pair1_mid + pair1_skip, but only one set live at a time since pair0 and pair1 calls are sequential).
 
-| OF (self-loop on (5,3), delegate to (5,2/3/4) as needed) | depth | size |
-|---|---:|---:|
-| top (cv1 → cv2) | 2 | 4 KB |
-| bot_to_cv2 (cv1 → cv2) | 2 | 4 KB |
-| bot (cv1 → m_0_split) | 2 | 4 KB |
-| split_a (m_0_split → pair0_cv1) | 3 | 3 KB |
-| split_b (m_0_split → cv3) | 2 | 2 KB |
-| pair0_mid (pair0_cv1 → pair0_cv2) | 3 | 3 KB |
-| pair0_skip (pair0_cv1 → pair0_cv2) | in_h | 16 KB ← biggest |
-| pair0_out / inner_0_out (pair0_cv2 → pair1_cv1) | 3 | 3 KB |
-| pair1_mid (pair1_cv1 → pair1_cv2) | 3 | 3 KB |
-| pair1_skip (pair1_cv1 → pair1_cv2) | in_h | 16 KB |
-| pair1_out (pair1_cv2 → cv3) | 2 | 2 KB |
-| cv3_out (cv3 → cv2) | 2 | 2 KB |
+Actually simpler: m8_pair uses a `static int s_iter_idx` counter to track its own row position. Borders by checking `s_iter_idx == 0` or `s_iter_idx == in_h - 1`. Tile holds 3 + 3 + 3 + 3 = 12 KB of scratch across both pair calls (since calls are sequential, scratch could share).
 
-Two `pair*_skip` fifos at in_h=16 depth are the big ones (each 16 KB).
-Both can be delegated to neighbor tiles to keep (5,3)'s budget under
-control. Probably:
-- pair0_skip → delegated to (5,2)
-- pair1_skip → delegated to (5,4)
+### Worker rewrite
 
-Then (5,3)'s sliding-window OF total is ~24 KB.
+After all 3 fused kernels exist, m8_megakernel.py's Worker body simplifies from 6 helpers + preamble/postamble (~37 KB ELF) to 3 kernel calls in a single `for _ in range_(in_h)` loop (~10-15 KB ELF expected). Borders handled inside kernels.
 
-## Per-sample wall-time estimate
+## Next-session starting point
 
-- Compute: 24M MACs / 32 MAC·cycle / 1 GHz = **750 us** at peak vec; realistic ~1.5 ms at 50% utilization
-- Weight DMA: 232 KB / 500 MB/s = **464 us** (or worse under memtile contention — see memtile_bw_bench)
-- I/O DMA: ~100 us
+```bash
+# Pick up here:
+git log --oneline -5     # confirms the m8_back commit landed
+ls programming_examples/ml/yolo26n/kernels/yolo_m8_back_cv3_cv2_fused_vec.cc
 
-**Estimated per-sample: 1.5-3 ms** vs current 623 ms = **200-400x speedup**.
+# Next two kernels to write (in order):
+# 1. kernels/yolo_m8_front_cv1_split_fused_vec.cc — easier, mirrors m8_back pattern
+# 2. kernels/yolo_m8_pair_two_3x3_skip_fused_vec.cc — sliding window in static scratch
 
-For 60 fps target (16.7 ms/sample budget across 11 blocks), m8's
-1.5-3 ms is well under fair-share. The chain bottleneck would move to
-m6 (280 ms) — same megakernel treatment can be applied.
+# Then rewire:
+# 3. scripts/m8_megakernel.py — replace 6-helper Worker with 3-helper Worker
+# 4. M8_MEGAKERNEL=1 make BLOCK=m8 run_ort   (bit-exact gate)
+```
 
-## Open risks
+## What this means for chain perf
 
-1. **Program memory budget (16 KB)** on (5,3) — 9 sub-ops worth of
-   kernel code may overflow. The orchestration is Python-side so it's
-   not in tile progmem. Each `k_*` is a separate .o file linked to its
-   call site; total text on the tile is the sum of the called kernel
-   .o text sizes. If it overflows, fallback: split into 2 megakernel
-   tiles (e.g., (5,3) cv1+split+pair0, (5,4) pair1+cv3+cv2) connected
-   by a single inter-tile fifo — 2-stage pipeline.
+If m8 megakernel lands at the estimated ~3 ms/sample (compute + DMA on 1
+tile, no fill/drain), m8 drops from 623 ms to ~3 ms — a 200× win. The
+chain bottleneck moves to m6 (280 ms) or the rest of the structural
+floor. **Same megakernel pattern (3 fused C kernels per tile) applies
+to m6.**
 
-2. **Memtile DMA throughput under contention** — answered by the
-   running `scripts/memtile_bw_bench.py` agent. If sustained < 200 MB/s,
-   the 464 us DMA estimate becomes ~1 ms and we need to consider
-   keeping more weights static (drop cv1 streaming, place those weights
-   on a memtile-staging buffer that loads once at design init).
-
-3. **IRON `delegate_tile` correctness** for cross-tile static Buffers —
-   verified by mobilenet using the same pattern. No risk.
-
-4. **Compile time** — 9 kernels linked into one worker may slow build.
-   Acceptable; this is build-time only.
-
-## Bit-exactness gate
-
-1. `M8_MEGAKERNEL=1 make BLOCK=m8 run_ort` → 0 mismatches
-2. `M8_MEGAKERNEL=1 make chain run_chain` → 0 mismatches
-
-## Implementation plan
-
-1. **Write `scripts/m8_megakernel.py`** — new builder mirroring mobilenet
-   `regular.py`. Single Worker on (5,3), all OFs self-loop with
-   delegate to (5,2)/(5,4)/(5,3), static weight Buffers on neighbors,
-   StaticWeightStream for the 4 streamed weight sets, sequential
-   per-row kernel calls inside `for _ in range_(in_h)`.
-2. **Hook into `scripts/m8_stage.py`** — at the top of `build()`, if
-   `M8_MEGAKERNEL` env is set, delegate to `m8_megakernel.build()`
-   and return. Leaves the 8-tile path intact as the fallback.
-3. **Build + bit-exact verify** — `make BLOCK=m8` standalone first;
-   then chain.
-4. **Measure** — record m8 standalone latency, chain throughput.
-5. **Stretch goals if perf disappoints**:
-   - Profile which sub-op dominates; cascade-split that one only
-   - Apply same megakernel pattern to m6 (next chain bottleneck)
+Target chain throughput after both m6 and m8 megakerneled: low tens of
+ms per sample → potentially 60+ fps batched.
