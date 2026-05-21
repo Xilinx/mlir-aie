@@ -16,11 +16,8 @@ These programming examples provide a good starting point to illustrate how to bu
 * [Passthrough Kernel](./passthrough_kernel) - Vectorized memcpy via a single AIE core kernel.
 * [Passthrough PyKernel](./passthrough_pykernel) - Memcpy where the AIE kernel is written as an inline Python function rather than a C++ external function.
 * [Passthrough DMAs PLIO](./passthrough_dmas_plio) - **Targets the Xilinx VCK5000, not Ryzen AI NPU.** Demonstrates PLIO-connected soft DMAs in programmable logic.
-* [DMA Transpose](./dma_transpose) - Matrix transpose using the Shim DMA with `npu_dma_memcpy_nd`.
-* [DMA Transpose Packet](./dma_transpose_packet) - Matrix transpose using packet-switched DMA flows.
+* [Transposes](./transposes) - Four interchangeable matrix-transpose strategies (DMA stride, packet-switched DMA stride, VSHUFFLE, hybrid) behind a single `--strategy` flag.
 * [Chaining Channels](./chaining_channels) - Demonstrates chaining multiple DMA buffer descriptors in sequence on a single channel.
-* [Combined Transpose](./combined_transpose) - Matrix transpose combining Shim DMA strides with AIE core VSHUFFLE instructions.
-* [Shuffle Transpose](./shuffle_transpose) - Matrix transpose using only AIE core VSHUFFLE instructions.
 * [Vector Scalar Add](./vector_scalar_add) - Single tile increments every element of a vector by `1`. Includes a `test_runlist.cpp` variant that exercises the XRT run-list execution model (NPU2 only).
 * [Vector Scalar Mul](./vector_scalar_mul) - Single tile performs `vector * scalar` of size `4096` in `1024`-element chunks.
 * [Vector Vector Add](./vector_vector_add) - Single tile performs `vector + vector` of size `1024`.
