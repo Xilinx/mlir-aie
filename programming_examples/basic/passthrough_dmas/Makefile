@@ -1,39 +1,38 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
+#
+# NPU paths use @iron.jit's compile() directly via --xclbin-path / --insts-path.
+# The vck5000 (Versal AIE1) path uses the legacy print-MLIR + aiecc flow.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-all: build/final.xclbin
+SHELL := /bin/bash
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_dmas
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 LENGTH ?= 4096
 
-aie_py_src=${targetname}.py
-use_placed?=0
+aie_py_src = ${targetname}.py
+aieargs = -d ${devicename} -n ${LENGTH}
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+xclbin_target = build/final.xclbin
+insts_target = build/insts.bin
 
-build/aie.mlir: ${srcdir}/${aie_py_src}
+.PHONY: all
+all: ${xclbin_target} ${insts_target}
+
+${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${LENGTH} ${devicename} ${col} > $@
-
-build/final.xclbin: build/aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --xclbin-name=${@F} \
-		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -43,26 +42,31 @@ ${targetname}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
-run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${LENGTH}
+.PHONY: run
+run: ${targetname}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -l ${LENGTH}
 
-# Changing variables when we target VCK5000
-vck5000: devicename=xcvc1902
-vck5000: col=6
+# vck5000 (Versal AIE1) path stays on the legacy print-MLIR + aiecc flow.
+build/aie_vck5000.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d xcvc1902 -n ${LENGTH} --emit-mlir > $@
 
-vck5000: build/aie.mlir
-	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
+.PHONY: vck5000
+vck5000: build/aie_vck5000.mlir
+	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu $< \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
 		-L/lib/x86_64-linux-gnu/ \
 		${srcdir}/test_vck5000.cpp \
 		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
+.PHONY: run_vck5000
 run_vck5000:
-	test.elf
+	./test.elf
 
+.PHONY: clean
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe
