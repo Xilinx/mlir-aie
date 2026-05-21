@@ -5,7 +5,17 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""ObjectFIFO dataflow primitives for IRON designs."""
+"""Dataflow primitives for IRON designs.
+
+High-level (managed routing + buffers + locks):
+    :class:`ObjectFifo`, :class:`CascadeFlow`
+
+Lower-level (explicit routing + DMA programs; peers of the above):
+    :class:`Flow`, :class:`TileDma`, :class:`DmaChannel`, :class:`Bd`,
+    :class:`Acquire`, :class:`Release`
+"""
 
 from .objectfifo import ObjectFifo, ObjectFifoHandle, ObjectFifoLink, ObjectFifoEndpoint
 from .cascadeflow import CascadeFlow
+from .flow import Flow
+from .tile_dma import Acquire, Bd, DmaChannel, Release, TileDma

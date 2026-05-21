@@ -63,11 +63,43 @@ class Runtime(Resolvable):
         self._tasks: list[RuntimeTask] = []
         self._fifos = set()
         self._workers = []
+        # Lower-level explicit-routing primitives (peers of ObjectFifo for
+        # designs that hand-wire flows + DMA programs instead of letting
+        # ObjectFifo manage them).
+        self._flows = []
+        self._locks = []
+        self._tile_dmas = []
         self._open_task_groups = []
         self._trace_size = None
         self._trace_workers = None
         self._strict_task_groups = strict_task_groups
         self._ddr_id = 4
+
+    def add_flow(self, flow) -> None:
+        """Register an explicit :class:`Flow` (or :class:`PacketFlow`) so the
+        Program resolves it alongside the ObjectFifos."""
+        self._flows.append(flow)
+
+    def add_lock(self, lock) -> None:
+        """Register an explicit :class:`Lock` shared between a Worker and a
+        :class:`TileDma`."""
+        self._locks.append(lock)
+
+    def add_tile_dma(self, tile_dma) -> None:
+        """Register an explicit :class:`TileDma` program."""
+        self._tile_dmas.append(tile_dma)
+
+    @property
+    def flows(self):
+        return list(self._flows)
+
+    @property
+    def locks(self):
+        return list(self._locks)
+
+    @property
+    def tile_dmas(self):
+        return list(self._tile_dmas)
 
     @contextmanager
     def sequence(self, *input_types: type[np.ndarray]):

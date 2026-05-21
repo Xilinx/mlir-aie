@@ -19,10 +19,20 @@ Provides the primary abstractions for describing NPU designs:
 
 from .buffer import Buffer
 from .kernel import ExternalFunction, Kernel
+from .lock import Lock
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
-from .dataflow import ObjectFifo, CascadeFlow
+from .dataflow import (
+    Acquire,
+    Bd,
+    CascadeFlow,
+    DmaChannel,
+    Flow,
+    ObjectFifo,
+    Release,
+    TileDma,
+)
 from .dtype import str_to_dtype, dtype_to_str
 from aie.utils.compile.jit import (
     CompilableDesign,
@@ -60,6 +70,14 @@ __all__ = [
     "WorkerRuntimeBarrier",
     "Runtime",
     "ObjectFifo",
+    # Lower-level explicit-routing primitives
+    "Acquire",
+    "Bd",
+    "DmaChannel",
+    "Flow",
+    "Lock",
+    "Release",
+    "TileDma",
     # Compile-time / JIT API
     "Compile",
     "In",
