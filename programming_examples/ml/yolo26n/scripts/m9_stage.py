@@ -1,19 +1,27 @@
-"""Linear build-up of m9 PSA. Same idea as build_m8_stage.py but for the
-PSA topology (5 tiles when complete).
+"""Linear build-up of m9 PSA. 5-tile design for the PSA topology.
 
-Stage map (final design):
-    1: cv1_split only — emits the (in_h, in_w, twoc=256) cv1 output as
-       a single concat(top, bot) frame to the shim.
-    2: + qkv pack — emits the (n_heads=2, 128, N=256) packed qkv frame.
-    3: + attn_core split into 4 sub-kernels (qk + softmax + sv + pe) on a
-       single tile — emits the (c=128, H, W) pre-projection attn frame.
-    4: + proj_cv2 Phase A (attn/proj + skip-add b) — emits attn_block_out.
-    5: + ffn (ffn.0 + ffn.1 + skip-add attn_block_out) — emits ffn_block_out.
-    6: + proj_cv2 Phase B (cv2 concat2) — full m9 (out_c=256) output.
+Stages 1..10 are wired (stage 10 is the full m9 block as it ships in the
+chain). The `if stage >= N` gates accumulate — stage N includes everything
+from 1..N. Stage 11 is a guard rail that raises NotImplementedError.
 
-Only stage 1 is wired today; higher stages NotImplementedError until their
-kernels are authored. The skeleton mirrors build_m8_stage.py so adding each
-stage means adding a `if stage >= N: ...` block in the same shape.
+Stage map:
+    1:  cv1_split — emits the cv1 output (in_h, in_w, twoc=256) as a
+        single concat(top, bot) frame to the shim.
+    2:  + qkv pack — emits the (n_heads=2, 128, N=256) packed qkv frame.
+    3:  + qk_pack — emits per-head (Q + K, kd=32, N=256) chunks.
+    4:  + qk_row + attn_scale — emits the (N, N) pre-softmax scores.
+    5:  + softmax_row — emits the (N, N) post-softmax attention weights.
+    6:  + v_pack + sv_row + sv_row_acc — emits per-head SV output.
+    7:  + pe_add_row — emits the (c=128, H, W) pre-projection attn frame.
+    8:  + attn/proj + skip-add b — emits attn_block_out.
+    9:  + ffn (ffn.0 + ffn.1 + skip-add) — emits ffn_block_out.
+   10:  + cv2 concat2 — emits the full m9 output (out_c=256). [chain default]
+
+Default in the chain is stage 10 (see aie2_yolo_per_block._build_m9_chain).
+Lower stages are for chain bisect debugging via M9_CHAIN_STAGE=N.
+Per-block standalone (M9_CHAIN_STAGE=1 by default) only exposes stage 1's
+output to test_block_ort.py — higher per-block stages exist but
+test_block_ort doesn't know how to compare the intermediate PSA tensors.
 """
 
 from __future__ import annotations

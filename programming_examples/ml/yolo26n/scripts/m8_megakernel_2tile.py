@@ -22,7 +22,9 @@ Streamed weights spread similarly to 1-tile design (cross-tile DMA
 via compute_placement to neighbors) since we still have 4 weight
 streams plus 2 act_in/none on tile A.
 
-Activated via M8_MEGAKERNEL_2TILE=1 in scripts/m8_stage.py.
+Wired into the chain and per-block builds as the (only) m8 path via
+aie2_yolo_per_block.py:_build_m8_chain and the m8 branch of
+per_block_iron.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ import placement  # noqa: E402
 import yolo_spec  # noqa: E402
 import aie2_yolo_per_block as B  # noqa: E402
 from lowlevel_dma import StaticWeightStream  # noqa: E402
-from aie2_yolo_per_block import Worker, TRACE_SIZE_PER_WORKER  # noqa: E402
+from aie2_yolo_per_block import Worker, TRACE_SIZE_PER_WORKER, TRACE_EVENTS  # noqa: E402
 
 BLOCK = "m8"
 DATA_DIR = B.DATA_DIR
@@ -216,11 +218,9 @@ def build(act_in_external=None, return_program: bool = True):
     )
 
     # ----- Input + output -----
-    # act_in depth=1: depth=2 would need 8 KB on tile A and pushes tile A
-    # over the 64 KB L1 cap at the required top/bot/split_b depth=5. With
-    # depth=1 the shim has to wait for compute to release each row before
-    # streaming the next; per-row payload is 4 KB so the shim<->compute
-    # ping-pong loss is small relative to the 2-tile compute time.
+    # act_in depth=1: per-row payload is only 4 KB, so the shim<->compute
+    # ping-pong loss is negligible vs the 2-tile compute time. (Verified:
+    # bumping to depth=2 left wall time unchanged.)
     act_in = (
         act_in_external
         if act_in_external is not None
@@ -323,6 +323,7 @@ def build(act_in_external=None, return_program: bool = True):
     # ==================================================================
     # Tile A worker — cv1+split + pair0_cv1 + pair0_cv2
     # ==================================================================
+
     def worker_a_fn(
         act_in_c, ws_cv1, ws_pair0,
         wts_m0c1, wts_m0c2,
@@ -371,6 +372,10 @@ def build(act_in_external=None, return_program: bool = True):
                            mid_r, in_w, cp, cp, 3, 3, border, rs_p0c1,
                            N_PAIR_CHUNKS, wi)
                 ws_pair0.release(1)
+            # Forward the middle (output-row-aligned) split_a row as the skip
+            # path. TODO: this scalar IRON copy currently runs in the worker
+            # body — folding it into k_pair_cv1 as a second output would be a
+            # tiny win (it's already cheap relative to the conv) but cleaner.
             for x in range_(in_w):
                 for kk in range_(cp):
                     sk_r[x, 0, kk] = sa_mid[x, 0, kk]
@@ -500,19 +505,12 @@ def build(act_in_external=None, return_program: bool = True):
                            mid_r, in_w, cp, cp, 3, 3, border, rs_p1c1,
                            N_PAIR_CHUNKS, wi)
                 ws_pair1.release(1)
+            # See _do_p0c1 — IRON-side forward of the middle row to the skip OF.
             for x in range_(in_w):
                 for kk in range_(cp):
                     sk_r[x, 0, kk] = po_mid[x, 0, kk]
             p1_mid_p.release(1)
             p1_skip_p.release(1)
-
-        def _stub_p1c2():
-            # Stub still drains ws_pair1's cv2 ping-pong chunks to keep BD chain balanced.
-            inner_1_p.acquire(1)
-            for wi in range_(N_PAIR_CHUNKS):
-                ws_pair1.acquire(1)
-                ws_pair1.release(1)
-            inner_1_p.release(1)
 
         def _do_p1c2(border, p1m_top, p1m_mid, p1m_bot, skip):
             out_r = inner_1_p.acquire(1)
@@ -625,9 +623,23 @@ def build(act_in_external=None, return_program: bool = True):
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (inp, out):
         if TRACE_SIZE_PER_WORKER > 0:
+            # Mirror aie2_yolo_per_block.py:2784-2804: respect TRACE_EVENTS and
+            # TRACE_DDR_ID env vars so we can do stall-attribution traces from
+            # this megakernel build.
+            _ddr_id = int(os.environ.get("TRACE_DDR_ID", "-1"))
+            _events_kwargs = {}
+            if TRACE_EVENTS is not None:
+                from aie.utils.trace.events import CoreEventAIE2P
+
+                evs = list(TRACE_EVENTS)
+                while len(evs) < 8:
+                    evs.append(CoreEventAIE2P.NONE)
+                _events_kwargs["coretile_events"] = evs[:8]
             rt.enable_trace(
                 trace_size=TRACE_SIZE_PER_WORKER * len(workers),
-                workers=list(workers), ddr_id=-1,
+                workers=list(workers),
+                ddr_id=_ddr_id,
+                **_events_kwargs,
             )
         rt.start(*workers)
         tg = rt.task_group()

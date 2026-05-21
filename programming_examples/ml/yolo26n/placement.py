@@ -9,18 +9,25 @@ Layout: 8 columns × 6 rows.
   rows 2-5 : compute (4 per col × 8 = 32 tiles)
 Adjacent rows in the same column share memory (we exploit for fused pairs).
 
-Compute tile budget: all 32 of 32 used (no spares). Earlier drafts had
-4 spare slots on row 2; m8 grew from 5 to 8 tiles (split inner pairs +
-dedicated cv3/cv2), m9 grew from 5 to 7 (split attn_core, unfused
-proj/ffn/cv2), and m10 fused down to 1 tile — net +4 tiles used.
-See tile_layout.py for the ASCII grid (still showing the earlier draft
-layout; the current PLACEMENT[block] dict below is the source of truth).
+Compute tile budget: 26 of 32 used (6 spares). Per-block:
+  m0    (conv_stride stem)         : 1 tile
+  m1    (conv_stride)              : 1 tile
+  m2/m4 (c3k2_small)               : 3 tiles each
+  m3/m5/m7 (conv_stride chunked)   : 1 tile each
+  m6    (c3k2_heavy)               : 5 tiles
+  m8    (c3k2_heavy 2-tile megakernel — see scripts/m8_megakernel_2tile.py
+         which hardcodes Tile(5,3) + Tile(5,4); the PLACEMENT["m8"] dict
+         below is documentary, not load-bearing for m8): 2 tiles
+  m9    (PSA staged build)         : 7 tiles
+  m10   (head, fused)              : 1 tile
 
 Op-to-tile fusion (more than 1 op per tile in multi-conv blocks):
   c3k2_small  (3 tiles): cv1 / m.0_inner_pair / cv2
-  c3k2_heavy  (5 tiles): cv1 / m.0_split / inner_pair_0 / inner_pair_1 / cv3+cv2
-  psa         (5 tiles): cv1 / qkv / attn_core(qk+softmax+pe+sv) / ffn / proj+cv2
-  head        (2 tiles): conv+avgpool / gemm
+  c3k2_heavy  (5 tiles, m6 only): cv1 / m.0_split / inner_pair_0 / inner_pair_1 / cv3+cv2
+  c3k2_heavy  (2 tiles, m8 megakernel): tile A = cv1+m_0_split+pair0_cv1+pair0_cv2;
+                                       tile B = pair1_cv1+pair1_cv2+cv3+cv2
+  psa         (7 tiles): cv1 / qkv / attn_core / sv / pe+proj / ffn / cv2
+  head        (1 tile): conv+avgpool+gemm+softmax fused
 
 The IRON design files load PLACEMENT and `yolo_spec.NETWORK` together; the
 spec says what each block computes, this file says where.
@@ -201,25 +208,20 @@ PLACEMENT: dict = {
         # are the only DMA inputs). m6 keeps cv3+cv2 fused on one tile.
         "cv3_cv2": Tile(3, 4),  # m6-E
     },
+    # m8 is built by scripts/m8_megakernel_2tile.py as a 2-tile fused
+    # megakernel — it hardcodes its own tile coords and does NOT read this
+    # PLACEMENT entry. The dict below is here for parity/documentation only;
+    # if you re-architect m8 to use a PLACEMENT-driven layout, hook it up
+    # via scripts/m8_megakernel_2tile.py's `t_a` / `t_b` assignments.
     "m8": {
-        "cv1": Tile(4, 5),  # m8-A
-        "m_0_split": Tile(5, 3),  # m8-B
-        # m8 also SPLITS each inner pair into separate cv1 + cv2 tiles
-        # because the 3x3 weights are too big for L1 even chunked — two
-        # weight streams + the activation fifos on one tile blow the
-        # per-tile 16-block BD budget. Splitting halves the BD load.
-        "inner_pair_0_cv1": Tile(5, 2),  # m8-C0
-        "inner_pair_0_cv2": Tile(6, 2),  # m8-C1
-        # pair1 originally planned for (5,5)/(4,2) but m8_stage moved
-        # to (6,3)/(6,4) during the stage-4 deadlock debug (commit f1c1344).
-        # Keep the entries in sync with the actual build so the chain-mode
-        # collision detector matches reality.
-        "inner_pair_1_cv1": Tile(6, 3),  # m8-D0 (was (5,5))
-        "inner_pair_1_cv2": Tile(6, 4),  # m8-D1 (was (4,2))
-        # cv3 and cv2 are also split (streamed cv2 weights add a 3rd DMA
-        # input that would push a fused cv3_cv2 over its 2-S2MM budget).
-        "cv3": Tile(5, 4),  # m8-E0
-        "cv2": Tile(4, 4),  # m8-E1
+        "tile_a": Tile(5, 3),  # cv1 + m_0_split + pair0_cv1 + pair0_cv2
+        "tile_b": Tile(5, 4),  # pair1_cv1 + pair1_cv2 + cv3 + cv2 (m8_back)
+        # Buffer-delegate-only neighbors (no compute; receive shared-L1
+        # spill from the two compute tiles):
+        "delegate_south": Tile(5, 2),  # tile A's OF/recv spill
+        "delegate_west":  Tile(4, 4),  # tile B's ws_pair1 recv (W-of-B,
+                                       # AIE2P shared-L1 is asymmetric:
+                                       # tile B can read W neighbor but not E)
     },
     # ---- PSA (7 tiles, chain-compat) ----
     # Original 5-tile design assumed monolithic attn_core; staged build

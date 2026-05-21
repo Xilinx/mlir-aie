@@ -2606,47 +2606,22 @@ def _build_psa(block_name, act_in, manifest):
 
 
 def _build_m8_chain(act_in, manifest):
-    """Chain builder for m8 — delegates to scripts/m8_stage.py.
+    """Chain builder for m8 — 2-tile megakernel (scripts/m8_megakernel_2tile.py).
 
-    Stage defaults to 5 (full m8: cv1 → m_0_split → both inner pairs
-    → cv3 → cv2). Override via M8_CHAIN_STAGE env var to bisect chain
-    hangs: =1 adds only cv1, =2 adds cv1+m_0_split, =3 adds inner_pair_0,
-    =4 adds inner_pair_1, =5 is the full block.
-
-    M8_MEGAKERNEL=1 swaps the entire 8-tile build for the single-tile
-    megakernel design in scripts/m8_megakernel.py.
-    M8_MEGAKERNEL_2TILE=1 swaps it for the working 2-tile split in
-    scripts/m8_megakernel_2tile.py (bit-exact on HW per commit 7ffff5c7d).
+    Fuses cv1+m_0_split on tile A (5,3) and pair1+cv3+cv2 on tile B (5,4),
+    delivering the chain's best-known m8 throughput (~404 ms/sample batched
+    N=15 vs ~560 ms/sample with the older 8-tile design).
     """
-    import os
     import importlib.util
     import pathlib
 
-    if os.environ.get("M8_MEGAKERNEL_2TILE") == "1":
-        spec = importlib.util.spec_from_file_location(
-            "m8_megakernel_2tile",
-            pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_2tile.py",
-        )
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod.build(act_in_external=act_in, return_program=False)
-    if os.environ.get("M8_MEGAKERNEL") == "1":
-        spec = importlib.util.spec_from_file_location(
-            "m8_megakernel",
-            pathlib.Path(__file__).parent / "scripts" / "m8_megakernel.py",
-        )
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod.build(act_in_external=act_in, return_program=False)
-
-    stage = int(os.environ.get("M8_CHAIN_STAGE", "5"))
     spec = importlib.util.spec_from_file_location(
-        "m8_stage",
-        pathlib.Path(__file__).parent / "scripts" / "m8_stage.py",
+        "m8_megakernel_2tile",
+        pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_2tile.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.build(stage=stage, act_in_external=act_in, return_program=False)
+    return mod.build(act_in_external=act_in, return_program=False)
 
 
 def _build_m9_chain(act_in, manifest):
@@ -2690,8 +2665,7 @@ _BUILDERS = {
     "m2": lambda act_in, m: _build_c3k2_small("m2", act_in, m),
     "m4": lambda act_in, m: _build_c3k2_small("m4", act_in, m),
     "m6": lambda act_in, m: _build_c3k2_heavy("m6", act_in, m),
-    # m8 uses the split-pair + streamed-weights design from scripts/m8_stage.py
-    # (the only one that fits L1 and works on HW — see placement.py DESIGN RULES).
+    # m8 uses the 2-tile fused megakernel (scripts/m8_megakernel_2tile.py).
     "m8": lambda act_in, m: _build_m8_chain(act_in, m),
     # m9 uses the staged split-attn_core design from scripts/m9_stage.py.
     # The legacy _build_psa monolithic sketch above is kept for sim reference
@@ -2725,27 +2699,17 @@ def per_block_iron(block_name: str) -> str:
         spec.loader.exec_module(mod)
         return mod.build(stage=stage, return_program=True)
 
-    # m8 megakernel: single-tile fused build (M8_MEGAKERNEL=1) or
-    # 2-tile split (M8_MEGAKERNEL_2TILE=1).
+    # m8: 2-tile megakernel (see scripts/m8_megakernel_2tile.py).
     if block_name == "m8":
-        import importlib.util, pathlib, os
+        import importlib.util, pathlib
 
-        if os.environ.get("M8_MEGAKERNEL_2TILE") == "1":
-            spec = importlib.util.spec_from_file_location(
-                "m8_megakernel_2tile",
-                pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_2tile.py",
-            )
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod.build(return_program=True)
-        if os.environ.get("M8_MEGAKERNEL") == "1":
-            spec = importlib.util.spec_from_file_location(
-                "m8_megakernel",
-                pathlib.Path(__file__).parent / "scripts" / "m8_megakernel.py",
-            )
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod.build(return_program=True)
+        spec = importlib.util.spec_from_file_location(
+            "m8_megakernel_2tile",
+            pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_2tile.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.build(return_program=True)
 
     blk = yolo_spec.block(block_name)
     in_w, in_h, in_c_raw = blk.layers[0].in_shape
@@ -2769,12 +2733,9 @@ def per_block_iron(block_name: str) -> str:
     in_ty = _i32((_n_samples * in_i32_per,))
     out_ty = _i32((_n_samples * out_i32_per,))
 
-    # m8 stage 5's cv1 tile (4,5) is at the L1 ceiling (~57 KB used of 64 KB).
-    # The shim input fifo at depth=5 adds 12 KB more on the consumer side
-    # (5 * 16*1*256 = 20 KB vs depth=2's 8 KB), pushing the allocator over.
-    # m8_stage.py specifically calls this out ("trim act_in's burst depth
-    # from 5 → 2 to keep cv1's L1 within budget"). The chain mode uses
-    # depth=2 on m8's input fifo and fits fine.
+    # m8's tile A is L1-tight (the 2-tile megakernel hosts cv1 + split + pair0
+    # weights, all OFs delegated to neighbor (5,2)). depth=2 fits; depth=5
+    # busts. All other blocks use depth=5 to absorb shim<->compute jitter.
     _act_in_depth = 2 if block_name == "m8" else 5
     act_in = ObjectFifo(_i8((in_w, 1, in_c)), depth=_act_in_depth)
     out_fifo, workers = _BUILDERS[block_name](act_in, manifest)

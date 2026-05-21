@@ -52,11 +52,12 @@ static inline void cv3_compute_row(
     int input_width, int two_cp, int output_channels, int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
-  const int cp = two_cp / 2;
-  const int ic_tiles = two_cp / 8;
-  const int ic_tiles_per_src = cp / 8;
-  const int oc_tiles = output_channels / 8;
-  const int x_tiles = input_width / 4;
+  // Unsigned cast → /power-of-2 lowers to shifts.
+  const int cp = (uint32_t)two_cp / 2u;
+  const int ic_tiles = (uint32_t)two_cp / 8u;
+  const int ic_tiles_per_src = (uint32_t)cp / 8u;
+  const int oc_tiles = (uint32_t)output_channels / 8u;
+  const int x_tiles = (uint32_t)input_width / 4u;
 
   int8_t *src_for_ic_tile[32];
   int local_ic_t_for[32];
@@ -115,14 +116,15 @@ static inline void cv2_compute_chunk(
     int n_chunks, int chunk_idx, int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
-  const int chunk_oc = output_channels / n_chunks;
+  const int chunk_oc = (uint32_t)output_channels / (uint32_t)n_chunks;
   const int three_c = 3 * c;
   const int oc_offset = chunk_idx * chunk_oc;
 
-  const int ic_tiles = three_c / 8;
-  const int ic_tiles_per_src = c / 8;
-  const int chunk_oc_tiles = chunk_oc / 8;
-  const int x_tiles = input_width / 4;
+  // Unsigned cast → /power-of-2 lowers to shifts.
+  const int ic_tiles = (uint32_t)three_c / 8u;
+  const int ic_tiles_per_src = (uint32_t)c / 8u;
+  const int chunk_oc_tiles = (uint32_t)chunk_oc / 8u;
+  const int x_tiles = (uint32_t)input_width / 4u;
 
   int8_t *src_for_ic_tile[48];
   int local_ic_t_for[48];

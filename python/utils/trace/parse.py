@@ -228,6 +228,9 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
             timer = 0  # TODO Some way to set this or sync this between trace types and row,col
             # timer on each execution is the time for the last execution
             # so we by default will increment it by 1 for each event
+            # Init cycles in case the first command is a Repeat (otherwise the
+            # `cycles == 0` check at line 325 hits UnboundLocalError).
+            cycles = 0
             logger.debug("tt: %s, loc: %s, NUM_EVENTS: %s", tt, loc, NUM_EVENTS)
 
             if loc in pid_events[tt]:

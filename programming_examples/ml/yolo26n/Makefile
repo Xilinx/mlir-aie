@@ -33,12 +33,14 @@ PEANOWRAP2P_FLAGS := -O2 -std=c++20 --target=aie2p-none-unknown-elf \
 # Kernel objects:
 #   m0          -> yolo_m0_conv2dk3_silu_bias.o     (OIYX raw, in_c=3 padded)
 #   m1          -> yolo_conv2dk3_stride2_silu_bias_oiyxi8o8.o (single-block use)
-#   m2/m4       -> yolo_c3k2_small_*_m{2,4}.o      (per-block symbol mangling)
+#   m2/m4       -> yolo_c3k2_small_*_m{2,4}.o     (per-block symbol mangling)
 #   m3/m5/m7    -> yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_{m3,m5,m7}.o
-#   m6/m8       -> yolo_c3k2_heavy_*_m{6,8}.o + c3k2_small cv1_split/cv2_concat3
-#   m8          -> additional streamed cv1/cv2/inner_pair variants
-#   m9          -> single-block yolo_m9_*.o (no symbol mangling)
-#   m10         -> single-block yolo_m10_*.o
+#   m6         -> yolo_c3k2_heavy_*_m6.o + c3k2_small cv1_split/cv2_concat3
+#   m8         -> 2-tile megakernel: yolo_m8_front_cv1_split_fused_m8.o,
+#                  yolo_m8_back_cv3_cv2_fused_m8.o, plus streamed inner-pair
+#                  kernels yolo_c3k2_heavy_inner_pair_cv{1,2}*_streamed_m8.o.
+#   m9         -> single-block yolo_m9_*.o (no symbol mangling)
+#   m10        -> single-block yolo_m10_*.o
 # We build all .o files so any BLOCK or chain target can link without
 # re-running the kernel build.
 KERNEL_OBJS := $(BUILD)/yolo_m0_conv2dk3_silu_bias.o \
@@ -46,42 +48,38 @@ KERNEL_OBJS := $(BUILD)/yolo_m0_conv2dk3_silu_bias.o \
 
 C3K2_SMALL_KERNELS := cv1_split m0_cv1 m0_cv2_skip cv2_concat3
 C3K2_SMALL_BLOCKS  := m2 m4
-C3K2_HEAVY_BLOCKS  := m6 m8
+C3K2_HEAVY_BLOCKS  := m6
 C3K2_HEAVY_KERNELS := m_0_split inner_pair_cv1 inner_pair_cv2_skip cv3_concat2
 C3K2_HEAVY_STREAMED_KERNELS := inner_pair_cv1_streamed inner_pair_cv2_skip_streamed
 C3K2_SHARED_KERNELS := cv1_split cv2_concat3
-C3K2_STREAMED_KERNELS := cv1_split_streamed cv2_concat3_streamed
-C3K2_STREAMED_BLOCKS  := m8
-CHUNKED_CONV_BLOCKS   := m3 m5 m7
-C3K2_HEAVY_PAIR_IDX   := 0 1
-C3K2_HEAVY_PAIR_NS_KERNELS := inner_pair_cv1 inner_pair_cv2_skip
+C3K2_STREAMED_BLOCKS := m8
+CHUNKED_CONV_BLOCKS  := m3 m5 m7
 
+# c3k2_small kernels for m2/m4 (full set) and m6 (only the shared cv1_split,
+# cv2_concat3 used by c3k2_heavy).
 KERNEL_OBJS += $(foreach blk,$(C3K2_SMALL_BLOCKS), \
                  $(foreach k,$(C3K2_SMALL_KERNELS), \
                    $(BUILD)/yolo_c3k2_small_$(k)_$(blk).o))
 KERNEL_OBJS += $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
-                 $(foreach k,$(C3K2_HEAVY_KERNELS), \
-                   $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o))
-KERNEL_OBJS += $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-                 $(foreach k,$(C3K2_HEAVY_STREAMED_KERNELS), \
-                   $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o))
-# Per-PAIR variants of the (streamed and non-streamed) inner-pair kernels for
-# m8. m8's c3k2_heavy has two inner pairs (pair0, pair1) each on its own tile;
-# IRON requires distinct func symbols per tile, so suffix with _pairN_BLK.
-KERNEL_OBJS += $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-                 $(foreach k,$(C3K2_HEAVY_STREAMED_KERNELS), \
-                   $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
-                     $(BUILD)/yolo_c3k2_heavy_$(k)_pair$(p)_$(blk).o)))
-KERNEL_OBJS += $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-                 $(foreach k,$(C3K2_HEAVY_PAIR_NS_KERNELS), \
-                   $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
-                     $(BUILD)/yolo_c3k2_heavy_$(k)_pair$(p)_$(blk).o)))
-KERNEL_OBJS += $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
                  $(foreach k,$(C3K2_SHARED_KERNELS), \
                    $(BUILD)/yolo_c3k2_small_$(k)_$(blk).o))
+
+# c3k2_heavy kernels for m6 (non-streamed; m8 uses fused-streamed instead).
+KERNEL_OBJS += $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
+                 $(foreach k,$(C3K2_HEAVY_KERNELS), \
+                   $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o))
+
+# m8 megakernel: streamed inner-pair kernels (shared symbol for pair0/pair1
+# since the megakernel calls the same kernel with different weights) plus
+# the two fused kernels (front = cv1+m_0_split, back = cv3+cv2).
 KERNEL_OBJS += $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-                 $(foreach k,$(C3K2_STREAMED_KERNELS), \
-                   $(BUILD)/yolo_c3k2_small_$(k)_$(blk).o))
+                 $(foreach k,$(C3K2_HEAVY_STREAMED_KERNELS), \
+                   $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o))
+KERNEL_OBJS += $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
+                 $(BUILD)/yolo_m8_back_cv3_cv2_fused_$(blk).o \
+                 $(BUILD)/yolo_m8_front_cv1_split_fused_$(blk).o)
+
+# Chunked stride-2 conv (m3/m5/m7).
 KERNEL_OBJS += $(foreach blk,$(CHUNKED_CONV_BLOCKS), \
                  $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_$(blk).o)
 
@@ -97,9 +95,69 @@ MLIR   := $(BUILD)/aie_$(BLOCK).mlir
 XCLBIN := $(BUILD)/final_$(BLOCK).xclbin
 INSTS  := $(BUILD)/insts_$(BLOCK).bin
 
-.PHONY: all run_ort chain run_chain clean data
+.PHONY: all run_ort chain run_chain time time_chain trace clean clean_chain data help FORCE
+
+# Default goal: print help.
+.DEFAULT_GOAL := help
+
+# Number of samples per chain dispatch. Set to a value > 1 to build a chain
+# xclbin that processes a batch in one launch (batched throughput mode).
+# Must match between `make chain` and `make run_chain` / `make time_chain`;
+# the .chain_n_samples stamp file below forces a chain rebuild if it changes.
+CHAIN_N_SAMPLES ?= 1
+
+# Extra args forwarded to scripts/time_block.py and scripts/time_chain.py,
+# e.g. `make time BLOCK=m8 TIME_ARGS="--n-iters 50"`.
+TIME_ARGS ?=
 
 all: $(XCLBIN) $(INSTS)
+
+define HELP_TEXT
+yolo26n-cls on AMD Strix NPU — make targets
+
+Per-block (set BLOCK=mN; default $(BLOCK)):
+  make BLOCK=m8                 — build per-block xclbin + insts.bin
+  make run_ort BLOCK=m8         — build + bit-exact compare vs ORT
+  make time BLOCK=m8            — build + time on NPU (mean/min/max ms, fps)
+
+Full m0..m10 chain:
+  make chain                    — build chain xclbin + insts.bin (N=1)
+  make run_chain                — build + bit-exact compare vs ORT (N=1)
+  make time_chain               — build + time on NPU (N=1 latency)
+
+Chain batched throughput (set CHAIN_N_SAMPLES=N at the make line):
+  CHAIN_N_SAMPLES=15 make chain
+  CHAIN_N_SAMPLES=15 make run_chain    — bit-exact, every sample
+  CHAIN_N_SAMPLES=15 make time_chain   — per-sample ms, fps
+
+Tracing (HW packet trace of the m8 megakernel; see scripts/trace_m8.sh):
+  make trace                    — build with trace ops, run 1 iter, parse summary
+
+Data + cleanup:
+  make data                     — regenerate weights + LUTs from ONNX
+  make clean_chain              — wipe just the chain xclbin/MLIR (cheap)
+  make clean                    — wipe build/ entirely
+
+Tuning the timing targets:
+  make time BLOCK=m8 TIME_ARGS="--n-warmup 5 --n-iters 50"
+endef
+export HELP_TEXT
+
+help:
+	@echo "$$HELP_TEXT"
+
+# Stamp file that tracks the CHAIN_N_SAMPLES value the chain xclbin was built
+# with. Re-evaluated every `make` invocation (via FORCE prereq); only its
+# mtime is bumped when the value changes, so the chain MLIR re-triggers
+# without forcing unrelated targets to rebuild.
+FORCE:
+$(BUILD)/.chain_n_samples: FORCE
+	@mkdir -p $(BUILD)
+	@new="$(CHAIN_N_SAMPLES)"; old=$$(cat $@ 2>/dev/null || echo ""); \
+	  if [ "$$old" != "$$new" ]; then \
+	    echo "[chain] CHAIN_N_SAMPLES = $$new (was $${old:-unset}); chain MLIR will rebuild"; \
+	    echo "$$new" > $@; \
+	  fi
 
 # Generic kernel .cc -> .o.
 $(BUILD)/%.o: $(SRCDIR)/kernels/%.cc
@@ -126,70 +184,15 @@ $(BUILD)/yolo_m10_conv2dk1_silu_xy_pool.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
 
-# Phase 3d: c3k2_heavy inner_pair kernels (m6/m8) vectorized.
-# inner_pair_cv1 = 3x3 stride-1, same math as c3k2_small m0_cv1.
-# inner_pair_cv2_skip = 3x3 stride-1 + cross-scale skip-add.
-$(foreach blk,$(C3K2_HEAVY_BLOCKS), \
-  $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv1_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
-
-$(foreach blk,$(C3K2_HEAVY_BLOCKS), \
-  $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
-
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
-    $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv1_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv1_vec.cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@)))
-
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
-    $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_vec.cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@)))
-
-$(foreach blk,$(C3K2_HEAVY_BLOCKS), \
-  $(eval $(BUILD)/yolo_c3k2_heavy_m_0_split_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_m_0_split_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
-
-$(foreach blk,$(C3K2_HEAVY_BLOCKS), \
-  $(eval $(BUILD)/yolo_c3k2_heavy_cv3_concat2_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_cv3_concat2_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
-
-# Phase 3e: c3k2_heavy streamed kernels (m8 weight-streaming path).
+# c3k2_heavy streamed inner-pair kernels (m8 megakernel: shared symbol
+# for both pair0 and pair1 — they run on different tiles with different
+# weights, but execute the same kernel code).
 $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv1_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv1_streamed_vec.cc ; \
     mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
-
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
-    $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv1_streamed_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv1_streamed_vec.cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@)))
-
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
-    $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_vec.cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@)))
-
-# Phase 3f: c3k2_small streamed variants (m8 uses these for its c3k2_small-
-# style cv1/cv2 with weight streaming).
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(eval $(BUILD)/yolo_c3k2_small_cv1_split_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv1_split_streamed_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
-
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(eval $(BUILD)/yolo_c3k2_small_cv2_concat3_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv2_concat3_streamed_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
-
-# Option 2 (m8 fusion experiment): split + cv3 fused kernel. Not yet wired
-# into any IRON design — built standalone here to confirm it compiles.
-# Next session: rework scripts/m8_stage.py to use this kernel and remove
-# the cv3 tile (5,4).
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(eval $(BUILD)/yolo_c3k2_heavy_m_0_split_plus_cv3_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_m_0_split_plus_cv3_vec.cc ; \
     mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
 
 # m8 megakernel: fused cv3+cv2 (m8_back). Computes cv3 once per row
@@ -205,17 +208,8 @@ $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_m8_front_cv1_split_fused_$(blk).o: $(SRCDIR)/kernels/yolo_m8_front_cv1_split_fused_vec.cc ; \
     mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
 
-# Per-block c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 sharing
-# c3k2_heavy m6/m8 also build per-block variants of). -DKERNEL_SUFFIX=_mN
-# gives each block a uniquely-named symbol.
-$(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
-  $(foreach k,$(C3K2_SMALL_KERNELS), \
-    $(eval $(BUILD)/yolo_c3k2_small_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_$(k).cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@)))
-
-# Phase 3 vectorization overrides: build m0_cv1 + cv2_concat3 .o from _vec.cc.
-# m2/m4 use the c3k2_small inner kernels directly; m6/m8 c3k2_heavy share the
-# cv1_split + cv2_concat3 kernels (the heavy m0/inner_pair paths are separate).
+# c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 shared with m6).
+# -DKERNEL_SUFFIX=_mN gives each block a uniquely-named symbol.
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv1_vec.cc ; \
     mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
@@ -232,36 +226,16 @@ $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv2_concat3_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv2_concat3_vec.cc ; \
     mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
 
+# c3k2_heavy non-streamed kernels (m6 only).
 $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
   $(foreach k,$(C3K2_HEAVY_KERNELS), \
-    $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k).cc ; \
+    $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k)_vec.cc ; \
       mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@)))
 
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(foreach k,$(C3K2_HEAVY_STREAMED_KERNELS), \
-    $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k).cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@)))
-
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(foreach k,$(C3K2_HEAVY_STREAMED_KERNELS), \
-    $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
-      $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k).cc ; \
-        mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@))))
-
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(foreach k,$(C3K2_HEAVY_PAIR_NS_KERNELS), \
-    $(foreach p,$(C3K2_HEAVY_PAIR_IDX), \
-      $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_pair$(p)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k).cc ; \
-        mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_pair$(p)_$(blk) -c $$< -o $$@))))
-
+# Chunked stride-2 conv (m3/m5/m7).
 $(foreach blk,$(CHUNKED_CONV_BLOCKS), \
   $(eval $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_$(blk).o: $(SRCDIR)/kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc ; \
     mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
-
-$(foreach blk,$(C3K2_STREAMED_BLOCKS), \
-  $(foreach k,$(C3K2_STREAMED_KERNELS), \
-    $(eval $(BUILD)/yolo_c3k2_small_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_$(k).cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@)))
 
 SILU_LUTS := $(DATA)/model.0/silu_lut.bin $(DATA)/model.1/silu_lut.bin \
              $(DATA)/model.3/silu_lut.bin $(DATA)/model.5/silu_lut.bin \
@@ -294,11 +268,18 @@ $(SILU_LUTS): $(SRCDIR)/gen_yolo_silu_luts.py $(ONNX)
 
 data: $(DATA)/manifest.json $(SILU_LUTS)
 
-# Run on NPU and bit-exact compare vs ORT's /model.N/act post-SiLU tensor.
-# Works for any per-block target; the block is inferred from $(BLOCK).
+# Per-block bit-exact: build + run on NPU + compare vs ORT's
+# /model.N/act post-SiLU tensor. m9/m10 aren't supported here (they go
+# through the chain) — use `make run_chain` to verify them end-to-end.
 run_ort: $(XCLBIN) $(INSTS)
 	cd $(SRCDIR) && python3 test_block_ort.py --block $(BLOCK) \
 	    -x $(XCLBIN) -i $(INSTS) -k MLIR_AIE
+
+# Per-block timing: warmup + N timed dispatches, reports mean/min/max ms + fps.
+# Add `TIME_ARGS="--n-warmup 5 --n-iters 50"` to tune.
+time: $(XCLBIN) $(INSTS)
+	cd $(SRCDIR) && python3 scripts/time_block.py --block $(BLOCK) \
+	    -x $(XCLBIN) -i $(INSTS) -k MLIR_AIE $(TIME_ARGS)
 
 # --- Full m0..m10 chain ---
 CHAIN_MLIR   := $(BUILD)/aie_chain.mlir
@@ -306,9 +287,10 @@ CHAIN_XCLBIN := $(BUILD)/final_chain.xclbin
 CHAIN_INSTS  := $(BUILD)/insts_chain.bin
 
 $(CHAIN_MLIR): $(SRCDIR)/aie2_yolo_iron_partial.py $(SRCDIR)/aie2_yolo_per_block.py \
-               $(DATA)/manifest.json $(SILU_LUTS)
+               $(DATA)/manifest.json $(SILU_LUTS) $(BUILD)/.chain_n_samples
 	mkdir -p $(BUILD)
-	cd $(SRCDIR) && python3 aie2_yolo_iron_partial.py > $@
+	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) \
+	    python3 aie2_yolo_iron_partial.py > $@
 
 $(CHAIN_XCLBIN) $(CHAIN_INSTS): $(CHAIN_MLIR) $(KERNEL_OBJS)
 	cd $(BUILD) && aiecc.py \
@@ -319,45 +301,24 @@ $(CHAIN_XCLBIN) $(CHAIN_INSTS): $(CHAIN_MLIR) $(KERNEL_OBJS)
 chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
 
 run_chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
-	cd $(SRCDIR) && python3 test_chain_ort.py \
-	    -x $(CHAIN_XCLBIN) -i $(CHAIN_INSTS) -k MLIR_AIE
+	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) \
+	    python3 test_chain_ort.py -x $(CHAIN_XCLBIN) -i $(CHAIN_INSTS) -k MLIR_AIE
 
-# --- Memtile -> compute-tile BW microbenchmark (scripts/memtile_bw_bench.py) ---
-BW_SINGLE_MLIR   := $(BUILD)/aie_bw_single.mlir
-BW_SINGLE_XCLBIN := $(BUILD)/final_bw_single.xclbin
-BW_SINGLE_INSTS  := $(BUILD)/insts_bw_single.bin
-BW_DUAL_MLIR     := $(BUILD)/aie_bw_dual.mlir
-BW_DUAL_XCLBIN   := $(BUILD)/final_bw_dual.xclbin
-BW_DUAL_INSTS    := $(BUILD)/insts_bw_dual.bin
+# Chain timing. For batched throughput, set CHAIN_N_SAMPLES at the make line.
+time_chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
+	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) \
+	    python3 scripts/time_chain.py -x $(CHAIN_XCLBIN) -i $(CHAIN_INSTS) \
+	    -k MLIR_AIE $(TIME_ARGS)
 
-$(BW_SINGLE_MLIR): $(SRCDIR)/scripts/memtile_bw_bench.py $(SRCDIR)/lowlevel_dma.py
-	mkdir -p $(BUILD)
-	cd $(SRCDIR) && python3 scripts/memtile_bw_bench.py --mode single > $@
+# HW packet trace of the m8 megakernel. Sub-script handles the build/run/parse
+# pipeline; honors TRACE_SIZE_PER_WORKER and TRACE_EVENTS env vars.
+trace:
+	bash $(SRCDIR)/scripts/trace_m8.sh
 
-$(BW_DUAL_MLIR): $(SRCDIR)/scripts/memtile_bw_bench.py $(SRCDIR)/lowlevel_dma.py
-	mkdir -p $(BUILD)
-	cd $(SRCDIR) && python3 scripts/memtile_bw_bench.py --mode dual > $@
-
-$(BW_SINGLE_XCLBIN) $(BW_SINGLE_INSTS): $(BW_SINGLE_MLIR)
-	cd $(BUILD) && aiecc.py \
-	    --aie-generate-xclbin --no-compile-host --no-xchesscc --no-xbridge \
-	    --aie-generate-npu-insts --npu-insts-name=$(notdir $(BW_SINGLE_INSTS)) \
-	    --xclbin-name=$(notdir $(BW_SINGLE_XCLBIN)) $(notdir $(BW_SINGLE_MLIR))
-
-$(BW_DUAL_XCLBIN) $(BW_DUAL_INSTS): $(BW_DUAL_MLIR)
-	cd $(BUILD) && aiecc.py \
-	    --aie-generate-xclbin --no-compile-host --no-xchesscc --no-xbridge \
-	    --aie-generate-npu-insts --npu-insts-name=$(notdir $(BW_DUAL_INSTS)) \
-	    --xclbin-name=$(notdir $(BW_DUAL_XCLBIN)) $(notdir $(BW_DUAL_MLIR))
-
-.PHONY: memtile_bw_bench run_memtile_bw_bench
-memtile_bw_bench: $(BW_SINGLE_XCLBIN) $(BW_SINGLE_INSTS) $(BW_DUAL_XCLBIN) $(BW_DUAL_INSTS)
-
-run_memtile_bw_bench: memtile_bw_bench
-	cd $(SRCDIR) && python3 scripts/memtile_bw_run.py --mode single \
-	    -x $(BW_SINGLE_XCLBIN) -i $(BW_SINGLE_INSTS) -k MLIR_AIE
-	cd $(SRCDIR) && python3 scripts/memtile_bw_run.py --mode dual \
-	    -x $(BW_DUAL_XCLBIN) -i $(BW_DUAL_INSTS) -k MLIR_AIE
+# Wipe just the chain artifacts (cheap; preserves kernel .o cache).
+clean_chain:
+	rm -rf $(CHAIN_MLIR) $(BUILD)/aie_chain.mlir.prj \
+	       $(CHAIN_XCLBIN) $(CHAIN_INSTS) $(BUILD)/.chain_n_samples
 
 clean:
 	rm -rf $(BUILD)

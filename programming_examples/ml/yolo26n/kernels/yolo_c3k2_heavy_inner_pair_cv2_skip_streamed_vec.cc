@@ -65,17 +65,19 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
     const int32_t skip_rsh_add) {
   event0();
 
-  const int32_t chunk_oc = output_channels / n_chunks;
+  // See pair_cv1 _streamed_vec.cc: cast to unsigned so /power-of-2 lowers
+  // to shifts instead of calling __divsi3.
+  const int32_t chunk_oc = (uint32_t)output_channels / (uint32_t)n_chunks;
   const int32_t oc_offset = chunk_idx * chunk_oc;
   const bool skip_top = (border == 0);
   const bool skip_bot = (border == 2);
   const int ky_start = skip_top ? 1 : 0;
   const int ky_end = skip_bot ? 2 : 3;
 
-  const int ic_tiles = input_channels / 8;
-  const int chunk_oc_tiles = chunk_oc / 8;
+  const int ic_tiles = (uint32_t)input_channels / 8u;
+  const int chunk_oc_tiles = (uint32_t)chunk_oc / 8u;
   const int output_width = input_width;
-  const int x_tiles = output_width / 4;
+  const int x_tiles = (uint32_t)output_width / 4u;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::positive_inf);

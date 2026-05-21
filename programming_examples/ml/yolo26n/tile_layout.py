@@ -90,32 +90,32 @@ BLOCKS = [
     Block(
         "m.8",
         "m8",
-        "C",
-        5,
+        "mega",
+        2,
         337_000,
         0.352,
         640 * (1 << 10),
-        "C3k2 heavy: cv1 + 6 inner Convs + cv2",
+        "C3k2 heavy: 2-tile megakernel (m8_megakernel_2tile.py)",
     ),
     Block(
         "m.9",
         "m9 PSA",
         "PSA",
-        5,
+        7,
         242_500,
         0.303,
         576 * (1 << 10),
-        "PSA: cv1, qkv, attn (Q@K-soft-V), pe, proj, ffn, cv2",
+        "PSA: cv1, qkv, attn, sv, cv2, ffn, proj (7 tiles)",
     ),
     Block(
         "m.10",
         "m10",
         "head",
-        2,
+        1,
         323_750,
         0.336,
         int(1.5 * (1 << 20)),
-        "Head Conv 256→1280 + GAP + Gemm 1280→2",
+        "Head: Conv 256→1280 + GAP + Gemm 1280→2 + softmax, fused 1 tile",
     ),
 ]
 
@@ -136,33 +136,21 @@ ROW_LABELS = {
     0: "shim (DRAM)",
 }
 
-# Per-column tile names. Position [col][row-2] for compute rows.
-# Layout chosen to keep data flow short: early blocks at low columns, deep
-# blocks at high columns, PSA at columns 5-6, head at column 7.
+# Per-column tile names — mirrors placement.PLACEMENT entries for the
+# realized chain layout. 26 compute + 2 m8-storage-delegate tiles + 4 spares.
 LAYOUT = {
     # col : { row : cell }
-    0: {5: "m2-C", 4: "m2-B", 3: "m2-A", 2: "m0"},
-    1: {5: "m4-C", 4: "m4-B", 3: "m4-A", 2: "m1"},
-    2: {5: "m6-A", 4: "m5", 3: "m3", 2: "----"},
-    3: {5: "m6-D", 4: "m6-C", 3: "m6-B", 2: "----"},
-    4: {5: "m8-A", 4: "m6-E", 3: "m7", 2: "----"},
-    5: {5: "m8-D", 4: "m8-C", 3: "m8-B", 2: "----"},
-    6: {5: "m9-att", 4: "m9-qkv", 3: "m9-cv1", 2: "m8-E"},
-    7: {5: "m10-2", 4: "m10-1", 3: "m9-ffn", 2: "m9-prj"},
+    0: {5: "m2-cv2",  4: "m2-mid",  3: "m2-cv1",  2: "m0"},
+    1: {5: "m4-cv2",  4: "m4-mid",  3: "m4-cv1",  2: "m1"},
+    2: {5: "m6-cv1",  4: "m5",       3: "m3",      2: "m10-fused"},
+    3: {5: "m6-pair1",4: "m6-cv3+2", 3: "m6-split",2: "m6-pair0"},
+    4: {5: "----",    4: "m8-Bdel",  3: "m7",      2: "m9-proj"},
+    5: {5: "m9-ffn",  4: "m8-B",     3: "m8-A",    2: "m8-Adel"},
+    6: {5: "m9-cv2",  4: "----",     3: "----",    2: "----"},
+    7: {5: "m9-cv1",  4: "m9-qkv",   3: "m9-attn", 2: "m9-sv"},
 }
-
-# Cascade flows: tile(col_a, row_a) → tile(col_b, row_b)
-# Used for cross-column partial-sum streaming (per MobileNet bn13/bn14 pattern).
-CASCADES = [
-    # Within-column northbound cascades are implicit. Cross-column listed here.
-    ((2, 5), (3, 3)),  # m6-A → m6-B   (east jump to col 3 for the rest of m.6)
-    ((3, 5), (4, 4)),  # m6-D → m6-E   (east jump to col 4 to finish m.6)
-    ((4, 5), (5, 3)),  # m8-A → m8-B   (east jump to col 5 to continue m.8)
-    ((5, 5), (6, 2)),  # m8-D → m8-E   (east jump to col 6 for last m.8 tile)
-    # PSA internal: qkv → attn core (Q@K → softmax → @V) → projection
-    ((6, 4), (6, 5)),  # m9-qkv → m9-att (in column)
-    ((6, 5), (7, 2)),  # m9-att → m9-prj
-]
+# m8-Adel = ws/OF spill from tile A onto its south shared-L1 neighbor (5,2).
+# m8-Bdel = ws_pair1 recv on tile B's west shared-L1 neighbor (4,4).
 
 
 def render_diagram():
@@ -219,43 +207,25 @@ def render_block_stats():
 
 def render_dataflow():
     print()
-    print(" Data flow (depth-first, mostly column-major):")
+    print(" Data flow (depth-first, column-major, see placement.py for exact tiles):")
     print()
     flow = [
-        "  DRAM ─► shim(c0) ─► memtile(c0) ─► m.0 (col0,r2)",
-        "  ─► m.1 (col1,r2) ─► m.2 (col0 r3-5)",
-        "  ─► m.3 (col2,r3) ─► m.4 (col1 r3-5)",
-        "  ─► m.5 (col2,r4) ─► m.6 (col2 r5, casc→ col3 r3-5, casc→ col4 r4) ─► m.7 (col4,r3)",
-        "  ─► m.8 (col4 r5, casc→ col5 r3-5, casc→ col6 r2)",
-        "  ─► m.9 PSA (col6 r3-5 + col7 r2-3)",
-        "    │  cv1 → qkv → attn core (Q@K, softmax, @V) → pe+proj → ffn → cv2",
-        "  ─► m.10 (col7 r4-5: Conv 256→1280 → GAP → Gemm 1280→2)",
-        "  ─► memtile(c7) ─► shim(c7) ─► DRAM (logits)",
+        "  DRAM ─► shim(c0) ─► memtile(c0)",
+        "  ─► m.0 (0,2) ─► m.1 (1,2)",
+        "  ─► m.2 (col 0, rows 3-5)         [c3k2_small]",
+        "  ─► m.3 (2,3) ─► m.4 (col 1, rows 3-5) ─► m.5 (2,4)",
+        "  ─► m.6 (col 2 r5 + col 3 rows 2-5) [c3k2_heavy, 5 tiles]",
+        "  ─► m.7 (4,3)",
+        "  ─► m.8 (5,3)+(5,4) [2-tile megakernel; delegate buffers at (5,2),(4,4)]",
+        "  ─► m.9 PSA (cv1+qkv+attn+sv on col 7; cv2+ffn+proj scattered)",
+        "  ─► m.10 (2,2)  [head, fused: Conv 256→1280 + GAP + Gemm 1280→2 + softmax]",
+        "  ─► memtile(c7) ─► shim(c7) ─► DRAM (probs)",
     ]
     for line in flow:
         print(line)
-    print()
-    print(" Cascade flows (cross-column partial-sum streams):")
-    for a, b in CASCADES:
-        print(f"   tile({a[0]},{a[1]}) ──cascade──► tile({b[0]},{b[1]})")
-
-
-def render_caveats():
-    print()
-    print(" Open design questions this layout does NOT yet resolve:")
-    print("  1. Bias add — MobileNet kernels have NO bias support; 40/42 of our")
-    print("     ops have INT8 biases. Need to fork a Conv kernel (cleanest) or add")
-    print("     a separate bias-add kernel between Conv and the SRS requant.")
-    print("  2. PSA tile budget (5 tiles) may be tight — 7 Convs + 2 MatMul +")
-    print("     Softmax. May need to fuse cv1+qkv into 1 tile, or extend to 6 tiles.")
-    print("  3. SiLU/HardSigmoid handling — graph uses HardSigmoid+Mul pairs;")
-    print("     to compress, write a fused INT8 SiLU LUT kernel.")
-    print("  4. m.10 GAP reduction layout — global average over 16×16 spatial")
-    print("     should fuse into the tile holding the final Conv output.")
 
 
 if __name__ == "__main__":
     render_diagram()
     render_block_stats()
     render_dataflow()
-    render_caveats()

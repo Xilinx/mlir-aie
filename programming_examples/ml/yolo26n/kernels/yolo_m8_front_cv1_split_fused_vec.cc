@@ -67,9 +67,10 @@ static inline void cv1_chunk_compute(
              : (chunk_idx - chunks_per_half) * chunk_oc;
   const int bias_offset = chunk_idx * chunk_oc;
 
-  const int ic_tiles = input_channels / 8;
-  const int chunk_oc_tiles = chunk_oc / 8;
-  const int x_tiles = input_width / 4;
+  // Unsigned cast → Peano lowers /power-of-2 to shifts (signed would hit __divsi3).
+  const int ic_tiles = (uint32_t)input_channels / 8u;
+  const int chunk_oc_tiles = (uint32_t)chunk_oc / 8u;
+  const int x_tiles = (uint32_t)input_width / 4u;
 
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int dst_oc_full_base = dst_oc_offset + chunk_oc_t * 8;
@@ -123,9 +124,9 @@ static inline void m0_split_branch(
     int8_t *out, int input_width, int input_channels, int output_channels,
     int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
-  const int ic_tiles = input_channels / 8;
-  const int oc_tiles = output_channels / 8;
-  const int x_tiles = input_width / 4;
+  const int ic_tiles = (uint32_t)input_channels / 8u;
+  const int oc_tiles = (uint32_t)output_channels / 8u;
+  const int x_tiles = (uint32_t)input_width / 4u;
 
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {

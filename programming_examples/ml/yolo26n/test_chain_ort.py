@@ -5,14 +5,21 @@ runs ORT to get the chain's final tensor (post-SiLU int8 for non-head tails,
 fp32 softmax for the m10 head), then runs the chain xclbin on the NPU and
 bit-exact compares.
 
+For an N>1 chain (built with CHAIN_N_SAMPLES=N at MLIR-generation time), set
+the same CHAIN_N_SAMPLES env var here and the script feeds N identical copies
+of the test image, then verifies every output slice matches the single ORT
+reference.
+
 Run:
-    make chain run_chain      # or:
+    make run_chain                          # N=1
+    CHAIN_N_SAMPLES=15 make run_chain       # N=15 (also rebuilds xclbin)
     python3 test_chain_ort.py -x build/final_chain.xclbin \\
                               -i build/insts_chain.bin -k MLIR_AIE
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -127,49 +134,68 @@ def main():
         assert ort_out.shape == (4, out_c, out_h, out_w), ort_out.shape
         expected = ort_out[0].transpose(1, 2, 0).astype(np.int8)
 
-    # NPU input: HWC with channels padded 3→8.
+    # CHAIN_N_SAMPLES must match what the xclbin was built with.
+    n_samples = int(os.environ.get("CHAIN_N_SAMPLES", "1"))
+
+    # NPU input: HWC with channels padded 3→8, then tiled N_SAMPLES times.
     in_padded = np.zeros((in_h, in_w, in_c_pad), dtype=np.int8)
     in_padded[:, :, :in_c_decl] = rgb_hwc
+    in_flat = np.tile(in_padded.reshape(-1), n_samples)
 
-    in_tensor_iron = iron.tensor(in_padded.reshape(-1), dtype=np.int8)
-    out_tensor_iron = iron.zeros([out_total], dtype=np.int8)
+    in_tensor_iron = iron.tensor(in_flat, dtype=np.int8)
+    out_tensor_iron = iron.zeros([n_samples * out_total], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
-    print("Running NPU chain...")
+    print(f"Running NPU chain (N={n_samples})...")
     # Call rt.load+run directly (instead of run_test) so we get the
     # XRTKernelResult and can read its NPU-reported execution time.
     # NB: re-running rt.run in the same process currently hangs (XRT
     # context appears wedged after the first invocation) — one timing
-    # per process; benchmark by re-invoking the script.
-    # Kernels are scalar AIE2P C loops with no vector intrinsics, so
-    # this number is the floor; a vectorized rewrite should be ~10–50x
-    # faster.
+    # per process; benchmark via scripts/time_chain.py.
     rt = DefaultNPURuntime
     handle = rt.load(npu_opts.npu_kernel)
     result = rt.run(handle, [in_tensor_iron, out_tensor_iron])
     print(
-        f"  NPU compute time: {result.npu_time / 1e6:.3f} ms "
-        f"(scalar kernels → {1e9 / result.npu_time:.2f} fps)"
+        f"  NPU compute time: {result.npu_time / 1e6:.3f} ms total "
+        f"= {result.npu_time / 1e6 / n_samples:.3f} ms/sample "
+        f"-> {1e9 / (result.npu_time / n_samples):.2f} fps"
     )
     rc = 0 if result.ret.name == "ERT_CMD_STATE_COMPLETED" else 1
     if rc != 0:
         return rc
 
+    # Verify every output slice matches the single ORT reference (all input
+    # samples are identical, so all outputs should be identical too).
     out_tensor_iron.to("cpu")
-    if last_topo == "head":
-        actual = out_tensor_iron.numpy()[:out_c]
-    else:
-        actual = out_tensor_iron.numpy().reshape(out_h, out_w, out_c)
-
-    diff = actual.astype(np.int16) - expected.astype(np.int16)
-    n_diff = int((diff != 0).sum())
+    out_np = out_tensor_iron.numpy()
+    total_diff = 0
+    max_abs = 0
+    first_bad_sample = None
+    for i in range(n_samples):
+        sample_bytes = out_np[i * out_total : (i + 1) * out_total]
+        if last_topo == "head":
+            actual = sample_bytes[:out_c]
+        else:
+            actual = sample_bytes.reshape(out_h, out_w, out_c)
+        diff = actual.astype(np.int16) - expected.astype(np.int16)
+        n_diff = int((diff != 0).sum())
+        if n_diff:
+            total_diff += n_diff
+            max_abs = max(max_abs, int(np.abs(diff).max()))
+            if first_bad_sample is None:
+                first_bad_sample = (i, actual, diff)
     print(
-        f"chain m0..{LAST_BLOCK} vs ORT: mismatches={n_diff}/{expected.size}, "
-        f"max|diff|={int(np.abs(diff).max()) if n_diff else 0}"
+        f"chain m0..{LAST_BLOCK} N={n_samples} vs ORT: mismatches={total_diff}/"
+        f"{n_samples * expected.size}, max|diff|={max_abs}"
     )
-    if n_diff == 0:
-        print(f"BIT-EXACT NPU chain == ORT for {out_tensor_name}")
+    if total_diff == 0:
+        print(
+            f"BIT-EXACT NPU chain == ORT for {out_tensor_name} "
+            f"(all {n_samples} sample{'s' if n_samples != 1 else ''})"
+        )
         return 0
+    i, actual, diff = first_bad_sample
+    print(f"First diff is in sample {i}:")
     if last_topo == "head":
         print(f"  npu={actual.tolist()}  ort={expected.tolist()}")
     else:
