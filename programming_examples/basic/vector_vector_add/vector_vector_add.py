@@ -33,9 +33,7 @@ def vector_vector_add(
     tile_size: Compile[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    return transform_binary_typed(
-        lambda a, b: a + b, tensor_ty, tile_size=tile_size
-    )
+    return transform_binary_typed(lambda a, b: a + b, tensor_ty, tile_size=tile_size)
 
 
 def main():

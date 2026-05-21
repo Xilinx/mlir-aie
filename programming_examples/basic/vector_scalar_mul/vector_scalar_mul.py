@@ -83,7 +83,9 @@ def _make_argparser():
     p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
     p.add_argument("-i1s", "--in1_size", type=int, default=8192, help="bytes")
     p.add_argument("-i2s", "--in2_size", type=int, default=4, help="bytes (always 4)")
-    p.add_argument("-os", "--out_size", type=int, default=8192, help="bytes (== in1_size)")
+    p.add_argument(
+        "-os", "--out_size", type=int, default=8192, help="bytes (== in1_size)"
+    )
     p.add_argument("-bw", "--int_bit_width", type=int, default=16, choices=[16, 32])
     p.add_argument("--use-chess", type=int, choices=[0, 1], default=0)
     p.add_argument("-t", "--trace_size", type=int, default=0)
@@ -96,9 +98,7 @@ def _make_argparser():
 
 def _validate(opts):
     if opts.in1_size % 128 != 0 or opts.in1_size < 1024:
-        sys.exit(
-            "in1_size must be a multiple of 128 (len multiple of 64) and >= 1024"
-        )
+        sys.exit("in1_size must be a multiple of 128 (len multiple of 64) and >= 1024")
     if opts.in2_size != 4:
         sys.exit("in2_size must be 4 (1 x int32 scalar)")
     if opts.out_size != opts.in1_size:

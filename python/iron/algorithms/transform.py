@@ -151,9 +151,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         + [of_out.prod()]
         + [func]
     )
-    worker = Worker(
-        core_body, fn_args=worker_args, trace=(1 if trace_size > 0 else 0)
-    )
+    worker = Worker(core_body, fn_args=worker_args, trace=(1 if trace_size > 0 else 0))
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()

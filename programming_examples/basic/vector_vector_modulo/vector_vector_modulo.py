@@ -58,18 +58,21 @@ def vector_vector_modulo(
     tile_size: Compile[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    return transform_binary_typed(
-        lambda a, b: a % b, tensor_ty, tile_size=tile_size
-    )
+    return transform_binary_typed(lambda a, b: a % b, tensor_ty, tile_size=tile_size)
 
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Vector Modulo")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2", "xcvc1902"], default="npu")
+    p.add_argument(
+        "-d", "--dev", type=str, choices=["npu", "npu2", "xcvc1902"], default="npu"
+    )
     p.add_argument("-n", "--num-elements", type=int, default=256)
     p.add_argument("--tile-size", type=int, default=16)
-    p.add_argument("--emit-mlir", action="store_true",
-                   help="print the resolved MLIR module to stdout (legacy aiecc / vck5000 path)")
+    p.add_argument(
+        "--emit-mlir",
+        action="store_true",
+        help="print the resolved MLIR module to stdout (legacy aiecc / vck5000 path)",
+    )
     p.add_argument("--xclbin-path", type=str, default=None)
     p.add_argument("--insts-path", type=str, default=None)
     p.add_argument("-v", "--verbose", action="store_true")
@@ -125,7 +128,9 @@ def _run_and_verify(opts):
 
     if opts.verbose:
         for i in range(min(opts.num_elements, 16)):
-            print(f"{i:3}: {int(input0[i]):4} % {int(input1[i]):4} = {int(output[i]):4}")
+            print(
+                f"{i:3}: {int(input0[i]):4} % {int(input1[i]):4} = {int(output[i]):4}"
+            )
 
     if errors:
         print(f"\nError count: {errors}\nFailed.\n")
