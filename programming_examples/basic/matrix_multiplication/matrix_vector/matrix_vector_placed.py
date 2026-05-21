@@ -14,7 +14,7 @@ from aie.helpers.taplib import TensorTiler2D
 from aie.iron.controlflow import range_
 
 
-def my_matmul(dev):
+def my_matmul(dev, vectorized):
     M = 288
     K = 288
     m = 32
@@ -33,9 +33,6 @@ def my_matmul(dev):
 
     m_x_k = m * k
     m_x_K = m * K
-
-    # FIXME vectorized kernel is currently erroneous
-    vectorized = False
 
     dtype_in = np.dtype[np.int16]
     dtype_in_str = "i16"
@@ -95,6 +92,11 @@ def my_matmul(dev):
                 memA_fifos.append(
                     object_fifo(f"memA{i}", ShimTiles[i], MemTiles[i], 2, inA_ty)
                 )
+                # The vectorized kernel reads A in a "32-bit-word transposed"
+                # layout (see aie_kernels/aie2/mv.cc). For 2-byte elements
+                # the transpose granularity is 2 elements; the resulting layout
+                # packs rows of each 2-column word slowly, m rows then next
+                # 2-col word. Applied here on the compute-tile read side.
                 inA_fifos.append(
                     object_fifo(
                         f"inA{i}",
@@ -102,15 +104,9 @@ def my_matmul(dev):
                         cores[i],
                         2,
                         A_ty,
-                        (
-                            [
-                                (k // 2 // 2, 2),
-                                (m, k),
-                                (2, 1),
-                            ]
-                            if vectorized
-                            else []
-                        ),  # transpose at 4-byte (2xbf16) granularity
+                        dimensionsFromStreamPerConsumer=(
+                            [[(m, 2), (k // 2, 2 * m), (2, 1)]] if vectorized else None
+                        ),
                     )
                 )
                 object_fifo_link(memA_fifos[i], inA_fifos[i])
@@ -196,6 +192,6 @@ if __name__ == "__main__":
         prog="AIE Matrix Vector Multiplication MLIR Design",
     )
     argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
+    argparser.add_argument("--scalar", action="store_true", help="use scalar kernel")
     args, _ = argparser.parse_known_args()  # <- ignore the rest args in makefile-common
-    dev = args.dev
-    my_matmul(dev)
+    my_matmul(args.dev, vectorized=not args.scalar)

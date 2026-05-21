@@ -115,7 +115,7 @@ except Exception as e:
 
         for i in range(num_processes):
             env = os.environ.copy()
-            env["IRON_CACHE_HOME"] = temp_cache_dir
+            env["NPU_CACHE_HOME"] = temp_cache_dir
             process = subprocess.Popen(
                 [sys.executable, script_path],
                 stdout=subprocess.PIPE,
