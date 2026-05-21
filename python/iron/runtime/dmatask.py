@@ -26,6 +26,7 @@ class DMATask(RuntimeTask):
         tap: TensorAccessPattern,
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
+        packet: tuple[int, int] | None = None,
     ):
         """A RuntimeTask that will resolve to a DMA Operation.
 
@@ -35,11 +36,17 @@ class DMATask(RuntimeTask):
             tap (TensorAccessPattern): The access pattern associated with the operation.
             task_group (RuntimeTaskGroup | None, optional): The task group associated with the operation. Defaults to None.
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's
+                BD with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                downstream packet-switched routing (e.g. ObjectFifos
+                lowered with ``--packet-sw-objFifos`` or an explicit
+                :class:`PacketFlow`).  Defaults to None.
         """
         self._object_fifo = object_fifo
         self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
+        self._packet = packet
         self._task = None
         RuntimeTask.__init__(self, task_group)
 
@@ -70,5 +77,6 @@ class DMATask(RuntimeTask):
             self._rt_data.op,
             tap=self._tap,
             issue_token=self._wait,
+            packet=self._packet,
         )
         dma_start_task(self._task)

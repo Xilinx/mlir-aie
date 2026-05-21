@@ -178,6 +178,7 @@ class Runtime(Resolvable):
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         tile: Tile = AnyShimTile,
+        packet: tuple[int, int] | None = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type producer) with data from a runtime buffer.
         This should be called within a Runtime.sequence() context.
@@ -190,6 +191,11 @@ class Runtime(Resolvable):
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
+                with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                downstream packet-switched routing (e.g. ObjectFifos lowered
+                with ``--packet-sw-objFifos`` or an explicit
+                :class:`~aie.iron.PacketFlow`).  Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -205,7 +211,9 @@ class Runtime(Resolvable):
 
         in_fifo.endpoint = rt_endpoint
         self._fifos.add(in_fifo)
-        self._tasks.append(DMATask(in_fifo, source, tap, task_group, wait))
+        self._tasks.append(
+            DMATask(in_fifo, source, tap, task_group, wait, packet=packet)
+        )
 
     def drain(
         self,
@@ -215,6 +223,7 @@ class Runtime(Resolvable):
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         tile: Tile = AnyShimTile,
+        packet: tuple[int, int] | None = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type consumer) of data and write that data to a runtime buffer.
         This should be called within a Runtime.sequence() context.
@@ -227,6 +236,11 @@ class Runtime(Resolvable):
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
+                with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                downstream packet-switched routing (e.g. ObjectFifos lowered
+                with ``--packet-sw-objFifos`` or an explicit
+                :class:`~aie.iron.PacketFlow`).  Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -242,7 +256,9 @@ class Runtime(Resolvable):
 
         out_fifo.endpoint = rt_endpoint
         self._fifos.add(out_fifo)
-        self._tasks.append(DMATask(out_fifo, dest, tap, task_group, wait))
+        self._tasks.append(
+            DMATask(out_fifo, dest, tap, task_group, wait, packet=packet)
+        )
 
     def start(self, *args: Worker):
         """A placeholder operation to indicate that one or more Worker should be started on the device.
