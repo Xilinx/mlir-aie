@@ -1,16 +1,16 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
-
-VPATH := ${srcdir}/../../../aie_kernels/generic
 
 device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 PASSTHROUGH_WIDTH = 1920
@@ -21,50 +21,32 @@ PASSTHROUGH_HEIGHT = 1080
 
 targetname = vision_passthrough
 
-aie_py_src=${targetname}.py
-use_placed?=0
+aie_py_src = ${targetname}.py
+aieargs = -d ${device} -W ${PASSTHROUGH_WIDTH} -H ${PASSTHROUGH_HEIGHT}
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+xclbin_target = build/final_${PASSTHROUGH_WIDTH}.xclbin
+insts_target = build/insts.bin
 
-.PHONY: all template clean
+.PHONY: all
+all: ${xclbin_target} ${insts_target}
 
-all: build/final_${PASSTHROUGH_WIDTH}.xclbin
-
-build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir: ${srcdir}/${aie_py_src}
+${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${device} ${PASSTHROUGH_WIDTH} ${PASSTHROUGH_HEIGHT} > $@
-
-build/passThrough.cc.o: passThrough.cc
-	mkdir -p ${@D}
-ifeq ($(device),npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-else ifeq ($(device),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-else
-	echo "Device type not supported"
-endif
-	
-build/final_${PASSTHROUGH_WIDTH}.xclbin: build/aie2_lineBased_8b_${PASSTHROUGH_WIDTH}.mlir build/passThrough.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
+	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DPASSTHROUGH_WIDTH=${PASSTHROUGH_WIDTH} -DPASSTHROUGH_HEIGHT=${PASSTHROUGH_HEIGHT} -D CMAKE_C_COMPILER=${CC} -D CMAKE_CXX_COMPILER=${CXX} 
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DPASSTHROUGH_WIDTH=${PASSTHROUGH_WIDTH} -DPASSTHROUGH_HEIGHT=${PASSTHROUGH_HEIGHT} -D CMAKE_C_COMPILER=${CC} -D CMAKE_CXX_COMPILER=${CXX}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
-run: ${targetname}.exe build/final_${PASSTHROUGH_WIDTH}.xclbin
-	${powershell} ./$< -x build/final_${PASSTHROUGH_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
+run: ${targetname}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
 clean:
 	rm -rf build _build ${targetname}.exe ${targetname}Out_test.jpg

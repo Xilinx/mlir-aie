@@ -1,68 +1,143 @@
+# vision/vision_passthrough/vision_passthrough.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
-import numpy as np
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Vision passthrough -- ``@iron.jit`` line-based image copy.
+
+A single AIE core copies a ``width x height`` 8-bit image one line at a
+time.  The ``passThroughLine`` kernel (selected via ``-DBIT_WIDTH=8`` from
+``aie_kernels/generic/passThrough.cc``) does the per-line memcpy.
+
+``aiecc_flags=["--alloc-scheme=basic-sequential"]`` matches the pre-merge
+Makefile's aiecc invocation; this baseline allocator produces the existing
+single-bank buffer layout (vision pipelines do not benefit from the 4-bank
+distribution that the default allocator gives matmul-style designs).
+
+Two invocation modes:
+
+  * standalone:   ``python3 vision_passthrough.py``
+        (verifies in-Python that output bytes equal input bytes)
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)
+"""
+
+import argparse
+import os
 import sys
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import (
+    Compile,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.utils.hostruntime import set_current_device
+
+_KERNELS_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "aie_kernels", "generic")
+)
 
 
-def passThroughAIE2(dev, width, height):
-    lineWidthInBytes = width
-    tensorSize = width * height
+def _device_for(dev_str):
+    return NPU1Col1() if dev_str == "npu" else NPU2Col1()
 
-    # define types
-    tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
-    line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
 
-    # AIE Core Function declarations
-    passThroughLineKernel = Kernel(
-        "passThroughLine", "passThrough.cc.o", [line_ty, line_ty, np.int32]
+@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+def vision_passthrough(
+    in_tensor: In,
+    _unused: In,
+    out_tensor: Out,
+    *,
+    width: Compile[int] = 1920,
+    height: Compile[int] = 1080,
+):
+    tensor_size = width * height
+    tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int8]]
+    line_ty = np.ndarray[(width,), np.dtype[np.uint8]]
+
+    pass_through_line = ExternalFunction(
+        "passThroughLine",
+        source_file=os.path.join(_KERNELS_DIR, "passThrough.cc"),
+        arg_types=[line_ty, line_ty, np.int32],
+        include_dirs=[_KERNELS_DIR],
+        compile_flags=["-DBIT_WIDTH=8"],
     )
 
-    # AIE-array data movement with object fifos
     of_in = ObjectFifo(line_ty, name="in")
     of_out = ObjectFifo(line_ty, name="out")
 
-    # Task for the core to perform
-    def passthrough_fn(of_in, of_out, passThroughLine):
-        elemOut = of_out.acquire(1)
-        elemIn = of_in.acquire(1)
-        passThroughLine(elemIn, elemOut, width)
+    def passthrough_fn(of_in, of_out, kernel):
+        elem_out = of_out.acquire(1)
+        elem_in = of_in.acquire(1)
+        kernel(elem_in, elem_out, width)
         of_in.release(1)
         of_out.release(1)
 
-    # Create a worker to perform the task
-    worker = Worker(
-        passthrough_fn, [of_in.cons(), of_out.prod(), passThroughLineKernel]
-    )
+    worker = Worker(passthrough_fn, [of_in.cons(), of_out.prod(), pass_through_line])
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (inTensor, _, outTensor):
+    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, b):
         rt.start(worker)
-        rt.fill(of_in.prod(), inTensor)
-        rt.drain(of_out.cons(), outTensor, wait=True)
+        rt.fill(of_in.prod(), a)
+        rt.drain(of_out.cons(), b, wait=True)
 
-    # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = NPU1Col1()
-    elif device_name == "npu2":
-        dev = NPU2Col1()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    width = 512 if (len(sys.argv) != 4) else int(sys.argv[2])
-    height = 9 if (len(sys.argv) != 4) else int(sys.argv[3])
-except ValueError:
-    print("Argument has inappropriate value")
-module = passThroughAIE2(dev, width, height)
-print(module)
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Vision Passthrough")
+    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    p.add_argument("-W", "--width", type=int, default=1920)
+    p.add_argument("-H", "--height", type=int, default=1080)
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    return p
+
+
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev))
+    spec = vision_passthrough.specialize(width=opts.width, height=opts.height)
+    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+
+
+def _run_and_verify(opts):
+    tensor_size = opts.width * opts.height
+    rng = np.random.default_rng(0)
+    in_np = rng.integers(-128, 127, size=(tensor_size,), dtype=np.int8)
+    zeros_np = np.zeros((tensor_size,), dtype=np.int8)
+
+    in_t = iron.tensor(in_np, dtype=np.int8, device="npu")
+    out_t = iron.tensor(zeros_np, dtype=np.int8, device="npu")
+    third_t = iron.tensor(zeros_np, dtype=np.int8, device="npu")
+
+    vision_passthrough(in_t, third_t, out_t, width=opts.width, height=opts.height)
+
+    actual = out_t.numpy()
+    if not np.array_equal(actual, in_np):
+        sys.exit("FAIL! output does not match input")
+
+    print("PASS!")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+    _run_and_verify(opts)
+
+
+if __name__ == "__main__":
+    main()
