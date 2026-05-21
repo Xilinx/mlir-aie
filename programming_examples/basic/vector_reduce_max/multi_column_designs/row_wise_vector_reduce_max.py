@@ -41,7 +41,7 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU1, NPU2
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
 
 
@@ -110,15 +110,9 @@ def vector_reduce_max(
             )
         )
 
-    taps = [
-        TensorAccessPattern(
-            (1, in_tensor_size),
-            N_per_channel * i,
-            [1, 1, 1, N_per_channel],
-            [0, 0, 0, 1],
-        )
-        for i in range(n_channels)
-    ]
+    # One TAP per channel — each reads a contiguous ``N_per_channel``
+    # slice of the input tensor.
+    taps = TensorTiler2D.simple_tiler((1, in_tensor_size), (1, N_per_channel))
 
     def core_body(*args):
         compute_max = args[-1]

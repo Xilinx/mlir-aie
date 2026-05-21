@@ -43,7 +43,7 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU1, NPU2
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
 
 
@@ -163,15 +163,10 @@ def vector_reduce_max(
             Worker(core_body, fn_args=fifo_args, trace=enable_trace)
         )
 
-    taps = [
-        TensorAccessPattern(
-            (1, in_num_elements),
-            chunk * i,
-            [1, 1, 1, chunk],
-            [0, 0, 0, 1],
-        )
-        for i in range(num_cores)
-    ]
+    # One TAP per core — each reads a contiguous ``chunk`` of the input
+    # tensor.  Equivalent to row-major iteration of ``(1, chunk)`` tiles
+    # across the ``(1, in_num_elements)`` tensor.
+    taps = TensorTiler2D.simple_tiler((1, in_num_elements), (1, chunk))
 
     rt = Runtime()
     with rt.sequence(in_tensor_ty, out_tensor_ty) as (a, c):

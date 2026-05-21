@@ -114,9 +114,7 @@ def _transpose_dma_packet(
         )
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
-    tap_in = TensorAccessPattern(
-        (M, K), offset=0, sizes=[1, 1, K, M], strides=[1, 1, 1, K]
-    )
+    tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
     of_in = ObjectFifo(tensor_ty, name="in")
     of_out = of_in.cons().forward()
     rt = Runtime()
