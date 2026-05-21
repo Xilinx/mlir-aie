@@ -4,106 +4,152 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Single-core vector reduction (max) -- ``@iron.jit`` design via the algorithms library.
+
+A single AIE core finds the maximum of an N-element input vector, producing a
+1-element output.  Supports ``int32`` and ``bfloat16`` element types (binding
+the corresponding ``reduce_max_vector`` / ``reduce_max_vector_bfloat16``
+kernel symbol from ``reduce_max.cc``).
+
+The design body delegates to ``aie.iron.algorithms.reduce_typed``; trace is
+threaded through via the library's ``trace_size`` kwarg.
+
+Two invocation modes:
+
+  * standalone:   ``python3 vector_reduce_max.py``
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)
+"""
+
 import argparse
+import os
 import sys
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import Compile, ExternalFunction, In, Out, str_to_dtype
+from aie.iron.algorithms import reduce_typed
 from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.utils.hostruntime import set_current_device
+
+_KERNELS_DIR = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "..", "aie_kernels", "aie2"
+    )
+)
 
 
-def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
-    in1_dtype = str_to_dtype(dtype_str)
-    out_dtype = str_to_dtype(dtype_str)
+def _device_for(dev_str):
+    return NPU1Col1() if dev_str == "npu" else NPU2Col1()
 
-    tensor_size = in1_size // in1_dtype(0).nbytes
-    out_tensor_size = out_size // out_dtype(0).nbytes
 
-    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
+@iron.jit
+def vector_reduce_max(
+    a_in: In,
+    c_out: Out,
+    *,
+    num_elements: Compile[int] = 2048,
+    dtype: Compile[type] = np.int32,
+    trace_size: Compile[int] = 0,
+):
+    # Output buffer is always 4 bytes (the size of one int32) -- the original
+    # test.cpp / test.py treat it as a 4-byte slot regardless of element dtype,
+    # so bf16 fills 2 elements (the second is garbage) while int32 fills 1.
+    out_num_elements = 4 // np.dtype(dtype).itemsize
+    in_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    out_ty = np.ndarray[(out_num_elements,), np.dtype[dtype]]
 
-    enable_trace = 1 if trace_size > 0 else 0
-
-    # Define tensor types
-    in_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
-    out_ty = np.ndarray[(out_tensor_size,), np.dtype[out_dtype]]
-
-    # AIE-array data movement with object fifos
-    of_in = ObjectFifo(in_ty, name="in")
-    of_out = ObjectFifo(out_ty, name="out")
-
-    # AIE Core Function declarations
-
-    if dtype_str == "bf16":
-        reduce_max_vector = Kernel(
-            "reduce_max_vector_bfloat16", "reduce_max.cc.o", [in_ty, out_ty, np.int32]
-        )
+    # reduce_max.cc exports two symbols: reduce_max_vector (int32) and
+    # reduce_max_vector_bfloat16.  Pick the one matching the element type.
+    if (
+        dtype == np.dtype("bfloat16").type
+        or getattr(dtype, "__name__", "") == "bfloat16"
+    ):
+        symbol = "reduce_max_vector_bfloat16"
     else:
-        reduce_max_vector = Kernel(
-            "reduce_max_vector", "reduce_max.cc.o", [in_ty, out_ty, np.int32]
-        )
+        symbol = "reduce_max_vector"
 
-    # Define a task to run
-    def core_body(of_in, of_out, reduce_max_vector):
-        elem_out = of_out.acquire(1)
-        elem_in = of_in.acquire(1)
-        reduce_max_vector(elem_in, elem_out, tensor_size)
-        of_in.release(1)
-        of_out.release(1)
-
-    # Define a worker to run the task on a core
-    worker = Worker(
-        core_body,
-        fn_args=[of_in.cons(), of_out.prod(), reduce_max_vector],
-        trace=enable_trace,
+    reduce_max = ExternalFunction(
+        symbol,
+        source_file=os.path.join(_KERNELS_DIR, "reduce_max.cc"),
+        arg_types=[in_ty, out_ty, np.int32],
+        include_dirs=[_KERNELS_DIR],
     )
 
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a_in, c_out):
-        rt.enable_trace(trace_size)
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), c_out, wait=True)
-
-    # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return reduce_typed(reduce_max, in_ty, out_ty, trace_size=trace_size)
 
 
-p = argparse.ArgumentParser()
-p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument(
-    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
-)
-p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
-p.add_argument("-dt", "--dtype", required=True, dest="dtype", help="Datatype")
-p.add_argument(
-    "-t",
-    "--trace_size",
-    required=False,
-    dest="trace_size",
-    default=0,
-    help="Trace buffer size",
-)
-opts = p.parse_args(sys.argv[1:])
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Single-Core Vector Reduce Max")
+    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    p.add_argument("-i1s", "--in1_size", type=int, default=8192, help="bytes")
+    p.add_argument("-os", "--out_size", type=int, default=4, help="bytes (always 4)")
+    p.add_argument("-dt", "--dtype", type=str, default="i32", choices=["i32", "bf16"])
+    p.add_argument("-t", "--trace_size", type=int, default=0)
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    return p
 
-if opts.device == "npu":
-    dev = NPU1Col1()
-elif opts.device == "npu2":
-    dev = NPU2Col1()
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
-in1_size = int(opts.in1_size)
-if in1_size % 64 != 0 or in1_size < 512:
-    print(
-        "In1 buffer size ("
-        + str(in1_size)
-        + ") must be a multiple of 64 and greater than or equal to 512"
+def _validate(opts):
+    if opts.in1_size % 64 != 0 or opts.in1_size < 512:
+        sys.exit("in1_size must be a multiple of 64 and >= 512")
+    if opts.out_size != 4:
+        sys.exit("out_size must be 4 (1 x 4-byte scalar)")
+
+
+def _compile_kwargs(opts):
+    dtype = str_to_dtype(opts.dtype)
+    num_elements = opts.in1_size // np.dtype(dtype).itemsize
+    return dict(
+        num_elements=num_elements,
+        dtype=dtype,
+        trace_size=opts.trace_size,
     )
-    raise ValueError
-out_size = int(opts.out_size)
-dtype = str(opts.dtype)
-trace_size = int(opts.trace_size)
 
-print(my_reduce_max(dev, in1_size, out_size, dtype, trace_size))
+
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev))
+    spec = vector_reduce_max.specialize(**_compile_kwargs(opts))
+    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+
+
+def _run_and_verify(opts):
+    dtype = str_to_dtype(opts.dtype)
+    num_elements = opts.in1_size // np.dtype(dtype).itemsize
+
+    out_num_elements = 4 // np.dtype(dtype).itemsize
+    rng = np.random.default_rng(0)
+    if opts.dtype == "i32":
+        in_np = rng.integers(-1000, 1000, size=(num_elements,), dtype=np.int32)
+    else:  # bf16
+        in_np = rng.uniform(-1000.0, 1000.0, size=(num_elements,)).astype(dtype)
+    out_np = np.zeros((out_num_elements,), dtype=dtype)
+
+    in_t = iron.tensor(in_np, dtype=dtype, device="npu")
+    out_t = iron.tensor(out_np, dtype=dtype, device="npu")
+
+    vector_reduce_max(in_t, out_t, **_compile_kwargs(opts))
+
+    expected_max = in_np.max()
+    actual_max = out_t.numpy()[0]  # the first slot holds the reduction result
+    if actual_max != expected_max:
+        sys.exit(f"FAIL! expected {expected_max}, got {actual_max}")
+
+    print("PASS!")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    _validate(opts)
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+    _run_and_verify(opts)
+
+
+if __name__ == "__main__":
+    main()
