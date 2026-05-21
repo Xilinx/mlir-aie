@@ -19,7 +19,7 @@ from ._common import (
 
 
 def _color_convert_kernel(
-    func_name: str, filename: str, in_size: int, out_size: int
+    func_name: str, filename: str, in_size: int, out_size: int, use_chess: bool = False
 ) -> ExternalFunction:
     """Shared implementation for color-space conversion line kernels."""
     in_ty = np.ndarray[(in_size,), np.dtype[np.uint8]]
@@ -28,10 +28,13 @@ def _color_convert_kernel(
         func_name,
         _default_source_path(filename),
         [in_ty, out_ty, np.int32],
+        use_chess=use_chess,
     )
 
 
-def _bitwise_kernel(op: str, line_width: int, dtype) -> ExternalFunction:
+def _bitwise_kernel(
+    op: str, line_width: int, dtype, use_chess: bool = False
+) -> ExternalFunction:
     """Shared implementation for :func:`bitwise_or` and :func:`bitwise_and`."""
     bit_width = _dtype_to_bit_width(dtype, factory_name=f"bitwise{op}")
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
@@ -40,32 +43,27 @@ def _bitwise_kernel(op: str, line_width: int, dtype) -> ExternalFunction:
         _default_source_path(f"bitwise{op}.cc"),
         [line_ty, line_ty, line_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        use_chess=use_chess,
     )
 
 
-def rgba2hue(line_width: int = 1920) -> ExternalFunction:
-    """Converts a line of RGBA pixels to hue values.
-
-    Args:
-        line_width: Number of pixels per line.
-
-    Returns:
-        ExternalFunction configured for ``rgba2hueLine``.
-    """
+def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
+    """Converts a line of RGBA pixels to hue values."""
     return _color_convert_kernel(
-        "rgba2hueLine", "rgba2hue.cc", line_width * 4, line_width
+        "rgba2hueLine", "rgba2hue.cc", line_width * 4, line_width, use_chess=use_chess
     )
 
 
-def threshold(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
+def threshold(
+    line_width: int = 1920, dtype=np.uint8, use_chess: bool = False
+) -> ExternalFunction:
     """Applies a threshold operation to a line of pixels.
 
     Args:
         line_width: Number of elements per line.
         dtype: Element data type (``np.uint8``, ``np.int16``, or ``np.int32``).
-
-    Returns:
-        ExternalFunction configured for ``thresholdLine``.
+        use_chess: When ``True``, build the .o with ``xchesscc_wrapper``
+            instead of Peano.
 
     Raises:
         ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or ``np.int32``.
@@ -78,96 +76,60 @@ def threshold(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
         _default_source_path("threshold.cc"),
         [line_ty, line_ty, np.int32, scalar_ty, scalar_ty, np.int8],
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        use_chess=use_chess,
     )
 
 
-def bitwise_or(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
-    """Element-wise bitwise OR of two lines.
-
-    Args:
-        line_width: Number of elements per line.
-        dtype: Element data type (``np.uint8``, ``np.int16``, or ``np.int32``).
-
-    Returns:
-        ExternalFunction configured for ``bitwiseORLine``.
-
-    Raises:
-        ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or ``np.int32``.
-    """
-    return _bitwise_kernel("OR", line_width, dtype)
+def bitwise_or(
+    line_width: int = 1920, dtype=np.uint8, use_chess: bool = False
+) -> ExternalFunction:
+    """Element-wise bitwise OR of two lines."""
+    return _bitwise_kernel("OR", line_width, dtype, use_chess=use_chess)
 
 
-def bitwise_and(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
-    """Element-wise bitwise AND of two lines.
-
-    Args:
-        line_width: Number of elements per line.
-        dtype: Element data type (``np.uint8``, ``np.int16``, or ``np.int32``).
-
-    Returns:
-        ExternalFunction configured for ``bitwiseANDLine``.
-
-    Raises:
-        ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or ``np.int32``.
-    """
-    return _bitwise_kernel("AND", line_width, dtype)
+def bitwise_and(
+    line_width: int = 1920, dtype=np.uint8, use_chess: bool = False
+) -> ExternalFunction:
+    """Element-wise bitwise AND of two lines."""
+    return _bitwise_kernel("AND", line_width, dtype, use_chess=use_chess)
 
 
-def gray2rgba(line_width: int = 1920) -> ExternalFunction:
-    """Converts a grayscale line to RGBA.
-
-    Args:
-        line_width: Number of pixels per line.
-
-    Returns:
-        ExternalFunction configured for ``gray2rgbaLine``.
-    """
+def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
+    """Converts a grayscale line to RGBA."""
     return _color_convert_kernel(
-        "gray2rgbaLine", "gray2rgba.cc", line_width, line_width * 4
+        "gray2rgbaLine", "gray2rgba.cc", line_width, line_width * 4, use_chess=use_chess
     )
 
 
-def rgba2gray(line_width: int = 1920) -> ExternalFunction:
-    """Converts an RGBA line to grayscale.
-
-    Args:
-        line_width: Number of pixels per line.
-
-    Returns:
-        ExternalFunction configured for ``rgba2grayLine``.
-    """
+def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
+    """Converts an RGBA line to grayscale."""
     return _color_convert_kernel(
-        "rgba2grayLine", "rgba2gray.cc", line_width * 4, line_width
+        "rgba2grayLine", "rgba2gray.cc", line_width * 4, line_width, use_chess=use_chess
     )
 
 
-def filter2d(line_width: int = 1920) -> ExternalFunction:
-    """Applies a 3x3 2D convolution filter across three input lines.
-
-    Args:
-        line_width: Number of pixels per line.
-
-    Returns:
-        ExternalFunction configured for ``filter2dLine``.
-    """
+def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
+    """Applies a 3x3 2D convolution filter across three input lines."""
     line_ty = np.ndarray[(line_width,), np.dtype[np.uint8]]
     kernel_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
     return _make_extern(
         "filter2dLine",
         _default_source_path("filter2d.cc"),
         [line_ty, line_ty, line_ty, line_ty, np.int32, kernel_ty],
+        use_chess=use_chess,
     )
 
 
-def add_weighted(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
+def add_weighted(
+    line_width: int = 1920, dtype=np.uint8, use_chess: bool = False
+) -> ExternalFunction:
     """Weighted addition of two lines with a gamma offset.
 
     Args:
         line_width: Number of elements per line.
         dtype: Element data type (``np.uint8``, ``np.int16``, or ``np.int32``).
-
-    Returns:
-        ExternalFunction configured for ``addWeightedLine``.
+        use_chess: When ``True``, build the .o with ``xchesscc_wrapper``
+            instead of Peano.
 
     Raises:
         ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or ``np.int32``.
@@ -180,4 +142,5 @@ def add_weighted(line_width: int = 1920, dtype=np.uint8) -> ExternalFunction:
         _default_source_path("addWeighted.cc"),
         [line_ty, line_ty, line_ty, np.int32, np.int16, np.int16, gamma_ty],
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        use_chess=use_chess,
     )
