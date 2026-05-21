@@ -1,59 +1,79 @@
+# memcpy/memcpy.py -*- Python -*-
+#
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Memcpy microbenchmark — Iron API design with ``@iron.jit`` compilation.
 
-import numpy as np
+Saturates DDR bandwidth by using every column's shim DMA in-out pairs.
+Two paths:
+
+  * ``--bypass``: shim → memtile → shim via ObjectFifo.forward() (no
+    compute tile).
+  * Compute path: per-column / per-channel passthrough kernel
+    (``passThroughLine``) on a compute tile, source-built from
+    ``aie_kernels/generic/passThrough.cc`` via ``ExternalFunction``.
+"""
+
 import argparse
 import sys
+from pathlib import Path
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import Tile, NPU1, NPU2
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron.device import NPU1, NPU2
+from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.utils.hostruntime import set_current_device
 
-#
-# Memcpy is designed to use every column's shimDMA in-out pairs
-# to fully saturate DDR bandwidth. It is a superset of passthrough_kernel
-# and passthrough_dmas. As such, it can be used as a microbenchmark or as
-# a template for multi-core unary operations.
-#
+_PASSTHROUGH_SRC = str(
+    Path(__file__).parent / "../../../aie_kernels/generic/passThrough.cc"
+)
 
 
-def my_memcpy(dev, size, num_columns, num_channels, bypass):
-    # --------------------------------------------------------------------------
-    # Configuration
-    # --------------------------------------------------------------------------
+def _device_for(dev_str):
+    if dev_str == "npu":
+        return NPU1()
+    if dev_str == "npu2":
+        return NPU2()
+    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
-    # Use int32 dtype as it is the addr generation granularity
+
+@iron.jit
+def memcpy(
+    a_in: In,
+    b_out: Out,
+    *,
+    size: Compile[int] = 16384,
+    num_columns: Compile[int] = 1,
+    num_channels: Compile[int] = 1,
+    bypass: Compile[bool] = True,
+):
     xfr_dtype = np.int32
-
-    # Define tensor types
     line_size = 1024
     line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
     transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
 
-    # Chunk size sent per DMA channel
     chunk = size // num_columns // num_channels
-
-    # --------------------------------------------------------------------------
-    # In-Array Data Movement
-    # --------------------------------------------------------------------------
 
     of_ins = [
         ObjectFifo(line_type, name=f"in{i}_{j}")
         for i in range(num_columns)
         for j in range(num_channels)
     ]
-    # Bypass path is a special case where we don't need to create a Worker
-    # and we can use the ObjectFifo directly to read and write the data with
-    # a `forward` through a MemTile.
+
     if bypass:
+        # Pure shim→memtile→shim forward; no Worker needed.
         of_outs = [
             of_ins[i * num_channels + j].cons().forward()
             for i in range(num_columns)
             for j in range(num_channels)
         ]
+        my_workers = []
     else:
         of_outs = [
             ObjectFifo(line_type, name=f"out{i}_{j}")
@@ -61,18 +81,12 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
             for j in range(num_channels)
         ]
 
-        # --------------------------------------------------------------------------
-        # Task core will run
-        # --------------------------------------------------------------------------
-
-        # External, binary kernel definition
-        passthrough_fn = Kernel(
+        passthrough_fn = ExternalFunction(
             "passThroughLine",
-            "passThrough.cc.o",
-            [line_type, line_type, np.int32],
+            source_file=_PASSTHROUGH_SRC,
+            arg_types=[line_type, line_type, np.int32],
         )
 
-        # Task for the core to perform
         def core_fn(of_in, of_out, passThroughLine):
             elemOut = of_out.acquire(1)
             elemIn = of_in.acquire(1)
@@ -80,7 +94,6 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
             of_in.release(1)
             of_out.release(1)
 
-        # Create a worker to perform the task
         my_workers = [
             Worker(
                 core_fn,
@@ -94,13 +107,6 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
             for j in range(num_channels)
         ]
 
-    # --------------------------------------------------------------------------
-    # DRAM-NPU data movement and work dispatch
-    # --------------------------------------------------------------------------
-
-    # Create a TensorAccessPattern for each channel to describe the data movement.
-    # The pattern chops the data in equal chunks and moves them in parallel across
-    # the columns and channels.
     taps = [
         TensorAccessPattern(
             (1, size),
@@ -112,93 +118,113 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
         for j in range(num_channels)
     ]
 
-    # Runtime operations to move data to/from the AIE-array
-    # START EXERCISE: Modify the code below to use task groups
     rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
-        # Start the workers if not bypass
-        if not bypass:
+    with rt.sequence(transfer_type, transfer_type) as (a, b):
+        if my_workers:
             rt.start(*my_workers)
-        # Fill the input objectFIFOs with data
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.fill(
                     of_ins[i * num_channels + j].prod(),
-                    a_in,
+                    a,
                     taps[i * num_channels + j],
                 )
-        # Drain the output objectFIFOs with data
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.drain(
                     of_outs[i * num_channels + j].cons(),
-                    b_out,
+                    b,
                     taps[i * num_channels + j],
-                    wait=True,  # wait for the transfer to complete and data to be available
+                    wait=True,
                 )
-    # END EXERCISE
 
-    # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-p = argparse.ArgumentParser()
-## Parse command line arguments
-
-## Device name is required to select the AIE device: npu or npu2
-p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-## Transfer size is required to define the size of the data to be transferred
-## It must be a multiple of 1024 and divisible by the number of columns and 2 channels per column
-p.add_argument("-l", "--length", required=True, dest="length", help="Transfer size")
-## Number of columns is required to define the number of columns to be used
-## It must be less than or equal to 4 for npu and 8 for npu2
-p.add_argument("-co", "--columns", required=True, dest="cols", help="Number of columns")
-## Number of channels is required to define the number of channels to be used
-## It must be 1 or 2
-p.add_argument(
-    "-ch", "--channels", required=True, dest="chans", help="Number of channels"
-)
-## Bypass is required to define if the bypass path should be used
-p.add_argument(
-    "-b", "--bypass", required=True, dest="bypass", help="Use DMA-only bypass path"
-)
-opts = p.parse_args(sys.argv[1:])
-
-if opts.device == "npu":
-    dev = NPU1()  # Four columns of NPU1, the maximum available
-elif opts.device == "npu2":
-    dev = NPU2()  # Eight columns of NPU2, the maximum available
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
-
-length = int(opts.length)
-columns = int(opts.cols)
-if opts.device == "npu":
-    if columns > 4:
-        raise ValueError(
-            "[ERROR] Device {} cannot allocate more than 4 columns".format(opts.device)
-        )
-elif opts.device == "npu2":
-    if columns > 8:
-        raise ValueError(
-            "[ERROR] Device {} cannot allocate more than 8 columns".format(opts.device)
-        )
-channels = int(opts.chans)
-if channels < 1 or channels > 2:
-    raise ValueError("Number of channels must be 1 or 2")
-if ((length % 1024) % columns % channels) != 0:
-    print(
-        "transfer size ("
-        + str(length)
-        + ") must be a multiple of 1024 and divisible by the number of columns and 2 channels per column"
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Memcpy")
+    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    p.add_argument("-l", "--length", type=int, default=16384, help="transfer size")
+    p.add_argument("-co", "--cols", type=int, default=1, help="number of columns")
+    p.add_argument("-ch", "--chans", type=int, default=1, help="channels per column (1 or 2)")
+    p.add_argument(
+        "-b",
+        "--bypass",
+        type=str,
+        default="True",
+        help="use the DMA-only forward path (yes/true/t/1 → True)",
     )
-    raise ValueError
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    p.add_argument(
+        "--elf-path",
+        type=str,
+        default=None,
+        help="optional ELF-wrapped insts (for the test.cpp xrt::elf flow)",
+    )
+    return p
 
-## Bypass is a boolean value that indicates if the bypass path should be used
-## It must be one of the following: yes, true, t, 1
-## It is converted to a boolean value
-bypass = str(opts.bypass).lower() in ("yes", "true", "t", "1")
 
-## Call the my_memcpy function with the parsed arguments
-## and print the MLIR as a result
-print(my_memcpy(dev, length, columns, channels, bypass))
+def _validate(opts):
+    max_cols = 4 if opts.dev == "npu" else 8
+    if opts.cols > max_cols:
+        sys.exit(f"--cols ({opts.cols}) exceeds {opts.dev} max ({max_cols})")
+    if opts.chans not in (1, 2):
+        sys.exit(f"--chans must be 1 or 2, got {opts.chans}")
+    if (opts.length % 1024) % opts.cols % opts.chans != 0:
+        sys.exit(
+            f"--length ({opts.length}) must be a multiple of 1024 and divisible by "
+            f"--cols × --chans ({opts.cols} × {opts.chans})"
+        )
+
+
+def _bypass_bool(s: str) -> bool:
+    return s.lower() in ("yes", "true", "t", "1")
+
+
+def _compile_kwargs(opts):
+    return dict(
+        size=opts.length,
+        num_columns=opts.cols,
+        num_channels=opts.chans,
+        bypass=_bypass_bool(opts.bypass),
+    )
+
+
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev))
+    spec = memcpy.specialize(**_compile_kwargs(opts))
+    spec.compile(
+        xclbin_path=opts.xclbin_path,
+        inst_path=opts.insts_path,
+        elf_path=opts.elf_path,
+    )
+
+
+def _run_and_verify(opts):
+    in_np = np.arange(opts.length, dtype=np.int32)
+    out_np = np.zeros_like(in_np)
+
+    a_t = iron.tensor(in_np, dtype=np.int32, device="npu")
+    b_t = iron.tensor(out_np, dtype=np.int32, device="npu")
+
+    memcpy(a_t, b_t, **_compile_kwargs(opts))
+
+    if not np.array_equal(b_t.numpy(), in_np):
+        sys.exit("FAIL! output does not match input")
+    print("PASS!")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    _validate(opts)
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+    _run_and_verify(opts)
+
+
+if __name__ == "__main__":
+    main()
