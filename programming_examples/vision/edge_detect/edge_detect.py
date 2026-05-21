@@ -88,7 +88,6 @@ def edge_detect(
         line_width=line_width_in_bytes, dtype=np.uint8
     )
 
-    # Dataflow
     in_of_l3l2 = ObjectFifo(line_bytes_ty, name="inOF_L3L2")
     in_of_l2l1 = in_of_l3l2.cons(7).forward(depth=7, name="inOF_L2L1")
     out_of_l1l2 = ObjectFifo(line_bytes_ty, name="outOF_L1L2")

@@ -10,10 +10,7 @@
 A single AIE core copies an N-element ``uint8`` vector tile by tile.  The
 kernel itself is a ``@func``-decorated Python function (``passthrough_fn``)
 demonstrating the pykernel pattern: write the kernel body in Python, hand it
-to a ``Worker`` like any other ExternalFunction.  The dataflow body stays
-explicit; the algorithms library's ``transform_typed`` would replace the
-pykernel with a per-element lambda, which would lose the pedagogical
-``@func`` demonstration that gives this example its name.
+to a ``Worker`` like any other ExternalFunction.
 
 ``vector_size`` is fixed at 4096 (matching the test.cpp / test.py defaults)
 because ``@func`` decoration happens at module-import time and so its

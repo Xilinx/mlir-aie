@@ -81,9 +81,6 @@ def _make_argparser():
 
 def _emit_mlir(opts):
     set_current_device(_device_for(opts.dev))
-    # CallableDesign.lower() returns the resolved MLIR text without compiling.
-    # None for the three tensor positionals is fine because num_elements /
-    # dtype / tile_size as Compile[T] kwargs cover all shape/dtype info.
     print(
         vector_vector_modulo.lower(
             None,

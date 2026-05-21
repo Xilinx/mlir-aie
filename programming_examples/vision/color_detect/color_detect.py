@@ -71,7 +71,6 @@ def color_detect(
         line_width=line_width_in_bytes, dtype=np.uint8
     )
 
-    # Dataflow
     in_of_l3l2 = ObjectFifo(line_bytes_ty, name="inOF_L3L2")
     in_of_l2l1 = in_of_l3l2.cons(6).forward(depth=6, name="inOF_L2L1")
     out_of_l1l2 = ObjectFifo(line_bytes_ty, name="outOF_L1L2")
@@ -167,7 +166,6 @@ def color_detect(
         gray2rgba_kernel,
         bitwise_and_kernel,
     ):
-        # bitwise OR
         elem_in1 = of_in.acquire(1)
         elem_in2 = of_in2.acquire(1)
         elem_out_tmp_a = of_in_self.acquire(1)
@@ -175,13 +173,13 @@ def color_detect(
         of_in.release(1)
         of_in2.release(1)
         of_in_self.release(1)
-        # gray2rgba
+
         elem_in_tmp_a = of_out_self.acquire(1)
         elem_out_tmp_b = of_in_self2.acquire(1)
         gray2rgba_kernel(elem_in_tmp_a, elem_out_tmp_b, line_width)
         of_out_self.release(1)
         of_in_self2.release(1)
-        # bitwise AND with the original RGBA input
+
         elem_in_tmp_b1 = of_out_self2.acquire(1)
         elem_in_tmp_b2 = of_in3.acquire(1)
         elem_out = of_out.acquire(1)
@@ -299,13 +297,10 @@ def _gray2rgba_ref(gray_uint8):
 def _color_detect_ref(rgba_uint8):
     """End-to-end pipeline reference matching the @iron.jit design."""
     hue = _rgba2hue_ref(rgba_uint8)
-    # Worker3: upper=40, lower=30
     t1a = _threshold_ref(hue, 40, 255, 4)
     t1b = _threshold_ref(t1a, 30, 255, 0)
-    # Worker4: upper=160, lower=90
     t2a = _threshold_ref(hue, 160, 255, 4)
     t2b = _threshold_ref(t2a, 90, 255, 0)
-    # Worker5: OR -> gray2rgba -> AND with the original RGBA.
     mask = np.bitwise_or(t1b, t2b)
     mask_rgba = _gray2rgba_ref(mask)
     return np.bitwise_and(mask_rgba, rgba_uint8)

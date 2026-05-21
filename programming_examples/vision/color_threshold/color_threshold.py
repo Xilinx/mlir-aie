@@ -78,7 +78,6 @@ def color_threshold(
 
     threshold_line = kernels.threshold(line_width=line_width, dtype=np.uint8)
 
-    # Input RGBA broadcast + memtile split into 4 per-channel fifos.
     in_oob_l3l2 = ObjectFifo(line_channels_ty, name="inOOB_L3L2")
     of_offsets = [np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)]
     in_oob_l2l1s = in_oob_l3l2.cons().split(
@@ -87,7 +86,6 @@ def color_threshold(
         names=[f"inOOB_L2L1_{i}" for i in range(4)],
     )
 
-    # Output: 4 per-channel fifos joined back into RGBA.
     out_oob_l2l3 = ObjectFifo(line_channels_ty, name="outOOB_L2L3")
     out_oob_l1l2s = out_oob_l2l3.prod().join(
         of_offsets,
@@ -95,7 +93,6 @@ def color_threshold(
         names=[f"outOOB_L1L2_{i}" for i in range(4)],
     )
 
-    # Per-channel runtime-writable parameter buffers.
     rtps = [
         Buffer(
             np.ndarray[(16,), np.dtype[np.int32]],
