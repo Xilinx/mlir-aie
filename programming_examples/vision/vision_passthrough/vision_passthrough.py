@@ -24,28 +24,14 @@ Two invocation modes:
 """
 
 import argparse
-import os
 import sys
 
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import (
-    Compile,
-    ExternalFunction,
-    In,
-    ObjectFifo,
-    Out,
-    Program,
-    Runtime,
-    Worker,
-)
+from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.utils.hostruntime import set_current_device
-
-_KERNELS_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "aie_kernels", "generic")
-)
 
 
 def _device_for(dev_str):
@@ -65,13 +51,7 @@ def vision_passthrough(
     tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int8]]
     line_ty = np.ndarray[(width,), np.dtype[np.uint8]]
 
-    pass_through_line = ExternalFunction(
-        "passThroughLine",
-        source_file=os.path.join(_KERNELS_DIR, "passThrough.cc"),
-        arg_types=[line_ty, line_ty, np.int32],
-        include_dirs=[_KERNELS_DIR],
-        compile_flags=["-DBIT_WIDTH=8"],
-    )
+    pass_through_line = kernels.passthrough(tile_size=width, dtype=np.uint8)
 
     of_in = ObjectFifo(line_ty, name="in")
     of_out = ObjectFifo(line_ty, name="out")

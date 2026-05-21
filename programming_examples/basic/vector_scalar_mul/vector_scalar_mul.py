@@ -21,21 +21,16 @@ mode.
 """
 
 import argparse
-import os
 import sys
 
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out
+from aie.iron import Compile, In, Out, kernels
 from aie.iron.algorithms import transform_typed
 from aie.iron.device import NPU1Col1, NPU2
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
-
-_KERNELS_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "aie_kernels", "aie2")
-)
 
 
 def _device_for(dev_str):
@@ -60,16 +55,12 @@ def vector_scalar_mul(
     tile_size = tensor_size // num_sub_vectors
 
     tensor_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
-    tile_ty = np.ndarray[(tile_size,), np.dtype[in1_dtype]]
     scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
-    func_type = "vector" if vectorized else "scalar"
-    scale = ExternalFunction(
-        f"vector_scalar_mul_{func_type}",
-        source_file=os.path.join(_KERNELS_DIR, "scale.cc"),
-        arg_types=[tile_ty, tile_ty, scalar_ty, np.int32],
-        include_dirs=[_KERNELS_DIR],
-        compile_flags=[f"-DBIT_WIDTH={int_bit_width}"],
+    scale = kernels.scale(
+        tile_size=tile_size,
+        dtype=in1_dtype,
+        vectorized=vectorized,
         use_chess=use_chess,
     )
 

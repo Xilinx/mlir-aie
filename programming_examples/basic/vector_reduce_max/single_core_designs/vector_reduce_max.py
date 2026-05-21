@@ -22,22 +22,15 @@ Two invocation modes:
 """
 
 import argparse
-import os
 import sys
 
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out, str_to_dtype
+from aie.iron import Compile, In, Out, kernels, str_to_dtype
 from aie.iron.algorithms import reduce_typed
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.utils.hostruntime import set_current_device
-
-_KERNELS_DIR = os.path.normpath(
-    os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "..", "aie_kernels", "aie2"
-    )
-)
 
 
 def _device_for(dev_str):
@@ -60,24 +53,12 @@ def vector_reduce_max(
     in_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     out_ty = np.ndarray[(out_num_elements,), np.dtype[dtype]]
 
-    # reduce_max.cc exports two symbols: reduce_max_vector (int32) and
-    # reduce_max_vector_bfloat16.  Pick the one matching the element type.
-    if (
-        dtype == np.dtype("bfloat16").type
-        or getattr(dtype, "__name__", "") == "bfloat16"
-    ):
-        symbol = "reduce_max_vector_bfloat16"
-    else:
-        symbol = "reduce_max_vector"
-
-    reduce_max = ExternalFunction(
-        symbol,
-        source_file=os.path.join(_KERNELS_DIR, "reduce_max.cc"),
-        arg_types=[in_ty, out_ty, np.int32],
-        include_dirs=[_KERNELS_DIR],
+    return reduce_typed(
+        kernels.reduce_max(tile_size=num_elements, dtype=dtype),
+        in_ty,
+        out_ty,
+        trace_size=trace_size,
     )
-
-    return reduce_typed(reduce_max, in_ty, out_ty, trace_size=trace_size)
 
 
 def _make_argparser():

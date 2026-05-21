@@ -67,7 +67,10 @@ def passthrough(tile_size: int = 4096, dtype=np.int32) -> ExternalFunction:
 
 
 def scale(
-    tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
+    tile_size: int = 1024,
+    dtype=np.int32,
+    vectorized: bool = True,
+    use_chess: bool = False,
 ) -> ExternalFunction:
     """Scalar-multiply kernel: multiplies each element of an input tile by a factor.
 
@@ -75,6 +78,8 @@ def scale(
         tile_size: Number of elements per tile.
         dtype: Element data type. Must be ``np.int16`` or ``np.int32``.
         vectorized: If ``True`` use the vectorized path; ``False`` selects scalar.
+        use_chess: When ``True``, build the .o with ``xchesscc_wrapper``
+            instead of Peano.
 
     Returns:
         ExternalFunction configured for the scale kernel.
@@ -94,6 +99,7 @@ def scale(
         _default_source_path("scale.cc"),
         [tile_ty, tile_ty, scalar_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
+        use_chess=use_chess,
     )
 
 

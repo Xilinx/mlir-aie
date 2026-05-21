@@ -18,20 +18,15 @@ Two invocation modes:
 """
 
 import argparse
-import os
 import sys
 
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out
+from aie.iron import Compile, In, Out, kernels
 from aie.iron.algorithms import reduce_typed
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.utils.hostruntime import set_current_device
-
-_KERNELS_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "aie_kernels", "aie2")
-)
 
 
 def _device_for(dev_str):
@@ -48,14 +43,11 @@ def vector_reduce_min(
     in_ty = np.ndarray[(num_elements,), np.dtype[np.int32]]
     out_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
-    reduce_min_vector = ExternalFunction(
-        "reduce_min_vector",
-        source_file=os.path.join(_KERNELS_DIR, "reduce_min.cc"),
-        arg_types=[in_ty, out_ty, np.int32],
-        include_dirs=[_KERNELS_DIR],
+    return reduce_typed(
+        kernels.reduce_min(tile_size=num_elements, dtype=np.int32),
+        in_ty,
+        out_ty,
     )
-
-    return reduce_typed(reduce_min_vector, in_ty, out_ty)
 
 
 def _make_argparser():
