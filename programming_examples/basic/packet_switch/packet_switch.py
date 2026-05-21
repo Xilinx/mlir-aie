@@ -375,6 +375,9 @@ def main():
             xclbin_path=opts.xclbin_path,
             insts_path=opts.insts_path,
             work_dir=str(Path(opts.xclbin_path).resolve().parent),
+            # Pass device= so any ExternalFunction(source_file=…) (here:
+            # add_mul.cc) gets auto-built into work_dir.
+            device=_device_for(opts.dev),
         )
         return
     print(module)

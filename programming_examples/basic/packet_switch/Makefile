@@ -9,11 +9,10 @@
 ##===----------------------------------------------------------------------===##
 #
 # Iron-level explicit-routing design (see packet_switch.py docstring).
-# Build add_mul.o once into build/ via peano; both --op modes link with
-# it.  (ExternalFunction(source_file=…)'s auto-compile is wired to
-# @iron.jit; this design uses compile_mlir_module directly so we still
-# need a Makefile rule for the .o.)  Each --op produces its own xclbin
-# + insts pair via compile_mlir_module's --xclbin-path / --insts-path.
+# packet_switch.py passes device= to compile_mlir_module so its
+# ExternalFunction(source_file=add_mul.cc) auto-builds into work_dir
+# — no Makefile-side kernel.o rule needed.  Each --op produces its
+# own xclbin + insts pair via --xclbin-path / --insts-path.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
@@ -46,19 +45,11 @@ host_target = build/test
 .PHONY: all
 all: ${add_xclbin_target} ${mult_xclbin_target} ${host_target}
 
-build/add_mul.o: ${srcdir}/add_mul.cc
-	mkdir -p ${@D}
-ifeq (${DEVICE}, npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
-endif
-
-${add_xclbin_target} ${add_insts_target} &: ${srcdir}/${aie_py_src} build/add_mul.o
+${add_xclbin_target} ${add_insts_target} &: ${srcdir}/${aie_py_src} ${srcdir}/add_mul.cc
 	mkdir -p $(dir ${add_xclbin_target})
 	python3 $< -d ${DEVICE} --op add --xclbin-path=${add_xclbin_target} --insts-path=${add_insts_target}
 
-${mult_xclbin_target} ${mult_insts_target} &: ${srcdir}/${aie_py_src} build/add_mul.o
+${mult_xclbin_target} ${mult_insts_target} &: ${srcdir}/${aie_py_src} ${srcdir}/add_mul.cc
 	mkdir -p $(dir ${mult_xclbin_target})
 	python3 $< -d ${DEVICE} --op mul --xclbin-path=${mult_xclbin_target} --insts-path=${mult_insts_target}
 

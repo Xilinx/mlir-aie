@@ -143,6 +143,7 @@ def compile_mlir_module(
     work_dir: str | Path | None = None,
     options=None,
     use_chess: bool = False,
+    device=None,
 ):
     """
     Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
@@ -165,6 +166,15 @@ def compile_mlir_module(
             with the per-ExternalFunction ``_use_chess`` settings — the
             JIT compile orchestration in ``compilabledesign.py`` enforces
             agreement and raises on a mixed peano/chess design.
+        device: Optional IRON device (or ``AIEDevice`` enum) used to pick
+            the target architecture (aie2 vs aie2p) for any
+            :class:`aie.iron.kernel.ExternalFunction` instances that have
+            a ``source_file=`` and haven't been compiled yet.  When set
+            and ``work_dir`` is provided, those externals are auto-built
+            into ``work_dir`` before aiecc runs (matching the @iron.jit
+            behavior).  Without this, low-level designs going through
+            ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
+            still need a Makefile-side ``.o`` rule.
     """
 
     if use_chess:
@@ -196,6 +206,21 @@ def compile_mlir_module(
         args.append("--verbose")
     if options:
         args.extend(options)
+    # Auto-build any source-bearing ExternalFunction kernels into work_dir
+    # so aiecc's linker can find the .o referenced by link_with.  Mirrors
+    # the loop in compilabledesign.py but for callers (e.g. low-level
+    # designs using rt.inline_ops) that didn't go through @iron.jit.
+    if work_dir and device is not None:
+        try:
+            from aie.iron.kernel import ExternalFunction
+        except ImportError:
+            ExternalFunction = None  # type: ignore
+        if ExternalFunction is not None:
+            target_arch = resolve_target_arch(device)
+            for func in list(ExternalFunction._instances):
+                if not func._compiled and getattr(func, "_source_file", None):
+                    compile_external_kernel(func, str(work_dir), target_arch)
+
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
     # that it resolves relative link_with paths (e.g. "add_one.o") against the
     # same directory where compile_external_kernel placed the compiled objects.
