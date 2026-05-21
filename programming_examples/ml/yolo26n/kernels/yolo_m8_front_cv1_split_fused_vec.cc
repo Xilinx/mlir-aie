@@ -164,10 +164,10 @@ static inline void m0_split_branch(
 
 extern "C" {
 
-// Accumulating bot scratch — persists across cv1 chunk-calls within a row.
-// Size: 16 W * 128 c = 2 KB. .bss-resident on the tile.
-alignas(32) static int8_t s_bot[16 * 128];
-
+// `scratch` is a tile-allocated 2 KB Buffer (16 W * 128 c) passed in by the
+// IRON design. Accumulates bot half across the N_CV1_CHUNKS calls within a
+// row; on the last chunk, m_0_split runs reading from it. Safe to share
+// with m8_back's scratch buffer (used at different times per iter).
 void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
     // cv1 inputs / weights
     int8_t *in_row,
@@ -177,6 +177,7 @@ void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
     int8_t *wts_m0c1, int32_t *bias_m0c1, int8_t *silu_lut_m0c1,
     int8_t *wts_m0c2, int32_t *bias_m0c2, int8_t *silu_lut_m0c2,
     int8_t *out_split_a, int8_t *out_split_b,
+    int8_t *scratch,           // accumulating bot buffer (16 * 128 = 2 KB)
     // dims
     const int32_t input_width,
     const int32_t input_channels,  // cv1 ic = 256
@@ -193,17 +194,17 @@ void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
 
   const int32_t c = twoc >> 1;  // 128
 
-  // Always: do this cv1 chunk. Writes either out_top or (s_bot + out_bot_to_cv2).
+  // Always: do this cv1 chunk. Writes either out_top or (scratch + out_bot_to_cv2).
   cv1_chunk_compute(in_row, cv1_wts_chunk, bias_cv1, silu_lut_cv1,
-                    out_top, s_bot, out_bot_to_cv2,
+                    out_top, scratch, out_bot_to_cv2,
                     input_width, input_channels, twoc,
                     n_cv1_chunks, cv1_chunk_idx, rs_cv1);
 
-  // On last chunk: bot is now fully assembled in s_bot. Run m_0_split.
+  // On last chunk: bot is now fully assembled in scratch. Run m_0_split.
   if (cv1_chunk_idx == n_cv1_chunks - 1) {
-    m0_split_branch(s_bot, wts_m0c1, bias_m0c1, silu_lut_m0c1, out_split_a,
+    m0_split_branch(scratch, wts_m0c1, bias_m0c1, silu_lut_m0c1, out_split_a,
                     input_width, c, cp, rs_m0c1);
-    m0_split_branch(s_bot, wts_m0c2, bias_m0c2, silu_lut_m0c2, out_split_b,
+    m0_split_branch(scratch, wts_m0c2, bias_m0c2, silu_lut_m0c2, out_split_b,
                     input_width, c, cp, rs_m0c2);
   }
 

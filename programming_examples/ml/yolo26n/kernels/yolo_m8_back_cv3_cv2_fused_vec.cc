@@ -176,10 +176,10 @@ static inline void cv2_compute_chunk(
 
 extern "C" {
 
-// Cv3 result for the current row — persists across the N_CV2_CHUNKS calls
-// within one row. Size: 16 W * 128 c = 2 KB. .bss-resident on the tile.
-alignas(32) static int8_t s_cv3_out[16 * 128];
-
+// `scratch` is a tile-allocated 2 KB Buffer (16 W * 128 c) passed in by the
+// IRON design. Persists across the N_CV2_CHUNKS calls within one row (and
+// across megakernel sub-ops — it's safe to share with m8_front since the
+// two layers use it at different times within an iter).
 void KERNEL_NAME(yolo_m8_back_cv3_cv2_fused_i8_i8)(
     // cv3 inputs / weights
     int8_t *inner1, int8_t *split_b,
@@ -188,6 +188,7 @@ void KERNEL_NAME(yolo_m8_back_cv3_cv2_fused_i8_i8)(
     int8_t *in_top, int8_t *in_bot,
     int8_t *cv2_wts_chunk, int32_t *bias_cv2, int8_t *silu_lut_cv2,
     int8_t *output,
+    int8_t *scratch,           // cv3 output buffer (16 * 128 = 2 KB)
     // dims
     const int32_t input_width,
     const int32_t cp,         // cv3 each-source channels (= 64)
@@ -204,10 +205,10 @@ void KERNEL_NAME(yolo_m8_back_cv3_cv2_fused_i8_i8)(
   // Only recompute cv3 on chunk 0 of each row; subsequent chunks reuse.
   if (cv2_chunk_idx == 0) {
     cv3_compute_row(inner1, split_b, wts_cv3, bias_cv3, silu_lut_cv3,
-                    s_cv3_out, input_width, 2 * cp, c, rs_cv3);
+                    scratch, input_width, 2 * cp, c, rs_cv3);
   }
 
-  cv2_compute_chunk(in_top, in_bot, s_cv3_out, cv2_wts_chunk, bias_cv2,
+  cv2_compute_chunk(in_top, in_bot, scratch, cv2_wts_chunk, bias_cv2,
                     silu_lut_cv2, output, input_width, c, out_c,
                     n_cv2_chunks, cv2_chunk_idx, rs_cv2);
 

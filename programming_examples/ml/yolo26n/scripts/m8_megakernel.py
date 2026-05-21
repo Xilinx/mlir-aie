@@ -141,6 +141,12 @@ def build(act_in_external=None, return_program: bool = True):
     lut_m0c3 = _lut_buf("m.0/cv3", name="m8_mk_m0c3_lut")
     rs_m0c3 = m_m0c3["right_shift"]
 
+    # Shared 2 KB scratch buffer for the fused kernels (m8_front uses
+    # it as accumulating bot; m8_back uses it as cv3 output). Used at
+    # different times per iter, safe to share. Auto-placed on the
+    # Worker's tile (5,3).
+    scratch_buf = Buffer(B._i8((in_w * c,)), name="m8_mk_scratch")
+
     # ------------------------------------------------------------------
     # Streamed weight streams — spread across (5,2), (5,3), (5,4)
     # ------------------------------------------------------------------
@@ -292,10 +298,9 @@ def build(act_in_external=None, return_program: bool = True):
     bot_to_cv2_of = _slf_of(
         (in_w, 1, c), depth=5, name="m8_mk_bot_to_cv2", delegate=t_north
     )
-    bot_of = _slf_of((in_w, 1, c), depth=2, name="m8_mk_bot", delegate=t_south)
-    cv3_out_of = _slf_of(
-        (in_w, 1, c), depth=2, name="m8_mk_cv3_out", delegate=t_north
-    )
+    # NOTE: the bot OF (cv1->m_0_split) and cv3_out OF (cv3->cv2) are
+    # ELIMINATED in the fused-kernel design — their data lives in C-side
+    # file-scope static scratch within m8_front and m8_back respectively.
     split_b_of = _slf_of(
         (in_w, 1, cp), depth=5, name="m8_mk_split_b", delegate=t_south
     )
@@ -341,35 +346,31 @@ def build(act_in_external=None, return_program: bool = True):
     # All pair kernels use the *streamed* variants now (built per-pair via
     # Makefile's PAIR_IDX = 0 1 loop).
     # ------------------------------------------------------------------
-    k_cv1 = Kernel(
-        f"yolo_c3k2_small_cv1_split_streamed_silu_bias_i8_i8_{BLOCK}",
-        f"yolo_c3k2_small_cv1_split_streamed_{BLOCK}.o",
+    # m8_front fuses cv1 (chunked) + m_0_split (on last chunk).
+    # On last chunk it consumes the bot half (accumulated in the C kernel's
+    # file-scope static scratch) and emits split_a + split_b. Replaces 2
+    # separate kernel calls (k_cv1 + k_split) and the bot OF with 1 call.
+    k_m8_front = Kernel(
+        f"yolo_m8_front_cv1_split_fused_i8_i8_{BLOCK}",
+        f"yolo_m8_front_cv1_split_fused_{BLOCK}.o",
         [
             B._i8((in_w, 1, in_c)),
             B._i8((chunk_sz_cv1,)),
             B._i32((twoc,)),
             B._i8((256,)),
-            B._i8((in_w, 1, c)),
-            B._i8((in_w, 1, c)),
-            B._i8((in_w, 1, c)),
-        ]
-        + [np.int32] * 6,
-    )
-    k_split = Kernel(
-        f"yolo_c3k2_heavy_m_0_split_silu_bias_i8_i8_{BLOCK}",
-        f"yolo_c3k2_heavy_m_0_split_{BLOCK}.o",
-        [
-            B._i8((in_w, 1, c)),
+            B._i8((in_w, 1, c)),       # out_top
+            B._i8((in_w, 1, c)),       # out_bot_to_cv2
             B._i8((sz_m0c1,)),
             B._i32((cp,)),
             B._i8((256,)),
             B._i8((sz_m0c2,)),
             B._i32((cp,)),
             B._i8((256,)),
-            B._i8((in_w, 1, cp)),
-            B._i8((in_w, 1, cp)),
+            B._i8((in_w, 1, cp)),      # out_split_a
+            B._i8((in_w, 1, cp)),      # out_split_b
+            B._i8((in_w * c,)),         # scratch (accumulating bot)
         ]
-        + [np.int32] * 6,
+        + [np.int32] * 9,              # in_w, in_c, twoc, cp, n_chunks, chunk_idx, rs_cv1, rs_m0c1, rs_m0c2
     )
     # k_pair_cv1 / k_pair_cv2 are SHARED between pair0 and pair1 — same
     # algorithm, only the weight set differs (passed at call time). Using
@@ -401,32 +402,26 @@ def build(act_in_external=None, return_program: bool = True):
         ]
         + [np.int32] * 12,
     )
-    k_cv3 = Kernel(
-        f"yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8_{BLOCK}",
-        f"yolo_c3k2_heavy_cv3_concat2_{BLOCK}.o",
+    # m8_back fuses cv3 (computed once per row on cv2 chunk 0) + cv2 (chunked).
+    # Eliminates the cv3_out OF (lives in C-side file-scope static scratch).
+    k_m8_back = Kernel(
+        f"yolo_m8_back_cv3_cv2_fused_i8_i8_{BLOCK}",
+        f"yolo_m8_back_cv3_cv2_fused_{BLOCK}.o",
         [
-            B._i8((in_w, 1, cp)),
-            B._i8((in_w, 1, cp)),
+            B._i8((in_w, 1, cp)),       # inner1
+            B._i8((in_w, 1, cp)),       # split_b
             B._i8((sz_m0c3,)),
             B._i32((c,)),
             B._i8((256,)),
-            B._i8((in_w, 1, c)),
-        ]
-        + [np.int32] * 4,
-    )
-    k_cv2 = Kernel(
-        f"yolo_c3k2_small_cv2_concat3_streamed_silu_bias_i8_i8_{BLOCK}",
-        f"yolo_c3k2_small_cv2_concat3_streamed_{BLOCK}.o",
-        [
-            B._i8((in_w, 1, c)),
-            B._i8((in_w, 1, c)),
-            B._i8((in_w, 1, c)),
+            B._i8((in_w, 1, c)),        # top
+            B._i8((in_w, 1, c)),        # bot_to_cv2
             B._i8((chunk_sz_cv2,)),
             B._i32((out_c,)),
             B._i8((256,)),
-            B._i8((in_w, 1, out_c)),
+            B._i8((in_w, 1, out_c)),    # output
+            B._i8((in_w * c,)),          # scratch (cv3 output)
         ]
-        + [np.int32] * 6,
+        + [np.int32] * 8,               # in_w, cp, c, out_c, n_chunks, chunk_idx, rs_cv3, rs_cv2
     )
 
     # ------------------------------------------------------------------
@@ -439,7 +434,7 @@ def build(act_in_external=None, return_program: bool = True):
         act_in=act_in, block_out=block_out,
         ws_cv1=ws_cv1, ws_pair0=ws_pair0, ws_pair1=ws_pair1, ws_cv2=ws_cv2,
         wts_m0c1_buf=wts_m0c1_buf, wts_m0c2_buf=wts_m0c2_buf,
-        wts_m0c3_buf=wts_m0c3_buf,
+        wts_m0c3_buf=wts_m0c3_buf, scratch_buf=scratch_buf,
         bias_cv1=bias_cv1, lut_cv1=lut_cv1, rs_cv1=rs_cv1,
         bias_m0c1=bias_m0c1, lut_m0c1=lut_m0c1, rs_m0c1=rs_m0c1,
         bias_m0c2=bias_m0c2, lut_m0c2=lut_m0c2, rs_m0c2=rs_m0c2,
@@ -449,15 +444,15 @@ def build(act_in_external=None, return_program: bool = True):
         bias_p1c2=bias_p1c2, lut_p1c2=lut_p1c2, rs_p1c2=rs_p1c2,
         bias_m0c3=bias_m0c3, lut_m0c3=lut_m0c3, rs_m0c3=rs_m0c3,
         bias_cv2=bias_cv2, lut_cv2=lut_cv2, rs_cv2=rs_cv2,
-        top_of=top_of, bot_of=bot_of, bot_to_cv2_of=bot_to_cv2_of,
+        top_of=top_of, bot_to_cv2_of=bot_to_cv2_of,
         split_a_of=split_a_of, split_b_of=split_b_of,
         pair0_mid_of=pair0_mid_of, pair0_skip_of=pair0_skip_of,
         inner_0_out_of=inner_0_out_of,
         pair1_mid_of=pair1_mid_of, pair1_skip_of=pair1_skip_of,
-        inner_1_out_of=inner_1_out_of, cv3_out_of=cv3_out_of,
-        k_cv1=k_cv1, k_split=k_split,
+        inner_1_out_of=inner_1_out_of,
+        k_m8_front=k_m8_front,
         k_pair_cv1=k_pair_cv1, k_pair_cv2=k_pair_cv2,
-        k_cv3=k_cv3, k_cv2=k_cv2,
+        k_m8_back=k_m8_back,
     )
     workers = [worker]
 
@@ -510,7 +505,7 @@ def _build_worker(**kw):
     def megakernel_fn(
         act_in_c, block_out_p,
         ws_cv1, ws_pair0, ws_pair1, ws_cv2,
-        wts_m0c1, wts_m0c2, wts_m0c3,
+        wts_m0c1, wts_m0c2, wts_m0c3, scratch,
         bias_cv1, lut_cv1,
         bias_m0c1, lut_m0c1,
         bias_m0c2, lut_m0c2,
@@ -521,7 +516,6 @@ def _build_worker(**kw):
         bias_m0c3, lut_m0c3,
         bias_cv2, lut_cv2,
         top_p, top_c,
-        bot_p, bot_c,
         bot_to_cv2_p, bot_to_cv2_c,
         split_a_p, split_a_c,
         split_b_p, split_b_c,
@@ -531,8 +525,7 @@ def _build_worker(**kw):
         p1_mid_p, p1_mid_c,
         p1_skip_p, p1_skip_c,
         inner_1_out_p, inner_1_out_c,
-        cv3_out_p, cv3_out_c,
-        k_cv1, k_split, k_pair_cv1, k_pair_cv2, k_cv3, k_cv2,
+        k_m8_front, k_pair_cv1, k_pair_cv2, k_m8_back,
     ):
         # ==============================================================
         # Software-pipelined row schedule
@@ -546,26 +539,22 @@ def _build_worker(**kw):
         # Total iters: in_h + 4. Preamble 0..3, steady 4..in_h-1, post in_h..in_h+3.
 
         def _do_cv1_split(in_row):
-            """cv1 chunked + m_0_split — one iter (consumes 1 row of act_in)."""
+            """cv1 chunked + m_0_split (fused via k_m8_front)."""
             t_r = top_p.acquire(1)
-            ba_r = bot_p.acquire(1)
             bb_r = bot_to_cv2_p.acquire(1)
-            for wi in range_(N_CV1_CHUNKS):
-                ck = ws_cv1.acquire(1)
-                k_cv1(in_row, ck, bias_cv1, lut_cv1, t_r, ba_r, bb_r,
-                      in_w, in_c, twoc, N_CV1_CHUNKS, wi, rs_cv1)
-                ws_cv1.release(1)
-            top_p.release(1)
-            bot_p.release(1)
-            bot_to_cv2_p.release(1)
-            # m_0_split (static wts, single call, same iter)
-            bc_r = bot_c.acquire(1)
             sa_r = split_a_p.acquire(1)
             sb_r = split_b_p.acquire(1)
-            k_split(bc_r, wts_m0c1, bias_m0c1, lut_m0c1,
-                    wts_m0c2, bias_m0c2, lut_m0c2,
-                    sa_r, sb_r, in_w, c, cp, cp, rs_m0c1, rs_m0c2)
-            bot_c.release(1)
+            for wi in range_(N_CV1_CHUNKS):
+                ck = ws_cv1.acquire(1)
+                k_m8_front(in_row, ck, bias_cv1, lut_cv1, t_r, bb_r,
+                           wts_m0c1, bias_m0c1, lut_m0c1,
+                           wts_m0c2, bias_m0c2, lut_m0c2,
+                           sa_r, sb_r, scratch,
+                           in_w, in_c, twoc, cp, N_CV1_CHUNKS, wi,
+                           rs_cv1, rs_m0c1, rs_m0c2)
+                ws_cv1.release(1)
+            top_p.release(1)
+            bot_to_cv2_p.release(1)
             split_a_p.release(1)
             split_b_p.release(1)
 
@@ -621,29 +610,24 @@ def _build_worker(**kw):
             inner_1_out_p.release(1)
 
         def _do_cv3_cv2():
-            """cv3 (static wts) + cv2 (streamed) — one iter; emits block_out row."""
-            # cv3
+            """cv3 (computed once per row on chunk 0) + cv2 (chunked) — fused via k_m8_back."""
             i1_r = inner_1_out_c.acquire(1)
             sb_r = split_b_c.acquire(1)
-            cv3o_pr = cv3_out_p.acquire(1)
-            k_cv3(i1_r, sb_r, wts_m0c3, bias_m0c3, lut_m0c3, cv3o_pr,
-                  in_w, 2 * cp, c, rs_m0c3)
-            inner_1_out_c.release(1)
-            split_b_c.release(1)
-            cv3_out_p.release(1)
-            # cv2 chunked
             top_r = top_c.acquire(1)
             bb_r = bot_to_cv2_c.acquire(1)
-            cv3o_cr = cv3_out_c.acquire(1)
             out_r = block_out_p.acquire(1)
             for wi in range_(N_CV2_CHUNKS):
                 ck = ws_cv2.acquire(1)
-                k_cv2(top_r, bb_r, cv3o_cr, ck, bias_cv2, lut_cv2, out_r,
-                      in_w, c, out_c, N_CV2_CHUNKS, wi, rs_cv2)
+                k_m8_back(i1_r, sb_r, wts_m0c3, bias_m0c3, lut_m0c3,
+                          top_r, bb_r, ck, bias_cv2, lut_cv2, out_r,
+                          scratch,
+                          in_w, cp, c, out_c, N_CV2_CHUNKS, wi,
+                          rs_m0c3, rs_cv2)
                 ws_cv2.release(1)
+            inner_1_out_c.release(1)
+            split_b_c.release(1)
             top_c.release(1)
             bot_to_cv2_c.release(1)
-            cv3_out_c.release(1)
             block_out_p.release(1)
 
         def _drain_act_in():
@@ -780,7 +764,7 @@ def _build_worker(**kw):
             kw["act_in"].cons(),
             kw["block_out"].prod(),
             kw["ws_cv1"], kw["ws_pair0"], kw["ws_pair1"], kw["ws_cv2"],
-            kw["wts_m0c1_buf"], kw["wts_m0c2_buf"], kw["wts_m0c3_buf"],
+            kw["wts_m0c1_buf"], kw["wts_m0c2_buf"], kw["wts_m0c3_buf"], kw["scratch_buf"],
             kw["bias_cv1"], kw["lut_cv1"],
             kw["bias_m0c1"], kw["lut_m0c1"],
             kw["bias_m0c2"], kw["lut_m0c2"],
@@ -791,7 +775,6 @@ def _build_worker(**kw):
             kw["bias_m0c3"], kw["lut_m0c3"],
             kw["bias_cv2"], kw["lut_cv2"],
             kw["top_of"].prod(), kw["top_of"].cons(),
-            kw["bot_of"].prod(), kw["bot_of"].cons(),
             kw["bot_to_cv2_of"].prod(), kw["bot_to_cv2_of"].cons(),
             kw["split_a_of"].prod(), kw["split_a_of"].cons(),
             kw["split_b_of"].prod(), kw["split_b_of"].cons(),
@@ -801,10 +784,7 @@ def _build_worker(**kw):
             kw["pair1_mid_of"].prod(), kw["pair1_mid_of"].cons(),
             kw["pair1_skip_of"].prod(), kw["pair1_skip_of"].cons(),
             kw["inner_1_out_of"].prod(), kw["inner_1_out_of"].cons(),
-            kw["cv3_out_of"].prod(), kw["cv3_out_of"].cons(),
-            kw["k_cv1"], kw["k_split"],
-            kw["k_pair_cv1"], kw["k_pair_cv2"],
-            kw["k_cv3"], kw["k_cv2"],
+            kw["k_m8_front"], kw["k_pair_cv1"], kw["k_pair_cv2"], kw["k_m8_back"],
         ],
         tile=kw["t_compute"],
         dynamic_objfifo_lowering=True,
