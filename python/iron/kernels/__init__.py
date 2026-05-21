@@ -9,7 +9,7 @@
 
 Submodules:
 - :mod:`.eltwise` — passthrough, scale, add, mul, relu
-- :mod:`.reduce` — reduce_add, reduce_min, reduce_max
+- :mod:`.reduce` — reduce_add, reduce_min, reduce_max, compute_max
 - :mod:`.vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - :mod:`.activation` — softmax, gelu, silu, swiglu, bf16_exp
 - :mod:`.linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel)
@@ -17,7 +17,7 @@ Submodules:
 """
 
 from .eltwise import passthrough, scale, add, mul, relu
-from .reduce import reduce_add, reduce_min, reduce_max
+from .reduce import reduce_add, reduce_min, reduce_max, compute_max
 from .vision import (
     rgba2hue,
     threshold,
@@ -52,6 +52,7 @@ __all__ = [
     "reduce_add",
     "reduce_min",
     "reduce_max",
+    "compute_max",
     "relu",
     "rgba2hue",
     "threshold",

@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""Reduction kernel factories: reduce_add, reduce_min, reduce_max."""
+"""Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max."""
 
 import numpy as np
 from ml_dtypes import bfloat16
@@ -13,6 +13,11 @@ from ml_dtypes import bfloat16
 from aie.iron.kernel import ExternalFunction
 
 from ._common import _default_source_path, _make_extern, _min_dma_aligned_elems
+
+# reduce_max_*() and compute_max() both live in reduce_max.cc; pin the
+# output object name so multiple factory calls in the same design share
+# one compile (no duplicate-symbol link errors).
+_REDUCE_MAX_OBJ = "reduce_max.cc.o"
 
 
 def _reduce_kernel(
@@ -109,4 +114,43 @@ def reduce_max(
         f"reduce_max_{func_variant}{suffix}",
         _default_source_path("reduce_max.cc"),
         [in_ty, out_ty, np.int32],
+        shared_object_file_name=_REDUCE_MAX_OBJ,
+    )
+
+
+def compute_max(dtype=np.int32) -> ExternalFunction:
+    """Pairwise scalar max — companion to :func:`reduce_max` for multi-core
+    reductions where each core produces a partial max and a final tree
+    reduces them pairwise.
+
+    Lives in the same ``reduce_max.cc`` as :func:`reduce_max`; sharing the
+    output ``.o`` (via ``shared_object_file_name``) means both factories
+    in the same design compile the source exactly once.
+
+    Args:
+        dtype: Element data type (``np.int32`` or ``bfloat16``).
+
+    Returns:
+        ExternalFunction configured for the ``compute_max`` kernel; signature
+        is ``(out_ty, out_ty, out_ty)`` where ``out_ty`` is a one-element
+        (DMA-aligned) tile of ``dtype``.
+
+    Raises:
+        ValueError: When ``dtype`` is not ``np.int32`` or ``bfloat16``.
+    """
+    is_bf16 = np.dtype(dtype) == np.dtype(bfloat16)
+    is_int32 = np.dtype(dtype) == np.dtype(np.int32)
+    if not is_bf16 and not is_int32:
+        raise ValueError(
+            f"compute_max() dtype must be np.int32 or bfloat16, got {dtype}"
+        )
+    actual_dtype = bfloat16 if is_bf16 else np.int32
+    out_ty = np.ndarray[(_min_dma_aligned_elems(actual_dtype),), np.dtype[actual_dtype]]
+
+    suffix = "_bfloat16" if is_bf16 else ""
+    return _make_extern(
+        f"compute_max{suffix}",
+        _default_source_path("reduce_max.cc"),
+        [out_ty, out_ty, out_ty],
+        shared_object_file_name=_REDUCE_MAX_OBJ,
     )
