@@ -8,6 +8,7 @@
 """High-level algorithm templates built on IRON (transform, for_each, etc.)."""
 
 from .for_each import for_each, for_each_typed
+from .reduce import reduce, reduce_typed
 from .transform import (
     transform,
     transform_binary,
