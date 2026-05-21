@@ -183,13 +183,17 @@ def build(act_in_external=None, return_program: bool = True):
     # cross-tile OFs + ws_cv2 also on (5,4)). Placing recv on the north
     # neighbor (5,5) avoids it; worker_b reads via shared L1 (mirrors the
     # working ws_pair0 pattern on (5,2)).
+    #
+    # comp_lock_id=8 to dodge the chain context's m9 sv_tile on (5,5) which
+    # uses locks 0/1 there. Per-block (standalone) builds don't have anything
+    # else on (5,5), but the higher lock_id is also fine there.
     t_north = Tile(5, 5)
     ws_pair1 = StaticWeightStream(
         obj_type=B._i8((sz_p0c1,)), initial_value=data_p1c1,
         name="m8_2t_pair1_stream",
         recv_type=B._i8((chunk_sz_pair,)), repeat_count=in_h,
         memtile_placement=Tile(6, 1), compute_placement=t_north,
-        mem_lock_id=0, comp_lock_id=0, mm2s_channel=0, s2mm_channel=0,
+        mem_lock_id=0, comp_lock_id=8, mm2s_channel=0, s2mm_channel=0,
         ping_pong_buf=(B._i8((sz_p0c1,)), data_p1c2, "m8_2t_p1c2_pp"),
         ping_pong_memtile=Tile(6, 1),
         pp_lock_id=2,

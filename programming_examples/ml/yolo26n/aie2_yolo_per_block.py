@@ -2615,11 +2615,21 @@ def _build_m8_chain(act_in, manifest):
 
     M8_MEGAKERNEL=1 swaps the entire 8-tile build for the single-tile
     megakernel design in scripts/m8_megakernel.py.
+    M8_MEGAKERNEL_2TILE=1 swaps it for the working 2-tile split in
+    scripts/m8_megakernel_2tile.py (bit-exact on HW per commit 7ffff5c7d).
     """
     import os
     import importlib.util
     import pathlib
 
+    if os.environ.get("M8_MEGAKERNEL_2TILE") == "1":
+        spec = importlib.util.spec_from_file_location(
+            "m8_megakernel_2tile",
+            pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_2tile.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.build(act_in_external=act_in, return_program=False)
     if os.environ.get("M8_MEGAKERNEL") == "1":
         spec = importlib.util.spec_from_file_location(
             "m8_megakernel",
