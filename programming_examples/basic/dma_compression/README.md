@@ -1,12 +1,15 @@
 # dma_compression
 
-A silicon-level probe for AIE-ML compute-tile DMA `Enable_Compression`,
-written as an IRON design. Single-tile passthrough (shim → compute(0,2) →
-shim) on Phoenix npu1, with per-BD and per-channel compression registers
-flipped from the host runtime sequence via `aiex.npu.npu_maskwrite32`,
-surfaced through IRON's `Runtime.inline_ops` escape hatch.
+A silicon-level probe for compute-tile and memtile DMA
+`Enable_Compression` on AIE-ML (Phoenix npu1) and AIE2P (Strix / Strix
+Halo / Krackan npu2), written as an IRON design. Single-tile passthrough
+(shim → compute(0,2) → shim) and two-tile chains, with per-BD and
+per-channel compression registers flipped from the host runtime sequence
+via `aiex.npu.npu_maskwrite32` (surfaced through IRON's
+`Runtime.inline_ops` escape hatch) or from inside the core via peano's
+`write_tm` intrinsic.
 
-What this probe establishes about the AIE-ML compute-tile compression hardware:
+What this probe establishes about the AIE compute-tile compression hardware:
 
 - Enabling compression on a direction requires **two** register writes — the
   per-BD `Enable_Compression` bit (`MEMORY_MODULE_DMA_BD{n}_1` bit 31) AND
@@ -20,49 +23,56 @@ What this probe establishes about the AIE-ML compute-tile compression hardware:
 
 ## Files
 
-- `dma_compression.py` — IRON design (~160 lines). One `build_design()` style
-  function that takes a config name + input/output tensors and returns an
-  MLIR module. Uses `ObjectFifo.forward(tile=compute_tile)` for the DMA-link
-  passthrough and `Runtime.inline_ops` for register writes.
-- `kernel.cc` — peano core-side kernel used by the `core_*` configs.
-  Calls `aiev2intrin.h`'s `write_tm` to write the compression registers from
-  inside the compute tile's core, with `__builtin_aiev2_sched_barrier()`
-  between each `st.tm` to avoid the VLIW-bundle hazard documented on
+- `dma_compression.py` — IRON design. `dma_compression(in_tensor, out_tensor,
+  config=...)` returns an MLIR module per config. Most configs use
+  `ObjectFifo.forward(tile=...)` + `Runtime.inline_ops`; `multi_cmp_only`
+  drops to low-level `aie.mem` / `aie.dma_start` for per-side BD sizing,
+  and `regdump` uses an output-only Worker that calls the kernel.
+- `kernel.cc` — peano core-side kernel used by the `core_*` and `regdump`
+  configs. Arch-guarded include selects `aie2pintrin.h` on AIE2P or
+  `aiev2intrin.h` on AIE-ML; both expose `write_tm` and `read_tm`. A
+  `SCHED_BARRIER()` macro between back-to-back `st.tm` / `lda.tm`
+  instructions avoids the VLIW-bundle hazard documented on
   [issue #2346](https://github.com/Xilinx/mlir-aie/issues/2346).
-- `test_dma_compression.py` — Python driver. JIT-compiles + dispatches each
-  config via `iron.jit`, validates the output buffer against a per-config
-  expected matches/mismatches/untouched breakdown.
-- `run_jit.lit` — lit driver; runs `test_dma_compression.py` on npu1.
+- `test_dma_compression.py` — Python driver. Auto-detects arch from XRT,
+  JIT-compiles + dispatches each config via `iron.jit`, validates the
+  output buffer against per-config matches/mismatches/untouched buckets
+  AND byte-exact sha256 against per-arch goldens for the
+  `*cmp_only` / `*dcmp_only` / `*both` payloads.
+- `run_jit.lit` — lit driver; runs `test_dma_compression.py` on npu1 and npu2.
 
 ## Configs
 
-All configs use arange input and a deterministic per-config expected output.
-All complete in well under one second.
+All configs use arange (or compressed-arange for `*both`, see the same-tile
+section below) input and a deterministic per-config expected output. All
+complete in well under one second (data dispatches) or ~1.5 s
+(`core_*` configs, dominated by the per-config peano kernel build).
 
 | Config           | MM2S compress | S2MM decompress | Configured from | Expected (matches / mismatches / untouched) |
 |------------------|:-------------:|:---------------:|-----------------|---------------------------------------------|
 | `base`           | —             | —               | —               | 4096 / 0 / 0                                |
 | `cmp_only`       | ✓             | —               | host runtime    | 1024 / 1920 / 1152                          |
 | `dcmp_only`      | —             | ✓               | host runtime    | 1024 / 3072 / 0                             |
-| `both`           | ✓             | ✓               | host runtime    | 1043 / 1901 / 1152                          |
+| `both`           | ✓             | ✓               | host runtime    | 2944 / 0 / 1152 (lossless same-tile roundtrip on compressed-arange) |
 | `core_cmp_only`  | ✓             | —               | **core (peano `write_tm`)** | 1024 / 1920 / 1152              |
 | `core_dcmp_only` | —             | ✓               | **core (peano `write_tm`)** | 1024 / 3072 / 0                 |
-| `core_both`      | ✓             | ✓               | **core (peano `write_tm`)** | 1043 / 1901 / 1152              |
+| `core_both`      | ✓             | ✓               | **core (peano `write_tm`)** | 2944 / 0 / 1152              |
 | `memtile_base`       | —         | —               | host runtime    | 4096 / 0 / 0                                |
 | `memtile_cmp_only`   | ✓         | —               | host runtime    | 1024 / 1920 / 1152                          |
 | `memtile_dcmp_only`  | —         | ✓               | host runtime    | 1024 / 3072 / 0                             |
-| `memtile_both`       | ✓         | ✓               | host runtime    | 1043 / 1901 / 1152                          |
+| `memtile_both`       | ✓         | ✓               | host runtime    | 2944 / 0 / 1152                          |
 | `lossless_roundtrip` | CT MM2S   | memtile S2MM    | host runtime    | **4096 / 0 / 0** (true lossless roundtrip)  |
 | `multi_base`               | —     | —               | —               | 4096 / 0 / 0                                |
 | `multi_cmp_only`           | CT MM2S | —             | host runtime    | 1024 / 1920 / 1152 (asymmetric, low-level dialect) |
 | `multi_lossless_roundtrip` | CT MM2S | CT S2MM       | host runtime    | **4096 / 0 / 0** (CT(0,2)→CT(0,3) roundtrip)|
+| `regdump`        | —             | —               | core `write_tm`+`read_tm` | 4× post-write reads of BD0/1/2/3_1 == 0x80000000 |
 
 Shim BD lengths: 4096 in, 4096 out for `base`. Configs with MM2S compression
 use a 2944-int output TAP; configs with S2MM decompression use a 2944-int
 input TAP. 2944 is the empirical compressed byte count for arange 0..N-1
-on Phoenix (~1.39× ratio). The asymmetric configs use this as a
-`TensorAccessPattern` on the shim side so the BD lengths match what the
-compressor actually emits — otherwise the consumer DMA stalls.
+(~1.39× ratio, identical on AIE-ML and AIE2P). The asymmetric configs use
+this as a `TensorAccessPattern` on the shim side so the BD lengths match
+what the compressor actually emits — otherwise the consumer DMA stalls.
 
 **Host-side configs** (`base`/`cmp_only`/`dcmp_only`/`both` and the
 `memtile_*` family) flip the compression registers from the runtime
@@ -114,9 +124,9 @@ link.
 ### Scheduler barrier hazard (#2346)
 
 `kernel.cc` includes an `enable_mm2s_compression_no_barrier` function (not
-wired into any runtime config) that omits `__builtin_aiev2_sched_barrier()`
-between consecutive `write_tm` calls. The peano backend then packs the
-`st.tm` ops into a single VLIW bundle — the hazard
+wired into any runtime config) that omits the `SCHED_BARRIER()` between
+consecutive `write_tm` calls. The peano backend then packs the `st.tm` ops
+into a single VLIW bundle — the hazard
 [@joeldushouyu documented](https://github.com/Xilinx/mlir-aie/issues/2346#issuecomment-2922081498)
 on the issue thread.
 
@@ -144,7 +154,7 @@ and `movxm`, and the next `st.tm` follows immediately at 0x2a — close
 enough that the second store may issue before the first reaches the
 processor bus, stalling the kernel.
 
-To regenerate the asm:
+To regenerate the asm (substitute `aie2p` for `aie2` when targeting AIE2P):
 
 ```bash
 clang++ -O2 -std=c++20 --target=aie2-none-unknown-elf -DNDEBUG \
@@ -171,36 +181,38 @@ configs across two iron.jit dispatches:
 This is the "host orchestrates compression and decompression separately"
 path; `lossless_roundtrip` is the "hardware does the roundtrip in one
 dispatch with the compressed stream living on the wire" path. Both end
-up with matches=4096, demonstrating two different ways to show that AIE-ML
-compression is invertible on arbitrary input.
+up with matches=4096, demonstrating two different ways to show that AIE
+compression is invertible on arbitrary input (verified on both AIE-ML
+and AIE2P).
 
-The reason single-tile `both` (decompress→compress) can't be lossless on
-arbitrary input: on a given tile, S2MM only has `Decompression_Enable`
-and MM2S only has `Compression_Enable`. You can do
-decompress-then-compress on one tile (what `both` does — feeds raw to
-the decompressor, gets garbage, then compresses the garbage) but
-compress-then-decompress requires two tiles, hence the
-`lossless_roundtrip` topology.
+Single-tile `both` (decompress→compress) is a true lossless roundtrip
+when fed real compressed bytes: the test driver pre-runs `cmp_only` once
+to capture the compressed-arange payload, then feeds those bytes (zero-
+padded to N) as the input tensor for the `both` configs. S2MM
+decompresses real compressed data to arange in the CT buffer, MM2S
+re-compresses to the same compressed bytes, and out byte-equals input
+on the first `RATIOED_N` int32s. This is the same lossless invariant the
+cross-tile `lossless_roundtrip` proves, but on a single tile.
 
-**Why these aren't all `matches=4096`:** with arange input, the compressor
-on the output side emits ~2944 bytes; only the first BD's worth of
-elements (~1024) passes through close to identity (a state-machine warm-up
-artifact) before subsequent BDs return compressed bytes that don't
-re-interpret as the original int32s. The compressor is lossless, but the
-output stream is not the input stream — that's the whole point of
-compression. To see lossless round-trip on this hardware, you need
-all-zero input (a degenerate case where compress + decompress = identity
-because the byte counts trivially match); the prior C++ probe used that.
+(For `*cmp_only`/`*dcmp_only` the output is intentionally NOT
+`matches=4096`: with arange input, the compressor emits ~2944 bytes;
+only the first BD (~1024 elements) passes through close to identity (a
+state-machine warm-up artifact) before subsequent BDs return compressed
+bytes that don't re-interpret as the original int32s. The compressor is
+lossless — the `roundtrip` and `*both` configs prove that — but the
+output stream isn't the input stream, which is the whole point of
+compression.)
 
 ## How to run
 
 ### Prereqs
 
-- Phoenix npu1 device, `amdxdna` driver loaded, `/dev/accel/accel0` present
+- Phoenix npu1 OR Strix / Strix Halo / Krackan npu2 device,
+  `amdxdna` driver loaded, `/dev/accel/accel0` present
 - XRT at `/opt/xilinx/xrt`
 - mlir-aie built per `docs/Building.md`, with an activated `ironenv`
 
-### Run all four configs
+### Run all configs
 
 ```bash
 source ironenv/bin/activate
@@ -210,8 +222,9 @@ cd programming_examples/basic/dma_compression
 python3 test_dma_compression.py
 ```
 
-Total wall time on Phoenix is well under a second; each config dispatches
-in ~150 ms.
+Each compute-tile dispatch is sub-200 ms; the `core_*` configs take
+~1.5 s each for the per-config peano kernel build. The full 16-config
+sweep + roundtrip completes in well under 15 seconds on either arch.
 
 ### Run a single config
 
@@ -233,6 +246,45 @@ with mlir_mod_ctx() as ctx:
 "
 ```
 
+## Strix npu2 (AIE2P) support
+
+All 16 configs run on Strix / Strix Halo / Krackan. The DMA register
+addresses and field semantics are identical between AIE-ML and AIE2P, so
+the host plumbing ports as-is; `kernel.cc` arch-guards its intrinsic
+include so the `core_*` configs compile on both.
+
+### Same-tile `*both` configs
+
+`both`, `memtile_both`, and `core_both` do a single-dispatch lossless
+roundtrip on real compressed bytes: the driver pre-runs `cmp_only` once
+to capture the compressed-arange payload, then feeds those bytes (zero-
+padded to N) as input. S2MM decompresses to arange in the CT buffer,
+MM2S re-compresses, and `out[:RATIOED_N]` byte-equals the input.
+
+(Earlier revisions fed raw arange directly into the decompressor; AIE2P
+raises a `Decompression_underflow` event and stalls the DMA, while
+AIE-ML completes with deterministic garbage.)
+
+### `regdump`
+
+`regdump` is a core-side `write_tm` + `read_tm` self-test. The kernel
+writes `COMPRESS_BIT` to each `BD?_1` and reads it back; the driver
+asserts each post-write read equals `0x80000000`. This directly verifies
+the mechanism the `core_*` configs depend on.
+
+Host-side `npu_maskwrite32` to BD/CTRL registers is verified
+operationally by the `cmp_only` / `dcmp_only` / `*both` data assertions
+(not by `regdump`-style direct readback — empirically the NPU
+controller's BD/CTRL writes only commit on `writebd` queueing).
+
+### sha256 goldens
+
+`GOLDEN_SHA` in `test_dma_compression.py` is empirically derived. The
+same values are used for both arches on the assumption that the
+compression algorithm is identical; if a future arch diverges, CI will
+fail with `sha-MISMATCH` (printing both expected and actual) and the
+dict should be split per-arch.
+
 ## Register reference
 
 | Register                                  | Tile-relative addr | Bit | Purpose                              |
@@ -242,7 +294,8 @@ with mlir_mod_ctx() as ctx:
 | `MEMORY_MODULE_DMA_MM2S_0_CTRL`           | 0x1DE10            | 4   | Channel-level `Compression_Enable`   |
 
 Source: `third_party/aie-rt/driver/src/global/xaiemlgbl_params.h` and
-`xaiemlgbl_reginit.c`.
+`xaiemlgbl_reginit.c` (AIE2P uses the same addresses and bit positions —
+see `xaie2pgbl_params.h`).
 
 After IRON's `ObjectFifo.forward()` lowering, BDs land at:
 

@@ -1,48 +1,13 @@
-"""IRON-style DMA compression probes on Phoenix npu1.
+"""IRON DMA compression probes for AIE-ML (npu1) and AIE2P (npu2).
 
-`dma_compression(in_tensor, out_tensor, config=...)` returns an MLIR
-module for one of 15 configs that exercise AIE-ML DMA `Enable_Compression`
-through different host- and core-side mechanisms and different tile
-topologies. All configs are designed to complete deterministically — no
-expected hangs.
+`dma_compression(in_tensor, out_tensor, config=...)` builds the MLIR module
+for one of 16 configs across 5 families: host-driven (`base`/`cmp_only`/...),
+core-driven via peano `write_tm` (`core_*`), memtile (`memtile_*`),
+cross-tile chains (`lossless_roundtrip`/`multi_*`), and a `regdump`
+write_tm+read_tm self-test. See README.md for the per-config table.
 
-Config families (see README.md for the full table + expected outputs):
-
-  HOST_CONFIGS    base / cmp_only / dcmp_only / both
-                  Single compute tile (0,2), shim -> CT -> shim via
-                  `ObjectFifo.forward(tile=ct)` DMA link. Compression
-                  registers flipped from the host runtime sequence via
-                  `aiex.npu.npu_maskwrite32` + `Runtime.inline_ops`.
-
-  CORE_CONFIGS    core_cmp_only / core_dcmp_only / core_both
-                  Same topology as HOST_CONFIGS, but the compression
-                  registers are flipped from inside the core via peano's
-                  `aiev2intrin.h::write_tm` (kernel.cc) with
-                  `__builtin_aiev2_sched_barrier()` between stores.
-                  Peano-side companion to PR #2348's chess-only
-                  `test/npu-xrt/tile_mapped_read/`, closes #2346 gap.
-
-  MEMTILE_CONFIGS memtile_base / memtile_cmp_only / memtile_dcmp_only /
-                  memtile_both
-                  Same shape as HOST_CONFIGS but on memtile(0,1). Memtile
-                  DMA register layout differs from compute-tile (BD?_4
-                  word for compression bit vs BD?_1) but observable
-                  behaviour is identical.
-
-  ROUNDTRIP_CONFIGS lossless_roundtrip / multi_base / multi_cmp_only /
-                    multi_lossless_roundtrip
-                    Two-tile chains. lossless_roundtrip and
-                    multi_lossless_roundtrip prove the AIE-ML compress
-                    -> decompress pipeline is invertible on arbitrary
-                    (arange) input. multi_cmp_only is built from low-
-                    level `aie.mem` / `aie.dma_start` ops to hand-size
-                    the inter-tile consumer BD so an asymmetric
-                    compression test can complete without stalling.
-
-The asymmetric configs use a precomputed ratio (RATIOED_N=2944 for
-arange 0..N-1 on Phoenix, ~1.39x) so shim or inter-tile BD lengths
-match the compressed byte count and neither side hangs on a BD-length
-mismatch.
+RATIOED_N=2944 is the empirical compressed byte count for arange(N); used
+to size asymmetric BDs so neither side hangs on a length mismatch.
 """
 
 import os
@@ -68,15 +33,12 @@ COL = 0
 COMPUTE_ROW = 2
 MEMTILE_ROW = 1
 
-# Compute-tile (AIE-ML compute tile, row 2+) DMA register layout. The BD
-# compression bit lives in BD?_1 (word 1, bit 31). Address stride is 0x20
-# bytes between consecutive BD registers.
+# Compute-tile DMA register layout (compression bit in BD?_1, bit 31).
 CT_BD1_BASE = 0x1D004
 CT_S2MM0_CTRL = 0x1DE00
 CT_MM2S0_CTRL = 0x1DE10
 
-# Memtile (AIE-ML mem tile, row 1) DMA register layout. The BD compression
-# bit lives in BD?_4 (word 4, bit 31). Same 0x20 stride.
+# Memtile DMA register layout (compression bit in BD?_4, bit 31).
 MT_BD4_BASE = 0xA0010
 MT_S2MM0_CTRL = 0xA0600
 MT_MM2S0_CTRL = 0xA0630
@@ -95,34 +57,22 @@ MEMTILE_CONFIGS = (
     "memtile_dcmp_only",
     "memtile_both",
 )
-# Two-tile chains via shim -> CT(0,2) -> {memtile(0,1) | CT(0,3)} -> shim.
-#   lossless_roundtrip       : compress on CT(0,2) MM2S + decompress on memtile
-#                              S2MM — proves the cross-tile roundtrip is
-#                              invertible on arbitrary input
-#   multi_base               : passthrough through CT(0,2) + CT(0,3), no
-#                              compression (sanity check that the topology
-#                              works)
-#   multi_cmp_only           : compress on CT(0,2) MM2S only; consumer BDs on
-#                              CT(0,3) hand-sized to RATIOED_PER_LINE. Built
-#                              via low-level aie.dialect (IRON's link API
-#                              doesn't expose per-side BD sizing). Runnable
-#                              asymmetric proof that compression engages on
-#                              the inter-tile link.
-#   multi_lossless_roundtrip : compress on CT(0,2) MM2S + decompress on CT(0,3)
-#                              S2MM — full roundtrip on CT-to-CT link.
+# Two-tile chains: shim -> CT(0,2) -> {memtile(0,1) | CT(0,3)} -> shim.
 ROUNDTRIP_CONFIGS = (
     "lossless_roundtrip",
     "multi_base",
     "multi_cmp_only",
     "multi_lossless_roundtrip",
 )
-CONFIGS = HOST_CONFIGS + CORE_CONFIGS + MEMTILE_CONFIGS + ROUNDTRIP_CONFIGS
+# Core-side write_tm + read_tm self-test (issue #2346 readback side).
+REGDUMP_CONFIGS = ("regdump",)
+CONFIGS = (
+    HOST_CONFIGS + CORE_CONFIGS + MEMTILE_CONFIGS + ROUNDTRIP_CONFIGS + REGDUMP_CONFIGS
+)
 
 COMPUTE_ROW_2 = 3  # second compute tile for the multi-tile configs
 
-# Address of Core_Processor_Bus enable (must be 1 before the core can do
-# st.tm to the processor bus). Pattern from PR #2348's
-# test/npu-xrt/tile_mapped_read/aie.mlir:61.
+# Must be 1 before the core can do st.tm / lda.tm to the processor bus.
 CORE_PROCESSOR_BUS_EN = 0x32038
 
 _KERNEL_CC = os.path.join(os.path.dirname(__file__), "kernel.cc")
@@ -130,10 +80,7 @@ _KERNEL_CC = os.path.join(os.path.dirname(__file__), "kernel.cc")
 line_ty = np.ndarray[(LINE_SIZE,), np.dtype[np.int32]]
 
 
-# Module-level @func — used by the `lossless_roundtrip` config's CT Worker.
-# Has to live here (not inside the design function) because the @func
-# decorator emits via the surrounding MLIR module context at module-load
-# time and won't have one if defined inside a regular function.
+# Module-level — @func needs an active MLIR context at decoration time.
 @func
 def passthrough_line(src: line_ty, dst: line_ty, n: np.int32):
     for i in range_(n):
@@ -162,18 +109,12 @@ def _linear_tap(n_elems):
     return TensorAccessPattern((1, N), 0, [1, 1, 1, n_elems], [0, 0, 0, 1])
 
 
-def _build_multi_cmp_only():
-    """Low-level dialect construction for multi_cmp_only.
-
-    Asymmetric inter-tile compression: CT(0,2) MM2S compresses, CT(0,3)
-    S2MM does NOT decompress. This means the wire carries fewer bytes
-    per BD than the consumer expects. To avoid a stall, the consumer
-    BD (and the shim S2MM BD that drains CT(0,3)) must be hand-sized to
-    the empirically-measured per-BD compressed byte count.
-
-    Topology: shim -> CT(0,2) -> CT(0,3) -> shim. All BDs explicit; no
-    object_fifo. The CT(0,3) S2MM/MM2S buffers are sized RATIOED_PER_LINE
-    so the BD length matches what the compressor actually emits.
+def _build_multi_cmp_only(dev=None):
+    """Asymmetric inter-tile compression: CT(0,2) MM2S compresses, CT(0,3)
+    S2MM does NOT decompress, so the CT(0,3) and shim S2MM BDs are
+    hand-sized to RATIOED_PER_LINE to avoid a length-mismatch stall.
+    Built from low-level aie dialect because IRON's link API doesn't
+    expose per-side BD sizing.
     """
     from aie.dialects.aie import (
         device,
@@ -238,9 +179,17 @@ def _build_multi_cmp_only():
             with block[6]:
                 aie_end()
 
+    active = dev or iron.get_current_device()
+    resolved = active.resolve() if active is not None else AIEDevice.npu1_1col
+    aie_dev = (
+        AIEDevice.npu2_1col
+        if resolved in (AIEDevice.npu2, AIEDevice.npu2_1col)
+        else AIEDevice.npu1_1col
+    )
+
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_1col)
+        @device(aie_dev)
         def _dev():
             shim = tile(COL, 0)
             ct2 = tile(COL, COMPUTE_ROW)
@@ -303,17 +252,61 @@ def _build_multi_cmp_only():
     return ctx.module
 
 
+def _build_regdump(dev):
+    """Core-side write_tm + read_tm self-test. Host enables the processor bus;
+    kernel writes COMPRESS_BIT to each BD?_1 and reads it back. Driver
+    asserts each post-write read equals COMPRESS_BIT."""
+    compute_tile = Tile(COL, COMPUTE_ROW, tile_type=AIETileType.CoreTile)
+    vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
+    of_out = ObjectFifo(line_ty, name="regs_out")
+
+    dump_fn = ExternalFunction(
+        "dump_compress_regs",
+        "kernel.o",
+        source_file=_KERNEL_CC,
+        arg_types=[line_ty],
+    )
+
+    def regdump_core(of_out_h, dump):
+        for _ in range_(N // LINE_SIZE):
+            elem = of_out_h.acquire(1)
+            dump(elem)
+            of_out_h.release(1)
+
+    worker = Worker(regdump_core, [of_out.prod(), dump_fn], tile=compute_tile)
+
+    rt = Runtime()
+    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+
+        def enable_processor_bus():
+            npu_maskwrite32(
+                column=COL,
+                row=COMPUTE_ROW,
+                address=CORE_PROCESSOR_BUS_EN,
+                value=0x1,
+                mask=0x1,
+            )
+
+        rt.inline_ops(enable_processor_bus, [])
+        rt.start(worker)
+        rt.drain(of_out.cons(), c_out, wait=True)
+    return Program(
+        dev if dev is not None else iron.get_current_device(), rt
+    ).resolve_program()
+
+
 def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
     """Build the IRON program for one compression config and return its MLIR module."""
     if config not in CONFIGS:
         raise ValueError(f"unknown config {config!r}; pick from {CONFIGS}")
 
     if config == "multi_cmp_only":
-        return _build_multi_cmp_only()
+        return _build_multi_cmp_only(dev)
 
-    # `@func passthrough_line` caches its FuncOp across calls, but each
-    # iron.jit dispatch builds in a fresh MLIR context. Reset so the
-    # cached op from a previous config doesn't leak into the new module.
+    if config == "regdump":
+        return _build_regdump(dev)
+
+    # Reset the @func cache so a previous build's FuncOp doesn't leak.
     passthrough_line._func_op = None
 
     n = int(np.size(in_tensor))
@@ -324,13 +317,11 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
 
     vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
-    # The cross-tile lossless roundtrip is a 3-tile chain:
-    # shim -> CT(0,2) -> memtile(0,1) -> shim. CT runs a Worker that copies
-    # of_a -> of_b (so of_b can be the source of memtile's link without
-    # being a target of CT's link — IRON rejects a fifo being in two
-    # ObjectFifoLinkOps). CT MM2S compresses on the of_b leg; memtile S2MM
-    # decompresses on receive. Compressed bytes live on the wire between
-    # CT and memtile; both shim ends see raw int32s, so no shim TAPs.
+    # Cross-tile chains: CT(0,2) runs a copy Worker (not a link, because
+    # IRON rejects a fifo participating in two ObjectFifoLinkOps); the
+    # consumer tile forwards back to shim. Compression engages on the
+    # CT -> consumer leg; both shim ends see raw int32s when both
+    # directions are enabled.
     if config in ROUNDTRIP_CONFIGS:
         compute_tile = Tile(COL, COMPUTE_ROW, tile_type=AIETileType.CoreTile)
         if config == "lossless_roundtrip":
@@ -344,19 +335,14 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
             consumer_bd_base = CT_BD1_BASE
             consumer_s2mm_ctrl = CT_S2MM0_CTRL
 
-        # Decide which compression bits to flip on the CT->consumer leg:
-        #   *_base               : neither
-        #   *_cmp_only           : producer (CT MM2S) only
-        #   *_lossless_roundtrip : producer (CT MM2S) + consumer (S2MM decompress)
         engage_compress = config in (
             "multi_cmp_only",
             "lossless_roundtrip",
             "multi_lossless_roundtrip",
         )
         engage_decompress = config in ("lossless_roundtrip", "multi_lossless_roundtrip")
-        # Consumer-side TAP: when only compress is on, the consumer DMA on
-        # shim receives the compressed byte stream (shorter than raw), so
-        # size the shim S2MM to RATIOED_N to avoid a BD-length hang.
+        # Asymmetric compress-only: ratio-size shim S2MM to match the
+        # compressed stream length.
         out_tap_rt = (
             _linear_tap(RATIOED_N)
             if engage_compress and not engage_decompress
@@ -422,14 +408,10 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
     of_in = ObjectFifo(line_ty, name="in")
     of_out = of_in.cons().forward(tile=link_tile, name="out")
 
-    # Core-side configs need a Worker on the compute tile that calls the
-    # peano `write_tm` kernel functions to flip the compression registers
-    # from within the core itself. The DMA-link still moves the data; the
-    # Worker just configures + spins. Pattern is the peano-side companion
-    # to PR #2348's chess-based test/npu-xrt/tile_mapped_read/.
-    # Both ExternalFunctions share `object_file_name="kernel.o"` so kernel.cc
-    # compiles once and both func.func @... {link_with = "kernel.o"} decls
-    # resolve to the same object — no duplicate-symbol link error.
+    # `core_*` configs spawn a Worker on the link tile that calls the peano
+    # `write_tm` kernel functions to flip compression registers from inside
+    # the core. The DMA passthrough still moves the data; the Worker only
+    # configures and then spins.
     enables = []
     if config == "core_cmp_only":
         enables = [
@@ -475,18 +457,14 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
 
         core_worker = Worker(core_body, list(enables), tile=link_tile)
 
-    # Sizing for the shim BDs. Configs with compression on MM2S (output)
-    # need a ratioed out_n to match the compressor's emitted byte count.
-    # Configs with decompression on S2MM (input) need a ratioed in_n.
-    # Suffix (after optional "core_"/"memtile_" prefix) determines which side
-    # of the link has compression engaged: "cmp_only" = MM2S out, "dcmp_only"
-    # = S2MM in, "both" = both.
+    # Strip "core_"/"memtile_" prefix to get the cmp/dcmp/both suffix.
     suffix = (
         config.split("_", 1)[1] if config.startswith(("core_", "memtile_")) else config
     )
     has_mm2s_cmp = suffix in ("cmp_only", "both")
     has_s2mm_dcmp = suffix in ("dcmp_only", "both")
-    in_tap = _linear_tap(RATIOED_N) if (has_s2mm_dcmp and not has_mm2s_cmp) else None
+    # Ratio-size each shim BD whose channel is doing (de)compression.
+    in_tap = _linear_tap(RATIOED_N) if has_s2mm_dcmp else None
     out_tap = _linear_tap(RATIOED_N) if has_mm2s_cmp else None
 
     is_host_compression = config in HOST_CONFIGS or config in MEMTILE_CONFIGS

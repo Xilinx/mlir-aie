@@ -1,20 +1,13 @@
-"""Python driver for dma_compression on Phoenix npu1.
+"""Driver for the dma_compression IRON design.
 
-Runs the IRON design under iron.jit for each of the 15 compression
-configs, validates the output buffer against a per-config expected
-breakdown of (matches / mismatches / untouched-sentinel) elements, and
-also runs a two-dispatch sequential `roundtrip` test that asserts the
-recovered bytes equal the original arange input. Every config completes
-deterministically in well under one second.
-
-Run with:
-    python3 test_dma_compression.py                  # all configs + roundtrip
-    python3 test_dma_compression.py both             # just one config
-    python3 test_dma_compression.py lossless_roundtrip
-    python3 test_dma_compression.py -v               # also dump first 8 elems
+python3 test_dma_compression.py                  # full sweep + roundtrip
+python3 test_dma_compression.py both             # single config
+python3 test_dma_compression.py -v               # extra hex dump
+python3 test_dma_compression.py --skip both,core_both
 """
 
 import argparse
+import hashlib
 import shutil
 import sys
 import time
@@ -24,16 +17,21 @@ import numpy as np
 
 import aie.iron as iron
 
-from dma_compression import dma_compression, CONFIGS
+from dma_compression import dma_compression, CONFIGS, RATIOED_N
+
+
+def _detect_arch() -> str:
+    from aie.utils import _get_default_npu_runtime
+
+    rt = _get_default_npu_runtime()
+    if rt is None or not getattr(rt, "npu_str", None):
+        raise RuntimeError("could not determine NPU arch from XRT runtime")
+    return rt.npu_str
 
 
 def _isolate_for_next_config():
-    """Reset all iron.jit + XRT state so the next config dispatch starts clean.
-
-    Without this, an earlier config's xclbin hw_context can remain bound on
-    the device when the next config tries to register, surfacing as err=19
-    ENODEV from DRM_IOCTL_AMDXDNA_CREATE_HWCTX.
-    """
+    # Drop stale xclbin + hw_context so the next dispatch's registration
+    # doesn't fail with ENODEV from DRM_IOCTL_AMDXDNA_CREATE_HWCTX.
     cache = Path.home() / ".npu" / "cache"
     if cache.exists():
         for entry in cache.iterdir():
@@ -55,60 +53,63 @@ def _isolate_for_next_config():
 
 
 N = 4096
-LINE_SIZE = 1024
 SENTINEL = np.uint32(0xDEADBEEF)
 
-# Per-config expected match/mismatch/untouched buckets (Phoenix npu1, arange
-# input). All configs are deterministic and complete in milliseconds. The
-# first BD (1024 elems) passes through unmodified across configs that engage
-# (de)compression, after a state-machine warm-up. The asymmetric configs
-# (cmp_only, dcmp_only) use ratio-sized shim BDs so neither side hangs.
+# Empirically derived. If a future arch diverges, split into a per-arch dict.
+GOLDEN_SHA = {
+    "cmp": "f947e931d2e3c530be240f4e622d1c3757b2e1d5e23a05be5d21768332420bc5",
+    "dcmp": "1215bcd067bc6097eecdb81fb8ebf45211cb1e9ea00c95674eea4e8d476a7152",
+}
+
+
+def _payload_kind(config: str):
+    if config.endswith("dcmp_only"):
+        return "dcmp", N
+    if config.endswith("cmp_only") or config.endswith("both"):
+        return "cmp", RATIOED_N
+    return None, None
+
+
+def _hex_block(arr: np.ndarray, n_int32: int) -> str:
+    return arr[:n_int32].tobytes().hex(" ", -4)
+
+
+# `regdump` has its own assertion path; entry is None to skip the buckets check.
 EXPECTED = {
     "base": dict(matches=4096, mismatches=0, untouched=0),
     "cmp_only": dict(matches=1024, mismatches=1920, untouched=1152),
     "dcmp_only": dict(matches=1024, mismatches=3072, untouched=0),
-    # `both` with arange input + ratioed out_n: shim S2MM gets compressed
-    # bytes from the consumer side; with both directions compressed in the
-    # link, the first BD's worth of bytes pass through close to identity (a
-    # state-machine warm-up artifact, matches=1043 ~ first 1024 elems), then
-    # the remainder are compressor output (garbage when interpreted as int32)
-    # and the tail of the output buffer is never written.
-    "both": dict(matches=1043, mismatches=1901, untouched=1152),
-    # Core-side configs (peano `write_tm` in kernel.cc, host enables the
-    # Core_Processor_Bus first). Measured outputs are bit-identical to their
-    # host-side counterparts (cmp_only / both), confirming the core-side
-    # path drives the same DMA register state as `npu_maskwrite32`.
+    "both": dict(matches=2944, mismatches=0, untouched=1152),
     "core_cmp_only": dict(matches=1024, mismatches=1920, untouched=1152),
     "core_dcmp_only": dict(matches=1024, mismatches=3072, untouched=0),
-    "core_both": dict(matches=1043, mismatches=1901, untouched=1152),
-    # Memtile configs route through memtile(0,1) instead of compute(0,2);
-    # different register addresses (MT_BD4_BASE, MT_S2MM/MM2S_0_CTRL).
-    # Measured outputs are bit-identical to compute-tile counterparts —
-    # the memtile compression hardware presents the same observable
-    # behaviour as the compute-tile one.
+    "core_both": dict(matches=2944, mismatches=0, untouched=1152),
     "memtile_base": dict(matches=4096, mismatches=0, untouched=0),
     "memtile_cmp_only": dict(matches=1024, mismatches=1920, untouched=1152),
     "memtile_dcmp_only": dict(matches=1024, mismatches=3072, untouched=0),
-    "memtile_both": dict(matches=1043, mismatches=1901, untouched=1152),
-    # Single-dispatch lossless roundtrip: shim -> CT -> memtile -> shim,
-    # compress on CT MM2S, decompress on memtile S2MM. Both shim ends see
-    # raw int32s; expected matches=4096 if the chained compress->decompress
-    # is truly lossless.
+    "memtile_both": dict(matches=2944, mismatches=0, untouched=1152),
     "lossless_roundtrip": dict(matches=4096, mismatches=0, untouched=0),
     "multi_base": dict(matches=4096, mismatches=0, untouched=0),
-    # multi_cmp_only proves DMA compression engages on the inter-tile link:
-    # compress on CT(0,2) MM2S, NO decompress on CT(0,3) S2MM, with the
-    # consumer-side BD hand-sized to RATIOED_PER_LINE=736 ints/BD so the
-    # DMA doesn't stall. Output pattern matches single-tile cmp_only's
-    # asymmetric signature, confirming compression actually engages on the
-    # CT-to-CT link.
     "multi_cmp_only": dict(matches=1024, mismatches=1920, untouched=1152),
     "multi_lossless_roundtrip": dict(matches=4096, mismatches=0, untouched=0),
+    "regdump": None,
 }
 
+# `regdump` output buffer layout (see kernel.cc::dump_compress_regs).
+COMPRESS_BIT = 0x80000000
+REGDUMP_WRITE_BACK = [("BD0_1", 6), ("BD1_1", 7), ("BD2_1", 8), ("BD3_1", 9)]
+REGDUMP_INITIAL_INFO = [
+    ("BD0_1", 0),
+    ("BD1_1", 1),
+    ("BD2_1", 2),
+    ("BD3_1", 3),
+    ("S2MM_0_CTRL", 4),
+    ("MM2S_0_CTRL", 5),
+]
 
-def run_one(config: str, verbose: bool = False) -> bool:
-    input_np = np.arange(N, dtype=np.uint32)
+
+def run_one(config: str, verbose: bool = False, input_np=None) -> bool:
+    if input_np is None:
+        input_np = np.arange(N, dtype=np.uint32)
     sentinel_np = np.full(N, SENTINEL, dtype=np.uint32)
 
     in_tensor = iron.tensor(input_np.copy(), dtype=np.uint32, device="npu")
@@ -119,50 +120,118 @@ def run_one(config: str, verbose: bool = False) -> bool:
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
     out = out_tensor.numpy()
+
+    if config == "regdump":
+        all_ok = True
+        print(
+            f"[{config:>23}] core-side write_tm + read_tm self-test "
+            f"({elapsed_ms} ms)"
+        )
+        print("  initial register values (informational; not asserted):")
+        for label, idx in REGDUMP_INITIAL_INFO:
+            regval = int(out[idx])
+            print(f"    {label:>15}  = 0x{regval:08x}")
+        print("  post-write_tm(COMPRESS_BIT) readback (each must == 0x80000000):")
+        for label, idx in REGDUMP_WRITE_BACK:
+            regval = int(out[idx])
+            ok_bit = regval == COMPRESS_BIT
+            tag = "ok " if ok_bit else "FAIL"
+            print(f"    [{tag}] {label:>10}  = 0x{regval:08x}")
+            all_ok &= ok_bit
+        tag = "PASS" if all_ok else "FAIL"
+        print(f"[{config:>23}] {tag}")
+        return all_ok
     matches = int(np.count_nonzero(out == input_np))
     untouched = int(np.count_nonzero(out == SENTINEL))
     mismatches = N - matches - untouched
 
     exp = EXPECTED[config]
-    if exp is None:
-        tag = "MEASURE"
-        ok = True
-    else:
-        ok = (
-            matches == exp["matches"]
-            and mismatches == exp["mismatches"]
-            and untouched == exp["untouched"]
-        )
-        tag = "PASS" if ok else "FAIL"
-    print(
-        f"[{config:>15}] {tag}  matches={matches}  mismatches={mismatches}  "
-        f"untouched={untouched}  ({elapsed_ms} ms)"
+    ok = (
+        matches == exp["matches"]
+        and mismatches == exp["mismatches"]
+        and untouched == exp["untouched"]
     )
-    if exp is not None and not ok:
+
+    kind, plen = _payload_kind(config)
+    actual_sha = None
+    golden_sha = None
+    sha_status = ""
+    if kind is not None:
+        actual_sha = hashlib.sha256(out[:plen].tobytes()).hexdigest()
+        golden_sha = GOLDEN_SHA[kind]
+        if actual_sha == golden_sha:
+            sha_status = "sha-ok"
+        else:
+            sha_status = "sha-MISMATCH"
+            ok = False
+
+    tag = "PASS" if ok else "FAIL"
+    bits = [
+        f"matches={matches}",
+        f"mismatches={mismatches}",
+        f"untouched={untouched}",
+    ]
+    if kind == "cmp":
+        pct = RATIOED_N * 100 / N
+        bits.append(f"compressed_to={pct:.1f}%(={N/RATIOED_N:.3f}x)")
+    elif kind == "dcmp":
+        pct = N * 100 / RATIOED_N
+        bits.append(f"expanded_to={pct:.1f}%(={N/RATIOED_N:.3f}x)")
+    if sha_status:
+        bits.append(sha_status)
+    print(f"[{config:>23}] {tag}  " + "  ".join(bits) + f"  ({elapsed_ms} ms)")
+
+    if not ok:
         print(
-            f"                  expected matches={exp['matches']} "
+            f"                          expected matches={exp['matches']} "
             f"mismatches={exp['mismatches']} untouched={exp['untouched']}"
         )
-    if verbose:
-        print(f"           in[:8]={input_np[:8].tolist()}")
-        print(f"           out[:8]={out[:8].tolist()}")
-        print(f"           out[1020:1028]={out[1020:1028].tolist()}")
+        if sha_status == "sha-MISMATCH":
+            print(f"                          expected sha256({kind}) = {golden_sha}")
+            print(f"                          actual   sha256({kind}) = {actual_sha}")
+
+    if kind == "cmp" and not config.endswith("both"):
+        print(f"                  raw_in [:8]  = {_hex_block(input_np, 8)}")
+        print(f"                  cmp_out[:8]  = {_hex_block(out, 8)}")
+        print(
+            f"                  cmp_out[{RATIOED_N - 8}:{RATIOED_N}] (tail of payload) = "
+            f"{_hex_block(out[RATIOED_N - 8 : RATIOED_N], 8)}"
+        )
+        if actual_sha:
+            print(f"                  sha256(out[:{RATIOED_N}]) = {actual_sha}")
+    elif kind == "cmp" and config.endswith("both"):
+        print(
+            f"                  cmp_in [{RATIOED_N - 8}:{RATIOED_N}]  (tail of compressed input) = "
+            f"{_hex_block(input_np[RATIOED_N - 8 : RATIOED_N], 8)}"
+        )
+        print(
+            f"                  cmp_out[{RATIOED_N - 8}:{RATIOED_N}]  (tail after dcmp -> cmp)  = "
+            f"{_hex_block(out[RATIOED_N - 8 : RATIOED_N], 8)}"
+        )
+        if actual_sha:
+            print(f"                  sha256(out[:{RATIOED_N}]) = {actual_sha}")
+    elif kind == "dcmp":
+        print(f"                  cmp_in [:8]  = {_hex_block(input_np, 8)}")
+        print(f"                  dcmp_out[:8] = {_hex_block(out, 8)}")
+        if actual_sha:
+            print(f"                  sha256(out[:{N}])    = {actual_sha}")
+    elif verbose:
+        print(f"                  in [:8] = {_hex_block(input_np, 8)}")
+        print(f"                  out[:8] = {_hex_block(out, 8)}")
     return ok
 
 
 def run_roundtrip(verbose: bool = False) -> bool:
-    """Sequential cmp_only -> dcmp_only on arange input. Asserts recovered == input."""
+    """Two-dispatch host-orchestrated roundtrip: cmp_only -> dcmp_only -> arange."""
     input_np = np.arange(N, dtype=np.uint32)
     sentinel_np = np.full(N, SENTINEL, dtype=np.uint32)
 
-    # Stage 1: compress raw -> compressed bytes (first RATIOED_N ints of output)
     in_t = iron.tensor(input_np.copy(), dtype=np.uint32, device="npu")
     compressed_t = iron.tensor(sentinel_np.copy(), dtype=np.uint32, device="npu")
     t0 = time.perf_counter()
     iron.jit(dma_compression)(in_t, compressed_t, config="cmp_only")
     t_cmp_ms = int((time.perf_counter() - t0) * 1000)
 
-    # Stage 2: feed the compressed bytes back in as input, decompress to raw
     compressed_bytes = compressed_t.numpy().copy()
     cmp_in_t = iron.tensor(compressed_bytes, dtype=np.uint32, device="npu")
     recovered_t = iron.tensor(sentinel_np.copy(), dtype=np.uint32, device="npu")
@@ -174,16 +243,18 @@ def run_roundtrip(verbose: bool = False) -> bool:
     ok = bool(np.array_equal(recovered, input_np))
     tag = "PASS" if ok else "FAIL"
     print(
-        f"[{'roundtrip':>15}] {tag}  recovered_matches_input={ok}  "
+        f"[{'roundtrip':>23}] {tag}  recovered_matches_input={ok}  "
         f"(cmp {t_cmp_ms} ms, dcmp {t_dcmp_ms} ms)"
     )
-    if verbose or not ok:
-        print(f"           in[:8]={input_np[:8].tolist()}")
-        print(f"           compressed[:8]={compressed_bytes[:8].tolist()}")
-        print(f"           recovered[:8]={recovered[:8].tolist()}")
-        if not ok:
-            mismatches = int(np.count_nonzero(recovered != input_np))
-            print(f"           {mismatches} of {N} elements differ from input")
+    print(f"                  raw_in    [:8]              = {_hex_block(input_np, 8)}")
+    print(
+        f"                  compressed[{RATIOED_N - 8}:{RATIOED_N}] (tail) = "
+        f"{_hex_block(compressed_bytes[RATIOED_N - 8 : RATIOED_N], 8)}"
+    )
+    print(f"                  recovered [:8]              = {_hex_block(recovered, 8)}")
+    if not ok:
+        mismatches = int(np.count_nonzero(recovered != input_np))
+        print(f"                  {mismatches} of {N} elements differ from input")
     return ok
 
 
@@ -196,18 +267,47 @@ def main() -> int:
         choices=list(CONFIGS) + ["roundtrip"],
     )
     p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument(
+        "--skip",
+        default="",
+        help="Comma-separated configs to skip (also accepts 'roundtrip')",
+    )
     args = p.parse_args()
+
+    skip = {s for s in args.skip.split(",") if s}
+    print(f"detected arch: {_detect_arch()}")
 
     if args.config == "roundtrip":
         return 0 if run_roundtrip(verbose=args.verbose) else 1
 
     configs = [args.config] if args.config else list(CONFIGS)
+
+    # `*both` configs feed real compressed bytes (not garbage) into the
+    # decompressor; pre-compute them once via cmp_only.
+    needs_compressed_input = any(c.endswith("both") and c not in skip for c in configs)
+    compressed_input_np = None
+    if needs_compressed_input:
+        _isolate_for_next_config()
+        print("[ pre-compute cmp_only ] capturing compressed-arange for *both configs")
+        arange = np.arange(N, dtype=np.uint32)
+        in_t = iron.tensor(arange.copy(), dtype=np.uint32, device="npu")
+        out_t = iron.tensor(
+            np.full(N, SENTINEL, dtype=np.uint32), dtype=np.uint32, device="npu"
+        )
+        iron.jit(dma_compression)(in_t, out_t, config="cmp_only")
+        compressed_input_np = np.zeros(N, dtype=np.uint32)
+        compressed_input_np[:RATIOED_N] = out_t.numpy()[:RATIOED_N]
+
     all_ok = True
     for cfg in configs:
+        if cfg in skip:
+            print(f"[{cfg:>23}] SKIP")
+            continue
         _isolate_for_next_config()
-        all_ok &= run_one(cfg, verbose=args.verbose)
+        cfg_input = compressed_input_np if cfg.endswith("both") else None
+        all_ok &= run_one(cfg, verbose=args.verbose, input_np=cfg_input)
 
-    if not args.config:
+    if not args.config and "roundtrip" not in skip:
         _isolate_for_next_config()
         all_ok &= run_roundtrip(verbose=args.verbose)
 
