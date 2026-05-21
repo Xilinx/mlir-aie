@@ -200,6 +200,9 @@ void KERNEL_NAME(yolo_m8_back_cv3_cv2_fused_i8_i8)(
     const int32_t cv2_chunk_idx,
     const int32_t rs_cv3,
     const int32_t rs_cv2) {
+#ifdef NOOP_KERNEL
+  return;  // Ablation: skip compute, preserve DMA/lock pattern.
+#endif
   event0();
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::positive_inf);

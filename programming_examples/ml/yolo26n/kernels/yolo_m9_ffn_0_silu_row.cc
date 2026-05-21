@@ -48,6 +48,9 @@ void yolo_m9_ffn_0_silu_row_i8_i8(
     const int32_t n_chunks,         // 4
     const int32_t chunk_idx,
     const int32_t right_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   const int32_t chunk_oc = out_c / n_chunks;       // 64

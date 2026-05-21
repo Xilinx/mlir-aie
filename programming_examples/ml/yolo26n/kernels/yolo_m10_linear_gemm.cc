@@ -32,6 +32,9 @@ void yolo_m10_linear_gemm_i8_i8(
     const int32_t in_dim,       // 1280
     const int32_t out_dim,      // 2
     const int32_t right_shift) {  // 10
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   for (int o = 0; o < out_dim; o++) {

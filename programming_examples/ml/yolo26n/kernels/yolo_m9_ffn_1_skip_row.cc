@@ -41,6 +41,9 @@ void yolo_m9_ffn_1_skip_row_i8_i8(
     const int32_t input_channels,
     const int32_t output_channels,
     const int32_t right_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   for (int oc = 0; oc < output_channels; oc++) {

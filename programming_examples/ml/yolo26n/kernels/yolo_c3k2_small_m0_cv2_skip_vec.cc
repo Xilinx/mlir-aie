@@ -62,6 +62,9 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
     const int32_t border,
     const int32_t right_shift,
     const int32_t /*skip_scale*/) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   const bool skip_top = (border == 0);

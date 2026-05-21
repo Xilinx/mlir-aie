@@ -187,10 +187,20 @@ void yolo_m0_conv2dk3_stride2_silu_bias_i8_i8(
     const int32_t border,
     const int32_t right_shift,
     const int32_t padding) {
+#ifdef NOOP_KERNEL
+  // Ablation: skip all compute so the chain runs the same DMA/lock pattern
+  // but this block contributes ~0 ms. Output is garbage; bit-exactness fails
+  // by design — only chain wall-clock is meaningful.
+  (void)line0; (void)line1; (void)line2; (void)wts; (void)bias; (void)silu_lut;
+  (void)output; (void)input_width; (void)input_channels; (void)output_channels;
+  (void)kernel_width; (void)kernel_height; (void)border; (void)right_shift; (void)padding;
+  return;
+#else
   yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
       line0, line1, line2, wts, bias, silu_lut, output,
       input_width, input_channels, output_channels,
       kernel_width, kernel_height, border, right_shift, padding);
+#endif
 }
 
 } // extern "C"

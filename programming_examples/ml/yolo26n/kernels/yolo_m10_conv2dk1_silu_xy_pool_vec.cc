@@ -53,6 +53,9 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
     const int32_t yi,
     const int32_t n_splits,
     const int32_t wi) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   const int32_t chunk_oc = expand_c / n_splits;

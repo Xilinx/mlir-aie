@@ -53,6 +53,9 @@ void yolo_m9_cv2_concat2_streamed_silu_bias_i8_i8(
     const int32_t n_chunks,
     const int32_t chunk_idx,
     const int32_t right_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   const int32_t in_c = 2 * c_per_half;             // 256

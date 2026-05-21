@@ -37,6 +37,9 @@ void yolo_m9_sv_row_acc_i8_i8(
     const int32_t head_dim,
     const int32_t N,
     const int32_t right_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   int8_t *attn_row = attn_chunk + chunk_row * N;

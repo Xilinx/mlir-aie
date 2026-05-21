@@ -36,6 +36,9 @@ void yolo_m9_v_pack_i8_i8(
     const int32_t N,                  // 256
     const int32_t head_idx,
     const int32_t row_idx) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   const int32_t chan_base = head_idx * head_stride + v_offset_in_head;

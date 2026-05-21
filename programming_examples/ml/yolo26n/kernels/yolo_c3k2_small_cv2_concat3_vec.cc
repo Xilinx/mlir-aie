@@ -64,6 +64,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
     const int32_t three_c,
     const int32_t output_channels,
     const int32_t right_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   const int32_t c = three_c / 3;

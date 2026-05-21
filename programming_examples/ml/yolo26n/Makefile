@@ -159,10 +159,38 @@ $(BUILD)/.chain_n_samples: FORCE
 	    echo "$$new" > $@; \
 	  fi
 
+# Per-block ablation: pass `NOOP_BLOCK="m0 m1 ..."` (space-separated) to
+# compile those blocks' kernels with -DNOOP_KERNEL. The kernel's extern "C"
+# entry early-returns, preserving the chain's DMA/lock pattern while
+# contributing ~0 ms of compute. Output is garbage; bit-exactness fails by
+# design — used to attribute chain wall-clock to specific blocks.
+NOOP_FLAGS_m0  := $(if $(filter m0, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m1  := $(if $(filter m1, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m2  := $(if $(filter m2, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m3  := $(if $(filter m3, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m4  := $(if $(filter m4, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m5  := $(if $(filter m5, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m6  := $(if $(filter m6, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m7  := $(if $(filter m7, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m8  := $(if $(filter m8, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m9  := $(if $(filter m9, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
+NOOP_FLAGS_m10 := $(if $(filter m10,$(NOOP_BLOCK)),-DNOOP_KERNEL,)
+
 # Generic kernel .cc -> .o.
 $(BUILD)/%.o: $(SRCDIR)/kernels/%.cc
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
+
+# m9/m10 use one set of kernels per block (no per-block symbol mangling).
+# These pattern rules apply $(NOOP_FLAGS_m9) / _m10 to every m9_* / m10_*
+# kernel, gated by NOOP_BLOCK from the env.
+$(BUILD)/yolo_m9_%.o: $(SRCDIR)/kernels/yolo_m9_%.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
+
+$(BUILD)/yolo_m10_%.o: $(SRCDIR)/kernels/yolo_m10_%.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m10) -c $< -o $@
 
 # Phase 1 vectorization: build the non-chunked conv2dk3_stride2 .o from
 # the _vec.cc source instead of the scalar .cc. Same symbol name, drop-in.
@@ -170,67 +198,69 @@ $(BUILD)/%.o: $(SRCDIR)/kernels/%.cc
 $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8.o: \
     $(SRCDIR)/kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m1) -c $< -o $@
 
 # Phase 3b: m0 stem vectorized (3x3 stride-2, OIYX raw, in_c=3 padded to 8).
 $(BUILD)/yolo_m0_conv2dk3_silu_bias.o: \
     $(SRCDIR)/kernels/yolo_m0_conv2dk3_silu_bias_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m0) -c $< -o $@
 
-# Phase 3c: m10 head conv+pool vectorized (1x1 256->1280 + GAP).
+# Phase 3c: m10 head conv+pool vectorized (1x1 256->1280 + GAP). Explicit
+# rule overrides the yolo_m10_%.o pattern since the .cc base name differs
+# from the .o (drops the _vec suffix).
 $(BUILD)/yolo_m10_conv2dk1_silu_xy_pool.o: \
     $(SRCDIR)/kernels/yolo_m10_conv2dk1_silu_xy_pool_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m10) -c $< -o $@
 
 # c3k2_heavy streamed inner-pair kernels (m8 megakernel: shared symbol
 # for both pair0 and pair1 — they run on different tiles with different
 # weights, but execute the same kernel code).
 $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv1_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv1_streamed_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 # m8 megakernel: fused cv3+cv2 (m8_back). Computes cv3 once per row
 # (on cv2 chunk 0), reuses cv3 output across the N_CV2_CHUNKS calls.
 $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_m8_back_cv3_cv2_fused_$(blk).o: $(SRCDIR)/kernels/yolo_m8_back_cv3_cv2_fused_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 # m8 megakernel: fused cv1+m_0_split (m8_front). Accumulates bot across
 # the cv1 chunk loop in a tile-local static; on last chunk runs m_0_split
 # (both branches) producing split_a + split_b.
 $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_m8_front_cv1_split_fused_$(blk).o: $(SRCDIR)/kernels/yolo_m8_front_cv1_split_fused_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 # c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 shared with m6).
 # -DKERNEL_SUFFIX=_mN gives each block a uniquely-named symbol.
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv1_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv2_skip_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv2_skip_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv1_split_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv1_split_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv2_concat3_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv2_concat3_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 # c3k2_heavy non-streamed kernels (m6 only).
 $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
   $(foreach k,$(C3K2_HEAVY_KERNELS), \
     $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k)_vec.cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@)))
+      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@)))
 
 # Chunked stride-2 conv (m3/m5/m7). The kernel is compile-time shape-
 # specialized via YOLO_IN_W/YOLO_IN_C/YOLO_OUT_C/YOLO_INTERIOR_MODE — these
@@ -244,7 +274,7 @@ CHUNKED_SHAPE_m7 := -DYOLO_IN_W=32  -DYOLO_IN_C=128 -DYOLO_OUT_C=256 -DYOLO_INTE
 
 $(foreach blk,$(CHUNKED_CONV_BLOCKS), \
   $(eval $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_$(blk).o: $(SRCDIR)/kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(CHUNKED_SHAPE_$(blk)) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(CHUNKED_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 SILU_LUTS := $(DATA)/model.0/silu_lut.bin $(DATA)/model.1/silu_lut.bin \
              $(DATA)/model.3/silu_lut.bin $(DATA)/model.5/silu_lut.bin \

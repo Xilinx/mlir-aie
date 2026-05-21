@@ -40,6 +40,9 @@ void yolo_m9_qk_row_i8_i8(
     const int32_t N,          // 256
     const int32_t query_idx,  // 0..N-1: row of scores we are computing
     const int32_t right_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   int8_t *scores_row = chunk_out + chunk_row * N;

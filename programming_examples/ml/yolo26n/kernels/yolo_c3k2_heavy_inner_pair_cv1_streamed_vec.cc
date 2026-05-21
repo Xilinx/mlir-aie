@@ -64,6 +64,9 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i
     const int32_t right_shift,
     const int32_t n_chunks,
     const int32_t chunk_idx) {
+#ifdef NOOP_KERNEL
+  return;  // Ablation: skip compute, preserve DMA/lock pattern.
+#endif
   event0();
 
   const int32_t chunk_oc = output_channels / n_chunks;

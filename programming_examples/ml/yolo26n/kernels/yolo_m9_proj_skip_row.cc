@@ -58,6 +58,9 @@ void yolo_m9_proj_skip_row_i8_i8(
     const int32_t output_channels,
     const int32_t right_shift,        // 7 (proj's rs)
     const int32_t skip_shift) {       // 1 (= log2(b_scale/proj_out_scale))
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   int8_t *b_row = b_cache + yi * input_width * output_channels;

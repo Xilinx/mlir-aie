@@ -491,11 +491,20 @@ void KERNEL_NAME(yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_i8_i8)(
     const int32_t right_shift,
     const int32_t oc_offset,
     const int32_t oc_count) {
+#ifdef NOOP_KERNEL
+  // Ablation: skip compute; chain still runs the same DMA/lock pattern.
+  (void)line0; (void)line1; (void)line2; (void)wts_chunk; (void)bias;
+  (void)silu_lut; (void)output; (void)input_width; (void)input_channels;
+  (void)output_channels; (void)kernel_width; (void)kernel_height;
+  (void)border; (void)right_shift; (void)oc_offset; (void)oc_count;
+  return;
+#else
   yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       line0, line1, line2, wts_chunk, bias, silu_lut, output,
       input_width, input_channels, output_channels,
       kernel_width, kernel_height, border, right_shift,
       oc_offset, oc_count);
+#endif
 }
 
 } // extern "C"

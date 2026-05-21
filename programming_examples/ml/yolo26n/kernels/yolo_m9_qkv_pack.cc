@@ -36,6 +36,9 @@ void yolo_m9_qkv_pack_i8_i8(
     const int32_t N,                   // tokens per sample (or in_w for per-row chunk)
     const int32_t head_idx,            // 0 or 1
     const int32_t row_idx) {           // 0..in_h-1 (or 0 for per-row chunk mode)
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   const int32_t chan_offset = head_idx * head_stride;

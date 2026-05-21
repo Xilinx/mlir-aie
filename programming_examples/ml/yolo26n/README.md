@@ -426,6 +426,45 @@ yolo26n/
    `B._i8(shape)` types; scalar ints as `np.int32` (or `np.uint32` if
    the kernel wants to divide / shift on them — see below).
 
+### Block ablation (bottleneck attribution)
+
+When the chain is slower than the per-block sum suggests it should be (or
+faster — both happen in pipelined chains), per-block standalone timing
+can mislead. Use the `NOOP_BLOCK` Make env var to compile any subset of
+blocks' kernels with `-DNOOP_KERNEL`. Their `extern "C"` entries
+early-return, so the chain's DMA / lock / placement pattern is unchanged
+but those blocks contribute ~0 ms of compute. Output is garbage —
+bit-exactness fails by design; the signal is chain wall-clock.
+
+```bash
+# Ablation: how much does m9 contribute to the chain?
+rm -f build/yolo_m9_*.o && make clean_chain
+CHAIN_N_SAMPLES=15 NOOP_BLOCK=m9 make time_chain
+# → 317 ms baseline → 57 ms with m9 noop'd ⇒ m9 = 260 ms / 82%
+
+# Combine: noop multiple blocks (space-separated, quoted)
+rm -f build/yolo_m9_*.o build/yolo_m10_*.o && make clean_chain
+CHAIN_N_SAMPLES=15 NOOP_BLOCK="m9 m10" make time_chain
+```
+
+Notes:
+
+- All 11 blocks (m0..m10) are supported.
+- The `-DNOOP_KERNEL` flag only affects compile of that block's kernel
+  `.o` files. Make won't rebuild a `.o` when only `NOOP_BLOCK` changes
+  (mtime tracking misses it), so manually `rm` the affected `.o` plus
+  `make clean_chain` between runs. For unsure cases, just `make clean`.
+- The harness adds zero overhead when `NOOP_BLOCK` is unset — the
+  `#ifdef NOOP_KERNEL return;` guards compile out completely.
+- Output garbage from noop'd blocks doesn't break the chain — downstream
+  blocks just consume junk inputs. Chain DMA scheduling is unaffected.
+
+This is how the m9-is-the-bottleneck finding was discovered: the
+optimization arc that took m3/m5/m7 from 186 ms → 19 ms standalone moved
+the chain by only ~14 ms, and ablating each block individually (m0
+alone, m1 alone, the 6 conv_stride blocks together) showed each
+contributed <1 ms. Only m9 ablation moved the chain meaningfully.
+
 ### Common debugging patterns
 
 - **Build hangs, no error**: check the build log for **L1 overflow**
@@ -470,22 +509,25 @@ yolo26n/
 
 ## Known limitations and follow-ups
 
-- **m0 (55 ms) and m1 (45 ms) are the new chain ceiling.** Now that the
-  chunked stride-2 conv (m3/m5/m7) is at 5-8 ms standalone and m8 is at
-  28 ms, the largest unoptimized blocks dominate. Either alone exceeds the
-  60 fps / 16.67 ms per-sample budget. m1 uses the non-chunked sibling
-  kernel ([`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc`](kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc))
-  — most of the chunked-kernel optimization playbook (compile-time shape
-  defines, OC×2/2X×2OC interior, 3-way x_tile split) transfers directly.
-  m0 is its own beast: OIYX raw layout, `in_c=3` padded to 8 → 37.5%
-  mmul utilization ceiling, but 512×512 input means lots of compute to
-  amortize.
-- **Per-block savings don't fully translate to chain savings.** The 167 ms
-  shaved off m3+m5+m7 standalone shows up as only ~14 ms at the chain
-  level. Diagnosis: those blocks were already overlapping with neighbors
-  in the pipelined chain, so the saving creates idle bubbles instead of
-  shortening the critical path. Chain wins from here need to attack the
-  current chain-critical block (likely m0/m1).
+- **m9 (PSA attention) is THE chain bottleneck — ~260 ms / 82% of
+  per-sample time at N=15.** Measured via the `NOOP_BLOCK` ablation
+  harness (see [Block ablation](#block-ablation-bottleneck-attribution)):
+  noop'ing m9 alone drops chain per-sample from 317 ms → 57 ms (3.15 →
+  17.54 fps). m10 contributes only ~1 ms. The 6 conv_stride blocks
+  (m0/m1/m3/m5/m7/m8) together contribute only ~1 ms to the chain —
+  they're all fully overlapped by m9 in the pipelined chain. **All future
+  chain-fps work should target m9 first.**
+- **m0 (55 ms) is the next ceiling after m9.** Once m9 is reduced below
+  ~55 ms per-sample, m0 becomes the bottleneck (the chain floor of 57 ms
+  measured with m9 noop'd matches m0's 55 ms standalone, confirming the
+  rest of the chain pipelines correctly with m0 as the max-stage). m0
+  uses OIYX raw layout with `in_c=3` padded to 8 → 37.5% mmul utilization
+  ceiling, but 512×512 input means lots of compute to amortize.
+- **Per-block standalone savings don't translate to chain savings.** The
+  167 ms shaved off m3+m5+m7 standalone shows up as only ~1 ms at the
+  chain level — m9 dominates so completely that optimizing anything else
+  is invisible. This was the surprise that motivated the ablation
+  harness; future optimization work should ablate first.
 - **PSA m9 multi-sample**: end-to-end multi-sample dispatch already
   works via `CHAIN_N_SAMPLES=N` (HW BD-chain replays the per-sample
   transfer N times in one XRT call). What's *not* done: pushing the batch

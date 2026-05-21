@@ -63,6 +63,9 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
     const int32_t skip_y_mult,
     const int32_t skip_cv2_mult,
     const int32_t skip_rsh_add) {
+#ifdef NOOP_KERNEL
+  return;  // Ablation: skip compute, preserve DMA/lock pattern.
+#endif
   event0();
 
   // See pair_cv1 _streamed_vec.cc: cast to unsigned so /power-of-2 lowers

@@ -38,6 +38,9 @@ void yolo_m9_attn_scale_row_i8_i8(
     const int32_t N,
     const int32_t mul_int,
     const int32_t mul_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   int8_t *row = chunk_io + chunk_row * N;

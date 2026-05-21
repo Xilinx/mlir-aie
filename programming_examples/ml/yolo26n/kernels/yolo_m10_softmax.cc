@@ -29,6 +29,9 @@ void yolo_m10_softmax_i8_i8(
     int8_t *out_probs,         // (n_classes,)
     const int32_t n_classes,    // 2
     const int32_t in_log2_scale) {  // -3 for m10
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   // Output scale = 2^-7 → multiply prob by 2^7 = 128.

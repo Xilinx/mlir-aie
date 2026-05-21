@@ -57,6 +57,9 @@ void yolo_m9_pe_add_row_i8_i8(
     const int32_t c_total,          // 128 (= 2 * head_dim)
     const int32_t N,                // in_w * in_h = 256
     const int32_t rs_pe) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   // For each output channel c in [0, c_total), compute pe[c, x] for

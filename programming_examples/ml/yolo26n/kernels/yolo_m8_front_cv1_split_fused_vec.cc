@@ -189,6 +189,9 @@ void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
     const int32_t rs_cv1,
     const int32_t rs_m0c1,
     const int32_t rs_m0c2) {
+#ifdef NOOP_KERNEL
+  return;  // Ablation: skip compute, preserve DMA/lock pattern.
+#endif
   event0();
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::positive_inf);

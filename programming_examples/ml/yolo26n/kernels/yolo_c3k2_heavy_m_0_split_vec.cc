@@ -114,6 +114,9 @@ void KERNEL_NAME(yolo_c3k2_heavy_m_0_split_silu_bias_i8_i8)(
     const int32_t output_channels_b,
     const int32_t right_shift_a,
     const int32_t right_shift_b) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::positive_inf);

@@ -35,6 +35,9 @@ void yolo_m9_softmax_row_i8_i8(
     const int32_t chunk_row,
     const int32_t N,            // 256
     const int32_t out_log2_scale) {  // -7 for m9 attn softmax (out = prob * 128)
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   int8_t *row = chunk_io + chunk_row * N;

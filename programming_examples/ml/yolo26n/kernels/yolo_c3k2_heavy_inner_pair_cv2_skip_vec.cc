@@ -65,6 +65,9 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
     const int32_t skip_y_mult,
     const int32_t skip_cv2_mult,
     const int32_t skip_rsh_add) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
   event0();
 
   const bool skip_top = (border == 0);
