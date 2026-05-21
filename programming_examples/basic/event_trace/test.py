@@ -255,10 +255,14 @@ def main():
                 print("(Warmup iteration - not counted)")
             continue
 
-        # Read output buffer
-        # pyxrt read() returns numpy array directly
-        bufOut_bytes = bo_out.read(OUT_SIZE, 0)
-        bufOut = np.frombuffer(bufOut_bytes, dtype=DATATYPE_OUT)
+        # Read output buffer.  pyxrt's bo.read() returns a numpy buffer that
+        # may not be C-contiguous on some XRT/pyxrt versions; coerce to bytes
+        # before np.frombuffer to be robust.
+        # pyxrt's bo.read() has produced stale/empty data on some XRT
+        # versions; bo.map() returns the mapped host memoryview directly,
+        # matching what the C++ side does via bo.map<T*>().
+        bufOut_view = bo_out.map()
+        bufOut = np.frombuffer(bufOut_view, dtype=DATATYPE_OUT, count=OUT_VOLUME)
 
         # Verify results
         if args.verify:
@@ -279,10 +283,12 @@ def main():
 
         # Write trace on first non-warmup iteration
         if args.trace_sz > 0 and iter == args.warmup:
-            # Read trace buffer (buffer 7)
-            trace_data_bytes = bo_trace.read(args.trace_sz, 0)
-            # Convert to uint32 array for proper formatting
-            trace_buffer = np.frombuffer(trace_data_bytes, dtype=np.uint32)
+            # Read trace buffer (buffer 7) via the mapped memoryview, same
+            # pattern as bo_out above.
+            trace_view = bo_trace.map()
+            trace_buffer = np.frombuffer(
+                trace_view, dtype=np.uint32, count=args.trace_sz // 4
+            )
 
             if args.verbosity >= 1:
                 print(f"Trace buffer shape: {trace_buffer.shape}")
