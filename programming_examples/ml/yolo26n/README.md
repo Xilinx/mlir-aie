@@ -50,21 +50,21 @@ Latest measurements at the current commit.
 
 | Mode | Wall per dispatch | Per sample | Throughput |
 |---|---:|---:|---:|
-| **N=1** (single-sample latency) | 397.4 ms | 397.4 ms | **2.52 fps** |
-| **N=15** (batched) | 4 776.8 ms | 318.5 ms | **3.14 fps** |
+| **N=1** (single-sample latency) | 382.84 ms | 382.84 ms | **2.61 fps** |
+| **N=15** (batched) | 4 762.25 ms | 317.48 ms | **3.15 fps** |
 
-**Per-block (m0..m8) standalone wall time on NPU**, median of n=20:
+**Per-block (m0..m8) standalone wall time on NPU**, median of n=50:
 
 | Block | Topology | Median (ms) | fps |
 |---:|---|---:|---:|
-| m0  | conv_stride stem            | 55.4 | 18.1 |
-| m1  | conv_stride                  | 45.1 | 22.2 |
-| m2  | c3k2_small                   | 26.4 | 37.9 |
-| m3  | conv_stride (chunked)        | 76.4 | 13.1 |
-| m4  | c3k2_small                   | 22.0 | 45.5 |
-| m5  | conv_stride (chunked)        | 73.6 | 13.6 |
-| m6  | c3k2_heavy                   | 15.1 | 66.0 |
-| m7  | conv_stride (chunked)        | 36.5 | 27.4 |
+| m0  | conv_stride stem               | 55.4 | 18.1 |
+| m1  | conv_stride                    | 45.1 | 22.2 |
+| m2  | c3k2_small                     | 26.4 | 37.9 |
+| **m3**  | **conv_stride (chunked)**  | **8.04** | **124.4** |
+| m4  | c3k2_small                     | 22.0 | 45.5 |
+| **m5**  | **conv_stride (chunked)**  | **6.95** | **143.8** |
+| m6  | c3k2_heavy                     | 15.1 | 66.0 |
+| **m7**  | **conv_stride (chunked)**  | **4.73** | **211.3** |
 | m8  | c3k2_heavy (2-tile megakernel) | 28.2 | 35.4 |
 
 m9 (PSA) and m10 (head) aren't supported by `test_block_ort.py` standalone
@@ -72,9 +72,34 @@ m9 (PSA) and m10 (head) aren't supported by `test_block_ort.py` standalone
 softmax output doesn't fit the per-block tester's reshape). Both are
 exercised end-to-end via `run_chain`.
 
-Per-block sum ≈ 379 ms; N=1 chain ≈ 397 ms → ~18 ms of fill/drain. m3 and
-m5 (the chunked stride-2 convs) are the largest single contributors and
-the most attractive next targets if you want to push fps higher.
+**Latest optimization arc** (chunked stride-2 conv, kernel
+[`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc`](kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc)
+shared by m3/m5/m7) — 7.7-10.6× standalone vs the pre-optimization baseline:
+
+| stage | m3 | m5 | m7 |
+|---|---:|---:|---:|
+| baseline scalar gather, single acc | 76.4 ms | 73.6 ms | 36.5 ms |
+| + `AIE_LOOP_RANGE` pragmas + 64-bit word-copy gather | 22.5 | 23.5 | 15.4 |
+| + 3-way x_tile split (edges / interior / edge), edges inlined | 16.0 | 18.8 | 14.5 |
+| + OC×2 fold (one A-operand gather feeds 2 weight banks → 2 accs) | 13.5 | 17.5 | 15.0 |
+| + 2X×2OC (4 accs: 2 X positions × 2 OC banks, example.h-style) | 13.5 | 17.4 | 15.2 |
+| **+ compile-time shape `#define`s + `INTERIOR_MODE` selector**   | **8.04** | **6.95** | **4.73** |
+| total speedup | **9.5×** | **10.6×** | **7.7×** |
+
+The compile-time-shapes step was the single biggest lever — it lets peano
+fold `* in_c`, `* out_c`, `* (ic_tiles*kH*kW*64)` etc. into shifts /
+immediates, dead-strip the unused interior variant, and emit tighter
+pipelined inner loops. See [kernel design notes](#kernel-design-notes-chunked-stride-2-conv).
+
+The new chain ceiling is **m0** (55 ms standalone) and **m1** (45 ms) —
+both above the 60 fps budget (16.67 ms/sample). m3/m5/m7 individually now
+clear 60 fps with ≥2× headroom and are no longer the bottleneck.
+
+Per-block sum is now ≈ 213 ms (down from ≈ 379 ms); chain N=1 ≈ 383 ms.
+The per-block savings (≈ 167 ms across m3+m5+m7 standalone) translate to
+only ≈ 14 ms at the chain level — m3/m5/m7 were already pipelining with
+neighbors in the chain, so shrinking them mostly creates idle bubbles.
+Further chain wins require pushing m0 and m1.
 
 ## Make targets
 
@@ -195,6 +220,54 @@ Makefile compiles each block's variant with `-DKERNEL_SUFFIX=_mN`, which
 suffixes every exported symbol — so `yolo_c3k2_small_cv1_split_vec.cc`
 produces `..._m2.o` and `..._m4.o` with non-colliding `func.func` names.
 The IRON builder passes the matching suffixed name into `Kernel(...)`.
+
+### Kernel design notes (chunked stride-2 conv)
+
+The shared
+[`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc`](kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc)
+that backs m3/m5/m7 demonstrates several patterns worth carrying to other
+peano-compiled AIE2P kernels in this repo:
+
+**Compile-time shape specialization.** The kernel requires
+`-DYOLO_IN_W=… -DYOLO_IN_C=… -DYOLO_OUT_C=… -DYOLO_INTERIOR_MODE=…` per
+block (set in the Makefile's `CHUNKED_SHAPE_$(blk)` lookup). These become
+`constexpr int` constants at file scope; the runtime ABI args are kept
+in the C signature but the function body reads the constexprs. This is
+the single biggest perf lever (typically 1.5-3× on top of vector loops)
+because peano can:
+- fold address math (`* in_c`, `* out_c`, `* (ic_tiles*kH*kW*64)`) into
+  shifts and immediates, eliminating runtime scalar muls,
+- dead-strip the unused `if constexpr (...)` branch (in this kernel:
+  the unused `INTERIOR_MODE` variant), and
+- emit tighter pipelined loops with known trip counts.
+
+**`AIE_LOOP_RANGE` everywhere.** Peano needs `[[clang::loop_min/max_iteration_count]]`
+to pipeline (and unroll) loops with runtime-derived bounds. Wrap each
+non-fully-unrolled loop with `AIE_LOOP_RANGE(min, max)`; use
+`AIE_LOOP_UNROLL_FULL` on small fixed-bound loops (e.g. `kx` over 3).
+Note that `AIE_PREPARE_FOR_PIPELINING` is a no-op under peano (it only
+lowers for chess) — see `aie_kernels/aie_kernel_utils.h`.
+
+**3-way split for edge vs interior.** The bounds-check branch needed for
+left/right border columns blocks software pipelining if it sits inside
+the hot loop. Splitting the `x_tile` loop into left-edge / interior /
+right-edge nests (with the edges' bodies *inlined*, not factored into
+lambdas — peano doesn't reliably inline them) lets the interior become
+fully straight-line vector ops.
+
+**OC×2 and 2X×2OC accumulator fold.** The mmul-throughput-hiding pattern
+from `example.h`: carry multiple accumulators so each weight load is
+reused across multiple X positions and each input gather is reused across
+multiple OC banks. `YOLO_INTERIOR_MODE=2` (4 accs: 2 X × 2 OC) for blocks
+with enough x_tiles to amortize the pair setup (m3, m5); `MODE=1` (2 accs:
+single-X × 2 OC) for small-x_tiles blocks (m7) where the pair setup
+overhead would dominate.
+
+**64-bit word-copy gather instead of scalar byte loop.** The 4×8-byte
+input gather for one mmul is built via 4 aligned `uint64_t` reads into a
+stack `a_buf`, then a single `aie::load_v<32>`. Peano hoists this into
+register-to-register `vpush.hi.64` in the steady-state pipelined inner
+loop, eliminating the stack round-trip in the hot path.
 
 ### Bit-exactness
 
@@ -397,11 +470,22 @@ yolo26n/
 
 ## Known limitations and follow-ups
 
-- **m3 / m5 are the new bottlenecks**: at 76 / 74 ms standalone each,
-  they dominate the chain critical path now that m8 is fast (28 ms). The
-  same kernel template (`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc`)
-  serves m3, m5, and m7 with different shape constants — measurable
-  per-block via `make BLOCK=mN time`.
+- **m0 (55 ms) and m1 (45 ms) are the new chain ceiling.** Now that the
+  chunked stride-2 conv (m3/m5/m7) is at 5-8 ms standalone and m8 is at
+  28 ms, the largest unoptimized blocks dominate. Either alone exceeds the
+  60 fps / 16.67 ms per-sample budget. m1 uses the non-chunked sibling
+  kernel ([`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc`](kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc))
+  — most of the chunked-kernel optimization playbook (compile-time shape
+  defines, OC×2/2X×2OC interior, 3-way x_tile split) transfers directly.
+  m0 is its own beast: OIYX raw layout, `in_c=3` padded to 8 → 37.5%
+  mmul utilization ceiling, but 512×512 input means lots of compute to
+  amortize.
+- **Per-block savings don't fully translate to chain savings.** The 167 ms
+  shaved off m3+m5+m7 standalone shows up as only ~14 ms at the chain
+  level. Diagnosis: those blocks were already overlapping with neighbors
+  in the pipelined chain, so the saving creates idle bubbles instead of
+  shortening the critical path. Chain wins from here need to attack the
+  current chain-critical block (likely m0/m1).
 - **PSA m9 multi-sample**: end-to-end multi-sample dispatch already
   works via `CHAIN_N_SAMPLES=N` (HW BD-chain replays the per-sample
   transfer N times in one XRT call). What's *not* done: pushing the batch

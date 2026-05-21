@@ -232,10 +232,19 @@ $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
     $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k)_vec.cc ; \
       mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@)))
 
-# Chunked stride-2 conv (m3/m5/m7).
+# Chunked stride-2 conv (m3/m5/m7). The kernel is compile-time shape-
+# specialized via YOLO_IN_W/YOLO_IN_C/YOLO_OUT_C/YOLO_INTERIOR_MODE — these
+# let peano fold addressing arithmetic into shifts and dead-strip the
+# unused interior variant. INTERIOR_MODE=2 (2X×2OC, 4 accs) for blocks with
+# enough x_tiles to amortize the pair-setup; INTERIOR_MODE=1 (OC×2 single-X,
+# 2 accs) for m7 (x_tiles=4).
+CHUNKED_SHAPE_m3 := -DYOLO_IN_W=128 -DYOLO_IN_C=64  -DYOLO_OUT_C=64  -DYOLO_INTERIOR_MODE=2
+CHUNKED_SHAPE_m5 := -DYOLO_IN_W=64  -DYOLO_IN_C=128 -DYOLO_OUT_C=128 -DYOLO_INTERIOR_MODE=2
+CHUNKED_SHAPE_m7 := -DYOLO_IN_W=32  -DYOLO_IN_C=128 -DYOLO_OUT_C=256 -DYOLO_INTERIOR_MODE=1
+
 $(foreach blk,$(CHUNKED_CONV_BLOCKS), \
   $(eval $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_$(blk).o: $(SRCDIR)/kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(CHUNKED_SHAPE_$(blk)) -c $$< -o $$@))
 
 SILU_LUTS := $(DATA)/model.0/silu_lut.bin $(DATA)/model.1/silu_lut.bin \
              $(DATA)/model.3/silu_lut.bin $(DATA)/model.5/silu_lut.bin \
