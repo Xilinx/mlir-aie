@@ -82,7 +82,7 @@ def _make_argparser():
 def _emit_mlir(opts):
     set_current_device(_device_for(opts.dev))
     print(
-        vector_vector_modulo.lower(
+        vector_vector_modulo.as_mlir(
             None,
             None,
             None,

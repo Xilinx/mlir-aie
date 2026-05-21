@@ -472,8 +472,8 @@ class CallableDesign:
         """
         return self.compilable.compile(xclbin_path=xclbin_path, inst_path=inst_path)
 
-    def lower(self, *runtime_args, **runtime_kwargs) -> str:
-        """Generate and return the MLIR text for this kernel without compiling.
+    def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
+        """Return the resolved MLIR text for this kernel without compiling.
 
         Accepts the same arguments as ``__call__``.  Tensor args may be real
         tensors (shape and dtype are read from them) or ``None`` (in which case
@@ -481,7 +481,9 @@ class CallableDesign:
         info).
 
         Returns:
-            The MLIR module as a string (suitable for inspection or debugging).
+            The MLIR module as a string (suitable for inspection, debugging,
+            or feeding to a separate aiecc invocation -- e.g. the legacy
+            vck5000 / Versal AIE1 flow).
 
         Note:
             Unlike ``__call__``, call-time ``Compile[T]`` kwargs **override**
@@ -492,8 +494,8 @@ class CallableDesign:
             runtime_kwargs
         )
 
-        # For lower(), call-time kwargs override pre-bound values so callers
-        # can inspect different configurations without creating a new design.
+        # Call-time kwargs override pre-bound values so callers can inspect
+        # different configurations without creating a new design.
         compilable = self._build_compilable(call_compile_kwargs)
 
         return str(compilable.generate_mlir())
