@@ -12,7 +12,7 @@
 
 A 4xN_cols AIE array computes `C = A @ B` using AIE hardware **cascade streams** to accumulate partial products vertically within each column.  Each column's bottom row puts onto its column's cascade stream; mid rows read+put; the top row reads, accumulates into a local C tile, and writes it out.
 
-Default config: `int16` inputs / `int32` outputs, `M`=`K`=`N` = `512`, kernel tile `m`=`k`=`n` = `32`, scalar cascade kernel.
+Default config: `int16` inputs / `int32` outputs, `M`=`K`=`N` = `512`, kernel tile `m`=`k`=`n` = `64`, scalar cascade kernel.
 
 > Different from the [whole-array design](../whole_array/README.md): cascade distributes the K accumulation across the four cores in a column (each row does `K // n_aie_rows` iterations), reducing per-core work but adding cascade-stream coordination.
 

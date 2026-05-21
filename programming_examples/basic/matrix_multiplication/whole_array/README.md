@@ -164,12 +164,6 @@ To run the notebook:
 * Double click `mat_mul_whole_array_visualization.ipynb` to start the notebook; choose the ipykernel called `ironenv`.
 * You should now be good to go! Note that generating the animations in the notebook can take several minutes.
 
-#### Run the Notebook as a Script
-```bash
-make clean
-make run
-```
-
 ##### Tiling to Vector Intrinsic Size
 
 The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, placedly, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.

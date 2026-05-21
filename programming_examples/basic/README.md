@@ -19,15 +19,15 @@ These programming examples provide a good starting point to illustrate how to bu
 * [Chaining Channels](./chaining_channels) - Demonstrates chaining multiple DMA buffer descriptors in sequence on a single channel.
 * [Vector Scalar Add](./vector_scalar_add) - Single tile increments every element of a vector by `1`. Includes a `test_runlist.cpp` variant that exercises the XRT run-list execution model (NPU2 only).
 * [Vector Scalar Mul](./vector_scalar_mul) - Single tile performs `vector * scalar` of size `4096` in `1024`-element chunks.
-* [Vector Vector Add](./vector_vector_add) - Single tile performs `vector + vector` of size `1024`.
+* [Vector Vector Add](./vector_vector_add) - Single tile performs `vector + vector` of size `32`.
 * [Vector Vector Add BDs Init Values](./vector_vector_add_BDs_init_values) - Vector addition with buffer descriptors pre-initialized with values.
-* [Vector Vector Modulo](./vector_vector_modulo) - Single tile performs `vector % vector` of size `1024`.
-* [Vector Vector Multiply](./vector_vector_mul) - Single tile performs `vector * vector` of size `1024`.
+* [Vector Vector Modulo](./vector_vector_modulo) - Single tile performs `vector % vector` of size `256`.
+* [Vector Vector Multiply](./vector_vector_mul) - Single tile performs `vector * vector` of size `256`.
 * [Vector Reduce Add](./vector_reduce_add) - Single tile reduction returning the `sum` of a vector.
 * [Vector Reduce Max](./vector_reduce_max) - Single tile reduction returning the `max` of a vector.
 * [Vector Reduce Min](./vector_reduce_min) - Single tile reduction returning the `min` of a vector.
 * [Vector Exp](./vector_exp) - Element-wise $e^x$ using the AIE look-up table capability.
-* [Matrix Scalar Add](./matrix_scalar_add) - Single tile adds a scalar constant to every element of a `16x8` matrix.
+* [Matrix Scalar Add](./matrix_scalar_add) - Single tile adds a scalar constant to every element of a `16x128` matrix (processed in `8x16` tiles).
 * [Matrix Multiplication](./matrix_multiplication) - Single-core, multi-core (whole array), and matrix-vector multiply designs, plus sweep benchmarking infrastructure.
 * [Row Wise Bias Add](./row_wise_bias_add) - Adds a bias vector to each row of a matrix using DMA tiling.
 * [Event Trace](./event_trace) - Demonstrates the AIE hardware trace unit for measuring kernel cycle counts and stall events. See also [Section 4b](../../programming_guide/section-4/section-4b/) of the programming guide.

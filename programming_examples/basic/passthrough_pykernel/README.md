@@ -36,29 +36,21 @@ It is important to note that the Shim Tile and Compute Tile DMAs move data concu
 
 ## Design Component Details
 
-### AIE Array Structural Placed Design
+### IRON Design Walkthrough
 
-This design performs a memcpy operation on a vector of input data. The AIE design is described in a Python module as follows:
+`passthrough_pykernel.py` is an `@iron.jit`-decorated function that returns an MLIR module.  The pieces:
 
-1. **Constants & Configuration:** The script defines input/output dimension (`N`), buffer sizes in `lineWidthInBytes` and `lineWidthInInt32s`.
+1. **Pykernel definition:** `passthrough_fn` is a `@func`-decorated Python function — instead of a C++ external function, the per-tile copy is written in Python and emitted as MLIR by the `@func` decorator.
 
-1. **AIE Device Definition:** `@device` defines the target device. The `device_body` function contains the AIE array design definition.
+1. **ObjectFifos:** `of_in` connects the shim to the compute tile; `of_out` connects the compute tile back to the shim.  Default `depth=2` enables ping-pong.
 
-1. **Kernel Function Declarations:** `passThroughLine` is a function defined in Python that performs a scalar copy of the data.
+1. **Worker:** a single `Worker` runs `core_body`, which loops over sub-vectors, acquires elements from `of_in`, calls `passthrough_fn`, and releases them to `of_out`.  Tile placement is left to the auto-placer.
 
-1. **Tile Definitions:** `ShimTile` handles data movement, and `ComputeTile2` processes the memcpy operations.
+1. **Runtime sequence:** `rt.fill(of_in.prod(), A)` / `rt.drain(of_out.cons(), C)` express the host-side data movement.
 
-1. **Object Fifos:** `of_in` and `of_out` are defined to facilitate communication between `ShimTile` and `ComputeTile2`.
+1. **Trace (optional):** when `--trace-size` is set, a `TraceConfig` is wired up at runtime.
 
-1. **Tracing Flow Setup (Optional):** A circuit-switched flow is set up for tracing information when enabled.
-
-1. **Core Definition:** The `core_body` function loops through sub-vectors of the input data, acquiring elements from `of_in`, processing using `passThroughLine`, and outputting the result to `of_out`.
-
-1. **Data Movement Configuration:** The `aie.runtime_sequence` operation configures data movement and synchronization on the `ShimTile` for input and output buffer management.
-
-1. **Tracing Configuration (Optional):** Trace control, event groups, and buffer descriptors are set up in the `aie.runtime_sequence` operation when tracing is enabled.
-
-1. **Generate the design:** The `passthroughKernel()` function triggers the code generation process. The final print statement outputs the MLIR representation of the AIE array configuration.
+1. **`Program(device, rt).resolve_program()`** returns the MLIR module; `@iron.jit`'s `compile()` then drives `compile_mlir_module` to produce xclbin/insts.
 
 ## Usage
 

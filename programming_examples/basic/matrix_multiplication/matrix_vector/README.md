@@ -16,7 +16,7 @@ A single AI Engine compute core computes `c = A @ b`, where `A` is `M`x`K` and `
 
 ## Differences from the [Whole-Array Design](../whole_array/README.md)
 
-- A specialized matrix-*vector* microkernel (`matvec_scalar`) is used instead of the general matrix-matrix microkernel.  (The vectorized variant is currently buggy; the design uses the scalar path.)
+- A specialized matrix-*vector* microkernel (`kernels.mv`) is used instead of the general matrix-matrix microkernel.  Defaults to the vectorized path; pass `--scalar` to fall back to the scalar variant.
 - Data movement: an identical `K`-element chunk of `b` is broadcast; subsequent `m`x`k` tiles of `A` are distributed.  This is a single-core design; multi-core extension is left for a future revision.
 
 ## Building and Running the Design
