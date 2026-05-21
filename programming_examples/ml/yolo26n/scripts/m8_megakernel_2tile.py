@@ -177,21 +177,24 @@ def build(act_in_external=None, return_program: bool = True):
     lut_p1c2 = _lut_buf("m.0/m/m.1/cv2", name="m8_2t_p1c2_lut")
     rs_p1c1 = m_p1c1["right_shift"]
     rs_p1c2 = m_p1c2["right_shift"]
-    # Critical: ws_pair1's recv buffer must NOT live on the worker tile (5,4).
-    # When compute_placement=t_b, the design deadlocks regardless of channel
-    # (verified per-block: ws_pair1 on t_b ch 0 hangs, ws_pair1 on t_b ch 1
-    # also hangs). Placing recv on the north neighbor (5,5) works; worker_b
-    # reads via shared L1.
-    #
-    # comp_lock_id=8 to dodge the chain context's m9 sv_tile on (5,5) which
-    # uses locks 0/1 there.
-    t_north = Tile(5, 5)
+    # ws_pair1's recv buffer is placed on (4,4), the WEST neighbor of
+    # worker_b (5,4). Key constraints:
+    #   1. Cannot live on the worker tile (5,4) itself — that deadlocks
+    #      (root cause unknown; ws_cv2 on the same worker tile works fine).
+    #   2. (5,5) and (5,3) would work for shared L1 too, but in the chain
+    #      context (5,5) collides with m9's ffn0_wts and (5,3) is worker_a.
+    #   3. AIE2P shared L1 is asymmetric east-to-west: a tile can read its
+    #      WEST neighbor's L1, but not its EAST neighbor's. So buffer must
+    #      live WEST of the worker. (4,4) is west of (5,4) and free in the
+    #      chain. An earlier test with buffer at (6,4) east of worker_b
+    #      failed with "tile (5,4) violates shared-L1 buffer adjacency".
+    t_west = Tile(4, 4)
     ws_pair1 = StaticWeightStream(
         obj_type=B._i8((sz_p0c1,)), initial_value=data_p1c1,
         name="m8_2t_pair1_stream",
         recv_type=B._i8((chunk_sz_pair,)), repeat_count=in_h,
-        memtile_placement=Tile(6, 1), compute_placement=t_north,
-        mem_lock_id=0, comp_lock_id=8, mm2s_channel=0, s2mm_channel=0,
+        memtile_placement=Tile(6, 1), compute_placement=t_west,
+        mem_lock_id=0, comp_lock_id=0, mm2s_channel=0, s2mm_channel=0,
         ping_pong_buf=(B._i8((sz_p0c1,)), data_p1c2, "m8_2t_p1c2_pp"),
         ping_pong_memtile=Tile(6, 1),
         pp_lock_id=2,
