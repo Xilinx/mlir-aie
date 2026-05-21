@@ -49,7 +49,7 @@ from aie2_yolo_per_block import Worker, TRACE_SIZE_PER_WORKER  # noqa: E402
 BLOCK = "m8"
 DATA_DIR = B.DATA_DIR
 N_CV1_CHUNKS = 8
-N_PAIR_CHUNKS = 2
+N_PAIR_CHUNKS = 4
 N_CV2_CHUNKS = 8
 SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH = 1, 2, 1
 
@@ -224,9 +224,12 @@ def build(act_in_external=None, return_program: bool = True):
 
     # ----- Cross-tile OFs (A producer → B consumer; vertically adjacent shared L1) -----
     # disable_synchronization=False because two different cores need locks.
-    top_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=5, name="m8_2t_top_xt")
-    bot_to_cv2_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=5, name="m8_2t_bot_xt")
-    split_b_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=5, name="m8_2t_split_b_xt")
+    # depth=4 is the minimum: A leads B by 4 iters via the inner_0_xt chain
+    # (B iter 0 needs A through iter 3 done for inner_0_xt[1]); depth=3 would
+    # deadlock A while B catches up.
+    top_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=4, name="m8_2t_top_xt")
+    bot_to_cv2_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=4, name="m8_2t_bot_xt")
+    split_b_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=4, name="m8_2t_split_b_xt")
     inner_0_out_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=3, name="m8_2t_inner0_xt")
 
     # ----- Tile B internal sliding-window OFs -----
