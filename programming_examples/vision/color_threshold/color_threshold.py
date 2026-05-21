@@ -180,10 +180,15 @@ def _compile_only(opts):
     spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
 
-def _run_no_verify(opts):
-    """Standalone JIT + run.  Output is not verified in Python --
-    color thresholding with runtime-driven RTPs is awkward to reference in
-    numpy.  Use the C++/OpenCV host (make run) for pixel-level checks.
+def _run_and_verify(opts):
+    """JIT-compile + run + verify against a numpy reference.
+
+    Every byte of the input is independently thresholded by one of the four
+    channel workers; all workers apply the same binary-threshold
+    (mode 0: ``out = (in > 50) ? 255 : 0`` -- strict ``>``, matching the
+    kernel's ``aie::lt(thresh, data)``).  The reference therefore collapses
+    to a single ``np.where`` over the whole buffer regardless of how the
+    cons().split() distributes bytes to workers.
     """
     tensor_size = opts.width * opts.height
     rng = np.random.default_rng(0)
@@ -196,7 +201,18 @@ def _run_no_verify(opts):
     out_t = iron.tensor(out_np, dtype=np.int8, device="npu")
 
     color_threshold(in_t, unused_t, out_t, width=opts.width, height=opts.height)
-    print("PASS! (output not verified; use 'make run' for pixel-level checks)")
+
+    # The kernel sees uint8 bytes; reinterpret the int8 host buffer.
+    in_uint8 = in_np.view(np.uint8)
+    expected_uint8 = np.where(in_uint8 > 50, np.uint8(255), np.uint8(0))
+    expected = expected_uint8.view(np.int8)
+
+    actual = out_t.numpy()
+    if not np.array_equal(actual, expected):
+        n_mismatch = int(np.sum(actual != expected))
+        sys.exit(f"FAIL! {n_mismatch} byte(s) mismatch the binary-threshold reference")
+
+    print("PASS!")
 
 
 def main():
@@ -204,7 +220,7 @@ def main():
     if opts.xclbin_path:
         _compile_only(opts)
         return
-    _run_no_verify(opts)
+    _run_and_verify(opts)
 
 
 if __name__ == "__main__":
