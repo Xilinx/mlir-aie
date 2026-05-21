@@ -51,7 +51,7 @@ from aie.iron import (
     TileDma,
     Worker,
 )
-from aie.iron.device import NPU1Col1, NPU2, NPU2Col1, Tile
+from aie.iron.device import Tile, from_name
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.dialects.aie import EndOp
 from aie.dialects.aiex import (
@@ -68,13 +68,11 @@ _OP_PACKET_ID = {"add": 0, "mul": 1}
 
 
 def _device_for(dev_str: str):
-    if dev_str == "npu":
-        return NPU1Col1()
-    if dev_str == "npu2":
-        return NPU2()
+    # "npu2_1" is a packet_switch-specific alias for "single-column NPU2";
+    # the design supports the full NPU2 array via the "npu2" path.
     if dev_str == "npu2_1":
-        return NPU2Col1()
-    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
+        return from_name("npu2", n_cols=1)
+    return from_name(dev_str, n_cols=None if dev_str == "npu2" else 1)
 
 
 def _build_program(dev, in_out_size: int, input_packet_id: int):

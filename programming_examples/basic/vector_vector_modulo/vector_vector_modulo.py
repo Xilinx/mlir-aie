@@ -33,18 +33,8 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out
 from aie.iron.algorithms import transform_binary_typed
-from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
+from aie.iron.device import from_name
 from aie.utils.hostruntime import set_current_device
-
-
-def _device_for(dev_str):
-    if dev_str == "npu":
-        return NPU1Col1()
-    if dev_str == "npu2":
-        return NPU2Col1()
-    if dev_str == "xcvc1902":
-        return XCVC1902()
-    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
 
 @iron.jit
@@ -80,7 +70,7 @@ def _make_argparser():
 
 
 def _emit_mlir(opts):
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev))
     print(
         vector_vector_modulo.as_mlir(
             None,
@@ -96,7 +86,7 @@ def _emit_mlir(opts):
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev))
     spec = vector_vector_modulo.specialize(
         num_elements=opts.num_elements,
         dtype=np.int32,

@@ -28,13 +28,9 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out, kernels
 from aie.iron.algorithms import transform_typed
-from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.device import from_name
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
-
-
-def _device_for(dev_str):
-    return NPU1Col1() if dev_str == "npu" else NPU2()
 
 
 @iron.jit
@@ -99,7 +95,7 @@ def _validate(opts):
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev, n_cols=1 if opts.dev == "npu" else None))
     spec = vector_scalar_mul.specialize(
         in1_size=opts.in1_size,
         int_bit_width=opts.int_bit_width,

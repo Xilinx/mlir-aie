@@ -37,7 +37,7 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import from_name
 from aie.utils.hostruntime import set_current_device
 from aie.utils.trace.events import (
     CoreEvent,
@@ -48,14 +48,6 @@ from aie.utils.trace.events import (
     ShimTileEvent,
     WireBundle,
 )
-
-
-def _device_for(dev_str):
-    if dev_str == "npu":
-        return NPU1Col1()
-    if dev_str == "npu2":
-        return NPU2Col1()
-    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
 
 @iron.jit
@@ -174,7 +166,7 @@ def _compile_kwargs(opts):
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev))
     spec = aie_trace.specialize(**_compile_kwargs(opts))
     spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 

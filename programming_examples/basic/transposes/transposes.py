@@ -47,7 +47,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU1Col1, NPU2Col1, AnyComputeTile
+from aie.iron.device import AnyComputeTile, from_name
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.hostruntime import set_current_device
@@ -59,10 +59,6 @@ _COMBINED_SRC = str(_KERNELS_DIR / "transpose.cc")
 _BYTES_TO_DTYPE = {1: np.uint8, 2: np.uint16, 4: np.uint32}
 _BYTES_TO_NP_INT = {1: np.int8, 2: np.int16, 4: np.int32}  # for combined's signed view
 _COMBINED_DTYPE_MACRO = {1: "DTYPE_i8", 2: "DTYPE_i16", 4: "DTYPE_i32"}
-
-
-def _device_for(dev_str):
-    return NPU1Col1() if dev_str == "npu" else NPU2Col1()
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +349,7 @@ def _make_argparser():
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev))
     spec = _STRATEGIES[opts.strategy].specialize(**_compile_kwargs(opts))
     spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 

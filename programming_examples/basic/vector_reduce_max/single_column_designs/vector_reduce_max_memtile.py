@@ -43,15 +43,9 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU1Col2, NPU2Col2
+from aie.iron.device import from_name
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.utils.hostruntime import set_current_device
-
-
-def _device_for(dev_str):
-    # memtile variant needs at least 2 columns (it uses the memtile to
-    # join per-core partials before the scalar reduce on the compute tile).
-    return NPU1Col2() if dev_str == "npu" else NPU2Col2()
 
 
 @iron.jit
@@ -242,7 +236,9 @@ def _compile_kwargs(opts):
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    # memtile variant needs at least 2 columns (it uses the memtile to
+    # join per-core partials before the scalar reduce on the compute tile).
+    set_current_device(from_name(opts.dev, n_cols=2))
     spec = vector_reduce_max.specialize(**_compile_kwargs(opts))
     spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 

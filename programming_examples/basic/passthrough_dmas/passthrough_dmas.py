@@ -33,13 +33,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime
-from aie.iron.device import (
-    AnyShimTile,
-    NPU1Col1,
-    NPU2,
-    Tile,
-    XCVC1902,
-)
+from aie.iron.device import AnyShimTile, Tile, from_name
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.hostruntime import set_current_device
 
@@ -54,16 +48,6 @@ _NON_PLIO_SHIM_COL = 26
 _PLIO_COMPUTE_TILE = Tile(col=_PLIO_SHIM_COL, row=2, tile_type=AIETileType.CoreTile)
 _PLIO_SHIM_TILE = Tile(col=_PLIO_SHIM_COL, row=0, tile_type=AIETileType.ShimPLTile)
 _NON_PLIO_SHIM_TILE = Tile(col=_NON_PLIO_SHIM_COL, row=0)
-
-
-def _device_for(dev_str):
-    if dev_str == "npu":
-        return NPU1Col1()
-    if dev_str == "npu2":
-        return NPU2()
-    if dev_str == "xcvc1902":
-        return XCVC1902()
-    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
 
 @iron.jit
@@ -153,14 +137,14 @@ def _compile_kwargs(opts):
 
 
 def _emit_mlir(opts):
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev, n_cols=None if opts.dev == "npu2" else 1))
     print(passthrough_dmas.as_mlir(None, None, None, **_compile_kwargs(opts)))
 
 
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev, n_cols=None if opts.dev == "npu2" else 1))
     spec = passthrough_dmas.specialize(**_compile_kwargs(opts))
     spec.compile(
         xclbin_path=opts.xclbin_path,

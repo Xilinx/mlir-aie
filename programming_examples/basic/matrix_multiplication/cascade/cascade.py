@@ -32,20 +32,17 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU1, NPU1Col1, NPU1Col2, NPU2, Tile
+from aie.iron.device import Tile, from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
 
 
 def _device_for(dev_str, n_aie_cols):
-    if dev_str == "npu":
-        if n_aie_cols == 1:
-            return NPU1Col1()
-        if n_aie_cols == 2:
-            return NPU1Col2()
-        return NPU1()
-    return NPU2()
+    # On NPU1 pick the matching ColN variant (or NPU1 itself when
+    # n_aie_cols == max = 4).  On NPU2 use the unrestricted device
+    # regardless of n_aie_cols so the placer has the full 8-column array.
+    return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
 
 
 def ceildiv(a, b):

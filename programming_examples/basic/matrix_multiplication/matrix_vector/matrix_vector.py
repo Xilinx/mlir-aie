@@ -27,14 +27,10 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
-
-
-def _device_for(dev_str):
-    return NPU1Col1() if dev_str == "npu" else NPU2Col1()
 
 
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
@@ -153,7 +149,7 @@ def _make_argparser():
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev))
     spec = matrix_vector.specialize(
         M=opts.M,
         K=opts.K,

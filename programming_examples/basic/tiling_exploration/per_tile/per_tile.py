@@ -29,13 +29,9 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Buffer, Compile, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
-
-
-def _device_for(dev_str):
-    return NPU1Col1() if dev_str == "npu" else NPU2Col1()
 
 
 @iron.jit
@@ -107,7 +103,7 @@ def _compile_kwargs(opts):
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev))
     spec = per_tile.specialize(**_compile_kwargs(opts))
     spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 

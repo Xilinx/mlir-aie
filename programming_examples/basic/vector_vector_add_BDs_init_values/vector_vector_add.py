@@ -44,12 +44,7 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import (
-    NPU1Col1,
-    NPU2Col1,
-    Tile,
-    XCVC1902,
-)
+from aie.iron.device import Tile, from_name
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.dialects.aiex import (
     dma_await_task,
@@ -58,16 +53,6 @@ from aie.dialects.aiex import (
     shim_dma_single_bd_task,
 )
 from aie.utils.compile import compile_mlir_module
-
-
-def _device_for(dev_str: str):
-    if dev_str == "npu":
-        return NPU1Col1()
-    if dev_str == "npu2":
-        return NPU2Col1()
-    if dev_str == "xcvc1902":
-        return XCVC1902()
-    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
 
 def _build_program(dev, col: int):
@@ -229,7 +214,7 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    program = _build_program(dev=_device_for(opts.dev), col=opts.col)
+    program = _build_program(dev=from_name(opts.dev), col=opts.col)
     module = program.resolve_program()
     if opts.emit_mlir:
         print(module)

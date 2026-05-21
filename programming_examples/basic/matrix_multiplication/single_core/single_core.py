@@ -35,16 +35,12 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
 from aie.utils.trace import TraceConfig
 from aie.utils.verify import count_mismatches
-
-
-def _device_for(dev_str):
-    return NPU1Col1() if dev_str == "npu" else NPU2Col1()
 
 
 def ceildiv(a, b):
@@ -243,7 +239,7 @@ def _trace_config(opts):
 def _compile_only(opts):
     if not opts.insts_path:
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
+    set_current_device(from_name(opts.dev))
     spec = single_core.specialize(
         M=opts.M,
         K=opts.K,
