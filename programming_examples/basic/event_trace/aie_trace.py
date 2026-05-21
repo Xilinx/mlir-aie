@@ -5,101 +5,115 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2026, Advanced Micro Devices, Inc.
-#
-# ===-----------------------------------------------------------------------===#
-#
-# Python example using the declarative trace API:
-# - configure_trace() outside runtime_sequence to set up trace ops
-# - start_trace() inside runtime_sequence to activate tracing
-#
-# Usage:
-#   python3 aie_trace.py > aie_trace_from_py.mlir
-#
-# ===-----------------------------------------------------------------------===#
+"""Vector × scalar with custom hardware event tracing — Iron + @iron.jit.
 
+Same compute as ``basic/vector_scalar_mul`` (a single AIE core scales an
+``int32`` vector by a runtime scalar) but with an explicit event list
+plumbed through ``rt.enable_trace()``.  The pedagogical point is
+showing that the high-level iron Runtime API also accepts the same
+``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
+``shimtile_events`` knobs as the lower-level ``configure_trace``.
+
+Two invocation modes (mirrors the @iron.jit ports):
+
+  * standalone:   ``python3 aie_trace.py``
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)
+
+The hand-coded ``vector_scalar_mul.cc`` lives next to this file and
+gets built into the JIT work_dir via ``ExternalFunction``.
+"""
+
+import argparse
 import sys
+from pathlib import Path
+
 import numpy as np
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
+import aie.iron as iron
+from aie.iron import (
+    Compile,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.controlflow import range_
-
-import aie.utils.trace as trace_utils
+from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.kernel import ExternalFunction
+from aie.utils.hostruntime import set_current_device
 from aie.utils.trace.events import (
-    PortEvent,
-    MemTilePortEvent,
     CoreEvent,
     MemEvent,
-    ShimTileEvent,
     MemTileEvent,
+    MemTilePortEvent,
+    PortEvent,
+    ShimTileEvent,
+    WireBundle,
 )
 
 
-def build_aie_trace():
-    tensor_size = 4096
-    tile_size = 1024
-    num_sub_vectors = 4
+_KERNEL_SRC = str(Path(__file__).parent / "vector_scalar_mul.cc")
 
-    @device(AIEDevice.npu1_1col)
-    def device_body():
-        tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
-        scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
-        tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int32]]
 
-        # External kernel function declaration
-        scale = external_func(
-            "vector_scalar_mul_aie_scalar",
-            inputs=[tile_ty, tile_ty, scalar_ty, np.int32],
-            link_with="scale.o",
-        )
+def _device_for(dev_str):
+    if dev_str == "npu":
+        return NPU1Col1()
+    if dev_str == "npu2":
+        return NPU2Col1()
+    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
-        # Tile declarations
-        shim_noc_tile_0_0 = tile(0, 0)
-        mem_tile_0_1 = tile(0, 1)
-        tile_0_2 = tile(0, 2)
 
-        # ObjectFIFOs for data movement through memtile
-        of_in = object_fifo("in", shim_noc_tile_0_0, mem_tile_0_1, 2, tile_ty)
-        of_in_fwd = object_fifo("in_fwd", mem_tile_0_1, tile_0_2, 2, tile_ty)
-        object_fifo_link(of_in, of_in_fwd)
+@iron.jit
+def aie_trace(
+    A: In,
+    F: In,
+    C: Out,
+    *,
+    tensor_size: Compile[int] = 4096,
+    tile_size: Compile[int] = 1024,
+    trace_size: Compile[int] = 8192,
+):
+    num_sub_vectors = tensor_size // tile_size
 
-        of_factor = object_fifo(
-            "infactor", shim_noc_tile_0_0, mem_tile_0_1, 2, scalar_ty
-        )
-        of_factor_fwd = object_fifo(
-            "infactor_fwd", mem_tile_0_1, tile_0_2, 2, scalar_ty
-        )
-        object_fifo_link(of_factor, of_factor_fwd)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
+    scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
+    tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int32]]
 
-        of_out = object_fifo("out", tile_0_2, mem_tile_0_1, 2, tile_ty)
-        of_out_fwd = object_fifo("out_fwd", mem_tile_0_1, shim_noc_tile_0_0, 2, tile_ty)
-        object_fifo_link(of_out, of_out_fwd)
+    scale = ExternalFunction(
+        "vector_scalar_mul_aie_scalar",
+        source_file=_KERNEL_SRC,
+        arg_types=[tile_ty, tile_ty, scalar_ty, np.int32],
+    )
 
-        # Core computation
-        @core(tile_0_2)
-        def core_body():
-            for _ in range_(sys.maxsize):
-                elem_factor = of_factor_fwd.acquire(ObjectFifoPort.Consume, 1)
-                for _ in range_(num_sub_vectors):
-                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
-                    elem_in = of_in_fwd.acquire(ObjectFifoPort.Consume, 1)
-                    scale(elem_in, elem_out, elem_factor, tile_size)
-                    of_in_fwd.release(ObjectFifoPort.Consume, 1)
-                    of_out.release(ObjectFifoPort.Produce, 1)
-                of_factor_fwd.release(ObjectFifoPort.Consume, 1)
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_factor = ObjectFifo(scalar_ty, name="infactor")
+    of_out = ObjectFifo(tile_ty, name="out")
 
-        # ==================================================================
-        # TRACE CONFIGURATION
-        # ==================================================================
+    def core_fn(of_in, of_factor, of_out, scale):
+        elem_factor = of_factor.acquire(1)
+        for _ in range_(num_sub_vectors):
+            elem_out = of_out.acquire(1)
+            elem_in = of_in.acquire(1)
+            scale(elem_in, elem_out, elem_factor, tile_size)
+            of_in.release(1)
+            of_out.release(1)
+        of_factor.release(1)
 
-        # List tiles to trace. Listing the same core tile twice enables
-        # tracing both its core and memory.
-        tiles_to_trace = [tile_0_2, tile_0_2, mem_tile_0_1, shim_noc_tile_0_0]
+    worker = Worker(
+        core_fn,
+        fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale],
+        trace=1,
+    )
 
-        # Event settings are optional; defaults are used if not specified.
-        trace_utils.configure_trace(
-            tiles_to_trace,
+    rt = Runtime()
+    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
+        # Custom per-tile-class event lists, forwarded by iron's Runtime
+        # to the same configure_trace() the dialect-level example used.
+        rt.enable_trace(
+            trace_size=trace_size,
+            workers=[worker],
             coretile_events=[
                 CoreEvent.INSTR_EVENT_0,
                 CoreEvent.INSTR_EVENT_1,
@@ -141,35 +155,66 @@ def build_aie_trace():
                 ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
             ],
         )
+        rt.start(worker)
+        rt.fill(of_in.prod(), a_in)
+        rt.fill(of_factor.prod(), f_in)
+        rt.drain(of_out.cons(), c_out, wait=True)
 
-        # ==================================================================
-        # RUNTIME SEQUENCE WITH TRACE ACTIVATION
-        # ==================================================================
-
-        @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
-        def sequence(A, F, C):
-            # Start trace configuration
-            trace_utils.start_trace(trace_size=8192)
-
-            # Configure DMA tasks for input, factor, and output
-            in_task = shim_dma_single_bd_task(
-                of_in, A, sizes=[1, 1, 1, tensor_size], issue_token=True
-            )
-            factor_task = shim_dma_single_bd_task(
-                of_factor, F, sizes=[1, 1, 1, 1], issue_token=True
-            )
-            out_task = shim_dma_single_bd_task(
-                of_out_fwd, C, sizes=[1, 1, 1, tensor_size], issue_token=True
-            )
-
-            dma_start_task(in_task, factor_task, out_task)
-            dma_await_task(in_task, factor_task, out_task)
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-with mlir_mod_ctx() as ctx:
-    build_aie_trace()
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Trace (vector_scalar_mul)")
+    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    p.add_argument("--tensor-size", type=int, default=4096)
+    p.add_argument("--tile-size", type=int, default=1024)
+    p.add_argument("--trace-size", type=int, default=8192)
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    return p
+
+
+def _compile_kwargs(opts):
+    return dict(
+        tensor_size=opts.tensor_size,
+        tile_size=opts.tile_size,
+        trace_size=opts.trace_size,
+    )
+
+
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev))
+    spec = aie_trace.specialize(**_compile_kwargs(opts))
+    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+
+
+def _run_and_verify(opts):
+    rng = np.random.default_rng(seed=42)
+    a_np = rng.integers(1, 100, size=opts.tensor_size, dtype=np.int32)
+    f_np = np.array([3], dtype=np.int32)
+    c_np = np.zeros(opts.tensor_size, dtype=np.int32)
+
+    a_t = iron.tensor(a_np, dtype=np.int32, device="npu")
+    f_t = iron.tensor(f_np, dtype=np.int32, device="npu")
+    c_t = iron.tensor(c_np, dtype=np.int32, device="npu")
+
+    aie_trace(a_t, f_t, c_t, **_compile_kwargs(opts))
+
+    expected = a_np * 3
+    if not np.array_equal(c_t.numpy(), expected):
+        sys.exit("FAIL! output does not match a * factor")
+    print("PASS!")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+    _run_and_verify(opts)
+
+
+if __name__ == "__main__":
+    main()
