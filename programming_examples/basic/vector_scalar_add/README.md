@@ -30,11 +30,11 @@ This example does not contain a C++ kernel file. The kernel is expressed in Pyth
 
 ## Source Files Overview
 
-1. `vector_scalar_add.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
-
-1. `vector_scalar_add_placed.py`: An alternative version of the design in `vector_scalar_add.py`, that is expressed in a lower-level version of IRON.
+1. `vector_scalar_add.py`: An Iron (`@iron.jit`) Python design that compiles directly to NPU binaries (XCLBIN + insts.bin) via `--xclbin-path` / `--insts-path`. Running the script standalone (no `--xclbin-path`) JITs the design and verifies it on the NPU end-to-end.
 
 1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
+
+1. `test_runlist.cpp`: An alternate testbench that exercises the **same** xclbin/insts pair from `vector_scalar_add.py` but invokes the kernel twice in a single XRT [runlist](https://xilinx.github.io/XRT/master/html/xrt_native_apis.html), chaining run-0's output (`i + 2`) into run-1's input to produce `i + 3`. NPU2 only — `xrt::runlist` is not implemented on Phoenix (NPU1).
 
 ## Usage
 
@@ -45,20 +45,26 @@ To compile the design:
 make
 ```
 
-To compile the placed design:
-```shell
-env use_placed=1 make
-```
-
-To compile the C++ testbench:
+To compile the single-run C++ testbench:
 ```shell
 make vector_scalar_add.exe
 ```
 
+To compile the runlist C++ testbench (NPU2 only):
+```shell
+make vector_scalar_add_runlist.exe
+```
+
 ### C++ Testbench
 
-To run the design:
+To run the single-run testbench:
 
 ```shell
 make run
+```
+
+To run the runlist testbench (NPU2 only):
+
+```shell
+make run_runlist devicename=npu2
 ```

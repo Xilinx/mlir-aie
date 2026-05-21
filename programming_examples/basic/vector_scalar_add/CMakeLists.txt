@@ -18,7 +18,10 @@ mlir_aie_init_example()
 project(${ProjectName})
 include(../../common.cmake)
 
-add_executable(${currentTarget} test.cpp)
+if(NOT DEFINED TEST_SRC)
+    set(TEST_SRC test.cpp)
+endif()
+add_executable(${currentTarget} ${TEST_SRC})
 
 target_include_directories (${currentTarget} PUBLIC ${XRT_INC_DIR})
 

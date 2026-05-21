@@ -21,9 +21,8 @@ These programming examples provide a good starting point to illustrate how to bu
 * [Chaining Channels](./chaining_channels) - Demonstrates chaining multiple DMA buffer descriptors in sequence on a single channel.
 * [Combined Transpose](./combined_transpose) - Matrix transpose combining Shim DMA strides with AIE core VSHUFFLE instructions.
 * [Shuffle Transpose](./shuffle_transpose) - Matrix transpose using only AIE core VSHUFFLE instructions.
-* [Vector Scalar Add](./vector_scalar_add) - Single tile increments every element of a vector by `1`.
+* [Vector Scalar Add](./vector_scalar_add) - Single tile increments every element of a vector by `1`. Includes a `test_runlist.cpp` variant that exercises the XRT run-list execution model (NPU2 only).
 * [Vector Scalar Mul](./vector_scalar_mul) - Single tile performs `vector * scalar` of size `4096` in `1024`-element chunks.
-* [Vector Scalar Add Runlist](./vector_scalar_add_runlist) - Vector scalar add using the run-list execution model.
 * [Vector Vector Add](./vector_vector_add) - Single tile performs `vector + vector` of size `1024`.
 * [Vector Vector Add BDs Init Values](./vector_vector_add_BDs_init_values) - Vector addition with buffer descriptors pre-initialized with values.
 * [Vector Vector Modulo](./vector_vector_modulo) - Single tile performs `vector % vector` of size `1024`.
