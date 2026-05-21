@@ -1,20 +1,49 @@
+# vision/color_threshold/color_threshold.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
-import numpy as np
+# (c) Copyright 2024-2026 AMD Inc.
+"""Color threshold -- ``@iron.jit`` parallel-channel threshold pipeline.
+
+A line-based RGBA image is split into its four channels (R, G, B, A); each
+channel is independently thresholded on its own AIE compute tile; the four
+thresholded channels are joined back into RGBA.  Threshold value/max/type
+are read at runtime from per-channel ``Buffer(use_write_rtp=True)`` RTPs,
+gated by ``WorkerRuntimeBarrier``s so each worker waits for the runtime
+sequence's ``set_rtps()`` before reading.
+
+``thresholdLine`` comes from ``iron.kernels.vision``.
+
+``aiecc_flags=["--alloc-scheme=basic-sequential"]`` matches the pre-merge
+Makefile's aiecc invocation.
+
+Two invocation modes:
+
+  * standalone:   ``python3 color_threshold.py``  (JIT-compile + run on
+                  random input; output not verified -- use the C++/OpenCV
+                  host for pixel-level checks).
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile).
+"""
+
+import argparse
 import sys
 
+import numpy as np
+
+import aie.iron as iron
 from aie.iron import (
     Buffer,
-    Kernel,
+    Compile,
+    In,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     Worker,
     WorkerRuntimeBarrier,
+    kernels,
 )
 from aie.iron.device import NPU1Col1, NPU2
 
@@ -22,102 +51,99 @@ from aie.extras.dialects import arith
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.dialects.aie import T
 
+from aie.utils.hostruntime import set_current_device
 
-def color_threshold(dev, width, height):
-    lineWidth = width
-    lineWidthChannels = width * 4  # 4 channels
-    tensorSize = width * height
 
-    # Type definitions
-    tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
-    line_channels_ty = np.ndarray[(lineWidthChannels,), np.dtype[np.uint8]]
-    line_ty = np.ndarray[(lineWidth,), np.dtype[np.uint8]]
-    unused_ty = np.ndarray[(32,), np.dtype[np.int32]]  # not used
+def _device_for(dev_str):
+    return NPU1Col1() if dev_str == "npu" else NPU2()
 
-    # AIE Core Function declarations
-    thresholdLine = Kernel(
-        "thresholdLine",
-        "threshold.cc.o",
-        [line_ty, line_ty, np.int32, np.int16, np.int16, np.int8],
-    )
 
-    # AIE-array data movement with object fifos
-    # Input RGBA broadcast + memtile for skip
-    inOOB_L3L2 = ObjectFifo(line_channels_ty, name="inOOB_L3L2")
+@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+def color_threshold(
+    in_tensor: In,
+    _b_unused: In,
+    out_tensor: Out,
+    *,
+    width: Compile[int] = 1920,
+    height: Compile[int] = 1080,
+):
+    line_width = width
+    line_width_channels = width * 4  # 4 channels (RGBA)
+    tensor_size = width * height
+
+    tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int8]]
+    line_channels_ty = np.ndarray[(line_width_channels,), np.dtype[np.uint8]]
+    line_ty = np.ndarray[(line_width,), np.dtype[np.uint8]]
+    unused_ty = np.ndarray[(32,), np.dtype[np.int32]]  # 2nd buffer is unused
+
+    threshold_line = kernels.threshold(line_width=line_width, dtype=np.uint8)
+
+    # Input RGBA broadcast + memtile split into 4 per-channel fifos.
+    in_oob_l3l2 = ObjectFifo(line_channels_ty, name="inOOB_L3L2")
     of_offsets = [np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)]
-    in00B_L2L1s = inOOB_L3L2.cons().split(
-        of_offsets, obj_types=[line_ty] * 4, names=[f"inOOB_L2L1_{i}" for i in range(4)]
+    in_oob_l2l1s = in_oob_l3l2.cons().split(
+        of_offsets,
+        obj_types=[line_ty] * 4,
+        names=[f"inOOB_L2L1_{i}" for i in range(4)],
     )
 
-    # Output RGBA
-    outOOB_L2L3 = ObjectFifo(line_channels_ty, name="outOOB_L2L3")
-    outOOB_L1L2s = outOOB_L2L3.prod().join(
+    # Output: 4 per-channel fifos joined back into RGBA.
+    out_oob_l2l3 = ObjectFifo(line_channels_ty, name="outOOB_L2L3")
+    out_oob_l1l2s = out_oob_l2l3.prod().join(
         of_offsets,
         obj_types=[line_ty] * 4,
         names=[f"outOOB_L1L2_{i}" for i in range(4)],
     )
 
-    # Runtime parameters
-    rtps = []
-    for i in range(4):
-        rtps.append(
-            Buffer(
-                np.ndarray[(16,), np.dtype[np.int32]],
-                name=f"rtp{i}",
-                use_write_rtp=True,
-            )
+    # Per-channel runtime-writable parameter buffers.
+    rtps = [
+        Buffer(
+            np.ndarray[(16,), np.dtype[np.int32]],
+            name=f"rtp{i}",
+            use_write_rtp=True,
         )
+        for i in range(4)
+    ]
+    worker_barriers = [WorkerRuntimeBarrier() for _ in range(4)]
 
-    # Create barriers to synchronize individual workers with the runtime sequence
-    workerBarriers = []
-    for i in range(4):
-        workerBarriers.append(WorkerRuntimeBarrier())
-
-    # Task for the core to perform
     def core_fn(of_in, of_out, my_rtp, threshold_fn, barrier):
-        # RTPs written from the instruction stream must be synchronized with the runtime sequence
-        # This may be done through the usage of a barrier
-        # Note that barriers only allow to synchronize an individual worker with the runtime sequence and not the other way around
+        # RTPs written from the instruction stream must be synchronized with the
+        # runtime sequence via a barrier.
         barrier.wait_for_value(1)
-        thresholdValue = arith.trunci(T.i16(), my_rtp[0])
-        maxValue = arith.trunci(T.i16(), my_rtp[1])
-        thresholdType = arith.trunci(T.i8(), my_rtp[2])
+        threshold_value = arith.trunci(T.i16(), my_rtp[0])
+        max_value = arith.trunci(T.i16(), my_rtp[1])
+        threshold_type = arith.trunci(T.i8(), my_rtp[2])
 
-        elemIn = of_in.acquire(1)
-        elemOut = of_out.acquire(1)
-
+        elem_in = of_in.acquire(1)
+        elem_out = of_out.acquire(1)
         threshold_fn(
-            elemIn,
-            elemOut,
-            lineWidth,
-            thresholdValue,
-            maxValue,
-            thresholdType,
+            elem_in,
+            elem_out,
+            line_width,
+            threshold_value,
+            max_value,
+            threshold_type,
         )
         of_in.release(1)
         of_out.release(1)
 
-    # Create a worker to perform the task
-    workers = []
-    for i in range(4):
-        workers.append(
-            Worker(
-                core_fn,
-                [
-                    in00B_L2L1s[i].cons(),
-                    outOOB_L1L2s[i].prod(),
-                    rtps[i],
-                    thresholdLine,
-                    workerBarriers[i],
-                ],
-            )
+    workers = [
+        Worker(
+            core_fn,
+            [
+                in_oob_l2l1s[i].cons(),
+                out_oob_l1l2s[i].prod(),
+                rtps[i],
+                threshold_line,
+                worker_barriers[i],
+            ],
         )
+        for i in range(4)
+    ]
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (inTensor, _, outTensor):
+    with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (i_in, _b, o_out):
 
-        # Set runtime parameters
         def set_rtps(*args):
             for rtp in args:
                 rtp[0] = 50
@@ -127,30 +153,59 @@ def color_threshold(dev, width, height):
         rt.inline_ops(set_rtps, rtps)
 
         for i in range(4):
-            rt.set_barrier(workerBarriers[i], 1)
+            rt.set_barrier(worker_barriers[i], 1)
 
-        # Start workers
         rt.start(*workers)
+        rt.fill(in_oob_l3l2.prod(), i_in)
+        rt.drain(out_oob_l2l3.cons(), o_out, wait=True)
 
-        # Fill/Drain input/output ObjectFifos
-        rt.fill(inOOB_L3L2.prod(), inTensor)
-        rt.drain(outOOB_L2L3.cons(), outTensor, wait=True)
-
-    # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = NPU1Col1()
-    elif device_name == "npu2":
-        dev = NPU2()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    width = 512 if (len(sys.argv) != 4) else int(sys.argv[2])
-    height = 9 if (len(sys.argv) != 4) else int(sys.argv[3])
-except ValueError:
-    print("Argument has inappropriate value")
-module = color_threshold(dev, width, height)
-print(module)
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Color Threshold")
+    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    p.add_argument("-W", "--width", type=int, default=1920)
+    p.add_argument("-H", "--height", type=int, default=1080)
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    return p
+
+
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev))
+    spec = color_threshold.specialize(width=opts.width, height=opts.height)
+    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+
+
+def _run_no_verify(opts):
+    """Standalone JIT + run.  Output is not verified in Python --
+    color thresholding with runtime-driven RTPs is awkward to reference in
+    numpy.  Use the C++/OpenCV host (make run) for pixel-level checks.
+    """
+    tensor_size = opts.width * opts.height
+    rng = np.random.default_rng(0)
+    in_np = rng.integers(-128, 127, size=(tensor_size,), dtype=np.int8)
+    unused_np = np.zeros((32,), dtype=np.int32)
+    out_np = np.zeros((tensor_size,), dtype=np.int8)
+
+    in_t = iron.tensor(in_np, dtype=np.int8, device="npu")
+    unused_t = iron.tensor(unused_np, dtype=np.int32, device="npu")
+    out_t = iron.tensor(out_np, dtype=np.int8, device="npu")
+
+    color_threshold(in_t, unused_t, out_t, width=opts.width, height=opts.height)
+    print("PASS! (output not verified; use 'make run' for pixel-level checks)")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+    _run_no_verify(opts)
+
+
+if __name__ == "__main__":
+    main()
