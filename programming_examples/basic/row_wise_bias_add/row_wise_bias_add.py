@@ -1,38 +1,80 @@
+# row_wise_bias_add/row_wise_bias_add.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Row-wise bias add — Iron API design with ``@iron.jit`` compilation.
+
+The C++ kernel (``kernel.cc``) adds a per-column bias vector (``1 x N``)
+to every row of an ``M x N`` ``float32`` matrix.  Tiling is ``(m, n)``;
+the kernel is parameterized at compile time on ``DIM_m`` / ``DIM_n``
+(passed via ``ExternalFunction.compile_flags``), so each specialization
+gets its own ``.o`` named with a content hash — no separate Makefile
+``build/kernel.o`` step.
+
+Two invocation modes:
+
+  * standalone:   ``python3 row_wise_bias_add.py``
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (NPU Makefile)
+"""
+
+import argparse
 import sys
+from pathlib import Path
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
+from aie.iron.device import NPU1Col1, NPU2
+from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorTiler2D
+from aie.utils.hostruntime import set_current_device
+
+_KERNEL_SRC = str(Path(__file__).parent / "kernel.cc")
 
 
-def row_wise_bias_add(dev, M, N, m, n):
+def _device_for(dev_str):
+    if dev_str == "npu":
+        return NPU1Col1()
+    if dev_str == "npu2":
+        return NPU2()
+    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
+
+@iron.jit
+def row_wise_bias_add(
+    inp: In,
+    bias: In,
+    out: Out,
+    *,
+    M: Compile[int] = 768,
+    N: Compile[int] = 2304,
+    m: Compile[int] = 96,
+    n: Compile[int] = 32,
+):
     assert M % m == 0
     assert N % n == 0
 
-    # Define tensor types
     tensor_ty = np.ndarray[(m * n,), np.dtype[np.float32]]
     bias_ty = np.ndarray[(n,), np.dtype[np.float32]]
+    in_ty = np.ndarray[(M * N,), np.dtype[np.float32]]
+    bias_full_ty = np.ndarray[(N,), np.dtype[np.float32]]
 
-    # Define kernel functions
-    kernel_func = Kernel(
-        f"row_wise_bias_add_f32_f32", "kernel.o", [tensor_ty, bias_ty, tensor_ty]
+    kernel_func = ExternalFunction(
+        "row_wise_bias_add_f32_f32",
+        source_file=_KERNEL_SRC,
+        arg_types=[tensor_ty, bias_ty, tensor_ty],
+        compile_flags=[f"-DDIM_m={m}", f"-DDIM_n={n}"],
     )
 
-    # Data flow with ObjectFifos
     in_fifo = ObjectFifo(tensor_ty, name="in_fifo")
     bias_fifo = ObjectFifo(bias_ty, name="bias_fifo")
     out_fifo = ObjectFifo(tensor_ty, name="out_fifo")
 
-    # The task for a core to perform
     def core_fn(in_fifo, bias_fifo, out_fifo, kernel_func):
         for _ in range_(N // n):
             elem_bias = bias_fifo.acquire(1)
@@ -44,42 +86,75 @@ def row_wise_bias_add(dev, M, N, m, n):
                 in_fifo.release(1)
             bias_fifo.release(1)
 
-    # A worker to perform the task
-    my_worker = Worker(
+    worker = Worker(
         core_fn,
         fn_args=[in_fifo.cons(), bias_fifo.cons(), out_fifo.prod(), kernel_func],
     )
 
-    # The tensor access pattern of the input/output tensors (tiling)
     tap = TensorTiler2D.group_tiler(
         (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
     )[0]
     bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, bias_ty, tensor_ty) as (inp, bias, out):
-        rt.start(my_worker)
-        rt.fill(in_fifo.prod(), inp, tap)
-        rt.fill(bias_fifo.prod(), bias, bias_tap)
-        rt.drain(out_fifo.cons(), out, tap, wait=True)
+    with rt.sequence(in_ty, bias_full_ty, in_ty) as (a, b, c):
+        rt.start(worker)
+        rt.fill(in_fifo.prod(), a, tap)
+        rt.fill(bias_fifo.prod(), b, bias_tap)
+        rt.drain(out_fifo.cons(), c, tap, wait=True)
 
-    # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = NPU1Col1()
-    elif device_name == "npu2":
-        dev = NPU2()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-except ValueError:
-    print("Argument has inappropriate value")
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Row-Wise Bias Add")
+    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    p.add_argument("-M", "--M", type=int, default=768)
+    p.add_argument("-N", "--N", type=int, default=2304)
+    p.add_argument("-m", "--m", type=int, default=96)
+    p.add_argument("-n", "--n", type=int, default=32)
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    return p
 
-module = row_wise_bias_add(
-    dev, int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
-)
-print(module)
+
+def _compile_kwargs(opts):
+    return dict(M=opts.M, N=opts.N, m=opts.m, n=opts.n)
+
+
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev))
+    spec = row_wise_bias_add.specialize(**_compile_kwargs(opts))
+    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+
+
+def _run_and_verify(opts):
+    in_np = np.arange(opts.M * opts.N, dtype=np.float32).reshape(opts.M, opts.N)
+    bias_np = 3 * np.arange(opts.N, dtype=np.float32)
+    out_np = np.zeros_like(in_np)
+
+    in_t = iron.tensor(in_np.reshape(-1), dtype=np.float32, device="npu")
+    bias_t = iron.tensor(bias_np, dtype=np.float32, device="npu")
+    out_t = iron.tensor(out_np.reshape(-1), dtype=np.float32, device="npu")
+
+    row_wise_bias_add(in_t, bias_t, out_t, **_compile_kwargs(opts))
+
+    expected = (in_np + bias_np[None, :]).reshape(-1)
+    actual = out_t.numpy()
+    if not np.array_equal(actual, expected):
+        sys.exit("FAIL! output does not match in + bias (per-row)")
+    print("PASS!")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+    _run_and_verify(opts)
+
+
+if __name__ == "__main__":
+    main()
