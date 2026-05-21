@@ -24,9 +24,15 @@ buffer addresses for no perf gain on this single-column line-based design.
 
 Two invocation modes:
 
-  * standalone:   ``python3 edge_detect.py``  (JIT-compile + run on random
-                  input; output not verified -- use the C++/OpenCV host for
-                  pixel-level checks).
+  * standalone:   ``python3 edge_detect.py``  (JIT-compile + run + verify
+                  against the same numpy port of ``test.cpp``'s OpenCV
+                  pipeline: cv::cvtColor RGBA -> gray (BT.470 weights),
+                  cv::filter2D with float Laplacian and BORDER_REPLICATE,
+                  cv::threshold BINARY, cv::cvtColor GRAY -> RGB,
+                  cv::addWeighted with alpha=beta=1.0 (sum + saturate)).
+                  PASS criterion mirrors test.cpp exactly:
+                  ``error_per_pixel = sum(|actual - golden|) / (W * H)``
+                  must be ``< 2.0``.
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile).
 """
 
@@ -278,12 +284,86 @@ def _compile_only(opts):
     spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
 
-def _run_no_verify(opts):
-    """Standalone JIT + run.  Output is not verified in Python --
-    edge detection is hard to reference in numpy without re-implementing the
-    whole pipeline.  Use the C++/OpenCV host (make run) for pixel-level
-    checks; this mode just confirms the design compiles and executes.
+def _rgba2gray_ref(rgba_uint8, height, width):
+    """Numpy port of ``rgba2gray_aie`` (SRS_SHIFT=15)."""
+    rgba = rgba_uint8.reshape(height, width, 4)
+    r = rgba[..., 0].astype(np.int32)
+    g = rgba[..., 1].astype(np.int32)
+    b = rgba[..., 2].astype(np.int32)
+    wt_r = int(round(0.299 * (1 << 15)))  # 9798
+    wt_g = int(round(0.587 * (1 << 15)))  # 19235
+    wt_b = int(round(0.114 * (1 << 15)))  # 3736
+    y = (wt_r * r + wt_g * g + wt_b * b + (1 << 14)) >> 15
+    return np.clip(y, 0, 255).astype(np.uint8)
+
+
+def _filter2d_cv_ref(gray_uint8, height, width):
+    """Numpy equivalent of cv::filter2D with the unscaled Laplacian kernel
+    ``[[0,1,0],[1,-4,1],[0,1,0]]`` and ``cv::BORDER_REPLICATE`` -- matches
+    the reference computation in test.cpp.
     """
+    img = gray_uint8.reshape(height, width).astype(np.float32)
+    padded = np.pad(img, 1, mode="edge")
+    out = (
+        -4.0 * padded[1:-1, 1:-1]
+        + padded[:-2, 1:-1]
+        + padded[2:, 1:-1]
+        + padded[1:-1, :-2]
+        + padded[1:-1, 2:]
+    )
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def _threshold_binary_ref(arr_uint8, thresh, max_val):
+    """cv::threshold with THRESH_BINARY: out = (in > thresh) ? max : 0."""
+    return np.where(arr_uint8 > thresh, np.uint8(max_val), np.uint8(0))
+
+
+def _gray2rgba_ref(gray_uint8):
+    """Replicate gray to all 3 RGB channels; alpha = 255.
+
+    Matches ``gray2rgba_aie``.  (test.cpp uses cv::COLOR_GRAY2BGR which is
+    3-channel; here we keep the design's RGBA layout for the addWeighted
+    step that consumes 4 bytes per pixel.)
+    """
+    flat = gray_uint8.reshape(-1)
+    out = np.zeros((flat.size, 4), dtype=np.uint8)
+    out[:, 0] = flat
+    out[:, 1] = flat
+    out[:, 2] = flat
+    out[:, 3] = 255
+    return out.reshape(-1)
+
+
+def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
+    """Numpy equivalent of cv::addWeighted: saturated linear combination.
+
+    test.cpp passes alpha=beta=1.0, gamma=0.0 -- so the OpenCV golden is
+    ``saturate(a + b)``.  Note this differs from the AIE
+    ``addweighted_aie`` formula (which is fixed-point with alpha=beta=16384
+    and SRS_SHIFT=14, computing ``(a+b)/2`` -- the C++ test PASSes
+    despite the divergence because the diffs land under the
+    ``epsilon=2.0`` mean-L1 tolerance).
+    """
+    tmp = a_uint8.astype(np.int32) * alpha + b_uint8.astype(np.int32) * beta + gamma
+    return np.clip(tmp, 0, 255).astype(np.uint8)
+
+
+def _edge_detect_ref(rgba_uint8, height, width):
+    """End-to-end reference mirroring test.cpp's edgeDetect() OpenCV pipeline."""
+    gray = _rgba2gray_ref(rgba_uint8, height, width)
+    edges = _filter2d_cv_ref(gray, height, width)
+    thresholded = _threshold_binary_ref(edges, 10, 255)
+    mask_rgba = _gray2rgba_ref(thresholded)
+    return _add_weighted_cv_ref(rgba_uint8, mask_rgba, 1, 1, 0)
+
+
+# Matches the C++ test.cpp's ``epsilon = 2.0`` tolerance on
+# ``error_per_pixel = sum(abs(actual - golden)) / num_pixels``.
+_EPSILON = 2.0
+
+
+def _run_and_verify(opts):
     tensor_size = opts.width * opts.height * 4
     rng = np.random.default_rng(0)
     in_np = rng.integers(-128, 127, size=(tensor_size,), dtype=np.int8)
@@ -295,7 +375,21 @@ def _run_no_verify(opts):
     out_t = iron.tensor(out_np, dtype=np.int8, device="npu")
 
     edge_detect(in_t, b_t, out_t, width=opts.width, height=opts.height)
-    print("PASS! (output not verified; use 'make run' for pixel-level checks)")
+
+    in_uint8 = in_np.view(np.uint8)
+    expected_uint8 = _edge_detect_ref(in_uint8, opts.height, opts.width)
+    actual = out_t.numpy().view(np.uint8)
+
+    n_diff = int(np.sum(actual != expected_uint8))
+    error_per_pixel = float(
+        np.sum(np.abs(actual.astype(np.int32) - expected_uint8.astype(np.int32)))
+    ) / (opts.width * opts.height)
+    print(f"Number of differences: {n_diff}, average L1 error: {error_per_pixel:.6f}")
+
+    if error_per_pixel < _EPSILON:
+        print("PASS!")
+    else:
+        sys.exit(f"FAIL! error_per_pixel {error_per_pixel:.6f} >= epsilon {_EPSILON}")
 
 
 def main():
@@ -303,7 +397,7 @@ def main():
     if opts.xclbin_path:
         _compile_only(opts)
         return
-    _run_no_verify(opts)
+    _run_and_verify(opts)
 
 
 if __name__ == "__main__":
