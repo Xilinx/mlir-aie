@@ -118,7 +118,7 @@ def _compile_kwargs(opts):
 
 def _emit_mlir(opts):
     set_current_device(_device_for(opts.dev))
-    print(matrix_scalar_add.lower(None, None, None, **_compile_kwargs(opts)))
+    print(matrix_scalar_add.as_mlir(None, None, None, **_compile_kwargs(opts)))
 
 
 def _compile_only(opts):

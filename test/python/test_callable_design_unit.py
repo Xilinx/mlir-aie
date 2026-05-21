@@ -422,8 +422,8 @@ def test_guard_3c_too_many_positional_raises():
         cd(object(), object(), object())  # 3 positional, only 1 expected
 
 
-def test_lower_call_time_kwarg_overrides_prebound():
-    """lower() must let call-time Compile[T] kwargs override pre-bound values.
+def test_as_mlir_call_time_kwarg_overrides_prebound():
+    """as_mlir() must let call-time Compile[T] kwargs override pre-bound values.
 
     Asymmetric with __call__ (which raises Guard 3-B on the same conflict)
     so callers can inspect MLIR for different configurations without
@@ -435,8 +435,9 @@ def test_lower_call_time_kwarg_overrides_prebound():
 
     cd = CallableDesign(gen, compile_kwargs={"N": 1024})
 
-    # Capture the CompilableDesign that lower() ends up calling generate_mlir
-    # on so we can assert its effective compile_kwargs reflect the override.
+    # Capture the CompilableDesign that as_mlir() ends up calling
+    # generate_mlir on so we can assert its effective compile_kwargs reflect
+    # the override.
     captured_self = []
 
     def fake_generate(self):
@@ -446,21 +447,21 @@ def test_lower_call_time_kwarg_overrides_prebound():
     with patch.object(
         CompilableDesign, "generate_mlir", autospec=True, side_effect=fake_generate
     ):
-        result = cd.lower(N=512)
+        result = cd.as_mlir(N=512)
 
     assert result == "<mlir>"
     assert len(captured_self) == 1
     bound = captured_self[0]
     assert bound.compile_kwargs["N"] == 512, (
-        f"lower() must override pre-bound N=1024 with call-time N=512; "
+        f"as_mlir() must override pre-bound N=1024 with call-time N=512; "
         f"CompilableDesign got compile_kwargs={bound.compile_kwargs}"
     )
     # The original CallableDesign must remain unchanged for future calls.
     assert cd.compilable.compile_kwargs["N"] == 1024
 
 
-def test_lower_no_warning_when_no_conflict():
-    """lower() must not warn when call-time kwargs match pre-bound values."""
+def test_as_mlir_no_warning_when_no_conflict():
+    """as_mlir() must not warn when call-time kwargs match pre-bound values."""
     import warnings as _warnings
 
     def gen(a: In, b: Out, *, N: Compile[int] = 1024):
@@ -471,7 +472,7 @@ def test_lower_no_warning_when_no_conflict():
     with _warnings.catch_warnings(record=True) as caught:
         _warnings.simplefilter("always")
         with patch.object(CompilableDesign, "generate_mlir", return_value="<mlir>"):
-            cd.lower(N=1024)  # same value — no conflict
+            cd.as_mlir(N=1024)  # same value — no conflict
 
     conflict_warnings = [
         w
@@ -480,4 +481,4 @@ def test_lower_no_warning_when_no_conflict():
     ]
     assert (
         not conflict_warnings
-    ), "lower() must not warn when call-time and pre-bound values match"
+    ), "as_mlir() must not warn when call-time and pre-bound values match"
