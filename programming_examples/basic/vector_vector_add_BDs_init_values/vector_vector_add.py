@@ -7,11 +7,15 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 """Vector + vector with a buffer-descriptor pre-initialized constant.
 
-The design body intentionally uses low-level placed IRON (``@device`` /
-``@mem`` / ``@core`` / ``flow`` / raw lock + buffer) because the
-pedagogical point is the ``initial_value=`` parameter on ``buffer``
-that bakes ``np.arange(N)`` into the second operand at compile time
-(no shim DMA needed for it).
+This design's pedagogical point is the ``initial_value=`` parameter on
+the second operand's :class:`Buffer` — ``np.arange(N)`` is baked into
+the buffer at design startup so no shim DMA is needed for it.
+
+Historically the only way to express this was dialect-level (raw
+``@device`` / ``@mem`` / ``flow`` / ``lock`` / ``buffer``).  This file
+uses the iron-level :class:`Flow` / :class:`Lock` / :class:`TileDma`
+primitives — peers of :class:`ObjectFifo` for designs that hand-wire
+routing + DMA + sync instead of letting ObjectFifo manage them.
 
 Three invocation modes (mirrors matrix_scalar_add):
 
@@ -25,109 +29,188 @@ from pathlib import Path
 
 import numpy as np
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.extras.context import mlir_mod_ctx
+import aie.iron as iron
+from aie.iron import (
+    Acquire,
+    Bd,
+    Buffer,
+    DmaChannel,
+    Flow,
+    Lock,
+    Program,
+    Release,
+    Runtime,
+    TileDma,
+    Worker,
+)
 from aie.iron.controlflow import range_
+from aie.iron.device import (
+    NPU1Col1,
+    NPU2Col1,
+    Tile,
+    XCVC1902,
+)
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects.aiex import (
+    dma_await_task,
+    dma_free_task,
+    dma_start_task,
+    shim_dma_single_bd_task,
+)
 from aie.utils.compile import compile_mlir_module
 
 
 def _device_for(dev_str: str):
     if dev_str == "npu":
-        return AIEDevice.npu1_1col
+        return NPU1Col1()
     if dev_str == "npu2":
-        return AIEDevice.npu2_1col
+        return NPU2Col1()
     if dev_str == "xcvc1902":
-        return AIEDevice.xcvc1902
+        return XCVC1902()
     raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
 
-def _build_module(dev, col: int):
+def _build_program(dev, col: int):
     N = 256
     n = 16
     N_div_n = N // n
 
-    with mlir_mod_ctx() as ctx:
+    tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+    tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
-        @device(dev)
-        def device_body():
-            tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
-            tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
+    shim_tile = Tile(col=col, row=0, tile_type=AIETileType.ShimNOCTile)
+    compute_tile = Tile(col=col, row=2, tile_type=AIETileType.CoreTile)
 
-            ShimTile = tile(col, 0)
-            ComputeTile2 = tile(col, 2)
+    # All buffers and locks live on the compute tile.  Buffers are auto-
+    # placed by Worker when passed in fn_args; we just need to give them a
+    # type + name.
+    in1_buff = Buffer(type=tile_ty, name="in1_cons_buff_0")
+    # The pedagogical point: in2 is initialised at design startup, no DMA.
+    in2_buff = Buffer(
+        type=tensor_ty,
+        name="in2_cons_buff_0",
+        initial_value=np.arange(N, dtype=np.int32),
+    )
+    out_buff = Buffer(type=tile_ty, name="out_buff_0")
 
-            in1_cons_prod_lock = lock(ComputeTile2, lock_id=0, init=1)
-            in1_cons_cons_lock = lock(ComputeTile2, lock_id=1, init=0)
-            in1_cons_buff_0 = buffer(
-                tile=ComputeTile2, datatype=tile_ty, name="in1_cons_buff_0"
-            )
-            in2_cons_prod_lock = lock(ComputeTile2, lock_id=2, init=0)
-            in2_cons_cons_lock = lock(ComputeTile2, lock_id=3, init=1)
-            in2_cons_buff_0 = buffer(
-                tile=ComputeTile2,
-                datatype=tensor_ty,
-                name="in2_cons_buff_0",
-                initial_value=np.arange(N, dtype=np.int32),
-            )
+    in1_prod_lock = Lock(tile=compute_tile, lock_id=0, init=1, name="in1_cons_prod_lock")
+    in1_cons_lock = Lock(tile=compute_tile, lock_id=1, init=0, name="in1_cons_cons_lock")
+    in2_prod_lock = Lock(tile=compute_tile, lock_id=2, init=0, name="in2_cons_prod_lock")
+    in2_cons_lock = Lock(tile=compute_tile, lock_id=3, init=1, name="in2_cons_cons_lock")
+    out_prod_lock = Lock(tile=compute_tile, lock_id=4, init=1, name="out_prod_lock")
+    out_cons_lock = Lock(tile=compute_tile, lock_id=5, init=0, name="out_cons_lock")
 
-            out_prod_lock = lock(ComputeTile2, lock_id=4, init=1)
-            out_cons_lock = lock(ComputeTile2, lock_id=5, init=0)
-            out_buff_0 = buffer(tile=ComputeTile2, datatype=tile_ty, name="out_buff_0")
+    # Explicit routes: shim → compute → shim, plus the shim_dma_allocation
+    # symbols the runtime sequence references by name.
+    in_flow = Flow(
+        src=shim_tile,
+        dst=compute_tile,
+        src_port=WireBundle.DMA,
+        src_channel=0,
+        dst_port=WireBundle.DMA,
+        dst_channel=0,
+        shim_symbol="of_in1",
+    )
+    out_flow = Flow(
+        src=compute_tile,
+        dst=shim_tile,
+        src_port=WireBundle.DMA,
+        src_channel=0,
+        dst_port=WireBundle.DMA,
+        dst_channel=0,
+        shim_symbol="of_out",
+    )
 
-            flow(ShimTile, WireBundle.DMA, 0, ComputeTile2, WireBundle.DMA, 0)
-            flow(ComputeTile2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 0)
+    # Per-tile DMA program: S2MM ch0 fills in1_buff; MM2S ch0 drains out_buff.
+    compute_dma = TileDma(
+        tile=compute_tile,
+        channels=[
+            DmaChannel(
+                direction=DMAChannelDir.S2MM,
+                channel=0,
+                bds=[
+                    Bd(
+                        buffer=in1_buff,
+                        acquires=[Acquire(in1_prod_lock)],
+                        releases=[Release(in1_cons_lock)],
+                        next="self",
+                    ),
+                ],
+            ),
+            DmaChannel(
+                direction=DMAChannelDir.MM2S,
+                channel=0,
+                bds=[
+                    Bd(
+                        buffer=out_buff,
+                        acquires=[Acquire(out_cons_lock)],
+                        releases=[Release(out_prod_lock)],
+                        next="self",
+                    ),
+                ],
+            ),
+        ],
+    )
 
-            @mem(ComputeTile2)
-            def m(block):
-                s0 = dma_start(DMAChannelDir.S2MM, 0, dest=block[1], chain=block[2])
-                with block[1]:
-                    use_lock(in1_cons_prod_lock, LockAction.AcquireGreaterEqual)
-                    dma_bd(in1_cons_buff_0)
-                    use_lock(in1_cons_cons_lock, LockAction.Release)
-                    next_bd(block[1])
-                with block[2]:
-                    s1 = dma_start(DMAChannelDir.MM2S, 0, dest=block[3], chain=block[4])
-                with block[3]:
-                    use_lock(out_cons_lock, LockAction.AcquireGreaterEqual)
-                    dma_bd(out_buff_0)
-                    use_lock(out_prod_lock, LockAction.Release)
-                    next_bd(block[3])
-                with block[4]:
-                    EndOp()
+    def core_body(in1, in2, out, in1_p, in1_c, in2_p, in2_c, out_p, out_c):
+        # Worker wraps this in `for _ in range_(sys.maxsize)` by default
+        # (while_true=True).  Locks + buffers are shared by reference with
+        # compute_dma above.
+        from aie.dialects.aie import LockAction, use_lock as _use_lock
 
-            @core(ComputeTile2)
-            def core_body():
-                for _ in range_(sys.maxsize):
-                    use_lock(in2_cons_cons_lock, LockAction.AcquireGreaterEqual)
-                    for j in range_(N_div_n):
-                        use_lock(in1_cons_cons_lock, LockAction.AcquireGreaterEqual)
-                        use_lock(out_prod_lock, LockAction.AcquireGreaterEqual)
-                        for i in range_(n):
-                            out_buff_0[i] = (
-                                in2_cons_buff_0[j * N_div_n + i] + in1_cons_buff_0[i]
-                            )
-                        use_lock(in1_cons_prod_lock, LockAction.Release)
-                        use_lock(out_cons_lock, LockAction.Release)
-                    use_lock(in2_cons_prod_lock, LockAction.Release)
+        _use_lock(in2_c.op, LockAction.AcquireGreaterEqual)
+        for j in range_(N_div_n):
+            _use_lock(in1_c.op, LockAction.AcquireGreaterEqual)
+            _use_lock(out_p.op, LockAction.AcquireGreaterEqual)
+            for i in range_(n):
+                out[i] = in2[j * N_div_n + i] + in1[i]
+            _use_lock(in1_p.op, LockAction.Release)
+            _use_lock(out_c.op, LockAction.Release)
+        _use_lock(in2_p.op, LockAction.Release)
 
-            shim_dma_allocation("of_in1", ShimTile, DMAChannelDir.MM2S, 0)
-            shim_dma_allocation("of_out", ShimTile, DMAChannelDir.S2MM, 0)
+    worker = Worker(
+        core_body,
+        fn_args=[
+            in1_buff,
+            in2_buff,
+            out_buff,
+            in1_prod_lock,
+            in1_cons_lock,
+            in2_prod_lock,
+            in2_cons_lock,
+            out_prod_lock,
+            out_cons_lock,
+        ],
+        tile=compute_tile,
+    )
 
-            @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
-            def sequence(A, B, C):
-                in1_task = shim_dma_single_bd_task("of_in1", A, sizes=[1, 1, 1, N])
-                out_task = shim_dma_single_bd_task(
-                    "of_out", C, sizes=[1, 1, 1, N], issue_token=True
-                )
-                dma_start_task(in1_task, out_task)
-                dma_await_task(out_task)
-                dma_free_task(in1_task)
+    def emit_seq(A_data, _B_data, C_data):
+        in1_task = shim_dma_single_bd_task(
+            "of_in1", A_data.op, sizes=[1, 1, 1, N]
+        )
+        out_task = shim_dma_single_bd_task(
+            "of_out", C_data.op, sizes=[1, 1, 1, N], issue_token=True
+        )
+        dma_start_task(in1_task, out_task)
+        dma_await_task(out_task)
+        dma_free_task(in1_task)
 
-        res = ctx.module.operation.verify()
-        if res is not True:
-            raise RuntimeError(f"MLIR verify failed: {res}")
-        return ctx.module
+    rt = Runtime()
+    rt.add_flow(in_flow)
+    rt.add_flow(out_flow)
+    for lk in (
+        in1_prod_lock, in1_cons_lock,
+        in2_prod_lock, in2_cons_lock,
+        out_prod_lock, out_cons_lock,
+    ):
+        rt.add_lock(lk)
+    rt.add_tile_dma(compute_dma)
+
+    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
+        rt.start(worker)
+        rt.inline_ops(emit_seq, [A, B, C])
+
+    return Program(dev, rt)
 
 
 def _make_argparser():
@@ -148,7 +231,8 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    module = _build_module(dev=_device_for(opts.dev), col=opts.col)
+    program = _build_program(dev=_device_for(opts.dev), col=opts.col)
+    module = program.resolve_program()
     if opts.emit_mlir:
         print(module)
         return
