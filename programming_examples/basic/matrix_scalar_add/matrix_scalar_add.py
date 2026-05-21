@@ -4,72 +4,163 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Matrix scalar add — Iron API design with ``@iron.jit`` compilation.
+
+A single AIE compute core reads ``TILE_HEIGHT x TILE_WIDTH`` tiles from a
+``MATRIX_HEIGHT x MATRIX_WIDTH`` matrix (via ``TensorTiler2D.simple_tiler``),
+adds 1 to each element, and writes the result back.  Default config:
+16x128 matrix, 8x16 tile.  Design body stays explicit (preserves the 2D TAP
+that strides through the input matrix); the algorithms library's
+``transform_typed`` would flatten to 1D and produce a different DMA stride
+pattern, which is why this primitive is unified the matvec / vector_scalar_mul
+way rather than the vector_vector_add way.
+
+Three invocation modes (mirrors vector_vector_modulo):
+
+  * standalone:   ``python3 matrix_scalar_add.py``
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (NPU Makefile)
+  * emit-MLIR:    ``... -d xcvc1902 --emit-mlir``               (vck5000)
+"""
+
+import argparse
 import sys
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2, XCVC1902
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
+from aie.iron.device import NPU1Col1, NPU2, XCVC1902
 from aie.helpers.taplib import TensorTiler2D
-
-# Size of the entire matrix
-MATRIX_HEIGHT = 16
-MATRIX_WIDTH = 128
-MATRIX_SHAPE = (MATRIX_HEIGHT, MATRIX_WIDTH)
-
-# Size of the tile to process
-TILE_HEIGHT = 8
-TILE_WIDTH = 16
-TILE_SHAPE = (TILE_HEIGHT, TILE_WIDTH)
+from aie.utils.hostruntime import set_current_device
 
 
-def my_matrix_add_one():
+def _device_for(dev_str):
+    if dev_str == "npu":
+        return NPU1Col1()
+    if dev_str == "npu2":
+        return NPU2()
+    if dev_str == "xcvc1902":
+        return XCVC1902()
+    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown")
 
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-    if sys.argv[1] == "npu":
-        dev = NPU1Col1()
-    elif sys.argv[1] == "npu2":
-        dev = NPU2()
-    elif sys.argv[1] == "xcvc1902":
-        dev = XCVC1902()
-    else:
-        raise ValueError(f"[ERROR] Device name {sys.argv[1]} is unknown")
 
-    # Define tensor types
-    matrix_ty = np.ndarray[MATRIX_SHAPE, np.dtype[np.int32]]
-    tile_ty = np.ndarray[TILE_SHAPE, np.dtype[np.int32]]
+@iron.jit
+def matrix_scalar_add(
+    inp: In,
+    _b_unused: In,
+    out: Out,
+    *,
+    matrix_height: Compile[int] = 16,
+    matrix_width: Compile[int] = 128,
+    tile_height: Compile[int] = 8,
+    tile_width: Compile[int] = 16,
+):
+    matrix_shape = (matrix_height, matrix_width)
+    tile_shape = (tile_height, tile_width)
 
-    # AIE-array data movement with object fifos
+    matrix_ty = np.ndarray[matrix_shape, np.dtype[np.int32]]
+    tile_ty = np.ndarray[tile_shape, np.dtype[np.int32]]
+
     of_in = ObjectFifo(tile_ty, name="in0")
     of_out = ObjectFifo(tile_ty, name="out0")
 
-    # Define a task to perform
     def core_fn(of_in1, of_out1):
         elem_in = of_in1.acquire(1)
         elem_out = of_out1.acquire(1)
-        for i in range_(TILE_HEIGHT):
-            for j in range_(TILE_WIDTH):
+        for i in range_(tile_height):
+            for j in range_(tile_width):
                 elem_out[i, j] = elem_in[i, j] + 1
         of_in1.release(1)
         of_out1.release(1)
 
-    # Create a worker to perform the task
-    my_worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
+    worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
-    # Define the data access pattern for input/output
-    tap = TensorTiler2D.simple_tiler(MATRIX_SHAPE, TILE_SHAPE)[0]
+    tap = TensorTiler2D.simple_tiler(matrix_shape, tile_shape)[0]
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (in_tensor, _, out_tensor):
-        rt.start(my_worker)
+        rt.start(worker)
         rt.fill(of_in.prod(), in_tensor, tap)
         rt.drain(of_out.cons(), out_tensor, tap, wait=True)
 
-    # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-print(my_matrix_add_one())
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Matrix Scalar Add")
+    p.add_argument(
+        "-d", "--dev", type=str, choices=["npu", "npu2", "xcvc1902"], default="npu"
+    )
+    p.add_argument("--matrix-height", type=int, default=16)
+    p.add_argument("--matrix-width", type=int, default=128)
+    p.add_argument("--tile-height", type=int, default=8)
+    p.add_argument("--tile-width", type=int, default=16)
+    p.add_argument(
+        "--emit-mlir",
+        action="store_true",
+        help="print the resolved MLIR module to stdout (legacy aiecc / vck5000 path)",
+    )
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    return p
+
+
+def _compile_kwargs(opts):
+    return dict(
+        matrix_height=opts.matrix_height,
+        matrix_width=opts.matrix_width,
+        tile_height=opts.tile_height,
+        tile_width=opts.tile_width,
+    )
+
+
+def _emit_mlir(opts):
+    set_current_device(_device_for(opts.dev))
+    print(matrix_scalar_add.lower(None, None, None, **_compile_kwargs(opts)))
+
+
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev))
+    spec = matrix_scalar_add.specialize(**_compile_kwargs(opts))
+    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+
+
+def _run_and_verify(opts):
+    rng = np.random.default_rng(0)
+    in_np = rng.integers(
+        -1000, 1000, size=(opts.matrix_height, opts.matrix_width), dtype=np.int32
+    )
+    b_np = np.zeros_like(in_np)  # unused 2nd buffer
+    out_np = np.zeros_like(in_np)
+
+    in_t = iron.tensor(in_np.reshape(-1), dtype=np.int32, device="npu")
+    b_t = iron.tensor(b_np.reshape(-1), dtype=np.int32, device="npu")
+    out_t = iron.tensor(out_np.reshape(-1), dtype=np.int32, device="npu")
+
+    matrix_scalar_add(in_t, b_t, out_t, **_compile_kwargs(opts))
+
+    expected = (in_np + 1).reshape(-1)
+    actual = out_t.numpy()
+    if not np.array_equal(actual, expected):
+        sys.exit("FAIL! output does not match in + 1")
+
+    print("PASS!")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    if opts.emit_mlir:
+        _emit_mlir(opts)
+        return
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+    _run_and_verify(opts)
+
+
+if __name__ == "__main__":
+    main()
