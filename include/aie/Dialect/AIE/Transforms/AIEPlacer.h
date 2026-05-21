@@ -162,8 +162,6 @@ private:
   // non-core aie.logical_tile onto a tile that already hosts one.
   llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
-  TileAvailability availability;
-  const AIETargetModel *targetModel = nullptr;
 
   // DMA channel direction selector.
   enum class DmaDir { In, Out };
@@ -549,8 +547,10 @@ private:
     int64_t producerSizeBytes; // producer buffer element size in bytes
     int64_t consumerSizeBytes; // consumer buffer element size (differs with
                                // consumerElemType, else same as producer)
-    int producerDepth;
-    llvm::SmallVector<int> consumerDepths;
+    int producerDepth;         // declared depth (used for shared-mem)
+    llvm::SmallVector<int> consumerDepths; // declared depths
+    int producerDMADepth;      // maxAcquire+1 depth (used for DMA connections)
+    llvm::SmallVector<int> consumerDMADepths; // maxAcquire+1 depths
     bool forcesDMA = false;  // requires DMA even when adjacent (skip shared-mem)
     bool linkSharedProd = false; // producer buffers shared with link input (skip
                                  // producer mem charge on MemTile)
