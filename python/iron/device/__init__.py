@@ -42,7 +42,7 @@ _NAME_TO_BASE: dict[str, str] = {
 _MAX_COLS: dict[str, int] = {"NPU1": 4, "NPU2": 8}
 
 
-def from_name(name: str, *, n_cols: int = 1) -> Device:
+def from_name(name: str, *, n_cols: int | None = 1) -> Device:
     """Resolve a device-name string (and optional column count) to a Device.
 
     Designed to consume the ``--dev`` CLI flag that almost every
@@ -61,7 +61,8 @@ def from_name(name: str, *, n_cols: int = 1) -> Device:
           default) selects the single-column variant
           (``NPU1Col1`` / ``NPU2Col1``).  ``2..N-1`` selects
           ``NPU{1,2}Col{n_cols}``.  Passing the device's max
-          (``4`` for NPU1, ``8`` for NPU2) selects the unrestricted
+          (``4`` for NPU1, ``8`` for NPU2) — or ``None`` as a
+          family-agnostic "max" sentinel — selects the unrestricted
           multi-column device (``NPU1`` / ``NPU2``).  Ignored for
           Versal devices.
 
@@ -82,12 +83,13 @@ def from_name(name: str, *, n_cols: int = 1) -> Device:
         # Versal AIE1 devices have no per-column variants.
         return getattr(_device_module, base)()
     max_cols = _MAX_COLS[base]
-    if n_cols == max_cols:
+    if n_cols is None or n_cols == max_cols:
         cls_name = base  # e.g. "NPU1" / "NPU2"
     elif 1 <= n_cols < max_cols:
         cls_name = f"{base}Col{n_cols}"
     else:
         raise ValueError(
-            f"n_cols must be in 1..{max_cols} for {base}, got {n_cols}"
+            f"n_cols must be in 1..{max_cols} (or None for max) for "
+            f"{base}, got {n_cols}"
         )
     return getattr(_device_module, cls_name)()
