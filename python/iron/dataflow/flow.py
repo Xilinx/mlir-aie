@@ -14,13 +14,20 @@ explicit :class:`TileDma` programs (and :class:`Buffer` / :class:`Lock`
 shared state) for designs that need direct control.
 """
 
+from dataclasses import dataclass
+from typing import Sequence
+
 from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import (  # type: ignore
     AIETileType,
     DMAChannelDir,
     WireBundle,
 )
-from ...dialects.aie import flow as _flow_op, shim_dma_allocation
+from ...dialects.aie import (
+    flow as _flow_op,
+    packetflow as _packetflow_op,
+    shim_dma_allocation,
+)
 from ..device import Tile  # noqa: F401  (re-exported via package)
 from ..resolvable import NotResolvedError, Resolvable
 
@@ -126,3 +133,133 @@ class Flow(Resolvable):
                         f"src ({self._src}) nor dst ({self._dst}) is a "
                         f"shim tile."
                     )
+
+
+@dataclass
+class PacketDest:
+    """One destination endpoint of a :class:`PacketFlow`.  Held as a small
+    dataclass so the PacketFlow constructor's destination list reads cleanly
+    when there are multiple sinks (uncommon, but the underlying op supports
+    it).
+    """
+
+    tile: object  # Tile (avoid forward-ref import)
+    port: WireBundle = WireBundle.DMA
+    channel: int = 0
+
+
+class PacketFlow(Resolvable):
+    """An explicit packet-switched route with caller-controlled ``pkt_id``.
+
+    Peer of :class:`Flow` for the packet-switched case.  Unlike the
+    ``--packet-sw-objFifos`` global lowering (which auto-assigns sequential
+    packet IDs to every ObjectFifo in the design), :class:`PacketFlow`
+    exposes the packet ID directly so the same ID can be reused across
+    stages and used as a routing decision (e.g. memtile dispatch by
+    ``pkt_id`` to one of several compute cores).
+
+    Lowers to a single ``aie.packetflow`` op containing one
+    ``aie.packet_source`` and one or more ``aie.packet_dest`` ops in its
+    region.
+    """
+
+    def __init__(
+        self,
+        pkt_id: int,
+        src,
+        dst,
+        *,
+        src_port: WireBundle = WireBundle.DMA,
+        src_channel: int = 0,
+        dst_port: WireBundle = WireBundle.DMA,
+        dst_channel: int = 0,
+        extra_dsts: Sequence[PacketDest] = (),
+        keep_pkt_header: bool = False,
+        shim_symbol: str | None = None,
+    ):
+        """Construct a PacketFlow.
+
+        Args:
+            pkt_id: The packet ID — the same byte the routing fabric uses to
+                dispatch.  Caller controls the value (often reused across
+                stages so a memtile can re-emit packets keeping the original
+                ID for downstream routing).
+            src, dst: Source / primary destination tiles.
+            src_port / src_channel / dst_port / dst_channel: As for :class:`Flow`.
+            extra_dsts: Additional destination endpoints if this packet needs
+                to fan out.  Each is a :class:`PacketDest`.
+            keep_pkt_header: If ``True``, downstream tile receives the 4-byte
+                packet header alongside the payload (useful when the receiver
+                needs to re-emit with the same pkt_id).  Defaults to ``False``.
+            shim_symbol: Same meaning as on :class:`Flow` — auto-emit a
+                matching ``aie.shim_dma_allocation`` when one endpoint is a
+                shim tile.
+        """
+        self._pkt_id = pkt_id
+        self._src = src
+        self._dst = dst
+        self._src_port = src_port
+        self._src_channel = src_channel
+        self._dst_port = dst_port
+        self._dst_channel = dst_channel
+        self._extra_dsts: list[PacketDest] = list(extra_dsts)
+        self._keep_pkt_header = keep_pkt_header
+        self._shim_symbol = shim_symbol
+        self._op = None
+
+    @property
+    def pkt_id(self) -> int:
+        return self._pkt_id
+
+    @property
+    def op(self):
+        if self._op is None:
+            raise NotResolvedError()
+        return self._op
+
+    def all_tiles(self):
+        tiles = [self._src, self._dst]
+        tiles.extend(d.tile for d in self._extra_dsts)
+        return tiles
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        if self._op is not None:
+            return
+        dests = [
+            {"dest": self._dst.op, "port": self._dst_port, "channel": self._dst_channel}
+        ]
+        for d in self._extra_dsts:
+            dests.append({"dest": d.tile.op, "port": d.port, "channel": d.channel})
+        self._op = _packetflow_op(
+            pkt_id=self._pkt_id,
+            source=self._src.op,
+            source_port=self._src_port,
+            source_channel=self._src_channel,
+            dests=dests,
+            keep_pkt_header=self._keep_pkt_header,
+        )
+        if self._shim_symbol is not None:
+            if self._src.tile_type in _SHIM_TILE_TYPES:
+                shim_dma_allocation(
+                    self._shim_symbol,
+                    self._src.op,
+                    DMAChannelDir.MM2S,
+                    self._src_channel,
+                )
+            elif self._dst.tile_type in _SHIM_TILE_TYPES:
+                shim_dma_allocation(
+                    self._shim_symbol,
+                    self._dst.op,
+                    DMAChannelDir.S2MM,
+                    self._dst_channel,
+                )
+            else:
+                raise ValueError(
+                    f"PacketFlow.shim_symbol={self._shim_symbol!r} requires "
+                    f"a shim endpoint, but neither src ({self._src}) nor "
+                    f"dst ({self._dst}) is a shim tile."
+                )

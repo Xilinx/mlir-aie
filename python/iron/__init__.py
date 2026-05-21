@@ -30,6 +30,8 @@ from .dataflow import (
     DmaChannel,
     Flow,
     ObjectFifo,
+    PacketDest,
+    PacketFlow,
     Release,
     TileDma,
 )
@@ -76,6 +78,8 @@ __all__ = [
     "DmaChannel",
     "Flow",
     "Lock",
+    "PacketDest",
+    "PacketFlow",
     "Release",
     "TileDma",
     # Compile-time / JIT API

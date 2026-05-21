@@ -11,11 +11,12 @@ High-level (managed routing + buffers + locks):
     :class:`ObjectFifo`, :class:`CascadeFlow`
 
 Lower-level (explicit routing + DMA programs; peers of the above):
-    :class:`Flow`, :class:`TileDma`, :class:`DmaChannel`, :class:`Bd`,
+    :class:`Flow`, :class:`PacketFlow`, :class:`PacketDest`,
+    :class:`TileDma`, :class:`DmaChannel`, :class:`Bd`,
     :class:`Acquire`, :class:`Release`
 """
 
 from .objectfifo import ObjectFifo, ObjectFifoHandle, ObjectFifoLink, ObjectFifoEndpoint
 from .cascadeflow import CascadeFlow
-from .flow import Flow
+from .flow import Flow, PacketDest, PacketFlow
 from .tile_dma import Acquire, Bd, DmaChannel, Release, TileDma

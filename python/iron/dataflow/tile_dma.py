@@ -91,6 +91,10 @@ class Bd:
     acquires: list[Acquire] = field(default_factory=list)
     releases: list[Release] = field(default_factory=list)
     next: int | str | None = "self"
+    # When set, stamps a packet header on every transfer this BD emits:
+    # ``(pkt_type, pkt_id)``.  Pairs with a :class:`PacketFlow` that uses
+    # the same ``pkt_id`` so the routing fabric dispatches correctly.
+    packet: tuple[int, int] | None = None
 
 
 @dataclass
@@ -239,6 +243,8 @@ class TileDma(Resolvable):
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
                             bd_kwargs["len"] = bd.length
+                        if bd.packet is not None:
+                            bd_kwargs["packet"] = bd.packet
                         dma_bd(bd.buffer.op, **bd_kwargs)
                         for rel in bd.releases:
                             rel.emit()
