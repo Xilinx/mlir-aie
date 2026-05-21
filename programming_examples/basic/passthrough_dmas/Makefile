@@ -50,18 +50,43 @@ run: ${targetname}.exe ${xclbin_target} ${insts_target}
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -l ${LENGTH}
 
 # vck5000 (Versal AIE1) path stays on the legacy print-MLIR + aiecc flow.
+# Three topologies share the design body, picked via PLIO=none|input|output:
+#   * vck5000              — non-PLIO (shim → memtile → shim)
+#   * vck5000_plio_input   — PLIO ObjectFifo on input side
+#   * vck5000_plio_output  — PLIO ObjectFifo on output side
+
 build/aie_vck5000.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d xcvc1902 -n ${LENGTH} --emit-mlir > $@
+	python3 $< -d xcvc1902 -n ${LENGTH} --plio none --emit-mlir > $@
 
-.PHONY: vck5000
-vck5000: build/aie_vck5000.mlir
-	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu $< \
+build/aie_vck5000_plio_input.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d xcvc1902 -n ${LENGTH} --plio input --emit-mlir > $@
+
+build/aie_vck5000_plio_output.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d xcvc1902 -n ${LENGTH} --plio output --emit-mlir > $@
+
+define vck5000_link
+	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu $1 \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
 		-L/lib/x86_64-linux-gnu/ \
 		${srcdir}/test_vck5000.cpp \
 		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
-		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
+		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o $2
+endef
+
+.PHONY: vck5000
+vck5000: build/aie_vck5000.mlir
+	$(call vck5000_link,$<,test.elf)
+
+.PHONY: vck5000_plio_input
+vck5000_plio_input: build/aie_vck5000_plio_input.mlir
+	$(call vck5000_link,$<,input.elf)
+
+.PHONY: vck5000_plio_output
+vck5000_plio_output: build/aie_vck5000_plio_output.mlir
+	$(call vck5000_link,$<,output.elf)
 
 .PHONY: run_vck5000
 run_vck5000:
@@ -69,4 +94,4 @@ run_vck5000:
 
 .PHONY: clean
 clean:
-	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe
+	rm -rf build _build inst aie.mlir.prj core_* test.elf input.elf output.elf ${targetname}.exe

@@ -34,3 +34,27 @@ To target VCK5000:
 make vck5000
 make run_vck5000
 ```
+
+## PLIO variants (VCK5000 only)
+
+The same design supports two PLIO topologies via `--plio input` /
+`--plio output`, selecting which side of the `shim → compute → shim`
+forward goes over a PLIO-wired shim column instead of the regular
+NoC-wired one.  The compute tile in the middle is hardcoded at column
+30 to match the VCK5000 PLIO floorplan; the non-PLIO shim sits at
+column 26.
+
+To compile a PLIO design + its host testbench:
+
+```shell
+make vck5000_plio_input    # → ./input.elf
+make vck5000_plio_output   # → ./output.elf
+```
+
+The MLIR for either mode (for inspection) is also reachable as a
+standalone Python invocation:
+
+```shell
+python3 passthrough_dmas.py -d xcvc1902 --plio input  --emit-mlir
+python3 passthrough_dmas.py -d xcvc1902 --plio output --emit-mlir
+```

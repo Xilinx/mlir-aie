@@ -12,10 +12,9 @@
 
 These programming examples provide a good starting point to illustrate how to build commonly used compute kernels (both single-core and multi-core data processing pipelines). They serve to highlight how designs can be described in Python and lowered through the mlir-aie tool flow to an executable that runs on the NPU. [Passthrough Kernel](./passthrough_kernel) and [Vector Scalar Mul](./vector_scalar_mul) are good designs to get started with. Please see [section 3](../../programming_guide/section-3/) of the [programming guide](../../programming_guide/) for a more detailed guide on developing designs.
 
-* [Passthrough DMAs](./passthrough_dmas) - Data movement memcpy using object FIFOs via DMAs only, without involving the AIE core.
+* [Passthrough DMAs](./passthrough_dmas) - Data movement memcpy using object FIFOs via DMAs only, without involving the AIE core.  Includes optional `--plio input` / `--plio output` modes that demonstrate PLIO-connected soft DMAs in programmable logic on the Xilinx VCK5000.
 * [Passthrough Kernel](./passthrough_kernel) - Vectorized memcpy via a single AIE core kernel.
 * [Passthrough PyKernel](./passthrough_pykernel) - Memcpy where the AIE kernel is written as an inline Python function rather than a C++ external function.
-* [Passthrough DMAs PLIO](./passthrough_dmas_plio) - **Targets the Xilinx VCK5000, not Ryzen AI NPU.** Demonstrates PLIO-connected soft DMAs in programmable logic.
 * [Transposes](./transposes) - Four interchangeable matrix-transpose strategies (DMA stride, packet-switched DMA stride, VSHUFFLE, hybrid) behind a single `--strategy` flag.
 * [Chaining Channels](./chaining_channels) - Demonstrates chaining multiple DMA buffer descriptors in sequence on a single channel.
 * [Vector Scalar Add](./vector_scalar_add) - Single tile increments every element of a vector by `1`. Includes a `test_runlist.cpp` variant that exercises the XRT run-list execution model (NPU2 only).
