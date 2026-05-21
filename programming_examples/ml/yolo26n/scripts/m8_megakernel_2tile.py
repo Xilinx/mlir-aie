@@ -177,11 +177,18 @@ def build(act_in_external=None, return_program: bool = True):
     lut_p1c2 = _lut_buf("m.0/m/m.1/cv2", name="m8_2t_p1c2_lut")
     rs_p1c1 = m_p1c1["right_shift"]
     rs_p1c2 = m_p1c2["right_shift"]
+    # Critical: ws_pair1's recv buffer must NOT live on the worker tile (5,4).
+    # When compute_placement=t_b, the design deadlocks (root cause unclear —
+    # possibly DMA-channel or stream-switch routing contention with the
+    # cross-tile OFs + ws_cv2 also on (5,4)). Placing recv on the north
+    # neighbor (5,5) avoids it; worker_b reads via shared L1 (mirrors the
+    # working ws_pair0 pattern on (5,2)).
+    t_north = Tile(5, 5)
     ws_pair1 = StaticWeightStream(
         obj_type=B._i8((sz_p0c1,)), initial_value=data_p1c1,
         name="m8_2t_pair1_stream",
         recv_type=B._i8((chunk_sz_pair,)), repeat_count=in_h,
-        memtile_placement=Tile(6, 1), compute_placement=t_b,
+        memtile_placement=Tile(6, 1), compute_placement=t_north,
         mem_lock_id=0, comp_lock_id=0, mm2s_channel=0, s2mm_channel=0,
         ping_pong_buf=(B._i8((sz_p0c1,)), data_p1c2, "m8_2t_p1c2_pp"),
         ping_pong_memtile=Tile(6, 1),
@@ -204,10 +211,15 @@ def build(act_in_external=None, return_program: bool = True):
     )
 
     # ----- Input + output -----
+    # act_in depth=1: depth=2 would need 8 KB on tile A and pushes tile A
+    # over the 64 KB L1 cap at the required top/bot/split_b depth=5. With
+    # depth=1 the shim has to wait for compute to release each row before
+    # streaming the next; per-row payload is 4 KB so the shim<->compute
+    # ping-pong loss is small relative to the 2-tile compute time.
     act_in = (
         act_in_external
         if act_in_external is not None
-        else ObjectFifo(B._i8((in_w, 1, in_c)), depth=2, name="m8_2t_act_in")
+        else ObjectFifo(B._i8((in_w, 1, in_c)), depth=1, name="m8_2t_act_in")
     )
     block_out = ObjectFifo(
         B._i8((in_w, 1, out_c)), depth=2, via_DMA=True, name="block_out"
@@ -224,12 +236,14 @@ def build(act_in_external=None, return_program: bool = True):
 
     # ----- Cross-tile OFs (A producer → B consumer; vertically adjacent shared L1) -----
     # disable_synchronization=False because two different cores need locks.
-    # depth=4 is the minimum: A leads B by 4 iters via the inner_0_xt chain
-    # (B iter 0 needs A through iter 3 done for inner_0_xt[1]); depth=3 would
-    # deadlock A while B catches up.
-    top_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=4, name="m8_2t_top_xt")
-    bot_to_cv2_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=4, name="m8_2t_bot_xt")
-    split_b_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=4, name="m8_2t_split_b_xt")
+    # depth=5 is the minimum for top/bot/split_b: at B iter j's m8_back, A
+    # must have advanced to iter j+3 to satisfy pair1_cv1's inner_0_xt
+    # sliding window, producing j+4 top items vs j-1 consumed = 5 in-flight.
+    # depth=4 caused HW deadlock — A blocks on top acquire before producing
+    # the next inner_0_xt item that B is waiting on.
+    top_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=5, name="m8_2t_top_xt")
+    bot_to_cv2_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=5, name="m8_2t_bot_xt")
+    split_b_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=5, name="m8_2t_split_b_xt")
     inner_0_out_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=3, name="m8_2t_inner0_xt")
 
     # ----- Tile B internal sliding-window OFs -----
@@ -373,6 +387,13 @@ def build(act_in_external=None, return_program: bool = True):
             with if_(it == c1, hasElse=False):
                 sa = split_a_c.acquire(2)
                 _do_p0c1(0, sa[0], sa[0], sa[1])
+                # ws_pair0 ping_pong alignment: pair0_cv2 doesn't run at iter 1,
+                # so drain BD2 (cv2 weights) here to keep BD chain in lock-step
+                # with the consumer. Otherwise iter 2's pair0_cv1 reads cv2
+                # weights interpreted as cv1, corrupting output.
+                for wi in range_(N_PAIR_CHUNKS):
+                    ws_pair0.acquire(1)
+                    ws_pair0.release(1)
             with if_(it >= c2, hasElse=False):
                 with if_(it < c_in_h, hasElse=False):
                     sa = split_a_c.acquire(3)
@@ -397,6 +418,11 @@ def build(act_in_external=None, return_program: bool = True):
                     p0_mid_c.release(1)
                     p0_skip_c.release(1)
             with if_(it == c_in_h_p1, hasElse=False):
+                # pair0_cv1 doesn't run at iter in_h+1; drain its cv1 chunks
+                # FIRST to keep ping_pong aligned, then run pair0_cv2 on cv2.
+                for wi in range_(N_PAIR_CHUNKS):
+                    ws_pair0.acquire(1)
+                    ws_pair0.release(1)
                 pm = p0_mid_c.acquire(2)
                 ps = p0_skip_c.acquire(1)
                 _do_p0c2(2, pm[0], pm[1], pm[1], ps)
@@ -447,6 +473,13 @@ def build(act_in_external=None, return_program: bool = True):
         c_in_h = constant(in_h, index=True)
         c_in_h_p1 = constant(in_h + 1, index=True)
 
+        # ===== BISECT STEP 1: real pair1_cv1, stub pair1_cv2 + m8_back =====
+        # Stub pair1_cv2 still acquires p1_mid_c (peek-3), p1_skip_c, ws_pair1
+        # (cv2 chunks), produces inner_1_p — matches the original's lock counts.
+        # Stub m8_back acquires top/bot/split_b/inner_1_c/ws_cv2, releases all,
+        # writes block_out — matches the original's lock counts.
+        c_in_h_m1 = constant(in_h - 1, index=True)
+
         def _do_p1c1(border, po_top, po_mid, po_bot):
             mid_r = p1_mid_p.acquire(1)
             sk_r = p1_skip_p.acquire(1)
@@ -461,6 +494,14 @@ def build(act_in_external=None, return_program: bool = True):
                     sk_r[x, 0, kk] = po_mid[x, 0, kk]
             p1_mid_p.release(1)
             p1_skip_p.release(1)
+
+        def _stub_p1c2():
+            # Stub still drains ws_pair1's cv2 ping-pong chunks to keep BD chain balanced.
+            inner_1_p.acquire(1)
+            for wi in range_(N_PAIR_CHUNKS):
+                ws_pair1.acquire(1)
+                ws_pair1.release(1)
+            inner_1_p.release(1)
 
         def _do_p1c2(border, p1m_top, p1m_mid, p1m_bot, skip):
             out_r = inner_1_p.acquire(1)
@@ -491,29 +532,27 @@ def build(act_in_external=None, return_program: bool = True):
             bot_xt_c.release(1)
             block_out_p.release(1)
 
-        # Outer iters: in_h + 2 (LAG=2 for 2 stacked 3x3 on tile B)
-        # pair1_cv1: iters 0..in_h-1
-        # pair1_cv2: iters 1..in_h
-        # cv3+cv2: iters 1..in_h
         for it in range_(in_h + 2):
-            # pair1_cv1: iters 0..in_h-1 (peek-3 on inner_0_xt)
-            # iter 0: acquire(2), no release (border=0)
-            # iter 1..in_h-2: acquire(3), release(1), border=1
-            # iter in_h-1: acquire(2), release(2), border=2
+            # pair1_cv1: REAL (iters 0..in_h-1 with peek-3 on inner_0_xt)
             with if_(it == c0, hasElse=False):
                 po = inner_0_xt_c.acquire(2)
                 _do_p1c1(0, po[0], po[0], po[1])
+                # ws_pair1 ping_pong alignment: pair1_cv2 doesn't run at iter 0,
+                # so drain BD2 (cv2 weights) here to keep BD chain in lock-step.
+                for wi in range_(N_PAIR_CHUNKS):
+                    ws_pair1.acquire(1)
+                    ws_pair1.release(1)
             with if_(it >= c1, hasElse=False):
-                with if_(it < c_in_h - c1, hasElse=False):
+                with if_(it < c_in_h_m1, hasElse=False):
                     po = inner_0_xt_c.acquire(3)
                     _do_p1c1(1, po[0], po[1], po[2])
                     inner_0_xt_c.release(1)
-            with if_(it == c_in_h - c1, hasElse=False):
+            with if_(it == c_in_h_m1, hasElse=False):
                 po = inner_0_xt_c.acquire(2)
                 _do_p1c1(2, po[0], po[1], po[1])
                 inner_0_xt_c.release(2)
 
-            # pair1_cv2: iters 1..in_h
+            # pair1_cv2: REAL (iters 1..in_h with peek-3 on p1_mid)
             with if_(it == c1, hasElse=False):
                 p1m = p1_mid_c.acquire(2)
                 p1s = p1_skip_c.acquire(1)
@@ -527,13 +566,18 @@ def build(act_in_external=None, return_program: bool = True):
                     p1_mid_c.release(1)
                     p1_skip_c.release(1)
             with if_(it == c_in_h, hasElse=False):
+                # pair1_cv1 doesn't run at iter in_h; drain its cv1 chunks
+                # FIRST to keep ping_pong aligned, then run pair1_cv2 on cv2.
+                for wi in range_(N_PAIR_CHUNKS):
+                    ws_pair1.acquire(1)
+                    ws_pair1.release(1)
                 p1m = p1_mid_c.acquire(2)
                 p1s = p1_skip_c.acquire(1)
                 _do_p1c2(2, p1m[0], p1m[1], p1m[1], p1s)
                 p1_mid_c.release(2)
                 p1_skip_c.release(1)
 
-            # cv3+cv2: iters 1..in_h
+            # m8_back: REAL (iters 1..in_h)
             with if_(it >= c1, hasElse=False):
                 with if_(it < c_in_h_p1, hasElse=False):
                     _do_back()
