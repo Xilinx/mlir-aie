@@ -818,8 +818,9 @@ class LitConfigHelper:
         # System environment variables
         llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
 
-        # JIT cache for compiled designs
-        llvm_config.with_system_environment("IRON_CACHE_HOME")
+        # JIT cache for compiled designs. NPU_CACHE_HOME is the current name;
+        # IRON_CACHE_HOME is kept as a no-op safety for any straggler caller.
+        llvm_config.with_system_environment(["NPU_CACHE_HOME", "IRON_CACHE_HOME"])
 
     @staticmethod
     def setup_test_lib_substitutions(
