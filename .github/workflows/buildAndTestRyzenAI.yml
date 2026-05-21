@@ -215,8 +215,17 @@ jobs:
           mkdir $NPU_CACHE_HOME
 
           ninja install
-          ninja check-reference-designs
+
+          # gemm_asymmetric_tile_buffering chess builds peak ~8 GB RSS and
+          # ~9 min wall time alone on 32 GB. They run serialized via lit's
+          # atb_chess parallelism group and need a longer timeout than the
+          # rest of the suite. Split into two invocations so the timeout
+          # extension applies only to those tests.
+          LIT_FILTER_OUT="gemm_asymmetric_tile_buffering" ninja check-reference-designs
           ninja check-programming-guide
+          LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded" \
+            LIT_FILTER="gemm_asymmetric_tile_buffering" \
+            ninja check-reference-designs
           popd
 
       - name: Cleanup NPU_CACHE_HOME

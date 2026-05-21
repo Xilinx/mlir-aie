@@ -1,4 +1,4 @@
-cmake>=3.31
+cmake>=4.3.2
 dataclasses
 importlib-metadata
 ninja!=1.13.0; platform_system=="Windows"
