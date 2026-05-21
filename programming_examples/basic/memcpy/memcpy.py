@@ -13,26 +13,19 @@ Two paths:
   * ``--bypass``: shim → memtile → shim via ObjectFifo.forward() (no
     compute tile).
   * Compute path: per-column / per-channel passthrough kernel
-    (``passThroughLine``) on a compute tile, source-built from
-    ``aie_kernels/generic/passThrough.cc`` via ``ExternalFunction``.
+    (``kernels.passthrough``) on a compute tile.
 """
 
 import argparse
 import sys
-from pathlib import Path
 
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.device import NPU1, NPU2
-from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
-
-_PASSTHROUGH_SRC = str(
-    Path(__file__).parent / "../../../aie_kernels/generic/passThrough.cc"
-)
 
 
 def _device_for(dev_str):
@@ -81,11 +74,7 @@ def memcpy(
             for j in range(num_channels)
         ]
 
-        passthrough_fn = ExternalFunction(
-            "passThroughLine",
-            source_file=_PASSTHROUGH_SRC,
-            arg_types=[line_type, line_type, np.int32],
-        )
+        passthrough_fn = kernels.passthrough(tile_size=line_size, dtype=xfr_dtype)
 
         def core_fn(of_in, of_out, passThroughLine):
             elemOut = of_out.acquire(1)
@@ -107,16 +96,9 @@ def memcpy(
             for j in range(num_channels)
         ]
 
-    taps = [
-        TensorAccessPattern(
-            (1, size),
-            chunk * i * num_channels + chunk * j,
-            [1, 1, 1, chunk],
-            [0, 0, 0, 1],
-        )
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
+    # One TAP per (column, channel) shim DMA — same as iterating
+    # `(1, chunk)` tiles row-major across the `(1, size)` tensor.
+    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
 
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type) as (a, b):

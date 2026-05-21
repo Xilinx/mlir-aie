@@ -4,8 +4,7 @@ Vector × scalar AIE design with custom hardware-event tracing on AMD NPU device
 
 ## Contents
 
-- `aie_trace.py` — Iron (`@iron.jit`) design that wires custom `coretile_events` / `coremem_events` / `memtile_events` / `shimtile_events` lists straight through `rt.enable_trace()`.
-- `vector_scalar_mul.cc` — AIE kernel, built into the JIT work dir via `ExternalFunction(source_file=…)`.
+- `aie_trace.py` — Iron (`@iron.jit`) design that wires custom `coretile_events` / `coremem_events` / `memtile_events` / `shimtile_events` lists straight through `rt.enable_trace()`.  The AIE compute kernel is the library `kernels.scale` (scalar variant) — `event0()` / `event1()` markers are already baked into the library source.
 - `test.cpp` / `test.py` — host runners (C++ via `make run_trace`, Python via `make run_trace_py`).
 - `visualize_trace.py` — renders a PNG timeline from parsed trace JSON.
 - `run_makefile.lit` / `run_strix_makefile.lit` — lit test definitions for NPU1 and NPU2.

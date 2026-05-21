@@ -18,14 +18,10 @@ Two invocation modes (mirrors the @iron.jit ports):
 
   * standalone:   ``python3 aie_trace.py``
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)
-
-The hand-coded ``vector_scalar_mul.cc`` lives next to this file and
-gets built into the JIT work_dir via ``ExternalFunction``.
 """
 
 import argparse
 import sys
-from pathlib import Path
 
 import numpy as np
 
@@ -38,10 +34,10 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
+    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU1Col1, NPU2Col1
-from aie.iron.kernel import ExternalFunction
 from aie.utils.hostruntime import set_current_device
 from aie.utils.trace.events import (
     CoreEvent,
@@ -52,9 +48,6 @@ from aie.utils.trace.events import (
     ShimTileEvent,
     WireBundle,
 )
-
-
-_KERNEL_SRC = str(Path(__file__).parent / "vector_scalar_mul.cc")
 
 
 def _device_for(dev_str):
@@ -81,11 +74,7 @@ def aie_trace(
     scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
     tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int32]]
 
-    scale = ExternalFunction(
-        "vector_scalar_mul_aie_scalar",
-        source_file=_KERNEL_SRC,
-        arg_types=[tile_ty, tile_ty, scalar_ty, np.int32],
-    )
+    scale = kernels.scale(tile_size=tile_size, dtype=np.int32, vectorized=False)
 
     of_in = ObjectFifo(tile_ty, name="in")
     of_factor = ObjectFifo(scalar_ty, name="infactor")

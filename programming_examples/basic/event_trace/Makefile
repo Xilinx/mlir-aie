@@ -9,9 +9,9 @@
 ##===----------------------------------------------------------------------===##
 #
 # @iron.jit drives aiecc directly via --xclbin-path / --insts-path;
-# ExternalFunction(source_file=vector_scalar_mul.cc) lets iron build
-# the .o into the same dir, so no separate Makefile rule needed.
-# Custom trace event lists live in aie_trace.py (rt.enable_trace kwargs).
+# the kernels.scale library kernel is auto-built into the JIT work dir
+# (no separate Makefile rule needed).  Custom trace event lists live
+# in aie_trace.py (rt.enable_trace kwargs).
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
