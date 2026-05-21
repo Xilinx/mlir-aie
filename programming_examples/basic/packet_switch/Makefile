@@ -8,10 +8,12 @@
 #
 ##===----------------------------------------------------------------------===##
 #
-# Low-level placed IRON design (see packet_switch.py docstring).
+# Iron-level explicit-routing design (see packet_switch.py docstring).
 # Build add_mul.o once into build/ via peano; both --op modes link with
-# it.  Each --op produces its own xclbin + insts pair via
-# compile_mlir_module's --xclbin-path / --insts-path.
+# it.  (ExternalFunction(source_file=…)'s auto-compile is wired to
+# @iron.jit; this design uses compile_mlir_module directly so we still
+# need a Makefile rule for the .o.)  Each --op produces its own xclbin
+# + insts pair via compile_mlir_module's --xclbin-path / --insts-path.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 

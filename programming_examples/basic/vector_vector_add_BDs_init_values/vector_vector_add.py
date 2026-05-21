@@ -156,17 +156,15 @@ def _build_program(dev, col: int):
         # Worker wraps this in `for _ in range_(sys.maxsize)` by default
         # (while_true=True).  Locks + buffers are shared by reference with
         # compute_dma above.
-        from aie.dialects.aie import LockAction, use_lock as _use_lock
-
-        _use_lock(in2_c.op, LockAction.AcquireGreaterEqual)
+        in2_c.acquire()
         for j in range_(N_div_n):
-            _use_lock(in1_c.op, LockAction.AcquireGreaterEqual)
-            _use_lock(out_p.op, LockAction.AcquireGreaterEqual)
+            in1_c.acquire()
+            out_p.acquire()
             for i in range_(n):
                 out[i] = in2[j * N_div_n + i] + in1[i]
-            _use_lock(in1_p.op, LockAction.Release)
-            _use_lock(out_c.op, LockAction.Release)
-        _use_lock(in2_p.op, LockAction.Release)
+            in1_p.release()
+            out_c.release()
+        in2_p.release()
 
     worker = Worker(
         core_body,
