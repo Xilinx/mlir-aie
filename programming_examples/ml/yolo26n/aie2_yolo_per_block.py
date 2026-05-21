@@ -2715,10 +2715,19 @@ def per_block_iron(block_name: str) -> str:
         spec.loader.exec_module(mod)
         return mod.build(stage=stage, return_program=True)
 
-    # m8 megakernel: single-tile fused build (M8_MEGAKERNEL=1).
+    # m8 megakernel: single-tile fused build (M8_MEGAKERNEL=1) or
+    # 2-tile split (M8_MEGAKERNEL_2TILE=1).
     if block_name == "m8":
         import importlib.util, pathlib, os
 
+        if os.environ.get("M8_MEGAKERNEL_2TILE") == "1":
+            spec = importlib.util.spec_from_file_location(
+                "m8_megakernel_2tile",
+                pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_2tile.py",
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod.build(return_program=True)
         if os.environ.get("M8_MEGAKERNEL") == "1":
             spec = importlib.util.spec_from_file_location(
                 "m8_megakernel",
