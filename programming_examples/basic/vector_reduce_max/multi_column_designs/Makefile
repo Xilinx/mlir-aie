@@ -1,110 +1,91 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
-# 
+#
 ##===----------------------------------------------------------------------===##
+#
+# Two multi-column reduce-max variants:
+#   * VARIANT=col_wise  (default) — col-wise reduction, 2 cores per col
+#   * VARIANT=row_wise            — row-wise reduction
+#
+# Kernels (reduce_max.cc) come from the iron kernel library; no Makefile
+# kernel.o rule needed.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../makefile-common
 
-VPATH := ${srcdir}/../../../../aie_kernels/aie2
+SHELL := /bin/bash
 
+orig_targetname = vector_reduce_max
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-targetname = vector_reduce_max
-in1_size =  524288# in bytes
-out_size = 4 # in bytes
-trace_size = 524288
+in1_size ?= 524288
+out_size ?= 4
+trace_size ?= 524288
+dtype ?= i32
+VARIANT ?= col_wise
 
-dtype?=i32
-
-use_placed?=0
-use_row_wise?=0
-
-# There's 3 designs available:
-# 1. Row-wise unplaced design
-# 2. Row-wise placed design
-# 3. Column-wise unplaced design (default)
-ifeq (${use_row_wise}, 0)
-	aie_py_src=col_wise_${targetname}.py
-else 
-	ifeq (${use_placed}, 1)
-		aie_py_src=row_wise_${targetname}_placed.py
-	else
-		aie_py_src=row_wise_${targetname}.py
-	endif
-endif
+aie_py_src = ${VARIANT}_${orig_targetname}.py
+targetname = ${VARIANT}_${orig_targetname}
 
 ifeq ($(dtype),bf16)
-	dtype_cpp=std::bfloat16_t
+  dtype_cpp = std::bfloat16_t
 endif
 ifeq ($(dtype),i32)
-	dtype_cpp=std::int32_t
+  dtype_cpp = std::int32_t
 endif
 
-aieargs+=--dtype ${dtype}
+aieargs = -d ${devicename} -i1s ${in1_size} -os ${out_size} --dtype ${dtype}
 
-.PHONY: all template clean
+xclbin_target       = build/${VARIANT}/final.xclbin
+insts_target        = build/${VARIANT}/insts.bin
+trace_xclbin_target = build/${VARIANT}/final_trace.xclbin
+trace_insts_target  = build/${VARIANT}/insts_trace.bin
 
-all: build/final.xclbin
+.PHONY: all
+all: ${xclbin_target} ${insts_target}
 
-build/%.cc.o: %.cc
+${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-ifeq ($(devicename),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
-endif
+	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
 
-build/aie2.mlir: ${srcdir}/${aie_py_src}
+${trace_xclbin_target} ${trace_insts_target} &: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} ${aieargs} > $@
+	python3 $< ${aieargs} -t ${trace_size} --xclbin-path=${trace_xclbin_target} --insts-path=${trace_insts_target}
 
-build/aie2_trace.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} -t ${trace_size} ${aieargs} > $@
-
-build/final.xclbin: build/aie2.mlir build/reduce_max.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-    		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin \
-		$(if $(filter col_wise_%,$(aie_py_src)),--cores-per-col 2) $(<:%=../%)
-
-build/final_trace.xclbin: build/aie2_trace.mlir build/reduce_max.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-    		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin \
-		$(if $(filter col_wise_%,$(aie_py_src)),--cores-per-col 2) $(<:%=../%)
 ${targetname}.exe: ${srcdir}/../test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}/..` -DTARGET_NAME=${targetname}  -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp} 
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}/..` -DTARGET_NAME=${targetname} -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.bin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE 
+.PHONY: run
+run: ${targetname}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
-run_py: build/final.xclbin build/insts.bin
-	${powershell} python3 ${srcdir}/../test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
+.PHONY: run_py
+run_py: ${xclbin_target} ${insts_target}
+	${powershell} python3 ${srcdir}/../test.py -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
-trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin
-	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace.mlir.prj/input_with_addresses.mlir --output trace_vector_reduce_max.json
-	${srcdir}/../../../../python/utils/trace/get_trace_summary.py --input trace_vector_reduce_max.json
+.PHONY: trace
+trace: ${targetname}.exe ${trace_xclbin_target} ${trace_insts_target}
+	${powershell} ./$< -x ${trace_xclbin_target} -i ${trace_insts_target} -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir build/${VARIANT}/input_with_addresses.mlir --output trace_${targetname}.json
+	${srcdir}/../../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
+.PHONY: clean_trace
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json
 
+.PHONY: clean
 clean:
-	rm -rf build _build ${targetname}*.exe
+	rm -rf build _build ${orig_targetname}_*.exe *_${orig_targetname}.exe
