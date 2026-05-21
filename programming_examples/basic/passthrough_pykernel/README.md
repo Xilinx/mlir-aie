@@ -14,15 +14,13 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 
 ## Source Files Overview
 
-1. `passthrough_pykernel.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. `passthrough_pykernel.py`: An `@iron.jit`-decorated design that demonstrates the **pykernel pattern** — the per-tile copy is a `@func`-decorated Python function (`passthrough_fn`) handed to a `Worker` like any other ExternalFunction. The file builds both the xclbin/insts (via `@iron.jit`'s `compile()`) and runs end-to-end when invoked standalone.
 
-1. `passthrough_pykernel_placed.py`: A Python script that defines an alternative AIE array structural design using MLIR-AIE operations defined with a lower-level version of IRON than that used in `passthrough_pykernel.py`. The file generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. `test.cpp`: C++ testbench. Loads the compiled XCLBIN, configures the AIE module, supplies input data, executes on the NPU, and verifies the memcpy results.
 
-1. `test.cpp`: This C++ code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
+1. `test.py`: Python equivalent of `test.cpp` for the prebuilt-artifacts run path.
 
-1. `test.py`: This Python code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
-
-1. `passthrough_pykernel.ipynb`: This notebook contains the design (which is duplicated from `passthrough_pykernel_placed.py`) and test code (which is duplicated from `test.py`) for an alternative way of interacting with the example.
+1. `passthrough_pykernel.ipynb`: Notebook with a standalone design + test cell for interactive use.
 
 ## Design Overview
 
@@ -64,18 +62,21 @@ This design performs a memcpy operation on a vector of input data. The AIE desig
 
 ## Usage
 
-### Compile the design:
+### Standalone (no Makefile)
 
-To compile the design:
+```shell
+python3 passthrough_pykernel.py
+```
+
+`-d npu2` for Strix.
+
+### Compile the design (Makefile)
 
 ```shell
 make
 ```
 
-To compile the placed design:
-```shell
-env use_placed=1 make
-```
+For NPU2 (Strix): `make devicename=npu2`.
 
 ### C++ Testbench
 

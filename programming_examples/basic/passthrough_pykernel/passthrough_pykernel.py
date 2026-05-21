@@ -4,75 +4,138 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Passthrough using a Python-defined kernel (pykernel) — ``@iron.jit``.
+
+A single AIE core copies an N-element ``uint8`` vector tile by tile.  The
+kernel itself is a ``@func``-decorated Python function (``passthrough_fn``)
+demonstrating the pykernel pattern: write the kernel body in Python, hand it
+to a ``Worker`` like any other ExternalFunction.  The dataflow body stays
+explicit; the algorithms library's ``transform_typed`` would replace the
+pykernel with a per-element lambda, which would lose the pedagogical
+``@func`` demonstration that gives this example its name.
+
+``vector_size`` is fixed at 4096 (matching the test.cpp / test.py defaults)
+because ``@func`` decoration happens at module-import time and so its
+parameter types (``line_type``) must be resolvable then.  Override via
+``--vector-size`` / Makefile ``data_size=`` is therefore not supported here.
+
+Two invocation modes:
+
+  * standalone:   ``python3 passthrough_pykernel.py``
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)
+"""
+
+import argparse
 import sys
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
+from aie.iron.device import NPU1Col1, NPU2
 from aie.helpers.dialects.func import func
+from aie.utils.hostruntime import set_current_device
 
-dev = NPU1Col1()
+VECTOR_SIZE = 4096
+LINE_SIZE = VECTOR_SIZE // 4
 
-if len(sys.argv) > 2:
-    if sys.argv[2] == "npu":
-        dev = NPU1Col1()
-    elif sys.argv[2] == "npu2":
-        dev = NPU2()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-
-try:
-    vector_size = int(sys.argv[1])
-    if vector_size % 64 != 0 or vector_size < 512:
-        print("Vector size must be a multiple of 64 and greater than or equal to 512")
-        raise ValueError
-except ValueError:
-    print("Argument has inappropriate value")
-
-# Define tensor types
-line_size = vector_size // 4
-line_type = np.ndarray[(line_size,), np.dtype[np.uint8]]
-vector_type = np.ndarray[(vector_size,), np.dtype[np.uint8]]
-
-# Dataflow with ObjectFifos
-of_in = ObjectFifo(line_type, name="in")
-of_out = ObjectFifo(line_type, name="out")
+_LINE_TY = np.ndarray[(LINE_SIZE,), np.dtype[np.uint8]]
+_VECTOR_TY = np.ndarray[(VECTOR_SIZE,), np.dtype[np.uint8]]
 
 
-# A python function which will be treated as a callable function on the AIE
-# e.g., a kernel written in python
 @func
-def passthrough_fn(input: line_type, output: line_type, lineWidth: np.int32):
-    for i in range_(lineWidth):
+def passthrough_fn(input: _LINE_TY, output: _LINE_TY, line_width: np.int32):
+    for i in range_(line_width):
         output[i] = input[i]
 
 
-# The task for the core to perform (the core entry point, if you will)
-def core_fn(of_in, of_out, passthrough_fn):
-    elemOut = of_out.acquire(1)
-    elemIn = of_in.acquire(1)
-    passthrough_fn(elemIn, elemOut, line_size)
-    of_in.release(1)
-    of_out.release(1)
+def _device_for(dev_str):
+    return NPU1Col1() if dev_str == "npu" else NPU2()
 
 
-# Create a worker to run the task
-my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
+@iron.jit
+def passthrough_pykernel(a_in: In, b_out: Out, _unused: In):
+    of_in = ObjectFifo(_LINE_TY, name="in")
+    of_out = ObjectFifo(_LINE_TY, name="out")
 
-# Runtime operations to move data to/from the AIE-array
-rt = Runtime()
-with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-    rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in)
-    rt.drain(of_out.cons(), b_out, wait=True)
+    def core_fn(of_in, of_out, passthrough_fn):
+        elem_out = of_out.acquire(1)
+        elem_in = of_in.acquire(1)
+        passthrough_fn(elem_in, elem_out, LINE_SIZE)
+        of_in.release(1)
+        of_out.release(1)
 
-# Create the program from the device type and runtime
-my_program = Program(dev, rt)
+    my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
 
-# Place components (assign them resources on the device) and generate an MLIR module
-module = my_program.resolve_program()
+    rt = Runtime()
+    with rt.sequence(_VECTOR_TY, _VECTOR_TY, _VECTOR_TY) as (a, b, _c):
+        rt.start(my_worker)
+        rt.fill(of_in.prod(), a)
+        rt.drain(of_out.cons(), b, wait=True)
 
-# Print the generated MLIR
-print(module)
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Passthrough Pykernel")
+    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    p.add_argument(
+        "-s",
+        "--vector-size",
+        type=int,
+        default=VECTOR_SIZE,
+        help="accepted for CLI compatibility; only the build-time VECTOR_SIZE is used",
+    )
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    return p
+
+
+def _validate(opts):
+    if opts.vector_size != VECTOR_SIZE:
+        sys.exit(
+            f"vector_size={opts.vector_size} unsupported; this design is fixed "
+            f"at {VECTOR_SIZE} (the @func pykernel parameter types are "
+            f"resolved at module-import time)."
+        )
+
+
+def _compile_only(opts):
+    if not opts.insts_path:
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+    set_current_device(_device_for(opts.dev))
+    spec = passthrough_pykernel.specialize()
+    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+
+
+def _run_and_verify(opts):
+    in_np = np.arange(1, VECTOR_SIZE + 1, dtype=np.uint8)
+    zeros_np = np.zeros((VECTOR_SIZE,), dtype=np.uint8)
+
+    in_t = iron.tensor(in_np, dtype=np.uint8, device="npu")
+    out_t = iron.tensor(zeros_np, dtype=np.uint8, device="npu")
+    third_t = iron.tensor(zeros_np, dtype=np.uint8, device="npu")
+
+    passthrough_pykernel(in_t, out_t, third_t)
+
+    expected = in_np
+    actual = out_t.numpy()
+    if not np.array_equal(actual, expected):
+        sys.exit("FAIL! output does not match input")
+
+    print("PASS!")
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    _validate(opts)
+    if opts.xclbin_path:
+        _compile_only(opts)
+        return
+    _run_and_verify(opts)
+
+
+if __name__ == "__main__":
+    main()
