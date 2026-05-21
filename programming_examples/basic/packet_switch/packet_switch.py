@@ -16,9 +16,15 @@ the ``--op`` flag picks which packet ID to use:
   * ``--op mul`` → packet (0, 1) → routes to core_0_3 (mul_func)
 
 The body intentionally stays low-level (``packetflow``, ``@mem`` /
-``@memtile_dma``, ``buffer`` + ``lock``) because ObjectFifo doesn't yet
-support packet_flow (TODO in the original).  This file just wraps it
-with a small ``main()`` that supports both:
+``@memtile_dma``, ``buffer`` + ``lock``) because ObjectFifo's
+packet-routed lowering (``--packet-sw-objFifos``, used by e.g.
+``basic/transposes --strategy=dma_packet``) auto-assigns sequential
+packet IDs to each fifo — but this design *routes* by packet ID
+(pkt_id 0 → add core, pkt_id 1 → mul core) and reuses the same
+pkt_id across stages with ``keep_pkt_header=True`` so the memtile
+re-emits the saved header.  None of that per-flow control is exposed
+via ObjectFifo today (TODO in the original).  This file just wraps
+the dialect-level body with a small ``main()`` that supports both:
 
   * compile-only: ``... --op add --xclbin-path=PATH --insts-path=PATH``
   * emit-MLIR:    ``... --op add --emit-mlir``
@@ -58,7 +64,9 @@ def _build_module(dev, in_out_size: int, input_packet_id: int):
             CT_0_2 = tile(0, 2)
             CT_0_3 = tile(0, 3)
 
-            # ObjectFifo doesn't yet support packet_flow, so use raw buffer +
+            # ObjectFifo's packet-routed lowering doesn't expose per-flow
+            # pkt_id control or keep_pkt_header, both of which this design
+            # relies on (see module docstring) — fall back to raw buffer +
             # lock per the original design.
             core02_buff_in = buffer(tile=CT_0_2, datatype=vector_ty, name="core02_buff_in")
             core02_prod_lock_in = lock(tile=CT_0_2, lock_id=0, init=1, sym_name="core02_prod_lock_in")
