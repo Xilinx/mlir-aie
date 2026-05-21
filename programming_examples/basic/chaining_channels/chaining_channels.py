@@ -1,17 +1,35 @@
-# chaining_channels/chaining_channels_placed.py -*- Python -*-
+# chaining_channels/chaining_channels.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Chaining channels — low-level placed IRON, two compile modes.
+
+The design body intentionally uses low-level IRON (explicit ``flow``,
+``@mem`` / ``@memtile_dma``, manual ``npu_writebd`` /
+``npu_address_patch`` / ``npu_push_queue`` / ``npu_sync``) — that's the
+lesson here.  This file just wraps the design with a small ``main()``
+that supports both:
+
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH`` — drives
+    ``aie.utils.compile.compile_mlir_module`` directly so the Makefile
+    matches the @iron.jit ports' shape.
+  * emit-MLIR:    ``... --emit-mlir`` — prints the MLIR module to stdout
+    (legacy aiecc-on-a-file path).
+"""
+import argparse
 import sys
+from pathlib import Path
+
+import numpy as np
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.scf import _for as range_
+from aie.utils.compile import compile_mlir_module
 import aie.utils.trace as trace_utils
 from aie.utils.trace.events import (
     MemTileEvent,
@@ -21,26 +39,8 @@ from aie.utils.trace.events import (
     WireBundle,
 )
 
-N = 1024  # 1kB buffer (256 int32 elements = 1024 bytes)
-dev = AIEDevice.npu2_1col
-col = 0  # Always use column 0
-trace_size = 16384  # Trace buffer size in bytes
-enable_trace = 0  # Trace disabled by default
 
-if len(sys.argv) > 1:
-    N = int(sys.argv[1])
-
-if len(sys.argv) > 2:
-    if sys.argv[2] == "npu2":
-        dev = AIEDevice.npu2_1col
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-
-if len(sys.argv) > 3:
-    enable_trace = int(sys.argv[3])
-
-
-def my_chaining_channels():
+def _build_module(N: int, dev, col: int, enable_trace: int, trace_size: int):
     with mlir_mod_ctx() as ctx:
 
         @device(dev)
@@ -264,7 +264,59 @@ def my_chaining_channels():
                     column=col, row=0, direction=1, channel=0, column_num=1, row_num=1
                 )
 
-    print(ctx.module)
+    return ctx.module
 
 
-my_chaining_channels()
+def _device_for(dev_str: str):
+    if dev_str == "npu2":
+        return AIEDevice.npu2_1col
+    raise ValueError(f"[ERROR] Device name {dev_str!r} is unknown (NPU2 only)")
+
+
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Chaining Channels")
+    p.add_argument("-d", "--dev", type=str, choices=["npu2"], default="npu2")
+    p.add_argument("-n", "--length", type=int, default=1024, help="bytes (>=4)")
+    p.add_argument("-c", "--col", type=int, default=0)
+    p.add_argument("-t", "--trace", type=int, default=0, help="0 disables tracing")
+    p.add_argument("--trace-size", type=int, default=16384)
+    p.add_argument(
+        "--emit-mlir",
+        action="store_true",
+        help="print the resolved MLIR module to stdout (legacy aiecc-on-a-file path)",
+    )
+    p.add_argument("--xclbin-path", type=str, default=None)
+    p.add_argument("--insts-path", type=str, default=None)
+    return p
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    if opts.length % 4 != 0 or opts.length < 4:
+        sys.exit(f"--length ({opts.length}) must be a positive multiple of 4")
+    module = _build_module(
+        N=opts.length,
+        dev=_device_for(opts.dev),
+        col=opts.col,
+        enable_trace=opts.trace,
+        trace_size=opts.trace_size,
+    )
+    if opts.emit_mlir:
+        print(module)
+        return
+    if opts.xclbin_path:
+        if not opts.insts_path:
+            sys.exit("--xclbin-path requires --insts-path (must be set together)")
+        compile_mlir_module(
+            mlir_module=str(module),
+            xclbin_path=opts.xclbin_path,
+            insts_path=opts.insts_path,
+            work_dir=str(Path(opts.xclbin_path).resolve().parent),
+        )
+        return
+    # No mode selected: print MLIR (default, matches the original behavior).
+    print(module)
+
+
+if __name__ == "__main__":
+    main()
