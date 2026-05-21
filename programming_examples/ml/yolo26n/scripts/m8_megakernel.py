@@ -630,133 +630,105 @@ def _build_worker(**kw):
             bot_to_cv2_c.release(1)
             block_out_p.release(1)
 
-        def _drain_act_in():
-            in_r = act_in_c.acquire(1)
-            _do_cv1_split(in_r)
-            act_in_c.release(1)
+        # ==============================================================
+        # H1a: collapsed single-loop schedule.
+        # ==============================================================
+        # Replaces the original preamble + steady-loop + postamble unroll
+        # (~34 distinct kernel call sites) with one range_(in_h + 4) loop
+        # where each helper is dispatched via IRON if_ based on iter index.
+        # IF-blocks are a probe — they're slow on AIE but a useful test of
+        # the structural collapse. If this fits 16 KB program memory we
+        # validate the diagnosis; final form should drop the runtime if_s.
+        from aie.helpers.dialects.scf import if_
+        from aie.extras.dialects.arith import constant
 
-        # ===== PREAMBLE (iters 0-3) =====
-        # iter 0: cv1+split only
-        _drain_act_in()
-        # iter 1: + pair0_cv1 row 0 (border=0)
-        _drain_act_in()
-        sa = split_a_c.acquire(2)
-        _do_p0c1(0, sa[0], sa[0], sa[1])
-        # iter 2: + pair0_cv2 row 0 (border=0)
-        _drain_act_in()
-        sa = split_a_c.acquire(3)
-        _do_p0c1(1, sa[0], sa[1], sa[2])
-        split_a_c.release(1)
-        pm = p0_mid_c.acquire(2)
-        ps = p0_skip_c.acquire(1)
-        _do_p0c2(0, pm[0], pm[0], pm[1], ps)
-        p0_skip_c.release(1)
-        # iter 3: + pair1_cv1 row 0 (border=0)
-        _drain_act_in()
-        sa = split_a_c.acquire(3)
-        _do_p0c1(1, sa[0], sa[1], sa[2])
-        split_a_c.release(1)
-        pm = p0_mid_c.acquire(3)
-        ps = p0_skip_c.acquire(1)
-        _do_p0c2(1, pm[0], pm[1], pm[2], ps)
-        p0_mid_c.release(1)
-        p0_skip_c.release(1)
-        po = inner_0_out_c.acquire(2)
-        _do_p1c1(0, po[0], po[0], po[1])
+        c1 = constant(1, index=True)
+        c2 = constant(2, index=True)
+        c3 = constant(3, index=True)
+        c4 = constant(4, index=True)
+        c_in_h = constant(in_h, index=True)
+        c_in_h_p1 = constant(in_h + 1, index=True)
+        c_in_h_p2 = constant(in_h + 2, index=True)
+        c_in_h_p3 = constant(in_h + 3, index=True)
 
-        # ===== STEADY STATE iter 4 (pair1_cv2 border=0, cv3+cv2 row 0) =====
-        _drain_act_in()
-        sa = split_a_c.acquire(3)
-        _do_p0c1(1, sa[0], sa[1], sa[2])
-        split_a_c.release(1)
-        pm = p0_mid_c.acquire(3)
-        ps = p0_skip_c.acquire(1)
-        _do_p0c2(1, pm[0], pm[1], pm[2], ps)
-        p0_mid_c.release(1)
-        p0_skip_c.release(1)
-        po = inner_0_out_c.acquire(3)
-        _do_p1c1(1, po[0], po[1], po[2])
-        inner_0_out_c.release(1)
-        p1m = p1_mid_c.acquire(2)
-        p1s = p1_skip_c.acquire(1)
-        _do_p1c2(0, p1m[0], p1m[0], p1m[1], p1s)
-        p1_skip_c.release(1)
-        _do_cv3_cv2()
+        for it in range_(in_h + 4):
+            # ----- cv1+split: iters 0..in_h-1 -----
+            with if_(it < c_in_h, hasElse=False):
+                in_r = act_in_c.acquire(1)
+                _do_cv1_split(in_r)
+                act_in_c.release(1)
 
-        # ===== STEADY STATE iter 5..in_h-1 (in_h-5 iters, all border=1) =====
-        for _ in range_(in_h - 5):
-            _drain_act_in()
-            sa = split_a_c.acquire(3)
-            _do_p0c1(1, sa[0], sa[1], sa[2])
-            split_a_c.release(1)
-            pm = p0_mid_c.acquire(3)
-            ps = p0_skip_c.acquire(1)
-            _do_p0c2(1, pm[0], pm[1], pm[2], ps)
-            p0_mid_c.release(1)
-            p0_skip_c.release(1)
-            po = inner_0_out_c.acquire(3)
-            _do_p1c1(1, po[0], po[1], po[2])
-            inner_0_out_c.release(1)
-            p1m = p1_mid_c.acquire(3)
-            p1s = p1_skip_c.acquire(1)
-            _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
-            p1_mid_c.release(1)
-            p1_skip_c.release(1)
-            _do_cv3_cv2()
+            # ----- pair0_cv1: iters 1..in_h, border 0/1/2 -----
+            with if_(it == c1, hasElse=False):
+                sa = split_a_c.acquire(2)
+                _do_p0c1(0, sa[0], sa[0], sa[1])
+            with if_(it >= c2, hasElse=False):
+                with if_(it < c_in_h, hasElse=False):
+                    sa = split_a_c.acquire(3)
+                    _do_p0c1(1, sa[0], sa[1], sa[2])
+                    split_a_c.release(1)
+            with if_(it == c_in_h, hasElse=False):
+                sa = split_a_c.acquire(2)
+                _do_p0c1(2, sa[0], sa[1], sa[1])
+                split_a_c.release(2)
 
-        # ===== POSTAMBLE iter in_h: cv1+split done; pair0_cv1 row in_h-1 (border=2) =====
-        sa = split_a_c.acquire(2)
-        _do_p0c1(2, sa[0], sa[1], sa[1])
-        split_a_c.release(2)
-        pm = p0_mid_c.acquire(3)
-        ps = p0_skip_c.acquire(1)
-        _do_p0c2(1, pm[0], pm[1], pm[2], ps)
-        p0_mid_c.release(1)
-        p0_skip_c.release(1)
-        po = inner_0_out_c.acquire(3)
-        _do_p1c1(1, po[0], po[1], po[2])
-        inner_0_out_c.release(1)
-        p1m = p1_mid_c.acquire(3)
-        p1s = p1_skip_c.acquire(1)
-        _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
-        p1_mid_c.release(1)
-        p1_skip_c.release(1)
-        _do_cv3_cv2()
+            # ----- pair0_cv2: iters 2..in_h+1, border 0/1/2 -----
+            with if_(it == c2, hasElse=False):
+                pm = p0_mid_c.acquire(2)
+                ps = p0_skip_c.acquire(1)
+                _do_p0c2(0, pm[0], pm[0], pm[1], ps)
+                p0_skip_c.release(1)
+            with if_(it >= c3, hasElse=False):
+                with if_(it < c_in_h_p1, hasElse=False):
+                    pm = p0_mid_c.acquire(3)
+                    ps = p0_skip_c.acquire(1)
+                    _do_p0c2(1, pm[0], pm[1], pm[2], ps)
+                    p0_mid_c.release(1)
+                    p0_skip_c.release(1)
+            with if_(it == c_in_h_p1, hasElse=False):
+                pm = p0_mid_c.acquire(2)
+                ps = p0_skip_c.acquire(1)
+                _do_p0c2(2, pm[0], pm[1], pm[1], ps)
+                p0_mid_c.release(2)
+                p0_skip_c.release(1)
 
-        # ===== POSTAMBLE iter in_h+1: pair0_cv2 row in_h-1 (border=2) =====
-        pm = p0_mid_c.acquire(2)
-        ps = p0_skip_c.acquire(1)
-        _do_p0c2(2, pm[0], pm[1], pm[1], ps)
-        p0_mid_c.release(2)
-        p0_skip_c.release(1)
-        po = inner_0_out_c.acquire(3)
-        _do_p1c1(1, po[0], po[1], po[2])
-        inner_0_out_c.release(1)
-        p1m = p1_mid_c.acquire(3)
-        p1s = p1_skip_c.acquire(1)
-        _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
-        p1_mid_c.release(1)
-        p1_skip_c.release(1)
-        _do_cv3_cv2()
+            # ----- pair1_cv1: iters 3..in_h+2, border 0/1/2 -----
+            with if_(it == c3, hasElse=False):
+                po = inner_0_out_c.acquire(2)
+                _do_p1c1(0, po[0], po[0], po[1])
+            with if_(it >= c4, hasElse=False):
+                with if_(it < c_in_h_p2, hasElse=False):
+                    po = inner_0_out_c.acquire(3)
+                    _do_p1c1(1, po[0], po[1], po[2])
+                    inner_0_out_c.release(1)
+            with if_(it == c_in_h_p2, hasElse=False):
+                po = inner_0_out_c.acquire(2)
+                _do_p1c1(2, po[0], po[1], po[1])
+                inner_0_out_c.release(2)
 
-        # ===== POSTAMBLE iter in_h+2: pair1_cv1 row in_h-1 (border=2) =====
-        po = inner_0_out_c.acquire(2)
-        _do_p1c1(2, po[0], po[1], po[1])
-        inner_0_out_c.release(2)
-        p1m = p1_mid_c.acquire(3)
-        p1s = p1_skip_c.acquire(1)
-        _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
-        p1_mid_c.release(1)
-        p1_skip_c.release(1)
-        _do_cv3_cv2()
+            # ----- pair1_cv2: iters 4..in_h+3, border 0/1/2 -----
+            with if_(it == c4, hasElse=False):
+                p1m = p1_mid_c.acquire(2)
+                p1s = p1_skip_c.acquire(1)
+                _do_p1c2(0, p1m[0], p1m[0], p1m[1], p1s)
+                p1_skip_c.release(1)
+            with if_(it >= constant(5, index=True), hasElse=False):
+                with if_(it < c_in_h_p3, hasElse=False):
+                    p1m = p1_mid_c.acquire(3)
+                    p1s = p1_skip_c.acquire(1)
+                    _do_p1c2(1, p1m[0], p1m[1], p1m[2], p1s)
+                    p1_mid_c.release(1)
+                    p1_skip_c.release(1)
+            with if_(it == c_in_h_p3, hasElse=False):
+                p1m = p1_mid_c.acquire(2)
+                p1s = p1_skip_c.acquire(1)
+                _do_p1c2(2, p1m[0], p1m[1], p1m[1], p1s)
+                p1_mid_c.release(2)
+                p1_skip_c.release(1)
 
-        # ===== POSTAMBLE iter in_h+3: pair1_cv2 row in_h-1 (border=2), final cv3+cv2 =====
-        p1m = p1_mid_c.acquire(2)
-        p1s = p1_skip_c.acquire(1)
-        _do_p1c2(2, p1m[0], p1m[1], p1m[1], p1s)
-        p1_mid_c.release(2)
-        p1_skip_c.release(1)
-        _do_cv3_cv2()
+            # ----- cv3+cv2: iters 4..in_h+3 (no border, single path) -----
+            with if_(it >= c4, hasElse=False):
+                _do_cv3_cv2()
 
     return Worker(
         megakernel_fn,
