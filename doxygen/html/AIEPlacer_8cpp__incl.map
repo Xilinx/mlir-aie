@@ -1,15 +1,17 @@
 <map id="lib/Dialect/AIE/Transforms/AIEPlacer.cpp" name="lib/Dialect/AIE/Transforms/AIEPlacer.cpp">
-<area shape="rect" id="Node000001" title=" " alt="" coords="1175,5,1364,45"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="1273,5,1463,45"/>
 <area shape="rect" id="Node000002" href="$AIEPlacer_8h.html" title=" " alt="" coords="767,93,961,133"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1181,48,967,93,966,88,1180,43"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1274,45,975,96,974,90,1273,40"/>
 <area shape="rect" id="Node000032" title=" " alt="" coords="985,93,1164,133"/>
-<area shape="poly" id="edge35_Node000001_Node000032" title=" " alt="" coords="1228,48,1131,90,1128,85,1226,43"/>
-<area shape="rect" id="Node000033" title=" " alt="" coords="1188,101,1351,126"/>
-<area shape="poly" id="edge36_Node000001_Node000033" title=" " alt="" coords="1272,46,1272,87,1267,87,1267,46"/>
-<area shape="rect" id="Node000034" title=" " alt="" coords="1375,101,1460,126"/>
-<area shape="poly" id="edge37_Node000001_Node000034" title=" " alt="" coords="1303,43,1387,92,1385,96,1300,48"/>
-<area shape="rect" id="Node000035" title=" " alt="" coords="1484,101,1559,126"/>
-<area shape="poly" id="edge38_Node000001_Node000035" title=" " alt="" coords="1329,43,1473,91,1480,93,1478,98,1471,96,1328,48"/>
+<area shape="poly" id="edge35_Node000001_Node000032" title=" " alt="" coords="1304,48,1153,92,1151,87,1303,43"/>
+<area shape="rect" id="Node000033" title=" " alt="" coords="1188,101,1359,126"/>
+<area shape="poly" id="edge36_Node000001_Node000033" title=" " alt="" coords="1349,48,1298,93,1295,89,1345,44"/>
+<area shape="rect" id="Node000034" title=" " alt="" coords="1383,101,1545,126"/>
+<area shape="poly" id="edge37_Node000001_Node000034" title=" " alt="" coords="1391,44,1442,89,1439,93,1388,48"/>
+<area shape="rect" id="Node000035" title=" " alt="" coords="1569,101,1655,126"/>
+<area shape="poly" id="edge38_Node000001_Node000035" title=" " alt="" coords="1422,43,1568,94,1566,99,1421,48"/>
+<area shape="rect" id="Node000036" title=" " alt="" coords="1679,101,1753,126"/>
+<area shape="poly" id="edge39_Node000001_Node000036" title=" " alt="" coords="1463,42,1562,63,1667,91,1676,94,1675,99,1666,96,1561,68,1462,47"/>
 <area shape="rect" id="Node000003" href="$AIEDialect_8h.html" title=" " alt="" coords="1373,181,1507,221"/>
 <area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="962,129,974,131,1359,186,1359,192,973,136,961,134"/>
 <area shape="rect" id="Node000008" href="$AIETargetModel_8h.html" title=" " alt="" coords="107,269,245,309"/>

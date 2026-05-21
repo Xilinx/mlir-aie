@@ -1,7 +1,9 @@
 <map id="xilinx::AIE::TileAvailability" name="xilinx::AIE::TileAvailability">
-<area shape="rect" id="Node000001" title=" " alt="" coords="65,108,257,133"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="140,108,332,133"/>
 <area shape="rect" id="Node000002" title=" " alt="" coords="5,5,136,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="92,39,153,106,149,110,88,43"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="160,5,344,31"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="247,45,238,66,225,86,209,100,191,110,188,105,205,95,221,82,234,63,242,43"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="91,39,112,61,139,82,165,95,193,105,191,110,163,100,136,86,109,65,87,43"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="160,5,312,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="239,45,239,108,233,108,233,45"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="336,5,520,31"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="404,42,373,64,336,86,276,110,274,105,333,82,370,60,401,37"/>
 </map>

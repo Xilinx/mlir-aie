@@ -437,13 +437,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00377" name="l00377"></a><span class="lineno">  377</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
 <div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span> </div>
 <div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span>LogicalResult TracePacketOp::verify() {</div>
-<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>  <span class="comment">// Packet ID range is already enforced by Confined constraint in TableGen</span></div>
-<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>  <span class="comment">// Just verify it&#39;s within valid range</span></div>
-<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span>  int32_t <span class="keywordtype">id</span> = getId();</div>
-<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>  <span class="keywordflow">if</span> (id &lt; 1 || id &gt; 31) {</div>
-<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span>    <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;packet ID must be in range [1, 31], got &quot;</span>) &lt;&lt; id;</div>
-<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>  }</div>
-<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span> </div>
+<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>  <span class="comment">// Range is enforced by the Confined constraint in TableGen when id is</span></div>
+<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>  <span class="comment">// present; when absent, -aie-insert-trace-flows assigns one in valid</span></div>
+<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span>  <span class="comment">// range from the (col, row) order over active trace tiles.</span></div>
+<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>  <span class="keywordflow">if</span> (<span class="keyword">auto</span> <span class="keywordtype">id</span> = getId()) {</div>
+<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span>    <span class="keywordflow">if</span> (*id &lt; 1 || *id &gt; 31)</div>
+<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>      <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;packet ID must be in range [1, 31], got &quot;</span>) &lt;&lt; *id;</div>
+<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>  }</div>
 <div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>  <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span>}</div>
 <div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span> </div>
@@ -911,7 +911,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu May 21 2026 20:12:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu May 21 2026 21:54:15 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

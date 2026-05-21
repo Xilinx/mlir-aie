@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::SequentialPlacer::Adjacency" name="xilinx::AIE::SequentialPlacer::Adjacency">
+<area shape="rect" id="Node000001" title=" " alt="" coords="336,41,540,81"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="12,5,203,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="217,35,336,48,335,53,216,40"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,70,209,125"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="223,82,336,70,336,75,223,87"/>
+</map>

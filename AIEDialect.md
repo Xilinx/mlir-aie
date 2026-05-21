@@ -2523,15 +2523,22 @@ _Enable packet-switched trace routing_
 Syntax:
 
 ```
-operation ::= `aie.trace.packet` `id` `=` $id `type` `=` $type attr-dict
+operation ::= `aie.trace.packet` (`id` `=` $id^)? `type` `=` $type attr-dict
 ```
 
 Enables packet routing for trace data. Assigns packet ID (1-31) and
 packet type to differentiate tile sources during parsing.
 
+The id may be omitted to request auto-assignment by
+-aie-insert-trace-flows, which assigns ids in (col, row) order over
+the active trace tile set. Omitting id keeps the trace overlay's
+routing-rule layout independent of the order trace ops were emitted
+in the IR (e.g. by the IRON placer's worker-to-tile mapping).
+
 Example:
 ```mlir
 aie.trace.packet id=1 type=core
+aie.trace.packet type=core         // id auto-assigned
 ```
 
 Traits: `HasParent<TraceOp>`

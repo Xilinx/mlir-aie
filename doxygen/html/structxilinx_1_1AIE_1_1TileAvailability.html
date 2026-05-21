@@ -66,11 +66,13 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="structxilinx_1_1AIE_1_1TileAvailability__coll__graph.png" border="0" usemap="#axilinx_1_1AIE_1_1TileAvailability_coll__map" alt="Collaboration graph"/></div>
 <map name="axilinx_1_1AIE_1_1TileAvailability_coll__map" id="axilinx_1_1AIE_1_1TileAvailability_coll__map">
-<area shape="rect" title=" " alt="" coords="65,108,257,133"/>
+<area shape="rect" title=" " alt="" coords="140,108,332,133"/>
 <area shape="rect" title=" " alt="" coords="5,5,136,31"/>
-<area shape="poly" title=" " alt="" coords="92,39,153,106,149,110,88,43"/>
-<area shape="rect" title=" " alt="" coords="160,5,344,31"/>
-<area shape="poly" title=" " alt="" coords="247,45,238,66,225,86,209,100,191,110,188,105,205,95,221,82,234,63,242,43"/>
+<area shape="poly" title=" " alt="" coords="91,39,112,61,139,82,165,95,193,105,191,110,163,100,136,86,109,65,87,43"/>
+<area shape="rect" title=" " alt="" coords="160,5,312,31"/>
+<area shape="poly" title=" " alt="" coords="239,45,239,108,233,108,233,45"/>
+<area shape="rect" title=" " alt="" coords="336,5,520,31"/>
+<area shape="poly" title=" " alt="" coords="404,42,373,64,336,86,276,110,274,105,333,82,370,60,401,37"/>
 </map>
 <center><span class="legend">[<a href="graph_legend.html">legend</a>]</span></center></div>
 <table class="memberdecls">
@@ -85,6 +87,8 @@ Public Attributes</h2></td></tr>
 <tr class="separator:a05b6fa9b1aab34de73c9906eb1f49ae4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4ac3f889b8d756647a54a1fc942ad343" id="r_a4ac3f889b8d756647a54a1fc942ad343"><td class="memItemLeft" align="right" valign="top">std::vector&lt; <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1TileAvailability.html#a4ac3f889b8d756647a54a1fc942ad343">nonCompTiles</a></td></tr>
 <tr class="separator:a4ac3f889b8d756647a54a1fc942ad343"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a975e4ca39708914c5fe54323f663af98" id="r_a975e4ca39708914c5fe54323f663af98"><td class="memItemLeft" align="right" valign="top">llvm::DenseSet&lt; <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1TileAvailability.html#a975e4ca39708914c5fe54323f663af98">compTilesSet</a></td></tr>
+<tr class="separator:a975e4ca39708914c5fe54323f663af98"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa3ba079bbcb83e8aa50f0945909261a1" id="r_aa3ba079bbcb83e8aa50f0945909261a1"><td class="memItemLeft" align="right" valign="top">llvm::DenseMap&lt; <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a>, int &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1TileAvailability.html#aa3ba079bbcb83e8aa50f0945909261a1">inputChannelsUsed</a></td></tr>
 <tr class="separator:aa3ba079bbcb83e8aa50f0945909261a1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a111428d92a77fec0a8d3ddcb0663cb2f" id="r_a111428d92a77fec0a8d3ddcb0663cb2f"><td class="memItemLeft" align="right" valign="top">llvm::DenseMap&lt; <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a>, int &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1TileAvailability.html#a111428d92a77fec0a8d3ddcb0663cb2f">outputChannelsUsed</a></td></tr>
@@ -120,11 +124,7 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEPlacer_8cpp_source.html#l00798">798</a> of file <a class="el" href="AIEPlacer_8cpp_source.html">AIEPlacer.cpp</a>.</p>
-
-<p class="reference">References <a class="el" href="AIEPlacer_8h_source.html#l00027">compTiles</a>, and <a class="el" href="AIEPlacer_8h_source.html#l00028">nonCompTiles</a>.</p>
-
-<p class="reference">Referenced by <a class="el" href="AIEPlacer_8cpp_source.html#l00113">xilinx::AIE::SequentialPlacer::place()</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPlacer_8cpp_source.html#l01286">1286</a> of file <a class="el" href="AIEPlacer_8cpp_source.html">AIEPlacer.cpp</a>.</p>
 
 </div>
 </div>
@@ -143,7 +143,25 @@ Public Attributes</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00027">27</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEPlacer_8cpp_source.html#l00023">xilinx::AIE::SequentialPlacer::initialize()</a>, <a class="el" href="AIEPlacer_8cpp_source.html#l00113">xilinx::AIE::SequentialPlacer::place()</a>, and <a class="el" href="AIEPlacer_8cpp_source.html#l00798">removeTile()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEPlacer_8cpp_source.html#l00089">xilinx::AIE::SequentialPlacer::initialize()</a>.</p>
+
+</div>
+</div>
+<a id="a975e4ca39708914c5fe54323f663af98" name="a975e4ca39708914c5fe54323f663af98"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a975e4ca39708914c5fe54323f663af98">&#9670;&#160;</a></span>compTilesSet</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">llvm::DenseSet&lt;<a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a>&gt; xilinx::AIE::TileAvailability::compTilesSet</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00037">37</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEPlacer_8cpp_source.html#l00089">xilinx::AIE::SequentialPlacer::initialize()</a>.</p>
 
 </div>
 </div>
@@ -159,7 +177,7 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00030">30</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00039">39</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
 
 </div>
 </div>
@@ -177,7 +195,7 @@ Public Attributes</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00028">28</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEPlacer_8cpp_source.html#l00023">xilinx::AIE::SequentialPlacer::initialize()</a>, and <a class="el" href="AIEPlacer_8cpp_source.html#l00798">removeTile()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEPlacer_8cpp_source.html#l00089">xilinx::AIE::SequentialPlacer::initialize()</a>.</p>
 
 </div>
 </div>
@@ -193,7 +211,7 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00031">31</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPlacer_8h_source.html#l00040">40</a> of file <a class="el" href="AIEPlacer_8h_source.html">AIEPlacer.h</a>.</p>
 
 </div>
 </div>
@@ -204,7 +222,7 @@ Public Attributes</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu May 21 2026 20:12:55 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu May 21 2026 21:54:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
