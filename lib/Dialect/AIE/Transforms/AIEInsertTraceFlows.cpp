@@ -155,19 +155,41 @@ struct AIEInsertTraceFlowsPass
     // function of the active trace tile set.
     llvm::DenseMap<Operation *, int> autoPacketIds;
     {
+      // Hardware packet IDs are 5 bits (0..31). Silently wrapping past
+      // 31 would alias two traces onto the same id.
+      constexpr int kMaxPacketId = 31;
+
+      // First pass: bucket traces and collect explicit ids. An explicit
+      // id reserves a slot the auto-allocator must avoid, and two
+      // explicit traces pinning the same id is a silent alias today.
       SmallVector<TraceOp> autoIdTraces;
+      llvm::DenseMap<int, TracePacketOp> explicitIdOwner;
       for (auto trace : traces) {
-        bool hasExplicitId = false;
+        TracePacketOp explicitPacket = nullptr;
         for (auto &op : trace.getBody().getOps()) {
           if (auto p = dyn_cast<TracePacketOp>(op)) {
             if (p.getId().has_value()) {
-              hasExplicitId = true;
+              explicitPacket = p;
               break;
             }
           }
         }
-        if (!hasExplicitId)
+        if (!explicitPacket) {
           autoIdTraces.push_back(trace);
+          continue;
+        }
+        int id = *explicitPacket.getId();
+        auto [it, inserted] = explicitIdOwner.try_emplace(id, explicitPacket);
+        if (!inserted) {
+          InFlightDiagnostic err =
+              explicitPacket.emitError()
+              << "trace packet id " << id
+              << " is already used by another trace; explicit packet ids "
+                 "must be unique across the device";
+          err.attachNote(it->second.getLoc())
+              << "previous use of packet id " << id;
+          return signalPassFailure();
+        }
       }
       // stable_sort so that multiple traces on the same tile (e.g. core
       // + mem trace on the same core tile) get ids in their IR-emission
@@ -179,21 +201,27 @@ struct AIEInsertTraceFlowsPass
           return ta.getCol() < tb.getCol();
         return ta.getRow() < tb.getRow();
       });
-      // Hardware packet IDs are 5 bits (0..31). Silently wrapping past
-      // 31 would alias two traces onto the same id.
-      constexpr int kMaxPacketId = 31;
-      if (clPacketIdStart + (int)autoIdTraces.size() - 1 > kMaxPacketId) {
-        device.emitError()
-            << "trace overlay needs " << autoIdTraces.size()
-            << " auto-allocated packet IDs starting at " << clPacketIdStart
-            << ", but the hardware packet-id field is 5 bits (max "
-            << kMaxPacketId << "); reduce the number of traced tiles or "
-            << "raise -packet-id-start only if you can spare the lower IDs";
-        return signalPassFailure();
-      }
+      // Hand out ids from clPacketIdStart upward, skipping any value a
+      // user pinned explicitly so auto and explicit traces never alias.
       int next = clPacketIdStart;
-      for (auto trace : autoIdTraces)
+      for (auto trace : autoIdTraces) {
+        while (next <= kMaxPacketId && explicitIdOwner.count(next))
+          ++next;
+        if (next > kMaxPacketId) {
+          device.emitError()
+              << "trace overlay needs " << autoIdTraces.size()
+              << " auto-allocated packet IDs starting at " << clPacketIdStart
+              << " (with " << explicitIdOwner.size()
+              << " id(s) reserved by explicit aie.trace.packet ops), but the "
+                 "hardware packet-id field is 5 bits (max "
+              << kMaxPacketId
+              << "); reduce the number of traced tiles, free up an explicit "
+                 "id, or raise -packet-id-start only if you can spare the "
+                 "lower IDs";
+          return signalPassFailure();
+        }
         autoPacketIds[trace.getOperation()] = next++;
+      }
     }
 
     for (auto trace : traces) {
