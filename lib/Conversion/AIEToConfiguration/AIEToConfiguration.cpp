@@ -450,11 +450,9 @@ static LogicalResult generateTransactions(AIERTControl &ctl,
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
 // ops (npu.write32, npu.maskwrite32, npu.blockwrite).
 static LogicalResult
-emitTransactionOps(OpBuilder &builder,
+emitTransactionOps(OpBuilder &builder, Location loc,
                    std::vector<TransactionBinaryOperation> &operations,
                    std::vector<memref::GlobalOp> &global_data) {
-
-  auto loc = builder.getUnknownLoc();
 
   // create the txn ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
@@ -531,11 +529,10 @@ emitTransactionOps(OpBuilder &builder,
 // Translate vector of TransactionBinaryOperation to a sequence of control
 // packet ops.
 static LogicalResult
-emitControlPacketOps(OpBuilder &builder,
+emitControlPacketOps(OpBuilder &builder, Location loc,
                      std::vector<TransactionBinaryOperation> &operations,
                      std::vector<memref::GlobalOp> &global_data) {
 
-  auto loc = builder.getUnknownLoc();
   auto ctx = builder.getContext();
 
   // create the control packet ops
@@ -636,17 +633,15 @@ static LogicalResult convertTransactionOpsToMLIR(
     std::vector<TransactionBinaryOperation> &operations,
     std::string blockwrite_prefix = "config_blockwrite_data_") {
 
-  auto loc = builder.getUnknownLoc();
-
   // for each blockwrite in the binary, create a GlobalOp with the data at the
   // device level
   std::vector<memref::GlobalOp> global_data;
+  DeviceOp device = llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
+  if (!device) {
+    device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
+  }
+  Location loc = device.getLoc();
   {
-    DeviceOp device =
-        llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
-    if (!device) {
-      device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
-    }
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(device.getBody());
     unsigned id = 0;
@@ -674,10 +669,10 @@ static LogicalResult convertTransactionOpsToMLIR(
 
   // create the txn ops
   if (outputType == AIE::AIEToConfigurationOutputType::Transaction) {
-    if (failed(emitTransactionOps(builder, operations, global_data)))
+    if (failed(emitTransactionOps(builder, loc, operations, global_data)))
       return failure();
   } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
-    if (failed(emitControlPacketOps(builder, operations, global_data)))
+    if (failed(emitControlPacketOps(builder, loc, operations, global_data)))
       return failure();
     // resolve mask writes; control packet doesn't natively support mask write.
     if (failed(orConsecutiveWritesOnSameAddr(builder.getBlock())))
@@ -782,7 +777,7 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
   // and collect them in a vector. If there are none, create a new runtime
   // sequence. Otherwise assume the insertion point is the first
   // aiex.configure op.
-  auto loc = builder.getUnknownLoc();
+  auto loc = device.getLoc();
   SmallVector<AIEX::ConfigureOp> configureOps;
   device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
 
