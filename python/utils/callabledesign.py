@@ -458,6 +458,7 @@ class CallableDesign:
         self,
         xclbin_path: Path | str | None = None,
         inst_path: Path | str | None = None,
+        elf_path: Path | str | None = None,
     ) -> tuple[Path, Path]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
@@ -468,9 +469,17 @@ class CallableDesign:
         With both ``xclbin_path`` and ``inst_path`` set, writes artifacts
         directly to those paths and bypasses the cache — useful for build
         systems (e.g. Makefiles) that manage their own dependency tracking.
-        Mixed (only one path given) raises ``ValueError``.
+        Mixed (only one of ``xclbin_path`` / ``inst_path`` given) raises
+        ``ValueError``.
+
+        ``elf_path`` is optional: when set, aiecc also wraps the NPU
+        instructions into an ELF (via ``aiebu-asm``) at that path.  Needed by
+        C++ testbenches that load instructions through ``xrt::elf`` +
+        ``xrt::module``; requires explicit ``xclbin_path`` + ``inst_path``.
         """
-        return self.compilable.compile(xclbin_path=xclbin_path, inst_path=inst_path)
+        return self.compilable.compile(
+            xclbin_path=xclbin_path, inst_path=inst_path, elf_path=elf_path
+        )
 
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.

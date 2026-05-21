@@ -138,19 +138,25 @@ def compile_mlir_module(
     insts_path: str | Path | None = None,
     pdi_path: str | Path | None = None,
     xclbin_path: str | Path | None = None,
+    elf_path: str | Path | None = None,
     verbose=False,
     work_dir: str | Path | None = None,
     options=None,
     use_chess: bool = False,
 ):
     """
-    Compile an MLIR module to instruction, PDI, and/or xclbin files using the aiecc module.
+    Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
 
     Parameters:
         mlir_module (str): MLIR module to compile.
         insts_path (str): Path to the instructions binary file.
         pdi_path (str): Path to the PDI file.
         xclbin_path (str): Path to the xclbin file.
+        elf_path (str): Path to an ELF-wrapped version of the NPU instructions
+            (produced via ``aiebu-asm``).  Required by C++ testbenches that
+            load instructions through ``xrt::elf`` + ``xrt::module``;
+            independent of ``insts_path`` (the Python runtime consumes the
+            raw ``.bin``).
         verbose (bool): If True, enable verbose output.
         work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
@@ -182,6 +188,8 @@ def compile_mlir_module(
         args.extend(["--aie-generate-pdi", f"--pdi-name={pdi_path}"])
     if xclbin_path:
         args.extend(["--aie-generate-xclbin", f"--xclbin-name={xclbin_path}"])
+    if elf_path:
+        args.extend(["--aie-generate-elf", f"--elf-name={elf_path}"])
     if work_dir:
         args.append(f"--tmpdir={work_dir}")
     if verbose:

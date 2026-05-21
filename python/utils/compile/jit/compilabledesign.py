@@ -453,6 +453,7 @@ class CompilableDesign:
         self,
         xclbin_path: Path | str | None = None,
         inst_path: Path | str | None = None,
+        elf_path: Path | str | None = None,
     ) -> tuple[Path, Path]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
@@ -465,7 +466,14 @@ class CompilableDesign:
         When both are ``None`` (the default), behavior is unchanged: artifacts
         land in ``~/.npu/cache/<hash>/`` and the cache is consulted first.
 
-        Mixed (only one path given) is not supported and raises ``ValueError``.
+        Mixed (only one of ``xclbin_path`` / ``inst_path`` given) raises
+        ``ValueError``.
+
+        ``elf_path`` is optional and orthogonal: when set, aiecc also wraps
+        the NPU instructions into an ELF (via ``aiebu-asm``) at that path,
+        suitable for C++ testbenches that load through ``xrt::elf`` +
+        ``xrt::module``.  Requires ``xclbin_path`` / ``inst_path`` to be set
+        too — the cache path doesn't track ELF artifacts.
         """
         from aie.iron.kernel import ExternalFunction
         from aie.utils import DefaultNPURuntime
@@ -479,11 +487,19 @@ class CompilableDesign:
             )
         explicit_paths = xclbin_path is not None
 
+        if elf_path is not None and not explicit_paths:
+            raise ValueError(
+                "compile(): elf_path requires explicit xclbin_path + inst_path "
+                "(the JIT cache does not track ELF artifacts)."
+            )
+
         if explicit_paths:
             # Absolutize so compile_external_kernel's `cwd=kernel_dir` doesn't
             # turn relative paths into "build/build/foo.cc" etc.
             xclbin_path = Path(xclbin_path).resolve()
             inst_path = Path(inst_path).resolve()
+            if elf_path is not None:
+                elf_path = Path(elf_path).resolve()
             kernel_dir = xclbin_path.parent
             lock_file_path = kernel_dir / ".lock"
         else:
@@ -577,6 +593,7 @@ class CompilableDesign:
                     mlir_module=mlir_module,
                     insts_path=inst_path,
                     xclbin_path=xclbin_path,
+                    elf_path=elf_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
@@ -586,7 +603,10 @@ class CompilableDesign:
                 # aiecc may exit with code 0 even when xclbin generation fails
                 # silently (e.g. missing xclbinutil or bootgen), so we must
                 # check the files exist before treating compilation as a success.
-                missing = [p for p in (xclbin_path, inst_path) if not p.exists()]
+                expected_outputs = [xclbin_path, inst_path]
+                if elf_path is not None:
+                    expected_outputs.append(elf_path)
+                missing = [p for p in expected_outputs if not p.exists()]
                 if missing:
                     raise RuntimeError(
                         "[aiecc] Compilation appeared to succeed (exit code 0) "
