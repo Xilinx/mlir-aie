@@ -178,15 +178,13 @@ def build(act_in_external=None, return_program: bool = True):
     rs_p1c1 = m_p1c1["right_shift"]
     rs_p1c2 = m_p1c2["right_shift"]
     # Critical: ws_pair1's recv buffer must NOT live on the worker tile (5,4).
-    # When compute_placement=t_b, the design deadlocks (root cause unclear —
-    # possibly DMA-channel or stream-switch routing contention with the
-    # cross-tile OFs + ws_cv2 also on (5,4)). Placing recv on the north
-    # neighbor (5,5) avoids it; worker_b reads via shared L1 (mirrors the
-    # working ws_pair0 pattern on (5,2)).
+    # When compute_placement=t_b, the design deadlocks regardless of channel
+    # (verified per-block: ws_pair1 on t_b ch 0 hangs, ws_pair1 on t_b ch 1
+    # also hangs). Placing recv on the north neighbor (5,5) works; worker_b
+    # reads via shared L1.
     #
     # comp_lock_id=8 to dodge the chain context's m9 sv_tile on (5,5) which
-    # uses locks 0/1 there. Per-block (standalone) builds don't have anything
-    # else on (5,5), but the higher lock_id is also fine there.
+    # uses locks 0/1 there.
     t_north = Tile(5, 5)
     ws_pair1 = StaticWeightStream(
         obj_type=B._i8((sz_p0c1,)), initial_value=data_p1c1,
@@ -247,7 +245,13 @@ def build(act_in_external=None, return_program: bool = True):
     # the next inner_0_xt item that B is waiting on.
     top_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=5, name="m8_2t_top_xt")
     bot_to_cv2_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=5, name="m8_2t_bot_xt")
-    split_b_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=5, name="m8_2t_split_b_xt")
+    # split_b_xt delegated to tile B to make room on tile A for the chain
+    # context's larger inter-block input OF (depth=2 = 8 KB on tile A
+    # consumer side, vs per-block's depth=1 = 4 KB).
+    split_b_xt = ObjectFifo(
+        B._i8((in_w, 1, cp)), depth=5, name="m8_2t_split_b_xt",
+        delegate_tile=t_b,
+    )
     inner_0_out_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=3, name="m8_2t_inner0_xt")
 
     # ----- Tile B internal sliding-window OFs -----

@@ -30,13 +30,19 @@ def main():
     opts = p.parse_args()
 
     N = int(os.environ.get("CHAIN_N_SAMPLES", "1"))
+    chain_env = os.environ.get("CHAIN_BLOCKS", "").strip()
+    if chain_env:
+        chain_blocks = chain_env.split(",")
+    else:
+        chain_blocks = ["m0","m1","m2","m3","m4","m5","m6","m7","m8","m9","m10"]
+    last_block_name = chain_blocks[-1]
 
     m0 = yolo_spec.block("m0")
     in_w, in_h, _ = m0.layers[0].in_shape
     IN_C_PADDED = 8
     in_bytes_per = in_w * in_h * IN_C_PADDED
 
-    last = yolo_spec.block("m10")
+    last = yolo_spec.block(last_block_name)
     last_shape = last.layers[-1].out_shape
     if last.topology == "head":
         out_bytes_per = max(4, ((int(np.prod(last_shape)) + 3) // 4) * 4)
