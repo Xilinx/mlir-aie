@@ -738,9 +738,12 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         pe_bias_buf = _bias(m_pe, c_total)
 
         # sv_row_acc: like sv_row but writes into (N, head_dim) accumulator.
+        # Both sv_row variants are built from yolo_m9_sv_row_vec.cc — same
+        # body via shared static inline, two extern C entries differing
+        # only in their dst-offset semantics. Reference the same .o.
         k_sv_row_acc = Kernel(
             "yolo_m9_sv_row_acc_i8_i8",
-            "yolo_m9_sv_row_acc.o",
+            "yolo_m9_sv_row.o",
             [
                 B._i8((head_dim, N_tokens)),  # V[h]
                 B._i8((chunk_rows, N_tokens)),  # softmaxed chunk in

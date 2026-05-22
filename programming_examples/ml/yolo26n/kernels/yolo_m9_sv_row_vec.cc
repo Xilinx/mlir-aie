@@ -1,7 +1,11 @@
 //===- yolo_m9_sv_row_vec.cc ---------------------------------*- C++ -*-===//
 //
 // Vectorized sv-matmul column kernel for the PSA attention. Drop-in
-// .o-level replacement for yolo_m9_sv_row.cc.
+// .o-level replacement for yolo_m9_sv_row.cc — exports BOTH
+// `yolo_m9_sv_row_i8_i8` and `yolo_m9_sv_row_acc_i8_i8` (same body, one
+// difference: the dst pointer + per-call output offset). The Makefile
+// builds this source once as yolo_m9_sv_row.o; m9_stage.py references
+// that same .o for both Kernel decls.
 //
 // For a single (head, n) output column, computes:
 //   out[c, n] = SRS_i8( sum_{m=0..N-1} V[c, m] * attn[n, m], rs_sv )
@@ -50,25 +54,11 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
   return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
 }
 
-extern "C" {
-
-void yolo_m9_sv_row_i8_i8(
+static __attribute__((always_inline)) inline void sv_row_body(
     int8_t *v_frame,
-    int8_t *attn_chunk,
-    int8_t *chunk_out,
-    const int32_t chunk_row,
-    const int32_t n_in_chunk,
-    const int32_t /*head_dim*/,
-    const int32_t /*N*/,
-    const int32_t right_shift) {
-#ifdef NOOP_KERNEL
-  return;
-#endif
-  event0();
-
-  const int8_t *__restrict attn_row = attn_chunk + chunk_row * kN;
-  int8_t *__restrict out_col = chunk_out + n_in_chunk * kHeadDim;
-
+    const int8_t *__restrict attn_row,
+    int8_t *__restrict out_col,
+    int32_t right_shift) {
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::positive_inf);
 
@@ -117,7 +107,46 @@ void yolo_m9_sv_row_i8_i8(
     out_col[c_base + 2] = (int8_t)r2;
     out_col[c_base + 3] = (int8_t)r3;
   }
+}
 
+extern "C" {
+
+// Chunk-relative variant: writes into chunk_out[n_in_chunk * head_dim, :].
+void yolo_m9_sv_row_i8_i8(
+    int8_t *v_frame,
+    int8_t *attn_chunk,
+    int8_t *chunk_out,
+    const int32_t chunk_row,
+    const int32_t n_in_chunk,
+    const int32_t /*head_dim*/,
+    const int32_t /*N*/,
+    const int32_t right_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
+  event0();
+  sv_row_body(v_frame, attn_chunk + chunk_row * kN,
+              chunk_out + n_in_chunk * kHeadDim, right_shift);
+  event1();
+}
+
+// Absolute variant: writes into acc_out[n_global * head_dim, :]. Same
+// math as sv_row, only the output offset differs.
+void yolo_m9_sv_row_acc_i8_i8(
+    int8_t *v_frame,
+    int8_t *attn_chunk,
+    int8_t *acc_out,
+    const int32_t chunk_row,
+    const int32_t n_global,
+    const int32_t /*head_dim*/,
+    const int32_t /*N*/,
+    const int32_t right_shift) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
+  event0();
+  sv_row_body(v_frame, attn_chunk + chunk_row * kN,
+              acc_out + n_global * kHeadDim, right_shift);
   event1();
 }
 

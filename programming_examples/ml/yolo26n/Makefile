@@ -84,7 +84,7 @@ KERNEL_OBJS += $(foreach blk,$(CHUNKED_CONV_BLOCKS), \
                  $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_$(blk).o)
 
 M9_KERNELS := cv1_split qkv qkv_pack qk_pack qk_row attn_scale softmax_row \
-              v_pack sv_row sv_row_acc pe_add_row proj_skip_row \
+              v_pack sv_row pe_add_row proj_skip_row \
               ffn_0_silu_row ffn_1_skip_row cv2_concat2_streamed
 KERNEL_OBJS += $(foreach k,$(M9_KERNELS),$(BUILD)/yolo_m9_$(k).o)
 
