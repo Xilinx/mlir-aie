@@ -19,6 +19,8 @@ gelu, silu, swiglu, ...).
 
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 
 _DEFAULT_RTOL = 0.128
@@ -82,3 +84,53 @@ def count_mismatches(
         stop = len(a32)
     ok = nearly_equal(a32[:stop], r32[:stop], rtol=rtol, atol=atol)
     return int(np.size(ok) - np.count_nonzero(ok)), stop
+
+
+def assert_pass(
+    actual,
+    expected,
+    *,
+    rtol: float | None = None,
+    atol: float | None = None,
+    fail_msg: str | None = None,
+    print_pass: bool = True,
+) -> None:
+    """Verify ``actual`` matches ``expected``; print ``PASS!`` on success.
+
+    Replaces the ``if not np.array_equal(actual, expected):
+    sys.exit("FAIL! ..."); print("PASS!")`` idiom that the programming
+    examples used to repeat verbatim.
+
+    Args:
+        actual, expected: Array-likes (numpy arrays, scalars, lists).
+        rtol, atol: Tolerance bounds for the bf16/LUT-style comparator
+            (see :func:`count_mismatches`).  When both are ``None``
+            (the default), use ``np.array_equal`` for an exact compare
+            — the right choice for integer and bit-exact pipelines.
+            Pass ``rtol=`` (and/or ``atol=``) to opt into the
+            tolerance comparator.
+        fail_msg: Optional context appended to the ``FAIL!`` line that
+            ``sys.exit()`` raises on mismatch.
+        print_pass: When ``True`` (default), print ``PASS!`` on success.
+            Set to ``False`` to do the verify check but defer the
+            success banner — useful when you want to print benchmark
+            stats first and then the ``PASS!`` line.
+
+    Raises:
+        SystemExit: On mismatch (via ``sys.exit``) — exits with the
+            ``"FAIL!"`` message as the status string.
+    """
+    if rtol is None and atol is None:
+        ok = bool(np.array_equal(actual, expected))
+    else:
+        errors, _ = count_mismatches(
+            actual,
+            expected,
+            rtol=rtol if rtol is not None else _DEFAULT_RTOL,
+            atol=atol,
+        )
+        ok = errors == 0
+    if not ok:
+        sys.exit("FAIL!" if fail_msg is None else f"FAIL! {fail_msg}")
+    if print_pass:
+        print("PASS!")
