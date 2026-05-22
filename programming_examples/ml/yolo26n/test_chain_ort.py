@@ -54,8 +54,11 @@ def _expose_quantize_outputs(model):
     return model
 
 
-# Chain endpoints — must match aie2_yolo_iron_partial.CHAIN_BLOCKS.
-LAST_BLOCK = "m10"
+# Chain endpoints — derived from CHAIN_BLOCKS env, mirroring the builder
+# in aie2_yolo_iron_partial.py. Empty/unset = full m0..m10. Set e.g.
+# CHAIN_BLOCKS=m0,m1,m2 to bit-exact-test a partial chain.
+_chain_env = os.environ.get("CHAIN_BLOCKS", "").strip()
+LAST_BLOCK = _chain_env.split(",")[-1] if _chain_env else "m10"
 LAST_N = int(LAST_BLOCK[1:])
 
 

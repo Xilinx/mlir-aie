@@ -172,6 +172,18 @@ $(BUILD)/.m9_stage: FORCE
 	    echo "$$new" > $@; \
 	  fi
 
+# Same stamp pattern for CHAIN_BLOCKS — selects which subset of blocks the
+# chain MLIR emits. Empty = builder default (m0..m10); e.g. CHAIN_BLOCKS=m0,m1
+# brings up just those two for bisect-style debug.
+CHAIN_BLOCKS ?=
+$(BUILD)/.chain_blocks: FORCE
+	@mkdir -p $(BUILD)
+	@new="$(CHAIN_BLOCKS)"; old=$$(cat $@ 2>/dev/null || echo ""); \
+	  if [ "$$old" != "$$new" ]; then \
+	    echo "[chain] CHAIN_BLOCKS = '$$new' (was '$${old}'); chain MLIR will rebuild"; \
+	    echo "$$new" > $@; \
+	  fi
+
 # Per-block ablation: pass `NOOP_BLOCK="m0 m1 ..."` (space-separated) to
 # compile those blocks' kernels with -DNOOP_KERNEL. The kernel's extern "C"
 # entry early-returns, preserving the chain's DMA/lock pattern while
@@ -407,9 +419,10 @@ CHAIN_XCLBIN := $(BUILD)/final_chain.xclbin
 CHAIN_INSTS  := $(BUILD)/insts_chain.bin
 
 $(CHAIN_MLIR): $(SRCDIR)/aie2_yolo_iron_partial.py $(SRCDIR)/aie2_yolo_per_block.py \
-               $(DATA)/manifest.json $(SILU_LUTS) $(BUILD)/.chain_n_samples
+               $(DATA)/manifest.json $(SILU_LUTS) $(BUILD)/.chain_n_samples \
+               $(BUILD)/.chain_blocks
 	mkdir -p $(BUILD)
-	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) \
+	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
 	    python3 aie2_yolo_iron_partial.py > $@
 
 $(CHAIN_XCLBIN) $(CHAIN_INSTS): $(CHAIN_MLIR) $(KERNEL_OBJS)
@@ -421,12 +434,12 @@ $(CHAIN_XCLBIN) $(CHAIN_INSTS): $(CHAIN_MLIR) $(KERNEL_OBJS)
 chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
 
 run_chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
-	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) \
+	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
 	    python3 test_chain_ort.py -x $(CHAIN_XCLBIN) -i $(CHAIN_INSTS) -k MLIR_AIE
 
 # Chain timing. For batched throughput, set CHAIN_N_SAMPLES at the make line.
 time_chain: $(CHAIN_XCLBIN) $(CHAIN_INSTS)
-	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) \
+	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
 	    python3 scripts/time_chain.py -x $(CHAIN_XCLBIN) -i $(CHAIN_INSTS) \
 	    -k MLIR_AIE $(TIME_ARGS)
 
