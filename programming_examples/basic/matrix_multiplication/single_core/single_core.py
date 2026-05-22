@@ -40,7 +40,7 @@ from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
 from aie.utils.trace import TraceConfig
-from aie.utils.verify import count_mismatches
+from aie.utils.verify import assert_pass
 
 
 def ceildiv(a, b):
@@ -304,13 +304,18 @@ def _run_and_verify(opts):
     actual = C_t.numpy().reshape(opts.M, opts.N)
 
     if np.issubdtype(dtype_out, np.integer):
-        ok = np.array_equal(actual, expected)
+        assert_pass(
+            actual, expected, fail_msg="output does not match A @ B", print_pass=False
+        )
     else:
-        errors, _ = count_mismatches(actual, expected, rtol=0.05, atol=0.5)
-        ok = errors == 0
-
-    if not ok:
-        sys.exit("FAIL! output does not match A @ B")
+        assert_pass(
+            actual,
+            expected,
+            rtol=0.05,
+            atol=0.5,
+            fail_msg="output does not match A @ B",
+            print_pass=False,
+        )
 
     print()
     print_benchmark(bench)

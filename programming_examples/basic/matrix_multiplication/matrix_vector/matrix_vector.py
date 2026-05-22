@@ -31,6 +31,7 @@ from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
@@ -188,8 +189,7 @@ def _run_and_verify(opts):
 
     expected = (A_np.astype(np.int64) @ B_np.astype(np.int64)).astype(np.int32)
     actual = C_t.numpy().reshape(opts.M)
-    if not np.array_equal(actual, expected):
-        sys.exit("FAIL! output does not match A @ b")
+    assert_pass(actual, expected, fail_msg="output does not match A @ b", print_pass=False)
 
     print()
     print_benchmark(bench)

@@ -36,6 +36,7 @@ from aie.iron.device import Tile, from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 
 def _device_for(dev_str, n_aie_cols):
@@ -432,20 +433,22 @@ def _run_and_verify(opts):
         iters=opts.iters,
     )
 
+    actual = C_t.numpy().reshape(opts.M, opts.N)
     if np.issubdtype(dtype_out, np.integer):
         expected = (A_np.astype(np.int64) @ B_np.astype(np.int64)).astype(dtype_out)
-        ok = np.array_equal(C_t.numpy().reshape(opts.M, opts.N), expected)
-    else:
-        from aie.utils.verify import count_mismatches
-
-        expected = (A_np.astype(np.float32) @ B_np.astype(np.float32)).astype(dtype_out)
-        errors, _ = count_mismatches(
-            C_t.numpy().reshape(opts.M, opts.N), expected, rtol=0.05, atol=0.5
+        assert_pass(
+            actual, expected, fail_msg="output does not match A @ B", print_pass=False
         )
-        ok = errors == 0
-
-    if not ok:
-        sys.exit("FAIL! output does not match A @ B")
+    else:
+        expected = (A_np.astype(np.float32) @ B_np.astype(np.float32)).astype(dtype_out)
+        assert_pass(
+            actual,
+            expected,
+            rtol=0.05,
+            atol=0.5,
+            fail_msg="output does not match A @ B",
+            print_pass=False,
+        )
 
     print()
     print_benchmark(bench)

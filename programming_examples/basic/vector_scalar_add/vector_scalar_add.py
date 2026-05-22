@@ -29,6 +29,7 @@ from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -117,9 +118,7 @@ def _run_and_verify(opts):
 
     expected = in_np + 1
     actual = out_t.numpy()
-    if not np.array_equal(actual, expected):
-        sys.exit("FAIL! output does not match in + 1")
-    print("PASS!")
+    assert_pass(actual, expected, fail_msg="output does not match in + 1")
 
 
 def main():

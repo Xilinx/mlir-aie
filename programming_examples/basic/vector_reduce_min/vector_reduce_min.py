@@ -27,6 +27,7 @@ from aie.iron import Compile, In, Out, kernels
 from aie.iron.algorithms import reduce_typed
 from aie.iron.device import from_name
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -75,10 +76,7 @@ def _run_and_verify(opts):
 
     expected = np.array([in_np.min()], dtype=np.int32)
     actual = out_t.numpy()
-    if not np.array_equal(actual, expected):
-        sys.exit(f"FAIL! expected {expected[0]}, got {actual[0]}")
-
-    print("PASS!")
+    assert_pass(actual, expected, fail_msg=f"expected {expected[0]}, got {actual[0]}")
 
 
 def main():

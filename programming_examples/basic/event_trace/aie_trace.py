@@ -39,6 +39,7 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 from aie.utils.trace.events import (
     CoreEvent,
     MemEvent,
@@ -184,9 +185,7 @@ def _run_and_verify(opts):
     aie_trace(a_t, f_t, c_t, **_compile_kwargs(opts))
 
     expected = a_np * 3
-    if not np.array_equal(c_t.numpy(), expected):
-        sys.exit("FAIL! output does not match a * factor")
-    print("PASS!")
+    assert_pass(c_t.numpy(), expected, fail_msg="output does not match a * factor")
 
 
 def main():

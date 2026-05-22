@@ -28,6 +28,7 @@ from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import XCVC1902
 from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.verify import assert_pass
 
 
 def _build_design(dev, num_elements, dtype):
@@ -127,8 +128,7 @@ def main():
     )
 
     expected = input0.numpy() * input1.numpy()
-    if not np.array_equal(expected, output.numpy()):
-        sys.exit("FAIL! output does not match a * b")
+    assert_pass(expected, output.numpy(), fail_msg="output does not match a * b", print_pass=False)
 
     print()
     print_benchmark(bench)

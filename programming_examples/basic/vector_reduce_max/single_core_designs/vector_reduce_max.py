@@ -31,6 +31,7 @@ from aie.iron import Compile, In, Out, kernels, str_to_dtype
 from aie.iron.algorithms import reduce_typed
 from aie.iron.device import from_name
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -113,10 +114,7 @@ def _run_and_verify(opts):
 
     expected_max = in_np.max()
     actual_max = out_t.numpy()[0]  # the first slot holds the reduction result
-    if actual_max != expected_max:
-        sys.exit(f"FAIL! expected {expected_max}, got {actual_max}")
-
-    print("PASS!")
+    assert_pass(actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}")
 
 
 def main():

@@ -44,6 +44,7 @@ from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -231,9 +232,7 @@ def _run_and_verify(opts):
 
     expected_max = in_np.max()
     actual_max = out_t.numpy()[0]
-    if actual_max != expected_max:
-        sys.exit(f"FAIL! expected {expected_max}, got {actual_max}")
-    print("PASS!")
+    assert_pass(actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}")
 
 
 def main():

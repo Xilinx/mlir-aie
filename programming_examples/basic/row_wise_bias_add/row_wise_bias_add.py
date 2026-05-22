@@ -33,6 +33,7 @@ from aie.iron.device import from_name
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 _KERNEL_SRC = str(Path(__file__).parent / "kernel.cc")
 
@@ -135,9 +136,7 @@ def _run_and_verify(opts):
 
     expected = (in_np + bias_np[None, :]).reshape(-1)
     actual = out_t.numpy()
-    if not np.array_equal(actual, expected):
-        sys.exit("FAIL! output does not match in + bias (per-row)")
-    print("PASS!")
+    assert_pass(actual, expected, fail_msg="output does not match in + bias (per-row)")
 
 
 def main():

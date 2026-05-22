@@ -32,6 +32,7 @@ from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -124,9 +125,7 @@ def _run_and_verify(opts):
         .access_order()
         .flatten()
     )
-    if not np.array_equal(out_t.numpy(), expected):
-        sys.exit("FAIL! output does not match TensorTiler2D.simple_tiler access order")
-    print("PASS!")
+    assert_pass(out_t.numpy(), expected, fail_msg="output does not match TensorTiler2D.simple_tiler access order")
 
 
 def main():

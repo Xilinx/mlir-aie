@@ -36,6 +36,7 @@ from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime
 from aie.iron.device import AnyShimTile, Tile, from_name
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 LINE_SIZE = 1024  # transfer chunk; N must be a multiple of this
 
@@ -164,9 +165,7 @@ def _run_and_verify(opts):
 
     passthrough_dmas(a_t, b_t, c_t, **_compile_kwargs(opts))
 
-    if not np.array_equal(c_t.numpy(), in_np):
-        sys.exit("FAIL! output does not match input")
-    print("PASS!")
+    assert_pass(c_t.numpy(), in_np, fail_msg="output does not match input")
 
 
 def main():

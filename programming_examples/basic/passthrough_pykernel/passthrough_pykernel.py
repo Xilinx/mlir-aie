@@ -34,6 +34,7 @@ from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.helpers.dialects.func import func
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 VECTOR_SIZE = 4096
 LINE_SIZE = VECTOR_SIZE // 4
@@ -115,10 +116,7 @@ def _run_and_verify(opts):
 
     expected = in_np
     actual = out_t.numpy()
-    if not np.array_equal(actual, expected):
-        sys.exit("FAIL! output does not match input")
-
-    print("PASS!")
+    assert_pass(actual, expected, fail_msg="output does not match input")
 
 
 def main():

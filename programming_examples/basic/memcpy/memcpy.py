@@ -26,6 +26,7 @@ from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, ker
 from aie.iron.device import from_name
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -186,9 +187,7 @@ def _run_and_verify(opts):
 
     memcpy(a_t, b_t, **_compile_kwargs(opts))
 
-    if not np.array_equal(b_t.numpy(), in_np):
-        sys.exit("FAIL! output does not match input")
-    print("PASS!")
+    assert_pass(b_t.numpy(), in_np, fail_msg="output does not match input")
 
 
 def main():

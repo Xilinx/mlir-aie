@@ -26,6 +26,7 @@ from aie.iron import (
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import print_cycles_summary
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -126,8 +127,7 @@ def main():
         iters=iters,
     )
 
-    if not np.array_equal(in_tensor.numpy(), out_tensor.numpy()):
-        sys.exit("FAIL! output does not match input")
+    assert_pass(out_tensor.numpy(), in_tensor.numpy(), fail_msg="output does not match input", print_pass=False)
 
     print()
     print_benchmark(bench)

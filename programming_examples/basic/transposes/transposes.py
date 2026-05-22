@@ -51,6 +51,7 @@ from aie.iron.device import AnyComputeTile, from_name
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.verify import assert_pass
 
 _KERNELS_DIR = Path(__file__).parent / "aie_kernels"
 _SHUFFLE_SRC = str(_KERNELS_DIR / "shuffle_16x16.cc")
@@ -371,9 +372,7 @@ def _run_and_verify(opts):
 
     expected = in_np.T.reshape(-1)
     actual = c_t.numpy()
-    if not np.array_equal(actual, expected):
-        sys.exit("FAIL! output does not match transpose(in)")
-    print("PASS!")
+    assert_pass(actual, expected, fail_msg="output does not match transpose(in)")
 
 
 def main():
