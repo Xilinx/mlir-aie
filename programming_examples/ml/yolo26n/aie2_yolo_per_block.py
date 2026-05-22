@@ -274,6 +274,10 @@ def _build_m0(act_in, manifest):
             k_m0,
         ],
         tile=placement.PLACEMENT["m0"],
+        # Deep-opt vec kernel holds 2 × 576 B weight pack buffers
+        # (OCx2 fold) on stack; default 1 KB stack would overflow
+        # silently (the symptom is a NPU dispatch timeout).
+        stack_size=4096,
     )
     return act_out, [w_m0]
 

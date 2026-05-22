@@ -214,10 +214,12 @@ $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8.o: \
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m1) -c $< -o $@
 
 # Phase 3b: m0 stem vectorized (3x3 stride-2, OIYX raw, in_c=3 padded to 8).
+# Deep-opt pass: compile-time shape #defines + OCx2 fold + 2-way x_tile split.
+M0_SHAPE := -DYOLO_M0_IN_W=512 -DYOLO_M0_IN_C=8 -DYOLO_M0_OUT_C=16
 $(BUILD)/yolo_m0_conv2dk3_silu_bias.o: \
     $(SRCDIR)/kernels/yolo_m0_conv2dk3_silu_bias_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m0) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M0_SHAPE) $(NOOP_FLAGS_m0) -c $< -o $@
 
 # Phase 3c: m10 head conv+pool vectorized (1x1 256->1280 + GAP). Explicit
 # rule overrides the yolo_m10_%.o pattern since the .cc base name differs

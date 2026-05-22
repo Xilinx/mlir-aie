@@ -1,15 +1,25 @@
 //===- yolo_m0_conv2dk3_silu_bias_vec.cc ---------------------------*- C++ -*-===//
 //
-// Vectorized stem kernel for m0: 3x3 stride-2 INT8 conv, in_c=3 (padded to 8),
-// raw OIYX weight layout (NOT OIYXI8O8 because in_c=3 is not 8-aligned).
-// Drop-in .o-level replacement for yolo_m0_conv2dk3_silu_bias.cc.
+// Deep-opt vectorized stem kernel for m0: 3x3 stride-2 INT8 conv, raw OIYX
+// weight layout (in_c=3 padded to 8 — not OIYXI8O8 since in_c isn't
+// 8-aligned). Drop-in .o-level replacement.
 //
-// Inner reduction uses aie::mmul<4, 8, 8, int8, int8>. The B operand is
-// built once per (oc_tile, ky, kx) from the OIYX raw weights, packing
-// 8 ic_inner (only 3 valid + 5 zero-padded) x 8 oc_inner into a 64-byte
-// vector. Padding for in_c is host-managed (the IRON design hands us
-// (in_w, 1, 8) int8 inputs with the high 5 channels zero), so the kernel
-// can treat in_c=8 throughout.
+// Inner reduction: aie::mmul<4, 8, 8, int8, int8>. The B-operand is
+// pre-packed once per (oc_tile) into a 9×64-byte buffer covering all
+// 3×3 (ky, kx) tiles. K=8 with only 3 real ic + 5 zero-padded ic
+// (host-managed) means 62.5% of the K throughput is wasted on zeros;
+// fixing that needs a smaller-K mmul + host weight re-pack (Phase 2).
+//
+// Deep-opt levers in this pass:
+//   - Compile-time shape #defines: in_w=512, in_c=8, out_c=16, K=3.
+//     Folds all addressing into shifts/immediates, dead-strips the
+//     scalar tail (out_w=256 always divides 4).
+//   - 2-way x_tile split: x_tile=0 is the only left-edge case
+//     (x_in_col -1 for kx=0); x_tile in [1..63] is interior, branch-free.
+//   - OC×2 fold: both oc tiles in lockstep per (x_tile, ky, kx) — the
+//     A-gather is shared across both, B-loads alternate. Halves the
+//     gather work.
+//   - AIE_LOOP_RANGE hints with exact trip counts.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,7 +31,34 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
 #include "yolo_m0_conv2dk3_silu_bias.h"
+
+#ifndef YOLO_M0_IN_W
+#error "YOLO_M0_IN_W must be defined at compile time"
+#endif
+#ifndef YOLO_M0_IN_C
+#error "YOLO_M0_IN_C must be defined at compile time"
+#endif
+#ifndef YOLO_M0_OUT_C
+#error "YOLO_M0_OUT_C must be defined at compile time"
+#endif
+
+static constexpr int kInW   = YOLO_M0_IN_W;
+static constexpr int kInC   = YOLO_M0_IN_C;
+static constexpr int kOutC  = YOLO_M0_OUT_C;
+static constexpr int kKW    = 3;
+static constexpr int kKH    = 3;
+
+static constexpr int kOutW    = kInW / 2;
+static constexpr int kOcTiles = kOutC / 8;
+static constexpr int kXTiles  = kOutW / 4;
+
+static_assert(kInW % 2 == 0,  "M0 IN_W must be even (stride 2)");
+static_assert(kInC == 8,      "M0 IN_C must be 8 (3 real + 5 zero-pad)");
+static_assert(kOutC % 8 == 0, "M0 OUT_C must be multiple of 8");
+static_assert(kOutW % 4 == 0, "M0 OUT_W must be multiple of 4");
+static_assert(kOcTiles >= 2,  "M0 deep-opt assumes oc_tiles >= 2 (OCx2 fold)");
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -30,144 +67,190 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
   return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
 }
 
-// OIYX raw weight index: byte[oc][ic][ky][kx].
-static inline int wts_idx_oiyx(int oc_full, int ic_full, int ky, int kx,
-                               int in_c, int kH, int kW) {
-  return ((oc_full * in_c + ic_full) * kH + ky) * kW + kx;
+static inline int wts_idx_oiyx(int oc_full, int ic_full, int ky, int kx) {
+  // OIYX raw: byte[oc][ic][ky][kx]. in_c=8 padded.
+  return ((oc_full * kInC + ic_full) * kKH + ky) * kKW + kx;
+}
+
+using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+
+// Pack the 9 (ky, kx) weight tiles for one oc_tile into a contiguous
+// 9 × 64-byte buffer in row-major [ic_inner=8][oc_inner=8] order so a
+// single aie::load_v<64> per (ky, kx) yields the mmul.B vector.
+static __attribute__((always_inline)) inline void pack_wts(
+    const int8_t *__restrict wts, int oc_tile_base,
+    int8_t *__restrict wbuf) {
+  // No UNROLL_FULL — peano blows up compile time on 9×8×8=576 unrolled
+  // iters and the pack runs once per (oc_tile) per call, dwarfed by
+  // the inner mmul work anyway.
+  for (int ky = 0; ky < kKH; ++ky) {
+    for (int kx = 0; kx < kKW; ++kx) {
+      int wt_off = (ky * kKW + kx) * 64;
+      for (int ii = 0; ii < 8; ++ii) {
+        for (int oo = 0; oo < 8; ++oo) {
+          wbuf[wt_off + ii * 8 + oo] =
+              wts[wts_idx_oiyx(oc_tile_base + oo, ii, ky, kx)];
+        }
+      }
+    }
+  }
+}
+
+// Gather 4 contiguous x_outs × 8 ic_inner from one input line into a
+// 32-byte aligned a_buf. Caller is responsible for `col` being in range
+// (interior path) — the edge path zeros out-of-range bytes.
+static __attribute__((always_inline)) inline void gather_interior(
+    const int8_t *__restrict line_ptr, int x_in_base, int kx,
+    int8_t *__restrict a_buf) {
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < 4; ++p) {
+    const int col = x_in_base + 2 * p + kx;
+    const int8_t *__restrict src = line_ptr + col * kInC;
+    // 8-byte block copy; peano lowers to a single 64-bit load/store pair.
+    for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+  }
+}
+
+static __attribute__((always_inline)) inline void gather_edge(
+    const int8_t *__restrict line_ptr, int x_in_base, int kx,
+    int8_t *__restrict a_buf,
+    bool &any_valid) {
+  any_valid = false;
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < 4; ++p) {
+    const int col = x_in_base + 2 * p + kx;
+    if (col < 0 || col >= kInW) {
+      for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+    } else {
+      const int8_t *__restrict src = line_ptr + col * kInC;
+      for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+      any_valid = true;
+    }
+  }
+}
+
+// Per-OC×2 epilog: bias + SRS + clip + SiLU LUT for 8 lanes.
+static __attribute__((always_inline)) inline void emit_8_lanes(
+    aie::vector<int32, 32> &acc_vec,
+    const int32_t *__restrict bias, const int8_t *__restrict silu_lut,
+    int8_t *__restrict output, int oc_full_base, int x_out_base,
+    int right_shift) {
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < 4; ++p) {
+    int x_out = x_out_base + p;
+    int8_t *__restrict row_dst = output + x_out * kOutC + oc_full_base;
+    AIE_LOOP_UNROLL_FULL
+    for (int j = 0; j < 8; ++j) {
+      int32_t s = acc_vec[p * 8 + j] + bias[oc_full_base + j];
+      int32_t sr = banker_srs(s, right_shift);
+      if (sr > I8_MAX) sr = I8_MAX;
+      if (sr < I8_MIN) sr = I8_MIN;
+      row_dst[j] = silu_lut[sr + 128];
+    }
+  }
 }
 
 static void
 yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
     int8_t *line0, int8_t *line1, int8_t *line2,
     int8_t *wts, int32_t *bias, int8_t *silu_lut, int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
+    const int32_t /*input_width*/,
+    const int32_t /*input_channels*/,
+    const int32_t /*output_channels*/,
+    const int32_t /*kernel_width*/,
+    const int32_t /*kernel_height*/,
     const int32_t border,
     const int32_t right_shift,
     const int32_t /*padding*/) {
   event0();
 
-  const int32_t output_width = input_width / 2;
   const bool skip_top = (border == 0);
   const bool skip_bot = (border == 2);
   const int ky_start = skip_top ? 1 : 0;
   const int ky_end = skip_bot ? 2 : 3;
 
-  // m0: input_channels is the *padded* width (= 8). The OIYX raw weights
-  // index uses the ORIGINAL channel count (= 3), but the IRON design
-  // pre-zeros channels 3..7 in the input so we can compute with the
-  // padded width and rely on those zeros to make ic 3..7 contributions
-  // vanish. To keep things simple here, we pack the weight into 8 ic_inner
-  // slots (loading 3 real + 5 zero-padded) and treat the conv as in_c=8.
-  const int oc_tiles = output_channels / 8;
-  const int x_tiles = output_width / 4;
-
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::positive_inf);
 
-  using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+  const int8_t *__restrict line[3] = {line0, line1, line2};
 
-  int8_t *line[3] = {line0, line1, line2};
+  // Per (oc_tile_pair) — both oc_tiles in lockstep (OC×2 fold). For
+  // m0 oc_tiles=2 so the outer loop is 1 iter; structuring it this way
+  // keeps the body amenable to oc_tiles=4 (out_c=32) callers in the future.
+  AIE_LOOP_RANGE(kOcTiles / 2, kOcTiles / 2)
+  for (int oc_pair = 0; oc_pair < kOcTiles / 2; ++oc_pair) {
+    alignas(32) int8_t wbuf_a[9 * 64];
+    alignas(32) int8_t wbuf_b[9 * 64];
+    pack_wts(wts, (oc_pair * 2 + 0) * 8, wbuf_a);
+    pack_wts(wts, (oc_pair * 2 + 1) * 8, wbuf_b);
+    const int oc_full_base_a = (oc_pair * 2 + 0) * 8;
+    const int oc_full_base_b = (oc_pair * 2 + 1) * 8;
 
-  // For each oc_tile and each (ky, kx), pre-pack the 8 ic_inner x 8 oc_inner
-  // weight tile as a 64-byte vector. Weights have shape (out_c, 3, 3, 3) with
-  // in_c=3 — we pack the first 3 ic_inner slots from OIYX bytes and zero the
-  // remaining 5. Pack lazily inside the loop to avoid a large prepass buffer.
+    // ----- Left edge: x_tile=0, x_in cols ∈ {-1, 1, 3, 5} + kx. kx=0
+    // gives col=-1 → zeroed; kx in {1,2} gives all valid. Only this
+    // tile needs the bounds check.
+    {
+      MMUL4x8x8 acc_a, acc_b;
+      acc_a = aie::zeros<acc32, 32>();
+      acc_b = aie::zeros<acc32, 32>();
 
-  for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
-    // Pre-pack the 9 (ky, kx) weight tiles for this oc_tile into a contiguous
-    // 9 * 64-byte buffer. Reused across all x_tiles.
-    // OIYX is sized (out_c, in_c_padded=input_channels=8, kH, kW). The host
-    // pre-pads channels 3..7 with zeros — we read the full 8-channel buffer.
-    alignas(32) int8_t wbuf[9 * 64];
-    for (int ky = 0; ky < kernel_height; ++ky) {
-      for (int kx = 0; kx < kernel_width; ++kx) {
-        int wt_off = (ky * kernel_width + kx) * 64;
-        for (int ii = 0; ii < 8; ++ii) {
-          for (int oo = 0; oo < 8; ++oo) {
-            int oc_full = oc_t * 8 + oo;
-            wbuf[wt_off + ii * 8 + oo] = wts[wts_idx_oiyx(
-                oc_full, ii, ky, kx, input_channels, kernel_height, kernel_width)];
-          }
+      const int x_out_base = 0;
+      const int x_in_base = -1;
+
+      AIE_LOOP_RANGE(1, 3)
+      for (int ky = ky_start; ky < ky_end; ++ky) {
+        const int8_t *__restrict line_ptr = line[ky];
+        AIE_LOOP_RANGE(3, 3)
+        for (int kx = 0; kx < kKW; ++kx) {
+          alignas(32) int8_t a_buf[32];
+          bool any_valid;
+          gather_edge(line_ptr, x_in_base, kx, a_buf, any_valid);
+          if (!any_valid) continue;
+          aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+          int wt_off = (ky * kKW + kx) * 64;
+          acc_a.mac(in_a, aie::load_v<64>(&wbuf_a[wt_off]));
+          acc_b.mac(in_a, aie::load_v<64>(&wbuf_b[wt_off]));
         }
       }
+
+      aie::vector<int32, 32> acc_vec_a = acc_a.template to_vector<int32>();
+      aie::vector<int32, 32> acc_vec_b = acc_b.template to_vector<int32>();
+      emit_8_lanes(acc_vec_a, bias, silu_lut, output, oc_full_base_a,
+                   x_out_base, right_shift);
+      emit_8_lanes(acc_vec_b, bias, silu_lut, output, oc_full_base_b,
+                   x_out_base, right_shift);
     }
 
-    for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
-      MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+    // ----- Interior: x_tile ∈ [1, kXTiles). Branch-free gather. ----
+    AIE_LOOP_RANGE(kXTiles - 1, kXTiles - 1)
+    for (int x_tile = 1; x_tile < kXTiles; ++x_tile) {
+      MMUL4x8x8 acc_a, acc_b;
+      acc_a = aie::zeros<acc32, 32>();
+      acc_b = aie::zeros<acc32, 32>();
 
       const int x_out_base = x_tile * 4;
       const int x_in_base = 2 * x_out_base - 1;
 
+      AIE_LOOP_RANGE(1, 3)
       for (int ky = ky_start; ky < ky_end; ++ky) {
-        int8_t *line_ptr = line[ky];
-
-        for (int kx = 0; kx < kernel_width; ++kx) {
+        const int8_t *__restrict line_ptr = line[ky];
+        AIE_LOOP_RANGE(3, 3)
+        for (int kx = 0; kx < kKW; ++kx) {
           alignas(32) int8_t a_buf[32];
-          bool any_valid = false;
-          for (int p = 0; p < 4; ++p) {
-            int col = x_in_base + 2 * p + kx;
-            if (col < 0 || col >= input_width) {
-              for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
-            } else {
-              int8_t *src = line_ptr + col * input_channels;
-              for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
-              any_valid = true;
-            }
-          }
-          if (!any_valid) continue;
+          gather_interior(line_ptr, x_in_base, kx, a_buf);
           aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-
-          int wt_off = (ky * kernel_width + kx) * 64;
-          aie::vector<int8, 64> in_b = aie::load_v<64>(&wbuf[wt_off]);
-          acc.mac(in_a, in_b);
+          int wt_off = (ky * kKW + kx) * 64;
+          acc_a.mac(in_a, aie::load_v<64>(&wbuf_a[wt_off]));
+          acc_b.mac(in_a, aie::load_v<64>(&wbuf_b[wt_off]));
         }
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
-      for (int p = 0; p < 4; ++p) {
-        int x_out = x_out_base + p;
-        for (int j = 0; j < 8; ++j) {
-          int oc_full = oc_t * 8 + j;
-          int32_t s = acc_vec[p * 8 + j] + bias[oc_full];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
-          output[x_out * output_channels + oc_full] = silu_lut[sr + 128];
-        }
-      }
-    }
-
-    // Tail outputs scalar fallback (in case output_width % 4 != 0).
-    for (int x = x_tiles * 4; x < output_width; ++x) {
-      for (int j = 0; j < 8; ++j) {
-        int oc_full = oc_t * 8 + j;
-        int32_t sum = bias[oc_full];
-        for (int ic_full = 0; ic_full < input_channels; ++ic_full) {
-          for (int kx = 0; kx < kernel_width; ++kx) {
-            int col = 2 * x - 1 + kx;
-            if (col < 0 || col >= input_width) continue;
-            int in_indx = col * input_channels + ic_full;
-            int w0 = wts[wts_idx_oiyx(oc_full, ic_full, 0, kx, input_channels,
-                                      kernel_height, kernel_width)];
-            int w1 = wts[wts_idx_oiyx(oc_full, ic_full, 1, kx, input_channels,
-                                      kernel_height, kernel_width)];
-            int w2 = wts[wts_idx_oiyx(oc_full, ic_full, 2, kx, input_channels,
-                                      kernel_height, kernel_width)];
-            if (!skip_top) sum += line0[in_indx] * w0;
-            sum += line1[in_indx] * w1;
-            if (!skip_bot) sum += line2[in_indx] * w2;
-          }
-        }
-        int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
-        output[x * output_channels + oc_full] = silu_lut[sr + 128];
-      }
+      aie::vector<int32, 32> acc_vec_a = acc_a.template to_vector<int32>();
+      aie::vector<int32, 32> acc_vec_b = acc_b.template to_vector<int32>();
+      emit_8_lanes(acc_vec_a, bias, silu_lut, output, oc_full_base_a,
+                   x_out_base, right_shift);
+      emit_8_lanes(acc_vec_b, bias, silu_lut, output, oc_full_base_b,
+                   x_out_base, right_shift);
     }
   }
 
@@ -188,9 +271,6 @@ void yolo_m0_conv2dk3_stride2_silu_bias_i8_i8(
     const int32_t right_shift,
     const int32_t padding) {
 #ifdef NOOP_KERNEL
-  // Ablation: skip all compute so the chain runs the same DMA/lock pattern
-  // but this block contributes ~0 ms. Output is garbage; bit-exactness fails
-  // by design — only chain wall-clock is meaningful.
   (void)line0; (void)line1; (void)line2; (void)wts; (void)bias; (void)silu_lut;
   (void)output; (void)input_width; (void)input_channels; (void)output_channels;
   (void)kernel_width; (void)kernel_height; (void)border; (void)right_shift; (void)padding;
