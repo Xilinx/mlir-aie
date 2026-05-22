@@ -34,6 +34,7 @@ from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 
 
@@ -81,20 +82,13 @@ def matrix_scalar_add(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Matrix Scalar Add")
-    p.add_argument(
-        "-d", "--dev", type=str, choices=["npu", "npu2", "xcvc1902"], default="npu"
+    add_compile_args(
+        p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True
     )
     p.add_argument("--matrix-height", type=int, default=16)
     p.add_argument("--matrix-width", type=int, default=128)
     p.add_argument("--tile-height", type=int, default=8)
     p.add_argument("--tile-width", type=int, default=16)
-    p.add_argument(
-        "--emit-mlir",
-        action="store_true",
-        help="print the resolved MLIR module to stdout (legacy aiecc / vck5000 path)",
-    )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 

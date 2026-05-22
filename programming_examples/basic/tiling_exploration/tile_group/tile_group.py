@@ -33,6 +33,7 @@ from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 import aie.extras.dialects.arith as arith
 
@@ -76,7 +77,7 @@ def tile_group(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Tiling Exploration — tile group")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument("--tensor-height", type=int, default=8)
     p.add_argument("--tensor-width", type=int, default=8)
     p.add_argument("--tile-height", type=int, default=2)
@@ -86,8 +87,6 @@ def _make_argparser():
         action="store_true",
         help="write tile_group.png and exit",
     )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 

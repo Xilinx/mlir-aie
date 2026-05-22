@@ -62,6 +62,7 @@ from aie.dialects.aiex import (
     shim_dma_bd,
 )
 from aie.utils.compile import compile_mlir_module
+from aie.utils.hostruntime.argparse import add_compile_args
 
 
 _OP_PACKET_ID = {"add": 0, "mul": 1}
@@ -334,8 +335,10 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Packet Switch (two-kernel demo)")
-    p.add_argument(
-        "-d", "--dev", type=str, choices=["npu", "npu2", "npu2_1"], default="npu"
+    # "npu2_1" is a packet_switch-specific alias (single-column NPU2)
+    # — not part of the standard helper's defaults.
+    add_compile_args(
+        p, dev_choices=("npu", "npu2", "npu2_1"), with_emit_mlir=True
     )
     p.add_argument(
         "--op",
@@ -344,13 +347,6 @@ def _make_argparser():
         help="which compute path to route input through (add → pkt 0, mul → pkt 1)",
     )
     p.add_argument("-n", "--length", type=int, default=256, help="vector length")
-    p.add_argument(
-        "--emit-mlir",
-        action="store_true",
-        help="print the resolved MLIR module to stdout (legacy aiecc-on-a-file path)",
-    )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 

@@ -36,6 +36,7 @@ from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime
 from aie.iron.device import AnyShimTile, Tile, from_name
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 
 LINE_SIZE = 1024  # transfer chunk; N must be a multiple of this
@@ -97,8 +98,11 @@ def passthrough_dmas(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Passthrough DMAs")
-    p.add_argument(
-        "-d", "--dev", type=str, choices=["npu", "npu2", "xcvc1902"], default="npu"
+    add_compile_args(
+        p,
+        dev_choices=("npu", "npu2", "xcvc1902"),
+        with_emit_mlir=True,
+        with_elf=True,
     )
     p.add_argument("-n", "--length", type=int, default=4096, help="elements")
     p.add_argument(
@@ -107,19 +111,6 @@ def _make_argparser():
         choices=["none", "input", "output"],
         default="none",
         help="PLIO topology — only valid with -d xcvc1902 (VCK5000)",
-    )
-    p.add_argument(
-        "--emit-mlir",
-        action="store_true",
-        help="print the resolved MLIR module to stdout (legacy aiecc / vck5000 path)",
-    )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
-    p.add_argument(
-        "--elf-path",
-        type=str,
-        default=None,
-        help="optional ELF-wrapped insts (for the test.cpp xrt::elf flow)",
     )
     return p
 

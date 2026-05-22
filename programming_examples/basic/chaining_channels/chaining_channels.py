@@ -30,6 +30,7 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.scf import _for as range_
 from aie.utils.compile import compile_mlir_module
+from aie.utils.hostruntime.argparse import add_compile_args
 import aie.utils.trace as trace_utils
 from aie.utils.trace.events import (
     MemTileEvent,
@@ -275,18 +276,13 @@ def _device_for(dev_str: str):
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Chaining Channels")
-    p.add_argument("-d", "--dev", type=str, choices=["npu2"], default="npu2")
+    add_compile_args(
+        p, dev_choices=("npu2",), default_dev="npu2", with_emit_mlir=True
+    )
     p.add_argument("-n", "--length", type=int, default=1024, help="bytes (>=4)")
     p.add_argument("-c", "--col", type=int, default=0)
     p.add_argument("-t", "--trace", type=int, default=0, help="0 disables tracing")
     p.add_argument("--trace-size", type=int, default=16384)
-    p.add_argument(
-        "--emit-mlir",
-        action="store_true",
-        help="print the resolved MLIR module to stdout (legacy aiecc-on-a-file path)",
-    )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 

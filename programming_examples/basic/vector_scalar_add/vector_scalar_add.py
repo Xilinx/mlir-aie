@@ -29,6 +29,7 @@ from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 
 
@@ -72,18 +73,10 @@ def vector_scalar_add(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Scalar Add")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p, with_elf=True)
     p.add_argument("--problem-size", type=int, default=1024)
     p.add_argument("--mem-tile-width", type=int, default=64)
     p.add_argument("--aie-tile-width", type=int, default=32)
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
-    p.add_argument(
-        "--elf-path",
-        type=str,
-        default=None,
-        help="optional ELF-wrapped insts (for the test.cpp xrt::elf flow)",
-    )
     return p
 
 

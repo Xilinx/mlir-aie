@@ -31,6 +31,7 @@ from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.verify import assert_pass
 
 
@@ -127,7 +128,7 @@ def matrix_vector(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Matrix-Vector Multiplication")
-    p.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p, short_dev=None)
     p.add_argument("-M", type=int, default=288)
     p.add_argument("-K", type=int, default=288)
     p.add_argument("-N", type=int, default=1)  # accepted but unused (mv has N=1)
@@ -140,10 +141,7 @@ def _make_argparser():
     p.add_argument(
         "--emulate-bf16-mmul-with-bfp16", type=int, choices=[0, 1], default=0
     )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
-    p.add_argument("-w", "--warmup", type=int, default=2)
-    p.add_argument("-i", "--iters", type=int, default=5)
+    add_benchmark_args(p)
     return p
 
 

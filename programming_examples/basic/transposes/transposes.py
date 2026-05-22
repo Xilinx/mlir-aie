@@ -51,6 +51,7 @@ from aie.iron.device import AnyComputeTile, from_name
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 
 _KERNELS_DIR = Path(__file__).parent / "aie_kernels"
@@ -320,7 +321,7 @@ def _apply_defaults(opts):
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Transpose (four strategies)")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument(
         "-s",
         "--strategy",
@@ -342,8 +343,6 @@ def _make_argparser():
     p.add_argument(
         "--ss", dest="s", type=int, default=8, help="inner shuffle size (combined)"
     )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 

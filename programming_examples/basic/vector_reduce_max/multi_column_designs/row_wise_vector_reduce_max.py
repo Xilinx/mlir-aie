@@ -43,6 +43,7 @@ from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.verify import assert_pass
 
 
@@ -191,13 +192,11 @@ def vector_reduce_max(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Multi-Column Vector Reduce Max (row-wise)")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument("-i1s", "--in1_size", type=int, default=524288, help="bytes")
     p.add_argument("-os", "--out_size", type=int, default=4, help="bytes (always 4)")
     p.add_argument("-dt", "--dtype", type=str, default="i32", choices=["i32", "bf16"])
-    p.add_argument("-t", "--trace_size", type=int, default=0)
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
+    add_trace_arg(p)
     return p
 
 

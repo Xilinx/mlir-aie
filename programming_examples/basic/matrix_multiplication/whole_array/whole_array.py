@@ -42,6 +42,7 @@ from aie.iron.device import Tile, from_name
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.verify import count_mismatches
 
 
@@ -452,7 +453,7 @@ def generate_taps(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Matrix Multiplication (Whole Array)")
-    p.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p, short_dev=None)
     p.add_argument("-M", type=int, default=512)
     p.add_argument("-K", type=int, default=512)
     p.add_argument("-N", type=int, default=512)
@@ -473,15 +474,7 @@ def _make_argparser():
         default="i16",
     )
     p.add_argument("--use-chess", type=int, choices=[0, 1], default=0)
-    p.add_argument(
-        "--xclbin-path",
-        type=str,
-        default=None,
-        help="Compile-only mode: write the xclbin here (paired with --insts-path).",
-    )
-    p.add_argument("--insts-path", type=str, default=None)
-    p.add_argument("-w", "--warmup", type=int, default=2)
-    p.add_argument("-i", "--iters", type=int, default=5)
+    add_benchmark_args(p)
     return p
 
 

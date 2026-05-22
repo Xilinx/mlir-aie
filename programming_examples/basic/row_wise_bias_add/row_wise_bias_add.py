@@ -33,6 +33,7 @@ from aie.iron.device import from_name
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 
 _KERNEL_SRC = str(Path(__file__).parent / "kernel.cc")
@@ -101,13 +102,11 @@ def row_wise_bias_add(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Row-Wise Bias Add")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument("-M", "--M", type=int, default=768)
     p.add_argument("-N", "--N", type=int, default=2304)
     p.add_argument("-m", "--m", type=int, default=96)
     p.add_argument("-n", "--n", type=int, default=32)
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 

@@ -26,6 +26,7 @@ from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, ker
 from aie.iron.device import from_name
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 
 
@@ -118,7 +119,7 @@ def memcpy(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Memcpy")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p, with_elf=True)
     p.add_argument("-l", "--length", type=int, default=16384, help="transfer size")
     p.add_argument("-co", "--cols", type=int, default=1, help="number of columns")
     p.add_argument("-ch", "--chans", type=int, default=1, help="channels per column (1 or 2)")
@@ -128,14 +129,6 @@ def _make_argparser():
         type=str,
         default="True",
         help="use the DMA-only forward path (yes/true/t/1 → True)",
-    )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
-    p.add_argument(
-        "--elf-path",
-        type=str,
-        default=None,
-        help="optional ELF-wrapped insts (for the test.cpp xrt::elf flow)",
     )
     return p
 

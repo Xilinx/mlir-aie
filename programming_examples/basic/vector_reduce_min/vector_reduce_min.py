@@ -27,6 +27,7 @@ from aie.iron import Compile, In, Out, kernels
 from aie.iron.algorithms import reduce_typed
 from aie.iron.device import from_name
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 
 
@@ -49,10 +50,8 @@ def vector_reduce_min(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Reduce Min")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument("-n", "--num-elements", type=int, default=1024)
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 

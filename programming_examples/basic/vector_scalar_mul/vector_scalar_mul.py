@@ -31,6 +31,11 @@ from aie.iron.algorithms import transform_typed
 from aie.iron.device import from_name
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import (
+    add_benchmark_args,
+    add_compile_args,
+    add_trace_arg,
+)
 from aie.utils.verify import assert_pass
 
 
@@ -68,7 +73,7 @@ def vector_scalar_mul(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Scalar Multiplication")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument("-i1s", "--in1_size", type=int, default=8192, help="bytes")
     p.add_argument("-i2s", "--in2_size", type=int, default=4, help="bytes (always 4)")
     p.add_argument(
@@ -76,11 +81,8 @@ def _make_argparser():
     )
     p.add_argument("-bw", "--int_bit_width", type=int, default=16, choices=[16, 32])
     p.add_argument("--use-chess", type=int, choices=[0, 1], default=0)
-    p.add_argument("-t", "--trace_size", type=int, default=0)
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
-    p.add_argument("-w", "--warmup", type=int, default=2)
-    p.add_argument("-i", "--iters", type=int, default=5)
+    add_trace_arg(p)
+    add_benchmark_args(p)
     return p
 
 

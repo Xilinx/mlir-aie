@@ -34,6 +34,7 @@ from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.helpers.dialects.func import func
 from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.verify import assert_pass
 
 VECTOR_SIZE = 4096
@@ -74,7 +75,7 @@ def passthrough_pykernel(a_in: In, b_out: Out, _unused: In):
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Passthrough Pykernel")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument(
         "-s",
         "--vector-size",
@@ -82,8 +83,6 @@ def _make_argparser():
         default=VECTOR_SIZE,
         help="accepted for CLI compatibility; only the build-time VECTOR_SIZE is used",
     )
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 
