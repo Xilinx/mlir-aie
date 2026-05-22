@@ -50,31 +50,62 @@ Latest measurements at the current commit.
 
 | Mode | Wall per dispatch | Per sample | Throughput |
 |---|---:|---:|---:|
-| **N=1** (single-sample latency) | 382.84 ms | 382.84 ms | **2.61 fps** |
-| **N=15** (batched) | 4 762.25 ms | 317.48 ms | **3.15 fps** |
+| **N=1** (single-sample latency) | 130.82 ms | 130.82 ms | **7.64 fps** |
+| **N=15** (batched) | 1 123.54 ms | 74.90 ms | **13.35 fps** |
 
-**Per-block (m0..m8) standalone wall time on NPU**, median of n=50:
+**Per-block standalone wall time on NPU**, median of n=20:
 
 | Block | Topology | Median (ms) | fps |
 |---:|---|---:|---:|
-| m0  | conv_stride stem               | 55.4 | 18.1 |
-| m1  | conv_stride                    | 45.1 | 22.2 |
-| m2  | c3k2_small                     | 26.4 | 37.9 |
+| m0  | conv_stride stem               | 55.42 | 18.0 |
+| m1  | conv_stride                    | 45.12 | 22.2 |
+| m2  | c3k2_small                     | 26.34 | 37.9 |
 | **m3**  | **conv_stride (chunked)**  | **8.04** | **124.4** |
-| m4  | c3k2_small                     | 22.0 | 45.5 |
-| **m5**  | **conv_stride (chunked)**  | **6.95** | **143.8** |
-| m6  | c3k2_heavy                     | 15.1 | 66.0 |
-| **m7**  | **conv_stride (chunked)**  | **4.73** | **211.3** |
-| m8  | c3k2_heavy (2-tile megakernel) | 28.2 | 35.4 |
+| m4  | c3k2_small                     | 21.96 | 45.5 |
+| **m5**  | **conv_stride (chunked)**  | **6.98** | **143.3** |
+| m6  | c3k2_heavy                     | 15.15 | 66.0 |
+| **m7**  | **conv_stride (chunked)**  | **4.78** | **209.2** |
+| m8  | c3k2_heavy (2-tile megakernel) | 28.22 | 35.4 |
+| **m9 stage 1** (cv1 only)        | PSA cv1 | **1.78** | **561.8** |
+| **m9 stage 10** (full PSA block) | PSA full | **63.11** | **15.8** |
 
-m9 (PSA) and m10 (head) aren't supported by `test_block_ort.py` standalone
-(PSA topology has no single intermediate tensor to compare; m10's flat
-softmax output doesn't fit the per-block tester's reshape). Both are
-exercised end-to-end via `run_chain`.
+m9 is now supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
+stage 1 compares against `/model.9/cv1/act` post-SiLU; stage 10 (default)
+compares against `/model.9/cv2/act` post-SiLU. Intermediate stages emit
+PSA-internal tensors with no clean ORT analog; verify those via
+`make run_chain`. m10 (head) still standalone-unsupported; covered by
+the chain test.
 
-**Latest optimization arc** (chunked stride-2 conv, kernel
+**Latest optimization arc** — m9 PSA 1×1s (kernels
+[`yolo_m9_{cv1_split, qkv, ffn_0_silu_row, proj_skip_row, ffn_1_skip_row,
+cv2_concat2_streamed}_vec.cc`](kernels/)) replace what were 6 scalar 1×1
+kernels with `aie::mmul<4,8,8,int8,int8>` + on-tile gather (or pre-pack
+scratch where L1 budget allows) + scalar bias/SRS/SiLU tail:
+
+| step | m9 stage 10 (ms) | chain N=15 (ms/sample) | chain N=15 fps |
+|---|---:|---:|---:|
+| pre-session (scalar m9 1×1s)             | 353  | 317  | 3.15 |
+| + cv1 vec (chunked 256→256 + top/bot)    | 271.6| 256  | 3.91 |
+| + qkv vec (128→256, no act)              | 199.4| 210  | 4.76 |
+| + ffn.0 vec (chunked 128→256 + SiLU)     | 194.7| 205  | 4.87 |
+| + proj vec (128→128 + cross-scale add)   | 192.5| 203  | 4.93 |
+| + cv1 deep-opt (pre-pack + multi-acc)    | 191.1| 202.8| 4.93 |
+| + ffn.1 vec (256→128 + same-scale add)   | 186.5| 198.2| 5.05 |
+| **+ cv2 vec (chunked 256→256 + concat)** | **63.1** | **74.9** | **13.35** |
+| total speedup                            | **5.6×** | **4.24×** | **3.15 → 13.35 fps** |
+
+cv2 was the m9 critical-path kernel — biggest single chain delta of the
+arc (2.64× chain throughput from one commit). The earlier 1×1s shaved a
+few ms each off m9 standalone but didn't move the chain much because
+they overlapped in m9's pipeline; cv2 was the serial bottleneck. Going
+forward, the remaining m9 kernels (`qkv_pack`, `qk_pack`, `qk_row`,
+`attn_scale`, `softmax_row`, `v_pack`, `sv_row`, `sv_row_acc`,
+`pe_add_row`) are still scalar and likely contain the next critical
+path — profile, then attack.
+
+**Prior optimization arc** (chunked stride-2 conv, kernel
 [`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc`](kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc)
-shared by m3/m5/m7) — 7.7-10.6× standalone vs the pre-optimization baseline:
+shared by m3/m5/m7) — 7.7-10.6× standalone vs scalar baseline:
 
 | stage | m3 | m5 | m7 |
 |---|---:|---:|---:|
@@ -91,15 +122,12 @@ fold `* in_c`, `* out_c`, `* (ic_tiles*kH*kW*64)` etc. into shifts /
 immediates, dead-strip the unused interior variant, and emit tighter
 pipelined inner loops. See [kernel design notes](#kernel-design-notes-chunked-stride-2-conv).
 
-The new chain ceiling is **m0** (55 ms standalone) and **m1** (45 ms) —
-both above the 60 fps budget (16.67 ms/sample). m3/m5/m7 individually now
-clear 60 fps with ≥2× headroom and are no longer the bottleneck.
-
-Per-block sum is now ≈ 213 ms (down from ≈ 379 ms); chain N=1 ≈ 383 ms.
-The per-block savings (≈ 167 ms across m3+m5+m7 standalone) translate to
-only ≈ 14 ms at the chain level — m3/m5/m7 were already pipelining with
-neighbors in the chain, so shrinking them mostly creates idle bubbles.
-Further chain wins require pushing m0 and m1.
+Distance to 60 fps target (16.67 ms/sample): chain N=15 currently at
+74.9 ms = **~4.5× more needed**. m9 is still the chain bottleneck
+(63.1 ms standalone vs next biggest m0 at 55 ms); vectorizing the
+remaining m9 scalar kernels — especially the attention matmuls
+(`qk_row`, `sv_row`) which are very likely the new critical path inside
+m9 — is the next lever.
 
 ## Make targets
 
@@ -125,6 +153,11 @@ Run `make help` for the canonical list. Highlights:
   tracks this in a stamp file and forces the chain MLIR to rebuild
   whenever the value changes, so `run_chain` and `time_chain` always
   match the xclbin's compiled-in `N`.
+- `M9_STAGE=N` — for `BLOCK=m9`, selects which staged build of m9 to
+  produce (1 = cv1 only, 10 = full PSA block; default 10). Same stamp-
+  file rebuild trigger as `CHAIN_N_SAMPLES`. `M9_CHAIN_STAGE` is
+  accepted as a legacy alias. Only stages 1 and 10 are wired through
+  `test_block_ort.py` (others lack a clean single-tensor ORT analog).
 - `TIME_ARGS="--n-warmup 5 --n-iters 100"` — passed through to the timing
   harnesses.
 - `TRACE_SIZE_PER_WORKER=N`, `TRACE_EVENTS=A,B,C` — bake AIE2P packet
@@ -279,7 +312,10 @@ independently — all N samples must match the single reference.
 
 The conv_stride and c3k2 blocks (m0..m8) each pass `test_block_ort.py
 --block mN` bit-exact standalone (see the `run_ort` target). m9 (PSA)
-and m10 (head) aren't supported standalone but are covered by the
+is supported in two stages: `M9_STAGE=1 make BLOCK=m9 run_ort` compares
+NPU vs ORT for `/model.9/cv1/act` (cv1 only); `M9_STAGE=10 make BLOCK=m9
+run_ort` (default) compares for `/model.9/cv2/act` (full m9). Other m9
+stages and m10 (head) aren't supported standalone — covered by the
 end-to-end chain test.
 
 [`run_strix_makefile.lit`](run_strix_makefile.lit) exercises both paths
@@ -357,7 +393,7 @@ yolo26n/
 ├── placement.py                       # PLACEMENT[block_name] → tile coords + design rules
 ├── tile_layout.py                     # ASCII tile-map + per-block sizing
 ├── lowlevel_dma.py                    # StaticWeightStream helper for chunked weight DMA
-├── kernels/                           # 37 AIE2P .cc/.h kernel files (vectorized _vec.cc throughout)
+├── kernels/                           # 33 .cc + 2 .h AIE2P kernel files (most vectorized as `_vec.cc`; m9 attention math + data packs are the remaining scalar holdouts)
 ├── scripts/
 │   ├── m8_megakernel_2tile.py         # m8 2-tile megakernel (the only m8 path)
 │   ├── m9_stage.py                    # m9 PSA staged builder (stages 1..10)
@@ -440,7 +476,8 @@ bit-exactness fails by design; the signal is chain wall-clock.
 # Ablation: how much does m9 contribute to the chain?
 rm -f build/yolo_m9_*.o && make clean_chain
 CHAIN_N_SAMPLES=15 NOOP_BLOCK=m9 make time_chain
-# → 317 ms baseline → 57 ms with m9 noop'd ⇒ m9 = 260 ms / 82%
+# Historical (pre-m9-1x1-vec arc): 317 ms baseline → 57 ms noop'd ⇒ m9 = 260 ms / 82%
+# Today (post-cv2 vec):              75 ms baseline → ? ms noop'd  ⇒ rerun to attribute the new remainder
 
 # Combine: noop multiple blocks (space-separated, quoted)
 rm -f build/yolo_m9_*.o build/yolo_m10_*.o && make clean_chain
@@ -463,7 +500,9 @@ This is how the m9-is-the-bottleneck finding was discovered: the
 optimization arc that took m3/m5/m7 from 186 ms → 19 ms standalone moved
 the chain by only ~14 ms, and ablating each block individually (m0
 alone, m1 alone, the 6 conv_stride blocks together) showed each
-contributed <1 ms. Only m9 ablation moved the chain meaningfully.
+contributed <1 ms. Only m9 ablation moved the chain meaningfully. The
+same harness then surfaced cv2 as the m9 critical-path kernel during
+the m9 1×1 vec arc.
 
 ### Common debugging patterns
 
@@ -509,25 +548,32 @@ contributed <1 ms. Only m9 ablation moved the chain meaningfully.
 
 ## Known limitations and follow-ups
 
-- **m9 (PSA attention) is THE chain bottleneck — ~260 ms / 82% of
-  per-sample time at N=15.** Measured via the `NOOP_BLOCK` ablation
-  harness (see [Block ablation](#block-ablation-bottleneck-attribution)):
-  noop'ing m9 alone drops chain per-sample from 317 ms → 57 ms (3.15 →
-  17.54 fps). m10 contributes only ~1 ms. The 6 conv_stride blocks
-  (m0/m1/m3/m5/m7/m8) together contribute only ~1 ms to the chain —
-  they're all fully overlapped by m9 in the pipelined chain. **All future
-  chain-fps work should target m9 first.**
-- **m0 (55 ms) is the next ceiling after m9.** Once m9 is reduced below
-  ~55 ms per-sample, m0 becomes the bottleneck (the chain floor of 57 ms
-  measured with m9 noop'd matches m0's 55 ms standalone, confirming the
-  rest of the chain pipelines correctly with m0 as the max-stage). m0
-  uses OIYX raw layout with `in_c=3` padded to 8 → 37.5% mmul utilization
-  ceiling, but 512×512 input means lots of compute to amortize.
-- **Per-block standalone savings don't translate to chain savings.** The
-  167 ms shaved off m3+m5+m7 standalone shows up as only ~1 ms at the
-  chain level — m9 dominates so completely that optimizing anything else
-  is invisible. This was the surprise that motivated the ablation
-  harness; future optimization work should ablate first.
+- **m9 (PSA attention) is still the chain bottleneck, but reduced from
+  ~260 ms → 63 ms standalone via the m9 1×1 vectorization arc.** Chain
+  N=15 went 317 → 75 ms/sample (3.15 → 13.35 fps); m9 stage 10 standalone
+  went 353 → 63.1 ms (5.6×). The cv2 vec commit (`af7f9eece`) was the
+  single biggest lever — it was the m9 critical-path kernel that hadn't
+  yet been touched. Remaining scalar m9 kernels (`qkv_pack`, `qk_pack`,
+  `qk_row`, `attn_scale`, `softmax_row`, `v_pack`, `sv_row`,
+  `sv_row_acc`, `pe_add_row`) likely contain the next critical path —
+  the attention matmuls (`qk_row`, `sv_row`) are the obvious next
+  targets since they're scalar i8 N×N reductions that map cleanly to
+  `aie::mmul`.
+- **m0 (55 ms) is approaching becoming the next ceiling.** Chain N=15
+  per-sample (74.9 ms) is now only ~1.2× m9 stage 10 (63.1 ms); m0
+  alone is 55.4 ms standalone. Once m9 is reduced below ~55 ms per-
+  sample, m0 will become the bottleneck. m0 uses OIYX raw layout with
+  `in_c=3` padded to 8 → 37.5% mmul utilization ceiling, but 512×512
+  input means lots of compute to amortize.
+- **Per-block standalone savings translate to chain savings only when
+  applied to the critical path.** The earlier m9 1×1 vectorizations
+  (cv1, qkv, ffn.0, proj, ffn.1) shaved 165 ms off m9 stage 10
+  standalone but moved chain N=15 by only ~7 ms — they overlapped in
+  m9's pipeline. The cv2 vec, by contrast, shaved 123 ms off stage 10
+  and moved chain by 123 ms — it was the serial critical path. Use the
+  `NOOP_BLOCK` ablation harness (see
+  [Block ablation](#block-ablation-bottleneck-attribution)) and per-tile
+  trace before picking the next kernel.
 - **PSA m9 multi-sample**: end-to-end multi-sample dispatch already
   works via `CHAIN_N_SAMPLES=N` (HW BD-chain replays the per-sample
   transfer N times in one XRT call). What's *not* done: pushing the batch
