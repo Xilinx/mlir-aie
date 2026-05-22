@@ -205,13 +205,14 @@ $(BUILD)/yolo_m10_%.o: $(SRCDIR)/kernels/yolo_m10_%.cc
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m10) -c $< -o $@
 
-# Phase 1 vectorization: build the non-chunked conv2dk3_stride2 .o from
-# the _vec.cc source instead of the scalar .cc. Same symbol name, drop-in.
-# To revert (scalar): delete this rule + rebuild.
+# m1 deep-opt: 3x3 stride-2 INT8 conv, OIYXI8O8 weights, in_c=16 → out_c=32.
+# Compile-time shape #defines + 3-way x_tile split + 2X×2OC fold (same
+# toolbox as the chunked variant for m3/m5/m7).
+M1_SHAPE := -DYOLO_M1_IN_W=256 -DYOLO_M1_IN_C=16 -DYOLO_M1_OUT_C=32
 $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8.o: \
     $(SRCDIR)/kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m1) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M1_SHAPE) $(NOOP_FLAGS_m1) -c $< -o $@
 
 # Phase 3b: m0 stem vectorized (3x3 stride-2, OIYX raw, in_c=3 padded to 8).
 # Deep-opt pass: compile-time shape #defines + OCx2 fold + 2-way x_tile split.

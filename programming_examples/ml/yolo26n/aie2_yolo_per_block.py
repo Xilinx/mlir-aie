@@ -405,6 +405,11 @@ def _build_conv_stride_block(block_name: str, act_in, manifest):
             k,
         ],
         tile=placement.PLACEMENT[block_name],
+        # Deep-opt m1 vec uses up to 4 mmul accumulators + small a_buf
+        # scratches per interior x_pair body. Stays comfortably under
+        # 4 KB but the AIE2P default 1 KB stack is too small for the
+        # accumulator-register spills the OCx2/2X×2OC fold introduces.
+        stack_size=4096,
     )
     return act_out, [w]
 
