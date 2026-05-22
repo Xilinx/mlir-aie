@@ -9,8 +9,13 @@
 ##===----------------------------------------------------------------------===##
 #
 # @iron.jit drives aiecc via --xclbin-path / --insts-path; the
-# ExternalFunction for ``conv2dk14_i8`` (from aie_kernels/aie2p) is
-# auto-built into the JIT work_dir. This design is aie2p (npu2) only.
+# conv2dk14.cc kernel is auto-built into the JIT work_dir.
+#
+# Two variants live in conv2dk14.py:
+#   default:                      single-core
+#   make ... multi=1              32-core (8 cols x 4 rows)
+#
+# Both are aie2p (npu2) only.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
@@ -24,9 +29,10 @@ devicename ?= npu2
 width ?= 896
 height ?= 896
 num_act ?= 8
+multi ?= 0
 
 aie_py_src = ${targetname}.py
-aieargs = -d ${devicename} -wd ${width} -ht ${height}
+aieargs = -d ${devicename} -wd ${width} -ht ${height} $(if $(filter 1,$(multi)),--multi,)
 
 xclbin_target = build/final.xclbin
 insts_target  = build/insts.bin

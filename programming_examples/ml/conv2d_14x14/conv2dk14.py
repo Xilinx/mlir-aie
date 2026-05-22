@@ -5,21 +5,24 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""14x14 Conv2D — Iron API design with ``@iron.jit`` compilation.
+"""14x14 Conv2D — Iron API designs (single-core + 32-core) with @iron.jit.
 
-This design processes a 896x896 input with 4 channels through a
-conv2dk14 kernel producing 1152 output channels. The kernel runs on
-sub-tiles (16 tiles × 16 output channels per call) and is invoked
-``out_channels/16 × height/14 × 4`` times to cover the full image.
+Two parallelism modes share the same conv2dk14 sub-kernel:
 
-The kernel comes from ``aie_kernels/aie2p/conv2dk14.cc`` (aie2p only).
-The library's ``kernels.conv2dk14`` uses a different per-call output
-layout, so this design wires an ``ExternalFunction`` directly with the
-sub-tile sizing the original kernel writes.
+  * single-core (default): one shim DMA in/out pair, one worker; processes
+    896x896x4 -> 1152 channels in ~20ms.
+  * 32-core (``--multi``):  8 cols x 4 rows, activations row-broadcast
+    across cols, weights col-broadcast across rows, output joined per
+    column; ~5ms.
+
+The library's ``kernels.conv2dk14`` sizes per-call output as
+``output_channels * tiles * 8`` (acc-byte layout), but both designs here
+feed the kernel ``sub_tiles x sub_out_channels = 256`` bytes per call.
+Wired via ``ExternalFunction`` with the design's actual per-call sizing.
 
 Compile-only entrypoint:
-  ``python3 conv2dk14.py -d npu2 --xclbin-path build/final.xclbin
-                                 --insts-path build/insts.bin``
+  ``python3 conv2dk14.py -d npu2 [--multi]
+            --xclbin-path build/final.xclbin --insts-path build/insts.bin``
 End-to-end verification lives in ``test.py``.
 """
 
@@ -31,8 +34,9 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
+from aie.iron.device import Tile, from_name
 from aie.iron.kernel import ExternalFunction
+from aie.helpers.taplib import TensorAccessPattern
 from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -162,12 +166,168 @@ def conv2dk14(
     return Program(device, rt).resolve_program()
 
 
+@iron.jit
+def conv2dk14_multi(
+    a_in: In,
+    w_in: In,
+    b_out: Out,
+    *,
+    width: Compile[int] = 896,
+    height: Compile[int] = 896,
+    scale: Compile[int] = 14,
+):
+    """32-core (8 cols x 4 rows) variant.
+
+    Activations are split across 4 rows (one shim DMA per row), with each
+    row's memtile broadcasting to all 8 cores in that row. Weights are
+    split across 8 cols (one shim DMA per col, no memtile), broadcasting
+    directly to the 4 cores in each col. Outputs are joined per column:
+    each col's 4 row-cores feed into its memtile, then out to its shim
+    DMA. Each core does 1/4 of the height work.
+    """
+    if width % 8 != 0 or width < 8:
+        raise ValueError("width must be a multiple of 8 and >= 8")
+    if height % 8 != 0 or height < 8:
+        raise ValueError("height must be a multiple of 8 and >= 8")
+
+    device = iron.get_current_device()
+    n_cols, n_rows = 8, 4
+    if device.cols < n_cols:
+        raise ValueError(
+            f"multi-core variant needs {n_cols} columns; device has {device.cols}"
+        )
+
+    act_in = _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * _SUB_TILES
+    weights = _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * _SUB_OUT_CHANNELS
+    act_out = _SUB_TILES * _SUB_OUT_CHANNELS
+
+    act_repeat = (_OUT_CHANNELS // _SUB_OUT_CHANNELS) // n_cols  # 9
+
+    out_channels_group = _OUT_CHANNELS // _SUB_OUT_CHANNELS  # 72
+    width_out = width // _KERNEL_SIZE
+    height_out = height // _KERNEL_SIZE
+
+    tensor_in_size = width * height * _IN_CHANNELS  # one image, replayed via shim repeat
+    tensor_wts_size = weights * out_channels_group
+    tensor_out_size = width_out * height_out * _SUB_OUT_CHANNELS * out_channels_group
+
+    buf_in_row = _KERNEL_SIZE * width * _IN_CHANNELS  # one tile-row of pixels
+
+    act_in_ty = np.ndarray[(act_in,), np.dtype[np.uint8]]
+    buf_in_ty = np.ndarray[(buf_in_row,), np.dtype[np.uint8]]
+    weights_ty = np.ndarray[(weights,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(act_out,), np.dtype[np.int8]]
+    out_mem_ty = np.ndarray[(act_out * 4 * 16 * n_rows,), np.dtype[np.int8]]
+    tensor_in_ty = np.ndarray[(tensor_in_size,), np.dtype[np.uint8]]
+    tensor_wts_ty = np.ndarray[(tensor_wts_size,), np.dtype[np.int8]]
+    tensor_out_ty = np.ndarray[(tensor_out_size,), np.dtype[np.int8]]
+
+    conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
+
+    # Activations: per-row shim -> per-row memtile -> broadcast to 8 cores
+    of_act_l3l2 = [None] * n_rows
+    of_act_l2l1 = [None] * n_rows
+    for j in range(n_rows):
+        of_act_l3l2[j] = ObjectFifo(
+            buf_in_ty,
+            name=f"of_act_L3L2_{j}",
+            dims_from_stream_per_cons=[
+                (_KERNEL_SIZE, _KERNEL_SIZE * _IN_CHANNELS),
+                (64, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
+                (_KERNEL_SIZE * _IN_CHANNELS, 1),
+            ],
+        )
+        of_act_l2l1[j] = of_act_l3l2[j].cons().forward(
+            obj_type=act_in_ty,
+            name=f"of_act_L2L1_{j}",
+            dims_to_stream=[
+                (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
+                (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
+                (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
+                (2 * _IN_CHANNELS, 1),
+            ],
+            tile=Tile(j, 1),
+        )
+
+    # Weights: per-col shim -> broadcast directly to 4 row-cores in that col (no memtile)
+    of_wts = [ObjectFifo(weights_ty, name=f"of_wts_L3L1_{i}") for i in range(n_cols)]
+
+    # Outputs: per-col join across 4 rows in memtile, then to per-col shim
+    of_out_l2l3 = [None] * n_cols
+    of_out_l1l2 = [[None] * n_cols for _ in range(n_rows)]
+    out_offsets = [act_out * 4 * 16 * j for j in range(n_rows)]
+    for i in range(n_cols):
+        of_out_l2l3[i] = ObjectFifo(
+            out_mem_ty,
+            name=f"of_out_L2L3_{i}",
+            dims_to_stream=[(64, 256), (16, 8), (2, 128), (8, 1)],
+        )
+        col_fifos = of_out_l2l3[i].prod().join(
+            out_offsets,
+            obj_types=[out_ty] * n_rows,
+            names=[f"of_out_L1L2_{j}_{i}" for j in range(n_rows)],
+            tile=Tile(i, 1),
+        )
+        for j in range(n_rows):
+            of_out_l1l2[j][i] = col_fifos[j]
+
+    def core_fn(of_wts_in, of_act, of_out, kernel):
+        y_dim = height // (_KERNEL_SIZE * n_rows)
+        x_dim = width // _X_BLOCKS
+        elem_wts = of_wts_in.acquire(1)
+        for _ in range_(y_dim):
+            for _ in range_(_X_BLOCKS):
+                elem_in = of_act.acquire(1)
+                elem_out = of_out.acquire(1)
+                kernel(elem_in, elem_wts, elem_out,
+                       x_dim, _IN_CHANNELS, _SUB_OUT_CHANNELS,
+                       _KERNEL_SIZE, scale)
+                of_act.release(1)
+                of_out.release(1)
+        of_wts_in.release(1)
+
+    workers = []
+    for j in range(n_rows):
+        for i in range(n_cols):
+            workers.append(Worker(
+                core_fn,
+                [of_wts[i].cons(), of_act_l2l1[j].cons(), of_out_l1l2[j][i].prod(), conv_fn],
+                tile=Tile(i, 2 + j),
+                stack_size=0xC00,
+            ))
+
+    rt = Runtime()
+    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (I, W, O):
+        rt.start(*workers)
+        row_chunk = tensor_in_size // n_rows
+        wts_chunk = tensor_wts_size // n_cols
+        out_chunk = tensor_out_size // n_cols
+        for j in range(n_rows):
+            tap = TensorAccessPattern(
+                (1, tensor_in_size), row_chunk * j,
+                [act_repeat, 1, 1, row_chunk], [0, 0, 0, 1],
+            )
+            rt.fill(of_act_l3l2[j].prod(), I, tap)
+        for i in range(n_cols):
+            wts_tap = TensorAccessPattern(
+                (1, tensor_wts_size), wts_chunk * i, [1, 1, 1, wts_chunk], [0, 0, 0, 1],
+            )
+            out_tap = TensorAccessPattern(
+                (1, tensor_out_size), out_chunk * i, [1, 1, 1, out_chunk], [0, 0, 0, 1],
+            )
+            rt.fill(of_wts[i].prod(), W, wts_tap)
+            rt.drain(of_out_l2l3[i].cons(), O, out_tap, wait=True)
+
+    return Program(device, rt).resolve_program()
+
+
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Conv2D 14x14 (aie2p)")
     add_compile_args(p)
     p.add_argument("-wd", "--width", type=int, default=896)
     p.add_argument("-ht", "--height", type=int, default=896)
     p.add_argument("--scale", type=int, default=14)
+    p.add_argument("--multi", action="store_true", help="32-core (8x4) variant")
     return p
 
 
@@ -177,11 +337,12 @@ def _compile_kwargs(opts):
 
 def main():
     opts = _make_argparser().parse_args()
+    design = conv2dk14_multi if opts.multi else conv2dk14
     run_design_cli(
-        conv2dk14,
+        design,
         opts,
         compile_kwargs=_compile_kwargs,
-        device=lambda o: from_name(o.dev, n_cols=1),
+        device=lambda o: from_name(o.dev, n_cols=8 if opts.multi else 1),
     )
 
 

@@ -38,7 +38,7 @@ Definitions
 * T/8 - Remaining tiles. Our sub-kernel operates on 16 tiles so T/8 = 16/8 = 2.
 * C/8 - Remaining channels. Our sub-kernel operates on 16 channels on C/8 = 2.
 
-### <u>Kernel ([conv2dk14_placed.py](./conv2dk14_placed.py))/</u>
+### <u>Kernel ([conv2dk14.py](./conv2dk14.py))/</u>
 Our kernel then loops over a set of inputs and weights while calling our sub-kernel to process 16 channels, 16 tiles and 196 pixels (14x14x4). We loop over the tile row of our image which has 64 tiles, giving us a loop size of 4 (x_blocks) since we process 16 tiles at a time. Then we loop over the tile rows of our image which is a loop size of 64. That in turn is inside a infinite loop which allows us to compute as many output channels as needed. Given that we compute 16 output channels each iteration of the kernel body, we would iterate 72 times (1152/ 16) to compute the results for all output channels. 
 
 ### <u>Memtiles and Top-level</u>
@@ -51,38 +51,22 @@ We use the memtile primarily to buffer DDR reads but also to leverage the layout
 
 ```
 .
-+-- conv2dk14_placed.py        # A Python script that defines the AIE array structural design using MLIR-AIE operations using a lower-level version of IRON
-+-- conv2dk14_32core_placed.py # A 32-core implementation of the single-core example above
-+-- Makefile             # Contains instructions for building and compiling software projects.
++-- conv2dk14.py         # @iron.jit design with single-core (default) and 32-core (--multi) variants.
++-- Makefile             # Build/run rules.
 +-- README.md            # This file.
-+-- run_strix_makefile.lit # For LLVM Integrated Tester (LIT) of the placed design.
++-- run.lit              # For LLVM Integrated Tester (LIT).
 +-- test.py              # Python code testbench for the design example.
 ```
 
 ## Compilation
-To compile and run the design:
+To compile and run the single-core design:
 ```shell
 make run_py
 ```
 
-To build and run the design while generating trace
+To build and run the 32-core design:
 ```shell
-make clean; make trace_py
-```
-
-To build and run the design for the unplaced IRON version (with or without generating trace), we need to add an additional qualifier.
-```shell
-make clean; make use_placed=0 num_act=72 run_py
-make clean; make use_placed=0 num_act=72 trace_py
-```
-
-To build and run the 32-core design (trace not currently supported)
-```shell
-make clean; make targetname=conv2dk14_32core num_act=1 run_py
-```
-To build an drun the 32-core design with the scalar kernel (trace not currently supported)
-```shell
-make clean; make vectorized=false targetname=conv2dk14_32core num_act=1 run_py
+make clean; make multi=1 num_act=1 run_py
 ```
 
 ## Multi-core Design Example (32-cores)
