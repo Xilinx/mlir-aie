@@ -20,7 +20,6 @@ The script has two modes:
 """
 
 import argparse
-import shutil
 import sys
 
 import numpy as np

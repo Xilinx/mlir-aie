@@ -305,6 +305,23 @@ def _run_and_verify(opts):
     print("PASS!")
 
 
+def _compile_kwargs(opts):
+    return dict(
+        M=opts.M,
+        K=opts.K,
+        N=opts.N,
+        m=opts.m,
+        k=opts.k,
+        n=opts.n,
+        dtype_in_str=opts.dtype_in,
+        dtype_out_str=opts.dtype_out,
+        b_col_maj=opts.b_col_maj,
+        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
+        use_chess=bool(opts.use_chess),
+        trace_config=_trace_config(opts),
+    )
+
+
 def main():
     opts = _make_argparser().parse_args()
     run_design_cli(

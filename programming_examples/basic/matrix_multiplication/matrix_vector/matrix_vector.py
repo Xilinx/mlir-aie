@@ -183,6 +183,17 @@ def _run_and_verify(opts):
     print("PASS!")
 
 
+def _compile_kwargs(opts):
+    return dict(
+        M=opts.M,
+        K=opts.K,
+        m=opts.m,
+        k=opts.k,
+        vectorized=not opts.scalar,
+        use_chess=bool(opts.use_chess),
+    )
+
+
 def main():
     opts = _make_argparser().parse_args()
     run_design_cli(

@@ -58,7 +58,6 @@ _SHUFFLE_SRC = str(_KERNELS_DIR / "shuffle_16x16.cc")
 _COMBINED_SRC = str(_KERNELS_DIR / "transpose.cc")
 
 _BYTES_TO_DTYPE = {1: np.uint8, 2: np.uint16, 4: np.uint32}
-_BYTES_TO_NP_INT = {1: np.int8, 2: np.int16, 4: np.int32}  # for combined's signed view
 _COMBINED_DTYPE_MACRO = {1: "DTYPE_i8", 2: "DTYPE_i16", 4: "DTYPE_i32"}
 
 
