@@ -1,66 +1,46 @@
+##===- Makefile -----------------------------------------------------------===##
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+#
+##===----------------------------------------------------------------------===##
+#
+# @iron.jit drives aiecc via --xclbin-path / --insts-path; the library
+# ``kernels.conv2dk1`` (uint8 output → fused ReLU) is auto-built into
+# the JIT work_dir.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-CHESS ?= false
+SHELL := /bin/bash
+
+targetname = conv2d_fused_relu
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
-mlirFileName = aieWithTrace_1core
+width ?= 32
+height ?= 32
+in_channels ?= 64
+out_channels ?= 64
 
-VPATH := ${srcdir}/../../../aie_kernels/aie2
+aie_py_src = ${targetname}.py
+aieargs = -d ${devicename} -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
 
-aie_py_src=conv2d_fused_relu.py
-use_placed?=0
+xclbin_target = build/final.xclbin
+insts_target  = build/insts.bin
 
-ifeq (${use_placed}, 1)
-aie_py_src=conv2d_fused_relu_placed.py
-endif
+.PHONY: all
+all: ${xclbin_target} ${insts_target}
 
-all: build/conv2dk1.o build/final.xclbin
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
 
-build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} > $@
+.PHONY: run_py
+run_py: ${xclbin_target} ${insts_target}
+	${powershell} python3 ${srcdir}/test.py -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
-build/conv2dk1.o: conv2dk1.cc
-	mkdir -p ${@D}
-ifeq ($(devicename),npu)
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F};
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DINT8_ACT -c $< -o ${@F}
-endif
-else ifeq ($(devicename),npu2)
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F};
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DINT8_ACT -c $< -o ${@F}
-endif
-else
-	echo "Device type not supported"
-endif
-
-build/final.xclbin: build/${mlirFileName}.mlir build/conv2dk1.o  
-	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-		 --xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
-else
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-		--no-xchesscc --no-xbridge --xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
-endif
-
+.PHONY: clean
 clean:
-	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log* *.xclbin sim \
-		chess* *.o insts.bin \
-		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
-
-run_py: build/final.xclbin
-	${powershell} python3  ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	rm -rf build log
