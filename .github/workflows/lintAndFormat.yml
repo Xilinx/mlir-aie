@@ -126,7 +126,7 @@ jobs:
           submodules: "true"
 
       - name: Install clang-format
-        uses: aminya/setup-cpp@v1
+        uses: aminya/setup-cpp@v1.8.0
         with:
           clangformat: 17.0.1
 
