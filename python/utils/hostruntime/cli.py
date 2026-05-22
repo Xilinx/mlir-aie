@@ -133,9 +133,7 @@ def run_design_cli(
         set_current_device(_resolve(device, opts))
         kwargs = _resolve(compile_kwargs, opts)
         spec = design.specialize(**kwargs)
-        compile_opts = dict(
-            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
-        )
+        compile_opts = dict(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
         elf_path = getattr(opts, "elf_path", None)
         if elf_path is not None:
             compile_opts["elf_path"] = elf_path
