@@ -126,10 +126,12 @@ def main():
         )
         tiler.visualize(file_path="per_tile.png")
         return
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        per_tile,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+    )
 
 
 if __name__ == "__main__":

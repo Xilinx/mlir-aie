@@ -230,14 +230,20 @@ def _run_and_verify(opts):
     assert_pass(actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}")
 
 
-def main():
-    opts = _make_argparser().parse_args()
+def _validate(opts):
     if opts.in1_size % 64 != 0 or opts.in1_size < 512:
         sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64 and >= 512")
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    run_design_cli(
+        vector_reduce_max,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        validate=_validate,
+    )
 
 
 if __name__ == "__main__":

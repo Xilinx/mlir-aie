@@ -114,7 +114,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        validate=_validate_args,
+        validate=_validate,
     )
 
 

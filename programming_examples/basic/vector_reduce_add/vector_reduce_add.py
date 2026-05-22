@@ -75,7 +75,7 @@ def main():
     run_design_cli(
         vector_reduce_add,
         opts,
-        compile_kwargs=_compile_kwargs,
+        compile_kwargs=lambda o: dict(num_elements=o.num_elements),
         run_and_verify=_run_and_verify,
     )
 

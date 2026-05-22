@@ -133,10 +133,12 @@ def main():
         )[0]
         tap.visualize(show_arrows=True, file_path="tile_group.png")
         return
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        tile_group,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+    )
 
 
 if __name__ == "__main__":
