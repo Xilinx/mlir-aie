@@ -368,60 +368,60 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>    Region &amp;r = pktFlowOp.getPorts();</div>
 <div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span>    Block &amp;b = r.front();</div>
 <div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span>    <span class="keywordtype">int</span> flowID = pktFlowOp.IDInt();</div>
-<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>    <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> srcPort, destPort;</div>
-<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>    TileOp srcTile, destTile;</div>
-<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>    <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">srcCoords</a>, destCoords;</div>
-<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span> </div>
-<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>    <span class="comment">// Pass 1: extract source (order-independent: dest may appear before source)</span></div>
-<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>    <span class="keywordflow">for</span> (Operation &amp;Op : b.getOperations()) {</div>
-<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> pktSource = dyn_cast&lt;PacketSourceOp&gt;(Op)) {</div>
-<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>        srcTile = dyn_cast&lt;TileOp&gt;(pktSource.getTile().getDefiningOp());</div>
-<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>        srcPort = pktSource.port();</div>
-<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>        <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">srcCoords</a> = {srcTile.colIndex(), srcTile.rowIndex()};</div>
-<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>      }</div>
-<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>    }</div>
-<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>    <span class="keywordflow">if</span> (!srcTile)</div>
-<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>      <span class="keywordflow">return</span> pktFlowOp.emitOpError(<span class="stringliteral">&quot;packet_flow has no packet_source&quot;</span>);</div>
-<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>    <span class="comment">// Pass 2: process each destination using the source extracted above</span></div>
-<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>    <span class="keywordflow">for</span> (Operation &amp;Op : b.getOperations()) {</div>
-<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> pktDest = dyn_cast&lt;PacketDestOp&gt;(Op)) {</div>
-<div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>        destTile = dyn_cast&lt;TileOp&gt;(pktDest.getTile().getDefiningOp());</div>
-<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>        destPort = pktDest.port();</div>
-<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>        destCoords = {destTile.colIndex(), destTile.rowIndex()};</div>
-<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>        <span class="comment">// Assign &quot;keep_pkt_header flag&quot;</span></div>
-<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>        <span class="keyword">auto</span> keep = pktFlowOp.getKeepPktHeader();</div>
-<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>        keepPktHeaderAttr[{destTile.getTileID(), destPort}] =</div>
-<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>            keep ? BoolAttr::get(Op.getContext(), *keep) : <span class="keyword">nullptr</span>;</div>
-<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span> </div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>        <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> srcSB = {<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">srcCoords</a>.col, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">srcCoords</a>.row};</div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>        <span class="keywordflow">if</span> (<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a> srcPoint = {srcSB, srcPort};</div>
-<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>            !analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#ac0c541d3c53eb4044c6daae1f1d26bf1">processedFlows</a>[srcPoint]) {</div>
-<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>          <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5d804ed206d18cfc175e64c9c20295fb">SwitchSettings</a> settings = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#af90fd7cb6e42879d266fd643509506d8">flowSolutions</a>[srcPoint];</div>
-<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>          <span class="comment">// add connections for all the Switchboxes in SwitchSettings</span></div>
-<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>          <span class="keywordflow">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp;[curr, setting] : settings) {</div>
-<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>            assert(setting.srcs.size() == setting.dsts.size());</div>
-<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>            <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> currTile = {curr.col, curr.row};</div>
-<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>            <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; setting.srcs.size(); i++) {</div>
-<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>              <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">src</a> = setting.srcs[i];</div>
-<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>              <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> dest = setting.dsts[i];</div>
-<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>              <span class="comment">// reject false broadcast</span></div>
-<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>              <span class="keywordflow">if</span> (!<a class="code hl_function" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#abd1f755183a9c7f64f84f17511784fcc">findPathToDest</a>(settings, currTile, dest.bundle, dest.channel,</div>
-<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>                                  destCoords, destPort.bundle,</div>
-<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>                                  destPort.channel))</div>
-<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>                <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>              <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a317230cd90915177026dc79a8b30df49">Connect</a> connect = {{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">src</a>.bundle, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">src</a>.channel},</div>
-<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>                                 {dest.bundle, dest.channel}};</div>
-<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>              <span class="keywordflow">if</span> (std::find(switchboxes[currTile].begin(),</div>
-<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>                            switchboxes[currTile].end(),</div>
-<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>                            std::pair{connect, flowID}) ==</div>
-<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>                  switchboxes[currTile].end())</div>
-<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>                switchboxes[currTile].push_back({connect, flowID});</div>
-<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>              <span class="comment">// Assign &quot;control packet flows&quot; flag per switchbox, based on</span></div>
-<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>              <span class="comment">// packet flow op attribute</span></div>
-<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>              <span class="keyword">auto</span> ctrlPkt = pktFlowOp.getPriorityRoute();</div>
-<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>              ctrlPktFlows[{{currTile, dest}, flowID}] =</div>
-<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>                  ctrlPkt ? *ctrlPkt : <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>            }</div>
+<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>    SmallVector&lt;std::pair&lt;TileID, Port&gt;, 4&gt; sources;</div>
+<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span> </div>
+<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>    <span class="comment">// Pass 1: collect all sources (order-independent; supports fan-in).</span></div>
+<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>    <span class="keywordflow">for</span> (Operation &amp;Op : b.getOperations()) {</div>
+<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> pktSource = dyn_cast&lt;PacketSourceOp&gt;(Op)) {</div>
+<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>        <span class="keyword">auto</span> srcTile = dyn_cast&lt;TileOp&gt;(pktSource.getTile().getDefiningOp());</div>
+<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>        sources.push_back(</div>
+<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>            {{srcTile.colIndex(), srcTile.rowIndex()}, pktSource.port()});</div>
+<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>      }</div>
+<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>    }</div>
+<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>    <span class="keywordflow">if</span> (sources.empty())</div>
+<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>      <span class="keywordflow">return</span> pktFlowOp.emitOpError(<span class="stringliteral">&quot;packet_flow has no packet_source&quot;</span>);</div>
+<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>    <span class="comment">// Pass 2: lower each (source, destination) pair so fan-in flows lay</span></div>
+<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>    <span class="comment">// down switchbox connections for every source, not just the last one.</span></div>
+<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>    <span class="keywordflow">for</span> (Operation &amp;Op : b.getOperations()) {</div>
+<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>      <span class="keyword">auto</span> pktDest = dyn_cast&lt;PacketDestOp&gt;(Op);</div>
+<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>      <span class="keywordflow">if</span> (!pktDest)</div>
+<div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>      <span class="keyword">auto</span> destTile = dyn_cast&lt;TileOp&gt;(pktDest.getTile().getDefiningOp());</div>
+<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>      <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> destPort = pktDest.port();</div>
+<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>      <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> destCoords = {destTile.colIndex(), destTile.rowIndex()};</div>
+<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>      <span class="comment">// Assign &quot;keep_pkt_header flag&quot;</span></div>
+<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>      <span class="keyword">auto</span> keep = pktFlowOp.getKeepPktHeader();</div>
+<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>      keepPktHeaderAttr[{destTile.getTileID(), destPort}] =</div>
+<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>          keep ? BoolAttr::get(Op.getContext(), *keep) : <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span> </div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">srcCoords</a>, srcPort] : sources) {</div>
+<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>        <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> srcSB = {<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">srcCoords</a>.col, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">srcCoords</a>.row};</div>
+<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>        <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a> srcPoint = {srcSB, srcPort};</div>
+<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>        <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#ac0c541d3c53eb4044c6daae1f1d26bf1">processedFlows</a>[srcPoint])</div>
+<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>          <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>        <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5d804ed206d18cfc175e64c9c20295fb">SwitchSettings</a> settings = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#af90fd7cb6e42879d266fd643509506d8">flowSolutions</a>[srcPoint];</div>
+<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>        <span class="comment">// add connections for all the Switchboxes in SwitchSettings</span></div>
+<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>        <span class="keywordflow">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp;[curr, setting] : settings) {</div>
+<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>          assert(setting.srcs.size() == setting.dsts.size());</div>
+<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>          <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> currTile = {curr.col, curr.row};</div>
+<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>          <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; setting.srcs.size(); i++) {</div>
+<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>            <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">src</a> = setting.srcs[i];</div>
+<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>            <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> dest = setting.dsts[i];</div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>            <span class="comment">// reject false broadcast</span></div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>            <span class="keywordflow">if</span> (!<a class="code hl_function" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#abd1f755183a9c7f64f84f17511784fcc">findPathToDest</a>(settings, currTile, dest.bundle, dest.channel,</div>
+<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>                                destCoords, destPort.bundle, destPort.channel))</div>
+<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>              <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>            <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a317230cd90915177026dc79a8b30df49">Connect</a> connect = {{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">src</a>.bundle, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">src</a>.channel},</div>
+<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>                               {dest.bundle, dest.channel}};</div>
+<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>            <span class="keywordflow">if</span> (std::find(</div>
+<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>                    switchboxes[currTile].begin(), switchboxes[currTile].end(),</div>
+<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>                    std::pair{connect, flowID}) == switchboxes[currTile].end())</div>
+<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>              switchboxes[currTile].push_back({connect, flowID});</div>
+<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>            <span class="comment">// Assign &quot;control packet flows&quot; flag per switchbox, based on</span></div>
+<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>            <span class="comment">// packet flow op attribute</span></div>
+<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>            <span class="keyword">auto</span> ctrlPkt = pktFlowOp.getPriorityRoute();</div>
+<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>            ctrlPktFlows[{{currTile, dest}, flowID}] =</div>
+<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>                ctrlPkt ? *ctrlPkt : <span class="keyword">false</span>;</div>
 <div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>          }</div>
 <div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>        }</div>
 <div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>      }</div>
@@ -1225,8 +1225,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aAIEPathFinder_8h_html"><div class="ttname"><a href="AIEPathFinder_8h.html">AIEPathFinder.h</a></div></div>
 <div class="ttc" id="aclassOpConversionPattern_html"><div class="ttname"><a href="classOpConversionPattern.html">OpConversionPattern</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html">xilinx::AIE::DynamicTileAnalysis</a></div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00232">AIEPathFinder.h:232</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_a139f22f81b2af4149304b932f71bc7fc"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a139f22f81b2af4149304b932f71bc7fc">xilinx::AIE::DynamicTileAnalysis::getShimMux</a></div><div class="ttdeci">ShimMuxOp getShimMux(mlir::OpBuilder &amp;builder, int col)</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8cpp_source.html#l00174">AIEPathFinder.cpp:174</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_a295ab640415716a5c44c8f416f2e014b"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a295ab640415716a5c44c8f416f2e014b">xilinx::AIE::DynamicTileAnalysis::getSwitchbox</a></div><div class="ttdeci">SwitchboxOp getSwitchbox(mlir::OpBuilder &amp;builder, int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8cpp_source.html#l00159">AIEPathFinder.cpp:159</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_a139f22f81b2af4149304b932f71bc7fc"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a139f22f81b2af4149304b932f71bc7fc">xilinx::AIE::DynamicTileAnalysis::getShimMux</a></div><div class="ttdeci">ShimMuxOp getShimMux(mlir::OpBuilder &amp;builder, int col)</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8cpp_source.html#l00171">AIEPathFinder.cpp:171</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_a295ab640415716a5c44c8f416f2e014b"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a295ab640415716a5c44c8f416f2e014b">xilinx::AIE::DynamicTileAnalysis::getSwitchbox</a></div><div class="ttdeci">SwitchboxOp getSwitchbox(mlir::OpBuilder &amp;builder, int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8cpp_source.html#l00156">AIEPathFinder.cpp:156</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_a2cf479638938a2670cb6ee7064ccdadd"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a2cf479638938a2670cb6ee7064ccdadd">xilinx::AIE::DynamicTileAnalysis::getMaxCol</a></div><div class="ttdeci">int getMaxCol() const</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00253">AIEPathFinder.h:253</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_a4d02c67c84b58c7c6a1a91f48ff4b9d9"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a4d02c67c84b58c7c6a1a91f48ff4b9d9">xilinx::AIE::DynamicTileAnalysis::getMaxRow</a></div><div class="ttdeci">int getMaxRow() const</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00254">AIEPathFinder.h:254</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1DynamicTileAnalysis_html_a6cb3e1e1e9b1c3e064d25550cda9959e"><div class="ttname"><a href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">xilinx::AIE::DynamicTileAnalysis::coordToSwitchbox</a></div><div class="ttdeci">llvm::DenseMap&lt; TileID, SwitchboxOp &gt; coordToSwitchbox</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00240">AIEPathFinder.h:240</a></div></div>
@@ -1266,7 +1266,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri May 22 2026 09:11:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri May 22 2026 15:27:41 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
