@@ -58,9 +58,10 @@ below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 
 | Chain | N=1 wall | N=15 per-sample | N=15 fps |
 |---|---:|---:|---:|
-| m0           | 16.35 ms | 13.02 ms | **76.78** |
-| m0..m1       | 14.66 ms | 13.01 ms | **76.85** |
-| m0..m1..m2   | 32.17 ms | 30.94 ms | **32.32** |
+| m0               | 16.35 ms | 13.02 ms | **76.78** |
+| m0..m1           | 14.66 ms | 13.01 ms | **76.85** |
+| m0..m1..m2       | 32.17 ms | 30.94 ms | **32.32** |
+| m0..m1..m2..m3   | 34.41 ms | 30.94 ms | **32.32** |
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 Rows marked ✓ have been re-measured at the current commit; the rest
@@ -71,7 +72,7 @@ are pre-validation snapshots pending re-measurement.
 | m0  | conv_stride stem               | 13.10 | 76.3  | ✓ |
 | m1  | conv_stride                    |  8.63 | 115.8 | ✓ |
 | **m2**  | **c3k2_small**             | **31.33** | **31.9** | ✓ |
-| m3  | conv_stride (chunked)          |  8.10 | 123.5 | |
+| m3  | conv_stride (chunked)          |  8.02 | 124.7 | ✓ |
 | m4  | c3k2_small                     | 21.96 | 45.5  | |
 | m5  | conv_stride (chunked)          |  6.97 | 143.5 | |
 | m6  | c3k2_heavy                     | 15.10 | 66.2  | |
