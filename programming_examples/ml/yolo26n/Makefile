@@ -227,12 +227,18 @@ $(BUILD)/yolo_m10_conv2dk1_silu_xy_pool.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m10) -c $< -o $@
 
-# Phase 4: m9 cv1_split vectorized (chunked-OC 1x1 256->256 + SiLU + top/bot
-# channel split). Drop-in: same symbol + ABI as the scalar .cc. Explicit rule
-# overrides the yolo_m9_%.o pattern since the .cc base name differs from the
-# .o (drops the _vec suffix).
+# Phase 4: m9 1x1 conv kernels vectorized. Drop-in: same symbol + ABI as
+# the scalar .cc. Explicit rule per kernel overrides the yolo_m9_%.o pattern
+# since the .cc base name differs from the .o (drops the _vec suffix).
+#   cv1_split: chunked-OC 1x1 256->256 + SiLU + top/bot channel split.
+#   qkv:       1x1 128->256 (no activation, non-streamed wts).
 $(BUILD)/yolo_m9_cv1_split.o: \
     $(SRCDIR)/kernels/yolo_m9_cv1_split_vec.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
+
+$(BUILD)/yolo_m9_qkv.o: \
+    $(SRCDIR)/kernels/yolo_m9_qkv_vec.cc
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
 
