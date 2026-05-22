@@ -49,24 +49,9 @@ trace_insts_target  = build/${VARIANT}/insts_trace.bin
 .PHONY: all
 all: ${xclbin_target} ${insts_target}
 
-${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
-
-${trace_xclbin_target} ${trace_insts_target} &: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${aieargs} -t ${trace_size} --xclbin-path=${trace_xclbin_target} --insts-path=${trace_insts_target}
-
-${targetname}.exe: ${srcdir}/../test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}/..` -DTARGET_NAME=${targetname} -DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@
-endif
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
+$(eval $(call jit_xclbin,${trace_xclbin_target},${trace_insts_target},${aie_py_src},${aieargs} -t ${trace_size}))
+$(eval $(call build_host_exe,${targetname},_build,../test.cpp,-DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} -DDTYPE=${dtype_cpp},${srcdir}/..))
 
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${insts_target}

@@ -31,9 +31,7 @@ insts_target = build/insts_${data_size}.bin
 
 all: ${xclbin_target} ${insts_target}
 
-${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build

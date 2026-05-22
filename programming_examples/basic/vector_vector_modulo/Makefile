@@ -29,20 +29,8 @@ insts_target = build/insts.bin
 .PHONY: all
 all: ${xclbin_target} ${insts_target}
 
-${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
-
-${targetname}.exe: ${srcdir}/test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@
-endif
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
+$(eval $(call build_host_exe,${targetname},_build,test.cpp))
 
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${insts_target}

@@ -34,9 +34,7 @@ insts_target  = build/insts_${data_str}.bin
 .PHONY: all
 all: ${xclbin_target} ${insts_target}
 
-${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
 
 .PHONY: run_py
 run_py: ${srcdir}/${aie_py_src}

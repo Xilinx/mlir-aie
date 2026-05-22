@@ -46,9 +46,9 @@ aieargs = -d ${devicename} -M $M -N $N -m $m -n $n
 .PHONY: all
 all: ${xclbin_target} ${host_target}
 
-${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src} ${srcdir}/kernel.cc
-	mkdir -p ${@D}
-	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
+# kernel source is an additional prerequisite for the xclbin
+${xclbin_target} ${insts_target}: ${srcdir}/kernel.cc
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 	mkdir -p ${@D}

@@ -45,13 +45,10 @@ host_target = build/test
 .PHONY: all
 all: ${add_xclbin_target} ${mult_xclbin_target} ${host_target}
 
-${add_xclbin_target} ${add_insts_target} &: ${srcdir}/${aie_py_src} ${srcdir}/add_mul.cc
-	mkdir -p $(dir ${add_xclbin_target})
-	python3 $< -d ${DEVICE} --op add --xclbin-path=${add_xclbin_target} --insts-path=${add_insts_target}
-
-${mult_xclbin_target} ${mult_insts_target} &: ${srcdir}/${aie_py_src} ${srcdir}/add_mul.cc
-	mkdir -p $(dir ${mult_xclbin_target})
-	python3 $< -d ${DEVICE} --op mul --xclbin-path=${mult_xclbin_target} --insts-path=${mult_insts_target}
+$(eval $(call jit_xclbin,${add_xclbin_target},${add_insts_target},${aie_py_src},-d ${DEVICE} --op add))
+$(eval $(call jit_xclbin,${mult_xclbin_target},${mult_insts_target},${aie_py_src},-d ${DEVICE} --op mul))
+# kernel source is an additional prerequisite for both xclbin targets
+${add_xclbin_target} ${add_insts_target} ${mult_xclbin_target} ${mult_insts_target}: ${srcdir}/add_mul.cc
 
 ${host_target}: ${srcdir}/test.cpp ${add_xclbin_target} ${mult_xclbin_target}
 	mkdir -p ${@D}
