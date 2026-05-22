@@ -1,0 +1,145 @@
+# cli.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""``run_design_cli`` — standard 3-mode dispatcher for IRON design CLIs.
+
+Almost every basic/ design's ``main()`` is the same skeleton:
+
+    def main():
+        opts = _make_argparser().parse_args()
+        # optional: _validate(opts)
+        # optional: if opts.emit_mlir: _emit_mlir(opts); return
+        if opts.xclbin_path:
+            _compile_only(opts)
+            return
+        _run_and_verify(opts)
+
+…where ``_compile_only`` always does the same ``--insts-path`` check +
+``set_current_device(from_name(opts.dev))`` + ``design.specialize(**kw)
+.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
+[, elf_path=opts.elf_path])``.
+
+This module wraps that skeleton so each design just declares the three
+pieces it actually owns (compile kwargs, the verify body, optional
+emit-MLIR body) and lets the dispatcher do the branching + the
+boilerplate around it.
+"""
+
+from __future__ import annotations
+
+import sys
+from typing import Any, Callable, Mapping
+
+
+def _resolve(value: Any, opts) -> Any:
+    """Resolve ``value`` to a concrete value: call it if callable, else pass through."""
+    return value(opts) if callable(value) else value
+
+
+def run_design_cli(
+    design,
+    opts,
+    *,
+    compile_kwargs: Mapping[str, Any] | Callable[[Any], Mapping[str, Any]],
+    run_and_verify: Callable[[Any], None],
+    device: Any | Callable[[Any], Any] | None = None,
+    emit_mlir: Callable[[Any], None] | None = None,
+    validate: Callable[[Any], None] | None = None,
+) -> None:
+    """Standard 3-mode CLI dispatcher for basic/ designs.
+
+    The standard branch tree (in order):
+
+      1. If ``validate`` is given, call ``validate(opts)`` first.
+      2. If ``opts.emit_mlir`` is True, set the current device, then call
+         ``emit_mlir(opts)`` and return.
+      3. If ``opts.xclbin_path`` is set:
+
+         * Refuse if ``opts.insts_path`` is unset (``sys.exit`` with the
+           standard message).
+         * Set the current device.
+         * Call ``design.specialize(**compile_kwargs).compile(
+           xclbin_path=opts.xclbin_path, inst_path=opts.insts_path,
+           [elf_path=opts.elf_path])``.
+
+      4. Otherwise, call ``run_and_verify(opts)``.
+
+    Args:
+        design: The ``@iron.jit``-decorated design (a ``CallableDesign``).
+        opts: Parsed ``argparse.Namespace`` — must expose at minimum
+            ``xclbin_path`` / ``insts_path`` (the standard
+            ``add_compile_args`` flags).  ``emit_mlir`` and ``elf_path``
+            are read if present.
+        compile_kwargs: Either a dict OR a callable that takes ``opts``
+            and returns the kwargs dict to pass to
+            ``design.specialize()``.  Callable form is convenient for
+            the typical ``_compile_kwargs(opts)`` helper most designs
+            already have.
+        run_and_verify: Callable invoked in the default (NPU
+            run + numpy verify) branch.  Takes ``opts``, returns nothing
+            — exits non-zero on failure (e.g. via ``assert_pass``).
+        device: Optional iron ``Device`` instance OR callable
+            ``opts -> Device``.  If omitted, defaults to
+            ``from_name(opts.dev)`` (using whatever device choices the
+            argparse setup allowed).  Pass a callable when the device
+            depends on more than just ``opts.dev`` — e.g. matmul's
+            ``(opts.dev, opts.n_aie_cols)`` mapping.
+        emit_mlir: Optional callable for the ``--emit-mlir`` branch.
+            If ``opts.emit_mlir`` is True but this is None, the dispatcher
+            raises (treats as a design bug).
+        validate: Optional callable invoked before any branch — e.g. for
+            shape / arg consistency checks that should fire in all modes.
+    """
+    # Late imports so this module is cheap to import even when no
+    # design ever calls it (and to dodge circular-import issues with
+    # aie.iron.device).
+    from aie.iron.device import from_name
+    from aie.utils.hostruntime import set_current_device
+
+    if validate is not None:
+        validate(opts)
+
+    if device is None:
+        # Default: read opts.dev and pass through from_name.
+        if not hasattr(opts, "dev"):
+            raise ValueError(
+                "run_design_cli: device=None requires opts to expose a "
+                "'dev' attribute (the standard add_compile_args flag). "
+                "Pass device=<Device or callable> explicitly otherwise."
+            )
+
+        def _default_device(opts):
+            return from_name(opts.dev)
+
+        device = _default_device
+
+    if getattr(opts, "emit_mlir", False):
+        if emit_mlir is None:
+            raise ValueError(
+                "run_design_cli: opts.emit_mlir is set but no emit_mlir "
+                "callback was provided."
+            )
+        set_current_device(_resolve(device, opts))
+        emit_mlir(opts)
+        return
+
+    if getattr(opts, "xclbin_path", None):
+        if not getattr(opts, "insts_path", None):
+            sys.exit("--xclbin-path requires --insts-path (must be set together)")
+        set_current_device(_resolve(device, opts))
+        kwargs = _resolve(compile_kwargs, opts)
+        spec = design.specialize(**kwargs)
+        compile_opts = dict(
+            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
+        )
+        elf_path = getattr(opts, "elf_path", None)
+        if elf_path is not None:
+            compile_opts["elf_path"] = elf_path
+        spec.compile(**compile_opts)
+        return
+
+    run_and_verify(opts)
