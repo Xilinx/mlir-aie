@@ -13,9 +13,12 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
 targetname = vector_exp
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
-aie_py_src=${targetname}.py
+# JIT-mode design: vector_exp.py uses iron.get_current_device() to
+# auto-detect the attached NPU at JIT time, so no -d / devicename
+# flag is threaded through.
+
+aie_py_src = ${targetname}.py
 
 .PHONY: all run clean
 
