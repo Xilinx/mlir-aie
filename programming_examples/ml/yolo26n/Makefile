@@ -325,13 +325,21 @@ $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
 
 # c3k2_small kernels (m2/m4 + the cv1_split/cv2_concat3 shared with m6).
 # -DKERNEL_SUFFIX=_mN gives each block a uniquely-named symbol.
+# Per-block shape macros enable peano to fold addressing into shifts and
+# unroll the inner kx/ic loops; kernels fall back to runtime args for
+# blocks that don't pre-declare shapes.
+M2_M0CV1_SHAPE      := -DYOLO_C3K2_M0CV1_IN_W=128 -DYOLO_C3K2_M0CV1_IN_C=16 -DYOLO_C3K2_M0CV1_OUT_C=8
+M2_M0CV2_SKIP_SHAPE := -DYOLO_C3K2_M0CV2_SKIP_IN_W=128 -DYOLO_C3K2_M0CV2_SKIP_IN_C=8 -DYOLO_C3K2_M0CV2_SKIP_OUT_C=16
+M0CV1_SHAPE_m2      := $(M2_M0CV1_SHAPE)
+M0CV2_SKIP_SHAPE_m2 := $(M2_M0CV2_SKIP_SHAPE)
+
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv1_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(M0CV1_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv2_skip_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv2_skip_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(M0CV2_SKIP_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv1_split_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv1_split_vec.cc ; \
