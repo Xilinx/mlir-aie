@@ -20,6 +20,11 @@ source /opt/xilinx/xrt/setup.sh
 source ../../../ironenv/bin/activate
 source ../../../utils/env_setup.sh ../../../install
 
+# 1b. Install the ML extras (onnx + onnxruntime + torch). The standard
+#     mlir-aie env install only pulls requirements.txt + requirements_dev.txt;
+#     `make data` and the ORT bit-exact tests need this file too.
+pip install -r ../../../python/requirements_ml.txt
+
 # 2. List available targets.
 make help
 
