@@ -57,7 +57,11 @@ def add_compile_args(
     if with_dev:
         names = ("--dev",) if short_dev is None else (short_dev, "--dev")
         parser.add_argument(
-            *names, type=str, choices=list(dev_choices), default=default_dev
+            *names,
+            type=str,
+            choices=list(dev_choices),
+            default=default_dev,
+            help="target device family (default: %(default)s)",
         )
     if with_emit_mlir:
         parser.add_argument(
@@ -65,8 +69,18 @@ def add_compile_args(
             action="store_true",
             help="print the resolved MLIR module to stdout (legacy aiecc / vck5000 path)",
         )
-    parser.add_argument("--xclbin-path", type=str, default=None)
-    parser.add_argument("--insts-path", type=str, default=None)
+    parser.add_argument(
+        "--xclbin-path",
+        type=str,
+        default=None,
+        help="compile-only mode: write the xclbin here (pairs with --insts-path)",
+    )
+    parser.add_argument(
+        "--insts-path",
+        type=str,
+        default=None,
+        help="compile-only mode: write the instruction binary here (pairs with --xclbin-path)",
+    )
     if with_elf:
         parser.add_argument(
             "--elf-path",
@@ -83,8 +97,20 @@ def add_benchmark_args(
     default_iters: int = 5,
 ) -> None:
     """Add the standard benchmark flags: ``-w/--warmup`` and ``-i/--iters``."""
-    parser.add_argument("-w", "--warmup", type=int, default=default_warmup)
-    parser.add_argument("-i", "--iters", type=int, default=default_iters)
+    parser.add_argument(
+        "-w",
+        "--warmup",
+        type=int,
+        default=default_warmup,
+        help="benchmark warmup iterations (excluded from timings; default: %(default)s)",
+    )
+    parser.add_argument(
+        "-i",
+        "--iters",
+        type=int,
+        default=default_iters,
+        help="benchmark timed iterations (default: %(default)s)",
+    )
 
 
 def add_trace_arg(
@@ -102,7 +128,10 @@ def add_trace_arg(
             matmul).
         default: Default trace size in bytes (``0`` disables tracing).
     """
-    if with_short:
-        parser.add_argument("-t", "--trace_size", type=int, default=default)
-    else:
-        parser.add_argument("--trace_size", type=int, default=default)
+    names = ("-t", "--trace_size") if with_short else ("--trace_size",)
+    parser.add_argument(
+        *names,
+        type=int,
+        default=default,
+        help="hardware trace buffer size in bytes (0 disables tracing; default: %(default)s)",
+    )
