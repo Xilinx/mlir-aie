@@ -64,7 +64,7 @@ Latest measurements at the current commit.
 |---:|---|---:|---:|
 | m0  | conv_stride stem               | 13.11 | 76.3 |
 | m1  | conv_stride                    | 8.65 | 115.7 |
-| **m2**  | **c3k2_small**             | **26.38** | **37.9** |
+| **m2**  | **c3k2_small**             | **31.33** | **31.9** |
 | m3  | conv_stride (chunked)          | 8.10 | 123.5 |
 | m4  | c3k2_small                     | 21.96 | 45.5 |
 | m5  | conv_stride (chunked)          | 6.97 | 143.5 |
