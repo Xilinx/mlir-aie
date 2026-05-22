@@ -150,7 +150,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # Install Python requirements for development and testing
    python3 -m pip install -r python/requirements_dev.txt
 
-   # This installs the pre-commit hooks defined in .pre-commit-config.yaml
+   # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
+   # (pre-push runs clang-format/black to catch formatting issues before CI)
    pre-commit install
    ```
 
