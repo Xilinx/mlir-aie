@@ -1135,6 +1135,10 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                     k_ffn1,
                 ],
                 tile=plc["ffn"],
+                # Deep-opt vec kernels for ffn.0 / ffn.1 keep a 4 KB
+                # YCXC8 pre-pack scratch on stack each; default 1 KB
+                # would overflow.
+                stack_size=8192,
                 dynamic_objfifo_lowering=True,
             )
         )
