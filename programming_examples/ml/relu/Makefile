@@ -4,70 +4,42 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 #
 ##===----------------------------------------------------------------------===##
+#
+# @iron.jit drives aiecc directly via --xclbin-path / --insts-path /
+# --elf-path; the library ``kernels.relu`` is auto-built into the JIT
+# work_dir, so no separate Makefile rule for the .o is needed.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-aie2_runtime_dir = ${MLIR_AIE_DIR}/aie_runtime_lib/AIE2
+SHELL := /bin/bash
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = relu
-length ?= 16384
-cols ?= 4
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+length ?= 65536
 chans ?= 2
 
-# Input and output sizes in bytes is length * 2
-in1_size = ${length} * 2
-out_size = ${length} * 2
+aie_py_src = ${targetname}.py
+aieargs = -d ${devicename} -l ${length} -ch ${chans}
 
-ifeq ($(devicename),npu2)
-VPATH :=${srcdir}/../../../aie_kernels/aie2
-else
-VPATH :=${srcdir}/../../../aie_kernels/aie2
-endif
+xclbin_target = build/final.xclbin
+insts_target  = build/insts.bin
+elf_target    = build/insts.elf
 
-aie_py_src=relu.py
+.PHONY: all
+all: ${xclbin_target} ${insts_target} ${elf_target}
 
-.PHONY all: build/${targetname}.mlir build/final.xclbin
+$(eval $(call jit_xclbin_elf,${xclbin_target},${insts_target},${elf_target},${aie_py_src},${aieargs}))
+$(eval $(call build_host_exe,${targetname},_build,test.cpp))
 
-build/%.cc.o: %.cc
-	mkdir -p ${@D}
-ifeq ($(devicename),npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I${aie2_runtime_dir} -c $< -o ${@F}
-else ifeq ($(devicename),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
-else
-	echo "Device type not supported"
-endif
+.PHONY: run
+run: ${targetname}.exe ${xclbin_target} ${elf_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${elf_target} -k MLIR_AIE -l ${length}
 
-build/${targetname}.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< -d ${devicename} -l ${length} -co ${cols} -ch ${chans} > $@
-
-build/final.xclbin: build/${targetname}.mlir build/${targetname}.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host \
-	            --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
-				--aie-generate-elf --elf-name=insts.elf $(<:%=../%)
-
-${targetname}.exe: ${srcdir}/test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@
-endif
-
-run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.elf -k MLIR_AIE -l ${length}
-
+.PHONY: clean
 clean:
-	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe
+	rm -rf build _build ${targetname}.exe
