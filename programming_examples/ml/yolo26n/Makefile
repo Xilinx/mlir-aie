@@ -159,6 +159,19 @@ $(BUILD)/.chain_n_samples: FORCE
 	    echo "$$new" > $@; \
 	  fi
 
+# Same stamp pattern for M9_STAGE — selects which staged build of m9 the
+# per-block MLIR emits (1 = cv1 only, 10 = full block; default 10). Bumps
+# the m9 MLIR's prereq when changed, so `M9_STAGE=1 make BLOCK=m9` and
+# `M9_STAGE=10 make BLOCK=m9` rebuild correctly without `make clean`.
+M9_STAGE ?= 10
+$(BUILD)/.m9_stage: FORCE
+	@mkdir -p $(BUILD)
+	@new="$(M9_STAGE)"; old=$$(cat $@ 2>/dev/null || echo ""); \
+	  if [ "$$old" != "$$new" ]; then \
+	    echo "[m9] M9_STAGE = $$new (was $${old:-unset}); m9 MLIR will rebuild"; \
+	    echo "$$new" > $@; \
+	  fi
+
 # Per-block ablation: pass `NOOP_BLOCK="m0 m1 ..."` (space-separated) to
 # compile those blocks' kernels with -DNOOP_KERNEL. The kernel's extern "C"
 # entry early-returns, preserving the chain's DMA/lock pattern while
@@ -213,6 +226,15 @@ $(BUILD)/yolo_m10_conv2dk1_silu_xy_pool.o: \
     $(SRCDIR)/kernels/yolo_m10_conv2dk1_silu_xy_pool_vec.cc
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m10) -c $< -o $@
+
+# Phase 4: m9 cv1_split vectorized (chunked-OC 1x1 256->256 + SiLU + top/bot
+# channel split). Drop-in: same symbol + ABI as the scalar .cc. Explicit rule
+# overrides the yolo_m9_%.o pattern since the .cc base name differs from the
+# .o (drops the _vec suffix).
+$(BUILD)/yolo_m9_cv1_split.o: \
+    $(SRCDIR)/kernels/yolo_m9_cv1_split_vec.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
 
 # c3k2_heavy streamed inner-pair kernels (m8 megakernel: shared symbol
 # for both pair0 and pair1 — they run on different tiles with different
@@ -284,10 +306,12 @@ SILU_LUTS := $(DATA)/model.0/silu_lut.bin $(DATA)/model.1/silu_lut.bin \
              $(DATA)/model.9/cv2/silu_lut.bin \
              $(DATA)/model.10/silu_lut.bin
 
-# IRON design -> MLIR.
-$(MLIR): $(SRCDIR)/aie2_yolo_per_block.py $(DATA)/manifest.json $(SILU_LUTS)
+# IRON design -> MLIR. .m9_stage stamp forces rebuild when M9_STAGE changes
+# (only relevant for BLOCK=m9 but the stamp is cheap and inert for others).
+$(MLIR): $(SRCDIR)/aie2_yolo_per_block.py $(DATA)/manifest.json $(SILU_LUTS) \
+         $(BUILD)/.m9_stage
 	mkdir -p $(BUILD)
-	cd $(SRCDIR) && python3 aie2_yolo_per_block.py $(BLOCK) > $@
+	cd $(SRCDIR) && M9_STAGE=$(M9_STAGE) python3 aie2_yolo_per_block.py $(BLOCK) > $@
 
 # MLIR + kernel objs -> xclbin + insts.bin. aiecc runs from $(BUILD) so it
 # resolves kernel .o by basename via the MLIR's `link_with` attr.
@@ -308,10 +332,16 @@ $(SILU_LUTS): $(SRCDIR)/gen_yolo_silu_luts.py $(ONNX)
 data: $(DATA)/manifest.json $(SILU_LUTS)
 
 # Per-block bit-exact: build + run on NPU + compare vs ORT's
-# /model.N/act post-SiLU tensor. m9/m10 aren't supported here (they go
-# through the chain) — use `make run_chain` to verify them end-to-end.
+# /model.N/act post-SiLU tensor.
+#   m0/m1/m2/m3/m4/m5/m6/m7 — straightforward per-block compare.
+#   m9 (psa) — set M9_STAGE=1 to compare against cv1 post-SiLU, or
+#              M9_STAGE=10 (default) to compare against cv2 post-SiLU
+#              (the full m9 block output). Other stages emit intermediate
+#              PSA tensors with no clean ORT analog; use `run_chain` for
+#              end-to-end verification.
+#   m10 — not yet wired; verify via `make run_chain`.
 run_ort: $(XCLBIN) $(INSTS)
-	cd $(SRCDIR) && python3 test_block_ort.py --block $(BLOCK) \
+	cd $(SRCDIR) && M9_STAGE=$(M9_STAGE) python3 test_block_ort.py --block $(BLOCK) \
 	    -x $(XCLBIN) -i $(INSTS) -k MLIR_AIE
 
 # Per-block timing: warmup + N timed dispatches, reports mean/min/max ms + fps.

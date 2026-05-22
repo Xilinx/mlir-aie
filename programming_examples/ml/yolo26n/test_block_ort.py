@@ -1,4 +1,4 @@
-"""NPU-vs-ORT bit-exact compare for any conv_stride block (m0/m1/m3/m5/m7).
+"""NPU-vs-ORT bit-exact compare for any conv_stride / c3k2 / psa block.
 
 For block m_N:
   - Seed-0 random INT8 image (3,512,512), dequantized via the model's input QL
@@ -8,6 +8,14 @@ For block m_N:
       - the post-SiLU int8 output of /model.N/act (== expected NPU output)
   - The NPU xclbin is run with the same input, then compared.
 
+For m9 (psa), the M9_STAGE env var selects which intermediate ORT tensor to
+compare:
+  - M9_STAGE=1: cv1 post-SiLU (smallest possible test; isolates cv1).
+  - M9_STAGE=10 (default): cv2 post-SiLU (full m9 block output).
+Other m9 stages emit intermediate PSA tensors (qkv pack, scores, etc.) that
+don't have clean ORT analogs at the same scale — those are exercised
+end-to-end via `make run_chain`.
+
 Bit-exact match means the NPU pipeline (conv + bias accum + banker requant +
 SiLU LUT) matches the Quark XINT8 graph at this block to the last bit.
 """
@@ -15,6 +23,7 @@ SiLU LUT) matches the Quark XINT8 graph at this block to the last bit.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -64,7 +73,9 @@ def get_input_qparams(graph):
     return scale, zp
 
 
-def find_block_io_tensors(graph, model_n: int, topology: str) -> tuple[str, str]:
+def find_block_io_tensors(
+    graph, model_n: int, topology: str, stage: int = 0
+) -> tuple[str, str]:
     """Returns (input_int8_tensor, output_int8_tensor) names for block m_N.
 
     For conv_stride blocks (m0/m1/m3/m5/m7):
@@ -75,6 +86,13 @@ def find_block_io_tensors(graph, model_n: int, topology: str) -> tuple[str, str]
       Input: int8 feeding /model.N/cv1/conv/Conv.
       Output: /model.N/cv2/act/Mul_output_0_QuantizeLinear_Output (post-SiLU,
               the block's effective output — what downstream blocks see).
+
+    For psa blocks (m9), the `stage` arg selects the output tensor:
+      stage=1  -> post-SiLU of cv1 (isolates the cv1 1x1+SiLU).
+      stage=10 -> post-SiLU of cv2 (full m9 block output).
+      Other stages have no clean single-tensor ORT analog (intermediate PSA
+      tensors are emitted at different scales / layouts); use `make run_chain`
+      to verify those end-to-end.
     """
     nodes_by_output = {o: n for n in graph.node for o in n.output}
 
@@ -85,6 +103,18 @@ def find_block_io_tensors(graph, model_n: int, topology: str) -> tuple[str, str]
         # Both c3k2 variants emit post-SiLU cv2 output as the block result.
         first_conv_name = f"/model.{model_n}/cv1/conv/Conv"
         out_tensor = f"/model.{model_n}/cv2/act/Mul_output_0_QuantizeLinear_Output"
+    elif topology == "psa":
+        first_conv_name = f"/model.{model_n}/cv1/conv/Conv"
+        if stage == 1:
+            out_tensor = f"/model.{model_n}/cv1/act/Mul_output_0_QuantizeLinear_Output"
+        elif stage == 10:
+            out_tensor = f"/model.{model_n}/cv2/act/Mul_output_0_QuantizeLinear_Output"
+        else:
+            raise ValueError(
+                f"psa block: M9_STAGE={stage} has no single-tensor ORT analog "
+                "(only stage 1 = cv1 act, stage 10 = cv2 act are supported here). "
+                "Use `make run_chain` for end-to-end verification of other stages."
+            )
     else:
         raise ValueError(f"unsupported topology {topology!r}")
 
@@ -100,17 +130,30 @@ def find_block_io_tensors(graph, model_n: int, topology: str) -> tuple[str, str]
 def main():
     p = test_utils.create_default_argparser()
     p.add_argument(
-        "--block", required=True, help="conv_stride block name (m0, m1, m3, m5, m7)"
+        "--block",
+        required=True,
+        help="block name (m0/m1/m2/m3/m4/m5/m6/m7/m8/m9). m9 also reads M9_STAGE "
+        "env var (1 = cv1 only, 10 = full block; default 10).",
     )
     opts = p.parse_args(sys.argv[1:])
     model_n = int(opts.block[1:])
 
     blk = yolo_spec.block(opts.block)
     in_w, in_h, in_c_decl = blk.layers[0].in_shape
-    # Block output shape: last layer's output for multi-layer blocks
-    # (c3k2_small), first layer's output for single-Conv conv_stride blocks.
+
+    # For m9 PSA, M9_STAGE selects which intermediate layer's output we compare
+    # against ORT. Stage 1 = cv1 only (first layer), stage 10 = full block (cv2,
+    # last layer). The same env var drives the build via per_block_iron().
+    m9_stage = int(os.environ.get("M9_STAGE", "10"))
+
+    # Block output shape: depends on topology + (for psa) which stage we're at.
     if blk.topology == "conv_stride":
         out_w, out_h, out_c = blk.layers[0].out_shape
+    elif blk.topology == "psa":
+        if m9_stage == 1:
+            out_w, out_h, out_c = blk.layers[0].out_shape  # cv1
+        else:
+            out_w, out_h, out_c = blk.layers[-1].out_shape  # cv2 (stage 10)
     else:
         out_w, out_h, out_c = blk.layers[-1].out_shape
     in_c_pad = 8 if opts.block == "m0" else in_c_decl  # m0 pads RGB 3→8
@@ -126,7 +169,7 @@ def main():
     assert in_zp == 0
 
     in_tensor_name, out_tensor_name = find_block_io_tensors(
-        m.graph, model_n, blk.topology
+        m.graph, model_n, blk.topology, stage=m9_stage
     )
     print(
         f"Block {opts.block}: input tensor {in_tensor_name!r}, output tensor {out_tensor_name!r}"
