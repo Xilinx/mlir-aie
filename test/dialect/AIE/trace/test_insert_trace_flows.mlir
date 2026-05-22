@@ -98,6 +98,38 @@ module @auto_packet_id {
 
 // -----
 
+// Test: Auto-allocated packet ids skip values a user has pinned explicitly.
+// With default packet-id-start=1, the (col, row)-first auto trace on (0, 2)
+// would otherwise grab id 1 -- the same id pinned on (0, 3) -- so the
+// allocator must skip 1 and hand out 2 instead.
+// CHECK-LABEL: module @auto_packet_id_skips_explicit
+module @auto_packet_id_skips_explicit {
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    %tile03 = aie.tile(0, 3)
+    aie.trace @auto_trace(%tile02) {
+      // CHECK: aie.trace.packet id = 2
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.trace @pinned_trace(%tile03) {
+      // CHECK: aie.trace.packet id = 1
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 65536
+      aie.trace.start_config @auto_trace
+      aie.trace.start_config @pinned_trace
+    }
+  }
+}
+
+// -----
+
 // Test: Auto packet type detection from tile type
 // CHECK-LABEL: module @auto_packet_type
 module @auto_packet_type {
@@ -105,14 +137,17 @@ module @auto_packet_type {
     %tile02 = aie.tile(0, 2)
     %tile01 = aie.tile(0, 1)
     %tile00 = aie.tile(0, 0)
+    // Auto-allocated packet ids go in (col, row) order over the active
+    // trace tile set, so (0, 1) gets id 1 and (0, 2) gets id 2 even
+    // though the IR emits core_trace first.
     aie.trace @core_trace(%tile02) {
-      // CHECK: aie.trace.packet id = 1 type = core
+      // CHECK: aie.trace.packet id = 2 type = core
       aie.trace.event<"INSTR_EVENT_0">
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
     }
     aie.trace @memtile_trace(%tile01) {
-      // CHECK: aie.trace.packet id = 2 type = memtile
+      // CHECK: aie.trace.packet id = 1 type = memtile
       aie.trace.event<"DMA_S2MM_0_START_TASK">
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14

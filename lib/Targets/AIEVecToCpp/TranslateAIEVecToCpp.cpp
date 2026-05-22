@@ -188,7 +188,7 @@ struct CppEmitter {
     CppEmitter &emitter;
   };
 
-  /// Returns wether the Value is assigned to a C++ variable in the scope.
+  /// Returns whether the Value is assigned to a C++ variable in the scope.
   bool hasValueInScope(Value val);
 
   // Returns whether a label is assigned to the block.

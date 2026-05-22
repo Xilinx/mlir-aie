@@ -17,6 +17,7 @@
 
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h.inc"
+#include "aie/Dialect/AIEX/IR/AIEXEnums.h"
 #include "mlir/IR/Operation.h"
 
 // include TableGen generated Op definitions

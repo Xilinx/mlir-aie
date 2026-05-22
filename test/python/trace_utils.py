@@ -68,10 +68,13 @@ def passthroughKernel():
                     of_in.release(ObjectFifoPort.Consume, 1)
                     of_out.release(ObjectFifoPort.Produce, 1)
 
-            # Configure tracing with custom events on multiple tiles
+            # Configure tracing with custom events on multiple tiles.
+            # configure_trace() leaves the packet id unset so
+            # -aie-insert-trace-flows can assign it in (col, row) order
+            # after placement; only `type` is materialized here.
             # CHECK: aie.trace @trace_core_1(%{{.*}}) {
             # CHECK:   aie.trace.mode "Event-Time"
-            # CHECK:   aie.trace.packet id = 1 type = core
+            # CHECK:   aie.trace.packet type = core
             # CHECK:   aie.trace.event <"INSTR_EVENT_1">
             # CHECK:   aie.trace.event <"INSTR_EVENT_0">
             # CHECK:   aie.trace.event <"INSTR_VECTOR">
@@ -86,7 +89,7 @@ def passthroughKernel():
             # CHECK:   aie.trace.stop broadcast = 14
             # CHECK: }
             # CHECK: aie.trace @trace_shim_2(%{{.*}}) {
-            # CHECK:   aie.trace.packet id = 2 type = shimtile
+            # CHECK:   aie.trace.packet type = shimtile
             # CHECK:   aie.trace.event <"DMA_S2MM_0_START_TASK">
             # CHECK:   aie.trace.event <"DMA_S2MM_1_START_TASK">
             # CHECK:   aie.trace.event <"DMA_MM2S_0_START_TASK">
