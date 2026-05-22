@@ -233,6 +233,7 @@ $(BUILD)/yolo_m10_conv2dk1_silu_xy_pool.o: \
 #   cv1_split:    chunked-OC 1x1 256->256 + SiLU + top/bot channel split.
 #   qkv:          1x1 128->256 (no activation, non-streamed wts).
 #   ffn_0_silu:   chunked-OC 1x1 128->256 + SiLU (no top/bot split).
+#   proj_skip:    1x1 128->128 + cross-scale skip-add (b at 2x step size).
 $(BUILD)/yolo_m9_cv1_split.o: \
     $(SRCDIR)/kernels/yolo_m9_cv1_split_vec.cc
 	mkdir -p $(BUILD)
@@ -245,6 +246,11 @@ $(BUILD)/yolo_m9_qkv.o: \
 
 $(BUILD)/yolo_m9_ffn_0_silu_row.o: \
     $(SRCDIR)/kernels/yolo_m9_ffn_0_silu_row_vec.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
+
+$(BUILD)/yolo_m9_proj_skip_row.o: \
+    $(SRCDIR)/kernels/yolo_m9_proj_skip_row_vec.cc
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
 
