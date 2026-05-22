@@ -49,40 +49,52 @@ per-layer bins (gitignored).
 
 ## Performance (Strix HW, bit-exact vs ORT)
 
-Latest measurements at the current commit.
+All measurements taken with the NPU in turbo mode
+(`sudo xrt-smi configure --pmode turbo`).
 
-**Chain end-to-end (m0..m10):**
+**Chain — partial (re-measured at current commit).** Full m0..m10 chain
+numbers will land once the per-block re-validation is complete; the rows
+below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 
-| Mode | Wall per dispatch | Per sample | Throughput |
+| Chain | N=1 wall | N=15 per-sample | N=15 fps |
 |---|---:|---:|---:|
-| **N=1** (single-sample latency) | 72.27 ms | 72.27 ms | **13.84 fps** |
-| **N=15** (batched) | 544.09 ms | 36.27 ms | **27.57 fps** |
+| m0           | 16.35 ms | 13.02 ms | **76.78** |
+| m0..m1       | 14.66 ms | 13.01 ms | **76.85** |
+| m0..m1..m2   | 32.17 ms | 30.94 ms | **32.32** |
 
-**Per-block standalone wall time on NPU**, median of n=20:
+**Per-block standalone wall time on NPU**, median of n=20 (turbo).
+Rows marked ✓ have been re-measured at the current commit; the rest
+are pre-validation snapshots pending re-measurement.
 
-| Block | Topology | Median (ms) | fps |
-|---:|---|---:|---:|
-| m0  | conv_stride stem               | 13.11 | 76.3 |
-| m1  | conv_stride                    | 8.65 | 115.7 |
-| **m2**  | **c3k2_small**             | **31.33** | **31.9** |
-| m3  | conv_stride (chunked)          | 8.10 | 123.5 |
-| m4  | c3k2_small                     | 21.96 | 45.5 |
-| m5  | conv_stride (chunked)          | 6.97 | 143.5 |
-| m6  | c3k2_heavy                     | 15.10 | 66.2 |
-| m7  | conv_stride (chunked)          | 4.78 | 209.2 |
-| m8  | c3k2_heavy (2-tile megakernel) | 28.19 | 35.5 |
-| m9 stage 1 (cv1 only)            | PSA cv1 | 1.78 | 561.8 |
-| m9 stage 10 (full PSA block)     | PSA full | 26.25 | 38.1 |
+| Block | Topology | Median (ms) | fps | |
+|---:|---|---:|---:|:--|
+| m0  | conv_stride stem               | 13.10 | 76.3  | ✓ |
+| m1  | conv_stride                    |  8.63 | 115.8 | ✓ |
+| **m2**  | **c3k2_small**             | **31.33** | **31.9** | ✓ |
+| m3  | conv_stride (chunked)          |  8.10 | 123.5 | |
+| m4  | c3k2_small                     | 21.96 | 45.5  | |
+| m5  | conv_stride (chunked)          |  6.97 | 143.5 | |
+| m6  | c3k2_heavy                     | 15.10 | 66.2  | |
+| m7  | conv_stride (chunked)          |  4.78 | 209.2 | |
+| m8  | c3k2_heavy (2-tile megakernel) | 28.19 | 35.5  | |
+| m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
+| m9 stage 10 (full PSA block)     | PSA full | 26.25 | 38.1  | |
 
-**Chain bottleneck after the m1 deep-opt is no longer a single block.**
-NOOP_BLOCK ablation (chain N=15, per-sample ms): noop'ing m2 alone
-drops chain by 0.18 ms, m4 by 0.04 ms — both are nearly fully
-overlapped with the pipeline. m8 contributes 8.35 ms, m9 contributes
-8.41 ms, m2+m8+m9 together 13.79 ms. The chain floor with the 3
-biggest blocks noop'd is 22.48 ms — that's dataflow / DMA infrastructure
-plus per-tile pipeline overhead, not compute. Per-kernel deep-opt
-beyond this point yields per-kernel speedups but small chain deltas;
-chain wins come from architectural / fifo-depth work.
+> **Stale — pre-fix snapshot, pending re-measurement.** Numbers below
+> are from before the c3k2_small bot_fifo depth fix (4→6) and the
+> per-block re-validation pass; they referenced a chain that sometimes
+> deadlocked on m2 (since fixed) and the m2 contribution of 0.18 ms is
+> not reproducible at the current commit.
+>
+> **Chain bottleneck after the m1 deep-opt is no longer a single block.**
+> NOOP_BLOCK ablation (chain N=15, per-sample ms): noop'ing m2 alone
+> drops chain by 0.18 ms, m4 by 0.04 ms — both are nearly fully
+> overlapped with the pipeline. m8 contributes 8.35 ms, m9 contributes
+> 8.41 ms, m2+m8+m9 together 13.79 ms. The chain floor with the 3
+> biggest blocks noop'd is 22.48 ms — that's dataflow / DMA infrastructure
+> plus per-tile pipeline overhead, not compute. Per-kernel deep-opt
+> beyond this point yields per-kernel speedups but small chain deltas;
+> chain wins come from architectural / fifo-depth work.
 
 m9 is supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
 stage 1 compares against `/model.9/cv1/act` post-SiLU; stage 10 (default)
