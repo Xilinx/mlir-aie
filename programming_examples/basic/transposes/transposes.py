@@ -252,7 +252,9 @@ def _transpose_combined(
                 out_fifo.release(1)
                 in_fifo.release(1)
 
-    worker = Worker(core_fn, fn_args=[in_L2L1_fifo.cons(), out_fifo.prod(), kernel_func])
+    worker = Worker(
+        core_fn, fn_args=[in_L2L1_fifo.cons(), out_fifo.prod(), kernel_func]
+    )
 
     rt = Runtime()
     with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (a, _, c):
@@ -279,15 +281,15 @@ _STRATEGIES = {
 # out of the box without the caller having to know each strategy's support
 # envelope.
 _DEFAULTS = {
-    "dma":        dict(M=64, K=64, dtype_bytes=4),
+    "dma": dict(M=64, K=64, dtype_bytes=4),
     "dma_packet": dict(M=64, K=32, dtype_bytes=4),
-    "shuffle":    dict(M=16, K=16, dtype_bytes=1),
+    "shuffle": dict(M=16, K=16, dtype_bytes=1),
     # combined: m=n=32 / s=8 is the smallest empirically-working combo.
     # m=n=16 / s=8 *compiles* (passes the m>s, n>s assert) but the
     # underlying transpose_8x8 kernel's VECTOR_SIZE math breaks when the
     # outer tile equals the sub-tile size, producing the wrong block
     # interleave.  Original combined_transpose Makefile shipped m=64,n=32.
-    "combined":   dict(M=128, K=128, dtype_bytes=4, m=32, n=32, s=8),
+    "combined": dict(M=128, K=128, dtype_bytes=4, m=32, n=32, s=8),
 }
 
 

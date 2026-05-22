@@ -19,7 +19,6 @@ This script has two modes:
 """
 
 import argparse
-import sys
 
 import numpy as np
 
@@ -128,7 +127,12 @@ def main():
     )
 
     expected = input0.numpy() * input1.numpy()
-    assert_pass(expected, output.numpy(), fail_msg="output does not match a * b", print_pass=False)
+    assert_pass(
+        expected,
+        output.numpy(),
+        fail_msg="output does not match a * b",
+        print_pass=False,
+    )
 
     print()
     print_benchmark(bench)

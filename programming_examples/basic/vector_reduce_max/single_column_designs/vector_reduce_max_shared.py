@@ -167,9 +167,7 @@ def vector_reduce_max(
             fifo_args.extend(
                 [nextC_buffers[i], tmp_buffers[i], reduce_max_vector, compute_max]
             )
-            workers.append(
-                Worker(core_body, fn_args=fifo_args, trace=enable_trace)
-            )
+            workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
         else:
             workers.append(
                 Worker(
@@ -235,7 +233,9 @@ def _run_and_verify(opts):
 
     expected_max = in_np.max()
     actual_max = out_t.numpy()[0]
-    assert_pass(actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}")
+    assert_pass(
+        actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}"
+    )
 
 
 def _validate(opts):

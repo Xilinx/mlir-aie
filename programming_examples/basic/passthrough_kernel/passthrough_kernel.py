@@ -127,7 +127,12 @@ def main():
         iters=iters,
     )
 
-    assert_pass(out_tensor.numpy(), in_tensor.numpy(), fail_msg="output does not match input", print_pass=False)
+    assert_pass(
+        out_tensor.numpy(),
+        in_tensor.numpy(),
+        fail_msg="output does not match input",
+        print_pass=False,
+    )
 
     print()
     print_benchmark(bench)

@@ -33,7 +33,6 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out
 from aie.iron.algorithms import transform_binary_typed
-from aie.iron.device import from_name
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -54,9 +53,7 @@ def vector_vector_modulo(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Vector Modulo")
-    add_compile_args(
-        p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True
-    )
+    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
     p.add_argument("-n", "--num-elements", type=int, default=256)
     p.add_argument("--tile-size", type=int, default=16)
     p.add_argument("-v", "--verbose", action="store_true")

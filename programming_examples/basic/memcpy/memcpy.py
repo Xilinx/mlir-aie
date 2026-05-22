@@ -122,7 +122,9 @@ def _make_argparser():
     add_compile_args(p, with_elf=True)
     p.add_argument("-l", "--length", type=int, default=16384, help="transfer size")
     p.add_argument("-co", "--cols", type=int, default=1, help="number of columns")
-    p.add_argument("-ch", "--chans", type=int, default=1, help="channels per column (1 or 2)")
+    p.add_argument(
+        "-ch", "--chans", type=int, default=1, help="channels per column (1 or 2)"
+    )
     p.add_argument(
         "-b",
         "--bypass",

@@ -79,10 +79,18 @@ def _build_program(dev, col: int):
     )
     out_buff = Buffer(type=tile_ty, name="out_buff_0")
 
-    in1_prod_lock = Lock(tile=compute_tile, lock_id=0, init=1, name="in1_cons_prod_lock")
-    in1_cons_lock = Lock(tile=compute_tile, lock_id=1, init=0, name="in1_cons_cons_lock")
-    in2_prod_lock = Lock(tile=compute_tile, lock_id=2, init=0, name="in2_cons_prod_lock")
-    in2_cons_lock = Lock(tile=compute_tile, lock_id=3, init=1, name="in2_cons_cons_lock")
+    in1_prod_lock = Lock(
+        tile=compute_tile, lock_id=0, init=1, name="in1_cons_prod_lock"
+    )
+    in1_cons_lock = Lock(
+        tile=compute_tile, lock_id=1, init=0, name="in1_cons_cons_lock"
+    )
+    in2_prod_lock = Lock(
+        tile=compute_tile, lock_id=2, init=0, name="in2_cons_prod_lock"
+    )
+    in2_cons_lock = Lock(
+        tile=compute_tile, lock_id=3, init=1, name="in2_cons_cons_lock"
+    )
     out_prod_lock = Lock(tile=compute_tile, lock_id=4, init=1, name="out_prod_lock")
     out_cons_lock = Lock(tile=compute_tile, lock_id=5, init=0, name="out_cons_lock")
 
@@ -169,9 +177,7 @@ def _build_program(dev, col: int):
     )
 
     def emit_seq(A_data, _B_data, C_data):
-        in1_task = shim_dma_single_bd_task(
-            "of_in1", A_data.op, sizes=[1, 1, 1, N]
-        )
+        in1_task = shim_dma_single_bd_task("of_in1", A_data.op, sizes=[1, 1, 1, N])
         out_task = shim_dma_single_bd_task(
             "of_out", C_data.op, sizes=[1, 1, 1, N], issue_token=True
         )
@@ -183,9 +189,12 @@ def _build_program(dev, col: int):
     rt.add_flow(in_flow)
     rt.add_flow(out_flow)
     for lk in (
-        in1_prod_lock, in1_cons_lock,
-        in2_prod_lock, in2_cons_lock,
-        out_prod_lock, out_cons_lock,
+        in1_prod_lock,
+        in1_cons_lock,
+        in2_prod_lock,
+        in2_cons_lock,
+        out_prod_lock,
+        out_cons_lock,
     ):
         rt.add_lock(lk)
     rt.add_tile_dma(compute_dma)
@@ -199,9 +208,7 @@ def _build_program(dev, col: int):
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Vector Add (BDs init values)")
-    add_compile_args(
-        p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True
-    )
+    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
     p.add_argument("-c", "--col", type=int, default=0)
     return p
 

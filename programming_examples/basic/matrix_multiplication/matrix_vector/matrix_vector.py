@@ -170,7 +170,9 @@ def _run_and_verify(opts):
 
     expected = (A_np.astype(np.int64) @ B_np.astype(np.int64)).astype(np.int32)
     actual = C_t.numpy().reshape(opts.M)
-    assert_pass(actual, expected, fail_msg="output does not match A @ b", print_pass=False)
+    assert_pass(
+        actual, expected, fail_msg="output does not match A @ b", print_pass=False
+    )
 
     print()
     print_benchmark(bench)

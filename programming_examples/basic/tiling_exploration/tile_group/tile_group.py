@@ -117,7 +117,11 @@ def _run_and_verify(opts):
         .access_order()
         .flatten()
     )
-    assert_pass(out_t.numpy(), expected, fail_msg="output does not match TensorTiler2D.group_tiler access order")
+    assert_pass(
+        out_t.numpy(),
+        expected,
+        fail_msg="output does not match TensorTiler2D.group_tiler access order",
+    )
 
 
 def main():

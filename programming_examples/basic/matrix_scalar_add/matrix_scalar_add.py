@@ -24,7 +24,6 @@ Three invocation modes (mirrors vector_vector_modulo):
 """
 
 import argparse
-import sys
 
 import numpy as np
 
@@ -82,9 +81,7 @@ def matrix_scalar_add(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Matrix Scalar Add")
-    add_compile_args(
-        p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True
-    )
+    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
     p.add_argument("--matrix-height", type=int, default=16)
     p.add_argument("--matrix-width", type=int, default=128)
     p.add_argument("--tile-height", type=int, default=8)

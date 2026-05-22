@@ -19,6 +19,7 @@ that supports both:
   * emit-MLIR:    ``... --emit-mlir`` — prints the MLIR module to stdout
     (legacy aiecc-on-a-file path).
 """
+
 import argparse
 import sys
 from pathlib import Path
@@ -276,9 +277,7 @@ def _device_for(dev_str: str):
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Chaining Channels")
-    add_compile_args(
-        p, dev_choices=("npu2",), default_dev="npu2", with_emit_mlir=True
-    )
+    add_compile_args(p, dev_choices=("npu2",), default_dev="npu2", with_emit_mlir=True)
     p.add_argument("-n", "--length", type=int, default=1024, help="bytes (>=4)")
     p.add_argument("-c", "--col", type=int, default=0)
     p.add_argument("-t", "--trace", type=int, default=0, help="0 disables tracing")

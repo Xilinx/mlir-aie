@@ -131,7 +131,9 @@ def _run_and_verify(opts):
 
     expected = (a_np.astype(np.int64) * 3).astype(in1_dtype)
     actual = c_t.numpy()
-    assert_pass(actual, expected, fail_msg="output does not match a * factor", print_pass=False)
+    assert_pass(
+        actual, expected, fail_msg="output does not match a * factor", print_pass=False
+    )
 
     print()
     print_benchmark(bench)

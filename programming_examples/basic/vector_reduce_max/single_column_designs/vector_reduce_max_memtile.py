@@ -251,7 +251,9 @@ def _run_and_verify(opts):
 
     expected_max = in_np.max()
     actual_max = out_t.numpy()[0]
-    assert_pass(actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}")
+    assert_pass(
+        actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}"
+    )
 
 
 def _validate(opts):

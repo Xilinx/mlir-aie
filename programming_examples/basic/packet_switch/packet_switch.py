@@ -64,7 +64,6 @@ from aie.dialects.aiex import (
 from aie.utils.compile import compile_mlir_module
 from aie.utils.hostruntime.argparse import add_compile_args
 
-
 _OP_PACKET_ID = {"add": 0, "mul": 1}
 
 
@@ -93,24 +92,36 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
     c02_buf_out = Buffer(type=vector_ty, name="core02_buff_out")
     c02_prod_lock_in = Lock(tile=ct_0_2, lock_id=0, init=1, name="core02_prod_lock_in")
     c02_cons_lock_in = Lock(tile=ct_0_2, lock_id=1, init=0, name="core02_cons_lock_in")
-    c02_prod_lock_out = Lock(tile=ct_0_2, lock_id=2, init=1, name="core02_prod_lock_out")
-    c02_cons_lock_out = Lock(tile=ct_0_2, lock_id=3, init=0, name="core02_cons_lock_out")
+    c02_prod_lock_out = Lock(
+        tile=ct_0_2, lock_id=2, init=1, name="core02_prod_lock_out"
+    )
+    c02_cons_lock_out = Lock(
+        tile=ct_0_2, lock_id=3, init=0, name="core02_cons_lock_out"
+    )
 
     # ----- Compute tile 0,3 (mul) -----
     c03_buf_in = Buffer(type=vector_ty, name="core03_buff_in")
     c03_buf_out = Buffer(type=vector_ty, name="core03_buff_out")
     c03_prod_lock_in = Lock(tile=ct_0_3, lock_id=0, init=1, name="core03_prod_lock_in")
     c03_cons_lock_in = Lock(tile=ct_0_3, lock_id=1, init=0, name="core03_cons_lock_in")
-    c03_prod_lock_out = Lock(tile=ct_0_3, lock_id=2, init=1, name="core03_prod_lock_out")
-    c03_cons_lock_out = Lock(tile=ct_0_3, lock_id=3, init=0, name="core03_cons_lock_out")
+    c03_prod_lock_out = Lock(
+        tile=ct_0_3, lock_id=2, init=1, name="core03_prod_lock_out"
+    )
+    c03_cons_lock_out = Lock(
+        tile=ct_0_3, lock_id=3, init=0, name="core03_cons_lock_out"
+    )
 
     # ----- Memtile 0,1 -----
     mem_buf_in = Buffer(type=vector_with_packet_ty, name="mem01_buff_in", tile=memtile)
     mem_buf_out = Buffer(type=vector_ty, name="mem01_buff_out", tile=memtile)
     mem_prod_lock_in = Lock(tile=memtile, lock_id=0, init=1, name="mem01_prod_lock_in")
     mem_cons_lock_in = Lock(tile=memtile, lock_id=1, init=0, name="mem01_cons_lock_in")
-    mem_prod_lock_out = Lock(tile=memtile, lock_id=2, init=1, name="mem01_prod_lock_out")
-    mem_cons_lock_out = Lock(tile=memtile, lock_id=3, init=0, name="mem01_cons_lock_out")
+    mem_prod_lock_out = Lock(
+        tile=memtile, lock_id=2, init=1, name="mem01_prod_lock_out"
+    )
+    mem_cons_lock_out = Lock(
+        tile=memtile, lock_id=3, init=0, name="mem01_cons_lock_out"
+    )
 
     # ----- External kernels (compiled from add_mul.cc) -----
     _kernel_src = str(Path(__file__).parent / "add_mul.cc")
@@ -138,9 +149,12 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
     c02_worker = Worker(
         c02_body,
         fn_args=[
-            c02_buf_in, c02_buf_out,
-            c02_prod_lock_in, c02_cons_lock_in,
-            c02_prod_lock_out, c02_cons_lock_out,
+            c02_buf_in,
+            c02_buf_out,
+            c02_prod_lock_in,
+            c02_cons_lock_in,
+            c02_prod_lock_out,
+            c02_cons_lock_out,
             add_func,
         ],
         tile=ct_0_2,
@@ -156,9 +170,12 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
     c03_worker = Worker(
         c03_body,
         fn_args=[
-            c03_buf_in, c03_buf_out,
-            c03_prod_lock_in, c03_cons_lock_in,
-            c03_prod_lock_out, c03_cons_lock_out,
+            c03_buf_in,
+            c03_buf_out,
+            c03_prod_lock_in,
+            c03_cons_lock_in,
+            c03_prod_lock_out,
+            c03_cons_lock_out,
             mul_func,
         ],
         tile=ct_0_3,
@@ -168,34 +185,58 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
     c02_dma = TileDma(
         tile=ct_0_2,
         channels=[
-            DmaChannel(direction=DMAChannelDir.S2MM, channel=0, bds=[
-                Bd(buffer=c02_buf_in,
-                   acquires=[Acquire(c02_prod_lock_in)],
-                   releases=[Release(c02_cons_lock_in)]),
-            ]),
-            DmaChannel(direction=DMAChannelDir.MM2S, channel=0, bds=[
-                Bd(buffer=c02_buf_out,
-                   acquires=[Acquire(c02_cons_lock_out)],
-                   releases=[Release(c02_prod_lock_out)],
-                   packet=(0, 4)),
-            ]),
+            DmaChannel(
+                direction=DMAChannelDir.S2MM,
+                channel=0,
+                bds=[
+                    Bd(
+                        buffer=c02_buf_in,
+                        acquires=[Acquire(c02_prod_lock_in)],
+                        releases=[Release(c02_cons_lock_in)],
+                    ),
+                ],
+            ),
+            DmaChannel(
+                direction=DMAChannelDir.MM2S,
+                channel=0,
+                bds=[
+                    Bd(
+                        buffer=c02_buf_out,
+                        acquires=[Acquire(c02_cons_lock_out)],
+                        releases=[Release(c02_prod_lock_out)],
+                        packet=(0, 4),
+                    ),
+                ],
+            ),
         ],
     )
 
     c03_dma = TileDma(
         tile=ct_0_3,
         channels=[
-            DmaChannel(direction=DMAChannelDir.S2MM, channel=0, bds=[
-                Bd(buffer=c03_buf_in,
-                   acquires=[Acquire(c03_prod_lock_in)],
-                   releases=[Release(c03_cons_lock_in)]),
-            ]),
-            DmaChannel(direction=DMAChannelDir.MM2S, channel=0, bds=[
-                Bd(buffer=c03_buf_out,
-                   acquires=[Acquire(c03_cons_lock_out)],
-                   releases=[Release(c03_prod_lock_out)],
-                   packet=(0, 6)),
-            ]),
+            DmaChannel(
+                direction=DMAChannelDir.S2MM,
+                channel=0,
+                bds=[
+                    Bd(
+                        buffer=c03_buf_in,
+                        acquires=[Acquire(c03_prod_lock_in)],
+                        releases=[Release(c03_cons_lock_in)],
+                    ),
+                ],
+            ),
+            DmaChannel(
+                direction=DMAChannelDir.MM2S,
+                channel=0,
+                bds=[
+                    Bd(
+                        buffer=c03_buf_out,
+                        acquires=[Acquire(c03_cons_lock_out)],
+                        releases=[Release(c03_prod_lock_out)],
+                        packet=(0, 6),
+                    ),
+                ],
+            ),
         ],
     )
 
@@ -206,27 +247,51 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
     mem_dma = TileDma(
         tile=memtile,
         channels=[
-            DmaChannel(direction=DMAChannelDir.S2MM, channel=0, bds=[
-                Bd(buffer=mem_buf_in,
-                   acquires=[Acquire(mem_prod_lock_in)],
-                   releases=[Release(mem_cons_lock_in)]),
-            ]),
-            DmaChannel(direction=DMAChannelDir.MM2S, channel=0, bds=[
-                Bd(buffer=mem_buf_in,
-                   acquires=[Acquire(mem_cons_lock_in)],
-                   releases=[Release(mem_prod_lock_in)]),
-            ]),
-            DmaChannel(direction=DMAChannelDir.S2MM, channel=2, bds=[
-                Bd(buffer=mem_buf_out,
-                   acquires=[Acquire(mem_prod_lock_out)],
-                   releases=[Release(mem_cons_lock_out)]),
-            ]),
-            DmaChannel(direction=DMAChannelDir.MM2S, channel=2, bds=[
-                Bd(buffer=mem_buf_out,
-                   acquires=[Acquire(mem_cons_lock_out)],
-                   releases=[Release(mem_prod_lock_out)],
-                   packet=(0, 2)),
-            ]),
+            DmaChannel(
+                direction=DMAChannelDir.S2MM,
+                channel=0,
+                bds=[
+                    Bd(
+                        buffer=mem_buf_in,
+                        acquires=[Acquire(mem_prod_lock_in)],
+                        releases=[Release(mem_cons_lock_in)],
+                    ),
+                ],
+            ),
+            DmaChannel(
+                direction=DMAChannelDir.MM2S,
+                channel=0,
+                bds=[
+                    Bd(
+                        buffer=mem_buf_in,
+                        acquires=[Acquire(mem_cons_lock_in)],
+                        releases=[Release(mem_prod_lock_in)],
+                    ),
+                ],
+            ),
+            DmaChannel(
+                direction=DMAChannelDir.S2MM,
+                channel=2,
+                bds=[
+                    Bd(
+                        buffer=mem_buf_out,
+                        acquires=[Acquire(mem_prod_lock_out)],
+                        releases=[Release(mem_cons_lock_out)],
+                    ),
+                ],
+            ),
+            DmaChannel(
+                direction=DMAChannelDir.MM2S,
+                channel=2,
+                bds=[
+                    Bd(
+                        buffer=mem_buf_out,
+                        acquires=[Acquire(mem_cons_lock_out)],
+                        releases=[Release(mem_prod_lock_out)],
+                        packet=(0, 2),
+                    ),
+                ],
+            ),
         ],
     )
 
@@ -234,44 +299,72 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
     # Two ingress flows from shim → memtile with both pkt_ids 0 and 1;
     # keep_pkt_header=True so the memtile re-emit preserves the routing ID.
     flow_shim_to_mem_pkt0 = PacketFlow(
-        pkt_id=0, src=shim, dst=memtile,
-        src_port=WireBundle.DMA, src_channel=0,
-        dst_port=WireBundle.DMA, dst_channel=0,
+        pkt_id=0,
+        src=shim,
+        dst=memtile,
+        src_port=WireBundle.DMA,
+        src_channel=0,
+        dst_port=WireBundle.DMA,
+        dst_channel=0,
         keep_pkt_header=True,
     )
     flow_shim_to_mem_pkt1 = PacketFlow(
-        pkt_id=1, src=shim, dst=memtile,
-        src_port=WireBundle.DMA, src_channel=0,
-        dst_port=WireBundle.DMA, dst_channel=0,
+        pkt_id=1,
+        src=shim,
+        dst=memtile,
+        src_port=WireBundle.DMA,
+        src_channel=0,
+        dst_port=WireBundle.DMA,
+        dst_channel=0,
         keep_pkt_header=True,
     )
     # Egress: memtile → shim (pkt 2).
     flow_mem_to_shim = PacketFlow(
-        pkt_id=2, src=memtile, dst=shim,
-        src_port=WireBundle.DMA, src_channel=2,
-        dst_port=WireBundle.DMA, dst_channel=0,
+        pkt_id=2,
+        src=memtile,
+        dst=shim,
+        src_port=WireBundle.DMA,
+        src_channel=2,
+        dst_port=WireBundle.DMA,
+        dst_channel=0,
     )
     # memtile → core_0_2 (pkt 0) ; core_0_2 → memtile (pkt 4).
     flow_mem_to_c02 = PacketFlow(
-        pkt_id=0, src=memtile, dst=ct_0_2,
-        src_port=WireBundle.DMA, src_channel=0,
-        dst_port=WireBundle.DMA, dst_channel=0,
+        pkt_id=0,
+        src=memtile,
+        dst=ct_0_2,
+        src_port=WireBundle.DMA,
+        src_channel=0,
+        dst_port=WireBundle.DMA,
+        dst_channel=0,
     )
     flow_c02_to_mem = PacketFlow(
-        pkt_id=4, src=ct_0_2, dst=memtile,
-        src_port=WireBundle.DMA, src_channel=0,
-        dst_port=WireBundle.DMA, dst_channel=2,
+        pkt_id=4,
+        src=ct_0_2,
+        dst=memtile,
+        src_port=WireBundle.DMA,
+        src_channel=0,
+        dst_port=WireBundle.DMA,
+        dst_channel=2,
     )
     # memtile → core_0_3 (pkt 1) ; core_0_3 → memtile (pkt 6).
     flow_mem_to_c03 = PacketFlow(
-        pkt_id=1, src=memtile, dst=ct_0_3,
-        src_port=WireBundle.DMA, src_channel=0,
-        dst_port=WireBundle.DMA, dst_channel=0,
+        pkt_id=1,
+        src=memtile,
+        dst=ct_0_3,
+        src_port=WireBundle.DMA,
+        src_channel=0,
+        dst_port=WireBundle.DMA,
+        dst_channel=0,
     )
     flow_c03_to_mem = PacketFlow(
-        pkt_id=6, src=ct_0_3, dst=memtile,
-        src_port=WireBundle.DMA, src_channel=0,
-        dst_port=WireBundle.DMA, dst_channel=2,
+        pkt_id=6,
+        src=ct_0_3,
+        dst=memtile,
+        src_port=WireBundle.DMA,
+        src_channel=0,
+        dst_port=WireBundle.DMA,
+        dst_channel=2,
     )
 
     # ----- Runtime sequence -----
@@ -291,9 +384,7 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
                     packet=(0, input_packet_id),
                 )
                 EndOp()
-        out_task = dma_configure_task(
-            shim.op, DMAChannelDir.S2MM, 0, issue_token=True
-        )
+        out_task = dma_configure_task(shim.op, DMAChannelDir.S2MM, 0, issue_token=True)
         with bds(out_task) as bd:
             with bd[0]:
                 shim_dma_bd(
@@ -308,19 +399,28 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
 
     rt = Runtime()
     for f in (
-        flow_shim_to_mem_pkt0, flow_shim_to_mem_pkt1,
+        flow_shim_to_mem_pkt0,
+        flow_shim_to_mem_pkt1,
         flow_mem_to_shim,
-        flow_mem_to_c02, flow_c02_to_mem,
-        flow_mem_to_c03, flow_c03_to_mem,
+        flow_mem_to_c02,
+        flow_c02_to_mem,
+        flow_mem_to_c03,
+        flow_c03_to_mem,
     ):
         rt.add_flow(f)
     for lk in (
-        c02_prod_lock_in, c02_cons_lock_in,
-        c02_prod_lock_out, c02_cons_lock_out,
-        c03_prod_lock_in, c03_cons_lock_in,
-        c03_prod_lock_out, c03_cons_lock_out,
-        mem_prod_lock_in, mem_cons_lock_in,
-        mem_prod_lock_out, mem_cons_lock_out,
+        c02_prod_lock_in,
+        c02_cons_lock_in,
+        c02_prod_lock_out,
+        c02_cons_lock_out,
+        c03_prod_lock_in,
+        c03_cons_lock_in,
+        c03_prod_lock_out,
+        c03_cons_lock_out,
+        mem_prod_lock_in,
+        mem_cons_lock_in,
+        mem_prod_lock_out,
+        mem_cons_lock_out,
     ):
         rt.add_lock(lk)
     for td in (c02_dma, c03_dma, mem_dma):
@@ -337,9 +437,7 @@ def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Packet Switch (two-kernel demo)")
     # "npu2_1" is a packet_switch-specific alias (single-column NPU2)
     # — not part of the standard helper's defaults.
-    add_compile_args(
-        p, dev_choices=("npu", "npu2", "npu2_1"), with_emit_mlir=True
-    )
+    add_compile_args(p, dev_choices=("npu", "npu2", "npu2_1"), with_emit_mlir=True)
     p.add_argument(
         "--op",
         choices=list(_OP_PACKET_ID.keys()),

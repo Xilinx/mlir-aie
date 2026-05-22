@@ -157,9 +157,7 @@ def vector_reduce_max(
         fifo_args.extend(
             [nextC_buffers[i], tmp_buffers[i], reduce_max_vector, compute_max]
         )
-        my_workers.append(
-            Worker(core_body, fn_args=fifo_args, trace=enable_trace)
-        )
+        my_workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
 
     # One TAP per core — each reads a contiguous ``chunk`` of the input
     # tensor.  Equivalent to row-major iteration of ``(1, chunk)`` tiles
@@ -233,7 +231,9 @@ def _run_and_verify(opts):
 
     expected_max = in_np.max()
     actual_max = out_t.numpy()[0]
-    assert_pass(actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}")
+    assert_pass(
+        actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}"
+    )
 
 
 def main():
