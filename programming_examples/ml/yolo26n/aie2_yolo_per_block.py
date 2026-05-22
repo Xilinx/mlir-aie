@@ -185,8 +185,9 @@ def _build_m0(act_in, manifest):
     silu_lut_buf = Buffer(_i8((256,)), initial_value=silu_lut_data)
 
     # Activation FIFOs. Output is INT8 (SiLU output is signed, unlike ReLU/uint8).
-    # via_DMA=True forces DMA even when the consumer is memory-adjacent
-    # (needed for chain stability across rows of cores).
+    # via_DMA on the block-output fifo: the producer always emits to a
+    # DMA-routed stream so standalone (shim drain) and chain (next block's
+    # input) share the same transport, regardless of consumer placement.
     act_out = ObjectFifo(_i8((out_w, 1, out_c)), depth=2, via_DMA=True)
 
     # Kernel: forked from mlir-aie/aie_kernels/aie2p/init_conv2dk3.cc with
@@ -284,9 +285,12 @@ def _build_m0(act_in, manifest):
 
 # ---------------------------------------------------------------------------
 # Conv-stride blocks (m1, m3, m5, m7) — same shape family as m0 but with
-# input channels aligned to 8, so no padding step. Each block has its own
-# shape-specialized kernel `.o` because the kernel bakes in inW/inC/outC as
-# compile-time constants (mirrors mobilenet's per-block `_chain.o`).
+# input channels aligned to 8, so no padding step. Two implementations:
+#   - m1 (this function): one shared OIYXI8O8 .o, shapes passed as runtime
+#     args; weights fit in tile L1 alongside activations.
+#   - m3/m5/m7 (_build_conv_stride_block_streamed): weights exceed the 64KB
+#     tile budget so a per-block kernel .o streams weight chunks from a
+#     MemTile via StaticWeightStream.
 # ---------------------------------------------------------------------------
 def _build_conv_stride_block(block_name: str, act_in, manifest):
     blk = yolo_spec.block(block_name)
@@ -318,9 +322,8 @@ def _build_conv_stride_block(block_name: str, act_in, manifest):
     wts_buf = Buffer(_i8((wts_sz,)), initial_value=wts_data)
     bias_buf = Buffer(_i32((out_c,)), initial_value=bias_data)
     silu_lut_buf = Buffer(_i8((256,)), initial_value=silu_lut_data)
-    # via_DMA: defensive, see Bug D — IRON's shared-memory lowering for
-    # memory-adjacent compute tiles hangs on real Strix; force DMA so any
-    # downstream block's input gets routed through DMA regardless of adjacency.
+    # via_DMA on the block-output fifo so standalone (shim drain) and chain
+    # (next block's input) share the same DMA-routed transport; see m0 above.
     act_out = ObjectFifo(_i8((out_w, 1, out_c)), depth=2, via_DMA=True)
 
     # Shared OIYXI8O8 kernel across m1/m3/m5/m7 — shapes are runtime args, so
@@ -494,7 +497,8 @@ def _build_conv_stride_block_streamed(
 
     bias_buf = Buffer(_i32((out_c,)), initial_value=bias_data)
     silu_lut_buf = Buffer(_i8((256,)), initial_value=silu_lut_data)
-    # via_DMA defensive — see Bug D / _build_conv_stride_block above.
+    # via_DMA on the block-output fifo so standalone (shim drain) and chain
+    # (next block's input) share the same DMA-routed transport; see m0 above.
     act_out = ObjectFifo(_i8((out_w, 1, out_c)), depth=out_depth, via_DMA=True)
 
     k = Kernel(
@@ -700,11 +704,14 @@ def _build_c3k2_small(block_name: str, act_in, manifest):
     # bot is fanned out (m_0_inner peeks 3 via acquire(3), cv2 also consumes
     # at 1/iter). Producer pool must accommodate peek_size + cv2 in-flight
     # buffer to avoid the "cv2-released-but-m_0_inner-still-peeking" deadlock
-    # window. Empirically: depth=4 hangs, depth>=5 succeeds. Picked 6 for slack.
+    # window — the same sliding-window-AcquireGE pattern documented in
+    # placement.py's DESIGN RULES (m8 stage 4 example). Empirically:
+    # depth=4 hangs, depth>=5 succeeds. Picked 6 for slack.
     bot_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=6)
     # m_0_inner output stream -> cv2 slot 2
     m0_out_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=2)
-    # Block output (via_DMA defensive — see Bug D).
+    # via_DMA on the block-output fifo so standalone (shim drain) and chain
+    # (next block's input) share the same DMA-routed transport; see m0 above.
     out_fifo = ObjectFifo(_i8((in_w, 1, out_c)), depth=2, via_DMA=True)
 
     # ----- Kernels (all .o files TBD; see header comment) -----
