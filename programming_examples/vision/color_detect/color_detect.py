@@ -31,18 +31,15 @@ Two invocation modes:
 """
 
 import argparse
-import sys
 
 import numpy as np
 
 import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
-from aie.iron.device import NPU1Col1, NPU2
-from aie.utils.hostruntime import set_current_device
-
-
-def _device_for(dev_str):
-    return NPU1Col1() if dev_str == "npu" else NPU2()
+from aie.iron.device import from_name
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.verify import assert_pass
 
 
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
@@ -218,20 +215,14 @@ def color_detect(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Color Detect")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument("-W", "--width", type=int, default=1920)
     p.add_argument("-H", "--height", type=int, default=1080)
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
-    spec = color_detect.specialize(width=opts.width, height=opts.height)
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+def _compile_kwargs(opts):
+    return dict(width=opts.width, height=opts.height)
 
 
 def _rgba2hue_ref(rgba_uint8):
@@ -318,26 +309,28 @@ def _run_and_verify(opts):
     b_t = iron.tensor(b_np, dtype=np.int32, device="npu")
     out_t = iron.tensor(out_np, dtype=np.int8, device="npu")
 
-    color_detect(in_t, b_t, out_t, width=opts.width, height=opts.height)
+    color_detect(in_t, b_t, out_t, **_compile_kwargs(opts))
 
     in_uint8 = in_np.view(np.uint8)
     expected_uint8 = _color_detect_ref(in_uint8)
     actual = out_t.numpy().view(np.uint8)
-    if not np.array_equal(actual, expected_uint8):
-        n_mismatch = int(np.sum(actual != expected_uint8))
-        sys.exit(
-            f"FAIL! {n_mismatch} byte(s) mismatch the per-stage color-detect reference"
-        )
-
-    print("PASS!")
+    n_mismatch = int(np.sum(actual != expected_uint8))
+    assert_pass(
+        actual,
+        expected_uint8,
+        fail_msg=f"{n_mismatch} byte(s) mismatch the per-stage color-detect reference",
+    )
 
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        color_detect,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        device=lambda o: from_name(o.dev, n_cols=1 if o.dev == "npu" else None),
+    )
 
 
 if __name__ == "__main__":

@@ -24,18 +24,14 @@ Two invocation modes:
 """
 
 import argparse
-import sys
 
 import numpy as np
 
 import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
-from aie.iron.device import NPU1Col1, NPU2Col1
-from aie.utils.hostruntime import set_current_device
-
-
-def _device_for(dev_str):
-    return NPU1Col1() if dev_str == "npu" else NPU2Col1()
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.verify import assert_pass
 
 
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
@@ -76,20 +72,14 @@ def vision_passthrough(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vision Passthrough")
-    p.add_argument("-d", "--dev", type=str, choices=["npu", "npu2"], default="npu")
+    add_compile_args(p)
     p.add_argument("-W", "--width", type=int, default=1920)
     p.add_argument("-H", "--height", type=int, default=1080)
-    p.add_argument("--xclbin-path", type=str, default=None)
-    p.add_argument("--insts-path", type=str, default=None)
     return p
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev))
-    spec = vision_passthrough.specialize(width=opts.width, height=opts.height)
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+def _compile_kwargs(opts):
+    return dict(width=opts.width, height=opts.height)
 
 
 def _run_and_verify(opts):
@@ -102,21 +92,19 @@ def _run_and_verify(opts):
     out_t = iron.tensor(zeros_np, dtype=np.int8, device="npu")
     third_t = iron.tensor(zeros_np, dtype=np.int8, device="npu")
 
-    vision_passthrough(in_t, third_t, out_t, width=opts.width, height=opts.height)
+    vision_passthrough(in_t, third_t, out_t, **_compile_kwargs(opts))
 
-    actual = out_t.numpy()
-    if not np.array_equal(actual, in_np):
-        sys.exit("FAIL! output does not match input")
-
-    print("PASS!")
+    assert_pass(out_t.numpy(), in_np, fail_msg="output does not match input")
 
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        vision_passthrough,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+    )
 
 
 if __name__ == "__main__":
