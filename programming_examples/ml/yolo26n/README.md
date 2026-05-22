@@ -50,16 +50,16 @@ Latest measurements at the current commit.
 
 | Mode | Wall per dispatch | Per sample | Throughput |
 |---|---:|---:|---:|
-| **N=1** (single-sample latency) | 88.02 ms | 88.02 ms | **11.36 fps** |
-| **N=15** (batched) | 714.54 ms | 47.64 ms | **20.99 fps** |
+| **N=1** (single-sample latency) | 72.27 ms | 72.27 ms | **13.84 fps** |
+| **N=15** (batched) | 544.09 ms | 36.27 ms | **27.57 fps** |
 
 **Per-block standalone wall time on NPU**, median of n=20:
 
 | Block | Topology | Median (ms) | fps |
 |---:|---|---:|---:|
 | m0  | conv_stride stem               | 13.11 | 76.3 |
-| **m1**  | **conv_stride**            | **45.08** | **22.2** |
-| m2  | c3k2_small                     | 26.38 | 37.9 |
+| m1  | conv_stride                    | 8.65 | 115.7 |
+| **m2**  | **c3k2_small**             | **26.38** | **37.9** |
 | m3  | conv_stride (chunked)          | 8.10 | 123.5 |
 | m4  | c3k2_small                     | 21.96 | 45.5 |
 | m5  | conv_stride (chunked)          | 6.97 | 143.5 |
@@ -69,7 +69,15 @@ Latest measurements at the current commit.
 | m9 stage 1 (cv1 only)            | PSA cv1 | 1.78 | 561.8 |
 | m9 stage 10 (full PSA block)     | PSA full | 26.25 | 38.1 |
 
-**m1 (45 ms) is the new chain ceiling** after m0 dropped from 55 → 13 ms.
+**Chain bottleneck after the m1 deep-opt is no longer a single block.**
+NOOP_BLOCK ablation (chain N=15, per-sample ms): noop'ing m2 alone
+drops chain by 0.18 ms, m4 by 0.04 ms — both are nearly fully
+overlapped with the pipeline. m8 contributes 8.35 ms, m9 contributes
+8.41 ms, m2+m8+m9 together 13.79 ms. The chain floor with the 3
+biggest blocks noop'd is 22.48 ms — that's dataflow / DMA infrastructure
+plus per-tile pipeline overhead, not compute. Per-kernel deep-opt
+beyond this point yields per-kernel speedups but small chain deltas;
+chain wins come from architectural / fifo-depth work.
 
 m9 is supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
 stage 1 compares against `/model.9/cv1/act` post-SiLU; stage 10 (default)
@@ -105,13 +113,16 @@ softmax_row` → `yolo_m9_attn_score_fused_vec.cc`) and one symbol merge
 | + sv_row_acc merge (same body, second extern C entry)  | 29.2 | 58.0  | 17.24 |
 | **+ attn_score_fused (qk + scale + softmax in 1 kernel)** | **26.3** | **57.9** | **17.27** |
 
-After the m9 arc m0 becomes the chain ceiling. The m0 deep-opt commit:
+After the m9 arc m0 then m1 become successive chain ceilings. Both
+deep-opt'd with the same toolbox (shape #defines + OCx2 / 2X×2OC fold
++ x-split + AIE_LOOP_RANGE hints):
 
-| step | m0 standalone (ms) | chain N=15 (ms/sample) | chain N=15 fps |
+| step | block standalone (ms) | chain N=15 (ms/sample) | chain N=15 fps |
 |---|---:|---:|---:|
-| naive vec m0 (pre-deep-opt)                            | 55.4 | 57.9 | 17.27 |
-| **+ m0 deep-opt (shape #defines + OCx2 + x-split)**    | **13.1** | **47.6** | **20.99** |
-| **total session (chain N=15)**                         | — | **3.15 → 20.99 fps** | **6.66×** |
+| naive vec (pre-deep-opt)                                | — | 57.9 | 17.27 |
+| + m0 deep-opt (shape #defines + OCx2 + x-split)         | m0: 55.4 → 13.1 | 47.6 | 20.99 |
+| **+ m1 deep-opt (same toolbox, 2X×2OC interior fold)**  | **m1: 45.1 → 8.65** | **36.3** | **27.57** |
+| **total session (chain N=15)**                          | — | **3.15 → 27.57 fps** | **8.75×** |
 
 Two takeaways from the arc:
 1. **Standalone speedup only translates to chain delta when the kernel is
@@ -145,22 +156,32 @@ immediates, dead-strip the unused interior variant, and emit tighter
 pipelined inner loops. See [kernel design notes](#kernel-design-notes-chunked-stride-2-conv).
 
 Distance to 60 fps target (16.67 ms/sample): chain N=15 currently at
-47.6 ms = **~2.9× more needed**. **m1 (45 ms standalone) is now the
-chain ceiling.** Next levers in priority order:
-1. **m1 deep-opt** — same conv_stride family as the chunked m3/m5/m7
-   (which got 7.7-10.6× from the full toolbox) and m0 (4.2× this
-   session); expect ~2-3× from the same pattern. Biggest immediate
-   chain delta.
-2. **m9 stage-10 deep-opt** — currently mixed (2 deep / 1 partial /
-   4 naive / 1 scalar pe). pe_add_row (dw3×3) is the last scalar in
-   m9 and will need a different pattern than mmul.
-3. **m2 / m4 / m6 / m8 deep-opt** — c3k2_small/heavy/megakernel
-   families, all naive vec today. m8 is the biggest at 28 ms.
-4. **m10 head** (`yolo_m10_linear_gemm.cc` + `yolo_m10_softmax.cc`)
+36.3 ms = **~2.2× more needed**. **No single block is the chain ceiling
+anymore** — NOOP_BLOCK ablation shows m2 / m4 / m6 are nearly fully
+overlapped (chain contribution ≤ 0.2 ms despite 15-26 ms standalone),
+m8 contributes 8.35 ms, m9 contributes 8.41 ms, and the chain floor
+with m2+m8+m9 noop'd is 22.48 ms of dataflow/DMA infrastructure.
+
+Remaining levers in priority order:
+1. **m8 / m9 deep-opt + fusion** — only blocks NOT fully overlapped.
+   m8 has 4 naive vec kernels (front, back, pair0/1 cv1/cv2 streamed);
+   m9 has 4 naive vec + 1 scalar (pe_add_row, dw3×3 — needs different
+   pattern than mmul) + 3 scalar data packs. Direct chain delta:
+   ~5-13 ms if both can shed their non-overlap portions.
+2. **Architectural / fifo / placement work** — to push the 22.48 ms
+   infrastructure floor down. Tile-pair rebalancing, fifo depth tuning,
+   OC-split parallelism for hottest blocks.
+3. **m10 head** (`yolo_m10_linear_gemm.cc` + `yolo_m10_softmax.cc`)
    still scalar; small per-sample contribution but completes the
    "every kernel deep-opt'd" goal.
-5. **m9 data packs** (qkv_pack, qk_pack, v_pack) — pure data
-   reshuffles, scalar today; vectorize for completeness.
+4. **Retroactive deep-opt of overlapped naive vec kernels** (m2 / m4
+   c3k2_small; m6 c3k2_heavy; m9 qkv / ffn.0 / proj / ffn.1 / cv2;
+   m8's 4 kernels) — per-kernel speedups but ~0 chain delta. Needed for
+   the "deep-opt all kernels" code-quality goal.
+5. **Softmax exp2** — replace the scalar fp32 LUT in
+   `yolo_m9_attn_score_fused_vec.cc` with hardware
+   `aie::exp2<bfloat16>` (see `aie_kernels/aie2p/softmax.cc`
+   reference). Bit-exactness risk; tested separately.
 
 ## Make targets
 
