@@ -481,18 +481,13 @@ def _build_conv_stride_block_streamed(
         name=f"{block_name}_wts",
         init_values=chunks,
     )
-    import os as _os
 
-    # Leave iter_count unset → BD chain loops infinitely via next_bd(self),
-    # so a single dispatch can consume arbitrarily many samples (was bounded
-    # to 256 chunk-rounds total when iter_count was set, which capped m3 at
-    # N=2 / m5 at N=4 / m7 at N=8). Requires the local mlir-aie patch that
-    # extends `isCycledStaticInitProducer` to skip source-side locks for
-    # iter_count=None (otherwise the BD restart deadlocks on stale locks).
-    # WTS_ITER_COUNT env override is preserved for fall-back debugging.
-    _R = _os.environ.get("WTS_ITER_COUNT")
-    if _R is not None:
-        wts_fifo.set_iter_count(int(_R))
+    # iter_count unset → BD chain self-loops infinitely via next_bd(self),
+    # so a single dispatch can consume arbitrarily many samples regardless of
+    # N. Lowering correctness for this case lives in
+    # AIEObjectFifoStatefulTransform.cpp::createObjectFifoLocks — when a
+    # static-init no-link producer has no iter_count, source-side locks are
+    # skipped so the chain doesn't deadlock on its second pass.
     # The producer side has no Worker / no rt.fill; pin it to a MemTile so
     # the static buffers land there (init_values is rejected on shim).
     wts_fifo.prod().endpoint = ObjectFifoEndpoint(memtile)
