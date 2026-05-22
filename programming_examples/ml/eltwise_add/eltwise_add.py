@@ -10,7 +10,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU1, NPU2
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 
@@ -70,20 +70,9 @@ def my_eltwise_add(dev, num_elements, trace_size):
         for i in range(num_columns)
     ]
 
-    # Create a TensorAccessPattern for each channel
-    # to describe the data movement
-    # The pattern chops the data in equal chunks
-    # and moves them in parallel across the columns
-    # and channels.
-    taps = [
-        TensorAccessPattern(
-            (1, num_elements),
-            chunk * i,
-            [1, 1, 1, chunk],
-            [0, 0, 0, 1],
-        )
-        for i in range(num_columns)
-    ]
+    # One TAP per column — equivalent to iterating ``(1, chunk)``
+    # tiles row-major across the ``(1, num_elements)`` tensor.
+    taps = TensorTiler2D.simple_tiler((1, num_elements), (1, chunk))
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
