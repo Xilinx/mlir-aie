@@ -5,7 +5,7 @@ wheel
 ninja!=1.13.0
 cibuildwheel
 pre-commit
-nanobind>=2.9
+nanobind>=2.12.0
 lit
 matplotlib
 # lit requires psutil to set timeouts
