@@ -37,7 +37,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-tidy ninja-build clang libelf-dev
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -131,7 +131,7 @@ jobs:
           clangformat: 17.0.1
 
       - name: Setup Python env
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -218,7 +218,7 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -322,7 +322,7 @@ jobs:
 
       - name: Update PR with coverage results
         if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: edumserrano/find-create-or-update-comment@v2
+        uses: edumserrano/find-create-or-update-comment@v3
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-includes: '<!--<!doctype codecov html>-->'

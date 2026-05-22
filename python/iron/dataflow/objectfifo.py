@@ -46,6 +46,7 @@ class ObjectFifo(Resolvable):
         dims_from_stream_per_cons: list[Sequence[int]] | None = None,
         plio: bool = False,
         pad_dimensions: list[Sequence[int]] | None = None,
+        init_values: list[np.ndarray] | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -56,6 +57,7 @@ class ObjectFifo(Resolvable):
             dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
             dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
             plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
+            init_values (list[np.ndarray] | None, optional): Per-buffer static initial values for the producer endpoint. One ndarray per producer-side buffer; the producer tile must be able to hold static data at design startup (e.g. a MemTile). Lowers to the ``initValues`` attribute on the underlying ``aie.objectfifo`` op. Defaults to None.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
@@ -79,6 +81,7 @@ class ObjectFifo(Resolvable):
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
         self._iter_count: int | None = None
+        self._init_values: list[np.ndarray] | None = init_values
 
     @classmethod
     def __get_index(cls) -> int:
@@ -298,6 +301,7 @@ class ObjectFifo(Resolvable):
                 plio=self._plio,
                 padDimensions=self._pad_dimensions,
                 iter_count=self._iter_count,
+                initValues=self._init_values,
             )
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
