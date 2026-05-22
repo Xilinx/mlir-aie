@@ -83,7 +83,7 @@ KERNEL_OBJS += $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
 KERNEL_OBJS += $(foreach blk,$(CHUNKED_CONV_BLOCKS), \
                  $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_$(blk).o)
 
-M9_KERNELS := cv1_split qkv qkv_pack qk_pack qk_row attn_scale softmax_row \
+M9_KERNELS := cv1_split qkv qkv_pack qk_pack attn_score_fused \
               v_pack sv_row pe_add_row proj_skip_row \
               ffn_0_silu_row ffn_1_skip_row cv2_concat2_streamed
 KERNEL_OBJS += $(foreach k,$(M9_KERNELS),$(BUILD)/yolo_m9_$(k).o)
@@ -270,11 +270,11 @@ $(BUILD)/yolo_m9_cv2_concat2_streamed.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV2_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
 
-M9_QK_SHAPE := -DYOLO_M9_QK_KD=32 -DYOLO_M9_QK_N=256
-$(BUILD)/yolo_m9_qk_row.o: \
-    $(SRCDIR)/kernels/yolo_m9_qk_row_vec.cc
+M9_ATTN_SCORE_SHAPE := -DYOLO_M9_QK_KD=32 -DYOLO_M9_QK_N=256
+$(BUILD)/yolo_m9_attn_score_fused.o: \
+    $(SRCDIR)/kernels/yolo_m9_attn_score_fused_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_QK_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_ATTN_SCORE_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
 
 M9_SV_SHAPE := -DYOLO_M9_SV_HEAD_DIM=64 -DYOLO_M9_SV_N=256
 $(BUILD)/yolo_m9_sv_row.o: \

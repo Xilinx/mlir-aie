@@ -367,38 +367,30 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                 np.int32,
             ],
         )
-        k_qk_row = Kernel(
-            "yolo_m9_qk_row_i8_i8",
-            "yolo_m9_qk_row.o",
-            [
-                B._i8((qk_slots, N_tokens)),
-                B._i8((chunk_rows, N_tokens)),
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-            ],
-        )
-        # attn_scale + softmax kernel decls always built so the worker
-        # fn_args list has a stable shape across stages 4/5. Harmless if
-        # unused (no MLIR func.call emission unless invoked).
-        k_attn_scale = Kernel(
-            "yolo_m9_attn_scale_row_i8_i8",
-            "yolo_m9_attn_scale.o",
-            [B._i8((chunk_rows, N_tokens)), np.int32, np.int32, np.int32, np.int32],
-        )
-        # Type-alias for f32 LUT (no helper in B.).
+        # Fused qk_row + attn_scale + softmax kernel (replaces three
+        # separate calls per (head, query)). Same chunk_io buffer touched
+        # by all three steps; the fusion (a) collapses qk's SRS and
+        # attn_scale's mul+SRS into one combined SRS using the constexpr
+        # mul_int=91, and (b) saves two L1 round-trips of the score row
+        # plus the call/acquire overhead of two separate kernel invocations.
+        # exp LUT arg is unused at stage 4 (skip_sm path) but in the
+        # signature so the IRON fn_args list stays stable across stages 4/5.
         _f32 = lambda shape: np.ndarray[shape, np.dtype[np.float32]]
-        k_softmax_row = Kernel(
-            "yolo_m9_softmax_row_i8_i8",
-            "yolo_m9_softmax_row.o",
+        k_attn_score_fused = Kernel(
+            "yolo_m9_attn_score_fused_i8_i8",
+            "yolo_m9_attn_score_fused.o",
             [
-                B._i8((chunk_rows, N_tokens)),
-                _f32((256,)),  # exp LUT
-                np.int32,
-                np.int32,
-                np.int32,
+                B._i8((qk_slots, N_tokens)),       # qk_frame (Q || K)
+                B._i8((chunk_rows, N_tokens)),     # chunk_io
+                _f32((256,)),                      # exp LUT
+                np.int32,  # chunk_row
+                np.int32,  # query_idx
+                np.int32,  # kd (runtime, kernel reads compile-time)
+                np.int32,  # N
+                np.int32,  # rs_qk
+                np.int32,  # mul_int
+                np.int32,  # mul_shift
+                np.int32,  # out_log2_scale (also -1 = sentinel: skip softmax for stage 4)
             ],
         )
 
@@ -439,12 +431,9 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
 
         skip_qk = os.environ.get("M9_S4_SKIP_QK") == "1"
         skip_pack = os.environ.get("M9_S4_SKIP_PACK") == "1"
-        skip_scale = os.environ.get("M9_S5_SKIP_SCALE") == "1"
-        skip_sm = os.environ.get("M9_S5_SKIP_SM") == "1"
-        do_softmax = stage >= 5
 
         def attn_qk_fn(
-            qkv_c, scratch_h0, scratch_h1, scores_p, exp_lut, kpack, kqk, kscale, ksm
+            qkv_c, scratch_h0, scratch_h1, scores_p, exp_lut, kpack, kfused
         ):
             # Phase 1: assemble per-head Q+K. Each qkv input row writes its
             # contribution to BOTH heads' scratch buffers (chans 0..63 of
@@ -493,43 +482,37 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                 chunk = scores_p.acquire(1)
                 if not skip_qk:
                     for r in range_(chunk_rows):
-                        kqk(
+                        kfused(
                             scratch_h0,
                             chunk,
+                            exp_lut,
                             r,
+                            ci * chunk_rows + r,
                             kd,
                             N_tokens,
-                            ci * chunk_rows + r,
                             rs_qk,
+                            scale_mul_int,
+                            scale_mul_shift,
+                            softmax_out_log2,
                         )
-                        if do_softmax:
-                            if not skip_scale:
-                                kscale(
-                                    chunk, r, N_tokens, scale_mul_int, scale_mul_shift
-                                )
-                            if not skip_sm:
-                                ksm(chunk, exp_lut, r, N_tokens, softmax_out_log2)
                 scores_p.release(1)
             for ci in range_(n_chunks_per_head):
                 chunk = scores_p.acquire(1)
                 if not skip_qk:
                     for r in range_(chunk_rows):
-                        kqk(
+                        kfused(
                             scratch_h1,
                             chunk,
+                            exp_lut,
                             r,
+                            ci * chunk_rows + r,
                             kd,
                             N_tokens,
-                            ci * chunk_rows + r,
                             rs_qk,
+                            scale_mul_int,
+                            scale_mul_shift,
+                            softmax_out_log2,
                         )
-                        if do_softmax:
-                            if not skip_scale:
-                                kscale(
-                                    chunk, r, N_tokens, scale_mul_int, scale_mul_shift
-                                )
-                            if not skip_sm:
-                                ksm(chunk, exp_lut, r, N_tokens, softmax_out_log2)
                 scores_p.release(1)
 
         # Stage 4 owns the attn_core tile alone (pack worker is gated on
@@ -544,9 +527,7 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                     scores_fifo.prod(),
                     exp_lut_buf,
                     k_qk_pack,
-                    k_qk_row,
-                    k_attn_scale,
-                    k_softmax_row,
+                    k_attn_score_fused,
                 ],
                 tile=plc["attn_core"],
                 dynamic_objfifo_lowering=True,
@@ -562,36 +543,36 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
     # = 2^-3 * 91 * 2^-9 / 2^-5 = 91 / 2^7.
     # Output shape unchanged from stage 4 (128KB) — values are softmax
     # probabilities in i8 at scale 2^-7 (=softmax_out_log2_scale).
-    softmax_in_log2 = None
-    softmax_out_log2 = None
-    scale_mul_int = None
-    scale_mul_shift = None
-    if stage >= 5:
-        L_softmax = by_name["attn/softmax"]
-        m_softmax = B._op_meta(manifest, L_softmax.manifest_name)
-        softmax_in_log2 = m_softmax["in_log2_scale"]  # -5
-        softmax_out_log2 = m_softmax["out_log2_scale"]  # -7
+    # Always populate scale + softmax params — the fused qk/scale/softmax
+    # kernel needs them at every stage that runs the attn-core path (stage 4+).
+    # At stage 4 they don't affect ORT comparison (no stage-4 ORT test) but
+    # the fused kernel always does qk→scale→softmax; stage-4 output is now
+    # post-softmax rather than pre-softmax.
+    L_softmax = by_name["attn/softmax"]
+    m_softmax = B._op_meta(manifest, L_softmax.manifest_name)
+    softmax_in_log2 = m_softmax["in_log2_scale"]  # -5
+    softmax_out_log2 = m_softmax["out_log2_scale"]  # -7
 
-        # Extract the Mul const (between MatMul and Softmax) from ONNX.
-        # Quark XINT8 stores it as quantized_value + scale; the
-        # DQ→Mul→QL integer reduction is:
-        #   scaled_i8 = SRS(raw_i8 * mul_q, shift)
-        # where shift = -(matmul_out_log2 + mul_log2_scale - mul_out_log2).
-        import onnx as _onnx
+    # Extract the Mul const (between MatMul and Softmax) from ONNX.
+    # Quark XINT8 stores it as quantized_value + scale; the
+    # DQ→Mul→QL integer reduction is:
+    #   scaled_i8 = SRS(raw_i8 * mul_q, shift)
+    # where shift = -(matmul_out_log2 + mul_log2_scale - mul_out_log2).
+    import onnx as _onnx
 
-        _onnx_path = HERE.parent / "models" / "phase1_25k_xint8_acc0.8968.onnx"
-        _onnx_model = _onnx.load(str(_onnx_path))
-        _inits = {t.name: t for t in _onnx_model.graph.initializer}
-        _q_name = "/model.9/m/m.0/attn/Constant_1_output_0_quantized"
-        _s_name = "/model.9/m/m.0/attn/Constant_1_output_0_scale"
-        _mul_q = int(_onnx.numpy_helper.to_array(_inits[_q_name]).item())
-        _mul_s = float(_onnx.numpy_helper.to_array(_inits[_s_name]).item())
-        _mul_log2_scale = int(round(np.log2(_mul_s)))  # -9 for m9
-        # matmul out scale = 2^rs_qk_neg = 2^-3 (from manifest right_shift=3
-        # which is the log2 of the matmul_out_scale).
-        _matmul_out_log2 = -rs_qk
-        scale_mul_int = _mul_q  # 91
-        scale_mul_shift = -(_matmul_out_log2 + _mul_log2_scale - softmax_in_log2)  # 7
+    _onnx_path = HERE.parent / "models" / "phase1_25k_xint8_acc0.8968.onnx"
+    _onnx_model = _onnx.load(str(_onnx_path))
+    _inits = {t.name: t for t in _onnx_model.graph.initializer}
+    _q_name = "/model.9/m/m.0/attn/Constant_1_output_0_quantized"
+    _s_name = "/model.9/m/m.0/attn/Constant_1_output_0_scale"
+    _mul_q = int(_onnx.numpy_helper.to_array(_inits[_q_name]).item())
+    _mul_s = float(_onnx.numpy_helper.to_array(_inits[_s_name]).item())
+    _mul_log2_scale = int(round(np.log2(_mul_s)))  # -9 for m9
+    # matmul out scale = 2^rs_qk_neg = 2^-3 (from manifest right_shift=3
+    # which is the log2 of the matmul_out_scale).
+    _matmul_out_log2 = -rs_qk
+    scale_mul_int = _mul_q  # 91
+    scale_mul_shift = -(_matmul_out_log2 + _mul_log2_scale - softmax_in_log2)  # 7
 
     # ----- Stage 6: + sv matmul (V @ attn.T per head, 2 heads) -----
     # 2-tile design: attn_core stays as in stage 5 (pack Q+K + qk + scale +
