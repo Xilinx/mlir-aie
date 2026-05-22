@@ -165,8 +165,9 @@ with m2+m8+m9 noop'd is 22.48 ms of dataflow/DMA infrastructure.
 Remaining levers in priority order:
 1. **m8 / m9 deep-opt + fusion** — only blocks NOT fully overlapped.
    m8 has 4 naive vec kernels (front, back, pair0/1 cv1/cv2 streamed);
-   m9 has 4 naive vec + 1 scalar (pe_add_row, dw3×3 — needs different
-   pattern than mmul) + 3 scalar data packs. Direct chain delta:
+   m9 has 4 naive vec (qkv, proj_skip_row, sv_row, attn_score_fused)
+   + 2 partial deep-opt (ffn_1, cv2_concat2 — promote to full) + 4 scalar
+   (pe_add_row + qkv/qk/v_pack data shuffles). Direct chain delta:
    ~5-13 ms if both can shed their non-overlap portions.
 2. **Architectural / fifo / placement work** — to push the 22.48 ms
    infrastructure floor down. Tile-pair rebalancing, fifo depth tuning,

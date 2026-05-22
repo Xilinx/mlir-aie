@@ -250,10 +250,12 @@ $(BUILD)/yolo_m9_qkv.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
 
+M9_FFN0_SHAPE := -DYOLO_M9_FFN0_IN_W=16 -DYOLO_M9_FFN0_IN_C=128 \
+                 -DYOLO_M9_FFN0_OUT_C=256 -DYOLO_M9_FFN0_N_CHUNKS=4
 $(BUILD)/yolo_m9_ffn_0_silu_row.o: \
     $(SRCDIR)/kernels/yolo_m9_ffn_0_silu_row_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_FFN0_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
 
 $(BUILD)/yolo_m9_proj_skip_row.o: \
     $(SRCDIR)/kernels/yolo_m9_proj_skip_row_vec.cc
