@@ -138,10 +138,10 @@ jobs:
       - name: Check Liquid Syntax
         run: python3 utils/check_liquid_syntax.py
 
-      - name: Install black
+      - name: Install pre-commit
         run: |
           pip install --upgrade pip
-          pip install black[jupyter]
+          pip install -r python/requirements_dev.txt
 
       - name: Run git-clang-format
         id: git-clang-format
@@ -170,7 +170,7 @@ jobs:
         if: success() || failure()
         id: black-format
         run: |
-          black . || true
+          pre-commit run black --hook-stage pre-push --all-files --color never || true
           git diff > black-format.diff
           cat black-format.diff
 

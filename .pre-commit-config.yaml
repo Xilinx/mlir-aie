@@ -1,20 +1,20 @@
 repos:
 - repo: https://github.com/kynan/nbstripout
-  rev: 0.8.0
+  rev: f42caeaf94f73a5ae54641b40a7d664cb4e03e40  # frozen: 0.8.0
   hooks:
     - id: nbstripout
       args: [--drop-empty-cells]
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: v17.0.6
+  rev: 05241dc3def184dba136e62d54ff57f1c8a497a9  # frozen: v17.0.6
   hooks:
     - id: clang-format
       types_or: [c, c++]
       stages: [pre-push]
 
 - repo: https://github.com/psf/black
-  rev: 24.10.0
+  rev: 1b2427a2b785cc4aac97c19bb4b9a0de063f9547  # frozen: 24.10.0
   hooks:
     - id: black
       stages: [pre-push]
