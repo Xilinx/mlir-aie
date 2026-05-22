@@ -19,8 +19,6 @@ to ship pre-compiled binaries — without having to change how the design
 is decorated.
 """
 
-import sys
-
 import numpy as np
 
 import aie.iron as iron
@@ -36,6 +34,7 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.utils.verify import assert_pass
 
 # Tile size moved to/from the compute cores via mem tiles.
 _TILE_M = _TILE_K = _TILE_N = 64
@@ -181,12 +180,13 @@ def run_and_verify(M: int, K: int, N: int, element_type) -> None:
         input0, input1, output, M=M, K=K, N=N, element_type=element_type
     )
 
-    e = np.equal(ref.flatten(), output.numpy())
-    errors = np.size(e) - np.count_nonzero(e)
-    if errors:
-        print(f"  FAIL: {errors} mismatches")
-        sys.exit(1)
-    print(f"  PASS")
+    assert_pass(
+        output.numpy(),
+        ref.flatten(),
+        fail_msg=f"matmul {M}x{K}x{N} output does not match np.matmul",
+        print_pass=False,
+    )
+    print("  PASS")
 
 
 def main():

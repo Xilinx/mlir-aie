@@ -6,13 +6,13 @@
 
 from ml_dtypes import bfloat16
 import numpy as np
-import sys
 import os
 
 import aie.iron as iron
 from aie.iron import Compile, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.utils.config import cxx_header_path
+from aie.utils.verify import assert_pass
 
 
 # JIT decorator for IRON
@@ -98,24 +98,9 @@ def main():
     # to the kernel will use the same compiled kernel and loaded code objects
     saxpy(input0, input1, output, N=data_size, element_type=element_type)
 
-    # Check the correctness of the result and print any mismatches
-    ref_vec = [3 * input0[i] + input1[i] for i in range(data_size)]
-
-    errors = 0
-    for index, (actual, ref) in enumerate(zip(output, ref_vec)):
-        if actual != ref:
-            print(f"Error at {index}: {actual} != {ref}")
-            errors += 1
-
-    # If the result is correct, exit with a success code
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nfailed.\n")
-        sys.exit(1)
+    # Numpy reference of `3*x + y` and a one-line tolerance check.
+    ref = 3 * input0.numpy() + input1.numpy()
+    assert_pass(output.numpy(), ref, fail_msg="saxpy output does not match 3*x + y")
 
 
 if __name__ == "__main__":

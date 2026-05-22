@@ -8,14 +8,13 @@
 Uses every shim DMA in-out pair on the device to saturate DDR bandwidth.
 """
 
-import sys
-
 import numpy as np
 
 import aie.iron as iron
 from aie.iron import Compile, In, Out, kernels, ObjectFifo, Program, Runtime, Worker
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.benchmark import run_iters
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -76,22 +75,11 @@ def my_memcpy(
         for j in range(num_channels)
     ]
 
-    # One TensorAccessPattern per channel. See programming_guide/section-2/section-2c/
-    # for a full explanation of n-dimensional data layout transformations. Here:
-    #   tensor_dims (1, size)  : logical shape of the full transfer buffer
-    #   offset                 : start element index of this channel's chunk
-    #   sizes  [1, 1, 1, chunk]: single 1-D transfer of `chunk` elements
-    #   strides [0, 0, 0, 1]   : contiguous (stride-1)
-    taps = [
-        TensorAccessPattern(
-            (1, size),
-            chunk * i * num_channels + chunk * j,
-            [1, 1, 1, chunk],
-            [0, 0, 0, 1],
-        )
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
+    # One TAP per (column, channel) shim DMA — equivalent to iterating
+    # ``(1, chunk)`` tiles row-major across the ``(1, size)`` tensor.
+    # See programming_guide/section-2/section-2c/ for a full explanation
+    # of n-dimensional data layout transformations.
+    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
 
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
@@ -151,12 +139,7 @@ def main():
     )
     print(f"Effective bandwidth (NPU avg): {bandwidth_GBps:.2f} GB/s")
 
-    e = np.equal(input0.numpy(), output.numpy())
-    errors = np.size(e) - np.count_nonzero(e)
-    if errors:
-        print(f"\nFAIL: {errors} mismatches")
-        sys.exit(1)
-    print("\nPASS!")
+    assert_pass(output.numpy(), input0.numpy(), fail_msg="memcpy output mismatch")
 
 
 if __name__ == "__main__":
