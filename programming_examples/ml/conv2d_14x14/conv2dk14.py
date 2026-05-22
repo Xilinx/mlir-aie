@@ -1,229 +1,189 @@
+# conv2d_14x14/conv2dk14.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""14x14 Conv2D — Iron API design with ``@iron.jit`` compilation.
+
+This design processes a 896x896 input with 4 channels through a
+conv2dk14 kernel producing 1152 output channels. The kernel runs on
+sub-tiles (16 tiles × 16 output channels per call) and is invoked
+``out_channels/16 × height/14 × 4`` times to cover the full image.
+
+The kernel comes from ``aie_kernels/aie2p/conv2dk14.cc`` (aie2p only).
+The library's ``kernels.conv2dk14`` uses a different per-call output
+layout, so this design wires an ``ExternalFunction`` directly with the
+sub-tile sizing the original kernel writes.
+
+Compile-only entrypoint:
+  ``python3 conv2dk14.py -d npu2 --xclbin-path build/final.xclbin
+                                 --insts-path build/insts.bin``
+End-to-end verification lives in ``test.py``.
+"""
+
+import argparse
+from pathlib import Path
+
 import numpy as np
-import sys
 
-from aie.iron import (
-    Buffer,
-    Kernel,
-    ObjectFifo,
-    Program,
-    Runtime,
-    Worker,
-    WorkerRuntimeBarrier,
-)
-from aie.iron.device import NPU1Col1, NPU2Col1
+import aie.iron as iron
+from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
+from aie.iron.device import from_name
+from aie.iron.kernel import ExternalFunction
+from aie.utils import config
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
+
+# Sub-tile sizing baked into the conv2dk14 kernel.
+_SUB_OUT_CHANNELS = 16
+_SUB_TILES = 16
+_KERNEL_SIZE = 14
+_IN_CHANNELS = 4
+_OUT_CHANNELS = 1152
+_X_BLOCKS = 4
+_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/conv2dk14.cc"
 
 
-def conv2dk14(
-    dev,
-    width: int,
-    height: int,
-    in_channels: int,
-    out_channels: int,
-    kernel_size: int,
-    trace_size: int,
-):
-    enable_trace = 1 if trace_size > 0 else 0
-
-    # Kernel processes 16 tiles and 16 output channels at a time
-    sub_out_channels = 16
-    sub_tiles = 16
-
-    actIn = kernel_size * kernel_size * in_channels * sub_tiles
-    weights = kernel_size * kernel_size * in_channels * sub_out_channels
-    actOut = sub_tiles * sub_out_channels
-
-    out_channels_group = out_channels // sub_out_channels  # 72
-    width_out = width // kernel_size
-    height_out = height // kernel_size
-
-    # we reload inputs 72 times (out_channels // sub_out_channels)
-    tensorInSize = width * height * in_channels * out_channels_group
-    # tensorInSize = width * height * in_channels * 2
-
-    tensorWeightsSize = weights * out_channels_group
-    tensorOutSize = width_out * height_out * sub_out_channels * out_channels_group
-
-    N_in_bytes = tensorOutSize  # Number of bytes of output data (1 byte/elem)
-
-    bufIn = kernel_size * width * in_channels
-    bufOut = sub_out_channels * width_out * height_out
-
-    # Type definitions
-    actIn_ty = np.ndarray[(actIn,), np.dtype[np.uint8]]
-    bufIn_ty = np.ndarray[(bufIn,), np.dtype[np.uint8]]
-
-    weights_ty = np.ndarray[(weights,), np.dtype[np.int8]]
-
-    out_ty = np.ndarray[(actOut,), np.dtype[np.int8]]
-    bufOut_ty = np.ndarray[(bufOut,), np.dtype[np.int8]]
-    tensorIn_ty = np.ndarray[(tensorInSize,), np.dtype[np.uint8]]
-    tensorWeights_ty = np.ndarray[(tensorWeightsSize,), np.dtype[np.int8]]
-    tensorOut_ty = np.ndarray[(tensorOutSize,), np.dtype[np.int8]]
-
-    # AIE Core Function declarations
-    conv2dk14_i8_kernel = Kernel(
+def _conv2dk14_extern(act_in_ty, weights_ty, out_ty):
+    return ExternalFunction(
         "conv2dk14_i8",
-        "conv2dk14.o",
-        [
-            actIn_ty,
-            weights_ty,
-            out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
+        source_file=str(_KERNEL_SRC),
+        arg_types=[
+            act_in_ty, weights_ty, out_ty,
+            np.int32, np.int32, np.int32, np.int32, np.int32,
         ],
+        include_dirs=[config.cxx_header_path()],
+        compile_flags=["-DUINT8_ACT"],
     )
 
-    # AIE-array data movement with object fifos
-    # Input
-    of_inOF_act_L3L2 = ObjectFifo(
-        bufIn_ty,
+
+@iron.jit
+def conv2dk14(
+    a_in: In,
+    w_in: In,
+    b_out: Out,
+    *,
+    width: Compile[int] = 896,
+    height: Compile[int] = 896,
+    scale: Compile[int] = 14,
+):
+    if width % 8 != 0 or width < 8:
+        raise ValueError("width must be a multiple of 8 and >= 8")
+    if height % 8 != 0 or height < 8:
+        raise ValueError("height must be a multiple of 8 and >= 8")
+
+    device = iron.get_current_device()
+
+    act_in = _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * _SUB_TILES
+    weights = _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * _SUB_OUT_CHANNELS
+    act_out = _SUB_TILES * _SUB_OUT_CHANNELS
+
+    out_channels_group = _OUT_CHANNELS // _SUB_OUT_CHANNELS
+    width_out = width // _KERNEL_SIZE
+    height_out = height // _KERNEL_SIZE
+
+    tensor_in_size = width * height * _IN_CHANNELS * out_channels_group
+    tensor_wts_size = weights * out_channels_group
+    tensor_out_size = width_out * height_out * _SUB_OUT_CHANNELS * out_channels_group
+
+    buf_in = _KERNEL_SIZE * width * _IN_CHANNELS
+    buf_out = _SUB_OUT_CHANNELS * width_out * height_out
+
+    act_in_ty = np.ndarray[(act_in,), np.dtype[np.uint8]]
+    buf_in_ty = np.ndarray[(buf_in,), np.dtype[np.uint8]]
+    weights_ty = np.ndarray[(weights,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(act_out,), np.dtype[np.int8]]
+    buf_out_ty = np.ndarray[(buf_out,), np.dtype[np.int8]]
+    tensor_in_ty = np.ndarray[(tensor_in_size,), np.dtype[np.uint8]]
+    tensor_wts_ty = np.ndarray[(tensor_wts_size,), np.dtype[np.int8]]
+    tensor_out_ty = np.ndarray[(tensor_out_size,), np.dtype[np.int8]]
+
+    conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
+
+    of_act_l3l2 = ObjectFifo(
+        buf_in_ty,
         name="inOF_act_L3L2",
         dims_from_stream_per_cons=[
-            (kernel_size, kernel_size * in_channels),  # (14, 56)
-            (64, kernel_size * kernel_size * in_channels),  # (64, 784)
-            (kernel_size * in_channels, 1),  # (56, 1)
+            (_KERNEL_SIZE, _KERNEL_SIZE * _IN_CHANNELS),
+            (64, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
+            (_KERNEL_SIZE * _IN_CHANNELS, 1),
         ],
     )
-    of_act_L2_02 = of_inOF_act_L3L2.cons().forward(
-        obj_type=actIn_ty,
+    of_act_l2 = of_act_l3l2.cons().forward(
+        obj_type=act_in_ty,
         name="act_L2_02",
         dims_to_stream=[
-            (2, kernel_size * kernel_size * in_channels * 8),  # (2, 6272)
-            (kernel_size * kernel_size // 2, 2 * in_channels),  # (98, 8)
-            (8, kernel_size * kernel_size * in_channels),  # (8, 784)
-            (2 * in_channels, 1),  # (8, 1)
+            (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
+            (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
+            (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
+            (2 * _IN_CHANNELS, 1),
         ],
     )
 
-    # wts
-    of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, depth=1, name="inOF_wts_0_L3L2")
+    of_wts_l3l2 = ObjectFifo(weights_ty, depth=1, name="inOF_wts_0_L3L2")
 
-    # Output
-    of_out_02_L2 = ObjectFifo(out_ty, name="out_02_L2")
-    of_outOFL2L3 = of_out_02_L2.cons().forward(
-        obj_type=bufOut_ty,
+    of_out_l2 = ObjectFifo(out_ty, name="out_02_L2")
+    of_out_l3 = of_out_l2.cons().forward(
+        obj_type=buf_out_ty,
         name="outOFL2L3",
         dims_to_stream=[(256, 256), (16, 8), (2, 128), (8, 1)],
     )
 
-    # Setup a global buffer to hold runtime parameters
-    # rtp = Buffer(
-    #     np.ndarray[(16,), np.dtype[np.int32]],
-    #     name="rtp",
-    #     use_write_rtp=True,
-    # )
-
-    # rtp_barrier = WorkerRuntimeBarrier()
-
-    # Task for the core to perform
-    # def core_fn(of_wts, of_act, of_out, my_rtp, conv2dk14_i8, barrier):
-    def core_fn(of_wts, of_act, of_out, conv2dk14_i8):
-        y_dim = height // kernel_size
-        x_blocks = 4
-        x_dim = width // x_blocks  # num pixels for 1/4 of a row
-        ci = in_channels
-        co = sub_out_channels
-
-        # barrier.wait_for_value(1)
-        # scale = my_rtp[0]
-        scale = 14
-
-        elemWts = of_wts.acquire(1)
-
-        for _ in range_(y_dim):
-            for _ in range_(x_blocks):
-                elemIn = of_act.acquire(1)
-                elemOut0 = of_out.acquire(1)
-
-                conv2dk14_i8(
-                    elemIn, elemWts, elemOut0, x_dim, ci, co, kernel_size, scale
-                )
+    def core_fn(of_wts, of_act, of_out, kernel):
+        x_dim = width // _X_BLOCKS
+        elem_wts = of_wts.acquire(1)
+        for _ in range_(height // _KERNEL_SIZE):
+            for _ in range_(_X_BLOCKS):
+                elem_in = of_act.acquire(1)
+                elem_out = of_out.acquire(1)
+                kernel(elem_in, elem_wts, elem_out,
+                       x_dim, _IN_CHANNELS, _SUB_OUT_CHANNELS,
+                       _KERNEL_SIZE, scale)
                 of_act.release(1)
                 of_out.release(1)
         of_wts.release(1)
 
-    # Create a worker to perform the task
     worker = Worker(
         core_fn,
-        [
-            of_inOF_wts_0_L3L2.cons(),
-            of_act_L2_02.cons(),
-            of_out_02_L2.prod(),
-            # rtp,
-            conv2dk14_i8_kernel,
-            # rtp_barrier,
-        ],
+        [of_wts_l3l2.cons(), of_act_l2.cons(), of_out_l2.prod(), conv_fn],
         stack_size=0x600,
-        trace=enable_trace,
     )
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensorIn_ty, tensorWeights_ty, tensorOut_ty) as (I, W, O):
-        # Initialize the runtime parameter values
-        def set_rtps(my_rtp):
-            my_rtp[0] = 14
-
-        # rt.inline_ops(set_rtps, [rtp])
-
-        # rt.set_barrier(rtp_barrier, 1)
-
-        rt.enable_trace(trace_size),
-
-        # Start worker
+    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (I, W, O):
         rt.start(worker)
+        rt.fill(of_act_l3l2.prod(), I)
+        rt.fill(of_wts_l3l2.prod(), W)
+        rt.drain(of_out_l3.cons(), O, wait=True)
 
-        # Fill/drain input/output ObjectFifos
-        rt.fill(of_inOF_act_L3L2.prod(), I)
-        rt.fill(of_inOF_wts_0_L3L2.prod(), W)
-        rt.drain(of_outOFL2L3.cons(), O, wait=True)
-
-    # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return Program(device, rt).resolve_program()
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
-        dev = NPU1Col1()
-    elif device_name == "npu2":
-        dev = NPU2Col1()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    width = int(sys.argv[2])
-    if width % 8 != 0 or width < 8:
-        print("Width size must be a multiple of 8 and greater than or equal to 8")
-        raise ValueError
-    height = int(sys.argv[3])
-    if height % 8 != 0 or height < 8:
-        print("Height size must be a multiple of 8 and greater than or equal to 8")
-        raise ValueError
-    in_channels = int(sys.argv[4])
-    if in_channels != 4:
-        print("Input channels size must be equal to 4")
-        raise ValueError
-    out_channels = int(sys.argv[5])
-    if out_channels != 1152:
-        print("Output channel size must be equal to 1152")
-        raise ValueError
-    kernel_size = int(sys.argv[6])
-    if kernel_size != 14:
-        print("Kernel size must be 14 right now.")
-        raise ValueError
-    trace_size = 0 if (len(sys.argv) != 8) else int(sys.argv[7])
-except ValueError:
-    print("Argument has inappropriate value")
-module = conv2dk14(
-    dev, width, height, in_channels, out_channels, kernel_size, trace_size
-)
-print(module)
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Conv2D 14x14 (aie2p)")
+    add_compile_args(p)
+    p.add_argument("-wd", "--width", type=int, default=896)
+    p.add_argument("-ht", "--height", type=int, default=896)
+    p.add_argument("--scale", type=int, default=14)
+    return p
+
+
+def _compile_kwargs(opts):
+    return dict(width=opts.width, height=opts.height, scale=opts.scale)
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    run_design_cli(
+        conv2dk14,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        device=lambda o: from_name(o.dev, n_cols=1),
+    )
+
+
+if __name__ == "__main__":
+    main()
