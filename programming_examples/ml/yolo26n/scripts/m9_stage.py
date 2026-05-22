@@ -1265,6 +1265,10 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                     k_cv2,
                 ],
                 tile=plc["cv2"],
+                # cv2's tile already hosts a 32 KB top_cache + 8 KB wts_recv
+                # + I/O fifos; can't fit a 4 KB pre-pack scratch on stack
+                # without busting the 64 KB L1 cap. Vec kernel uses the
+                # inline-gather pattern instead.
                 dynamic_objfifo_lowering=True,
             )
         )

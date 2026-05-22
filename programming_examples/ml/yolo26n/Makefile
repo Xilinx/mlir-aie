@@ -263,6 +263,13 @@ $(BUILD)/yolo_m9_ffn_1_skip_row.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_FFN1_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
 
+M9_CV2_SHAPE := -DYOLO_M9_CV2_IN_W=16 -DYOLO_M9_CV2_C_HALF=128 \
+                -DYOLO_M9_CV2_OUT_C=256 -DYOLO_M9_CV2_N_CHUNKS=8
+$(BUILD)/yolo_m9_cv2_concat2_streamed.o: \
+    $(SRCDIR)/kernels/yolo_m9_cv2_concat2_streamed_vec.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV2_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
+
 # c3k2_heavy streamed inner-pair kernels (m8 megakernel: shared symbol
 # for both pair0 and pair1 — they run on different tiles with different
 # weights, but execute the same kernel code).
