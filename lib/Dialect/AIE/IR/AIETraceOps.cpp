@@ -377,13 +377,13 @@ LogicalResult TraceEventOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TracePacketOp::verify() {
-  // Packet ID range is already enforced by Confined constraint in TableGen
-  // Just verify it's within valid range
-  int32_t id = getId();
-  if (id < 1 || id > 31) {
-    return emitOpError("packet ID must be in range [1, 31], got ") << id;
+  // Range is enforced by the Confined constraint in TableGen when id is
+  // present; when absent, -aie-insert-trace-flows assigns one in valid
+  // range from the (col, row) order over active trace tiles.
+  if (auto id = getId()) {
+    if (*id < 1 || *id > 31)
+      return emitOpError("packet ID must be in range [1, 31], got ") << *id;
   }
-
   return success();
 }
 

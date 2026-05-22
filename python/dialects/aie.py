@@ -600,7 +600,7 @@ def trace_event(event, *, label=None, loc=None, ip=None):
     return TraceEventOp(event=event, label=label, loc=loc, ip=ip)
 
 
-def trace_packet(id, type, *, loc=None, ip=None):
+def trace_packet(id=None, type=None, *, loc=None, ip=None):
     return TracePacketOp(id=id, type_=type, loc=loc, ip=ip)
 
 

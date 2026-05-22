@@ -137,9 +137,7 @@ def bottleneck4AIEs():
 
     # AIE-array data movement with object fifos
     of_inOF_act_L3L2 = ObjectFifo(tensorLayer1In_ty, name="inOF_act_L3L2")
-    of_skip_buf = of_inOF_act_L3L2.cons(4).forward(
-        depth=2, tile=AnyMemTile, name="skip_buf"
-    )
+    of_skip_buf = of_inOF_act_L3L2.cons(4).forward(depth=2, name="skip_buf")
 
     # weights
     inOF_wts_0_L3L2 = ObjectFifo(weightsAll_ty, depth=1, name="inOF_wts_0_L3L2")
@@ -227,7 +225,6 @@ def bottleneck4AIEs():
     worker = Worker(
         worker_conv2dk3_fn,
         fn_args=[wts_buf_01.cons(), of_act_2_3_5.cons(4), act_3_4.prod(), conv2dk3, 0],
-        tile=Tile(0, 3),
     )
     workers.append(worker)
     worker = Worker(
@@ -239,7 +236,6 @@ def bottleneck4AIEs():
             conv2dk3,
             tensorL2OutC // 2,
         ],
-        tile=Tile(0, 5),
     )
     workers.append(worker)
 
@@ -298,7 +294,6 @@ def bottleneck4AIEs():
             rtp4,
             rtp_barrier,
         ],
-        tile=Tile(0, 4),
         stack_size=0xA00,
     )
     workers.append(worker)

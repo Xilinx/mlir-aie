@@ -178,7 +178,7 @@ jobs:
       # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
     - name: Enable vcpkg binary caching
       if: ${{ runner.os == 'Windows' }}
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       with:
         script: |
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
@@ -246,6 +246,31 @@ jobs:
       shell: bash
       run: cp ../clone-llvm.sh .
 
+    - name: Compute wheel version on host
+      id: wheel_version
+      shell: bash
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      env:
+        REF_TYPE: ${{ github.ref_type }}
+        REF_NAME: ${{ github.ref_name }}
+      run: |
+        set -euo pipefail
+        if [[ "${REF_TYPE}" == "tag" && "${REF_NAME}" == v* ]]; then
+          VERSION="${REF_NAME#v}"
+        else
+          VERSION=$(AIE_WHEEL_KEEP_LOCAL=1 python _version_helper.py)
+        fi
+        if [[ -z "${VERSION}" ]]; then
+          echo "::error::computed wheel version is empty" >&2
+          exit 1
+        fi
+        if ! [[ "${VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9.+_-]*$ ]]; then
+          echo "::error::computed wheel version contains unexpected characters: ${VERSION}" >&2
+          exit 1
+        fi
+        echo "Computed AIE_WHEEL_VERSION=${VERSION}"
+        echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
     # build
 
     - name: build distro wheels
@@ -266,6 +291,8 @@ jobs:
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
         CIBW_CONTAINER_ENGINE_ARGS="-v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:/host${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}" \
         AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} \
+        AIE_WHEEL_KEEP_LOCAL=1 \
+        AIE_WHEEL_VERSION=${{ steps.wheel_version.outputs.version }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir wheelhouse
@@ -310,6 +337,8 @@ jobs:
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
         AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} \
+        AIE_WHEEL_KEEP_LOCAL=1 \
+        AIE_WHEEL_VERSION=${{ steps.wheel_version.outputs.version }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         pip wheel . -v -w wheelhouse
