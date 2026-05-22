@@ -2218,6 +2218,74 @@ void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
 // scan when the innermost stride is 1 and each outer stride equals the product
 // of all inner sizes.  Used by both DMABDOp verification and canonicalization.
+mlir::LogicalResult xilinx::AIE::verifyBDSizesStrides(
+    mlir::Operation *forOp, unsigned elemWidthBits,
+    uint32_t addressGranularityBits, llvm::ArrayRef<int64_t> inputSizes,
+    llvm::ArrayRef<int64_t> inputStrides) {
+  assert(inputSizes.size() == inputStrides.size());
+  const int n = static_cast<int>(inputSizes.size());
+  if (n == 0)
+    return success();
+
+  for (int i = 0; i < n; ++i) {
+    if (inputSizes[i] <= 0)
+      return forOp->emitOpError("Size ") << i << " must be a positive integer.";
+  }
+
+  // Innermost contiguous run must be a multiple of address granularity --
+  // hardware moves whole words; a sub-word innermost run is unrealizable.
+  if (inputSizes[0] * elemWidthBits % addressGranularityBits != 0) {
+    std::stringstream msg;
+    msg << "Transfer sizes must be multiples of "
+        << (addressGranularityBits / 8) << " bytes. " << inputSizes[0]
+        << " elements at " << (elemWidthBits / 8) << " bytes each equal "
+        << (inputSizes[0] * elemWidthBits / 8)
+        << " bytes, which is not divisible by " << (addressGranularityBits / 8)
+        << ". ";
+    return forOp->emitOpError(msg.str());
+  }
+
+  // Non-repeat dim strides must be positive when the corresponding size > 1
+  // (the repeat dim, if present as the outermost, may have stride 0).
+  const int repeatDim = n - 1;
+  for (int i = 0; i < n; ++i) {
+    if (inputSizes[i] > 1 && inputStrides[i] < 1) {
+      if (i == repeatDim && inputStrides[i] == 0)
+        continue;
+      return forOp->emitOpError("Stride ")
+             << i << " must be a positive integer.";
+    }
+  }
+
+  // Stride byte-alignment: innermost stride==1 is always allowed (sub-word
+  // packed contiguous run, paired with the granularity check above); any other
+  // stride must be a granularity multiple in bytes.
+  for (int i = 0; i < n; ++i) {
+    if (i == 0 && inputStrides[i] == 1)
+      continue;
+    if (inputStrides[i] * elemWidthBits % addressGranularityBits != 0) {
+      std::stringstream msg;
+      msg << "Stride " << i << " is " << inputStrides[i] << " elements * "
+          << (elemWidthBits / 8)
+          << " bytes = " << (inputStrides[i] * elemWidthBits / 8)
+          << " bytes, which is not divisible by "
+          << (addressGranularityBits / 8) << ". ";
+      return forOp->emitOpError(msg.str());
+    }
+  }
+
+  // For element widths larger than the granularity (e.g. bfp blocks, i64),
+  // the hardware cannot encode a non-1 innermost stride; getHardwareStrides-
+  // Wraps would silently drop the stride. Force innermost stride == 1.
+  if (elemWidthBits > addressGranularityBits && inputStrides[0] != 1)
+    return forOp->emitOpError(
+               "For element widths larger than the address granularity (")
+           << (addressGranularityBits / 8)
+           << " bytes), innermost dim stride must be 1.";
+
+  return success();
+}
+
 bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   if (dims.empty())
     return true; // no ND layout = trivially contiguous
@@ -2328,16 +2396,21 @@ LogicalResult DMABDOp::verify() {
         return emitOpError() << "Stride may not exceed " << (1 << 20);
     }
 
-    // Since streams read 32b words, there's no way to read eg 16b with stride
-    // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
-    // CDODirect/XAIEV2 scale the size by 4/getBufferElementTypeWidthInBytes).
-    if (getBufferElementTypeWidthInBytes() < 4 && dims->back().getStride() != 1)
-      return emitOpError(
-          "For <32b width datatypes, inner-most dim stride must be 1");
-
-    if (getBufferElementTypeWidthInBytes() > 4 && dims->back().getStride() != 1)
-      return emitOpError(
-          "For >32b width datatypes, inner-most dim stride must be 1");
+    // Granularity / sub-word / stride alignment checks, shared with
+    // AIEX::verifyStridesWraps. dims are stored outermost-first; the helper
+    // expects innermost-first.
+    SmallVector<int64_t, 4> inputSizes, inputStrides;
+    for (auto it = dims->rbegin(); it != dims->rend(); ++it) {
+      inputSizes.push_back(static_cast<int64_t>(it->getSize()));
+      inputStrides.push_back(static_cast<int64_t>(it->getStride()));
+    }
+    DataLayout dataLayout = DataLayout::closest(getOperation());
+    unsigned elemWidthBits =
+        dataLayout.getTypeSizeInBits(buffer.getElementType());
+    if (failed(xilinx::AIE::verifyBDSizesStrides(
+            getOperation(), elemWidthBits,
+            targetModel.getAddressGenGranularity(), inputSizes, inputStrides)))
+      return failure();
   }
   if (auto paddims = getPadDimensions(); paddims.has_value()) {
     auto dims = getDimensions();

@@ -53,7 +53,7 @@ module {
 
 // -----
 
-// CHECK: For >32b width datatypes, inner-most dim stride must be 1 
+// CHECK: For element widths larger than the address granularity (4 bytes), innermost dim stride must be 1
 module {
   aie.device(npu1) {
     %tile14 = aie.tile(1, 4)
@@ -63,7 +63,27 @@ module {
       ^bd0:
         aie.dma_bd(%buf14 : memref<128x!aiex.bfp<"v8bfp16ebs8">>, 0, 128, [<size = 8, stride = 16>]) {}
         aie.next_bd ^end
-      ^end: 
+      ^end:
+        aie.end
+    }
+  }
+}
+
+// -----
+
+// Sub-word innermost contiguous run on i8: innermost size=2 elements * 1 byte
+// = 2 bytes, sub-word and unrealizable by 32-bit-granularity DMA.
+// CHECK: 2 elements at 1 bytes each equal 2 bytes, which is not divisible by 4
+module {
+  aie.device(npu1) {
+    %tile14 = aie.tile(1, 4)
+    %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128xi8>
+    %mem14 = aie.mem(%tile14) {
+      %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf14 : memref<128xi8>, 0, 24, [<size = 3, stride = 4>, <size = 2, stride = 1>])
+        aie.next_bd ^end
+      ^end:
         aie.end
     }
   }

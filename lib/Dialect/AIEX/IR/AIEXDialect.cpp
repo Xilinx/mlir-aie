@@ -202,51 +202,9 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
         std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
   }
 
-  for (int i = 0; i < 4; i++) {
-    if (inputSizes[i] <= 0) {
-      return forOp->emitOpError("Size ") << i << " must be a positive integer.";
-    }
-  }
-
-  if (inputSizes[0] * elemWidth % addressGranularity != 0) {
-    std::stringstream msg;
-    msg << "Transfer sizes must be multiples of " << (addressGranularity / 8)
-        << " bytes. " << inputSizes[0] << " elements at " << (elemWidth / 8)
-        << " bytes each equal " << (inputSizes[0] * elemWidth / 8)
-        << " bytes, which is not divisible by " << (addressGranularity / 8)
-        << ". ";
-    return forOp->emitOpError(msg.str());
-  }
-
-  for (int i = 0; i < 3; i++) {
-    if (inputSizes[i] > 1 && inputStrides[i] < 1) {
-      // If inputSize[i] == 1, anything is allowable in the stride, since that
-      // stride will never be applied. For any larger size, we must verify that
-      // the stride is positive.
-      return forOp->emitOpError("Stride ")
-             << i << " must be a positive integer.";
-    }
-  }
-  // A value of zero is allowable for the fourth-dimension stride
-  // (this indicates an interation stride for the repeat of 0)
-  if (inputSizes[3] > 1 && inputStrides[3] < 0) {
-    return forOp->emitOpError("Stride 3 must be a non-negative integer.");
-  }
-
-  for (int i = 0; i < 4; i++) {
-    // strides[0] == 1 is ok iff the transfer size is a multiple of
-    // addressGranularity, which is checked below
-    if (i == 0 && inputStrides[i] == 1)
-      continue;
-    if (inputStrides[i] * elemWidth % addressGranularity != 0) {
-      std::stringstream msg;
-      msg << "Stride " << i << " is " << inputStrides[i] << " elements * "
-          << (elemWidth / 8) << " bytes = " << (inputStrides[i] * elemWidth / 8)
-          << " bytes, which is not divisible by " << (addressGranularity / 8)
-          << ". ";
-      return forOp->emitOpError(msg.str());
-    }
-  }
+  if (failed(AIE::verifyBDSizesStrides(forOp, elemWidth, addressGranularity,
+                                       inputSizes, inputStrides)))
+    return failure();
 
   if (!skipTransformationChecks && hardwareSizes[0] > (1 << wrap_bits) - 1)
     return forOp->emitOpError(

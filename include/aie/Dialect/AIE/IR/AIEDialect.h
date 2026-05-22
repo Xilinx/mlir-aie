@@ -238,6 +238,18 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
+// Verify that a BD's per-dimension sizes and strides (innermost-first) are
+// realizable for hardware with the given address generation granularity.
+// Checks: positive sizes; innermost contiguous run is a granularity multiple;
+// positive strides for non-repeat dims (last stride may be zero); each
+// non-innermost stride byte-aligned to granularity (innermost stride==1 is
+// always allowed); for elemWidth > granularity, innermost stride must be 1.
+mlir::LogicalResult verifyBDSizesStrides(mlir::Operation *forOp,
+                                         unsigned elemWidthBits,
+                                         uint32_t addressGranularityBits,
+                                         llvm::ArrayRef<int64_t> inputSizes,
+                                         llvm::ArrayRef<int64_t> inputStrides);
+
 } // namespace xilinx::AIE
 
 namespace llvm {
