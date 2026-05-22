@@ -1,139 +1,165 @@
+# softmax/softmax.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
-from ml_dtypes import bfloat16
-import numpy as np
-import sys
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Tile-wise bf16 softmax — Iron API design with ``@iron.jit`` compilation.
+
+Softmax is computed independently per 1024-element tile (no cross-tile
+reduction), so the design scales the same way as ml/relu — one shim-DMA
+in/out pair per (column, channel), each core looping over its share of
+the input in 1024-element lines.
+"""
+
 import argparse
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2Col1
-from aie.iron.controlflow import range_
+import numpy as np
+from ml_dtypes import bfloat16
+
+import aie.iron as iron
+from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron.device import from_name
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.verify import assert_pass
 
 
-def vector_softmax(dev, trace_size, N):
+@iron.jit
+def softmax(
+    a_in: In,
+    b_out: Out,
+    *,
+    size: Compile[int] = 262144,
+    num_channels: Compile[int] = 2,
+):
+    xfr_dtype = bfloat16
+    device = iron.get_current_device()
+    num_columns = device.cols
 
-    # Tile sizes
-    n = 1024
-    N_div_n = N // n
-
-    n_cores = 2
-    tiles = N_div_n // n_cores
-
-    tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
-    tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
-
-    # Type used in the memory tile which aggregates across the 4 cores
-    A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
-    C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
-
-    # AIE Core Function declarations
-    softmax_bf16_vector = Kernel(
-        "softmax_bf16", "kernels.a", [tile_ty, tile_ty, np.int32]
-    )
-
-    # AIE-array data movement with object fifos
-    # Input A and Output C
-    inA = ObjectFifo(A_memTile_ty, name="inA")
-    outC = ObjectFifo(C_memTile_ty, name="outC")
-
-    of_a_offsets = []
-    of_c_offsets = []
-    if n_cores > 1:
-        of_a_offsets = [n * i for i in range(n_cores)]
-        of_c_offsets = [n * i for i in range(n_cores)]
-    inA_fifos = inA.cons().split(
-        of_a_offsets,
-        obj_types=[tile_ty] * n_cores,
-        names=[f"memA{i}" for i in range(n_cores)],
-    )
-    outC_fifos = outC.prod().join(
-        of_c_offsets,
-        obj_types=[tile_ty] * n_cores,
-        names=[f"memC{i}" for i in range(n_cores)],
-    )
-
-    # Task for the cores to perform
-    def core_fn(of_in, of_out, softmax_kernel):
-        for _ in range_(tiles):
-            elem_out = of_out.acquire(1)
-            elem_in_a = of_in.acquire(1)
-            softmax_kernel(elem_in_a, elem_out, n)
-            of_in.release(1)
-            of_out.release(1)
-
-    # Set up workers to perform the task
-    workers = []
-    for i in range(n_cores):
-        workers.append(
-            Worker(
-                core_fn,
-                fn_args=[
-                    inA_fifos[i].cons(),
-                    outC_fifos[i].prod(),
-                    softmax_bf16_vector,
-                ],
-            )
+    if num_channels not in (1, 2):
+        raise ValueError(f"num_channels must be 1 or 2, got {num_channels}")
+    if (size % 1024) % num_columns % num_channels != 0:
+        raise ValueError(
+            f"size ({size}) must be a multiple of 1024 and divisible by "
+            f"{num_columns} columns × {num_channels} channels"
         )
 
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, C):
-        rt.start(*workers)
-        rt.fill(inA.prod(), A)
-        rt.drain(outC.cons(), C, wait=True)
+    line_size = 1024
+    line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
+    transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
+    chunk = size // num_columns // num_channels
 
-    # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    of_ins = [
+        ObjectFifo(line_type, name=f"in{i}_{j}")
+        for i in range(num_columns)
+        for j in range(num_channels)
+    ]
+    of_outs = [
+        ObjectFifo(line_type, name=f"out{i}_{j}")
+        for i in range(num_columns)
+        for j in range(num_channels)
+    ]
+
+    softmax_fn = kernels.softmax(tile_size=line_size)
+
+    def core_fn(of_in, of_out, kernel):
+        elem_out = of_out.acquire(1)
+        elem_in = of_in.acquire(1)
+        kernel(elem_in, elem_out, line_size)
+        of_in.release(1)
+        of_out.release(1)
+
+    workers = [
+        Worker(
+            core_fn,
+            [
+                of_ins[i * num_channels + j].cons(),
+                of_outs[i * num_channels + j].prod(),
+                softmax_fn,
+            ],
+        )
+        for i in range(num_columns)
+        for j in range(num_channels)
+    ]
+
+    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
+
+    rt = Runtime()
+    with rt.sequence(transfer_type, transfer_type) as (a, b):
+        rt.start(*workers)
+        tg = rt.task_group()
+        for i in range(num_columns):
+            for j in range(num_channels):
+                rt.fill(
+                    of_ins[i * num_channels + j].prod(),
+                    a,
+                    taps[i * num_channels + j],
+                    task_group=tg,
+                )
+        for i in range(num_columns):
+            for j in range(num_channels):
+                rt.drain(
+                    of_outs[i * num_channels + j].cons(),
+                    b,
+                    taps[i * num_channels + j],
+                    wait=True,
+                    task_group=tg,
+                )
+        rt.finish_task_group(tg)
+
+    return Program(device, rt).resolve_program()
+
+
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Softmax")
+    add_compile_args(p)
+    p.add_argument("-l", "--length", type=int, default=262144, help="elements")
+    p.add_argument(
+        "-ch", "--channels", type=int, default=2, help="channels per column (1 or 2)"
+    )
+    return p
+
+
+def _compile_kwargs(opts):
+    return dict(size=opts.length, num_channels=opts.channels)
+
+
+def _softmax_ref_per_tile(x, tile_size=1024):
+    out = np.empty_like(x, dtype=np.float32)
+    x_f32 = x.astype(np.float32)
+    for t in range(0, x.size, tile_size):
+        tile = x_f32[t : t + tile_size]
+        e = np.exp(tile - tile.max())
+        out[t : t + tile_size] = e / e.sum()
+    return out.astype(bfloat16)
+
+
+def _run_and_verify(opts):
+    rng = np.random.default_rng(0)
+    in_np = rng.uniform(-4.0, 8.0, size=(opts.length,)).astype(bfloat16)
+    out_np = np.zeros_like(in_np)
+
+    a_t = iron.tensor(in_np, dtype=bfloat16, device="npu")
+    b_t = iron.tensor(out_np, dtype=bfloat16, device="npu")
+
+    softmax(a_t, b_t, **_compile_kwargs(opts))
+
+    expected = _softmax_ref_per_tile(in_np, tile_size=1024)
+    assert_pass(b_t.numpy(), expected, fail_msg="softmax output does not match reference")
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="softmax")
-    parser.add_argument(
-        "device_name",
-        choices=["npu", "npu2"],
-        default="npu",
-        help="Device name (npu or npu2)",
+    opts = _make_argparser().parse_args()
+    run_design_cli(
+        softmax,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        device=lambda o: from_name(o.dev, n_cols=None),
     )
-    parser.add_argument(
-        "trace_size_pos",
-        nargs="?",
-        type=int,
-        default=0,
-        help="Trace size (optional positional, default: 0)",
-    )
-    parser.add_argument(
-        "--trace_size",
-        dest="trace_size_flag",
-        type=int,
-        default=0,
-        help="Trace size (optional flag, default: 0)",
-    )
-    parser.add_argument(
-        "--size",
-        type=int,
-        default=262144,
-        help="Size of the input vector (default: 262144)",
-    )
-
-    args = parser.parse_args()
-
-    trace_size = (
-        args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
-    )
-
-    if args.device_name == "npu":
-        dev = NPU1Col1()
-    elif args.device_name == "npu2":
-        dev = NPU2Col1()
-    else:
-        raise ValueError(f"[ERROR] Device name {args.device_name} is unknown")
-
-    module = vector_softmax(dev, trace_size, args.size)
-    print(module)
 
 
 if __name__ == "__main__":
