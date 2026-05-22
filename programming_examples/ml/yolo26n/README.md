@@ -50,15 +50,15 @@ Latest measurements at the current commit.
 
 | Mode | Wall per dispatch | Per sample | Throughput |
 |---|---:|---:|---:|
-| **N=1** (single-sample latency) | 95.63 ms | 95.63 ms | **10.46 fps** |
-| **N=15** (batched) | 868.33 ms | 57.89 ms | **17.27 fps** |
+| **N=1** (single-sample latency) | 88.02 ms | 88.02 ms | **11.36 fps** |
+| **N=15** (batched) | 714.54 ms | 47.64 ms | **20.99 fps** |
 
 **Per-block standalone wall time on NPU**, median of n=20:
 
 | Block | Topology | Median (ms) | fps |
 |---:|---|---:|---:|
-| **m0**  | conv_stride stem               | **55.37** | 18.1 |
-| **m1**  | conv_stride                    | **45.08** | 22.2 |
+| m0  | conv_stride stem               | 13.11 | 76.3 |
+| **m1**  | **conv_stride**            | **45.08** | **22.2** |
 | m2  | c3k2_small                     | 26.38 | 37.9 |
 | m3  | conv_stride (chunked)          | 8.10 | 123.5 |
 | m4  | c3k2_small                     | 21.96 | 45.5 |
@@ -69,6 +69,8 @@ Latest measurements at the current commit.
 | m9 stage 1 (cv1 only)            | PSA cv1 | 1.78 | 561.8 |
 | m9 stage 10 (full PSA block)     | PSA full | 26.25 | 38.1 |
 
+**m1 (45 ms) is the new chain ceiling** after m0 dropped from 55 → 13 ms.
+
 m9 is supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
 stage 1 compares against `/model.9/cv1/act` post-SiLU; stage 10 (default)
 compares against `/model.9/cv2/act` post-SiLU. Intermediate stages emit
@@ -76,11 +78,11 @@ PSA-internal tensors with no clean ORT analog; verify those via
 `make run_chain`. m10 (head) still standalone-unsupported; covered by
 the chain test.
 
-**Chain bottleneck has shifted.** m0 (55 ms) is now the chain ceiling
-after the m9 vec arc dropped m9 from ~260 ms → 26 ms standalone. m1
-(45 ms) is the next ceiling after m0. m9 used to dominate (>80% of
-chain at the start of the session); it's now ~30% and well-overlapped
-with neighbors.
+**Chain bottleneck has shifted twice this session.** m9 used to
+dominate (>80% of chain time → ~260 ms standalone); after the m9 vec
+arc it dropped to 26 ms and **m0 became the ceiling at 55 ms**. The
+subsequent m0 deep-opt commit took m0 to 13 ms, making **m1 (45 ms)
+the new ceiling**.
 
 **Latest optimization arc** — m9 PSA kernels rewritten with
 `aie::mmul<4,8,8,int8,int8>` + vector-broadcast reductions + scalar
@@ -102,7 +104,14 @@ softmax_row` → `yolo_m9_attn_score_fused_vec.cc`) and one symbol merge
 | **+ sv_row vec (4-way c-fold) — m9 critical path**     | **40.9** | **58.8** | **17.00** |
 | + sv_row_acc merge (same body, second extern C entry)  | 29.2 | 58.0  | 17.24 |
 | **+ attn_score_fused (qk + scale + softmax in 1 kernel)** | **26.3** | **57.9** | **17.27** |
-| total session                                          | **13.4×** | **5.48×** | **3.15 → 17.27 fps** |
+
+After the m9 arc m0 becomes the chain ceiling. The m0 deep-opt commit:
+
+| step | m0 standalone (ms) | chain N=15 (ms/sample) | chain N=15 fps |
+|---|---:|---:|---:|
+| naive vec m0 (pre-deep-opt)                            | 55.4 | 57.9 | 17.27 |
+| **+ m0 deep-opt (shape #defines + OCx2 + x-split)**    | **13.1** | **47.6** | **20.99** |
+| **total session (chain N=15)**                         | — | **3.15 → 20.99 fps** | **6.66×** |
 
 Two takeaways from the arc:
 1. **Standalone speedup only translates to chain delta when the kernel is
@@ -136,24 +145,22 @@ immediates, dead-strip the unused interior variant, and emit tighter
 pipelined inner loops. See [kernel design notes](#kernel-design-notes-chunked-stride-2-conv).
 
 Distance to 60 fps target (16.67 ms/sample): chain N=15 currently at
-57.9 ms = **~3.5× more needed**. **m9 is no longer the chain
-bottleneck** — m0 (55 ms standalone) is. To break through, the next
-levers in priority order:
-1. **m0 deep-opt** — currently naive vec; OIYX raw layout with `in_c=3`
-   padded to 8 caps mmul utilization at 37.5%, but the 512×512 input
-   means lots of compute to amortize. ~2× headroom from the deep-opt
-   toolbox (pre-pack scratch, shape #defines, multi-acc fold).
-2. **m1 deep-opt** — same conv_stride family as the chunked m3/m5/m7
-   (which got 7.7-10.6× from the full toolbox); m1 is currently naive
-   vec at 45 ms.
-3. **Remaining m9 scalar kernels** (`yolo_m9_pe_add_row.cc` for the
-   dw3×3 + add; `yolo_m9_{qkv,qk,v}_pack.cc` for the data shuffles) —
-   bit-exact wins but won't move chain since m9 isn't the bottleneck.
-4. **m10 head** (`yolo_m10_linear_gemm.cc` + `yolo_m10_softmax.cc`) —
-   still scalar; small per-sample contribution.
-5. **Retroactive deep-opt** of every naive-vec kernel that isn't
-   already on the critical path — needed to push the project to
-   "every kernel at its perf ceiling".
+47.6 ms = **~2.9× more needed**. **m1 (45 ms standalone) is now the
+chain ceiling.** Next levers in priority order:
+1. **m1 deep-opt** — same conv_stride family as the chunked m3/m5/m7
+   (which got 7.7-10.6× from the full toolbox) and m0 (4.2× this
+   session); expect ~2-3× from the same pattern. Biggest immediate
+   chain delta.
+2. **m9 stage-10 deep-opt** — currently mixed (2 deep / 1 partial /
+   4 naive / 1 scalar pe). pe_add_row (dw3×3) is the last scalar in
+   m9 and will need a different pattern than mmul.
+3. **m2 / m4 / m6 / m8 deep-opt** — c3k2_small/heavy/megakernel
+   families, all naive vec today. m8 is the biggest at 28 ms.
+4. **m10 head** (`yolo_m10_linear_gemm.cc` + `yolo_m10_softmax.cc`)
+   still scalar; small per-sample contribution but completes the
+   "every kernel deep-opt'd" goal.
+5. **m9 data packs** (qkv_pack, qk_pack, v_pack) — pure data
+   reshuffles, scalar today; vectorize for completeness.
 
 ## Make targets
 
