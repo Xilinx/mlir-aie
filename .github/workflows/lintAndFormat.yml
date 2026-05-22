@@ -322,7 +322,7 @@ jobs:
 
       - name: Update PR with coverage results
         if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: edumserrano/find-create-or-update-comment@v2
+        uses: edumserrano/find-create-or-update-comment@v3
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-includes: '<!--<!doctype codecov html>-->'
