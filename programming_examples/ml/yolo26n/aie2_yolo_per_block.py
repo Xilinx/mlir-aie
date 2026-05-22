@@ -702,7 +702,11 @@ def _build_c3k2_small(block_name: str, act_in, manifest):
     # top depth=4 because cv2 stalls until m_0_inner's preamble completes; cv1
     # gets a few rows ahead in the meantime.
     top_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=4)
-    bot_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=4)  # 2 consumers -> deeper
+    # bot is fanned out (m_0_inner peeks 3 via acquire(3), cv2 also consumes
+    # at 1/iter). Producer pool must accommodate peek_size + cv2 in-flight
+    # buffer to avoid the "cv2-released-but-m_0_inner-still-peeking" deadlock
+    # window. Empirically: depth=4 hangs, depth>=5 succeeds. Picked 6 for slack.
+    bot_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=6)
     # m_0_inner output stream -> cv2 slot 2
     m0_out_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=2)
     # Block output (via_DMA defensive — see Bug D).
