@@ -50,58 +50,71 @@ Latest measurements at the current commit.
 
 | Mode | Wall per dispatch | Per sample | Throughput |
 |---|---:|---:|---:|
-| **N=1** (single-sample latency) | 130.82 ms | 130.82 ms | **7.64 fps** |
-| **N=15** (batched) | 1 123.54 ms | 74.90 ms | **13.35 fps** |
+| **N=1** (single-sample latency) | 95.63 ms | 95.63 ms | **10.46 fps** |
+| **N=15** (batched) | 868.33 ms | 57.89 ms | **17.27 fps** |
 
 **Per-block standalone wall time on NPU**, median of n=20:
 
 | Block | Topology | Median (ms) | fps |
 |---:|---|---:|---:|
-| m0  | conv_stride stem               | 55.42 | 18.0 |
-| m1  | conv_stride                    | 45.12 | 22.2 |
-| m2  | c3k2_small                     | 26.34 | 37.9 |
-| **m3**  | **conv_stride (chunked)**  | **8.04** | **124.4** |
+| **m0**  | conv_stride stem               | **55.37** | 18.1 |
+| **m1**  | conv_stride                    | **45.08** | 22.2 |
+| m2  | c3k2_small                     | 26.38 | 37.9 |
+| m3  | conv_stride (chunked)          | 8.10 | 123.5 |
 | m4  | c3k2_small                     | 21.96 | 45.5 |
-| **m5**  | **conv_stride (chunked)**  | **6.98** | **143.3** |
-| m6  | c3k2_heavy                     | 15.15 | 66.0 |
-| **m7**  | **conv_stride (chunked)**  | **4.78** | **209.2** |
-| m8  | c3k2_heavy (2-tile megakernel) | 28.22 | 35.4 |
-| **m9 stage 1** (cv1 only)        | PSA cv1 | **1.78** | **561.8** |
-| **m9 stage 10** (full PSA block) | PSA full | **63.11** | **15.8** |
+| m5  | conv_stride (chunked)          | 6.97 | 143.5 |
+| m6  | c3k2_heavy                     | 15.10 | 66.2 |
+| m7  | conv_stride (chunked)          | 4.78 | 209.2 |
+| m8  | c3k2_heavy (2-tile megakernel) | 28.19 | 35.5 |
+| m9 stage 1 (cv1 only)            | PSA cv1 | 1.78 | 561.8 |
+| m9 stage 10 (full PSA block)     | PSA full | 26.25 | 38.1 |
 
-m9 is now supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
+m9 is supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
 stage 1 compares against `/model.9/cv1/act` post-SiLU; stage 10 (default)
 compares against `/model.9/cv2/act` post-SiLU. Intermediate stages emit
 PSA-internal tensors with no clean ORT analog; verify those via
 `make run_chain`. m10 (head) still standalone-unsupported; covered by
 the chain test.
 
-**Latest optimization arc** — m9 PSA 1×1s (kernels
-[`yolo_m9_{cv1_split, qkv, ffn_0_silu_row, proj_skip_row, ffn_1_skip_row,
-cv2_concat2_streamed}_vec.cc`](kernels/)) replace what were 6 scalar 1×1
-kernels with `aie::mmul<4,8,8,int8,int8>` + on-tile gather (or pre-pack
-scratch where L1 budget allows) + scalar bias/SRS/SiLU tail:
+**Chain bottleneck has shifted.** m0 (55 ms) is now the chain ceiling
+after the m9 vec arc dropped m9 from ~260 ms → 26 ms standalone. m1
+(45 ms) is the next ceiling after m0. m9 used to dominate (>80% of
+chain at the start of the session); it's now ~30% and well-overlapped
+with neighbors.
+
+**Latest optimization arc** — m9 PSA kernels rewritten with
+`aie::mmul<4,8,8,int8,int8>` + vector-broadcast reductions + scalar
+SRS/SiLU/skip-add tails. Includes one fusion (`qk_row + attn_scale +
+softmax_row` → `yolo_m9_attn_score_fused_vec.cc`) and one symbol merge
+(`sv_row + sv_row_acc` → single `_vec.cc` with two extern C entries):
 
 | step | m9 stage 10 (ms) | chain N=15 (ms/sample) | chain N=15 fps |
 |---|---:|---:|---:|
-| pre-session (scalar m9 1×1s)             | 353  | 317  | 3.15 |
-| + cv1 vec (chunked 256→256 + top/bot)    | 271.6| 256  | 3.91 |
-| + qkv vec (128→256, no act)              | 199.4| 210  | 4.76 |
-| + ffn.0 vec (chunked 128→256 + SiLU)     | 194.7| 205  | 4.87 |
-| + proj vec (128→128 + cross-scale add)   | 192.5| 203  | 4.93 |
-| + cv1 deep-opt (pre-pack + multi-acc)    | 191.1| 202.8| 4.93 |
-| + ffn.1 vec (256→128 + same-scale add)   | 186.5| 198.2| 5.05 |
-| **+ cv2 vec (chunked 256→256 + concat)** | **63.1** | **74.9** | **13.35** |
-| total speedup                            | **5.6×** | **4.24×** | **3.15 → 13.35 fps** |
+| pre-session (scalar m9)                                | 353  | 317.5 | 3.15 |
+| + cv1 vec (chunked 256→256 + top/bot)                  | 271.6| 256   | 3.91 |
+| + qkv vec (128→256, no act)                            | 199.4| 210   | 4.76 |
+| + ffn.0 vec (chunked 128→256 + SiLU)                   | 194.7| 205   | 4.87 |
+| + proj vec (128→128 + cross-scale add)                 | 192.5| 203   | 4.93 |
+| + cv1 deep-opt (pre-pack + multi-acc)                  | 191.1| 202.8 | 4.93 |
+| + ffn.1 vec (256→128 + same-scale add)                 | 186.5| 198.2 | 5.05 |
+| **+ cv2 vec (chunked 256→256 + concat) — m9 critical path** | **63.1** | **74.9** | **13.35** |
+| + qk_row vec (broadcast Q[k] × K[k,j..j+15])           | 61.6 | 73.4  | 13.63 |
+| **+ sv_row vec (4-way c-fold) — m9 critical path**     | **40.9** | **58.8** | **17.00** |
+| + sv_row_acc merge (same body, second extern C entry)  | 29.2 | 58.0  | 17.24 |
+| **+ attn_score_fused (qk + scale + softmax in 1 kernel)** | **26.3** | **57.9** | **17.27** |
+| total session                                          | **13.4×** | **5.48×** | **3.15 → 17.27 fps** |
 
-cv2 was the m9 critical-path kernel — biggest single chain delta of the
-arc (2.64× chain throughput from one commit). The earlier 1×1s shaved a
-few ms each off m9 standalone but didn't move the chain much because
-they overlapped in m9's pipeline; cv2 was the serial bottleneck. Going
-forward, the remaining m9 kernels (`qkv_pack`, `qk_pack`, `qk_row`,
-`attn_scale`, `softmax_row`, `v_pack`, `sv_row`, `sv_row_acc`,
-`pe_add_row`) are still scalar and likely contain the next critical
-path — profile, then attack.
+Two takeaways from the arc:
+1. **Standalone speedup only translates to chain delta when the kernel is
+   on the critical path.** cv2 and sv_row (the two big chain jumps) were
+   the m9 critical-path kernels; the others shaved m9 standalone but
+   barely moved chain because they overlapped with neighbor tiles.
+2. **Fusion's biggest win is structural, not direct cycles.** The
+   qk+scale+softmax fusion saved ~3 ms on m9 standalone but barely moved
+   chain — because m9 isn't the bottleneck anymore. Fusion also
+   collapsed 3 source files into 1 and sets up future deep-opt to span
+   the whole compute (e.g., vector `aie::exp2<bfloat16>` for softmax —
+   see `aie_kernels/aie2p/softmax.cc` reference).
 
 **Prior optimization arc** (chunked stride-2 conv, kernel
 [`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc`](kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc)
@@ -123,11 +136,24 @@ immediates, dead-strip the unused interior variant, and emit tighter
 pipelined inner loops. See [kernel design notes](#kernel-design-notes-chunked-stride-2-conv).
 
 Distance to 60 fps target (16.67 ms/sample): chain N=15 currently at
-74.9 ms = **~4.5× more needed**. m9 is still the chain bottleneck
-(63.1 ms standalone vs next biggest m0 at 55 ms); vectorizing the
-remaining m9 scalar kernels — especially the attention matmuls
-(`qk_row`, `sv_row`) which are very likely the new critical path inside
-m9 — is the next lever.
+57.9 ms = **~3.5× more needed**. **m9 is no longer the chain
+bottleneck** — m0 (55 ms standalone) is. To break through, the next
+levers in priority order:
+1. **m0 deep-opt** — currently naive vec; OIYX raw layout with `in_c=3`
+   padded to 8 caps mmul utilization at 37.5%, but the 512×512 input
+   means lots of compute to amortize. ~2× headroom from the deep-opt
+   toolbox (pre-pack scratch, shape #defines, multi-acc fold).
+2. **m1 deep-opt** — same conv_stride family as the chunked m3/m5/m7
+   (which got 7.7-10.6× from the full toolbox); m1 is currently naive
+   vec at 45 ms.
+3. **Remaining m9 scalar kernels** (`yolo_m9_pe_add_row.cc` for the
+   dw3×3 + add; `yolo_m9_{qkv,qk,v}_pack.cc` for the data shuffles) —
+   bit-exact wins but won't move chain since m9 isn't the bottleneck.
+4. **m10 head** (`yolo_m10_linear_gemm.cc` + `yolo_m10_softmax.cc`) —
+   still scalar; small per-sample contribution.
+5. **Retroactive deep-opt** of every naive-vec kernel that isn't
+   already on the critical path — needed to push the project to
+   "every kernel at its perf ceiling".
 
 ## Make targets
 
@@ -215,7 +241,7 @@ The 11 blocks map to these kernel families:
 | m2, m4 | c3k2_small | `yolo_c3k2_small_{cv1_split, m0_cv1, m0_cv2_skip, cv2_concat3}` | 3 each |
 | m6 | c3k2_heavy | `yolo_c3k2_heavy_{m_0_split, inner_pair_cv1, inner_pair_cv2_skip, cv3_concat2}` + `c3k2_small_{cv1_split, cv2_concat3}` | 5 |
 | **m8** | **c3k2_heavy 2-tile megakernel** | `yolo_m8_front_cv1_split_fused` + `yolo_m8_back_cv3_cv2_fused` + `yolo_c3k2_heavy_inner_pair_{cv1,cv2_skip}_streamed` | **2** |
-| m9 | PSA (attention + FFN) | 15 kernels: `yolo_m9_{cv1_split, qkv, qkv_pack, qk_pack, qk_row, attn_scale, softmax_row, v_pack, sv_row, sv_row_acc, pe_add_row, proj_skip_row, ffn_0_silu_row, ffn_1_skip_row, cv2_concat2_streamed}` | 7 |
+| m9 | PSA (attention + FFN) | 12 kernels: `yolo_m9_{cv1_split, qkv, qkv_pack, qk_pack, attn_score_fused, v_pack, sv_row, pe_add_row, proj_skip_row, ffn_0_silu_row, ffn_1_skip_row, cv2_concat2_streamed}` (qk_row + attn_scale + softmax_row collapsed into `attn_score_fused_vec.cc`; sv_row + sv_row_acc share the same `.o` with two extern C entries) | 7 |
 | m10 | head | `yolo_m10_{conv2dk1_silu_xy_pool, linear_gemm, softmax}` (fused onto 1 tile) | 1 |
 
 Total: **26 of 32** compute tiles used.
@@ -393,7 +419,7 @@ yolo26n/
 ├── placement.py                       # PLACEMENT[block_name] → tile coords + design rules
 ├── tile_layout.py                     # ASCII tile-map + per-block sizing
 ├── lowlevel_dma.py                    # StaticWeightStream helper for chunked weight DMA
-├── kernels/                           # 33 .cc + 2 .h AIE2P kernel files (most vectorized as `_vec.cc`; m9 attention math + data packs are the remaining scalar holdouts)
+├── kernels/                           # 30 .cc + 2 .h AIE2P kernel files. Mostly `_vec.cc` (vectorized; some at "full deep-opt" level — pre-pack scratch + shape #defines + multi-acc fold + AIE_LOOP_RANGE — others at "naive vec" level). Remaining scalar holdouts: yolo_m9_{qkv,qk,v}_pack.cc + yolo_m9_pe_add_row.cc + yolo_m10_{linear_gemm,softmax}.cc
 ├── scripts/
 │   ├── m8_megakernel_2tile.py         # m8 2-tile megakernel (the only m8 path)
 │   ├── m9_stage.py                    # m9 PSA staged builder (stages 1..10)

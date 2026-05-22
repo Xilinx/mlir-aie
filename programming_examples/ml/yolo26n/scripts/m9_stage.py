@@ -543,36 +543,41 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
     # = 2^-3 * 91 * 2^-9 / 2^-5 = 91 / 2^7.
     # Output shape unchanged from stage 4 (128KB) — values are softmax
     # probabilities in i8 at scale 2^-7 (=softmax_out_log2_scale).
-    # Always populate scale + softmax params — the fused qk/scale/softmax
-    # kernel needs them at every stage that runs the attn-core path (stage 4+).
-    # At stage 4 they don't affect ORT comparison (no stage-4 ORT test) but
-    # the fused kernel always does qk→scale→softmax; stage-4 output is now
-    # post-softmax rather than pre-softmax.
-    L_softmax = by_name["attn/softmax"]
-    m_softmax = B._op_meta(manifest, L_softmax.manifest_name)
-    softmax_in_log2 = m_softmax["in_log2_scale"]  # -5
-    softmax_out_log2 = m_softmax["out_log2_scale"]  # -7
+    # Populate scale + softmax params at the same gate as rs_qk (stage 4+)
+    # since the fused qk/scale/softmax kernel needs them — and rs_qk is
+    # only defined inside the stage-4+ attn block. At stage 4 the output
+    # is post-softmax (the fused kernel always does qk→scale→softmax;
+    # stage-4 ORT compare isn't wired through test_block_ort.py anyway).
+    softmax_in_log2 = None
+    softmax_out_log2 = None
+    scale_mul_int = None
+    scale_mul_shift = None
+    if stage >= 4:
+        L_softmax = by_name["attn/softmax"]
+        m_softmax = B._op_meta(manifest, L_softmax.manifest_name)
+        softmax_in_log2 = m_softmax["in_log2_scale"]  # -5
+        softmax_out_log2 = m_softmax["out_log2_scale"]  # -7
 
-    # Extract the Mul const (between MatMul and Softmax) from ONNX.
-    # Quark XINT8 stores it as quantized_value + scale; the
-    # DQ→Mul→QL integer reduction is:
-    #   scaled_i8 = SRS(raw_i8 * mul_q, shift)
-    # where shift = -(matmul_out_log2 + mul_log2_scale - mul_out_log2).
-    import onnx as _onnx
+        # Extract the Mul const (between MatMul and Softmax) from ONNX.
+        # Quark XINT8 stores it as quantized_value + scale; the
+        # DQ→Mul→QL integer reduction is:
+        #   scaled_i8 = SRS(raw_i8 * mul_q, shift)
+        # where shift = -(matmul_out_log2 + mul_log2_scale - mul_out_log2).
+        import onnx as _onnx
 
-    _onnx_path = HERE.parent / "models" / "phase1_25k_xint8_acc0.8968.onnx"
-    _onnx_model = _onnx.load(str(_onnx_path))
-    _inits = {t.name: t for t in _onnx_model.graph.initializer}
-    _q_name = "/model.9/m/m.0/attn/Constant_1_output_0_quantized"
-    _s_name = "/model.9/m/m.0/attn/Constant_1_output_0_scale"
-    _mul_q = int(_onnx.numpy_helper.to_array(_inits[_q_name]).item())
-    _mul_s = float(_onnx.numpy_helper.to_array(_inits[_s_name]).item())
-    _mul_log2_scale = int(round(np.log2(_mul_s)))  # -9 for m9
-    # matmul out scale = 2^rs_qk_neg = 2^-3 (from manifest right_shift=3
-    # which is the log2 of the matmul_out_scale).
-    _matmul_out_log2 = -rs_qk
-    scale_mul_int = _mul_q  # 91
-    scale_mul_shift = -(_matmul_out_log2 + _mul_log2_scale - softmax_in_log2)  # 7
+        _onnx_path = HERE.parent / "models" / "phase1_25k_xint8_acc0.8968.onnx"
+        _onnx_model = _onnx.load(str(_onnx_path))
+        _inits = {t.name: t for t in _onnx_model.graph.initializer}
+        _q_name = "/model.9/m/m.0/attn/Constant_1_output_0_quantized"
+        _s_name = "/model.9/m/m.0/attn/Constant_1_output_0_scale"
+        _mul_q = int(_onnx.numpy_helper.to_array(_inits[_q_name]).item())
+        _mul_s = float(_onnx.numpy_helper.to_array(_inits[_s_name]).item())
+        _mul_log2_scale = int(round(np.log2(_mul_s)))  # -9 for m9
+        # matmul out scale = 2^rs_qk_neg = 2^-3 (from manifest right_shift=3
+        # which is the log2 of the matmul_out_scale).
+        _matmul_out_log2 = -rs_qk
+        scale_mul_int = _mul_q  # 91
+        scale_mul_shift = -(_matmul_out_log2 + _mul_log2_scale - softmax_in_log2)  # 7
 
     # ----- Stage 6: + sv matmul (V @ attn.T per head, 2 heads) -----
     # 2-tile design: attn_core stays as in stage 5 (pack Q+K + qk + scale +
