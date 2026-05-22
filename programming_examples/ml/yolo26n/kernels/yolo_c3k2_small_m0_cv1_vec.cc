@@ -23,6 +23,8 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 // Per-block symbol mangling.
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
@@ -30,6 +32,12 @@
 #define _PASTE(a, b) a##b
 #define _MAKE(name, suffix) _PASTE(name, suffix)
 #define KERNEL_NAME(base) _MAKE(base, KERNEL_SUFFIX)
+
+// Loop hints: we use the official aie_kernel_utils.h macros so peano
+// gets the right clang loop pragmas (min_iteration_count for trip count,
+// loop unroll(full) for kx). Note that AIE_PREPARE_FOR_PIPELINING is
+// empty on peano — peano's auto-scheduler does the pipelining without
+// an explicit hint (verified by m1 deep-opt which uses the same macros).
 
 // Compile-time shape macros. If -DYOLO_C3K2_M0CV1_IN_W=… etc. are passed
 // at build time, IN_W/IN_C/OUT_C/KW/KH become integer literals and peano
@@ -73,6 +81,52 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx,
   int ic_i = ic_full & 7;
   return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) +
          ic_i * 8 + oc_i;
+}
+
+// Per-pixel 8-byte gather helper. `IN_C_LOCAL` is the IN_C value to use
+// (compile-time when SHAPES_ARE_CONST; runtime otherwise).
+// Caller guarantees col is in [0, IN_W) (interior path) — no bounds check.
+template <int IN_C_LOCAL>
+static __attribute__((always_inline)) inline void
+gather_interior(int8_t *line_ptr, int x_in_base, int ic_t, int8_t *a_buf) {
+  for (int p = 0; p < 4; ++p) {
+    int8_t *src = line_ptr + (x_in_base + p) * IN_C_LOCAL + ic_t * 8;
+    for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+  }
+}
+
+// Edge gather: handles col < 0 or col >= IN_W via zero-fill.
+template <int IN_C_LOCAL, int IN_W_LOCAL>
+static __attribute__((always_inline)) inline void
+gather_edge(int8_t *line_ptr, int x_in_base, int ic_t, int8_t *a_buf) {
+  for (int p = 0; p < 4; ++p) {
+    int col = x_in_base + p;
+    if (col < 0 || col >= IN_W_LOCAL) {
+      for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+    } else {
+      int8_t *src = line_ptr + col * IN_C_LOCAL + ic_t * 8;
+      for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+    }
+  }
+}
+
+// Scalar epilogue for one mmul<4,8,8> accumulator's worth of output.
+// Inlined; gets pipelined alongside the next acc's epilogue when called
+// back-to-back.
+static __attribute__((always_inline)) inline void
+write_x_tile_result(const aie::vector<int32, 32> &acc_vec,
+                    int32_t *bias, int8_t *silu_lut, int8_t *output,
+                    int oc_t, int out_c, int x_out_base, int32_t right_shift) {
+  for (int p = 0; p < 4; ++p) {
+    int x_out = x_out_base + p;
+    for (int j = 0; j < 8; ++j) {
+      int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
+      int32_t sr = banker_srs(s, right_shift);
+      if (sr > I8_MAX) sr = I8_MAX;
+      if (sr < I8_MIN) sr = I8_MIN;
+      output[x_out * out_c + oc_t * 8 + j] = silu_lut[sr + 128];
+    }
+  }
 }
 
 extern "C" {
@@ -122,22 +176,163 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
   const int output_width = IN_W;
   const int x_tiles = output_width / 4;
 
+#if SHAPES_ARE_CONST
+  // Compile-time trip counts for the deep-opt path. Required for chess
+  // loop_range pragmas to inform peano of exact bounds.
+  constexpr int kIcTiles = IN_C / 8;
+  constexpr int kOcTiles = OUT_C / 8;
+  constexpr int kXTiles  = IN_W / 4;
+  constexpr int kInteriorStart = 1;
+  constexpr int kInteriorEnd   = kXTiles - 1;
+  constexpr int kInteriorN     = kInteriorEnd - kInteriorStart;
+  constexpr int kXQuads        = kInteriorN / 4;
+  constexpr int kXTailStart    = kInteriorStart + kXQuads * 4;
+  // For m2 (IN_W=128): kXTiles=16, kInteriorN=14, kXQuads=3, tail tiles 13..14
+  // For m4 (IN_W=64):  kXTiles=8,  kInteriorN=6,  kXQuads=1, tail tiles 5..6
+
+  for (int oc_t = 0; oc_t < kOcTiles; ++oc_t) {
+    // --- Left edge: x_tile = 0 (col=-1 invalid for kx=0,p=0) -----------
+    {
+      MMUL4x8x8 acc;
+      acc = aie::zeros<acc32, 32>();
+      constexpr int x_in_base_edge = -1;  // x_tile=0 -> 0*4 - 1
+      AIE_LOOP_RANGE(kIcTiles, kIcTiles)
+      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+          AIE_LOOP_UNROLL_FULL
+          for (int kx = 0; kx < 3; ++kx) {
+            alignas(32) int8_t a_buf[32];
+            gather_edge<IN_C, IN_W>(line_ptr, x_in_base_edge + kx, ic_t, a_buf);
+            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+            acc.mac(in_a, in_b);
+          }
+        }
+      }
+      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      write_x_tile_result(acc_vec, bias, silu_lut, output, oc_t, OUT_C, 0, right_shift);
+    }
+
+    // --- Interior 4X fold: 4 x_tiles per outer iter, branchless gather --
+    // Per (ic_t, ky, kx): 4 gathers (all guaranteed valid since interior) +
+    // 1 weight load + 4 macs back-to-back. The 4-mac sequence is what
+    // peano can software-pipeline (1 acc was the prior problem).
+    AIE_LOOP_RANGE(kXQuads, kXQuads)
+    for (int xq = 0; xq < kXQuads; ++xq) {
+      const int x_tile_base = kInteriorStart + 4 * xq;
+      const int x_out_base  = x_tile_base * 4;
+      const int x_in_base0  = x_out_base - 1;       // x_tile 4q+0
+      const int x_in_base1  = x_in_base0 + 4;
+      const int x_in_base2  = x_in_base0 + 8;
+      const int x_in_base3  = x_in_base0 + 12;
+
+      MMUL4x8x8 acc0, acc1, acc2, acc3;
+      acc0 = aie::zeros<acc32, 32>();
+      acc1 = aie::zeros<acc32, 32>();
+      acc2 = aie::zeros<acc32, 32>();
+      acc3 = aie::zeros<acc32, 32>();
+
+      AIE_LOOP_RANGE(kIcTiles, kIcTiles)
+      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+          AIE_LOOP_UNROLL_FULL
+          for (int kx = 0; kx < 3; ++kx) {
+            alignas(32) int8_t a_buf0[32], a_buf1[32], a_buf2[32], a_buf3[32];
+            gather_interior<IN_C>(line_ptr, x_in_base0 + kx, ic_t, a_buf0);
+            gather_interior<IN_C>(line_ptr, x_in_base1 + kx, ic_t, a_buf1);
+            gather_interior<IN_C>(line_ptr, x_in_base2 + kx, ic_t, a_buf2);
+            gather_interior<IN_C>(line_ptr, x_in_base3 + kx, ic_t, a_buf3);
+            aie::vector<int8, 32> in_a0 = aie::load_v<32>(a_buf0);
+            aie::vector<int8, 32> in_a1 = aie::load_v<32>(a_buf1);
+            aie::vector<int8, 32> in_a2 = aie::load_v<32>(a_buf2);
+            aie::vector<int8, 32> in_a3 = aie::load_v<32>(a_buf3);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+            acc0.mac(in_a0, in_b);
+            acc1.mac(in_a1, in_b);
+            acc2.mac(in_a2, in_b);
+            acc3.mac(in_a3, in_b);
+          }
+        }
+      }
+      aie::vector<int32, 32> v0 = acc0.template to_vector<int32>();
+      aie::vector<int32, 32> v1 = acc1.template to_vector<int32>();
+      aie::vector<int32, 32> v2 = acc2.template to_vector<int32>();
+      aie::vector<int32, 32> v3 = acc3.template to_vector<int32>();
+      write_x_tile_result(v0, bias, silu_lut, output, oc_t, OUT_C, x_out_base + 0,  right_shift);
+      write_x_tile_result(v1, bias, silu_lut, output, oc_t, OUT_C, x_out_base + 4,  right_shift);
+      write_x_tile_result(v2, bias, silu_lut, output, oc_t, OUT_C, x_out_base + 8,  right_shift);
+      write_x_tile_result(v3, bias, silu_lut, output, oc_t, OUT_C, x_out_base + 12, right_shift);
+    }
+
+    // --- Interior tail (leftover x_tiles when kInteriorN % 4 != 0) ------
+    // For m2: 2 tail tiles (13, 14) - interior so use branchless gather.
+    for (int x_tile = kXTailStart; x_tile < kInteriorEnd; ++x_tile) {
+      MMUL4x8x8 acc;
+      acc = aie::zeros<acc32, 32>();
+      const int x_out_base = x_tile * 4;
+      const int x_in_base  = x_out_base - 1;
+      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+          for (int kx = 0; kx < 3; ++kx) {
+            alignas(32) int8_t a_buf[32];
+            gather_interior<IN_C>(line_ptr, x_in_base + kx, ic_t, a_buf);
+            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+            acc.mac(in_a, in_b);
+          }
+        }
+      }
+      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      write_x_tile_result(acc_vec, bias, silu_lut, output, oc_t, OUT_C, x_out_base, right_shift);
+    }
+
+    // --- Right edge: x_tile = kXTiles-1 (col=IN_W invalid for kx=2,p=3) -
+    {
+      MMUL4x8x8 acc;
+      acc = aie::zeros<acc32, 32>();
+      constexpr int x_in_base_edge = (kXTiles - 1) * 4 - 1;
+      AIE_LOOP_RANGE(kIcTiles, kIcTiles)
+      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+          AIE_LOOP_UNROLL_FULL
+          for (int kx = 0; kx < 3; ++kx) {
+            alignas(32) int8_t a_buf[32];
+            gather_edge<IN_C, IN_W>(line_ptr, x_in_base_edge + kx, ic_t, a_buf);
+            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+            acc.mac(in_a, in_b);
+          }
+        }
+      }
+      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      write_x_tile_result(acc_vec, bias, silu_lut, output, oc_t, OUT_C, (kXTiles - 1) * 4, right_shift);
+    }
+  }
+#else
+  // Runtime-fallback path (shapes not compile-time): use the legacy
+  // single-acc body with bounds check on every iter. Slower but works
+  // for any shape.
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = aie::zeros<acc32, 32>();
-
       const int x_out_base = x_tile * 4;
-      // Leftmost input col for output 0 of this tile, kx=0: x_out_base - 1.
-      const int x_in_base = x_out_base - 1;
-
+      const int x_in_base  = x_out_base - 1;
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
-
           for (int kx = 0; kx < KW; ++kx) {
-            // 4 contiguous output pixels: input cols = x_in_base + p + kx
-            // (p in 0..3). Border (col < 0 or >= IN_W) -> zero-fill.
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;
             for (int p = 0; p < 4; ++p) {
@@ -152,28 +347,18 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
             }
             if (!any_valid) continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc.mac(in_a, in_b);
           }
         }
       }
-
       aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
-      for (int p = 0; p < 4; ++p) {
-        int x_out = x_out_base + p;
-        for (int j = 0; j < 8; ++j) {
-          int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
-          output[x_out * OUT_C + oc_t * 8 + j] = silu_lut[sr + 128];
-        }
-      }
+      write_x_tile_result(acc_vec, bias, silu_lut, output, oc_t, OUT_C, x_out_base, right_shift);
     }
 
     // Tail outputs if output_width not a multiple of 4: scalar fallback.
+    // Only on the runtime path — compile-time path has IN_W % 4 == 0.
     for (int x = x_tiles * 4; x < output_width; ++x) {
       for (int j = 0; j < 8; ++j) {
         int oc_full = oc_t * 8 + j;
@@ -198,6 +383,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
       }
     }
   }
+#endif
 
   event1();
 }
