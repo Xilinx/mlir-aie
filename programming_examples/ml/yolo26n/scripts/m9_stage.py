@@ -197,6 +197,9 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                 k_cv1,
             ],
             tile=t_cv1,
+            # Vectorized cv1 keeps a 4 KB YCXC8 input re-pack on the stack;
+            # default 1 KB stack would overflow. 8 KB leaves headroom.
+            stack_size=8192,
             dynamic_objfifo_lowering=True,
         )
     )
