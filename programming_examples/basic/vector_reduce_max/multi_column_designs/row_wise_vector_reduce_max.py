@@ -40,10 +40,9 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
@@ -207,14 +206,6 @@ def _compile_kwargs(opts):
         dtype_str=opts.dtype,
         trace_size=opts.trace_size,
     )
-
-
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev, n_cols=None))
-    spec = vector_reduce_max.specialize(**_compile_kwargs(opts))
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
 
 def _run_and_verify(opts):

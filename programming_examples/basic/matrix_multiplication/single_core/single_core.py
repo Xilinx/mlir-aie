@@ -18,7 +18,6 @@ The script has two modes (matching whole_array.py):
 """
 
 import argparse
-import sys
 
 import numpy as np
 
@@ -35,15 +34,14 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
     add_compile_args,
     add_trace_arg,
 )
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.trace import TraceConfig
 from aie.utils.verify import assert_pass
 
@@ -238,27 +236,6 @@ def _trace_config(opts):
     return TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev))
-    spec = single_core.specialize(
-        M=opts.M,
-        K=opts.K,
-        N=opts.N,
-        m=opts.m,
-        k=opts.k,
-        n=opts.n,
-        dtype_in_str=opts.dtype_in,
-        dtype_out_str=opts.dtype_out,
-        b_col_maj=opts.b_col_maj,
-        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
-        use_chess=bool(opts.use_chess),
-        trace_config=_trace_config(opts),
-    )
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
-
-
 def _run_and_verify(opts):
     dtype_in = str_to_dtype(opts.dtype_in)
     dtype_out = str_to_dtype(opts.dtype_out)
@@ -330,10 +307,12 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        single_core,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+    )
 
 
 if __name__ == "__main__":

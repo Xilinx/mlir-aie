@@ -21,7 +21,6 @@ Two invocation modes (mirrors the @iron.jit ports):
 """
 
 import argparse
-import sys
 
 import numpy as np
 
@@ -37,9 +36,8 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from aie.utils.trace.events import (
     CoreEvent,
@@ -163,14 +161,6 @@ def _compile_kwargs(opts):
     )
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev))
-    spec = aie_trace.specialize(**_compile_kwargs(opts))
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
-
-
 def _run_and_verify(opts):
     rng = np.random.default_rng(seed=42)
     a_np = rng.integers(1, 100, size=opts.tensor_size, dtype=np.int32)
@@ -189,10 +179,12 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        aie_trace,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+    )
 
 
 if __name__ == "__main__":

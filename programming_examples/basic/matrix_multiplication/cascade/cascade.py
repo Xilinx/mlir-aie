@@ -13,7 +13,6 @@ writes the final C tile to L2.
 """
 
 import argparse
-import sys
 
 import numpy as np
 
@@ -35,12 +34,12 @@ from aie.iron.controlflow import range_
 from aie.iron.device import Tile, from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
     add_compile_args,
     add_trace_arg,
 )
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
@@ -378,11 +377,8 @@ def _make_argparser():
     return p
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(_device_for(opts.dev, opts.n_aie_cols))
-    spec = cascade.specialize(
+def _compile_kwargs(opts):
+    return dict(
         M=opts.M,
         K=opts.K,
         N=opts.N,
@@ -393,7 +389,6 @@ def _compile_only(opts):
         dtype_in_str=opts.dtype_in,
         dtype_out_str=opts.dtype_out,
     )
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
 
 def _run_and_verify(opts):
@@ -463,10 +458,13 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        cascade,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        device=lambda o: _device_for(o.dev, o.n_aie_cols),
+    )
 
 
 if __name__ == "__main__":

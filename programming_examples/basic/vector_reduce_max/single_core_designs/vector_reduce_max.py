@@ -29,9 +29,8 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out, kernels, str_to_dtype
 from aie.iron.algorithms import reduce_typed
-from aie.iron.device import from_name
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
@@ -86,14 +85,6 @@ def _compile_kwargs(opts):
     )
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev))
-    spec = vector_reduce_max.specialize(**_compile_kwargs(opts))
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
-
-
 def _run_and_verify(opts):
     dtype = str_to_dtype(opts.dtype)
     num_elements = opts.in1_size // np.dtype(dtype).itemsize
@@ -118,11 +109,13 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    _validate(opts)
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        vector_reduce_max,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        validate=_validate_args,
+    )
 
 
 if __name__ == "__main__":

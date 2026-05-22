@@ -11,7 +11,6 @@ Default config: ``M=K=288``, kernel tile ``m=k=32``, vectorized mv kernel.
 """
 
 import argparse
-import sys
 
 import numpy as np
 
@@ -27,11 +26,10 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
@@ -145,21 +143,6 @@ def _make_argparser():
     return p
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev))
-    spec = matrix_vector.specialize(
-        M=opts.M,
-        K=opts.K,
-        m=opts.m,
-        k=opts.k,
-        vectorized=not opts.scalar,
-        use_chess=bool(opts.use_chess),
-    )
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
-
-
 def _run_and_verify(opts):
     rng = np.random.default_rng(1726250518)
     A_np = rng.integers(-1000, 1000, size=(opts.M, opts.K), dtype=np.int16)
@@ -200,10 +183,12 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        matrix_vector,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+    )
 
 
 if __name__ == "__main__":

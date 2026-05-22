@@ -34,8 +34,8 @@ import aie.iron as iron
 from aie.iron import Compile, In, Out
 from aie.iron.algorithms import transform_binary_typed
 from aie.iron.device import from_name
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
 
 @iron.jit
@@ -63,30 +63,16 @@ def _make_argparser():
     return p
 
 
-def _emit_mlir(opts):
-    set_current_device(from_name(opts.dev))
-    print(
-        vector_vector_modulo.as_mlir(
-            None,
-            None,
-            None,
-            num_elements=opts.num_elements,
-            dtype=np.int32,
-            tile_size=opts.tile_size,
-        )
-    )
-
-
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev))
-    spec = vector_vector_modulo.specialize(
+def _compile_kwargs(opts):
+    return dict(
         num_elements=opts.num_elements,
         dtype=np.int32,
         tile_size=opts.tile_size,
     )
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
+
+
+def _emit_mlir(opts):
+    print(vector_vector_modulo.as_mlir(None, None, None, **_compile_kwargs(opts)))
 
 
 def _run_and_verify(opts):
@@ -122,13 +108,13 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.emit_mlir:
-        _emit_mlir(opts)
-        return
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        vector_vector_modulo,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        emit_mlir=_emit_mlir,
+    )
 
 
 if __name__ == "__main__":

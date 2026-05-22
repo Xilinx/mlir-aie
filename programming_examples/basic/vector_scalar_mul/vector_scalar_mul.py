@@ -30,12 +30,12 @@ from aie.iron import Compile, In, Out, kernels
 from aie.iron.algorithms import transform_typed
 from aie.iron.device import from_name
 from aie.utils.benchmark import print_benchmark, run_iters
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
     add_compile_args,
     add_trace_arg,
 )
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
@@ -95,17 +95,13 @@ def _validate(opts):
         sys.exit("out_size must equal in1_size")
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev, n_cols=1 if opts.dev == "npu" else None))
-    spec = vector_scalar_mul.specialize(
+def _compile_kwargs(opts):
+    return dict(
         in1_size=opts.in1_size,
         int_bit_width=opts.int_bit_width,
         trace_size=opts.trace_size,
         use_chess=bool(opts.use_chess),
     )
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
 
 def _run_and_verify(opts):
@@ -144,11 +140,14 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    _validate(opts)
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        vector_scalar_mul,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        device=lambda o: from_name(o.dev, n_cols=1 if o.dev == "npu" else None),
+        validate=_validate,
+    )
 
 
 if __name__ == "__main__":

@@ -39,7 +39,6 @@ Compile-only:  ``... --xclbin-path=PATH --insts-path=PATH``    (Makefile)
 """
 
 import argparse
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -47,11 +46,11 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import AnyComputeTile, from_name
+from aie.iron.device import AnyComputeTile
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 _KERNELS_DIR = Path(__file__).parent / "aie_kernels"
@@ -346,14 +345,6 @@ def _make_argparser():
     return p
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev))
-    spec = _STRATEGIES[opts.strategy].specialize(**_compile_kwargs(opts))
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
-
-
 def _run_and_verify(opts):
     M, K = opts.M, opts.K
     dtype = _BYTES_TO_DTYPE[opts.dtype_bytes]
@@ -376,11 +367,13 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    _apply_defaults(opts)
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        _STRATEGIES[opts.strategy],
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        validate=_apply_defaults,
+    )
 
 
 if __name__ == "__main__":

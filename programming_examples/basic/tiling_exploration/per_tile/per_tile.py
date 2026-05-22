@@ -22,17 +22,15 @@ Three invocation modes:
 """
 
 import argparse
-import sys
 
 import numpy as np
 
 import aie.iron as iron
 from aie.iron import Buffer, Compile, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
@@ -98,14 +96,6 @@ def _compile_kwargs(opts):
         tile_height=opts.tile_height,
         tile_width=opts.tile_width,
     )
-
-
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev))
-    spec = per_tile.specialize(**_compile_kwargs(opts))
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
 
 def _run_and_verify(opts):

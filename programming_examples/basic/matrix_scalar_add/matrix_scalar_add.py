@@ -33,8 +33,8 @@ from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import from_name
 from aie.helpers.taplib import TensorTiler2D
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
@@ -102,16 +102,7 @@ def _compile_kwargs(opts):
 
 
 def _emit_mlir(opts):
-    set_current_device(from_name(opts.dev, n_cols=None if opts.dev == "npu2" else 1))
     print(matrix_scalar_add.as_mlir(None, None, None, **_compile_kwargs(opts)))
-
-
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev, n_cols=None if opts.dev == "npu2" else 1))
-    spec = matrix_scalar_add.specialize(**_compile_kwargs(opts))
-    spec.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
 
 
 def _run_and_verify(opts):
@@ -135,13 +126,14 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.emit_mlir:
-        _emit_mlir(opts)
-        return
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        matrix_scalar_add,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        emit_mlir=_emit_mlir,
+        device=lambda o: from_name(o.dev, n_cols=None if o.dev == "npu2" else 1),
+    )
 
 
 if __name__ == "__main__":

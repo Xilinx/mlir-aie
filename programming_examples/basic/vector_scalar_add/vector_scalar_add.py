@@ -28,8 +28,8 @@ import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import from_name
-from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
@@ -88,18 +88,6 @@ def _compile_kwargs(opts):
     )
 
 
-def _compile_only(opts):
-    if not opts.insts_path:
-        sys.exit("--xclbin-path requires --insts-path (must be set together)")
-    set_current_device(from_name(opts.dev, n_cols=1 if opts.dev == "npu" else None))
-    spec = vector_scalar_add.specialize(**_compile_kwargs(opts))
-    spec.compile(
-        xclbin_path=opts.xclbin_path,
-        inst_path=opts.insts_path,
-        elf_path=opts.elf_path,
-    )
-
-
 def _run_and_verify(opts):
     in_np = np.arange(1, opts.problem_size + 1, dtype=np.int32)
     out_np = np.zeros_like(in_np)
@@ -116,10 +104,13 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.xclbin_path:
-        _compile_only(opts)
-        return
-    _run_and_verify(opts)
+    run_design_cli(
+        vector_scalar_add,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        device=lambda o: from_name(o.dev, n_cols=1 if o.dev == "npu" else None),
+    )
 
 
 if __name__ == "__main__":
