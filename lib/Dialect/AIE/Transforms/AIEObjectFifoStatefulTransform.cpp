@@ -396,10 +396,24 @@ struct AIEObjectFifoStatefulTransformPass
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
-    // Static-init no-link producer cycled via iter_count: source side needs
-    // no sync; skip allocation to free the lock IDs.
-    if (op.getInitValues().has_value() && op.getIterCount().has_value() &&
-        op.getIterCount().value() > 1 && !getOptionalLinkOp(op).has_value() &&
+    // Static-init no-link producer that cycles its BD chain: source side
+    // needs no sync; skip allocation to free the lock IDs.
+    //
+    // Two cycling modes qualify:
+    //   - iter_count > 1: BD chain restarts via the channel's task_count
+    //     after each pass.
+    //   - iter_count unset: BD chain self-loops infinitely via next_bd(self).
+    //
+    // In both, source-side locks would acquire/release on the first pass
+    // and never get replenished (no upstream S2MM refills the buffers),
+    // deadlocking the second pass. Back-pressure to the downstream
+    // consumer is handled by the DMA stream's flow control.
+    //
+    // iter_count == 1 (single pass) is excluded — source locks behave
+    // normally there since the chain doesn't restart.
+    if (op.getInitValues().has_value() &&
+        (!op.getIterCount().has_value() || op.getIterCount().value() > 1) &&
+        !getOptionalLinkOp(op).has_value() &&
         static_cast<int>(op.getInitValues().value().size()) == numElem)
       return locks;
     auto dev = op->getParentOfType<DeviceOp>();
