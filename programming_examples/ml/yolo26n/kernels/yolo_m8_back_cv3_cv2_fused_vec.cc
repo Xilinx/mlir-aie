@@ -67,12 +67,14 @@ static inline void cv3_compute_row(
   using MMUL8x8x8 = aie::mmul<8, 8, 8, int8, int8>;
   constexpr int MMUL_M = 8;
 
-  // Unsigned cast → /power-of-2 lowers to shifts.
-  const int cp = (uint32_t)two_cp / 2u;
-  const int ic_tiles = (uint32_t)two_cp / 8u;
-  const int ic_tiles_per_src = (uint32_t)cp / 8u;
-  const int oc_tiles = (uint32_t)output_channels / 8u;
-  const int x_tiles = (uint32_t)input_width / MMUL_M;
+  // Hardcoded for m8 cv3 call site (cp=64, oc=128, W=16). Matches cv2's
+  // constexpr trip count fix: lets peano lower divides to immediates.
+  (void)two_cp; (void)output_channels; (void)input_width;
+  constexpr int cp = 64;
+  constexpr int ic_tiles = 16;            // two_cp / 8
+  constexpr int ic_tiles_per_src = 8;     // cp / 8
+  constexpr int oc_tiles = 16;            // output_channels / 8
+  constexpr int x_tiles = 2;              // input_width / MMUL_M
 
   int8_t *src_for_ic_tile[32];
   int local_ic_t_for[32];
