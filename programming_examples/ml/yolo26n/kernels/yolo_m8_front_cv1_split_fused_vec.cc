@@ -46,6 +46,21 @@ static inline int wts_tile_off_1x1(int oc_tile, int ic_tile, int ic_tiles) {
   return (oc_tile * ic_tiles + ic_tile) << 6;
 }
 
+// Vec bias add + SRS+saturate -> int8 vector. conv_even rounding (set
+// kernel-level) matches banker_srs.
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+bias_srs_v(aie::mmul<4, 8, 8, int8, int8> &acc,
+           const int32_t *bias_8, int32_t rs) {
+  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+  aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+  aie::vector<int32, 32> sum_v = acc.template to_vector<int32>();
+  sum_v = aie::add(sum_v, b32);
+  aie::accum<acc32, 32> sum_acc;
+  sum_acc.from_vector(sum_v);
+  return sum_acc.template to_vector<int8>(rs);
+}
+
 // cv1 chunked compute: this chunk's chunk_oc channels of the 1x1 conv.
 // First-half chunks (chunk_idx < n_chunks/2) write to out_top.
 // Second-half chunks write to BOTH s_bot (scratch for m_0_split, to be
@@ -95,15 +110,11 @@ static inline void cv1_chunk_compute(
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      aie::vector<int8, 32> srs_v = bias_srs_v(acc, &bias_full[bias_full_base], right_shift);
       for (int p = 0; p < 4; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
-          int32_t s = acc_vec[p * 8 + j] + bias_full[bias_full_base + j];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
-          int8_t silu = silu_lut[sr + 128];
+          int8_t silu = silu_lut[int(srs_v[p * 8 + j]) + 128];
           const int idx = x_out * c + (dst_oc_full_base + j);
           if (is_top) {
             out_top[idx] = silu;
@@ -148,15 +159,11 @@ static inline void m0_split_branch(
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      aie::vector<int8, 32> srs_v = bias_srs_v(acc, &bias[oc_t * 8], right_shift);
       for (int p = 0; p < 4; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
-          int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
-          out[x_out * output_channels + oc_t * 8 + j] = silu_lut[sr + 128];
+          out[x_out * output_channels + oc_t * 8 + j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
@@ -194,7 +201,7 @@ void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
 #endif
   event0();
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   const int32_t c = twoc >> 1;  // 128
 

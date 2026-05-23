@@ -44,6 +44,21 @@ static inline int wts_tile_off_1x1(int oc_tile, int ic_tile, int ic_tiles) {
   return (oc_tile * ic_tiles + ic_tile) << 6;
 }
 
+// Vec bias add + SRS+saturate -> int8 vector. conv_even rounding (set
+// kernel-level) matches banker_srs.
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+bias_srs_v(aie::mmul<4, 8, 8, int8, int8> &acc,
+           const int32_t *bias_8, int32_t rs) {
+  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+  aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+  aie::vector<int32, 32> sum_v = acc.template to_vector<int32>();
+  sum_v = aie::add(sum_v, b32);
+  aie::accum<acc32, 32> sum_acc;
+  sum_acc.from_vector(sum_v);
+  return sum_acc.template to_vector<int8>(rs);
+}
+
 // cv3 inner: 1x1, 128 ic (split into 64+64 from inner1+split_b), 128 oc.
 // Writes the full output row into `cv3_out` (input_width * c bytes).
 static inline void cv3_compute_row(
@@ -90,16 +105,12 @@ static inline void cv3_compute_row(
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      aie::vector<int8, 32> srs_v = bias_srs_v(acc, &bias[oc_t * 8], right_shift);
       for (int p = 0; p < 4; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
-          int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
           cv3_out[x_out * output_channels + oc_t * 8 + j] =
-              silu_lut[sr + 128];
+              silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
@@ -160,16 +171,12 @@ static inline void cv2_compute_chunk(
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      aie::vector<int8, 32> srs_v = bias_srs_v(acc, &bias_full[oc_full_base], right_shift);
       for (int p = 0; p < 4; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
           int oc_full = oc_full_base + j;
-          int32_t s = acc_vec[p * 8 + j] + bias_full[oc_full];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
-          output[x_out * output_channels + oc_full] = silu_lut[sr + 128];
+          output[x_out * output_channels + oc_full] = silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
@@ -205,7 +212,7 @@ void KERNEL_NAME(yolo_m8_back_cv3_cv2_fused_i8_i8)(
 #endif
   event0();
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   // Only recompute cv3 on chunk 0 of each row; subsequent chunks reuse.
   if (cv2_chunk_idx == 0) {
