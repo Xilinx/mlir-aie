@@ -28,9 +28,9 @@ using DATATYPE_OUT = test_utils::bfloat16_t;
 // Initialize Input buffer 1
 void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int in_volume) {
   for (int i = 0; i < in_volume; i++) {
-    DATATYPE_IN1 val = test_utils::random_bfloat16_t(
-        test_utils::bfloat16_from_float(8.0f),
-        test_utils::bfloat16_from_float(-4.0f));
+    DATATYPE_IN1 val =
+        test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(8.0f),
+                                      test_utils::bfloat16_from_float(-4.0f));
     bufIn1[i] = val;
   }
 }

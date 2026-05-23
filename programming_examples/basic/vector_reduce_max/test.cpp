@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "xrt_test_wrapper.h"
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -22,7 +22,8 @@
 
 using DATATYPE = DTYPE;
 
-template <typename T> T random_input_value() {
+template <typename T>
+T random_input_value() {
   if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
     return test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(-4.0f),
                                          test_utils::bfloat16_from_float(8.0f));
@@ -34,7 +35,8 @@ template <typename T> T random_input_value() {
   }
 }
 
-template <typename T> T lowest_value() {
+template <typename T>
+T lowest_value() {
   if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
     return test_utils::bfloat16_from_float(
         -std::numeric_limits<float>::infinity());
@@ -43,7 +45,8 @@ template <typename T> T lowest_value() {
   }
 }
 
-template <typename T> bool less_than(T lhs, T rhs) {
+template <typename T>
+bool less_than(T lhs, T rhs) {
   if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
     return test_utils::bfloat16_to_float(lhs) <
            test_utils::bfloat16_to_float(rhs);
@@ -52,7 +55,8 @@ template <typename T> bool less_than(T lhs, T rhs) {
   }
 }
 
-template <typename T> bool values_equal(T lhs, T rhs) {
+template <typename T>
+bool values_equal(T lhs, T rhs) {
   if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
     return test_utils::nearly_equal_bfloat16(lhs, rhs);
   } else {
@@ -60,7 +64,8 @@ template <typename T> bool values_equal(T lhs, T rhs) {
   }
 }
 
-template <typename T> auto printable_value(T value) {
+template <typename T>
+auto printable_value(T value) {
   if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
     return test_utils::bfloat16_to_float(value);
   } else {
