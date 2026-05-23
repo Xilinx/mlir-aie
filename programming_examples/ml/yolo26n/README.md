@@ -222,14 +222,15 @@ fold `* in_c`, `* out_c`, `* (ic_tiles*kH*kW*64)` etc. into shifts /
 immediates, dead-strip the unused interior variant, and emit tighter
 pipelined inner loops. See [kernel design notes](#kernel-design-notes-chunked-stride-2-conv).
 
-Distance to 60 fps target (16.67 ms/sample): chain N=15 was 36.3 ms
-before the m2 deep-opt = **~2.2× more needed**; chain N=15 re-measurement
-post-m2 arc is pending. **No single block was the chain ceiling**
-pre-m2 — NOOP_BLOCK ablation showed m2 / m4 / m6 nearly fully overlapped
-(chain contribution ≤ 0.2 ms despite 15-26 ms standalone), m8 contributing
-8.35 ms, m9 contributing 8.41 ms, and the chain floor with m2+m8+m9 noop'd
-22.48 ms of dataflow/DMA infrastructure. m2 standalone is now 16 ms
-(crosses 60 fps in isolation); the chain interaction may shift slightly.
+Distance to 60 fps target (16.67 ms/sample): **the partial m0..m6 chain
+already crosses 60 fps at N=15** (14.23 ms / 70.26 fps post-m2-arc +
+post-IRON-depth-fix). Full m0..m10 chain re-measurement pending now
+that m6 is no longer hanging; the historical pre-m2-arc NOOP_BLOCK
+attribution put m8 at 8.35 ms and m9 at 8.41 ms of chain contribution,
+with the chain floor (3 biggest blocks noop'd) at 22.48 ms of dataflow
+infrastructure. m2 / m4 / m6 were each measured at ≤ 0.2 ms chain
+contribution despite multi-ms standalone — heavily overlapped — so
+the next chain gains will come from m8 / m9 / infrastructure work.
 
 Remaining levers in priority order:
 1. **m8 / m9 deep-opt + fusion** — only blocks NOT fully overlapped.

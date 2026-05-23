@@ -279,7 +279,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
     }
 
     // --- Interior tail (leftover x_tiles when kInteriorN % 4 != 0) ------
-    // For m2: 2 tail tiles (13, 14) - interior so use branchless gather.
+    // For m2: 2 tail tiles (29, 30); for m4: 2 tail tiles (13, 14).
+    // All interior so use branchless gather.
     for (int x_tile = kXTailStart; x_tile < kInteriorEnd; ++x_tile) {
       MMUL4x8x8 acc;
       acc = aie::zeros<acc32, 32>();
