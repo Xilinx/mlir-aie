@@ -13,6 +13,30 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
+// Per-block deep-opt: see pair_cv1_streamed_vec.cc for the pattern. Shape
+// constants fold + AIE_LOOP_RANGE hints + bias-init into mmul acc; the
+// per-output weighted skip-add (y*mult_y + cv2silu*mult_cv2 + SRS + clamp)
+// stays scalar -- can't fold into mmul SRS path cleanly.
+#ifdef YOLO_M8_PAIR_IN_W
+#define IN_W YOLO_M8_PAIR_IN_W
+#define IN_C YOLO_M8_PAIR_IN_C
+#define OUT_C YOLO_M8_PAIR_OUT_C
+#define N_CHUNKS YOLO_M8_PAIR_N_CHUNKS
+#define KW 3
+#define KH 3
+#define SHAPES_ARE_CONST 1
+#else
+#define IN_W input_width
+#define IN_C input_channels
+#define OUT_C output_channels
+#define N_CHUNKS n_chunks
+#define KW kernel_width
+#define KH kernel_height
+#define SHAPES_ARE_CONST 0
+#endif
+
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
 #endif
@@ -68,50 +92,79 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
 #endif
   event0();
 
+#if SHAPES_ARE_CONST
+  (void)input_width; (void)input_channels; (void)output_channels;
+  (void)kernel_width; (void)kernel_height; (void)n_chunks;
+#endif
+
   // See pair_cv1 _streamed_vec.cc: cast to unsigned so /power-of-2 lowers
   // to shifts instead of calling __divsi3.
-  const int32_t chunk_oc = (uint32_t)output_channels / (uint32_t)n_chunks;
+  const int32_t chunk_oc = (uint32_t)OUT_C / (uint32_t)N_CHUNKS;
   const int32_t oc_offset = chunk_idx * chunk_oc;
   const bool skip_top = (border == 0);
   const bool skip_bot = (border == 2);
   const int ky_start = skip_top ? 1 : 0;
   const int ky_end = skip_bot ? 2 : 3;
 
-  const int ic_tiles = (uint32_t)input_channels / 8u;
+  const int ic_tiles = (uint32_t)IN_C / 8u;
   const int chunk_oc_tiles = (uint32_t)chunk_oc / 8u;
-  const int output_width = input_width;
+  const int output_width = IN_W;
   const int x_tiles = (uint32_t)output_width / 4u;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
   int8_t *line[3] = {line0, line1, line2};
 
+#if SHAPES_ARE_CONST
+#define AIE_HINT_OC AIE_LOOP_RANGE(chunk_oc_tiles, chunk_oc_tiles)
+#define AIE_HINT_X  AIE_LOOP_RANGE(x_tiles, x_tiles)
+#define AIE_HINT_IC AIE_LOOP_RANGE(IN_C / 8, IN_C / 8)
+#else
+#define AIE_HINT_OC
+#define AIE_HINT_X
+#define AIE_HINT_IC
+#endif
+
+  AIE_HINT_OC
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int oc_full_base = oc_offset + chunk_oc_t * 8;
 
+    // Hoisted bias-init (see pair_cv1).
+    aie::accum<acc32, 32> bias_acc;
+    {
+      aie::vector<int32, 8> b8 = aie::load_v<8>(&bias_full[oc_full_base]);
+      aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+      aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+      bias_acc.from_vector(b32);
+    }
+
+    AIE_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = bias_acc;
 
       const int x_out_base = x_tile * 4;
       const int x_in_base = x_out_base - 1;
 
+      AIE_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
 
-          for (int kx = 0; kx < kernel_width; ++kx) {
+          AIE_LOOP_RANGE(3, 3)
+          for (int kx = 0; kx < KW; ++kx) {
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;
             for (int p = 0; p < 4; ++p) {
               int col = x_in_base + p + kx;
-              if (col < 0 || col >= input_width) {
+              if (col < 0 || col >= IN_W) {
                 for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
               } else {
-                int8_t *src = line_ptr + col * input_channels + ic_t * 8;
+                int8_t *src = line_ptr + col * IN_C + ic_t * 8;
                 for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
                 any_valid = true;
               }
@@ -120,29 +173,26 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
             int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
-                                             kernel_height, kernel_width);
+                                             KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
             acc.mac(in_a, in_b);
           }
         }
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      // Vec bias+SRS via to_vector<int8>(rs); LUT + weighted skip-add scalar.
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
         for (int j = 0; j < 8; ++j) {
           int oc_full = oc_full_base + j;
-          int32_t s = acc_vec[p * 8 + j] + bias_full[oc_full];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
-          int32_t cv2silu = silu_lut[sr + 128];
-          int32_t y = (int32_t)skip_row[x_out * output_channels + oc_full];
+          int32_t cv2silu = silu_lut[int(srs_v[p * 8 + j]) + 128];
+          int32_t y = (int32_t)skip_row[x_out * OUT_C + oc_full];
           int32_t sum_pre = y * skip_y_mult + cv2silu * skip_cv2_mult;
           int32_t added = banker_srs(sum_pre, skip_rsh_add);
           if (added > I8_MAX) added = I8_MAX;
           if (added < I8_MIN) added = I8_MIN;
-          output[x_out * output_channels + oc_full] = (int8_t)added;
+          output[x_out * OUT_C + oc_full] = (int8_t)added;
         }
       }
     }

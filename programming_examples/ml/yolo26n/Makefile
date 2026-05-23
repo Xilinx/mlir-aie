@@ -310,13 +310,17 @@ $(BUILD)/yolo_m9_sv_row.o: \
 # c3k2_heavy streamed inner-pair kernels (m8 megakernel: shared symbol
 # for both pair0 and pair1 — they run on different tiles with different
 # weights, but execute the same kernel code).
+# m8 pair kernel shape macros (in_w=16, in_c=64, out_c=64, n_chunks=4 per pair).
+M8_PAIR_SHAPE := -DYOLO_M8_PAIR_IN_W=16 -DYOLO_M8_PAIR_IN_C=64 -DYOLO_M8_PAIR_OUT_C=64 -DYOLO_M8_PAIR_N_CHUNKS=4
+M8_PAIR_SHAPE_m8 := $(M8_PAIR_SHAPE)
+
 $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv1_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv1_streamed_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_heavy_inner_pair_cv1_streamed_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(M8_PAIR_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_heavy_inner_pair_cv1_streamed_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(M8_PAIR_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
 
 # m8 megakernel: fused cv3+cv2 (m8_back). Computes cv3 once per row
 # (on cv2 chunk 0), reuses cv3 output across the N_CV2_CHUNKS calls.
