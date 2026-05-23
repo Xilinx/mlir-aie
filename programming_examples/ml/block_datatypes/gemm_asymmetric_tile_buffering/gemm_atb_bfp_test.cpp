@@ -33,7 +33,6 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-
 #include "../helper.h"
 #include "common.h"
 #include "gemm_atb_layout.h"

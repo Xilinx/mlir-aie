@@ -34,7 +34,8 @@ using INOUT0_DATATYPE = test_utils::bfloat16_t;
 using INOUT1_DATATYPE = test_utils::bfloat16_t;
 #endif
 static_assert(sizeof(INOUT0_DATATYPE) == sizeof(std::uint16_t),
-              "bfloat16 host buffers must use the same 16-bit layout as the AIE payload.");
+              "bfloat16 host buffers must use the same 16-bit layout as the "
+              "AIE payload.");
 
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)

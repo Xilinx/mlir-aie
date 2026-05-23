@@ -35,7 +35,8 @@ test_utils::bfloat16_t gelu_bf16(test_utils::bfloat16_t input) {
   const test_utils::bfloat16_t k1 = test_utils::bfloat16_from_float(1.0f);
   const test_utils::bfloat16_t sqrt_2_over_pi =
       test_utils::bfloat16_from_float(0.79788456f);
-  const test_utils::bfloat16_t beta = test_utils::bfloat16_from_float(0.044715f);
+  const test_utils::bfloat16_t beta =
+      test_utils::bfloat16_from_float(0.044715f);
 
   const test_utils::bfloat16_t x2 = test_utils::bfloat16_mul(input, input);
   const test_utils::bfloat16_t x3 = test_utils::bfloat16_mul(input, x2);
@@ -187,7 +188,8 @@ int main(int argc, const char *argv[]) {
   std::cout << "Latency (us): " << npu_time << std::endl;
   std::cout << std::endl;
 
-  double total_bytes = 2.0 * N * sizeof(test_utils::bfloat16_t); // input and output
+  double total_bytes =
+      2.0 * N * sizeof(test_utils::bfloat16_t); // input and output
   double bandwidth_GBps = total_bytes / (npu_time * 1e-6) / 1e9;
   std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s"
             << std::endl;
