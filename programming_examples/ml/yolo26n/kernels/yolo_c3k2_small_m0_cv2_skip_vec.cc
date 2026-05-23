@@ -20,6 +20,8 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
 #endif
@@ -103,13 +105,28 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
   const int x_tiles = output_width / 4;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches the scalar banker_srs (round-to-nearest, ties to even)
+  // used by both the SHAPES_ARE_CONST vec path below and the runtime scalar
+  // tail; runtime path's banker_srs is unaffected by this setting.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
   int8_t *line[3] = {line0, line1, line2};
 
+#if SHAPES_ARE_CONST
+#define AIE_HINT_OC AIE_LOOP_RANGE(OUT_C / 8, OUT_C / 8)
+#define AIE_HINT_X  AIE_LOOP_RANGE(IN_W  / 4, IN_W  / 4)
+#define AIE_HINT_IC AIE_LOOP_RANGE(IN_C  / 8, IN_C  / 8)
+#else
+#define AIE_HINT_OC
+#define AIE_HINT_X
+#define AIE_HINT_IC
+#endif
+
+  AIE_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
+    AIE_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = aie::zeros<acc32, 32>();
@@ -117,10 +134,13 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
       const int x_out_base = x_tile * 4;
       const int x_in_base = x_out_base - 1;
 
+      AIE_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
 
+          AIE_LOOP_RANGE(3, 3)
           for (int kx = 0; kx < KW; ++kx) {
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;
@@ -144,16 +164,29 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
         }
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      // Vec bias+SRS to int8, scalar LUT, then vec int8 saturating
+      // skip-add + strided 4x8 store. The 32-wide silu buf is filled
+      // scalar (no SIMD gather for int8 LUT on AIE2P); skip_row is
+      // gathered via 4 contiguous-8-byte loads (one per pixel) then
+      // concat'd to a 32-wide vector; aie::add uses the saturation
+      // mode set at the top of the kernel.
+      aie::vector<int32, 8>  bias_v8  = aie::load_v<8>(&bias[oc_t * 8]);
+      aie::vector<int32, 16> bias_v16 = aie::concat(bias_v8, bias_v8);
+      aie::vector<int32, 32> bias_v32 = aie::concat(bias_v16, bias_v16);
+      aie::vector<int32, 32> sum_v = acc.template to_vector<int32>();
+      sum_v = aie::add(sum_v, bias_v32);
+      aie::accum<acc32, 32> sum_acc;
+      sum_acc.from_vector(sum_v);
+      aie::vector<int8, 32> srs_v = sum_acc.template to_vector<int8>(right_shift);
+
+      // Scalar LUT + scalar skip-add + clamp + strided store. aie::add
+      // on int8 vectors didn't saturate as expected here, so the skip
+      // path stays scalar; the vec bias+SRS above is the main win.
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
         for (int j = 0; j < 8; ++j) {
           int oc_full = oc_t * 8 + j;
-          int32_t s = acc_vec[p * 8 + j] + bias[oc_full];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
-          int32_t silu = silu_lut[sr + 128];
+          int32_t silu = silu_lut[int(srs_v[p * 8 + j]) + 128];
           int32_t added = silu + (int32_t)skip_row[x_out * OUT_C + oc_full];
           if (added > I8_MAX) added = I8_MAX;
           if (added < I8_MIN) added = I8_MIN;
