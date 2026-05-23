@@ -66,6 +66,7 @@ below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 | m0..m1..m2..m3..m4..m5 | 15.59 ms | 64.13 | 14.08 ms | **71.05** | ✓ |
 | **m0..m6**             | **17.99 ms** | 55.60 | **14.23 ms** | **70.26** | ✓ (was hanging pre-fix) |
 | m0..m6..m7             | 18.38 ms | 54.40 | 14.26 ms | **70.14** | ✓ |
+| **m0..m7..m8**         | **23.98 ms** | 41.70 | **15.50 ms** | **64.51** | ✓ (m8 deep-opt'd this branch) |
 
 Rows marked ✓ re-measured post-IRON-depth-collapse fix. **Every chain
 prefix m0..m7 stays above 60 fps at N=15, and m0..m4 holds 60 even at
@@ -95,7 +96,7 @@ are pre-validation snapshots pending re-measurement.
 | m5  | conv_stride (chunked)          |  7.02 | 139.5 | ✓ |
 | **m6**  | **c3k2_heavy**             | **14.94** | **66.9** | ✓ |
 | m7  | conv_stride (chunked)          |  4.84 | 206.8 | ✓ |
-| m8  | c3k2_heavy (2-tile megakernel) | 28.19 | 35.5  | |
+| **m8**  | **c3k2_heavy** (2-tile megakernel, deep-opt'd) | **16.30** | **61.34** | ✓ |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
 | m9 stage 10 (full PSA block)     | PSA full | 26.25 | 38.1  | |
 
