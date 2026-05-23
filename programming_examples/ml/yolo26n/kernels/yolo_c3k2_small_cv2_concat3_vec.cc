@@ -12,10 +12,11 @@
 // pixels x 8 oc_inner per call.
 //
 // Per-block deep-opt: if YOLO_C3K2_CV2_IN_W etc. are defined at compile
-// time, the SHAPES_ARE_CONST path runs a 4X x_tile fold (4 parallel accs
-// per x_quad) with loop_range hints so peano can software-pipeline the
-// inner ic_t loop. Blocks without these defines fall back to the legacy
-// single-acc runtime-arg path.
+// time, the SHAPES_ARE_CONST path runs a 2X x_pair fold (2 parallel accs
+// per x_pair) with loop_range hints, plus a vectorized bias+SRS epilogue
+// (LUT lookup stays scalar). Blocks without these defines fall back to
+// the single-acc runtime-arg path. 4X fold was tried and corrupted
+// output -- short 6-iter ic_t loop + 4 live accs hit register pressure.
 //
 //===----------------------------------------------------------------------===//
 
@@ -100,8 +101,8 @@ write_x_tile_result(const aie::vector<int32, 32> &acc_vec,
 
 // Vectorized epilogue: bias add as 32-wide int32 vector op, SRS+saturate
 // via the accumulator's to_vector<int8>(rs). LUT lookup stays scalar
-// (no SIMD gather for int8 LUT on AIE2P). Uses the kernel-level rounding
-// mode (set above to positive_inf — see set_rounding call).
+// (no SIMD gather for int8 LUT on AIE2P). conv_even rounding mode matches
+// the scalar banker_srs used by the runtime-fallback tail.
 static __attribute__((always_inline)) inline void
 write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc,
                         int32_t *bias, int8_t *silu_lut, int8_t *output,
@@ -159,9 +160,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   constexpr int kIcTilesPerSrc    = kC / 8;
   constexpr int kOcTiles          = OUT_C / 8;
   constexpr int kXTiles           = IN_W / 4;
-  constexpr int kXQuads           = kXTiles / 4;
-  constexpr int kXTailStart       = kXQuads * 4;
-  // For m2 (IN_W=128, THREE_C=48, OUT_C=64): kXTiles=32, kXQuads=8 (no tail),
+  constexpr int kXPairs           = kXTiles / 2;
+  constexpr int kXPairTailStart   = kXPairs * 2;
+  // For m2 (IN_W=128, THREE_C=48, OUT_C=64): kXTiles=32, kXPairs=16 (no tail),
   // kIcTiles=6, kIcTilesPerSrc=2, kOcTiles=8.
 
   // Source pointer per ic_tile: first kIcTilesPerSrc from in_top, next from
@@ -175,10 +176,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
     local_ic_t_for[ict] = ict - src_idx * kIcTilesPerSrc;
   }
 
-  constexpr int kXPairs = kXTiles / 2;
-  constexpr int kXPairTailStart = kXPairs * 2;
   for (int oc_t = 0; oc_t < kOcTiles; ++oc_t) {
-    // --- 2X x_tile fold (diagnostic): 2 accs per x_pair. -----------------
+    // --- 2X x_pair fold: 2 accs per x_pair, all macs back-to-back so
+    //     peano can software-pipeline the inner ic_t reduction. ----------
     AIE_LOOP_RANGE(kXPairs, kXPairs)
     for (int xp = 0; xp < kXPairs; ++xp) {
       const int x_tile_base = 2 * xp;

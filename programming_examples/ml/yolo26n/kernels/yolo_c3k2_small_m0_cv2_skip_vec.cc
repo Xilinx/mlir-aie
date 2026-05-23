@@ -164,12 +164,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
         }
       }
 
-      // Vec bias+SRS to int8, scalar LUT, then vec int8 saturating
-      // skip-add + strided 4x8 store. The 32-wide silu buf is filled
-      // scalar (no SIMD gather for int8 LUT on AIE2P); skip_row is
-      // gathered via 4 contiguous-8-byte loads (one per pixel) then
-      // concat'd to a 32-wide vector; aie::add uses the saturation
-      // mode set at the top of the kernel.
+      // Vec bias+SRS via aie::accum::to_vector<int8>(rs). conv_even
+      // rounding matches the runtime tail's scalar banker_srs.
       aie::vector<int32, 8>  bias_v8  = aie::load_v<8>(&bias[oc_t * 8]);
       aie::vector<int32, 16> bias_v16 = aie::concat(bias_v8, bias_v8);
       aie::vector<int32, 32> bias_v32 = aie::concat(bias_v16, bias_v16);

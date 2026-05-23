@@ -112,7 +112,12 @@ gather_edge(int8_t *line_ptr, int x_in_base, int ic_t, int8_t *a_buf) {
 
 // Scalar epilogue for one mmul<4,8,8> accumulator's worth of output.
 // Inlined; gets pipelined alongside the next acc's epilogue when called
-// back-to-back.
+// back-to-back. Note: the sibling c3k2_small kernels (cv1_split,
+// m0_cv2_skip, cv2_concat3) use a vectorized bias+SRS epilogue, but
+// this kernel intentionally keeps the scalar form -- its deep-opt'd
+// 4X fold leaves m_0_inner tile program memory tight, and an inlined
+// vec epilogue here overflows the budget shared with m0_cv2_skip on
+// the same tile (m_0_inner runs both).
 static __attribute__((always_inline)) inline void
 write_x_tile_result(const aie::vector<int32, 32> &acc_vec,
                     int32_t *bias, int8_t *silu_lut, int8_t *output,
@@ -166,7 +171,10 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
   const int oc_tiles = OUT_C / 8;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even to match the sibling c3k2_small kernels; the scalar
+  // banker_srs in write_x_tile_result is unaffected, but the mode is
+  // already correct if the epilogue is later vectorized.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 

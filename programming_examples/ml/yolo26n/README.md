@@ -56,12 +56,15 @@ All measurements taken with the NPU in turbo mode
 numbers will land once the per-block re-validation is complete; the rows
 below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 
-| Chain | N=1 wall | N=15 per-sample | N=15 fps |
-|---|---:|---:|---:|
-| m0               | 16.35 ms | 13.02 ms | **76.78** |
-| m0..m1           | 14.66 ms | 13.01 ms | **76.85** |
-| m0..m1..m2       | 32.17 ms | 30.94 ms | **32.32** |
-| m0..m1..m2..m3   | 34.41 ms | 30.94 ms | **32.32** |
+| Chain | N=1 wall | N=15 per-sample | N=15 fps | |
+|---|---:|---:|---:|:--|
+| m0               | 13.11 ms | 13.02 ms | **76.78** | ✓ |
+| m0..m1           | 13.36 ms | 13.03 ms | **76.75** | ✓ |
+| **m0..m1..m2**   | **16.23 ms** | **15.74 ms** | **63.53** | ✓ (was 32.32 pre-m2-arc) |
+
+Rows marked ✓ re-measured post-m2 deep-opt. Partial chain crosses 60 fps
+at m0..m2; m3+ rows pending re-measurement (m6 broken standalone, may
+block full-chain).
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 Rows marked ✓ have been re-measured at the current commit; the rest
@@ -71,7 +74,7 @@ are pre-validation snapshots pending re-measurement.
 |---:|---|---:|---:|:--|
 | m0  | conv_stride stem               | 13.10 | 76.3  | ✓ |
 | m1  | conv_stride                    |  8.63 | 115.8 | ✓ |
-| **m2**  | **c3k2_small**             | **31.33** | **31.9** | ✓ |
+| **m2**  | **c3k2_small** (deep-opt'd) | **15.99** | **62.5** | ✓ |
 | m3  | conv_stride (chunked)          |  8.02 | 124.7 | ✓ |
 | m4  | c3k2_small                     | 21.96 | 45.5  | |
 | m5  | conv_stride (chunked)          |  6.97 | 143.5 | |
@@ -81,21 +84,20 @@ are pre-validation snapshots pending re-measurement.
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
 | m9 stage 10 (full PSA block)     | PSA full | 26.25 | 38.1  | |
 
-> **Stale — pre-fix snapshot, pending re-measurement.** Numbers below
-> are from before the c3k2_small bot_fifo depth fix (4→6) and the
-> per-block re-validation pass; they referenced a chain that sometimes
-> deadlocked on m2 (since fixed) and the m2 contribution of 0.18 ms is
-> not reproducible at the current commit.
+> **Stale — pre-m2-deep-opt snapshot.** The NOOP_BLOCK chain attribution
+> below was measured before the m2 c3k2_small deep-opt arc (m2 standalone
+> 31.33 → 15.99 ms, crosses 60 fps). Chain-N=15 re-measurement is pending;
+> the standalone arc on m2 is captured in the table further down.
 >
-> **Chain bottleneck after the m1 deep-opt is no longer a single block.**
-> NOOP_BLOCK ablation (chain N=15, per-sample ms): noop'ing m2 alone
-> drops chain by 0.18 ms, m4 by 0.04 ms — both are nearly fully
-> overlapped with the pipeline. m8 contributes 8.35 ms, m9 contributes
+> **Pre-m2-arc chain attribution (chain N=15, per-sample ms, NOOP_BLOCK):**
+> noop'ing m2 alone drops chain by 0.18 ms, m4 by 0.04 ms — both were
+> nearly fully overlapped. m8 contributes 8.35 ms, m9 contributes
 > 8.41 ms, m2+m8+m9 together 13.79 ms. The chain floor with the 3
 > biggest blocks noop'd is 22.48 ms — that's dataflow / DMA infrastructure
-> plus per-tile pipeline overhead, not compute. Per-kernel deep-opt
-> beyond this point yields per-kernel speedups but small chain deltas;
-> chain wins come from architectural / fifo-depth work.
+> plus per-tile pipeline overhead, not compute. The m2 deep-opt below
+> shaved 11.76 ms of standalone wall, but because m2 was already mostly
+> overlapped at the chain level, the chain delta is expected to be small
+> until the pipeline shifts further.
 
 m9 is supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
 stage 1 compares against `/model.9/cv1/act` post-SiLU; stage 10 (default)
@@ -110,7 +112,32 @@ arc it dropped to 26 ms and **m0 became the ceiling at 55 ms**. The
 subsequent m0 deep-opt commit took m0 to 13 ms, making **m1 (45 ms)
 the new ceiling**.
 
-**Latest optimization arc** — m9 PSA kernels rewritten with
+**Latest optimization arc** — c3k2_small m2 deep-opt: per-kernel
+noop ablation found m2's compute distributed across cv2_concat3
+(~9 ms), m_0_inner (~7 ms via m0_cv2_skip), and cv1_split (~4.5 ms),
+all dominated by scalar bias+SRS+SiLU-LUT epilogues. Vectorizing the
+epilogue (bias add as int32 vec + `aie::accum::to_vector<int8>(rs)`
+with `conv_even` rounding to match the scalar `banker_srs` bit-for-bit;
+LUT lookup stays scalar — no SIMD int8 gather on AIE2P) plus
+compile-time shape macros took m2 across the 60 fps line:
+
+| step | m2 standalone (ms) | m2 fps |
+|---|---:|---:|
+| pre-session baseline                                          | 27.75 | 36.0 |
+| + cv2_concat3 deep-opt (shapes + 2X x_pair fold + vec epi)    | 21.15 | 47.3 |
+| + m0_cv2_skip vec bias+SRS + AIE_LOOP_RANGE hints             | 19.60 | 51.0 |
+| + m0_cv2_skip int16 vec skip-add                              | 18.79 | 53.2 |
+| **+ cv1_split vec bias+SRS epilogue**                         | **15.99** | **62.5** |
+
+Per-kernel ablation showed the bottleneck shifting after each step
+(cv2 → m_0_inner → cv1), so each commit ends with a re-ablation.
+m0_cv1 was tried with the same vec epilogue but reverted: m_0_inner
+shares one tile's program memory between m0_cv1 + m0_cv2_skip, and
+the inlined vec helper pushed it past the ~16 KB tile budget.
+Per-kernel attribution within a c3k2 block uses a new finer-grained
+`NOOP_KERNEL_FILES="<obj-stem>..."` Make hook (see [Block ablation](#block-ablation-bottleneck-attribution)).
+
+**Prior arc — m9 PSA vec** — m9 PSA kernels rewritten with
 `aie::mmul<4,8,8,int8,int8>` + vector-broadcast reductions + scalar
 SRS/SiLU/skip-add tails. Includes one fusion (`qk_row + attn_scale +
 softmax_row` → `yolo_m9_attn_score_fused_vec.cc`) and one symbol merge
@@ -154,7 +181,7 @@ Two takeaways from the arc:
    the whole compute (e.g., vector `aie::exp2<bfloat16>` for softmax —
    see `aie_kernels/aie2p/softmax.cc` reference).
 
-**Prior optimization arc** (chunked stride-2 conv, kernel
+**Prior arc — chunked stride-2 conv** (kernel
 [`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc`](kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc)
 shared by m3/m5/m7) — 7.7-10.6× standalone vs scalar baseline:
 
@@ -173,12 +200,14 @@ fold `* in_c`, `* out_c`, `* (ic_tiles*kH*kW*64)` etc. into shifts /
 immediates, dead-strip the unused interior variant, and emit tighter
 pipelined inner loops. See [kernel design notes](#kernel-design-notes-chunked-stride-2-conv).
 
-Distance to 60 fps target (16.67 ms/sample): chain N=15 currently at
-36.3 ms = **~2.2× more needed**. **No single block is the chain ceiling
-anymore** — NOOP_BLOCK ablation shows m2 / m4 / m6 are nearly fully
-overlapped (chain contribution ≤ 0.2 ms despite 15-26 ms standalone),
-m8 contributes 8.35 ms, m9 contributes 8.41 ms, and the chain floor
-with m2+m8+m9 noop'd is 22.48 ms of dataflow/DMA infrastructure.
+Distance to 60 fps target (16.67 ms/sample): chain N=15 was 36.3 ms
+before the m2 deep-opt = **~2.2× more needed**; chain N=15 re-measurement
+post-m2 arc is pending. **No single block was the chain ceiling**
+pre-m2 — NOOP_BLOCK ablation showed m2 / m4 / m6 nearly fully overlapped
+(chain contribution ≤ 0.2 ms despite 15-26 ms standalone), m8 contributing
+8.35 ms, m9 contributing 8.41 ms, and the chain floor with m2+m8+m9 noop'd
+22.48 ms of dataflow/DMA infrastructure. m2 standalone is now 16 ms
+(crosses 60 fps in isolation); the chain interaction may shift slightly.
 
 Remaining levers in priority order:
 1. **m8 / m9 deep-opt + fusion** — only blocks NOT fully overlapped.
@@ -193,10 +222,12 @@ Remaining levers in priority order:
 3. **m10 head** (`yolo_m10_linear_gemm.cc` + `yolo_m10_softmax.cc`)
    still scalar; small per-sample contribution but completes the
    "every kernel deep-opt'd" goal.
-4. **Retroactive deep-opt of overlapped naive vec kernels** (m2 / m4
+4. **Retroactive deep-opt of overlapped naive vec kernels** (m4
    c3k2_small; m6 c3k2_heavy; m9 qkv / ffn.0 / proj / ffn.1 / cv2;
    m8's 4 kernels) — per-kernel speedups but ~0 chain delta. Needed for
-   the "deep-opt all kernels" code-quality goal.
+   the "deep-opt all kernels" code-quality goal. m2 c3k2_small was
+   covered by the latest arc above; m4 still uses the runtime-fallback
+   path inside the same kernels (compile-time shape macros are m2-only).
 5. **Softmax exp2** — replace the scalar fp32 LUT in
    `yolo_m9_attn_score_fused_vec.cc` with hardware
    `aie::exp2<bfloat16>` (see `aie_kernels/aie2p/softmax.cc`
@@ -568,6 +599,30 @@ Notes:
   `#ifdef NOOP_KERNEL return;` guards compile out completely.
 - Output garbage from noop'd blocks doesn't break the chain — downstream
   blocks just consume junk inputs. Chain DMA scheduling is unaffected.
+
+**Finer-grained per-kernel ablation inside a c3k2 block** — when
+NOOP_BLOCK shows a c3k2_small / c3k2_heavy block as the bottleneck,
+pass `NOOP_KERNEL_FILES="<obj-stem> ..."` to noop only specific
+kernels within it. Useful for picking which tile to deep-opt first
+without rebuilding the whole block:
+
+```bash
+# Standalone ablation: which tile in m2 dominates?
+rm -f build/yolo_c3k2_small_*_m2.o build/final_m2.xclbin build/insts_m2.bin
+NOOP_KERNEL_FILES="yolo_c3k2_small_cv2_concat3_m2" make BLOCK=m2 time
+# m2 baseline 27.75 ms → noop'd 18.70 ms ⇒ cv2_concat3 = 9.05 ms
+
+# Multiple kernels (space-separated, quoted)
+rm -f build/yolo_c3k2_small_*_m2.o build/final_m2.xclbin build/insts_m2.bin
+NOOP_KERNEL_FILES="yolo_c3k2_small_m0_cv1_m2 yolo_c3k2_small_m0_cv2_skip_m2" \
+  make BLOCK=m2 time
+```
+
+This is how the m2 deep-opt arc found cv2_concat3 as the first bottleneck
+(9 ms), then m0_cv2_skip after the cv2 vec epilogue (7 ms surfaced post-cv2),
+then cv1_split (4.5 ms surfaced post-m0_cv2_skip). Per-kernel attribution
+between c3k2 sub-kernels is wired into the eval rules for
+`yolo_c3k2_small_{cv1_split,m0_cv1,m0_cv2_skip,cv2_concat3}_{m2,m4,m6}.o`.
 
 This is how the m9-is-the-bottleneck finding was discovered: the
 optimization arc that took m3/m5/m7 from 186 ms → 19 ms standalone moved
