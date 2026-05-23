@@ -136,9 +136,11 @@ static inline void m0_split_branch(
     int8_t *out, int input_width, int input_channels, int output_channels,
     int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
-  const int ic_tiles = (uint32_t)input_channels / 8u;
-  const int oc_tiles = (uint32_t)output_channels / 8u;
-  const int x_tiles = (uint32_t)input_width / 4u;
+  // Hardcoded for m8 m_0_split call site (in_w=16, in_c=128, out_c=64).
+  (void)input_width; (void)input_channels; (void)output_channels;
+  constexpr int ic_tiles = 16;            // 128 / 8
+  constexpr int oc_tiles = 8;             // 64 / 8
+  constexpr int x_tiles = 4;              // 16 / 4
 
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
