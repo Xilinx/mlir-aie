@@ -58,13 +58,16 @@ below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 
 | Chain | N=1 wall | N=15 per-sample | N=15 fps | |
 |---|---:|---:|---:|:--|
-| m0               | 13.11 ms | 13.02 ms | **76.78** | ✓ |
-| m0..m1           | 13.36 ms | 13.03 ms | **76.75** | ✓ |
-| **m0..m1..m2**   | **16.23 ms** | **15.74 ms** | **63.53** | ✓ (was 32.32 pre-m2-arc) |
+| m0                   | 13.13 ms | 13.01 ms | **76.86** | ✓ |
+| m0..m1               | 13.20 ms | 13.02 ms | **76.83** | ✓ |
+| **m0..m1..m2**       | **16.29 ms** | **15.74 ms** | **63.53** | ✓ (was 32.32 pre-m2-arc) |
+| m0..m1..m2..m3       | 16.53 ms | 15.74 ms | **63.51** | ✓ |
+| **m0..m1..m2..m3..m4** | **17.12 ms** | **15.79 ms** | **63.32** | ✓ (was ≈45 pre-m4-arc) |
 
-Rows marked ✓ re-measured post-m2 deep-opt. Partial chain crosses 60 fps
-at m0..m2; m3+ rows pending re-measurement (m6 broken standalone, may
-block full-chain).
+Rows marked ✓ re-measured post-m4 deep-opt. **Full m0..m4 chain crosses
+60 fps**; m4 adds only ~0.05 ms to per-sample (heavily overlapped with
+the pipeline despite 13.3 ms standalone). m5+ rows pending re-measurement
+(m6 broken standalone, may block full-chain).
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 Rows marked ✓ have been re-measured at the current commit; the rest
@@ -76,7 +79,7 @@ are pre-validation snapshots pending re-measurement.
 | m1  | conv_stride                    |  8.63 | 115.8 | ✓ |
 | **m2**  | **c3k2_small** (deep-opt'd) | **15.99** | **62.5** | ✓ |
 | m3  | conv_stride (chunked)          |  8.02 | 124.7 | ✓ |
-| m4  | c3k2_small                     | 21.96 | 45.5  | |
+| m4  | c3k2_small (deep-opt'd)        | 13.34 | 75.0  | ✓ |
 | m5  | conv_stride (chunked)          |  6.97 | 143.5 | |
 | m6  | c3k2_heavy                     | 15.10 | 66.2  | |
 | m7  | conv_stride (chunked)          |  4.78 | 209.2 | |
@@ -129,7 +132,18 @@ compile-time shape macros took m2 across the 60 fps line:
 | + m0_cv2_skip int16 vec skip-add                              | 18.79 | 53.2 |
 | **+ cv1_split vec bias+SRS epilogue**                         | **15.99** | **62.5** |
 
-Per-kernel ablation showed the bottleneck shifting after each step
+After m2 landed, m4 (also c3k2_small, smaller spatial 64×64, channel
+counts doubled to in=64/out=128) was the next sub-60-fps standalone
+block. The same 4 kernels are shared between m2 and m4 — the deep-opt
+was a drop-in: wire `M4_{CV1,CV2,M0CV1,M0CV2_SKIP}_SHAPE` macros to
+flip the SHAPES_ARE_CONST path on for m4 too. No kernel-source change:
+
+| step | m4 standalone (ms) | m4 fps |
+|---|---:|---:|
+| pre-arc (m2 deep-opt active, m4 on runtime fallback)         | 19.42 | 51.5 |
+| **+ M4 compile-time shape macros (drop-in)**                 | **13.34** | **75.0** |
+
+Per-kernel ablation showed the bottleneck shifting after each m2 step
 (cv2 → m_0_inner → cv1), so each commit ends with a re-ablation.
 m0_cv1 was tried with the same vec epilogue but reverted: m_0_inner
 shares one tile's program memory between m0_cv1 + m0_cv2_skip, and
@@ -222,12 +236,11 @@ Remaining levers in priority order:
 3. **m10 head** (`yolo_m10_linear_gemm.cc` + `yolo_m10_softmax.cc`)
    still scalar; small per-sample contribution but completes the
    "every kernel deep-opt'd" goal.
-4. **Retroactive deep-opt of overlapped naive vec kernels** (m4
-   c3k2_small; m6 c3k2_heavy; m9 qkv / ffn.0 / proj / ffn.1 / cv2;
-   m8's 4 kernels) — per-kernel speedups but ~0 chain delta. Needed for
-   the "deep-opt all kernels" code-quality goal. m2 c3k2_small was
-   covered by the latest arc above; m4 still uses the runtime-fallback
-   path inside the same kernels (compile-time shape macros are m2-only).
+4. **Retroactive deep-opt of overlapped naive vec kernels** (m6
+   c3k2_heavy; m9 qkv / ffn.0 / proj / ffn.1 / cv2; m8's 4 kernels)
+   — per-kernel speedups but ~0 chain delta. Needed for the "deep-opt
+   all kernels" code-quality goal. m2 + m4 c3k2_small were covered by
+   the latest arc above (both now > 60 fps standalone).
 5. **Softmax exp2** — replace the scalar fp32 LUT in
    `yolo_m9_attn_score_fused_vec.cc` with hardware
    `aie::exp2<bfloat16>` (see `aie_kernels/aie2p/softmax.cc`

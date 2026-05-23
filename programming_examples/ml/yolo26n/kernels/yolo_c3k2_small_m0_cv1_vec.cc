@@ -195,8 +195,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
   constexpr int kInteriorN     = kInteriorEnd - kInteriorStart;
   constexpr int kXQuads        = kInteriorN / 4;
   constexpr int kXTailStart    = kInteriorStart + kXQuads * 4;
-  // For m2 (IN_W=128): kXTiles=16, kInteriorN=14, kXQuads=3, tail tiles 13..14
-  // For m4 (IN_W=64):  kXTiles=8,  kInteriorN=6,  kXQuads=1, tail tiles 5..6
+  // For m2 (IN_W=128): kXTiles=32, kInteriorN=30, kXQuads=7, tail tiles 29..30
+  // For m4 (IN_W=64):  kXTiles=16, kInteriorN=14, kXQuads=3, tail tiles 13..14
 
   for (int oc_t = 0; oc_t < kOcTiles; ++oc_t) {
     // --- Left edge: x_tile = 0 (col=-1 invalid for kx=0,p=0) -----------

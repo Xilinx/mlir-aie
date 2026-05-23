@@ -162,8 +162,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   constexpr int kXTiles           = IN_W / 4;
   constexpr int kXPairs           = kXTiles / 2;
   constexpr int kXPairTailStart   = kXPairs * 2;
-  // For m2 (IN_W=128, THREE_C=48, OUT_C=64): kXTiles=32, kXPairs=16 (no tail),
-  // kIcTiles=6, kIcTilesPerSrc=2, kOcTiles=8.
+  // For m2 (IN_W=128, THREE_C=48,  OUT_C=64):  kXTiles=32, kXPairs=16, kIcTiles=6,  kIcTilesPerSrc=2, kOcTiles=8.
+  // For m4 (IN_W=64,  THREE_C=96,  OUT_C=128): kXTiles=16, kXPairs=8,  kIcTiles=12, kIcTilesPerSrc=4, kOcTiles=16.
+  // Both have kXTiles % 2 == 0 so the tail loop never runs.
 
   // Source pointer per ic_tile: first kIcTilesPerSrc from in_top, next from
   // in_bot, last from in_m0. local_ic_t = ic_t % kIcTilesPerSrc.
