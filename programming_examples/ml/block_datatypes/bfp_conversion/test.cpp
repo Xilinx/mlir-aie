@@ -28,14 +28,6 @@
 #include "../helper.h"
 #include "common.h"
 
-#include <stdfloat>
-
-// Clangd fix, remove
-#ifdef _CLANGD
-namespace std {
-using bfloat16_t = float;
-} // namespace std
-#endif
 
 int main(int argc, const char *argv[]) {
 
@@ -113,9 +105,9 @@ int main(int argc, const char *argv[]) {
 
   auto boInstr = xrt::bo(device, instr.size() * sizeof(int),
                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto boInA = xrt::bo(device, numberFloats * sizeof(std::bfloat16_t),
+  auto boInA = xrt::bo(device, numberFloats * sizeof(test_utils::bfloat16_t),
                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto boInB = xrt::bo(device, numberFloats * sizeof(std::bfloat16_t),
+  auto boInB = xrt::bo(device, numberFloats * sizeof(test_utils::bfloat16_t),
                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto boOut = xrt::bo(device, bfpBytesSize * sizeof(int8_t),
                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
@@ -139,22 +131,22 @@ int main(int argc, const char *argv[]) {
     return generateRandomFloatingPoint(rng, -5, 5);
   });
 
-  std::bfloat16_t bfloatA[numberFloats];
-  std::bfloat16_t bfloatB[numberFloats];
+  test_utils::bfloat16_t bfloatA[numberFloats];
+  test_utils::bfloat16_t bfloatB[numberFloats];
 
   std::ranges::transform(
-      floatA, bfloatA, [](float f) { return static_cast<std::bfloat16_t>(f); });
+      floatA, bfloatA, [](float f) { return test_utils::bfloat16_from_float(f); });
   std::ranges::transform(
-      floatB, bfloatB, [](float f) { return static_cast<std::bfloat16_t>(f); });
+      floatB, bfloatB, [](float f) { return test_utils::bfloat16_from_float(f); });
 
   // ------------------------------------------------------
   // Write data into buffers
   // ------------------------------------------------------
-  std::bfloat16_t *bufInA = boInA.map<std::bfloat16_t *>();
-  memcpy(bufInA, bfloatA, (numberFloats * sizeof(std::bfloat16_t)));
+  test_utils::bfloat16_t *bufInA = boInA.map<test_utils::bfloat16_t *>();
+  memcpy(bufInA, bfloatA, (numberFloats * sizeof(test_utils::bfloat16_t)));
 
-  std::bfloat16_t *bufInB = boInB.map<std::bfloat16_t *>();
-  memcpy(bufInB, bfloatB, (numberFloats * sizeof(std::bfloat16_t)));
+  test_utils::bfloat16_t *bufInB = boInB.map<test_utils::bfloat16_t *>();
+  memcpy(bufInB, bfloatB, (numberFloats * sizeof(test_utils::bfloat16_t)));
 
   void *bufInstr = boInstr.map<void *>();
   memcpy(bufInstr, instr.data(), instr.size() * sizeof(int));

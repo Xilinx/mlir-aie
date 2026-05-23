@@ -8,12 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <stdfloat>
+#include <string>
 #include <vector>
 
 #include "xrt/xrt_bo.h"
@@ -25,52 +29,55 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using INOUT0_DATATYPE = std::bfloat16_t;
-using INOUT1_DATATYPE = std::bfloat16_t;
+using INOUT0_DATATYPE = test_utils::bfloat16_t;
+using INOUT1_DATATYPE = test_utils::bfloat16_t;
 #endif
 
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------
-template <typename T>
-int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
-           int verbosity) {
+static int verify(int size, int tile_size, const std::vector<INOUT0_DATATYPE> &A,
+                  const std::vector<INOUT1_DATATYPE> &B, int verbosity) {
 
   int errors = 0;
-  T max_val = A[0];
-  std::vector<T> RefVec(size);
+  float max_val = test_utils::bfloat16_to_float(A[0]);
+  std::vector<INOUT1_DATATYPE> RefVec(size);
 
   for (uint32_t i = 1; i < A.size(); i++) {
-    A[i] = (T)(A[i]);
-    T val = A[i];
+    const float val = test_utils::bfloat16_to_float(A[i]);
     if (val > max_val) {
       max_val = val;
     }
   }
 
   for (uint32_t t = 0; t < size; t += tile_size) {
-    float running = 0.0;
+    float running = 0.0f;
     for (uint32_t i = 0; i < tile_size; i++) {
-      float ez = (float)(exp(A[t + i] - max_val));
-      running += ez;
-      RefVec[t + i] = (T)exp(A[t + i] - max_val);
+      const float input_value = test_utils::bfloat16_to_float(A[t + i]);
+      const INOUT1_DATATYPE exp_value =
+          test_utils::bfloat16_from_float(std::exp(input_value - max_val));
+      running += test_utils::bfloat16_to_float(exp_value);
+      RefVec[t + i] = exp_value;
     }
 
+    const INOUT1_DATATYPE running_bf16 =
+        test_utils::bfloat16_from_float(running);
     for (uint32_t i = 0; i < tile_size; i++) {
-      RefVec[t + i] /= (T)running;
+      RefVec[t + i] = test_utils::bfloat16_div(RefVec[t + i], running_bf16);
     }
   }
 
   for (uint32_t i = 0; i < size; i++) {
-
-    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04, 0.001)) {
+    const float expected = test_utils::bfloat16_to_float(RefVec[i]);
+    const float actual = test_utils::bfloat16_to_float(B[i]);
+    if (!test_utils::nearly_equal(actual, expected, 0.04, 0.001)) {
       if (verbosity >= 1) {
-        std::cout << "Error in output " << B[i] << " != " << RefVec[i]
+        std::cout << "Error in output " << actual << " != " << expected
                   << std::endl;
       }
       errors++;
     } else if (verbosity >= 1) {
-      std::cout << "Correct output " << B[i] << " == " << RefVec[i]
+      std::cout << "Correct output " << actual << " == " << expected
                 << std::endl;
     }
   }
@@ -153,12 +160,12 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < INOUT0_VOLUME; i++) {
     if (dev == 1) {
       // NPU1: Use bfloat16 values in range [4.0, 4.0]
-      AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                                              (std::bfloat16_t)-4.0);
+      AVec[i] = test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(8.0f),
+                                              test_utils::bfloat16_from_float(-4.0f));
     } else if (dev == 2) {
       // NPU2: Use bfloat16 values in range [-512.0, 512.0]
-      AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1024.0,
-                                              (std::bfloat16_t)-512.0);
+      AVec[i] = test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(1024.0f),
+                                              test_utils::bfloat16_from_float(-512.0f));
     }
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));

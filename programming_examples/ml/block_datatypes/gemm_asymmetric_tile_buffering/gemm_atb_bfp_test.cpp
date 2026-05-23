@@ -27,19 +27,12 @@
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
-#include <stdfloat>
 #include <vector>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-// Clangd fix, remove
-#ifdef _CLANGD
-namespace std {
-using bfloat16_t = double;
-} // namespace std
-#endif
 
 #include "../helper.h"
 #include "common.h"
@@ -61,8 +54,8 @@ constexpr int verify_stochastic_n_samples = 1000;
 // are initialized to all-ones: every C[i,j] reduces to exactly K, which is
 // representable losslessly in BFP16 ebs8 (no requantization compounding),
 // and the CPU reference produces the same value bit-for-bit.
-float abs_tol = matmul_common::get_abs_tol<std::bfloat16_t>();
-float rel_tol = matmul_common::get_rel_tol<std::bfloat16_t>();
+float abs_tol = matmul_common::get_abs_tol<test_utils::bfloat16_t>();
+float rel_tol = matmul_common::get_rel_tol<test_utils::bfloat16_t>();
 
 int main(int argc, const char *argv[]) {
 

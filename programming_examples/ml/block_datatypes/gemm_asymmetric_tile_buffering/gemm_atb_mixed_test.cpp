@@ -22,19 +22,12 @@
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
-#include <stdfloat>
 #include <vector>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-// Clangd fix, remove
-#ifdef _CLANGD
-namespace std {
-using bfloat16_t = double;
-} // namespace std
-#endif
 
 #include "../helper.h"
 #include "common.h"
@@ -49,8 +42,8 @@ constexpr int verify_stochastic_n_samples = 1000;
 // Verification tolerance
 // See "Note on Numerical Tolerances" in README.md
 // TODO: This might have to be adjusted for bfp
-float abs_tol = matmul_common::get_abs_tol<std::bfloat16_t>();
-float rel_tol = matmul_common::get_rel_tol<std::bfloat16_t>() * 2.0f;
+float abs_tol = matmul_common::get_abs_tol<test_utils::bfloat16_t>();
+float rel_tol = matmul_common::get_rel_tol<test_utils::bfloat16_t>() * 2.0f;
 
 int main(int argc, const char *argv[]) {
 
@@ -154,11 +147,11 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_a = xrt::bo(device, A_SIZE * sizeof(std::bfloat16_t),
+  auto bo_a = xrt::bo(device, A_SIZE * sizeof(test_utils::bfloat16_t),
                       XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_b =
       xrt::bo(device, B_VOLUME, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-  auto bo_out = xrt::bo(device, C_SIZE * sizeof(std::bfloat16_t),
+  auto bo_out = xrt::bo(device, C_SIZE * sizeof(test_utils::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   // ------------------------------------------------------
@@ -168,20 +161,20 @@ int main(int argc, const char *argv[]) {
     std::cout << "Writing data into buffer objects.\n";
   }
 
-  std::vector<std::bfloat16_t> AVec(A_SIZE);
+  std::vector<test_utils::bfloat16_t> AVec(A_SIZE);
   for (int i = 0; i < A_SIZE; i++) {
-    AVec[i] = (std::bfloat16_t)((rand() % 8) - 4);
+    AVec[i] = test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
   }
-  std::vector<std::bfloat16_t> BVec(B_SIZE);
+  std::vector<test_utils::bfloat16_t> BVec(B_SIZE);
   for (int i = 0; i < B_SIZE; i++) {
-    BVec[i] = (std::bfloat16_t)((rand() % 8) - 4);
+    BVec[i] = test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
   }
 
   // This is a quick conversion to avoid having to create a custom function for
   // bf16 for now
   std::vector<float> BVecFloat(B_SIZE);
   for (int i = 0; i < B_SIZE; i++) {
-    BVecFloat[i] = (float)BVec[i];
+    BVecFloat[i] = test_utils::bfloat16_to_float(BVec[i]);
   }
 
   auto shuffleStart = std::chrono::high_resolution_clock::now();
@@ -201,9 +194,9 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Write data into buffers
   // ------------------------------------------------------
-  std::bfloat16_t *bufA = bo_a.map<std::bfloat16_t *>();
+  test_utils::bfloat16_t *bufA = bo_a.map<test_utils::bfloat16_t *>();
   uint8_t *bufB = bo_b.map<uint8_t *>();
-  memcpy(bufA, AVec.data(), AVec.size() * sizeof(std::bfloat16_t));
+  memcpy(bufA, AVec.data(), AVec.size() * sizeof(test_utils::bfloat16_t));
   memcpy(bufB, BVecBfpShuffled.data(), B_VOLUME);
 
   // Initialize outputs; bufOut is results matrix
@@ -260,8 +253,8 @@ int main(int argc, const char *argv[]) {
   // verify pass does not pollute the per-iter average runtime.
   // ------------------------------------------------------
   if (do_verify) {
-    std::vector<std::bfloat16_t> CVec(C_SIZE);
-    memcpy(CVec.data(), bufOut, CVec.size() * sizeof(std::bfloat16_t));
+    std::vector<test_utils::bfloat16_t> CVec(C_SIZE);
+    memcpy(CVec.data(), bufOut, CVec.size() * sizeof(test_utils::bfloat16_t));
 
     if (verbosity >= 1) {
       std::cout << "Verifying against reference matmul ..." << std::endl;
@@ -272,12 +265,12 @@ int main(int argc, const char *argv[]) {
       // in fp32, and the bf16 accumulator pattern from the canonical
       // mixed_test.cpp loses too much precision over the K=4096 reductions
       // that the paper-scale shapes require.
-      errors = matmul_common::verify_stochastic<std::bfloat16_t,
-                                                std::bfloat16_t, float>(
+      errors = matmul_common::verify_stochastic<test_utils::bfloat16_t,
+                                                test_utils::bfloat16_t, float>(
           M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
           abs_tol, rel_tol, /*b_col_maj=*/0);
     } else {
-      errors = matmul_common::verify<std::bfloat16_t, std::bfloat16_t, float>(
+      errors = matmul_common::verify<test_utils::bfloat16_t, test_utils::bfloat16_t, float>(
           M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol,
           /*b_col_maj=*/0);
     }

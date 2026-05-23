@@ -7,69 +7,103 @@
 // Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
+
 #include "xrt_test_wrapper.h"
+#include <cstdlib>
 #include <cstdint>
-#include <stdfloat>
+#include <cstring>
+#include <iostream>
+#include <limits>
+#include <type_traits>
+
 #ifndef DTYPE
-#define DTYPE std::bfloat16_t
+#define DTYPE test_utils::bfloat16_t
 #endif
-// ------------------------------------------------------
-// Configure this to match your buffer data type
-// -----------------------------------------------------
+
 using DATATYPE = DTYPE;
 
+template <typename T> T random_input_value() {
+  if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
+    return test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(-4.0f),
+                                         test_utils::bfloat16_from_float(8.0f));
+  } else if constexpr (std::is_same_v<T, std::int32_t>) {
+    return test_utils::random_int32_t(100000);
+  } else {
+    std::cerr << "Unsupported data type" << std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+}
+
+template <typename T> T lowest_value() {
+  if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
+    return test_utils::bfloat16_from_float(
+        -std::numeric_limits<float>::infinity());
+  } else {
+    return std::numeric_limits<T>::lowest();
+  }
+}
+
+template <typename T> bool less_than(T lhs, T rhs) {
+  if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
+    return test_utils::bfloat16_to_float(lhs) <
+           test_utils::bfloat16_to_float(rhs);
+  } else {
+    return lhs < rhs;
+  }
+}
+
+template <typename T> bool values_equal(T lhs, T rhs) {
+  if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
+    return test_utils::nearly_equal_bfloat16(lhs, rhs);
+  } else {
+    return lhs == rhs;
+  }
+}
+
+template <typename T> auto printable_value(T value) {
+  if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
+    return test_utils::bfloat16_to_float(value);
+  } else {
+    return value;
+  }
+}
+
 void initialize_bufIn1(DATATYPE *bufIn1, int SIZE) {
-  DATATYPE max = std::numeric_limits<DATATYPE>::lowest();
+  DATATYPE max = lowest_value<DATATYPE>();
   for (int i = 0; i < SIZE; i++) {
-    DATATYPE next;
-    if constexpr (std::is_same_v<DATATYPE, std::bfloat16_t> &&
-                  std::is_same_v<DATATYPE, std::bfloat16_t>) {
-      next = test_utils::random_bfloat16_t((std::bfloat16_t)-4.0,
-                                           (std::bfloat16_t)8.0);
-    } else if constexpr (std::is_same_v<DATATYPE, int32_t> &&
-                         std::is_same_v<DATATYPE, int32_t>) {
-      next = test_utils::random_int32_t(100000);
-    } else {
-      std::cerr << "Unsupported data type" << std::endl;
-      std::exit(EXIT_FAILURE);
-    }
-    if (next > max)
+    DATATYPE next = random_input_value<DATATYPE>();
+    if (less_than(max, next))
       max = next;
     bufIn1[i] = next;
   }
 }
 
-// Initialize Output buffer
-void initialize_bufOut(DATATYPE *bufOut, int SIZE) { memset(bufOut, 0, SIZE); }
+void initialize_bufOut(DATATYPE *bufOut, int SIZE) {
+  std::memset(bufOut, 0, SIZE);
+}
 
-// Functional correctness verifyer
 int verify_vector_reduce_max(DATATYPE *bufIn1, DATATYPE *bufOut, int SIZE,
                              int verbosity) {
   int errors = 0;
 
-  // Calculate max within the function
-  DATATYPE max = std::numeric_limits<DATATYPE>::lowest();
+  DATATYPE max = lowest_value<DATATYPE>();
   for (int i = 0; i < SIZE; i++) {
-    if (bufIn1[i] > max)
+    if (less_than(max, bufIn1[i]))
       max = bufIn1[i];
   }
 
-  if (bufOut[0] != max) {
+  if (!values_equal(bufOut[0], max)) {
     errors++;
-    std::cout << "max is " << max << " calc " << bufOut[0] << std::endl;
-  } else {
-    if (verbosity >= 1)
-      std::cout << "max is " << max << " calc " << bufOut[0] << std::endl;
+    std::cout << "max is " << printable_value(max) << " calc "
+              << printable_value(bufOut[0]) << std::endl;
+  } else if (verbosity >= 1) {
+    std::cout << "max is " << printable_value(max) << " calc "
+              << printable_value(bufOut[0]) << std::endl;
   }
   return errors;
 }
 
-//*****************************************************************************
-// Should not need to modify below section
-//*****************************************************************************
-
 int main(int argc, const char *argv[]) {
-
   constexpr int IN1_VOLUME = IN1_SIZE / sizeof(DATATYPE);
   constexpr int OUT_VOLUME = OUT_SIZE / sizeof(DATATYPE);
 

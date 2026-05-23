@@ -18,16 +18,17 @@
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
 
-using DATATYPE_IN1 = std::bfloat16_t;
-using DATATYPE_IN2 = std::bfloat16_t; // For LUT (cos,sin) pairs
-using DATATYPE_OUT = std::bfloat16_t;
+using DATATYPE_IN1 = test_utils::bfloat16_t;
+using DATATYPE_IN2 = test_utils::bfloat16_t; // For LUT (cos,sin) pairs
+using DATATYPE_OUT = test_utils::bfloat16_t;
 #endif
 
 // Initialize Input buffer 1
 void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int in_volume) {
   for (int i = 0; i < in_volume; i++) {
-    DATATYPE_IN1 val = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                                                     (std::bfloat16_t)-4.0);
+    DATATYPE_IN1 val = test_utils::random_bfloat16_t(
+        test_utils::bfloat16_from_float(8.0f),
+        test_utils::bfloat16_from_float(-4.0f));
     bufIn1[i] = val;
   }
 }
@@ -47,8 +48,8 @@ void initialize_bufIn2(DATATYPE_IN2 *bufIn2, int lut_volume) {
       float cos_val = std::cos(angle);
       float sin_val = std::sin(angle);
       int base_idx = r * COLS + 2 * i;
-      bufIn2[base_idx] = static_cast<DATATYPE_IN2>(cos_val);
-      bufIn2[base_idx + 1] = static_cast<DATATYPE_IN2>(sin_val);
+      bufIn2[base_idx] = test_utils::bfloat16_from_float(cos_val);
+      bufIn2[base_idx + 1] = test_utils::bfloat16_from_float(sin_val);
     }
   }
 }
@@ -71,10 +72,10 @@ int verify_rope_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_IN2 *bufIn2,
       int input_base_idx = r * COLS + 2 * i;
       int lut_base_idx = r * COLS + 2 * i;
 
-      float x_even = static_cast<float>(bufIn1[input_base_idx]);
-      float x_odd = static_cast<float>(bufIn1[input_base_idx + 1]);
-      float cos_val = static_cast<float>(bufIn2[lut_base_idx]);
-      float sin_val = static_cast<float>(bufIn2[lut_base_idx + 1]);
+      float x_even = test_utils::bfloat16_to_float(bufIn1[input_base_idx]);
+      float x_odd = test_utils::bfloat16_to_float(bufIn1[input_base_idx + 1]);
+      float cos_val = test_utils::bfloat16_to_float(bufIn2[lut_base_idx]);
+      float sin_val = test_utils::bfloat16_to_float(bufIn2[lut_base_idx + 1]);
 
       expected[input_base_idx] = x_even * cos_val - x_odd * sin_val;
       expected[input_base_idx + 1] = x_even * sin_val + x_odd * cos_val;
@@ -83,7 +84,7 @@ int verify_rope_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_IN2 *bufIn2,
 
   for (int i = 0; i < (ROWS * COLS); i++) {
     float expected_val = expected[i];
-    float hw_val = static_cast<float>(bufOut[i]);
+    float hw_val = test_utils::bfloat16_to_float(bufOut[i]);
     if (std::abs(expected_val - hw_val) > 0.05f) {
       std::cout << "Mismatch at index " << i << ": expected " << expected_val
                 << ", got " << hw_val << std::endl;
