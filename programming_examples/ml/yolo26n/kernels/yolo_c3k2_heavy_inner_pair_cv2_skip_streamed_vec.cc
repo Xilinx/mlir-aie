@@ -167,27 +167,36 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
       const int x_out_base = x_tile * MMUL_M;
       const int x_in_base = x_out_base - 1;
 
-      AIE_HINT_IC
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        AIE_LOOP_RANGE(1, 3)
-        for (int ky = ky_start; ky < ky_end; ++ky) {
-          int8_t *line_ptr = line[ky];
+      // Hoisted pixel loads (see pair_cv1_streamed_vec.cc for pattern).
+      // 1 vec load + scalar register-extracts per mac group instead of
+      // 64 scalar mem loads.
+      AIE_LOOP_RANGE(1, 3)
+      for (int ky = ky_start; ky < ky_end; ++ky) {
+        int8_t *line_ptr = line[ky];
 
-          AIE_LOOP_RANGE(3, 3)
-          for (int kx = 0; kx < KW; ++kx) {
-            alignas(64) int8_t a_buf[64];
-            bool any_valid = false;
-            for (int p = 0; p < MMUL_M; ++p) {
-              int col = x_in_base + p + kx;
-              if (col < 0 || col >= IN_W) {
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
-              } else {
-                int8_t *src = line_ptr + col * IN_C + ic_t * 8;
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
-                any_valid = true;
-              }
+        AIE_LOOP_RANGE(3, 3)
+        for (int kx = 0; kx < KW; ++kx) {
+          aie::vector<int8, 64> pix[MMUL_M];
+          bool col_valid[MMUL_M];
+          bool any_valid = false;
+          for (int p = 0; p < MMUL_M; ++p) {
+            int col = x_in_base + p + kx;
+            col_valid[p] = (col >= 0 && col < IN_W);
+            if (col_valid[p]) {
+              pix[p] = aie::load_v<64>(line_ptr + col * IN_C);
+              any_valid = true;
+            } else {
+              pix[p] = aie::zeros<int8, 64>();
             }
-            if (!any_valid) continue;
+          }
+          if (!any_valid) continue;
+
+          AIE_HINT_IC
+          for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+            alignas(64) int8_t a_buf[64];
+            for (int p = 0; p < MMUL_M; ++p) {
+              for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = pix[p][ic_t * 8 + b];
+            }
             aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
 
             int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
