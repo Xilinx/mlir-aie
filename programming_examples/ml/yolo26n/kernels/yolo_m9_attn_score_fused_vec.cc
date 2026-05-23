@@ -47,7 +47,7 @@
 
 static constexpr int kKd      = YOLO_M9_QK_KD;
 static constexpr int kN       = YOLO_M9_QK_N;
-static constexpr int kJVec    = 16;
+static constexpr int kJVec    = 64;  // peano accum::to_vector<int8> crashes at 16 + 32, OK at 64
 static constexpr int kJGroups = kN / kJVec;
 
 static_assert(kKd > 0,            "QK_KD must be > 0");
@@ -85,15 +85,14 @@ void yolo_m9_attn_score_fused_i8_i8(
   const int8_t *__restrict k_base = qk_frame + kKd * kN;       // K rows start here
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs (round-half-to-even). Lets us use
+  // vector to_vector<int8>(rs) instead of the per-element scalar SRS/clip
+  // tail without LSB drift.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   // === Phase 1+2: qk + scale → i8 scores row in chunk_io ===
-  //
-  // mmul accumulate is vector; the two SRS+clip steps run scalar in
-  // the tail to match the project's established `banker_srs` rounding
-  // (vector `to_vector<int8>(shift)` uses `positive_inf` rounding,
-  // which gives LSB-off results vs ORT's banker rounding — chain stays
-  // bit-exact either way but stage-10 ORT compare flags 1-LSB diffs).
+  // Inner mac is vector. SRS+clip + scale+SRS+clip vectorized via two
+  // to_vector<int8>(rs) calls bracketing a vec `aie::mul(qk_v, mul_int)`.
   AIE_LOOP_RANGE(kJGroups, kJGroups)
   for (int g = 0; g < kJGroups; ++g) {
     aie::accum<acc32, kJVec> acc;
@@ -109,21 +108,11 @@ void yolo_m9_attn_score_fused_i8_i8(
       acc = aie::mac(acc, q_v, k_v);
     }
 
-    aie::vector<int32, kJVec> sum_v = acc.template to_vector<int32>();
-    int8_t *__restrict out_p = scores_row + g * kJVec;
-    AIE_LOOP_UNROLL_FULL
-    for (int i = 0; i < kJVec; ++i) {
-      // Step 1: qk SRS + clip to i8.
-      int32_t qk_s = banker_srs(sum_v[i], rs_qk);
-      if (qk_s > I8_SMAX) qk_s = I8_SMAX;
-      if (qk_s < I8_SMIN) qk_s = I8_SMIN;
-      // Step 2: scale by mul_int (constexpr 91), SRS + clip.
-      int32_t scaled = qk_s * mul_int;
-      int32_t sr = banker_srs(scaled, mul_shift);
-      if (sr > I8_SMAX) sr = I8_SMAX;
-      if (sr < I8_SMIN) sr = I8_SMIN;
-      out_p[i] = (int8_t)sr;
-    }
+    aie::vector<int8, kJVec> qk_v = acc.template to_vector<int8>(rs_qk);
+    aie::accum<acc32, kJVec> scaled_acc = aie::mul(qk_v, (int16)mul_int);
+    aie::vector<int8, kJVec> sr_v =
+        scaled_acc.template to_vector<int8>(mul_shift);
+    aie::store_v(scores_row + g * kJVec, sr_v);
   }
 
   // === Phase 3a: softmax pass 1 — row max via vector reduce ===
