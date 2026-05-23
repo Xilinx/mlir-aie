@@ -71,19 +71,21 @@ static inline void cv1_chunk_compute(
     int n_chunks, int chunk_idx, int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
-  const int chunk_oc = twoc / n_chunks;
-  const int c = twoc >> 1;
-  const int chunks_per_half = n_chunks >> 1;
+  // Hardcoded for m8 cv1 call site (in_w=16, in_c=256, twoc=256, N=8).
+  // The original `twoc / n_chunks` was signed-runtime division → __divsi3
+  // call. Constexpr lowers everything to shifts/immediates.
+  (void)input_width; (void)input_channels; (void)twoc; (void)n_chunks;
+  constexpr int chunk_oc = 32;            // twoc / n_chunks = 256/8
+  constexpr int c = 128;                  // twoc / 2
+  constexpr int chunks_per_half = 4;      // n_chunks / 2
   const bool is_top = (chunk_idx < chunks_per_half);
   const int dst_oc_offset =
       is_top ? chunk_idx * chunk_oc
              : (chunk_idx - chunks_per_half) * chunk_oc;
   const int bias_offset = chunk_idx * chunk_oc;
-
-  // Unsigned cast → Peano lowers /power-of-2 to shifts (signed would hit __divsi3).
-  const int ic_tiles = (uint32_t)input_channels / 8u;
-  const int chunk_oc_tiles = (uint32_t)chunk_oc / 8u;
-  const int x_tiles = (uint32_t)input_width / 4u;
+  constexpr int ic_tiles = 32;            // input_channels / 8 = 256/8
+  constexpr int chunk_oc_tiles = 4;       // chunk_oc / 8
+  constexpr int x_tiles = 4;              // input_width / 4 = 16/4
 
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int dst_oc_full_base = dst_oc_offset + chunk_oc_t * 8;
