@@ -201,6 +201,14 @@ NOOP_FLAGS_m8  := $(if $(filter m8, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
 NOOP_FLAGS_m9  := $(if $(filter m9, $(NOOP_BLOCK)),-DNOOP_KERNEL,)
 NOOP_FLAGS_m10 := $(if $(filter m10,$(NOOP_BLOCK)),-DNOOP_KERNEL,)
 
+# Per-kernel-file ablation: pass `NOOP_KERNEL_FILES="<obj-stem> ..."` (space-
+# separated .o basenames without the .o, e.g. "yolo_c3k2_small_cv2_concat3_m2")
+# to compile just those c3k2_small kernels with -DNOOP_KERNEL. Wired into the
+# per-block eval rules further down. Used to attribute per-block wall time to
+# individual tiles inside c3k2_small / c3k2_heavy. Output is garbage; skip
+# run_ort. Coarser knob `NOOP_BLOCK=mN` still works for whole-block noop.
+NOOP_KERNEL_FILES ?=
+
 # Generic kernel .cc -> .o.
 $(BUILD)/%.o: $(SRCDIR)/kernels/%.cc
 	mkdir -p $(BUILD)
@@ -330,24 +338,26 @@ $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
 # blocks that don't pre-declare shapes.
 M2_M0CV1_SHAPE      := -DYOLO_C3K2_M0CV1_IN_W=128 -DYOLO_C3K2_M0CV1_IN_C=16 -DYOLO_C3K2_M0CV1_OUT_C=8
 M2_M0CV2_SKIP_SHAPE := -DYOLO_C3K2_M0CV2_SKIP_IN_W=128 -DYOLO_C3K2_M0CV2_SKIP_IN_C=8 -DYOLO_C3K2_M0CV2_SKIP_OUT_C=16
+M2_CV2_SHAPE        := -DYOLO_C3K2_CV2_IN_W=128 -DYOLO_C3K2_CV2_THREE_C=48 -DYOLO_C3K2_CV2_OUT_C=64
 M0CV1_SHAPE_m2      := $(M2_M0CV1_SHAPE)
 M0CV2_SKIP_SHAPE_m2 := $(M2_M0CV2_SKIP_SHAPE)
+CV2_SHAPE_m2        := $(M2_CV2_SHAPE)
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv1_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(M0CV1_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(M0CV1_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_small_m0_cv1_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv2_skip_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv2_skip_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(M0CV2_SKIP_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(M0CV2_SKIP_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_small_m0_cv2_skip_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv1_split_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv1_split_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_small_cv1_split_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv2_concat3_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv2_concat3_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(CV2_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_small_cv2_concat3_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
 
 # c3k2_heavy non-streamed kernels (m6 only).
 $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
