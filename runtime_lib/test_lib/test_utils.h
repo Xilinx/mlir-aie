@@ -82,7 +82,9 @@ static inline float bfloat16_to_float(bfloat16_t value) {
 #else
 using bfloat16_t = std::uint16_t;
 
-static inline bfloat16_t bfloat16_from_bits(std::uint16_t bits) { return bits; }
+static inline bfloat16_t bfloat16_from_bits(std::uint16_t bits) {
+  return bits;
+}
 
 static inline float bfloat16_to_float(bfloat16_t bits) {
   const std::uint32_t expanded_bits = static_cast<std::uint32_t>(bits) << 16;

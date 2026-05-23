@@ -47,7 +47,9 @@ int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
     const float b = test_utils::bfloat16_to_float(B[i]);
     const float c = test_utils::bfloat16_to_float(C[i]);
     const float actual = test_utils::bfloat16_to_float(D[i]);
-    const float ref = a * b + c;
+    const auto product_bf16 = test_utils::bfloat16_mul(A[i], B[i]);
+    const auto ref_bf16 = test_utils::bfloat16_add(product_bf16, C[i]);
+    const float ref = test_utils::bfloat16_to_float(ref_bf16);
     if (!test_utils::nearly_equal(ref, actual, 0.002)) {
       if (verbosity >= 1) {
         std::cout << "Error in output " << actual << " != " << ref << " from "

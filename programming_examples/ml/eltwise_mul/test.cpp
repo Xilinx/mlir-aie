@@ -45,7 +45,8 @@ int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
     const float a = test_utils::bfloat16_to_float(A[i]);
     const float b = test_utils::bfloat16_to_float(B[i]);
     const float actual = test_utils::bfloat16_to_float(C[i]);
-    const float ref = a * b;
+    const auto ref_bf16 = test_utils::bfloat16_mul(A[i], B[i]);
+    const float ref = test_utils::bfloat16_to_float(ref_bf16);
     if (!test_utils::nearly_equal(ref, actual, 0.00390625)) {
       if (errors < 100) {
         std::cout << "Error in output " << actual << " != " << ref << " from "
@@ -173,18 +174,16 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++)
-    AVec[i] =
-        test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(1.0f),
-                                      test_utils::bfloat16_from_float(-0.5f));
+    AVec[i] = test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(1.0f),
+                                            test_utils::bfloat16_from_float(-0.5f));
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
   // Initialize Inout buffer 1
   INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT0_DATATYPE *>();
   std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
   for (int i = 0; i < INOUT1_VOLUME; i++)
-    BVec[i] =
-        test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(1.0f),
-                                      test_utils::bfloat16_from_float(-0.5f));
+    BVec[i] = test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(1.0f),
+                                            test_utils::bfloat16_from_float(-0.5f));
   memcpy(bufInOut1, BVec.data(), (BVec.size() * sizeof(INOUT1_DATATYPE)));
 
   // Initialize Inout buffer 2

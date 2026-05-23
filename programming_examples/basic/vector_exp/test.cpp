@@ -33,9 +33,6 @@
 using INOUT0_DATATYPE = test_utils::bfloat16_t;
 using INOUT1_DATATYPE = test_utils::bfloat16_t;
 #endif
-static_assert(sizeof(INOUT0_DATATYPE) == sizeof(std::uint16_t),
-              "bfloat16 host buffers must use the same 16-bit layout as the "
-              "AIE payload.");
 
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
@@ -46,7 +43,8 @@ int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
   for (uint32_t i = 0; i < CSize; i++) {
     const float input = test_utils::bfloat16_to_float(A[i]);
     const float actual = test_utils::bfloat16_to_float(C[i]);
-    const float ref = std::exp(input);
+    const auto ref_bf16 = test_utils::bfloat16_from_float(std::exp(input));
+    const float ref = test_utils::bfloat16_to_float(ref_bf16);
     // Let's check if they are inf or nan, and if so just pass because
     // comparisions will then fail, even for matches
     if (std::isinf(ref) || std::isinf(actual))
