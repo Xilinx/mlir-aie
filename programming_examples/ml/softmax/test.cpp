@@ -35,7 +35,8 @@ using INOUT1_DATATYPE = test_utils::bfloat16_t;
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------
-static int verify(int size, int tile_size, const std::vector<INOUT0_DATATYPE> &A,
+static int verify(int size, int tile_size,
+                  const std::vector<INOUT0_DATATYPE> &A,
                   const std::vector<INOUT1_DATATYPE> &B, int verbosity) {
 
   int errors = 0;
@@ -158,12 +159,14 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < INOUT0_VOLUME; i++) {
     if (dev == 1) {
       // NPU1: Use bfloat16 values in range [4.0, 4.0]
-      AVec[i] = test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(8.0f),
-                                              test_utils::bfloat16_from_float(-4.0f));
+      AVec[i] =
+          test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(8.0f),
+                                        test_utils::bfloat16_from_float(-4.0f));
     } else if (dev == 2) {
       // NPU2: Use bfloat16 values in range [-512.0, 512.0]
-      AVec[i] = test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(1024.0f),
-                                              test_utils::bfloat16_from_float(-512.0f));
+      AVec[i] = test_utils::random_bfloat16_t(
+          test_utils::bfloat16_from_float(1024.0f),
+          test_utils::bfloat16_from_float(-512.0f));
     }
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));

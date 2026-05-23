@@ -28,7 +28,6 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-
 #include "../helper.h"
 #include "common.h"
 #include "gemm_atb_layout.h"
@@ -163,11 +162,13 @@ int main(int argc, const char *argv[]) {
 
   std::vector<test_utils::bfloat16_t> AVec(A_SIZE);
   for (int i = 0; i < A_SIZE; i++) {
-    AVec[i] = test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
+    AVec[i] =
+        test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
   }
   std::vector<test_utils::bfloat16_t> BVec(B_SIZE);
   for (int i = 0; i < B_SIZE; i++) {
-    BVec[i] = test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
+    BVec[i] =
+        test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
   }
 
   // This is a quick conversion to avoid having to create a custom function for
@@ -270,7 +271,8 @@ int main(int argc, const char *argv[]) {
           M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
           abs_tol, rel_tol, /*b_col_maj=*/0);
     } else {
-      errors = matmul_common::verify<test_utils::bfloat16_t, test_utils::bfloat16_t, float>(
+      errors = matmul_common::verify<test_utils::bfloat16_t,
+                                     test_utils::bfloat16_t, float>(
           M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol,
           /*b_col_maj=*/0);
     }
