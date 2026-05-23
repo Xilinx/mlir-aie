@@ -65,17 +65,21 @@ below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 | **m0..m1..m2..m3..m4** | **15.43 ms** | **64.80** | **14.06 ms** | **71.11** | ✓ (was ≈45 N=15 pre-m4-arc) |
 | m0..m1..m2..m3..m4..m5 | 15.59 ms | 64.13 | 14.08 ms | **71.05** | ✓ |
 | **m0..m6**             | **17.99 ms** | 55.60 | **14.23 ms** | **70.26** | ✓ (was hanging pre-fix) |
+| m0..m6..m7             | 18.38 ms | 54.40 | 14.26 ms | **70.14** | ✓ |
 
 Rows marked ✓ re-measured post-IRON-depth-collapse fix. **Every chain
-prefix m0..m6 stays above 60 fps at N=15, and m0..m4 holds 60 even at
+prefix m0..m7 stays above 60 fps at N=15, and m0..m4 holds 60 even at
 N=1.** m6 was hanging at runtime before the upstream IRON ObjectFifo
 depth-collapse fix (PR #3096) was cherry-picked into this branch —
 multi-consumer fanout fifos were silently being sized to ping-pong
 (2 buffers) instead of the declared depth, deadlocking c3k2_heavy's
 bot_fifo broadcast to m_0_split and cv3_cv2. After the fix, m6 lands
 at 14.94 ms / 66.9 fps standalone, and adds only ~0.15 ms per-sample
-to the chain despite that — heavily overlapped with the m9-equivalent
-back half of the pipeline. m7+ rows pending re-measurement.
+to the chain despite that — heavily overlapped with the back half of
+the pipeline. m7 (conv_stride chunked, already deep-opt'd, 206.8 fps
+standalone) adds only +0.03 ms per-sample to the chain. m8+ rows
+pending re-measurement (m8 standalone is currently 35.5 fps and is
+the next sub-60 block).
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 Rows marked ✓ have been re-measured at the current commit; the rest
@@ -90,7 +94,7 @@ are pre-validation snapshots pending re-measurement.
 | m4  | c3k2_small (deep-opt'd)        | 13.29 | 75.2  | ✓ |
 | m5  | conv_stride (chunked)          |  7.02 | 139.5 | ✓ |
 | **m6**  | **c3k2_heavy**             | **14.94** | **66.9** | ✓ |
-| m7  | conv_stride (chunked)          |  4.78 | 209.2 | |
+| m7  | conv_stride (chunked)          |  4.84 | 206.8 | ✓ |
 | m8  | c3k2_heavy (2-tile megakernel) | 28.19 | 35.5  | |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
 | m9 stage 10 (full PSA block)     | PSA full | 26.25 | 38.1  | |
