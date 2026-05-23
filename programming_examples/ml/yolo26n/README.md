@@ -56,18 +56,22 @@ All measurements taken with the NPU in turbo mode
 numbers will land once the per-block re-validation is complete; the rows
 below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 
-| Chain | N=1 wall | N=15 per-sample | N=15 fps | |
-|---|---:|---:|---:|:--|
-| m0                   | 13.13 ms | 13.01 ms | **76.86** | ✓ |
-| m0..m1               | 13.20 ms | 13.02 ms | **76.83** | ✓ |
-| **m0..m1..m2**       | **16.29 ms** | **15.74 ms** | **63.53** | ✓ (was 32.32 pre-m2-arc) |
-| m0..m1..m2..m3       | 16.53 ms | 15.74 ms | **63.51** | ✓ |
-| **m0..m1..m2..m3..m4** | **17.12 ms** | **15.79 ms** | **63.32** | ✓ (was ≈45 pre-m4-arc) |
+| Chain | N=1 wall | N=1 fps | N=15 per-sample | N=15 fps | |
+|---|---:|---:|---:|---:|:--|
+| m0                     | 13.14 ms | 76.08 | 13.01 ms | **76.88** | ✓ |
+| m0..m1                 | 13.14 ms | 76.13 | 13.02 ms | **76.83** | ✓ |
+| **m0..m1..m2**         | **16.27 ms** | **61.47** | **15.74 ms** | **63.55** | ✓ (was 32.32 N=15 pre-m2-arc) |
+| m0..m1..m2..m3         | 16.40 ms | 60.99 | 15.74 ms | **63.52** | ✓ |
+| **m0..m1..m2..m3..m4** | **17.13 ms** | 58.39 | **15.79 ms** | **63.33** | ✓ (was ≈45 N=15 pre-m4-arc) |
+| m0..m1..m2..m3..m4..m5 | 17.33 ms | 57.72 | 15.81 ms | **63.26** | ✓ |
 
-Rows marked ✓ re-measured post-m4 deep-opt. **Full m0..m4 chain crosses
-60 fps**; m4 adds only ~0.05 ms to per-sample (heavily overlapped with
-the pipeline despite 13.3 ms standalone). m5+ rows pending re-measurement
-(m6 broken standalone, may block full-chain).
+Rows marked ✓ re-measured post-m4 deep-opt. **N=15 stays above 60 fps
+through the full m0..m5 prefix.** N=1 dips just below 60 at m0..m4
+(~17 ms wall = 58.4 fps) — single-dispatch overhead adds ~1.5 ms vs the
+batched N=15 per-sample. m4 and m5 each add only ≤0.2 ms to the chain
+despite 13.3 ms / 7.0 ms standalone — heavily overlapped with the
+pipeline. m6+ rows pending (m6 standalone is broken at this commit;
+likely blocks full m0..m10 chain).
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 Rows marked ✓ have been re-measured at the current commit; the rest
