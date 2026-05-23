@@ -179,19 +179,31 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
       sum_acc.from_vector(sum_v);
       aie::vector<int8, 32> srs_v = sum_acc.template to_vector<int8>(right_shift);
 
-      // Scalar LUT + scalar skip-add + clamp + strided store. aie::add
-      // on int8 vectors didn't saturate as expected here, so the skip
-      // path stays scalar; the vec bias+SRS above is the main win.
+      // Scalar gather silu+skip into int16 scratch buffers (skip-add
+      // sum range is [-256, 254], fits int16 cleanly so we can use
+      // non-saturating int16 vec add then a saturating srs back to int8).
+      alignas(32) int16_t silu_arr[32];
+      alignas(32) int16_t skip_arr[32];
       for (int p = 0; p < 4; ++p) {
-        int x_out = x_out_base + p;
+        int8_t *spsrc = &skip_row[(x_out_base + p) * OUT_C + oc_t * 8];
         for (int j = 0; j < 8; ++j) {
-          int oc_full = oc_t * 8 + j;
-          int32_t silu = silu_lut[int(srs_v[p * 8 + j]) + 128];
-          int32_t added = silu + (int32_t)skip_row[x_out * OUT_C + oc_full];
-          if (added > I8_MAX) added = I8_MAX;
-          if (added < I8_MIN) added = I8_MIN;
-          output[x_out * OUT_C + oc_full] = (int8_t)added;
+          silu_arr[p * 8 + j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
+          skip_arr[p * 8 + j] = (int16_t)spsrc[j];
         }
+      }
+      aie::vector<int16, 32> silu_v16 = aie::load_v<32>(silu_arr);
+      aie::vector<int16, 32> skip_v16 = aie::load_v<32>(skip_arr);
+      aie::vector<int16, 32> sum16 = aie::add(silu_v16, skip_v16);
+      // Saturate-cast int16 -> int8 via accum.to_vector<int8>(0) (no shift).
+      aie::accum<acc32, 32> sum16_acc;
+      sum16_acc.from_vector(sum16);
+      aie::vector<int8, 32> out_v = sum16_acc.template to_vector<int8>(0);
+
+      alignas(32) int8_t out_arr[32];
+      aie::store_v(out_arr, out_v);
+      for (int p = 0; p < 4; ++p) {
+        int8_t *dst = &output[(x_out_base + p) * OUT_C + oc_t * 8];
+        for (int j = 0; j < 8; ++j) dst[j] = out_arr[p * 8 + j];
       }
     }
 
