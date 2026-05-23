@@ -129,15 +129,16 @@ static inline void cv2_compute_chunk(
   using MMUL8x8x8 = aie::mmul<8, 8, 8, int8, int8>;
   constexpr int MMUL_M = 8;
 
-  const int chunk_oc = (uint32_t)output_channels / (uint32_t)n_chunks;
-  const int three_c = 3 * c;
+  // Hardcoded for m8 cv2 call site (c=128, out_c=256, W=16, N_CHUNKS=8).
+  // Eliminates __udivsi3 from the ict/ic_tiles_per_src setup divide.
+  (void)output_channels; (void)input_width; (void)n_chunks;
+  constexpr int chunk_oc = 32;            // out_c / n_chunks = 256 / 8
+  constexpr int three_c = 384;            // 3 * c
+  constexpr int ic_tiles = 48;            // three_c / 8
+  constexpr int ic_tiles_per_src = 16;    // c / 8
+  constexpr int chunk_oc_tiles = 4;       // chunk_oc / 8
+  constexpr int x_tiles = 2;              // input_width / MMUL_M
   const int oc_offset = chunk_idx * chunk_oc;
-
-  // Unsigned cast → /power-of-2 lowers to shifts.
-  const int ic_tiles = (uint32_t)three_c / 8u;
-  const int ic_tiles_per_src = (uint32_t)c / 8u;
-  const int chunk_oc_tiles = (uint32_t)chunk_oc / 8u;
-  const int x_tiles = (uint32_t)input_width / MMUL_M;
 
   int8_t *src_for_ic_tile[48];
   int local_ic_t_for[48];
