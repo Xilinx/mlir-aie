@@ -44,16 +44,16 @@ static inline int wts_tile_off_1x1(int oc_tile, int ic_tile, int ic_tiles) {
   return (oc_tile * ic_tiles + ic_tile) << 6;
 }
 
-// Build a 32-wide bias accumulator (8 int32 bias values replicated to
-// 4 pixels x 8 channels) for direct mmul init. Avoids the int32-vec
-// round-trip through a helper; smaller code on tight tiles.
-static __attribute__((always_inline)) inline aie::accum<acc32, 32>
+// Build a 64-wide bias accumulator (8 int32 bias values replicated to
+// 8 pixels x 8 channels) for direct mmul<8,8,8> init.
+static __attribute__((always_inline)) inline aie::accum<acc32, 64>
 make_bias_acc(const int32_t *bias_8) {
   aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
   aie::vector<int32, 16> b16 = aie::concat(b8, b8);
   aie::vector<int32, 32> b32 = aie::concat(b16, b16);
-  aie::accum<acc32, 32> a;
-  a.from_vector(b32);
+  aie::vector<int32, 64> b64 = aie::concat(b32, b32);
+  aie::accum<acc32, 64> a;
+  a.from_vector(b64);
   return a;
 }
 
@@ -63,14 +63,16 @@ static inline void cv3_compute_row(
     int8_t *inner1, int8_t *split_b, int8_t *wts, int32_t *bias,
     int8_t *silu_lut, int8_t *cv3_out,
     int input_width, int two_cp, int output_channels, int right_shift) {
-  using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+  // mmul<8,8,8>: 8 pixels per acc (vs 4 with <4,8,8>); same HW.
+  using MMUL8x8x8 = aie::mmul<8, 8, 8, int8, int8>;
+  constexpr int MMUL_M = 8;
 
   // Unsigned cast → /power-of-2 lowers to shifts.
   const int cp = (uint32_t)two_cp / 2u;
   const int ic_tiles = (uint32_t)two_cp / 8u;
   const int ic_tiles_per_src = (uint32_t)cp / 8u;
   const int oc_tiles = (uint32_t)output_channels / 8u;
-  const int x_tiles = (uint32_t)input_width / 4u;
+  const int x_tiles = (uint32_t)input_width / MMUL_M;
 
   int8_t *src_for_ic_tile[32];
   int local_ic_t_for[32];
@@ -83,29 +85,29 @@ static inline void cv3_compute_row(
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
-      MMUL4x8x8 acc;
-      acc = bias_acc;  // bias-init (no separate vec epilogue)
-      const int x_base = x_tile * 4;
+      MMUL8x8x8 acc;
+      acc = bias_acc;
+      const int x_base = x_tile * MMUL_M;
 
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         int8_t *src = src_for_ic_tile[ic_t];
         int local_ic_t = local_ic_t_for[ic_t];
 
-        alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
+        alignas(64) int8_t a_buf[64];
+        for (int p = 0; p < MMUL_M; ++p) {
           int col = x_base + p;
           int8_t *psrc = src + col * cp + local_ic_t * 8;
           for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = psrc[b];
         }
-        aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+        aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
 
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < 4; ++p) {
+      aie::vector<int8, 64> srs_v = acc.template to_vector<int8>(right_shift);
+      for (int p = 0; p < MMUL_M; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
           cv3_out[x_out * output_channels + oc_t * 8 + j] =
@@ -124,7 +126,8 @@ static inline void cv2_compute_chunk(
     int8_t *wts_chunk, int32_t *bias_full, int8_t *silu_lut, int8_t *output,
     int input_width, int c, int output_channels,
     int n_chunks, int chunk_idx, int right_shift) {
-  using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+  using MMUL8x8x8 = aie::mmul<8, 8, 8, int8, int8>;
+  constexpr int MMUL_M = 8;
 
   const int chunk_oc = (uint32_t)output_channels / (uint32_t)n_chunks;
   const int three_c = 3 * c;
@@ -134,7 +137,7 @@ static inline void cv2_compute_chunk(
   const int ic_tiles = (uint32_t)three_c / 8u;
   const int ic_tiles_per_src = (uint32_t)c / 8u;
   const int chunk_oc_tiles = (uint32_t)chunk_oc / 8u;
-  const int x_tiles = (uint32_t)input_width / 4u;
+  const int x_tiles = (uint32_t)input_width / MMUL_M;
 
   int8_t *src_for_ic_tile[48];
   int local_ic_t_for[48];
@@ -150,29 +153,29 @@ static inline void cv2_compute_chunk(
     auto bias_acc = make_bias_acc(&bias_full[oc_full_base]);
 
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
-      MMUL4x8x8 acc;
+      MMUL8x8x8 acc;
       acc = bias_acc;
-      const int x_base = x_tile * 4;
+      const int x_base = x_tile * MMUL_M;
 
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         int8_t *src = src_for_ic_tile[ic_t];
         int local_ic_t = local_ic_t_for[ic_t];
 
-        alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
+        alignas(64) int8_t a_buf[64];
+        for (int p = 0; p < MMUL_M; ++p) {
           int col = x_base + p;
           int8_t *psrc = src + col * c + local_ic_t * 8;
           for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = psrc[b];
         }
-        aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+        aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
 
         int wts_off = wts_tile_off_1x1(chunk_oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < 4; ++p) {
+      aie::vector<int8, 64> srs_v = acc.template to_vector<int8>(right_shift);
+      for (int p = 0; p < MMUL_M; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
           int oc_full = oc_full_base + j;
