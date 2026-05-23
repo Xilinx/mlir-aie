@@ -339,9 +339,11 @@ $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
 M2_M0CV1_SHAPE      := -DYOLO_C3K2_M0CV1_IN_W=128 -DYOLO_C3K2_M0CV1_IN_C=16 -DYOLO_C3K2_M0CV1_OUT_C=8
 M2_M0CV2_SKIP_SHAPE := -DYOLO_C3K2_M0CV2_SKIP_IN_W=128 -DYOLO_C3K2_M0CV2_SKIP_IN_C=8 -DYOLO_C3K2_M0CV2_SKIP_OUT_C=16
 M2_CV2_SHAPE        := -DYOLO_C3K2_CV2_IN_W=128 -DYOLO_C3K2_CV2_THREE_C=48 -DYOLO_C3K2_CV2_OUT_C=64
+M2_CV1_SHAPE        := -DYOLO_C3K2_CV1_IN_W=128 -DYOLO_C3K2_CV1_IN_C=32 -DYOLO_C3K2_CV1_OUT_C=32
 M0CV1_SHAPE_m2      := $(M2_M0CV1_SHAPE)
 M0CV2_SKIP_SHAPE_m2 := $(M2_M0CV2_SKIP_SHAPE)
 CV2_SHAPE_m2        := $(M2_CV2_SHAPE)
+CV1_SHAPE_m2        := $(M2_CV1_SHAPE)
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv1_vec.cc ; \
@@ -353,7 +355,7 @@ $(foreach blk,$(C3K2_SMALL_BLOCKS), \
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv1_split_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv1_split_vec.cc ; \
-    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_small_cv1_split_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
+    mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(CV1_SHAPE_$(blk)) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_small_cv1_split_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@))
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_cv2_concat3_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_cv2_concat3_vec.cc ; \
