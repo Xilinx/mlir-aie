@@ -114,13 +114,26 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
+#if SHAPES_ARE_CONST
+  // mmul<8,8,8>: 8 pixels per acc (vs 4); same HW instruction; halves
+  // acc invocations + epilogue calls. See pair_cv1_streamed_vec.cc.
+  using MMUL8x8x8 = aie::mmul<8, 8, 8, int8, int8>;
+  using MMUL_T = MMUL8x8x8;
+  constexpr int MMUL_M = 8;
+  constexpr int MMUL_MN = 64;
+#else
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+  using MMUL_T = MMUL4x8x8;
+  constexpr int MMUL_M = 4;
+  constexpr int MMUL_MN = 32;
+#endif
 
   int8_t *line[3] = {line0, line1, line2};
 
 #if SHAPES_ARE_CONST
+  constexpr int kXTiles8 = IN_W / 8;
 #define AIE_HINT_OC AIE_LOOP_RANGE(chunk_oc_tiles, chunk_oc_tiles)
-#define AIE_HINT_X  AIE_LOOP_RANGE(x_tiles, x_tiles)
+#define AIE_HINT_X  AIE_LOOP_RANGE(kXTiles8, kXTiles8)
 #define AIE_HINT_IC AIE_LOOP_RANGE(IN_C / 8, IN_C / 8)
 #else
 #define AIE_HINT_OC
@@ -132,21 +145,81 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int oc_full_base = oc_offset + chunk_oc_t * 8;
 
-    // Hoisted bias-init (see pair_cv1).
-    aie::accum<acc32, 32> bias_acc;
+    aie::accum<acc32, MMUL_MN> bias_acc;
     {
       aie::vector<int32, 8> b8 = aie::load_v<8>(&bias_full[oc_full_base]);
       aie::vector<int32, 16> b16 = aie::concat(b8, b8);
       aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+#if SHAPES_ARE_CONST
+      aie::vector<int32, 64> b64 = aie::concat(b32, b32);
+      bias_acc.from_vector(b64);
+#else
       bias_acc.from_vector(b32);
+#endif
     }
 
+#if SHAPES_ARE_CONST
     AIE_HINT_X
-    for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
-      MMUL4x8x8 acc;
+    for (int x_tile = 0; x_tile < kXTiles8; ++x_tile) {
+      MMUL_T acc;
       acc = bias_acc;
 
-      const int x_out_base = x_tile * 4;
+      const int x_out_base = x_tile * MMUL_M;
+      const int x_in_base = x_out_base - 1;
+
+      AIE_HINT_IC
+      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+
+          AIE_LOOP_RANGE(3, 3)
+          for (int kx = 0; kx < KW; ++kx) {
+            alignas(64) int8_t a_buf[64];
+            bool any_valid = false;
+            for (int p = 0; p < MMUL_M; ++p) {
+              int col = x_in_base + p + kx;
+              if (col < 0 || col >= IN_W) {
+                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+              } else {
+                int8_t *src = line_ptr + col * IN_C + ic_t * 8;
+                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+                any_valid = true;
+              }
+            }
+            if (!any_valid) continue;
+            aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
+
+            int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
+                                             KH, KW);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
+            acc.mac(in_a, in_b);
+          }
+        }
+      }
+
+      aie::vector<int8, 64> srs_v = acc.template to_vector<int8>(right_shift);
+      for (int p = 0; p < MMUL_M; ++p) {
+        int x_out = x_out_base + p;
+        for (int j = 0; j < 8; ++j) {
+          int oc_full = oc_full_base + j;
+          int32_t cv2silu = silu_lut[int(srs_v[p * 8 + j]) + 128];
+          int32_t y = (int32_t)skip_row[x_out * OUT_C + oc_full];
+          int32_t sum_pre = y * skip_y_mult + cv2silu * skip_cv2_mult;
+          int32_t added = banker_srs(sum_pre, skip_rsh_add);
+          if (added > I8_MAX) added = I8_MAX;
+          if (added < I8_MIN) added = I8_MIN;
+          output[x_out * OUT_C + oc_full] = (int8_t)added;
+        }
+      }
+    }
+#else
+    AIE_HINT_X
+    for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
+      MMUL_T acc;
+      acc = bias_acc;
+
+      const int x_out_base = x_tile * MMUL_M;
       const int x_in_base = x_out_base - 1;
 
       AIE_HINT_IC
@@ -159,7 +232,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
           for (int kx = 0; kx < KW; ++kx) {
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;
-            for (int p = 0; p < 4; ++p) {
+            for (int p = 0; p < MMUL_M; ++p) {
               int col = x_in_base + p + kx;
               if (col < 0 || col >= IN_W) {
                 for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
@@ -180,9 +253,8 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
         }
       }
 
-      // Vec bias+SRS via to_vector<int8>(rs); LUT + weighted skip-add scalar.
-      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < 4; ++p) {
+      aie::vector<int8, MMUL_MN> srs_v = acc.template to_vector<int8>(right_shift);
+      for (int p = 0; p < MMUL_M; ++p) {
         int x_out = x_out_base + p;
         for (int j = 0; j < 8; ++j) {
           int oc_full = oc_full_base + j;
@@ -196,6 +268,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
         }
       }
     }
+#endif
 
     // Tail scalar fallback.
     for (int x = x_tiles * 4; x < output_width; ++x) {
