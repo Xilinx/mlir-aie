@@ -1356,7 +1356,15 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
     n_cv2_chunks = 8 if _stream_outer else 1
 
     top_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=4)
-    bot_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=4)
+    # bot_fifo is fanned out to TWO consumers (m_0_split's 3x3 sliding window
+    # AcquireGE(3) AND cv3_cv2's 1-row read for the concat). Each .cons() asks
+    # for depth=6; the producer also needs depth=6 so it can stay 6 rows
+    # ahead while one consumer waits on the other -- otherwise the trailing
+    # consumer's window starves. Same shape as the c3k2_small fix
+    # (commit 79343963, 4 -> 6) and depends on the IRON ObjectFifo depth-
+    # collapse fix (upstream PR #3096) for the per-handle depth to actually
+    # reach the lowering instead of being auto-minimized to ping-pong.
+    bot_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=6)
     # m8 (_stream_outer): cv1 writes bot to two separate fifos to avoid
     # fanout — bot_fifo feeds m_0_split via DMA, bot_to_cv2_fifo feeds cv2
     # via shared mem from cv1's adjacent tile. Eliminates the fanout that

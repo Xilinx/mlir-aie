@@ -58,20 +58,24 @@ below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 
 | Chain | N=1 wall | N=1 fps | N=15 per-sample | N=15 fps | |
 |---|---:|---:|---:|---:|:--|
-| m0                     | 13.14 ms | 76.08 | 13.01 ms | **76.88** | ✓ |
-| m0..m1                 | 13.14 ms | 76.13 | 13.02 ms | **76.83** | ✓ |
-| **m0..m1..m2**         | **16.27 ms** | **61.47** | **15.74 ms** | **63.55** | ✓ (was 32.32 N=15 pre-m2-arc) |
-| m0..m1..m2..m3         | 16.40 ms | 60.99 | 15.74 ms | **63.52** | ✓ |
-| **m0..m1..m2..m3..m4** | **17.13 ms** | 58.39 | **15.79 ms** | **63.33** | ✓ (was ≈45 N=15 pre-m4-arc) |
-| m0..m1..m2..m3..m4..m5 | 17.33 ms | 57.72 | 15.81 ms | **63.26** | ✓ |
+| m0                     | 13.05 ms | 76.62 | 12.95 ms | **77.25** | ✓ |
+| m0..m1                 | 13.12 ms | 76.20 | 12.95 ms | **77.22** | ✓ |
+| **m0..m1..m2**         | **14.60 ms** | **68.47** | **14.01 ms** | **71.39** | ✓ (was 32.32 N=15 pre-m2-arc) |
+| m0..m1..m2..m3         | 14.72 ms | 67.94 | 14.03 ms | **71.28** | ✓ |
+| **m0..m1..m2..m3..m4** | **15.43 ms** | **64.80** | **14.06 ms** | **71.11** | ✓ (was ≈45 N=15 pre-m4-arc) |
+| m0..m1..m2..m3..m4..m5 | 15.59 ms | 64.13 | 14.08 ms | **71.05** | ✓ |
+| **m0..m6**             | **17.99 ms** | 55.60 | **14.23 ms** | **70.26** | ✓ (was hanging pre-fix) |
 
-Rows marked ✓ re-measured post-m4 deep-opt. **N=15 stays above 60 fps
-through the full m0..m5 prefix.** N=1 dips just below 60 at m0..m4
-(~17 ms wall = 58.4 fps) — single-dispatch overhead adds ~1.5 ms vs the
-batched N=15 per-sample. m4 and m5 each add only ≤0.2 ms to the chain
-despite 13.3 ms / 7.0 ms standalone — heavily overlapped with the
-pipeline. m6+ rows pending (m6 standalone is broken at this commit;
-likely blocks full m0..m10 chain).
+Rows marked ✓ re-measured post-IRON-depth-collapse fix. **Every chain
+prefix m0..m6 stays above 60 fps at N=15, and m0..m4 holds 60 even at
+N=1.** m6 was hanging at runtime before the upstream IRON ObjectFifo
+depth-collapse fix (PR #3096) was cherry-picked into this branch —
+multi-consumer fanout fifos were silently being sized to ping-pong
+(2 buffers) instead of the declared depth, deadlocking c3k2_heavy's
+bot_fifo broadcast to m_0_split and cv3_cv2. After the fix, m6 lands
+at 14.94 ms / 66.9 fps standalone, and adds only ~0.15 ms per-sample
+to the chain despite that — heavily overlapped with the m9-equivalent
+back half of the pipeline. m7+ rows pending re-measurement.
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 Rows marked ✓ have been re-measured at the current commit; the rest
@@ -79,13 +83,13 @@ are pre-validation snapshots pending re-measurement.
 
 | Block | Topology | Median (ms) | fps | |
 |---:|---|---:|---:|:--|
-| m0  | conv_stride stem               | 13.10 | 76.3  | ✓ |
-| m1  | conv_stride                    |  8.63 | 115.8 | ✓ |
-| **m2**  | **c3k2_small** (deep-opt'd) | **15.99** | **62.5** | ✓ |
-| m3  | conv_stride (chunked)          |  8.02 | 124.7 | ✓ |
-| m4  | c3k2_small (deep-opt'd)        | 13.34 | 75.0  | ✓ |
-| m5  | conv_stride (chunked)          |  6.97 | 143.5 | |
-| m6  | c3k2_heavy                     | 15.10 | 66.2  | |
+| m0  | conv_stride stem               | 13.23 | 76.4  | ✓ |
+| m1  | conv_stride                    |  8.63 | 116.1 | ✓ |
+| **m2**  | **c3k2_small** (deep-opt'd) | **14.33** | **69.7** | ✓ |
+| m3  | conv_stride (chunked)          |  8.08 | 124.9 | ✓ |
+| m4  | c3k2_small (deep-opt'd)        | 13.29 | 75.2  | ✓ |
+| m5  | conv_stride (chunked)          |  7.02 | 139.5 | ✓ |
+| **m6**  | **c3k2_heavy**             | **14.94** | **66.9** | ✓ |
 | m7  | conv_stride (chunked)          |  4.78 | 209.2 | |
 | m8  | c3k2_heavy (2-tile megakernel) | 28.19 | 35.5  | |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
