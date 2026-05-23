@@ -20,6 +20,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+
 #include "../helper.h"
 #include "common.h"
 
@@ -154,8 +155,7 @@ int main(int argc, const char *argv[]) {
   std::vector<test_utils::bfloat16_t> AVec(A_SIZE);
   for (int i = 0; i < A_SIZE; i++) {
     // Limiting to 16 to avoid precision loss issues
-    AVec[i] =
-        test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
+    AVec[i] = test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
     // AVec[i] = i;
     // if (i % N == i / N) {
     //   AVec[i] = 1.0;
@@ -169,8 +169,7 @@ int main(int argc, const char *argv[]) {
   std::vector<test_utils::bfloat16_t> BVec(B_SIZE);
   for (int i = 0; i < B_SIZE; i++) {
     // Limiting to 16 to avoid precision loss issues
-    BVec[i] =
-        test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
+    BVec[i] = test_utils::bfloat16_from_float(static_cast<float>((rand() % 8) - 4));
     // Diagonal:
     // if (i % N == i / N) {
     //   BVec[i] = 1.0;
@@ -259,14 +258,13 @@ int main(int argc, const char *argv[]) {
       }
       auto vstart = std::chrono::system_clock::now();
       if (do_verify_stochastic) {
-        errors = matmul_common::verify_stochastic<test_utils::bfloat16_t,
-                                                  test_utils::bfloat16_t,
-                                                  test_utils::bfloat16_t>(
-            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
-            abs_tol, rel_tol, true);
+        errors =
+            matmul_common::verify_stochastic<test_utils::bfloat16_t, test_utils::bfloat16_t,
+                                             test_utils::bfloat16_t>(
+                M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples,
+                verbosity, abs_tol, rel_tol, true);
       } else {
-        errors = matmul_common::verify<test_utils::bfloat16_t,
-                                       test_utils::bfloat16_t,
+        errors = matmul_common::verify<test_utils::bfloat16_t, test_utils::bfloat16_t,
                                        test_utils::bfloat16_t>(
             M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol, true);
       }

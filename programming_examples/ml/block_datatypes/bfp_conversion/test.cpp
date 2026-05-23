@@ -27,6 +27,7 @@
 #include "../helper.h"
 #include "common.h"
 
+
 int main(int argc, const char *argv[]) {
 
   // ------------------------------------------------------
@@ -132,12 +133,10 @@ int main(int argc, const char *argv[]) {
   test_utils::bfloat16_t bfloatA[numberFloats];
   test_utils::bfloat16_t bfloatB[numberFloats];
 
-  std::ranges::transform(floatA, bfloatA, [](float f) {
-    return test_utils::bfloat16_from_float(f);
-  });
-  std::ranges::transform(floatB, bfloatB, [](float f) {
-    return test_utils::bfloat16_from_float(f);
-  });
+  std::ranges::transform(
+      floatA, bfloatA, [](float f) { return test_utils::bfloat16_from_float(f); });
+  std::ranges::transform(
+      floatB, bfloatB, [](float f) { return test_utils::bfloat16_from_float(f); });
 
   // ------------------------------------------------------
   // Write data into buffers

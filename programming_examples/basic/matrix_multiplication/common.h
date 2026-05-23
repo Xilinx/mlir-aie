@@ -110,8 +110,7 @@ template <typename T, typename Tacc>
 static inline T scalar_from_accum(Tacc value) {
   auto arithmetic_value = scalar_to_arithmetic(value);
   if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
-    return test_utils::bfloat16_from_float(
-        static_cast<float>(arithmetic_value));
+    return test_utils::bfloat16_from_float(static_cast<float>(arithmetic_value));
   } else {
     return static_cast<T>(arithmetic_value);
   }
@@ -165,11 +164,13 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
       Tacc running_sum = zero_accum<Tacc>();
       for (int k = 0; k < K; k++) {
         if (!b_col_maj) {
-          running_sum = accum_add_product<Tacc>(running_sum, A[row * K + k],
-                                                B[k * N + col]);
+          running_sum =
+              accum_add_product<Tacc>(running_sum, A[row * K + k],
+                                      B[k * N + col]);
         } else {
-          running_sum = accum_add_product<Tacc>(running_sum, A[row * K + k],
-                                                B[k + col * K]);
+          running_sum =
+              accum_add_product<Tacc>(running_sum, A[row * K + k],
+                                      B[k + col * K]);
         }
       }
       if (!c_col_maj) {
@@ -187,11 +188,11 @@ Tout mul_acc(int M, int N, int K, int row, int col, const std::vector<Tin> A,
   Tacc running_sum = zero_accum<Tacc>();
   for (int k = 0; k < K; k++) {
     if (!b_col_maj) {
-      running_sum =
-          accum_add_product<Tacc>(running_sum, A[row * K + k], B[k * N + col]);
+      running_sum = accum_add_product<Tacc>(running_sum, A[row * K + k],
+                                            B[k * N + col]);
     } else {
-      running_sum =
-          accum_add_product<Tacc>(running_sum, A[row * K + k], B[k + col * K]);
+      running_sum = accum_add_product<Tacc>(running_sum, A[row * K + k],
+                                            B[k + col * K]);
     }
   }
   return scalar_from_accum<Tout>(running_sum);
@@ -427,9 +428,9 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
         }
         float actual_value = scalar_to_float(error->actual);
         float expected_value = scalar_to_float(error->expected);
-        float rel_error =
-            std::abs(actual_value - expected_value) /
-            std::max(std::abs(actual_value), std::abs(expected_value));
+        float rel_error = std::abs(actual_value - expected_value) /
+                          std::max(std::abs(actual_value),
+                                   std::abs(expected_value));
         if (rel_error > max_rel_error) {
           max_rel_error = rel_error;
           max_error = *error;
@@ -497,9 +498,9 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
       }
       float actual_value = scalar_to_float(error->actual);
       float expected_value = scalar_to_float(error->expected);
-      float rel_error =
-          std::abs(actual_value - expected_value) /
-          std::max(std::abs(actual_value), std::abs(expected_value));
+      float rel_error = std::abs(actual_value - expected_value) /
+                        std::max(std::abs(actual_value),
+                                 std::abs(expected_value));
       if (rel_error > max_rel_error) {
         max_rel_error = rel_error;
       }

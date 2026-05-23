@@ -29,7 +29,6 @@
 
 // SiLU reference implementation.
 test_utils::bfloat16_t silu_bf16(test_utils::bfloat16_t input) {
-  // Round each bfloat16 step to match the kernel more closely.
   const test_utils::bfloat16_t k0_5 = test_utils::bfloat16_from_float(0.5f);
   const test_utils::bfloat16_t k1 = test_utils::bfloat16_from_float(1.0f);
 
@@ -178,8 +177,7 @@ int main(int argc, const char *argv[]) {
   std::cout << "Latency (us): " << npu_time << std::endl;
   std::cout << std::endl;
 
-  double total_bytes =
-      2.0 * N * sizeof(test_utils::bfloat16_t); // input and output
+  double total_bytes = 2.0 * N * sizeof(test_utils::bfloat16_t); // input and output
   double bandwidth_GBps = total_bytes / (npu_time * 1e-6) / 1e9;
   std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s"
             << std::endl;

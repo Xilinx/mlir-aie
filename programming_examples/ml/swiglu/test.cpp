@@ -29,9 +29,8 @@
 
 // SwiGLU reference implementation.
 test_utils::bfloat16_t swiglu_bf16(test_utils::bfloat16_t input,
-                                   test_utils::bfloat16_t w1,
-                                   test_utils::bfloat16_t w2) {
-  // Round each bfloat16 step to match the kernel more closely.
+                                  test_utils::bfloat16_t w1,
+                                  test_utils::bfloat16_t w2) {
   const test_utils::bfloat16_t k0_5 = test_utils::bfloat16_from_float(0.5f);
   const test_utils::bfloat16_t k1 = test_utils::bfloat16_from_float(1.0f);
 
@@ -217,8 +216,7 @@ int main(int argc, const char *argv[]) {
   std::cout << "Latency (us): " << npu_time << std::endl;
   std::cout << std::endl;
 
-  double total_bytes =
-      2.0 * N * sizeof(test_utils::bfloat16_t); // input and output
+  double total_bytes = 2.0 * N * sizeof(test_utils::bfloat16_t); // input and output
   double bandwidth_GBps = total_bytes / (npu_time * 1e-6) / 1e9;
   std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s"
             << std::endl;
