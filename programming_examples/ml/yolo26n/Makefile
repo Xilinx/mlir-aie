@@ -219,7 +219,7 @@ $(BUILD)/%.o: $(SRCDIR)/kernels/%.cc
 # kernel, gated by NOOP_BLOCK from the env.
 $(BUILD)/yolo_m9_%.o: $(SRCDIR)/kernels/yolo_m9_%.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_$*,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 $(BUILD)/yolo_m10_%.o: $(SRCDIR)/kernels/yolo_m10_%.cc
 	mkdir -p $(BUILD)
@@ -263,49 +263,49 @@ M9_CV1_SHAPE := -DYOLO_M9_CV1_IN_W=16 -DYOLO_M9_CV1_IN_C=256 \
 $(BUILD)/yolo_m9_cv1_split.o: \
     $(SRCDIR)/kernels/yolo_m9_cv1_split_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV1_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV1_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_cv1_split,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 $(BUILD)/yolo_m9_qkv.o: \
     $(SRCDIR)/kernels/yolo_m9_qkv_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_qkv,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_FFN0_SHAPE := -DYOLO_M9_FFN0_IN_W=16 -DYOLO_M9_FFN0_IN_C=128 \
                  -DYOLO_M9_FFN0_OUT_C=256 -DYOLO_M9_FFN0_N_CHUNKS=4
 $(BUILD)/yolo_m9_ffn_0_silu_row.o: \
     $(SRCDIR)/kernels/yolo_m9_ffn_0_silu_row_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_FFN0_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_FFN0_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_ffn_0_silu_row,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 $(BUILD)/yolo_m9_proj_skip_row.o: \
     $(SRCDIR)/kernels/yolo_m9_proj_skip_row_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_proj_skip_row,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_FFN1_SHAPE := -DYOLO_M9_FFN1_IN_W=16 -DYOLO_M9_FFN1_IN_C=256 -DYOLO_M9_FFN1_OUT_C=128
 $(BUILD)/yolo_m9_ffn_1_skip_row.o: \
     $(SRCDIR)/kernels/yolo_m9_ffn_1_skip_row_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_FFN1_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_FFN1_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_ffn_1_skip_row,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_CV2_SHAPE := -DYOLO_M9_CV2_IN_W=16 -DYOLO_M9_CV2_C_HALF=128 \
                 -DYOLO_M9_CV2_OUT_C=256 -DYOLO_M9_CV2_N_CHUNKS=8
 $(BUILD)/yolo_m9_cv2_concat2_streamed.o: \
     $(SRCDIR)/kernels/yolo_m9_cv2_concat2_streamed_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV2_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV2_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_cv2_concat2_streamed,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_ATTN_SCORE_SHAPE := -DYOLO_M9_QK_KD=32 -DYOLO_M9_QK_N=256
 $(BUILD)/yolo_m9_attn_score_fused.o: \
     $(SRCDIR)/kernels/yolo_m9_attn_score_fused_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_ATTN_SCORE_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_ATTN_SCORE_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_attn_score_fused,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_SV_SHAPE := -DYOLO_M9_SV_HEAD_DIM=64 -DYOLO_M9_SV_N=256
 $(BUILD)/yolo_m9_sv_row.o: \
     $(SRCDIR)/kernels/yolo_m9_sv_row_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_SV_SHAPE) $(NOOP_FLAGS_m9) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_SV_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_sv_row,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 # c3k2_heavy streamed inner-pair kernels (m8 megakernel: shared symbol
 # for both pair0 and pair1 — they run on different tiles with different
