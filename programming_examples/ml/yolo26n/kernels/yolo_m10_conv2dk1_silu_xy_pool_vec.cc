@@ -58,28 +58,44 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
 #endif
   event0();
 
-  const int32_t chunk_oc = expand_c / n_splits;
+  // Hardcoded for m10 call site (in_w=16, in_c=256, expand_c=1280, N=16).
+  // Original had `expand_c / n_splits` as runtime signed divide → __divsi3
+  // call on tile (2,2). Constexpr lowers all trip counts to immediates.
+  (void)input_width; (void)input_channels; (void)expand_c; (void)n_splits;
+  constexpr int32_t chunk_oc = 80;       // expand_c / n_splits = 1280/16
+  constexpr int ic_tiles = 32;           // input_channels / 8 = 256/8
+  constexpr int chunk_oc_tiles = 10;     // chunk_oc / 8 = 80/8
+  constexpr int x_tiles = 4;             // input_width / 4 = 16/4
   const int32_t oc_offset = wi * chunk_oc;
 
   if (yi == 0 && wi == 0) {
-    for (int i = 0; i < expand_c; i++) accum[i] = 0;
+    for (int i = 0; i < 1280; i++) accum[i] = 0;
   }
 
-  const int ic_tiles = input_channels / 8;
-  const int chunk_oc_tiles = chunk_oc / 8;
-  const int x_tiles = input_width / 4;
-
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs (round-half-to-even). Lets us use
+  // vec to_vector<int8>(rs) for SRS+saturate without LSB drift vs ORT.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     int32_t row_sums[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
+    // Bias accumulator: 8 int32 bias values replicated to 4 pixels × 8 ch.
+    // Init mmul with this instead of zeros — to_vector<int8>(rs) then
+    // directly emits the bias-added, SRS'd, saturated i8 result.
+    aie::accum<acc32, 32> bias_acc;
+    {
+      aie::vector<int32, 8>  b8  = aie::load_v<8>(&bias_full[oc_offset + chunk_oc_t * 8]);
+      aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+      aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+      bias_acc.from_vector(b32);
+    }
+
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = bias_acc;
 
       const int x_base = x_tile * 4;
 
@@ -97,17 +113,13 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
-      // SRS + clamp + LUT for 4 spatial positions x 8 oc; accumulate into
-      // per-oc row_sums.
+      // Vec SRS + saturate → 32 i8 values (4 pos × 8 oc). Then scalar LUT
+      // gather + sum into row_sums[8]. The LUT lookup is per-element scalar
+      // (silu_lut[sr+128]) but the SRS+clamp chain is now one vec op.
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
       for (int p = 0; p < 4; ++p) {
         for (int j = 0; j < 8; ++j) {
-          int chunk_oc_full = chunk_oc_t * 8 + j;
-          int32_t s = acc_vec[p * 8 + j] + bias_full[oc_offset + chunk_oc_full];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
-          row_sums[j] += (int32_t)silu_lut[sr + 128];
+          row_sums[j] += (int32_t)silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
