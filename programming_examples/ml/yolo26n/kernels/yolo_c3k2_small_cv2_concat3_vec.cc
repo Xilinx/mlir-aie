@@ -99,25 +99,25 @@ write_x_tile_result(const aie::vector<int32, 32> &acc_vec,
   }
 }
 
-// Vectorized epilogue: bias add as 32-wide int32 vector op, SRS+saturate
-// via the accumulator's to_vector<int8>(rs). LUT lookup stays scalar
-// (no SIMD gather for int8 LUT on AIE2P). conv_even rounding mode matches
-// the scalar banker_srs used by the runtime-fallback tail.
+// 8 int32 biases -> 32-wide acc<acc32> seed.
+static __attribute__((always_inline)) inline aie::accum<acc32, 32>
+make_bias_acc(const int32_t *bias_8) {
+  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+  aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+  aie::accum<acc32, 32> a;
+  a.from_vector(b32);
+  return a;
+}
+
+// Vectorized epilogue: acc is bias-seeded so to_vector<int8>(rs) emits
+// bias-added + SRS'd + saturated i8 in one vec op. Scalar LUT lookup
+// (no SIMD int8 LUT gather on AIE2P). conv_even matches banker_srs.
 static __attribute__((always_inline)) inline void
 write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc,
-                        int32_t *bias, int8_t *silu_lut, int8_t *output,
+                        int8_t *silu_lut, int8_t *output,
                         int oc_t, int out_c, int x_out_base, int32_t rs) {
-  aie::vector<int32, 8>  bias_v8  = aie::load_v<8>(&bias[oc_t * 8]);
-  aie::vector<int32, 16> bias_v16 = aie::concat(bias_v8, bias_v8);
-  aie::vector<int32, 32> bias_v32 = aie::concat(bias_v16, bias_v16);
-
-  aie::vector<int32, 32> sum_v = acc.template to_vector<int32>();
-  sum_v = aie::add(sum_v, bias_v32);
-
-  aie::accum<acc32, 32> sum_acc;
-  sum_acc.from_vector(sum_v);
-  aie::vector<int8, 32> result = sum_acc.template to_vector<int8>(rs);
-
+  aie::vector<int8, 32> result = acc.template to_vector<int8>(rs);
   for (int p = 0; p < 4; ++p) {
     int x_out = x_out_base + p;
     for (int j = 0; j < 8; ++j) {
@@ -178,6 +178,8 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   }
 
   for (int oc_t = 0; oc_t < kOcTiles; ++oc_t) {
+    auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
+
     // --- 2X x_pair fold: 2 accs per x_pair, all macs back-to-back so
     //     peano can software-pipeline the inner ic_t reduction. ----------
     AIE_LOOP_RANGE(kXPairs, kXPairs)
@@ -188,8 +190,8 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
       const int x_in_base1  = x_in_base0 + 4;
 
       MMUL4x8x8 acc0, acc1;
-      acc0 = aie::zeros<acc32, 32>();
-      acc1 = aie::zeros<acc32, 32>();
+      acc0 = bias_acc;
+      acc1 = bias_acc;
 
       alignas(32) int8_t a_buf0[32], a_buf1[32];
 
@@ -207,14 +209,14 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
         acc1.mac(in_a1, in_b);
       }
 
-      write_x_tile_result_vec(acc0, bias, silu_lut, output, oc_t, OUT_C, x_out_base + 0, right_shift);
-      write_x_tile_result_vec(acc1, bias, silu_lut, output, oc_t, OUT_C, x_out_base + 4, right_shift);
+      write_x_tile_result_vec(acc0, silu_lut, output, oc_t, OUT_C, x_out_base + 0, right_shift);
+      write_x_tile_result_vec(acc1, silu_lut, output, oc_t, OUT_C, x_out_base + 4, right_shift);
     }
 
     // --- x_tile tail ---------------------------------------------------
     for (int x_tile = kXPairTailStart; x_tile < kXTiles; ++x_tile) {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = bias_acc;
       const int x_out_base = x_tile * 4;
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
         int8_t *src    = src_for_ic_tile[ic_t];
@@ -226,7 +228,7 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a, in_b);
       }
-      write_x_tile_result_vec(acc, bias, silu_lut, output, oc_t, OUT_C, x_out_base, right_shift);
+      write_x_tile_result_vec(acc, silu_lut, output, oc_t, OUT_C, x_out_base, right_shift);
     }
   }
 #else
