@@ -129,23 +129,31 @@ static __attribute__((always_inline)) inline void gather_edge(
   }
 }
 
-// Per-OC×2 epilog: bias + SRS + clip + SiLU LUT for 8 lanes.
+// Per-OC×2 bias accumulator helper: 8 int32 biases → 32-wide acc<acc32>
+// (4 pix × 8 ch). Used to seed the mmul so to_vector<int8>(rs) does
+// bias+SRS+saturate in one vec op.
+static __attribute__((always_inline)) inline aie::accum<acc32, 32>
+make_bias_acc(const int32_t *__restrict bias_8) {
+  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+  aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+  aie::accum<acc32, 32> a;
+  a.from_vector(b32);
+  return a;
+}
+
+// Per-OC×2 epilog: SiLU LUT for 8 lanes (SRS+clamp+bias already collapsed
+// into the vec to_vector<int8>(rs) call at the call site).
 static __attribute__((always_inline)) inline void emit_8_lanes(
-    aie::vector<int32, 32> &acc_vec,
-    const int32_t *__restrict bias, const int8_t *__restrict silu_lut,
-    int8_t *__restrict output, int oc_full_base, int x_out_base,
-    int right_shift) {
+    aie::vector<int8, 32> srs_v, const int8_t *__restrict silu_lut,
+    int8_t *__restrict output, int oc_full_base, int x_out_base) {
   AIE_LOOP_UNROLL_FULL
   for (int p = 0; p < 4; ++p) {
     int x_out = x_out_base + p;
     int8_t *__restrict row_dst = output + x_out * kOutC + oc_full_base;
     AIE_LOOP_UNROLL_FULL
     for (int j = 0; j < 8; ++j) {
-      int32_t s = acc_vec[p * 8 + j] + bias[oc_full_base + j];
-      int32_t sr = banker_srs(s, right_shift);
-      if (sr > I8_MAX) sr = I8_MAX;
-      if (sr < I8_MIN) sr = I8_MIN;
-      row_dst[j] = silu_lut[sr + 128];
+      row_dst[j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
     }
   }
 }
@@ -170,7 +178,10 @@ yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
   const int ky_end = skip_bot ? 2 : 3;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs (round-half-to-even). Required
+  // for to_vector<int8>(rs) to produce the same bit pattern as the
+  // scalar reference path.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   const int8_t *__restrict line[3] = {line0, line1, line2};
 
@@ -186,13 +197,18 @@ yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
     const int oc_full_base_a = (oc_pair * 2 + 0) * 8;
     const int oc_full_base_b = (oc_pair * 2 + 1) * 8;
 
+    // Bias seeds for the two oc-tiles in this pair; reused across all
+    // x_tile iters of this oc_pair.
+    auto bias_acc_a = make_bias_acc(&bias[oc_full_base_a]);
+    auto bias_acc_b = make_bias_acc(&bias[oc_full_base_b]);
+
     // ----- Left edge: x_tile=0, x_in cols ∈ {-1, 1, 3, 5} + kx. kx=0
     // gives col=-1 → zeroed; kx in {1,2} gives all valid. Only this
     // tile needs the bounds check.
     {
       MMUL4x8x8 acc_a, acc_b;
-      acc_a = aie::zeros<acc32, 32>();
-      acc_b = aie::zeros<acc32, 32>();
+      acc_a = bias_acc_a;
+      acc_b = bias_acc_b;
 
       const int x_out_base = 0;
       const int x_in_base = -1;
@@ -213,20 +229,18 @@ yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
         }
       }
 
-      aie::vector<int32, 32> acc_vec_a = acc_a.template to_vector<int32>();
-      aie::vector<int32, 32> acc_vec_b = acc_b.template to_vector<int32>();
-      emit_8_lanes(acc_vec_a, bias, silu_lut, output, oc_full_base_a,
-                   x_out_base, right_shift);
-      emit_8_lanes(acc_vec_b, bias, silu_lut, output, oc_full_base_b,
-                   x_out_base, right_shift);
+      aie::vector<int8, 32> srs_a = acc_a.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> srs_b = acc_b.template to_vector<int8>(right_shift);
+      emit_8_lanes(srs_a, silu_lut, output, oc_full_base_a, x_out_base);
+      emit_8_lanes(srs_b, silu_lut, output, oc_full_base_b, x_out_base);
     }
 
     // ----- Interior: x_tile ∈ [1, kXTiles). Branch-free gather. ----
     AIE_LOOP_RANGE(kXTiles - 1, kXTiles - 1)
     for (int x_tile = 1; x_tile < kXTiles; ++x_tile) {
       MMUL4x8x8 acc_a, acc_b;
-      acc_a = aie::zeros<acc32, 32>();
-      acc_b = aie::zeros<acc32, 32>();
+      acc_a = bias_acc_a;
+      acc_b = bias_acc_b;
 
       const int x_out_base = x_tile * 4;
       const int x_in_base = 2 * x_out_base - 1;
@@ -245,12 +259,10 @@ yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
         }
       }
 
-      aie::vector<int32, 32> acc_vec_a = acc_a.template to_vector<int32>();
-      aie::vector<int32, 32> acc_vec_b = acc_b.template to_vector<int32>();
-      emit_8_lanes(acc_vec_a, bias, silu_lut, output, oc_full_base_a,
-                   x_out_base, right_shift);
-      emit_8_lanes(acc_vec_b, bias, silu_lut, output, oc_full_base_b,
-                   x_out_base, right_shift);
+      aie::vector<int8, 32> srs_a = acc_a.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> srs_b = acc_b.template to_vector<int8>(right_shift);
+      emit_8_lanes(srs_a, silu_lut, output, oc_full_base_a, x_out_base);
+      emit_8_lanes(srs_b, silu_lut, output, oc_full_base_b, x_out_base);
     }
   }
 
