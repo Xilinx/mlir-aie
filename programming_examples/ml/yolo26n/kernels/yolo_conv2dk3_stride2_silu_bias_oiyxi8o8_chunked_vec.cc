@@ -1,4 +1,5 @@
-//===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc -----*- C++ -*-===//
+//===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc -----*- C++
+//-*-===//
 //
 // Vectorized chunked variant of the OIYXI8O8 stride-2 conv. Same math as
 // the non-chunked vec kernel (yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc),
@@ -59,32 +60,35 @@
 #define YOLO_OC_PER_CHUNK 16
 #endif
 
-static constexpr int kInputWidth     = YOLO_IN_W;
-static constexpr int kInputChannels  = YOLO_IN_C;
+static constexpr int kInputWidth = YOLO_IN_W;
+static constexpr int kInputChannels = YOLO_IN_C;
 static constexpr int kOutputChannels = YOLO_OUT_C;
-static constexpr int kKernelW        = 3;
-static constexpr int kKernelH        = 3;
-static constexpr int kOcPerChunk     = YOLO_OC_PER_CHUNK;
-static constexpr int kInteriorMode   = YOLO_INTERIOR_MODE;
+static constexpr int kKernelW = 3;
+static constexpr int kKernelH = 3;
+static constexpr int kOcPerChunk = YOLO_OC_PER_CHUNK;
+static constexpr int kInteriorMode = YOLO_INTERIOR_MODE;
 
-static constexpr int kIcTiles        = kInputChannels / 8;
-static constexpr int kOutputWidth    = kInputWidth / 2;
-static constexpr int kXTiles         = kOutputWidth / 4;
-static constexpr int kChunkOcTiles   = kOcPerChunk / 8;
-static constexpr bool kOcPair        = (kChunkOcTiles == 2);
+static constexpr int kIcTiles = kInputChannels / 8;
+static constexpr int kOutputWidth = kInputWidth / 2;
+static constexpr int kXTiles = kOutputWidth / 4;
+static constexpr int kChunkOcTiles = kOcPerChunk / 8;
+static constexpr bool kOcPair = (kChunkOcTiles == 2);
 
 static_assert(kInputChannels % 8 == 0, "YOLO_IN_C must be a multiple of 8");
-static_assert(kOcPerChunk % 8 == 0,    "YOLO_OC_PER_CHUNK must be a multiple of 8");
-static_assert(kInputWidth >= 8 && (kInputWidth % 8 == 0),
-              "YOLO_IN_W must be a multiple of 8 (output_width/4 = x_tiles ≥ 1)");
+static_assert(kOcPerChunk % 8 == 0,
+              "YOLO_OC_PER_CHUNK must be a multiple of 8");
+static_assert(
+    kInputWidth >= 8 && (kInputWidth % 8 == 0),
+    "YOLO_IN_W must be a multiple of 8 (output_width/4 = x_tiles ≥ 1)");
 static_assert(kInteriorMode == 1 || kInteriorMode == 2,
               "YOLO_INTERIOR_MODE must be 1 (OC×2 single-X) or 2 (2X×2OC)");
 // Both interior modes rely on the OC×2 fold (two weight banks per call) for
 // their epilogue + addressing. The current per-block builds (m3/m5/m7) all
 // pass oc_per_chunk=16 → chunk_oc_tiles=2. Bump YOLO_OC_PER_CHUNK and add a
 // non-OC-paired variant if a future caller ever needs a different cadence.
-static_assert(kOcPair,
-              "kOcPair (chunk_oc_tiles == 2) is required; pass YOLO_OC_PER_CHUNK=16");
+static_assert(
+    kOcPair,
+    "kOcPair (chunk_oc_tiles == 2) is required; pass YOLO_OC_PER_CHUNK=16");
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -95,49 +99,44 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 
 // Chunk-local OIYXI8O8 weight base offset for (chunk_oc_tile, ic_tile, ky, kx).
 // chunk_oc_tile = (chunk-local oc_full) / 8, in [0..oc_count/8).
-static inline int wts_chunk_tile_off(int chunk_oc_tile, int ic_tile, int ky, int kx,
-                                     int ic_tiles, int kH, int kW) {
+static inline int wts_chunk_tile_off(int chunk_oc_tile, int ic_tile, int ky,
+                                     int kx, int ic_tiles, int kH, int kW) {
   return (((chunk_oc_tile * ic_tiles + ic_tile) * kH + ky) * kW + kx) << 6;
 }
 
 // Reference scalar weight index (tail path).
-static inline int wts_chunk_idx_oiyxi8o8(int chunk_oc_full, int ic_full,
-                                          int ky, int kx,
-                                          int in_c, int kH, int kW) {
+static inline int wts_chunk_idx_oiyxi8o8(int chunk_oc_full, int ic_full, int ky,
+                                         int kx, int in_c, int kH, int kW) {
   int oc_t = chunk_oc_full >> 3;
   int oc_i = chunk_oc_full & 7;
   int ic_t = ic_full >> 3;
   int ic_i = ic_full & 7;
-  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 + oc_i;
+  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 +
+         oc_i;
 }
 
-static void
-yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts_chunk, int32_t *bias, int8_t *silu_lut, int8_t *output,
-    const int32_t /*input_width*/,        // shape-defined; arg kept for ABI
-    const int32_t /*input_channels*/,
-    const int32_t /*output_channels*/,
-    const int32_t /*kernel_width*/,
-    const int32_t /*kernel_height*/,
-    const int32_t border,
-    const int32_t right_shift,
-    const int32_t oc_offset,
+static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts_chunk,
+    int32_t *bias, int8_t *silu_lut, int8_t *output,
+    const int32_t /*input_width*/, // shape-defined; arg kept for ABI
+    const int32_t /*input_channels*/, const int32_t /*output_channels*/,
+    const int32_t /*kernel_width*/, const int32_t /*kernel_height*/,
+    const int32_t border, const int32_t right_shift, const int32_t oc_offset,
     const int32_t /*oc_count*/) {
   event0();
 
   // Shape constants live at file scope (kInputWidth, kInputChannels, ...).
   // Only `border`, `right_shift`, `oc_offset` remain runtime — they vary
   // per-call within a sample.
-  constexpr int32_t input_width      = kInputWidth;
-  constexpr int     input_channels   = kInputChannels;
-  constexpr int     output_channels  = kOutputChannels;
-  constexpr int     kernel_width     = kKernelW;
-  constexpr int     kernel_height    = kKernelH;
-  constexpr int     ic_tiles         = kIcTiles;
-  constexpr int     chunk_oc_tiles   = kChunkOcTiles;
-  constexpr int     output_width     = kOutputWidth;
-  constexpr int     x_tiles          = kXTiles;
+  constexpr int32_t input_width = kInputWidth;
+  constexpr int input_channels = kInputChannels;
+  constexpr int output_channels = kOutputChannels;
+  constexpr int kernel_width = kKernelW;
+  constexpr int kernel_height = kKernelH;
+  constexpr int ic_tiles = kIcTiles;
+  constexpr int chunk_oc_tiles = kChunkOcTiles;
+  constexpr int output_width = kOutputWidth;
+  constexpr int x_tiles = kXTiles;
 
   const bool skip_top = (border == 0);
   const bool skip_bot = (border == 2);
@@ -155,7 +154,7 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
   // 8 int32 biases -> 32-wide acc<acc32> (4 pix × 8 ch). Seeds the mmul
   // so to_vector<int8>(rs) emits bias+SRS+saturate in one vec op.
   auto make_bias_acc = [&](const int32_t *bias_8) {
-    aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+    aie::vector<int32, 8> b8 = aie::load_v<8>(bias_8);
     aie::vector<int32, 16> b16 = aie::concat(b8, b8);
     aie::vector<int32, 32> b32 = aie::concat(b16, b16);
     aie::accum<acc32, 32> a;
@@ -182,7 +181,8 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
   // Vec write helper: acc is bias-seeded so to_vector<int8>(rs) is the
   // bias-added, SRS'd, saturated i8 result. Only the SiLU LUT gather stays
   // scalar (32 lookups per call, no vec int8-LUT primitive on AIE2P).
-  auto write_x_tile_result = [&](MMUL4x8x8 &acc, int x_out_base, int oc_full_base) {
+  auto write_x_tile_result = [&](MMUL4x8x8 &acc, int x_out_base,
+                                 int oc_full_base) {
     aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
     for (int p = 0; p < 4; ++p) {
       int x_out = x_out_base + p;
@@ -228,10 +228,11 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
                 any_valid = true;
               }
             }
-            if (!any_valid) continue;
+            if (!any_valid)
+              continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-            int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx,
-                                             ic_tiles, kernel_height, kernel_width);
+            int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
+                                             kernel_height, kernel_width);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
             acc.mac(in_a, in_b);
           }
@@ -267,10 +268,11 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
                 any_valid = true;
               }
             }
-            if (!any_valid) continue;
+            if (!any_valid)
+              continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-            int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx,
-                                             ic_tiles, kernel_height, kernel_width);
+            int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
+                                             kernel_height, kernel_width);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
             acc.mac(in_a, in_b);
           }
@@ -288,22 +290,30 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
         for (int ic_full = 0; ic_full < input_channels; ++ic_full) {
           for (int ki = 0; ki < kernel_width; ++ki) {
             int col = 2 * x - 1 + ki;
-            if (col < 0 || col >= input_width) continue;
+            if (col < 0 || col >= input_width)
+              continue;
             int in_indx = col * input_channels + ic_full;
-            int w0 = wts_chunk[wts_chunk_idx_oiyxi8o8(chunk_oc_full, ic_full, 0, ki,
-                                                       input_channels, kernel_height, kernel_width)];
-            int w1 = wts_chunk[wts_chunk_idx_oiyxi8o8(chunk_oc_full, ic_full, 1, ki,
-                                                       input_channels, kernel_height, kernel_width)];
-            int w2 = wts_chunk[wts_chunk_idx_oiyxi8o8(chunk_oc_full, ic_full, 2, ki,
-                                                       input_channels, kernel_height, kernel_width)];
-            if (!skip_top) sum += line0[in_indx] * w0;
+            int w0 = wts_chunk[wts_chunk_idx_oiyxi8o8(
+                chunk_oc_full, ic_full, 0, ki, input_channels, kernel_height,
+                kernel_width)];
+            int w1 = wts_chunk[wts_chunk_idx_oiyxi8o8(
+                chunk_oc_full, ic_full, 1, ki, input_channels, kernel_height,
+                kernel_width)];
+            int w2 = wts_chunk[wts_chunk_idx_oiyxi8o8(
+                chunk_oc_full, ic_full, 2, ki, input_channels, kernel_height,
+                kernel_width)];
+            if (!skip_top)
+              sum += line0[in_indx] * w0;
             sum += line1[in_indx] * w1;
-            if (!skip_bot) sum += line2[in_indx] * w2;
+            if (!skip_bot)
+              sum += line2[in_indx] * w2;
           }
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         output[x * output_channels + oc_full] = silu_lut[sr + 128];
       }
     }
@@ -336,8 +346,8 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
 
   if constexpr (kInteriorMode == 2) {
     // ----- 2X×2OC interior (m3, m5) -----
-    constexpr int n_interior  = kXTiles - 2;          // x_tile in [1, x_tiles-2]
-    constexpr int n_x_pairs   = n_interior >> 1;
+    constexpr int n_interior = kXTiles - 2; // x_tile in [1, x_tiles-2]
+    constexpr int n_x_pairs = n_interior >> 1;
     constexpr bool has_x_tail = (n_interior & 1) != 0;
 
     // 2X×2OC pair loop. m3 → 7 pairs, m5 → 3 pairs.
@@ -346,14 +356,14 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       const int x_tile_a = 1 + 2 * x_pair;
       const int x_out_base_a = x_tile_a * 4;
       const int x_out_base_b = x_out_base_a + 4;
-      const int x_in_base_a = 2 * x_out_base_a - 1;       // = 1 when x_pair=0
+      const int x_in_base_a = 2 * x_out_base_a - 1; // = 1 when x_pair=0
       // x_tile_b's input base is +8 cols (stride-2 over 4 output cols).
 
       MMUL4x8x8 acc_a0, acc_a1, acc_b0, acc_b1;
-      acc_a0 = bias_acc_oc0;  // x_a + oc0
-      acc_a1 = bias_acc_oc1;  // x_a + oc1
-      acc_b0 = bias_acc_oc0;  // x_b + oc0
-      acc_b1 = bias_acc_oc1;  // x_b + oc1
+      acc_a0 = bias_acc_oc0; // x_a + oc0
+      acc_a1 = bias_acc_oc1; // x_a + oc1
+      acc_b0 = bias_acc_oc0; // x_b + oc0
+      acc_b1 = bias_acc_oc1; // x_b + oc1
 
       AIE_LOOP_RANGE(8, 16)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
@@ -365,14 +375,19 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
           for (int kx = 0; kx < 3; ++kx) {
             // Gather x_tile_a inputs: 4 cols × 8 ic-bytes, 64-bit word copies.
             alignas(32) int8_t a_buf_a[32];
-            int8_t *sa0 = line_ptr + (x_in_base_a + kx) * input_channels + ic_t * 8;
+            int8_t *sa0 =
+                line_ptr + (x_in_base_a + kx) * input_channels + ic_t * 8;
             int8_t *sa1 = sa0 + 2 * input_channels;
             int8_t *sa2 = sa0 + 4 * input_channels;
             int8_t *sa3 = sa0 + 6 * input_channels;
-            *(reinterpret_cast<uint64_t *>(&a_buf_a[0]))  = *reinterpret_cast<const uint64_t *>(sa0);
-            *(reinterpret_cast<uint64_t *>(&a_buf_a[8]))  = *reinterpret_cast<const uint64_t *>(sa1);
-            *(reinterpret_cast<uint64_t *>(&a_buf_a[16])) = *reinterpret_cast<const uint64_t *>(sa2);
-            *(reinterpret_cast<uint64_t *>(&a_buf_a[24])) = *reinterpret_cast<const uint64_t *>(sa3);
+            *(reinterpret_cast<uint64_t *>(&a_buf_a[0])) =
+                *reinterpret_cast<const uint64_t *>(sa0);
+            *(reinterpret_cast<uint64_t *>(&a_buf_a[8])) =
+                *reinterpret_cast<const uint64_t *>(sa1);
+            *(reinterpret_cast<uint64_t *>(&a_buf_a[16])) =
+                *reinterpret_cast<const uint64_t *>(sa2);
+            *(reinterpret_cast<uint64_t *>(&a_buf_a[24])) =
+                *reinterpret_cast<const uint64_t *>(sa3);
 
             // Gather x_tile_b inputs: shifted +8 input cols from x_tile_a.
             alignas(32) int8_t a_buf_b[32];
@@ -380,19 +395,25 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
             int8_t *sb1 = sb0 + 2 * input_channels;
             int8_t *sb2 = sb0 + 4 * input_channels;
             int8_t *sb3 = sb0 + 6 * input_channels;
-            *(reinterpret_cast<uint64_t *>(&a_buf_b[0]))  = *reinterpret_cast<const uint64_t *>(sb0);
-            *(reinterpret_cast<uint64_t *>(&a_buf_b[8]))  = *reinterpret_cast<const uint64_t *>(sb1);
-            *(reinterpret_cast<uint64_t *>(&a_buf_b[16])) = *reinterpret_cast<const uint64_t *>(sb2);
-            *(reinterpret_cast<uint64_t *>(&a_buf_b[24])) = *reinterpret_cast<const uint64_t *>(sb3);
+            *(reinterpret_cast<uint64_t *>(&a_buf_b[0])) =
+                *reinterpret_cast<const uint64_t *>(sb0);
+            *(reinterpret_cast<uint64_t *>(&a_buf_b[8])) =
+                *reinterpret_cast<const uint64_t *>(sb1);
+            *(reinterpret_cast<uint64_t *>(&a_buf_b[16])) =
+                *reinterpret_cast<const uint64_t *>(sb2);
+            *(reinterpret_cast<uint64_t *>(&a_buf_b[24])) =
+                *reinterpret_cast<const uint64_t *>(sb3);
 
             aie::vector<int8, 32> in_a_a = aie::load_v<32>(a_buf_a);
             aie::vector<int8, 32> in_a_b = aie::load_v<32>(a_buf_b);
 
             // Two weight banks, each shared across both X positions.
-            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx,
-                                               ic_tiles, kernel_height, kernel_width);
-            aie::vector<int8, 64> in_b_0 = aie::load_v<64>(&wts_chunk[wts_off_0]);
-            aie::vector<int8, 64> in_b_1 = aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
+            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
+                                               kernel_height, kernel_width);
+            aie::vector<int8, 64> in_b_0 =
+                aie::load_v<64>(&wts_chunk[wts_off_0]);
+            aie::vector<int8, 64> in_b_1 =
+                aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
 
             // 4 macs: 2 X × 2 OC. One gather per X, one weight per OC.
             acc_a0.mac(in_a_a, in_b_0);
@@ -428,19 +449,26 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
             alignas(32) int8_t a_buf[32];
-            int8_t *src0 = line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
+            int8_t *src0 =
+                line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
             int8_t *src1 = src0 + 2 * input_channels;
             int8_t *src2 = src0 + 4 * input_channels;
             int8_t *src3 = src0 + 6 * input_channels;
-            *(reinterpret_cast<uint64_t *>(&a_buf[0]))  = *reinterpret_cast<const uint64_t *>(src0);
-            *(reinterpret_cast<uint64_t *>(&a_buf[8]))  = *reinterpret_cast<const uint64_t *>(src1);
-            *(reinterpret_cast<uint64_t *>(&a_buf[16])) = *reinterpret_cast<const uint64_t *>(src2);
-            *(reinterpret_cast<uint64_t *>(&a_buf[24])) = *reinterpret_cast<const uint64_t *>(src3);
+            *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+                *reinterpret_cast<const uint64_t *>(src0);
+            *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+                *reinterpret_cast<const uint64_t *>(src1);
+            *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+                *reinterpret_cast<const uint64_t *>(src2);
+            *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+                *reinterpret_cast<const uint64_t *>(src3);
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx,
-                                               ic_tiles, kernel_height, kernel_width);
-            aie::vector<int8, 64> in_b_0 = aie::load_v<64>(&wts_chunk[wts_off_0]);
-            aie::vector<int8, 64> in_b_1 = aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
+            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
+                                               kernel_height, kernel_width);
+            aie::vector<int8, 64> in_b_0 =
+                aie::load_v<64>(&wts_chunk[wts_off_0]);
+            aie::vector<int8, 64> in_b_1 =
+                aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
             acc_0.mac(in_a, in_b_0);
             acc_1.mac(in_a, in_b_1);
           }
@@ -467,19 +495,26 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
             alignas(32) int8_t a_buf[32];
-            int8_t *src0 = line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
+            int8_t *src0 =
+                line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
             int8_t *src1 = src0 + 2 * input_channels;
             int8_t *src2 = src0 + 4 * input_channels;
             int8_t *src3 = src0 + 6 * input_channels;
-            *(reinterpret_cast<uint64_t *>(&a_buf[0]))  = *reinterpret_cast<const uint64_t *>(src0);
-            *(reinterpret_cast<uint64_t *>(&a_buf[8]))  = *reinterpret_cast<const uint64_t *>(src1);
-            *(reinterpret_cast<uint64_t *>(&a_buf[16])) = *reinterpret_cast<const uint64_t *>(src2);
-            *(reinterpret_cast<uint64_t *>(&a_buf[24])) = *reinterpret_cast<const uint64_t *>(src3);
+            *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+                *reinterpret_cast<const uint64_t *>(src0);
+            *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+                *reinterpret_cast<const uint64_t *>(src1);
+            *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+                *reinterpret_cast<const uint64_t *>(src2);
+            *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+                *reinterpret_cast<const uint64_t *>(src3);
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx,
-                                               ic_tiles, kernel_height, kernel_width);
-            aie::vector<int8, 64> in_b_0 = aie::load_v<64>(&wts_chunk[wts_off_0]);
-            aie::vector<int8, 64> in_b_1 = aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
+            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
+                                               kernel_height, kernel_width);
+            aie::vector<int8, 64> in_b_0 =
+                aie::load_v<64>(&wts_chunk[wts_off_0]);
+            aie::vector<int8, 64> in_b_1 =
+                aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
             acc_0.mac(in_a, in_b_0);
             acc_1.mac(in_a, in_b_1);
           }
@@ -496,30 +531,36 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
 extern "C" {
 
 void KERNEL_NAME(yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_i8_i8)(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts_chunk, int32_t *bias, int8_t *silu_lut, int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
-    const int32_t border,
-    const int32_t right_shift,
-    const int32_t oc_offset,
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts_chunk,
+    int32_t *bias, int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    const int32_t input_channels, const int32_t output_channels,
+    const int32_t kernel_width, const int32_t kernel_height,
+    const int32_t border, const int32_t right_shift, const int32_t oc_offset,
     const int32_t oc_count) {
 #ifdef NOOP_KERNEL
   // Ablation: skip compute; chain still runs the same DMA/lock pattern.
-  (void)line0; (void)line1; (void)line2; (void)wts_chunk; (void)bias;
-  (void)silu_lut; (void)output; (void)input_width; (void)input_channels;
-  (void)output_channels; (void)kernel_width; (void)kernel_height;
-  (void)border; (void)right_shift; (void)oc_offset; (void)oc_count;
+  (void)line0;
+  (void)line1;
+  (void)line2;
+  (void)wts_chunk;
+  (void)bias;
+  (void)silu_lut;
+  (void)output;
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  (void)kernel_width;
+  (void)kernel_height;
+  (void)border;
+  (void)right_shift;
+  (void)oc_offset;
+  (void)oc_count;
   return;
 #else
   yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
-      line0, line1, line2, wts_chunk, bias, silu_lut, output,
-      input_width, input_channels, output_channels,
-      kernel_width, kernel_height, border, right_shift,
-      oc_offset, oc_count);
+      line0, line1, line2, wts_chunk, bias, silu_lut, output, input_width,
+      input_channels, output_channels, kernel_width, kernel_height, border,
+      right_shift, oc_offset, oc_count);
 #endif
 }
 

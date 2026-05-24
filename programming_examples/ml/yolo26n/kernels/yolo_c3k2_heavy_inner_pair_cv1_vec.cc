@@ -1,4 +1,5 @@
-//===- yolo_c3k2_heavy_inner_pair_cv1_vec.cc -------------------------------*- C++ -*-===//
+//===- yolo_c3k2_heavy_inner_pair_cv1_vec.cc -------------------------------*-
+// C++ -*-===//
 //
 // Vectorized 3x3 stride-1 INT8 conv with OIYXI8O8 weight layout. Drop-in
 // .o-level replacement for yolo_c3k2_small_m0_cv1.cc on AIE2P.
@@ -44,25 +45,18 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx,
   int oc_i = oc_full & 7;
   int ic_t = ic_full >> 3;
   int ic_i = ic_full & 7;
-  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) +
-         ic_i * 8 + oc_i;
+  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 +
+         oc_i;
 }
 
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *silu_lut,
-    int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
-    const int32_t border,
-    const int32_t right_shift,
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    const int32_t input_channels, const int32_t output_channels,
+    const int32_t kernel_width, const int32_t kernel_height,
+    const int32_t border, const int32_t right_shift,
     const int32_t /*padding*/) {
 #ifdef NOOP_KERNEL
   return;
@@ -109,14 +103,17 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
             for (int p = 0; p < 4; ++p) {
               int col = x_in_base + p + kx;
               if (col < 0 || col >= input_width) {
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+                for (int b = 0; b < 8; ++b)
+                  a_buf[p * 8 + b] = 0;
               } else {
                 int8_t *src = line_ptr + col * input_channels + ic_t * 8;
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+                for (int b = 0; b < 8; ++b)
+                  a_buf[p * 8 + b] = src[b];
                 any_valid = true;
               }
             }
-            if (!any_valid) continue;
+            if (!any_valid)
+              continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, ic_tiles,
@@ -133,8 +130,10 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
         for (int j = 0; j < 8; ++j) {
           int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
           int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
+          if (sr > I8_MAX)
+            sr = I8_MAX;
+          if (sr < I8_MIN)
+            sr = I8_MIN;
           output[x_out * output_channels + oc_t * 8 + j] = silu_lut[sr + 128];
         }
       }
@@ -148,22 +147,30 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
         for (int ic_full = 0; ic_full < input_channels; ++ic_full) {
           for (int kx = 0; kx < kernel_width; ++kx) {
             int col = x - 1 + kx;
-            if (col < 0 || col >= input_width) continue;
+            if (col < 0 || col >= input_width)
+              continue;
             int in_indx = col * input_channels + ic_full;
-            int w0 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 0, kx,
-                                          input_channels, kernel_height, kernel_width)];
-            int w1 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 1, kx,
-                                          input_channels, kernel_height, kernel_width)];
-            int w2 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 2, kx,
-                                          input_channels, kernel_height, kernel_width)];
-            if (!skip_top) sum += line0[in_indx] * w0;
+            int w0 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 0, kx, input_channels,
+                                     kernel_height, kernel_width)];
+            int w1 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 1, kx, input_channels,
+                                     kernel_height, kernel_width)];
+            int w2 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 2, kx, input_channels,
+                                     kernel_height, kernel_width)];
+            if (!skip_top)
+              sum += line0[in_indx] * w0;
             sum += line1[in_indx] * w1;
-            if (!skip_bot) sum += line2[in_indx] * w2;
+            if (!skip_bot)
+              sum += line2[in_indx] * w2;
           }
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         output[x * output_channels + oc_full] = silu_lut[sr + 128];
       }
     }

@@ -1,4 +1,5 @@
-//===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8.h ------------------*- C++ -*-===//
+//===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8.h ------------------*- C++
+//-*-===//
 //
 // 3x3 stride-2 INT8 conv with INT32 bias accumulator-init + INT8 SiLU LUT.
 // Weights are OIYXI8O8 packed (shared by yolo26n m1/m3/m5/m7 — every
@@ -21,19 +22,11 @@
 extern "C" {
 
 void yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_i8_i8(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *silu_lut,
-    int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
-    const int32_t border,
-    const int32_t right_shift,
-    const int32_t padding);
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    const int32_t input_channels, const int32_t output_channels,
+    const int32_t kernel_width, const int32_t kernel_height,
+    const int32_t border, const int32_t right_shift, const int32_t padding);
 
 } // extern "C"
 

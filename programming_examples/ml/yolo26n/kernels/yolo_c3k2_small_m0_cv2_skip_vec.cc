@@ -1,4 +1,5 @@
-//===- yolo_c3k2_small_m0_cv2_skip_vec.cc --------------------------*- C++ -*-===//
+//===- yolo_c3k2_small_m0_cv2_skip_vec.cc --------------------------*- C++
+//-*-===//
 //
 // Vectorized 3x3 stride-1 INT8 conv + SiLU LUT + int8-saturating skip-add.
 // Drop-in .o-level replacement for yolo_c3k2_small_m0_cv2_skip.cc.
@@ -63,35 +64,30 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx,
   int oc_i = oc_full & 7;
   int ic_t = ic_full >> 3;
   int ic_i = ic_full & 7;
-  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) +
-         ic_i * 8 + oc_i;
+  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 +
+         oc_i;
 }
 
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *silu_lut,
-    int8_t *skip_row,
-    int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
-    const int32_t border,
-    const int32_t right_shift,
-    const int32_t /*skip_scale*/) {
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *skip_row, int8_t *output,
+    const int32_t input_width, const int32_t input_channels,
+    const int32_t output_channels, const int32_t kernel_width,
+    const int32_t kernel_height, const int32_t border,
+    const int32_t right_shift, const int32_t /*skip_scale*/) {
 #ifdef NOOP_KERNEL
   return;
 #endif
   event0();
 
 #if SHAPES_ARE_CONST
-  (void)input_width; (void)input_channels; (void)output_channels;
-  (void)kernel_width; (void)kernel_height;
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  (void)kernel_width;
+  (void)kernel_height;
 #endif
 
   const bool skip_top = (border == 0);
@@ -101,7 +97,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
 
   const int ic_tiles = IN_C / 8;
   const int oc_tiles = OUT_C / 8;
-  const int output_width = IN_W;       // stride-1
+  const int output_width = IN_W; // stride-1
   const int x_tiles = output_width / 4;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -116,8 +112,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
 
 #if SHAPES_ARE_CONST
 #define AIE_HINT_OC AIE_LOOP_RANGE(OUT_C / 8, OUT_C / 8)
-#define AIE_HINT_X  AIE_LOOP_RANGE(IN_W  / 4, IN_W  / 4)
-#define AIE_HINT_IC AIE_LOOP_RANGE(IN_C  / 8, IN_C  / 8)
+#define AIE_HINT_X AIE_LOOP_RANGE(IN_W / 4, IN_W / 4)
+#define AIE_HINT_IC AIE_LOOP_RANGE(IN_C / 8, IN_C / 8)
 #else
 #define AIE_HINT_OC
 #define AIE_HINT_X
@@ -131,7 +127,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
     // bias-added + SRS'd i8 in one vec op (no post-mac vec add).
     aie::accum<acc32, 32> bias_acc;
     {
-      aie::vector<int32, 8>  b8  = aie::load_v<8>(&bias[oc_t * 8]);
+      aie::vector<int32, 8> b8 = aie::load_v<8>(&bias[oc_t * 8]);
       aie::vector<int32, 16> b16 = aie::concat(b8, b8);
       aie::vector<int32, 32> b32 = aie::concat(b16, b16);
       bias_acc.from_vector(b32);
@@ -158,14 +154,17 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
             for (int p = 0; p < 4; ++p) {
               int col = x_in_base + p + kx;
               if (col < 0 || col >= IN_W) {
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+                for (int b = 0; b < 8; ++b)
+                  a_buf[p * 8 + b] = 0;
               } else {
                 int8_t *src = line_ptr + col * IN_C + ic_t * 8;
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+                for (int b = 0; b < 8; ++b)
+                  a_buf[p * 8 + b] = src[b];
                 any_valid = true;
               }
             }
-            if (!any_valid) continue;
+            if (!any_valid)
+              continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
@@ -203,7 +202,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
       aie::store_v(out_arr, out_v);
       for (int p = 0; p < 4; ++p) {
         int8_t *dst = &output[(x_out_base + p) * OUT_C + oc_t * 8];
-        for (int j = 0; j < 8; ++j) dst[j] = out_arr[p * 8 + j];
+        for (int j = 0; j < 8; ++j)
+          dst[j] = out_arr[p * 8 + j];
       }
     }
 
@@ -215,23 +215,33 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
         for (int ic_full = 0; ic_full < IN_C; ++ic_full) {
           for (int kx = 0; kx < KW; ++kx) {
             int col = x - 1 + kx;
-            if (col < 0 || col >= IN_W) continue;
+            if (col < 0 || col >= IN_W)
+              continue;
             int in_indx = col * IN_C + ic_full;
-            int w0 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 0, kx, IN_C, KH, KW)];
-            int w1 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 1, kx, IN_C, KH, KW)];
-            int w2 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 2, kx, IN_C, KH, KW)];
-            if (!skip_top) sum += line0[in_indx] * w0;
+            int w0 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 0, kx, IN_C, KH, KW)];
+            int w1 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 1, kx, IN_C, KH, KW)];
+            int w2 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 2, kx, IN_C, KH, KW)];
+            if (!skip_top)
+              sum += line0[in_indx] * w0;
             sum += line1[in_indx] * w1;
-            if (!skip_bot) sum += line2[in_indx] * w2;
+            if (!skip_bot)
+              sum += line2[in_indx] * w2;
           }
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         int32_t silu = silu_lut[sr + 128];
         int32_t added = silu + (int32_t)skip_row[x * OUT_C + oc_full];
-        if (added > I8_MAX) added = I8_MAX;
-        if (added < I8_MIN) added = I8_MIN;
+        if (added > I8_MAX)
+          added = I8_MAX;
+        if (added < I8_MIN)
+          added = I8_MIN;
         output[x * OUT_C + oc_full] = (int8_t)added;
       }
     }

@@ -1,4 +1,5 @@
-//===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc -----------------*- C++ -*-===//
+//===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc -----------------*- C++
+//-*-===//
 //
 // Deep-opt vectorized 3x3 stride-2 INT8 conv with OIYXI8O8 weight layout.
 // Drop-in for the m1 conv_stride block; bit-exact with the prior naive vec.
@@ -37,26 +38,26 @@
 #error "YOLO_M1_OUT_C must be defined at compile time"
 #endif
 
-static constexpr int kInW       = YOLO_M1_IN_W;
-static constexpr int kInC       = YOLO_M1_IN_C;
-static constexpr int kOutC      = YOLO_M1_OUT_C;
-static constexpr int kKW        = 3;
-static constexpr int kKH        = 3;
+static constexpr int kInW = YOLO_M1_IN_W;
+static constexpr int kInC = YOLO_M1_IN_C;
+static constexpr int kOutC = YOLO_M1_OUT_C;
+static constexpr int kKW = 3;
+static constexpr int kKH = 3;
 
-static constexpr int kOutW      = kInW / 2;
-static constexpr int kIcTiles   = kInC / 8;
-static constexpr int kOcTiles   = kOutC / 8;
-static constexpr int kXTiles    = kOutW / 4;
-static constexpr int kOcPairs   = kOcTiles / 2;
+static constexpr int kOutW = kInW / 2;
+static constexpr int kIcTiles = kInC / 8;
+static constexpr int kOcTiles = kOutC / 8;
+static constexpr int kXTiles = kOutW / 4;
+static constexpr int kOcPairs = kOcTiles / 2;
 // Per-(ic,ky,kx) stride to step from oc_pair's first OC bank to the
 // second (oc_t+1). One oc_tile takes ic_tiles*kH*kW*64 bytes.
 static constexpr int kOcBankStride = (kIcTiles * kKH * kKW) << 6;
 
-static_assert(kInW  % 2 == 0,  "M1 IN_W must be even (stride 2)");
-static_assert(kInC  % 8 == 0,  "M1 IN_C must be multiple of 8");
+static_assert(kInW % 2 == 0, "M1 IN_W must be even (stride 2)");
+static_assert(kInC % 8 == 0, "M1 IN_C must be multiple of 8");
 static_assert(kOutC % 16 == 0, "M1 OUT_C must be multiple of 16 (OCx2 fold)");
-static_assert(kOutW % 4 == 0,  "M1 OUT_W must be multiple of 4");
-static_assert(kXTiles >= 2,    "M1 needs x_tiles >= 2 for the edge split");
+static_assert(kOutW % 4 == 0, "M1 OUT_W must be multiple of 4");
+static_assert(kXTiles >= 2, "M1 needs x_tiles >= 2 for the edge split");
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -77,7 +78,8 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx) {
   int oc_i = oc_full & 7;
   int ic_t = ic_full >> 3;
   int ic_i = ic_full & 7;
-  return ((((oc_t * kIcTiles + ic_t) * kKH + ky) * kKW + kx) << 6) + ic_i * 8 + oc_i;
+  return ((((oc_t * kIcTiles + ic_t) * kKH + ky) * kKW + kx) << 6) + ic_i * 8 +
+         oc_i;
 }
 
 using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
@@ -86,7 +88,7 @@ using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 // to_vector<int8>(rs) emits bias+SRS+saturate in one vec op.
 static __attribute__((always_inline)) inline aie::accum<acc32, 32>
 make_bias_acc(const int32_t *__restrict bias_8) {
-  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 8> b8 = aie::load_v<8>(bias_8);
   aie::vector<int32, 16> b16 = aie::concat(b8, b8);
   aie::vector<int32, 32> b32 = aie::concat(b16, b16);
   aie::accum<acc32, 32> a;
@@ -109,9 +111,9 @@ static __attribute__((always_inline)) inline void write_x_tile_result(
 }
 
 // Edge gather: 4 pixels × 8 ic, with per-pixel bounds check + zero-fill.
-static __attribute__((always_inline)) inline bool gather_edge(
-    int8_t *__restrict line_ptr, int x_in_base, int kx, int ic_t,
-    int8_t *__restrict a_buf) {
+static __attribute__((always_inline)) inline bool
+gather_edge(int8_t *__restrict line_ptr, int x_in_base, int kx, int ic_t,
+            int8_t *__restrict a_buf) {
   bool any_valid = false;
   for (int p = 0; p < 4; ++p) {
     int col = x_in_base + 2 * p + kx;
@@ -129,36 +131,36 @@ static __attribute__((always_inline)) inline bool gather_edge(
 
 // Interior gather: 4 pixels × 8 ic, no bounds check; src pointers
 // computed by stride-2 column step + kx + ic_t * 8.
-static __attribute__((always_inline)) inline void gather_interior(
-    int8_t *__restrict line_ptr, int x_in_base, int kx, int ic_t,
-    int8_t *__restrict a_buf) {
+static __attribute__((always_inline)) inline void
+gather_interior(int8_t *__restrict line_ptr, int x_in_base, int kx, int ic_t,
+                int8_t *__restrict a_buf) {
   int8_t *s0 = line_ptr + (x_in_base + kx) * kInC + ic_t * 8;
   int8_t *s1 = s0 + 2 * kInC;
   int8_t *s2 = s0 + 4 * kInC;
   int8_t *s3 = s0 + 6 * kInC;
-  *(reinterpret_cast<uint64_t *>(&a_buf[0]))  = *reinterpret_cast<const uint64_t *>(s0);
-  *(reinterpret_cast<uint64_t *>(&a_buf[8]))  = *reinterpret_cast<const uint64_t *>(s1);
-  *(reinterpret_cast<uint64_t *>(&a_buf[16])) = *reinterpret_cast<const uint64_t *>(s2);
-  *(reinterpret_cast<uint64_t *>(&a_buf[24])) = *reinterpret_cast<const uint64_t *>(s3);
+  *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+      *reinterpret_cast<const uint64_t *>(s0);
+  *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+      *reinterpret_cast<const uint64_t *>(s1);
+  *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+      *reinterpret_cast<const uint64_t *>(s2);
+  *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+      *reinterpret_cast<const uint64_t *>(s3);
 }
 
 static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts, int32_t *bias, int8_t *silu_lut, int8_t *output,
-    const int32_t /*input_width*/,
-    const int32_t /*input_channels*/,
-    const int32_t /*output_channels*/,
-    const int32_t /*kernel_width*/,
-    const int32_t /*kernel_height*/,
-    const int32_t border,
-    const int32_t right_shift,
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t /*input_width*/,
+    const int32_t /*input_channels*/, const int32_t /*output_channels*/,
+    const int32_t /*kernel_width*/, const int32_t /*kernel_height*/,
+    const int32_t border, const int32_t right_shift,
     const int32_t /*padding*/) {
   event0();
 
   const bool skip_top = (border == 0);
   const bool skip_bot = (border == 2);
   const int ky_start = skip_top ? 1 : 0;
-  const int ky_end   = skip_bot ? 2 : 3;
+  const int ky_end = skip_bot ? 2 : 3;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   // conv_even matches scalar banker_srs (round-half-to-even); enables
@@ -196,7 +198,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
           for (int kx = 0; kx < 3; ++kx) {
             alignas(32) int8_t a_buf[32];
             bool any_valid = gather_edge(line_ptr, x_in_base, kx, ic_t, a_buf);
-            if (!any_valid) continue;
+            if (!any_valid)
+              continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
             int wts_off = wts_tile_off(oc_t_a, ic_t, ky, kx);
             acc_a.mac(in_a, aie::load_v<64>(&wts[wts_off]));
@@ -215,10 +218,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
     // 4 mmul.macs (2 X positions × 2 OC banks). x_in_base for the
     // second x_tile is +8 cols from the first (stride-2 over 4 outs).
     constexpr int kInteriorStart = 1;
-    constexpr int kInteriorEnd   = kXTiles - 1;
-    constexpr int kInteriorN     = kInteriorEnd - kInteriorStart;
-    constexpr int kXPairs        = kInteriorN >> 1;
-    constexpr bool kHasXTail     = (kInteriorN & 1) != 0;
+    constexpr int kInteriorEnd = kXTiles - 1;
+    constexpr int kInteriorN = kInteriorEnd - kInteriorStart;
+    constexpr int kXPairs = kInteriorN >> 1;
+    constexpr bool kHasXTail = (kInteriorN & 1) != 0;
 
     AIE_LOOP_RANGE(kXPairs, kXPairs)
     for (int x_pair = 0; x_pair < kXPairs; ++x_pair) {
@@ -229,10 +232,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
       const int x_in_base_b = x_in_base_a + 8;
 
       MMUL4x8x8 acc_a0, acc_a1, acc_b0, acc_b1;
-      acc_a0 = bias_acc_a;  // x_tile_a + oc_a
-      acc_a1 = bias_acc_b;  // x_tile_a + oc_b
-      acc_b0 = bias_acc_a;  // x_tile_b + oc_a
-      acc_b1 = bias_acc_b;  // x_tile_b + oc_b
+      acc_a0 = bias_acc_a; // x_tile_a + oc_a
+      acc_a1 = bias_acc_b; // x_tile_a + oc_b
+      acc_b0 = bias_acc_a; // x_tile_b + oc_a
+      acc_b1 = bias_acc_b; // x_tile_b + oc_b
 
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
@@ -249,7 +252,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
             aie::vector<int8, 32> in_a_b = aie::load_v<32>(a_buf_b);
             int wts_off = wts_tile_off(oc_t_a, ic_t, ky, kx);
             aie::vector<int8, 64> in_b_0 = aie::load_v<64>(&wts[wts_off]);
-            aie::vector<int8, 64> in_b_1 = aie::load_v<64>(&wts[wts_off + kOcBankStride]);
+            aie::vector<int8, 64> in_b_1 =
+                aie::load_v<64>(&wts[wts_off + kOcBankStride]);
             acc_a0.mac(in_a_a, in_b_0);
             acc_a1.mac(in_a_a, in_b_1);
             acc_b0.mac(in_a_b, in_b_0);
@@ -258,18 +262,27 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
         }
       }
 
-      aie::vector<int8, 32> vec_a0 = acc_a0.template to_vector<int8>(right_shift);
-      aie::vector<int8, 32> vec_a1 = acc_a1.template to_vector<int8>(right_shift);
-      aie::vector<int8, 32> vec_b0 = acc_b0.template to_vector<int8>(right_shift);
-      aie::vector<int8, 32> vec_b1 = acc_b1.template to_vector<int8>(right_shift);
-      write_x_tile_result(vec_a0, silu_lut, output, oc_full_base_a, x_out_base_a);
-      write_x_tile_result(vec_a1, silu_lut, output, oc_full_base_b, x_out_base_a);
-      write_x_tile_result(vec_b0, silu_lut, output, oc_full_base_a, x_out_base_b);
-      write_x_tile_result(vec_b1, silu_lut, output, oc_full_base_b, x_out_base_b);
+      aie::vector<int8, 32> vec_a0 =
+          acc_a0.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> vec_a1 =
+          acc_a1.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> vec_b0 =
+          acc_b0.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> vec_b1 =
+          acc_b1.template to_vector<int8>(right_shift);
+      write_x_tile_result(vec_a0, silu_lut, output, oc_full_base_a,
+                          x_out_base_a);
+      write_x_tile_result(vec_a1, silu_lut, output, oc_full_base_b,
+                          x_out_base_a);
+      write_x_tile_result(vec_b0, silu_lut, output, oc_full_base_a,
+                          x_out_base_b);
+      write_x_tile_result(vec_b1, silu_lut, output, oc_full_base_b,
+                          x_out_base_b);
     }
 
     // Odd-count tail: one straggler interior x_tile (kInteriorN was odd).
-    // For m1's kXTiles=32, kInteriorN=30 → even → kHasXTail=false → dead-stripped.
+    // For m1's kXTiles=32, kInteriorN=30 → even → kHasXTail=false →
+    // dead-stripped.
     if constexpr (kHasXTail) {
       const int x_tile = kInteriorStart + 2 * kXPairs;
       const int x_out_base = x_tile * 4;
@@ -299,7 +312,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
       write_x_tile_result(vb, silu_lut, output, oc_full_base_b, x_out_base);
     }
 
-    // ===== Right edge: x_tile=kXTiles-1 — kx=2 makes col=kInW invalid for p=3. =====
+    // ===== Right edge: x_tile=kXTiles-1 — kx=2 makes col=kInW invalid for p=3.
+    // =====
     {
       const int x_tile = kXTiles - 1;
       const int x_out_base = x_tile * 4;
@@ -316,7 +330,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
           for (int kx = 0; kx < 3; ++kx) {
             alignas(32) int8_t a_buf[32];
             bool any_valid = gather_edge(line_ptr, x_in_base, kx, ic_t, a_buf);
-            if (!any_valid) continue;
+            if (!any_valid)
+              continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
             int wts_off = wts_tile_off(oc_t_a, ic_t, ky, kx);
             acc_a.mac(in_a, aie::load_v<64>(&wts[wts_off]));
@@ -337,26 +352,33 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
 extern "C" {
 
 void yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_i8_i8(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts, int32_t *bias, int8_t *silu_lut, int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
-    const int32_t border,
-    const int32_t right_shift,
-    const int32_t padding) {
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    const int32_t input_channels, const int32_t output_channels,
+    const int32_t kernel_width, const int32_t kernel_height,
+    const int32_t border, const int32_t right_shift, const int32_t padding) {
 #ifdef NOOP_KERNEL
-  (void)line0; (void)line1; (void)line2; (void)wts; (void)bias; (void)silu_lut;
-  (void)output; (void)input_width; (void)input_channels; (void)output_channels;
-  (void)kernel_width; (void)kernel_height; (void)border; (void)right_shift; (void)padding;
+  (void)line0;
+  (void)line1;
+  (void)line2;
+  (void)wts;
+  (void)bias;
+  (void)silu_lut;
+  (void)output;
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  (void)kernel_width;
+  (void)kernel_height;
+  (void)border;
+  (void)right_shift;
+  (void)padding;
   return;
 #else
   yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
-      line0, line1, line2, wts, bias, silu_lut, output,
-      input_width, input_channels, output_channels,
-      kernel_width, kernel_height, border, right_shift, padding);
+      line0, line1, line2, wts, bias, silu_lut, output, input_width,
+      input_channels, output_channels, kernel_width, kernel_height, border,
+      right_shift, padding);
 #endif
 }
 

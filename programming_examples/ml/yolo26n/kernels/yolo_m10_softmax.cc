@@ -24,11 +24,11 @@ static constexpr int32_t I8_MIN_PROB = 0;
 extern "C" {
 
 void yolo_m10_softmax_i8_i8(
-    int8_t *logits,            // (n_classes,)
-    float *exp_lut,            // (256,) exp((idx-128) * 2^in_log2_scale)
-    int8_t *out_probs,         // (n_classes,)
-    const int32_t n_classes,    // 2
-    const int32_t in_log2_scale) {  // -3 for m10
+    int8_t *logits,                // (n_classes,)
+    float *exp_lut,                // (256,) exp((idx-128) * 2^in_log2_scale)
+    int8_t *out_probs,             // (n_classes,)
+    const int32_t n_classes,       // 2
+    const int32_t in_log2_scale) { // -3 for m10
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -38,20 +38,22 @@ void yolo_m10_softmax_i8_i8(
   // (Computed via int shift to avoid libm calls.)
   const int32_t out_scale_int = 1 << 7;
   const float out_scale = (float)out_scale_int;
-  (void)in_log2_scale;  // baked into exp_lut at build time
+  (void)in_log2_scale; // baked into exp_lut at build time
 
   // Pass 1: max.
   int32_t row_max = -128;
   for (int j = 0; j < n_classes; j++) {
     int32_t v = (int32_t)logits[j];
-    if (v > row_max) row_max = v;
+    if (v > row_max)
+      row_max = v;
   }
 
   // Pass 2: sum exp.
   float sum = 0.0f;
   for (int j = 0; j < n_classes; j++) {
     int32_t shifted = (int32_t)logits[j] - row_max;
-    if (shifted < -128) shifted = -128;
+    if (shifted < -128)
+      shifted = -128;
     sum += exp_lut[shifted + 128];
   }
 
@@ -59,11 +61,14 @@ void yolo_m10_softmax_i8_i8(
   const float inv_sum = 1.0f / sum;
   for (int j = 0; j < n_classes; j++) {
     int32_t shifted = (int32_t)logits[j] - row_max;
-    if (shifted < -128) shifted = -128;
+    if (shifted < -128)
+      shifted = -128;
     float p = exp_lut[shifted + 128] * inv_sum;
     int32_t q = (int32_t)(p * out_scale + 0.5f);
-    if (q > I8_MAX_PROB) q = I8_MAX_PROB;
-    if (q < I8_MIN_PROB) q = I8_MIN_PROB;
+    if (q > I8_MAX_PROB)
+      q = I8_MAX_PROB;
+    if (q < I8_MIN_PROB)
+      q = I8_MIN_PROB;
     out_probs[j] = (int8_t)q;
   }
 

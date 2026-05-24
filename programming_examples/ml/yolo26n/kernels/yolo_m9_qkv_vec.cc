@@ -1,4 +1,5 @@
-//===- yolo_m9_qkv_vec.cc -----------------------------------------*- C++ -*-===//
+//===- yolo_m9_qkv_vec.cc -----------------------------------------*- C++
+//-*-===//
 //
 // Vectorized 1x1 INT8 conv 128 -> 256 (no activation; bias-init only).
 // Drop-in .o-level replacement for yolo_m9_qkv.cc (same symbol + ABI).
@@ -45,15 +46,11 @@ static inline int wts_idx_oiyxi8o8_1x1(int oc_full, int ic_full, int in_c) {
 
 extern "C" {
 
-void yolo_m9_qkv_i8_i8(
-    int8_t *in_row,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *out_row,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t right_shift) {
+void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
+                       int8_t *out_row, const int32_t input_width,
+                       const int32_t input_channels,
+                       const int32_t output_channels,
+                       const int32_t right_shift) {
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -80,7 +77,8 @@ void yolo_m9_qkv_i8_i8(
         for (int p = 0; p < 4; ++p) {
           int col = x_out_base + p;
           int8_t *src = in_row + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+          for (int b = 0; b < 8; ++b)
+            a_buf[p * 8 + b] = src[b];
         }
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
@@ -95,8 +93,10 @@ void yolo_m9_qkv_i8_i8(
         for (int j = 0; j < 8; ++j) {
           int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
           int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
+          if (sr > I8_MAX)
+            sr = I8_MAX;
+          if (sr < I8_MIN)
+            sr = I8_MIN;
           out_row[x_out * output_channels + oc_t * 8 + j] = (int8_t)sr;
         }
       }
@@ -113,8 +113,10 @@ void yolo_m9_qkv_i8_i8(
                  wts[wts_idx_oiyxi8o8_1x1(oc_full, ic, input_channels)];
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         out_row[x * output_channels + oc_full] = (int8_t)sr;
       }
     }

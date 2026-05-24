@@ -1,4 +1,5 @@
-//===- yolo_m10_conv2dk1_silu_xy_pool_vec.cc ----------------------*- C++ -*-===//
+//===- yolo_m10_conv2dk1_silu_xy_pool_vec.cc ----------------------*- C++
+//-*-===//
 //
 // Vectorized fused 1x1 conv 256→1280 + HardSiLU + spatial xy-pool (GAP).
 // Drop-in .o-level replacement for yolo_m10_conv2dk1_silu_xy_pool.cc.
@@ -39,19 +40,10 @@ static inline int wts_chunk_idx_1x1(int chunk_oc_full, int ic_full, int in_c) {
 extern "C" {
 
 void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
-    int8_t *in_row,
-    int8_t *wts_chunk,
-    int32_t *bias_full,
-    int8_t *silu_lut,
-    int32_t *accum,
-    int8_t *elem_out,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t expand_c,
-    const int32_t in_h,
-    const int32_t right_shift,
-    const int32_t yi,
-    const int32_t n_splits,
+    int8_t *in_row, int8_t *wts_chunk, int32_t *bias_full, int8_t *silu_lut,
+    int32_t *accum, int8_t *elem_out, const int32_t input_width,
+    const int32_t input_channels, const int32_t expand_c, const int32_t in_h,
+    const int32_t right_shift, const int32_t yi, const int32_t n_splits,
     const int32_t wi) {
 #ifdef NOOP_KERNEL
   return;
@@ -61,15 +53,19 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
   // Hardcoded for m10 call site (in_w=16, in_c=256, expand_c=1280, N=16).
   // Original had `expand_c / n_splits` as runtime signed divide → __divsi3
   // call on tile (2,2). Constexpr lowers all trip counts to immediates.
-  (void)input_width; (void)input_channels; (void)expand_c; (void)n_splits;
-  constexpr int32_t chunk_oc = 80;       // expand_c / n_splits = 1280/16
-  constexpr int ic_tiles = 32;           // input_channels / 8 = 256/8
-  constexpr int chunk_oc_tiles = 10;     // chunk_oc / 8 = 80/8
-  constexpr int x_tiles = 4;             // input_width / 4 = 16/4
+  (void)input_width;
+  (void)input_channels;
+  (void)expand_c;
+  (void)n_splits;
+  constexpr int32_t chunk_oc = 80;   // expand_c / n_splits = 1280/16
+  constexpr int ic_tiles = 32;       // input_channels / 8 = 256/8
+  constexpr int chunk_oc_tiles = 10; // chunk_oc / 8 = 80/8
+  constexpr int x_tiles = 4;         // input_width / 4 = 16/4
   const int32_t oc_offset = wi * chunk_oc;
 
   if (yi == 0 && wi == 0) {
-    for (int i = 0; i < 1280; i++) accum[i] = 0;
+    for (int i = 0; i < 1280; i++)
+      accum[i] = 0;
   }
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -87,7 +83,8 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
     // directly emits the bias-added, SRS'd, saturated i8 result.
     aie::accum<acc32, 32> bias_acc;
     {
-      aie::vector<int32, 8>  b8  = aie::load_v<8>(&bias_full[oc_offset + chunk_oc_t * 8]);
+      aie::vector<int32, 8> b8 =
+          aie::load_v<8>(&bias_full[oc_offset + chunk_oc_t * 8]);
       aie::vector<int32, 16> b16 = aie::concat(b8, b8);
       aie::vector<int32, 32> b32 = aie::concat(b16, b16);
       bias_acc.from_vector(b32);
@@ -104,7 +101,8 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
         for (int p = 0; p < 4; ++p) {
           int col = x_base + p;
           int8_t *src = in_row + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+          for (int b = 0; b < 8; ++b)
+            a_buf[p * 8 + b] = src[b];
         }
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
@@ -130,12 +128,15 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
         int chunk_oc_full = chunk_oc_t * 8 + j;
         int32_t sum = bias_full[oc_offset + chunk_oc_full];
         for (int ic = 0; ic < input_channels; ++ic) {
-          sum += in_row[x * input_channels + ic] *
-                 wts_chunk[wts_chunk_idx_1x1(chunk_oc_full, ic, input_channels)];
+          sum +=
+              in_row[x * input_channels + ic] *
+              wts_chunk[wts_chunk_idx_1x1(chunk_oc_full, ic, input_channels)];
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         row_sums[j] += (int32_t)silu_lut[sr + 128];
       }
     }
@@ -151,11 +152,15 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
   if (yi == in_h - 1 && wi == n_splits - 1) {
     for (int i = 0; i < expand_c; i++) {
       int32_t pool_q = banker_srs(accum[i], 8);
-      if (pool_q > I8_MAX) pool_q = I8_MAX;
-      if (pool_q < I8_MIN) pool_q = I8_MIN;
+      if (pool_q > I8_MAX)
+        pool_q = I8_MAX;
+      if (pool_q < I8_MIN)
+        pool_q = I8_MIN;
       int32_t f = pool_q << 3;
-      if (f > I8_MAX) f = I8_MAX;
-      if (f < I8_MIN) f = I8_MIN;
+      if (f > I8_MAX)
+        f = I8_MAX;
+      if (f < I8_MIN)
+        f = I8_MIN;
       elem_out[i] = (int8_t)f;
     }
   }

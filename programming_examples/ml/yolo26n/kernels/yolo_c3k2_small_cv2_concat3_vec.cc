@@ -1,4 +1,5 @@
-//===- yolo_c3k2_small_cv2_concat3_vec.cc -------------------------*- C++ -*-===//
+//===- yolo_c3k2_small_cv2_concat3_vec.cc -------------------------*- C++
+//-*-===//
 //
 // Vectorized 1x1 INT8 conv on three concatenated input rows + SiLU LUT.
 // Drop-in .o-level replacement for yolo_c3k2_small_cv2_concat3.cc.
@@ -78,22 +79,25 @@ static __attribute__((always_inline)) inline void
 gather4(int8_t *src, int x_base, int local_ic_t, int8_t *a_buf) {
   for (int p = 0; p < 4; ++p) {
     int8_t *psrc = src + (x_base + p) * C_LOCAL + local_ic_t * 8;
-    for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = psrc[b];
+    for (int b = 0; b < 8; ++b)
+      a_buf[p * 8 + b] = psrc[b];
   }
 }
 
 // Scalar epilogue for one mmul<4,8,8> accumulator's worth of output.
 static __attribute__((always_inline)) inline void
-write_x_tile_result(const aie::vector<int32, 32> &acc_vec,
-                    int32_t *bias, int8_t *silu_lut, int8_t *output,
-                    int oc_t, int out_c, int x_out_base, int32_t right_shift) {
+write_x_tile_result(const aie::vector<int32, 32> &acc_vec, int32_t *bias,
+                    int8_t *silu_lut, int8_t *output, int oc_t, int out_c,
+                    int x_out_base, int32_t right_shift) {
   for (int p = 0; p < 4; ++p) {
     int x_out = x_out_base + p;
     for (int j = 0; j < 8; ++j) {
       int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
       int32_t sr = banker_srs(s, right_shift);
-      if (sr > I8_MAX) sr = I8_MAX;
-      if (sr < I8_MIN) sr = I8_MIN;
+      if (sr > I8_MAX)
+        sr = I8_MAX;
+      if (sr < I8_MIN)
+        sr = I8_MIN;
       output[x_out * out_c + oc_t * 8 + j] = silu_lut[sr + 128];
     }
   }
@@ -102,7 +106,7 @@ write_x_tile_result(const aie::vector<int32, 32> &acc_vec,
 // 8 int32 biases -> 32-wide acc<acc32> seed.
 static __attribute__((always_inline)) inline aie::accum<acc32, 32>
 make_bias_acc(const int32_t *bias_8) {
-  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 8> b8 = aie::load_v<8>(bias_8);
   aie::vector<int32, 16> b16 = aie::concat(b8, b8);
   aie::vector<int32, 32> b32 = aie::concat(b16, b16);
   aie::accum<acc32, 32> a;
@@ -114,14 +118,15 @@ make_bias_acc(const int32_t *bias_8) {
 // bias-added + SRS'd + saturated i8 in one vec op. Scalar LUT lookup
 // (no SIMD int8 LUT gather on AIE2P). conv_even matches banker_srs.
 static __attribute__((always_inline)) inline void
-write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc,
-                        int8_t *silu_lut, int8_t *output,
-                        int oc_t, int out_c, int x_out_base, int32_t rs) {
+write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc, int8_t *silu_lut,
+                        int8_t *output, int oc_t, int out_c, int x_out_base,
+                        int32_t rs) {
   aie::vector<int8, 32> result = acc.template to_vector<int8>(rs);
   for (int p = 0; p < 4; ++p) {
     int x_out = x_out_base + p;
     for (int j = 0; j < 8; ++j) {
-      output[x_out * out_c + oc_t * 8 + j] = silu_lut[int(result[p * 8 + j]) + 128];
+      output[x_out * out_c + oc_t * 8 + j] =
+          silu_lut[int(result[p * 8 + j]) + 128];
     }
   }
 }
@@ -129,16 +134,9 @@ write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc,
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
-    int8_t *in_top,
-    int8_t *in_bot,
-    int8_t *in_m0,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *silu_lut,
-    int8_t *output,
-    const int32_t input_width,
-    const int32_t three_c,
-    const int32_t output_channels,
+    int8_t *in_top, int8_t *in_bot, int8_t *in_m0, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    const int32_t three_c, const int32_t output_channels,
     const int32_t right_shift) {
 #ifdef NOOP_KERNEL
   return;
@@ -146,7 +144,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   event0();
 
 #if SHAPES_ARE_CONST
-  (void)input_width; (void)three_c; (void)output_channels;
+  (void)input_width;
+  (void)three_c;
+  (void)output_channels;
 #endif
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -155,16 +155,17 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
 #if SHAPES_ARE_CONST
-  constexpr int kC                = THREE_C / 3;
-  constexpr int kIcTiles          = THREE_C / 8;
-  constexpr int kIcTilesPerSrc    = kC / 8;
-  constexpr int kOcTiles          = OUT_C / 8;
-  constexpr int kXTiles           = IN_W / 4;
-  constexpr int kXPairs           = kXTiles / 2;
-  constexpr int kXPairTailStart   = kXPairs * 2;
-  // For m2 (IN_W=128, THREE_C=48,  OUT_C=64):  kXTiles=32, kXPairs=16, kIcTiles=6,  kIcTilesPerSrc=2, kOcTiles=8.
-  // For m4 (IN_W=64,  THREE_C=96,  OUT_C=128): kXTiles=16, kXPairs=8,  kIcTiles=12, kIcTilesPerSrc=4, kOcTiles=16.
-  // Both have kXTiles % 2 == 0 so the tail loop never runs.
+  constexpr int kC = THREE_C / 3;
+  constexpr int kIcTiles = THREE_C / 8;
+  constexpr int kIcTilesPerSrc = kC / 8;
+  constexpr int kOcTiles = OUT_C / 8;
+  constexpr int kXTiles = IN_W / 4;
+  constexpr int kXPairs = kXTiles / 2;
+  constexpr int kXPairTailStart = kXPairs * 2;
+  // For m2 (IN_W=128, THREE_C=48,  OUT_C=64):  kXTiles=32, kXPairs=16,
+  // kIcTiles=6,  kIcTilesPerSrc=2, kOcTiles=8. For m4 (IN_W=64,  THREE_C=96,
+  // OUT_C=128): kXTiles=16, kXPairs=8,  kIcTiles=12, kIcTilesPerSrc=4,
+  // kOcTiles=16. Both have kXTiles % 2 == 0 so the tail loop never runs.
 
   // Source pointer per ic_tile: first kIcTilesPerSrc from in_top, next from
   // in_bot, last from in_m0. local_ic_t = ic_t % kIcTilesPerSrc.
@@ -173,7 +174,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   AIE_LOOP_UNROLL_FULL
   for (int ict = 0; ict < kIcTiles; ++ict) {
     int src_idx = ict / kIcTilesPerSrc;
-    src_for_ic_tile[ict] = (src_idx == 0) ? in_top : (src_idx == 1) ? in_bot : in_m0;
+    src_for_ic_tile[ict] = (src_idx == 0)   ? in_top
+                           : (src_idx == 1) ? in_bot
+                                            : in_m0;
     local_ic_t_for[ict] = ict - src_idx * kIcTilesPerSrc;
   }
 
@@ -185,9 +188,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
     AIE_LOOP_RANGE(kXPairs, kXPairs)
     for (int xp = 0; xp < kXPairs; ++xp) {
       const int x_tile_base = 2 * xp;
-      const int x_out_base  = x_tile_base * 4;
-      const int x_in_base0  = x_out_base;
-      const int x_in_base1  = x_in_base0 + 4;
+      const int x_out_base = x_tile_base * 4;
+      const int x_in_base0 = x_out_base;
+      const int x_in_base1 = x_in_base0 + 4;
 
       MMUL4x8x8 acc0, acc1;
       acc0 = bias_acc;
@@ -197,7 +200,7 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
 
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
-        int8_t *src    = src_for_ic_tile[ic_t];
+        int8_t *src = src_for_ic_tile[ic_t];
         int local_ic_t = local_ic_t_for[ic_t];
         gather4<kC>(src, x_in_base0, local_ic_t, a_buf0);
         gather4<kC>(src, x_in_base1, local_ic_t, a_buf1);
@@ -209,8 +212,10 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
         acc1.mac(in_a1, in_b);
       }
 
-      write_x_tile_result_vec(acc0, silu_lut, output, oc_t, OUT_C, x_out_base + 0, right_shift);
-      write_x_tile_result_vec(acc1, silu_lut, output, oc_t, OUT_C, x_out_base + 4, right_shift);
+      write_x_tile_result_vec(acc0, silu_lut, output, oc_t, OUT_C,
+                              x_out_base + 0, right_shift);
+      write_x_tile_result_vec(acc1, silu_lut, output, oc_t, OUT_C,
+                              x_out_base + 4, right_shift);
     }
 
     // --- x_tile tail ---------------------------------------------------
@@ -219,7 +224,7 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
       acc = bias_acc;
       const int x_out_base = x_tile * 4;
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
-        int8_t *src    = src_for_ic_tile[ic_t];
+        int8_t *src = src_for_ic_tile[ic_t];
         int local_ic_t = local_ic_t_for[ic_t];
         alignas(32) int8_t a_buf[32];
         gather4<kC>(src, x_out_base, local_ic_t, a_buf);
@@ -228,7 +233,8 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a, in_b);
       }
-      write_x_tile_result_vec(acc, silu_lut, output, oc_t, OUT_C, x_out_base, right_shift);
+      write_x_tile_result_vec(acc, silu_lut, output, oc_t, OUT_C, x_out_base,
+                              right_shift);
     }
   }
 #else
@@ -243,7 +249,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   int local_ic_t_for[48];
   for (int ict = 0; ict < ic_tiles; ++ict) {
     int src_idx = ict / ic_tiles_per_src;
-    src_for_ic_tile[ict] = (src_idx == 0) ? in_top : (src_idx == 1) ? in_bot : in_m0;
+    src_for_ic_tile[ict] = (src_idx == 0)   ? in_top
+                           : (src_idx == 1) ? in_bot
+                                            : in_m0;
     local_ic_t_for[ict] = ict - src_idx * ic_tiles_per_src;
   }
 
@@ -260,7 +268,8 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
         for (int p = 0; p < 4; ++p) {
           int col = x_out_base + p;
           int8_t *psrc = src + col * c + local_ic_t * 8;
-          for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = psrc[b];
+          for (int b = 0; b < 8; ++b)
+            a_buf[p * 8 + b] = psrc[b];
         }
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
@@ -269,7 +278,8 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
       }
 
       aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
-      write_x_tile_result(acc_vec, bias, silu_lut, output, oc_t, output_channels, x_out_base, right_shift);
+      write_x_tile_result(acc_vec, bias, silu_lut, output, oc_t,
+                          output_channels, x_out_base, right_shift);
     }
 
     // Tail scalar fallback for output_width not a multiple of 4.
@@ -279,14 +289,19 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
         int32_t sum = bias[oc_full];
         for (int ic = 0; ic < three_c; ++ic) {
           int8_t a;
-          if (ic < c) a = in_top[x * c + ic];
-          else if (ic < 2 * c) a = in_bot[x * c + (ic - c)];
-          else a = in_m0[x * c + (ic - 2 * c)];
+          if (ic < c)
+            a = in_top[x * c + ic];
+          else if (ic < 2 * c)
+            a = in_bot[x * c + (ic - c)];
+          else
+            a = in_m0[x * c + (ic - 2 * c)];
           sum += a * wts[wts_idx_oiyxi8o8_1x1(oc_full, ic, three_c)];
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         output[x * output_channels + oc_full] = silu_lut[sr + 128];
       }
     }

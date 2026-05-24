@@ -1,4 +1,5 @@
-//===- yolo_m0_conv2dk3_silu_bias_vec.cc ---------------------------*- C++ -*-===//
+//===- yolo_m0_conv2dk3_silu_bias_vec.cc ---------------------------*- C++
+//-*-===//
 //
 // Deep-opt vectorized stem kernel for m0: 3x3 stride-2 INT8 conv, raw OIYX
 // weight layout (in_c=3 padded to 8 — not OIYXI8O8 since in_c isn't
@@ -44,21 +45,21 @@
 #error "YOLO_M0_OUT_C must be defined at compile time"
 #endif
 
-static constexpr int kInW   = YOLO_M0_IN_W;
-static constexpr int kInC   = YOLO_M0_IN_C;
-static constexpr int kOutC  = YOLO_M0_OUT_C;
-static constexpr int kKW    = 3;
-static constexpr int kKH    = 3;
+static constexpr int kInW = YOLO_M0_IN_W;
+static constexpr int kInC = YOLO_M0_IN_C;
+static constexpr int kOutC = YOLO_M0_OUT_C;
+static constexpr int kKW = 3;
+static constexpr int kKH = 3;
 
-static constexpr int kOutW    = kInW / 2;
+static constexpr int kOutW = kInW / 2;
 static constexpr int kOcTiles = kOutC / 8;
-static constexpr int kXTiles  = kOutW / 4;
+static constexpr int kXTiles = kOutW / 4;
 
-static_assert(kInW % 2 == 0,  "M0 IN_W must be even (stride 2)");
-static_assert(kInC == 8,      "M0 IN_C must be 8 (3 real + 5 zero-pad)");
+static_assert(kInW % 2 == 0, "M0 IN_W must be even (stride 2)");
+static_assert(kInC == 8, "M0 IN_C must be 8 (3 real + 5 zero-pad)");
 static_assert(kOutC % 8 == 0, "M0 OUT_C must be multiple of 8");
 static_assert(kOutW % 4 == 0, "M0 OUT_W must be multiple of 4");
-static_assert(kOcTiles >= 2,  "M0 deep-opt assumes oc_tiles >= 2 (OCx2 fold)");
+static_assert(kOcTiles >= 2, "M0 deep-opt assumes oc_tiles >= 2 (OCx2 fold)");
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -77,9 +78,9 @@ using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 // Pack the 9 (ky, kx) weight tiles for one oc_tile into a contiguous
 // 9 × 64-byte buffer in row-major [ic_inner=8][oc_inner=8] order so a
 // single aie::load_v<64> per (ky, kx) yields the mmul.B vector.
-static __attribute__((always_inline)) inline void pack_wts(
-    const int8_t *__restrict wts, int oc_tile_base,
-    int8_t *__restrict wbuf) {
+static __attribute__((always_inline)) inline void
+pack_wts(const int8_t *__restrict wts, int oc_tile_base,
+         int8_t *__restrict wbuf) {
   // No UNROLL_FULL — peano blows up compile time on 9×8×8=576 unrolled
   // iters and the pack runs once per (oc_tile) per call, dwarfed by
   // the inner mmul work anyway.
@@ -99,31 +100,33 @@ static __attribute__((always_inline)) inline void pack_wts(
 // Gather 4 contiguous x_outs × 8 ic_inner from one input line into a
 // 32-byte aligned a_buf. Caller is responsible for `col` being in range
 // (interior path) — the edge path zeros out-of-range bytes.
-static __attribute__((always_inline)) inline void gather_interior(
-    const int8_t *__restrict line_ptr, int x_in_base, int kx,
-    int8_t *__restrict a_buf) {
+static __attribute__((always_inline)) inline void
+gather_interior(const int8_t *__restrict line_ptr, int x_in_base, int kx,
+                int8_t *__restrict a_buf) {
   AIE_LOOP_UNROLL_FULL
   for (int p = 0; p < 4; ++p) {
     const int col = x_in_base + 2 * p + kx;
     const int8_t *__restrict src = line_ptr + col * kInC;
     // 8-byte block copy; peano lowers to a single 64-bit load/store pair.
-    for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+    for (int b = 0; b < 8; ++b)
+      a_buf[p * 8 + b] = src[b];
   }
 }
 
-static __attribute__((always_inline)) inline void gather_edge(
-    const int8_t *__restrict line_ptr, int x_in_base, int kx,
-    int8_t *__restrict a_buf,
-    bool &any_valid) {
+static __attribute__((always_inline)) inline void
+gather_edge(const int8_t *__restrict line_ptr, int x_in_base, int kx,
+            int8_t *__restrict a_buf, bool &any_valid) {
   any_valid = false;
   AIE_LOOP_UNROLL_FULL
   for (int p = 0; p < 4; ++p) {
     const int col = x_in_base + 2 * p + kx;
     if (col < 0 || col >= kInW) {
-      for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+      for (int b = 0; b < 8; ++b)
+        a_buf[p * 8 + b] = 0;
     } else {
       const int8_t *__restrict src = line_ptr + col * kInC;
-      for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+      for (int b = 0; b < 8; ++b)
+        a_buf[p * 8 + b] = src[b];
       any_valid = true;
     }
   }
@@ -134,7 +137,7 @@ static __attribute__((always_inline)) inline void gather_edge(
 // bias+SRS+saturate in one vec op.
 static __attribute__((always_inline)) inline aie::accum<acc32, 32>
 make_bias_acc(const int32_t *__restrict bias_8) {
-  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 8> b8 = aie::load_v<8>(bias_8);
   aie::vector<int32, 16> b16 = aie::concat(b8, b8);
   aie::vector<int32, 32> b32 = aie::concat(b16, b16);
   aie::accum<acc32, 32> a;
@@ -144,9 +147,9 @@ make_bias_acc(const int32_t *__restrict bias_8) {
 
 // Per-OC×2 epilog: SiLU LUT for 8 lanes (SRS+clamp+bias already collapsed
 // into the vec to_vector<int8>(rs) call at the call site).
-static __attribute__((always_inline)) inline void emit_8_lanes(
-    aie::vector<int8, 32> srs_v, const int8_t *__restrict silu_lut,
-    int8_t *__restrict output, int oc_full_base, int x_out_base) {
+static __attribute__((always_inline)) inline void
+emit_8_lanes(aie::vector<int8, 32> srs_v, const int8_t *__restrict silu_lut,
+             int8_t *__restrict output, int oc_full_base, int x_out_base) {
   AIE_LOOP_UNROLL_FULL
   for (int p = 0; p < 4; ++p) {
     int x_out = x_out_base + p;
@@ -158,17 +161,12 @@ static __attribute__((always_inline)) inline void emit_8_lanes(
   }
 }
 
-static void
-yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts, int32_t *bias, int8_t *silu_lut, int8_t *output,
-    const int32_t /*input_width*/,
-    const int32_t /*input_channels*/,
-    const int32_t /*output_channels*/,
-    const int32_t /*kernel_width*/,
-    const int32_t /*kernel_height*/,
-    const int32_t border,
-    const int32_t right_shift,
+static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t /*input_width*/,
+    const int32_t /*input_channels*/, const int32_t /*output_channels*/,
+    const int32_t /*kernel_width*/, const int32_t /*kernel_height*/,
+    const int32_t border, const int32_t right_shift,
     const int32_t /*padding*/) {
   event0();
 
@@ -221,7 +219,8 @@ yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
           alignas(32) int8_t a_buf[32];
           bool any_valid;
           gather_edge(line_ptr, x_in_base, kx, a_buf, any_valid);
-          if (!any_valid) continue;
+          if (!any_valid)
+            continue;
           aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
           int wt_off = (ky * kKW + kx) * 64;
           acc_a.mac(in_a, aie::load_v<64>(&wbuf_a[wt_off]));
@@ -272,26 +271,33 @@ yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
 extern "C" {
 
 void yolo_m0_conv2dk3_stride2_silu_bias_i8_i8(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts, int32_t *bias, int8_t *silu_lut, int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
-    const int32_t border,
-    const int32_t right_shift,
-    const int32_t padding) {
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    const int32_t input_channels, const int32_t output_channels,
+    const int32_t kernel_width, const int32_t kernel_height,
+    const int32_t border, const int32_t right_shift, const int32_t padding) {
 #ifdef NOOP_KERNEL
-  (void)line0; (void)line1; (void)line2; (void)wts; (void)bias; (void)silu_lut;
-  (void)output; (void)input_width; (void)input_channels; (void)output_channels;
-  (void)kernel_width; (void)kernel_height; (void)border; (void)right_shift; (void)padding;
+  (void)line0;
+  (void)line1;
+  (void)line2;
+  (void)wts;
+  (void)bias;
+  (void)silu_lut;
+  (void)output;
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  (void)kernel_width;
+  (void)kernel_height;
+  (void)border;
+  (void)right_shift;
+  (void)padding;
   return;
 #else
   yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
-      line0, line1, line2, wts, bias, silu_lut, output,
-      input_width, input_channels, output_channels,
-      kernel_width, kernel_height, border, right_shift, padding);
+      line0, line1, line2, wts, bias, silu_lut, output, input_width,
+      input_channels, output_channels, kernel_width, kernel_height, border,
+      right_shift, padding);
 #endif
 }
 

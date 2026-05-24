@@ -1,4 +1,5 @@
-//===- yolo_m9_ffn_1_skip_row_vec.cc -----------------------------*- C++ -*-===//
+//===- yolo_m9_ffn_1_skip_row_vec.cc -----------------------------*- C++
+//-*-===//
 //
 // Deep-opt vectorized 1x1 i8 conv 256 -> 128 + plain (same-scale)
 // skip-add with attn_block_out. Drop-in .o-level replacement.
@@ -33,16 +34,16 @@
 #error "YOLO_M9_FFN1_OUT_C must be defined at compile time"
 #endif
 
-static constexpr int kInW    = YOLO_M9_FFN1_IN_W;
-static constexpr int kInC    = YOLO_M9_FFN1_IN_C;
-static constexpr int kOutC   = YOLO_M9_FFN1_OUT_C;
-static constexpr int kIcTiles  = kInC / 8;
-static constexpr int kOcTiles  = kOutC / 8;
-static constexpr int kXTiles   = kInW / 4;
+static constexpr int kInW = YOLO_M9_FFN1_IN_W;
+static constexpr int kInC = YOLO_M9_FFN1_IN_C;
+static constexpr int kOutC = YOLO_M9_FFN1_OUT_C;
+static constexpr int kIcTiles = kInC / 8;
+static constexpr int kOcTiles = kOutC / 8;
+static constexpr int kXTiles = kInW / 4;
 
-static_assert(kInC % 8 == 0,  "FFN1 IN_C must be multiple of 8");
+static_assert(kInC % 8 == 0, "FFN1 IN_C must be multiple of 8");
 static_assert(kOutC % 8 == 0, "FFN1 OUT_C must be multiple of 8");
-static_assert(kInW % 4 == 0,  "FFN1 IN_W must be multiple of 4");
+static_assert(kInW % 4 == 0, "FFN1 IN_W must be multiple of 4");
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -53,16 +54,12 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 
 extern "C" {
 
-void yolo_m9_ffn_1_skip_row_i8_i8(
-    int8_t *mid_row,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *skip_row,
-    int8_t *out_row,
-    const int32_t /*input_width*/,
-    const int32_t /*input_channels*/,
-    const int32_t /*output_channels*/,
-    const int32_t right_shift) {
+void yolo_m9_ffn_1_skip_row_i8_i8(int8_t *mid_row, int8_t *wts, int32_t *bias,
+                                  int8_t *skip_row, int8_t *out_row,
+                                  const int32_t /*input_width*/,
+                                  const int32_t /*input_channels*/,
+                                  const int32_t /*output_channels*/,
+                                  const int32_t right_shift) {
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -75,7 +72,8 @@ void yolo_m9_ffn_1_skip_row_i8_i8(
     for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
       const int8_t *__restrict src = mid_row + x * kInC + ic_t * 8;
       int8_t *__restrict d = scratch + ic_t * kInW * 8 + x * 8;
-      for (int b = 0; b < 8; ++b) d[b] = src[b];
+      for (int b = 0; b < 8; ++b)
+        d[b] = src[b];
     }
   }
 
@@ -118,11 +116,15 @@ void yolo_m9_ffn_1_skip_row_i8_i8(
         for (int j = 0; j < 8; ++j) {
           int32_t s = acc_vec[p * 8 + j] + bias_p[j];
           int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
+          if (sr > I8_MAX)
+            sr = I8_MAX;
+          if (sr < I8_MIN)
+            sr = I8_MIN;
           int32_t add = sr + (int32_t)skip_p[j];
-          if (add > I8_MAX) add = I8_MAX;
-          if (add < I8_MIN) add = I8_MIN;
+          if (add > I8_MAX)
+            add = I8_MAX;
+          if (add < I8_MIN)
+            add = I8_MIN;
           row_dst[j] = (int8_t)add;
         }
       }

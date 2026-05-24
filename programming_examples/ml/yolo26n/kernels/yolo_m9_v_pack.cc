@@ -26,16 +26,14 @@
 extern "C" {
 
 void yolo_m9_v_pack_i8_i8(
-    int8_t *in_row,           // (in_w, twoc) natural-layout qkv row
-    int8_t *v_frame,          // (head_dim, N) destination per-head V buffer
-    const int32_t input_width,
-    const int32_t twoc,
-    const int32_t head_dim,           // 64
-    const int32_t v_offset_in_head,   // 64 (= 2*kd; V starts after Q and K)
-    const int32_t head_stride,        // 128
-    const int32_t N,                  // 256
-    const int32_t head_idx,
-    const int32_t row_idx) {
+    int8_t *in_row,  // (in_w, twoc) natural-layout qkv row
+    int8_t *v_frame, // (head_dim, N) destination per-head V buffer
+    const int32_t input_width, const int32_t twoc,
+    const int32_t head_dim,         // 64
+    const int32_t v_offset_in_head, // 64 (= 2*kd; V starts after Q and K)
+    const int32_t head_stride,      // 128
+    const int32_t N,                // 256
+    const int32_t head_idx, const int32_t row_idx) {
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -46,8 +44,7 @@ void yolo_m9_v_pack_i8_i8(
 
   for (int s = 0; s < head_dim; s++) {
     for (int x = 0; x < input_width; x++) {
-      v_frame[s * N + (n_base + x)] =
-          in_row[x * twoc + (chan_base + s)];
+      v_frame[s * N + (n_base + x)] = in_row[x * twoc + (chan_base + s)];
     }
   }
 

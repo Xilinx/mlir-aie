@@ -56,46 +56,44 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
   return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
 }
 
-static inline int wts_chunk_tile_off(int chunk_oc_tile, int ic_tile, int ky, int kx,
-                                     int ic_tiles, int kH, int kW) {
+static inline int wts_chunk_tile_off(int chunk_oc_tile, int ic_tile, int ky,
+                                     int kx, int ic_tiles, int kH, int kW) {
   return (((chunk_oc_tile * ic_tiles + ic_tile) * kH + ky) * kW + kx) << 6;
 }
 
 static inline int wts_chunk_idx(int chunk_oc, int ic_full, int ky, int kx,
-                                 int in_c, int kH, int kW) {
+                                int in_c, int kH, int kW) {
   int oc_t = chunk_oc >> 3;
   int oc_i = chunk_oc & 7;
   int ic_t = ic_full >> 3;
   int ic_i = ic_full & 7;
-  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) +
-         ic_i * 8 + oc_i;
+  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 +
+         oc_i;
 }
 
 extern "C" {
 
-void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i8)(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts_chunk,
-    int32_t *bias_full,
-    int8_t *silu_lut,
-    int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
-    const int32_t border,
-    const int32_t right_shift,
-    const int32_t n_chunks,
+void KERNEL_NAME(
+    yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i8)(
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts_chunk,
+    int32_t *bias_full, int8_t *silu_lut, int8_t *output,
+    const int32_t input_width, const int32_t input_channels,
+    const int32_t output_channels, const int32_t kernel_width,
+    const int32_t kernel_height, const int32_t border,
+    const int32_t right_shift, const int32_t n_chunks,
     const int32_t chunk_idx) {
 #ifdef NOOP_KERNEL
-  return;  // Ablation: skip compute, preserve DMA/lock pattern.
+  return; // Ablation: skip compute, preserve DMA/lock pattern.
 #endif
   event0();
 
 #if SHAPES_ARE_CONST
-  (void)input_width; (void)input_channels; (void)output_channels;
-  (void)kernel_width; (void)kernel_height; (void)n_chunks;
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  (void)kernel_width;
+  (void)kernel_height;
+  (void)n_chunks;
 #endif
 
   const int32_t chunk_oc = OUT_C / N_CHUNKS;
@@ -134,9 +132,9 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i
   int8_t *line[3] = {line0, line1, line2};
 
 #if SHAPES_ARE_CONST
-  constexpr int kXTiles8 = IN_W / 8;     // pair_cv1 (IN_W=16): 2
+  constexpr int kXTiles8 = IN_W / 8; // pair_cv1 (IN_W=16): 2
 #define AIE_HINT_OC AIE_LOOP_RANGE(chunk_oc_tiles, chunk_oc_tiles)
-#define AIE_HINT_X  AIE_LOOP_RANGE(kXTiles8, kXTiles8)
+#define AIE_HINT_X AIE_LOOP_RANGE(kXTiles8, kXTiles8)
 #define AIE_HINT_IC AIE_LOOP_RANGE(IN_C / 8, IN_C / 8)
 #else
 #define AIE_HINT_OC
@@ -204,19 +202,21 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i
               pix[p] = aie::zeros<int8, 64>();
             }
           }
-          if (!any_valid) continue;
+          if (!any_valid)
+            continue;
 
           AIE_HINT_IC
           for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
             // Build mmul input: byte[p*8 + b] = pix[p][ic_t*8 + b]
             alignas(64) int8_t a_buf[64];
             for (int p = 0; p < MMUL_M; ++p) {
-              for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = pix[p][ic_t * 8 + b];
+              for (int b = 0; b < 8; ++b)
+                a_buf[p * 8 + b] = pix[p][ic_t * 8 + b];
             }
             aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
 
-            int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
-                                             KH, KW);
+            int wts_off =
+                wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
             acc.mac(in_a, in_b);
           }
@@ -228,7 +228,8 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i
         int x_out = x_out_base + p;
         for (int j = 0; j < 8; ++j) {
           int oc_full = oc_full_base + j;
-          output[x_out * OUT_C + oc_full] = silu_lut[int(srs_v[p * 8 + j]) + 128];
+          output[x_out * OUT_C + oc_full] =
+              silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
@@ -254,30 +255,35 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i
             for (int p = 0; p < MMUL_M; ++p) {
               int col = x_in_base + p + kx;
               if (col < 0 || col >= IN_W) {
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+                for (int b = 0; b < 8; ++b)
+                  a_buf[p * 8 + b] = 0;
               } else {
                 int8_t *src = line_ptr + col * IN_C + ic_t * 8;
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+                for (int b = 0; b < 8; ++b)
+                  a_buf[p * 8 + b] = src[b];
                 any_valid = true;
               }
             }
-            if (!any_valid) continue;
+            if (!any_valid)
+              continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
-            int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
-                                             KH, KW);
+            int wts_off =
+                wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
             acc.mac(in_a, in_b);
           }
         }
       }
 
-      aie::vector<int8, MMUL_MN> srs_v = acc.template to_vector<int8>(right_shift);
+      aie::vector<int8, MMUL_MN> srs_v =
+          acc.template to_vector<int8>(right_shift);
       for (int p = 0; p < MMUL_M; ++p) {
         int x_out = x_out_base + p;
         for (int j = 0; j < 8; ++j) {
           int oc_full = oc_full_base + j;
-          output[x_out * OUT_C + oc_full] = silu_lut[int(srs_v[p * 8 + j]) + 128];
+          output[x_out * OUT_C + oc_full] =
+              silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
@@ -292,22 +298,30 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_streamed_conv2dk3_silu_bias_i8_i
         for (int ic_full = 0; ic_full < input_channels; ++ic_full) {
           for (int kx = 0; kx < kernel_width; ++kx) {
             int col = x - 1 + kx;
-            if (col < 0 || col >= input_width) continue;
+            if (col < 0 || col >= input_width)
+              continue;
             int in_indx = col * input_channels + ic_full;
             int w0 = wts_chunk[wts_chunk_idx(chunk_oc_local, ic_full, 0, kx,
-                                              input_channels, kernel_height, kernel_width)];
+                                             input_channels, kernel_height,
+                                             kernel_width)];
             int w1 = wts_chunk[wts_chunk_idx(chunk_oc_local, ic_full, 1, kx,
-                                              input_channels, kernel_height, kernel_width)];
+                                             input_channels, kernel_height,
+                                             kernel_width)];
             int w2 = wts_chunk[wts_chunk_idx(chunk_oc_local, ic_full, 2, kx,
-                                              input_channels, kernel_height, kernel_width)];
-            if (!skip_top) sum += line0[in_indx] * w0;
+                                             input_channels, kernel_height,
+                                             kernel_width)];
+            if (!skip_top)
+              sum += line0[in_indx] * w0;
             sum += line1[in_indx] * w1;
-            if (!skip_bot) sum += line2[in_indx] * w2;
+            if (!skip_bot)
+              sum += line2[in_indx] * w2;
           }
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         output[x * output_channels + oc_full] = silu_lut[sr + 128];
       }
     }

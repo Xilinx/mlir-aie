@@ -1,4 +1,5 @@
-//===- yolo_c3k2_small_m0_cv1_vec.cc -------------------------------*- C++ -*-===//
+//===- yolo_c3k2_small_m0_cv1_vec.cc -------------------------------*- C++
+//-*-===//
 //
 // Vectorized 3x3 stride-1 INT8 conv with OIYXI8O8 weight layout. Drop-in
 // .o-level replacement for yolo_c3k2_small_m0_cv1.cc on AIE2P.
@@ -79,8 +80,8 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx,
   int oc_i = oc_full & 7;
   int ic_t = ic_full >> 3;
   int ic_i = ic_full & 7;
-  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) +
-         ic_i * 8 + oc_i;
+  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 +
+         oc_i;
 }
 
 // Per-pixel 8-byte gather helper. `IN_C_LOCAL` is the IN_C value to use
@@ -91,7 +92,8 @@ static __attribute__((always_inline)) inline void
 gather_interior(int8_t *line_ptr, int x_in_base, int ic_t, int8_t *a_buf) {
   for (int p = 0; p < 4; ++p) {
     int8_t *src = line_ptr + (x_in_base + p) * IN_C_LOCAL + ic_t * 8;
-    for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+    for (int b = 0; b < 8; ++b)
+      a_buf[p * 8 + b] = src[b];
   }
 }
 
@@ -102,10 +104,12 @@ gather_edge(int8_t *line_ptr, int x_in_base, int ic_t, int8_t *a_buf) {
   for (int p = 0; p < 4; ++p) {
     int col = x_in_base + p;
     if (col < 0 || col >= IN_W_LOCAL) {
-      for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+      for (int b = 0; b < 8; ++b)
+        a_buf[p * 8 + b] = 0;
     } else {
       int8_t *src = line_ptr + col * IN_C_LOCAL + ic_t * 8;
-      for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+      for (int b = 0; b < 8; ++b)
+        a_buf[p * 8 + b] = src[b];
     }
   }
 }
@@ -114,7 +118,7 @@ gather_edge(int8_t *line_ptr, int x_in_base, int ic_t, int8_t *a_buf) {
 // emits bias+SRS+saturate in one vec op.
 static __attribute__((always_inline)) inline aie::accum<acc32, 32>
 make_bias_acc(const int32_t *bias_8) {
-  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 8> b8 = aie::load_v<8>(bias_8);
   aie::vector<int32, 16> b16 = aie::concat(b8, b8);
   aie::vector<int32, 32> b32 = aie::concat(b16, b16);
   aie::accum<acc32, 32> a;
@@ -129,9 +133,8 @@ make_bias_acc(const int32_t *bias_8) {
 // past the 16KB program-memory budget on m_0_inner tile (shared with
 // m0_cv2_skip kernel for m2/m4).
 static __attribute__((noinline)) void
-write_x_tile_result(aie::vector<int8, 32> srs_v,
-                    int8_t *silu_lut, int8_t *output,
-                    int oc_t, int out_c, int x_out_base) {
+write_x_tile_result(aie::vector<int8, 32> srs_v, int8_t *silu_lut,
+                    int8_t *output, int oc_t, int out_c, int x_out_base) {
   for (int p = 0; p < 4; ++p) {
     int x_out = x_out_base + p;
     for (int j = 0; j < 8; ++j) {
@@ -144,18 +147,11 @@ write_x_tile_result(aie::vector<int8, 32> srs_v,
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
-    int8_t *line0, int8_t *line1, int8_t *line2,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *silu_lut,
-    int8_t *output,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t kernel_width,
-    const int32_t kernel_height,
-    const int32_t border,
-    const int32_t right_shift,
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    const int32_t input_channels, const int32_t output_channels,
+    const int32_t kernel_width, const int32_t kernel_height,
+    const int32_t border, const int32_t right_shift,
     const int32_t /*padding*/) {
 #ifdef NOOP_KERNEL
   return;
@@ -165,8 +161,11 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
 #if SHAPES_ARE_CONST
   // Runtime args must match compile-time shape macros.
   // Cheap assert; can be compiled out with -DNDEBUG (already on by default).
-  (void)input_width; (void)input_channels; (void)output_channels;
-  (void)kernel_width; (void)kernel_height;
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  (void)kernel_width;
+  (void)kernel_height;
 #endif
 
   const bool skip_top = (border == 0);
@@ -196,12 +195,12 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
   // loop_range pragmas to inform peano of exact bounds.
   constexpr int kIcTiles = IN_C / 8;
   constexpr int kOcTiles = OUT_C / 8;
-  constexpr int kXTiles  = IN_W / 4;
+  constexpr int kXTiles = IN_W / 4;
   constexpr int kInteriorStart = 1;
-  constexpr int kInteriorEnd   = kXTiles - 1;
-  constexpr int kInteriorN     = kInteriorEnd - kInteriorStart;
-  constexpr int kXQuads        = kInteriorN / 4;
-  constexpr int kXTailStart    = kInteriorStart + kXQuads * 4;
+  constexpr int kInteriorEnd = kXTiles - 1;
+  constexpr int kInteriorN = kInteriorEnd - kInteriorStart;
+  constexpr int kXQuads = kInteriorN / 4;
+  constexpr int kXTailStart = kInteriorStart + kXQuads * 4;
   // For m2 (IN_W=128): kXTiles=32, kInteriorN=30, kXQuads=7, tail tiles 29..30
   // For m4 (IN_W=64):  kXTiles=16, kInteriorN=14, kXQuads=3, tail tiles 13..14
 
@@ -213,7 +212,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
     {
       MMUL4x8x8 acc;
       acc = bias_acc;
-      constexpr int x_in_base_edge = -1;  // x_tile=0 -> 0*4 - 1
+      constexpr int x_in_base_edge = -1; // x_tile=0 -> 0*4 - 1
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
         AIE_LOOP_RANGE(1, 3)
@@ -241,11 +240,11 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
     AIE_LOOP_RANGE(kXQuads, kXQuads)
     for (int xq = 0; xq < kXQuads; ++xq) {
       const int x_tile_base = kInteriorStart + 4 * xq;
-      const int x_out_base  = x_tile_base * 4;
-      const int x_in_base0  = x_out_base - 1;       // x_tile 4q+0
-      const int x_in_base1  = x_in_base0 + 4;
-      const int x_in_base2  = x_in_base0 + 8;
-      const int x_in_base3  = x_in_base0 + 12;
+      const int x_out_base = x_tile_base * 4;
+      const int x_in_base0 = x_out_base - 1; // x_tile 4q+0
+      const int x_in_base1 = x_in_base0 + 4;
+      const int x_in_base2 = x_in_base0 + 8;
+      const int x_in_base3 = x_in_base0 + 12;
 
       MMUL4x8x8 acc0, acc1, acc2, acc3;
       acc0 = bias_acc;
@@ -295,7 +294,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
       MMUL4x8x8 acc;
       acc = bias_acc;
       const int x_out_base = x_tile * 4;
-      const int x_in_base  = x_out_base - 1;
+      const int x_in_base = x_out_base - 1;
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
@@ -335,7 +334,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
         }
       }
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      write_x_tile_result(srs_v, silu_lut, output, oc_t, OUT_C, (kXTiles - 1) * 4);
+      write_x_tile_result(srs_v, silu_lut, output, oc_t, OUT_C,
+                          (kXTiles - 1) * 4);
     }
   }
 #else
@@ -347,7 +347,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
       MMUL4x8x8 acc;
       acc = bias_acc;
       const int x_out_base = x_tile * 4;
-      const int x_in_base  = x_out_base - 1;
+      const int x_in_base = x_out_base - 1;
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
@@ -357,14 +357,17 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
             for (int p = 0; p < 4; ++p) {
               int col = x_in_base + p + kx;
               if (col < 0 || col >= IN_W) {
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = 0;
+                for (int b = 0; b < 8; ++b)
+                  a_buf[p * 8 + b] = 0;
               } else {
                 int8_t *src = line_ptr + col * IN_C + ic_t * 8;
-                for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+                for (int b = 0; b < 8; ++b)
+                  a_buf[p * 8 + b] = src[b];
                 any_valid = true;
               }
             }
-            if (!any_valid) continue;
+            if (!any_valid)
+              continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
@@ -385,19 +388,27 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
         for (int ic_full = 0; ic_full < IN_C; ++ic_full) {
           for (int kx = 0; kx < KW; ++kx) {
             int col = x - 1 + kx;
-            if (col < 0 || col >= IN_W) continue;
+            if (col < 0 || col >= IN_W)
+              continue;
             int in_indx = col * IN_C + ic_full;
-            int w0 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 0, kx, IN_C, KH, KW)];
-            int w1 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 1, kx, IN_C, KH, KW)];
-            int w2 = wts[wts_idx_oiyxi8o8(oc_full, ic_full, 2, kx, IN_C, KH, KW)];
-            if (!skip_top) sum += line0[in_indx] * w0;
+            int w0 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 0, kx, IN_C, KH, KW)];
+            int w1 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 1, kx, IN_C, KH, KW)];
+            int w2 =
+                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 2, kx, IN_C, KH, KW)];
+            if (!skip_top)
+              sum += line0[in_indx] * w0;
             sum += line1[in_indx] * w1;
-            if (!skip_bot) sum += line2[in_indx] * w2;
+            if (!skip_bot)
+              sum += line2[in_indx] * w2;
           }
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         output[x * OUT_C + oc_full] = silu_lut[sr + 128];
       }
     }

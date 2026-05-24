@@ -6,7 +6,8 @@
 //
 // Called once per (row, cv1_chunk_idx). Within a row:
 //   - chunks 0..N/2-1 write to out_top (first 128 oc)
-//   - chunks N/2..N-1 write to (s_bot scratch AND out_bot_to_cv2) (second 128 oc)
+//   - chunks N/2..N-1 write to (s_bot scratch AND out_bot_to_cv2) (second 128
+//   oc)
 //   - on the LAST chunk (chunk_idx == n_chunks - 1), bot is fully assembled
 //     in s_bot; run m_0_split using s_bot -> split_a + split_b
 //
@@ -51,7 +52,7 @@ static inline int wts_tile_off_1x1(int oc_tile, int ic_tile, int ic_tiles) {
 // round-trip through a helper.
 static __attribute__((always_inline)) inline aie::accum<acc32, 32>
 make_bias_acc(const int32_t *bias_8) {
-  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 8> b8 = aie::load_v<8>(bias_8);
   aie::vector<int32, 16> b16 = aie::concat(b8, b8);
   aie::vector<int32, 32> b32 = aie::concat(b16, b16);
   aie::accum<acc32, 32> a;
@@ -64,28 +65,31 @@ make_bias_acc(const int32_t *bias_8) {
 // Second-half chunks write to BOTH s_bot (scratch for m_0_split, to be
 // consumed within this same kernel call when chunk_idx == last) AND
 // out_bot_to_cv2 (cv2 skip path).
-static inline void cv1_chunk_compute(
-    int8_t *in_row, int8_t *wts_chunk, int32_t *bias_full, int8_t *silu_lut,
-    int8_t *out_top, int8_t *s_bot, int8_t *out_bot_to_cv2,
-    int input_width, int input_channels, int twoc,
-    int n_chunks, int chunk_idx, int right_shift) {
+static inline void cv1_chunk_compute(int8_t *in_row, int8_t *wts_chunk,
+                                     int32_t *bias_full, int8_t *silu_lut,
+                                     int8_t *out_top, int8_t *s_bot,
+                                     int8_t *out_bot_to_cv2, int input_width,
+                                     int input_channels, int twoc, int n_chunks,
+                                     int chunk_idx, int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
   // Hardcoded for m8 cv1 call site (in_w=16, in_c=256, twoc=256, N=8).
   // The original `twoc / n_chunks` was signed-runtime division → __divsi3
   // call. Constexpr lowers everything to shifts/immediates.
-  (void)input_width; (void)input_channels; (void)twoc; (void)n_chunks;
-  constexpr int chunk_oc = 32;            // twoc / n_chunks = 256/8
-  constexpr int c = 128;                  // twoc / 2
-  constexpr int chunks_per_half = 4;      // n_chunks / 2
+  (void)input_width;
+  (void)input_channels;
+  (void)twoc;
+  (void)n_chunks;
+  constexpr int chunk_oc = 32;       // twoc / n_chunks = 256/8
+  constexpr int c = 128;             // twoc / 2
+  constexpr int chunks_per_half = 4; // n_chunks / 2
   const bool is_top = (chunk_idx < chunks_per_half);
   const int dst_oc_offset =
-      is_top ? chunk_idx * chunk_oc
-             : (chunk_idx - chunks_per_half) * chunk_oc;
+      is_top ? chunk_idx * chunk_oc : (chunk_idx - chunks_per_half) * chunk_oc;
   const int bias_offset = chunk_idx * chunk_oc;
-  constexpr int ic_tiles = 32;            // input_channels / 8 = 256/8
-  constexpr int chunk_oc_tiles = 4;       // chunk_oc / 8
-  constexpr int x_tiles = 4;              // input_width / 4 = 16/4
+  constexpr int ic_tiles = 32;      // input_channels / 8 = 256/8
+  constexpr int chunk_oc_tiles = 4; // chunk_oc / 8
+  constexpr int x_tiles = 4;        // input_width / 4 = 16/4
 
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int dst_oc_full_base = dst_oc_offset + chunk_oc_t * 8;
@@ -102,7 +106,8 @@ static inline void cv1_chunk_compute(
         for (int p = 0; p < 4; ++p) {
           int col = x_base + p;
           int8_t *src = in_row + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+          for (int b = 0; b < 8; ++b)
+            a_buf[p * 8 + b] = src[b];
         }
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
@@ -131,16 +136,18 @@ static inline void cv1_chunk_compute(
 
 // m_0_split branch: input bot (128 ch) -> SiLU LUT -> output (64 ch).
 // Called twice (once per branch: a -> split_a, b -> split_b).
-static inline void m0_split_branch(
-    int8_t *in_bot, int8_t *wts, int32_t *bias, int8_t *silu_lut,
-    int8_t *out, int input_width, int input_channels, int output_channels,
-    int right_shift) {
+static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
+                                   int8_t *silu_lut, int8_t *out,
+                                   int input_width, int input_channels,
+                                   int output_channels, int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
   // Hardcoded for m8 m_0_split call site (in_w=16, in_c=128, out_c=64).
-  (void)input_width; (void)input_channels; (void)output_channels;
-  constexpr int ic_tiles = 16;            // 128 / 8
-  constexpr int oc_tiles = 8;             // 64 / 8
-  constexpr int x_tiles = 4;              // 16 / 4
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  constexpr int ic_tiles = 16; // 128 / 8
+  constexpr int oc_tiles = 8;  // 64 / 8
+  constexpr int x_tiles = 4;   // 16 / 4
 
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
@@ -154,7 +161,8 @@ static inline void m0_split_branch(
         for (int p = 0; p < 4; ++p) {
           int col = x_base + p;
           int8_t *src = in_bot + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+          for (int b = 0; b < 8; ++b)
+            a_buf[p * 8 + b] = src[b];
         }
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
@@ -167,7 +175,8 @@ static inline void m0_split_branch(
       for (int p = 0; p < 4; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
-          out[x_out * output_channels + oc_t * 8 + j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
+          out[x_out * output_channels + oc_t * 8 + j] =
+              silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
@@ -182,37 +191,33 @@ extern "C" {
 // with m8_back's scratch buffer (used at different times per iter).
 void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
     // cv1 inputs / weights
-    int8_t *in_row,
-    int8_t *cv1_wts_chunk, int32_t *bias_cv1, int8_t *silu_lut_cv1,
-    int8_t *out_top, int8_t *out_bot_to_cv2,
+    int8_t *in_row, int8_t *cv1_wts_chunk, int32_t *bias_cv1,
+    int8_t *silu_lut_cv1, int8_t *out_top, int8_t *out_bot_to_cv2,
     // m_0_split static weights (used only on last chunk)
     int8_t *wts_m0c1, int32_t *bias_m0c1, int8_t *silu_lut_m0c1,
     int8_t *wts_m0c2, int32_t *bias_m0c2, int8_t *silu_lut_m0c2,
     int8_t *out_split_a, int8_t *out_split_b,
-    int8_t *scratch,           // accumulating bot buffer (16 * 128 = 2 KB)
+    int8_t *scratch, // accumulating bot buffer (16 * 128 = 2 KB)
     // dims
     const int32_t input_width,
-    const int32_t input_channels,  // cv1 ic = 256
-    const int32_t twoc,            // cv1 oc = 256
-    const int32_t cp,              // m_0_split oc per branch = 64
-    const int32_t n_cv1_chunks,
-    const int32_t cv1_chunk_idx,
-    const int32_t rs_cv1,
-    const int32_t rs_m0c1,
-    const int32_t rs_m0c2) {
+    const int32_t input_channels, // cv1 ic = 256
+    const int32_t twoc,           // cv1 oc = 256
+    const int32_t cp,             // m_0_split oc per branch = 64
+    const int32_t n_cv1_chunks, const int32_t cv1_chunk_idx,
+    const int32_t rs_cv1, const int32_t rs_m0c1, const int32_t rs_m0c2) {
 #ifdef NOOP_KERNEL
-  return;  // Ablation: skip compute, preserve DMA/lock pattern.
+  return; // Ablation: skip compute, preserve DMA/lock pattern.
 #endif
   event0();
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
-  const int32_t c = twoc >> 1;  // 128
+  const int32_t c = twoc >> 1; // 128
 
-  // Always: do this cv1 chunk. Writes either out_top or (scratch + out_bot_to_cv2).
-  cv1_chunk_compute(in_row, cv1_wts_chunk, bias_cv1, silu_lut_cv1,
-                    out_top, scratch, out_bot_to_cv2,
-                    input_width, input_channels, twoc,
+  // Always: do this cv1 chunk. Writes either out_top or (scratch +
+  // out_bot_to_cv2).
+  cv1_chunk_compute(in_row, cv1_wts_chunk, bias_cv1, silu_lut_cv1, out_top,
+                    scratch, out_bot_to_cv2, input_width, input_channels, twoc,
                     n_cv1_chunks, cv1_chunk_idx, rs_cv1);
 
   // On last chunk: bot is now fully assembled in scratch. Run m_0_split.
@@ -226,4 +231,4 @@ void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
   event1();
 }
 
-}  // extern "C"
+} // extern "C"

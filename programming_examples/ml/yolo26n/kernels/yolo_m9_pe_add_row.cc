@@ -16,7 +16,8 @@
 //   sv_h0_acc : (N=256, head_dim) — accumulator filled in Phase 2a
 //               sv_h0_acc[y*in_w + x, c] for c in [0, head_dim)
 //   sv_h1_row : (in_w, head_dim) — per-y scratch filled before this call
-//               sv_h1_row[x, c] for c in [0, head_dim) → maps to c'=64..127 globally
+//               sv_h1_row[x, c] for c in [0, head_dim) → maps to c'=64..127
+//               globally
 //
 // Output (chunk_cols=in_w, c) = clip_i8( sv + pe ) with both at the
 // same QL scale 2^-4 (verified from ONNX: MatMul_1 / pe / Add all at
@@ -43,19 +44,19 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 extern "C" {
 
 void yolo_m9_pe_add_row_i8_i8(
-    int8_t *v_h0,           // (head_dim, N)
-    int8_t *v_h1,           // (head_dim, N)
-    int8_t *sv_h0_acc,      // (N, head_dim)
-    int8_t *sv_h1_row,      // (in_w, head_dim)  (per-y scratch)
-    int8_t *pe_wts,         // (c, 1, 3, 3) OIYX_raw flat (= c*9)
-    int32_t *pe_bias,       // (c,)
-    int8_t *chunk_out,      // (in_w, c) one full output row
+    int8_t *v_h0,      // (head_dim, N)
+    int8_t *v_h1,      // (head_dim, N)
+    int8_t *sv_h0_acc, // (N, head_dim)
+    int8_t *sv_h1_row, // (in_w, head_dim)  (per-y scratch)
+    int8_t *pe_wts,    // (c, 1, 3, 3) OIYX_raw flat (= c*9)
+    int32_t *pe_bias,  // (c,)
+    int8_t *chunk_out, // (in_w, c) one full output row
     const int32_t y_idx,
-    const int32_t in_w,             // 16
-    const int32_t in_h,             // 16
-    const int32_t head_dim,         // 64
-    const int32_t c_total,          // 128 (= 2 * head_dim)
-    const int32_t N,                // in_w * in_h = 256
+    const int32_t in_w,     // 16
+    const int32_t in_h,     // 16
+    const int32_t head_dim, // 64
+    const int32_t c_total,  // 128 (= 2 * head_dim)
+    const int32_t N,        // in_w * in_h = 256
     const int32_t rs_pe) {
 #ifdef NOOP_KERNEL
   return;
@@ -77,18 +78,22 @@ void yolo_m9_pe_add_row_i8_i8(
       int32_t acc = binit;
       for (int ky = 0; ky < 3; ky++) {
         int32_t yy = y_idx + ky - 1;
-        if (yy < 0 || yy >= in_h) continue;  // zero pad top/bottom
+        if (yy < 0 || yy >= in_h)
+          continue; // zero pad top/bottom
         for (int kx = 0; kx < 3; kx++) {
           int32_t xx = x + kx - 1;
-          if (xx < 0 || xx >= in_w) continue;  // zero pad left/right
+          if (xx < 0 || xx >= in_w)
+            continue; // zero pad left/right
           int8_t v_val = v_row[yy * in_w + xx];
           int8_t w_val = pe_w_c[ky * 3 + kx];
           acc += (int32_t)v_val * (int32_t)w_val;
         }
       }
       int32_t pe_q = banker_srs(acc, rs_pe);
-      if (pe_q > I8_MAX) pe_q = I8_MAX;
-      if (pe_q < I8_MIN) pe_q = I8_MIN;
+      if (pe_q > I8_MAX)
+        pe_q = I8_MAX;
+      if (pe_q < I8_MIN)
+        pe_q = I8_MIN;
 
       // Pull sv contribution for this (c, x) at y=y_idx.
       int8_t sv_val;
@@ -99,8 +104,10 @@ void yolo_m9_pe_add_row_i8_i8(
       }
 
       int32_t s = (int32_t)sv_val + (int32_t)pe_q;
-      if (s > I8_MAX) s = I8_MAX;
-      if (s < I8_MIN) s = I8_MIN;
+      if (s > I8_MAX)
+        s = I8_MAX;
+      if (s < I8_MIN)
+        s = I8_MIN;
       chunk_out[x * c_total + c] = (int8_t)s;
     }
   }

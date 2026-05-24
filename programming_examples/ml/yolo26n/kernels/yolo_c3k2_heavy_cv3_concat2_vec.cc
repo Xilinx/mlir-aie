@@ -46,16 +46,9 @@ static inline int wts_idx_oiyxi8o8_1x1(int oc_full, int ic_full, int in_c) {
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
-    int8_t *in_a,
-    int8_t *in_b,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *silu_lut,
-    int8_t *output,
-    const int32_t input_width,
-    const int32_t two_cp,
-    const int32_t output_channels,
-    const int32_t right_shift) {
+    int8_t *in_a, int8_t *in_b, int8_t *wts, int32_t *bias, int8_t *silu_lut,
+    int8_t *output, const int32_t input_width, const int32_t two_cp,
+    const int32_t output_channels, const int32_t right_shift) {
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -95,7 +88,8 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
         for (int p = 0; p < 4; ++p) {
           int col = x_base + p;
           int8_t *psrc = src + col * cp + local_ic_t * 8;
-          for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = psrc[b];
+          for (int b = 0; b < 8; ++b)
+            a_buf[p * 8 + b] = psrc[b];
         }
         aie::vector<int8, 32> in_a_vec = aie::load_v<32>(a_buf);
 
@@ -110,8 +104,10 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
         for (int j = 0; j < 8; ++j) {
           int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
           int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
+          if (sr > I8_MAX)
+            sr = I8_MAX;
+          if (sr < I8_MIN)
+            sr = I8_MIN;
           output[x_out * output_channels + oc_t * 8 + j] = silu_lut[sr + 128];
         }
       }
@@ -123,13 +119,14 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
         int oc_full = oc_t * 8 + j;
         int32_t sum = bias[oc_full];
         for (int ic = 0; ic < two_cp; ++ic) {
-          int8_t a = (ic < cp) ? in_a[x * cp + ic]
-                               : in_b[x * cp + (ic - cp)];
+          int8_t a = (ic < cp) ? in_a[x * cp + ic] : in_b[x * cp + (ic - cp)];
           sum += a * wts[wts_idx_oiyxi8o8_1x1(oc_full, ic, two_cp)];
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         output[x * output_channels + oc_full] = silu_lut[sr + 128];
       }
     }

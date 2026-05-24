@@ -1,4 +1,5 @@
-//===- yolo_m9_cv1_split_vec.cc -----------------------------------*- C++ -*-===//
+//===- yolo_m9_cv1_split_vec.cc -----------------------------------*- C++
+//-*-===//
 //
 // Vectorized chunked-OC variant of m9's cv1 1x1 INT8 conv. Drop-in
 // .o-level replacement (same symbol + ABI as the scalar .cc).
@@ -50,23 +51,23 @@
 #error "YOLO_M9_CV1_N_CHUNKS must be defined at compile time"
 #endif
 
-static constexpr int kInW       = YOLO_M9_CV1_IN_W;
-static constexpr int kInC       = YOLO_M9_CV1_IN_C;
-static constexpr int kTwoC      = YOLO_M9_CV1_TWOC;
-static constexpr int kNChunks   = YOLO_M9_CV1_N_CHUNKS;
+static constexpr int kInW = YOLO_M9_CV1_IN_W;
+static constexpr int kInC = YOLO_M9_CV1_IN_C;
+static constexpr int kTwoC = YOLO_M9_CV1_TWOC;
+static constexpr int kNChunks = YOLO_M9_CV1_N_CHUNKS;
 
-static constexpr int kChunkOc       = kTwoC / kNChunks;
-static constexpr int kHalfC         = kTwoC / 2;
+static constexpr int kChunkOc = kTwoC / kNChunks;
+static constexpr int kHalfC = kTwoC / 2;
 static constexpr int kChunksPerHalf = kNChunks / 2;
-static constexpr int kIcTiles       = kInC / 8;
-static constexpr int kChunkOcTiles  = kChunkOc / 8;
-static constexpr int kXTiles        = kInW / 4;
+static constexpr int kIcTiles = kInC / 8;
+static constexpr int kChunkOcTiles = kChunkOc / 8;
+static constexpr int kXTiles = kInW / 4;
 
-static_assert(kInC % 8 == 0,         "YOLO_M9_CV1_IN_C must be a multiple of 8");
-static_assert(kChunkOc % 8 == 0,     "TWOC/N_CHUNKS must be a multiple of 8");
-static_assert(kInW % 4 == 0,         "YOLO_M9_CV1_IN_W must be a multiple of 4");
-static_assert(kTwoC % 2 == 0,        "YOLO_M9_CV1_TWOC must be even");
-static_assert(kNChunks % 2 == 0,     "YOLO_M9_CV1_N_CHUNKS must be even");
+static_assert(kInC % 8 == 0, "YOLO_M9_CV1_IN_C must be a multiple of 8");
+static_assert(kChunkOc % 8 == 0, "TWOC/N_CHUNKS must be a multiple of 8");
+static_assert(kInW % 4 == 0, "YOLO_M9_CV1_IN_W must be a multiple of 4");
+static_assert(kTwoC % 2 == 0, "YOLO_M9_CV1_TWOC must be even");
+static_assert(kNChunks % 2 == 0, "YOLO_M9_CV1_N_CHUNKS must be even");
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -78,17 +79,10 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 extern "C" {
 
 void yolo_m9_cv1_split_silu_bias_i8_i8(
-    int8_t *in_row,
-    int8_t *wts_chunk,
-    int32_t *bias_full,
-    int8_t *silu_lut,
-    int8_t *out_top,
-    int8_t *out_bot,
-    const int32_t /*input_width*/,
-    const int32_t /*input_channels*/,
-    const int32_t /*twoc*/,
-    const int32_t /*n_chunks*/,
-    const int32_t chunk_idx,
+    int8_t *in_row, int8_t *wts_chunk, int32_t *bias_full, int8_t *silu_lut,
+    int8_t *out_top, int8_t *out_bot, const int32_t /*input_width*/,
+    const int32_t /*input_channels*/, const int32_t /*twoc*/,
+    const int32_t /*n_chunks*/, const int32_t chunk_idx,
     const int32_t right_shift) {
 #ifdef NOOP_KERNEL
   return;
@@ -96,9 +90,8 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
   event0();
 
   const bool is_top = (chunk_idx < kChunksPerHalf);
-  const int32_t dst_oc_offset = is_top
-      ? chunk_idx * kChunkOc
-      : (chunk_idx - kChunksPerHalf) * kChunkOc;
+  const int32_t dst_oc_offset =
+      is_top ? chunk_idx * kChunkOc : (chunk_idx - kChunksPerHalf) * kChunkOc;
   const int32_t bias_offset = chunk_idx * kChunkOc;
   int8_t *__restrict dst = is_top ? out_top : out_bot;
 
@@ -117,7 +110,8 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
       const int8_t *__restrict src = in_row + x * kInC + ic_t * 8;
       int8_t *__restrict d = scratch + ic_t * kInW * 8 + x * 8;
       // 8-byte block copy (peano lowers to a single 64-bit load/store pair).
-      for (int b = 0; b < 8; ++b) d[b] = src[b];
+      for (int b = 0; b < 8; ++b)
+        d[b] = src[b];
     }
   }
 
@@ -134,7 +128,8 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
   for (int oc_t = 0; oc_t < kChunkOcTiles; ++oc_t) {
     MMUL4x8x8 acc[kXTiles];
     AIE_LOOP_UNROLL_FULL
-    for (int xt = 0; xt < kXTiles; ++xt) acc[xt] = aie::zeros<acc32, 32>();
+    for (int xt = 0; xt < kXTiles; ++xt)
+      acc[xt] = aie::zeros<acc32, 32>();
 
     const int8_t *__restrict b_ptr = wts_chunk + ((oc_t * kIcTiles) << 6);
 
@@ -163,13 +158,16 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
       AIE_LOOP_UNROLL_FULL
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
-        int8_t *__restrict row_dst = dst + x_out * kHalfC + dst_oc_offset + oc_t * 8;
+        int8_t *__restrict row_dst =
+            dst + x_out * kHalfC + dst_oc_offset + oc_t * 8;
         AIE_LOOP_UNROLL_FULL
         for (int j = 0; j < 8; ++j) {
           int32_t s = acc_vec[p * 8 + j] + bias_p[j];
           int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX) sr = I8_MAX;
-          if (sr < I8_MIN) sr = I8_MIN;
+          if (sr > I8_MAX)
+            sr = I8_MAX;
+          if (sr < I8_MIN)
+            sr = I8_MIN;
           row_dst[j] = silu_lut[sr + 128];
         }
       }

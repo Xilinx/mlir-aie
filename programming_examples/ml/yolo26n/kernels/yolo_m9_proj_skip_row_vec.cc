@@ -1,4 +1,5 @@
-//===- yolo_m9_proj_skip_row_vec.cc ------------------------------*- C++ -*-===//
+//===- yolo_m9_proj_skip_row_vec.cc ------------------------------*- C++
+//-*-===//
 //
 // Vectorized fused attn/proj 1x1 + cross-scale skip-add (b) for the PSA
 // pipe. Drop-in .o-level replacement for yolo_m9_proj_skip_row.cc.
@@ -42,18 +43,13 @@ static inline int wts_idx_oiyxi8o8_1x1(int oc_full, int ic_full, int in_c) {
 
 extern "C" {
 
-void yolo_m9_proj_skip_row_i8_i8(
-    int8_t *in_row,
-    int8_t *b_cache,
-    int8_t *wts,
-    int32_t *bias,
-    int8_t *out_row,
-    const int32_t yi,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels,
-    const int32_t right_shift,
-    const int32_t skip_shift) {
+void yolo_m9_proj_skip_row_i8_i8(int8_t *in_row, int8_t *b_cache, int8_t *wts,
+                                 int32_t *bias, int8_t *out_row,
+                                 const int32_t yi, const int32_t input_width,
+                                 const int32_t input_channels,
+                                 const int32_t output_channels,
+                                 const int32_t right_shift,
+                                 const int32_t skip_shift) {
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -82,7 +78,8 @@ void yolo_m9_proj_skip_row_i8_i8(
         for (int p = 0; p < 4; ++p) {
           int col = x_out_base + p;
           int8_t *src = in_row + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+          for (int b = 0; b < 8; ++b)
+            a_buf[p * 8 + b] = src[b];
         }
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
@@ -98,13 +95,18 @@ void yolo_m9_proj_skip_row_i8_i8(
           int oc_full = oc_t * 8 + j;
           int32_t s = acc_vec[p * 8 + j] + bias[oc_full];
           int32_t proj_q = banker_srs(s, right_shift);
-          if (proj_q > I8_MAX) proj_q = I8_MAX;
-          if (proj_q < I8_MIN) proj_q = I8_MIN;
-          int32_t add_q = proj_q +
+          if (proj_q > I8_MAX)
+            proj_q = I8_MAX;
+          if (proj_q < I8_MIN)
+            proj_q = I8_MIN;
+          int32_t add_q =
+              proj_q +
               ((int32_t)b_row[x_out * output_channels + oc_full] << skip_shift);
           int32_t add_i8 = banker_srs(add_q, skip_shift);
-          if (add_i8 > I8_MAX) add_i8 = I8_MAX;
-          if (add_i8 < I8_MIN) add_i8 = I8_MIN;
+          if (add_i8 > I8_MAX)
+            add_i8 = I8_MAX;
+          if (add_i8 < I8_MIN)
+            add_i8 = I8_MIN;
           out_row[x_out * output_channels + oc_full] = (int8_t)add_i8;
         }
       }
@@ -120,13 +122,17 @@ void yolo_m9_proj_skip_row_i8_i8(
                  wts[wts_idx_oiyxi8o8_1x1(oc_full, ic, input_channels)];
         }
         int32_t proj_q = banker_srs(sum, right_shift);
-        if (proj_q > I8_MAX) proj_q = I8_MAX;
-        if (proj_q < I8_MIN) proj_q = I8_MIN;
-        int32_t add_q = proj_q +
-            ((int32_t)b_row[x * output_channels + oc_full] << skip_shift);
+        if (proj_q > I8_MAX)
+          proj_q = I8_MAX;
+        if (proj_q < I8_MIN)
+          proj_q = I8_MIN;
+        int32_t add_q = proj_q + ((int32_t)b_row[x * output_channels + oc_full]
+                                  << skip_shift);
         int32_t add_i8 = banker_srs(add_q, skip_shift);
-        if (add_i8 > I8_MAX) add_i8 = I8_MAX;
-        if (add_i8 < I8_MIN) add_i8 = I8_MIN;
+        if (add_i8 > I8_MAX)
+          add_i8 = I8_MAX;
+        if (add_i8 < I8_MIN)
+          add_i8 = I8_MIN;
         out_row[x * output_channels + oc_full] = (int8_t)add_i8;
       }
     }

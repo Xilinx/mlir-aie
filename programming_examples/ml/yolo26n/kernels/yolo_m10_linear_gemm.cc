@@ -24,14 +24,13 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 
 extern "C" {
 
-void yolo_m10_linear_gemm_i8_i8(
-    int8_t *in_vec,            // (in_dim,)
-    int8_t *wts,               // (out_dim, in_dim) row-major flat
-    int32_t *bias,             // (out_dim,)
-    int8_t *out_vec,           // (out_dim,)
-    const int32_t in_dim,       // 1280
-    const int32_t out_dim,      // 2
-    const int32_t right_shift) {  // 10
+void yolo_m10_linear_gemm_i8_i8(int8_t *in_vec, // (in_dim,)
+                                int8_t *wts, // (out_dim, in_dim) row-major flat
+                                int32_t *bias,               // (out_dim,)
+                                int8_t *out_vec,             // (out_dim,)
+                                const int32_t in_dim,        // 1280
+                                const int32_t out_dim,       // 2
+                                const int32_t right_shift) { // 10
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -43,8 +42,10 @@ void yolo_m10_linear_gemm_i8_i8(
       sum += (int32_t)wts[o * in_dim + d] * (int32_t)in_vec[d];
     }
     int32_t s = banker_srs(sum, right_shift);
-    if (s > I8_MAX) s = I8_MAX;
-    if (s < I8_MIN) s = I8_MIN;
+    if (s > I8_MAX)
+      s = I8_MAX;
+    if (s < I8_MIN)
+      s = I8_MIN;
     out_vec[o] = (int8_t)s;
   }
 

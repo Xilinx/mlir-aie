@@ -27,15 +27,16 @@
 extern "C" {
 
 void yolo_m9_qkv_pack_i8_i8(
-    int8_t *in_row,           // (in_w, twoc) natural-layout qkv row
-    int8_t *head_frame,       // (head_slots, N) destination per-head slice
-    const int32_t input_width,        // in_w (=16)
-    const int32_t twoc,                // total qkv chans (=256)
-    const int32_t head_slots,          // chans to COPY per call (e.g. 128 full, 64 Q+K only)
-    const int32_t head_stride,         // chans per full head in input (=128 for m9 qkv)
-    const int32_t N,                   // tokens per sample (or in_w for per-row chunk)
-    const int32_t head_idx,            // 0 or 1
-    const int32_t row_idx) {           // 0..in_h-1 (or 0 for per-row chunk mode)
+    int8_t *in_row,            // (in_w, twoc) natural-layout qkv row
+    int8_t *head_frame,        // (head_slots, N) destination per-head slice
+    const int32_t input_width, // in_w (=16)
+    const int32_t twoc,        // total qkv chans (=256)
+    const int32_t
+        head_slots, // chans to COPY per call (e.g. 128 full, 64 Q+K only)
+    const int32_t head_stride, // chans per full head in input (=128 for m9 qkv)
+    const int32_t N,           // tokens per sample (or in_w for per-row chunk)
+    const int32_t head_idx,    // 0 or 1
+    const int32_t row_idx) {   // 0..in_h-1 (or 0 for per-row chunk mode)
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -46,8 +47,7 @@ void yolo_m9_qkv_pack_i8_i8(
 
   for (int s = 0; s < head_slots; s++) {
     for (int x = 0; x < input_width; x++) {
-      head_frame[s * N + (n_base + x)] =
-          in_row[x * twoc + (chan_offset + s)];
+      head_frame[s * N + (n_base + x)] = in_row[x * twoc + (chan_offset + s)];
     }
   }
 

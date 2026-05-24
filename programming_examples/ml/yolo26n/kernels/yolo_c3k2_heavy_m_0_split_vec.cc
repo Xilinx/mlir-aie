@@ -43,10 +43,10 @@ static inline int wts_idx_oiyxi8o8_1x1(int oc_full, int ic_full, int in_c) {
 // One 1x1 branch: input -> SiLU LUT -> output. Bias-seeded mmul so
 // to_vector<int8>(rs) directly emits bias+SRS+saturate (requires the
 // caller to have set conv_even rounding to match scalar banker_srs).
-static void branch_1x1(
-    int8_t *in_row, int8_t *wts, int32_t *bias, int8_t *silu_lut,
-    int8_t *out, int input_width, int input_channels, int output_channels,
-    int right_shift) {
+static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
+                       int8_t *silu_lut, int8_t *out, int input_width,
+                       int input_channels, int output_channels,
+                       int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
   const int ic_tiles = input_channels / 8;
   const int oc_tiles = output_channels / 8;
@@ -56,7 +56,7 @@ static void branch_1x1(
     // Bias seed: reused across all x_tile iters.
     aie::accum<acc32, 32> bias_acc;
     {
-      aie::vector<int32, 8>  b8  = aie::load_v<8>(&bias[oc_t * 8]);
+      aie::vector<int32, 8> b8 = aie::load_v<8>(&bias[oc_t * 8]);
       aie::vector<int32, 16> b16 = aie::concat(b8, b8);
       aie::vector<int32, 32> b32 = aie::concat(b16, b16);
       bias_acc.from_vector(b32);
@@ -72,7 +72,8 @@ static void branch_1x1(
         for (int p = 0; p < 4; ++p) {
           int col = x_base + p;
           int8_t *src = in_row + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b) a_buf[p * 8 + b] = src[b];
+          for (int b = 0; b < 8; ++b)
+            a_buf[p * 8 + b] = src[b];
         }
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
@@ -101,8 +102,10 @@ static void branch_1x1(
                  wts[wts_idx_oiyxi8o8_1x1(oc_full, ic, input_channels)];
         }
         int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
+        if (sr > I8_MAX)
+          sr = I8_MAX;
+        if (sr < I8_MIN)
+          sr = I8_MIN;
         out[x * output_channels + oc_full] = silu_lut[sr + 128];
       }
     }
@@ -112,16 +115,11 @@ static void branch_1x1(
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_heavy_m_0_split_silu_bias_i8_i8)(
-    int8_t *in_row,
-    int8_t *wts_a, int32_t *bias_a, int8_t *silu_lut_a,
-    int8_t *wts_b, int32_t *bias_b, int8_t *silu_lut_b,
-    int8_t *out_a, int8_t *out_b,
-    const int32_t input_width,
-    const int32_t input_channels,
-    const int32_t output_channels_a,
-    const int32_t output_channels_b,
-    const int32_t right_shift_a,
-    const int32_t right_shift_b) {
+    int8_t *in_row, int8_t *wts_a, int32_t *bias_a, int8_t *silu_lut_a,
+    int8_t *wts_b, int32_t *bias_b, int8_t *silu_lut_b, int8_t *out_a,
+    int8_t *out_b, const int32_t input_width, const int32_t input_channels,
+    const int32_t output_channels_a, const int32_t output_channels_b,
+    const int32_t right_shift_a, const int32_t right_shift_b) {
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -131,10 +129,10 @@ void KERNEL_NAME(yolo_c3k2_heavy_m_0_split_silu_bias_i8_i8)(
   // in branch_1x1 below.
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
-  branch_1x1(in_row, wts_a, bias_a, silu_lut_a, out_a,
-             input_width, input_channels, output_channels_a, right_shift_a);
-  branch_1x1(in_row, wts_b, bias_b, silu_lut_b, out_b,
-             input_width, input_channels, output_channels_b, right_shift_b);
+  branch_1x1(in_row, wts_a, bias_a, silu_lut_a, out_a, input_width,
+             input_channels, output_channels_a, right_shift_a);
+  branch_1x1(in_row, wts_b, bias_b, silu_lut_b, out_b, input_width,
+             input_channels, output_channels_b, right_shift_b);
 
   event1();
 }

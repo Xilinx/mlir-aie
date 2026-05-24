@@ -45,17 +45,19 @@
 #error "YOLO_M9_QK_N must be defined at compile time"
 #endif
 
-static constexpr int kKd      = YOLO_M9_QK_KD;
-static constexpr int kN       = YOLO_M9_QK_N;
-static constexpr int kJVec    = 64;  // peano accum::to_vector<int8> crashes at 16 + 32, OK at 64
+static constexpr int kKd = YOLO_M9_QK_KD;
+static constexpr int kN = YOLO_M9_QK_N;
+static constexpr int kJVec =
+    64; // peano accum::to_vector<int8> crashes at 16 + 32, OK at 64
 static constexpr int kJGroups = kN / kJVec;
 
-static_assert(kKd > 0,            "QK_KD must be > 0");
-static_assert(kN % kJVec == 0,    "QK_N must be a multiple of 16");
+static_assert(kKd > 0, "QK_KD must be > 0");
+static_assert(kN % kJVec == 0, "QK_N must be a multiple of 16");
 
 static constexpr int32_t I8_SMAX = 127;
 static constexpr int32_t I8_SMIN = -128;
-static constexpr int32_t I8_UMIN = 0;    // softmax probs in [0, 1] → i8 in [0, 127]
+static constexpr int32_t I8_UMIN =
+    0; // softmax probs in [0, 1] → i8 in [0, 127]
 
 static inline int32_t banker_srs(int32_t sum, int32_t rs) {
   return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
@@ -64,25 +66,24 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 extern "C" {
 
 void yolo_m9_attn_score_fused_i8_i8(
-    int8_t *qk_frame,            // (2*kd, N) Q || K
-    int8_t *chunk_io,            // (chunk_rows, N) — only chunk_io[chunk_row] is touched
-    float *exp_lut,              // (256,) softmax exp LUT
-    const int32_t chunk_row,
-    const int32_t query_idx,
-    const int32_t /*kd*/,
+    int8_t *qk_frame, // (2*kd, N) Q || K
+    int8_t *chunk_io, // (chunk_rows, N) — only chunk_io[chunk_row] is touched
+    float *exp_lut,   // (256,) softmax exp LUT
+    const int32_t chunk_row, const int32_t query_idx, const int32_t /*kd*/,
     const int32_t /*N*/,
-    const int32_t rs_qk,         // qk right_shift (e.g. 3 for m9)
-    const int32_t mul_int,       // attn scale mul (e.g. 91 for m9)
-    const int32_t mul_shift,     // attn scale shift (e.g. 7 for m9)
-    const int32_t out_log2_scale) {  // softmax out scale (e.g. -7 for m9; out = prob * 128)
+    const int32_t rs_qk,            // qk right_shift (e.g. 3 for m9)
+    const int32_t mul_int,          // attn scale mul (e.g. 91 for m9)
+    const int32_t mul_shift,        // attn scale shift (e.g. 7 for m9)
+    const int32_t out_log2_scale) { // softmax out scale (e.g. -7 for m9; out =
+                                    // prob * 128)
 #ifdef NOOP_KERNEL
   return;
 #endif
   event0();
 
   int8_t *__restrict scores_row = chunk_io + chunk_row * kN;
-  const int8_t *__restrict q_col = qk_frame + query_idx;       // stride kN per k
-  const int8_t *__restrict k_base = qk_frame + kKd * kN;       // K rows start here
+  const int8_t *__restrict q_col = qk_frame + query_idx; // stride kN per k
+  const int8_t *__restrict k_base = qk_frame + kKd * kN; // K rows start here
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   // conv_even matches scalar banker_srs (round-half-to-even). Lets us use
@@ -129,13 +130,14 @@ void yolo_m9_attn_score_fused_i8_i8(
   // Cache the gathered exp values so phase 3c becomes pure vec mul-shift
   // (no re-gather, no per-element fdiv). 1 KB stack — fits on (7,3)
   // alongside attn_score's tiny locals.
-  const int32_t out_scale_int = 1 << (-out_log2_scale);  // 128 for m9
+  const int32_t out_scale_int = 1 << (-out_log2_scale); // 128 for m9
 
   alignas(8) float exp_cache[kN];
   float sum = 0.0f;
   for (int j = 0; j < kN; ++j) {
     int32_t shifted = (int32_t)scores_row[j] - row_max;
-    if (shifted < -128) shifted = -128;
+    if (shifted < -128)
+      shifted = -128;
     float e = exp_lut[shifted + 128];
     exp_cache[j] = e;
     sum += e;
@@ -149,8 +151,8 @@ void yolo_m9_attn_score_fused_i8_i8(
 
   constexpr int kFVec = 16;
   aie::vector<float, kFVec> scale_v = aie::broadcast<float, kFVec>(scale);
-  aie::vector<int32, kFVec> smax_v  = aie::broadcast<int32, kFVec>(I8_SMAX);
-  aie::vector<int32, kFVec> smin_v  = aie::broadcast<int32, kFVec>(I8_UMIN);
+  aie::vector<int32, kFVec> smax_v = aie::broadcast<int32, kFVec>(I8_SMAX);
+  aie::vector<int32, kFVec> smin_v = aie::broadcast<int32, kFVec>(I8_UMIN);
 
   AIE_LOOP_RANGE(kN / kFVec, kN / kFVec)
   for (int j = 0; j < kN; j += kFVec) {
@@ -161,7 +163,8 @@ void yolo_m9_attn_score_fused_i8_i8(
     q_v = aie::min(q_v, smax_v);
     q_v = aie::max(q_v, smin_v);
     // Narrow i32 → i8 via scalar stores (no branches; q_v is already clamped).
-    for (int i = 0; i < kFVec; ++i) scores_row[j + i] = (int8_t)q_v[i];
+    for (int i = 0; i < kFVec; ++i)
+      scores_row[j + i] = (int8_t)q_v[i];
   }
 
   event1();
