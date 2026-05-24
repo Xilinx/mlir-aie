@@ -73,16 +73,26 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
   const int x_tiles = output_width / 4;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
   int8_t *line[3] = {line0, line1, line2};
 
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
+    // Bias seed: reused across all x_tile iters of this oc_t.
+    aie::accum<acc32, 32> bias_acc;
+    {
+      aie::vector<int32, 8> b8 = aie::load_v<8>(&bias[oc_t * 8]);
+      aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+      aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+      bias_acc.from_vector(b32);
+    }
+
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = bias_acc;
 
       const int x_out_base = x_tile * 4;
       const int x_in_base = x_out_base - 1;
@@ -118,27 +128,35 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
         }
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      // Bias-seeded mmul: to_vector<int8>(rs) gives bias-added + SRS'd +
+      // saturated i8 in one vec op. Then vec skip-add:
+      //   out = SRS(y*y_mult + cv2silu*cv2_mult, rsh_add), clamped to i8.
+      // LUT gather + skip gather stay scalar (no int8 vec LUT on AIE2P).
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
+
+      alignas(32) int8_t silu_buf[32];
+      alignas(32) int8_t skip_buf[32];
+      for (int i = 0; i < 32; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
-        for (int j = 0; j < 8; ++j) {
-          int oc_full = oc_t * 8 + j;
-          int32_t s = acc_vec[p * 8 + j] + bias[oc_full];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX)
-            sr = I8_MAX;
-          if (sr < I8_MIN)
-            sr = I8_MIN;
-          int32_t cv2silu = silu_lut[sr + 128];
-          int32_t y = (int32_t)skip_row[x_out * output_channels + oc_full];
-          int32_t sum_pre = y * skip_y_mult + cv2silu * skip_cv2_mult;
-          int32_t added = banker_srs(sum_pre, skip_rsh_add);
-          if (added > I8_MAX)
-            added = I8_MAX;
-          if (added < I8_MIN)
-            added = I8_MIN;
-          output[x_out * output_channels + oc_full] = (int8_t)added;
-        }
+        int8_t *src = skip_row + x_out * output_channels + oc_t * 8;
+        for (int b = 0; b < 8; ++b)
+          skip_buf[p * 8 + b] = src[b];
+      }
+      aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+      aie::vector<int8, 32> skip_v = aie::load_v<32>(skip_buf);
+
+      aie::accum<acc32, 32> add_acc = aie::mul(skip_v, (int16)skip_y_mult);
+      add_acc = aie::mac(add_acc, silu_v, (int16)skip_cv2_mult);
+      aie::vector<int8, 32> out_v =
+          add_acc.template to_vector<int8>(skip_rsh_add);
+
+      for (int p = 0; p < 4; ++p) {
+        int x_out = x_out_base + p;
+        int8_t *dst = output + x_out * output_channels + oc_t * 8;
+        for (int j = 0; j < 8; ++j)
+          dst[j] = out_v[p * 8 + j];
       }
     }
 
