@@ -125,30 +125,43 @@ void yolo_m9_attn_score_fused_i8_i8(
   }
   int32_t row_max = (int32_t)aie::reduce_max(max_v);
 
-  // === Phase 3b: pass 2 — sum of exps (scalar fp; LUT-driven) ===
-  // 2^-out_log2_scale via integer shift (avoids libm). For out_log2_scale=-7
-  // this is 1<<7 = 128.0f.
-  const int32_t out_scale_int = 1 << (-out_log2_scale);
-  const float out_scale = (float)out_scale_int;
+  // === Phase 3b: pass 2 — sum of exps, with per-element exp cached ===
+  // Cache the gathered exp values so phase 3c becomes pure vec mul-shift
+  // (no re-gather, no per-element fdiv). 1 KB stack — fits on (7,3)
+  // alongside attn_score's tiny locals.
+  const int32_t out_scale_int = 1 << (-out_log2_scale);  // 128 for m9
 
+  alignas(8) float exp_cache[kN];
   float sum = 0.0f;
   for (int j = 0; j < kN; ++j) {
     int32_t shifted = (int32_t)scores_row[j] - row_max;
     if (shifted < -128) shifted = -128;
-    sum += exp_lut[shifted + 128];
+    float e = exp_lut[shifted + 128];
+    exp_cache[j] = e;
+    sum += e;
   }
 
-  // === Phase 3c: pass 3 — normalize + quantize back into scores_row ===
-  const float inv_sum = 1.0f / sum;
-  for (int j = 0; j < kN; ++j) {
-    int32_t shifted = (int32_t)scores_row[j] - row_max;
-    if (shifted < -128) shifted = -128;
-    float e = exp_lut[shifted + 128];
-    float p = e * inv_sum;
-    int32_t q = (int32_t)(p * out_scale + 0.5f);
-    if (q > I8_SMAX) q = I8_SMAX;
-    if (q < I8_UMIN) q = I8_UMIN;
-    scores_row[j] = (int8_t)q;
+  // === Phase 3c: pass 3 — vec FP normalize + quantize ===
+  // aie::inv(float) = HW reciprocal (single op) — replaces __divsf3.
+  // Fold out_scale into the broadcast scale so per-element work is one
+  // vec fpmul. Clamp + narrow via aie::min/max (no scalar if/else).
+  const float scale = (float)out_scale_int * aie::inv(sum);
+
+  constexpr int kFVec = 16;
+  aie::vector<float, kFVec> scale_v = aie::broadcast<float, kFVec>(scale);
+  aie::vector<int32, kFVec> smax_v  = aie::broadcast<int32, kFVec>(I8_SMAX);
+  aie::vector<int32, kFVec> smin_v  = aie::broadcast<int32, kFVec>(I8_UMIN);
+
+  AIE_LOOP_RANGE(kN / kFVec, kN / kFVec)
+  for (int j = 0; j < kN; j += kFVec) {
+    aie::vector<float, kFVec> e_v = aie::load_v<kFVec>(exp_cache + j);
+    aie::accum<accfloat, kFVec> p_acc = aie::mul(e_v, scale_v);
+    aie::vector<int32, kFVec> q_v =
+        aie::to_fixed<int32>(p_acc.template to_vector<float>(), 0);
+    q_v = aie::min(q_v, smax_v);
+    q_v = aie::max(q_v, smin_v);
+    // Narrow i32 → i8 via scalar stores (no branches; q_v is already clamped).
+    for (int i = 0; i < kFVec; ++i) scores_row[j + i] = (int8_t)q_v[i];
   }
 
   event1();

@@ -530,6 +530,9 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                     k_attn_score_fused,
                 ],
                 tile=plc["attn_core"],
+                # attn_score_fused caches 1 KB float[256] exp values on the
+                # stack for phase 3c vec mul. Default 1 KB stack overflows.
+                stack_size=4096,
                 dynamic_objfifo_lowering=True,
             )
         )
