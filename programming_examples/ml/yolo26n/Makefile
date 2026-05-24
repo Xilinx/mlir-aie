@@ -377,7 +377,7 @@ $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
 $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
   $(foreach k,$(C3K2_HEAVY_KERNELS), \
     $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k)_vec.cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) -c $$< -o $$@)))
+      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_heavy_$(k)_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@)))
 
 # Chunked stride-2 conv (m3/m5/m7). The kernel is compile-time shape-
 # specialized via YOLO_IN_W/YOLO_IN_C/YOLO_OUT_C/YOLO_INTERIOR_MODE — these
