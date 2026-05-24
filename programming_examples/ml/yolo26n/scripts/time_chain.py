@@ -8,6 +8,7 @@ Usage:
   CHAIN_N_SAMPLES=1 python3 scripts/time_chain.py \\
     -x build/final_chain.xclbin -i build/insts_chain.bin -k MLIR_AIE
 """
+
 import os
 import sys
 from pathlib import Path
@@ -34,7 +35,19 @@ def main():
     if chain_env:
         chain_blocks = chain_env.split(",")
     else:
-        chain_blocks = ["m0","m1","m2","m3","m4","m5","m6","m7","m8","m9","m10"]
+        chain_blocks = [
+            "m0",
+            "m1",
+            "m2",
+            "m3",
+            "m4",
+            "m5",
+            "m6",
+            "m7",
+            "m8",
+            "m9",
+            "m10",
+        ]
     last_block_name = chain_blocks[-1]
 
     m0 = yolo_spec.block("m0")
@@ -68,11 +81,15 @@ def main():
 
     arr = np.array(times_ms)
     per_sample = arr / N
-    print(f"chain N={N}: per-dispatch n={opts.n_iters} mean={arr.mean():.2f} ms "
-          f"min={arr.min():.2f} ms median={float(np.median(arr)):.2f} ms "
-          f"max={arr.max():.2f} ms std={arr.std():.2f} ms")
-    print(f"chain N={N}: per-sample median={float(np.median(per_sample)):.2f} ms "
-          f"-> {1000.0 / float(np.median(per_sample)):.2f} fps")
+    print(
+        f"chain N={N}: per-dispatch n={opts.n_iters} mean={arr.mean():.2f} ms "
+        f"min={arr.min():.2f} ms median={float(np.median(arr)):.2f} ms "
+        f"max={arr.max():.2f} ms std={arr.std():.2f} ms"
+    )
+    print(
+        f"chain N={N}: per-sample median={float(np.median(per_sample)):.2f} ms "
+        f"-> {1000.0 / float(np.median(per_sample)):.2f} fps"
+    )
     return 0
 
 

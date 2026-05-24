@@ -3,6 +3,7 @@
 Usage:
   python3 scripts/time_block.py --block m8 -x build/final_m8.xclbin -i build/insts_m8.bin -k MLIR_AIE
 """
+
 import sys
 from pathlib import Path
 import numpy as np
@@ -50,10 +51,14 @@ def main():
         times_ms.append(result.npu_time / 1e6)
 
     arr = np.array(times_ms)
-    print(f"{opts.block}: n={opts.n_iters} mean={arr.mean():.2f} ms "
-          f"min={arr.min():.2f} ms median={float(np.median(arr)):.2f} ms "
-          f"max={arr.max():.2f} ms std={arr.std():.2f} ms")
-    print(f"{opts.block}: throughput @ median = {1000.0 / float(np.median(arr)):.2f} fps")
+    print(
+        f"{opts.block}: n={opts.n_iters} mean={arr.mean():.2f} ms "
+        f"min={arr.min():.2f} ms median={float(np.median(arr)):.2f} ms "
+        f"max={arr.max():.2f} ms std={arr.std():.2f} ms"
+    )
+    print(
+        f"{opts.block}: throughput @ median = {1000.0 / float(np.median(arr)):.2f} fps"
+    )
     return 0
 
 

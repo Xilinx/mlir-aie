@@ -2719,9 +2719,7 @@ def per_block_iron(block_name: str) -> str:
         # (cv2 post-SiLU). Set M9_STAGE=1 to build cv1-only for tighter
         # iteration on cv1 changes. M9_CHAIN_STAGE is accepted as a legacy
         # alias.
-        stage = int(
-            os.environ.get("M9_STAGE", os.environ.get("M9_CHAIN_STAGE", "10"))
-        )
+        stage = int(os.environ.get("M9_STAGE", os.environ.get("M9_CHAIN_STAGE", "10")))
         spec = importlib.util.spec_from_file_location(
             "m9_stage",
             pathlib.Path(__file__).parent / "scripts" / "m9_stage.py",

@@ -140,14 +140,14 @@ ROW_LABELS = {
 # realized chain layout. 26 compute + 2 m8-storage-delegate tiles + 4 spares.
 LAYOUT = {
     # col : { row : cell }
-    0: {5: "m2-cv2",  4: "m2-mid",  3: "m2-cv1",  2: "m0"},
-    1: {5: "m4-cv2",  4: "m4-mid",  3: "m4-cv1",  2: "m1"},
-    2: {5: "m6-cv1",  4: "m5",       3: "m3",      2: "m10-fused"},
-    3: {5: "m6-pair1",4: "m6-cv3+2", 3: "m6-split",2: "m6-pair0"},
-    4: {5: "----",    4: "m8-Bdel",  3: "m7",      2: "m9-proj"},
-    5: {5: "m9-ffn",  4: "m8-B",     3: "m8-A",    2: "m8-Adel"},
-    6: {5: "m9-cv2",  4: "----",     3: "----",    2: "----"},
-    7: {5: "m9-cv1",  4: "m9-qkv",   3: "m9-attn", 2: "m9-sv"},
+    0: {5: "m2-cv2", 4: "m2-mid", 3: "m2-cv1", 2: "m0"},
+    1: {5: "m4-cv2", 4: "m4-mid", 3: "m4-cv1", 2: "m1"},
+    2: {5: "m6-cv1", 4: "m5", 3: "m3", 2: "m10-fused"},
+    3: {5: "m6-pair1", 4: "m6-cv3+2", 3: "m6-split", 2: "m6-pair0"},
+    4: {5: "----", 4: "m8-Bdel", 3: "m7", 2: "m9-proj"},
+    5: {5: "m9-ffn", 4: "m8-B", 3: "m8-A", 2: "m8-Adel"},
+    6: {5: "m9-cv2", 4: "----", 3: "----", 2: "----"},
+    7: {5: "m9-cv1", 4: "m9-qkv", 3: "m9-attn", 2: "m9-sv"},
 }
 # m8-Adel = ws/OF spill from tile A onto its south shared-L1 neighbor (5,2).
 # m8-Bdel = ws_pair1 recv on tile B's west shared-L1 neighbor (4,4).

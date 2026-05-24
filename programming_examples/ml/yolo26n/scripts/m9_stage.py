@@ -380,9 +380,9 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
             "yolo_m9_attn_score_fused_i8_i8",
             "yolo_m9_attn_score_fused.o",
             [
-                B._i8((qk_slots, N_tokens)),       # qk_frame (Q || K)
-                B._i8((chunk_rows, N_tokens)),     # chunk_io
-                _f32((256,)),                      # exp LUT
+                B._i8((qk_slots, N_tokens)),  # qk_frame (Q || K)
+                B._i8((chunk_rows, N_tokens)),  # chunk_io
+                _f32((256,)),  # exp LUT
                 np.int32,  # chunk_row
                 np.int32,  # query_idx
                 np.int32,  # kd (runtime, kernel reads compile-time)
@@ -432,9 +432,7 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         skip_qk = os.environ.get("M9_S4_SKIP_QK") == "1"
         skip_pack = os.environ.get("M9_S4_SKIP_PACK") == "1"
 
-        def attn_qk_fn(
-            qkv_c, scratch_h0, scratch_h1, scores_p, exp_lut, kpack, kfused
-        ):
+        def attn_qk_fn(qkv_c, scratch_h0, scratch_h1, scores_p, exp_lut, kpack, kfused):
             # Phase 1: assemble per-head Q+K. Each qkv input row writes its
             # contribution to BOTH heads' scratch buffers (chans 0..63 of
             # each head — V skipped). After in_h rows scratch is full.

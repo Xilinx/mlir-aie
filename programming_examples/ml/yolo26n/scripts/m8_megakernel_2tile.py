@@ -46,7 +46,11 @@ import placement  # noqa: E402
 import yolo_spec  # noqa: E402
 import aie2_yolo_per_block as B  # noqa: E402
 from lowlevel_dma import StaticWeightStream  # noqa: E402
-from aie2_yolo_per_block import Worker, TRACE_SIZE_PER_WORKER, TRACE_EVENTS  # noqa: E402
+from aie2_yolo_per_block import (
+    Worker,
+    TRACE_SIZE_PER_WORKER,
+    TRACE_EVENTS,
+)  # noqa: E402
 
 BLOCK = "m8"
 DATA_DIR = B.DATA_DIR
@@ -102,8 +106,8 @@ def build(act_in_external=None, return_program: bool = True):
     out_c = L_cv2.out_shape[2]
 
     # Tiles
-    t_a = Tile(5, 3)     # cv1+split, pair0
-    t_b = Tile(5, 4)     # pair1, cv3+cv2
+    t_a = Tile(5, 3)  # cv1+split, pair0
+    t_b = Tile(5, 4)  # pair1, cv3+cv2
     # Buffer-delegate-only neighbor (used to spill big OFs off A and B)
     t_south = Tile(5, 2)
     # (5,5) for the other side if needed; for now use only south + the two compute tiles
@@ -139,11 +143,17 @@ def build(act_in_external=None, return_program: bool = True):
     lut_cv1 = _lut_buf("cv1", name="m8_2t_cv1_lut")
     rs_cv1 = m_cv1["right_shift"]
     ws_cv1 = StaticWeightStream(
-        obj_type=B._i8((sz_cv1,)), initial_value=data_cv1,
+        obj_type=B._i8((sz_cv1,)),
+        initial_value=data_cv1,
         name="m8_2t_cv1_stream",
-        recv_type=B._i8((chunk_sz_cv1,)), repeat_count=in_h,
-        memtile_placement=Tile(5, 1), compute_placement=t_a,
-        mem_lock_id=0, comp_lock_id=0, mm2s_channel=0, s2mm_channel=1,
+        recv_type=B._i8((chunk_sz_cv1,)),
+        repeat_count=in_h,
+        memtile_placement=Tile(5, 1),
+        compute_placement=t_a,
+        mem_lock_id=0,
+        comp_lock_id=0,
+        mm2s_channel=0,
+        s2mm_channel=1,
     )
 
     m_p0c1 = B._op_meta(manifest, L_p0c1.manifest_name)
@@ -159,11 +169,17 @@ def build(act_in_external=None, return_program: bool = True):
     rs_p0c1 = m_p0c1["right_shift"]
     rs_p0c2 = m_p0c2["right_shift"]
     ws_pair0 = StaticWeightStream(
-        obj_type=B._i8((sz_p0c1,)), initial_value=data_p0c1,
+        obj_type=B._i8((sz_p0c1,)),
+        initial_value=data_p0c1,
         name="m8_2t_pair0_stream",
-        recv_type=B._i8((chunk_sz_pair,)), repeat_count=in_h,
-        memtile_placement=Tile(4, 1), compute_placement=t_south,
-        mem_lock_id=0, comp_lock_id=0, mm2s_channel=0, s2mm_channel=0,
+        recv_type=B._i8((chunk_sz_pair,)),
+        repeat_count=in_h,
+        memtile_placement=Tile(4, 1),
+        compute_placement=t_south,
+        mem_lock_id=0,
+        comp_lock_id=0,
+        mm2s_channel=0,
+        s2mm_channel=0,
         ping_pong_buf=(B._i8((sz_p0c2,)), data_p0c2, "m8_2t_p0c2_pp"),
         ping_pong_memtile=Tile(4, 1),
         pp_lock_id=2,
@@ -192,11 +208,17 @@ def build(act_in_external=None, return_program: bool = True):
     #      failed with "tile (5,4) violates shared-L1 buffer adjacency".
     t_west = Tile(4, 4)
     ws_pair1 = StaticWeightStream(
-        obj_type=B._i8((sz_p0c1,)), initial_value=data_p1c1,
+        obj_type=B._i8((sz_p0c1,)),
+        initial_value=data_p1c1,
         name="m8_2t_pair1_stream",
-        recv_type=B._i8((chunk_sz_pair,)), repeat_count=in_h,
-        memtile_placement=Tile(6, 1), compute_placement=t_west,
-        mem_lock_id=0, comp_lock_id=0, mm2s_channel=0, s2mm_channel=0,
+        recv_type=B._i8((chunk_sz_pair,)),
+        repeat_count=in_h,
+        memtile_placement=Tile(6, 1),
+        compute_placement=t_west,
+        mem_lock_id=0,
+        comp_lock_id=0,
+        mm2s_channel=0,
+        s2mm_channel=0,
         ping_pong_buf=(B._i8((sz_p0c1,)), data_p1c2, "m8_2t_p1c2_pp"),
         ping_pong_memtile=Tile(6, 1),
         pp_lock_id=2,
@@ -210,11 +232,17 @@ def build(act_in_external=None, return_program: bool = True):
     lut_cv2 = _lut_buf("cv2", name="m8_2t_cv2_lut")
     rs_cv2 = m_cv2["right_shift"]
     ws_cv2 = StaticWeightStream(
-        obj_type=B._i8((sz_cv2,)), initial_value=data_cv2,
+        obj_type=B._i8((sz_cv2,)),
+        initial_value=data_cv2,
         name="m8_2t_cv2_stream",
-        recv_type=B._i8((chunk_sz_cv2,)), repeat_count=in_h,
-        memtile_placement=Tile(3, 1), compute_placement=t_b,
-        mem_lock_id=0, comp_lock_id=4, mm2s_channel=0, s2mm_channel=1,
+        recv_type=B._i8((chunk_sz_cv2,)),
+        repeat_count=in_h,
+        memtile_placement=Tile(3, 1),
+        compute_placement=t_b,
+        mem_lock_id=0,
+        comp_lock_id=4,
+        mm2s_channel=0,
+        s2mm_channel=1,
     )
 
     # ----- Input + output -----
@@ -232,7 +260,9 @@ def build(act_in_external=None, return_program: bool = True):
 
     # ----- Tile A internal sliding-window OFs -----
     bot_to_cv2_a_local = _of(
-        (in_w, 1, c), depth=5, name="m8_2t_bot_local",
+        (in_w, 1, c),
+        depth=5,
+        name="m8_2t_bot_local",
         delegate=t_south,
     )  # Used to forward bot_to_cv2 out from m8_front; consumed by cross-tile OF below
     split_a_of = _of((in_w, 1, cp), depth=3, name="m8_2t_split_a", delegate=t_south)
@@ -252,7 +282,9 @@ def build(act_in_external=None, return_program: bool = True):
     # context's larger inter-block input OF (depth=2 = 8 KB on tile A
     # consumer side, vs per-block's depth=1 = 4 KB).
     split_b_xt = ObjectFifo(
-        B._i8((in_w, 1, cp)), depth=5, name="m8_2t_split_b_xt",
+        B._i8((in_w, 1, cp)),
+        depth=5,
+        name="m8_2t_split_b_xt",
         delegate_tile=t_b,
     )
     inner_0_out_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=3, name="m8_2t_inner0_xt")
@@ -271,17 +303,17 @@ def build(act_in_external=None, return_program: bool = True):
             B._i8((chunk_sz_cv1,)),
             B._i32((twoc,)),
             B._i8((256,)),
-            B._i8((in_w, 1, c)),       # out_top
-            B._i8((in_w, 1, c)),       # out_bot_to_cv2
+            B._i8((in_w, 1, c)),  # out_top
+            B._i8((in_w, 1, c)),  # out_bot_to_cv2
             B._i8((sz_m0c1,)),
             B._i32((cp,)),
             B._i8((256,)),
             B._i8((sz_m0c2,)),
             B._i32((cp,)),
             B._i8((256,)),
-            B._i8((in_w, 1, cp)),      # out_split_a
-            B._i8((in_w, 1, cp)),      # out_split_b
-            B._i8((in_w * c,)),         # scratch
+            B._i8((in_w, 1, cp)),  # out_split_a
+            B._i8((in_w, 1, cp)),  # out_split_b
+            B._i8((in_w * c,)),  # scratch
         ]
         + [np.int32] * 9,
     )
@@ -296,26 +328,31 @@ def build(act_in_external=None, return_program: bool = True):
         f"yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8_{BLOCK}",
         f"yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_{BLOCK}.o",
         [B._i8((in_w, 1, cp))] * 3
-        + [B._i8((chunk_sz_pair,)), B._i32((cp,)), B._i8((256,)),
-           B._i8((in_w, 1, cp)), B._i8((in_w, 1, cp))]
+        + [
+            B._i8((chunk_sz_pair,)),
+            B._i32((cp,)),
+            B._i8((256,)),
+            B._i8((in_w, 1, cp)),
+            B._i8((in_w, 1, cp)),
+        ]
         + [np.int32] * 12,
     )
     k_m8_back = Kernel(
         f"yolo_m8_back_cv3_cv2_fused_i8_i8_{BLOCK}",
         f"yolo_m8_back_cv3_cv2_fused_{BLOCK}.o",
         [
-            B._i8((in_w, 1, cp)),       # inner1
-            B._i8((in_w, 1, cp)),       # split_b
+            B._i8((in_w, 1, cp)),  # inner1
+            B._i8((in_w, 1, cp)),  # split_b
             B._i8((sz_m0c3,)),
             B._i32((c,)),
             B._i8((256,)),
-            B._i8((in_w, 1, c)),        # top
-            B._i8((in_w, 1, c)),        # bot_to_cv2
+            B._i8((in_w, 1, c)),  # top
+            B._i8((in_w, 1, c)),  # bot_to_cv2
             B._i8((chunk_sz_cv2,)),
             B._i32((out_c,)),
             B._i8((256,)),
-            B._i8((in_w, 1, out_c)),    # output
-            B._i8((in_w * c,)),          # scratch
+            B._i8((in_w, 1, out_c)),  # output
+            B._i8((in_w * c,)),  # scratch
         ]
         + [np.int32] * 8,
     )
@@ -325,16 +362,35 @@ def build(act_in_external=None, return_program: bool = True):
     # ==================================================================
 
     def worker_a_fn(
-        act_in_c, ws_cv1, ws_pair0,
-        wts_m0c1, wts_m0c2,
-        bias_cv1, lut_cv1,
-        bias_m0c1, lut_m0c1, bias_m0c2, lut_m0c2,
-        bias_p0c1, lut_p0c1, bias_p0c2, lut_p0c2,
+        act_in_c,
+        ws_cv1,
+        ws_pair0,
+        wts_m0c1,
+        wts_m0c2,
+        bias_cv1,
+        lut_cv1,
+        bias_m0c1,
+        lut_m0c1,
+        bias_m0c2,
+        lut_m0c2,
+        bias_p0c1,
+        lut_p0c1,
+        bias_p0c2,
+        lut_p0c2,
         scratch,
-        top_xt_p, bot_xt_p, split_b_xt_p, inner_0_xt_p,
-        split_a_p, split_a_c, p0_mid_p, p0_mid_c,
-        p0_skip_p, p0_skip_c,
-        k_m8_front, k_pair_cv1, k_pair_cv2,
+        top_xt_p,
+        bot_xt_p,
+        split_b_xt_p,
+        inner_0_xt_p,
+        split_a_p,
+        split_a_c,
+        p0_mid_p,
+        p0_mid_c,
+        p0_skip_p,
+        p0_skip_c,
+        k_m8_front,
+        k_pair_cv1,
+        k_pair_cv2,
     ):
         from aie.helpers.dialects.scf import if_
         from aie.extras.dialects.arith import constant
@@ -351,12 +407,32 @@ def build(act_in_external=None, return_program: bool = True):
             sb_r = split_b_xt_p.acquire(1)
             for wi in range_(N_CV1_CHUNKS):
                 ck = ws_cv1.acquire(1)
-                k_m8_front(in_row, ck, bias_cv1, lut_cv1, t_r, bb_r,
-                           wts_m0c1, bias_m0c1, lut_m0c1,
-                           wts_m0c2, bias_m0c2, lut_m0c2,
-                           sa_r, sb_r, scratch,
-                           in_w, in_c, twoc, cp, N_CV1_CHUNKS, wi,
-                           rs_cv1, rs_m0c1, rs_m0c2)
+                k_m8_front(
+                    in_row,
+                    ck,
+                    bias_cv1,
+                    lut_cv1,
+                    t_r,
+                    bb_r,
+                    wts_m0c1,
+                    bias_m0c1,
+                    lut_m0c1,
+                    wts_m0c2,
+                    bias_m0c2,
+                    lut_m0c2,
+                    sa_r,
+                    sb_r,
+                    scratch,
+                    in_w,
+                    in_c,
+                    twoc,
+                    cp,
+                    N_CV1_CHUNKS,
+                    wi,
+                    rs_cv1,
+                    rs_m0c1,
+                    rs_m0c2,
+                )
                 ws_cv1.release(1)
             top_xt_p.release(1)
             bot_xt_p.release(1)
@@ -368,9 +444,24 @@ def build(act_in_external=None, return_program: bool = True):
             sk_r = p0_skip_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
                 ck = ws_pair0.acquire(1)
-                k_pair_cv1(sa_top, sa_mid, sa_bot, ck, bias_p0c1, lut_p0c1,
-                           mid_r, in_w, cp, cp, 3, 3, border, rs_p0c1,
-                           N_PAIR_CHUNKS, wi)
+                k_pair_cv1(
+                    sa_top,
+                    sa_mid,
+                    sa_bot,
+                    ck,
+                    bias_p0c1,
+                    lut_p0c1,
+                    mid_r,
+                    in_w,
+                    cp,
+                    cp,
+                    3,
+                    3,
+                    border,
+                    rs_p0c1,
+                    N_PAIR_CHUNKS,
+                    wi,
+                )
                 ws_pair0.release(1)
             # Forward the middle (output-row-aligned) split_a row as the skip
             # path. TODO: this scalar IRON copy currently runs in the worker
@@ -386,9 +477,28 @@ def build(act_in_external=None, return_program: bool = True):
             out_r = inner_0_xt_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
                 ck = ws_pair0.acquire(1)
-                k_pair_cv2(mid_top, mid_mid, mid_bot, ck, bias_p0c2, lut_p0c2,
-                           skip, out_r, in_w, cp, cp, 3, 3, border, rs_p0c2,
-                           N_PAIR_CHUNKS, wi, SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH)
+                k_pair_cv2(
+                    mid_top,
+                    mid_mid,
+                    mid_bot,
+                    ck,
+                    bias_p0c2,
+                    lut_p0c2,
+                    skip,
+                    out_r,
+                    in_w,
+                    cp,
+                    cp,
+                    3,
+                    3,
+                    border,
+                    rs_p0c2,
+                    N_PAIR_CHUNKS,
+                    wi,
+                    SKIP_Y_MULT,
+                    SKIP_CV2_MULT,
+                    SKIP_RSH,
+                )
                 ws_pair0.release(1)
             inner_0_xt_p.release(1)
 
@@ -449,17 +559,34 @@ def build(act_in_external=None, return_program: bool = True):
         worker_a_fn,
         fn_args=[
             act_in.cons(),
-            ws_cv1, ws_pair0,
-            wts_m0c1_buf, wts_m0c2_buf,
-            bias_cv1, lut_cv1,
-            bias_m0c1, lut_m0c1, bias_m0c2, lut_m0c2,
-            bias_p0c1, lut_p0c1, bias_p0c2, lut_p0c2,
+            ws_cv1,
+            ws_pair0,
+            wts_m0c1_buf,
+            wts_m0c2_buf,
+            bias_cv1,
+            lut_cv1,
+            bias_m0c1,
+            lut_m0c1,
+            bias_m0c2,
+            lut_m0c2,
+            bias_p0c1,
+            lut_p0c1,
+            bias_p0c2,
+            lut_p0c2,
             scratch_a,
-            top_xt.prod(), bot_to_cv2_xt.prod(), split_b_xt.prod(), inner_0_out_xt.prod(),
-            split_a_of.prod(), split_a_of.cons(),
-            pair0_mid_of.prod(), pair0_mid_of.cons(),
-            pair0_skip_of.prod(), pair0_skip_of.cons(),
-            k_m8_front, k_pair_cv1, k_pair_cv2,
+            top_xt.prod(),
+            bot_to_cv2_xt.prod(),
+            split_b_xt.prod(),
+            inner_0_out_xt.prod(),
+            split_a_of.prod(),
+            split_a_of.cons(),
+            pair0_mid_of.prod(),
+            pair0_mid_of.cons(),
+            pair0_skip_of.prod(),
+            pair0_skip_of.cons(),
+            k_m8_front,
+            k_pair_cv1,
+            k_pair_cv2,
         ],
         tile=t_a,
         dynamic_objfifo_lowering=True,
@@ -469,16 +596,32 @@ def build(act_in_external=None, return_program: bool = True):
     # Tile B worker — pair1_cv1 + pair1_cv2 + cv3+cv2
     # ==================================================================
     def worker_b_fn(
-        top_xt_c, bot_xt_c, split_b_xt_c, inner_0_xt_c,
+        top_xt_c,
+        bot_xt_c,
+        split_b_xt_c,
+        inner_0_xt_c,
         block_out_p,
-        ws_pair1, ws_cv2,
-        wts_m0c3, bias_m0c3, lut_m0c3,
-        bias_p1c1, lut_p1c1, bias_p1c2, lut_p1c2,
-        bias_cv2, lut_cv2,
+        ws_pair1,
+        ws_cv2,
+        wts_m0c3,
+        bias_m0c3,
+        lut_m0c3,
+        bias_p1c1,
+        lut_p1c1,
+        bias_p1c2,
+        lut_p1c2,
+        bias_cv2,
+        lut_cv2,
         scratch,
-        p1_mid_p, p1_mid_c, p1_skip_p, p1_skip_c,
-        inner_1_p, inner_1_c,
-        k_pair_cv1, k_pair_cv2, k_m8_back,
+        p1_mid_p,
+        p1_mid_c,
+        p1_skip_p,
+        p1_skip_c,
+        inner_1_p,
+        inner_1_c,
+        k_pair_cv1,
+        k_pair_cv2,
+        k_m8_back,
     ):
         from aie.helpers.dialects.scf import if_
         from aie.extras.dialects.arith import constant
@@ -501,9 +644,24 @@ def build(act_in_external=None, return_program: bool = True):
             sk_r = p1_skip_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
                 ck = ws_pair1.acquire(1)
-                k_pair_cv1(po_top, po_mid, po_bot, ck, bias_p1c1, lut_p1c1,
-                           mid_r, in_w, cp, cp, 3, 3, border, rs_p1c1,
-                           N_PAIR_CHUNKS, wi)
+                k_pair_cv1(
+                    po_top,
+                    po_mid,
+                    po_bot,
+                    ck,
+                    bias_p1c1,
+                    lut_p1c1,
+                    mid_r,
+                    in_w,
+                    cp,
+                    cp,
+                    3,
+                    3,
+                    border,
+                    rs_p1c1,
+                    N_PAIR_CHUNKS,
+                    wi,
+                )
                 ws_pair1.release(1)
             # See _do_p0c1 — IRON-side forward of the middle row to the skip OF.
             for x in range_(in_w):
@@ -516,9 +674,28 @@ def build(act_in_external=None, return_program: bool = True):
             out_r = inner_1_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
                 ck = ws_pair1.acquire(1)
-                k_pair_cv2(p1m_top, p1m_mid, p1m_bot, ck, bias_p1c2, lut_p1c2,
-                           skip, out_r, in_w, cp, cp, 3, 3, border, rs_p1c2,
-                           N_PAIR_CHUNKS, wi, SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH)
+                k_pair_cv2(
+                    p1m_top,
+                    p1m_mid,
+                    p1m_bot,
+                    ck,
+                    bias_p1c2,
+                    lut_p1c2,
+                    skip,
+                    out_r,
+                    in_w,
+                    cp,
+                    cp,
+                    3,
+                    3,
+                    border,
+                    rs_p1c2,
+                    N_PAIR_CHUNKS,
+                    wi,
+                    SKIP_Y_MULT,
+                    SKIP_CV2_MULT,
+                    SKIP_RSH,
+                )
                 ws_pair1.release(1)
             inner_1_p.release(1)
 
@@ -530,10 +707,28 @@ def build(act_in_external=None, return_program: bool = True):
             out_r = block_out_p.acquire(1)
             for wi in range_(N_CV2_CHUNKS):
                 ck = ws_cv2.acquire(1)
-                k_m8_back(i1_r, sb_r, wts_m0c3, bias_m0c3, lut_m0c3,
-                          top_r, bb_r, ck, bias_cv2, lut_cv2, out_r,
-                          scratch, in_w, cp, c, out_c, N_CV2_CHUNKS, wi,
-                          rs_m0c3, rs_cv2)
+                k_m8_back(
+                    i1_r,
+                    sb_r,
+                    wts_m0c3,
+                    bias_m0c3,
+                    lut_m0c3,
+                    top_r,
+                    bb_r,
+                    ck,
+                    bias_cv2,
+                    lut_cv2,
+                    out_r,
+                    scratch,
+                    in_w,
+                    cp,
+                    c,
+                    out_c,
+                    N_CV2_CHUNKS,
+                    wi,
+                    rs_m0c3,
+                    rs_cv2,
+                )
                 ws_cv2.release(1)
             inner_1_c.release(1)
             split_b_xt_c.release(1)
@@ -594,17 +789,32 @@ def build(act_in_external=None, return_program: bool = True):
     worker_b = Worker(
         worker_b_fn,
         fn_args=[
-            top_xt.cons(), bot_to_cv2_xt.cons(), split_b_xt.cons(), inner_0_out_xt.cons(),
+            top_xt.cons(),
+            bot_to_cv2_xt.cons(),
+            split_b_xt.cons(),
+            inner_0_out_xt.cons(),
             block_out.prod(),
-            ws_pair1, ws_cv2,
-            wts_m0c3_buf, bias_m0c3, lut_m0c3,
-            bias_p1c1, lut_p1c1, bias_p1c2, lut_p1c2,
-            bias_cv2, lut_cv2,
+            ws_pair1,
+            ws_cv2,
+            wts_m0c3_buf,
+            bias_m0c3,
+            lut_m0c3,
+            bias_p1c1,
+            lut_p1c1,
+            bias_p1c2,
+            lut_p1c2,
+            bias_cv2,
+            lut_cv2,
             scratch_b,
-            pair1_mid_of.prod(), pair1_mid_of.cons(),
-            pair1_skip_of.prod(), pair1_skip_of.cons(),
-            inner_1_out_of.prod(), inner_1_out_of.cons(),
-            k_pair_cv1, k_pair_cv2, k_m8_back,
+            pair1_mid_of.prod(),
+            pair1_mid_of.cons(),
+            pair1_skip_of.prod(),
+            pair1_skip_of.cons(),
+            inner_1_out_of.prod(),
+            inner_1_out_of.cons(),
+            k_pair_cv1,
+            k_pair_cv2,
+            k_m8_back,
         ],
         tile=t_b,
         dynamic_objfifo_lowering=True,
@@ -643,10 +853,16 @@ def build(act_in_external=None, return_program: bool = True):
             )
         rt.start(*workers)
         tg = rt.task_group()
-        rt.fill(act_in.prod(), inp,
-                tile=placement.PLACEMENT["shim"]["input"], task_group=tg)
-        rt.drain(block_out.cons(), out, wait=True,
-                 tile=placement.PLACEMENT["shim"]["output"], task_group=tg)
+        rt.fill(
+            act_in.prod(), inp, tile=placement.PLACEMENT["shim"]["input"], task_group=tg
+        )
+        rt.drain(
+            block_out.cons(),
+            out,
+            wait=True,
+            tile=placement.PLACEMENT["shim"]["output"],
+            task_group=tg,
+        )
         rt.finish_task_group(tg)
 
     return Program(NPU2(), rt).resolve_program()
@@ -654,6 +870,7 @@ def build(act_in_external=None, return_program: bool = True):
 
 def main():
     import argparse
+
     p = argparse.ArgumentParser()
     p.add_argument("--check-only", action="store_true")
     args = p.parse_args()

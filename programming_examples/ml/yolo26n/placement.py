@@ -219,9 +219,9 @@ PLACEMENT: dict = {
         # Buffer-delegate-only neighbors (no compute; receive shared-L1
         # spill from the two compute tiles):
         "delegate_south": Tile(5, 2),  # tile A's OF/recv spill
-        "delegate_west":  Tile(4, 4),  # tile B's ws_pair1 recv (W-of-B,
-                                       # AIE2P shared-L1 is asymmetric:
-                                       # tile B can read W neighbor but not E)
+        "delegate_west": Tile(4, 4),  # tile B's ws_pair1 recv (W-of-B,
+        # AIE2P shared-L1 is asymmetric:
+        # tile B can read W neighbor but not E)
     },
     # ---- PSA (7 tiles, chain-compat) ----
     # Original 5-tile design assumed monolithic attn_core; staged build
