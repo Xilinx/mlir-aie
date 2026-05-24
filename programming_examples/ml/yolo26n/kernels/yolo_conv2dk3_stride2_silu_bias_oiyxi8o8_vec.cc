@@ -82,20 +82,28 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx) {
 
 using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
+// 8 int32 biases → 32-wide acc<acc32> (4 pix × 8 ch). Seeds the mmul so
+// to_vector<int8>(rs) emits bias+SRS+saturate in one vec op.
+static __attribute__((always_inline)) inline aie::accum<acc32, 32>
+make_bias_acc(const int32_t *__restrict bias_8) {
+  aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+  aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+  aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+  aie::accum<acc32, 32> a;
+  a.from_vector(b32);
+  return a;
+}
+
+// Per-OC×4-pix epilog: SiLU LUT (SRS+clamp+bias collapsed into the vec
+// to_vector<int8>(rs) at the call site).
 static __attribute__((always_inline)) inline void write_x_tile_result(
-    aie::vector<int32, 32> &acc_vec,
-    const int32_t *__restrict bias, const int8_t *__restrict silu_lut,
-    int8_t *__restrict output, int oc_full_base, int x_out_base,
-    int right_shift) {
+    aie::vector<int8, 32> srs_v, const int8_t *__restrict silu_lut,
+    int8_t *__restrict output, int oc_full_base, int x_out_base) {
   for (int p = 0; p < 4; ++p) {
     int x_out = x_out_base + p;
     for (int j = 0; j < 8; ++j) {
       int oc_full = oc_full_base + j;
-      int32_t s = acc_vec[p * 8 + j] + bias[oc_full];
-      int32_t sr = banker_srs(s, right_shift);
-      if (sr > I8_MAX) sr = I8_MAX;
-      if (sr < I8_MIN) sr = I8_MIN;
-      output[x_out * kOutC + oc_full] = silu_lut[sr + 128];
+      output[x_out * kOutC + oc_full] = silu_lut[int(srs_v[p * 8 + j]) + 128];
     }
   }
 }
@@ -153,7 +161,9 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
   const int ky_end   = skip_bot ? 2 : 3;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs (round-half-to-even); enables
+  // vec to_vector<int8>(rs) in place of the scalar SRS+clamp tail.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   int8_t *line[3] = {line0, line1, line2};
 
@@ -167,11 +177,15 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
     const int oc_full_base_a = oc_t_a * 8;
     const int oc_full_base_b = oc_t_b * 8;
 
+    // Bias seeds for this oc_pair, reused across all x_tile iters.
+    auto bias_acc_a = make_bias_acc(&bias[oc_full_base_a]);
+    auto bias_acc_b = make_bias_acc(&bias[oc_full_base_b]);
+
     // ===== Left edge: x_tile=0 — kx=0 makes col=-1 invalid for p=0. =====
     {
       MMUL4x8x8 acc_a, acc_b;
-      acc_a = aie::zeros<acc32, 32>();
-      acc_b = aie::zeros<acc32, 32>();
+      acc_a = bias_acc_a;
+      acc_b = bias_acc_b;
       const int x_in_base = -1;
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
@@ -190,10 +204,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
           }
         }
       }
-      aie::vector<int32, 32> acc_vec_a = acc_a.template to_vector<int32>();
-      aie::vector<int32, 32> acc_vec_b = acc_b.template to_vector<int32>();
-      write_x_tile_result(acc_vec_a, bias, silu_lut, output, oc_full_base_a, 0, right_shift);
-      write_x_tile_result(acc_vec_b, bias, silu_lut, output, oc_full_base_b, 0, right_shift);
+      aie::vector<int8, 32> srs_a = acc_a.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> srs_b = acc_b.template to_vector<int8>(right_shift);
+      write_x_tile_result(srs_a, silu_lut, output, oc_full_base_a, 0);
+      write_x_tile_result(srs_b, silu_lut, output, oc_full_base_b, 0);
     }
 
     // ===== Interior: x_tile in [1, kXTiles-1]. 2X×2OC fold. =====
@@ -215,10 +229,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
       const int x_in_base_b = x_in_base_a + 8;
 
       MMUL4x8x8 acc_a0, acc_a1, acc_b0, acc_b1;
-      acc_a0 = aie::zeros<acc32, 32>();
-      acc_a1 = aie::zeros<acc32, 32>();
-      acc_b0 = aie::zeros<acc32, 32>();
-      acc_b1 = aie::zeros<acc32, 32>();
+      acc_a0 = bias_acc_a;  // x_tile_a + oc_a
+      acc_a1 = bias_acc_b;  // x_tile_a + oc_b
+      acc_b0 = bias_acc_a;  // x_tile_b + oc_a
+      acc_b1 = bias_acc_b;  // x_tile_b + oc_b
 
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
@@ -244,14 +258,14 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
         }
       }
 
-      aie::vector<int32, 32> vec_a0 = acc_a0.template to_vector<int32>();
-      aie::vector<int32, 32> vec_a1 = acc_a1.template to_vector<int32>();
-      aie::vector<int32, 32> vec_b0 = acc_b0.template to_vector<int32>();
-      aie::vector<int32, 32> vec_b1 = acc_b1.template to_vector<int32>();
-      write_x_tile_result(vec_a0, bias, silu_lut, output, oc_full_base_a, x_out_base_a, right_shift);
-      write_x_tile_result(vec_a1, bias, silu_lut, output, oc_full_base_b, x_out_base_a, right_shift);
-      write_x_tile_result(vec_b0, bias, silu_lut, output, oc_full_base_a, x_out_base_b, right_shift);
-      write_x_tile_result(vec_b1, bias, silu_lut, output, oc_full_base_b, x_out_base_b, right_shift);
+      aie::vector<int8, 32> vec_a0 = acc_a0.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> vec_a1 = acc_a1.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> vec_b0 = acc_b0.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> vec_b1 = acc_b1.template to_vector<int8>(right_shift);
+      write_x_tile_result(vec_a0, silu_lut, output, oc_full_base_a, x_out_base_a);
+      write_x_tile_result(vec_a1, silu_lut, output, oc_full_base_b, x_out_base_a);
+      write_x_tile_result(vec_b0, silu_lut, output, oc_full_base_a, x_out_base_b);
+      write_x_tile_result(vec_b1, silu_lut, output, oc_full_base_b, x_out_base_b);
     }
 
     // Odd-count tail: one straggler interior x_tile (kInteriorN was odd).
@@ -261,8 +275,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
       const int x_out_base = x_tile * 4;
       const int x_in_base = 2 * x_out_base - 1;
       MMUL4x8x8 acc_a, acc_b;
-      acc_a = aie::zeros<acc32, 32>();
-      acc_b = aie::zeros<acc32, 32>();
+      acc_a = bias_acc_a;
+      acc_b = bias_acc_b;
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
         AIE_LOOP_RANGE(1, 3)
@@ -279,10 +293,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
           }
         }
       }
-      aie::vector<int32, 32> va = acc_a.template to_vector<int32>();
-      aie::vector<int32, 32> vb = acc_b.template to_vector<int32>();
-      write_x_tile_result(va, bias, silu_lut, output, oc_full_base_a, x_out_base, right_shift);
-      write_x_tile_result(vb, bias, silu_lut, output, oc_full_base_b, x_out_base, right_shift);
+      aie::vector<int8, 32> va = acc_a.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> vb = acc_b.template to_vector<int8>(right_shift);
+      write_x_tile_result(va, silu_lut, output, oc_full_base_a, x_out_base);
+      write_x_tile_result(vb, silu_lut, output, oc_full_base_b, x_out_base);
     }
 
     // ===== Right edge: x_tile=kXTiles-1 — kx=2 makes col=kInW invalid for p=3. =====
@@ -291,8 +305,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
       const int x_out_base = x_tile * 4;
       const int x_in_base = 2 * x_out_base - 1;
       MMUL4x8x8 acc_a, acc_b;
-      acc_a = aie::zeros<acc32, 32>();
-      acc_b = aie::zeros<acc32, 32>();
+      acc_a = bias_acc_a;
+      acc_b = bias_acc_b;
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
         AIE_LOOP_RANGE(1, 3)
@@ -310,10 +324,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
           }
         }
       }
-      aie::vector<int32, 32> va = acc_a.template to_vector<int32>();
-      aie::vector<int32, 32> vb = acc_b.template to_vector<int32>();
-      write_x_tile_result(va, bias, silu_lut, output, oc_full_base_a, x_out_base, right_shift);
-      write_x_tile_result(vb, bias, silu_lut, output, oc_full_base_b, x_out_base, right_shift);
+      aie::vector<int8, 32> va = acc_a.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> vb = acc_b.template to_vector<int8>(right_shift);
+      write_x_tile_result(va, silu_lut, output, oc_full_base_a, x_out_base);
+      write_x_tile_result(vb, silu_lut, output, oc_full_base_b, x_out_base);
     }
   }
 
