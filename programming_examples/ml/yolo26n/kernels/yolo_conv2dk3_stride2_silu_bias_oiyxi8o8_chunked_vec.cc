@@ -146,9 +146,22 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
   const int ky_end = skip_bot ? 2 : 3;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs (round-half-to-even); enables
+  // vec to_vector<int8>(rs) for SRS+saturate without LSB drift.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+
+  // 8 int32 biases -> 32-wide acc<acc32> (4 pix × 8 ch). Seeds the mmul
+  // so to_vector<int8>(rs) emits bias+SRS+saturate in one vec op.
+  auto make_bias_acc = [&](const int32_t *bias_8) {
+    aie::vector<int32, 8>  b8  = aie::load_v<8>(bias_8);
+    aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+    aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+    aie::accum<acc32, 32> a;
+    a.from_vector(b32);
+    return a;
+  };
 
   int8_t *line[3] = {line0, line1, line2};
 
@@ -166,18 +179,17 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
   // back to a per-OC single-acc interior — that path is dead-stripped in
   // the m3/m5/m7 builds.
 
+  // Vec write helper: acc is bias-seeded so to_vector<int8>(rs) is the
+  // bias-added, SRS'd, saturated i8 result. Only the SiLU LUT gather stays
+  // scalar (32 lookups per call, no vec int8-LUT primitive on AIE2P).
   auto write_x_tile_result = [&](MMUL4x8x8 &acc, int x_out_base, int oc_full_base) {
-    aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+    aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
     for (int p = 0; p < 4; ++p) {
       int x_out = x_out_base + p;
       for (int j = 0; j < 8; ++j) {
         int oc_full = oc_full_base + j;
-        int32_t s = acc_vec[p * 8 + j] + bias[oc_full];
-        int32_t sr = banker_srs(s, right_shift);
-        if (sr > I8_MAX) sr = I8_MAX;
-        if (sr < I8_MIN) sr = I8_MIN;
-        // Write to FULL-row offset (output_channels stride, global oc_full).
-        output[x_out * output_channels + oc_full] = silu_lut[sr + 128];
+        output[x_out * output_channels + oc_full] =
+            silu_lut[int(srs_v[p * 8 + j]) + 128];
       }
     }
   };
@@ -189,11 +201,12 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
   AIE_LOOP_RANGE(1, 2)
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int oc_full_base = oc_offset + chunk_oc_t * 8;
+    auto edge_bias_acc = make_bias_acc(&bias[oc_full_base]);
 
     // Left edge (x_tile = 0) — kx=0 makes col=-1 invalid for p=0.
     {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = edge_bias_acc;
       const int x_in_base = -1;
       AIE_LOOP_RANGE(8, 16)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
@@ -231,7 +244,7 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
     if (x_tiles >= 2) {
       const int x_tile = x_tiles - 1;
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = edge_bias_acc;
       const int x_out_base = x_tile * 4;
       const int x_in_base = 2 * x_out_base - 1;
       AIE_LOOP_RANGE(8, 16)
@@ -313,6 +326,9 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
   constexpr int oc_full_base_1_offset = 8;
   const int oc_full_base_0 = oc_offset + oc_full_base_0_offset;
   const int oc_full_base_1 = oc_offset + oc_full_base_1_offset;
+  // Bias seeds for the two OC banks; reused across all interior x_tiles.
+  auto bias_acc_oc0 = make_bias_acc(&bias[oc_full_base_0]);
+  auto bias_acc_oc1 = make_bias_acc(&bias[oc_full_base_1]);
   // Per-(ic,ky,kx) offset between the two weight banks: stepping chunk_oc_t
   // by 1 adds (ic_tiles * kH * kW * 64) bytes to wts_chunk_tile_off. With
   // ic_tiles, kH, kW all compile-time constants this folds to a literal.
@@ -334,10 +350,10 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       // x_tile_b's input base is +8 cols (stride-2 over 4 output cols).
 
       MMUL4x8x8 acc_a0, acc_a1, acc_b0, acc_b1;
-      acc_a0 = aie::zeros<acc32, 32>();
-      acc_a1 = aie::zeros<acc32, 32>();
-      acc_b0 = aie::zeros<acc32, 32>();
-      acc_b1 = aie::zeros<acc32, 32>();
+      acc_a0 = bias_acc_oc0;  // x_a + oc0
+      acc_a1 = bias_acc_oc1;  // x_a + oc1
+      acc_b0 = bias_acc_oc0;  // x_b + oc0
+      acc_b1 = bias_acc_oc1;  // x_b + oc1
 
       AIE_LOOP_RANGE(8, 16)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
@@ -401,8 +417,8 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
 
       MMUL4x8x8 acc_0;
       MMUL4x8x8 acc_1;
-      acc_0 = aie::zeros<acc32, 32>();
-      acc_1 = aie::zeros<acc32, 32>();
+      acc_0 = bias_acc_oc0;
+      acc_1 = bias_acc_oc1;
 
       AIE_LOOP_RANGE(8, 16)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
@@ -439,8 +455,8 @@ yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
     for (int x_tile = 1; x_tile < x_tiles - 1; ++x_tile) {
       MMUL4x8x8 acc_0;
       MMUL4x8x8 acc_1;
-      acc_0 = aie::zeros<acc32, 32>();
-      acc_1 = aie::zeros<acc32, 32>();
+      acc_0 = bias_acc_oc0;
+      acc_1 = bias_acc_oc1;
       const int x_out_base = x_tile * 4;
       const int x_in_base = 2 * x_out_base - 1;
       AIE_LOOP_RANGE(8, 16)
