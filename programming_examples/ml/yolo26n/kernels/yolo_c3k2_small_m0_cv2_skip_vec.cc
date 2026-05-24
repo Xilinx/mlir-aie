@@ -126,10 +126,21 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
 
   AIE_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
+    // Bias seed: 8 int32 biases -> 32-wide acc<acc32>, reused across all
+    // x_tile iters of this oc_t. Lets to_vector<int8>(rs) below emit
+    // bias-added + SRS'd i8 in one vec op (no post-mac vec add).
+    aie::accum<acc32, 32> bias_acc;
+    {
+      aie::vector<int32, 8>  b8  = aie::load_v<8>(&bias[oc_t * 8]);
+      aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+      aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+      bias_acc.from_vector(b32);
+    }
+
     AIE_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = bias_acc;
 
       const int x_out_base = x_tile * 4;
       const int x_in_base = x_out_base - 1;
@@ -164,16 +175,9 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
         }
       }
 
-      // Vec bias+SRS via aie::accum::to_vector<int8>(rs). conv_even
-      // rounding matches the runtime tail's scalar banker_srs.
-      aie::vector<int32, 8>  bias_v8  = aie::load_v<8>(&bias[oc_t * 8]);
-      aie::vector<int32, 16> bias_v16 = aie::concat(bias_v8, bias_v8);
-      aie::vector<int32, 32> bias_v32 = aie::concat(bias_v16, bias_v16);
-      aie::vector<int32, 32> sum_v = acc.template to_vector<int32>();
-      sum_v = aie::add(sum_v, bias_v32);
-      aie::accum<acc32, 32> sum_acc;
-      sum_acc.from_vector(sum_v);
-      aie::vector<int8, 32> srs_v = sum_acc.template to_vector<int8>(right_shift);
+      // Bias-seeded mmul: to_vector<int8>(rs) directly emits bias-added,
+      // SRS'd, saturated i8. conv_even matches scalar banker_srs.
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
 
       // Scalar gather silu+skip into int16 scratch buffers (skip-add
       // sum range is [-256, 254], fits int16 cleanly so we can use
