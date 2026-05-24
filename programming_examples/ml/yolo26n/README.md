@@ -68,6 +68,7 @@ below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 | m0..m6..m7             | 18.38 ms | 54.40 | 14.26 ms | **70.14** | ✓ |
 | **m0..m7..m8**         | **23.98 ms** | 41.70 | **15.50 ms** | **64.51** | ✓ (m8 deep-opt'd this branch) |
 | **m0..m8..m9**         | **32.96 ms** | 30.34 | **16.10 ms** | **62.11** | ✓ (m9 deep-opt'd this branch) |
+| **m0..m9..m10 (FULL)** | **41.49 ms** | 24.10 | **16.15 ms** | **61.93** | ✓ (full yolo26n above 60 fps) |
 
 Rows marked ✓ re-measured post-IRON-depth-collapse fix. **Every chain
 prefix m0..m7 stays above 60 fps at N=15, and m0..m4 holds 60 even at
@@ -100,6 +101,7 @@ are pre-validation snapshots pending re-measurement.
 | **m8**  | **c3k2_heavy** (2-tile megakernel, deep-opt'd) | **16.30** | **61.34** | ✓ |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
 | **m9 stage 10 (full PSA block, deep-opt'd)** | PSA full | **10.92** | **91.58** | ✓ |
+| **m10 (classifier head, deep-opt'd)** | conv2dk1+GAP+linear+softmax | **7.70** | **129.81** | ✓ |
 
 > **Stale — pre-m2-deep-opt snapshot.** The NOOP_BLOCK chain attribution
 > below was measured before the m2 c3k2_small deep-opt arc (m2 standalone
