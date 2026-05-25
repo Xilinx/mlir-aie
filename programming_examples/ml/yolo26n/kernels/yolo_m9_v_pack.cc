@@ -23,6 +23,8 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 extern "C" {
 
 void yolo_m9_v_pack_i8_i8(
@@ -39,12 +41,34 @@ void yolo_m9_v_pack_i8_i8(
 #endif
   event0();
 
-  const int32_t chan_base = head_idx * head_stride + v_offset_in_head;
-  const int32_t n_base = row_idx * input_width;
+  // Hardcoded for m9 call site (in_w=16, twoc=256, head_dim=64,
+  // head_stride=128, v_offset=64, N=256). Constexpr lowers addressing
+  // to immediates; AIE_LOOP_RANGE hints peano on exact trip counts.
+  (void)input_width;
+  (void)twoc;
+  (void)head_dim;
+  (void)v_offset_in_head;
+  (void)head_stride;
+  (void)N;
+  constexpr int kInW = 16;
+  constexpr int kTwoC = 256;
+  constexpr int kHeadDim = 64;
+  constexpr int kVOff = 64;
+  constexpr int kHeadStride = 128;
+  constexpr int kN = 256;
 
-  for (int s = 0; s < head_dim; s++) {
-    for (int x = 0; x < input_width; x++) {
-      v_frame[s * N + (n_base + x)] = in_row[x * twoc + (chan_base + s)];
+  const int32_t chan_base = head_idx * kHeadStride + kVOff;
+  const int32_t n_base = row_idx * kInW;
+
+  // Transpose copy: read 64 strided i8 (stride twoc=256) per x position,
+  // write to v_frame's per-channel row. Strided reads block clean vec
+  // ops; scalar copy with peano's auto-pipelining is the practical
+  // tightest form.
+  AIE_LOOP_RANGE(kHeadDim, kHeadDim)
+  for (int s = 0; s < kHeadDim; s++) {
+    AIE_LOOP_RANGE(kInW, kInW)
+    for (int x = 0; x < kInW; x++) {
+      v_frame[s * kN + (n_base + x)] = in_row[x * kTwoC + (chan_base + s)];
     }
   }
 
