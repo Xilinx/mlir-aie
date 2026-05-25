@@ -90,18 +90,18 @@ are pre-validation snapshots pending re-measurement.
 
 | Block | Topology | Median (ms) | fps | |
 |---:|---|---:|---:|:--|
-| m0  | conv_stride stem               | 13.23 | 76.4  | ✓ |
-| m1  | conv_stride                    |  8.63 | 116.1 | ✓ |
-| **m2**  | **c3k2_small** (deep-opt'd) | **14.33** | **69.7** | ✓ |
-| m3  | conv_stride (chunked)          |  8.08 | 124.9 | ✓ |
-| m4  | c3k2_small (deep-opt'd)        | 13.29 | 75.2  | ✓ |
-| m5  | conv_stride (chunked)          |  7.02 | 139.5 | ✓ |
-| **m6**  | **c3k2_heavy**             | **14.94** | **66.9** | ✓ |
-| m7  | conv_stride (chunked)          |  4.84 | 206.8 | ✓ |
-| **m8**  | **c3k2_heavy** (2-tile megakernel, deep-opt'd) | **16.30** | **61.34** | ✓ |
+| m0  | conv_stride stem               | **11.32** | **88.3**  | ✓ (was 76.4) |
+| m1  | conv_stride                    | **4.84**  | **206.6** | ✓ (was 116.1) |
+| m2  | c3k2_small                     | **12.98** | **77.0**  | ✓ (was 69.7) |
+| m3  | conv_stride (chunked)          | **5.13**  | **195.1** | ✓ (was 124.9) |
+| m4  | c3k2_small                     | **12.58** | **79.5**  | ✓ (was 75.2) |
+| m5  | conv_stride (chunked)          | **5.40**  | **185.1** | ✓ (was 139.5) |
+| m6  | c3k2_heavy                     | **13.16** | **76.0**  | ✓ (was 66.9) |
+| m7  | conv_stride (chunked)          | **3.94**  | **253.7** | ✓ (was 206.8) |
+| m8  | c3k2_heavy (2-tile megakernel) | **16.32** | **61.3**  | ✓ |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
-| **m9 stage 10 (full PSA block, deep-opt'd)** | PSA full | **10.92** | **91.58** | ✓ |
-| **m10 (classifier head, deep-opt'd)** | conv2dk1+GAP+linear+softmax | **7.70** | **129.81** | ✓ |
+| m9 stage 10 (full PSA block)     | PSA full | **5.10** | **195.9** | ✓ (was 91.6 → pe_add_row vec) |
+| m10 (classifier head)            | conv2dk1+GAP+linear+softmax | **7.69** | **130.1** | ✓ |
 
 > **Stale — pre-m2-deep-opt snapshot.** The NOOP_BLOCK chain attribution
 > below was measured before the m2 c3k2_small deep-opt arc (m2 standalone
