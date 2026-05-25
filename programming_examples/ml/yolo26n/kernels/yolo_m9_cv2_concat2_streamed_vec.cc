@@ -81,16 +81,26 @@ void yolo_m9_cv2_concat2_streamed_silu_bias_i8_i8(
   const int8_t *__restrict top_row = top_cache + yi * kInW * kCHalf;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
   AIE_LOOP_RANGE(kChunkOcTiles, kChunkOcTiles)
   for (int oc_t = 0; oc_t < kChunkOcTiles; ++oc_t) {
+    aie::accum<acc32, 32> bias_acc;
+    {
+      aie::vector<int32, 8> b8 =
+          aie::load_v<8>(&bias_full[bias_offset + oc_t * 8]);
+      aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+      aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+      bias_acc.from_vector(b32);
+    }
+
     AIE_LOOP_RANGE(kXTiles, kXTiles)
     for (int x_tile = 0; x_tile < kXTiles; ++x_tile) {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = bias_acc;
 
       const int x_out_base = x_tile * 4;
       const int8_t *__restrict b_ptr = wts_chunk + ((oc_t * kIcTiles) << 6);
@@ -114,20 +124,13 @@ void yolo_m9_cv2_concat2_streamed_silu_bias_i8_i8(
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
-      const int32_t *__restrict bias_p = bias_full + bias_offset + oc_t * 8;
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
         int8_t *__restrict row_dst =
             out_row + x_out * kOutC + dst_oc_offset + oc_t * 8;
         for (int j = 0; j < 8; ++j) {
-          int32_t s = acc_vec[p * 8 + j] + bias_p[j];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX)
-            sr = I8_MAX;
-          if (sr < I8_MIN)
-            sr = I8_MIN;
-          row_dst[j] = silu_lut[sr + 128];
+          row_dst[j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
