@@ -116,7 +116,8 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
   }
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
@@ -126,10 +127,19 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
   // accumulators), letting peano pipeline the inner loop tighter.
   AIE_LOOP_RANGE(kChunkOcTiles, kChunkOcTiles)
   for (int oc_t = 0; oc_t < kChunkOcTiles; ++oc_t) {
+    // Bias seed for this oc_t; all 4 acc[xt] init'd from it.
+    aie::accum<acc32, 32> bias_acc;
+    {
+      aie::vector<int32, 8> b8 =
+          aie::load_v<8>(&bias_full[bias_offset + oc_t * 8]);
+      aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+      aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+      bias_acc.from_vector(b32);
+    }
     MMUL4x8x8 acc[kXTiles];
     AIE_LOOP_UNROLL_FULL
     for (int xt = 0; xt < kXTiles; ++xt)
-      acc[xt] = aie::zeros<acc32, 32>();
+      acc[xt] = bias_acc;
 
     const int8_t *__restrict b_ptr = wts_chunk + ((oc_t * kIcTiles) << 6);
 
@@ -149,11 +159,12 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
       }
     }
 
-    // Scalar bias + SRS + SiLU LUT tail, per x_tile, per (m=p, n=j) lane.
-    const int32_t *__restrict bias_p = bias_full + bias_offset + oc_t * 8;
+    // Vec SRS+saturate per x_tile (bias already baked in via bias_acc seed)
+    // + scalar SiLU LUT gather.
     AIE_LOOP_UNROLL_FULL
     for (int xt = 0; xt < kXTiles; ++xt) {
-      aie::vector<int32, 32> acc_vec = acc[xt].template to_vector<int32>();
+      aie::vector<int8, 32> srs_v =
+          acc[xt].template to_vector<int8>(right_shift);
       const int x_out_base = xt * 4;
       AIE_LOOP_UNROLL_FULL
       for (int p = 0; p < 4; ++p) {
@@ -162,13 +173,7 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
             dst + x_out * kHalfC + dst_oc_offset + oc_t * 8;
         AIE_LOOP_UNROLL_FULL
         for (int j = 0; j < 8; ++j) {
-          int32_t s = acc_vec[p * 8 + j] + bias_p[j];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX)
-            sr = I8_MAX;
-          if (sr < I8_MIN)
-            sr = I8_MIN;
-          row_dst[j] = silu_lut[sr + 128];
+          row_dst[j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
