@@ -20,6 +20,8 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 extern "C" {
 
 void yolo_m9_qk_pack_i8_i8(
@@ -37,12 +39,27 @@ void yolo_m9_qk_pack_i8_i8(
 #endif
   event0();
 
-  const int32_t chan_offset = head_idx * head_stride;
-  const int32_t n_base = row_idx * input_width;
+  // Hardcoded for m9 call site (in_w=16, twoc=256, qk_slots=64,
+  // head_stride=128, N=256). Constexpr lowers addressing to immediates.
+  (void)input_width;
+  (void)twoc;
+  (void)qk_slots;
+  (void)head_stride;
+  (void)N;
+  constexpr int kInW = 16;
+  constexpr int kTwoC = 256;
+  constexpr int kQKSlots = 64;
+  constexpr int kHeadStride = 128;
+  constexpr int kN = 256;
 
-  for (int s = 0; s < qk_slots; s++) {
-    for (int x = 0; x < input_width; x++) {
-      qk_frame[s * N + (n_base + x)] = in_row[x * twoc + (chan_offset + s)];
+  const int32_t chan_offset = head_idx * kHeadStride;
+  const int32_t n_base = row_idx * kInW;
+
+  AIE_LOOP_RANGE(kQKSlots, kQKSlots)
+  for (int s = 0; s < kQKSlots; s++) {
+    AIE_LOOP_RANGE(kInW, kInW)
+    for (int x = 0; x < kInW; x++) {
+      qk_frame[s * kN + (n_base + x)] = in_row[x * kTwoC + (chan_offset + s)];
     }
   }
 
