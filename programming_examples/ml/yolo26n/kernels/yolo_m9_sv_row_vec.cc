@@ -58,7 +58,10 @@ static __attribute__((always_inline)) inline void
 sv_row_body(int8_t *v_frame, const int8_t *__restrict attn_row,
             int8_t *__restrict out_col, int32_t right_shift) {
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs (round-half-to-even) for any
+  // future vec to_vector<int8>(rs) use. Scalar banker_srs() in this
+  // file is unaffected by the rounding mode setting.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   AIE_LOOP_RANGE(kCBlocks, kCBlocks)
   for (int cb = 0; cb < kCBlocks; ++cb) {
