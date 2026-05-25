@@ -56,19 +56,12 @@ All measurements taken with the NPU in turbo mode
 numbers will land once the per-block re-validation is complete; the rows
 below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
 
-| Chain | N=1 wall | N=1 fps | N=15 per-sample | N=15 fps | |
-|---|---:|---:|---:|---:|:--|
-| m0                     | 13.05 ms | 76.62 | 12.95 ms | **77.25** | ✓ |
-| m0..m1                 | 13.12 ms | 76.20 | 12.95 ms | **77.22** | ✓ |
-| **m0..m1..m2**         | **14.60 ms** | **68.47** | **14.01 ms** | **71.39** | ✓ (was 32.32 N=15 pre-m2-arc) |
-| m0..m1..m2..m3         | 14.72 ms | 67.94 | 14.03 ms | **71.28** | ✓ |
-| **m0..m1..m2..m3..m4** | **15.43 ms** | **64.80** | **14.06 ms** | **71.11** | ✓ (was ≈45 N=15 pre-m4-arc) |
-| m0..m1..m2..m3..m4..m5 | 15.59 ms | 64.13 | 14.08 ms | **71.05** | ✓ |
-| **m0..m6**             | **17.99 ms** | 55.60 | **14.23 ms** | **70.26** | ✓ (was hanging pre-fix) |
-| m0..m6..m7             | 18.38 ms | 54.40 | 14.26 ms | **70.14** | ✓ |
-| **m0..m7..m8**         | **23.98 ms** | 41.70 | **15.50 ms** | **64.51** | ✓ (m8 deep-opt'd this branch) |
-| **m0..m8..m9**         | **32.96 ms** | 30.34 | **16.10 ms** | **62.11** | ✓ (m9 deep-opt'd this branch) |
-| **m0..m9..m10 (FULL)** | **41.49 ms** | 24.10 | **16.15 ms** | **61.93** | ✓ (full yolo26n above 60 fps) |
+All rows re-measured post kernel-by-kernel audit. ms columns are
+per-sample. fps = 1000 / per-sample-ms.
+
+| Chain | N=1 ms | N=1 fps | N=4 ms | N=4 fps | N=15 ms | N=15 fps |
+|---|---:|---:|---:|---:|---:|---:|
+| m0                     | 11.13 | 89.81 | 11.06 | 90.45 | 11.01 | 90.81 |
 
 Rows marked ✓ re-measured post-IRON-depth-collapse fix. **Every chain
 prefix m0..m7 stays above 60 fps at N=15, and m0..m4 holds 60 even at
