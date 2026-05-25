@@ -78,7 +78,8 @@ void yolo_m9_ffn_1_skip_row_i8_i8(int8_t *mid_row, int8_t *wts, int32_t *bias,
   }
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
@@ -89,10 +90,18 @@ void yolo_m9_ffn_1_skip_row_i8_i8(int8_t *mid_row, int8_t *wts, int32_t *bias,
   // apply.
   AIE_LOOP_RANGE(kOcTiles, kOcTiles)
   for (int oc_t = 0; oc_t < kOcTiles; ++oc_t) {
+    aie::accum<acc32, 32> bias_acc;
+    {
+      aie::vector<int32, 8> b8 = aie::load_v<8>(&bias[oc_t * 8]);
+      aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+      aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+      bias_acc.from_vector(b32);
+    }
+
     AIE_LOOP_RANGE(kXTiles, kXTiles)
     for (int x_tile = 0; x_tile < kXTiles; ++x_tile) {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = bias_acc;
 
       const int8_t *__restrict a_ptr = scratch + x_tile * 4 * 8;
       const int8_t *__restrict b_ptr = wts + ((oc_t * kIcTiles) << 6);
@@ -106,21 +115,22 @@ void yolo_m9_ffn_1_skip_row_i8_i8(int8_t *mid_row, int8_t *wts, int32_t *bias,
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
-      const int32_t *__restrict bias_p = bias + oc_t * 8;
+      // Bias-seeded vec SRS → sr_v (i8 vec). Skip-add stays scalar:
+      // peano AIE2P backend (getCombinedOpcodeUNPACKLoad) crashes during
+      // InstructionSelect on accum<acc32, 32>::to_vector<int8>(shift)
+      // whenever ANY vec op (aie::add/mul/mac/unpack/...) follows it on
+      // the same code path — even a simple vec int16 add+clamp pulls the
+      // combiner into the crash. Scalar skip-add is the only path that
+      // survives codegen. See yolo_m9_proj_skip_row_vec.cc for the same
+      // workaround context.
+      aie::vector<int8, 32> sr_v = acc.template to_vector<int8>(right_shift);
       const int x_out_base = x_tile * 4;
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
         int8_t *__restrict row_dst = out_row + x_out * kOutC + oc_t * 8;
         const int8_t *__restrict skip_p = skip_row + x_out * kOutC + oc_t * 8;
         for (int j = 0; j < 8; ++j) {
-          int32_t s = acc_vec[p * 8 + j] + bias_p[j];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX)
-            sr = I8_MAX;
-          if (sr < I8_MIN)
-            sr = I8_MIN;
-          int32_t add = sr + (int32_t)skip_p[j];
+          int32_t add = (int32_t)sr_v[p * 8 + j] + (int32_t)skip_p[j];
           if (add > I8_MAX)
             add = I8_MAX;
           if (add < I8_MIN)
