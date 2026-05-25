@@ -9,8 +9,9 @@
 // One .cc file produces three .o (m3, m5, m7) via -DKERNEL_SUFFIX=_mN.
 // Drop-in .o-level replacement for the scalar chunked .o.
 //
-// Inner reduction uses aie::mmul<4, 8, 8, int8, int8>; bias folded into
-// the scalar SRS+LUT epilogue.
+// Inner reduction uses aie::mmul<4, 8, 8, int8, int8>; bias seeded into
+// the mmul accumulator so to_vector<int8>(rs) directly emits the
+// bias-added + SRS'd + saturated i8 (scalar SiLU LUT gather only).
 //
 //===----------------------------------------------------------------------===//
 

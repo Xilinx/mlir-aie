@@ -18,7 +18,8 @@
 // Per-block deep-opt: see pair_cv1_streamed_vec.cc for the pattern. Shape
 // constants fold + AIE_LOOP_RANGE hints + bias-init into mmul acc; the
 // per-output weighted skip-add (y*mult_y + cv2silu*mult_cv2 + SRS + clamp)
-// stays scalar -- can't fold into mmul SRS path cleanly.
+// is vec via aie::mul + aie::mac into an acc<acc32, 64> + to_vector<int8>
+// (rs) (only the SiLU LUT gather stays scalar).
 #ifdef YOLO_M8_PAIR_IN_W
 #define IN_W YOLO_M8_PAIR_IN_W
 #define IN_C YOLO_M8_PAIR_IN_C

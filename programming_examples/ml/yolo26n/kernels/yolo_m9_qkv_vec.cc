@@ -10,8 +10,9 @@
 // row. Weights are the complete OIYXI8O8 tensor (non-streamed; 32KB fits
 // L1 alongside in_row + out_row).
 //
-// Inner reduction: aie::mmul<4, 8, 8, int8, int8>; bias + SRS in the
-// scalar tail.
+// Inner reduction: aie::mmul<4, 8, 8, int8, int8>; bias-seeded acc so
+// to_vector<int8>(rs) emits bias+SRS+saturate as one vec op. No SiLU
+// here — strided i8 store directly from the vec.
 //
 //===----------------------------------------------------------------------===//
 

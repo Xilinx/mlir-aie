@@ -14,17 +14,20 @@
 // (rs_qk + mul_shift). With mul_int=91 a compile-time constant, the
 // "* 91" folds into the combined accum-shift step at near-zero cost.
 //
-// Phase 1+2 (qk + scale combined): vector-broadcast pattern, 16-wide
-// j-groups with aie::accum<acc32, 16>, broadcast Q[k] vmac against
-// K[k, j_base..j_base+15] strip. After inner k loop, `aie::mul(acc, 91)`
-// scales in i32 and `to_vector<int8>(rs_qk + mul_shift)` does the
-// combined SRS in one vector op.
+// Phase 1+2 (qk + scale combined): vector-broadcast pattern, 64-wide
+// j-groups with aie::accum<acc32, 64>, broadcast Q[k] vmac against
+// K[k, j_base..j_base+63] strip. After inner k loop, vec
+// to_vector<int8>(rs_qk) -> aie::mul(qk_v, mul_int) -> to_vector<int8>
+// (mul_shift) emits the combined SRS as two vec ops. 64-wide because
+// peano AIE2P backend crashes on accum<acc32, {16,32}>::to_vector<int8>.
 //
-// Phase 3 (softmax): 3-pass scalar-FP algorithm matching the original
+// Phase 3 (softmax): 3-pass algorithm matching the original
 // softmax_row.cc — peano's aie2p libc++ doesn't provide expf so we use
-// the precomputed fp32 LUT. Pass 1 (row max) is vector-reduce; passes 2
-// and 3 stay scalar to avoid the 1KB float[] scratch that overflows
-// the per-tile stack.
+// the precomputed fp32 LUT. Pass 1 (row max) is vector-reduce. Pass 2
+// gathers the exp values into a 1 KB float[256] scratch (worker stack
+// bumped to 4 KB to fit) and reduces sum. Pass 3 normalizes via
+// `aie::inv(sum)` (HW reciprocal, no __divsf3) + a 16-wide vec FP mul
+// + saturating cast back to i8.
 //
 //===----------------------------------------------------------------------===//
 
