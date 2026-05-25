@@ -52,12 +52,10 @@ per-layer bins (gitignored).
 All measurements taken with the NPU in turbo mode
 (`sudo xrt-smi configure --pmode turbo`).
 
-**Chain — partial (re-measured at current commit).** Full m0..m10 chain
-numbers will land once the per-block re-validation is complete; the rows
-below were collected by `CHAIN_BLOCKS=… make {run_chain,time_chain}`.
-
-All rows re-measured post kernel-by-kernel audit. ms columns are
-per-sample. fps = 1000 / per-sample-ms.
+**Chain — full sweep, post-audit.** Every prefix m0..mN measured at
+N=1/4/15 via `CHAIN_BLOCKS=… make time_chain`. ms columns are per-sample
+(N=1 == single-dispatch wall, N>1 == per-sample throughput); fps =
+1000 / per-sample-ms. Full chain m0..m10 N=15 is bit-exact vs ORT.
 
 | Chain | N=1 ms | N=1 fps | N=4 ms | N=4 fps | N=15 ms | N=15 fps |
 |---|---:|---:|---:|---:|---:|---:|
@@ -73,23 +71,16 @@ per-sample. fps = 1000 / per-sample-ms.
 | m0..m9                 | 26.80 | 37.32 | 17.87 | 55.95 | 15.69 | 63.73 |
 | **m0..m10 (FULL)**     | **32.17** | **31.08** | **19.22** | **52.03** | **16.05** | **62.32** |
 
-Rows marked ✓ re-measured post-IRON-depth-collapse fix. **Every chain
-prefix m0..m7 stays above 60 fps at N=15, and m0..m4 holds 60 even at
-N=1.** m6 was hanging at runtime before the upstream IRON ObjectFifo
-depth-collapse fix (PR #3096) was cherry-picked into this branch —
-multi-consumer fanout fifos were silently being sized to ping-pong
-(2 buffers) instead of the declared depth, deadlocking c3k2_heavy's
-bot_fifo broadcast to m_0_split and cv3_cv2. After the fix, m6 lands
-at 14.94 ms / 66.9 fps standalone, and adds only ~0.15 ms per-sample
-to the chain despite that — heavily overlapped with the back half of
-the pipeline. m7 (conv_stride chunked, already deep-opt'd, 206.8 fps
-standalone) adds only +0.03 ms per-sample to the chain. m8+ rows
-pending re-measurement (m8 standalone is currently 35.5 fps and is
-the next sub-60 block).
+Every chain prefix through m0..m7 sits above 70 fps at N=15. The full
+m0..m10 chain crosses 60 fps at N=15 (62.32 fps). m6 was hanging at
+runtime before the upstream IRON ObjectFifo depth-collapse fix
+(PR #3096) was cherry-picked into this branch — multi-consumer fanout
+fifos were silently being sized to ping-pong (2 buffers) instead of
+the declared depth, deadlocking c3k2_heavy's bot_fifo broadcast.
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
-Rows marked ✓ have been re-measured at the current commit; the rest
-are pre-validation snapshots pending re-measurement.
+All rows reflect the post-audit state; "was X" values in the rightmost
+column are the README snapshot from prior to the kernel-by-kernel audit.
 
 | Block | Topology | Median (ms) | fps | |
 |---:|---|---:|---:|:--|
@@ -106,20 +97,6 @@ are pre-validation snapshots pending re-measurement.
 | m9 stage 10 (full PSA block)     | PSA full | **5.10** | **195.9** | ✓ (was 91.6 → pe_add_row vec) |
 | m10 (classifier head)            | conv2dk1+GAP+linear+softmax | **7.69** | **130.1** | ✓ |
 
-> **Stale — pre-m2-deep-opt snapshot.** The NOOP_BLOCK chain attribution
-> below was measured before the m2 c3k2_small deep-opt arc (m2 standalone
-> 31.33 → 15.99 ms, crosses 60 fps). Chain-N=15 re-measurement is pending;
-> the standalone arc on m2 is captured in the table further down.
->
-> **Pre-m2-arc chain attribution (chain N=15, per-sample ms, NOOP_BLOCK):**
-> noop'ing m2 alone drops chain by 0.18 ms, m4 by 0.04 ms — both were
-> nearly fully overlapped. m8 contributes 8.35 ms, m9 contributes
-> 8.41 ms, m2+m8+m9 together 13.79 ms. The chain floor with the 3
-> biggest blocks noop'd is 22.48 ms — that's dataflow / DMA infrastructure
-> plus per-tile pipeline overhead, not compute. The m2 deep-opt below
-> shaved 11.76 ms of standalone wall, but because m2 was already mostly
-> overlapped at the chain level, the chain delta is expected to be small
-> until the pipeline shifts further.
 
 m9 is supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
 stage 1 compares against `/model.9/cv1/act` post-SiLU; stage 10 (default)
@@ -128,143 +105,82 @@ PSA-internal tensors with no clean ORT analog; verify those via
 `make run_chain`. m10 (head) still standalone-unsupported; covered by
 the chain test.
 
-**Chain bottleneck has shifted twice this session.** m9 used to
-dominate (>80% of chain time → ~260 ms standalone); after the m9 vec
-arc it dropped to 26 ms and **m0 became the ceiling at 55 ms**. The
-subsequent m0 deep-opt commit took m0 to 13 ms, making **m1 (45 ms)
-the new ceiling**.
+### Exemplar kernel playbook
 
-**Latest optimization arc** — c3k2_small m2 deep-opt: per-kernel
-noop ablation found m2's compute distributed across cv2_concat3
-(~9 ms), m_0_inner (~7 ms via m0_cv2_skip), and cv1_split (~4.5 ms),
-all dominated by scalar bias+SRS+SiLU-LUT epilogues. Vectorizing the
-epilogue (bias add as int32 vec + `aie::accum::to_vector<int8>(rs)`
-with `conv_even` rounding to match the scalar `banker_srs` bit-for-bit;
-LUT lookup stays scalar — no SIMD int8 gather on AIE2P) plus
-compile-time shape macros took m2 across the 60 fps line:
+Every active kernel in this design was audited against a 10-item
+optimization playbook. Items applied where structurally compatible:
 
-| step | m2 standalone (ms) | m2 fps |
-|---|---:|---:|
-| pre-session baseline                                          | 27.75 | 36.0 |
-| + cv2_concat3 deep-opt (shapes + 2X x_pair fold + vec epi)    | 21.15 | 47.3 |
-| + m0_cv2_skip vec bias+SRS + AIE_LOOP_RANGE hints             | 19.60 | 51.0 |
-| + m0_cv2_skip int16 vec skip-add                              | 18.79 | 53.2 |
-| **+ cv1_split vec bias+SRS epilogue**                         | **15.99** | **62.5** |
+1. **Constexpr trip counts** for the kernel's known call site (eliminates
+   `__divsi3` / `__divsf3` software-math calls in the elf; folds address
+   arithmetic into immediates). Verified by `llvm-nm | grep __div`.
+2. **Bias-init the mmul accumulator** (8 int32 biases -> 32-wide
+   `acc<acc32>` via `concat(b8,b8) -> concat -> from_vector`). Replaces
+   per-element scalar bias add.
+3. **Vec `to_vector<int8>(rs)` SRS** with `set_rounding(conv_even)` to
+   match the scalar `banker_srs` reference. Replaces scalar SRS+clamp tail.
+4. **`aie::inv(float)`** for unavoidable fp reciprocals (HW intrinsic;
+   single op vs `__divsf3` ~80 cycles). Used in m9 attn_score and m10
+   softmax.
+5. **Vec mac/mul** in inner loops (mmul.mac or aie::mac).
+6. **mmul<8,8,8>** over `<4,8,8>` only where it pays - confirmed on
+   pair_cv1 (m8); regresses on 1x1 and stride-2 stem (m0 tried + reverted).
+7. **Hoisted vec input gather** for kernels with KW x KH > 1 mac groups
+   per pix load (3x3 stride-1 only - stride-2 has non-contiguous cols,
+   1x1 doesn't amortize).
+8. **`AIE_LOOP_RANGE` + `AIE_LOOP_UNROLL_FULL` hints** on every
+   non-trivial loop (requires `aie_kernel_utils.h`).
+9. **Compile-time shape macros** (`SHAPES_ARE_CONST` pattern) for
+   kernels with multiple call-site shapes (c3k2_small {m2, m4}; chunked
+   stride-2 {m3, m5, m7}).
+10. **Bank-aware memory** (address-space-qualified pointer types per
+    `example.h` `IFM_DM_BANK` pattern) - **not yet applied**;
+    cross-cutting work that requires IRON-side
+    `Buffer(..., placement=bank_N)` API + kernel-side
+    `__attribute__((address_space(N)))` aliases.
 
-After m2 landed, m4 (also c3k2_small, smaller spatial 64×64, channel
-counts doubled to in=64/out=128) was the next sub-60-fps standalone
-block. The same 4 kernels are shared between m2 and m4 — the deep-opt
-was a drop-in: wire `M4_{CV1,CV2,M0CV1,M0CV2_SKIP}_SHAPE` macros to
-flip the SHAPES_ARE_CONST path on for m4 too. No kernel-source change:
+**Known peano AIE2P codegen bug.** `accum<acc32, 16>::to_vector<int8>(shift)`
+and `accum<acc32, 32>::to_vector<int8>(shift)` crash in
+`getCombinedOpcodeUNPACKLoad` during InstructionSelect when the acc
+comes from an `aie::mul`/`aie::mac` chain (not from `mmul.mac`).
+64-wide acc survives. Workaround: keep the affected tail scalar, or
+widen the acc to 64 via concat-with-zeros. Affects m9 attn_score,
+proj_skip_row, ffn_1_skip_row, pe_add_row (all use scalar tail for
+the second SRS).
 
-| step | m4 standalone (ms) | m4 fps |
-|---|---:|---:|
-| pre-arc (m2 deep-opt active, m4 on runtime fallback)         | 19.42 | 51.5 |
-| **+ M4 compile-time shape macros (drop-in)**                 | **13.34** | **75.0** |
+### Biggest per-block wins from the audit
 
-Per-kernel ablation showed the bottleneck shifting after each m2 step
-(cv2 → m_0_inner → cv1), so each commit ends with a re-ablation.
-m0_cv1 was tried with the same vec epilogue but reverted: m_0_inner
-shares one tile's program memory between m0_cv1 + m0_cv2_skip, and
-the inlined vec helper pushed it past the ~16 KB tile budget.
-Per-kernel attribution within a c3k2 block uses a new finer-grained
-`NOOP_KERNEL_FILES="<obj-stem>..."` Make hook (see [Block ablation](#block-ablation-bottleneck-attribution)).
+| Block | Pre-audit fps | Post-audit fps | Driver |
+|---|---:|---:|---|
+| m9 stage 10 |  91.6 | 195.9 | `pe_add_row` vec dw3x3 |
+| m1          | 116.1 | 206.6 | `conv2dk3_stride2` bias-init + vec SRS |
+| m3          | 124.9 | 195.1 | `conv2dk3_stride2_chunked` bias-init + vec SRS |
+| m5          | 139.5 | 185.1 | same |
+| m7          | 206.8 | 253.7 | same |
+| m6          |  66.9 |  76.0 | c3k2_heavy (4 kernels) bias-init + vec SRS |
+| m0          |  76.4 |  88.3 | stem bias-init + vec SRS |
+| m4          |  75.2 |  79.5 | c3k2_small (4 shared kernels) bias-init |
+| m2          |  69.7 |  77.0 | same |
 
-**Prior arc — m9 PSA vec** — m9 PSA kernels rewritten with
-`aie::mmul<4,8,8,int8,int8>` + vector-broadcast reductions + scalar
-SRS/SiLU/skip-add tails. Includes one fusion (`qk_row + attn_scale +
-softmax_row` → `yolo_m9_attn_score_fused_vec.cc`) and one symbol merge
-(`sv_row + sv_row_acc` → single `_vec.cc` with two extern C entries):
+m8 (61.3 fps) and m10 (130.1 fps) were already deep-opt'd in an earlier
+m8/m9/m10 sweep that preceded the kernel-by-kernel audit.
 
-| step | m9 stage 10 (ms) | chain N=15 (ms/sample) | chain N=15 fps |
-|---|---:|---:|---:|
-| pre-session (scalar m9)                                | 353  | 317.5 | 3.15 |
-| + cv1 vec (chunked 256→256 + top/bot)                  | 271.6| 256   | 3.91 |
-| + qkv vec (128→256, no act)                            | 199.4| 210   | 4.76 |
-| + ffn.0 vec (chunked 128→256 + SiLU)                   | 194.7| 205   | 4.87 |
-| + proj vec (128→128 + cross-scale add)                 | 192.5| 203   | 4.93 |
-| + cv1 deep-opt (pre-pack + multi-acc)                  | 191.1| 202.8 | 4.93 |
-| + ffn.1 vec (256→128 + same-scale add)                 | 186.5| 198.2 | 5.05 |
-| **+ cv2 vec (chunked 256→256 + concat) — m9 critical path** | **63.1** | **74.9** | **13.35** |
-| + qk_row vec (broadcast Q[k] × K[k,j..j+15])           | 61.6 | 73.4  | 13.63 |
-| **+ sv_row vec (4-way c-fold) — m9 critical path**     | **40.9** | **58.8** | **17.00** |
-| + sv_row_acc merge (same body, second extern C entry)  | 29.2 | 58.0  | 17.24 |
-| **+ attn_score_fused (qk + scale + softmax in 1 kernel)** | **26.3** | **57.9** | **17.27** |
+### Next remaining levers
 
-After the m9 arc m0 then m1 become successive chain ceilings. Both
-deep-opt'd with the same toolbox (shape #defines + OCx2 / 2X×2OC fold
-+ x-split + AIE_LOOP_RANGE hints):
-
-| step | block standalone (ms) | chain N=15 (ms/sample) | chain N=15 fps |
-|---|---:|---:|---:|
-| naive vec (pre-deep-opt)                                | — | 57.9 | 17.27 |
-| + m0 deep-opt (shape #defines + OCx2 + x-split)         | m0: 55.4 → 13.1 | 47.6 | 20.99 |
-| **+ m1 deep-opt (same toolbox, 2X×2OC interior fold)**  | **m1: 45.1 → 8.65** | **36.3** | **27.57** |
-| **total session (chain N=15)**                          | — | **3.15 → 27.57 fps** | **8.75×** |
-
-Two takeaways from the arc:
-1. **Standalone speedup only translates to chain delta when the kernel is
-   on the critical path.** cv2 and sv_row (the two big chain jumps) were
-   the m9 critical-path kernels; the others shaved m9 standalone but
-   barely moved chain because they overlapped with neighbor tiles.
-2. **Fusion's biggest win is structural, not direct cycles.** The
-   qk+scale+softmax fusion saved ~3 ms on m9 standalone but barely moved
-   chain — because m9 isn't the bottleneck anymore. Fusion also
-   collapsed 3 source files into 1 and sets up future deep-opt to span
-   the whole compute (e.g., vector `aie::exp2<bfloat16>` for softmax —
-   see `aie_kernels/aie2p/softmax.cc` reference).
-
-**Prior arc — chunked stride-2 conv** (kernel
-[`yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc`](kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc)
-shared by m3/m5/m7) — 7.7-10.6× standalone vs scalar baseline:
-
-| stage | m3 | m5 | m7 |
-|---|---:|---:|---:|
-| baseline scalar gather, single acc | 76.4 ms | 73.6 ms | 36.5 ms |
-| + `AIE_LOOP_RANGE` pragmas + 64-bit word-copy gather | 22.5 | 23.5 | 15.4 |
-| + 3-way x_tile split (edges / interior / edge), edges inlined | 16.0 | 18.8 | 14.5 |
-| + OC×2 fold (one A-operand gather feeds 2 weight banks → 2 accs) | 13.5 | 17.5 | 15.0 |
-| + 2X×2OC (4 accs: 2 X positions × 2 OC banks, example.h-style) | 13.5 | 17.4 | 15.2 |
-| **+ compile-time shape `#define`s + `INTERIOR_MODE` selector**   | **8.04** | **6.95** | **4.73** |
-| total speedup | **9.5×** | **10.6×** | **7.7×** |
-
-The compile-time-shapes step was the single biggest lever — it lets peano
-fold `* in_c`, `* out_c`, `* (ic_tiles*kH*kW*64)` etc. into shifts /
-immediates, dead-strip the unused interior variant, and emit tighter
-pipelined inner loops. See [kernel design notes](#kernel-design-notes-chunked-stride-2-conv).
-
-Distance to 60 fps target (16.67 ms/sample): **the partial m0..m6 chain
-already crosses 60 fps at N=15** (14.23 ms / 70.26 fps post-m2-arc +
-post-IRON-depth-fix). Full m0..m10 chain re-measurement pending now
-that m6 is no longer hanging; the historical pre-m2-arc NOOP_BLOCK
-attribution put m8 at 8.35 ms and m9 at 8.41 ms of chain contribution,
-with the chain floor (3 biggest blocks noop'd) at 22.48 ms of dataflow
-infrastructure. m2 / m4 / m6 were each measured at ≤ 0.2 ms chain
-contribution despite multi-ms standalone — heavily overlapped — so
-the next chain gains will come from m8 / m9 / infrastructure work.
-
-Remaining levers in priority order:
-1. **m8 / m9 deep-opt + fusion** — only blocks NOT fully overlapped.
-   m8 has 4 naive vec kernels (front, back, pair0/1 cv1/cv2 streamed);
-   m9 has 4 naive vec (qkv, proj_skip_row, sv_row, attn_score_fused)
-   + 2 partial deep-opt (ffn_1, cv2_concat2 — promote to full) + 4 scalar
-   (pe_add_row + qkv/qk/v_pack data shuffles). Direct chain delta:
-   ~5-13 ms if both can shed their non-overlap portions.
-2. **Architectural / fifo / placement work** — to push the 22.48 ms
-   infrastructure floor down. Tile-pair rebalancing, fifo depth tuning,
-   OC-split parallelism for hottest blocks.
-3. **m10 head** (`yolo_m10_linear_gemm.cc` + `yolo_m10_softmax.cc`)
-   still scalar; small per-sample contribution but completes the
-   "every kernel deep-opt'd" goal.
-4. **Retroactive deep-opt of overlapped naive vec kernels** (m6
-   c3k2_heavy; m9 qkv / ffn.0 / proj / ffn.1 / cv2; m8's 4 kernels)
-   — per-kernel speedups but ~0 chain delta. Needed for the "deep-opt
-   all kernels" code-quality goal. m2 + m4 c3k2_small were covered by
-   the latest arc above (both now > 60 fps standalone).
-5. **Softmax exp2** — replace the scalar fp32 LUT in
+1. **Bank-aware memory** - playbook item #10. Cross-cutting; needs an
+   IRON-side `Buffer(..., placement=bank_N)` API hook + kernel-side
+   address-space-qualified pointer types modeled after `example.h`'s
+   `IFM_DM_BANK` / `WT_DM_BANK` / `OFM_DM_BANK` aliases.
+2. **Architectural / fifo / placement rebalancing** - `pe_add_row` no
+   longer dominates m9, so per-kernel ablation should be re-run to find
+   the next critical-path target on each tile.
+3. **Softmax exp2** - replace the scalar fp32 LUT in
    `yolo_m9_attn_score_fused_vec.cc` with hardware
-   `aie::exp2<bfloat16>` (see `aie_kernels/aie2p/softmax.cc`
-   reference). Bit-exactness risk; tested separately.
+   `aie::exp2<bfloat16>` (see `aie_kernels/aie2p/softmax.cc`).
+   Bit-exactness risk; would be tested separately.
+4. **Push the peano backend bug fix upstream** for the
+   `getCombinedOpcodeUNPACKLoad` crash on
+   `accum<acc32, {16,32}>::to_vector<int8>(shift)` following
+   `aie::mul/aie::mac`. Unblocks 4 m9 kernels' vec skip-add tails.
 
 ## Make targets
 
@@ -530,7 +446,7 @@ yolo26n/
 ├── placement.py                       # PLACEMENT[block_name] → tile coords + design rules
 ├── tile_layout.py                     # ASCII tile-map + per-block sizing
 ├── lowlevel_dma.py                    # StaticWeightStream helper for chunked weight DMA
-├── kernels/                           # 30 .cc + 2 .h AIE2P kernel files. Mostly `_vec.cc` (vectorized; some at "full deep-opt" level — pre-pack scratch + shape #defines + multi-acc fold + AIE_LOOP_RANGE — others at "naive vec" level). Remaining scalar holdouts: yolo_m9_{qkv,qk,v}_pack.cc + yolo_m9_pe_add_row.cc + yolo_m10_{linear_gemm,softmax}.cc
+├── kernels/                           # 30 .cc + 2 .h AIE2P kernel files. Every active kernel has been audited against the playbook in `## Performance` (constexpr trip counts, bias-init mmul, vec to_vector<int8>(rs) SRS, AIE_LOOP_RANGE hints, shape macros). The pack utilities (yolo_m9_{qkv,qk,v}_pack.cc) are scalar strided-copy transposes — no mmul, no vec primitive applies.
 ├── scripts/
 │   ├── m8_megakernel_2tile.py         # m8 2-tile megakernel (the only m8 path)
 │   ├── m9_stage.py                    # m9 PSA staged builder (stages 1..10)
@@ -709,32 +625,6 @@ the m9 1×1 vec arc.
 
 ## Known limitations and follow-ups
 
-- **m9 (PSA attention) is still the chain bottleneck, but reduced from
-  ~260 ms → 63 ms standalone via the m9 1×1 vectorization arc.** Chain
-  N=15 went 317 → 75 ms/sample (3.15 → 13.35 fps); m9 stage 10 standalone
-  went 353 → 63.1 ms (5.6×). The cv2 vec commit (`af7f9eece`) was the
-  single biggest lever — it was the m9 critical-path kernel that hadn't
-  yet been touched. Remaining scalar m9 kernels (`qkv_pack`, `qk_pack`,
-  `qk_row`, `attn_scale`, `softmax_row`, `v_pack`, `sv_row`,
-  `sv_row_acc`, `pe_add_row`) likely contain the next critical path —
-  the attention matmuls (`qk_row`, `sv_row`) are the obvious next
-  targets since they're scalar i8 N×N reductions that map cleanly to
-  `aie::mmul`.
-- **m0 (55 ms) is approaching becoming the next ceiling.** Chain N=15
-  per-sample (74.9 ms) is now only ~1.2× m9 stage 10 (63.1 ms); m0
-  alone is 55.4 ms standalone. Once m9 is reduced below ~55 ms per-
-  sample, m0 will become the bottleneck. m0 uses OIYX raw layout with
-  `in_c=3` padded to 8 → 37.5% mmul utilization ceiling, but 512×512
-  input means lots of compute to amortize.
-- **Per-block standalone savings translate to chain savings only when
-  applied to the critical path.** The earlier m9 1×1 vectorizations
-  (cv1, qkv, ffn.0, proj, ffn.1) shaved 165 ms off m9 stage 10
-  standalone but moved chain N=15 by only ~7 ms — they overlapped in
-  m9's pipeline. The cv2 vec, by contrast, shaved 123 ms off stage 10
-  and moved chain by 123 ms — it was the serial critical path. Use the
-  `NOOP_BLOCK` ablation harness (see
-  [Block ablation](#block-ablation-bottleneck-attribution)) and per-tile
-  trace before picking the next kernel.
 - **PSA m9 multi-sample**: end-to-end multi-sample dispatch already
   works via `CHAIN_N_SAMPLES=N` (HW BD-chain replays the per-sample
   transfer N times in one XRT call). What's *not* done: pushing the batch
