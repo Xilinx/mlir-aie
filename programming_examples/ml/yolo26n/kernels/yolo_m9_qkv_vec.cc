@@ -61,14 +61,24 @@ void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
   const int x_tiles = input_width / 4;
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  ::aie::set_rounding(aie::rounding_mode::positive_inf);
+  // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
+    // Bias seed: reused across all x_tile iters of this oc_t.
+    aie::accum<acc32, 32> bias_acc;
+    {
+      aie::vector<int32, 8> b8 = aie::load_v<8>(&bias[oc_t * 8]);
+      aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+      aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+      bias_acc.from_vector(b32);
+    }
+
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
+      acc = bias_acc;
 
       const int x_out_base = x_tile * 4;
 
@@ -87,18 +97,15 @@ void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
         acc.mac(in_a, in_b);
       }
 
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
+      // Bias-seeded mmul: to_vector<int8>(rs) emits bias+SRS+saturate i8
+      // directly. No SiLU LUT on this kernel — just strided scalar store
+      // (4 pixels × 8 oc, with output_channels stride between pixels).
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
-        for (int j = 0; j < 8; ++j) {
-          int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
-          int32_t sr = banker_srs(s, right_shift);
-          if (sr > I8_MAX)
-            sr = I8_MAX;
-          if (sr < I8_MIN)
-            sr = I8_MIN;
-          out_row[x_out * output_channels + oc_t * 8 + j] = (int8_t)sr;
-        }
+        int8_t *dst = out_row + x_out * output_channels + oc_t * 8;
+        for (int j = 0; j < 8; ++j)
+          dst[j] = srs_v[p * 8 + j];
       }
     }
 
