@@ -34,6 +34,8 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
@@ -63,52 +65,77 @@ void yolo_m9_pe_add_row_i8_i8(
 #endif
   event0();
 
-  // For each output channel c in [0, c_total), compute pe[c, x] for
-  // x in [0, in_w) using dw3x3 with zero-padding on the (y_idx, x)
-  // grid. Combine with the per-channel sv contribution and emit.
-  for (int c = 0; c < c_total; c++) {
-    const int32_t binit = pe_bias[c];
-    int8_t *v_chans = (c < head_dim) ? v_h0 : v_h1;
-    const int32_t v_c = (c < head_dim) ? c : (c - head_dim);
-    int8_t *v_row = &v_chans[v_c * N];
+  // Hardcoded for m9 PE call site: in_w=in_h=16, head_dim=64, c_total=128,
+  // N=256, rs_pe=runtime. Constexpr enables loop hints + addressing immediates.
+  (void)in_w;
+  (void)in_h;
+  (void)head_dim;
+  (void)c_total;
+  (void)N;
+  constexpr int kInW = 16;
+  constexpr int kInH = 16;
+  constexpr int kHeadDim = 64;
+  constexpr int kCTotal = 128;
+  constexpr int kN = 256;
 
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+
+  // Per c: 3x3 dw conv. Vec along x (16-wide). Per ky we gather a
+  // padded row (zero-fill at the two edges) into a 18-byte scratch so
+  // the 3 kx loads are `aie::load_v<16>(&padded[kx])` (covers cols
+  // [kx-1 .. kx+14] mapped to [-1..14], [0..15], [1..16] with zero pad).
+  // 9 vec macs per c (or fewer with y-edge pad) replace 9*16 scalar macs.
+  AIE_LOOP_RANGE(kCTotal, kCTotal)
+  for (int c = 0; c < kCTotal; c++) {
+    const int32_t binit = pe_bias[c];
+    int8_t *v_chans = (c < kHeadDim) ? v_h0 : v_h1;
+    const int32_t v_c = (c < kHeadDim) ? c : (c - kHeadDim);
+    int8_t *v_row = &v_chans[v_c * kN];
     int8_t *pe_w_c = &pe_wts[c * 9];
 
-    for (int x = 0; x < in_w; x++) {
-      int32_t acc = binit;
-      for (int ky = 0; ky < 3; ky++) {
-        int32_t yy = y_idx + ky - 1;
-        if (yy < 0 || yy >= in_h)
-          continue; // zero pad top/bottom
-        for (int kx = 0; kx < 3; kx++) {
-          int32_t xx = x + kx - 1;
-          if (xx < 0 || xx >= in_w)
-            continue; // zero pad left/right
-          int8_t v_val = v_row[yy * in_w + xx];
-          int8_t w_val = pe_w_c[ky * 3 + kx];
-          acc += (int32_t)v_val * (int32_t)w_val;
-        }
+    aie::accum<acc32, 16> x_acc;
+    x_acc.from_vector(aie::broadcast<int32, 16>(binit));
+
+    AIE_LOOP_RANGE(3, 3)
+    for (int ky = 0; ky < 3; ky++) {
+      int32_t yy = y_idx + ky - 1;
+      if (yy < 0 || yy >= kInH)
+        continue; // y-edge zero pad → skip whole ky band
+
+      // Pad row: [0] and [17] are zero; [1..16] hold v_row[yy*kInW+0..15].
+      alignas(32) int8_t padded[32] = {0};
+      const int8_t *row_p = v_row + yy * kInW;
+      for (int xx = 0; xx < kInW; xx++)
+        padded[xx + 1] = row_p[xx];
+
+      AIE_LOOP_UNROLL_FULL
+      for (int kx = 0; kx < 3; kx++) {
+        aie::vector<int8, 16> v_v = aie::load_v<16>(&padded[kx]);
+        x_acc = aie::mac(x_acc, v_v, (int8)pe_w_c[ky * 3 + kx]);
       }
-      int32_t pe_q = banker_srs(acc, rs_pe);
+    }
+
+    // Scalar SRS+clamp+sv-add+clamp+store tail per x (vec to_vector<int8>(rs)
+    // crashes peano on 16-wide acc — known bug in getCombinedOpcodeUNPACKLoad).
+    aie::vector<int32, 16> x_v = x_acc.template to_vector<int32>();
+    const bool from_h0 = (c < kHeadDim);
+    const int8_t *sv_h0_p = sv_h0_acc + (y_idx * kInW) * kHeadDim + c;
+    const int8_t *sv_h1_p = sv_h1_row + (c - kHeadDim);
+    AIE_LOOP_UNROLL_FULL
+    for (int x = 0; x < kInW; x++) {
+      int32_t pe_q = banker_srs(x_v[x], rs_pe);
       if (pe_q > I8_MAX)
         pe_q = I8_MAX;
       if (pe_q < I8_MIN)
         pe_q = I8_MIN;
-
-      // Pull sv contribution for this (c, x) at y=y_idx.
-      int8_t sv_val;
-      if (c < head_dim) {
-        sv_val = sv_h0_acc[(y_idx * in_w + x) * head_dim + c];
-      } else {
-        sv_val = sv_h1_row[x * head_dim + (c - head_dim)];
-      }
-
+      int8_t sv_val = from_h0 ? sv_h0_p[x * kHeadDim] : sv_h1_p[x * kHeadDim];
       int32_t s = (int32_t)sv_val + (int32_t)pe_q;
       if (s > I8_MAX)
         s = I8_MAX;
       if (s < I8_MIN)
         s = I8_MIN;
-      chunk_out[x * c_total + c] = (int8_t)s;
+      chunk_out[x * kCTotal + c] = (int8_t)s;
     }
   }
 
