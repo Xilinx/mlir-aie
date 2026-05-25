@@ -15,6 +15,8 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
@@ -36,11 +38,34 @@ void yolo_m10_linear_gemm_i8_i8(int8_t *in_vec, // (in_dim,)
 #endif
   event0();
 
-  for (int o = 0; o < out_dim; o++) {
-    int32_t sum = bias[o];
-    for (int d = 0; d < in_dim; d++) {
-      sum += (int32_t)wts[o * in_dim + d] * (int32_t)in_vec[d];
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  // conv_even matches scalar banker_srs (round-half-to-even).
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+
+  // Hardcoded for m10 head (in_dim=1280, out_dim=2, rs=10). Per-output:
+  // 1280/64 = 20 vec-mac iters over 64-lane i8 strips, one reduce_add,
+  // one scalar SRS+clamp. Replaces the 1280-iter scalar dot product.
+  (void)in_dim;
+  (void)out_dim;
+  constexpr int kInDim = 1280;
+  constexpr int kOutDim = 2;
+  constexpr int kVec = 64;
+  constexpr int kGroups = kInDim / kVec; // 20
+
+  AIE_LOOP_RANGE(kOutDim, kOutDim)
+  for (int o = 0; o < kOutDim; o++) {
+    aie::accum<acc32, kVec> acc;
+    acc.from_vector(aie::zeros<int32, kVec>());
+
+    const int8_t *__restrict w_row = wts + o * kInDim;
+    AIE_LOOP_RANGE(kGroups, kGroups)
+    for (int g = 0; g < kGroups; g++) {
+      aie::vector<int8, kVec> w_v = aie::load_v<kVec>(w_row + g * kVec);
+      aie::vector<int8, kVec> x_v = aie::load_v<kVec>(in_vec + g * kVec);
+      acc = aie::mac(acc, w_v, x_v);
     }
+
+    int32_t sum = aie::reduce_add(acc.template to_vector<int32>()) + bias[o];
     int32_t s = banker_srs(sum, right_shift);
     if (s > I8_MAX)
       s = I8_MAX;
