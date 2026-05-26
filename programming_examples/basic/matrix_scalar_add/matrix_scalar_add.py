@@ -68,7 +68,14 @@ def matrix_scalar_add(
 
     worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
-    tap = TensorTiler2D.simple_tiler(matrix_shape, tile_shape)[0]
+    # One TAP that walks all tiles, so a single fill/drain DMA pair covers
+    # the full matrix (16 separate fill/drain pairs overflow the BD budget
+    # on Strix and fail tile placement).
+    n_row_tiles = matrix_height // tile_height
+    n_col_tiles = matrix_width // tile_width
+    tap = TensorTiler2D.group_tiler(
+        matrix_shape, tile_shape, tile_group_dims=(n_row_tiles, n_col_tiles)
+    )[0]
 
     rt = Runtime()
     with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (in_tensor, _, out_tensor):
