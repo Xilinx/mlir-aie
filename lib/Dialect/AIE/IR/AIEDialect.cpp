@@ -1725,9 +1725,8 @@ LogicalResult PacketFlowOp::verify() {
       ++numDests;
   }
 
-  if (numSources != 1)
-    return emitOpError("must have exactly one aie.packet_source (got ")
-           << numSources << ")";
+  if (numSources < 1)
+    return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
 
