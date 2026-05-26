@@ -25,8 +25,13 @@ from aie.iron.algorithms import (
 
 TILE_SIZE = 16
 
-# Peano -O2 has an FPU pipeline hazard for float32; skip until upstream fix.
-_skip_float32 = pytest.mark.skip(reason="Peano -O2 float32 FPU pipeline hazard")
+# Peano f32 issues — observed as either an -O2 FPU pipeline hazard or a
+# stack-overflow on certain f32 kernels. xfail(strict=False) so PASSes don't
+# fail the suite once an upstream fix lands.
+_skip_float32 = pytest.mark.xfail(
+    reason="Peano f32: -O2 FPU pipeline hazard / stack-overflow on certain kernels",
+    strict=False,
+)
 
 
 # =============================================================================

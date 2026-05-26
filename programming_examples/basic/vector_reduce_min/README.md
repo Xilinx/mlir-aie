@@ -43,3 +43,20 @@ make run
 ```
 
 For NPU2 (Strix): `make devicename=npu2 && make run devicename=npu2`.
+
+#### JIT vs Non-JIT Comparison
+
+| Aspect | Non-JIT Approach | JIT Approach |
+|--------|------------------|--------------|
+| **Compilation** | Ahead-of-time via `aiecc` | Runtime compilation |
+| **Development Speed** | Slower (manual make/compilation) | Faster (compilation integrated) |
+| **Host Code** | C++ testbench (`test.cpp`) | Python script |
+| **Performance** | Baseline execution time | Microseconds overhead from JIT runtime |
+| **Flexibility** | Fixed at compile time | Runtime parameterization |
+| **Use Case** | Explicit XCLBIN management | Dynamic compilation |
+| **Binary Output** | Generates XCLBIN/inst.bin | Cached binaries in `NPU_CACHE_HOME` (defaults to `~/.npu/cache/`) |
+
+**When to use each approach:**
+- **Use JIT** for rapid prototyping, experimentation, runtime flexibility, and when you don't need control over XCLBINs
+- **Use non-JIT** when you need explicit XCLBIN control, working with existing MLIR-AIE workflows, or distributing pre-compiled binaries
+

@@ -1,6 +1,6 @@
-cmake>=3.31, <4.0
+cmake>=4.3.2, <5.0
 pybind11>=3.0.4
-setuptools>=61.0
+setuptools>=82.0.1
 wheel
 ninja!=1.13.0
 cibuildwheel
@@ -9,7 +9,7 @@ pre-commit
 # (plain `black` skips notebooks silently, leaving stale formatting in
 # whats_new_in_unify_compilation_workflow.ipynb etc.).
 black[jupyter]
-nanobind>=2.9
+nanobind>=2.12.0
 lit
 matplotlib
 # lit requires psutil to set timeouts

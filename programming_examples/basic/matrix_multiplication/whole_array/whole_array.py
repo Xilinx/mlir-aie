@@ -37,7 +37,7 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile, from_name
+from aie.iron.device import from_name
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
@@ -179,7 +179,6 @@ def _build_design(
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
                 dims_to_stream=dims_to_stream,
-                tile=Tile(2 * i if n_aie_cols == 8 else i, 1),
             )
         )
         for j in range(stop_row - start_row):
@@ -198,7 +197,6 @@ def _build_design(
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
                 dims_to_stream=dims_to_stream,
-                tile=Tile(col, 1),
             )
         )
 
@@ -222,7 +220,6 @@ def _build_design(
                 obj_types=[C_l1_ty] * n_aie_rows,
                 names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
                 depths=[fifo_depth] * n_aie_rows,
-                tile=Tile(col, 1),
             )
         )
         for j in range(n_aie_rows):
@@ -258,7 +255,6 @@ def _build_design(
                         zero_kernel,
                         matmul_kernel,
                     ],
-                    tile=Tile(tile_col, tile_row),
                     stack_size=0xD00,
                 )
             )
@@ -334,7 +330,6 @@ def _build_design(
                         tap=C_tiles[c_index],
                         wait=True,
                         task_group=tg,
-                        tile=Tile(col, 0),
                     )
                     c_index += 1
 
@@ -348,14 +343,12 @@ def _build_design(
                                 A,
                                 tap=A_tiles[tile_offset],
                                 task_group=tg,
-                                tile=Tile(2 * col if n_aie_cols == 8 else col, 0),
                             )
                         rt.fill(
                             B_l3l2_fifos[col].prod(),
                             B,
                             tap=B_tiles[col],
                             task_group=tg,
-                            tile=Tile(col, 0),
                         )
                         A_taps.append(A_tiles[tile_offset])
                         B_taps.append(B_tiles[col])
