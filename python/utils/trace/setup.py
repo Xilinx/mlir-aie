@@ -404,7 +404,12 @@ def configure_trace(
     if not tiles_to_trace:
         return
 
-    packet_id = 1
+    # Packet IDs are intentionally NOT assigned here. IRON workers may be
+    # unplaced at this point, so a stable (col, row)-derived id can't be
+    # computed in Python. -aie-insert-trace-flows assigns ids in
+    # (col, row) order after the placer runs, keeping the trace overlay's
+    # routing-rule layout a pure function of the active trace tile set.
+    trace_seq = 1
     seen_core_tiles = set()
 
     for tile_op in tiles_to_trace:
@@ -426,7 +431,7 @@ def configure_trace(
         else:
             raise ValueError(f"Unknown tile type for tracing: {tile_op}")
 
-        trace_name = f"trace_{trace_type}_{packet_id}"
+        trace_name = f"trace_{trace_type}_{trace_seq}"
 
         # Get events for this tile type
         if tile_op.is_core_tile():
@@ -491,7 +496,9 @@ def configure_trace(
         def trace_body():
             if is_core_trace:
                 trace_mode(TraceMode.EventTime)
-            trace_packet(packet_id, packet_type)
+            # id auto-assigned in (col, row) order by
+            # -aie-insert-trace-flows after placement.
+            trace_packet(type=packet_type)
 
             for event in padded_events:
                 trace_event(event)
@@ -509,7 +516,7 @@ def configure_trace(
             trace_stop(broadcast=stop_broadcast)
 
         _configured_trace_names.append(trace_name)
-        packet_id += 1
+        trace_seq += 1
 
 
 def start_trace(

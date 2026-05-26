@@ -126,7 +126,7 @@ jobs:
           submodules: "true"
 
       - name: Install clang-format
-        uses: aminya/setup-cpp@v1
+        uses: aminya/setup-cpp@v1.8.0
         with:
           clangformat: 17.0.1
 
@@ -322,7 +322,7 @@ jobs:
 
       - name: Update PR with coverage results
         if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: edumserrano/find-create-or-update-comment@v2
+        uses: edumserrano/find-create-or-update-comment@v3
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-includes: '<!--<!doctype codecov html>-->'
