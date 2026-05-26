@@ -357,9 +357,9 @@ def _make_argparser():
     p.add_argument("-M", type=int, default=512)
     p.add_argument("-K", type=int, default=512)
     p.add_argument("-N", type=int, default=512)
-    p.add_argument("-m", type=int, default=64)
-    p.add_argument("-k", type=int, default=64)
-    p.add_argument("-n", type=int, default=64)
+    p.add_argument("-m", type=int, default=32)
+    p.add_argument("-k", type=int, default=32)
+    p.add_argument("-n", type=int, default=32)
     p.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
     p.add_argument("--dtype_in", type=str, choices=["bf16", "i16"], default="i16")
     p.add_argument(
