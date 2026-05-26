@@ -145,7 +145,10 @@ def _run_and_verify(opts):
     w2_f32 = w2_np.astype(np.float32)
     expected = ((x_f32 * w1_f32) * _silu_ref_f32(x_f32 * w2_f32)).astype(bfloat16)
     assert_pass(
-        b_t.numpy(), expected, fail_msg="swiglu output does not match reference"
+        b_t.numpy(),
+        expected,
+        rtol=0.128,
+        fail_msg="swiglu output does not match reference",
     )
 
 

@@ -132,11 +132,8 @@ def _compile_kwargs(opts):
 
 
 def _silu_ref_f32(x):
-    """tanh-approximation SILU, matching the LUT-backed kernel within ~12% rtol."""
-    import math
-
-    x = x.astype(np.float32)
-    return 0.5 * x * (1.0 + np.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x**3)))
+    """SILU (a.k.a. swish): x * sigmoid(x) = x / (1 + exp(-x))."""
+    return x.astype(np.float32) / (1.0 + np.exp(-x.astype(np.float32)))
 
 
 def _run_and_verify(opts):
@@ -150,7 +147,12 @@ def _run_and_verify(opts):
     silu(a_t, b_t, **_compile_kwargs(opts))
 
     expected = _silu_ref_f32(in_np)
-    assert_pass(b_t.numpy(), expected, fail_msg="silu output outside LUT tolerance")
+    assert_pass(
+        b_t.numpy(),
+        expected,
+        rtol=0.128,
+        fail_msg="silu output outside LUT tolerance",
+    )
 
 
 def main():

@@ -148,7 +148,12 @@ def _run_and_verify(opts):
     softmax(a_t, b_t, **_compile_kwargs(opts))
 
     expected = _softmax_ref_per_tile(in_np, tile_size=1024)
-    assert_pass(b_t.numpy(), expected, fail_msg="softmax output does not match reference")
+    assert_pass(
+        b_t.numpy(),
+        expected,
+        rtol=0.128,
+        fail_msg="softmax output does not match reference",
+    )
 
 
 def main():

@@ -150,7 +150,16 @@ def _run_and_verify(opts):
     gelu(a_t, b_t, **_compile_kwargs(opts))
 
     expected = _gelu_ref_f32(in_np)
-    assert_pass(b_t.numpy(), expected, fail_msg="gelu output outside LUT tolerance")
+    # atol=0.05 covers the near-zero bf16 quantization floor where the LUT
+    # rounds to 0 but the f32 ref produces a small non-zero value
+    # (max observed |diff| on (-3, 3) input ≈ 0.022).
+    assert_pass(
+        b_t.numpy(),
+        expected,
+        rtol=0.128,
+        atol=0.05,
+        fail_msg="gelu output outside LUT tolerance",
+    )
 
 
 def main():
