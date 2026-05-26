@@ -14,12 +14,26 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
 #endif
 #define _PASTE(a, b) a##b
 #define _MAKE(name, suffix) _PASTE(name, suffix)
 #define KERNEL_NAME(base) _MAKE(base, KERNEL_SUFFIX)
+
+// m_0_split is a 1x1 conv with two parallel branches sharing the same shape.
+// Branch a and b take the same input row and use independent weight/bias/lut/
+// shift sets but identical (in_w, in_c, out_c).
+#ifdef YOLO_M6_SPLIT_IN_W
+#define SPLIT_IN_W YOLO_M6_SPLIT_IN_W
+#define SPLIT_IN_C YOLO_M6_SPLIT_IN_C
+#define SPLIT_OUT_C YOLO_M6_SPLIT_OUT_C
+#define SHAPES_ARE_CONST 1
+#else
+#define SHAPES_ARE_CONST 0
+#endif
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -48,12 +62,31 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
                        int input_channels, int output_channels,
                        int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+#if SHAPES_ARE_CONST
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  constexpr int ic_tiles = SPLIT_IN_C / 8;
+  constexpr int oc_tiles = SPLIT_OUT_C / 8;
+  constexpr int x_tiles = SPLIT_IN_W / 4;
+  constexpr int kInC = SPLIT_IN_C;
+  constexpr int kOutC = SPLIT_OUT_C;
+#define BR_HINT_OC AIE_LOOP_RANGE(oc_tiles, oc_tiles)
+#define BR_HINT_X AIE_LOOP_RANGE(x_tiles, x_tiles)
+#define BR_HINT_IC AIE_LOOP_RANGE(ic_tiles, ic_tiles)
+#else
   const int ic_tiles = input_channels / 8;
   const int oc_tiles = output_channels / 8;
   const int x_tiles = input_width / 4;
+  const int kInC = input_channels;
+  const int kOutC = output_channels;
+#define BR_HINT_OC
+#define BR_HINT_X
+#define BR_HINT_IC
+#endif
 
+  BR_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
-    // Bias seed: reused across all x_tile iters.
     aie::accum<acc32, 32> bias_acc;
     {
       aie::vector<int32, 8> b8 = aie::load_v<8>(&bias[oc_t * 8]);
@@ -62,16 +95,18 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
       bias_acc.from_vector(b32);
     }
 
+    BR_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
       const int x_base = x_tile * 4;
 
+      BR_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         alignas(32) int8_t a_buf[32];
         for (int p = 0; p < 4; ++p) {
           int col = x_base + p;
-          int8_t *src = in_row + col * input_channels + ic_t * 8;
+          int8_t *src = in_row + col * kInC + ic_t * 8;
           for (int b = 0; b < 8; ++b)
             a_buf[p * 8 + b] = src[b];
         }
@@ -86,7 +121,7 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
       for (int p = 0; p < 4; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
-          out[x_out * output_channels + oc_t * 8 + j] =
+          out[x_out * kOutC + oc_t * 8 + j] =
               silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }

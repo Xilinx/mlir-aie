@@ -18,12 +18,30 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
 #endif
 #define _PASTE(a, b) a##b
 #define _MAKE(name, suffix) _PASTE(name, suffix)
 #define KERNEL_NAME(base) _MAKE(base, KERNEL_SUFFIX)
+
+#ifdef YOLO_M6_PAIR_IN_W
+#define IN_W YOLO_M6_PAIR_IN_W
+#define IN_C YOLO_M6_PAIR_IN_C
+#define OUT_C YOLO_M6_PAIR_OUT_C
+#define KW 3
+#define KH 3
+#define SHAPES_ARE_CONST 1
+#else
+#define IN_W input_width
+#define IN_C input_channels
+#define OUT_C output_channels
+#define KW kernel_width
+#define KH kernel_height
+#define SHAPES_ARE_CONST 0
+#endif
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -62,15 +80,38 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
 #endif
   event0();
 
+#if SHAPES_ARE_CONST
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  (void)kernel_width;
+  (void)kernel_height;
+#endif
+
   const bool skip_top = (border == 0);
   const bool skip_bot = (border == 2);
   const int ky_start = skip_top ? 1 : 0;
   const int ky_end = skip_bot ? 2 : 3;
 
-  const int ic_tiles = input_channels / 8;
-  const int oc_tiles = output_channels / 8;
-  const int output_width = input_width;
+#if SHAPES_ARE_CONST
+  constexpr int ic_tiles = IN_C / 8;
+  constexpr int oc_tiles = OUT_C / 8;
+  constexpr int output_width = IN_W;
+  constexpr int x_tiles = output_width / 4;
+#define AIE_HINT_OC AIE_LOOP_RANGE(oc_tiles, oc_tiles)
+#define AIE_HINT_X AIE_LOOP_RANGE(x_tiles, x_tiles)
+#define AIE_HINT_IC AIE_LOOP_RANGE(ic_tiles, ic_tiles)
+#define AIE_HINT_KX AIE_LOOP_RANGE(3, 3)
+#else
+  const int ic_tiles = IN_C / 8;
+  const int oc_tiles = OUT_C / 8;
+  const int output_width = IN_W;
   const int x_tiles = output_width / 4;
+#define AIE_HINT_OC
+#define AIE_HINT_X
+#define AIE_HINT_IC
+#define AIE_HINT_KX
+#endif
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
@@ -80,8 +121,8 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
 
   int8_t *line[3] = {line0, line1, line2};
 
+  AIE_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
-    // Bias seed: reused across all x_tile iters of this oc_t.
     aie::accum<acc32, 32> bias_acc;
     {
       aie::vector<int32, 8> b8 = aie::load_v<8>(&bias[oc_t * 8]);
@@ -90,6 +131,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
       bias_acc.from_vector(b32);
     }
 
+    AIE_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
@@ -97,20 +139,23 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
       const int x_out_base = x_tile * 4;
       const int x_in_base = x_out_base - 1;
 
+      AIE_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
 
-          for (int kx = 0; kx < kernel_width; ++kx) {
+          AIE_HINT_KX
+          for (int kx = 0; kx < KW; ++kx) {
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;
             for (int p = 0; p < 4; ++p) {
               int col = x_in_base + p + kx;
-              if (col < 0 || col >= input_width) {
+              if (col < 0 || col >= IN_W) {
                 for (int b = 0; b < 8; ++b)
                   a_buf[p * 8 + b] = 0;
               } else {
-                int8_t *src = line_ptr + col * input_channels + ic_t * 8;
+                int8_t *src = line_ptr + col * IN_C + ic_t * 8;
                 for (int b = 0; b < 8; ++b)
                   a_buf[p * 8 + b] = src[b];
                 any_valid = true;
@@ -120,8 +165,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
               continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
-            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, ic_tiles,
-                                       kernel_height, kernel_width);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc.mac(in_a, in_b);
           }
@@ -140,7 +184,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
-        int8_t *src = skip_row + x_out * output_channels + oc_t * 8;
+        int8_t *src = skip_row + x_out * OUT_C + oc_t * 8;
         for (int b = 0; b < 8; ++b)
           skip_buf[p * 8 + b] = src[b];
       }
@@ -154,7 +198,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
 
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
-        int8_t *dst = output + x_out * output_channels + oc_t * 8;
+        int8_t *dst = output + x_out * OUT_C + oc_t * 8;
         for (int j = 0; j < 8; ++j)
           dst[j] = out_v[p * 8 + j];
       }

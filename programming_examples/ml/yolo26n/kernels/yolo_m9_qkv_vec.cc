@@ -24,6 +24,20 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
+#ifdef YOLO_M9_QKV_IN_W
+#define IN_W YOLO_M9_QKV_IN_W
+#define IN_C YOLO_M9_QKV_IN_C
+#define OUT_C YOLO_M9_QKV_OUT_C
+#define SHAPES_ARE_CONST 1
+#else
+#define IN_W input_width
+#define IN_C input_channels
+#define OUT_C output_channels
+#define SHAPES_ARE_CONST 0
+#endif
+
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
@@ -57,16 +71,31 @@ void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
 #endif
   event0();
 
-  const int ic_tiles = input_channels / 8;
-  const int oc_tiles = output_channels / 8;
-  const int x_tiles = input_width / 4;
+#if SHAPES_ARE_CONST
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  constexpr int ic_tiles = IN_C / 8;
+  constexpr int oc_tiles = OUT_C / 8;
+  constexpr int x_tiles = IN_W / 4;
+#define AIE_HINT_OC AIE_LOOP_RANGE(oc_tiles, oc_tiles)
+#define AIE_HINT_X AIE_LOOP_RANGE(x_tiles, x_tiles)
+#define AIE_HINT_IC AIE_LOOP_RANGE(ic_tiles, ic_tiles)
+#else
+  const int ic_tiles = IN_C / 8;
+  const int oc_tiles = OUT_C / 8;
+  const int x_tiles = IN_W / 4;
+#define AIE_HINT_OC
+#define AIE_HINT_X
+#define AIE_HINT_IC
+#endif
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
-  // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
+  AIE_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     // Bias seed: reused across all x_tile iters of this oc_t.
     aie::accum<acc32, 32> bias_acc;
@@ -77,17 +106,19 @@ void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
       bias_acc.from_vector(b32);
     }
 
+    AIE_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
 
       const int x_out_base = x_tile * 4;
 
+      AIE_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         alignas(32) int8_t a_buf[32];
         for (int p = 0; p < 4; ++p) {
           int col = x_out_base + p;
-          int8_t *src = in_row + col * input_channels + ic_t * 8;
+          int8_t *src = in_row + col * IN_C + ic_t * 8;
           for (int b = 0; b < 8; ++b)
             a_buf[p * 8 + b] = src[b];
         }
@@ -98,13 +129,10 @@ void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
         acc.mac(in_a, in_b);
       }
 
-      // Bias-seeded mmul: to_vector<int8>(rs) emits bias+SRS+saturate i8
-      // directly. No SiLU LUT on this kernel — just strided scalar store
-      // (4 pixels × 8 oc, with output_channels stride between pixels).
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
-        int8_t *dst = out_row + x_out * output_channels + oc_t * 8;
+        int8_t *dst = out_row + x_out * OUT_C + oc_t * 8;
         for (int j = 0; j < 8; ++j)
           dst[j] = srs_v[p * 8 + j];
       }

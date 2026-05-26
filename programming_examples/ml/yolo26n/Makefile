@@ -265,10 +265,12 @@ $(BUILD)/yolo_m9_cv1_split.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV1_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_cv1_split,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
+M9_QKV_SHAPE := -DYOLO_M9_QKV_IN_W=16 -DYOLO_M9_QKV_IN_C=128 -DYOLO_M9_QKV_OUT_C=256
+
 $(BUILD)/yolo_m9_qkv.o: \
     $(SRCDIR)/kernels/yolo_m9_qkv_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_qkv,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_QKV_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_qkv,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_FFN0_SHAPE := -DYOLO_M9_FFN0_IN_W=16 -DYOLO_M9_FFN0_IN_C=128 \
                  -DYOLO_M9_FFN0_OUT_C=256 -DYOLO_M9_FFN0_N_CHUNKS=4
@@ -348,6 +350,11 @@ M4_M0CV1_SHAPE      := -DYOLO_C3K2_M0CV1_IN_W=64 -DYOLO_C3K2_M0CV1_IN_C=32 -DYOL
 M4_M0CV2_SKIP_SHAPE := -DYOLO_C3K2_M0CV2_SKIP_IN_W=64 -DYOLO_C3K2_M0CV2_SKIP_IN_C=16 -DYOLO_C3K2_M0CV2_SKIP_OUT_C=32
 M4_CV2_SHAPE        := -DYOLO_C3K2_CV2_IN_W=64 -DYOLO_C3K2_CV2_THREE_C=96 -DYOLO_C3K2_CV2_OUT_C=128
 M4_CV1_SHAPE        := -DYOLO_C3K2_CV1_IN_W=64 -DYOLO_C3K2_CV1_IN_C=64 -DYOLO_C3K2_CV1_OUT_C=64
+M6_CV1_SHAPE        := -DYOLO_C3K2_CV1_IN_W=32 -DYOLO_C3K2_CV1_IN_C=128 -DYOLO_C3K2_CV1_OUT_C=128
+M6_CV2_SHAPE        := -DYOLO_C3K2_CV2_IN_W=32 -DYOLO_C3K2_CV2_THREE_C=192 -DYOLO_C3K2_CV2_OUT_C=128
+M6_PAIR_SHAPE       := -DYOLO_M6_PAIR_IN_W=32 -DYOLO_M6_PAIR_IN_C=32 -DYOLO_M6_PAIR_OUT_C=32
+M6_SPLIT_SHAPE      := -DYOLO_M6_SPLIT_IN_W=32 -DYOLO_M6_SPLIT_IN_C=64 -DYOLO_M6_SPLIT_OUT_C=32
+M6_CV3_SHAPE        := -DYOLO_M6_CV3_IN_W=32 -DYOLO_M6_CV3_TWO_CP=64 -DYOLO_M6_CV3_OUT_C=64
 M0CV1_SHAPE_m2      := $(M2_M0CV1_SHAPE)
 M0CV2_SKIP_SHAPE_m2 := $(M2_M0CV2_SKIP_SHAPE)
 CV2_SHAPE_m2        := $(M2_CV2_SHAPE)
@@ -356,6 +363,8 @@ M0CV1_SHAPE_m4      := $(M4_M0CV1_SHAPE)
 M0CV2_SKIP_SHAPE_m4 := $(M4_M0CV2_SKIP_SHAPE)
 CV2_SHAPE_m4        := $(M4_CV2_SHAPE)
 CV1_SHAPE_m4        := $(M4_CV1_SHAPE)
+CV1_SHAPE_m6        := $(M6_CV1_SHAPE)
+CV2_SHAPE_m6        := $(M6_CV2_SHAPE)
 
 $(foreach blk,$(C3K2_SMALL_BLOCKS), \
   $(eval $(BUILD)/yolo_c3k2_small_m0_cv1_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_small_m0_cv1_vec.cc ; \
@@ -377,7 +386,7 @@ $(foreach blk,$(C3K2_SMALL_BLOCKS) $(C3K2_HEAVY_BLOCKS), \
 $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
   $(foreach k,$(C3K2_HEAVY_KERNELS), \
     $(eval $(BUILD)/yolo_c3k2_heavy_$(k)_$(blk).o: $(SRCDIR)/kernels/yolo_c3k2_heavy_$(k)_vec.cc ; \
-      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_heavy_$(k)_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@)))
+      mkdir -p $(BUILD) && $(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) -DKERNEL_SUFFIX=_$(blk) $(if $(filter m6,$(blk)),$(if $(filter inner_pair_cv1 inner_pair_cv2_skip,$(k)),$(M6_PAIR_SHAPE),)$(if $(filter m_0_split,$(k)),$(M6_SPLIT_SHAPE),)$(if $(filter cv3_concat2,$(k)),$(M6_CV3_SHAPE),),) $(NOOP_FLAGS_$(blk)) $(if $(filter yolo_c3k2_heavy_$(k)_$(blk),$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $$< -o $$@)))
 
 # Chunked stride-2 conv (m3/m5/m7). The kernel is compile-time shape-
 # specialized via YOLO_IN_W/YOLO_IN_C/YOLO_OUT_C/YOLO_INTERIOR_MODE — these

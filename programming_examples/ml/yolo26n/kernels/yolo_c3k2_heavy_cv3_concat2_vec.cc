@@ -17,12 +17,26 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
 #endif
 #define _PASTE(a, b) a##b
 #define _MAKE(name, suffix) _PASTE(name, suffix)
 #define KERNEL_NAME(base) _MAKE(base, KERNEL_SUFFIX)
+
+#ifdef YOLO_M6_CV3_IN_W
+#define IN_W YOLO_M6_CV3_IN_W
+#define TWO_CP YOLO_M6_CV3_TWO_CP
+#define OUT_C YOLO_M6_CV3_OUT_C
+#define SHAPES_ARE_CONST 1
+#else
+#define IN_W input_width
+#define TWO_CP two_cp
+#define OUT_C output_channels
+#define SHAPES_ARE_CONST 0
+#endif
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -54,11 +68,28 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
 #endif
   event0();
 
-  const int32_t cp = two_cp / 2;
-  const int ic_tiles = two_cp / 8;
+#if SHAPES_ARE_CONST
+  (void)input_width;
+  (void)two_cp;
+  (void)output_channels;
+  constexpr int32_t cp = TWO_CP / 2;
+  constexpr int ic_tiles = TWO_CP / 8;
+  constexpr int ic_tiles_per_src = cp / 8;
+  constexpr int oc_tiles = OUT_C / 8;
+  constexpr int x_tiles = IN_W / 4;
+#define AIE_HINT_OC AIE_LOOP_RANGE(oc_tiles, oc_tiles)
+#define AIE_HINT_X AIE_LOOP_RANGE(x_tiles, x_tiles)
+#define AIE_HINT_IC AIE_LOOP_RANGE(ic_tiles, ic_tiles)
+#else
+  const int32_t cp = TWO_CP / 2;
+  const int ic_tiles = TWO_CP / 8;
   const int ic_tiles_per_src = cp / 8;
-  const int oc_tiles = output_channels / 8;
-  const int x_tiles = input_width / 4;
+  const int oc_tiles = OUT_C / 8;
+  const int x_tiles = IN_W / 4;
+#define AIE_HINT_OC
+#define AIE_HINT_X
+#define AIE_HINT_IC
+#endif
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
@@ -75,8 +106,8 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
     local_ic_t_for[ict] = ict - src_idx * ic_tiles_per_src;
   }
 
+  AIE_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
-    // Bias seed: reused across all x_tile iters of this oc_t.
     aie::accum<acc32, 32> bias_acc;
     {
       aie::vector<int32, 8> b8 = aie::load_v<8>(&bias[oc_t * 8]);
@@ -85,11 +116,13 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
       bias_acc.from_vector(b32);
     }
 
+    AIE_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
       const int x_base = x_tile * 4;
 
+      AIE_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         int8_t *src = src_for_ic_tile[ic_t];
         int local_ic_t = local_ic_t_for[ic_t];
@@ -112,7 +145,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
       for (int p = 0; p < 4; ++p) {
         int x_out = x_base + p;
         for (int j = 0; j < 8; ++j) {
-          output[x_out * output_channels + oc_t * 8 + j] =
+          output[x_out * OUT_C + oc_t * 8 + j] =
               silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }

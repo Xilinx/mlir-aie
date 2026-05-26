@@ -131,6 +131,21 @@ write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc, int8_t *silu_lut,
   }
 }
 
+#ifdef YOLO_USE_PARALLEL_LUT
+// SPRINT 2A — parallel_lookup integration attempt. Outcome: PL works in
+// isolation (programming_examples/basic/pl_layout_test verified) but
+// fundamentally lacks throughput for plain-LUT use here. The lut<4> API
+// returns groups-of-2 alternating AB/CD bank reads per fetch — only ~4
+// unique LUT lookups per 16-lane fetch (the rest are bank duplicates and
+// +stride siblings). For our 32-byte cv2_concat3 epilogue this needs ~8
+// fetches → ~40-80 cycles vs scalar ~32-64 cycles. Not worth it for plain
+// lookup; the API is designed for linear-approx (offset + slope * frac)
+// where both bank reads are productive.
+//
+// Test harness preserved at programming_examples/basic/pl_layout_test/
+// for future re-attempt (e.g. if SiLU is re-derived as linear-approx).
+#endif
+
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
@@ -152,7 +167,12 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
+#if defined(YOLO_USE_PARALLEL_LUT) && SHAPES_ARE_CONST
+  init_silu_lut_pl(silu_lut);
+#endif
+
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+
 
 #if SHAPES_ARE_CONST
   constexpr int kC = THREE_C / 3;
@@ -212,10 +232,17 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
         acc1.mac(in_a1, in_b);
       }
 
+#ifdef YOLO_USE_PARALLEL_LUT
+      write_x_tile_result_vec_pl(acc0, output, oc_t, OUT_C, x_out_base + 0,
+                                 right_shift);
+      write_x_tile_result_vec_pl(acc1, output, oc_t, OUT_C, x_out_base + 4,
+                                 right_shift);
+#else
       write_x_tile_result_vec(acc0, silu_lut, output, oc_t, OUT_C,
                               x_out_base + 0, right_shift);
       write_x_tile_result_vec(acc1, silu_lut, output, oc_t, OUT_C,
                               x_out_base + 4, right_shift);
+#endif
     }
 
     // --- x_tile tail ---------------------------------------------------
@@ -233,8 +260,13 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a, in_b);
       }
+#ifdef YOLO_USE_PARALLEL_LUT
+      write_x_tile_result_vec_pl(acc, output, oc_t, OUT_C, x_out_base,
+                                 right_shift);
+#else
       write_x_tile_result_vec(acc, silu_lut, output, oc_t, OUT_C, x_out_base,
                               right_shift);
+#endif
     }
   }
 #else
