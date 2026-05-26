@@ -42,8 +42,8 @@ from aie.utils.verify import assert_pass
 @iron.jit
 def vector_scalar_mul(
     A: In,
-    F: In,
     C: Out,
+    F: In,
     *,
     in1_size: Compile[int],
     int_bit_width: Compile[int] = 16,
@@ -120,8 +120,8 @@ def _run_and_verify(opts):
     bench = run_iters(
         vector_scalar_mul,
         a_t,
-        f_t,
         c_t,
+        f_t,
         in1_size=opts.in1_size,
         int_bit_width=opts.int_bit_width,
         use_chess=bool(opts.use_chess),
