@@ -1371,9 +1371,21 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
     # was forcing both consumers onto DMA channels and busting cv2's
     # S2MM budget.
     bot_to_cv2_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=4) if _stream_outer else None
-    split_a = ObjectFifo(_i8((in_w, 1, cp)), depth=4)
+    # Bank-aware example (m6 only): pin pair_cv1's act sliding-window
+    # buffers to bank 1 on the consumer (inner_pair_N) tile, paired with
+    # the cv1 wts Buffer (below in _build_inner_pair) pinned to bank 0.
+    # Lets peano parallel-issue acts + wts loads in pair_cv1's inner mac
+    # loop. Measured perf delta is small (~1.6% on m6 standalone — peano
+    # was already scheduling parallel loads via aliasing analysis for
+    # statically-known disjoint buffers), but the wiring is preserved as
+    # a worked example of the producer_mem_bank / consumer_mem_banks
+    # IRON API. Useful for cases where peano's analysis can't prove
+    # non-aliasing on its own.
+    _bank_aware_pair = (block_name == "m6") and (not _stream_outer)
+    _act_bank_kwargs = {"consumer_mem_banks": [1]} if _bank_aware_pair else {}
+    split_a = ObjectFifo(_i8((in_w, 1, cp)), depth=4, **_act_bank_kwargs)
     split_b = ObjectFifo(_i8((in_w, 1, cp)), depth=in_h)
-    inner_0_out = ObjectFifo(_i8((in_w, 1, cp)), depth=4)
+    inner_0_out = ObjectFifo(_i8((in_w, 1, cp)), depth=4, **_act_bank_kwargs)
     inner_1_out = ObjectFifo(_i8((in_w, 1, cp)), depth=2)
     out_fifo = ObjectFifo(_i8((in_w, 1, out_c)), depth=2, via_DMA=True)
 
@@ -1574,7 +1586,16 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
                 comp_lock_id=2 if tile_key == "inner_pair_0" else 2,
             )
         else:
-            wts_a, _ = _wts_for(meta_a)
+            # Bank-aware example (m6 pair_cv1): pin cv1 wts to bank 0,
+            # disjoint from the act buffers pinned to bank 1 above. See
+            # the comment at split_a / inner_0_out creation. cv2_skip wts
+            # left unpinned (cv2_skip kernel isn't bank-qualified).
+            sz_a = int(np.prod(meta_a["weights_shape"]))
+            wts_a = Buffer(
+                _i8((sz_a,)),
+                initial_value=_load_bin(meta_a["weights_file"], np.int8, sz_a),
+                mem_bank=0 if _bank_aware_pair else None,
+            )
             wts_b, _ = _wts_for(meta_b)
             ws_a, ws_b = wts_a, wts_b
 

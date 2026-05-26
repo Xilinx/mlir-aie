@@ -69,9 +69,23 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx,
 
 extern "C" {
 
+// Bank-aware example: line[0/1/2] qualified as bank B, wts as bank A,
+// paired with IRON-side pinning in aie2_yolo_per_block.py (split_a /
+// inner_0_out consumer_mem_banks=[1], wts Buffer mem_bank=0). Intent:
+// let peano parallel-issue acts+wts loads in the inner mac loop.
+//
+// VERIFIED EFFECT ON THIS KERNEL: zero — peano emits a byte-identical
+// .o with and without the qualifiers (md5 match). For statically-known
+// disjoint buffers, peano's aliasing analysis already issues the loads
+// in parallel without help. The qualifier matters only when peano's
+// analysis CAN'T prove non-aliasing (aliased pointers, scratchpads,
+// dynamically-resolved addresses). Kept as a worked example of the
+// producer_mem_bank / consumer_mem_banks IRON API for those cases.
 void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
-    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
-    int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    int8_t __aie_dm_resource_b *line0, int8_t __aie_dm_resource_b *line1,
+    int8_t __aie_dm_resource_b *line2, int8_t __aie_dm_resource_a *wts,
+    int32_t *bias, int8_t *silu_lut, int8_t *output,
+    const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t border, const int32_t right_shift,
