@@ -90,11 +90,11 @@ column are the README snapshot from prior to the kernel-by-kernel audit.
 | m3  | conv_stride (chunked)          | **5.13**  | **195.1** | ✓ (was 124.9) |
 | m4  | c3k2_small                     | **12.58** | **79.5**  | ✓ (was 75.2) |
 | m5  | conv_stride (chunked)          | **5.40**  | **185.1** | ✓ (was 139.5) |
-| m6  | c3k2_heavy                     | **13.16** | **76.0**  | ✓ (was 66.9) |
+| m6  | c3k2_heavy                     | **12.04** | **83.1**  | ✓ (was 76.0 → SHAPES_ARE_CONST sweep on all 6 m6 kernels) |
 | m7  | conv_stride (chunked)          | **3.94**  | **253.7** | ✓ (was 206.8) |
 | m8  | c3k2_heavy (2-tile megakernel) | **16.32** | **61.3**  | ✓ |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
-| m9 stage 10 (full PSA block)     | PSA full | **5.10** | **195.9** | ✓ (was 91.6 → pe_add_row vec) |
+| m9 stage 10 (full PSA block)     | PSA full | **4.95** | **202.2** | ✓ (was 195.9 → qkv SHAPES_ARE_CONST) |
 | m10 (classifier head)            | conv2dk1+GAP+linear+softmax | **7.69** | **130.1** | ✓ |
 
 
@@ -130,8 +130,12 @@ optimization playbook. Items applied where structurally compatible:
 8. **`AIE_LOOP_RANGE` + `AIE_LOOP_UNROLL_FULL` hints** on every
    non-trivial loop (requires `aie_kernel_utils.h`).
 9. **Compile-time shape macros** (`SHAPES_ARE_CONST` pattern) for
-   kernels with multiple call-site shapes (c3k2_small {m2, m4}; chunked
-   stride-2 {m3, m5, m7}).
+   kernels with multiple call-site shapes. Now wired on every kernel
+   that benefits from it: c3k2_small {m2, m4}; chunked stride-2 {m3,
+   m5, m7}; c3k2_heavy m6 (cv1_split, cv2_concat3, inner_pair_cv1,
+   inner_pair_cv2_skip, m_0_split, cv3_concat2); m9 qkv. Kernels that
+   were already constexpr-hardcoded under a different convention
+   (proj_skip_row, pe_add_row, m10 trio) provide the same effect.
 10. **Bank-aware memory** (address-space-qualified pointer types per
     `example.h` `IFM_DM_BANK` pattern) - **not yet applied**;
     cross-cutting work that requires IRON-side
@@ -151,12 +155,12 @@ the second SRS).
 
 | Block | Pre-audit fps | Post-audit fps | Driver |
 |---|---:|---:|---|
-| m9 stage 10 |  91.6 | 195.9 | `pe_add_row` vec dw3x3 |
+| m9 stage 10 |  91.6 | 202.2 | `pe_add_row` vec dw3x3; then qkv SHAPES_ARE_CONST |
 | m1          | 116.1 | 206.6 | `conv2dk3_stride2` bias-init + vec SRS |
 | m3          | 124.9 | 195.1 | `conv2dk3_stride2_chunked` bias-init + vec SRS |
 | m5          | 139.5 | 185.1 | same |
 | m7          | 206.8 | 253.7 | same |
-| m6          |  66.9 |  76.0 | c3k2_heavy (4 kernels) bias-init + vec SRS |
+| m6          |  66.9 |  83.1 | c3k2_heavy bias-init + vec SRS; then SHAPES_ARE_CONST on all 6 m6 kernels |
 | m0          |  76.4 |  88.3 | stem bias-init + vec SRS |
 | m4          |  75.2 |  79.5 | c3k2_small (4 shared kernels) bias-init |
 | m2          |  69.7 |  77.0 | same |
@@ -166,21 +170,47 @@ m8/m9/m10 sweep that preceded the kernel-by-kernel audit.
 
 ### Next remaining levers
 
-1. **Bank-aware memory** - playbook item #10. Cross-cutting; needs an
+1. **`mmul<8,8,8>` on m6 inner_pair_cv1 / cv2_skip** - same upgrade m8
+   pair_cv1 (streamed) already uses. Doubles per-cycle MAC throughput
+   on m6's biggest kernel (4.83 ms intrinsic, 70% of m6 wall).
+2. **Winograd F(2,3) on 3×3 stride-1** - potential 2.25× MAC reduction
+   on the dominant kernel family (m6 inner_pair_*, m8 pair_cv1). INT8
+   bit-exactness against the Quark ONNX reference needs an empirical
+   numerical-drift study first; if it diverges, bfp16 Winograd via
+   the ATB-style framework is the fallback.
+3. **ATB-style L1 asymmetry on m9 GEMMs** (paper:
+   [arXiv:2511.16041](https://arxiv.org/abs/2511.16041), reference
+   example at `programming_examples/ml/block_datatypes/gemm_asymmetric_tile_buffering/`).
+   Demonstrated 31.3 TFLOPS on the same Strix HX 370 silicon — large
+   headroom on m9 qkv/proj/ffn0/ffn1. Chess-only today; porting the
+   pattern to peano is research-grade work.
+4. **Bank-aware memory** - playbook item #10. Cross-cutting; needs an
    IRON-side `Buffer(..., placement=bank_N)` API hook + kernel-side
    address-space-qualified pointer types modeled after `example.h`'s
    `IFM_DM_BANK` / `WT_DM_BANK` / `OFM_DM_BANK` aliases.
-2. **Architectural / fifo / placement rebalancing** - `pe_add_row` no
-   longer dominates m9, so per-kernel ablation should be re-run to find
-   the next critical-path target on each tile.
-3. **Softmax exp2** - replace the scalar fp32 LUT in
+5. **Architectural / fifo / placement rebalancing** - intrinsic per-kernel
+   costs captured via leave-one-in NOOP_KERNEL_FILES ablation. m6
+   lower bound after perfect balance ≈ max(intrinsic) ≈ 4.83 ms
+   (= inner_pair_cv1) = 207 fps; m9 lower bound ≈ 2.40 ms
+   (= cv2_concat2_streamed) = 417 fps. These dominate post-rebalance
+   targets.
+6. **Softmax exp2** - replace the scalar fp32 LUT in
    `yolo_m9_attn_score_fused_vec.cc` with hardware
    `aie::exp2<bfloat16>` (see `aie_kernels/aie2p/softmax.cc`).
    Bit-exactness risk; would be tested separately.
-4. **Push the peano backend bug fix upstream** for the
+7. **Push the peano backend bug fix upstream** for the
    `getCombinedOpcodeUNPACKLoad` crash on
    `accum<acc32, {16,32}>::to_vector<int8>(shift)` following
    `aie::mul/aie::mac`. Unblocks 4 m9 kernels' vec skip-add tails.
+
+**`aie::parallel_lookup` investigation** (deferred). PL on AIE2P peano
+compiles + runs correctly (see standalone harness at
+`programming_examples/basic/pl_layout_test/`), but `lut<4>` is
+fundamentally a linear-approximation API (offset + slope * frac), not
+a plain-byte lookup. For yolo's INT8 SiLU LUT use case, effective
+throughput is ~equal to or slower than scalar `silu_lut[srs+128]`.
+PL becomes interesting again only if SiLU is re-derived as a
+piecewise linear approximation.
 
 ## Make targets
 
