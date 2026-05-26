@@ -37,7 +37,7 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
+from aie.iron.device import NPU2, from_name
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
