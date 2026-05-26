@@ -1850,7 +1850,12 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
-        OptionalAttr<AIEI32Attr>:$iter_count
+        OptionalAttr<AIEI32Attr>:$iter_count,
+        // Force the buffers allocated on the producer tile into a specific
+        // DM bank. Honored by AIEAssignBuffers (same path as BufferOp.mem_bank).
+        OptionalAttr<AIEI32Attr>:$producer_mem_bank,
+        // One bank index per consumer tile, in the same order as $consumerTiles.
+        OptionalAttr<I32ArrayAttr>:$consumer_mem_banks
   );
 
   let assemblyFormat = [{

@@ -51,6 +51,8 @@ class ObjectFifo(Resolvable):
         delegate_tile: PlacementTile | None = None,
         via_DMA: bool = False,
         init_values: list[np.ndarray] | None = None,
+        producer_mem_bank=None,
+        consumer_mem_banks=None,
     ):
         """Construct an ObjectFifo.
 
@@ -96,6 +98,8 @@ class ObjectFifo(Resolvable):
         self._delegate_tile: PlacementTile | None = delegate_tile
         self._via_DMA: bool = via_DMA
         self._init_values: list[np.ndarray] | None = init_values
+        self._producer_mem_bank = producer_mem_bank
+        self._consumer_mem_banks = consumer_mem_banks
 
     @classmethod
     def __get_index(cls) -> int:
@@ -320,6 +324,8 @@ class ObjectFifo(Resolvable):
                 disable_synchronization=self._disable_synchronization or None,
                 via_DMA=self._via_DMA or None,
                 initValues=self._init_values,
+                producer_mem_bank=self._producer_mem_bank,
+                consumer_mem_banks=self._consumer_mem_banks,
             )
 
             if self._repeat_count is not None:

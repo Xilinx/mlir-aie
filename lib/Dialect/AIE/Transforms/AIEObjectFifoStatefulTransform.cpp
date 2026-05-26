@@ -787,13 +787,35 @@ struct AIEObjectFifoStatefulTransformPass
             }
           }
         }
+        // Consult OF's producer_mem_bank / consumer_mem_banks when the
+        // buffer landed on its original target tile (not an overflow
+        // neighbor). Default behavior (no user attr OR overflowed) →
+        // nullptr → byte-identical to pre-bank-aware codegen.
+        mlir::IntegerAttr memBankAttr = nullptr;
+        if (current_buf_allocation_tile == creation_tile) {
+          if (creation_tile == op.getProducerTileOp()) {
+            if (auto pb = op.getProducerMemBank())
+              memBankAttr = builder.getI32IntegerAttr(*pb);
+          } else if (auto consumerBanks = op.getConsumerMemBanks()) {
+            auto consumerTiles = op.getConsumerTiles();
+            for (size_t idx = 0; idx < consumerTiles.size(); ++idx) {
+              if (creation_tile ==
+                  dyn_cast<TileOp>(consumerTiles[idx].getDefiningOp())) {
+                if (idx < consumerBanks->size())
+                  memBankAttr = builder.getI32IntegerAttr(
+                      cast<IntegerAttr>((*consumerBanks)[idx]).getInt());
+                break;
+              }
+            }
+          }
+        }
         auto buff = BufferOp::create(
             builder, builder.getUnknownLoc(), elemType,
             current_buf_allocation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
-            /*address*/ nullptr, initValues,
-            /*mem_bank*/ nullptr, /*aligned*/ nullptr);
+            /*address*/ nullptr, initValues, memBankAttr,
+            /*aligned*/ nullptr);
         buffers.push_back(buff);
       }
       of_elem_index++;
