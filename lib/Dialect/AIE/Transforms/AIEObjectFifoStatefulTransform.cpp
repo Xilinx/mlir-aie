@@ -2006,8 +2006,7 @@ struct AIEObjectFifoStatefulTransformPass
       auto getBufSize = [&](ObjectFifoCreateOp op) -> int64_t {
         auto fifoType = llvm::cast<AIEObjectFifoType>(op.getElemType());
         auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
-        int64_t bits =
-            dataLayout.getTypeSizeInBits(elemType.getElementType());
+        int64_t bits = dataLayout.getTypeSizeInBits(elemType.getElementType());
         return elemType.getNumElements() * bits / 8;
       };
       SmallVector<size_t> memTileSlots;
