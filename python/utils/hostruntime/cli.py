@@ -45,7 +45,7 @@ def run_design_cli(
     opts,
     *,
     compile_kwargs: Mapping[str, Any] | Callable[[Any], Mapping[str, Any]],
-    run_and_verify: Callable[[Any], None] | None = None,
+    run_and_verify: Callable[[Any], None],
     device: Any | Callable[[Any], Any] | None = None,
     emit_mlir: Callable[[Any], None] | None = None,
     validate: Callable[[Any], None] | None = None,
@@ -82,10 +82,6 @@ def run_design_cli(
         run_and_verify: Callable invoked in the default (NPU
             run + numpy verify) branch.  Takes ``opts``, returns nothing
             — exits non-zero on failure (e.g. via ``assert_pass``).
-            Optional: a design that only supports compile-only (i.e. no
-            standalone run path yet — bottleneck) can omit this; the
-            dispatcher raises if the default branch is reached without
-            one, mirroring the ``emit_mlir`` pattern.
         device: Optional iron ``Device`` instance OR callable
             ``opts -> Device``.  If omitted, defaults to
             ``from_name(opts.dev)`` (using whatever device choices the
@@ -144,10 +140,4 @@ def run_design_cli(
         spec.compile(**compile_opts)
         return
 
-    if run_and_verify is None:
-        raise ValueError(
-            "run_design_cli: standalone run/verify branch reached but no "
-            "run_and_verify callback was provided. Pass --xclbin-path / "
-            "--insts-path to compile only, or supply a run_and_verify."
-        )
     run_and_verify(opts)
