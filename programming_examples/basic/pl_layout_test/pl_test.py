@@ -19,9 +19,7 @@ def pl_layout_test(in_size):
     of_in = ObjectFifo(line_type, name="in")
     of_out = ObjectFifo(line_type, name="out")
 
-    pl_kernel = Kernel(
-        "pl_lookup", "pl_lut_kernel.o", [line_type, line_type, np.int32]
-    )
+    pl_kernel = Kernel("pl_lookup", "pl_lut_kernel.o", [line_type, line_type, np.int32])
 
     def core_fn(of_in, of_out, pl_lookup):
         elemOut = of_out.acquire(1)

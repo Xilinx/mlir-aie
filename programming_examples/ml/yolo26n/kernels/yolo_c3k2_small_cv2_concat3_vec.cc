@@ -167,12 +167,7 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
-#if defined(YOLO_USE_PARALLEL_LUT) && SHAPES_ARE_CONST
-  init_silu_lut_pl(silu_lut);
-#endif
-
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
-
 
 #if SHAPES_ARE_CONST
   constexpr int kC = THREE_C / 3;

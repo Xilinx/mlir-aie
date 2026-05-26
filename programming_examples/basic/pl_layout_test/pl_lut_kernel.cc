@@ -13,13 +13,15 @@
 namespace {
 alignas(64) int16_t RUNTIME_LUT_AB[512];
 alignas(64) int16_t RUNTIME_LUT_CD[512];
-}  // namespace
+} // namespace
 #endif
 
 #if LAYOUT_VARIANT == 8 || LAYOUT_VARIANT == 9 || LAYOUT_VARIANT == 11
 // File-scope const LUTs (.rodata, linker-placed) for alignment.
 namespace {
-struct FlatLUT { int16_t data[512]; };
+struct FlatLUT {
+  int16_t data[512];
+};
 constexpr FlatLUT make_flat_lut_v8() {
   FlatLUT l{};
   for (int k = 0; k < 256; ++k) {
@@ -30,8 +32,10 @@ constexpr FlatLUT make_flat_lut_v8() {
 }
 constexpr FlatLUT make_flat_lut_v9() {
   FlatLUT l{};
-  for (int k = 0; k < 256; ++k) l.data[k] = (int16_t)(k - 128);
-  for (int k = 256; k < 512; ++k) l.data[k] = 0;
+  for (int k = 0; k < 256; ++k)
+    l.data[k] = (int16_t)(k - 128);
+  for (int k = 256; k < 512; ++k)
+    l.data[k] = 0;
   return l;
 }
 constexpr FlatLUT make_flat_lut_v11() {
@@ -57,14 +61,15 @@ alignas(64) constexpr FlatLUT FLAT_LUT_CD = make_flat_lut_v9();
 alignas(64) constexpr FlatLUT FLAT_LUT_AB = make_flat_lut_v11();
 alignas(64) constexpr FlatLUT FLAT_LUT_CD = make_flat_lut_v11();
 #endif
-}  // namespace
+} // namespace
 #endif
 
 extern "C" {
 
 void pl_lookup(int8_t *in, int8_t *out, int32_t n_bytes) {
   // Build LUT in stack (256 sentinel int16 values, with chosen layout).
-  // 256 entries × 4 bytes/entry (offset+slope pair) × 2 copies (bank-dup) = 2048
+  // 256 entries × 4 bytes/entry (offset+slope pair) × 2 copies (bank-dup) =
+  // 2048
   struct LUT {
     alignas(aie::vector_decl_align) int16_t ab[2048];
     alignas(aie::vector_decl_align) int16_t cd[2048];
@@ -103,7 +108,10 @@ void pl_lookup(int8_t *in, int8_t *out, int32_t n_bytes) {
     lut.cd[k] = v;
   }
   // Zero out the trailing half so reads past the end are deterministic.
-  for (int k = 256; k < 512; ++k) { lut.ab[k] = 0; lut.cd[k] = 0; }
+  for (int k = 256; k < 512; ++k) {
+    lut.ab[k] = 0;
+    lut.cd[k] = 0;
+  }
 #elif LAYOUT_VARIANT == 4
   // Layout 4: whole-LUT duplicated as [LUT | LUT].
   for (int k = 0; k < 256; ++k) {
@@ -114,7 +122,8 @@ void pl_lookup(int8_t *in, int8_t *out, int32_t n_bytes) {
     lut.cd[256 + k] = v;
   }
 #elif LAYOUT_VARIANT == 5
-  // Layout 5: bank-interleave at 4-element granularity (try smaller bank-width).
+  // Layout 5: bank-interleave at 4-element granularity (try smaller
+  // bank-width).
   for (int i = 0; i < 256; i += 4) {
     for (int b = 0; b < 4; ++b) {
       int16_t v = (int16_t)sentinel[i + b];
@@ -126,7 +135,10 @@ void pl_lookup(int8_t *in, int8_t *out, int32_t n_bytes) {
   }
 #elif LAYOUT_VARIANT == 6
   // Layout 6: layout 2 + zero-init trailing region.
-  for (int k = 0; k < 2048; ++k) { lut.ab[k] = 0; lut.cd[k] = 0; }
+  for (int k = 0; k < 2048; ++k) {
+    lut.ab[k] = 0;
+    lut.cd[k] = 0;
+  }
   for (int i = 0; i < 256; i += 8) {
     for (int b = 0; b < 8; ++b) {
       int16_t v = (int16_t)sentinel[i + b];
@@ -149,12 +161,16 @@ void pl_lookup(int8_t *in, int8_t *out, int32_t n_bytes) {
     RUNTIME_LUT_CD[k] = 0;
   }
 #elif LAYOUT_VARIANT == 7
-  // Layout 7: (offset, slope=0) pair per entry, bank-duplicated every 4 entries.
-  // Bank width 128b = 16 bytes = 4 entries × 4 bytes/entry. Duplicate each
-  // 4-entry chunk (= 8 int16) so 256 entries occupy 2048 int16 = 4096 bytes.
-  for (int k = 0; k < 2048; ++k) { lut.ab[k] = 0; lut.cd[k] = 0; }
-  for (int chunk = 0; chunk < 64; ++chunk) {  // 64 chunks of 4 entries
-    int base = chunk * 16;  // 16 int16 per duplicated chunk
+  // Layout 7: (offset, slope=0) pair per entry, bank-duplicated every 4
+  // entries. Bank width 128b = 16 bytes = 4 entries × 4 bytes/entry. Duplicate
+  // each 4-entry chunk (= 8 int16) so 256 entries occupy 2048 int16 = 4096
+  // bytes.
+  for (int k = 0; k < 2048; ++k) {
+    lut.ab[k] = 0;
+    lut.cd[k] = 0;
+  }
+  for (int chunk = 0; chunk < 64; ++chunk) { // 64 chunks of 4 entries
+    int base = chunk * 16;                   // 16 int16 per duplicated chunk
     for (int e = 0; e < 4; ++e) {
       int k = chunk * 4 + e;
       int16_t off = (int16_t)sentinel[k];
