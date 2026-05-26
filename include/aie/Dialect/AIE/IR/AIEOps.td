@@ -1834,6 +1834,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        // Optional consumer element type for asymmetric transfer granularity.
+        // Producer sends elemType-sized transfers, consumer receives
+        // consumerElemType-sized transfers. Producer element size must be
+        // an integer multiple of consumer element size.
+        OptionalAttr<TypeAttr>:$consumerElemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
@@ -1863,6 +1868,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `,`
         $elemNumber
     `)` attr-dict `:` $elemType
+    custom<ObjectFifoConsumerElemType>($consumerElemType)
     custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
   }];
 
@@ -1886,6 +1892,13 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     }
 
     AIE::BDDimLayoutArrayAttr getDimensionsFromStream(mlir::Value consumerTile);
+
+    /// Returns the consumer element type if set, otherwise the producer type.
+    mlir::Type getConsumerElemTypeOrDefault() {
+      if (auto ct = getConsumerElemType())
+        return ct.value();
+      return getElemType();
+    }
   }];
 
   let builders = [

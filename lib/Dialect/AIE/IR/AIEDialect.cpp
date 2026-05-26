@@ -536,6 +536,20 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
+  if (getConsumerElemType().has_value()) {
+    auto prodType = llvm::cast<AIEObjectFifoType>(getElemType());
+    auto consType =
+        llvm::cast<AIEObjectFifoType>(getConsumerElemType().value());
+    auto prodMemref = llvm::cast<MemRefType>(prodType.getElementType());
+    auto consMemref = llvm::cast<MemRefType>(consType.getElementType());
+    int64_t prodSize = prodMemref.getNumElements();
+    int64_t consSize = consMemref.getNumElements();
+    if (prodSize % consSize != 0)
+      return emitError("producer element size (")
+             << prodSize << ") must be an integer multiple of consumer "
+             << "element size (" << consSize << ")";
+  }
+
   return success();
 }
 
@@ -635,6 +649,24 @@ void xilinx::AIE::printObjectFifoConsumerTiles(
     }
     tileIdx++;
   }
+}
+
+static void printObjectFifoConsumerElemType(OpAsmPrinter &p,
+                                            ObjectFifoCreateOp op,
+                                            TypeAttr consumerElemType) {
+  if (consumerElemType)
+    p << " -> " << consumerElemType;
+}
+
+static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
+                                                   TypeAttr &consumerElemType) {
+  if (parser.parseOptionalArrow())
+    return success(); // no consumer type
+  Type type;
+  if (parser.parseType(type))
+    return failure();
+  consumerElemType = TypeAttr::get(type);
+  return success();
 }
 
 static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
@@ -999,7 +1031,12 @@ LogicalResult ObjectFifoAcquireOp::verify() {
   auto objFifoSubviewElem =
       llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
           .getElementType();
-  if (objFifoElem != objFifoSubviewElem)
+  // Also accept the consumer element type for asymmetric ObjectFifos
+  auto objFifoConsElem = llvm::cast<AIEObjectFifoType>(
+                             getObjectFifo().getConsumerElemTypeOrDefault())
+                             .getElementType();
+  if (objFifoElem != objFifoSubviewElem &&
+      objFifoConsElem != objFifoSubviewElem)
     return emitOpError(
         "ObjectFifo element and ObjectFifoSubview element must match.\n");
 
