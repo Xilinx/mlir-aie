@@ -2650,18 +2650,16 @@ def _build_psa(block_name, act_in, manifest):
 
 
 def _build_m8_chain(act_in, manifest):
-    """Chain builder for m8 — 2-tile megakernel (scripts/m8_megakernel_2tile.py).
-
-    Fuses cv1+m_0_split on tile A (5,3) and pair1+cv3+cv2 on tile B (5,4),
-    delivering the chain's best-known m8 throughput (~404 ms/sample batched
-    N=15 vs ~560 ms/sample with the older 8-tile design).
-    """
+    """Chain builder for m8 — megakernel; default 2-tile, M8_TILES=4 for 4-tile."""
     import importlib.util
     import pathlib
+    import os
 
+    n_tiles = int(os.environ.get("M8_TILES", "2"))
+    script_name = f"m8_megakernel_{n_tiles}tile"
     spec = importlib.util.spec_from_file_location(
-        "m8_megakernel_2tile",
-        pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_2tile.py",
+        script_name,
+        pathlib.Path(__file__).parent / "scripts" / f"{script_name}.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -2749,13 +2747,18 @@ def per_block_iron(block_name: str) -> str:
         spec.loader.exec_module(mod)
         return mod.build(stage=stage, return_program=True)
 
-    # m8: 2-tile megakernel (see scripts/m8_megakernel_2tile.py).
+    # m8: megakernel. Default 2-tile (scripts/m8_megakernel_2tile.py);
+    # set M8_TILES=4 for the 4-tile variant (scripts/m8_megakernel_4tile.py),
+    # which targets ~5 ms standalone vs 2-tile's ~16 ms by giving each pair
+    # kernel its own dedicated worker tile.
     if block_name == "m8":
-        import importlib.util, pathlib
+        import importlib.util, pathlib, os
 
+        n_tiles = int(os.environ.get("M8_TILES", "2"))
+        script_name = f"m8_megakernel_{n_tiles}tile"
         spec = importlib.util.spec_from_file_location(
-            "m8_megakernel_2tile",
-            pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_2tile.py",
+            script_name,
+            pathlib.Path(__file__).parent / "scripts" / f"{script_name}.py",
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
