@@ -64,3 +64,25 @@ aie.device(npu2) {
 
    aie.objectfifo @of0 (%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<35xi32>> -> !aie.objectfifo<memref<10xi32>>
 }
+
+// -----
+
+// CHECK: producer and consumer must have the same scalar element type
+
+aie.device(npu2) {
+   %tile01 = aie.tile(0, 1)
+   %tile02 = aie.tile(0, 2)
+
+   aie.objectfifo @of0 (%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<40xi32>> -> !aie.objectfifo<memref<10xf32>>
+}
+
+// -----
+
+// CHECK: consumer element count must be positive
+
+aie.device(npu2) {
+   %tile01 = aie.tile(0, 1)
+   %tile02 = aie.tile(0, 2)
+
+   aie.objectfifo @of0 (%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<40xi32>> -> !aie.objectfifo<memref<0xi32>>
+}

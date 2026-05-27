@@ -537,13 +537,23 @@ LogicalResult ObjectFifoCreateOp::verify() {
   }
 
   if (getConsumerElemType().has_value()) {
-    auto prodType = llvm::cast<AIEObjectFifoType>(getElemType());
     auto consType =
-        llvm::cast<AIEObjectFifoType>(getConsumerElemType().value());
-    auto prodMemref = llvm::cast<MemRefType>(prodType.getElementType());
-    auto consMemref = llvm::cast<MemRefType>(consType.getElementType());
+        llvm::dyn_cast<AIEObjectFifoType>(getConsumerElemType().value());
+    if (!consType)
+      return emitError("consumer element type must be an "
+                       "!aie.objectfifo<memref<...>> type");
+    auto prodType = llvm::cast<AIEObjectFifoType>(getElemType());
+    auto prodMemref = prodType.getElementType();
+    auto consMemref = consType.getElementType();
+    if (prodMemref.getElementType() != consMemref.getElementType())
+      return emitError("producer and consumer must have the same scalar "
+                       "element type, but got ")
+             << prodMemref.getElementType() << " vs "
+             << consMemref.getElementType();
     int64_t prodSize = prodMemref.getNumElements();
     int64_t consSize = consMemref.getNumElements();
+    if (consSize <= 0)
+      return emitError("consumer element count must be positive");
     if (prodSize % consSize != 0)
       return emitError("producer element size (")
              << prodSize << ") must be an integer multiple of consumer "
@@ -660,7 +670,7 @@ static void printObjectFifoConsumerElemType(OpAsmPrinter &p,
 
 static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
                                                    TypeAttr &consumerElemType) {
-  if (parser.parseOptionalArrow())
+  if (failed(parser.parseOptionalArrow()))
     return success(); // no consumer type
   Type type;
   if (parser.parseType(type))
@@ -1032,9 +1042,12 @@ LogicalResult ObjectFifoAcquireOp::verify() {
       llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
           .getElementType();
   // Also accept the consumer element type for asymmetric ObjectFifos
-  auto objFifoConsElem = llvm::cast<AIEObjectFifoType>(
-                             getObjectFifo().getConsumerElemTypeOrDefault())
-                             .getElementType();
+  auto objFifoConsType = llvm::dyn_cast<AIEObjectFifoType>(
+      getObjectFifo().getConsumerElemTypeOrDefault());
+  if (!objFifoConsType)
+    return emitOpError("ObjectFifo consumer element type must be an "
+                       "!aie.objectfifo<memref<...>> type");
+  auto objFifoConsElem = objFifoConsType.getElementType();
   if (objFifoElem != objFifoSubviewElem &&
       objFifoConsElem != objFifoSubviewElem)
     return emitOpError(

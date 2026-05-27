@@ -1838,7 +1838,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // Producer sends elemType-sized transfers, consumer receives
         // consumerElemType-sized transfers. Producer element size must be
         // an integer multiple of consumer element size.
-        OptionalAttr<TypeAttr>:$consumerElemType,
+        OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
