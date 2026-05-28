@@ -60,44 +60,66 @@ AIEX::traceSubviewToBlockArgument(Value value) {
       continue;
     }
 
-    // Handle memref.subview (accumulate offset and validate)
+    // Handle memref.subview (accumulate offset and validate).
+    //
+    // Supports N-D sources, including rank-reducing subviews. Byte offset is
+    // accumulated as Σ (offset[d] × sourceStride[d]) × elemSizeBytes, where
+    // sourceStride comes from the source memref's layout. All subview offsets,
+    // sizes and strides must be static, and all subview strides must equal 1
+    // (no skipping). The source's innermost stride must be 1 so the result
+    // remains contiguous.
     if (auto subviewOp = dyn_cast<memref::SubViewOp>(defOp)) {
-      // Verify static offsets, sizes, strides
-      if (!subviewOp.getStaticOffsets().empty() &&
-          subviewOp.getStaticOffsets()[0] == ShapedType::kDynamic) {
-        return std::nullopt;
-      }
-      if (!subviewOp.getStaticSizes().empty() &&
-          subviewOp.getStaticSizes()[0] == ShapedType::kDynamic) {
-        return std::nullopt;
-      }
-      if (!subviewOp.getStaticStrides().empty() &&
-          subviewOp.getStaticStrides()[0] == ShapedType::kDynamic) {
-        return std::nullopt;
-      }
-
-      // Only support rank-1 subviews
-      if (subviewOp.getSourceType().getRank() != 1 ||
-          subviewOp.getType().getRank() != 1) {
-        return std::nullopt;
-      }
-
-      // Only support stride of 1 (contiguous)
-      if (!subviewOp.getStaticStrides().empty() &&
-          subviewOp.getStaticStrides()[0] != 1) {
-        return std::nullopt;
-      }
-
-      // Calculate and accumulate offset in bytes
       auto sourceType = subviewOp.getSourceType();
+
+      // All offsets/sizes/strides must be static.
+      auto staticOffsets = subviewOp.getStaticOffsets();
+      auto staticSizes = subviewOp.getStaticSizes();
+      auto staticStrides = subviewOp.getStaticStrides();
+      for (int64_t v : staticOffsets) {
+        if (v == ShapedType::kDynamic)
+          return std::nullopt;
+      }
+      for (int64_t v : staticSizes) {
+        if (v == ShapedType::kDynamic)
+          return std::nullopt;
+      }
+      for (int64_t v : staticStrides) {
+        if (v == ShapedType::kDynamic)
+          return std::nullopt;
+      }
+
+      // All subview strides must be 1 (no skipping in source).
+      for (int64_t s : staticStrides) {
+        if (s != 1)
+          return std::nullopt;
+      }
+
+      // Element size must be byte-addressable.
       unsigned elemSizeInBits =
           sourceType.getElementType().getIntOrFloatBitWidth();
-      if (elemSizeInBits % 8 != 0) {
+      if (elemSizeInBits % 8 != 0)
         return std::nullopt;
-      }
       unsigned elemSizeInBytes = elemSizeInBits / 8;
-      int64_t offsetInElements = subviewOp.getStaticOffsets()[0];
-      offsetInBytes += offsetInElements * elemSizeInBytes;
+
+      // Get source strides + offset. Required for byte-offset arithmetic.
+      llvm::SmallVector<int64_t> sourceStrides;
+      int64_t sourceBaseOffset;
+      if (failed(
+              sourceType.getStridesAndOffset(sourceStrides, sourceBaseOffset)))
+        return std::nullopt;
+      if (sourceBaseOffset == ShapedType::kDynamic)
+        return std::nullopt;
+      // Innermost source stride must be 1 (otherwise the slice is not
+      // contiguous in memory and a single linear DMA can't describe it).
+      if (sourceStrides.empty() || sourceStrides.back() != 1)
+        return std::nullopt;
+
+      // Accumulate byte offset: Σ (offset[d] × sourceStride[d]) × elemSize.
+      int64_t totalElemOffset = sourceBaseOffset;
+      for (size_t d = 0; d < staticOffsets.size(); ++d) {
+        totalElemOffset += staticOffsets[d] * sourceStrides[d];
+      }
+      offsetInBytes += totalElemOffset * elemSizeInBytes;
 
       current = subviewOp.getSource();
       continue;
