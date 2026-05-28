@@ -753,9 +753,13 @@ void TraceHostConfigOp::print(OpAsmPrinter &p) {
   if (getRouting() != TraceShimRouting::Single)
     p << " routing = " << stringifyTraceShimRouting(getRouting());
 
+  if (getEgressShimCol() != 0)
+    p << " egress_shim_col = " << getEgressShimCol();
+
   p.printOptionalAttrDict(
       (*this)->getAttrs(),
-      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing"});
+      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing",
+                       "egress_shim_col"});
 }
 
 ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
@@ -798,6 +802,21 @@ ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
   result.attributes.set(
       "routing", TraceShimRoutingAttr::get(parser.getContext(), routingVal));
 
+  // Parse egress_shim_col (default: 0 = column 0)
+  int32_t egressShimColVal = 0;
+  if (succeeded(parser.parseOptionalKeyword("egress_shim_col"))) {
+    IntegerAttr egressShimCol;
+    if (parser.parseEqual() ||
+        parser.parseAttribute(egressShimCol,
+                              parser.getBuilder().getI32Type(),
+                              "egress_shim_col", result.attributes))
+      return failure();
+  } else {
+    result.attributes.set(
+        "egress_shim_col",
+        parser.getBuilder().getI32IntegerAttr(egressShimColVal));
+  }
+
   if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
@@ -817,6 +836,11 @@ LogicalResult TraceHostConfigOp::verify() {
   // Validate buffer_size is positive
   if (getBufferSize() <= 0) {
     return emitOpError("buffer_size must be positive");
+  }
+
+  // Validate Shim col id
+  if (getEgressShimCol() < 0) {
+    return emitOpError("egress_shim_col must be >= 0");
   }
 
   return success();

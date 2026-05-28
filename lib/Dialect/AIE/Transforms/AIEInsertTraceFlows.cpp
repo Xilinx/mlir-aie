@@ -123,6 +123,7 @@ struct AIEInsertTraceFlowsPass
     int bufferSizeBytes = hostConfig.getBufferSize();
     int traceArgIdx = hostConfig.getArgIdx();
     auto routing = hostConfig.getRouting();
+    int egressShimColFromIR = hostConfig.getEgressShimCol();
 
     // arg_idx=-1 means "append trace after last tensor"
     int traceBufferOffset = 0; // in bytes
@@ -323,8 +324,15 @@ struct AIEInsertTraceFlowsPass
     std::map<int, ShimInfo> shimInfos; // col -> ShimInfo
 
     if (routing == TraceShimRouting::Single) {
-      // All traces route to column 0 shim
-      int targetCol = 0;
+      // All traces route to a single shim, controlled by the egress_shim_col parameter (default is 0).
+      int targetCol = egressShimColFromIR;
+      if (targetCol >= targetModel.columns() ||
+          !targetModel.isShimNOCTile(targetCol, 0)) {
+        device.emitError() << "egress_shim_col " << targetCol
+                           << " is not a valid shim NOC tile (device has "
+                           << targetModel.columns() << " columns)";
+        return signalPassFailure();
+      }
       TileOp shimTile = nullptr;
       for (auto tile : device.getOps<TileOp>()) {
         if (tile.getCol() == targetCol && tile.getRow() == 0) {
