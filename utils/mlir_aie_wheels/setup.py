@@ -310,6 +310,29 @@ class CMakeBuild(build_ext):
             for archive in (Path(install_dir) / "lib").glob("*.a"):
                 archive.unlink()
 
+            # Same audience filter for the dev-only headers + cmake configs:
+            #   include/aie/                  - MLIR C++ pass-author headers
+            #   include/aie-c/                - C API headers
+            #   include/bootgen_c_api.h       - bootgen C API header
+            #   include/xaienginecdo_static/  - xaiengine headers, paired with
+            #                                   the static archives we just dropped
+            #   lib/cmake/                    - find_package(AIE) configs for
+            #                                   downstream native builds
+            # User-kernel-facing headers (aie_api/, aie_kernels/) stay — user
+            # AIE kernels #include those at compile time.
+            dev_paths = [
+                Path(install_dir) / "include" / "aie",
+                Path(install_dir) / "include" / "aie-c",
+                Path(install_dir) / "include" / "bootgen_c_api.h",
+                Path(install_dir) / "include" / "xaienginecdo_static",
+                Path(install_dir) / "lib" / "cmake",
+            ]
+            for p in dev_paths:
+                if p.is_dir():
+                    shutil.rmtree(p)
+                elif p.exists():
+                    p.unlink()
+
             # CMake leaked build artifacts into the install prefix:
             #   src/                  - declare_mlir_python_sources staging,
             #                           full duplicate of python/
