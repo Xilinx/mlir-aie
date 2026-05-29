@@ -101,7 +101,7 @@ xrt-smi examine
 1. Install the following packages needed for MLIR-AIE:
 
     ```bash
-    # Python versions 3.10, 3.12 and 3.13 are currently supported by our wheels
+    # Python versions 3.11, 3.12, 3.13, and 3.14 are currently supported by our wheels
     sudo apt install \
     build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
     ```
