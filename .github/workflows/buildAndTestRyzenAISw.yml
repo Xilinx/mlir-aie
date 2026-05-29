@@ -102,7 +102,10 @@ jobs:
                 --requirements python/requirements.txt \
                 --install-non-eudsl
             pip install -r python/requirements_ml.txt
-            pip install --require-hashes -r python/requirements_dev.lock
+            # Ryzen AI 1.3 SDK is cp310-only (see python3.10 sed above).
+            # requirements_dev.lock targets py>=3.11 (drops cibuildwheel 3.x
+            # transitively); fall back to the loose .txt here.
+            pip install -r python/requirements_dev.txt
 
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
 
