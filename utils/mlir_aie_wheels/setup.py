@@ -305,6 +305,11 @@ class CMakeBuild(build_ext):
                 check=True,
             )
 
+            # Static archives (lib/*.a) only matter to anyone linking C++ code
+            # against AIE/MLIR. PyPI consumers use the Python API, never these.
+            for archive in (Path(install_dir) / "lib").glob("*.a"):
+                archive.unlink()
+
             # Vendor eudsl-python-extras
             # Install eudsl to install_dir/python so it merges with mlir-aie's package structure (aie/extras).
             target_dir = Path(install_dir) / "python"
