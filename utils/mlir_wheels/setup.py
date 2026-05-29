@@ -263,8 +263,10 @@ if _llvm_license_src.exists():
 setup(
     name="mlir" if check_env("ENABLE_RTTI", 1) else "mlir-no-rtti",
     version=version,
-    author="AMD Inc.",
-    author_email="joseph.melber@amd.com",
+    author="Maksim Levental",
+    author_email="maksim.levental@gmail.com",
+    maintainer="AMD Inc.",
+    maintainer_email="joseph.melber@amd.com",
     description=f"MLIR distribution as wheel. Created at {now} build of {llvm_url}",
     long_description=f"MLIR distribution as wheel. Created at {now} build of [llvm/llvm-project/{commit_hash}]({llvm_url})",
     long_description_content_type="text/markdown",
