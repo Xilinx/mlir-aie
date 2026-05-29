@@ -1,5 +1,8 @@
 name: Compile across platforms
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

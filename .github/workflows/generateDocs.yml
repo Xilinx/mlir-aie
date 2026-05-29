@@ -1,5 +1,8 @@
 name: Generate GitHub Pages
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

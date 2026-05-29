@@ -1,5 +1,8 @@
 name: Build and Test with AIE tools with HSA backend and build only tests
 
+permissions:
+  contents: read
+
 on:
 #  push:
 #    branches:

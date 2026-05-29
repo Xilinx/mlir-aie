@@ -5,6 +5,9 @@ name: MLIR Distro
 # `gh run list --json displayTitle` instead of guessing by timestamp.
 run-name: ${{ inputs.DISPATCH_NONCE && format('MLIR Distro [{0}]', inputs.DISPATCH_NONCE) || 'MLIR Distro' }}
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
@@ -420,6 +423,9 @@ jobs:
     needs: smoke_test_wheels
 
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
 
     strategy:
       fail-fast: false

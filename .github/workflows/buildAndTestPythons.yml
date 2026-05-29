@@ -1,5 +1,8 @@
 name: Build and Test across Python versions
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

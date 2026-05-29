@@ -1,5 +1,8 @@
 name: Build and Test with AIE tools
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

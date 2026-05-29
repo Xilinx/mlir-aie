@@ -1,5 +1,8 @@
 name: Build and Test with Ryzen AI Sofware
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

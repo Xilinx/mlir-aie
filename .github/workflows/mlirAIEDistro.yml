@@ -1,5 +1,8 @@
 name: MLIR AIE Distro
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:

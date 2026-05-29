@@ -1,5 +1,8 @@
 name: Build and Test with Vitis 2025.1
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
