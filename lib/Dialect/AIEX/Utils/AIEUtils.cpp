@@ -61,7 +61,9 @@ AIEX::traceSubviewToBlockArgument(Value value) {
     }
 
     // Handle memref.subview. Accepts any source rank; byte-offset delta is
-    // (resultOffset - sourceOffset) from the strided layouts.
+    // (resultOffset - sourceOffset) from the strided layouts. The result
+    // slice must remain row-major contiguous so callers can treat it as
+    // linear from the returned base offset.
     if (auto subviewOp = dyn_cast<memref::SubViewOp>(defOp)) {
       auto sourceType = subviewOp.getSourceType();
       auto resultType = subviewOp.getType();
@@ -88,6 +90,24 @@ AIEX::traceSubviewToBlockArgument(Value value) {
         return std::nullopt;
       if (srcOff == ShapedType::kDynamic || resOff == ShapedType::kDynamic)
         return std::nullopt;
+
+      // Result must be row-major contiguous: innermost stride == 1, and each
+      // outer stride equals the product of all inner sizes. (Size-1 dims are
+      // free: their stride is never stepped.) Without this, e.g. a column
+      // slice of a 2D row-major memref would be accepted and patched as if
+      // linear.
+      ArrayRef<int64_t> resShape = resultType.getShape();
+      if (!resShape.empty()) {
+        if (resStrides.back() != 1)
+          return std::nullopt;
+        uint64_t product = 1;
+        for (int d = static_cast<int>(resShape.size()) - 1; d > 0; --d) {
+          product *= static_cast<uint64_t>(resShape[d]);
+          if (resShape[d - 1] > 1 &&
+              static_cast<uint64_t>(resStrides[d - 1]) != product)
+            return std::nullopt;
+        }
+      }
 
       offsetInBytes += (resOff - srcOff) * (elemSizeInBits / 8);
 
