@@ -590,12 +590,6 @@ jobs:
           bash utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh dist dist_stripped \
             'mlirAIEDistro / ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}'
 
-      - name: Upload stripped wheel for inspection
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
-        with:
-          path: dist_stripped/*.whl
-          name: stripped_for_pypi_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
-
       - name: Release current commit
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: ncipollo/release-action@a2e71bdd4e7dab70ca26a852f29600c98b33153e  # v1.12.0

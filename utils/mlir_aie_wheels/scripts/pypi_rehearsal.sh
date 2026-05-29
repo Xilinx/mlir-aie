@@ -89,7 +89,7 @@ for whl in "$WHEELS_IN"/*.whl; do
 done
 
 echo "" >> "$GITHUB_STEP_SUMMARY"
-echo "_Stripped variants uploaded as the \`*_stripped_for_pypi\` artifact; unstripped wheels continue to the GitHub release as before._" \
+echo "_Stripped variants are produced only to measure size and validate \`twine check\`; the GitHub release continues to receive the unstripped wheels._" \
   >> "$GITHUB_STEP_SUMMARY"
 
 exit "$twine_failed"
