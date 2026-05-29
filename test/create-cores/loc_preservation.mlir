@@ -47,16 +47,22 @@ module @loc_test {
  }
 }
 
-// AIECreateCores: synthesized core / mem / buffer for the call op carry
+// AIECreateCores: synthesized tile / core / end / mem / buffer for the call
+// op carry
 // the call's loc.
+// CHECK-DAG: aie.tile({{.*}}) loc(#[[CALLLOC:loc[0-9]*]])
+// CHECK-DAG: aie.mem({{.*}})
 // CHECK-DAG: aie.core({{.*}}) {{[{][[:space:]]*$}}
-// CHECK-DAG: } loc(#[[CALLLOC:loc[0-9]*]])
+// CHECK-DAG: aie.end loc(#[[CALLLOC]])
+// CHECK-DAG: } loc(#[[CALLLOC]])
 // CHECK-DAG: aie.buffer({{.*}}) : memref<256xi32> loc(#[[CALLLOC]])
 
 // AIELowerMemcpy: synthesized aie.flow / dma_start / dma_bd / use_token /
 // next_bd carry the memcpy's loc.
 // CHECK-DAG: aie.flow({{.*}}) loc(#[[MCLOC:loc[0-9]*]])
+// CHECK-DAG: aie.dma_start({{.*}}) loc(#[[MCLOC]])
 // CHECK-DAG: aie.dma_bd({{.*}}) loc(#[[MCLOC]])
+// CHECK-DAG: aie.next_bd {{.*}} loc(#[[MCLOC]])
 // CHECK-DAG: aiex.useToken {{.*}} loc(#[[MCLOC]])
 
 // CHECK-DAG: #[[CALLLOC]] = loc("user_design.py":42:4)
