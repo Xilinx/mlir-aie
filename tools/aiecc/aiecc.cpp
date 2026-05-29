@@ -28,6 +28,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
@@ -535,6 +536,12 @@ static std::vector<std::string> getHostSourceFiles() {
   return hostFiles;
 }
 
+static void printModuleWithDebugInfo(ModuleOp moduleOp, raw_ostream &os) {
+  OpPrintingFlags flags;
+  flags.enableDebugInfo(/*enable=*/true);
+  moduleOp->print(os, flags);
+}
+
 /// Dump an MLIR module to a file if --dump-intermediates is enabled.
 /// Returns true on success, false on failure.
 static bool dumpModuleToFile(ModuleOp moduleOp, StringRef filePath,
@@ -549,7 +556,7 @@ static bool dumpModuleToFile(ModuleOp moduleOp, StringRef filePath,
                  << filePath << ": " << ec.message() << "\n";
     return false;
   }
-  moduleOp->print(file);
+  printModuleWithDebugInfo(moduleOp, file);
   file.close();
 
   if (verbose) {
@@ -5262,7 +5269,11 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
                    << "\n";
       return failure();
     }
-    moduleOp->print(file);
+    if (dumpIntermediates) {
+      printModuleWithDebugInfo(moduleOp, file);
+    } else {
+      moduleOp->print(file);
+    }
 
     if (verbose) {
       llvm::outs() << "Wrote module with addresses to: " << withAddressesPath
