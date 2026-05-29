@@ -332,7 +332,7 @@ jobs:
 
         pip install --upgrade pip
         pip install --require-hashes -r requirements.lock
-        pip install -r python/requirements_dev.txt
+        pip install --require-hashes -r python/requirements_dev.lock
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
@@ -458,6 +458,7 @@ jobs:
           sparse-checkout: |
             python/requirements.txt
             python/requirements_dev.txt
+            python/requirements_dev.lock
             utils/mlir_aie_wheels/vendor_eudsl.py
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
@@ -476,7 +477,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
             --requirements python/requirements.txt \
             --install-non-eudsl
-          pip install -r python/requirements_dev.txt
+          pip install --require-hashes -r python/requirements_dev.lock
           unzip -o -q dist/mlir_aie*py3-none*.whl
 
           export PYTHONPATH=mlir_aie/python

@@ -88,7 +88,7 @@ jobs:
               --requirements python/requirements.txt \
               --install-non-eudsl
           pip install -r python/requirements_notebook.txt
-          pip install -r python/requirements_dev.txt
+          pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Setup Cpp
         uses: aminya/setup-cpp@1f17f92d6a52bfcb1a25348e2c526c2e5cbb1134  # v1.8.0

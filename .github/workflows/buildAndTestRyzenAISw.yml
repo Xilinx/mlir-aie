@@ -101,7 +101,7 @@ jobs:
                 --requirements python/requirements.txt \
                 --install-non-eudsl
             pip install -r python/requirements_ml.txt
-            pip install -r python/requirements_dev.txt
+            pip install --require-hashes -r python/requirements_dev.lock
 
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
 

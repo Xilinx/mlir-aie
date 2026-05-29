@@ -50,7 +50,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_dev.txt
+          pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Get MLIR
         id: mlir-wheels
@@ -231,7 +231,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_dev.txt
+          pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Install packages
         run: |
@@ -269,7 +269,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_dev.txt
+          pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Build and generate coverage (Release)
         if: steps.changed-files.outputs.changed-files != ''

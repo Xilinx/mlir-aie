@@ -167,7 +167,7 @@ jobs:
 
             pip install --upgrade pip
             pip install -r python/requirements_ml.txt
-            pip install -r python/requirements_dev.txt
+            pip install --require-hashes -r python/requirements_dev.lock
 
             export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
 
@@ -384,7 +384,7 @@ jobs:
   
           python -m pip install --upgrade pip
           pip install -r python/requirements_ml.txt
-          pip install -r python/requirements_dev.txt
+          pip install --require-hashes -r python/requirements_dev.lock
   
           export ENABLE_RTTI="${ENABLE_RTTI}"
   
