@@ -84,7 +84,7 @@ jobs:
 
     steps:
       - name: Free disk space
-        uses: descriptinc/free-disk-space@main
+        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
         with:
           tool-cache: true
           android: true
@@ -93,7 +93,7 @@ jobs:
           large-packages: true
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           submodules: "true"
           fetch-depth: 0
@@ -122,7 +122,7 @@ jobs:
           echo "Computed AIE_WHEEL_VERSION=${VERSION}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - uses: uraimo/run-on-arch-action@v3
+      - uses: uraimo/run-on-arch-action@fd7aa8593480287702b446a273a68f788a9bad3a  # v3
         name: Build mlir-aie
         id: runcmd
         with:
@@ -220,7 +220,7 @@ jobs:
             auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_async_runtime.so --exclude libmlir_c_runner_utils.so --exclude libmlir_float16_utils.so --exclude libmlir_runner_utils.so --exclude libmlir_apfloat_wrappers.so
 
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
@@ -271,14 +271,14 @@ jobs:
             ENABLE_RTTI: OFF
   
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           submodules: "true"
           fetch-depth: 0
           fetch-tags: true
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -308,14 +308,14 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up MSVC dev environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
         with:
           arch: x64
 
       # We don't get OpenSSL for free on Windows. Manage the pain.
       # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
       - name: Enable vcpkg binary caching
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
         with:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
@@ -444,7 +444,7 @@ jobs:
           python -m delvewheel repair --ignore-existing --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
   
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_windows_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
@@ -462,14 +462,14 @@ jobs:
       actions: read
     steps:
       - name: Download wheels (RTTI ON)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           pattern: mlir_aie*_rtti_ON-*
           path: wheels_on
           merge-multiple: true
 
       - name: Download wheels (RTTI OFF)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           pattern: mlir_aie*_rtti_OFF-*
           path: wheels_off
@@ -497,7 +497,7 @@ jobs:
 
       - name: Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@a2e71bdd4e7dab70ca26a852f29600c98b33153e  # v1.12.0
         with:
           artifacts: wheels_all/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
@@ -510,7 +510,7 @@ jobs:
 
       - name: Release latest wheels (RTTI ON)
         if: github.event_name != 'push'
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@a2e71bdd4e7dab70ca26a852f29600c98b33153e  # v1.12.0
         with:
           artifacts: wheels_on_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
@@ -523,7 +523,7 @@ jobs:
 
       - name: Release latest wheels (RTTI OFF)
         if: github.event_name != 'push'
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@a2e71bdd4e7dab70ca26a852f29600c98b33153e  # v1.12.0
         with:
           artifacts: wheels_off_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"

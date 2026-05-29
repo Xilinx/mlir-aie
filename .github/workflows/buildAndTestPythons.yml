@@ -44,12 +44,12 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: ${{ matrix.python_version }}
 
@@ -75,7 +75,7 @@ jobs:
           unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639  # v1.2
         with:
           # Since there are now several compilation jobs running in parallel,
           # use a different key per job to avoid a ccache writing race condition

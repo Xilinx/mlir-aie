@@ -23,7 +23,7 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           fetch-depth: 2
           submodules: "true"
@@ -41,7 +41,7 @@ jobs:
 
       - name: Install Ninja
         # https://github.com/llvm/actions/tree/main/install-ninja
-        uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
+        uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c  # main (no tags)
 
       - name: Get Submodule Hash
         id: get-submodule-hash
@@ -50,7 +50,7 @@ jobs:
 
       - name: Ccache for C++ compilation
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639  # v1.2
         with:
           key: ${{ runner.os }}-releaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
@@ -112,7 +112,7 @@ jobs:
       - name: Publish to GitHub-Pages
         if: github.event_name != 'pull_request'
         # https://github.com/peaceiris/actions-gh-pages/releases/tag/v3.9.3
-        uses: peaceiris/actions-gh-pages@v3.9.3
+        uses: peaceiris/actions-gh-pages@373f7f263a76c20808c831209c920827a82a2847  # v3.9.3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build_release/docs

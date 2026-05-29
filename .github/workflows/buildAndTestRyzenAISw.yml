@@ -41,7 +41,7 @@ jobs:
     steps:
 
       - name: Free disk space
-        uses: descriptinc/free-disk-space@main
+        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
         with:
           tool-cache: true
           android: true
@@ -55,10 +55,10 @@ jobs:
         run: |
           docker system prune -a -f
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           submodules: "true"
-      - uses: uraimo/run-on-arch-action@v3
+      - uses: uraimo/run-on-arch-action@fd7aa8593480287702b446a273a68f788a9bad3a  # v3
         name: Build and Test
         id: runcmd
         with:

@@ -156,7 +156,7 @@ jobs:
         echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
@@ -178,7 +178,7 @@ jobs:
       # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
     - name: Enable vcpkg binary caching
       if: ${{ runner.os == 'Windows' }}
-      uses: actions/github-script@v9
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
       with:
         script: |
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
@@ -416,7 +416,7 @@ jobs:
         ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp312-cp312', 'py3-none' }
 
     - name: Upload distro wheels
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
@@ -450,19 +450,19 @@ jobs:
 
     steps:
       - name: Checkout reqs
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           sparse-checkout: |
             python/requirements.txt
             python/requirements_dev.txt
             utils/mlir_aie_wheels/vendor_eudsl.py
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: '3.12'
 
@@ -521,7 +521,7 @@ jobs:
             ENABLE_RTTI: OFF
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
@@ -552,7 +552,7 @@ jobs:
 
       - name: Release current commit
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@a2e71bdd4e7dab70ca26a852f29600c98b33153e  # v1.12.0
         with:
           artifacts: "dist/*.whl"
           token: "${{ secrets.GITHUB_TOKEN }}"
