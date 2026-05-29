@@ -127,6 +127,11 @@ jobs:
 
     runs-on: ${{ matrix.OS }}
 
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -361,6 +366,12 @@ jobs:
       run: |
         python -m pip install --require-hashes -r ci-tools.lock
         python -m twine check --strict wheelhouse/*.whl
+
+    - name: Generate build provenance attestation
+      if: github.event_name != 'pull_request' && github.event_name != 'schedule'
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+      with:
+        subject-path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
 
     - name: Upload wheels
       if: github.event_name != 'schedule'

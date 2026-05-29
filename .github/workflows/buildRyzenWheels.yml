@@ -50,6 +50,7 @@ jobs:
       id-token: write
       contents: write
       packages: read
+      attestations: write
 
     strategy:
       fail-fast: false
@@ -242,6 +243,12 @@ jobs:
           /tmp/smoke-venv/bin/pip install wheelhouse/repaired_wheel/mlir_aie*whl
           /tmp/smoke-venv/bin/python -c 'import aie.ir; import aie.extras; import aie.helpers'
 
+      - name: Generate build provenance attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+        with:
+          subject-path: wheelhouse/repaired_wheel/mlir_aie*whl
+
       - name: Upload mlir_aie
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
@@ -251,13 +258,14 @@ jobs:
 
   build-windows:
     name: Build and upload mlir_aie wheels (Windows)
-  
+
     runs-on: windows-2022
-  
+
     permissions:
       id-token: write
       contents: write
       packages: read
+      attestations: write
   
     strategy:
       fail-fast: false
@@ -479,6 +487,12 @@ jobs:
           /tmp/smoke-venv/Scripts/pip install --upgrade pip
           /tmp/smoke-venv/Scripts/pip install wheelhouse/repaired_wheel/mlir_aie*whl
           /tmp/smoke-venv/Scripts/python -c 'import aie.ir; import aie.extras; import aie.helpers'
+
+      - name: Generate build provenance attestation
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+        with:
+          subject-path: wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Upload mlir_aie
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
