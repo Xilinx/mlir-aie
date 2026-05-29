@@ -2,7 +2,7 @@ cmake>=4.3.2
 dataclasses
 importlib-metadata
 ninja!=1.13.0; platform_system=="Windows"
-numpy
+numpy>=2.3
 pip
 pybind11[global]>=3.0.4
 rich
