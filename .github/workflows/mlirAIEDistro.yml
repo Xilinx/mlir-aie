@@ -543,6 +543,13 @@ jobs:
             ENABLE_RTTI: OFF
 
     steps:
+      - name: Checkout rehearsal script + ci-tools.lock
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          sparse-checkout: |
+            utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh
+            utils/mlir_aie_wheels/ci-tools.lock
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           # unpacks default artifact into dist/
@@ -571,6 +578,23 @@ jobs:
             if [ "$w" != "$newname" ]; then mv "$w" "$newname"; fi
           done
           ls -la
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: '3.12'
+
+      - name: PyPI publish rehearsal
+        shell: bash
+        run: |
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          bash utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh dist dist_stripped \
+            'mlirAIEDistro / ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}'
+
+      - name: Upload stripped wheel for inspection
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          path: dist_stripped/*.whl
+          name: stripped_for_pypi_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
 
       - name: Release current commit
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}

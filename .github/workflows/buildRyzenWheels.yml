@@ -538,6 +538,34 @@ jobs:
           mkdir -p wheels_off_flat
           find wheels_off -name 'mlir_aie*whl' -exec cp -f {} wheels_off_flat/ \;
 
+      - name: Set up Python (host) for rehearsal
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: '3.12'
+
+      - name: PyPI publish rehearsal (RTTI ON)
+        shell: bash
+        run: |
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          bash utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh wheels_on_flat wheels_on_stripped 'buildRyzenWheels / RTTI ON'
+
+      - name: PyPI publish rehearsal (RTTI OFF)
+        shell: bash
+        run: |
+          bash utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh wheels_off_flat wheels_off_stripped 'buildRyzenWheels / RTTI OFF'
+
+      - name: Upload stripped wheels for inspection (RTTI ON)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          path: wheels_on_stripped/*.whl
+          name: mlir_aie_rtti_ON_stripped_for_pypi
+
+      - name: Upload stripped wheels for inspection (RTTI OFF)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          path: wheels_off_stripped/*.whl
+          name: mlir_aie_rtti_OFF_stripped_for_pypi
+
       - name: Combine wheels
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         run: |
