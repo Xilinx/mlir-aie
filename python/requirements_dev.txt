@@ -4,6 +4,10 @@ setuptools>=82.0.1
 wheel
 ninja!=1.13.0
 cibuildwheel
+# cibuildwheel pulls patchelf transitively via auditwheel. patchelf has
+# no Windows binary wheel and falls over building from source; gate the
+# marker explicitly so pip-compile carries it through to the lockfile.
+patchelf; platform_system == "Linux"
 pre-commit
 nanobind>=2.12.0
 lit
