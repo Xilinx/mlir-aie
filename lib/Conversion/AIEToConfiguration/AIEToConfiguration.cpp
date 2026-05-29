@@ -636,9 +636,15 @@ static LogicalResult convertTransactionOpsToMLIR(
   // for each blockwrite in the binary, create a GlobalOp with the data at the
   // device level
   std::vector<memref::GlobalOp> global_data;
-  DeviceOp device = llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
+  Operation *parentOp = builder.getBlock()->getParentOp();
+  DeviceOp device = llvm::dyn_cast<DeviceOp>(parentOp);
   if (!device) {
-    device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
+    device = parentOp->getParentOfType<DeviceOp>();
+  }
+  if (!device) {
+    parentOp->emitError(
+        "expected insertion point to be nested under an aie.device op");
+    return failure();
   }
   Location loc = device.getLoc();
   {
