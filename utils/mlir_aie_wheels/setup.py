@@ -443,7 +443,7 @@ setup(
     },
     zip_safe=False,
     packages=find_packages(exclude=["wheelhouse", "python_bindings", "mlir-aie"]),
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     install_requires=parse_requirements(
         Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
     ),
