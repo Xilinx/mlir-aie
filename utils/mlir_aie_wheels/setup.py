@@ -210,6 +210,8 @@ class CMakeBuild(build_ext):
             f"-DAIE_VITIS_COMPONENTS={os.getenv('AIE_VITIS_COMPONENTS', 'AIE2')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             "-DAIE_ENABLE_PYTHON_PASSES=OFF",
+            "-DAIE_BUILD_LSP_SERVER=OFF",
+            "-DAIE_BUILD_VISUALIZE=OFF",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
             # not used on MSVC, but no harm
         ]
@@ -432,11 +434,9 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "aie-lsp-server = aie.tools:aie_lsp_server",
             "aie-opt = aie.tools:aie_opt",
             "aie-reset = aie.tools:aie_reset",
             "aie-translate = aie.tools:aie_translate",
-            "aie-visualize = aie.tools:aie_visualize",
             "aiecc = aie.tools:aiecc",
             "aiecc.py = aie.compiler.aiecc.main:main",
             "bootgen = aie.tools:bootgen",
