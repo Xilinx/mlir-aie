@@ -370,6 +370,10 @@ MLIR_AIE_SOURCE_DIR = Path(
     )
 ).absolute()
 
+_license_src = MLIR_AIE_SOURCE_DIR / "LICENSE"
+if _license_src.exists():
+    shutil.copy(_license_src, Path(__file__).parent / "LICENSE")
+
 
 def parse_requirements(filename):
     with open(filename) as f:
@@ -406,6 +410,7 @@ setup(
     author_email="joseph.melber@amd.com",
     url="https://github.com/Xilinx/mlir-aie",
     license="Apache-2.0 WITH LLVM-exception",
+    license_files=["LICENSE"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",

@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -254,6 +255,11 @@ version = f"{llvm_version[0]}.{llvm_version[1]}.{llvm_version[2]}.{llvm_datetime
 version += commit_hash
 
 llvm_url = f"https://github.com/llvm/llvm-project/commit/{commit_hash}"
+
+_llvm_license_src = Path("llvm-project") / "LICENSE.TXT"
+if _llvm_license_src.exists():
+    shutil.copy(_llvm_license_src, Path(__file__).parent / "LICENSE")
+
 setup(
     name="mlir" if check_env("ENABLE_RTTI", 1) else "mlir-no-rtti",
     version=version,
@@ -262,6 +268,7 @@ setup(
     description=f"MLIR distribution as wheel. Created at {now} build of {llvm_url}",
     long_description=f"MLIR distribution as wheel. Created at {now} build of [llvm/llvm-project/{commit_hash}]({llvm_url})",
     long_description_content_type="text/markdown",
+    license_files=["LICENSE"],
     ext_modules=[CMakeExtension("mlir", sourcedir="llvm-project/llvm")],
     cmdclass={
         "build_ext": CMakeBuild,
