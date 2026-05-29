@@ -256,9 +256,10 @@ def main():
             continue
 
         # Read output buffer
-        # pyxrt read() returns numpy array directly
+        # pyxrt read() returns numpy array directly; ascontiguousarray() guards
+        # against numpy 2.x's stricter contiguity check in frombuffer.
         bufOut_bytes = bo_out.read(OUT_SIZE, 0)
-        bufOut = np.frombuffer(bufOut_bytes, dtype=DATATYPE_OUT)
+        bufOut = np.frombuffer(np.ascontiguousarray(bufOut_bytes), dtype=DATATYPE_OUT)
 
         # Verify results
         if args.verify:
@@ -281,8 +282,11 @@ def main():
         if args.trace_sz > 0 and iter == args.warmup:
             # Read trace buffer (buffer 7)
             trace_data_bytes = bo_trace.read(args.trace_sz, 0)
-            # Convert to uint32 array for proper formatting
-            trace_buffer = np.frombuffer(trace_data_bytes, dtype=np.uint32)
+            # Convert to uint32 array for proper formatting (see bufOut above
+            # re: ascontiguousarray vs numpy 2.x).
+            trace_buffer = np.frombuffer(
+                np.ascontiguousarray(trace_data_bytes), dtype=np.uint32
+            )
 
             if args.verbosity >= 1:
                 print(f"Trace buffer shape: {trace_buffer.shape}")
