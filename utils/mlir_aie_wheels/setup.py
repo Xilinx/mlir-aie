@@ -411,6 +411,11 @@ setup(
     url="https://github.com/Xilinx/mlir-aie",
     license="Apache-2.0 WITH LLVM-exception",
     license_files=["LICENSE"],
+    project_urls={
+        "Source": "https://github.com/Xilinx/mlir-aie",
+        "Issues": "https://github.com/Xilinx/mlir-aie/issues",
+        "Documentation": "https://xilinx.github.io/mlir-aie/",
+    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
