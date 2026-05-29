@@ -1,0 +1,9 @@
+# Auxiliary CI-only tools used by mlirDistro.yml.
+# delvewheel: Windows wheel repair. Pure-Python universal wheel — installs
+# harmlessly on Linux too, which keeps the lockfile resolvable by plain
+# pip-compile from a Linux host (no need for uv's cross-platform resolver).
+# pkginfo: read wheel metadata when computing version tags.
+# Compile with:
+#   pip-compile --generate-hashes --allow-unsafe -o ci-tools.lock ci-tools.in
+delvewheel
+pkginfo
