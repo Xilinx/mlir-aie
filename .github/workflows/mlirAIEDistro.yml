@@ -345,6 +345,13 @@ jobs:
         PARALLEL_LEVEL=2 \
         pip wheel . -v -w wheelhouse --no-build-isolation
 
+    - name: Validate wheel metadata
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        python -m pip install --require-hashes -r ci-tools.lock
+        python -m twine check --strict wheelhouse/*.whl
+
     - name: Clean
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash

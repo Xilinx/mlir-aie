@@ -10,3 +10,4 @@ auditwheel; platform_system == "Linux"
 delvewheel
 patchelf;   platform_system == "Linux"
 pkginfo
+twine

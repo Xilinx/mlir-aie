@@ -7,3 +7,4 @@
 #   pip-compile --generate-hashes --allow-unsafe -o ci-tools.lock ci-tools.in
 delvewheel
 pkginfo
+twine
