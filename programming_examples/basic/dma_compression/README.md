@@ -250,8 +250,11 @@ with mlir_mod_ctx() as ctx:
 
 All 16 configs run on Strix / Strix Halo / Krackan. The DMA register
 addresses and field semantics are identical between AIE-ML and AIE2P, so
-the host plumbing ports as-is; `kernel.cc` arch-guards its intrinsic
-include so the `core_*` configs compile on both.
+the host plumbing (register addresses, BD/CTRL bit assignments, BD-vs-
+channel pairing) ports as-is; `kernel.cc` arch-guards its intrinsic
+include so the `core_*` configs compile on both. The compressed
+*payload bytes* differ between arches even though the overall ratio is
+identical — see `### sha256 goldens` below.
 
 ### Same-tile `*both` configs
 
@@ -279,11 +282,12 @@ controller's BD/CTRL writes only commit on `writebd` queueing).
 
 ### sha256 goldens
 
-`GOLDEN_SHA` in `test_dma_compression.py` is empirically derived. The
-same values are used for both arches on the assumption that the
-compression algorithm is identical; if a future arch diverges, CI will
-fail with `sha-MISMATCH` (printing both expected and actual) and the
-dict should be split per-arch.
+`GOLDEN_SHA_BY_ARCH` in `test_dma_compression.py` is empirically derived
+and keyed by `npu_str` (`npu1` / `npu2`). The overall compression ratio
+is identical on AIE-ML and AIE2P (1.391× for arange), but the per-chunk
+encoding differs (header semantics, payload byte ordering, and the
+within-chunk int rotation), so the byte-exact payloads diverge.
+Per-arch shas guard against silent regressions on either side.
 
 ## Register reference
 

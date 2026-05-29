@@ -55,10 +55,18 @@ def _isolate_for_next_config():
 N = 4096
 SENTINEL = np.uint32(0xDEADBEEF)
 
-# Empirically derived. If a future arch diverges, split into a per-arch dict.
-GOLDEN_SHA = {
-    "cmp": "f947e931d2e3c530be240f4e622d1c3757b2e1d5e23a05be5d21768332420bc5",
-    "dcmp": "1215bcd067bc6097eecdb81fb8ebf45211cb1e9ea00c95674eea4e8d476a7152",
+# Empirically derived. The overall compression ratio is identical on AIE-ML
+# (npu1) and AIE2P (npu2), but the per-chunk encoding differs, so the byte-
+# exact payloads diverge — keep one sha per arch.
+GOLDEN_SHA_BY_ARCH = {
+    "npu1": {
+        "cmp": "f30dcae2d175d710e81d8410be5cc980bf06e364de359b6bc6f87194012ebc7d",
+        "dcmp": "865270a4c87149f42933e7f5aa037891e392812b4338829b3419f320660ea089",
+    },
+    "npu2": {
+        "cmp": "f947e931d2e3c530be240f4e622d1c3757b2e1d5e23a05be5d21768332420bc5",
+        "dcmp": "1215bcd067bc6097eecdb81fb8ebf45211cb1e9ea00c95674eea4e8d476a7152",
+    },
 }
 
 
@@ -158,7 +166,7 @@ def run_one(config: str, verbose: bool = False, input_np=None) -> bool:
     sha_status = ""
     if kind is not None:
         actual_sha = hashlib.sha256(out[:plen].tobytes()).hexdigest()
-        golden_sha = GOLDEN_SHA[kind]
+        golden_sha = GOLDEN_SHA_BY_ARCH[_detect_arch()][kind]
         if actual_sha == golden_sha:
             sha_status = "sha-ok"
         else:
