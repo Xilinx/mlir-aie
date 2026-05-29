@@ -2,6 +2,7 @@ name: Build and Test with AIE tools
 
 permissions:
   contents: read
+  packages: read
 
 on:
   push:

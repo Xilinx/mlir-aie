@@ -2,6 +2,7 @@ name: Build wheels for Ryzen AI
 
 permissions:
   contents: read
+  packages: read
 
 on:
   pull_request:
