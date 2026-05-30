@@ -17,16 +17,47 @@ the design source-of-truth). This example is the hardware bring-up.
 | Phase | State |
 |---|---|
 | 0. Scaffolding (`llama_spec.py`, `placement.py`, env)         | done |
-| 1. **Dataflow stubs** — all topology validated on hardware     | **done** |
-| 2. Real kernel: `gemm_int8_srs` (scalar then vec)              | pending |
-| 3. Real glue: `rmsnorm_residual`, `rope`, `silu_mul`           | pending |
-| 4. Real FlowKV: `flowkv_qk`, `flowkv_sv`                       | pending |
-| 5. Single decoder layer bit-exact vs oracle                    | pending |
-| 6. 16-layer decode chain via `build_decode_design`             | pending |
-| 7. `sample` kernel + end-to-end generation                     | pending |
-| 8. Prefill overlay                                             | deferred (follow-up PR) |
+| 1. Dataflow stubs — all topology validated on hardware         | done |
+| 2. **All 7 real kernels — BIT-EXACT on Strix Halo NPU**        | **done** |
+| 3. Single decoder layer integration with all real kernels      | pending |
+| 4. 16-layer decode chain via `build_decode_design`             | pending |
+| 5. End-to-end generation (greedy → temperature + top-k)        | pending |
+| 6. Prefill overlay                                             | deferred (follow-up PR) |
 
-## Dataflow stubs (Phase 1) — done
+### Phase 2 real kernels (bit-exact)
+
+Every kernel computes byte-identical output to a numpy reference that
+mirrors the same arithmetic (LUT lookups for transcendentals; software
+invsqrt; explicit fp32 chains where bf16 multiplication would diverge).
+
+| `make` target          | Kernel              | Tile       | Mismatches |
+|---                     |---                  |---         |--- |
+| `run_rmsnorm_int8`     | rmsnorm + per-element gamma | (5, 4) | **0 / 2048** |
+| `run_gemm_srs`         | int8×int8→int32 + bias + SRS (GEMV) | (0, 2) | **0 / 64** |
+| `run_rope`             | half-split RoPE (Llama-3 layout) | (4, 4) | **0 / 512** |
+| `run_silu_mul`         | LUT-based SiLU × up | (4, 5) | **0 / 8192** |
+| `run_flowkv`           | qk → sv pair (full-softmax)         | (0, 4) → (0, 5) | **0 / 64** |
+| `run_sample`           | greedy argmax       | (5, 5)     | **0 / V** |
+| `run_rmsnorm`          | bf16 RMSNorm (warm-up)              | (5, 4) | within bf16 ULP |
+
+Key bit-exactness techniques (yolo m9/m10 patterns):
+- **LUT-based transcendentals.** Both kernel and reference index the
+  SAME precomputed LUT (silu, exp). Build-time codegen emits the LUT
+  header from gen_silu_lut.py / gen_exp_lut.py; the test re-runs the
+  same Python to reproduce the LUT in numpy.
+- **Software invsqrt** (Quake-III + 2 Newton-Raphson). Pure IEEE
+  fp32 ops; replaces `aie::invsqrt` which is a HW approximation that
+  doesn't match numpy at the last bit.
+- **Exact int-domain accumulators** where possible (rmsnorm sum-of-
+  squares, gemm dot product). Eliminates fp accumulation-order
+  ambiguity.
+- **fp32 internal chains** in glue kernels — gamma/probs loaded as
+  bf16, cast once to fp32, all multiplies in fp32. bf16 vec multiply
+  paths are a follow-up optimization (production wants bf16-internal
+  for throughput; v0 prefers correctness).
+- **Exact `1.0f / sum`** instead of `aie::inv` (HW reciprocal).
+
+## Dataflow stubs (Phase 1)
 
 Every placement pattern the real design needs has been validated
 **bit-exact on hardware** by a small stub kernel that runs in the right
@@ -123,9 +154,21 @@ preemptively when sketching new designs to skip a build cycle:
 
 ## What still needs work
 
-Phase 2 onwards. The 7 `.cc` kernels listed in
-`cautious-eureka/npu2/aie2_llama_iron.py::KERNELS` — most have a
-starting point in `../../../aie_kernels/aie2p/` (`mm.cc` for int8
-matmul, `rms_norm.cc`, `rope.cc`, `softmax.cc`, `swiglu.cc`). FlowKV
-sv and `sample` are write-from-scratch. yolo26n's 10-item kernel
-optimization playbook applies directly once kernels are bit-exact.
+Phase 3+: integration. Each kernel is bit-exact in isolation; the
+next milestone is wiring all 7 into a single-layer end-to-end run
+(replacing the all-stubs `aie2_layer.py` with the real kernels) and
+then chaining 16 layers via `build_decode_design`. After that, end-
+to-end generation with the LUT-based scales loaded from real Llama
+3.2 1B weights.
+
+Per-kernel follow-ups (all are perf, not correctness):
+- vectorize the rmsnorm pass-2 / silu / rope / flowkv inner loops
+  (currently scalar to keep order deterministic)
+- per-channel weight scales on gemm_int8_srs (currently uses a
+  single per-tensor right_shift)
+- prefill (M > 1) variant of gemm with `aie::mmul<8,8,8,int8,int8>`
+- flowkv → chunked online-softmax (the real "flowkv" name) for KV
+  cache scalability
+- sample → full temperature + top-k + multinomial (needs a PRNG)
+- shard the gemm across the 16 projection tiles (dataflow already
+  proven by `gemm_pt_proj`)
