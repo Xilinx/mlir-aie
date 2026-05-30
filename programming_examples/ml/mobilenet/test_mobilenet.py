@@ -499,8 +499,8 @@ def main(opts):
     # ------------------------------------------------------
     # Setup buffers run loop
     # ------------------------------------------------------
-    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-    in2 = iron.tensor(total_wts, dtype=dtype_wts)
+    in1 = iron.tensor(ifm_mem_fmt.astype(dtype_in), dtype=dtype_in)
+    in2 = iron.tensor(total_wts.astype(dtype_wts), dtype=dtype_wts)
     out = iron.zeros(shape_out, dtype=dtype_out_aie)
     buffers = [in1, in2, out]
 
