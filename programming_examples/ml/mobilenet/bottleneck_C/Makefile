@@ -19,7 +19,7 @@ ifeq (${devicename}, npu)
 else
 	LOCAL_CHESS_FLAGS := ${CHESSCCWRAP2P_FLAGS}
 	LOCAL_PEANO_FLAGS := ${PEANOWRAP2P_FLAGS}
-endif 
+endif
 
 CHESS ?= false
 
@@ -38,7 +38,7 @@ DUMMY =
 OBJ = build/bn13_1_conv2dk1_put.o build/bn13_1_conv2dk1_get.o build/bn13_conv2dk3_dw.o \
 	build/bn13_conv2dk1_put.o build/bn13_conv2dk1_skip_get.o build/bn14_1_conv2dk1_put.o \
 	build/bn14_1_conv2dk1_get.o build/bn14_conv2dk3_dw.o build/bn14_conv2dk1_put.o \
-	build/bn14_conv2dk1_skip_get.o 
+	build/bn14_conv2dk1_skip_get.o
 
 all: $(OBJ)  build/final.xclbin run_py
 trace: $(OBJ)  build/trace.xclbin trace_py
@@ -121,7 +121,7 @@ else
 endif
 
 shallow_clean:
-	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
+	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin
 
 clean:
 	rm -rf build __pycache__ log

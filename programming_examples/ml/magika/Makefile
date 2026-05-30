@@ -48,14 +48,14 @@ build/%.o: %.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}; 
-else 
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F};
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 endif
 else ifeq (${devicename}, npu2)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $< -o ${@F}; 
-else 
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -c $< -o ${@F};
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 endif
 else
@@ -66,14 +66,14 @@ build/group0a.o: group0.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DGROUPA -c $< -o ${@F}; 
-else 
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DGROUPA -c $< -o ${@F};
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DGROUPA -c $< -o ${@F}
 endif
 else ifeq (${devicename}, npu2)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DGROUPA -c $< -o ${@F}; 
-else 
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DGROUPA -c $< -o ${@F};
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DGROUPA -c $< -o ${@F}
 endif
 else
@@ -84,21 +84,21 @@ build/group0b.o: group0.cc
 	mkdir -p ${@D}
 ifeq (${devicename}, npu)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DGROUPB -c $< -o ${@F}; 
-else 
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DGROUPB -c $< -o ${@F};
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2_FLAGS} -DGROUPB -c $< -o ${@F}
 endif
 else ifeq (${devicename}, npu2)
 ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DGROUPB -c $< -o ${@F}; 
-else 
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DGROUPB -c $< -o ${@F};
+else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang ${PEANOWRAP2P_FLAGS} -DGROUPB -c $< -o ${@F}
 endif
 else
 	echo "Device type not supported"
 endif
 
-#build/final.xclbin: build/${mlirFileName}.mlir build/group0a.o build/group0b.o build/group1.o build/group2.o  
+#build/final.xclbin: build/${mlirFileName}.mlir build/group0a.o build/group0b.o build/group1.o build/group2.o
 build/final.xclbin: build/${mlirFileName}.mlir build/group0a.o build/group0b.o build/group2.o
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
@@ -107,7 +107,7 @@ ifeq ($(CHESS), true)
 else
 	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
     		--no-xchesscc --no-xbridge \
-				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%) 
+				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
 build/final_trace.xclbin: build/${mlirFileName}_trace.mlir build/group0a.o build/group0b.o build/group2.o
@@ -118,7 +118,7 @@ ifeq ($(CHESS), true)
 else
 	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
     		--no-xchesscc --no-xbridge \
-				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%) 
+				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
 run_py: build/final.xclbin

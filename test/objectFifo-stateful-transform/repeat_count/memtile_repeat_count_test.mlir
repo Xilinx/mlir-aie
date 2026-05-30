@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2025, Advanced Micro Devices, Inc.
-// 
+//
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
@@ -14,10 +14,10 @@
 // CHECK:   aie.device(npu1) {
 // CHECK:     %{{.*}}tile_1_1 = aie.tile(1, 1)
 // CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32> 
+// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
 // CHECK:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_1_3, 0) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
 // CHECK:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_3, 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of1_buff_0"} : memref<16xi32> 
+// CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of1_buff_0"} : memref<16xi32>
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_1_1, 0) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
 // CHECK:     %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_1_1, 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 // CHECK:     aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_1_3, DMA : 0)

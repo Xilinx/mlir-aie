@@ -19,7 +19,7 @@ ifeq (${devicename}, npu)
 else
 	LOCAL_CHESS_FLAGS := ${CHESSCCWRAP2P_FLAGS}
 	LOCAL_PEANO_FLAGS := ${PEANOWRAP2P_FLAGS}
-endif 
+endif
 
 CHESS ?= false
 
@@ -79,7 +79,7 @@ build/bn12_conv2dk1_ui8.o: bottleneck/bn_conv2dk1_i8.cc
 # ************************************** bottleneck C **************************************
 build/final.xclbin: build/${MLIR_FILE}.mlir build/bn10_conv2dk1_fused_relu.o  build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o \
 						build/bn11_conv2dk1_fused_relu.o build/bn11_conv2dk3_dw.o build/bn11_conv2dk1_skip.o \
-						build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o 
+						build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<F)
@@ -90,7 +90,7 @@ else
 endif
 
 shallow_clean:
-	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
+	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin
 
 clean:
 	rm -rf build __pycache__ log

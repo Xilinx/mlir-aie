@@ -16,7 +16,7 @@ ifeq (${devicename}, npu)
 else
 	LOCAL_CHESS_FLAGS := ${CHESSCCWRAP2P_FLAGS}
 	LOCAL_PEANO_FLAGS := ${PEANOWRAP2P_FLAGS}
-endif 
+endif
 
 CHESS ?= false
 
@@ -45,11 +45,11 @@ build/aie2_%.mlir: ${srcdir}/aie2_%.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py 
+build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py 
+build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< -t ${trace_size} > $@
 
@@ -227,7 +227,7 @@ OBJ = build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o \
 		build/bn6_conv2dk1_fused_relu.o build/bn6_conv2dk3_dw_stride2.o build/bn6_conv2dk1_i8.o \
 		build/bn7_conv2dk1_fused_relu.o build/bn7_conv2dk3_dw_stride1.o build/bn7_conv2dk1_skip.o \
 		build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn8_conv2dk1_i8.o \
-		build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o 
+		build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
 
 
 build/final_bn_4_5.xclbin build/inst_bn_4_5.bin &: build/aie2_bn_4_5.mlir build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o
@@ -288,7 +288,7 @@ endif
 # ******************************************************************************************
 
 shallow_clean:
-	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
+	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin
 
 clean:
 	rm -rf build __pycache__ log

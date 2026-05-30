@@ -15,7 +15,7 @@ ifeq (${devicename}, npu)
 else
 	LOCAL_CHESS_FLAGS := ${CHESSCCWRAP2P_FLAGS}
 	LOCAL_PEANO_FLAGS := ${PEANOWRAP2P_FLAGS}
-endif 
+endif
 
 CHESS ?= false
 
@@ -65,12 +65,12 @@ OBJ = build/init_conv2dk3.o \
 	build/post_L2_conv2dk1_relu_ui16_ui16_pad.o
 
 
-build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py 
+build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-# build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}_trace.py 
-build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py 
+# build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}_trace.py
+build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< -t ${trace_size} > $@
 
@@ -326,7 +326,7 @@ trace_py: build/trace_mobilenet.xclbin build/${MLIR_FILE}_trace.mlir
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift 1 > trace_mbv4_full.json
 
 shallow_clean:
-	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
+	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin
 
 clean:
 	rm -rf build __pycache__ log

@@ -108,8 +108,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Install IRON library by installing the `mlir-aie` wheels:
 
    For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take,
-   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. 
-   If you install from something other than the latest wheels, make sure 
+   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions.
+   If you install from something other than the latest wheels, make sure
    you use the repo commit -- and installation instructions -- from that point in time.
 
    1. **Latest:** For the latest wheels (not necessarily a release):
