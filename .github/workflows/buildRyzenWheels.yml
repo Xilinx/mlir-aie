@@ -234,8 +234,8 @@ jobs:
         shell: bash
         run: |
           python${{ matrix.python_version }} -m venv /tmp/smoke-venv
-          /tmp/smoke-venv/bin/pip install --upgrade pip
-          /tmp/smoke-venv/bin/pip install wheelhouse/repaired_wheel/mlir_aie*whl
+          /tmp/smoke-venv/bin/python -m pip install --upgrade pip
+          /tmp/smoke-venv/bin/python -m pip install wheelhouse/repaired_wheel/mlir_aie*whl
           /tmp/smoke-venv/bin/python -c 'import aie.ir; import aie.extras; import aie.helpers'
 
       - name: Generate build provenance attestation
@@ -473,8 +473,8 @@ jobs:
         shell: bash
         run: |
           python -m venv /tmp/smoke-venv
-          /tmp/smoke-venv/Scripts/pip install --upgrade pip
-          /tmp/smoke-venv/Scripts/pip install wheelhouse/repaired_wheel/mlir_aie*whl
+          /tmp/smoke-venv/Scripts/python -m pip install --upgrade pip
+          /tmp/smoke-venv/Scripts/python -m pip install wheelhouse/repaired_wheel/mlir_aie*whl
           /tmp/smoke-venv/Scripts/python -c 'import aie.ir; import aie.extras; import aie.helpers'
 
       - name: Generate build provenance attestation
