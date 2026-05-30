@@ -28,6 +28,7 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
+#include <string.h>
 
 #ifndef LLAMA_RMSNORM_COLS
 #define LLAMA_RMSNORM_COLS 2048
@@ -41,13 +42,24 @@ static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
 static inline int8_t round_to_i8(float v) {
-  // banker's-rounding-equivalent for our range; matches Python round-half-
-  // away-from-zero semantics commonly used in quant references. Keep it
-  // simple and explicit; bit-exactness reference must use the same rule.
   int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
   if (r > I8_MAX) r = I8_MAX;
   if (r < I8_MIN) r = I8_MIN;
   return (int8_t)r;
+}
+
+// Pure IEEE fp32 invsqrt: Quake-III magic-constant initial guess + 2
+// Newton-Raphson refinement iterations. Bit-identical to the numpy
+// reference's sw_invsqrt -- no HW intrinsic approximation gap.
+static inline float sw_invsqrt(float a) {
+  int32_t bits;
+  memcpy(&bits, &a, 4);
+  bits = (int32_t)0x5f3759df - (bits >> 1);
+  float x;
+  memcpy(&x, &bits, 4);
+  x = x * (1.5f - 0.5f * a * x * x);
+  x = x * (1.5f - 0.5f * a * x * x);
+  return x;
 }
 
 extern "C" {
@@ -61,45 +73,35 @@ void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
   constexpr int kN = LLAMA_RMSNORM_N;
   constexpr int kChunks = kCols / kN;
 
-  // Pass 1: sum of squares in float. Vectorized over kN-lane bf16
-  // chunks. Convert int8 input -> bf16, square, accumulate.
-  ::aie::accum<acc32, kN> acc = ::aie::zeros<acc32, kN>();
-  ::aie::vector<float, kN> add_res = ::aie::zeros<float, kN>();
-  for (int i = 0; i < kChunks; i++) {
-    // int8 -> bf16 unpack. AIE2P has aie::to_float / aie::to_bfloat16.
-    ::aie::vector<int8, kN> xi = ::aie::load_v<kN>(x + i * kN);
-    ::aie::vector<bfloat16, kN> xb = ::aie::to_float<bfloat16>(xi);
-    ::aie::vector<float, kN> sq = ::aie::mul_square(xb);
-    acc = ::aie::add(add_res, sq);
-    add_res = acc.template to_vector<float>();
+  // Pass 1: exact int32 sum-of-squares over int8 inputs. int8 * int8
+  // = int16; 2048 lanes worst-case = 2048 * 16384 = 33M, fits in int32.
+  // Using exact int sums avoids any fp accumulation-order rounding so
+  // the numpy reference can compute the identical value.
+  int32_t sum_sq_i32 = 0;
+  for (int i = 0; i < kCols; i++) {
+    int32_t xi = x[i];
+    sum_sq_i32 += xi * xi;
   }
-  float sum_sq = ::aie::reduce_add(add_res);
 
-  // Fold act_scale_in into the variance (sum_sq is over int8 values;
-  // the real x_f^2 is act_scale_in^2 * x_i8^2).
-  float var = (sum_sq * act_scale_in * act_scale_in) / (float)kCols;
-  float inv_rms = aie::invsqrt(var + kEps);
+  // Fold act_scale_in into the variance: x_f^2 = act_scale_in^2 * x_i8^2.
+  float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
+  float inv_rms = sw_invsqrt(var + kEps);
 
-  // Combined per-output multiplier:
+  // Combined per-output multiplier (single fp32 scalar):
   //   y_f = x_i8 * act_scale_in * inv_rms * gamma[i]
   //   y_i8 = round(y_f * inv_act_scale_out)
   float combined = act_scale_in * inv_rms * inv_act_scale_out;
-  ::aie::vector<bfloat16, kN> combined_v =
-      ::aie::broadcast<bfloat16, kN>(static_cast<bfloat16>(combined));
 
-  // Pass 2: dequant + scale + gamma + requant. Vec mul for the bf16
-  // path; scalar rounding cast for the final int8 store. The vec
-  // round-and-narrow path is a follow-up optimization.
-  for (int i = 0; i < kChunks; i++) {
-    ::aie::vector<int8, kN> xi = ::aie::load_v<kN>(x + i * kN);
-    ::aie::vector<bfloat16, kN> xb = ::aie::to_float<bfloat16>(xi);
-    ::aie::vector<bfloat16, kN> gv = ::aie::load_v<kN>(gamma + i * kN);
-    ::aie::vector<bfloat16, kN> scaled = ::aie::mul(xb, combined_v);
-    ::aie::vector<bfloat16, kN> out_bf = ::aie::mul(scaled, gv);
-
-    for (int j = 0; j < kN; j++) {
-      y[i * kN + j] = round_to_i8(static_cast<float>(out_bf[j]));
-    }
+  // Pass 2: scalar fp32 throughout (no bf16 multiply chain). Gamma
+  // loaded as bf16 from DRAM and cast once to fp32 per element; all
+  // arithmetic is IEEE fp32 so the numpy reference can compute the
+  // identical value bit-for-bit. Vec optimization (and bringing back
+  // the bf16 math path) is a follow-up.
+  for (int i = 0; i < kCols; i++) {
+    float xf = (float)x[i];                  // int8 -> fp32 (exact)
+    float gf = (float)gamma[i];              // bf16 -> fp32 (exact)
+    float vf = xf * combined * gf;           // single fp32 chain
+    y[i] = round_to_i8(vf);
   }
 
   event1();
