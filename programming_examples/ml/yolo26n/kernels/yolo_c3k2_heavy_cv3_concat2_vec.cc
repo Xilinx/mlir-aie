@@ -97,14 +97,16 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
-  // Up to 32 ic_tiles supported (two_cp up to 256). Per-ic_tile source map.
-  int8_t *src_for_ic_tile[32];
-  int local_ic_t_for[32];
-  for (int ict = 0; ict < ic_tiles; ++ict) {
-    int src_idx = ict / ic_tiles_per_src;
-    src_for_ic_tile[ict] = (src_idx == 0) ? in_a : in_b;
-    local_ic_t_for[ict] = ict - src_idx * ic_tiles_per_src;
-  }
+  // in_a (m_0_split's split_b) and in_b (pair_cv2_skip's mmul-packed output)
+  // are both mmul-packed (oc_t, x_block, p*8+chan) with 8-pixel 64-byte
+  // blocks. cv3 uses mmul<4,8,8>, so each (x_tile, ic_t) loads 32 bytes
+  // (4 pixels x 8 chans) — exactly one half of an 8-pixel block.
+#if SHAPES_ARE_CONST
+  constexpr int kXTiles8 = IN_W / 8;
+#else
+  const int kXTiles8 = input_width >> 3;
+#endif
+  const int kPackedIcStride = kXTiles8 * 64;
 
   AIE_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
@@ -122,20 +124,21 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
       acc = bias_acc;
       const int x_base = x_tile * 4;
 
-      AIE_HINT_IC
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        int8_t *src = src_for_ic_tile[ic_t];
-        int local_ic_t = local_ic_t_for[ic_t];
-
-        alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_base + p;
-          int8_t *psrc = src + col * cp + local_ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = psrc[b];
-        }
-        aie::vector<int8, 32> in_a_vec = aie::load_v<32>(a_buf);
-
+      // in_a (src_idx=0, ic_t = 0..ic_tiles_per_src-1)
+      for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
+        aie::vector<int8, 32> in_a_vec = aie::load_v<32>(
+            in_a + local_ic_t * kPackedIcStride + (x_tile >> 1) * 64 +
+            (x_tile & 1) * 32);
+        int wts_off = wts_tile_off_1x1(oc_t, local_ic_t, ic_tiles);
+        aie::vector<int8, 64> in_b_vec = aie::load_v<64>(&wts[wts_off]);
+        acc.mac(in_a_vec, in_b_vec);
+      }
+      // in_b (src_idx=1, ic_t = ic_tiles_per_src..2*ic_tiles_per_src-1)
+      for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
+        aie::vector<int8, 32> in_a_vec = aie::load_v<32>(
+            in_b + local_ic_t * kPackedIcStride + (x_tile >> 1) * 64 +
+            (x_tile & 1) * 32);
+        int ic_t = ic_tiles_per_src + local_ic_t;
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b_vec = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a_vec, in_b_vec);

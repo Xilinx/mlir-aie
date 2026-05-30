@@ -65,6 +65,30 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx,
          oc_i;
 }
 
+#if SHAPES_ARE_CONST
+// 3x3 conv mmul A load with kx slide (kx=1 fast path; kx=0/2 use 2 vlda +
+// shuffle_down). Mirror of the m6 pair_cv1 helper.
+static __attribute__((always_inline)) inline aie::vector<int8, 64>
+load_a_mmul_kx(int8_t *line_ptr, int ic_t, int x_tile, int kx, int stride,
+               int kXTiles8) {
+  int8_t *base = line_ptr + ic_t * stride;
+  if (kx == 1) {
+    return aie::load_v<64>(base + x_tile * 64);
+  }
+  int blk_lo = (kx == 0) ? x_tile - 1 : x_tile;
+  int blk_hi = blk_lo + 1;
+  aie::vector<int8, 64> lo = (blk_lo >= 0 && blk_lo < kXTiles8)
+                                 ? aie::load_v<64>(base + blk_lo * 64)
+                                 : aie::zeros<int8, 64>();
+  aie::vector<int8, 64> hi = (blk_hi >= 0 && blk_hi < kXTiles8)
+                                 ? aie::load_v<64>(base + blk_hi * 64)
+                                 : aie::zeros<int8, 64>();
+  aie::vector<int8, 128> combined = aie::concat(lo, hi);
+  const unsigned shift = (kx == 0) ? 56u : 8u;
+  return aie::shuffle_down(combined, shift).template extract<64>(0);
+}
+#endif
+
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
@@ -151,37 +175,19 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
       const int x_out_base = x_tile * MMUL_M;
       const int x_in_base = x_out_base - 1;
 
+      // mmul-packed input read (producer: pair_cv1 mmul-packed output).
+      constexpr int kIcStride = kXTiles8 * 64;
+
       AIE_LOOP_RANGE(1, 3)
       for (int ky = ky_start; ky < ky_end; ++ky) {
         int8_t *line_ptr = line[ky];
 
         AIE_LOOP_RANGE(3, 3)
         for (int kx = 0; kx < KW; ++kx) {
-          aie::vector<int8, 32> pix[MMUL_M];
-          bool col_valid[MMUL_M];
-          bool any_valid = false;
-          for (int p = 0; p < MMUL_M; ++p) {
-            int col = x_in_base + p + kx;
-            col_valid[p] = (col >= 0 && col < IN_W);
-            if (col_valid[p]) {
-              pix[p] = aie::load_v<32>(line_ptr + col * IN_C);
-              any_valid = true;
-            } else {
-              pix[p] = aie::zeros<int8, 32>();
-            }
-          }
-          if (!any_valid)
-            continue;
-
           AIE_HINT_IC
           for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-            alignas(64) int8_t a_buf[64];
-            for (int p = 0; p < MMUL_M; ++p) {
-              for (int b = 0; b < 8; ++b)
-                a_buf[p * 8 + b] = pix[p][ic_t * 8 + b];
-            }
-            aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
-
+            aie::vector<int8, 64> in_a =
+                load_a_mmul_kx(line_ptr, ic_t, x_tile, kx, kIcStride, kXTiles8);
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc.mac(in_a, in_b);
@@ -190,31 +196,23 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
       }
 
       aie::vector<int8, MMUL_MN> srs_v = acc.template to_vector<int8>(right_shift);
-
       alignas(64) int8_t silu_buf[64];
-      alignas(64) int8_t skip_buf[64];
       for (int i = 0; i < 64; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
-      for (int p = 0; p < MMUL_M; ++p) {
-        int x_out = x_out_base + p;
-        int8_t *src = skip_row + x_out * OUT_C + oc_t * 8;
-        for (int b = 0; b < 8; ++b)
-          skip_buf[p * 8 + b] = src[b];
-      }
       aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
-      aie::vector<int8, 64> skip_v = aie::load_v<64>(skip_buf);
+      // skip_row producer (m_0_split's split_a / pair_cv2's output) now also
+      // mmul-packed; one vec_load instead of 64 scalar gathers.
+      aie::vector<int8, 64> skip_v = aie::load_v<64>(
+          skip_row + oc_t * (kXTiles8 * 64) + x_tile * 64);
 
       aie::accum<acc32, 64> add_acc = aie::mul(skip_v, (int16)skip_y_mult);
       add_acc = aie::mac(add_acc, silu_v, (int16)skip_cv2_mult);
       aie::vector<int8, 64> out_v =
           add_acc.template to_vector<int8>(skip_rsh_add);
 
-      for (int p = 0; p < MMUL_M; ++p) {
-        int x_out = x_out_base + p;
-        int8_t *dst = output + x_out * OUT_C + oc_t * 8;
-        for (int j = 0; j < 8; ++j)
-          dst[j] = out_v[p * 8 + j];
-      }
+      // mmul-packed output: consumer (next pair_cv1 input, or cv3_concat2
+      // in_b) reads via vec_load.
+      aie::store_v(output + oc_t * (kXTiles8 * 64) + x_tile * 64, out_v);
     }
 #else
     aie::accum<acc32, 32> bias_acc;

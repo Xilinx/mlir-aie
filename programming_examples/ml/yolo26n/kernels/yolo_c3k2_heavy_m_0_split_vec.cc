@@ -118,13 +118,23 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
       }
 
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < 4; ++p) {
-        int x_out = x_base + p;
-        for (int j = 0; j < 8; ++j) {
-          out[x_out * kOutC + oc_t * 8 + j] =
-              silu_lut[int(srs_v[p * 8 + j]) + 128];
-        }
-      }
+      // mmul-packed output: pair x_tile iters into 8-pixel blocks. Consumer
+      // (inner_pair_cv1's input for split_a, cv3_concat2's in_a/in_b for
+      // split_b) reads via vec_load (32-byte half-blocks for the 4-pixel
+      // mmul<4,8,8> consumer in cv3_concat2; full 64-byte blocks for the
+      // 8-pixel mmul<8,8,8> consumer in pair_cv1).
+#if SHAPES_ARE_CONST
+      constexpr int kXTiles8 = SPLIT_IN_W / 8; // 32/8 = 4 for m6
+#else
+      const int kXTiles8 = input_width >> 3;
+#endif
+      alignas(32) int8_t silu_buf[32];
+      for (int i = 0; i < 32; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+      aie::store_v(out + oc_t * (kXTiles8 * 64) + (x_tile >> 1) * 64 +
+                       (x_tile & 1) * 32,
+                   silu_v);
     }
 
     // Tail scalar fallback.
