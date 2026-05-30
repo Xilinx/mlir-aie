@@ -23,9 +23,23 @@ import numpy as np
 import pytest
 from ml_dtypes import bfloat16
 
-from aie.iron.kernel import ExternalFunction
 from aie.iron import kernels
+from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import _common as _kernels_common
+from aie.utils.hostruntime import set_current_device
+
+
+@pytest.fixture
+def npu2_device():
+    """Set the iron current device to NPU2Col1 for the test, then clear it.
+
+    Safer than per-test try/finally: pytest unwinds the fixture even when
+    the test body crashes mid-assertion.
+    """
+    set_current_device(NPU2Col1())
+    yield
+    set_current_device(None)
 
 
 @pytest.fixture(autouse=True)
@@ -1088,22 +1102,19 @@ def test_kernels_mm_chess_triggers_auto_symbol_prefix():
     assert ef_second._symbol_prefix is not None and len(ef_second._symbol_prefix) == 8
 
 
-def test_mv_use_chess_carries_flag():
-    """kernels.mv also forwards use_chess."""
-    ef = kernels.mv(dim_m=32, dim_k=32, use_chess=True)
-    assert ef._use_chess is True
-
-
-def test_cascade_mm_use_chess_carries_flag():
-    """kernels.cascade_mm also forwards use_chess."""
-    ef = kernels.cascade_mm(
-        dim_m=64,
-        dim_k=64,
-        dim_n=32,
-        input_dtype=np.int16,
-        output_dtype=np.int16,
-        use_chess=True,
-    )
+@pytest.mark.parametrize(
+    "factory,kwargs",
+    [
+        ("mv", dict(dim_m=32, dim_k=32)),
+        (
+            "cascade_mm",
+            dict(dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16),
+        ),
+    ],
+)
+def test_other_matmul_factories_carry_use_chess(factory, kwargs):
+    """kernels.mv and kernels.cascade_mm also forward use_chess to the EF."""
+    ef = getattr(kernels, factory)(**kwargs, use_chess=True)
     assert ef._use_chess is True
 
 
@@ -1179,91 +1190,63 @@ def test_all_chess_set_is_unanimous():
     assert chess_uses == {True}
 
 
-def test_kernels_mm_emulated_bf16_carries_macro():
+def test_kernels_mm_emulated_bf16_carries_macro(npu2_device):
     """emulate_bf16_mmul_with_bfp16=True adds the AIE_API macro on aie2p+bf16."""
-    from aie.utils.hostruntime import set_current_device
-    from aie.iron.device import NPU2Col1
-
-    set_current_device(NPU2Col1())
-    try:
-        ef = kernels.mm(
-            dim_m=64,
-            dim_k=64,
-            dim_n=32,
-            input_dtype=bfloat16,
-            output_dtype=bfloat16,
-            emulate_bf16_mmul_with_bfp16=True,
-        )
-        assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in ef._compile_flags
-        assert ef.mac_dims == (8, 8, 8)
-    finally:
-        set_current_device(None)
+    ef = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+        emulate_bf16_mmul_with_bfp16=True,
+    )
+    assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" in ef._compile_flags
+    assert ef.mac_dims == (8, 8, 8)
 
 
-def test_kernels_mm_emulated_bf16_default_off():
+def test_kernels_mm_emulated_bf16_default_off(npu2_device):
     """Default mac_dims for aie2p bf16/bf16 stays at (4, 8, 8) without the toggle."""
-    from aie.utils.hostruntime import set_current_device
-    from aie.iron.device import NPU2Col1
-
-    set_current_device(NPU2Col1())
-    try:
-        ef = kernels.mm(
-            dim_m=64,
-            dim_k=64,
-            dim_n=32,
-            input_dtype=bfloat16,
-            output_dtype=bfloat16,
-        )
-        assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" not in ef._compile_flags
-        assert ef.mac_dims == (4, 8, 8)
-    finally:
-        set_current_device(None)
+    ef = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+    )
+    assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" not in ef._compile_flags
+    assert ef.mac_dims == (4, 8, 8)
 
 
-def test_kernels_mm_emulated_bf16_ignored_for_non_bf16():
+def test_kernels_mm_emulated_bf16_ignored_for_non_bf16(npu2_device):
     """The toggle is a no-op for integer dtypes (it's bf16-specific)."""
-    from aie.utils.hostruntime import set_current_device
-    from aie.iron.device import NPU2Col1
-
-    set_current_device(NPU2Col1())
-    try:
-        ef = kernels.mm(
-            dim_m=64,
-            dim_k=64,
-            dim_n=32,
-            input_dtype=np.int16,
-            output_dtype=np.int16,
-            emulate_bf16_mmul_with_bfp16=True,
-        )
-        assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" not in ef._compile_flags
-        assert ef.mac_dims == (4, 4, 8)  # default aie2p i16/i16
-    finally:
-        set_current_device(None)
+    ef = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=np.int16,
+        output_dtype=np.int16,
+        emulate_bf16_mmul_with_bfp16=True,
+    )
+    assert "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16" not in ef._compile_flags
+    assert ef.mac_dims == (4, 4, 8)  # default aie2p i16/i16
 
 
-def test_kernels_mm_emulated_bf16_distinct_cache_from_default():
+def test_kernels_mm_emulated_bf16_distinct_cache_from_default(npu2_device):
     """The toggle changes the .o contents; cache must distinguish the two."""
-    from aie.utils.hostruntime import set_current_device
-    from aie.iron.device import NPU2Col1
-
-    set_current_device(NPU2Col1())
-    try:
-        ef_default = kernels.mm(
-            dim_m=64,
-            dim_k=64,
-            dim_n=32,
-            input_dtype=bfloat16,
-            output_dtype=bfloat16,
-        )
-        ef_emulated = kernels.mm(
-            dim_m=64,
-            dim_k=64,
-            dim_n=32,
-            input_dtype=bfloat16,
-            output_dtype=bfloat16,
-            emulate_bf16_mmul_with_bfp16=True,
-        )
-        assert ef_default is not ef_emulated
-        assert ef_default.object_file_name != ef_emulated.object_file_name
-    finally:
-        set_current_device(None)
+    ef_default = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+    )
+    ef_emulated = kernels.mm(
+        dim_m=64,
+        dim_k=64,
+        dim_n=32,
+        input_dtype=bfloat16,
+        output_dtype=bfloat16,
+        emulate_bf16_mmul_with_bfp16=True,
+    )
+    assert ef_default is not ef_emulated
+    assert ef_default.object_file_name != ef_emulated.object_file_name

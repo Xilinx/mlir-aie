@@ -19,9 +19,14 @@ from pathlib import Path
 
 import pytest
 
+from aie.extras.context import mlir_mod_ctx
+from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import Compile, In, InOut, Out
+from aie.utils.hostruntime import set_current_device
 
 # ---------------------------------------------------------------------------
 # Shared generator factories
@@ -512,7 +517,6 @@ def test_from_json_compile_kwargs_round_trip_typed():
 
 def test_generate_mlir_raises_type_error_for_missing_compile_param():
     """TypeError when a required Compile[T] param is absent from compile_kwargs."""
-    from aie.iron.kernel import ExternalFunction
 
     def gen(*, M: Compile[int], K: Compile[int]):
         pass
@@ -524,7 +528,6 @@ def test_generate_mlir_raises_type_error_for_missing_compile_param():
 
 
 def test_generate_mlir_type_error_message_includes_generator_name():
-    from aie.iron.kernel import ExternalFunction
 
     def my_special_gen(*, M: Compile[int]):
         pass
@@ -537,7 +540,6 @@ def test_generate_mlir_type_error_message_includes_generator_name():
 
 def test_generate_mlir_injects_compile_context():
     """CompileContext values must be visible via get_compile_arg() inside the generator."""
-    from aie.iron.kernel import ExternalFunction
 
     observed = {}
 
@@ -545,7 +547,6 @@ def test_generate_mlir_injects_compile_context():
         observed["M"] = get_compile_arg("M")
         observed["K"] = get_compile_arg("K")
         # Return a real (empty) MLIR module via the unplaced path.
-        from aie.extras.context import mlir_mod_ctx
 
         with mlir_mod_ctx() as ctx:
             pass
@@ -560,7 +561,6 @@ def test_generate_mlir_injects_compile_context():
 
 def test_generate_mlir_clears_external_function_instances_before_call():
     """Stale ExternalFunction instances must not leak into a new generation."""
-    from aie.iron.kernel import ExternalFunction
 
     stale = object()
     ExternalFunction._instances.add(stale)
@@ -568,7 +568,6 @@ def test_generate_mlir_clears_external_function_instances_before_call():
     def gen(*, M: Compile[int]):
         # Verify the stale instance was cleared before we ran.
         assert stale not in ExternalFunction._instances
-        from aie.extras.context import mlir_mod_ctx
 
         with mlir_mod_ctx() as ctx:
             pass
@@ -580,8 +579,6 @@ def test_generate_mlir_clears_external_function_instances_before_call():
 
 def test_generate_mlir_unplaced_style_uses_return_value():
     """When generator returns a module object, _generate_mlir must return it."""
-    from aie.iron.kernel import ExternalFunction
-    from aie.extras.context import mlir_mod_ctx
 
     with mlir_mod_ctx() as ctx:
         pass
@@ -602,7 +599,6 @@ def test_generate_mlir_unplaced_style_uses_return_value():
 
 def test_generate_mlir_guard_2a_tensor_name_in_compile_kwargs():
     """compile_kwargs must not contain names annotated as In/Out/InOut."""
-    from aie.iron.kernel import ExternalFunction
 
     def gen(a: In, *, M: Compile[int]):
         pass
@@ -614,7 +610,6 @@ def test_generate_mlir_guard_2a_tensor_name_in_compile_kwargs():
 
 def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
     """compile_kwargs must not contain keys absent from the generator signature."""
-    from aie.iron.kernel import ExternalFunction
 
     def gen(a: In, *, M: Compile[int]):
         pass
@@ -626,7 +621,6 @@ def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
 
 def test_generate_mlir_raises_on_verification_failure():
     """RuntimeError must be raised when the generated MLIR module fails verify()."""
-    from aie.iron.kernel import ExternalFunction
     from unittest.mock import MagicMock
 
     bad_module = MagicMock()
@@ -642,7 +636,6 @@ def test_generate_mlir_raises_on_verification_failure():
 
 def test_split_runtime_args_path_generator_filters_kernel_objects():
     """Kernel/ExternalFunction instances must be stripped even for Path generators."""
-    from aie.iron.kernel import Kernel
 
     d = CompilableDesign(Path("/nonexistent/design.mlir"))
     k = Kernel("my_func", "my_func.o")
@@ -662,7 +655,6 @@ def test_parse_dma_sizes_matches_real_mlir_format(tmp_path):
     """Reads element counts directly from the runtime_sequence's typed args
     on a sample matching what aiecc emits.
     """
-    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
     sample_mlir = """\
 module {
@@ -696,7 +688,6 @@ def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
     Reading the runtime_sequence arg type — instead of summing dma_bd lens —
     means this case Just Works without any per-arg accumulator.
     """
-    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
     sample_mlir = """\
 module {
@@ -724,7 +715,6 @@ def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
     DMAs.  The runtime_sequence arg type still reports the full buffer size,
     no DMA accounting needed.
     """
-    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
     sample_mlir = """\
 module {
@@ -752,7 +742,6 @@ def test_parse_dma_sizes_picks_uncalled_root_when_helper_present(tmp_path):
     aiex.run, the parser must pick the main (call-graph root) regardless of
     declaration order — the helper's args must NOT be reported.
     """
-    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
     # Layout matches test/aiecc/cpp_expand_load_pdis.mlir: @main's sequence
     # @sequence configures @helper-device and runs its sequence @helper_seq.
@@ -784,7 +773,6 @@ def test_parse_dma_sizes_returns_none_when_multi_device_has_multiple_roots(tmp_p
     can't be unambiguously matched to a flat host tensor list — bail rather
     than validate against the wrong signature.
     """
-    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
     sample_mlir = """\
 module {
@@ -805,7 +793,6 @@ module {
 def test_parse_dma_sizes_returns_none_for_dynamic_shape_arg(tmp_path):
     """A dynamic-dim memref arg means the kernel's host contract isn't a
     fixed element count — skip validation rather than guess."""
-    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
     sample_mlir = """\
 module {
@@ -821,7 +808,6 @@ module {
 
 def test_parse_dma_sizes_returns_none_for_unparseable_text(tmp_path):
     """Garbage in the file must come back as None, not raise."""
-    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
     (tmp_path / "input_with_addresses.mlir").write_text("not actually MLIR\n")
     assert parse_dma_sizes(tmp_path) is None
@@ -829,7 +815,6 @@ def test_parse_dma_sizes_returns_none_for_unparseable_text(tmp_path):
 
 def test_parse_dma_sizes_returns_none_when_file_missing(tmp_path):
     """Absent input_with_addresses.mlir must return None, not raise."""
-    from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 
     assert parse_dma_sizes(tmp_path) is None
 
@@ -847,8 +832,6 @@ def test_compute_hash_changes_when_active_device_changes_arch():
     tracking the iron-active device.
     """
     import aie.iron as iron
-    from aie.iron.device import NPU1Col1, NPU2Col1
-    from aie.utils.hostruntime import set_current_device
 
     gen = _gemm_gen()
     cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
@@ -878,8 +861,6 @@ def test_kernels_mm_mac_dims_per_arch():
     """
     import numpy as np
     import aie.iron.kernels as kernels
-    from aie.iron.device import NPU1Col1, NPU2Col1
-    from aie.utils.hostruntime import set_current_device
 
     set_current_device(NPU1Col1())
     mm_aie2 = kernels.mm(
@@ -908,8 +889,6 @@ def test_kernels_mm_mac_dims_per_arch():
 def test_transform_typed_returns_module():
     import numpy as np
     from aie.iron.algorithms import transform_typed
-    from aie.iron.device import NPU1Col1
-    from aie.utils.hostruntime import set_current_device
 
     set_current_device(NPU1Col1())
     try:
@@ -925,7 +904,6 @@ def test_transform_typed_returns_module():
 def test_compile_mixed_explicit_paths_raises():
     """Passing only one of (xclbin_path, inst_path) is rejected up front."""
     import pytest
-    from aie.utils.compile.jit.compilabledesign import CompilableDesign
 
     def gen():
         pass
