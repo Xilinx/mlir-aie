@@ -217,6 +217,13 @@ run_rmsnorm: rmsnorm
 RMSI8_D ?= 2048
 RMSI8_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_RMSNORM_COLS=${RMSI8_D}
 
+# Per-shape rmsnorm .o files. The chain/layer designs use the D=64
+# version (their fifos are 64-byte); the standalone rmsnorm test
+# target uses whichever RMSI8_D the caller passes.
+${BUILD}/llama_rmsnorm_int8_64.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DLLAMA_RMSNORM_COLS=64 -c $< -o ${@F}
+
 ${BUILD}/llama_rmsnorm_int8.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${RMSI8_FLAGS} -c $< -o ${@F}
@@ -407,12 +414,17 @@ run_sample: sample
 # files (small first-bring-up: D=64, HD=256, head_dim=64, T=16).
 # Layer integration reuses every Phase 2 kernel binary.
 
-LAYER_REAL_DEPS = ${BUILD}/llama_rmsnorm_int8.cc.o \
+LAYER_REAL_DEPS = ${BUILD}/llama_rmsnorm_int8_64.cc.o \
                   ${BUILD}/llama_gemm_int8_srs.cc.o \
                   ${BUILD}/llama_rope_int8.cc.o \
                   ${BUILD}/llama_silu_mul_int8.cc.o \
                   ${BUILD}/llama_flowkv.cc.o \
                   ${BUILD}/llama_layer_pt.cc.o
+
+# The layer/chain xclbins always link the D=64 rmsnorm. Override the
+# linker artifact to be the D=64 build (the design feeds 64-byte
+# buffers; the shape is hardcoded in the design via D=64).
+${BUILD}/aie_layer_real.mlir ${BUILD}/aie_chain_real.mlir: RMSI8_D := 64
 
 ${BUILD}/aie_layer_real.mlir: ${srcdir}/aie2_layer_real.py
 	mkdir -p ${@D}
@@ -420,6 +432,10 @@ ${BUILD}/aie_layer_real.mlir: ${srcdir}/aie2_layer_real.py
 
 ${BUILD}/final_layer_real.xclbin: ${BUILD}/aie_layer_real.mlir ${LAYER_REAL_DEPS}
 	mkdir -p ${@D}
+	# llama_rmsnorm_int8.cc.o symlink to the D=64 build (chain/layer
+	# design feeds 64-byte buffers; default D=2048 build silently
+	# saturates the output).
+	cp ${BUILD}/llama_rmsnorm_int8_64.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} \
@@ -438,7 +454,7 @@ run_layer_real: layer_real
 # Reuses every Phase 2 kernel binary; same set as layer_real plus the
 # loop semantics + per-layer weight streaming.
 
-CHAIN_DEPS = ${BUILD}/llama_rmsnorm_int8.cc.o \
+CHAIN_DEPS = ${BUILD}/llama_rmsnorm_int8_64.cc.o \
              ${BUILD}/llama_gemm_int8_srs.cc.o \
              ${BUILD}/llama_rope_int8.cc.o \
              ${BUILD}/llama_silu_mul_int8.cc.o \
@@ -451,6 +467,7 @@ ${BUILD}/aie_chain_real.mlir: ${srcdir}/aie2_chain_real.py
 
 ${BUILD}/final_chain_real.xclbin: ${BUILD}/aie_chain_real.mlir ${CHAIN_DEPS}
 	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_64.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} \

@@ -34,7 +34,7 @@ HEAD_D  = 64
 N_HEADS = 1
 N_KV    = 1
 T       = 16             # KV cache length
-N_LAYERS = 16
+N_LAYERS = 4
 
 # Per-layer byte sizes (must match test_chain_real.py).
 WQ_BYTES = QD*D + QD*4
