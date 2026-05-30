@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm
 
 all: gemm_pt
 
@@ -183,6 +183,35 @@ run_layer_pt: layer_pt
 		-x ${BUILD}/final_layer_pt.xclbin \
 		-i ${BUILD}/insts_layer_pt.bin \
 		-k MLIR_AIE
+
+# ---------- rmsnorm bf16 real kernel (Phase 2) ----------
+RMS_D ?= 2048
+RMS_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_RMSNORM_COLS=${RMS_D}
+
+${BUILD}/llama_rmsnorm.cc.o: ${KDIR}/llama_rmsnorm.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${RMS_FLAGS} -c $< -o ${@F}
+
+${BUILD}/aie_rmsnorm_${RMS_D}.mlir: ${srcdir}/aie2_rmsnorm.py
+	mkdir -p ${@D}
+	python3 $< -D ${RMS_D} > $@
+
+${BUILD}/final_rmsnorm_${RMS_D}.xclbin: ${BUILD}/aie_rmsnorm_${RMS_D}.mlir \
+                                        ${BUILD}/llama_rmsnorm.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_rmsnorm_${RMS_D}.bin \
+		$(notdir $<)
+
+rmsnorm: ${BUILD}/final_rmsnorm_${RMS_D}.xclbin
+
+run_rmsnorm: rmsnorm
+	cd ${srcdir} && python3 test_rmsnorm.py \
+		-x ${BUILD}/final_rmsnorm_${RMS_D}.xclbin \
+		-i ${BUILD}/insts_rmsnorm_${RMS_D}.bin \
+		-k MLIR_AIE -D ${RMS_D}
 
 # ---------- clean ----------
 clean:
