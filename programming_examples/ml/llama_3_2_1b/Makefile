@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs
 
 all: gemm_pt
 
@@ -241,6 +241,36 @@ run_rmsnorm_int8: rmsnorm_int8
 		-x ${BUILD}/final_rmsnorm_int8_${RMSI8_D}.xclbin \
 		-i ${BUILD}/insts_rmsnorm_int8_${RMSI8_D}.bin \
 		-k MLIR_AIE -D ${RMSI8_D}
+
+# ---------- real gemm_int8_srs (Phase 2 GEMV path) ----------
+GEMM_K ?= 64
+GEMM_N ?= 64
+GEMM_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_GEMM_K=${GEMM_K} -DLLAMA_GEMM_N=${GEMM_N}
+
+${BUILD}/llama_gemm_int8_srs.cc.o: ${KDIR}/llama_gemm_int8_srs.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${GEMM_FLAGS} -c $< -o ${@F}
+
+${BUILD}/aie_gemm_srs_${GEMM_K}x${GEMM_N}.mlir: ${srcdir}/aie2_gemm_int8_srs_real.py
+	mkdir -p ${@D}
+	python3 $< -K ${GEMM_K} -N ${GEMM_N} > $@
+
+${BUILD}/final_gemm_srs_${GEMM_K}x${GEMM_N}.xclbin: ${BUILD}/aie_gemm_srs_${GEMM_K}x${GEMM_N}.mlir \
+                                                    ${BUILD}/llama_gemm_int8_srs.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_gemm_srs_${GEMM_K}x${GEMM_N}.bin \
+		$(notdir $<)
+
+gemm_srs: ${BUILD}/final_gemm_srs_${GEMM_K}x${GEMM_N}.xclbin
+
+run_gemm_srs: gemm_srs
+	cd ${srcdir} && python3 test_gemm_int8_srs_real.py \
+		-x ${BUILD}/final_gemm_srs_${GEMM_K}x${GEMM_N}.xclbin \
+		-i ${BUILD}/insts_gemm_srs_${GEMM_K}x${GEMM_N}.bin \
+		-k MLIR_AIE -K ${GEMM_K} -N ${GEMM_N}
 
 # ---------- clean ----------
 clean:
