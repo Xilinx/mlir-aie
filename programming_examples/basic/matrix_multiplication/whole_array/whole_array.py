@@ -241,23 +241,21 @@ def _build_design(
                 in_b.release(1)
             out_c.release(1)
 
-    workers = []
-    for row in range(n_aie_rows):
-        for col in range(n_aie_cols):
-            tile_col, tile_row = core_tiles[row][col]
-            workers.append(
-                Worker(
-                    core_fn,
-                    [
-                        A_l2l1_fifos[row].cons(),
-                        B_l2l1_fifos[col].cons(),
-                        C_l1l2_fifos[row][col].prod(),
-                        zero_kernel,
-                        matmul_kernel,
-                    ],
-                    stack_size=0xD00,
-                )
-            )
+    workers = Worker.grid(
+        n_aie_rows,
+        n_aie_cols,
+        lambda row, col: Worker(
+            core_fn,
+            [
+                A_l2l1_fifos[row].cons(),
+                B_l2l1_fifos[col].cons(),
+                C_l1l2_fifos[row][col].prod(),
+                zero_kernel,
+                matmul_kernel,
+            ],
+            stack_size=0xD00,
+        ),
+    )
 
     tb_max_n_rows = 4 if not c_col_maj else 2
     tb_n_rows = tb_max_n_rows // 2
@@ -309,7 +307,7 @@ def _build_design(
 
     rt = Runtime()
     with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-        rt.start(*workers)
+        rt.start(*[w for row in workers for w in row])
 
         tg = rt.task_group()
         for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
