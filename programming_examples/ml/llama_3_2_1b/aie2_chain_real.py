@@ -34,9 +34,9 @@ HEAD_D  = 64
 N_HEADS = 1
 N_KV    = 1
 T       = 16             # KV cache length
-N_LAYERS = 2  # bit-exact at 2. N>=3 has 1-LSB drift per layer when
-              # layers differ (with identical layers it's 0/D at any N) --
-              # per-layer weight ordering issue under investigation.
+N_LAYERS = 2  # bit-exact at 2. N>=3 has 1-LSB drift per extra layer
+              # when layers differ (identical layers: 0/D at any N).
+              # Diagnostic notes in commit message below.
 
 # Per-layer byte sizes (must match test_chain_real.py).
 WQ_BYTES = QD*D + QD*4
@@ -135,16 +135,19 @@ def build():
     of_df     = ObjectFifo(t_D_i8,   name="df")
 
     # Per-kernel weight streams (each gets N_LAYERS successive fills).
-    of_gam_in   = ObjectFifo(t_D_bf16,    depth=2, name="gam_in")
-    of_gam_post = ObjectFifo(t_D_bf16,    depth=2, name="gam_post")
-    of_wq       = ObjectFifo(t_WQ_i8,     depth=2, name="wq")
-    of_wo       = ObjectFifo(t_WO_i8,     depth=2, name="wo")
-    of_wg       = ObjectFifo(t_WG_i8,     depth=2, name="wg")
-    of_wu       = ObjectFifo(t_WU_i8,     depth=2, name="wu")
-    of_wd       = ObjectFifo(t_WD_i8,     depth=2, name="wd")
-    of_cs       = ObjectFifo(t_CS_bf16,   depth=2, name="cs")
-    of_kcache   = ObjectFifo(t_KCACHE_i8, depth=2, name="kcache")
-    of_vcache   = ObjectFifo(t_VCACHE_i8, depth=2, name="vcache")
+    # Depth = N_LAYERS to avoid producer back-pressure during multi-layer
+    # streaming; ensures the consumer always sees the right per-layer
+    # slot regardless of cross-layer DMA timing.
+    of_gam_in   = ObjectFifo(t_D_bf16,    depth=N_LAYERS, name="gam_in")
+    of_gam_post = ObjectFifo(t_D_bf16,    depth=N_LAYERS, name="gam_post")
+    of_wq       = ObjectFifo(t_WQ_i8,     depth=N_LAYERS, name="wq")
+    of_wo       = ObjectFifo(t_WO_i8,     depth=N_LAYERS, name="wo")
+    of_wg       = ObjectFifo(t_WG_i8,     depth=N_LAYERS, name="wg")
+    of_wu       = ObjectFifo(t_WU_i8,     depth=N_LAYERS, name="wu")
+    of_wd       = ObjectFifo(t_WD_i8,     depth=N_LAYERS, name="wd")
+    of_cs       = ObjectFifo(t_CS_bf16,   depth=N_LAYERS, name="cs")
+    of_kcache   = ObjectFifo(t_KCACHE_i8, depth=N_LAYERS, name="kcache")
+    of_vcache   = ObjectFifo(t_VCACHE_i8, depth=N_LAYERS, name="vcache")
 
     KO_RMS  = "llama_rmsnorm_int8.cc.o"
     KO_GEMM = "llama_gemm_int8_srs.cc.o"
@@ -328,29 +331,27 @@ def build():
                 strides=[0, 0, 0, 1],
             )
 
-        # Per-layer fills wrapped in task_groups so shim BDs can be
-        # reused across iterations (matches whole_array_iron pattern).
-        # Pingpong depth 2: layer L's group is freed once L+2 is queued.
+        # DEBUG: per-fifo serialization. For each weight fifo, issue all
+        # N_LAYERS fills back-to-back in its own task group. This forces
+        # strict order WITHIN each fifo with no cross-fifo interleaving.
         tgs = []
-        for L in range(N_LAYERS):
-            base_w  = L * PER_LAYER_W
-            base_kv = L * PER_LAYER_KV
+        def per_fifo_group(name, fifo_prod, src, layout_base, layout_off, nbytes, total):
             tg = rt.task_group()
             tgs.append(tg)
-            rt.fill(of_gam_in.prod(),   wblob, tap=tap(TOTAL_W,  base_w + OFF_GAMMA_IN,   GAMMA_BYTES), task_group=tg)
-            rt.fill(of_gam_post.prod(), wblob, tap=tap(TOTAL_W,  base_w + OFF_GAMMA_POST, GAMMA_BYTES), task_group=tg)
-            rt.fill(of_wq.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WQ, WQ_BYTES), task_group=tg)
-            rt.fill(of_wo.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WO, WO_BYTES), task_group=tg)
-            rt.fill(of_wg.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WG, WG_BYTES), task_group=tg)
-            rt.fill(of_wu.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WU, WU_BYTES), task_group=tg)
-            rt.fill(of_wd.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WD, WD_BYTES), task_group=tg)
-            rt.fill(of_cs.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_CS, CS_BYTES), task_group=tg)
-            rt.fill(of_kcache.prod(),   kvblob, tap=tap(TOTAL_KV, base_kv + OFF_K, KCACHE_BYTES), task_group=tg)
-            rt.fill(of_vcache.prod(),   kvblob, tap=tap(TOTAL_KV, base_kv + OFF_V, VCACHE_BYTES), task_group=tg)
-
-            if L >= 2:
-                rt.finish_task_group(tgs[-3])
-                del tgs[-3]
+            for L in range(N_LAYERS):
+                rt.fill(fifo_prod, src,
+                        tap=tap(total, L * layout_base + layout_off, nbytes),
+                        task_group=tg)
+        per_fifo_group("gam_in",   of_gam_in.prod(),   wblob, PER_LAYER_W, OFF_GAMMA_IN,   GAMMA_BYTES, TOTAL_W)
+        per_fifo_group("gam_post", of_gam_post.prod(), wblob, PER_LAYER_W, OFF_GAMMA_POST, GAMMA_BYTES, TOTAL_W)
+        per_fifo_group("wq",       of_wq.prod(),       wblob, PER_LAYER_W, OFF_WQ, WQ_BYTES, TOTAL_W)
+        per_fifo_group("wo",       of_wo.prod(),       wblob, PER_LAYER_W, OFF_WO, WO_BYTES, TOTAL_W)
+        per_fifo_group("wg",       of_wg.prod(),       wblob, PER_LAYER_W, OFF_WG, WG_BYTES, TOTAL_W)
+        per_fifo_group("wu",       of_wu.prod(),       wblob, PER_LAYER_W, OFF_WU, WU_BYTES, TOTAL_W)
+        per_fifo_group("wd",       of_wd.prod(),       wblob, PER_LAYER_W, OFF_WD, WD_BYTES, TOTAL_W)
+        per_fifo_group("cs",       of_cs.prod(),       wblob, PER_LAYER_W, OFF_CS, CS_BYTES, TOTAL_W)
+        per_fifo_group("kcache",   of_kcache.prod(),   kvblob, PER_LAYER_KV, OFF_K, KCACHE_BYTES, TOTAL_KV)
+        per_fifo_group("vcache",   of_vcache.prod(),   kvblob, PER_LAYER_KV, OFF_V, VCACHE_BYTES, TOTAL_KV)
 
         out_tg = rt.task_group()
         rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
