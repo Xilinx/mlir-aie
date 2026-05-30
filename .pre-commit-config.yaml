@@ -1,20 +1,23 @@
+minimum_pre_commit_version: '4.6.0'
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
 - repo: https://github.com/kynan/nbstripout
-  rev: 0.8.0
+  rev: f42caeaf94f73a5ae54641b40a7d664cb4e03e40  # frozen: 0.8.0
   hooks:
     - id: nbstripout
       args: [--drop-empty-cells]
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: v17.0.6
+  rev: 05241dc3def184dba136e62d54ff57f1c8a497a9  # frozen: v17.0.6
   hooks:
     - id: clang-format
       types_or: [c, c++]
       stages: [pre-push]
 
 - repo: https://github.com/psf/black
-  rev: 24.10.0
+  rev: 1b2427a2b785cc4aac97c19bb4b9a0de063f9547  # frozen: 24.10.0
   hooks:
     - id: black
       stages: [pre-push]
@@ -22,6 +25,42 @@ repos:
       exclude: |
         (?x)^(
           third_party/.*|
-          build/.*|
+          (_)?build.*/.*|
+          (my_)?install.*/.*|
+          sandbox.*/.*|
+          llvm.*/.*|
+          cmakeModules.*/.*|
           ironenv/.*
         )$
+
+# Baseline hygiene: validators run on every commit, fixers gated to pre-push
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+  hooks:
+    - id: check-yaml
+      exclude: &generated_exclude |
+        (?x)^(
+          third_party/.*|
+          (_)?build.*/.*|
+          (my_)?install.*/.*|
+          sandbox.*/.*|
+          llvm.*/.*|
+          cmakeModules.*/.*|
+          ironenv/.*
+        )$
+    - id: check-toml
+    - id: check-json
+    - id: check-merge-conflict
+    - id: check-case-conflict
+    - id: check-added-large-files
+      args: [--maxkb=1024]
+    - id: end-of-file-fixer
+      stages: [pre-push]
+      exclude: *generated_exclude
+    - id: trailing-whitespace
+      stages: [pre-push]
+      exclude: *generated_exclude
+    - id: mixed-line-ending
+      stages: [pre-push]
+      args: [--fix=lf]
+      exclude: *generated_exclude
