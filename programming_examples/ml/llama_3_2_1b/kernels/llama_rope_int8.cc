@@ -26,6 +26,7 @@
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
+#include <string.h>
 
 #ifndef LLAMA_ROPE_HEAD_DIM
 #define LLAMA_ROPE_HEAD_DIM 64
@@ -44,6 +45,22 @@ static inline int8_t round_to_i8(float v) {
   return (int8_t)r;
 }
 
+// Software fp32 reciprocal: Peano AIE2P lowers `1.0f / x` to a HW
+// reciprocal approximation, NOT IEEE-correct. NR over a bit-hack
+// initial guess converges to IEEE fp32 precision (4 iters).
+static inline float sw_recip(float a) {
+  int32_t bits;
+  memcpy(&bits, &a, 4);
+  bits = (int32_t)0x7EF477D5 - bits;
+  float x;
+  memcpy(&x, &bits, 4);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  return x;
+}
+
 extern "C" {
 
 // cs_packed layout: cos[head_dim] || sin[head_dim] -- packed into one
@@ -60,7 +77,7 @@ void llama_rope_int8(int8_t *restrict x, bfloat16 *restrict cs_packed,
 
   const bfloat16 *cos = cs_packed;
   const bfloat16 *sin = cs_packed + kHD;
-  const float inv_scale = 1.0f / act_scale;
+  const float inv_scale = sw_recip(act_scale);
 
   // Scalar pair-wise rotation. Vec optimization is a follow-up; rope is
   // a small fraction of the layer wall, so scalar is acceptable for v0.

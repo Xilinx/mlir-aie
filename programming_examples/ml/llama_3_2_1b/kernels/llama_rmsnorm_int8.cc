@@ -48,6 +48,22 @@ static inline int8_t round_to_i8(float v) {
   return (int8_t)r;
 }
 
+// Pure IEEE fp32 reciprocal: Peano AIE2P lowers `1.0f / x` to a HW
+// reciprocal approximation, NOT IEEE-correct. NR over a bit-hack
+// initial guess converges to IEEE fp32 precision (4 iters).
+static inline float sw_recip(float a) {
+  int32_t bits;
+  memcpy(&bits, &a, 4);
+  bits = (int32_t)0x7EF477D5 - bits;
+  float x;
+  memcpy(&x, &bits, 4);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  return x;
+}
+
 // Pure IEEE fp32 invsqrt: Quake-III magic-constant initial guess + 2
 // Newton-Raphson refinement iterations. Bit-identical to the numpy
 // reference's sw_invsqrt -- no HW intrinsic approximation gap.
@@ -84,6 +100,9 @@ void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
   }
 
   // Fold act_scale_in into the variance: x_f^2 = act_scale_in^2 * x_i8^2.
+  // 1/kCols (kCols=64) is exactly representable in fp32 as 2^-6, so
+  // the Peano HW reciprocal happens to be IEEE-correct for this
+  // specific case -- regular division works here.
   float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
   float inv_rms = sw_invsqrt(var + kEps);
 

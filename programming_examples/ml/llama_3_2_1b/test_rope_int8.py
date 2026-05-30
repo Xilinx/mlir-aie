@@ -20,7 +20,9 @@ def round_to_i8(v):
 
 
 def numpy_rope(x_i8, cos_bf, sin_bf, n_heads, head_dim, act_scale):
-    inv_scale = 1.0 / act_scale
+    # Kernel uses sw_recip (Peano fp32 division is HW recip, NOT IEEE).
+    from test_flowkv import sw_recip
+    inv_scale = float(sw_recip(np.float32(act_scale)))
     half = head_dim // 2
     x_f = x_i8.astype(np.float32).reshape(n_heads, head_dim) * act_scale
     c = cos_bf.astype(np.float32)

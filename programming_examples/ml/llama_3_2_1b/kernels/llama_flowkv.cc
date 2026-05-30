@@ -74,6 +74,28 @@ static inline float lookup_exp(int32_t q) {
   return v;
 }
 
+// Software fp32 reciprocal: Peano lowers `1.0f / a` on AIE2P to a HW
+// reciprocal approximation (~10 bits accurate, ~0.5% relative error),
+// NOT IEEE-correct fp32 division. Use Newton-Raphson over a bit-hack
+// initial guess to converge to IEEE fp32 precision (matches numpy's
+// 1.0 / a exactly when numpy uses the same NR steps).
+//
+// x_{n+1} = x * (2 - a * x)  -- quadratic convergence on 1/a.
+// After 4 NR iterations from a bit-hack guess (~6 bit initial), the
+// result is bit-identical to IEEE fp32(1/a) for our input range.
+static inline float sw_recip(float a) {
+  int32_t bits;
+  memcpy(&bits, &a, 4);
+  bits = (int32_t)0x7EF477D5 - bits;   // magic constant for 1/x estimate
+  float x;
+  memcpy(&x, &bits, 4);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  return x;
+}
+
 extern "C" {
 
 // CT0: compute fp32 softmax probabilities for one query against the K cache.
@@ -105,20 +127,26 @@ void llama_flowkv_qk(int8_t *restrict q_i8, int8_t *restrict k_i8,
     if (s > max_s) max_s = s;
   }
 
-  // 2) Shift + LUT-exp + sum.
-  float exp_v[kT];
+  // 2) Shift + LUT-exp + sum. Store quantized q in qvals so we don't
+  // need to re-quantize in the probs loop. Don't store exp_v -- on
+  // AIE2P, indexing into a stack float[T] array between loops can get
+  // optimized into vec ops that re-load corrupted/coalesced values.
+  // We re-lookup exp_v from qvals in the probs loop instead.
+  int32_t qvals[kT];
   float sum = 0.0f;
   for (int i = 0; i < kT; i++) {
     int32_t q = quant_shifted(scores[i] - max_s);
-    float e = lookup_exp(q);
-    exp_v[i] = e;
-    sum += e;
+    qvals[i] = q;
+    sum += lookup_exp(q);
   }
 
-  // 3) Normalize and emit fp32 probs (no bf16 truncation).
-  const float inv_sum = 1.0f / sum;
+  // 3) Normalize and emit fp32 probs.
+  // sw_recip instead of `1.0f / sum` -- Peano AIE2P fp32 division is
+  // a HW reciprocal approximation, NOT IEEE-correct. Use software NR
+  // to converge to IEEE fp32 precision (matches numpy bit-for-bit).
+  const float inv_sum = sw_recip(sum);
   for (int i = 0; i < kT; i++) {
-    probs_out[i] = exp_v[i] * inv_sum;
+    probs_out[i] = lookup_exp(qvals[i]) * inv_sum;
   }
 
   event1();
@@ -137,10 +165,164 @@ void llama_flowkv_sv(int8_t *restrict v_i8, float *restrict probs_in,
     for (int i = 0; i < kT; i++) {
       acc += probs_in[i] * (float)v_i8[i * kHD + j];
     }
+    // (inv_out_scale is HW-supplied as a precomputed reciprocal from
+    // host, so this is a regular fp32 multiply -- no division here.)
     out_i8[j] = round_to_i8(acc * v_scale * inv_out_scale);
   }
 
   event1();
+}
+
+// Debug-only wrapper: writes probs as a bytes view (reinterprets the
+// fp32 output buffer as int8) so the IRON probe design can carry it
+// through a bytes-typed ObjectFifo.
+void llama_flowkv_qk_bytes(int8_t *q_i8, int8_t *k_i8, int8_t *probs_bytes,
+                           float q_scale, float k_scale) {
+  llama_flowkv_qk(q_i8, k_i8, reinterpret_cast<float *>(probs_bytes),
+                  q_scale, k_scale);
+}
+
+// Debug-only: write the int32 dot products into the output buffer.
+void llama_flowkv_qk_dots(int8_t *q_i8, int8_t *k_i8, int8_t *dots_bytes,
+                          float q_scale, float k_scale) {
+  (void)q_scale; (void)k_scale;
+  int32_t *dots = reinterpret_cast<int32_t *>(dots_bytes);
+  for (int i = 0; i < kT; i++) {
+    int32_t d = 0;
+    for (int dd = 0; dd < kHD; dd++) {
+      d += (int32_t)q_i8[dd] * (int32_t)k_i8[i * kHD + dd];
+    }
+    dots[i] = d;
+  }
+}
+
+// Debug-only: write the quantized shifted q values (int32 padded) into
+// the output buffer.
+void llama_flowkv_qk_qvals(int8_t *q_i8, int8_t *k_i8, int8_t *qvals_bytes,
+                           float q_scale, float k_scale) {
+  static_assert(kHD == 64, "qvals debug hardcoded for head_dim=64");
+  constexpr float kInvSqrtHD = 0.125f;
+  const float qk_scale = q_scale * k_scale * kInvSqrtHD;
+  float scores[kT];
+  float max_s = -1e30f;
+  for (int i = 0; i < kT; i++) {
+    int32_t d = 0;
+    for (int dd = 0; dd < kHD; dd++) {
+      d += (int32_t)q_i8[dd] * (int32_t)k_i8[i * kHD + dd];
+    }
+    float s = (float)d * qk_scale;
+    scores[i] = s;
+    if (s > max_s) max_s = s;
+  }
+  int32_t *qvals = reinterpret_cast<int32_t *>(qvals_bytes);
+  for (int i = 0; i < kT; i++) {
+    qvals[i] = quant_shifted(scores[i] - max_s);
+  }
+}
+
+// Debug-only: write probs computed in 3 different ways into the
+// output buffer. probs_a[16] = (exp_v[i] * inv_sum) in a fresh loop.
+// probs_b[16] = exp_v stored value -- can compare to expv-only probe.
+// Helps identify whether the issue is the multiply or store path.
+void llama_flowkv_qk_probedump(int8_t *q_i8, int8_t *k_i8, int8_t *out_bytes,
+                                float q_scale, float k_scale) {
+  static_assert(kHD == 64, "probedump debug hardcoded for head_dim=64");
+  constexpr float kInvSqrtHD = 0.125f;
+  const float qk_scale = q_scale * k_scale * kInvSqrtHD;
+  float scores[kT];
+  float max_s = -1e30f;
+  for (int i = 0; i < kT; i++) {
+    int32_t d = 0;
+    for (int dd = 0; dd < kHD; dd++) {
+      d += (int32_t)q_i8[dd] * (int32_t)k_i8[i * kHD + dd];
+    }
+    float s = (float)d * qk_scale;
+    scores[i] = s;
+    if (s > max_s) max_s = s;
+  }
+  float exp_v[kT];
+  float sum = 0.0f;
+  for (int i = 0; i < kT; i++) {
+    int32_t q = quant_shifted(scores[i] - max_s);
+    float e = lookup_exp(q);
+    exp_v[i] = e;
+    sum += e;
+  }
+  const float inv_sum = sw_recip(sum);
+
+  float *out = reinterpret_cast<float *>(out_bytes);
+  for (int i = 0; i < kT; i++) {
+    out[i] = exp_v[i] * inv_sum;
+  }
+}
+
+// Debug-only: write sum_e and inv_sum as the first 2 fp32 values.
+void llama_flowkv_qk_inv(int8_t *q_i8, int8_t *k_i8, int8_t *out_bytes,
+                         float q_scale, float k_scale) {
+  static_assert(kHD == 64, "inv debug hardcoded for head_dim=64");
+  constexpr float kInvSqrtHD = 0.125f;
+  const float qk_scale = q_scale * k_scale * kInvSqrtHD;
+  float scores[kT];
+  float max_s = -1e30f;
+  for (int i = 0; i < kT; i++) {
+    int32_t d = 0;
+    for (int dd = 0; dd < kHD; dd++) {
+      d += (int32_t)q_i8[dd] * (int32_t)k_i8[i * kHD + dd];
+    }
+    float s = (float)d * qk_scale;
+    scores[i] = s;
+    if (s > max_s) max_s = s;
+  }
+  float sum = 0.0f;
+  for (int i = 0; i < kT; i++) {
+    int32_t q = quant_shifted(scores[i] - max_s);
+    sum += lookup_exp(q);
+  }
+  float *out = reinterpret_cast<float *>(out_bytes);
+  out[0] = sum;
+  out[1] = sw_recip(sum);
+  // Also pure HW 1.0f / sum for comparison:
+  out[2] = 1.0f / sum;
+}
+
+// Debug-only: write the fp32 exp_v values into the output buffer.
+void llama_flowkv_qk_expv(int8_t *q_i8, int8_t *k_i8, int8_t *expv_bytes,
+                          float q_scale, float k_scale) {
+  static_assert(kHD == 64, "expv debug hardcoded for head_dim=64");
+  constexpr float kInvSqrtHD = 0.125f;
+  const float qk_scale = q_scale * k_scale * kInvSqrtHD;
+  float scores[kT];
+  float max_s = -1e30f;
+  for (int i = 0; i < kT; i++) {
+    int32_t d = 0;
+    for (int dd = 0; dd < kHD; dd++) {
+      d += (int32_t)q_i8[dd] * (int32_t)k_i8[i * kHD + dd];
+    }
+    float s = (float)d * qk_scale;
+    scores[i] = s;
+    if (s > max_s) max_s = s;
+  }
+  float *expv = reinterpret_cast<float *>(expv_bytes);
+  for (int i = 0; i < kT; i++) {
+    int32_t q = quant_shifted(scores[i] - max_s);
+    expv[i] = lookup_exp(q);
+  }
+}
+
+// Debug-only: write the fp32 scores into the output buffer.
+void llama_flowkv_qk_scores(int8_t *q_i8, int8_t *k_i8, int8_t *scores_bytes,
+                            float q_scale, float k_scale) {
+  static_assert(kHD == 64, "scores debug hardcoded for head_dim=64");
+  constexpr float kInvSqrtHD = 0.125f;
+  const float qk_scale = q_scale * k_scale * kInvSqrtHD;
+  float *scores = reinterpret_cast<float *>(scores_bytes);
+  for (int i = 0; i < kT; i++) {
+    int32_t d = 0;
+    for (int dd = 0; dd < kHD; dd++) {
+      d += (int32_t)q_i8[dd] * (int32_t)k_i8[i * kHD + dd];
+    }
+    scores[i] = (float)d * qk_scale;
+  }
 }
 
 } // extern "C"

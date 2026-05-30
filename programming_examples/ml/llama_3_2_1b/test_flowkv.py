@@ -34,6 +34,24 @@ def round_to_i8(v):
     return np.clip(r, -128, 127).astype(np.int8)
 
 
+def sw_recip(a: float) -> np.float32:
+    """Matches kernel's sw_recip: bit-hack initial guess + 4 NR iters.
+
+    Peano lowers `1.0f / x` on AIE2P to a HW reciprocal approximation
+    (NOT IEEE-correct). The kernel uses this SW reciprocal to converge
+    to IEEE fp32 precision; the numpy reference does the same so both
+    compute byte-identical inv_sum.
+    """
+    a32 = np.float32(a)
+    bits = a32.view(np.int32)
+    new_bits = np.int32(np.uint32(0x7EF477D5)) - bits
+    x = new_bits.view(np.float32)
+    two = np.float32(2.0)
+    for _ in range(4):
+        x = (x * (two - (a32 * x).astype(np.float32))).astype(np.float32)
+    return x
+
+
 def quant_shifted(shifted: np.ndarray) -> np.ndarray:
     """Replicates the kernel's quant_shifted exactly (strict fp32)."""
     # Kernel: kInvExpQuantScale = 1.0f / 0.05f computed in fp32. Numpy
@@ -75,8 +93,8 @@ def numpy_attention(q_i8, k_i8, v_i8, head_dim, t,
     sum_e = np.float32(0.0)
     for i in range(t):
         sum_e = (sum_e + exp_v[i]).astype(np.float32)
-    # Strict fp32 division (kernel does 1.0f / sum in fp32).
-    inv_sum = np.float32(1.0) / sum_e
+    # Kernel uses sw_recip (NR over bit-hack initial) -- match here.
+    inv_sum = sw_recip(sum_e)
     probs = (exp_v * inv_sum).astype(np.float32)
 
     # sv path. The kernel accumulates strictly left-to-right per

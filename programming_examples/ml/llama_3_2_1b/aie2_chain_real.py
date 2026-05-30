@@ -34,7 +34,7 @@ HEAD_D  = 64
 N_HEADS = 1
 N_KV    = 1
 T       = 16             # KV cache length
-N_LAYERS = 2  # debug
+N_LAYERS = 16
 
 # Per-layer byte sizes (must match test_chain_real.py).
 WQ_BYTES = QD*D + QD*4
@@ -329,27 +329,28 @@ def build():
                 strides=[0, 0, 0, 1],
             )
 
-        # DEBUG: per-fifo serialization. For each weight fifo, issue all
-        # N_LAYERS fills back-to-back in its own task group. This forces
-        # strict order WITHIN each fifo with no cross-fifo interleaving.
+        # Per-layer task groups with pingpong depth 2 so shim BDs are
+        # reused across layers (BD allocator exhausts at N>=4 without
+        # this; matches the whole_array_iron pattern).
         tgs = []
-        def per_fifo_group(name, fifo_prod, src, layout_base, layout_off, nbytes, total):
+        for L in range(N_LAYERS):
+            base_w  = L * PER_LAYER_W
+            base_kv = L * PER_LAYER_KV
             tg = rt.task_group()
             tgs.append(tg)
-            for L in range(N_LAYERS):
-                rt.fill(fifo_prod, src,
-                        tap=tap(total, L * layout_base + layout_off, nbytes),
-                        task_group=tg)
-        per_fifo_group("gam_in",   of_gam_in.prod(),   wblob, PER_LAYER_W, OFF_GAMMA_IN,   GAMMA_BYTES, TOTAL_W)
-        per_fifo_group("gam_post", of_gam_post.prod(), wblob, PER_LAYER_W, OFF_GAMMA_POST, GAMMA_BYTES, TOTAL_W)
-        per_fifo_group("wq",       of_wq.prod(),       wblob, PER_LAYER_W, OFF_WQ, WQ_BYTES, TOTAL_W)
-        per_fifo_group("wo",       of_wo.prod(),       wblob, PER_LAYER_W, OFF_WO, WO_BYTES, TOTAL_W)
-        per_fifo_group("wg",       of_wg.prod(),       wblob, PER_LAYER_W, OFF_WG, WG_BYTES, TOTAL_W)
-        per_fifo_group("wu",       of_wu.prod(),       wblob, PER_LAYER_W, OFF_WU, WU_BYTES, TOTAL_W)
-        per_fifo_group("wd",       of_wd.prod(),       wblob, PER_LAYER_W, OFF_WD, WD_BYTES, TOTAL_W)
-        per_fifo_group("cs",       of_cs.prod(),       wblob, PER_LAYER_W, OFF_CS, CS_BYTES, TOTAL_W)
-        per_fifo_group("kcache",   of_kcache.prod(),   kvblob, PER_LAYER_KV, OFF_K, KCACHE_BYTES, TOTAL_KV)
-        per_fifo_group("vcache",   of_vcache.prod(),   kvblob, PER_LAYER_KV, OFF_V, VCACHE_BYTES, TOTAL_KV)
+            rt.fill(of_gam_in.prod(),   wblob, tap=tap(TOTAL_W,  base_w + OFF_GAMMA_IN,   GAMMA_BYTES), task_group=tg)
+            rt.fill(of_gam_post.prod(), wblob, tap=tap(TOTAL_W,  base_w + OFF_GAMMA_POST, GAMMA_BYTES), task_group=tg)
+            rt.fill(of_wq.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WQ, WQ_BYTES), task_group=tg)
+            rt.fill(of_wo.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WO, WO_BYTES), task_group=tg)
+            rt.fill(of_wg.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WG, WG_BYTES), task_group=tg)
+            rt.fill(of_wu.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WU, WU_BYTES), task_group=tg)
+            rt.fill(of_wd.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_WD, WD_BYTES), task_group=tg)
+            rt.fill(of_cs.prod(),       wblob, tap=tap(TOTAL_W,  base_w + OFF_CS, CS_BYTES), task_group=tg)
+            rt.fill(of_kcache.prod(),   kvblob, tap=tap(TOTAL_KV, base_kv + OFF_K, KCACHE_BYTES), task_group=tg)
+            rt.fill(of_vcache.prod(),   kvblob, tap=tap(TOTAL_KV, base_kv + OFF_V, VCACHE_BYTES), task_group=tg)
+            if L >= 2:
+                rt.finish_task_group(tgs[-3])
+                del tgs[-3]
 
         out_tg = rt.task_group()
         rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
