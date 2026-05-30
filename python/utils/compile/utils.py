@@ -229,12 +229,7 @@ def compile_mlir_module(
     # If no work_dir is provided, fall back to aiecc.run() which writes to a
     # temporary file internally.
     if work_dir:
-        aiecc_bin = shutil.which("aiecc")
-        if not aiecc_bin:
-            raise RuntimeError(
-                "Could not find 'aiecc' binary. Ensure mlir-aie is installed "
-                "and its bin directory is in PATH."
-            )
+        aiecc_bin = config.aiecc_path()
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
             f.write(str(mlir_module))
