@@ -44,7 +44,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     kernels,
 )
-from aie.iron.device import from_name
+from aie.iron.device import device_from_args
 
 from aie.extras.dialects import arith
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -211,7 +211,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: from_name(o.dev, n_cols=1 if o.dev == "npu" else None),
+        device=device_from_args,
     )
 
 
