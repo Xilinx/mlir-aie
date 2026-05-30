@@ -68,6 +68,32 @@ static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx,
          oc_i;
 }
 
+#if SHAPES_ARE_CONST
+// 4-pixel mmul A load with kx slide from mmul-packed line buffer. Mirror
+// of m0_cv1's helper.
+template <int IN_C_LOCAL, int IN_W_LOCAL>
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+load_a_mmul_kx_4p(int8_t *line_ptr, int ic_t, int x_tile, int kx) {
+  constexpr int kXTiles4 = IN_W_LOCAL / 4;
+  constexpr int kIcStride = kXTiles4 * 32;
+  int8_t *base = line_ptr + ic_t * kIcStride;
+  if (kx == 1) {
+    return aie::load_v<32>(base + x_tile * 32);
+  }
+  int blk_lo = (kx == 0) ? x_tile - 1 : x_tile;
+  int blk_hi = blk_lo + 1;
+  aie::vector<int8, 32> lo = (blk_lo >= 0 && blk_lo < kXTiles4)
+                                 ? aie::load_v<32>(base + blk_lo * 32)
+                                 : aie::zeros<int8, 32>();
+  aie::vector<int8, 32> hi = (blk_hi >= 0 && blk_hi < kXTiles4)
+                                 ? aie::load_v<32>(base + blk_hi * 32)
+                                 : aie::zeros<int8, 32>();
+  aie::vector<int8, 64> combined = aie::concat(lo, hi);
+  const unsigned shift = (kx == 0) ? 24u : 8u;
+  return aie::shuffle_down(combined, shift).template extract<32>(0);
+}
+#endif
+
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
@@ -133,14 +159,17 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
       bias_acc.from_vector(b32);
     }
 
+    constexpr int kXTiles4_in = IN_W / 4;
+    constexpr int kXTiles4_out = IN_W / 4; // output_width == IN_W (stride-1)
+    constexpr int kInOcStride = kXTiles4_in * 32;
+    constexpr int kOutOcStride = kXTiles4_out * 32;
+
     AIE_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
 
-      const int x_out_base = x_tile * 4;
-      const int x_in_base = x_out_base - 1;
-
+      // mmul-packed input read (producer: m0_cv1's packed output).
       AIE_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         AIE_LOOP_RANGE(1, 3)
@@ -149,24 +178,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
 
           AIE_LOOP_RANGE(3, 3)
           for (int kx = 0; kx < KW; ++kx) {
-            alignas(32) int8_t a_buf[32];
-            bool any_valid = false;
-            for (int p = 0; p < 4; ++p) {
-              int col = x_in_base + p + kx;
-              if (col < 0 || col >= IN_W) {
-                for (int b = 0; b < 8; ++b)
-                  a_buf[p * 8 + b] = 0;
-              } else {
-                int8_t *src = line_ptr + col * IN_C + ic_t * 8;
-                for (int b = 0; b < 8; ++b)
-                  a_buf[p * 8 + b] = src[b];
-                any_valid = true;
-              }
-            }
-            if (!any_valid)
-              continue;
-            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-
+            aie::vector<int8, 32> in_a =
+                load_a_mmul_kx_4p<IN_C, IN_W>(line_ptr, ic_t, x_tile, kx);
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc.mac(in_a, in_b);
@@ -174,37 +187,25 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
         }
       }
 
-      // Bias-seeded mmul: to_vector<int8>(rs) directly emits bias-added,
-      // SRS'd, saturated i8. conv_even matches scalar banker_srs.
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
 
-      // Scalar gather silu+skip into int16 scratch buffers (skip-add
-      // sum range is [-256, 254], fits int16 cleanly so we can use
-      // non-saturating int16 vec add then a saturating srs back to int8).
-      alignas(32) int16_t silu_arr[32];
-      alignas(32) int16_t skip_arr[32];
-      for (int p = 0; p < 4; ++p) {
-        int8_t *spsrc = &skip_row[(x_out_base + p) * OUT_C + oc_t * 8];
-        for (int j = 0; j < 8; ++j) {
-          silu_arr[p * 8 + j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
-          skip_arr[p * 8 + j] = (int16_t)spsrc[j];
-        }
-      }
-      aie::vector<int16, 32> silu_v16 = aie::load_v<32>(silu_arr);
-      aie::vector<int16, 32> skip_v16 = aie::load_v<32>(skip_arr);
+      // Scalar LUT into silu_buf; skip_v is now one vec_load<32> from the
+      // packed skip producer (cv1_split's bot, m6 c3k2_small never uses
+      // this kernel). Use int16 vec add (range [-256, 254] fits cleanly).
+      alignas(32) int8_t silu_buf[32];
+      for (int i = 0; i < 32; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      aie::vector<int8, 32> silu_v8 = aie::load_v<32>(silu_buf);
+      aie::vector<int8, 32> skip_v8 = aie::load_v<32>(
+          skip_row + oc_t * kOutOcStride + x_tile * 32);
+      aie::vector<int16, 32> silu_v16 = aie::unpack(silu_v8);
+      aie::vector<int16, 32> skip_v16 = aie::unpack(skip_v8);
       aie::vector<int16, 32> sum16 = aie::add(silu_v16, skip_v16);
-      // Saturate-cast int16 -> int8 via accum.to_vector<int8>(0) (no shift).
       aie::accum<acc32, 32> sum16_acc;
       sum16_acc.from_vector(sum16);
       aie::vector<int8, 32> out_v = sum16_acc.template to_vector<int8>(0);
 
-      alignas(32) int8_t out_arr[32];
-      aie::store_v(out_arr, out_v);
-      for (int p = 0; p < 4; ++p) {
-        int8_t *dst = &output[(x_out_base + p) * OUT_C + oc_t * 8];
-        for (int j = 0; j < 8; ++j)
-          dst[j] = out_arr[p * 8 + j];
-      }
+      aie::store_v(output + oc_t * kOutOcStride + x_tile * 32, out_v);
     }
 
     // Tail scalar fallback.

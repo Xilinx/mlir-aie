@@ -145,13 +145,13 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
       }
 
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < 4; ++p) {
-        int x_out = x_base + p;
-        for (int j = 0; j < 8; ++j) {
-          output[x_out * OUT_C + oc_t * 8 + j] =
-              silu_lut[int(srs_v[p * 8 + j]) + 128];
-        }
-      }
+      // mmul-packed output: consumer (c3k2_small cv2_concat3, m6 only)
+      // reads via vec_load<32> at 4-pixel-block packed offset.
+      alignas(32) int8_t silu_buf[32];
+      for (int i = 0; i < 32; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+      aie::store_v(output + oc_t * (x_tiles * 32) + x_tile * 32, silu_v);
     }
 
     // Tail scalar fallback.

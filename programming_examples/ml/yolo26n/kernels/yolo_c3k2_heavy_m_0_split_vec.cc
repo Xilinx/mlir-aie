@@ -101,17 +101,19 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
       acc = bias_acc;
       const int x_base = x_tile * 4;
 
+      // mmul-packed input read: in_row producer (c3k2_small cv1_split,
+      // m6 only) now writes (ic_t, x_block, p*8+chan) 4-pixel block
+      // layout. Single 32-byte vec_load per (ic_t, x_tile).
+#if SHAPES_ARE_CONST
+      constexpr int kXTiles4_in = SPLIT_IN_W / 4;
+#else
+      const int kXTiles4_in = input_width >> 2;
+#endif
+      const int kInPackedIcStride = kXTiles4_in * 32;
       BR_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_base + p;
-          int8_t *src = in_row + col * kInC + ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = src[b];
-        }
-        aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-
+        aie::vector<int8, 32> in_a = aie::load_v<32>(
+            in_row + ic_t * kInPackedIcStride + x_tile * 32);
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a, in_b);

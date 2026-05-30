@@ -69,20 +69,20 @@ make_bias_acc(const int32_t *bias_8) {
 }
 
 // Vectorized epilogue: acc is bias-seeded so to_vector<int8>(rs) emits the
-// bias-added + SRS'd + saturated i8 in one vec op. Scalar LUT lookup +
-// strided store. Caller must set conv_even rounding (matches banker_srs).
+// bias-added + SRS'd + saturated i8 in one vec op. mmul-packed output: one
+// 32-byte vec_store at (local_oc_t, x_block_of_4, p*8+chan). Consumer
+// (c3k2_small m0_cv1, cv2_concat3, or m6's heavy m_0_split / cv3_concat2)
+// reads via vec_load<32> instead of 32 scalar lda.s8.
 static __attribute__((always_inline)) inline void
 write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc, int8_t *silu_lut,
-                        int8_t *dst, int local_oc_t, int c, int x_out_base,
-                        int32_t rs) {
+                        int8_t *dst, int local_oc_t, int x_tile,
+                        int kXTiles4, int32_t rs) {
   aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(rs);
-  for (int p = 0; p < 4; ++p) {
-    int x_out = x_out_base + p;
-    for (int j = 0; j < 8; ++j) {
-      dst[x_out * c + local_oc_t * 8 + j] =
-          silu_lut[int(srs_v[p * 8 + j]) + 128];
-    }
-  }
+  alignas(32) int8_t silu_buf[32];
+  for (int i = 0; i < 32; ++i)
+    silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+  aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+  aie::store_v(dst + local_oc_t * (kXTiles4 * 32) + x_tile * 32, silu_v);
 }
 
 extern "C" {
@@ -107,6 +107,7 @@ void KERNEL_NAME(yolo_c3k2_small_cv1_split_silu_bias_i8_i8)(
   const int ic_tiles = IN_C / 8;
   const int oc_tiles = OUT_C / 8;
   const int x_tiles = IN_W / 4;
+  const int kXTiles4 = x_tiles; // 4-pixel packed block index range
   // Channel midpoint: oc_tile index where out_bot begins (assumes c % 8 == 0).
   const int top_oc_tiles = c / 8;
 
@@ -157,8 +158,8 @@ void KERNEL_NAME(yolo_c3k2_small_cv1_split_silu_bias_i8_i8)(
         acc.mac(in_a, in_b);
       }
 
-      write_x_tile_result_vec(acc, silu_lut, dst, local_oc_t, c, x_out_base,
-                              right_shift);
+      write_x_tile_result_vec(acc, silu_lut, dst, local_oc_t, x_tile,
+                              kXTiles4, right_shift);
     }
 
     // Tail scalar fallback.

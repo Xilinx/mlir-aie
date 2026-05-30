@@ -126,22 +126,44 @@ make_bias_acc(const int32_t *bias_8) {
   return a;
 }
 
-// Vec epilogue: bias+SRS+saturate already collapsed into the vec
-// to_vector<int8>(rs) call at the call site. Scalar SiLU LUT gather only.
-// noinline so the 4X-fold's 4 epilogues per x_quad share one body — the
-// kernel has ~128 epilogue call sites and an always_inline variant blows
-// past the 16KB program-memory budget on m_0_inner tile (shared with
-// m0_cv2_skip kernel for m2/m4).
+// mmul-packed epilogue: SiLU LUT scalar lookup into silu_buf, then one
+// 32-byte vec_store at (oc_t, x_tile) in the 4-pixel block layout.
+// noinline preserves the program-memory savings note from the prior version
+// (the 4X-fold has 4 epilogues per x_quad which share this body).
 static __attribute__((noinline)) void
 write_x_tile_result(aie::vector<int8, 32> srs_v, int8_t *silu_lut,
-                    int8_t *output, int oc_t, int out_c, int x_out_base) {
-  for (int p = 0; p < 4; ++p) {
-    int x_out = x_out_base + p;
-    for (int j = 0; j < 8; ++j) {
-      output[x_out * out_c + oc_t * 8 + j] =
-          silu_lut[int(srs_v[p * 8 + j]) + 128];
-    }
+                    int8_t *output, int oc_t, int x_tile, int oc_stride) {
+  alignas(32) int8_t silu_buf[32];
+  for (int i = 0; i < 32; ++i)
+    silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+  aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+  aie::store_v(output + oc_t * oc_stride + x_tile * 32, silu_v);
+}
+
+// 4-pixel mmul A load with kx slide from mmul-packed line buffer (consumer-
+// side mirror of cv1_split's packed output). kx=1 single vlda<32>; kx=0/2
+// load 2 adjacent 4-pixel blocks (concat -> vec<int8, 64>) and shuffle_down
+// the desired 32 bytes. Out-of-bounds blocks zero-filled.
+template <int IN_C_LOCAL, int IN_W_LOCAL>
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+load_a_mmul_kx_4p(int8_t *line_ptr, int ic_t, int x_tile, int kx) {
+  constexpr int kXTiles4 = IN_W_LOCAL / 4;
+  constexpr int kIcStride = kXTiles4 * 32;
+  int8_t *base = line_ptr + ic_t * kIcStride;
+  if (kx == 1) {
+    return aie::load_v<32>(base + x_tile * 32);
   }
+  int blk_lo = (kx == 0) ? x_tile - 1 : x_tile;
+  int blk_hi = blk_lo + 1;
+  aie::vector<int8, 32> lo = (blk_lo >= 0 && blk_lo < kXTiles4)
+                                 ? aie::load_v<32>(base + blk_lo * 32)
+                                 : aie::zeros<int8, 32>();
+  aie::vector<int8, 32> hi = (blk_hi >= 0 && blk_hi < kXTiles4)
+                                 ? aie::load_v<32>(base + blk_hi * 32)
+                                 : aie::zeros<int8, 32>();
+  aie::vector<int8, 64> combined = aie::concat(lo, hi);
+  const unsigned shift = (kx == 0) ? 24u : 8u;
+  return aie::shuffle_down(combined, shift).template extract<32>(0);
 }
 
 extern "C" {
@@ -208,11 +230,12 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
     // Bias seed for this oc_t; reused across all x_tile paths below.
     auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
 
+    constexpr int kOcStride = kXTiles * 32;
+
     // --- Left edge: x_tile = 0 (col=-1 invalid for kx=0,p=0) -----------
     {
       MMUL4x8x8 acc;
       acc = bias_acc;
-      constexpr int x_in_base_edge = -1; // x_tile=0 -> 0*4 - 1
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
         AIE_LOOP_RANGE(1, 3)
@@ -220,9 +243,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
           int8_t *line_ptr = line[ky];
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
-            alignas(32) int8_t a_buf[32];
-            gather_edge<IN_C, IN_W>(line_ptr, x_in_base_edge + kx, ic_t, a_buf);
-            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+            aie::vector<int8, 32> in_a =
+                load_a_mmul_kx_4p<IN_C, IN_W>(line_ptr, ic_t, 0, kx);
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc.mac(in_a, in_b);
@@ -230,7 +252,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
         }
       }
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      write_x_tile_result(srs_v, silu_lut, output, oc_t, OUT_C, 0);
+      write_x_tile_result(srs_v, silu_lut, output, oc_t, 0, kOcStride);
     }
 
     // --- Interior 4X fold: 4 x_tiles per outer iter, branchless gather --
@@ -259,15 +281,14 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
           int8_t *line_ptr = line[ky];
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
-            alignas(32) int8_t a_buf0[32], a_buf1[32], a_buf2[32], a_buf3[32];
-            gather_interior<IN_C>(line_ptr, x_in_base0 + kx, ic_t, a_buf0);
-            gather_interior<IN_C>(line_ptr, x_in_base1 + kx, ic_t, a_buf1);
-            gather_interior<IN_C>(line_ptr, x_in_base2 + kx, ic_t, a_buf2);
-            gather_interior<IN_C>(line_ptr, x_in_base3 + kx, ic_t, a_buf3);
-            aie::vector<int8, 32> in_a0 = aie::load_v<32>(a_buf0);
-            aie::vector<int8, 32> in_a1 = aie::load_v<32>(a_buf1);
-            aie::vector<int8, 32> in_a2 = aie::load_v<32>(a_buf2);
-            aie::vector<int8, 32> in_a3 = aie::load_v<32>(a_buf3);
+            aie::vector<int8, 32> in_a0 = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, x_tile_base + 0, kx);
+            aie::vector<int8, 32> in_a1 = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, x_tile_base + 1, kx);
+            aie::vector<int8, 32> in_a2 = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, x_tile_base + 2, kx);
+            aie::vector<int8, 32> in_a3 = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, x_tile_base + 3, kx);
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc0.mac(in_a0, in_b);
@@ -281,27 +302,23 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
       aie::vector<int8, 32> v1 = acc1.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> v2 = acc2.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> v3 = acc3.template to_vector<int8>(right_shift);
-      write_x_tile_result(v0, silu_lut, output, oc_t, OUT_C, x_out_base + 0);
-      write_x_tile_result(v1, silu_lut, output, oc_t, OUT_C, x_out_base + 4);
-      write_x_tile_result(v2, silu_lut, output, oc_t, OUT_C, x_out_base + 8);
-      write_x_tile_result(v3, silu_lut, output, oc_t, OUT_C, x_out_base + 12);
+      write_x_tile_result(v0, silu_lut, output, oc_t, x_tile_base + 0, kOcStride);
+      write_x_tile_result(v1, silu_lut, output, oc_t, x_tile_base + 1, kOcStride);
+      write_x_tile_result(v2, silu_lut, output, oc_t, x_tile_base + 2, kOcStride);
+      write_x_tile_result(v3, silu_lut, output, oc_t, x_tile_base + 3, kOcStride);
     }
 
     // --- Interior tail (leftover x_tiles when kInteriorN % 4 != 0) ------
     // For m2: 2 tail tiles (29, 30); for m4: 2 tail tiles (13, 14).
-    // All interior so use branchless gather.
     for (int x_tile = kXTailStart; x_tile < kInteriorEnd; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
-      const int x_out_base = x_tile * 4;
-      const int x_in_base = x_out_base - 1;
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
           for (int kx = 0; kx < 3; ++kx) {
-            alignas(32) int8_t a_buf[32];
-            gather_interior<IN_C>(line_ptr, x_in_base + kx, ic_t, a_buf);
-            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+            aie::vector<int8, 32> in_a =
+                load_a_mmul_kx_4p<IN_C, IN_W>(line_ptr, ic_t, x_tile, kx);
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc.mac(in_a, in_b);
@@ -309,14 +326,13 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
         }
       }
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      write_x_tile_result(srs_v, silu_lut, output, oc_t, OUT_C, x_out_base);
+      write_x_tile_result(srs_v, silu_lut, output, oc_t, x_tile, kOcStride);
     }
 
     // --- Right edge: x_tile = kXTiles-1 (col=IN_W invalid for kx=2,p=3) -
     {
       MMUL4x8x8 acc;
       acc = bias_acc;
-      constexpr int x_in_base_edge = (kXTiles - 1) * 4 - 1;
       AIE_LOOP_RANGE(kIcTiles, kIcTiles)
       for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
         AIE_LOOP_RANGE(1, 3)
@@ -324,9 +340,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
           int8_t *line_ptr = line[ky];
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
-            alignas(32) int8_t a_buf[32];
-            gather_edge<IN_C, IN_W>(line_ptr, x_in_base_edge + kx, ic_t, a_buf);
-            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+            aie::vector<int8, 32> in_a = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, kXTiles - 1, kx);
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc.mac(in_a, in_b);
@@ -334,8 +349,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
         }
       }
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      write_x_tile_result(srs_v, silu_lut, output, oc_t, OUT_C,
-                          (kXTiles - 1) * 4);
+      write_x_tile_result(srs_v, silu_lut, output, oc_t, kXTiles - 1,
+                          kOcStride);
     }
   }
 #else
