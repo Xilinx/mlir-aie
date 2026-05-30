@@ -95,6 +95,16 @@ consumer cv2 reads via one `aie::load_v<64>` for kx=1 and 2 vlda +
 the vec input gather and the mmul call. Bit-exact preserved on all 15
 chain samples.
 
+**After Sprint 4 extended across all m8 internal buffers**
+(Stages 1a-1d, see below): full m0..m10 chain N=15 = **13.48 ms /
+74.18 fps**, **m8 standalone 4-tile = 4.91 ms / 203.8 fps** (−67%
+vs README, +205% fps). Every internal m8 producer-consumer buffer
+(front → back, m_0_split → back, pair_cv1 ↔ pair_cv2 internal,
+cv2_skip → pair_cv1 cross-pair, back cv3 ↔ cv2 internal scratch)
+now uses the same mmul-packed `(ic_t, x_block, p*8+chan)` layout.
+At N=15 chain is now at 99.9% of the m8-noop'd ceiling — m8 is
+no longer the chain gate.
+
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 All rows reflect the post-audit state; "was X" values in the rightmost
 column are the README snapshot from prior to the kernel-by-kernel audit.
@@ -110,7 +120,7 @@ column are the README snapshot from prior to the kernel-by-kernel audit.
 | m6  | c3k2_heavy                     | **12.04** | **83.1**  | ✓ (was 76.0 → SHAPES_ARE_CONST sweep on all 6 m6 kernels) |
 | m7  | conv_stride (chunked)          | **3.94**  | **253.7** | ✓ (was 206.8) |
 | m8  | c3k2_heavy (2-tile megakernel) | **16.32** | **61.3**  | ✓ (M8_TILES=2; default for per-block standalone) |
-| m8  | c3k2_heavy (4-tile megakernel) | **11.44** | **87.4**  | ✓ (M8_TILES=4; default in chain) — was 14.97 / 66.8 fps before Sprint 4 cv1↔cv2 mmul-layout pre-pack on the inter-kernel buffer. |
+| m8  | c3k2_heavy (4-tile megakernel) | **4.91**  | **203.8** | ✓ (M8_TILES=4; default in chain) — was 14.97 / 66.8 fps before Sprint 4 and 11.44 / 87.4 fps after Sprint 4 cv1↔cv2 mmul-layout pre-pack. Sprint 4 stages 1a-1d extended the pattern to every internal m8 buffer (front→back, m_0_split, cross-pair cv2_skip→cv1, back internal scratch). |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
 | m9 stage 10 (full PSA block)     | PSA full | **4.95** | **202.2** | ✓ (was 195.9 → qkv SHAPES_ARE_CONST) |
 | m10 (classifier head)            | conv2dk1+GAP+linear+softmax | **7.69** | **130.1** | ✓ |
@@ -333,6 +343,47 @@ The kernel files touched are `kernels/yolo_c3k2_heavy_inner_pair_cv1_streamed_ve
 (output write loop) and `kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_vec.cc`
 (`load_a_mmul_kx` helper + input read). The shared symbol means both
 pair0 (tile B) and pair1 (tile C) get the optimization in lockstep.
+
+### Sprint 4 follow-on: extend the mmul pre-pack across all m8 buffers
+
+Cascading the same producer-vec-store / consumer-vec-load pattern to
+every remaining internal m8 buffer, in four ship-as-you-go stages:
+
+| Stage | Touched | m8 standalone | Δ |
+|-------|---------|---:|---:|
+| (Sprint 4 above) | pair_cv1 → pair_cv2 (p0_mid, p1_mid) | 11.44 ms | (−23.6% from 14.97) |
+| **1a** | front cv1 (top, bot_to_cv2) → back cv2 | **10.48 ms** | −0.96 ms |
+| **1b** | m_0_split's split_b → back cv3 | **9.77 ms** | −0.71 ms |
+| **1c** | back internal cv3 → cv2 scratch handoff | **8.88 ms** | −0.89 ms |
+| **1d** | pair_cv2_skip output / pair_cv1 input / m_0_split's split_a / back cv3 inner1 / cv2_skip's skip-add path (coordinated) | **4.91 ms** | **−3.97 ms** |
+
+Why 1d was so much larger: it eliminated the scalar pack on **both
+3×3 inner_pair kernels** (the dominant cost in the B+C tiles, ~9.8
+ms of the original wall), and crucially also caught the **skip-add**
+path inside cv2_skip — `skip_v = aie::load_v<64>(skip_row + ...)`
+instead of 64 scalar gathers per acc. The first attempt at 1d had
+NPU != ORT because the orchestration's byte-wise `sk_r[x,0,kk] =
+sa_mid[x,0,kk]` copy preserves whatever format the producer wrote,
+so the consumer-side read must match. (Pattern saved as
+`feedback_mmul_layout_prepack` + `feedback_no_branch_in_mac_loop`
+in memory.)
+
+Mixed-source kernels (back's cv2 reads in_top + in_bot packed,
+in_m0 raster initially) use **split per-source loops** in the inner
+IC dimension, never a per-iter `if` inside the mac body — that
+branch defeats Peano's VLIW pipelining of `vlda + vldb + vmac` and
+cost ~7% of the standalone gain on Stage 1b until refactored.
+
+| Chain | After Sprint 3 | Sprint 4 | After Stage 1d (current) | Δ vs Sprint 3 |
+|------:|---:|---:|---:|---:|
+| N=1   | 36.91 ms / 27.1 fps | 31.05 / 32.21 | **25.67 / 38.95**  | **−30.5% / +43.7%** |
+| N=4   | 19.22 ms / 52.03    | (not measured)| **15.85 / 63.10**  | **−17.5% / +21.3%** |
+| N=15  | 15.17 ms / 65.94    | 13.63 / 73.35 | **13.48 / 74.18**  | **−11.1% / +12.5%** |
+
+At N=15 we're at **99.9% of the m8-noop'd ceiling** (74.26 fps) —
+further m8 work helps N=1/N=4 single-dispatch latency but not
+steady-state throughput. The next chain-level lever moves to
+m2/m4/m6 (now the co-gate at ~13.5 ms).
 
 ### Next remaining levers
 1. **Extend mmul A-layout pre-pack** (Sprint 4 pattern) to the remaining
