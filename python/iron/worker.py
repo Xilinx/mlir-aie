@@ -33,7 +33,7 @@ class Worker(ObjectFifoEndpoint):
     def __init__(
         self,
         core_fn: Callable | None,
-        fn_args: list = [],
+        fn_args: list | None = None,
         tile: Tile = AnyComputeTile,
         while_true: bool = True,
         stack_size: int = None,
@@ -45,7 +45,7 @@ class Worker(ObjectFifoEndpoint):
 
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
-            fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
+            fn_args (list | None, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to None (empty list).
             tile (Tile, optional): The compute tile for the Worker. Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
@@ -82,7 +82,7 @@ class Worker(ObjectFifoEndpoint):
             self.core_fn = do_nothing_core_fun
         else:
             self.core_fn = core_fn
-        self.fn_args = fn_args
+        self.fn_args = fn_args if fn_args is not None else []
         self._fifos = []
         self._buffers = []
         self._barriers = []
@@ -118,6 +118,34 @@ class Worker(ObjectFifoEndpoint):
             # func.call ops when invoked inside core_fn and carry link_with on their
             # func.func declaration. Other unrecognized args are assumed to be
             # metaprogramming values (Python scalars, etc.).
+
+    @staticmethod
+    def grid(
+        rows: int,
+        cols: int,
+        factory: Callable[[int, int], "Worker"],
+    ) -> list[list["Worker"]]:
+        """Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.
+
+        Replaces the common pattern::
+
+            ws = [Worker(...) for i in range(R) for j in range(C)]
+            ws[i * C + j]  # 1-D index arithmetic
+
+        with::
+
+            ws = Worker.grid(R, C, lambda r, c: Worker(...))
+            ws[i][j]       # natural 2-D access
+
+        Args:
+            rows: Outer-dimension count (e.g. column index).
+            cols: Inner-dimension count (e.g. channel index).
+            factory: Called once per cell with ``(r, c)``; must return a Worker.
+
+        Returns:
+            ``rows``-by-``cols`` nested list of Worker instances.
+        """
+        return [[factory(r, c) for c in range(cols)] for r in range(rows)]
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
