@@ -15,7 +15,7 @@ ifeq (${devicename}, npu)
 else
 	LOCAL_CHESS_FLAGS := ${CHESSCCWRAP2P_FLAGS}
 	LOCAL_PEANO_FLAGS := ${PEANOWRAP2P_FLAGS}
-endif
+endif 
 
 CHESS ?= false
 
@@ -43,7 +43,7 @@ DUMMY =
 new= True
 newFlag=_NEW
 
-MLIR_FILE = aie2_mobilenet
+MLIR_FILE = aie2_mobilenet_iron
 TEST_FILE = test_mobilenet
 OBJ = build/init_conv2dk3.o \
 	build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o \
@@ -64,13 +64,19 @@ OBJ = build/init_conv2dk3.o \
 	build/post_conv2dk1_relu_xy_pool_padded_i8_ui8.o \
 	build/post_L2_conv2dk1_relu_ui16_ui16_pad.o
 
+# Build only the kernel .o files (no MLIR/xclbin). Used by run_e2e.lit to
+# bootstrap kernels on a fresh CI checkout where the main mobilenet hasn't
+# been built yet.
+.PHONY: objs
+objs: $(OBJ)
+
 
 build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
-# build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}_trace.py
-build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
+# build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}_trace.py 
+build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py 
 	mkdir -p ${@D}
 	python3 $< -t ${trace_size} > $@
 
@@ -298,12 +304,20 @@ build/post_L2_conv2dk1_relu_ui16_ui16_pad.o: bottleneck/bn_conv2dk1_relu${DUMMY}
 
 build/final_mobilenet.xclbin: build/${MLIR_FILE}.mlir $(OBJ)
 	mkdir -p ${@D}
+# --dynamic-objFifos=false: opt out of the global dynamic-objfifo lowering so
+# the unroll path is used. Required for mobilenet's init core: with dynamic
+# lowering, Peano fully unrolls constant-trip loops to ~3360 kernel calls,
+# producing an ELF that overflows the 64KB AIE tile program memory limit.
+# Per-core dynamic_objfifo_lowering attribute is only honored when the global
+# flag is false (see AIEObjectFifoStatefulTransform.cpp).
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+		--dynamic-objFifos=false \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
 else
 	cd ${@D} && aiecc.py --verbose --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
    		--no-xchesscc --no-xbridge \
+		--dynamic-objFifos=false \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
 endif
 
@@ -319,14 +333,14 @@ else
 endif
 
 run_py: build/final_mobilenet.xclbin build/${MLIR_FILE}.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/final_mobilenet.xclbin --instr build/insts.bin --kernel MLIR_AIE
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace_py: build/trace_mobilenet.xclbin build/${MLIR_FILE}_trace.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/trace_mobilenet.xclbin --instr build/insts.bin --kernel MLIR_AIE --trace_size ${trace_size}
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift 1 > trace_mbv4_full.json
 
 shallow_clean:
-	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin
+	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
 
 clean:
 	rm -rf build __pycache__ log

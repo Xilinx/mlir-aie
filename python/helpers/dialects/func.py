@@ -18,7 +18,8 @@ from ...ir import (
     TypeAttr,
     Value,
 )
-from ...extras.dialects.arith import ScalarValue
+from ...extras.dialects.arith import ScalarValue, index_cast
+from ...ir import IndexType, IntegerType, OpResult
 
 
 def call(
@@ -53,14 +54,22 @@ def call(
             )
         args = []
         for i, a in enumerate(arguments_or_callee):
+            expected_type = callee_or_results.function_type.value.inputs[i]
             if isinstance(a, (int, float)):
                 # Get the type to convert the python value to based on the expected input to the function
                 # TODO: should check if it's safe to do this? What is int value is outside range?
-                args.append(
-                    ScalarValue(
-                        a, dtype=callee_or_results.function_type.value.inputs[i]
-                    )
+                args.append(ScalarValue(a, dtype=expected_type))
+            elif (
+                isinstance(a, (Value, Operation, OpView, OpResult))
+                and isinstance(
+                    a.type if isinstance(a, (Value, OpResult)) else a.result.type,
+                    IndexType,
                 )
+                and isinstance(expected_type, IntegerType)
+            ):
+                # Auto-cast index-typed values (e.g. loop induction variables from range_)
+                # to the integer type expected by the function signature.
+                args.append(index_cast(a, to=expected_type))
             else:
                 args.append(a)
         if not all(isinstance(a, (Value, Operation, OpView)) for a in args):

@@ -28,6 +28,16 @@ class Resolvable(Protocol):
         """
         ...
 
+    def tiles(self) -> list:
+        """Tiles this Resolvable depends on for code generation.
+
+        Override this in user-side Resolvable subclasses that reference tiles
+        which aren't already discoverable via Workers or ObjectFifos. The
+        Program will resolve these tiles before calling :meth:`resolve`, so
+        ``tile.op`` is valid by then. Default: empty list.
+        """
+        return []
+
 
 class NotResolvedError(Exception):
     """Raised when a property or operation is accessed on a :class:`Resolvable` object
