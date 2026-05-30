@@ -25,17 +25,22 @@ Usage:
     python3 aie2_mobilenet_iron.py > mobilenet_iron.mlir
 """
 
+import argparse
 import json
 import os
+import pathlib
 import sys
+
 import numpy as np
 
+import aie.iron as iron
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU2
+from aie.iron.device import device_from_args
+from aie.helpers.taplib import TensorAccessPattern
+from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 
 # Allow importing the local bottleneck/ package when running this file directly.
-import pathlib
-
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from bottleneck.init import init_conv
@@ -126,8 +131,6 @@ def mobilenet_iron():
     # Combined cascade weight tensor — test_mobilenet.py concatenates 4 chunks
     # into a single buffer in this exact order:
     #   bn13_L1(76800) | bn13_L3(76800) | bn14_L1(76800) | bn14_L3(76800)
-    from aie.helpers.taplib import TensorAccessPattern
-
     _BN_L1_SZ = 80 * 960  # 76800 bytes per L1 weight chunk
     _BN_L3_SZ = 480 * 80 * 2  # 76800 bytes per L3 weight chunk (put+get)
     _CASCADE_OFFSETS = [0, _BN_L1_SZ, 2 * _BN_L1_SZ, 3 * _BN_L1_SZ]
@@ -243,8 +246,20 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     # Generate MLIR
     # ------------------------------------------------------------------
-    return Program(NPU2(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="MobileNet V3 — IRON API design")
+    add_compile_args(p, default_dev="npu2")
+    return p
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    set_current_device(device_from_args(opts))
+    print(mobilenet_iron())
 
 
 if __name__ == "__main__":
-    print(mobilenet_iron())
+    main()

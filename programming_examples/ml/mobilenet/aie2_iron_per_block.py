@@ -23,14 +23,18 @@ Reuses the lifted module-level builders from bottleneck/{regular,pipeline,
 cascade}.py — same builder, different runtime wiring.
 """
 
-import sys
+import argparse
 import json
 import os
+import sys
 
 import numpy as np
 
+import aie.iron as iron
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU2, Tile
+from aie.iron.device import Tile, device_from_args
+from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 
 from network_spec import block as nsblock, CASCADE_NAMES
 from bottleneck._common import i8 as _i8, u8 as _u8
@@ -277,27 +281,33 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             )
             rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-if __name__ == "__main__":
-    import argparse
-
-    ap = argparse.ArgumentParser(description="Build per-block IRON MLIR.")
-    ap.add_argument(
+def _make_argparser():
+    p = argparse.ArgumentParser(description="Build per-block IRON MLIR.")
+    add_compile_args(p, default_dev="npu2")
+    p.add_argument(
         "block", help="block name (bn0..bn3, bn4_5, bn6, bn7, bn8_9, bn10..bn14)"
     )
-    ap.add_argument(
+    p.add_argument(
         "--data-dir",
         help="weight files directory (default: ./data). Use this to point at "
         "bottleneck_A|B|C/data/ for per-bn fixture testing.",
     )
-    ap.add_argument(
+    p.add_argument(
         "--scales-json",
         help="scale_factors JSON file path (default: data/scale_factors_final.json). "
         "Use bottleneck_*/data/scale_factors.json for per-bn fixture testing.",
     )
-    args = ap.parse_args()
-    print(
-        per_block_iron(args.block, data_dir=args.data_dir, scales_json=args.scales_json)
-    )
+    return p
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    set_current_device(device_from_args(opts))
+    print(per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json))
+
+
+if __name__ == "__main__":
+    main()

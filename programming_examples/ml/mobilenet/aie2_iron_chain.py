@@ -25,15 +25,18 @@ Usage:
         --scales-json bottleneck_C/data/scale_factors.json       > chain.mlir
 """
 
+import argparse
+import json
 import os
 import sys
-import json
-import argparse
 
 import numpy as np
 
+import aie.iron as iron
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU2, Tile
+from aie.iron.device import Tile, device_from_args
+from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.helpers.taplib import TensorAccessPattern
 
 from network_spec import block as nsblock
@@ -221,13 +224,23 @@ def _chain_iron(mode, data_dir, scales_json):
             )
             rt.finish_task_group(tg)
 
-    return Program(NPU2(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+
+def _make_argparser():
+    p = argparse.ArgumentParser(description="Build a chained IRON mobilenet subset.")
+    add_compile_args(p, default_dev="npu2")
+    p.add_argument("mode", choices=["regular", "pipeline", "cascade"])
+    p.add_argument("--data-dir", required=True, help="weights directory")
+    p.add_argument("--scales-json", required=True, help="scale_factors JSON path")
+    return p
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    set_current_device(device_from_args(opts))
+    print(_chain_iron(opts.mode, opts.data_dir, opts.scales_json))
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Build a chained IRON mobilenet subset.")
-    ap.add_argument("mode", choices=["regular", "pipeline", "cascade"])
-    ap.add_argument("--data-dir", required=True, help="weights directory")
-    ap.add_argument("--scales-json", required=True, help="scale_factors JSON path")
-    args = ap.parse_args()
-    print(_chain_iron(args.mode, args.data_dir, args.scales_json))
+    main()
