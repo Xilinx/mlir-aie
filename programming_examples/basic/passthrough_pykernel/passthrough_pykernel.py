@@ -51,7 +51,7 @@ def passthrough_fn(input: _LINE_TY, output: _LINE_TY, line_width: np.int32):
 
 
 @iron.jit
-def passthrough_pykernel(a_in: In, b_out: Out, _unused: In):
+def passthrough_pykernel(a_in: In, b_out: Out):
     of_in = ObjectFifo(_LINE_TY, name="in")
     of_out = ObjectFifo(_LINE_TY, name="out")
 
@@ -65,7 +65,7 @@ def passthrough_pykernel(a_in: In, b_out: Out, _unused: In):
     my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
 
     rt = Runtime()
-    with rt.sequence(_VECTOR_TY, _VECTOR_TY, _VECTOR_TY) as (a, b, _c):
+    with rt.sequence(_VECTOR_TY, _VECTOR_TY) as (a, b):
         rt.start(my_worker)
         rt.fill(of_in.prod(), a)
         rt.drain(of_out.cons(), b, wait=True)
@@ -99,11 +99,10 @@ def _run_and_verify(opts):
     in_np = np.arange(1, VECTOR_SIZE + 1, dtype=np.uint8)
     zeros_np = np.zeros((VECTOR_SIZE,), dtype=np.uint8)
 
-    in_t = iron.tensor(in_np, dtype=np.uint8, device="npu")
-    out_t = iron.tensor(zeros_np, dtype=np.uint8, device="npu")
-    third_t = iron.tensor(zeros_np, dtype=np.uint8, device="npu")
+    in_t = iron.tensor(in_np, device="npu")
+    out_t = iron.tensor(zeros_np, device="npu")
 
-    passthrough_pykernel(in_t, out_t, third_t)
+    passthrough_pykernel(in_t, out_t)
 
     expected = in_np
     actual = out_t.numpy()

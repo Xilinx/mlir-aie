@@ -55,10 +55,10 @@ def my_memcpy(
 
     passthrough_fn = kernels.passthrough(tile_size=line_size, dtype=xfr_dtype)
 
-    def core_fn(of_in, of_out, passThroughLine):
-        elemOut = of_out.acquire(1)
-        elemIn = of_in.acquire(1)
-        passThroughLine(elemIn, elemOut, line_size)
+    def core_fn(of_in, of_out, passthrough_line):
+        elem_out = of_out.acquire(1)
+        elem_in = of_in.acquire(1)
+        passthrough_line(elem_in, elem_out, line_size)
         of_in.release(1)
         of_out.release(1)
 
