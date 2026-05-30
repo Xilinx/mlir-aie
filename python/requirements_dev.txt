@@ -4,7 +4,7 @@ setuptools>=82.0.1
 wheel
 ninja!=1.13.0
 cibuildwheel
-pre-commit
+pre-commit>=4.6.0,<5.0
 # black[jupyter] so the format check covers .ipynb code cells too
 # (plain `black` skips notebooks silently, leaving stale formatting in
 # whats_new_in_unify_compilation_workflow.ipynb etc.).
