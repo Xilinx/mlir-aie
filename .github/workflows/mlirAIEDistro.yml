@@ -311,7 +311,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         python -m pip install --upgrade pip
-        pip install --require-hashes -r ci-tools.lock
+        python -m pip install --require-hashes -r ci-tools.lock
 
         $opensslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
         New-Item -ItemType Directory -Force -Path wheelhouse\repaired_wheel | Out-Null
@@ -336,8 +336,8 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
 
         pip install --upgrade pip
-        pip install --require-hashes -r requirements.lock
-        pip install --require-hashes -r python/requirements_dev.lock
+        python -m pip install --require-hashes -r requirements.lock
+        python -m pip install --require-hashes -r python/requirements_dev.lock
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
@@ -354,7 +354,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        python -m pip install --require-hashes -r ci-tools.lock
+        python -m python -m pip install --require-hashes -r ci-tools.lock
         python -m twine check --strict wheelhouse/*.whl
 
     - name: Generate build provenance attestation
@@ -384,7 +384,7 @@ jobs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        pip install --require-hashes -r ci-tools.lock
+        python -m pip install --require-hashes -r ci-tools.lock
         WHL=$(ls wheelhouse/mlir_aie*whl)
         echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
@@ -495,7 +495,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
             --requirements python/requirements.txt \
             --install-non-eudsl
-          pip install --require-hashes -r python/requirements_dev.lock
+          python -m pip install --require-hashes -r python/requirements_dev.lock
           unzip -o -q dist/mlir_aie*py3-none*.whl
 
           export PYTHONPATH=mlir_aie/python
@@ -586,7 +586,7 @@ jobs:
       - name: PyPI publish rehearsal
         shell: bash
         run: |
-          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          python -m python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
           bash utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh dist dist_stripped \
             'mlirAIEDistro / ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}'
 

@@ -93,7 +93,7 @@ jobs:
               --install-non-eudsl
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
-          pip install --require-hashes -r python/requirements_dev.lock
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
           # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code
           pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly

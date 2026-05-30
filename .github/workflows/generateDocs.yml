@@ -40,7 +40,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install --require-hashes -r python/requirements_dev.lock
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Install Ninja
         # https://github.com/llvm/actions/tree/main/install-ninja

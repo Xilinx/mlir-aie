@@ -292,7 +292,7 @@ jobs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        pip install --require-hashes -r utils/mlir_wheels/ci-tools.lock
+        python -m pip install --require-hashes -r utils/mlir_wheels/ci-tools.lock
         WHL=$(ls wheelhouse/mlir*whl)
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
@@ -334,7 +334,7 @@ jobs:
       id: build_native_tools_wheel
       run: |
         python -m pip install --upgrade pip
-        pip install --require-hashes -r utils/mlir_wheels/requirements.lock
+        python -m pip install --require-hashes -r utils/mlir_wheels/requirements.lock
 
         for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "llvm-config" "FileCheck"; do
           if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
@@ -364,7 +364,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        python -m pip install --require-hashes -r ci-tools.lock
+        python -m python -m pip install --require-hashes -r ci-tools.lock
         python -m twine check --strict wheelhouse/*.whl
 
     - name: Generate build provenance attestation
