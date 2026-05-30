@@ -339,11 +339,16 @@ run_rope: rope
 # ---------- real flowkv attention pair (Phase 2) ----------
 FKV_HD ?= 64
 FKV_T  ?= 16
-FKV_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_FLOWKV_HEAD_DIM=${FKV_HD} -DLLAMA_FLOWKV_T=${FKV_T}
+FKV_EXP_QUANT_SCALE ?= 0.05
+FKV_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_FLOWKV_HEAD_DIM=${FKV_HD} -DLLAMA_FLOWKV_T=${FKV_T} -DLLAMA_FLOWKV_EXP_QUANT_SCALE=${FKV_EXP_QUANT_SCALE}f
 
-${BUILD}/llama_flowkv.cc.o: ${KDIR}/llama_flowkv.cc
+${BUILD}/exp_lut.h: ${srcdir}/gen_exp_lut.py
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${FKV_FLAGS} -c $< -o ${@F}
+	python3 $< --exp-quant-scale ${FKV_EXP_QUANT_SCALE} -o $@
+
+${BUILD}/llama_flowkv.cc.o: ${KDIR}/llama_flowkv.cc ${BUILD}/exp_lut.h
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${FKV_FLAGS} -I${srcdir} -c $< -o ${@F}
 
 ${BUILD}/aie_flowkv_${FKV_HD}x${FKV_T}.mlir: ${srcdir}/aie2_flowkv.py
 	mkdir -p ${@D}

@@ -20,7 +20,6 @@ import argparse
 import sys
 
 import numpy as np
-from ml_dtypes import bfloat16
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
@@ -40,7 +39,9 @@ INV_OUT_SCALE = 1.0 / 0.05
 def build(head_dim: int, t: int):
     q_ty     = np.ndarray[(head_dim,),       np.dtype[np.int8]]
     kv_ty    = np.ndarray[(t * head_dim,),   np.dtype[np.int8]]
-    probs_ty = np.ndarray[(t,),              np.dtype[bfloat16]]
+    # fp32 probs on the CT0 -> CT1 stream; no bf16 truncation so the
+    # softmax probabilities arrive bit-identical to what qk computed.
+    probs_ty = np.ndarray[(t,),              np.dtype[np.float32]]
     out_ty   = np.ndarray[(head_dim,),       np.dtype[np.int8]]
 
     of_q     = ObjectFifo(q_ty,     name="q")
