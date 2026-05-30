@@ -26,7 +26,6 @@ from .device import (
 )
 from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, Tile
 
-
 # Map from CLI device name → base class name (max-column variant).
 _NAME_TO_BASE: dict[str, str] = {
     "npu": "NPU1",
@@ -76,8 +75,7 @@ def from_name(name: str, *, n_cols: int | None = 1) -> Device:
     base = _NAME_TO_BASE.get(name.lower())
     if base is None:
         raise ValueError(
-            f"Unknown device name {name!r}; expected one of "
-            f"{sorted(_NAME_TO_BASE)}"
+            f"Unknown device name {name!r}; expected one of " f"{sorted(_NAME_TO_BASE)}"
         )
     if base not in _MAX_COLS:
         # Versal AIE1 devices have no per-column variants.
@@ -93,3 +91,35 @@ def from_name(name: str, *, n_cols: int | None = 1) -> Device:
             f"{base}, got {n_cols}"
         )
     return getattr(_device_module, cls_name)()
+
+
+def device_from_args(args, *, dev_attr: str = "dev") -> Device:
+    """Resolve a parsed-argparse namespace to a Device.
+
+    Collapses the boilerplate that every example repeats::
+
+        dev = from_name(args.dev, n_cols=1 if args.dev == "npu" else None)
+
+    into::
+
+        dev = device_from_args(args)
+
+    The single-column-for-npu1, full-width-for-npu2 default reflects the
+    historic Phoenix vs Strix behaviour of the example suite.  Override by
+    setting ``args.n_cols`` to a specific integer.
+
+    Args:
+        args: An ``argparse.Namespace`` with a ``.dev`` attribute (or
+            whatever ``dev_attr`` names).  Optionally also a
+            ``.n_cols`` attribute that overrides the default.
+        dev_attr: Name of the device-string attribute on ``args``.
+            Defaults to ``"dev"``.
+
+    Returns:
+        Device instance.
+    """
+    dev = getattr(args, dev_attr)
+    n_cols = getattr(args, "n_cols", None)
+    if n_cols is None:
+        n_cols = 1 if dev == "npu" else None
+    return from_name(dev, n_cols=n_cols)
