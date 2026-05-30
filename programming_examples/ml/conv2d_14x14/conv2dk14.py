@@ -286,19 +286,20 @@ def conv2dk14_multi(
                 of_out.release(1)
         of_wts_in.release(1)
 
-    workers = []
-    for j in range(n_rows):
-        for i in range(n_cols):
-            workers.append(Worker(
-                core_fn,
-                [of_wts[i].cons(), of_act_l2l1[j].cons(), of_out_l1l2[j][i].prod(), conv_fn],
-                tile=Tile(i, 2 + j),
-                stack_size=0xC00,
-            ))
+    workers = Worker.grid(
+        n_rows,
+        n_cols,
+        lambda j, i: Worker(
+            core_fn,
+            [of_wts[i].cons(), of_act_l2l1[j].cons(), of_out_l1l2[j][i].prod(), conv_fn],
+            tile=Tile(i, 2 + j),
+            stack_size=0xC00,
+        ),
+    )
 
     rt = Runtime()
     with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (I, W, O):
-        rt.start(*workers)
+        rt.start(*[w for row in workers for w in row])
         row_chunk = tensor_in_size // n_rows
         wts_chunk = tensor_wts_size // n_cols
         out_chunk = tensor_out_size // n_cols
@@ -335,6 +336,72 @@ def _compile_kwargs(opts):
     return dict(width=opts.width, height=opts.height, scale=opts.scale)
 
 
+# Quantization scales used by the per-channel int8 conv reference.  Lifted
+# from test.py (kept in sync so this standalone path matches that harness).
+_CONV_SCALE = 1.9073e-06
+_INT8_SCALE = 0.03125
+
+
+def _run_and_verify(opts):
+    """Compile, run on NPU, and check against a torch Conv2d golden."""
+    import sys
+
+    import torch
+    import torch.nn as nn
+
+    from aie.utils.ml import DataShaper
+
+    design = conv2dk14_multi if opts.multi else conv2dk14
+    width, height, ksz = int(opts.width), int(opts.height), int(opts.scale)
+    ci, co = _IN_CHANNELS, _OUT_CHANNELS
+    height_out, width_out = height // ksz, width // ksz
+    co_group = co // _SUB_OUT_CHANNELS
+
+    # Single-core variant replicates the image co_group times in the input
+    # tensor; multi-core variant uses shim repeat and ships one image.
+    num_act = 1 if opts.multi else co_group
+
+    torch.manual_seed(0)
+    int_inp = torch.randint(0, 255, (1, ci, height, width)).float()
+    int_weight = torch.randint(2, 20, (co, ci, ksz, ksz)).float()
+
+    model = nn.Conv2d(ci, co, kernel_size=ksz, stride=ksz, padding=0, bias=False)
+    with torch.no_grad():
+        model.weight.copy_(int_weight)
+        out_int = model(int_inp)
+    out_quant = out_int * _CONV_SCALE
+    golden = (_INT8_SCALE * torch.clamp(
+        torch.round(out_quant / _INT8_SCALE), -128, 127
+    )).squeeze(0).numpy()
+
+    ds = DataShaper()
+    int_inp_np = int_inp.squeeze(0).numpy().astype(np.uint8)
+    ifm_aie = ds.reorder_mat(int_inp_np, "YXC", "CYX")
+    ifm_flat = np.tile(ifm_aie, num_act).flatten()
+
+    int_weight_np = int_weight.numpy().astype(np.int8)
+    wts_aie = ds.reorder_mat(int_weight_np, "OYXIO8", "OIYX")
+    wts_flat = np.concatenate(wts_aie, axis=None).flatten()
+
+    in_t = iron.tensor(ifm_flat, dtype=np.uint8)
+    w_t = iron.tensor(wts_flat, dtype=np.int8)
+    out_size = co_group * height_out * width_out * _SUB_OUT_CHANNELS
+    o_t = iron.zeros(out_size, dtype=np.int8)
+
+    design(in_t, w_t, o_t, width=width, height=height, scale=ksz)
+
+    aie_raw = o_t.numpy().reshape(co_group, height_out, width_out, _SUB_OUT_CHANNELS)
+    aie_cyxd = ds.reorder_mat(aie_raw, "CDYX", "CYXD")
+    aie_out = aie_cyxd.reshape(co, height_out, width_out) * _INT8_SCALE
+
+    max_diff = float(np.max(np.abs(aie_out - golden)))
+    if np.allclose(aie_out, golden, rtol=0, atol=2 * _INT8_SCALE):
+        print(f"\nPASS! (max_abs_diff={max_diff:.4f})\n")
+    else:
+        print(f"\nFAILED (max_abs_diff={max_diff:.4f}, tol={2 * _INT8_SCALE:.4f})\n")
+        sys.exit(-1)
+
+
 def main():
     opts = _make_argparser().parse_args()
     design = conv2dk14_multi if opts.multi else conv2dk14
@@ -342,6 +409,7 @@ def main():
         design,
         opts,
         compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
         device=lambda o: from_name(o.dev, n_cols=8 if opts.multi else 1),
     )
 
