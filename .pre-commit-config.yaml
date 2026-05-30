@@ -17,7 +17,7 @@ repos:
       stages: [pre-push]
 
 - repo: https://github.com/psf/black
-  rev: 1b2427a2b785cc4aac97c19bb4b9a0de063f9547  # frozen: 24.10.0
+  rev: 87928e6d6761a4a6d22250e1fee5601b3998086e  # frozen: 26.5.1
   hooks:
     - id: black
       stages: [pre-push]
