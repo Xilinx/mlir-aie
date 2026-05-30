@@ -5,15 +5,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-"""Abstract base class for objects that lower to MLIR operations."""
+"""Structural protocol for objects that lower to MLIR operations."""
 
-from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 
 from .. import ir  # type: ignore
 
 
-class Resolvable(ABC):
-    @abstractmethod
+@runtime_checkable
+class Resolvable(Protocol):
     def resolve(
         self,
         loc: ir.Location | None = None,

@@ -120,16 +120,20 @@ class BaseKernel(Resolvable):
         ExternalFunction: compiles C/C++ source at JIT time.
     """
 
-    def __init__(self, name: str, arg_types: list[type[np.ndarray] | np.dtype] = []):
+    def __init__(
+        self,
+        name: str,
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+    ):
         """
         Args:
             name: Symbol name of the function.
-            arg_types: Type signature of the function arguments.  Defaults to [].
+            arg_types: Type signature of the function arguments.  Defaults to None (empty list).
         """
         if not name:
             raise ValueError("Kernel name cannot be empty.")
         self._name = name
-        self._arg_types = arg_types
+        self._arg_types = arg_types if arg_types is not None else []
         self._op: FuncOp | None = None
 
     def _resolve_arg(self, arg_index: int):
@@ -209,7 +213,7 @@ class BaseKernel(Resolvable):
         """Return a copy of the argument type list."""
         return self._arg_types.copy()
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args):
         """Emit a func.call to this kernel, validating argument count.
 
         Each argument is passed through :func:`_maybe_collapse_to_match`
@@ -234,7 +238,7 @@ class BaseKernel(Resolvable):
             _maybe_collapse_to_match(a, expected_ty)
             for a, expected_ty in zip(arg_ops, expected_input_types)
         ]
-        call(self._op, adapted, **kwargs)
+        call(self._op, adapted)
 
 
 class Kernel(BaseKernel):
@@ -253,7 +257,7 @@ class Kernel(BaseKernel):
         self,
         name: str,
         object_file_name: str,
-        arg_types: list[type[np.ndarray] | np.dtype] = [],
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
     ) -> None:
         """
         Args:
@@ -261,7 +265,7 @@ class Kernel(BaseKernel):
             object_file_name: Filename of the pre-compiled object file
                 (e.g. ``"add_one.o"``).  Must be on the linker search path
                 at compile time.
-            arg_types: Type signature of the function arguments.  Defaults to [].
+            arg_types: Type signature of the function arguments.  Defaults to None (empty list).
         """
         super().__init__(name, arg_types)
         self._object_file_name = object_file_name
@@ -303,9 +307,9 @@ class ExternalFunction(Kernel):
         object_file_name: str | None = None,
         source_file: str | None = None,
         source_string: str | None = None,
-        arg_types: list[type[np.ndarray] | np.dtype] = [],
-        include_dirs: list[str] = [],
-        compile_flags: list[str] = [],
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        include_dirs: list[str] | None = None,
+        compile_flags: list[str] | None = None,
         *,
         symbol_prefix: str | None = None,
         use_chess: bool = False,
@@ -321,12 +325,12 @@ class ExternalFunction(Kernel):
             source_string: Inline C/C++ source code.  Mutually exclusive with
                 ``source_file``.
             arg_types: Type signature of the function arguments.  Defaults to
-                [].
+                None (empty list).
             include_dirs: Additional ``-I`` directories passed to the chosen
                 compiler (Peano by default; xchesscc when ``use_chess=True``).
-                Defaults to [].
+                Defaults to None (empty list).
             compile_flags: Additional flags passed verbatim to the chosen
-                compiler.  Defaults to [].
+                compiler.  Defaults to None (empty list).
             symbol_prefix: Optional prefix for the exported symbol name.  When
                 set, the effective symbol name becomes ``<symbol_prefix>_<name>``
                 and the object file is named accordingly.  The original name is
@@ -356,8 +360,8 @@ class ExternalFunction(Kernel):
         else:
             raise ValueError("source_file or source_string must be provided.")
 
-        self._include_dirs = include_dirs
-        self._compile_flags = compile_flags
+        self._include_dirs = include_dirs if include_dirs is not None else []
+        self._compile_flags = compile_flags if compile_flags is not None else []
         self._use_chess = use_chess
         self._compiled = False
         self._cached_digest: str | None = None
@@ -394,7 +398,7 @@ class ExternalFunction(Kernel):
                 break
         ExternalFunction._instances.add(self)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args):
         """Call with argument count and type validation before emitting MLIR."""
         if len(args) != len(self._arg_types):
             raise ValueError(
@@ -404,7 +408,7 @@ class ExternalFunction(Kernel):
             )
         for i, (arg, expected_ty) in enumerate(zip(args, self._arg_types)):
             self._validate_arg(i, arg, expected_ty)
-        super().__call__(*args, **kwargs)
+        super().__call__(*args)
 
     def _validate_arg(self, index: int, arg, expected_ty) -> None:
         """Validate a single argument against its expected type."""

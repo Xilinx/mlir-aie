@@ -22,43 +22,9 @@ import numpy as np
 import os
 import torch
 
-# class ImageNetKaggle(Dataset):
-#     def __init__(self, root, split, transform=None):
-#         self.samples = []
-#         self.targets = []
-#         self.transform = transform
-#         self.syn_to_class = {}
-#         with open(os.path.join(root, "imagenet_class_index.json"), "rb") as f:
-#             json_file = json.load(f)
-#             for class_id, v in json_file.items():
-#                 self.syn_to_class[v[0]] = int(class_id)
-#         with open(os.path.join(root, "ILSVRC2012_val_labels.json"), "rb") as f:
-#             self.val_to_syn = json.load(f)
-#         samples_dir = os.path.join(root, "ILSVRC/Data/CLS-LOC", split)
-#         for entry in os.listdir(samples_dir):
-#             if split == "train":
-#                 syn_id = entry
-#                 target = self.syn_to_class[syn_id]
-#                 syn_folder = os.path.join(samples_dir, syn_id)
-#                 for sample in os.listdir(syn_folder):
-#                     sample_path = os.path.join(syn_folder, sample)
-#                     self.samples.append(sample_path)
-#                     self.targets.append(target)
-#             elif split == "val":
-#                 syn_id = self.val_to_syn[entry]
-#                 target = self.syn_to_class[syn_id]
-#                 sample_path = os.path.join(samples_dir, entry)
-#                 self.samples.append(sample_path)
-#                 self.targets.append(target)
 
-#     def __len__(self):
-#         return len(self.samples)
-
-#     def __getitem__(self, idx):
-#         x = Image.open(self.samples[idx]).convert("RGB")
-#         if self.transform:
-#             x = self.transform(x)
-#         return x, self.targets[idx]
+class CSVLoggerError(Exception):
+    """Raised by CSVLogger for invalid logger state."""
 
 
 class CSVLogger:
@@ -75,7 +41,7 @@ class CSVLogger:
 
     def set_columns(self, columns):
         if self.columns:
-            raise Exception("Columns already set")
+            raise CSVLoggerError("Columns already set")
         self.columns = list(columns)
         self.csvwriter.writerow(self.columns)
 
@@ -105,20 +71,6 @@ def load_class_label(class_label_file: str, num_classes: int) -> list:
     return class_label_list
 
 
-# def count_parameters(model):
-#     table = PrettyTable(["Modules", "Parameters"])
-#     total_params = 0
-#     for name, parameter in model.named_parameters():
-#         if not parameter.requires_grad:
-#             continue
-#         param = parameter.numel()
-#         table.add_row([name, param])
-#         total_params += param
-#     print(table)
-#     print(f"Total Trainable Params: {total_params}")
-#     return total_params
-
-
 def unpickle(file):
     import pickle
 
@@ -127,56 +79,21 @@ def unpickle(file):
     return dict
 
 
-# def extract_cifar():
-#     datafile = r"./data_torchvision/cifar-10-batches-py/test_batch"
-#     metafile = r"./data_torchvision/cifar-10-batches-py/batches.meta"
-
-#     data_batch_1 = unpickle(datafile)
-#     metadata = unpickle(metafile)
-
-#     images = data_batch_1["data"]
-#     labels = data_batch_1["labels"]
-#     images = np.reshape(images, (10000, 3, 32, 32))
-
-#     import os
-
-#     dirname = "cifar_images"
-#     if not os.path.exists(dirname):
-#         os.mkdir(dirname)
-
-#     # Extract and dump first 10 images
-#     for i in range(0, 100):
-#         im = images[i]
-#         im = im.transpose(1, 2, 0)
-#         im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
-#         im_name = f"./cifar_images/image_{i}.png"
-#         cv2.imwrite(im_name, im)
-
-
 def fuse_single_conv_bn_pair(bn_mean, bn_var, bn_wts, bn_bias, conv_wts):
     # https://github.com/ChoiDM/Pytorch_BN_Fold/blob/master/bn_fold.py
     eps = 1e-05
     mu = bn_mean
     var = bn_var
     gamma = bn_wts
-    # if 'bias' in bn_bias:
-    #     beta = bn_bias
-    # else:
-    #     beta = torch.zeros(gamma.size(0)).float()
     beta = bn_bias
-    # Conv params
     W = conv_wts
 
     denom = torch.sqrt(var + eps)
 
     A = gamma.div(denom)
-    # bias = torch.zeros(W.size(0)).float()
-    # b = beta - gamma.mul(mu).div(denom)
-    # bias *= A
     A = A.expand_as(W.transpose(0, -1)).transpose(0, -1)
     A = A.to(torch.int8)
     W.mul_(A)
-    # bias.add_(b)
 
     return W
 
@@ -406,7 +323,6 @@ class DataShaper:
                 sz = 1
                 d -= 1
                 sp = p
-        # dim = [perm.index(p) for p in dim]
         size_inv = (np.array(size)[perm] + pad_ex) * brdcst
         idx = -2 if bits == 4 and size_inv[-1] == 2 else -1
         if ebs or sparse_ratio:
@@ -427,7 +343,3 @@ class DataShaper:
             cur *= s
         step[-1] = cur
         return step
-
-
-if __name__ == "__main__":
-    extract_cifar()

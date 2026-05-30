@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 from __future__ import annotations
+import itertools
 import numpy as np
 from typing import Sequence
 
@@ -35,7 +36,7 @@ class ObjectFifo(Resolvable):
     """
 
     # Used to generate unique ObjectFifo names when none is provided.
-    __of_index = 0
+    _of_index = itertools.count()
 
     def __init__(
         self,
@@ -73,7 +74,7 @@ class ObjectFifo(Resolvable):
         self._plio = plio
         self._pad_dimensions = pad_dimensions
         if name is None:
-            self.name = f"of{ObjectFifo.__get_index()}"
+            self.name = f"of{next(ObjectFifo._of_index)}"
         else:
             self.name = name
         self._op: ObjectFifoCreateOp | None = None
@@ -82,12 +83,6 @@ class ObjectFifo(Resolvable):
         self._resolving = False
         self._iter_count: int | None = None
         self._init_values: list[np.ndarray] | None = init_values
-
-    @classmethod
-    def __get_index(cls) -> int:
-        idx = cls.__of_index
-        cls.__of_index += 1
-        return idx
 
     @property
     def depth(self) -> int:
@@ -718,8 +713,8 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         srcs: list[ObjectFifoHandle] | ObjectFifoHandle,
         dsts: list[ObjectFifoHandle] | ObjectFifoHandle,
         tile: Tile = AnyMemTile,
-        src_offsets: list[int] = [],
-        dst_offsets: list[int] = [],
+        src_offsets: list[int] | None = None,
+        dst_offsets: list[int] | None = None,
     ):
         """Construct an ObjectFifoLink. This is either a many-to-one, one-to-many, or one-to-one operation.
 
@@ -727,16 +722,16 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             srcs (list[ObjectFifoHandle] | ObjectFifoHandle): A list of consumer ObjectFifoHandles to link.
             dsts (list[ObjectFifoHandle] | ObjectFifoHandle): A list of producer ObjectFifoHandles to link.
             tile (Tile, optional): The tile where the link occurs. Defaults to AnyMemTile.
-            src_offsets (list[int], optional): If many sources, one offset per source is required to split the destination. Defaults to [].
-            dst_offsets (list[int], optional): If many destinations, one offset per destination is required to split the source. Defaults to [].
+            src_offsets (list[int] | None, optional): If many sources, one offset per source is required to split the destination. Defaults to None (empty list).
+            dst_offsets (list[int] | None, optional): If many destinations, one offset per destination is required to split the source. Defaults to None (empty list).
 
         Raises:
             ValueError: Arguments are validated.
         """
         self._srcs = single_elem_or_list_to_list(srcs)
         self._dsts = single_elem_or_list_to_list(dsts)
-        self._src_offsets = src_offsets
-        self._dst_offsets = dst_offsets
+        self._src_offsets = src_offsets if src_offsets is not None else []
+        self._dst_offsets = dst_offsets if dst_offsets is not None else []
         self._resolving = False
 
         if len(self._srcs) < 1:

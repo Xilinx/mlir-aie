@@ -170,4 +170,4 @@ class Program:
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
         if verify != True:
-            logger.error(str(verify))
+            raise RuntimeError(f"MLIR module failed verification: {verify}")

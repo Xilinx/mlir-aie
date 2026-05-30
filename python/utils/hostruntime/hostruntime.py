@@ -379,13 +379,13 @@ class HostRuntime(ABC):
                     )
 
     @classmethod
-    def verify_results(cls, io_args, refs={}, verbosity=0):
+    def verify_results(cls, io_args, refs=None, verbosity=0):
         """
         Verify the results of the kernel execution against reference data.
 
         Args:
             io_args (list[Tensor]): List of input/output tensors.
-            refs (dict, optional): Dictionary mapping index to reference numpy array. Defaults to {}.
+            refs (dict | None, optional): Dictionary mapping index to reference numpy array. Defaults to None (empty dict).
             verbosity (int, optional): Verbosity level. Defaults to 0.
 
         Returns:
@@ -394,6 +394,8 @@ class HostRuntime(ABC):
         Raises:
             HostRuntimeError: If a reference index is out of bounds.
         """
+        if refs is None:
+            refs = {}
         errors = 0
         if verbosity >= 1:
             logger.info("Verifying results ...")

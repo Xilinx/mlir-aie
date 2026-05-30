@@ -12,6 +12,8 @@ synchronization explicitly (via :class:`TileDma` and :class:`Flow`)
 instead of letting :class:`ObjectFifo` manage it.
 """
 
+import itertools
+
 from .. import ir  # type: ignore
 from ..dialects._aie_enum_gen import LockAction  # type: ignore
 from ..dialects.aie import lock as _lock_op, use_lock as _use_lock
@@ -22,7 +24,7 @@ from .resolvable import NotResolvedError, Resolvable
 class Lock(Resolvable):
     """A named hardware lock on a specific tile."""
 
-    __glock_index = 0
+    _glock_index = itertools.count()
 
     def __init__(
         self,
@@ -45,14 +47,8 @@ class Lock(Resolvable):
         self._tile = tile
         self._lock_id = lock_id
         self._init = init
-        self._name = name or f"lock_{self.__get_index()}"
+        self._name = name or f"lock_{next(Lock._glock_index)}"
         self._op = None
-
-    @classmethod
-    def __get_index(cls) -> int:
-        idx = cls.__glock_index
-        cls.__glock_index += 1
-        return idx
 
     @property
     def tile(self) -> Tile:

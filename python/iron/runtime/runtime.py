@@ -10,6 +10,7 @@
 from __future__ import annotations
 from collections import defaultdict
 from contextlib import contextmanager
+import itertools
 import logging
 import numpy as np
 from typing import Callable
@@ -40,13 +41,14 @@ from .task import (
 )
 
 
+class IronRuntimeError(Exception):
+    """Raised by the IRON Runtime when resolution encounters an unrecoverable state."""
+
+
 class Runtime(Resolvable):
     """A Runtime contains that operations and structure of all operations that
     need to be taken care of by the host/runtime in order to run a program.
     """
-
-    # Used to generate unique task group IDs within this Runtime.
-    __task_group_index = 0
 
     def __init__(
         self,
@@ -73,6 +75,7 @@ class Runtime(Resolvable):
         self._trace_size = None
         self._trace_workers = None
         self._strict_task_groups = strict_task_groups
+        self._task_group_index = itertools.count()
         self._ddr_id = 4
 
     def add_flow(self, flow) -> None:
@@ -155,9 +158,8 @@ class Runtime(Resolvable):
         Returns:
             RuntimeTaskGroup: The new RuntimeTaskGroup
         """
-        tg = RuntimeTaskGroup(self.__task_group_index)
+        tg = RuntimeTaskGroup(next(self._task_group_index))
         self._open_task_groups.append(tg)
-        self.__task_group_index += 1
         return tg
 
     def finish_task_group(self, task_group: RuntimeTaskGroup):
@@ -399,7 +401,7 @@ class Runtime(Resolvable):
                         for (fn, args) in actions
                         if fn != dma_await_task and fn != dma_free_task
                     ]
-                    raise Exception(
+                    raise IronRuntimeError(
                         f"Unknown action type detected: {','.join(unknown_actions)}"
                     )
 
@@ -432,7 +434,7 @@ class Runtime(Resolvable):
                     finish_task_group(task.task_group, task_group_actions)
 
             if self._strict_task_groups and default_tasks and task_group_tasks:
-                raise Exception(
+                raise IronRuntimeError(
                     f"Mixing explicit task groups and the default task group is prohibitted. "
                     f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
                 )
