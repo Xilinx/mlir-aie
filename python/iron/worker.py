@@ -18,9 +18,9 @@ from .device import Tile, AnyComputeTile
 from ..dialects._aie_enum_gen import AIETileType  # type: ignore
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
+from .dataflow.fifo_handle_registry import dispatch_fn_arg
 from .buffer import Buffer
 from .resolvable import Resolvable
-
 
 class Worker(ObjectFifoEndpoint):
     """A task to be run on an AIE compute core.
@@ -88,11 +88,27 @@ class Worker(ObjectFifoEndpoint):
         self._barriers = []
 
         # Check arguments to the core. Some information is saved for resolution.
+        #
+        # FIFO handle types -- ``ObjectFifoHandle`` and the specialized
+        # subclasses (``CascadeFifoHandle``, ``PacketFifoHandle``,
+        # ``AccumFifoHandle``, ``SparseFifoHandle``,
+        # ``VariableRateFifoHandle``) -- are dispatched through the registry
+        # in ``dataflow/fifo_handle_registry.py``. The registry replaces the
+        # original hard-coded ``isinstance(arg, ObjectFifoHandle)`` branch
+        # with an extensible mechanism so new handle subclasses register
+        # their own handler without editing this file.
+        #
+        # ``ObjectFifoHandle`` is pre-registered by ``dataflow/__init__.py``
+        # with the original bookkeeping (set ``arg.endpoint = self``; append
+        # the handle to ``self._fifos``), so designs that only use
+        # ``ObjectFifo`` are unaffected. A subclass that registers its own
+        # handler later wins because ``dispatch_fn_arg`` performs a
+        # reverse-insertion-order ``isinstance()`` walk.
         for arg in self.fn_args:
-            if isinstance(arg, ObjectFifoHandle):
-                arg.endpoint = self
-                self._fifos.append(arg)
-            elif isinstance(arg, Buffer):
+            if dispatch_fn_arg(arg, self):
+                # Registry recognized the argument and bookkept it.
+                continue
+            if isinstance(arg, Buffer):
                 self._buffers.append(arg)
                 # Buffers are placed on the same tile as the Worker
                 if arg._tile is not None and arg._tile is not self._tile:
@@ -153,7 +169,6 @@ class Worker(ObjectFifoEndpoint):
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)
 
-
 class WorkerRuntimeBarrier:
     """A barrier allowing individual workers to synchronize with the runtime sequence."""
 
@@ -204,7 +219,6 @@ class WorkerRuntimeBarrier:
                 "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
             )
         use_lock(self.worker_locks[-1], LockAction.Release, value=value)
-
 
 class _BarrierSetOp(Resolvable):
     """A resolvable instance of a WorkerRuntimeBarrier. This should not be used directly."""

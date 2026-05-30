@@ -11,6 +11,15 @@ Provides the primary abstractions for describing NPU designs:
 - :class:`Kernel` / :class:`ExternalFunction` -- pre-compiled or C++ kernel functions
 - :class:`WorkerRuntimeBarrier` -- synchronization primitive between workers and runtime
 - Tensor utilities (:func:`arange`, :func:`zeros`, :func:`ones`, etc.) for NPU-accessible buffers
+
+Specialized FIFO subclasses (composable over :class:`ObjectFifo`):
+
+- :class:`CascadeFifo` -- first-class cascade-stream ObjectFifo subclass.
+- :class:`PacketFifo` -- packet-switched ObjectFifo + pktMerge / TLAST / OoO BD.
+- :class:`AccumFifo` -- FP32 accumulator inter-tile state passing.
+- :class:`SparseFifo` -- on-the-fly N:M sparsity decompression on S2MM.
+- :class:`MemtileAggregator` -- memtile-mediated fan-in helper.
+- :class:`VariableRateFifo` -- producer-side conditional-forward FIFO.
 """
 
 from .buffer import Buffer
@@ -19,6 +28,9 @@ from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
+from .cascade import CascadeFifo
+from .memtile import MemtileAggregator
+from .sparse import SparseFifo
 from .dtype import str_to_dtype, dtype_to_str
 from aie.utils.jit import jit
 from aie.utils import (
@@ -32,3 +44,41 @@ from aie.utils import (
     set_tensor_class,
     get_current_device,
 )
+
+
+from .packet import PacketFifo, PacketFifoHandle  # noqa: E402
+from .accum import AccumFifo, AccumFifoHandle  # noqa: E402
+from .variable_rate import VariableRateFifo, VariableRateFifoHandle  # noqa: E402
+
+
+__all__ = [
+    "Buffer",
+    "ExternalFunction",
+    "Kernel",
+    "Program",
+    "Worker",
+    "WorkerRuntimeBarrier",
+    "Runtime",
+    "ObjectFifo",
+    "str_to_dtype",
+    "dtype_to_str",
+    "jit",
+    "tensor",
+    "ones",
+    "zeros",
+    "randint",
+    "rand",
+    "arange",
+    "zeros_like",
+    "set_tensor_class",
+    "get_current_device",
+    "CascadeFifo",
+    "PacketFifo",
+    "PacketFifoHandle",
+    "AccumFifo",
+    "AccumFifoHandle",
+    "SparseFifo",
+    "MemtileAggregator",
+    "VariableRateFifo",
+    "VariableRateFifoHandle",
+]

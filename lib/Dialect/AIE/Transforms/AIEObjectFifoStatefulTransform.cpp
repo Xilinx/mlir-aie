@@ -816,12 +816,17 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   /// Function used to create a Bd block.
+  ///
+  /// Returns the newly created DMABDOp so the caller can decorate it with
+  /// dataflow-source-specific discardable attributes (e.g. the
+  /// SparseFifo (de)compression bit propagated from the originating
   template <typename MyOp>
-  void createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
-                LockAction acqLockAction, LockOp relLock, int relMode,
-                MyOp buff, int offset, int len, Block *succ,
-                BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions,
-                std::optional<PacketInfoAttr> bdPacket) {
+  DMABDOp createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
+                   LockAction acqLockAction, LockOp relLock, int relMode,
+                   MyOp buff, int offset, int len, Block *succ,
+                   BDDimLayoutArrayAttr dims,
+                   BDPadLayoutArrayAttr padDimensions,
+                   std::optional<PacketInfoAttr> bdPacket) {
     if (acqLock)
       UseLockOp::create(builder, builder.getUnknownLoc(), acqLock,
                         acqLockAction, acqMode);
@@ -829,19 +834,23 @@ struct AIEObjectFifoStatefulTransformPass
       DMABDPACKETOp::create(builder, builder.getUnknownLoc(),
                             bdPacket->getPktType(), bdPacket->getPktId());
     }
-    if (!dims.getValue().empty() && padDimensions) {
-      DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset, len, dims,
-                      padDimensions);
-    } else if (!dims.getValue().empty()) {
-      DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset, len,
-                      dims);
-    } else {
-      DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset, len);
-    }
+    DMABDOp bdOp = [&]() {
+      if (!dims.getValue().empty() && padDimensions) {
+        return DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset,
+                               len, dims, padDimensions);
+      }
+      if (!dims.getValue().empty()) {
+        return DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset,
+                               len, dims);
+      }
+      return DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset,
+                             len);
+    }();
     if (acqLock)
       UseLockOp::create(builder, builder.getUnknownLoc(), relLock,
                         LockAction::Release, relMode);
     NextBDOp::create(builder, builder.getUnknownLoc(), succ);
+    return bdOp;
   }
 
   /// Function used to create a Bd block.
@@ -886,8 +895,82 @@ struct AIEObjectFifoStatefulTransformPass
                       : state.locksPerFifo[op][prodLockIndex];
       }
     }
-    createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
-             offset, len, succ, dims, padDimensions, bdPacket);
+    DMABDOp bdOp = createBd(builder, acqLock, acqMode, acqLockAction, relLock,
+                            relMode, buff, offset, len, succ, dims,
+                            padDimensions, bdPacket);
+
+    // originating ObjectFifoCreateOp onto each DMABDOp we just created so
+    // downstream BD-emit (AIEDMATasksToNPU -> AIEDmaToNpu) can flip the
+    // per-channel ``Enable_Compression`` bit on the AIE2/AIE2P tile DMA BD
+    // config word. See ``python/iron/sparse.py`` for the discardable-attr
+    // contract; see AM020 Ch. 2 p. 27 for the hardware bit. The default
+    // (no attrs on the ObjectFifoCreateOp) is the pre-existing behaviour:
+    // no discardable attr on the DMABDOp -> no compression bit set.
+    propagateSparseCompressionAttr(bdOp.getOperation(), op.getOperation(),
+                                   channelDir);
+  }
+
+  /// discardable attrs (set by ``aie.iron.sparse.SparseFifo.resolve``)
+  /// from the originating ObjectFifoCreateOp and, if the channel
+  /// direction selects the matching half of the
+  /// (compress_mm2s, decompress_s2mm) pair AND the BD lives on a
+  /// compute (AIE) tile, attach a discardable boolean
+  /// ``aie.enable_compression = true`` attribute on the new DMABDOp.
+  /// the cross-module footgun guard): the SparseFifo lowering
+  /// already attaches the intent to the ObjectFifoCreateOp; this
+  /// propagates it to the DMABDOp where the ObjectFifoCreateOp
+  /// itself is about to be erased.
+  ///
+  /// Cross-module footgun (AM029 / aie_registers_aie2.json):
+  ///   * Compute-tile MEMORY_MODULE DMA_BD0_1 bit 31 = Enable_Compression
+  ///   * Memory-tile MEMORY_TILE_MODULE DMA_BD0_1 bits 31:26 = D0_Pad_Before
+  ///   * Shim DMA: AM029 documents Enable_Compression for "AIE-ML
+  ///     memory and AIE-ML tile DMA" only — not for shim.
+  /// Setting aie.enable_compression on a memtile or shim BD would
+  /// either silently corrupt an unrelated field (memtile) or set an
+  /// undocumented bit (shim). So we walk up to the BD's owning tile
+  /// and bail out unless it's a compute tile.
+  static void propagateSparseCompressionAttr(Operation *bdOp, Operation *fifoOp,
+                                             DMAChannelDir channelDir) {
+    if (!bdOp || !fifoOp)
+      return;
+    StringRef attrName;
+    if (channelDir == DMAChannelDir::MM2S) {
+      attrName = "aie.compress_mm2s";
+    } else if (channelDir == DMAChannelDir::S2MM) {
+      attrName = "aie.decompress_s2mm";
+    } else {
+      return;
+    }
+    auto enable = fifoOp->getAttrOfType<BoolAttr>(attrName);
+    if (!enable || !enable.getValue())
+      return;
+
+    // Cross-module footgun guard: only emit on compute-tile BDs. The
+    // BD lives in either MemOp (compute), MemTileDMAOp (memtile), or
+    // ShimDMAOp (shim). Walk up to find the parent and check the
+    // tile type via the device's target model.
+    TileOp tileOp;
+    if (auto memOp = bdOp->getParentOfType<MemOp>())
+      tileOp = memOp.getTileOp();
+    else if (bdOp->getParentOfType<MemTileDMAOp>() ||
+             bdOp->getParentOfType<ShimDMAOp>())
+      return; // memtile / shim — bit means something else (or undocumented).
+    else
+      return; // unknown parent; conservative skip.
+
+    if (!tileOp)
+      return;
+    auto deviceOp = tileOp->getParentOfType<DeviceOp>();
+    if (!deviceOp)
+      return;
+    const auto &targetModel = deviceOp.getTargetModel();
+    if (tileOp.isShimTile() ||
+        targetModel.isMemTile(tileOp.getCol(), tileOp.getRow()))
+      return;
+
+    bdOp->setAttr("aie.enable_compression",
+                  BoolAttr::get(bdOp->getContext(), true));
   }
 
   /// Function that either calls createAIETileDMA(), createShimDMA() or
@@ -1332,8 +1415,19 @@ struct AIEObjectFifoStatefulTransformPass
           remainderMap[forLoop.getOperation()] = 0;
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
-              foundMap[forLoop.getOperation()] = true;
               ObjectFifoCreateOp op = acqOp.getObjectFifo();
+              // VariableRateFifo opts out of LCM-based loop unrolling.
+              // The producer's loop body contains a conditional
+              // acquire/release that the LCM-unroll math cannot model;
+              // the runtime-counter machinery handles asymmetric rates
+              // correctly without unrolling. If the loop has only
+              // variable-rate accesses, foundMap stays false and the
+              // loop is left alone.
+              auto vrAttr = op->getAttrOfType<BoolAttr>("aie.variable_rate");
+              if (vrAttr && vrAttr.getValue()) {
+                continue;
+              }
+              foundMap[forLoop.getOperation()] = true;
               objFifoSizes.insert(op.size());
             }
           }
@@ -1942,6 +2036,32 @@ struct AIEObjectFifoStatefulTransformPass
               builder.getI32IntegerAttr(*bdChainIterCount));
         }
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
+
+        // the original createOp to the new consumerFifo. Without this,
+        // the consumer-side ObjectFifoCreateOp is attr-less and the
+        // downstream propagateSparseCompressionAttr (called from
+        // createBdBlock for each consumer-side BD) finds no
+        // ``aie.decompress_s2mm`` to read and silently emits no
+        // ``aie.enable_compression`` on consumer-side S2MM BDs. The
+        // of this propagation; the lit test verified only the BD-emit
+        // pass's final hop given a hand-constructed
+        // NpuWriteBdOp{aie.enable_compression = true} and never drove
+        // the full pipeline through this split-fifo path. See
+        // tests/aie2p_microtests/dma_compression_loopback/ for the
+        // microtest that surfaced this gap.
+        for (StringRef attrName : {"aie.compress_mm2s",
+                                   "aie.decompress_s2mm",
+                                   "aie.sparsity_pattern",
+                                   "aie.sparsity_n",
+                                   "aie.sparsity_m",
+                                   // VariableRateFifo marker; read by
+                                   // unrollForLoops to exclude the fifo
+                                   // from LCM-based loop unrolling.
+                                   "aie.variable_rate"}) {
+          if (auto attr = createOp->getAttr(attrName))
+            consumerFifo->setAttr(attrName, attr);
+        }
+
         if (createOp.getAieStream()) {
           int streamEnd = createOp.getAieStream().value();
           if (streamEnd > 0) {
