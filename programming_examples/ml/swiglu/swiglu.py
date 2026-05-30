@@ -55,9 +55,7 @@ def swiglu(
     chunk = size // num_columns
 
     of_ins = [ObjectFifo(line_type, name=f"in{i}") for i in range(num_columns)]
-    of_wts = [
-        ObjectFifo(line_type, depth=4, name=f"w{i}") for i in range(num_columns)
-    ]
+    of_wts = [ObjectFifo(line_type, depth=4, name=f"w{i}") for i in range(num_columns)]
     of_outs = [ObjectFifo(line_type, name=f"out{i}") for i in range(num_columns)]
 
     swiglu_fn = kernels.swiglu(tile_size=line_size)
