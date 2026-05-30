@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue
 
 all: gemm_pt
 
@@ -129,6 +129,35 @@ run_flowkv_pair: flowkv_pair
 		-x ${BUILD}/final_flowkv_pair_${FLOWKV_BYTES}.xclbin \
 		-i ${BUILD}/insts_flowkv_pair_${FLOWKV_BYTES}.bin \
 		-k MLIR_AIE --bytes ${FLOWKV_BYTES}
+
+# ---------- 2-input glue stub (Phase 1.8) ----------
+GLUE_BYTES ?= 512
+GLUE_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_GLUE_PT_BYTES=${GLUE_BYTES}
+
+${BUILD}/llama_glue_pt.cc.o: ${KDIR}/llama_glue_pt.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${GLUE_FLAGS} -c $< -o ${@F}
+
+${BUILD}/aie_glue_${GLUE_BYTES}.mlir: ${srcdir}/aie2_glue.py
+	mkdir -p ${@D}
+	python3 $< --bytes ${GLUE_BYTES} > $@
+
+${BUILD}/final_glue_${GLUE_BYTES}.xclbin: ${BUILD}/aie_glue_${GLUE_BYTES}.mlir \
+                                          ${BUILD}/llama_glue_pt.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_glue_${GLUE_BYTES}.bin \
+		$(notdir $<)
+
+glue: ${BUILD}/final_glue_${GLUE_BYTES}.xclbin
+
+run_glue: glue
+	cd ${srcdir} && python3 test_glue_pt.py \
+		-x ${BUILD}/final_glue_${GLUE_BYTES}.xclbin \
+		-i ${BUILD}/insts_glue_${GLUE_BYTES}.bin \
+		-k MLIR_AIE --bytes ${GLUE_BYTES}
 
 # ---------- clean ----------
 clean:
