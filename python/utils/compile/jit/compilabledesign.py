@@ -510,12 +510,21 @@ class CompilableDesign:
                 mlir_module = self._generate_mlir(ExternalFunction)
 
                 from aie.utils.compile import resolve_target_arch
+                import aie.iron as _iron
 
-                device = (
-                    DefaultNPURuntime.device()
-                    if DefaultNPURuntime is not None
-                    else None
-                )
+                # Prefer iron's current device (matches `iron.get_current_device()`
+                # inside the generator); fall back to XRT-detected only when unset.
+                # Without this, a Strix-targeted design (iron set to NPU2) running
+                # in an env without pyxrt silently builds .o files for aie2 instead
+                # of aie2p — link succeeds, runtime times out (ERT_CMD_STATE_TIMEOUT).
+                try:
+                    device = _iron.get_current_device()
+                except (RuntimeError, AttributeError):
+                    device = (
+                        DefaultNPURuntime.device()
+                        if DefaultNPURuntime is not None
+                        else None
+                    )
                 target_arch = resolve_target_arch(device)
 
                 external_kernels = list(ExternalFunction._instances)
