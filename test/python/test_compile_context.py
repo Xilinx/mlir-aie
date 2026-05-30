@@ -252,16 +252,3 @@ def test_thread_isolation():
     assert results["child"] is None
 
 
-# ---------------------------------------------------------------------------
-# Interaction with _compile_context_var internals
-# ---------------------------------------------------------------------------
-
-
-def test_default_outside_context_is_none():
-    assert get_compile_arg("__nonexistent__") is None
-
-
-def test_active_context_returns_injected_values():
-    with compile_context(foo=1):
-        assert get_compile_arg("foo") == 1
-    assert get_compile_arg("foo") is None

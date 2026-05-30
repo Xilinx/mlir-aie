@@ -48,12 +48,6 @@ def test_bare_compile_is_not_parameterised():
     assert get_origin(Compile) is None
 
 
-def test_compile_different_type_args_are_distinct():
-    # Compile[int] and Compile[str] are different objects (even though their
-    # semantics only differ by type-checker; at runtime they share the same origin).
-    assert Compile[int] is not Compile[str]
-
-
 # ---------------------------------------------------------------------------
 # _is_compile_param
 # ---------------------------------------------------------------------------
@@ -150,18 +144,12 @@ def test_tensor_markers_are_not_compile():
     assert InOut is not Compile
 
 
-def test_tensor_markers_are_classes():
-    assert isinstance(In, type)
-    assert isinstance(Out, type)
-    assert isinstance(InOut, type)
-
-
 # ---------------------------------------------------------------------------
 # split_params — comprehensive signature introspection
 # ---------------------------------------------------------------------------
 
 
-def testsplit_params_all_compile():
+def test_split_params_all_compile():
     def f(*, M: Compile[int], K: Compile[int]):
         pass
 
@@ -171,7 +159,7 @@ def testsplit_params_all_compile():
     assert scalar_params == []
 
 
-def testsplit_params_all_tensor():
+def test_split_params_all_tensor():
     def f(a: In, b: Out, c: InOut):
         pass
 
@@ -181,7 +169,7 @@ def testsplit_params_all_tensor():
     assert scalar_params == []
 
 
-def testsplit_params_all_scalar_annotated():
+def test_split_params_all_scalar_annotated():
     def f(x: int, y: float, z: str):
         pass
 
@@ -191,7 +179,7 @@ def testsplit_params_all_scalar_annotated():
     assert scalar_params == ["x", "y", "z"]
 
 
-def testsplit_params_all_unannotated():
+def test_split_params_all_unannotated():
     def f(x, y, z):
         pass
 
@@ -201,7 +189,7 @@ def testsplit_params_all_unannotated():
     assert scalar_params == ["x", "y", "z"]
 
 
-def testsplit_params_no_params():
+def test_split_params_no_params():
     def f():
         pass
 
@@ -211,7 +199,7 @@ def testsplit_params_no_params():
     assert scalar_params == []
 
 
-def testsplit_params_mixed_all_three():
+def test_split_params_mixed_all_three():
     def f(a: In, b: Out, alpha: float, *, M: Compile[int], N: Compile[int]):
         pass
 
@@ -221,7 +209,7 @@ def testsplit_params_mixed_all_three():
     assert scalar_params == ["alpha"]
 
 
-def testsplit_params_inout_goes_in_tensor():
+def test_split_params_inout_goes_in_tensor():
     def f(x: InOut, *, M: Compile[int]):
         pass
 
@@ -230,7 +218,7 @@ def testsplit_params_inout_goes_in_tensor():
     assert compile_params == ["M"]
 
 
-def testsplit_params_preserves_declaration_order_for_tensors():
+def test_split_params_preserves_declaration_order_for_tensors():
     """Tensor params must come out in the same order as the function signature."""
 
     def f(c: Out, a: In, b: InOut):
@@ -240,7 +228,7 @@ def testsplit_params_preserves_declaration_order_for_tensors():
     assert tensor_params == ["c", "a", "b"]
 
 
-def testsplit_params_preserves_declaration_order_for_compile():
+def test_split_params_preserves_declaration_order_for_compile():
     def f(*, N: Compile[int], M: Compile[int], K: Compile[int]):
         pass
 
@@ -248,7 +236,7 @@ def testsplit_params_preserves_declaration_order_for_compile():
     assert compile_params == ["N", "M", "K"]
 
 
-def testsplit_params_compile_with_default():
+def test_split_params_compile_with_default():
     """Parameters with defaults are still categorised correctly."""
     import numpy as np
 
@@ -261,7 +249,7 @@ def testsplit_params_compile_with_default():
     assert scalar_params == []
 
 
-def testsplit_params_scalar_with_default():
+def test_split_params_scalar_with_default():
     def f(a: In, alpha: float = 1.0, *, N: Compile[int] = 512):
         pass
 

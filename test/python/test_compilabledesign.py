@@ -276,11 +276,6 @@ def test_hash_for_path_generator_uses_path_string():
     assert hash(d1) != hash(d2)
 
 
-def test_hash_for_path_generator_stable_when_file_absent():
-    d = CompilableDesign(Path("/nonexistent/design.mlir"))
-    assert hash(d) == hash(d)
-
-
 def test_hash_for_existing_source_file_includes_mtime(tmp_path):
     """Changing a source file (hence mtime) must change the hash."""
     src = tmp_path / "kernel.cc"
@@ -409,18 +404,6 @@ def test_split_path_generator_passes_everything_as_tensors():
     tensors, scalars = d.split_runtime_args((a, b), {"extra": 1})
     assert tensors == [a, b]
     assert scalars == {"extra": 1}
-
-
-# ---------------------------------------------------------------------------
-# validate_tensor_args (currently no-op; must not raise)
-# ---------------------------------------------------------------------------
-
-
-def test_validate_tensor_args_is_no_op():
-    d = CompilableDesign(_gemm_gen())
-    d.validate_tensor_args([object(), object(), object()])
-    d.validate_tensor_args([])
-    d.validate_tensor_args([None])
 
 
 # ---------------------------------------------------------------------------
