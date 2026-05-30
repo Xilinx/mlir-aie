@@ -33,21 +33,20 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Transpose Test",
                            "Strategy-agnostic transpose verifier");
 
-  options.add_options()
-      ("help,h", "produce help message")
-      ("xclbin,x", "the input xclbin path", cxxopts::value<std::string>())
-      ("kernel,k", "the kernel name in the XCLBIN (for instance MLIR_AIE)",
-          cxxopts::value<std::string>())
-      ("verbosity,v", "the verbosity of the output",
-          cxxopts::value<int>()->default_value("0"))
-      ("instr,i", "path of file containing userspace instructions",
-          cxxopts::value<std::string>())
-      ("rows,M", "M, number of rows in the input matrix",
-          cxxopts::value<int>()->default_value("64"))
-      ("cols,K", "K, number of columns in the input matrix",
-          cxxopts::value<int>()->default_value("64"))
-      ("dtype-bytes,b", "element size in bytes (1, 2, or 4)",
-          cxxopts::value<int>()->default_value("4"));
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance MLIR_AIE)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i", "path of file containing userspace instructions",
+      cxxopts::value<std::string>())(
+      "rows,M", "M, number of rows in the input matrix",
+      cxxopts::value<int>()->default_value("64"))(
+      "cols,K", "K, number of columns in the input matrix",
+      cxxopts::value<int>()->default_value("64"))(
+      "dtype-bytes,b", "element size in bytes (1, 2, or 4)",
+      cxxopts::value<int>()->default_value("4"));
 
   auto vm = options.parse(argc, argv);
   if (vm.count("help")) {
@@ -99,12 +98,12 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, Nel * bpe, XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, Nel * bpe, XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
-  auto bo_out = xrt::bo(device, Nel * bpe, XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5));
+  auto bo_inA =
+      xrt::bo(device, Nel * bpe, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_inB =
+      xrt::bo(device, Nel * bpe, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_out =
+      xrt::bo(device, Nel * bpe, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   // Fill input with a deterministic byte pattern.  We only ever compare
   // bytes against bytes, so the per-element type doesn't matter — what

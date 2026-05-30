@@ -78,23 +78,27 @@ def bottleneck(
     l3_out_ty = np.ndarray[(tensor_w, 1, l3_out_c), np.dtype[np.uint8]]
 
     conv1 = kernels.conv2dk1(
-        input_width=tensor_w, input_channels=l1_in_c,
-        output_channels=l1_out_c, act_dtype=np.int8,
+        input_width=tensor_w,
+        input_channels=l1_in_c,
+        output_channels=l1_out_c,
+        act_dtype=np.int8,
     )
     conv3 = kernels.conv2dk3(
-        input_width=tensor_w, input_channels=l2_in_c,
-        output_channels=l2_out_c // 2, weight_output_channels=l2_out_c,
+        input_width=tensor_w,
+        input_channels=l2_in_c,
+        output_channels=l2_out_c // 2,
+        weight_output_channels=l2_out_c,
         act_dtype=np.uint8,
     )
     conv1_skip = kernels.conv2dk1_skip(
-        input_width=tensor_w, input_channels=l3_in_c,
-        output_channels=l3_out_c, act_dtype=np.int8,
+        input_width=tensor_w,
+        input_channels=l3_in_c,
+        output_channels=l3_out_c,
+        act_dtype=np.int8,
     )
 
     of_act_l3l2 = ObjectFifo(l1_in_ty, name="inOF_act_L3L2")
-    of_skip_buf = of_act_l3l2.cons(4).forward(
-        depth=2, tile=AnyMemTile, name="skip_buf"
-    )
+    of_skip_buf = of_act_l3l2.cons(4).forward(depth=2, tile=AnyMemTile, name="skip_buf")
 
     of_wts_l3l2 = ObjectFifo(wts_in_l3_ty, depth=1, name="inOF_wts_0_L3L2")
     wts_offsets = [0, wts1_sz, wts1_sz + wts2_sz]
@@ -116,17 +120,17 @@ def bottleneck(
         for _ in range_(tensor_h):
             elem_in = of_act_in.acquire(1)
             elem_out = of_act_out.acquire(1)
-            conv1x1(elem_in, elem_wts, elem_out,
-                    tensor_w, l1_in_c, l1_out_c, scale_1x1)
+            conv1x1(elem_in, elem_wts, elem_out, tensor_w, l1_in_c, l1_out_c, scale_1x1)
             of_act_in.release(1)
             of_act_out.release(1)
         of_wts.release(1)
 
-    workers.append(Worker(
-        conv1x1_fn,
-        fn_args=[wts_buf_00.cons(), of_act_l3l2.cons(),
-                 of_act_2_3_5.prod(), conv1],
-    ))
+    workers.append(
+        Worker(
+            conv1x1_fn,
+            fn_args=[wts_buf_00.cons(), of_act_l3l2.cons(), of_act_2_3_5.prod(), conv1],
+        )
+    )
 
     def conv3x3_fn(of_wts, of_act_in, of_act_out, conv3x3, channel_offset):
         elem_wts = of_wts.acquire(1)
@@ -134,47 +138,94 @@ def bottleneck(
         # top row
         elems_in = of_act_in.acquire(2)
         elem_out = of_act_out.acquire(1)
-        conv3x3(elems_in[0], elems_in[0], elems_in[1],
-                elem_wts, elem_out,
-                tensor_w, l2_in_c, l2_out_c, 3, 3, 0,
-                scale_3x3, channel_offset)
+        conv3x3(
+            elems_in[0],
+            elems_in[0],
+            elems_in[1],
+            elem_wts,
+            elem_out,
+            tensor_w,
+            l2_in_c,
+            l2_out_c,
+            3,
+            3,
+            0,
+            scale_3x3,
+            channel_offset,
+        )
         of_act_out.release(1)
 
         # middle rows
         for _ in range_(tensor_h - 2):
             elems_in = of_act_in.acquire(3)
             elem_out = of_act_out.acquire(1)
-            conv3x3(elems_in[0], elems_in[1], elems_in[2],
-                    elem_wts, elem_out,
-                    tensor_w, l2_in_c, l2_out_c, 3, 3, 1,
-                    scale_3x3, channel_offset)
+            conv3x3(
+                elems_in[0],
+                elems_in[1],
+                elems_in[2],
+                elem_wts,
+                elem_out,
+                tensor_w,
+                l2_in_c,
+                l2_out_c,
+                3,
+                3,
+                1,
+                scale_3x3,
+                channel_offset,
+            )
             of_act_in.release(1)
             of_act_out.release(1)
 
         # bottom row
         elems_in = of_act_in.acquire(2)
         elem_out = of_act_out.acquire(1)
-        conv3x3(elems_in[0], elems_in[1], elems_in[1],
-                elem_wts, elem_out,
-                tensor_w, l2_in_c, l2_out_c, 3, 3, 2,
-                scale_3x3, channel_offset)
+        conv3x3(
+            elems_in[0],
+            elems_in[1],
+            elems_in[1],
+            elem_wts,
+            elem_out,
+            tensor_w,
+            l2_in_c,
+            l2_out_c,
+            3,
+            3,
+            2,
+            scale_3x3,
+            channel_offset,
+        )
 
         of_act_in.release(2)
         of_act_out.release(1)
         of_wts.release(1)
 
-    workers.append(Worker(
-        conv3x3_fn,
-        fn_args=[wts_buf_01.cons(), of_act_2_3_5.cons(4),
-                 of_act_3_4.prod(), conv3, 0],
-        tile=Tile(0, 3),
-    ))
-    workers.append(Worker(
-        conv3x3_fn,
-        fn_args=[wts_buf_01.cons(), of_act_2_3_5.cons(4),
-                 of_act_5_4.prod(), conv3, l2_out_c // 2],
-        tile=Tile(0, 5),
-    ))
+    workers.append(
+        Worker(
+            conv3x3_fn,
+            fn_args=[
+                wts_buf_01.cons(),
+                of_act_2_3_5.cons(4),
+                of_act_3_4.prod(),
+                conv3,
+                0,
+            ],
+            tile=Tile(0, 3),
+        )
+    )
+    workers.append(
+        Worker(
+            conv3x3_fn,
+            fn_args=[
+                wts_buf_01.cons(),
+                of_act_2_3_5.cons(4),
+                of_act_5_4.prod(),
+                conv3,
+                l2_out_c // 2,
+            ],
+            tile=Tile(0, 5),
+        )
+    )
 
     def conv1x1_skip_fn(of_wts, of_in0, of_in1, of_skip, of_out, conv_skip):
         elem_wts = of_wts.acquire(1)
@@ -183,21 +234,39 @@ def bottleneck(
             elem_in1 = of_in1.acquire(1)
             elem_skip = of_skip.acquire(1)
             elem_out = of_out.acquire(1)
-            conv_skip(elem_in0, elem_in1, elem_wts, elem_out, elem_skip,
-                      tensor_w, l3_in_c, l3_out_c, scale_skip, skip_scale)
+            conv_skip(
+                elem_in0,
+                elem_in1,
+                elem_wts,
+                elem_out,
+                elem_skip,
+                tensor_w,
+                l3_in_c,
+                l3_out_c,
+                scale_skip,
+                skip_scale,
+            )
             of_out.release(1)
             of_in0.release(1)
             of_in1.release(1)
             of_skip.release(1)
         of_wts.release(1)
 
-    workers.append(Worker(
-        conv1x1_skip_fn,
-        fn_args=[wts_buf_02.cons(), of_act_3_4.cons(), of_act_5_4.cons(),
-                 of_skip_buf.cons(), of_out_l2l3.prod(), conv1_skip],
-        tile=Tile(0, 4),
-        stack_size=0xA00,
-    ))
+    workers.append(
+        Worker(
+            conv1x1_skip_fn,
+            fn_args=[
+                wts_buf_02.cons(),
+                of_act_3_4.cons(),
+                of_act_5_4.cons(),
+                of_skip_buf.cons(),
+                of_out_l2l3.prod(),
+                conv1_skip,
+            ],
+            tile=Tile(0, 4),
+            stack_size=0xA00,
+        )
+    )
 
     rt = Runtime()
     with rt.sequence(act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty) as (I, W, O):

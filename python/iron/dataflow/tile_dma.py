@@ -54,7 +54,9 @@ class Acquire:
     greater_equal: bool = True  # False → exact Acquire
 
     def emit(self) -> None:
-        action = LockAction.AcquireGreaterEqual if self.greater_equal else LockAction.Acquire
+        action = (
+            LockAction.AcquireGreaterEqual if self.greater_equal else LockAction.Acquire
+        )
         use_lock(self.lock.op, action, value=self.value)
 
 
@@ -185,13 +187,14 @@ class TileDma(Resolvable):
             def _body(block):
                 with block[0]:
                     EndOp()
+
             return
 
         # For multi-BD chains we need 1 + len(ch.bds) blocks per channel
         # (1 head + len(bds) actually overlapping; the first BD goes in
         # the head block, subsequent BDs in trailing blocks).  Compute
         # absolute block indices up front.
-        chan_head_idx: list[int] = []   # block holding first BD per channel
+        chan_head_idx: list[int] = []  # block holding first BD per channel
         chan_extra_idx: list[list[int]] = []  # extra BD blocks per channel
         chan_chain_idx: list[int] = []  # block where next channel's dma_start sits
         next_idx = 1
