@@ -34,6 +34,18 @@ from ..resolvable import NotResolvedError, Resolvable
 _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
 
+def _emit_shim_dma_alloc(kind: str, shim_symbol, src, src_channel, dst, dst_channel):
+    if src.tile_type in _SHIM_TILE_TYPES:
+        shim_dma_allocation(shim_symbol, src.op, DMAChannelDir.MM2S, src_channel)
+    elif dst.tile_type in _SHIM_TILE_TYPES:
+        shim_dma_allocation(shim_symbol, dst.op, DMAChannelDir.S2MM, dst_channel)
+    else:
+        raise ValueError(
+            f"{kind}.shim_symbol={shim_symbol!r} requires a shim endpoint, "
+            f"but neither src ({src}) nor dst ({dst}) is a shim tile."
+        )
+
+
 class Flow(Resolvable):
     """An explicit AXI-stream route between (src_tile, src_port, src_channel) and
     (dst_tile, dst_port, dst_channel).
@@ -112,27 +124,14 @@ class Flow(Resolvable):
                 self._dst_channel,
             )
             if self._shim_symbol is not None:
-                if self._src.tile_type in _SHIM_TILE_TYPES:
-                    shim_dma_allocation(
-                        self._shim_symbol,
-                        self._src.op,
-                        DMAChannelDir.MM2S,
-                        self._src_channel,
-                    )
-                elif self._dst.tile_type in _SHIM_TILE_TYPES:
-                    shim_dma_allocation(
-                        self._shim_symbol,
-                        self._dst.op,
-                        DMAChannelDir.S2MM,
-                        self._dst_channel,
-                    )
-                else:
-                    raise ValueError(
-                        f"Flow.shim_symbol={self._shim_symbol!r} requires "
-                        f"the Flow to have a shim endpoint, but neither "
-                        f"src ({self._src}) nor dst ({self._dst}) is a "
-                        f"shim tile."
-                    )
+                _emit_shim_dma_alloc(
+                    "Flow",
+                    self._shim_symbol,
+                    self._src,
+                    self._src_channel,
+                    self._dst,
+                    self._dst_channel,
+                )
 
 
 @dataclass
@@ -243,23 +242,11 @@ class PacketFlow(Resolvable):
             keep_pkt_header=self._keep_pkt_header,
         )
         if self._shim_symbol is not None:
-            if self._src.tile_type in _SHIM_TILE_TYPES:
-                shim_dma_allocation(
-                    self._shim_symbol,
-                    self._src.op,
-                    DMAChannelDir.MM2S,
-                    self._src_channel,
-                )
-            elif self._dst.tile_type in _SHIM_TILE_TYPES:
-                shim_dma_allocation(
-                    self._shim_symbol,
-                    self._dst.op,
-                    DMAChannelDir.S2MM,
-                    self._dst_channel,
-                )
-            else:
-                raise ValueError(
-                    f"PacketFlow.shim_symbol={self._shim_symbol!r} requires "
-                    f"a shim endpoint, but neither src ({self._src}) nor "
-                    f"dst ({self._dst}) is a shim tile."
-                )
+            _emit_shim_dma_alloc(
+                "PacketFlow",
+                self._shim_symbol,
+                self._src,
+                self._src_channel,
+                self._dst,
+                self._dst_channel,
+            )

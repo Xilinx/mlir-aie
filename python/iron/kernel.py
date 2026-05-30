@@ -23,21 +23,13 @@ from .buffer import Buffer
 
 
 def _is_contiguous_row_major(mr):
-    """True iff ``mr`` is a fully-static row-major contiguous memref at offset 0.
-
-    A default memref like ``memref<64x32xi16>`` qualifies; a strided view
-    such as ``memref<64x32xi16, strided<[64, 1]>>`` produced by a slice or
-    a custom layout does not.  We require this before emitting a
-    ``memref.collapse_shape`` because collapse-on-non-contiguous-dims is
-    undefined behaviour at the MLIR level and would silently produce
-    wrong DMAs / loads.
-    """
+    """True iff ``mr`` is fully-static row-major contiguous at offset 0;
+    required before ``memref.collapse_shape`` (UB on non-contiguous dims)."""
     if any(d < 0 for d in mr.shape):
         return False
     try:
         strides, offset = mr.get_strides_and_offset()
     except Exception:
-        # No expressible stride layout → conservatively refuse.
         return False
     if offset != 0:
         return False
@@ -51,35 +43,13 @@ def _is_contiguous_row_major(mr):
 
 
 def _maybe_collapse_to_match(arg, expected_ty):
-    """Bridge an N-D contiguous memref arg to a 1-D kernel arg signature.
-
-    Iron designs naturally hold multi-dimensional ObjectFifo elements (e.g.
-    a matmul L1 buffer typed ``memref<64x64xi16>``) but the
-    ``aie.iron.kernels.X`` helpers (``mm``, ``mm_zero``, ``passthrough``,
-    ...) declare flat 1-D arg signatures (``memref<4096xi16>``) because the
-    underlying C++ kernels read pointers and re-stride internally.  Without
-    an adapter, the resulting ``func.call`` fails MLIR verification with
-    a memref-shape mismatch even though the bytes line up perfectly.
-
-    This helper inserts a ``memref.collapse_shape`` to flatten such an
-    argument when ALL of the following hold:
-
-      * ``arg`` is a memref-typed Value with rank ≥ 1
-      * ``expected_ty`` is a rank-1 memref
-      * element types match
-      * the source memref is **fully static, row-major contiguous, offset 0**
-        (verified by :func:`_is_contiguous_row_major`)
-      * total static element counts match
-
-    Any other case is returned unchanged so MLIR's existing verification
-    fires on real bugs rather than being silenced here.  In particular,
-    strided views, partial-collapse reshapes, transposes, and rank-
-    preserving permutations are all left alone.
-
-    The collapsed memref aliases the same underlying storage — no copy or
-    allocation is emitted.
-    """
-    # Non-Value args (Python scalars, etc.) pass through.
+    """Bridge an N-D contiguous memref arg to a 1-D kernel signature via
+    ``memref.collapse_shape``. Iron L1 buffers are multi-dim (e.g.
+    ``memref<64x64xi16>``) but ``aie.iron.kernels.X`` helpers declare
+    flat 1-D args; without this adapter MLIR rejects the call even though
+    bytes line up. Aliases storage — no copy emitted. Returns ``arg``
+    unchanged for any case that isn't safely collapsible, so real bugs
+    still surface in MLIR verification."""
     if not isinstance(arg, ir.Value):
         return arg
     arg_ty = arg.type
@@ -93,9 +63,6 @@ def _maybe_collapse_to_match(arg, expected_ty):
         return arg
     if arg_mr.element_type != exp_mr.element_type:
         return arg
-    # Only collapse N-D → 1-D for now; other reshapes (rank-preserving
-    # permutations, partial collapses) are real semantic differences and
-    # should fail loudly.
     if exp_mr.rank != 1 or arg_mr.rank < 1:
         return arg
     if any(d < 0 for d in exp_mr.shape):
@@ -366,17 +333,9 @@ class ExternalFunction(Kernel):
         self._compiled = False
         self._cached_digest: str | None = None
 
-        # The JIT pipeline writes each ExternalFunction's compiled output to
-        # ``object_file_name`` inside the cache directory; two such writes to
-        # the same path silently overwrite each other and leave the wrong .o
-        # linked in.  Two same-name EFs with different content (e.g. two
-        # kernels.mm() helper calls with different parameterizations) would
-        # otherwise produce identical default .o filenames and collide.
-        # Mirror what kernels.X / _make_extern already does: when the path
-        # was DEFAULTED, auto-suffix it with a short content digest so each
-        # parameterization lives at a distinct .o.  When the user passed an
-        # explicit ``object_file_name=``, silent rename would surprise them
-        # — raise instead so they can disambiguate by name themselves.
+        # Two same-name EFs with default object_file_name would collide on
+        # the same .o path. Auto-suffix defaulted names with a content digest;
+        # raise on explicit names so silent renames don't surprise the caller.
         for existing in ExternalFunction._instances:
             if (
                 existing._name == effective_name
@@ -484,11 +443,7 @@ class ExternalFunction(Kernel):
     def __repr__(self) -> str:
         """Content-based repr so str(ef) is stable across GC cycles.
 
-        The default ``object.__repr__`` includes the memory address, which
-        Python's GC recycles.  Two ExternalFunction instances with different
-        content can end up at the same address in sequence, producing the same
-        ``str(ef)`` and therefore the same filesystem cache hash in
-        ``_compute_hash``, causing the wrong compiled binary to be loaded.
-        Using the content digest here makes ``str(ef)`` unique per content.
+        Default ``object.__repr__`` uses the recyclable memory address; two
+        distinct EFs can then alias onto the same _compute_hash cache slot.
         """
         return f"ExternalFunction({self._name!r}, digest={self._content_digest()})"

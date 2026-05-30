@@ -17,7 +17,6 @@ source_file_mtimes + flags)`` — no MLIR generation needed for a cache lookup.
 
 from __future__ import annotations
 
-import builtins
 import functools
 import hashlib
 import inspect
@@ -72,14 +71,9 @@ def _decode_kwarg(encoded: Any) -> Any:
 
 
 class _TensorPlaceholder:
-    """Sentinel passed for In/Out/InOut params during MLIR generation.
-
-    Raises a descriptive ``RuntimeError`` if the generator body tries to read
-    any attribute (e.g. ``.shape``, ``.dtype``, ``.size``) from a runtime
-    tensor parameter.  This enforces the contract that generator bodies must
-    not depend on tensor values at compile time — all shape/dtype information
-    must come from ``Compile[T]`` parameters instead.
-    """
+    """Sentinel for In/Out/InOut params during MLIR generation; any attribute
+    access raises so generator bodies can't read tensor shape/dtype at compile
+    time (use ``Compile[T]`` for that instead)."""
 
     def __init__(self, param_name: str) -> None:
         object.__setattr__(self, "_param_name", param_name)
@@ -198,18 +192,11 @@ def _compute_hash(
     aiecc_flags: list[str],
     compile_flags: list[str],
 ) -> str:
-    """Compute a stable SHA-256 cache key without generating MLIR.
-
-    Components:
-    1. Generator bytecode (``co_code`` + ``co_consts``) — or file path for .mlir.
-    2. Sorted ``compile_kwargs`` JSON.
-    3. ``(path, mtime)`` pairs for each source file.
-    4. Sorted ``aiecc_flags`` + ``compile_flags``.
-    """
+    """Stable SHA-256 cache key from generator bytecode, kwargs, source/object
+    mtimes, flags, and target arch — without generating MLIR."""
     h = hashlib.sha256()
 
     if isinstance(generator, Path):
-        # Static .mlir file: hash the path and its mtime.
         h.update(str(generator).encode())
         try:
             h.update(str(generator.stat().st_mtime).encode())
@@ -219,15 +206,11 @@ def _compute_hash(
         code = generator.__code__
         h.update(code.co_code)
         h.update(repr(code.co_consts).encode())
-        # Include qualname so that two structurally identical functions defined
-        # in different scopes (e.g. gen_a vs gen_b in the same module) hash
-        # differently when their qualname reflects their definition context.
+        # qualname distinguishes structurally identical functions in different scopes.
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
 
-    # For callable kwargs (e.g. Compile[object] lambdas), hash bytecode +
-    # defaults + closure rather than str(v): str(<lambda>) embeds an address
-    # that Python recycles, causing distinct lambdas to alias on disk.
+    # Hash callable kwargs by bytecode+closure; str(<lambda>) embeds a recyclable address.
     def _kwarg_repr(v):
         if callable(v) and hasattr(v, "__code__"):
             code = v.__code__
@@ -255,7 +238,6 @@ def _compute_hash(
         kwargs_json = repr(sorted(compile_kwargs.items())).encode()
     h.update(kwargs_json)
 
-    # Source file mtimes.
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
         try:
@@ -263,7 +245,6 @@ def _compute_hash(
         except (FileNotFoundError, OSError):
             pass
 
-    # Object file mtimes.
     for of in sorted(object_files, key=str):
         h.update(str(of).encode())
         try:
@@ -271,38 +252,20 @@ def _compute_hash(
         except (FileNotFoundError, OSError):
             pass
 
-    # Flags.
     h.update(repr(sorted(aiecc_flags)).encode())
     h.update(repr(sorted(compile_flags)).encode())
 
-    # Platform/hardware identifier — only for callable generators.
-    # A static .mlir file is architecture-agnostic; compiled kernels are not.
-    #
-    # Each fallback below collapses a missing/unresolvable component to a
-    # constant string ("unknown" / "absent" / "path:..."), which means hashes
-    # remain stable across machines that share the same misconfiguration.  We
-    # log at WARNING so that a true environment problem surfaces rather than
-    # silently producing a stale-but-stable cache hit.
+    # Static .mlir is arch-agnostic; compiled kernels need a target identifier.
+    # Missing components collapse to a constant + WARNING log so cross-arch cache
+    # collisions surface instead of silently aliasing.
     if not isinstance(generator, Path):
         try:
             import aie.iron as _iron
             from aie.utils import DefaultNPURuntime
             from aie.utils.compile.utils import resolve_target_arch
 
-            # Prefer the iron-set current device — this is what
-            # `iron.get_current_device()` returns inside the generator body
-            # AND what `_default_source_path` already uses to pick per-arch
-            # kernel sources.  Falling back to the XRT-detected hardware
-            # device only when no iron device has been set.
-            #
-            # Using DefaultNPURuntime.device() unconditionally (the previous
-            # behaviour) silently broke cross-compile: a Strix-targeted
-            # generator body ran by an iron `set_current_device(NPU2Col1())`
-            # would produce AIE2P MLIR but hash to the same dir as a Phoenix
-            # compile — cache collision unless the design happened to use a
-            # kernel-library factory whose per-arch source-file mtime
-            # masked the issue (e.g. matmul, where aie2/mm.cc and
-            # aie2p/mm.cc differ).
+            # Prefer iron's current device (matches `iron.get_current_device()`
+            # inside the generator); fall back to XRT-detected only when unset.
             try:
                 device = _iron.get_current_device()
             except (RuntimeError, AttributeError):
@@ -330,11 +293,9 @@ def _compute_hash(
             OSError,
             RuntimeError,
         ) as exc:
-            # ``peano_cxx_path`` / ``peano_install_dir`` raise ``RuntimeError``
-            # (not ``FileNotFoundError``) when Peano isn't installed — without
-            # ``RuntimeError`` in the tuple, ``hash(design)`` crashes in any
-            # environment without Peano, even though hashing only needs a
-            # stable identity (no actual compile).
+            # peano_cxx_path / peano_install_dir raise RuntimeError (not
+            # FileNotFoundError) when Peano isn't installed; needed in tuple
+            # so hash(design) doesn't crash on Peano-less envs.
             try:
                 from aie.utils import config as _config
 
@@ -521,9 +482,8 @@ class CompilableDesign:
                 )
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
-                # Populate expected DMA sizes on cache hit too — otherwise
-                # validate_tensor_args silently no-ops for cached designs and
-                # callers see kernel garbage instead of a clear shape error.
+                # Populate on cache hit too, else validate_tensor_args no-ops
+                # and callers see kernel garbage instead of a shape error.
                 if self._expected_tensor_sizes is None:
                     self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
                 return xclbin_path, inst_path
@@ -542,15 +502,13 @@ class CompilableDesign:
                 )
 
             try:
-                # _EXTERN_CACHE entries hold MLIR ops bound to a prior compile()'s
-                # MLIR Context; reusing them across contexts segfaults inside
-                # func.function_type.  Clear so the cache is per-compile-pass.
+                # _EXTERN_CACHE ops bind to a prior MLIR Context; reuse across
+                # contexts segfaults in func.function_type. Clear per compile.
                 from aie.iron.kernels._common import _EXTERN_CACHE
 
                 _EXTERN_CACHE.clear()
                 mlir_module = self._generate_mlir(ExternalFunction)
 
-                # Determine target architecture.
                 from aie.utils.compile import resolve_target_arch
 
                 device = (
@@ -560,15 +518,11 @@ class CompilableDesign:
                 )
                 target_arch = resolve_target_arch(device)
 
-                # Compile any ExternalFunction kernels created during generation.
                 external_kernels = list(ExternalFunction._instances)
                 ExternalFunction._instances.clear()
 
-                # Auto-detect the design's toolchain choice from the
-                # registered ExternalFunctions.  All EFs in one design must
-                # agree (aiecc itself only invokes one front-end per
-                # compile); a mix would silently produce a broken xclbin.
-                # See test_design_chess_peano_mixed_raises for the test.
+                # aiecc invokes one toolchain front-end per compile; all EFs
+                # must agree or the resulting xclbin is silently broken.
                 chess_uses = {getattr(f, "_use_chess", False) for f in external_kernels}
                 if len(chess_uses) > 1:
                     chess_funcs = [f._name for f in external_kernels if f._use_chess]
@@ -599,10 +553,8 @@ class CompilableDesign:
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
                 )
 
-                # Verify that the expected output files were actually created.
-                # aiecc may exit with code 0 even when xclbin generation fails
-                # silently (e.g. missing xclbinutil or bootgen), so we must
-                # check the files exist before treating compilation as a success.
+                # aiecc may exit 0 even when xclbin generation fails silently
+                # (missing xclbinutil/bootgen); verify outputs exist.
                 expected_outputs = [xclbin_path, inst_path]
                 if elf_path is not None:
                     expected_outputs.append(elf_path)

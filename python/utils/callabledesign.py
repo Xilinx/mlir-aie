@@ -30,7 +30,6 @@ and provides a ``__call__`` interface that:
 from __future__ import annotations
 
 import logging
-import warnings
 from pathlib import Path
 from typing import Any, Callable
 
@@ -44,12 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 def _evict_xrt_context(xclbin_path: Path) -> None:
-    """Evict a stale XRT hw_context from ``DefaultNPURuntime._context_cache``.
-
-    Called after an IOCTL EINVAL error so the next kernel load creates a
-    genuinely fresh hardware context rather than reusing the invalid one.
-    No-op when the runtime has no context cache or the entry is absent.
-    """
+    """Evict a stale XRT hw_context after IOCTL EINVAL so the retry gets a fresh one."""
     if DefaultNPURuntime is None or not hasattr(DefaultNPURuntime, "_context_cache"):
         return
     try:
@@ -59,9 +53,8 @@ def _evict_xrt_context(xclbin_path: Path) -> None:
         if entry is not None:
             DefaultNPURuntime._cleanup_entry(entry)
     except Exception:
-        # Eviction must not raise: we're already on a recovery path from an
-        # EINVAL.  But silence is dangerous — without this log a broken
-        # _context_cache would keep recycling into the retry forever.
+        # Recovery path: must not raise, but log loudly — silent failure would
+        # keep recycling a broken _context_cache into every retry.
         logger.warning(
             "_evict_xrt_context: failed to evict %s; retry may reuse a stale "
             "hardware context",
@@ -151,19 +144,8 @@ class CallableDesign:
         else:
             self._path_cache_fn = None
 
-        # Per-instance in-process kernel cache: cache_key → NPUKernel.
-        # Using a plain dict (no size cap) because there is no cross-function
-        # interference risk; the number of distinct (shape, dtype, compile_kwargs)
-        # combinations per function is naturally bounded in practice.
         self._kernel_cache: dict = {}
 
-        # Note (debug-level only) when any required Compile[T] params are
-        # unbound at decoration time — these must be supplied as kwargs at
-        # every call site.  The original wiring used warnings.warn, but
-        # decoration-time noise drowned the rest of the notebook output for
-        # what is, in practice, a perfectly valid pattern (most users always
-        # bind at the call site).  TypeError still fires loudly at compile
-        # time if the caller forgets, which is the actual safety net.
         if (
             logger.isEnabledFor(logging.DEBUG)
             and callable(self.compilable.mlir_generator)
@@ -227,6 +209,27 @@ class CallableDesign:
         if call_compile_kwargs:
             return self.compilable.specialized(**call_compile_kwargs)
         return self.compilable
+
+    def _compile_and_build_kernel(
+        self,
+        compilable: CompilableDesign,
+        cache_key,
+        trace_config,
+    ) -> NPUKernel:
+        xclbin_path, inst_path = compilable.compile()
+        if trace_config is not None:
+            physical_mlir = xclbin_path.parent / "input_with_addresses.mlir"
+            if physical_mlir.exists():
+                trace_config.physical_mlir_path = str(physical_mlir)
+        kernel = NPUKernel(
+            xclbin_path,
+            inst_path,
+            kernel_name="MLIR_AIE",
+            trace_config=trace_config,
+        )
+        if compilable.use_cache:
+            self._kernel_cache[cache_key] = kernel
+        return kernel
 
     def __call__(self, *runtime_args, **runtime_kwargs):
         """Compile (if needed), then run the kernel.
@@ -332,25 +335,14 @@ class CallableDesign:
 
         compilable = self._build_compilable(call_compile_kwargs)
 
-        # --- In-process kernel cache lookup ---
-        # Use the generator (or its string path) as the cache key identity.
-        # For Path generators: wrap in an object with __name__ so that
-        # _create_function_cache_key does not crash (it accesses .__name__).
-        #
-        # Cache-key divergence (intentional): the in-process key here keys on
-        # (generator, runtime_args, compile_kwargs), so different tensor shapes
-        # take separate slots even when compile_kwargs match.  The on-disk key
-        # in CompilableDesign._compute_cache_hash keys only on
-        # (generator, compile_kwargs, source_files, flags) — tensors are
-        # runtime data, irrelevant to the compiled artifact.
-        # Together they defend against a generator that omits Compile[T] for
-        # shape: the on-disk artifact may be reused, but the in-process slot
-        # changes, so validate_tensor_args() runs and surfaces the mismatch.
+        # In-process key includes runtime_args (tensor shapes); on-disk key in
+        # _compute_cache_hash does not. Divergence is intentional: if a generator
+        # omits Compile[T] for shape, the disk artifact reuses but the in-process
+        # slot changes, so validate_tensor_args() surfaces the mismatch.
         generator = compilable.mlir_generator
         if callable(generator):
             cache_fn = generator
         else:
-            # Use the pre-built named wrapper created once in __init__.
             cache_fn = self._path_cache_fn
 
         cache_key = _create_function_cache_key(
@@ -362,25 +354,9 @@ class CallableDesign:
         if compilable.use_cache and cache_key in self._kernel_cache:
             kernel = self._kernel_cache[cache_key]
         else:
-            # Compile on demand.
-            xclbin_path, inst_path = compilable.compile()
-
-            # Set physical MLIR path for trace parsing (contains lowered
-            # npu_write32 ops).  Mirrors utils/jit.py lines 175-178.
-            if trace_config is not None:
-                kernel_dir = xclbin_path.parent
-                physical_mlir = kernel_dir / "input_with_addresses.mlir"
-                if physical_mlir.exists():
-                    trace_config.physical_mlir_path = str(physical_mlir)
-
-            kernel = NPUKernel(
-                xclbin_path,
-                inst_path,
-                kernel_name="MLIR_AIE",
-                trace_config=trace_config,
+            kernel = self._compile_and_build_kernel(
+                compilable, cache_key, trace_config
             )
-            if compilable.use_cache:
-                self._kernel_cache[cache_key] = kernel
 
         tensor_args, remaining_scalars = compilable.split_runtime_args(
             runtime_args, scalar_runtime_kwargs
@@ -390,13 +366,9 @@ class CallableDesign:
         try:
             return kernel(*tensor_args, **remaining_scalars)
         except RuntimeError as exc:
-            # IOCTL EINVAL means the XRT hw_context backing this NPUKernel is
-            # invalid (stale context from the XRT context cache).  We accept
-            # two XRT formats:
-            #   * "err=-22"           — numeric IOCTL errno from libxrt
-            #   * "...XRT...Invalid argument..." — string form via xrt::error
-            # Plain "Invalid argument" without an XRT marker is too generic
-            # (could be any Python RuntimeError) and is *not* treated as EINVAL.
+            # IOCTL EINVAL → stale XRT hw_context. Match libxrt's "err=-22"
+            # or xrt::error's "XRT...Invalid argument"; bare "Invalid argument"
+            # is too generic and is not treated as EINVAL.
             msg = str(exc)
             is_xrt_einval = "err=-22" in msg or (
                 "Invalid argument" in msg and ("XRT" in msg or "xrt" in msg)
@@ -410,28 +382,12 @@ class CallableDesign:
                 msg,
             )
 
-            # Evict Python kernel cache entry.
             self._kernel_cache.pop(cache_key, None)
-
-            # Recompile to obtain xclbin path (filesystem cache makes this fast).
-            xclbin_path, inst_path = compilable.compile()
-
-            # Evict the stale XRT hw_context so the retry creates a new one.
+            xclbin_path, _ = compilable.compile()
             _evict_xrt_context(xclbin_path)
-
-            if trace_config is not None:
-                kernel_dir = xclbin_path.parent
-                physical_mlir = kernel_dir / "input_with_addresses.mlir"
-                if physical_mlir.exists():
-                    trace_config.physical_mlir_path = str(physical_mlir)
-            kernel = NPUKernel(
-                xclbin_path,
-                inst_path,
-                kernel_name="MLIR_AIE",
-                trace_config=trace_config,
+            kernel = self._compile_and_build_kernel(
+                compilable, cache_key, trace_config
             )
-            if compilable.use_cache:
-                self._kernel_cache[cache_key] = kernel
             return kernel(*tensor_args, **remaining_scalars)
 
     def specialize(self, **compile_kwargs) -> "CallableDesign":
