@@ -283,7 +283,8 @@ def bn_conv2dk3(
     line_size = input_width * input_channels
     line_ty = np.ndarray[(line_size,), np.dtype[np.int8]]
     wt_ty = np.ndarray[(3 * 3 * input_channels * output_channels,), np.dtype[np.int8]]
-    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
+    # Output is half-resolution because the kernel is stride-2.
+    out_ty = np.ndarray[((input_width // 2) * output_channels,), np.dtype[np.uint8]]
     return _make_extern(
         "conv2dk3_stride2_i8",
         _default_source_path("bottleneck/bn_conv2dk3.cc", subdir="aie2"),
