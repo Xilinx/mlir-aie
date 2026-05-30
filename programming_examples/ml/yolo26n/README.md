@@ -120,7 +120,7 @@ column are the README snapshot from prior to the kernel-by-kernel audit.
 | m6  | c3k2_heavy                     | **12.04** | **83.1**  | ✓ (was 76.0 → SHAPES_ARE_CONST sweep on all 6 m6 kernels) |
 | m7  | conv_stride (chunked)          | **3.94**  | **253.7** | ✓ (was 206.8) |
 | m8  | c3k2_heavy (2-tile megakernel) | **16.32** | **61.3**  | ✓ (M8_TILES=2; default for per-block standalone) |
-| m8  | c3k2_heavy (4-tile megakernel) | **4.91**  | **203.8** | ✓ (M8_TILES=4; default in chain) — was 14.97 / 66.8 fps before Sprint 4 and 11.44 / 87.4 fps after Sprint 4 cv1↔cv2 mmul-layout pre-pack. Sprint 4 stages 1a-1d extended the pattern to every internal m8 buffer (front→back, m_0_split, cross-pair cv2_skip→cv1, back internal scratch). |
+| m8  | c3k2_heavy (4-tile megakernel) | **4.39**  | **227.6** | ✓ (M8_TILES=4; default in chain) — was 14.97 / 66.8 fps before Sprint 4. Sprint 4 + stages 1a-1e converted every internal m8 buffer (front↔back, m_0_split, pair_cv1↔pair_cv2, back internal scratch, cv1↔m_0_split) to mmul-packed layout. Final sweep clean of `__divsi3` and per-iter branches in mac bodies. |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
 | m9 stage 10 (full PSA block)     | PSA full | **4.95** | **202.2** | ✓ (was 195.9 → qkv SHAPES_ARE_CONST) |
 | m10 (classifier head)            | conv2dk1+GAP+linear+softmax | **7.69** | **130.1** | ✓ |
@@ -356,6 +356,7 @@ every remaining internal m8 buffer, in four ship-as-you-go stages:
 | **1b** | m_0_split's split_b → back cv3 | **9.77 ms** | −0.71 ms |
 | **1c** | back internal cv3 → cv2 scratch handoff | **8.88 ms** | −0.89 ms |
 | **1d** | pair_cv2_skip output / pair_cv1 input / m_0_split's split_a / back cv3 inner1 / cv2_skip's skip-add path (coordinated) | **4.91 ms** | **−3.97 ms** |
+| **1e** | cv1's s_bot → m_0_split's in_bot (last internal buffer) | **4.39 ms** | −0.52 ms |
 
 Why 1d was so much larger: it eliminated the scalar pack on **both
 3×3 inner_pair kernels** (the dominant cost in the B+C tiles, ~9.8
