@@ -2703,7 +2703,12 @@ _BUILDERS = {
     # actually emits N source BDs, one per chunk).
     "m3": lambda act_in, m: _build_conv_stride_block_streamed("m3", act_in, m),
     "m5": lambda act_in, m: _build_conv_stride_block_streamed("m5", act_in, m),
-    "m7": lambda act_in, m: _build_conv_stride_block_streamed("m7", act_in, m),
+    # m7 out_depth=1 (vs default 2): m8 4-tile in chain context overflows
+    # tile A=(5,3)'s 64KB L1 if the m7→m8 cons buffer is 8KB (depth=2 × 4KB
+    # element). depth=1 → 4KB cons buffer, matches m8 standalone act_in
+    # sizing. Per-block ablation says m7 contributes 0.41ms to chain so the
+    # depth-1 lack of slack is no risk of pipeline starvation.
+    "m7": lambda act_in, m: _build_conv_stride_block_streamed("m7", act_in, m, out_depth=1),
     "m2": lambda act_in, m: _build_c3k2_small("m2", act_in, m),
     "m4": lambda act_in, m: _build_c3k2_small("m4", act_in, m),
     "m6": lambda act_in, m: _build_c3k2_heavy("m6", act_in, m),

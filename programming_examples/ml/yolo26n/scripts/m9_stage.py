@@ -1072,9 +1072,10 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         )
 
         # via_DMA only when ffn_block_out → shim (stage 9 output). For
-        # stage 10+ the consumer is cv2_tile (7,4), shared-mem south of
-        # ffn (7,3); via_DMA=True would force a DMA channel that
-        # exceeds cv2_tile's S2MM budget alongside top+wts.
+        # stage 10+ the consumer (cv2_tile) is shared-L1 adjacent to ffn
+        # by placement: cv2 at (4,5), ffn at (5,5) — west-of-ffn shared L1.
+        # via_DMA=True here would burn an S2MM channel cv2 can't afford
+        # alongside top+wts (3 → 2-channel budget overrun).
         ffn_block_out_via_DMA = stage == 9
         ffn_block_out_fifo = ObjectFifo(
             B._i8((in_w, ffn_out_c)),

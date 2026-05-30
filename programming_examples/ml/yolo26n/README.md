@@ -78,6 +78,13 @@ runtime before the upstream IRON ObjectFifo depth-collapse fix
 fifos were silently being sized to ping-pong (2 buffers) instead of
 the declared depth, deadlocking c3k2_heavy's bot_fifo broadcast.
 
+**After m8 4-tile + m9-cv2 relocation** (chain default, see "Sprint 3"
+below): full m0..m10 chain N=15 = **15.17 ms / 65.94 fps**, N=1 = 36.91
+ms. m8 4-tile reduces standalone m8 from 16.32 ms → 14.97 ms; the bulk
+of m8's 16-row pipeline is still spent on the two inner-pair tiles
+(B + C carry ~9.82 ms of the 14.97 ms wall per per-tile ablation), so
+a real per-pair-conv split into 6 tiles is the next lever.
+
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 All rows reflect the post-audit state; "was X" values in the rightmost
 column are the README snapshot from prior to the kernel-by-kernel audit.
@@ -92,7 +99,8 @@ column are the README snapshot from prior to the kernel-by-kernel audit.
 | m5  | conv_stride (chunked)          | **5.40**  | **185.1** | ✓ (was 139.5) |
 | m6  | c3k2_heavy                     | **12.04** | **83.1**  | ✓ (was 76.0 → SHAPES_ARE_CONST sweep on all 6 m6 kernels) |
 | m7  | conv_stride (chunked)          | **3.94**  | **253.7** | ✓ (was 206.8) |
-| m8  | c3k2_heavy (2-tile megakernel) | **16.32** | **61.3**  | ✓ |
+| m8  | c3k2_heavy (2-tile megakernel) | **16.32** | **61.3**  | ✓ (M8_TILES=2; default for per-block standalone) |
+| m8  | c3k2_heavy (4-tile megakernel) | **14.97** | **66.8**  | ✓ (M8_TILES=4; default in chain). Inner-pair tiles B+C carry 9.82 ms of the wall — per-pair split into 6 tiles is the next lever. |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
 | m9 stage 10 (full PSA block)     | PSA full | **4.95** | **202.2** | ✓ (was 195.9 → qkv SHAPES_ARE_CONST) |
 | m10 (classifier head)            | conv2dk1+GAP+linear+softmax | **7.69** | **130.1** | ✓ |
@@ -168,32 +176,118 @@ the second SRS).
 m8 (61.3 fps) and m10 (130.1 fps) were already deep-opt'd in an earlier
 m8/m9/m10 sweep that preceded the kernel-by-kernel audit.
 
-### Next remaining levers
+### Sprint 3: chain-context per-block ablation
 
-1. **`mmul<8,8,8>` on m6 inner_pair_cv1 / cv2_skip** - same upgrade m8
-   pair_cv1 (streamed) already uses. Doubles per-cycle MAC throughput
-   on m6's biggest kernel (4.83 ms intrinsic, 70% of m6 wall).
-2. **Winograd F(2,3) on 3×3 stride-1** - potential 2.25× MAC reduction
+Re-ran the per-block NOOP ablation at N=15 with a full `make clean` between
+iters (the first attempt accidentally chained NOOP flags across iters
+because Make tracks mtime not flag changes — the true per-block
+contributions are what's recorded here). Each row = noop one block,
+re-time the chain:
+
+| Block | Δ vs baseline (16.03 ms) | Standalone | In-chain contribution |
+|---|---:|---:|---|
+| m0  | −0.01 | 11.32 | hidden behind m8 wall |
+| m1  |  0.00 | 4.84  | hidden |
+| m2  | −0.03 | 12.98 | hidden, but **co-gates** at 13 ms once m8 drops |
+| m3  |  0.00 | 5.13  | hidden |
+| m4  | small | 12.58 | co-gates with m2/m6 |
+| m5  | −0.04 | 5.40  | hidden |
+| m6  | small | 12.04 | co-gates |
+| m7  | −0.01 | 3.94  | hidden |
+| m8  | **−2.57** | 16.32 | **primary gate** |
+| m9  | −0.10 | 4.95  | pipelines well — almost free in-chain |
+| m10 | −0.35 | 7.69  | also pipelines well |
+
+The combo "isolate m8" run (noop m9+m10): chain throughput = 15.03 ms,
+matching m8 standalone's 16.32 ms within noise. So m8 is the dominant
+gate. After m8 drops, the cluster max(m2, m4, m6) ≈ 13 ms becomes the
+next wall.
+
+### m8 4-tile per-tile ablation
+
+`M8_TILES=4` baseline standalone = 14.98 ms. NOOP each tile's kernels
+in turn (compute swap; locks + DMA still run, so the cross-tile pipeline
+shape is unchanged):
+
+| NOOP | ms | Exposes |
+|---|---:|---|
+| baseline 4t          | 14.98 | full pipeline |
+| noop A (front)       | 12.66 | B + C + D path |
+| noop D (back)        | 12.15 | A + B + C path |
+| noop A + D           | 9.82  | B + C alone |
+| **noop B + C (inner pairs)** | **6.91** | **A + D alone — gives the headroom number** |
+| noop all 4           | 0.46  | pure DMA / pipeline floor |
+
+Reading: the inner pairs on B (pair0_cv1 + pair0_cv2) and C (pair1_cv1
++ pair1_cv2) carry the bulk of m8's wall. The 4-tile design grouped
+2 ops per tile on B and C; halving each into its own tile (real 6-tile
+design) should drop B+C from 9.82 → ~5 ms and the m8 wall from 15 → ~7
+ms, lifting the chain past 100 fps.
+
+### Real 6-tile m8 — built standalone bit-exact, but no perf win
+
+`scripts/m8_megakernel_6tile.py` implements the per-pair-conv split
+described above (one inner conv per tile, snake-shaped A→B1→B2→C1→C2→D
+pipeline). Standalone bit-exact via `M8_TILES=6 make BLOCK=m8 run_ort`
+at **14.67 ms** (vs 4-tile's 15.08 ms — basically identical). **Chain
+context: M8_TILES=6 currently can't be used** — its memtile placements
+(2,1) and (7,1) conflict with m9 which holds (2,1) for ffn weights and
+(7,1) for cv1 weights. So the chain default is `M8_TILES=4`.
+
+Sprint 3 deep-dive on 6-tile cv1↔cv2 serialization (extensive):
+
+- **Pipeline plumbing is fine** — `noop_all` (every compute kernel
+  returns early) drains the 16-row × 6-stage pipeline in 0.45 ms.
+- **cv1 stages alone or cv2 stages alone pipeline correctly** —
+  `noop_cv2` = 10.75 ms = A+D (6.92) + max-stage cv1 (3.83). Same for
+  cv2 alone.
+- **With both active, cv1 + cv2 SUM rather than max per-pair** —
+  baseline 14.66 ≈ 6.92 + 3.83 + 3.88. The pair stages on the same
+  pair (B1↔B2 or C1↔C2) do not overlap, only pair0↔pair1 pipelines.
+
+Hypotheses tested and FALSIFIED:
+
+| Hypothesis | Test | Result |
+|---|---|---|
+| OF depth too shallow on `pair_mid_xt` | bumped depth 4 → 6 → 10 → 12 | no change |
+| scalar `sa_mid → sk_r` memcpy is the bottleneck | removed the memcpy | only 0.16 ms savings |
+| memtile DMA serializes cv1+cv2 weight streams | moved cv2 to a different memtile | no help |
+| L1 bank contention between B1 producer writes + B2 consumer reads | `via_DMA=True` on `pair_mid_xt` (separate buffer pools) | no help |
+| Producer/consumer different banks via depth modulo | varied depth 4..12 | flat scan, no signal |
+| Peano software-pipelining differs across modes | static asm inspection — no `loop` / `.zol` markers in either | not the cause |
+| `dynamic_objfifo_lowering=True` overhead in inner loop | local 3-row scratch cache → peek-1 on cross-tile OF (bit-exact) | same perf as peek-3 (14.87 ms vs 14.66) |
+
+A `peek-1` mode test (acquire 1 per iter, pass `pm, pm, pm` to kernel
+— breaks bit-exact) gave 6.60 ms; this initially looked like proof of
+peek-3 lockstep, but was actually a compiler artifact: with the same
+SSA pointer used 3× as kernel arg, Peano dead-load-eliminated 2/3 of
+the input loads.
+
+The actual cause of per-pair B1+B2 serialization is **not identified**.
+The 6-tile scaffold is kept in `scripts/m8_megakernel_6tile.py` for
+future revival; the m9 placement reshuffle from this sprint (m9-cv2 →
+(4,5)) is retained because it's also needed for any future m8 widening.
+
+### Next remaining levers
+2. **m2 / m4 OC-split to 5 tiles each** — only meaningful AFTER m8
+   drops, since today both are hidden behind m8. After step 1, they
+   become the co-gate at ~13 ms and a 5-tile OC-split should drop each
+   to ~7-8 ms.
+3. **Winograd F(2,3) on 3×3 stride-1** - potential 2.25× MAC reduction
    on the dominant kernel family (m6 inner_pair_*, m8 pair_cv1). INT8
    bit-exactness against the Quark ONNX reference needs an empirical
    numerical-drift study first; if it diverges, bfp16 Winograd via
    the ATB-style framework is the fallback.
-3. **ATB-style L1 asymmetry on m9 GEMMs** (paper:
+4. **ATB-style L1 asymmetry on m9 GEMMs** (paper:
    [arXiv:2511.16041](https://arxiv.org/abs/2511.16041), reference
    example at `programming_examples/ml/block_datatypes/gemm_asymmetric_tile_buffering/`).
    Demonstrated 31.3 TFLOPS on the same Strix HX 370 silicon — large
    headroom on m9 qkv/proj/ffn0/ffn1. Chess-only today; porting the
    pattern to peano is research-grade work.
-4. **Bank-aware memory** - playbook item #10. Cross-cutting; needs an
+5. **Bank-aware memory** - playbook item #10. Cross-cutting; needs an
    IRON-side `Buffer(..., placement=bank_N)` API hook + kernel-side
    address-space-qualified pointer types modeled after `example.h`'s
    `IFM_DM_BANK` / `WT_DM_BANK` / `OFM_DM_BANK` aliases.
-5. **Architectural / fifo / placement rebalancing** - intrinsic per-kernel
-   costs captured via leave-one-in NOOP_KERNEL_FILES ablation. m6
-   lower bound after perfect balance ≈ max(intrinsic) ≈ 4.83 ms
-   (= inner_pair_cv1) = 207 fps; m9 lower bound ≈ 2.40 ms
-   (= cv2_concat2_streamed) = 417 fps. These dominate post-rebalance
-   targets.
 6. **Softmax exp2** - replace the scalar fp32 LUT in
    `yolo_m9_attn_score_fused_vec.cc` with hardware
    `aie::exp2<bfloat16>` (see `aie_kernels/aie2p/softmax.cc`).
@@ -202,6 +296,12 @@ m8/m9/m10 sweep that preceded the kernel-by-kernel audit.
    `getCombinedOpcodeUNPACKLoad` crash on
    `accum<acc32, {16,32}>::to_vector<int8>(shift)` following
    `aie::mul/aie::mac`. Unblocks 4 m9 kernels' vec skip-add tails.
+
+The previous "next remaining levers #1" was `mmul<8,8,8>` on m6
+inner_pair_cv1/cv2_skip — that's already in place under the
+SHAPES_ARE_CONST=1 path triggered by `M6_PAIR_SHAPE` (and similarly
+under `M8_PAIR_SHAPE` for the streamed m8 variants). Both pair kernels
+on both blocks already select `MMUL_T = MMUL8x8x8` at compile time.
 
 **`aie::parallel_lookup` investigation** (deferred). PL on AIE2P peano
 compiles + runs correctly (see standalone harness at
@@ -241,6 +341,12 @@ Run `make help` for the canonical list. Highlights:
   file rebuild trigger as `CHAIN_N_SAMPLES`. `M9_CHAIN_STAGE` is
   accepted as a legacy alias. Only stages 1 and 10 are wired through
   `test_block_ort.py` (others lack a clean single-tensor ORT analog).
+- `M8_TILES={2,4}` — selects m8 megakernel layout. Chain default is 4
+  (set by the Makefile, scoped to the chain MLIR build; stamp-tracked
+  so toggling rebuilds). Per-block standalone (`make BLOCK=m8`) default
+  is 2 — pass `M8_TILES=4 make BLOCK=m8` to switch. 2-tile = 16.32 ms
+  standalone, 4-tile = 14.97 ms standalone. A real 6-tile is in
+  development (see "Sprint 3").
 - `TIME_ARGS="--n-warmup 5 --n-iters 100"` — passed through to the timing
   harnesses.
 - `TRACE_SIZE_PER_WORKER=N`, `TRACE_EVENTS=A,B,C` — bake AIE2P packet

@@ -106,6 +106,14 @@ INSTS  := $(BUILD)/insts_$(BLOCK).bin
 # the .chain_n_samples stamp file below forces a chain rebuild if it changes.
 CHAIN_N_SAMPLES ?= 1
 
+# Number of compute tiles for m8's megakernel in chain context (2, 4, or 6).
+# 4-tile is the chain default (6-tile has memtile conflicts with m9 in chain
+# context — m9 uses (2,1) and (7,1) which m8 6-tile also needs; standalone
+# 6-tile compiles but chain-integration is blocked pending memtile reshuffle).
+# Per-block standalone m8 (`BLOCK=m8`) still defaults to 2-tile via
+# aie2_yolo_per_block.py.
+M8_TILES ?= 4
+
 # Extra args forwarded to scripts/time_block.py and scripts/time_chain.py,
 # e.g. `make time BLOCK=m8 TIME_ARGS="--n-iters 50"`.
 TIME_ARGS ?=
@@ -169,6 +177,15 @@ $(BUILD)/.m9_stage: FORCE
 	@new="$(M9_STAGE)"; old=$$(cat $@ 2>/dev/null || echo ""); \
 	  if [ "$$old" != "$$new" ]; then \
 	    echo "[m9] M9_STAGE = $$new (was $${old:-unset}); m9 MLIR will rebuild"; \
+	    echo "$$new" > $@; \
+	  fi
+
+# Same stamp pattern for M8_TILES — chain MLIR rebuilds when it flips.
+$(BUILD)/.chain_m8_tiles: FORCE
+	@mkdir -p $(BUILD)
+	@new="$(M8_TILES)"; old=$$(cat $@ 2>/dev/null || echo ""); \
+	  if [ "$$old" != "$$new" ]; then \
+	    echo "[chain] M8_TILES = $$new (was $${old:-unset}); chain MLIR will rebuild"; \
 	    echo "$$new" > $@; \
 	  fi
 
@@ -461,9 +478,10 @@ CHAIN_INSTS  := $(BUILD)/insts_chain.bin
 
 $(CHAIN_MLIR): $(SRCDIR)/aie2_yolo_iron_partial.py $(SRCDIR)/aie2_yolo_per_block.py \
                $(DATA)/manifest.json $(SILU_LUTS) $(BUILD)/.chain_n_samples \
-               $(BUILD)/.chain_blocks
+               $(BUILD)/.chain_blocks $(BUILD)/.chain_m8_tiles
 	mkdir -p $(BUILD)
 	cd $(SRCDIR) && CHAIN_N_SAMPLES=$(CHAIN_N_SAMPLES) CHAIN_BLOCKS="$(CHAIN_BLOCKS)" \
+	    M8_TILES=$(M8_TILES) \
 	    python3 aie2_yolo_iron_partial.py > $@
 
 $(CHAIN_XCLBIN) $(CHAIN_INSTS): $(CHAIN_MLIR) $(KERNEL_OBJS)
@@ -492,7 +510,8 @@ trace:
 # Wipe just the chain artifacts (cheap; preserves kernel .o cache).
 clean_chain:
 	rm -rf $(CHAIN_MLIR) $(BUILD)/aie_chain.mlir.prj \
-	       $(CHAIN_XCLBIN) $(CHAIN_INSTS) $(BUILD)/.chain_n_samples
+	       $(CHAIN_XCLBIN) $(CHAIN_INSTS) $(BUILD)/.chain_n_samples \
+	       $(BUILD)/.chain_m8_tiles
 
 clean:
 	rm -rf $(BUILD)

@@ -208,20 +208,18 @@ PLACEMENT: dict = {
         # are the only DMA inputs). m6 keeps cv3+cv2 fused on one tile.
         "cv3_cv2": Tile(3, 4),  # m6-E
     },
-    # m8 is built by scripts/m8_megakernel_2tile.py as a 2-tile fused
-    # megakernel — it hardcodes its own tile coords and does NOT read this
-    # PLACEMENT entry. The dict below is here for parity/documentation only;
-    # if you re-architect m8 to use a PLACEMENT-driven layout, hook it up
-    # via scripts/m8_megakernel_2tile.py's `t_a` / `t_b` assignments.
+    # m8 placement (chain default = 4-tile via scripts/m8_megakernel_4tile.py).
+    # Scripts hardcode their own tile coords; dict here is for collision
+    # validation only. 4-tile uses compute (5,3),(5,4) + delegates (4,4)
+    # (ws_pair0) and (6,5) (ws_pair1). 6-tile variant exists in
+    # scripts/m8_megakernel_6tile.py but its placement (cols 5+6, rows
+    # 3-5) currently conflicts with m9 memtiles (2,1)+(7,1) in chain
+    # context — standalone-only until placement is reworked.
     "m8": {
-        "tile_a": Tile(5, 3),  # cv1 + m_0_split + pair0_cv1 + pair0_cv2
-        "tile_b": Tile(5, 4),  # pair1_cv1 + pair1_cv2 + cv3 + cv2 (m8_back)
-        # Buffer-delegate-only neighbors (no compute; receive shared-L1
-        # spill from the two compute tiles):
-        "delegate_south": Tile(5, 2),  # tile A's OF/recv spill
-        "delegate_west": Tile(4, 4),  # tile B's ws_pair1 recv (W-of-B,
-        # AIE2P shared-L1 is asymmetric:
-        # tile B can read W neighbor but not E)
+        "tile_a": Tile(5, 3),
+        "tile_b": Tile(5, 4),
+        "delegate_south": Tile(5, 2),
+        "delegate_west": Tile(4, 4),
     },
     # ---- PSA (7 tiles, chain-compat) ----
     # Original 5-tile design assumed monolithic attn_core; staged build
@@ -234,11 +232,13 @@ PLACEMENT: dict = {
         "qkv": Tile(7, 4),  #              shared-mem along the column
         "attn_core": Tile(7, 3),
         "sv": Tile(7, 2),
-        # cv2 at (6,5) is shared-mem with BOTH cv1 (7,5)→east and ffn
-        # (5,5)→west, so its two activation inputs (top + ffn_block_out)
-        # don't burn S2MM channels — only cv2 wts stream uses a channel.
-        # proj sits at (4,2), the last remaining free tile.
-        "cv2": Tile(6, 5),
+        # cv2 relocated from (6,5) → (4,5) so the chain m8 4-tile mega can
+        # claim (6,5) for its ws_pair1 recv. (4,5) is west-adjacent to ffn
+        # (5,5), preserving the shared-L1 hop for ffn_block_out → cv2.
+        # top from cv1 (7,5) is now non-adjacent → DMA via top_fifo
+        # (1 S2MM channel) alongside cv2 wts (1 S2MM) = 2 total, fits the
+        # AIE2P 2-S2MM budget.
+        "cv2": Tile(4, 5),
         "ffn": Tile(5, 5),  # shared-mem east of cv2 for ffn_block_out
         "proj": Tile(4, 2),  # far from sv/cv1; attn_pre_proj + b via DMA
     },
