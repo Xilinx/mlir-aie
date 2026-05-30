@@ -55,7 +55,7 @@ module @loc_test {
 // AIECreateCores: synthesized tile / core / end / mem / buffer for the call
 // op carry
 // the call's loc.
-// CHECK-DAG: aie.tile({{.*}}) loc(#[[CALLLOC:loc[0-9]*]])
+// CHECK-DAG: aie.tile(3, 3) loc(#[[CALLLOC:loc[0-9]*]])
 // CHECK-DAG: aie.mem({{.*}})
 // CHECK-DAG: aie.core({{.*}}) {{[{][[:space:]]*$}}
 // CHECK-DAG: aie.end loc(#[[CALLLOC]])
