@@ -221,7 +221,7 @@ jobs:
       - name: Validate wheel metadata
         shell: bash
         run: |
-          python -m python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
           python -m twine check --strict wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Set up Python (host) for smoke test
@@ -466,7 +466,7 @@ jobs:
       - name: Validate wheel metadata
         shell: bash
         run: |
-          python -m python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
           python -m twine check --strict wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Smoke test wheel in clean venv
@@ -535,7 +535,7 @@ jobs:
       - name: PyPI publish rehearsal (RTTI ON)
         shell: bash
         run: |
-          python -m python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
           bash utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh wheels_on_flat wheels_on_stripped 'buildRyzenWheels / RTTI ON'
 
       - name: PyPI publish rehearsal (RTTI OFF)

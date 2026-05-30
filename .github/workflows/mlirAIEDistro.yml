@@ -354,7 +354,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        python -m python -m pip install --require-hashes -r ci-tools.lock
+        python -m pip install --require-hashes -r ci-tools.lock
         python -m twine check --strict wheelhouse/*.whl
 
     - name: Generate build provenance attestation
@@ -586,7 +586,7 @@ jobs:
       - name: PyPI publish rehearsal
         shell: bash
         run: |
-          python -m python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
           bash utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh dist dist_stripped \
             'mlirAIEDistro / ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}'
 

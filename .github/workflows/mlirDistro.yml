@@ -364,7 +364,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        python -m python -m pip install --require-hashes -r ci-tools.lock
+        python -m pip install --require-hashes -r ci-tools.lock
         python -m twine check --strict wheelhouse/*.whl
 
     - name: Generate build provenance attestation
