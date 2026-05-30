@@ -9,6 +9,9 @@
 
 import logging
 import os
+import warnings
+
+import numpy as np
 
 # Prevent "No handlers could be found" warnings when aie is used as a library.
 logging.getLogger("aie").addHandler(logging.NullHandler())
@@ -49,13 +52,38 @@ def tensor(*args, **kwargs):
     """
     Create a tensor using the default tensor class.
 
+    If the first positional argument is a typed numpy array, that array's
+    dtype is the source of truth.  Passing ``dtype=`` together with a typed
+    ndarray:
+
+    * raises :class:`TypeError` if the dtypes disagree (silent ignore would
+      surprise callers expecting a cast);
+    * emits a :class:`UserWarning` if they match (the kwarg is redundant).
+
     Args:
-        *args: Arguments passed to the tensor constructor.
+        *args: Arguments passed to the tensor constructor.  ``args[0]`` is
+            either a shape ``tuple`` or an array-like.
         **kwargs: Keyword arguments passed to the tensor constructor.
 
     Returns:
         Tensor: The created tensor.
     """
+    if args and isinstance(args[0], np.ndarray) and "dtype" in kwargs:
+        arr_dt = args[0].dtype
+        kw_dt = np.dtype(kwargs["dtype"])
+        if arr_dt != kw_dt:
+            raise TypeError(
+                f"iron.tensor: ndarray dtype {arr_dt!r} does not match "
+                f"dtype= kwarg {kw_dt!r}.  Cast the array beforehand "
+                f"(e.g. arr.astype({kw_dt!r})) or drop the dtype= kwarg."
+            )
+        warnings.warn(
+            "iron.tensor: dtype= kwarg is redundant when a typed ndarray "
+            "is passed; the array's dtype is used.",
+            UserWarning,
+            stacklevel=2,
+        )
+        kwargs = {k: v for k, v in kwargs.items() if k != "dtype"}
     return DEFAULT_TENSOR_CLASS(*args, **kwargs)
 
 
