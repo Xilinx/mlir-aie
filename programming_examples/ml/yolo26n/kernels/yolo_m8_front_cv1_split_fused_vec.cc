@@ -117,17 +117,27 @@ static inline void cv1_chunk_compute(int8_t *in_row, int8_t *wts_chunk,
       }
 
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < 4; ++p) {
-        int x_out = x_base + p;
-        for (int j = 0; j < 8; ++j) {
-          int8_t silu = silu_lut[int(srs_v[p * 8 + j]) + 128];
-          const int idx = x_out * c + (dst_oc_full_base + j);
-          if (is_top) {
-            out_top[idx] = silu;
-          } else {
-            s_bot[idx] = silu;
-            out_bot_to_cv2[idx] = silu;
-          }
+      // mmul-layout output for out_top / out_bot_to_cv2 (consumed by back
+      // cv2 via vec_load); s_bot kept in (W,c) raster because m_0_split's
+      // current reader scalar-packs from it. mmul<4,8,8> output is 32 bytes
+      // covering 4 pixels x 8 chans; pair pairs of x_tile iters into one
+      // 8-pixel block in the back-side layout.
+      alignas(32) int8_t silu_buf[32];
+      for (int i = 0; i < 32; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+      constexpr int kXTiles8 = 2; // 16W / 8 pixels per back-side block
+      const int packed_oc_t = dst_oc_full_base >> 3;
+      const int packed_off = packed_oc_t * (kXTiles8 * 64) + (x_tile >> 1) * 64 +
+                             (x_tile & 1) * 32;
+      if (is_top) {
+        aie::store_v(out_top + packed_off, silu_v);
+      } else {
+        aie::store_v(out_bot_to_cv2 + packed_off, silu_v);
+        for (int p = 0; p < 4; ++p) {
+          int x_out = x_base + p;
+          for (int j = 0; j < 8; ++j)
+            s_bot[x_out * c + dst_oc_full_base + j] = silu_buf[p * 8 + j];
         }
       }
     }
@@ -135,11 +145,15 @@ static inline void cv1_chunk_compute(int8_t *in_row, int8_t *wts_chunk,
 }
 
 // m_0_split branch: input bot (128 ch) -> SiLU LUT -> output (64 ch).
-// Called twice (once per branch: a -> split_a, b -> split_b).
+// Called twice (once per branch: a -> split_a, b -> split_b). When
+// packed_output is true, the output write uses mmul-packed
+// (ic_t, x_block, p*8+chan) layout for consumer-side vec_load (back cv3);
+// otherwise (W,c) raster (pair_cv1 still scalar-packs from split_a).
 static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
                                    int8_t *silu_lut, int8_t *out,
                                    int input_width, int input_channels,
-                                   int output_channels, int right_shift) {
+                                   int output_channels, int right_shift,
+                                   bool packed_output) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
   // Hardcoded for m8 m_0_split call site (in_w=16, in_c=128, out_c=64).
   (void)input_width;
@@ -172,11 +186,20 @@ static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
       }
 
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < 4; ++p) {
-        int x_out = x_base + p;
-        for (int j = 0; j < 8; ++j) {
-          out[x_out * output_channels + oc_t * 8 + j] =
-              silu_lut[int(srs_v[p * 8 + j]) + 128];
+      alignas(32) int8_t silu_buf[32];
+      for (int i = 0; i < 32; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      if (packed_output) {
+        constexpr int kXTiles8 = 2; // 16W / 8 pixels per back-side block
+        aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+        aie::store_v(out + oc_t * (kXTiles8 * 64) + (x_tile >> 1) * 64 +
+                         (x_tile & 1) * 32,
+                     silu_v);
+      } else {
+        for (int p = 0; p < 4; ++p) {
+          int x_out = x_base + p;
+          for (int j = 0; j < 8; ++j)
+            out[x_out * output_channels + oc_t * 8 + j] = silu_buf[p * 8 + j];
         }
       }
     }
@@ -223,9 +246,9 @@ void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
   // On last chunk: bot is now fully assembled in scratch. Run m_0_split.
   if (cv1_chunk_idx == n_cv1_chunks - 1) {
     m0_split_branch(scratch, wts_m0c1, bias_m0c1, silu_lut_m0c1, out_split_a,
-                    input_width, c, cp, rs_m0c1);
+                    input_width, c, cp, rs_m0c1, /*packed_output=*/false);
     m0_split_branch(scratch, wts_m0c2, bias_m0c2, silu_lut_m0c2, out_split_b,
-                    input_width, c, cp, rs_m0c2);
+                    input_width, c, cp, rs_m0c2, /*packed_output=*/true);
   }
 
   event1();

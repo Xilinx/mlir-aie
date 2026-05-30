@@ -78,13 +78,11 @@ static inline void cv3_compute_row(int8_t *inner1, int8_t *split_b, int8_t *wts,
   constexpr int oc_tiles = 16;        // output_channels / 8
   constexpr int x_tiles = 2;          // input_width / MMUL_M
 
-  int8_t *src_for_ic_tile[32];
-  int local_ic_t_for[32];
-  for (int ict = 0; ict < ic_tiles; ++ict) {
-    int src_idx = ict / ic_tiles_per_src;
-    src_for_ic_tile[ict] = (src_idx == 0) ? inner1 : split_b;
-    local_ic_t_for[ict] = ict - src_idx * ic_tiles_per_src;
-  }
+  // split_b is now in mmul-packed (ic_t, x_block, p*8+chan) layout from
+  // m_0_split. inner1 still (W,cp) raster (pair_cv2_skip output unchanged
+  // in this stage). Inner IC loop split in two so each branch is
+  // straight-line — no per-iteration if inside the mac loop.
+  constexpr int kPackedIcStride = x_tiles * 64;
 
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
@@ -93,19 +91,25 @@ static inline void cv3_compute_row(int8_t *inner1, int8_t *split_b, int8_t *wts,
       acc = bias_acc;
       const int x_base = x_tile * MMUL_M;
 
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        int8_t *src = src_for_ic_tile[ic_t];
-        int local_ic_t = local_ic_t_for[ic_t];
-
+      // inner1 (raster, ic_t = 0..ic_tiles_per_src-1)
+      for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
         alignas(64) int8_t a_buf[64];
         for (int p = 0; p < MMUL_M; ++p) {
           int col = x_base + p;
-          int8_t *psrc = src + col * cp + local_ic_t * 8;
+          int8_t *psrc = inner1 + col * cp + local_ic_t * 8;
           for (int b = 0; b < 8; ++b)
             a_buf[p * 8 + b] = psrc[b];
         }
         aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
-
+        int wts_off = wts_tile_off_1x1(oc_t, local_ic_t, ic_tiles);
+        aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+        acc.mac(in_a, in_b);
+      }
+      // split_b (packed, ic_t = ic_tiles_per_src..2*ic_tiles_per_src-1)
+      for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
+        aie::vector<int8, 64> in_a = aie::load_v<64>(
+            split_b + local_ic_t * kPackedIcStride + x_tile * 64);
+        int ic_t = ic_tiles_per_src + local_ic_t;
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a, in_b);
@@ -148,15 +152,12 @@ static inline void cv2_compute_chunk(int8_t *in_top, int8_t *in_bot,
   constexpr int x_tiles = 2;           // input_width / MMUL_M
   const int oc_offset = chunk_idx * chunk_oc;
 
-  int8_t *src_for_ic_tile[48];
-  int local_ic_t_for[48];
-  for (int ict = 0; ict < ic_tiles; ++ict) {
-    int src_idx = ict / ic_tiles_per_src;
-    src_for_ic_tile[ict] = (src_idx == 0)   ? in_top
-                           : (src_idx == 1) ? in_bot
-                                            : in_m0;
-    local_ic_t_for[ict] = ict - src_idx * ic_tiles_per_src;
-  }
+  // in_top (tiles 0..15) + in_bot (tiles 16..31): mmul-packed
+  // (ic_t, x_block, p*8+chan) layout from front's cv1. in_m0 = cv3 scratch
+  // (tiles 32..47): (W,c) raster. Inner IC loop is split in two so each
+  // branch is straight-line — no per-iteration if inside the mac loop.
+  constexpr int kPackedIcStride = x_tiles * 64;
+  constexpr int kPackedIcTiles = 2 * ic_tiles_per_src; // top + bot
 
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int oc_full_base = oc_offset + chunk_oc_t * 8;
@@ -167,19 +168,34 @@ static inline void cv2_compute_chunk(int8_t *in_top, int8_t *in_bot,
       acc = bias_acc;
       const int x_base = x_tile * MMUL_M;
 
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        int8_t *src = src_for_ic_tile[ic_t];
-        int local_ic_t = local_ic_t_for[ic_t];
-
+      // in_top (packed, ic_t = 0..ic_tiles_per_src-1)
+      for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
+        aie::vector<int8, 64> in_a = aie::load_v<64>(
+            in_top + local_ic_t * kPackedIcStride + x_tile * 64);
+        int wts_off = wts_tile_off_1x1(chunk_oc_t, local_ic_t, ic_tiles);
+        aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
+        acc.mac(in_a, in_b);
+      }
+      // in_bot (packed, ic_t = ic_tiles_per_src..2*ic_tiles_per_src-1)
+      for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
+        aie::vector<int8, 64> in_a = aie::load_v<64>(
+            in_bot + local_ic_t * kPackedIcStride + x_tile * 64);
+        int ic_t = ic_tiles_per_src + local_ic_t;
+        int wts_off = wts_tile_off_1x1(chunk_oc_t, ic_t, ic_tiles);
+        aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
+        acc.mac(in_a, in_b);
+      }
+      // in_m0 = cv3 scratch (raster, ic_t = 2*ic_tiles_per_src..)
+      for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
         alignas(64) int8_t a_buf[64];
         for (int p = 0; p < MMUL_M; ++p) {
           int col = x_base + p;
-          int8_t *psrc = src + col * c + local_ic_t * 8;
+          int8_t *psrc = in_m0 + col * c + local_ic_t * 8;
           for (int b = 0; b < 8; ++b)
             a_buf[p * 8 + b] = psrc[b];
         }
         aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
-
+        int ic_t = kPackedIcTiles + local_ic_t;
         int wts_off = wts_tile_off_1x1(chunk_oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
         acc.mac(in_a, in_b);
