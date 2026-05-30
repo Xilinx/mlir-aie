@@ -96,8 +96,7 @@ make_bias_acc(const int32_t *__restrict bias_8) {
   return a;
 }
 
-// Per-OC×4-pix epilog: SiLU LUT (SRS+clamp+bias collapsed into the vec
-// to_vector<int8>(rs) at the call site).
+// Per-OC×4-pix epilog: scalar SiLU LUT + scalar scatter (kept for fallback).
 static __attribute__((always_inline)) inline void write_x_tile_result(
     aie::vector<int8, 32> srs_v, const int8_t *__restrict silu_lut,
     int8_t *__restrict output, int oc_full_base, int x_out_base) {
@@ -107,6 +106,30 @@ static __attribute__((always_inline)) inline void write_x_tile_result(
       int oc_full = oc_full_base + j;
       output[x_out * kOutC + oc_full] = silu_lut[int(srs_v[p * 8 + j]) + 128];
     }
+  }
+}
+
+// OC pair epilog: interleave acc_a (4 pix x 8 chans) and acc_b (4 pix x
+// next 8 chans) via aie::interleave_zip with chunk=8 -> vec<int8, 64> in
+// (pix0_a, pix0_b, pix1_a, pix1_b, ...) order = 4 pixels x 16 contiguous
+// chans. Scalar SiLU LUT then 4 vec_store<16> per pixel at offset
+// (x_out + p) * kOutC + oc_pair_base. Replaces 64 scalar stores per call
+// pair.
+static __attribute__((always_inline)) inline void emit_oc_pair(
+    aie::vector<int8, 32> srs_a, aie::vector<int8, 32> srs_b,
+    const int8_t *__restrict silu_lut, int8_t *__restrict output,
+    int oc_pair_base, int x_out_base) {
+  auto [lo, hi] = aie::interleave_zip(srs_a, srs_b, 8u);
+  aie::vector<int8, 64> combined = aie::concat(lo, hi);
+  alignas(64) int8_t silu_buf[64];
+  AIE_LOOP_UNROLL_FULL
+  for (int i = 0; i < 64; ++i)
+    silu_buf[i] = silu_lut[int(combined[i]) + 128];
+  aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
+  AIE_LOOP_UNROLL_FULL
+  for (int p = 0; p < 4; ++p) {
+    aie::vector<int8, 16> chunk = silu_v.template extract<16>(p);
+    aie::store_v(output + (x_out_base + p) * kOutC + oc_pair_base, chunk);
   }
 }
 
@@ -209,8 +232,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
       }
       aie::vector<int8, 32> srs_a = acc_a.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> srs_b = acc_b.template to_vector<int8>(right_shift);
-      write_x_tile_result(srs_a, silu_lut, output, oc_full_base_a, 0);
-      write_x_tile_result(srs_b, silu_lut, output, oc_full_base_b, 0);
+      emit_oc_pair(srs_a, srs_b, silu_lut, output, oc_full_base_a, 0);
     }
 
     // ===== Interior: x_tile in [1, kXTiles-1]. 2X×2OC fold. =====
@@ -270,14 +292,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
           acc_b0.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> vec_b1 =
           acc_b1.template to_vector<int8>(right_shift);
-      write_x_tile_result(vec_a0, silu_lut, output, oc_full_base_a,
-                          x_out_base_a);
-      write_x_tile_result(vec_a1, silu_lut, output, oc_full_base_b,
-                          x_out_base_a);
-      write_x_tile_result(vec_b0, silu_lut, output, oc_full_base_a,
-                          x_out_base_b);
-      write_x_tile_result(vec_b1, silu_lut, output, oc_full_base_b,
-                          x_out_base_b);
+      emit_oc_pair(vec_a0, vec_a1, silu_lut, output, oc_full_base_a,
+                   x_out_base_a);
+      emit_oc_pair(vec_b0, vec_b1, silu_lut, output, oc_full_base_a,
+                   x_out_base_b);
     }
 
     // Odd-count tail: one straggler interior x_tile (kInteriorN was odd).
@@ -308,8 +326,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
       }
       aie::vector<int8, 32> va = acc_a.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> vb = acc_b.template to_vector<int8>(right_shift);
-      write_x_tile_result(va, silu_lut, output, oc_full_base_a, x_out_base);
-      write_x_tile_result(vb, silu_lut, output, oc_full_base_b, x_out_base);
+      emit_oc_pair(va, vb, silu_lut, output, oc_full_base_a, x_out_base);
     }
 
     // ===== Right edge: x_tile=kXTiles-1 — kx=2 makes col=kInW invalid for p=3.
@@ -341,8 +358,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_vec(
       }
       aie::vector<int8, 32> va = acc_a.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> vb = acc_b.template to_vector<int8>(right_shift);
-      write_x_tile_result(va, silu_lut, output, oc_full_base_a, x_out_base);
-      write_x_tile_result(vb, silu_lut, output, oc_full_base_b, x_out_base);
+      emit_oc_pair(va, vb, silu_lut, output, oc_full_base_a, x_out_base);
     }
   }
 

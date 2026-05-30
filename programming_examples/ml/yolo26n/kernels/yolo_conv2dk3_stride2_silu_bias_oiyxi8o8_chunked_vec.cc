@@ -179,9 +179,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
   // back to a per-OC single-acc interior — that path is dead-stripped in
   // the m3/m5/m7 builds.
 
-  // Vec write helper: acc is bias-seeded so to_vector<int8>(rs) is the
-  // bias-added, SRS'd, saturated i8 result. Only the SiLU LUT gather stays
-  // scalar (32 lookups per call, no vec int8-LUT primitive on AIE2P).
+  // Vec write helper (scalar fallback for edges/tail).
   auto write_x_tile_result = [&](MMUL4x8x8 &acc, int x_out_base,
                                  int oc_full_base) {
     aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
@@ -193,6 +191,14 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
             silu_lut[int(srs_v[p * 8 + j]) + 128];
       }
     }
+  };
+
+  // DEBUG: stub emit_oc_pair to call write_x_tile_result twice — should be
+  // bit-exact baseline.
+  auto emit_oc_pair = [&](MMUL4x8x8 &acc_a, MMUL4x8x8 &acc_b,
+                          int x_out_base, int oc_pair_base) {
+    write_x_tile_result(acc_a, x_out_base, oc_pair_base + 0);
+    write_x_tile_result(acc_b, x_out_base, oc_pair_base + 8);
   };
 
   // -------------------------------------------------------------------------
@@ -424,10 +430,39 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
           }
         }
       }
-      write_x_tile_result(acc_a0, x_out_base_a, oc_full_base_0);
-      write_x_tile_result(acc_a1, x_out_base_a, oc_full_base_1);
-      write_x_tile_result(acc_b0, x_out_base_b, oc_full_base_0);
-      write_x_tile_result(acc_b1, x_out_base_b, oc_full_base_1);
+      // Inline vec output -- per-pixel 16-byte buffer + vec_store<16>.
+      // Smaller scratch (16B/pix instead of 64B/4pix) keeps register
+      // pressure low enough to not disturb the 4-acc 2X×2OC mac scheduling.
+      {
+        aie::vector<int8, 32> sa0 = acc_a0.template to_vector<int8>(right_shift);
+        aie::vector<int8, 32> sa1 = acc_a1.template to_vector<int8>(right_shift);
+        for (int p = 0; p < 4; ++p) {
+          alignas(16) int8_t pix_buf[16];
+          for (int j = 0; j < 8; ++j) {
+            pix_buf[j] = silu_lut[int(sa0[p * 8 + j]) + 128];
+            pix_buf[8 + j] = silu_lut[int(sa1[p * 8 + j]) + 128];
+          }
+          aie::vector<int8, 16> chunk = aie::load_v<16>(pix_buf);
+          aie::store_v(output + (x_out_base_a + p) * output_channels +
+                           oc_full_base_0,
+                       chunk);
+        }
+      }
+      {
+        aie::vector<int8, 32> sb0 = acc_b0.template to_vector<int8>(right_shift);
+        aie::vector<int8, 32> sb1 = acc_b1.template to_vector<int8>(right_shift);
+        for (int p = 0; p < 4; ++p) {
+          alignas(16) int8_t pix_buf[16];
+          for (int j = 0; j < 8; ++j) {
+            pix_buf[j] = silu_lut[int(sb0[p * 8 + j]) + 128];
+            pix_buf[8 + j] = silu_lut[int(sb1[p * 8 + j]) + 128];
+          }
+          aie::vector<int8, 16> chunk = aie::load_v<16>(pix_buf);
+          aie::store_v(output + (x_out_base_b + p) * output_channels +
+                           oc_full_base_0,
+                       chunk);
+        }
+      }
     }
 
     // Odd-x_tile tail (dead-stripped when n_interior is even, which it is
