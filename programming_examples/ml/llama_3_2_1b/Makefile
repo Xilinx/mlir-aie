@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt
 
 all: gemm_pt
 
@@ -158,6 +158,31 @@ run_glue: glue
 		-x ${BUILD}/final_glue_${GLUE_BYTES}.xclbin \
 		-i ${BUILD}/insts_glue_${GLUE_BYTES}.bin \
 		-k MLIR_AIE --bytes ${GLUE_BYTES}
+
+# ---------- full single-layer integration stub (Phase 1.9) ----------
+${BUILD}/llama_layer_pt.cc.o: ${KDIR}/llama_layer_pt.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+
+${BUILD}/aie_layer_pt.mlir: ${srcdir}/aie2_layer.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+${BUILD}/final_layer_pt.xclbin: ${BUILD}/aie_layer_pt.mlir ${BUILD}/llama_layer_pt.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_layer_pt.bin \
+		$(notdir $<)
+
+layer_pt: ${BUILD}/final_layer_pt.xclbin
+
+run_layer_pt: layer_pt
+	cd ${srcdir} && python3 test_layer_pt.py \
+		-x ${BUILD}/final_layer_pt.xclbin \
+		-i ${BUILD}/insts_layer_pt.bin \
+		-k MLIR_AIE
 
 # ---------- clean ----------
 clean:
