@@ -16,7 +16,7 @@ can address it.
 
 import numpy as np
 
-from aie.iron import Buffer, Kernel, ObjectFifo, Worker
+from aie.iron import Buffer, Kernel, ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
 from bottleneck._common import i8, u8, load_wts
@@ -62,30 +62,13 @@ def init_conv(sf, *, placement, data_dir):
         initial_value=init_wts_data,
     )
 
-    # ------------------------------------------------------------------
-    # Init conv kernel: 3x3 stride-2, int8 in, uint8 out
-    # fn signature from source: (in0, in0, in1, wts, out, W, InC, OutC,
-    #                            kW, kH, border_top, scale, border_bottom, padding)
-    # ------------------------------------------------------------------
-    k_init = Kernel(
-        "conv2dk3_stride2_i8",
-        "init_conv2dk3.o",
-        [
-            i8((tensorInW, 1, tensorInC)),
-            i8((tensorInW, 1, tensorInC)),
-            i8((tensorInW, 1, tensorInC)),
-            i8((init_wts_sz,)),
-            u8((init_OutW, 1, init_OutC)),
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    # Init conv kernel: 3x3 stride-2, int8 in, uint8 out.
+    # C++ signature (aie_kernels/aie2/bottleneck/bn_conv2dk3.cc):
+    #   (in0, in0, in1, wts, out, W, InC, OutC, kW, kH, check, scale, channel_offset)
+    k_init = kernels.bn_conv2dk3(
+        input_width=tensorInW,
+        input_channels=tensorInC,
+        output_channels=init_OutC,
     )
 
     def init_fn(act_in, act_out, wts, k, inW, inH, inC, outW, outH, outC, sf):
@@ -94,7 +77,7 @@ def init_conv(sf, *, placement, data_dir):
         # input; middle iter does the opposite (in then out).
         rows = act_in.acquire(2)
         row_out = act_out.acquire(1)
-        k(rows[0], rows[0], rows[1], wts, row_out, inW, inC, outC, 3, 3, 0, sf, 0, 0)
+        k(rows[0], rows[0], rows[1], wts, row_out, inW, inC, outC, 3, 3, 0, sf, 0)
         act_out.release(1)
         act_in.release(1)
         for _ in range_(outH - 1):
@@ -113,7 +96,6 @@ def init_conv(sf, *, placement, data_dir):
                 3,
                 1,
                 sf,
-                0,
                 0,
             )
             act_in.release(2)

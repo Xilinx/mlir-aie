@@ -45,8 +45,7 @@ newFlag=_NEW
 
 MLIR_FILE = aie2_mobilenet_iron
 TEST_FILE = test_mobilenet
-OBJ = build/init_conv2dk3.o \
-	build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o \
+OBJ = \
 	build/bn1_conv2dk1_fused_relu.o build/bn1_conv2dk3_dw_stride2.o build/bn1_conv2dk1_i8.o \
 	build/bn2_conv2dk1_fused_relu.o build/bn2_conv2dk3_dw_stride1.o build/bn2_conv2dk1_skip.o \
 	build/bn3_conv2dk1_fused_relu.o build/bn3_conv2dk3_dw_stride2.o build/bn3_conv2dk1_i8.o \
@@ -80,20 +79,12 @@ build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< -t ${trace_size} > $@
 
-# ************************************** init **********************************************
-build/init_conv2dk3.o: bottleneck/bn_conv2dk3${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -c $< -o ${@F}
-
-# ************************************** bottleneck 0+1 ************************************
-build/bn0_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN0 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
-
-build/bn0_conv2dk1_skipui8.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN0 -DSCALAR -DUNSIGNED_SKIP -c $< -o ${@F}
-
+# ************************************** bottleneck 1 **************************************
+# init (3x3 stride-2) and bn0 (DW-stride1 + 1x1-skip-uint8) are built via
+# the iron kernel library; init.py:init_conv calls kernels.bn_conv2dk3,
+# and regular.py:build_2layer_skip calls kernels.bn_conv2dk3_dw(stride=1)
+# + kernels.bn_conv2dk1_skip(skip_dtype=np.uint8). aiecc compiles the .o
+# files as part of the JIT pipeline.
 build/bn1_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN1 -DINT8_ACT -c $< -o ${@F}
@@ -302,24 +293,16 @@ build/post_L2_conv2dk1_relu_ui16_ui16_pad.o: bottleneck/bn_conv2dk1_relu${DUMMY}
 
 # ************************************** mobilenet ********************************************
 
-build/final_mobilenet.xclbin: build/${MLIR_FILE}.mlir $(OBJ)
+# mobilenet_iron is @iron.jit, so the design's compile path builds the
+# kernels.X-managed .o files itself and invokes aiecc directly with the
+# right flags (incl. --dynamic-objFifos=false, set on the decorator).
+# The non-library kernels (bn1..bn14 + post + cascade — see $(OBJ)) still
+# come from the Makefile rules below and land in build/ alongside the
+# library-built .o files; aiecc picks up both.
+build/final_mobilenet.xclbin: $(OBJ)
 	mkdir -p ${@D}
-# --dynamic-objFifos=false: opt out of the global dynamic-objfifo lowering so
-# the unroll path is used. Required for mobilenet's init core: with dynamic
-# lowering, Peano fully unrolls constant-trip loops to ~3360 kernel calls,
-# producing an ELF that overflows the 64KB AIE tile program memory limit.
-# Per-core dynamic_objfifo_lowering attribute is only honored when the global
-# flag is false (see AIEObjectFifoStatefulTransform.cpp).
-ifeq ($(CHESS), true)
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-		--dynamic-objFifos=false \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
-else
-	cd ${@D} && aiecc.py --verbose --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-   		--no-xchesscc --no-xbridge \
-		--dynamic-objFifos=false \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
-endif
+	python3 ${srcdir}/${MLIR_FILE}.py \
+		--xclbin-path $@ --insts-path build/insts.bin -d ${devicename}
 
 build/trace_mobilenet.xclbin: build/${MLIR_FILE}_trace.mlir $(OBJ)
 	mkdir -p ${@D}

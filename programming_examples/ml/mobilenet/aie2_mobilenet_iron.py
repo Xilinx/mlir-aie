@@ -34,11 +34,12 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron import In, ObjectFifo, Out, Program, Runtime
 from aie.iron.device import device_from_args
 from aie.helpers.taplib import TensorAccessPattern
 from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
 # Allow importing the local bottleneck/ package when running this file directly.
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
@@ -78,8 +79,20 @@ from placement import PLACEMENT
 # ---------------------------------------------------------------------------
 # Design top-level function
 # ---------------------------------------------------------------------------
-def mobilenet_iron():
-    """Build the full mobilenet IRON design and return the resolved Program."""
+@iron.jit(aiecc_flags=["--dynamic-objFifos=false"])
+def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
+    """Build the full mobilenet IRON design and return the resolved Program.
+
+    Runtime args (declared via In/Out so @iron.jit knows the design takes
+    three host tensors): activations + scratch, cascade weights, final FC2
+    output.  The body's ``rt.sequence(...)`` matches.
+
+    aiecc_flags=["--dynamic-objFifos=false"]: the init core's constant-trip
+    loops fully unroll under the global dynamic-objfifo lowering to ~3360
+    kernel calls, producing an ELF that overflows the 64KB AIE tile
+    program memory.  Per-core dynamic_objfifo_lowering attribute is only
+    honoured when the global flag is false.
+    """
     # Runtime arg types: i32 element view over the underlying byte buffers.
     #   arg0 (act_in / scratch):  100352 i32 = 401408 bytes
     #   arg2 (final FC2 output):    640 i32 =   2560 bytes
@@ -251,14 +264,33 @@ def mobilenet_iron():
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="MobileNet V3 — IRON API design")
-    add_compile_args(p, default_dev="npu2")
+    add_compile_args(p, default_dev="npu2", with_emit_mlir=True)
     return p
+
+
+def _emit_mlir(opts):
+    print(mobilenet_iron.as_mlir(None, None, None))
+
+
+def _run_and_verify(opts):
+    sys.exit(
+        "aie2_mobilenet_iron.py has no built-in NPU host harness — "
+        "use test_mobilenet.py for end-to-end NPU runs, or pass "
+        "--xclbin-path/--insts-path to compile only, or --emit-mlir "
+        "to print the resolved MLIR."
+    )
 
 
 def main():
     opts = _make_argparser().parse_args()
-    set_current_device(device_from_args(opts))
-    print(mobilenet_iron())
+    run_design_cli(
+        mobilenet_iron,
+        opts,
+        compile_kwargs={},
+        device=device_from_args,
+        emit_mlir=_emit_mlir,
+        run_and_verify=_run_and_verify,
+    )
 
 
 if __name__ == "__main__":

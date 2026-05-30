@@ -21,7 +21,7 @@ NETWORK and dispatches to the right builder per block.
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker
+from aie.iron import Kernel, ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
@@ -301,15 +301,17 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile):
     dw_out_ty = _u8((in_w, 1, dw_ch))
     out_ty = _i8((in_w, 1, out_c))
 
-    k_dw = Kernel(
-        f"{name}_conv2dk3_dw_stride1_relu_ui8_ui8",
-        f"{name}_conv2dk3_dw_stride1.o",
-        [in_ty, in_ty, in_ty, _i8((dw_wts_sz,)), dw_out_ty] + [np.int32] * 8,
+    k_dw = kernels.bn_conv2dk3_dw(
+        input_width=in_w,
+        input_channels=dw_ch,
+        output_channels=dw_ch,
+        stride=1,
     )
-    k_skip = Kernel(
-        f"{name}_conv2dk1_skip_ui8_ui8_i8",
-        f"{name}_conv2dk1_skipui8.o",
-        [dw_out_ty, _i8((skip_wts_sz,)), out_ty, in_ty] + [np.int32] * 5,
+    k_skip = kernels.bn_conv2dk1_skip(
+        input_width=in_w,
+        input_channels=dw_ch,
+        output_channels=out_c,
+        skip_dtype=np.uint8,
     )
 
     out_fifo = ObjectFifo(out_ty, depth=2)
