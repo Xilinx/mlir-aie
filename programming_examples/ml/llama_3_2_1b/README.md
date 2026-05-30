@@ -18,11 +18,12 @@ the design source-of-truth). This example is the hardware bring-up.
 |---|---|
 | 0. Scaffolding (`llama_spec.py`, `placement.py`, env)         | done |
 | 1. Dataflow stubs — all topology validated on hardware         | done |
-| 2. **All 7 real kernels — BIT-EXACT on Strix Halo NPU**        | **done** |
-| 3. Single decoder layer integration with all real kernels      | pending |
-| 4. 16-layer decode chain via `build_decode_design`             | pending |
-| 5. End-to-end generation (greedy → temperature + top-k)        | pending |
-| 6. Prefill overlay                                             | deferred (follow-up PR) |
+| 2. All 7 real kernels — BIT-EXACT on Strix Halo NPU             | done |
+| 3. **Single decoder layer integration — BIT-EXACT end-to-end**  | **done** |
+| 4. KV cache append (re-add k_proj/v_proj/rope_k)               | pending |
+| 5. 16-layer decode chain via `build_decode_design`             | pending |
+| 6. End-to-end generation (greedy → temperature + top-k)        | pending |
+| 7. Prefill overlay                                             | deferred (follow-up PR) |
 
 ### Phase 2 real kernels (bit-exact)
 
@@ -152,14 +153,53 @@ preemptively when sketching new designs to skip a build cycle:
    one `Kernel` across workers that have the same signature; use a
    different C symbol per shape when signatures differ.
 
-## What still needs work
+## Phase 3: full single-layer integration
 
-Phase 3+: integration. Each kernel is bit-exact in isolation; the
-next milestone is wiring all 7 into a single-layer end-to-end run
-(replacing the all-stubs `aie2_layer.py` with the real kernels) and
-then chaining 16 layers via `build_decode_design`. After that, end-
-to-end generation with the LUT-based scales loaded from real Llama
-3.2 1B weights.
+`make run_layer_real` runs **all 7 real kernels chained end-to-end on
+one decoder layer** and bit-exact compares against a numpy reference
+that composes the per-kernel reference functions:
+
+```
+x_in
+ │
+ ├─ rmsnorm1 ─ h1 ─ q_proj ─ qf ─ rope ─ qr ─┐
+ │                                           ├─ flowkv (qk → sv) ─ af ─ o_proj ─ op ─┐
+ │           (k_proj/v_proj/rope_k deferred) │                                       │
+ └────────────────────── residual ─────────────────────────────────────── add1 ─ x1 ─┤
+                                                                                    │
+                                                                                    └─→
+x1
+ │
+ ├─ rmsnorm2 ─ h2 ─ gate_proj ─ gf ─┐
+ │              ─ up_proj ────── uf ─┴ silu_mul ─ sf ─ down_proj ─ df ─┐
+ └──────────────────── residual ──────────────────────────────── add2 ─┴ layer_out
+```
+
+13 workers, 4 consolidated runtime buffers (`x_in`, `weights_blob`,
+`kv_cache`, `layer_out`), per-kernel weight streams sourced via
+`TensorAccessPattern` taps. Validation at first-bring-up sizes
+(D=64, HD=256, head_dim=64, T=16):
+
+```
+layer_real NPU vs chained-numpy: D=64  mismatches=0/64  max|diff|=0
+BIT-EXACT PASS  (full single-layer end-to-end)
+```
+
+**Bit-exact because every kernel was already 0-diff in isolation**;
+chaining them and the numpy references reproduces the kernel chain
+byte-for-byte.
+
+v0 simplifications (each is a focused follow-up):
+- `k_proj`/`v_proj`/`rope_k` dropped — current-token K/V would normally
+  rope (K only) and append to the cache; v0 supplies the whole cache
+  from a runtime arg
+- Small sizes (D=64 vs 2048, HD=256 vs 8192) — production scale-up
+  is just changing the `static constexpr int kD/kHD` in the kernel
+  .cc files + the corresponding constants in `aie2_layer_real.py`
+- Uniform per-tensor scales across all calls — production would use
+  per-call calibrated scales
+
+## What still needs work
 
 Per-kernel follow-ups (all are perf, not correctness):
 - vectorize the rmsnorm pass-2 / silu / rope / flowkv inner loops
@@ -172,3 +212,13 @@ Per-kernel follow-ups (all are perf, not correctness):
 - sample → full temperature + top-k + multinomial (needs a PRNG)
 - shard the gemm across the 16 projection tiles (dataflow already
   proven by `gemm_pt_proj`)
+
+Integration follow-ups:
+- re-add `k_proj`/`v_proj`/`rope_k` + KV cache append/write semantics
+- chain 16 reused-tile layers via `build_decode_design`
+  (cautious-eureka has this in the mock; port to real IRON)
+- scale sizes from D=64 / HD=256 to the production D=2048 / HD=8192
+- end-to-end generation: prefill (one ATB-tiled pass) → decode loop +
+  on-device sample
+- swap random weights for real Llama 3.2 1B safetensors via
+  `gen_llama_data.py` (path TBD; `$LLAMA_3_2_1B_WEIGHTS`)
