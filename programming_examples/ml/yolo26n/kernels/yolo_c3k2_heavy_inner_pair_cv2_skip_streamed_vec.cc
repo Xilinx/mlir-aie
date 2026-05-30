@@ -220,29 +220,29 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_silu_bias_i8_i8)(
       // to_vector<int8>(rs). Saturation + conv_even rounding are set above,
       // so this matches scalar banker_srs + I8_MIN/MAX clamp.
       alignas(64) int8_t silu_buf[64];
-      alignas(64) int8_t skip_buf[64];
       for (int i = 0; i < 64; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
-      for (int p = 0; p < MMUL_M; ++p) {
-        int x_out = x_out_base + p;
-        int8_t *src = skip_row + x_out * OUT_C + oc_full_base;
-        for (int b = 0; b < 8; ++b)
-          skip_buf[p * 8 + b] = src[b];
-      }
       aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
-      aie::vector<int8, 64> skip_v = aie::load_v<64>(skip_buf);
+      // skip_row is the mid row of split_a (pair0) or pair0's output (pair1)
+      // — both producers now write mmul-packed format, and the orchestration
+      // copy preserves bytes. Read skip_v as one vec_load instead of the
+      // prior 64 scalar gathers.
+      const int chunk_oc_t_full_skip = oc_full_base >> 3;
+      aie::vector<int8, 64> skip_v = aie::load_v<64>(
+          skip_row + chunk_oc_t_full_skip * (kXTiles8 * 64) + x_tile * 64);
 
       aie::accum<acc32, 64> add_acc = aie::mul(skip_v, (int16)skip_y_mult);
       add_acc = aie::mac(add_acc, silu_v, (int16)skip_cv2_mult);
       aie::vector<int8, 64> added_v =
           add_acc.template to_vector<int8>(skip_rsh_add);
 
-      for (int p = 0; p < MMUL_M; ++p) {
-        int x_out = x_out_base + p;
-        int8_t *dst = output + x_out * OUT_C + oc_full_base;
-        for (int j = 0; j < 8; ++j)
-          dst[j] = added_v[p * 8 + j];
-      }
+      // mmul-layout output write: added_v is already (p*8+chan) inside the
+      // 64-byte mmul output. Consumers (pair1_cv1 reading inner_0_xt or
+      // back cv3 reading inner_1_out) load via the same mmul vec_load path
+      // used by pair_cv2's own input.
+      const int chunk_oc_t_full = oc_full_base >> 3;
+      aie::store_v(output + chunk_oc_t_full * (kXTiles8 * 64) + x_tile * 64,
+                   added_v);
     }
 #else
     AIE_HINT_X

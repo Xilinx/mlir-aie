@@ -71,6 +71,31 @@ static inline int wts_chunk_idx(int chunk_oc, int ic_full, int ky, int kx,
          oc_i;
 }
 
+#if SHAPES_ARE_CONST
+// 3x3 conv mmul A load with kx slide (kx=1 fast path; kx=0/2 use 2 vlda +
+// shuffle_down). Consumer-side mirror of pair_cv2_skip's helper; producer
+// is m_0_split (split_a, pair0_cv1) or pair_cv2_skip (inner_0_xt, pair1_cv1).
+static __attribute__((always_inline)) inline aie::vector<int8, 64>
+load_a_mmul_kx(int8_t *line_ptr, int ic_t, int x_tile, int kx, int stride,
+               int kXTiles8) {
+  int8_t *base = line_ptr + ic_t * stride;
+  if (kx == 1) {
+    return aie::load_v<64>(base + x_tile * 64);
+  }
+  int blk_lo = (kx == 0) ? x_tile - 1 : x_tile;
+  int blk_hi = blk_lo + 1;
+  aie::vector<int8, 64> lo = (blk_lo >= 0 && blk_lo < kXTiles8)
+                                 ? aie::load_v<64>(base + blk_lo * 64)
+                                 : aie::zeros<int8, 64>();
+  aie::vector<int8, 64> hi = (blk_hi >= 0 && blk_hi < kXTiles8)
+                                 ? aie::load_v<64>(base + blk_hi * 64)
+                                 : aie::zeros<int8, 64>();
+  aie::vector<int8, 128> combined = aie::concat(lo, hi);
+  const unsigned shift = (kx == 0) ? 56u : 8u;
+  return aie::shuffle_down(combined, shift).template extract<64>(0);
+}
+#endif
+
 extern "C" {
 
 void KERNEL_NAME(
@@ -174,47 +199,21 @@ void KERNEL_NAME(
       const int x_out_base = x_tile * MMUL_M;
       const int x_in_base = x_out_base - 1;
 
-      // Hoisted pixel loads: per (ky, kx) load 8 pixels' FULL 64 channels
-      // ONCE (vs current per-(ic_t, ky, kx) scalar lda.u8 chain that re-
-      // loads 64 bytes from DM per mac group). Per (ic_t, ky, kx) we then
-      // extract the 8-byte slice for THIS ic_t from each pixel register.
-      // Reduces 64 scalar mem loads/mac-group to 1 vec mem load + scalar
-      // register extracts per mac group. The bounds check is now O(MMUL_M)
-      // per (ky, kx) instead of per (ic_t, ky, kx).
+      // mmul-layout input read (producers: m_0_split split_a for pair0_cv1
+      // or pair_cv2_skip output for pair1_cv1). kx=1 = 1 vlda; kx=0/2 =
+      // 2 vlda + shuffle_down. No scalar pack.
+      constexpr int kIcStride = kXTiles8 * 64;
+
       AIE_LOOP_RANGE(1, 3)
       for (int ky = ky_start; ky < ky_end; ++ky) {
         int8_t *line_ptr = line[ky];
 
         AIE_LOOP_RANGE(3, 3)
         for (int kx = 0; kx < KW; ++kx) {
-          // Load 8 pixels × 64 channels = 512 bytes total into vec regs.
-          // Pixels at out-of-bounds cols use zero.
-          aie::vector<int8, 64> pix[MMUL_M];
-          bool col_valid[MMUL_M];
-          bool any_valid = false;
-          for (int p = 0; p < MMUL_M; ++p) {
-            int col = x_in_base + p + kx;
-            col_valid[p] = (col >= 0 && col < IN_W);
-            if (col_valid[p]) {
-              pix[p] = aie::load_v<64>(line_ptr + col * IN_C);
-              any_valid = true;
-            } else {
-              pix[p] = aie::zeros<int8, 64>();
-            }
-          }
-          if (!any_valid)
-            continue;
-
           AIE_HINT_IC
           for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-            // Build mmul input: byte[p*8 + b] = pix[p][ic_t*8 + b]
-            alignas(64) int8_t a_buf[64];
-            for (int p = 0; p < MMUL_M; ++p) {
-              for (int b = 0; b < 8; ++b)
-                a_buf[p * 8 + b] = pix[p][ic_t * 8 + b];
-            }
-            aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
-
+            aie::vector<int8, 64> in_a =
+                load_a_mmul_kx(line_ptr, ic_t, x_tile, kx, kIcStride, kXTiles8);
             int wts_off =
                 wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
@@ -231,7 +230,7 @@ void KERNEL_NAME(
       for (int i = 0; i < 64; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
-      const int chunk_oc_t_full = oc_full_base / 8;
+      const int chunk_oc_t_full = oc_full_base >> 3;
       aie::store_v(output + chunk_oc_t_full * (kXTiles8 * 64) + x_tile * 64,
                    silu_v);
     }

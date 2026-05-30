@@ -246,7 +246,7 @@ void KERNEL_NAME(yolo_m8_front_cv1_split_fused_i8_i8)(
   // On last chunk: bot is now fully assembled in scratch. Run m_0_split.
   if (cv1_chunk_idx == n_cv1_chunks - 1) {
     m0_split_branch(scratch, wts_m0c1, bias_m0c1, silu_lut_m0c1, out_split_a,
-                    input_width, c, cp, rs_m0c1, /*packed_output=*/false);
+                    input_width, c, cp, rs_m0c1, /*packed_output=*/true);
     m0_split_branch(scratch, wts_m0c2, bias_m0c2, silu_lut_m0c2, out_split_b,
                     input_width, c, cp, rs_m0c2, /*packed_output=*/true);
   }

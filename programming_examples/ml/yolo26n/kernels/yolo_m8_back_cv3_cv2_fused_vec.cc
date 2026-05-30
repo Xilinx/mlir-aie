@@ -91,16 +91,10 @@ static inline void cv3_compute_row(int8_t *inner1, int8_t *split_b, int8_t *wts,
       acc = bias_acc;
       const int x_base = x_tile * MMUL_M;
 
-      // inner1 (raster, ic_t = 0..ic_tiles_per_src-1)
+      // inner1 (packed, from pair_cv2_skip output, ic_t = 0..ic_tiles_per_src-1)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
-        alignas(64) int8_t a_buf[64];
-        for (int p = 0; p < MMUL_M; ++p) {
-          int col = x_base + p;
-          int8_t *psrc = inner1 + col * cp + local_ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = psrc[b];
-        }
-        aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
+        aie::vector<int8, 64> in_a = aie::load_v<64>(
+            inner1 + local_ic_t * kPackedIcStride + x_tile * 64);
         int wts_off = wts_tile_off_1x1(oc_t, local_ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a, in_b);
