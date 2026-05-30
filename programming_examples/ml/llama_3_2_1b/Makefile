@@ -274,11 +274,16 @@ run_gemm_srs: gemm_srs
 
 # ---------- real silu_mul int8 (Phase 2) ----------
 SILU_D ?= 8192
+SILU_GATE_SCALE ?= 0.05
 SILU_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_SILU_MUL_COLS=${SILU_D}
 
-${BUILD}/llama_silu_mul_int8.cc.o: ${KDIR}/llama_silu_mul_int8.cc
+${BUILD}/silu_lut.h: ${srcdir}/gen_silu_lut.py
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${SILU_FLAGS} -c $< -o ${@F}
+	python3 $< --gate-scale ${SILU_GATE_SCALE} -o $@
+
+${BUILD}/llama_silu_mul_int8.cc.o: ${KDIR}/llama_silu_mul_int8.cc ${BUILD}/silu_lut.h
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${SILU_FLAGS} -I${srcdir} -c $< -o ${@F}
 
 ${BUILD}/aie_silu_mul_${SILU_D}.mlir: ${srcdir}/aie2_silu_mul_int8.py
 	mkdir -p ${@D}

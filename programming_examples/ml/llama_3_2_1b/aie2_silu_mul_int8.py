@@ -1,8 +1,10 @@
-"""Phase 2 silu_mul (int8 in, int8 out, bf16-internal).
+"""Phase 2 silu_mul (int8 in, int8 out, bf16 LUT-based SiLU).
 
 1 CT, 2 input fifos (gate, up), 1 output. Pinned to the silu tile in
-DECODE_PLACEMENT. Scales are kernel scalar args (will be packed into
-the weight payload via StaticWeightStream in production).
+DECODE_PLACEMENT. The SiLU LUT is baked into the kernel binary at
+build time via gen_silu_lut.py + the silu_lut.h include, so gate_scale
+is a build-time constant (not a kernel scalar arg). up_scale and
+inv_out_scale remain runtime scalar args.
 """
 
 import argparse
@@ -14,10 +16,11 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 
 
-SILU_COL, SILU_ROW = 4, 5   # DECODE_PLACEMENT["silu"]
+SILU_COL, SILU_ROW = 4, 5
 
-# Scales baked at MLIR-gen time; the test uses the same values.
-GATE_SCALE     = 0.05
+# Scales baked at build time. The Makefile passes GATE_SCALE to
+# gen_silu_lut.py; UP_SCALE and INV_OUT_SCALE are baked here.
+GATE_SCALE     = 0.05   # MUST match what was passed to gen_silu_lut.py
 UP_SCALE       = 0.05
 INV_OUT_SCALE  = 1.0 / 0.05
 
@@ -32,14 +35,14 @@ def build(D: int):
     kernel = Kernel(
         "llama_silu_mul_int8",
         "llama_silu_mul_int8.cc.o",
-        [i8_ty, i8_ty, i8_ty, np.float32, np.float32, np.float32],
+        [i8_ty, i8_ty, i8_ty, np.float32, np.float32],
     )
 
     def core_fn(c_g, c_u, c_o, k):
         g = c_g.acquire(1)
         u = c_u.acquire(1)
         o = c_o.acquire(1)
-        k(g, u, o, GATE_SCALE, UP_SCALE, INV_OUT_SCALE)
+        k(g, u, o, UP_SCALE, INV_OUT_SCALE)
         c_g.release(1)
         c_u.release(1)
         c_o.release(1)
