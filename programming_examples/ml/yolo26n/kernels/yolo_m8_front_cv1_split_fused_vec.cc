@@ -134,11 +134,7 @@ static inline void cv1_chunk_compute(int8_t *in_row, int8_t *wts_chunk,
         aie::store_v(out_top + packed_off, silu_v);
       } else {
         aie::store_v(out_bot_to_cv2 + packed_off, silu_v);
-        for (int p = 0; p < 4; ++p) {
-          int x_out = x_base + p;
-          for (int j = 0; j < 8; ++j)
-            s_bot[x_out * c + dst_oc_full_base + j] = silu_buf[p * 8 + j];
-        }
+        aie::store_v(s_bot + packed_off, silu_v);
       }
     }
   }
@@ -170,15 +166,14 @@ static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
       acc = bias_acc;
       const int x_base = x_tile * 4;
 
+      // in_bot is mmul-packed (ic_t, x_block, p*8+chan) written by cv1's
+      // s_bot store. 32-byte vec_load per (ic_t, x_tile) -- mmul<4,8,8>'s
+      // A vec lands exactly on one half of an 8-pixel back-side block.
+      constexpr int kXTiles8_in = 2; // 16W / 8 pixels per back-side block
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_base + p;
-          int8_t *src = in_bot + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = src[b];
-        }
-        aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+        aie::vector<int8, 32> in_a = aie::load_v<32>(
+            in_bot + ic_t * (kXTiles8_in * 64) + (x_tile >> 1) * 64 +
+            (x_tile & 1) * 32);
 
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
