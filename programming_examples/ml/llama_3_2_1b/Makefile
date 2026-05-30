@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv
 
 all: gemm_pt
 
@@ -330,6 +330,36 @@ run_rope: rope
 		-x ${BUILD}/final_rope_${ROPE_HD}x${ROPE_NH}.xclbin \
 		-i ${BUILD}/insts_rope_${ROPE_HD}x${ROPE_NH}.bin \
 		-k MLIR_AIE --head-dim ${ROPE_HD} --n-heads ${ROPE_NH}
+
+# ---------- real flowkv attention pair (Phase 2) ----------
+FKV_HD ?= 64
+FKV_T  ?= 16
+FKV_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_FLOWKV_HEAD_DIM=${FKV_HD} -DLLAMA_FLOWKV_T=${FKV_T}
+
+${BUILD}/llama_flowkv.cc.o: ${KDIR}/llama_flowkv.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${FKV_FLAGS} -c $< -o ${@F}
+
+${BUILD}/aie_flowkv_${FKV_HD}x${FKV_T}.mlir: ${srcdir}/aie2_flowkv.py
+	mkdir -p ${@D}
+	python3 $< --head-dim ${FKV_HD} -T ${FKV_T} > $@
+
+${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}.xclbin: ${BUILD}/aie_flowkv_${FKV_HD}x${FKV_T}.mlir \
+                                                 ${BUILD}/llama_flowkv.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_flowkv_${FKV_HD}x${FKV_T}.bin \
+		$(notdir $<)
+
+flowkv: ${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}.xclbin
+
+run_flowkv: flowkv
+	cd ${srcdir} && python3 test_flowkv.py \
+		-x ${BUILD}/final_flowkv_${FKV_HD}x${FKV_T}.xclbin \
+		-i ${BUILD}/insts_flowkv_${FKV_HD}x${FKV_T}.bin \
+		-k MLIR_AIE --head-dim ${FKV_HD} -T ${FKV_T}
 
 # ---------- clean ----------
 clean:
