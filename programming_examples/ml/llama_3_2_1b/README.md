@@ -20,10 +20,18 @@ the design source-of-truth). This example is the hardware bring-up.
 | 1. Dataflow stubs — all topology validated on hardware         | done |
 | 2. All 7 real kernels — BIT-EXACT on Strix Halo NPU             | done |
 | 3. **Single decoder layer integration — BIT-EXACT end-to-end**  | **done** |
-| 4. KV cache append (re-add k_proj/v_proj/rope_k)               | pending |
-| 5. 16-layer decode chain via `build_decode_design`             | pending |
-| 6. End-to-end generation (greedy → temperature + top-k)        | pending |
-| 7. Prefill overlay                                             | deferred (follow-up PR) |
+| 4. 16-layer decode chain via `build_decode_design` (small sizes) | pending |
+| 5. KV cache append (re-add k_proj/v_proj/rope_k)               | pending |
+| 6. ATB-tiled gemm rewrite (M>1, chunked K/N)                   | pending |
+| 7. Scale decode to production sizes (D=2048, HD=8192)          | pending |
+| 8. Prefill overlay (PREFILL_PLACEMENT + full-causal-softmax)   | pending |
+| 9. End-to-end generation (prefill → decode loop → sample)      | pending |
+
+**Prefill is in scope** for this PR: without it, the example can't
+actually run text generation (decode needs a prefilled KV cache).
+The ATB-tiled gemm rewrite (Phase 6) does double duty — it enables
+both production-size decode and prefill, so the two phases share most
+of the kernel work.
 
 ### Phase 2 real kernels (bit-exact)
 
@@ -213,12 +221,30 @@ Per-kernel follow-ups (all are perf, not correctness):
 - shard the gemm across the 16 projection tiles (dataflow already
   proven by `gemm_pt_proj`)
 
-Integration follow-ups:
-- re-add `k_proj`/`v_proj`/`rope_k` + KV cache append/write semantics
-- chain 16 reused-tile layers via `build_decode_design`
-  (cautious-eureka has this in the mock; port to real IRON)
-- scale sizes from D=64 / HD=256 to the production D=2048 / HD=8192
-- end-to-end generation: prefill (one ATB-tiled pass) → decode loop +
-  on-device sample
-- swap random weights for real Llama 3.2 1B safetensors via
-  `gen_llama_data.py` (path TBD; `$LLAMA_3_2_1B_WEIGHTS`)
+Integration roadmap (in dependency order):
+
+1. **16-layer decode chain at small sizes.** Reuse the same compute
+   tiles across all 16 layers; per-layer weights streamed in
+   sequence from a multi-layer weights blob. Tests the tile-reuse
+   pattern without changing data sizes; ~1–2 hours.
+2. **KV cache append.** Re-add `k_proj`/`v_proj`/`rope_k` and write the
+   current token's K/V back to the cache. Decode becomes self-
+   contained (no host-supplied cache).
+3. **ATB-tiled gemm rewrite.** Currently the gemm has K and N hardcoded
+   in the .cc and loops them in a single call. For production sizes
+   (wq=2048×2048=4MB, wg=2048×8192=16MB) we need chunked K and chunked
+   N — read one K-block at a time, accumulate into an N-block
+   accumulator. This is the bulk of the remaining kernel work and
+   unblocks both Phase 7 and Phase 8.
+4. **Scale decode to production sizes.** D=2048, QD=2048, KVD=512,
+   HD=8192. Most of the design parameters update mechanically once
+   the ATB gemm is in place.
+5. **Prefill overlay.** Different placement (`PREFILL_PLACEMENT`: 24
+   projection tiles + 2 attention pairs vs decode's 16+4). Different
+   attention path (full causal softmax barrier instead of FlowKV
+   chunked online softmax — yolo's m9 attention adapts directly).
+   Variable M (128/512/2048) with bin-and-pad.
+6. **End-to-end generation.** Prefill the prompt → KV cache filled
+   → decode loop calls the chain once per generated token → sample.
+   Swap random weights for real Llama 3.2 1B safetensors via
+   `gen_llama_data.py` (reads `$LLAMA_3_2_1B_WEIGHTS`).
