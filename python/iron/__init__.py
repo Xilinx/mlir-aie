@@ -15,6 +15,12 @@ Provides the primary abstractions for describing NPU designs:
 - :class:`CallableDesign` / :func:`jit` -- JIT-compile and run on the NPU (Triton-style)
 - :class:`Compile` / :class:`In` / :class:`Out` / :class:`InOut` -- type-annotation markers
 - :func:`get_compile_arg` -- dynamic compile-time injection (advanced)
+
+.. note::
+   IRON designs decorated with ``@iron.jit`` execute inside an implicit
+   MLIR context (thread-local ``Location`` / ``InsertionPoint``).  See
+   ``programming_guide/implicit_mlir_context.md`` for the mental model
+   and how to read "no active location" errors.
 """
 
 from .buffer import Buffer

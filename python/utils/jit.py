@@ -36,6 +36,13 @@ Three usage patterns are supported:
            ...
 
        gemm(a, b, c)   # no compile params needed at call time
+
+.. note::
+   The decorated function body runs inside an implicit MLIR context
+   (thread-local ``Location`` / ``InsertionPoint``).  See
+   ``programming_guide/implicit_mlir_context.md`` for the model and
+   for the most common gotchas (e.g. why ``@func`` pykernels must be
+   decorated at module scope).
 """
 
 from __future__ import annotations
