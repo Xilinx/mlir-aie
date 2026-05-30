@@ -133,7 +133,9 @@ def main():
         "--block",
         required=True,
         help="block name (m0/m1/m2/m3/m4/m5/m6/m7/m8/m9). m9 also reads M9_STAGE "
-        "env var (1 = cv1 only, 10 = full block; default 10).",
+        "env var (1 = cv1 only, 10 = full block; default 10). m10 is verified "
+        "via run_chain only -- its softmax output is 1D (2,) and not bit-exact "
+        "comparable here.",
     )
     opts = p.parse_args(sys.argv[1:])
     model_n = int(opts.block[1:])
@@ -147,6 +149,15 @@ def main():
     m9_stage = int(os.environ.get("M9_STAGE", "10"))
 
     # Block output shape: depends on topology + (for psa) which stage we're at.
+    # m10 (head) softmax output is 1D (2,) -- bit-exact compare is out of scope
+    # here (full-chain test_chain_ort.py covers it). Bail with a friendly note.
+    if opts.block == "m10":
+        print(
+            f"Block m10 standalone: output is 1D softmax(2,) -- bit-exact "
+            f"verification is via run_chain, not run_ort. Use `make BLOCK=m10 "
+            f"time` for timing only."
+        )
+        return 0
     if blk.topology == "conv_stride":
         out_w, out_h, out_c = blk.layers[0].out_shape
     elif blk.topology == "psa":

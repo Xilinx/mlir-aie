@@ -96,14 +96,22 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
 
       const int x_base = x_tile * 4;
 
+      // 8-byte block copies (mirror of m1's gather_interior pattern) -- 4
+      // uint64 loads + stores instead of 32 scalar byte loads + stores.
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_base + p;
-          int8_t *src = in_row + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = src[b];
-        }
+        int8_t *s0 = in_row + (x_base + 0) * input_channels + ic_t * 8;
+        int8_t *s1 = s0 + input_channels;
+        int8_t *s2 = s0 + 2 * input_channels;
+        int8_t *s3 = s0 + 3 * input_channels;
+        *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+            *reinterpret_cast<const uint64_t *>(s0);
+        *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+            *reinterpret_cast<const uint64_t *>(s1);
+        *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+            *reinterpret_cast<const uint64_t *>(s2);
+        *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+            *reinterpret_cast<const uint64_t *>(s3);
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
         int wts_off = wts_tile_off_1x1(chunk_oc_t, ic_t, ic_tiles);
