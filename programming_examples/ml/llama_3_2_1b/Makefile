@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real
 
 all: gemm_pt
 
@@ -243,13 +243,15 @@ run_rmsnorm_int8: rmsnorm_int8
 		-k MLIR_AIE -D ${RMSI8_D}
 
 # ---------- real gemm_int8_srs (Phase 2 GEMV path) ----------
+# Shapes are hardcoded in the .cc (kD=64, kHD=256 for the layer
+# integration test); 3 extern "C" symbols are emitted, plus a back-
+# compat alias for the standalone bring-up.
 GEMM_K ?= 64
 GEMM_N ?= 64
-GEMM_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_GEMM_K=${GEMM_K} -DLLAMA_GEMM_N=${GEMM_N}
 
 ${BUILD}/llama_gemm_int8_srs.cc.o: ${KDIR}/llama_gemm_int8_srs.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${GEMM_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
 
 ${BUILD}/aie_gemm_srs_${GEMM_K}x${GEMM_N}.mlir: ${srcdir}/aie2_gemm_int8_srs_real.py
 	mkdir -p ${@D}
@@ -399,6 +401,38 @@ run_sample: sample
 		-x ${BUILD}/final_sample_${SAMPLE_V}.xclbin \
 		-i ${BUILD}/insts_sample_${SAMPLE_V}.bin \
 		-k MLIR_AIE -V ${SAMPLE_V}
+
+# ---------- full single-layer integration with REAL kernels (Phase 3) ----------
+# Sizes are hardcoded inside aie2_layer_real.py and the kernel .cc
+# files (small first-bring-up: D=64, HD=256, head_dim=64, T=16).
+# Layer integration reuses every Phase 2 kernel binary.
+
+LAYER_REAL_DEPS = ${BUILD}/llama_rmsnorm_int8.cc.o \
+                  ${BUILD}/llama_gemm_int8_srs.cc.o \
+                  ${BUILD}/llama_rope_int8.cc.o \
+                  ${BUILD}/llama_silu_mul_int8.cc.o \
+                  ${BUILD}/llama_flowkv.cc.o \
+                  ${BUILD}/llama_layer_pt.cc.o
+
+${BUILD}/aie_layer_real.mlir: ${srcdir}/aie2_layer_real.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+${BUILD}/final_layer_real.xclbin: ${BUILD}/aie_layer_real.mlir ${LAYER_REAL_DEPS}
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_layer_real.bin \
+		$(notdir $<)
+
+layer_real: ${BUILD}/final_layer_real.xclbin
+
+run_layer_real: layer_real
+	cd ${srcdir} && python3 test_layer_real.py \
+		-x ${BUILD}/final_layer_real.xclbin \
+		-i ${BUILD}/insts_layer_real.bin \
+		-k MLIR_AIE
 
 # ---------- clean ----------
 clean:
