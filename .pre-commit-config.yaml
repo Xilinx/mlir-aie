@@ -3,7 +3,7 @@ default_install_hook_types: [pre-commit, pre-push]
 
 repos:
 - repo: https://github.com/kynan/nbstripout
-  rev: f42caeaf94f73a5ae54641b40a7d664cb4e03e40  # frozen: 0.8.0
+  rev: 34071b78c181af3bf5af955c1426466e096fc3db  # frozen: 0.9.1
   hooks:
     - id: nbstripout
       args: [--drop-empty-cells]
