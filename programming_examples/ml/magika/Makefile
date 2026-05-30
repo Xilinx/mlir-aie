@@ -122,11 +122,11 @@ else
 endif
 
 run_py: build/final.xclbin
-	#${powershell} python3 ${srcdir}/test.py -v 1 -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
-	${powershell} python3 ${srcdir}/test_${targetname}.py -v 1 -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	#${powershell} python3 ${srcdir}/test.py --verbosity 1 --xclbin build/final.xclbin --instr build/insts.bin --kernel MLIR_AIE
+	${powershell} python3 ${srcdir}/test_${targetname}.py --verbosity 1 --xclbin build/final.xclbin --instr build/insts.bin --kernel MLIR_AIE
 
 trace_py: build/final_trace.xclbin
-	${powershell} python3 ${srcdir}/test_${targetname}.py -v 1 -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
+	${powershell} python3 ${srcdir}/test_${targetname}.py --verbosity 1 --xclbin build/final_trace.xclbin --instr build/insts.bin --kernel MLIR_AIE --trace_size ${trace_size}
 	${srcdir}/../../../python/utils/trace/parse.py --input log/trace_magika.txt --mlir build/${mlirFileName}_trace.mlir.prj/input_with_addresses.mlir --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 

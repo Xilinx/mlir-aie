@@ -393,10 +393,10 @@ build/trace_bn_chain.xclbin: build/${MLIR_FILE}_trace.mlir  $(OBJ)
 		--aie-generate-npu-insts --npu-insts-name=insts_bn_chain.bin ${<F}
 
 run_py_bn_chain: build/final_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/final_bn_chain.xclbin --instr build/insts_bn_chain.bin --kernel MLIR_AIE
 
 trace_py_bn_chain: build/trace_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}_trace.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE -t ${trace_size}
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/trace_bn_chain.xclbin --instr build/insts_bn_chain.bin --kernel MLIR_AIE --trace_size ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift 1 > trace_mbv4_A_chain.json
 
 shallow_clean:

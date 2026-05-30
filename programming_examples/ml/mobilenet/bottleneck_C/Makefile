@@ -128,8 +128,8 @@ clean:
 
 
 run_py: build/final.xclbin build/${MLIR_FILE}.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/final.xclbin --instr build/insts.bin --kernel MLIR_AIE
 
 trace_py: build/trace.xclbin build/${MLIR_FILE}_trace.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace.xclbin -i build/insts_trace.bin -k MLIR_AIE -t ${trace_size}
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/trace.xclbin --instr build/insts_trace.bin --kernel MLIR_AIE --trace_size ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.bin --mlir build/${MLIR_FILE}_trace.mlir --colshift ${colshift} > trace_mbv4_C.json

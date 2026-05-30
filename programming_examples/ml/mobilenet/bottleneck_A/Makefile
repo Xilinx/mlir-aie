@@ -296,50 +296,50 @@ clean:
 # ******************************************************************************************
 
 run_py: build/final_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/final_bn_chain.xclbin --instr build/insts_bn_chain.bin --kernel MLIR_AIE
 
 trace_py: build/trace_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}_trace.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE -t ${trace_size}
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/trace_bn_chain.xclbin --instr build/insts_bn_chain.bin --kernel MLIR_AIE --trace_size ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift ${colshift}  > trace_mbv4_A_chain.json
 
 run_py_0: build/final_bn_0.xclbin build/insts_bn_0.bin build/aie2_bn_0.mlir
-	${powershell} python3 ${srcdir}/test_bn_single.py -bn 0 -x build/final_bn_0.xclbin -i build/insts_bn_0.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_single.py -bn 0 --xclbin build/final_bn_0.xclbin --instr build/insts_bn_0.bin --kernel MLIR_AIE
 
 run_py_1: build/final_bn_1.xclbin build/insts_bn_1.bin build/aie2_bn_1.mlir
-	${powershell} python3 ${srcdir}/test_bn_single.py -bn 1 -x build/final_bn_1.xclbin -i build/insts_bn_1.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_single.py -bn 1 --xclbin build/final_bn_1.xclbin --instr build/insts_bn_1.bin --kernel MLIR_AIE
 
 run_py_2: build/final_bn_2.xclbin build/insts_bn_2.bin build/aie2_bn_2.mlir
-	${powershell} python3 ${srcdir}/test_bn_single.py -bn 2 -x build/final_bn_2.xclbin -i build/insts_bn_2.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_single.py -bn 2 --xclbin build/final_bn_2.xclbin --instr build/insts_bn_2.bin --kernel MLIR_AIE
 
 run_py_3: build/final_bn_3.xclbin build/insts_bn_3.bin build/aie2_bn_3.mlir
-	${powershell} python3 ${srcdir}/test_bn_single.py -bn 3 -x build/final_bn_3.xclbin -i build/insts_bn_3.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_single.py -bn 3 --xclbin build/final_bn_3.xclbin --instr build/insts_bn_3.bin --kernel MLIR_AIE
 
 # run_py_4: build/final_bn_4.xclbin build/insts_bn_4.bin build/aie2_bn_4.mlir
-# 	${powershell} python3 ${srcdir}/test_bn_4.py -x build/final_bn_4.xclbin -i build/insts_bn_4.bin -k MLIR_AIE
+# 	${powershell} python3 ${srcdir}/test_bn_4.py --xclbin build/final_bn_4.xclbin --instr build/insts_bn_4.bin --kernel MLIR_AIE
 
 # run_py_5: build/final_bn_5.xclbin build/insts_bn_5.bin build/aie2_bn_5.mlir
-# 	${powershell} python3 ${srcdir}/test_bn_5.py -x build/final_bn_5.xclbin -i build/insts_bn_5.bin -k MLIR_AIE
+# 	${powershell} python3 ${srcdir}/test_bn_5.py --xclbin build/final_bn_5.xclbin --instr build/insts_bn_5.bin --kernel MLIR_AIE
 
 run_py_6: build/final_bn_6.xclbin build/insts_bn_6.bin build/aie2_bn_6.mlir
-	${powershell} python3 ${srcdir}/test_bn_single.py -bn 6 -x build/final_bn_6.xclbin -i build/insts_bn_6.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_single.py -bn 6 --xclbin build/final_bn_6.xclbin --instr build/insts_bn_6.bin --kernel MLIR_AIE
 
 run_py_7: build/final_bn_7.xclbin build/insts_bn_7.bin build/aie2_bn_7.mlir
-	${powershell} python3 ${srcdir}/test_bn_single.py -bn 7 -x build/final_bn_7.xclbin -i build/insts_bn_7.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_single.py -bn 7 --xclbin build/final_bn_7.xclbin --instr build/insts_bn_7.bin --kernel MLIR_AIE
 
 run_py_8: build/final_bn_8.xclbin build/insts_bn_8.bin build/aie2_bn_8.mlir
-	${powershell} python3 ${srcdir}/test_bn_single.py -bn 8 -x build/final_bn_8.xclbin -i build/insts_bn_8.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_single.py -bn 8 --xclbin build/final_bn_8.xclbin --instr build/insts_bn_8.bin --kernel MLIR_AIE
 
 # run_py_9: build/final_bn_9.xclbin build/insts_bn_9.bin build/aie2_bn_9.mlir
-# 	${powershell} python3 ${srcdir}/test_bn_9.py -x build/final_bn_9.xclbin -i build/insts_bn_9.bin -k MLIR_AIE
+# 	${powershell} python3 ${srcdir}/test_bn_9.py --xclbin build/final_bn_9.xclbin --instr build/insts_bn_9.bin --kernel MLIR_AIE
 
 #run_py_0_1: build/final_bn_0_1.xclbin build/insts_bn_0_1.bin build/aie2_bn_0_1.mlir
-#	${powershell} python3 ${srcdir}/test_bn_0_1.py -x build/final_bn_0_1.xclbin -i build/insts_bn_0_1.bin -k MLIR_AIE
+#	${powershell} python3 ${srcdir}/test_bn_0_1.py --xclbin build/final_bn_0_1.xclbin --instr build/insts_bn_0_1.bin --kernel MLIR_AIE
 
 #run_py_2_3: build/final_bn_2_3.xclbin build/insts_bn_2_3.bin build/aie2_bn_2_3.mlir
-#	${powershell} python3 ${srcdir}/test_bn_2_3.py -x build/final_bn_2_3.xclbin -i build/insts_bn_2_3.bin -k MLIR_AIE
+#	${powershell} python3 ${srcdir}/test_bn_2_3.py --xclbin build/final_bn_2_3.xclbin --instr build/insts_bn_2_3.bin --kernel MLIR_AIE
 
 run_py_4_5: build/final_bn_4_5.xclbin build/insts_bn_4_5.bin build/aie2_bn_4_5.mlir
-	${powershell} python3 ${srcdir}/test_bn_fused2.py -bn 4_5 -x build/final_bn_4_5.xclbin -i build/insts_bn_4_5.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_fused2.py -bn 4_5 --xclbin build/final_bn_4_5.xclbin --instr build/insts_bn_4_5.bin --kernel MLIR_AIE
 
 run_py_8_9: build/final_bn_8_9.xclbin build/insts_bn_8_9.bin build/aie2_bn_8_9.mlir
-	${powershell} python3 ${srcdir}/test_bn_fused2.py -bn 8_9 -x build/final_bn_8_9.xclbin -i build/insts_bn_8_9.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bn_fused2.py -bn 8_9 --xclbin build/final_bn_8_9.xclbin --instr build/insts_bn_8_9.bin --kernel MLIR_AIE

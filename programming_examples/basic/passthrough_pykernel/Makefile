@@ -48,7 +48,7 @@ run: ${targetname}_${data_size}.exe ${xclbin_target} ${insts_target}
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
 run_py: ${xclbin_target} ${insts_target}
-	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py -s ${data_size} --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE
 
 clean:
 	rm -rf build _build ${targetname}*.exe

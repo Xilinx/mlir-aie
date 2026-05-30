@@ -7,7 +7,9 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-import aie.utils.test as test_utils
+import argparse
+from aie.utils.hostruntime.argparse import add_runtime_args
+from aie.utils.test import create_npu_kernel
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
 
@@ -22,7 +24,7 @@ def main(opts):
     in1 = iron.tensor(input_data, dtype=dtype)
     out = iron.zeros(data_size, dtype=dtype)
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu_opts = create_npu_kernel(opts)
     res = DefaultNPURuntime.run_test(
         npu_opts.npu_kernel,
         [in1, out],
@@ -36,7 +38,8 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p, with_io_sizes=True)
     p.add_argument(
         "-s", "--size", required=True, dest="size", help="Passthrough kernel size"
     )

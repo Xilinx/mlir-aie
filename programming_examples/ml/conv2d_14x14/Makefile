@@ -44,7 +44,7 @@ $(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aiearg
 
 .PHONY: run_py
 run_py: ${xclbin_target} ${insts_target}
-	${powershell} python3 ${srcdir}/test.py -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE \
+	${powershell} python3 ${srcdir}/test.py --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE \
 		-wd ${width} -ht ${height} -ic 4 -oc 1152 -ksz 14 -na ${num_act}
 
 .PHONY: clean

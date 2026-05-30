@@ -16,7 +16,9 @@ import numpy as np
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
 from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
-import aie.utils.test as test_utils
+import argparse
+from aie.utils.hostruntime.argparse import add_runtime_args
+from aie.utils.test import create_npu_kernel
 from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
 from brevitas.quant.fixed_point import (
     Int8ActPerTensorFixedPoint,
@@ -590,7 +592,8 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p, with_io_sizes=True)
     p.add_argument(
         "-bn",
         dest="bn",

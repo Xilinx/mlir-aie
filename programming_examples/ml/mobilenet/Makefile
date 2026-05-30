@@ -319,10 +319,10 @@ else
 endif
 
 run_py: build/final_mobilenet.xclbin build/${MLIR_FILE}.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/final_mobilenet.xclbin --instr build/insts.bin --kernel MLIR_AIE
 
 trace_py: build/trace_mobilenet.xclbin build/${MLIR_FILE}_trace.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/trace_mobilenet.xclbin --instr build/insts.bin --kernel MLIR_AIE --trace_size ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift 1 > trace_mbv4_full.json
 
 shallow_clean:

@@ -135,3 +135,107 @@ def add_trace_arg(
         default=default,
         help="hardware trace buffer size in bytes (0 disables tracing; default: %(default)s)",
     )
+
+
+def add_runtime_args(
+    parser: argparse.ArgumentParser,
+    *,
+    with_io_sizes: bool = False,
+    with_benchmark: bool = False,
+) -> None:
+    """Add the standard runtime / test-harness flags.
+
+    Pairs with :func:`add_compile_args`: ``add_compile_args`` covers the
+    write-side flags (``--xclbin-path``, ``--insts-path``) used by JIT
+    designs, while this helper covers the read-side flags (``--xclbin``,
+    ``--instr``) used by ``test.py``-style host harnesses that load a
+    pre-compiled xclbin and run it on the NPU.
+
+    Replaces the legacy ``aie.utils.test.create_default_argparser`` which
+    is now deprecated.
+
+    Args:
+        parser: Parser to mutate.
+        with_io_sizes: When True, adds ``--in1-size`` / ``--in2-size`` /
+            ``--out-size`` (bytes, ``int``) for designs whose Makefile
+            drives buffer sizes from the test harness.
+        with_benchmark: When True, also calls :func:`add_benchmark_args`
+            (adds ``-i/--iters`` and ``-w/--warmup``).  Off by default
+            because most correctness-test harnesses do not benchmark.
+
+    Adds (always): ``--xclbin``, ``--instr``, ``-k/--kernel``,
+    ``-v/--verbosity``, ``--verify``/``--no-verify``, ``--trace-file``,
+    ``--ddr-id``, ``--enable-ctrl-pkts``; and via :func:`add_trace_arg`,
+    ``-t/--trace_size``.
+    """
+    parser.add_argument(
+        "--xclbin",
+        type=str,
+        required=True,
+        help="path to the pre-compiled xclbin to load",
+    )
+    parser.add_argument(
+        "--instr",
+        type=str,
+        default="instr.txt",
+        help="path of file containing userspace instructions sent to the NPU (default: %(default)s)",
+    )
+    parser.add_argument(
+        "-k",
+        "--kernel",
+        type=str,
+        default="MLIR_AIE",
+        help="kernel name in the xclbin (default: %(default)s)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbosity",
+        type=int,
+        default=0,
+        help="verbosity level (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--verify",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="verify the NPU output against the reference (default: %(default)s)",
+    )
+    add_trace_arg(parser)
+    parser.add_argument(
+        "--trace-file",
+        type=str,
+        default="trace.txt",
+        help="where to store trace output (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--ddr-id",
+        type=int,
+        default=4,
+        help="DDR buffer index for trace (0-4, or -1 to append after last tensor; default: %(default)s)",
+    )
+    parser.add_argument(
+        "--enable-ctrl-pkts",
+        action="store_true",
+        help="enable control packets",
+    )
+    if with_io_sizes:
+        parser.add_argument(
+            "--in1-size",
+            type=int,
+            default=0,
+            help="input 1 buffer size in bytes (default: %(default)s)",
+        )
+        parser.add_argument(
+            "--in2-size",
+            type=int,
+            default=0,
+            help="input 2 buffer size in bytes (default: %(default)s)",
+        )
+        parser.add_argument(
+            "--out-size",
+            type=int,
+            default=0,
+            help="output buffer size in bytes (default: %(default)s)",
+        )
+    if with_benchmark:
+        add_benchmark_args(parser)

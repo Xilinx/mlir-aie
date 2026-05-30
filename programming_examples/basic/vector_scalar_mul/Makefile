@@ -60,7 +60,7 @@ run: ${targetname}_${data_size}.exe ${xclbin_target} ${insts_target}
 
 .PHONY: run_py
 run_py: ${xclbin_target} ${insts_target}
-	${powershell} python3 ${srcdir}/test.py -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
+	${powershell} python3 ${srcdir}/test.py --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE --in1-size ${in1_size} --in2-size ${in2_size} --out-size ${out_size}
 
 # input_with_addresses.mlir is dropped into the kernel_dir (= xclbin parent) by
 # @iron.jit's compile() in explicit-paths mode.
@@ -74,7 +74,7 @@ trace: ${targetname}_${data_size}.exe ${trace_xclbin_target} ${trace_insts_targe
 
 .PHONY: trace_py
 trace_py: ${trace_xclbin_target} ${trace_insts_target}
-	${powershell} python3 ${srcdir}/test.py -x ${trace_xclbin_target} -i ${trace_insts_target} -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
+	${powershell} python3 ${srcdir}/test.py --xclbin ${trace_xclbin_target} --instr ${trace_insts_target} --kernel MLIR_AIE --trace_size ${trace_size} --in1-size ${in1_size} --in2-size ${in2_size} --out-size ${out_size}
 	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir ${trace_mlir} --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 

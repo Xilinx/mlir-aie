@@ -96,4 +96,4 @@ clean:
 	rm -rf build __pycache__ log
 
 run_py: build/final.xclbin ${srcdir}/${MLIR_FILE}.py
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py --xclbin build/final.xclbin --instr build/insts.bin --kernel MLIR_AIE
