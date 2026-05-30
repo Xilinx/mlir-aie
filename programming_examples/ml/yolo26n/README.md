@@ -105,20 +105,38 @@ now uses the same mmul-packed `(ic_t, x_block, p*8+chan)` layout.
 At N=15 chain is now at 99.9% of the m8-noop'd ceiling — m8 is
 no longer the chain gate.
 
+**After Sprint 5 (m6 c3k2_heavy non-streamed kernels)**:
+m6 standalone = **4.61 ms / 216.9 fps** (was 9.23 ms fresh measure,
+12.04 README baseline). Heavy-specific kernels (m_0_split,
+inner_pair_cv1, inner_pair_cv2_skip, cv3_concat2) all switched to
+the same mmul-packed layout. cv1_split + cv2_concat3 deferred to
+Sprint 6 (shared with m2/m4). Chain N=15 barely moved (13.45 ms /
+74.32 fps) because m2/m4 became the next gate.
+
+**After Sprint 6 (c3k2_small family + m6 boundaries)**:
+chain N=15 = **11.79 ms / 84.82 fps**. Standalone wins: m2 = 7.27 /
+137.6 fps (−44%); m4 = 3.84 / 260.1 fps (−70%); m6 = 2.39 / 419.1 fps
+(−80% from original 12.04 ms / 33.1 ms wall). Four c3k2_small files
+(cv1_split, m0_cv1, m0_cv2_skip, cv2_concat3) switched to 4-pixel-
+block packed layout (32-byte blocks). m6's heavy boundaries
+(m_0_split input read, cv3_concat2 output write) updated to match.
+Chain co-gate moves to m0 (11.12 ms standalone) — next sprint
+target.
+
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
 All rows reflect the post-audit state; "was X" values in the rightmost
 column are the README snapshot from prior to the kernel-by-kernel audit.
 
 | Block | Topology | Median (ms) | fps | |
 |---:|---|---:|---:|:--|
-| m0  | conv_stride stem               | **11.32** | **88.3**  | ✓ (was 76.4) |
-| m1  | conv_stride                    | **4.84**  | **206.6** | ✓ (was 116.1) |
-| m2  | c3k2_small                     | **12.98** | **77.0**  | ✓ (was 69.7) |
-| m3  | conv_stride (chunked)          | **5.13**  | **195.1** | ✓ (was 124.9) |
-| m4  | c3k2_small                     | **12.58** | **79.5**  | ✓ (was 75.2) |
-| m5  | conv_stride (chunked)          | **5.40**  | **185.1** | ✓ (was 139.5) |
-| m6  | c3k2_heavy                     | **12.04** | **83.1**  | ✓ (was 76.0 → SHAPES_ARE_CONST sweep on all 6 m6 kernels) |
-| m7  | conv_stride (chunked)          | **3.94**  | **253.7** | ✓ (was 206.8) |
+| m0  | conv_stride stem               | **11.12** | **89.9**  | ✓ (was 76.4; Sprint 7 candidate) |
+| m1  | conv_stride                    | **4.82**  | **207.5** | ✓ (was 116.1) |
+| m2  | c3k2_small                     | **7.27**  | **137.6** | ✓ (was 12.98 before Sprint 6 mmul pre-pack) |
+| m3  | conv_stride (chunked)          | **5.09**  | **196.5** | ✓ (was 124.9) |
+| m4  | c3k2_small                     | **3.84**  | **260.1** | ✓ (was 12.58 before Sprint 6) |
+| m5  | conv_stride (chunked)          | **5.40**  | **185.2** | ✓ (was 139.5) |
+| m6  | c3k2_heavy                     | **2.39**  | **419.1** | ✓ (was 12.04 before Sprints 5+6; -80% / +400% fps) |
+| m7  | conv_stride (chunked)          | **3.88**  | **257.7** | ✓ (was 206.8) |
 | m8  | c3k2_heavy (2-tile megakernel) | **16.32** | **61.3**  | ✓ (M8_TILES=2; default for per-block standalone) |
 | m8  | c3k2_heavy (4-tile megakernel) | **4.39**  | **227.6** | ✓ (M8_TILES=4; default in chain) — was 14.97 / 66.8 fps before Sprint 4. Sprint 4 + stages 1a-1e converted every internal m8 buffer (front↔back, m_0_split, pair_cv1↔pair_cv2, back internal scratch, cv1↔m_0_split) to mmul-packed layout. Final sweep clean of `__divsi3` and per-iter branches in mac bodies. |
 | m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
@@ -375,11 +393,11 @@ IC dimension, never a per-iter `if` inside the mac body — that
 branch defeats Peano's VLIW pipelining of `vlda + vldb + vmac` and
 cost ~7% of the standalone gain on Stage 1b until refactored.
 
-| Chain | After Sprint 3 | Sprint 4 | After Stage 1d (current) | Δ vs Sprint 3 |
-|------:|---:|---:|---:|---:|
-| N=1   | 36.91 ms / 27.1 fps | 31.05 / 32.21 | **25.67 / 38.95**  | **−30.5% / +43.7%** |
-| N=4   | 19.22 ms / 52.03    | (not measured)| **15.85 / 63.10**  | **−17.5% / +21.3%** |
-| N=15  | 15.17 ms / 65.94    | 13.63 / 73.35 | **13.48 / 74.18**  | **−11.1% / +12.5%** |
+| Chain | After Sprint 3 | Sprint 4 | After Stage 1e | After Sprints 5+6 (current) | Δ vs Sprint 3 |
+|------:|---:|---:|---:|---:|---:|
+| N=1   | 36.91 ms / 27.1 fps | 31.05 / 32.21 | 25.47 / 39.27 | **22.66 / 44.13** | **−38.6% / +62.8%** |
+| N=4   | 19.22 ms / 52.03    | (not measured)| 15.83 / 63.18 | **13.91 / 71.88** | **−27.6% / +38.2%** |
+| N=15  | 15.17 ms / 65.94    | 13.63 / 73.35 | 13.48 / 74.20 | **11.79 / 84.82** | **−22.3% / +28.6%** |
 
 At N=15 we're at **99.9% of the m8-noop'd ceiling** (74.26 fps) —
 further m8 work helps N=1/N=4 single-dispatch latency but not
