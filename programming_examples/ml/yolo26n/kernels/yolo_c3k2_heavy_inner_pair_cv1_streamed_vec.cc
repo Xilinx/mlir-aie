@@ -224,14 +224,16 @@ void KERNEL_NAME(
       }
 
       aie::vector<int8, 64> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < MMUL_M; ++p) {
-        int x_out = x_out_base + p;
-        for (int j = 0; j < 8; ++j) {
-          int oc_full = oc_full_base + j;
-          output[x_out * OUT_C + oc_full] =
-              silu_lut[int(srs_v[p * 8 + j]) + 128];
-        }
-      }
+      // mmul-layout output: write 64 bytes (8 pixels x 8 chans) as ONE vec
+      // store at offset (chunk_oc_t_full, x_tile). Consumer (cv2) reads with
+      // a vec load instead of 64 scalar lda.s8 + vpush gather.
+      alignas(64) int8_t silu_buf[64];
+      for (int i = 0; i < 64; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
+      const int chunk_oc_t_full = oc_full_base / 8;
+      aie::store_v(output + chunk_oc_t_full * (kXTiles8 * 64) + x_tile * 64,
+                   silu_v);
     }
 #else
     AIE_HINT_X
