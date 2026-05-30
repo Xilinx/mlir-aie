@@ -71,11 +71,25 @@ def numpy_single_layer(x_in, layer):
 
 
 def gen_layer(rng):
-    """Random per-layer data with the same magnitudes used in test_layer_real."""
-    def randw(*shape):
-        return rng.integers(-32, 33, size=shape, dtype=np.int8)
-    def randb(n):
-        return rng.integers(-100, 100, size=n, dtype=np.int32)
+    """Random per-layer data. NB: small weight/bias magnitudes combined
+    with RIGHT_SHIFT=12 produce gemm outputs ~ 0, which collapses the
+    whole layer to identity (out = x_in). Bit-exactness in this regime
+    is degenerate (both compute identity). Use larger magnitudes via
+    LLAMA_CHAIN_ACTIVE_DATA=1 to exercise real layer math (which
+    surfaces a per-kernel-ref precision modeling gap; see DEBUG note
+    in chain commit)."""
+    import os
+    active = os.environ.get("LLAMA_CHAIN_ACTIVE_DATA", "0") == "1"
+    if active:
+        def randw(*shape):
+            return rng.integers(-64, 65, size=shape, dtype=np.int8)
+        def randb(n):
+            return rng.integers(-1000, 1000, size=n, dtype=np.int32)
+    else:
+        def randw(*shape):
+            return rng.integers(-32, 33, size=shape, dtype=np.int8)
+        def randb(n):
+            return rng.integers(-100, 100, size=n, dtype=np.int32)
     def randg(n):
         return (1.0 + 0.1 * rng.standard_normal(n).astype(np.float32)).astype(bfloat16)
 
@@ -123,10 +137,39 @@ def main():
     p = test_utils.create_default_argparser()
     opts = p.parse_args()
 
-    rng = np.random.default_rng(0)
+    import os
+    seed = int(os.environ.get("LLAMA_CHAIN_SEED", "0"))
+    rng = np.random.default_rng(seed)
     x_in = rng.integers(-32, 33, size=D, dtype=np.int8)
 
     layers = [gen_layer(rng) for _ in range(N_LAYERS)]
+
+    # DEBUG bisection: force one category of data to be the same across
+    # all layers; the rest stay distinct. Whichever category yields 0
+    # diffs implicates that fifo's per-layer delivery.
+    import os
+    bisect = os.environ.get("LLAMA_CHAIN_BISECT", "")
+    if bisect:
+        print(f"[bisect] forcing {bisect} identical across layers")
+        keys_by_group = {
+            "gamma":  ["gamma_in", "gamma_post"],
+            "gamma_in": ["gamma_in"],
+            "gamma_post": ["gamma_post"],
+            "wq":     ["wq", "bq"],
+            "wo":     ["wo", "bo"],
+            "wg":     ["wg", "bg"],
+            "wu":     ["wu", "bu"],
+            "wd":     ["wd", "bd"],
+            "cs":     ["cos", "sin", "cos_half", "sin_half"],
+            "kv":     ["kcache", "vcache"],
+            "ffn":    ["wg", "bg", "wu", "bu", "wd", "bd"],   # all FFN weights
+            "attn":   ["wq", "bq", "wo", "bo", "kcache", "vcache",
+                       "cos", "sin", "cos_half", "sin_half"],
+        }
+        keys = keys_by_group[bisect]
+        for L in range(1, N_LAYERS):
+            for k in keys:
+                layers[L][k] = layers[0][k]
 
     # --- Pack blobs ---
     wblob = np.zeros(TOTAL_W,  dtype=np.int8)

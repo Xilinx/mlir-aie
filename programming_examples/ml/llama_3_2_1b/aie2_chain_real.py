@@ -34,9 +34,7 @@ HEAD_D  = 64
 N_HEADS = 1
 N_KV    = 1
 T       = 16             # KV cache length
-N_LAYERS = 2  # bit-exact at 2. N>=3 has 1-LSB drift per extra layer
-              # when layers differ (identical layers: 0/D at any N).
-              # Diagnostic notes in commit message below.
+N_LAYERS = 2  # debug
 
 # Per-layer byte sizes (must match test_chain_real.py).
 WQ_BYTES = QD*D + QD*4

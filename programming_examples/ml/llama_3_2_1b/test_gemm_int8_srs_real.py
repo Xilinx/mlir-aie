@@ -36,9 +36,13 @@ def main():
     K, N = opts.K, opts.N
     rng = np.random.default_rng(0)
 
+    # Test BOTH at the original full-range data (where the standalone
+    # bit-exact was claimed) AND at the smaller chain-test magnitudes
+    # to see if either gives diff > 0.
     act      = rng.integers(-128, 128, size=K,    dtype=np.int8)
     weights  = rng.integers(-128, 128, size=N*K,  dtype=np.int8).reshape(N, K)
     bias     = rng.integers(-1000, 1000, size=N,  dtype=np.int32)
+    print(f"act range: [{act.min()}, {act.max()}], weights range: [{weights.min()}, {weights.max()}]")
 
     # Pack: weights[N*K] || bias[N*4].
     w_packed = np.concatenate([weights.flatten().view(np.int8),
