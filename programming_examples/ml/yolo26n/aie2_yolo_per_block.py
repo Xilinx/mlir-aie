@@ -156,6 +156,17 @@ def _build_m0(act_in, manifest):
     in_c = 8
     wts_padded_sz = out_c * in_c * 3 * 3  # 16 * 8 * 9 = 1152
 
+    # Stride-2 deinterleave on input via memtile forward: even-indexed pixels
+    # land in the first in_w/2*in_c bytes of each row, odd-indexed in the
+    # second half. Eliminates the stride-2 scalar gather: kx=0/2 reads odd
+    # half, kx=1 reads even half, all via single aligned vec_load<32>.
+    # Verified standalone via diag/test_dei.py (multi-row, 0 mismatches).
+    in_half = in_w // 2
+    DEINTERLEAVE_DIMS = [(2, in_c), (in_half, 2 * in_c), (in_c, 1)]
+    act_in = act_in.cons().forward(
+        depth=5, dims_to_stream=DEINTERLEAVE_DIMS, name="m0_in_dei"
+    )
+
     op_meta = _op_meta(manifest, layer.manifest_name)
     right_shift = op_meta["right_shift"]  # post-MAC shift baked into requant
 

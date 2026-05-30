@@ -97,39 +97,49 @@ pack_wts(const int8_t *__restrict wts, int oc_tile_base,
   }
 }
 
-// Gather 4 contiguous x_outs × 8 ic_inner from one input line into a
-// 32-byte aligned a_buf. Caller is responsible for `col` being in range
-// (interior path) — the edge path zeros out-of-range bytes.
-static __attribute__((always_inline)) inline void
-gather_interior(const int8_t *__restrict line_ptr, int x_in_base, int kx,
-                int8_t *__restrict a_buf) {
-  AIE_LOOP_UNROLL_FULL
-  for (int p = 0; p < 4; ++p) {
-    const int col = x_in_base + 2 * p + kx;
-    const int8_t *__restrict src = line_ptr + col * kInC;
-    // 8-byte block copy; peano lowers to a single 64-bit load/store pair.
-    for (int b = 0; b < 8; ++b)
-      a_buf[p * 8 + b] = src[b];
+// DMA-deinterleaved layout: each row is [even_half (kInW/2 pixels),
+// odd_half (kInW/2 pixels)] via memtile dims_to_stream in _build_m0.
+// Stride-2 conv: kx=0/2 -> odd half; kx=1 -> even half. All 4 mmul
+// pixels are 32 contiguous aligned bytes -- single aie::load_v<32>.
+static constexpr int kInHalfBytes = (kInW / 2) * kInC; // 2048 for in_w=512
+
+// Interior x_tile in [1, kXTiles-1] -- no bounds issue. AIE2P vec_load<32>
+// requires 32-byte (= 4-pixel) alignment. kx=1 and kx=2 land on aligned
+// pixel-quad boundaries; kx=0 lands at pixel index 4q-1 (odd_idx0 mod 4 = 3)
+// so the natural load would be unaligned. For kx=0, do two aligned 32-byte
+// loads of adjacent quads and shuffle_down by 24 bytes to extract the
+// desired 32 bytes (= last 8 of quad q-1 + first 24 of quad q).
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+load_a_deinterleaved_interior(const int8_t *__restrict line_ptr, int x_tile,
+                              int kx) {
+  if (kx == 1) {
+    return aie::load_v<32>(line_ptr + x_tile * 32);
   }
+  if (kx == 2) {
+    return aie::load_v<32>(line_ptr + kInHalfBytes + x_tile * 32);
+  }
+  // kx == 0: unaligned offset. Two aligned 32-byte loads + shuffle_down 24.
+  const int aligned_base = kInHalfBytes + (x_tile - 1) * 32;
+  aie::vector<int8, 32> lo = aie::load_v<32>(line_ptr + aligned_base);
+  aie::vector<int8, 32> hi = aie::load_v<32>(line_ptr + aligned_base + 32);
+  aie::vector<int8, 64> combined = aie::concat(lo, hi);
+  return aie::shuffle_down(combined, 24).template extract<32>(0);
 }
 
-static __attribute__((always_inline)) inline void
-gather_edge(const int8_t *__restrict line_ptr, int x_in_base, int kx,
-            int8_t *__restrict a_buf, bool &any_valid) {
-  any_valid = false;
-  AIE_LOOP_UNROLL_FULL
-  for (int p = 0; p < 4; ++p) {
-    const int col = x_in_base + 2 * p + kx;
-    if (col < 0 || col >= kInW) {
-      for (int b = 0; b < 8; ++b)
-        a_buf[p * 8 + b] = 0;
-    } else {
-      const int8_t *__restrict src = line_ptr + col * kInC;
-      for (int b = 0; b < 8; ++b)
-        a_buf[p * 8 + b] = src[b];
-      any_valid = true;
-    }
+// Left edge x_tile=0: kx=0 needs odd[-1, 0, 1, 2] -- zero-prefix.
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+load_a_deinterleaved_left(const int8_t *__restrict line_ptr, int kx) {
+  if (kx == 1) {
+    return aie::load_v<32>(line_ptr);
   }
+  if (kx == 2) {
+    return aie::load_v<32>(line_ptr + kInHalfBytes);
+  }
+  // kx == 0: load odd[0..3] then shuffle to [0, odd[0..2]].
+  aie::vector<int8, 32> v = aie::load_v<32>(line_ptr + kInHalfBytes);
+  aie::vector<int8, 32> z = aie::zeros<int8, 32>();
+  aie::vector<int8, 64> combined = aie::concat(z, v);
+  return aie::shuffle_down(combined, 24).template extract<32>(0);
 }
 
 // Per-OC×2 bias accumulator helper: 8 int32 biases → 32-wide acc<acc32>
@@ -200,28 +210,19 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
     auto bias_acc_a = make_bias_acc(&bias[oc_full_base_a]);
     auto bias_acc_b = make_bias_acc(&bias[oc_full_base_b]);
 
-    // ----- Left edge: x_tile=0, x_in cols ∈ {-1, 1, 3, 5} + kx. kx=0
-    // gives col=-1 → zeroed; kx in {1,2} gives all valid. Only this
-    // tile needs the bounds check.
+    // ----- Left edge: x_tile=0 (kx=0 needs zero-prefix for odd[-1]).
     {
       MMUL4x8x8 acc_a, acc_b;
       acc_a = bias_acc_a;
       acc_b = bias_acc_b;
-
-      const int x_out_base = 0;
-      const int x_in_base = -1;
 
       AIE_LOOP_RANGE(1, 3)
       for (int ky = ky_start; ky < ky_end; ++ky) {
         const int8_t *__restrict line_ptr = line[ky];
         AIE_LOOP_RANGE(3, 3)
         for (int kx = 0; kx < kKW; ++kx) {
-          alignas(32) int8_t a_buf[32];
-          bool any_valid;
-          gather_edge(line_ptr, x_in_base, kx, a_buf, any_valid);
-          if (!any_valid)
-            continue;
-          aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+          aie::vector<int8, 32> in_a =
+              load_a_deinterleaved_left(line_ptr, kx);
           int wt_off = (ky * kKW + kx) * 64;
           acc_a.mac(in_a, aie::load_v<64>(&wbuf_a[wt_off]));
           acc_b.mac(in_a, aie::load_v<64>(&wbuf_b[wt_off]));
@@ -230,28 +231,24 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
 
       aie::vector<int8, 32> srs_a = acc_a.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> srs_b = acc_b.template to_vector<int8>(right_shift);
-      emit_8_lanes(srs_a, silu_lut, output, oc_full_base_a, x_out_base);
-      emit_8_lanes(srs_b, silu_lut, output, oc_full_base_b, x_out_base);
+      emit_8_lanes(srs_a, silu_lut, output, oc_full_base_a, 0);
+      emit_8_lanes(srs_b, silu_lut, output, oc_full_base_b, 0);
     }
 
-    // ----- Interior: x_tile ∈ [1, kXTiles). Branch-free gather. ----
+    // ----- Interior: x_tile ∈ [1, kXTiles). Pure vec_load per (q, kx).
     AIE_LOOP_RANGE(kXTiles - 1, kXTiles - 1)
     for (int x_tile = 1; x_tile < kXTiles; ++x_tile) {
       MMUL4x8x8 acc_a, acc_b;
       acc_a = bias_acc_a;
       acc_b = bias_acc_b;
 
-      const int x_out_base = x_tile * 4;
-      const int x_in_base = 2 * x_out_base - 1;
-
       AIE_LOOP_RANGE(1, 3)
       for (int ky = ky_start; ky < ky_end; ++ky) {
         const int8_t *__restrict line_ptr = line[ky];
         AIE_LOOP_RANGE(3, 3)
         for (int kx = 0; kx < kKW; ++kx) {
-          alignas(32) int8_t a_buf[32];
-          gather_interior(line_ptr, x_in_base, kx, a_buf);
-          aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+          aie::vector<int8, 32> in_a =
+              load_a_deinterleaved_interior(line_ptr, x_tile, kx);
           int wt_off = (ky * kKW + kx) * 64;
           acc_a.mac(in_a, aie::load_v<64>(&wbuf_a[wt_off]));
           acc_b.mac(in_a, aie::load_v<64>(&wbuf_b[wt_off]));
@@ -260,8 +257,8 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
 
       aie::vector<int8, 32> srs_a = acc_a.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> srs_b = acc_b.template to_vector<int8>(right_shift);
-      emit_8_lanes(srs_a, silu_lut, output, oc_full_base_a, x_out_base);
-      emit_8_lanes(srs_b, silu_lut, output, oc_full_base_b, x_out_base);
+      emit_8_lanes(srs_a, silu_lut, output, oc_full_base_a, x_tile * 4);
+      emit_8_lanes(srs_b, silu_lut, output, oc_full_base_b, x_tile * 4);
     }
   }
 
