@@ -7,7 +7,7 @@ var searchData=
   ['tile_4',['tile',['../classiron_1_1buffer_1_1Buffer.html#a152ba1f2f0988500f390c9b08698d760',1,'iron.buffer.Buffer.tile()'],['../classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html#a2106e61451a30c770d857a0ce1a839de',1,'iron.dataflow.endpoint.ObjectFifoEndpoint.tile()']]],
   ['tile_5fiterator_5',['tile_iterator',['../classiron_1_1device_1_1device_1_1Device.html#af46779b00c0d536d50d46bca86e039c5',1,'iron::device::device::Device']]],
   ['tile_5fsize_6',['tile_size',['../classiron_1_1kernel_1_1BaseKernel.html#af61103884ace3b3b9a1b11c0dc51be20',1,'iron::kernel::BaseKernel']]],
-  ['tiles_7',['tiles',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#aa4f5fc19bab7134b9f1b08b4344e7c2b',1,'iron::dataflow::objectfifo::ObjectFifo']]],
+  ['tiles_7',['tiles',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#aa4f5fc19bab7134b9f1b08b4344e7c2b',1,'iron.dataflow.objectfifo.ObjectFifo.tiles()'],['../classiron_1_1resolvable_1_1Resolvable.html#a0e4cf137e87212d39d01b8049ab4a93e',1,'iron.resolvable.Resolvable.tiles()']]],
   ['to_8',['to',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a68a260a707273a1ea7be69a101ebd014',1,'utils::hostruntime::tensor_class::Tensor']]],
   ['to_5ftorch_9',['to_torch',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a8ab2ca4ad7ccba19a936bbab041d252c',1,'utils::hostruntime::tensor_class::Tensor']]],
   ['torch_5fview_10',['torch_view',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#ad395f306030f8c6adbacb34cff44b524',1,'utils::hostruntime::tensor_class::Tensor']]],
