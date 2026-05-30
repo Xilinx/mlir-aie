@@ -155,20 +155,23 @@ make_bias_acc(const int32_t *__restrict bias_8) {
   return a;
 }
 
-// Per-OC×2 epilog: SiLU LUT for 8 lanes (SRS+clamp+bias already collapsed
-// into the vec to_vector<int8>(rs) call at the call site).
+// Per-OC×2 epilog: interleave acc_a (pixels 0..3, chans 0..7) and acc_b
+// (pixels 0..3, chans 8..15) via aie::interleave_zip with chunk=8 so the
+// resulting vec<int8, 64> matches the output layout (4 pixels x 16 chans
+// contiguous = exactly one 64-byte aligned x_tile block). Scalar SiLU LUT
+// then ONE aie::store_v<64> instead of 64 scalar stores.
 static __attribute__((always_inline)) inline void
-emit_8_lanes(aie::vector<int8, 32> srs_v, const int8_t *__restrict silu_lut,
-             int8_t *__restrict output, int oc_full_base, int x_out_base) {
+emit_16_lanes(aie::vector<int8, 32> srs_a, aie::vector<int8, 32> srs_b,
+              const int8_t *__restrict silu_lut,
+              int8_t *__restrict output, int x_out_base) {
+  auto [lo, hi] = aie::interleave_zip(srs_a, srs_b, 8u);
+  aie::vector<int8, 64> combined = aie::concat(lo, hi);
+  alignas(64) int8_t silu_buf[64];
   AIE_LOOP_UNROLL_FULL
-  for (int p = 0; p < 4; ++p) {
-    int x_out = x_out_base + p;
-    int8_t *__restrict row_dst = output + x_out * kOutC + oc_full_base;
-    AIE_LOOP_UNROLL_FULL
-    for (int j = 0; j < 8; ++j) {
-      row_dst[j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
-    }
-  }
+  for (int i = 0; i < 64; ++i)
+    silu_buf[i] = silu_lut[int(combined[i]) + 128];
+  aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
+  aie::store_v(output + x_out_base * kOutC, silu_v);
 }
 
 static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
@@ -231,8 +234,7 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
 
       aie::vector<int8, 32> srs_a = acc_a.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> srs_b = acc_b.template to_vector<int8>(right_shift);
-      emit_8_lanes(srs_a, silu_lut, output, oc_full_base_a, 0);
-      emit_8_lanes(srs_b, silu_lut, output, oc_full_base_b, 0);
+      emit_16_lanes(srs_a, srs_b, silu_lut, output, 0);
     }
 
     // ----- Interior: x_tile ∈ [1, kXTiles). Pure vec_load per (q, kx).
@@ -257,8 +259,7 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
 
       aie::vector<int8, 32> srs_a = acc_a.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> srs_b = acc_b.template to_vector<int8>(right_shift);
-      emit_8_lanes(srs_a, silu_lut, output, oc_full_base_a, x_tile * 4);
-      emit_8_lanes(srs_b, silu_lut, output, oc_full_base_b, x_tile * 4);
+      emit_16_lanes(srs_a, srs_b, silu_lut, output, x_tile * 4);
     }
   }
 
