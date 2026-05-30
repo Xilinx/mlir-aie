@@ -58,19 +58,16 @@ def eltwise_mul(
     chunk = size // num_columns // num_channels
 
     of_in1s = [
-        ObjectFifo(line_type, name=f"in1_{i}_{j}")
+        [ObjectFifo(line_type, name=f"in1_{i}_{j}") for j in range(num_channels)]
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
     of_in2s = [
-        ObjectFifo(line_type, name=f"in2_{i}_{j}")
+        [ObjectFifo(line_type, name=f"in2_{i}_{j}") for j in range(num_channels)]
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
     of_outs = [
-        ObjectFifo(line_type, name=f"out_{i}_{j}")
+        [ObjectFifo(line_type, name=f"out_{i}_{j}") for j in range(num_channels)]
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
 
     mul_fn = kernels.mul(tile_size=line_size)
@@ -84,41 +81,30 @@ def eltwise_mul(
         of_in2.release(1)
         of_out.release(1)
 
-    workers = [
-        Worker(
+    workers = Worker.grid(
+        num_columns,
+        num_channels,
+        lambda i, j: Worker(
             core_fn,
-            [
-                of_in1s[i * num_channels + j].cons(),
-                of_in2s[i * num_channels + j].cons(),
-                of_outs[i * num_channels + j].prod(),
-                mul_fn,
-            ],
-        )
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
+            [of_in1s[i][j].cons(), of_in2s[i][j].cons(), of_outs[i][j].prod(), mul_fn],
+        ),
+    )
 
     taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
 
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type, transfer_type) as (a, b, c):
-        rt.start(*workers)
+        rt.start(*[w for row in workers for w in row])
         tg = rt.task_group()
         for i in range(num_columns):
             for j in range(num_channels):
-                idx = i * num_channels + j
-                rt.fill(of_in1s[idx].prod(), a, taps[idx], task_group=tg)
-                rt.fill(of_in2s[idx].prod(), b, taps[idx], task_group=tg)
+                tap = taps[i * num_channels + j]
+                rt.fill(of_in1s[i][j].prod(), a, tap, task_group=tg)
+                rt.fill(of_in2s[i][j].prod(), b, tap, task_group=tg)
         for i in range(num_columns):
             for j in range(num_channels):
-                idx = i * num_channels + j
-                rt.drain(
-                    of_outs[idx].cons(),
-                    c,
-                    taps[idx],
-                    wait=True,
-                    task_group=tg,
-                )
+                tap = taps[i * num_channels + j]
+                rt.drain(of_outs[i][j].cons(), c, tap, wait=True, task_group=tg)
         rt.finish_task_group(tg)
 
     return Program(device, rt).resolve_program()

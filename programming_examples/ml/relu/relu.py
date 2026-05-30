@@ -57,14 +57,12 @@ def relu(
     chunk = size // num_columns // num_channels
 
     of_ins = [
-        ObjectFifo(line_type, name=f"in{i}_{j}")
+        [ObjectFifo(line_type, name=f"in{i}_{j}") for j in range(num_channels)]
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
     of_outs = [
-        ObjectFifo(line_type, name=f"out{i}_{j}")
+        [ObjectFifo(line_type, name=f"out{i}_{j}") for j in range(num_channels)]
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
 
     relu_fn = kernels.relu(tile_size=line_size)
@@ -76,18 +74,14 @@ def relu(
         of_in.release(1)
         of_out.release(1)
 
-    workers = [
-        Worker(
+    workers = Worker.grid(
+        num_columns,
+        num_channels,
+        lambda i, j: Worker(
             core_fn,
-            [
-                of_ins[i * num_channels + j].cons(),
-                of_outs[i * num_channels + j].prod(),
-                relu_fn,
-            ],
-        )
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
+            [of_ins[i][j].cons(), of_outs[i][j].prod(), relu_fn],
+        ),
+    )
 
     # One TAP per (column, channel) shim DMA — same shape as basic/memcpy
     # and ml/eltwise_*.
@@ -95,12 +89,12 @@ def relu(
 
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type) as (a, b):
-        rt.start(*workers)
+        rt.start(*[w for row in workers for w in row])
         tg = rt.task_group()
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.fill(
-                    of_ins[i * num_channels + j].prod(),
+                    of_ins[i][j].prod(),
                     a,
                     taps[i * num_channels + j],
                     task_group=tg,
@@ -108,7 +102,7 @@ def relu(
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.drain(
-                    of_outs[i * num_channels + j].cons(),
+                    of_outs[i][j].cons(),
                     b,
                     taps[i * num_channels + j],
                     wait=True,
