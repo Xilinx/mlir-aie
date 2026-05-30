@@ -580,15 +580,7 @@ def _flat_ids(rows, label):
     return [f"{r[0].name}-{label}{i}" for i, r in enumerate(rows)]
 
 
-# Special case: bn_conv2dk3_dw arg_count differs by `stride`.
-# The base spec uses stride=2 (arg_count=13); add stride=1 (arg_count=14).
-ARG_COUNT_OVERRIDES: list[tuple[KernelSpec, dict, int]] = [
-    (
-        next(s for s in KERNEL_SPECS if s.name == "bn_conv2dk3_dw"),
-        dict(stride=1),
-        14,
-    ),
-]
+ARG_COUNT_OVERRIDES: list[tuple[KernelSpec, dict, int]] = []
 
 
 # ---------------------------------------------------------------------------

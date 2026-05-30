@@ -388,12 +388,8 @@ def bn_conv2dk3_dw(
     out_size = (input_width // stride) * output_channels
     out_ty = np.ndarray[(out_size,), np.dtype[np.uint8]]
 
-    # stride=1 has an extra output split arg (the trailing N int32 count is the same).
-    leading = [line_ty, line_ty, line_ty, wt_ty, out_ty]
-    if stride == 1:
-        leading.append(out_ty)
     return _make_extern(
         func_name,
         _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
-        [*leading, *_i32s(8)],
+        [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
     )
