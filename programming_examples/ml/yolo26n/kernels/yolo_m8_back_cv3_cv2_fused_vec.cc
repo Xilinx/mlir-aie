@@ -116,13 +116,13 @@ static inline void cv3_compute_row(int8_t *inner1, int8_t *split_b, int8_t *wts,
       }
 
       aie::vector<int8, 64> srs_v = acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < MMUL_M; ++p) {
-        int x_out = x_base + p;
-        for (int j = 0; j < 8; ++j) {
-          cv3_out[x_out * output_channels + oc_t * 8 + j] =
-              silu_lut[int(srs_v[p * 8 + j]) + 128];
-        }
-      }
+      // mmul-packed scratch write: cv2_compute_chunk reads in_m0 as packed
+      // via the same vec_load path as in_top / in_bot.
+      alignas(64) int8_t silu_buf[64];
+      for (int i = 0; i < 64; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
+      aie::store_v(cv3_out + oc_t * (x_tiles * 64) + x_tile * 64, silu_v);
     }
   }
 }
@@ -185,16 +185,10 @@ static inline void cv2_compute_chunk(int8_t *in_top, int8_t *in_bot,
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
         acc.mac(in_a, in_b);
       }
-      // in_m0 = cv3 scratch (raster, ic_t = 2*ic_tiles_per_src..)
+      // in_m0 = cv3 scratch (packed, ic_t = 2*ic_tiles_per_src..)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
-        alignas(64) int8_t a_buf[64];
-        for (int p = 0; p < MMUL_M; ++p) {
-          int col = x_base + p;
-          int8_t *psrc = in_m0 + col * c + local_ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = psrc[b];
-        }
-        aie::vector<int8, 64> in_a = aie::load_v<64>(a_buf);
+        aie::vector<int8, 64> in_a = aie::load_v<64>(
+            in_m0 + local_ic_t * kPackedIcStride + x_tile * 64);
         int ic_t = kPackedIcTiles + local_ic_t;
         int wts_off = wts_tile_off_1x1(chunk_oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
