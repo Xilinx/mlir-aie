@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair
 
 all: gemm_pt
 
@@ -100,6 +100,35 @@ run_gemm_pt_proj: gemm_pt_proj
 		-x ${BUILD}/final_gemm_pt_proj_${M}x${K}x${N}.xclbin \
 		-i ${BUILD}/insts_gemm_pt_proj_${M}x${K}x${N}.bin \
 		-k MLIR_AIE -M ${M} -K ${K} -N ${N}
+
+# ---------- FlowKV qk->sv pair stub (Phase 1.7) ----------
+FLOWKV_BYTES ?= 512
+FLOWKV_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_FLOWKV_PT_BYTES=${FLOWKV_BYTES}
+
+${BUILD}/llama_flowkv_pt.cc.o: ${KDIR}/llama_flowkv_pt.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${FLOWKV_FLAGS} -c $< -o ${@F}
+
+${BUILD}/aie_flowkv_pair_${FLOWKV_BYTES}.mlir: ${srcdir}/aie2_flowkv_pair.py
+	mkdir -p ${@D}
+	python3 $< --bytes ${FLOWKV_BYTES} > $@
+
+${BUILD}/final_flowkv_pair_${FLOWKV_BYTES}.xclbin: ${BUILD}/aie_flowkv_pair_${FLOWKV_BYTES}.mlir \
+                                                   ${BUILD}/llama_flowkv_pt.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_flowkv_pair_${FLOWKV_BYTES}.bin \
+		$(notdir $<)
+
+flowkv_pair: ${BUILD}/final_flowkv_pair_${FLOWKV_BYTES}.xclbin
+
+run_flowkv_pair: flowkv_pair
+	cd ${srcdir} && python3 test_flowkv_pair_pt.py \
+		-x ${BUILD}/final_flowkv_pair_${FLOWKV_BYTES}.xclbin \
+		-i ${BUILD}/insts_flowkv_pair_${FLOWKV_BYTES}.bin \
+		-k MLIR_AIE --bytes ${FLOWKV_BYTES}
 
 # ---------- clean ----------
 clean:
