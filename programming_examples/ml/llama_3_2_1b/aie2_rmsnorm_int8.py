@@ -65,8 +65,8 @@ def build(D: int):
 
 
 # Scales are baked at MLIR-gen time. Test must use the same values.
-ACT_SCALE_IN      = 0.02      # ~ 2.5 / 127 (typical normal-scale activation)
-INV_ACT_SCALE_OUT = 1.0 / 0.05   # output is 5x the input range (post-gamma)
+ACT_SCALE_IN      = 0.05         # matches chain's ACT_SCALE
+INV_ACT_SCALE_OUT = 1.0 / 0.05   # matches chain's INV_ACT_SCALE
 
 
 def main():

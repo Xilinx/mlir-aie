@@ -35,35 +35,63 @@ def round_to_i8(v):
 
 
 def quant_shifted(shifted: np.ndarray) -> np.ndarray:
-    """Replicates the kernel's quant_shifted exactly."""
-    inv = 1.0 / EXP_QUANT_SCALE
-    v = (shifted * inv).astype(np.float32)
-    q = np.where(v >= 0, np.floor(v + 0.5), np.ceil(v - 0.5)).astype(np.int32)
+    """Replicates the kernel's quant_shifted exactly (strict fp32)."""
+    # Kernel: kInvExpQuantScale = 1.0f / 0.05f computed in fp32. Numpy
+    # default (1.0 / 0.05 in fp64) gives a different last-bit value;
+    # match by computing the reciprocal in fp32.
+    inv = np.float32(1.0) / np.float32(EXP_QUANT_SCALE)
+    v = (shifted.astype(np.float32) * inv).astype(np.float32)
+    q = np.where(v >= 0, np.floor(v + np.float32(0.5)),
+                         np.ceil(v - np.float32(0.5))).astype(np.int32)
     return np.clip(q, -128, 0)
 
 
 def numpy_attention(q_i8, k_i8, v_i8, head_dim, t,
                     q_scale, k_scale, v_scale, inv_out_scale,
                     lut):
-    qk_scale = np.float32(q_scale * k_scale * (1.0 / np.sqrt(head_dim)))
+    # Scales are delivered to the kernel as np.float32 (Python fp64 ->
+    # fp32 cast at the IRON boundary). Match that: compute qk_scale in
+    # strict fp32 so numpy's intermediate matches the kernel's, bit-
+    # for-bit. The kernel hardcodes 1/sqrt(64) = 0.125f.
+    qs = np.float32(q_scale); ks = np.float32(k_scale)
+    inv_sqrt = np.float32(0.125)
+    qk_scale = ((qs * ks).astype(np.float32) * inv_sqrt).astype(np.float32)
 
     # int32 dot products per key.
     k_mat = k_i8.astype(np.int32).reshape(t, head_dim)
     dots = (k_mat @ q_i8.astype(np.int32))             # (t,) int32
     scores = (dots.astype(np.float32) * qk_scale)      # one combined mul
 
-    max_s = scores.max()
-    shifted = scores - max_s
+    # Kernel finds max via scalar loop with strict > comparison; numpy's
+    # .max() uses the same first-occurrence semantics, so this matches.
+    max_s = np.float32(scores.max())
+    shifted = (scores - max_s).astype(np.float32)
     q = quant_shifted(shifted)
-    exp_v = lut[q + 128]
+    exp_v = lut[q + 128].astype(np.float32)
 
-    sum_e = float(exp_v.sum())
-    probs = (exp_v * (1.0 / sum_e)).astype(np.float32)
+    # Kernel: scalar left-to-right sum (`sum += e`). numpy's .sum() can
+    # use pairwise summation for fp32 -> ULP-level disagreement. Match
+    # exact accumulation order.
+    sum_e = np.float32(0.0)
+    for i in range(t):
+        sum_e = (sum_e + exp_v[i]).astype(np.float32)
+    # Strict fp32 division (kernel does 1.0f / sum in fp32).
+    inv_sum = np.float32(1.0) / sum_e
+    probs = (exp_v * inv_sum).astype(np.float32)
 
-    # sv path.
-    v_mat = v_i8.astype(np.int32).reshape(t, head_dim)
-    acc = (probs[:, None].astype(np.float32) * v_mat.astype(np.float32)).sum(axis=0)
-    out_f = acc * v_scale * inv_out_scale
+    # sv path. The kernel accumulates strictly left-to-right per
+    # output channel:
+    #   acc[j] = 0; for i in 0..t-1: acc[j] += probs[i] * v[i, j]
+    # numpy's `(probs * v).sum(axis=0)` uses pairwise summation for
+    # fp32 -- different order -> ULP-level disagreement. Match the
+    # kernel's order exactly here.
+    v_mat = v_i8.astype(np.int32).reshape(t, head_dim).astype(np.float32)
+    acc = np.zeros(head_dim, dtype=np.float32)
+    for i in range(t):
+        acc = (acc + (probs[i] * v_mat[i])).astype(np.float32)
+    # Match kernel's fp32 scale order: (acc * v_scale) * inv_out_scale.
+    vs = np.float32(v_scale); ios = np.float32(inv_out_scale)
+    out_f = ((acc * vs).astype(np.float32) * ios).astype(np.float32)
     return round_to_i8(out_f)
 
 

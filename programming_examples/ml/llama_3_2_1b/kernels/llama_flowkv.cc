@@ -82,6 +82,10 @@ void llama_flowkv_qk(int8_t *restrict q_i8, int8_t *restrict k_i8,
                      float q_scale, float k_scale) {
   event0();
 
+  // AIE2P fp default rounding is NOT round-to-nearest-even -- explicitly
+  // set conv_even (banker's rounding, matches numpy's astype semantics).
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+
   // 1/sqrt(64) = 0.125 (Llama 3.2 1B head_dim is always 64). For other
   // head_dim, precompute in the Python build and pass as a scalar arg.
   static_assert(kHD == 64, "qk_scale hardcoded for head_dim=64");
@@ -125,6 +129,8 @@ void llama_flowkv_sv(int8_t *restrict v_i8, float *restrict probs_in,
                      int8_t *restrict out_i8,
                      float v_scale, float inv_out_scale) {
   event0();
+
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   for (int j = 0; j < kHD; j++) {
     float acc = 0.0f;
