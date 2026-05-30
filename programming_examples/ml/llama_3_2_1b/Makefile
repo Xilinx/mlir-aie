@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real
 
 all: gemm_pt
 
@@ -432,6 +432,37 @@ run_layer_real: layer_real
 	cd ${srcdir} && python3 test_layer_real.py \
 		-x ${BUILD}/final_layer_real.xclbin \
 		-i ${BUILD}/insts_layer_real.bin \
+		-k MLIR_AIE
+
+# ---------- N-layer decode chain (Phase 4) ----------
+# Reuses every Phase 2 kernel binary; same set as layer_real plus the
+# loop semantics + per-layer weight streaming.
+
+CHAIN_DEPS = ${BUILD}/llama_rmsnorm_int8.cc.o \
+             ${BUILD}/llama_gemm_int8_srs.cc.o \
+             ${BUILD}/llama_rope_int8.cc.o \
+             ${BUILD}/llama_silu_mul_int8.cc.o \
+             ${BUILD}/llama_flowkv.cc.o \
+             ${BUILD}/llama_layer_pt.cc.o
+
+${BUILD}/aie_chain_real.mlir: ${srcdir}/aie2_chain_real.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+${BUILD}/final_chain_real.xclbin: ${BUILD}/aie_chain_real.mlir ${CHAIN_DEPS}
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_chain_real.bin \
+		$(notdir $<)
+
+chain_real: ${BUILD}/final_chain_real.xclbin
+
+run_chain_real: chain_real
+	cd ${srcdir} && python3 test_chain_real.py \
+		-x ${BUILD}/final_chain_real.xclbin \
+		-i ${BUILD}/insts_chain_real.bin \
 		-k MLIR_AIE
 
 # ---------- clean ----------
