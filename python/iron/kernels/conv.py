@@ -262,6 +262,7 @@ def bn_conv2dk1_relu(
         "conv2dk1_relu_i8_ui8",
         _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
+        compile_flags=["-DREGULAR", "-DINT8_ACT"],
     )
 
 
@@ -314,6 +315,7 @@ def bn_conv2dk1_i8(
         "conv2dk1_ui8_i8",
         _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, *_i32s(4)],
+        compile_flags=["-DREGULAR", "-DSCALAR"],
     )
 
 
@@ -339,8 +341,10 @@ def bn_conv2dk1_skip(
     """
     if skip_dtype == np.uint8:
         func_name = "conv2dk1_skip_ui8_ui8_i8"
+        flags = ["-DREGULAR", "-DSCALAR", "-DUNSIGNED_SKIP"]
     elif skip_dtype == np.int8:
         func_name = "conv2dk1_skip_ui8_i8_i8"
+        flags = ["-DREGULAR", "-DSCALAR"]
     else:
         raise ValueError(
             f"bn_conv2dk1_skip(): skip_dtype must be np.uint8 or np.int8, "
@@ -355,6 +359,7 @@ def bn_conv2dk1_skip(
         func_name,
         _default_source_path("bottleneck/bn_conv2dk1_skip.cc", subdir="aie2"),
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
+        compile_flags=flags,
     )
 
 
@@ -393,4 +398,5 @@ def bn_conv2dk3_dw(
         func_name,
         _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
+        compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"],
     )
