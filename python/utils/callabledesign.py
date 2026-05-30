@@ -354,9 +354,7 @@ class CallableDesign:
         if compilable.use_cache and cache_key in self._kernel_cache:
             kernel = self._kernel_cache[cache_key]
         else:
-            kernel = self._compile_and_build_kernel(
-                compilable, cache_key, trace_config
-            )
+            kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
 
         tensor_args, remaining_scalars = compilable.split_runtime_args(
             runtime_args, scalar_runtime_kwargs
@@ -385,9 +383,7 @@ class CallableDesign:
             self._kernel_cache.pop(cache_key, None)
             xclbin_path, _ = compilable.compile()
             _evict_xrt_context(xclbin_path)
-            kernel = self._compile_and_build_kernel(
-                compilable, cache_key, trace_config
-            )
+            kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
             return kernel(*tensor_args, **remaining_scalars)
 
     def specialize(self, **compile_kwargs) -> "CallableDesign":

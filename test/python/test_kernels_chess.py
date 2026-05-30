@@ -130,7 +130,13 @@ def test_kernels_mm_chess_triggers_auto_symbol_prefix():
         ("mv", dict(dim_m=32, dim_k=32)),
         (
             "cascade_mm",
-            dict(dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16),
+            dict(
+                dim_m=64,
+                dim_k=64,
+                dim_n=32,
+                input_dtype=np.int16,
+                output_dtype=np.int16,
+            ),
         ),
     ],
 )

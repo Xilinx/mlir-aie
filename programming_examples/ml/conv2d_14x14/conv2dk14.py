@@ -56,8 +56,14 @@ def _conv2dk14_extern(act_in_ty, weights_ty, out_ty):
         "conv2dk14_i8",
         source_file=str(_KERNEL_SRC),
         arg_types=[
-            act_in_ty, weights_ty, out_ty,
-            np.int32, np.int32, np.int32, np.int32, np.int32,
+            act_in_ty,
+            weights_ty,
+            out_ty,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,
         ],
         include_dirs=[config.cxx_header_path()],
         compile_flags=["-DUINT8_ACT"],
@@ -143,9 +149,16 @@ def conv2dk14(
             for _ in range_(_X_BLOCKS):
                 elem_in = of_act.acquire(1)
                 elem_out = of_out.acquire(1)
-                kernel(elem_in, elem_wts, elem_out,
-                       x_dim, _IN_CHANNELS, _SUB_OUT_CHANNELS,
-                       _KERNEL_SIZE, scale)
+                kernel(
+                    elem_in,
+                    elem_wts,
+                    elem_out,
+                    x_dim,
+                    _IN_CHANNELS,
+                    _SUB_OUT_CHANNELS,
+                    _KERNEL_SIZE,
+                    scale,
+                )
                 of_act.release(1)
                 of_out.release(1)
         of_wts.release(1)
@@ -207,7 +220,9 @@ def conv2dk14_multi(
     width_out = width // _KERNEL_SIZE
     height_out = height // _KERNEL_SIZE
 
-    tensor_in_size = width * height * _IN_CHANNELS  # one image, replayed via shim repeat
+    tensor_in_size = (
+        width * height * _IN_CHANNELS
+    )  # one image, replayed via shim repeat
     tensor_wts_size = weights * out_channels_group
     tensor_out_size = width_out * height_out * _SUB_OUT_CHANNELS * out_channels_group
 
@@ -237,16 +252,20 @@ def conv2dk14_multi(
                 (_KERNEL_SIZE * _IN_CHANNELS, 1),
             ],
         )
-        of_act_l2l1[j] = of_act_l3l2[j].cons().forward(
-            obj_type=act_in_ty,
-            name=f"of_act_L2L1_{j}",
-            dims_to_stream=[
-                (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
-                (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
-                (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
-                (2 * _IN_CHANNELS, 1),
-            ],
-            tile=Tile(j, 1),
+        of_act_l2l1[j] = (
+            of_act_l3l2[j]
+            .cons()
+            .forward(
+                obj_type=act_in_ty,
+                name=f"of_act_L2L1_{j}",
+                dims_to_stream=[
+                    (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
+                    (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
+                    (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
+                    (2 * _IN_CHANNELS, 1),
+                ],
+                tile=Tile(j, 1),
+            )
         )
 
     # Weights: per-col shim -> broadcast directly to 4 row-cores in that col (no memtile)
@@ -262,11 +281,15 @@ def conv2dk14_multi(
             name=f"of_out_L2L3_{i}",
             dims_to_stream=[(64, 256), (16, 8), (2, 128), (8, 1)],
         )
-        col_fifos = of_out_l2l3[i].prod().join(
-            out_offsets,
-            obj_types=[out_ty] * n_rows,
-            names=[f"of_out_L1L2_{j}_{i}" for j in range(n_rows)],
-            tile=Tile(i, 1),
+        col_fifos = (
+            of_out_l2l3[i]
+            .prod()
+            .join(
+                out_offsets,
+                obj_types=[out_ty] * n_rows,
+                names=[f"of_out_L1L2_{j}_{i}" for j in range(n_rows)],
+                tile=Tile(i, 1),
+            )
         )
         for j in range(n_rows):
             of_out_l1l2[j][i] = col_fifos[j]
@@ -279,9 +302,16 @@ def conv2dk14_multi(
             for _ in range_(_X_BLOCKS):
                 elem_in = of_act.acquire(1)
                 elem_out = of_out.acquire(1)
-                kernel(elem_in, elem_wts, elem_out,
-                       x_dim, _IN_CHANNELS, _SUB_OUT_CHANNELS,
-                       _KERNEL_SIZE, scale)
+                kernel(
+                    elem_in,
+                    elem_wts,
+                    elem_out,
+                    x_dim,
+                    _IN_CHANNELS,
+                    _SUB_OUT_CHANNELS,
+                    _KERNEL_SIZE,
+                    scale,
+                )
                 of_act.release(1)
                 of_out.release(1)
         of_wts_in.release(1)
@@ -291,7 +321,12 @@ def conv2dk14_multi(
         n_cols,
         lambda j, i: Worker(
             core_fn,
-            [of_wts[i].cons(), of_act_l2l1[j].cons(), of_out_l1l2[j][i].prod(), conv_fn],
+            [
+                of_wts[i].cons(),
+                of_act_l2l1[j].cons(),
+                of_out_l1l2[j][i].prod(),
+                conv_fn,
+            ],
             tile=Tile(i, 2 + j),
             stack_size=0xC00,
         ),
@@ -305,16 +340,24 @@ def conv2dk14_multi(
         out_chunk = tensor_out_size // n_cols
         for j in range(n_rows):
             tap = TensorAccessPattern(
-                (1, tensor_in_size), row_chunk * j,
-                [act_repeat, 1, 1, row_chunk], [0, 0, 0, 1],
+                (1, tensor_in_size),
+                row_chunk * j,
+                [act_repeat, 1, 1, row_chunk],
+                [0, 0, 0, 1],
             )
             rt.fill(of_act_l3l2[j].prod(), I, tap)
         for i in range(n_cols):
             wts_tap = TensorAccessPattern(
-                (1, tensor_wts_size), wts_chunk * i, [1, 1, 1, wts_chunk], [0, 0, 0, 1],
+                (1, tensor_wts_size),
+                wts_chunk * i,
+                [1, 1, 1, wts_chunk],
+                [0, 0, 0, 1],
             )
             out_tap = TensorAccessPattern(
-                (1, tensor_out_size), out_chunk * i, [1, 1, 1, out_chunk], [0, 0, 0, 1],
+                (1, tensor_out_size),
+                out_chunk * i,
+                [1, 1, 1, out_chunk],
+                [0, 0, 0, 1],
             )
             rt.fill(of_wts[i].prod(), W, wts_tap)
             rt.drain(of_out_l2l3[i].cons(), O, out_tap, wait=True)
@@ -370,9 +413,11 @@ def _run_and_verify(opts):
         model.weight.copy_(int_weight)
         out_int = model(int_inp)
     out_quant = out_int * _CONV_SCALE
-    golden = (_INT8_SCALE * torch.clamp(
-        torch.round(out_quant / _INT8_SCALE), -128, 127
-    )).squeeze(0).numpy()
+    golden = (
+        (_INT8_SCALE * torch.clamp(torch.round(out_quant / _INT8_SCALE), -128, 127))
+        .squeeze(0)
+        .numpy()
+    )
 
     ds = DataShaper()
     int_inp_np = int_inp.squeeze(0).numpy().astype(np.uint8)

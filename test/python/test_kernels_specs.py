@@ -740,5 +740,3 @@ def test_arg_dtype_out_of_range_raises():
     ef = kernels.passthrough(tile_size=64, dtype=np.int32)
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_dtype(99)
-
-

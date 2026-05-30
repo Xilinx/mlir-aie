@@ -250,5 +250,3 @@ def test_thread_isolation():
     assert results["parent"] == 42
     # Child thread runs in an isolated context; it sees the default (None).
     assert results["child"] is None
-
-
