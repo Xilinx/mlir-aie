@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul
 
 all: gemm_pt
 
@@ -271,6 +271,35 @@ run_gemm_srs: gemm_srs
 		-x ${BUILD}/final_gemm_srs_${GEMM_K}x${GEMM_N}.xclbin \
 		-i ${BUILD}/insts_gemm_srs_${GEMM_K}x${GEMM_N}.bin \
 		-k MLIR_AIE -K ${GEMM_K} -N ${GEMM_N}
+
+# ---------- real silu_mul int8 (Phase 2) ----------
+SILU_D ?= 8192
+SILU_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_SILU_MUL_COLS=${SILU_D}
+
+${BUILD}/llama_silu_mul_int8.cc.o: ${KDIR}/llama_silu_mul_int8.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${SILU_FLAGS} -c $< -o ${@F}
+
+${BUILD}/aie_silu_mul_${SILU_D}.mlir: ${srcdir}/aie2_silu_mul_int8.py
+	mkdir -p ${@D}
+	python3 $< -D ${SILU_D} > $@
+
+${BUILD}/final_silu_mul_${SILU_D}.xclbin: ${BUILD}/aie_silu_mul_${SILU_D}.mlir \
+                                          ${BUILD}/llama_silu_mul_int8.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_silu_mul_${SILU_D}.bin \
+		$(notdir $<)
+
+silu_mul: ${BUILD}/final_silu_mul_${SILU_D}.xclbin
+
+run_silu_mul: silu_mul
+	cd ${srcdir} && python3 test_silu_mul_int8.py \
+		-x ${BUILD}/final_silu_mul_${SILU_D}.xclbin \
+		-i ${BUILD}/insts_silu_mul_${SILU_D}.bin \
+		-k MLIR_AIE -D ${SILU_D}
 
 # ---------- clean ----------
 clean:
