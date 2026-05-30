@@ -188,70 +188,116 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
   // branch on src_idx.
   constexpr int kPackedIcStride = kXTiles * 32;
 
-  for (int oc_t = 0; oc_t < kOcTiles; ++oc_t) {
-    auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
+  constexpr int kOcPairs = kOcTiles / 2;
+  static_assert(kOcTiles % 2 == 0,
+                "cv2_concat3 2X*2OC fold requires kOcTiles even");
 
-    // --- 2X x_pair fold: 2 accs per x_pair, all macs back-to-back so
-    //     peano can software-pipeline the inner ic_t reduction. ----------
+  for (int oc_pair = 0; oc_pair < kOcPairs; ++oc_pair) {
+    const int oc_t_a = oc_pair * 2;
+    const int oc_t_b = oc_t_a + 1;
+    auto bias_acc_a = make_bias_acc(&bias[oc_t_a * 8]);
+    auto bias_acc_b = make_bias_acc(&bias[oc_t_b * 8]);
+
+    // 2X*2OC fold: 4 accs (acc_x{a,b} x oc{0,1}). One A gather per X feeds
+    // both OC weights. After mac, emit per-pixel vec_store<16> combining
+    // both OC tiles -- vs the original 2X*1OC fold which had to scalar
+    // scatter 8-byte chunks per pixel.
     AIE_LOOP_RANGE(kXPairs, kXPairs)
     for (int xp = 0; xp < kXPairs; ++xp) {
       const int x_tile_base = 2 * xp;
       const int x_out_base = x_tile_base * 4;
 
-      MMUL4x8x8 acc0, acc1;
-      acc0 = bias_acc;
-      acc1 = bias_acc;
+      MMUL4x8x8 acc_a0, acc_a1, acc_b0, acc_b1;
+      acc_a0 = bias_acc_a;
+      acc_a1 = bias_acc_b;
+      acc_b0 = bias_acc_a;
+      acc_b1 = bias_acc_b;
 
-      // in_top (src_idx=0, ic_t = 0..kIcTilesPerSrc-1)
+      // in_top
       AIE_LOOP_RANGE(kIcTilesPerSrc, kIcTilesPerSrc)
       for (int local_ic_t = 0; local_ic_t < kIcTilesPerSrc; ++local_ic_t) {
-        aie::vector<int8, 32> in_a0 = aie::load_v<32>(
+        aie::vector<int8, 32> in_a_a = aie::load_v<32>(
             in_top + local_ic_t * kPackedIcStride + x_tile_base * 32);
-        aie::vector<int8, 32> in_a1 = aie::load_v<32>(
+        aie::vector<int8, 32> in_a_b = aie::load_v<32>(
             in_top + local_ic_t * kPackedIcStride + (x_tile_base + 1) * 32);
-        int wts_off = wts_tile_off_1x1(oc_t, local_ic_t, kIcTiles);
-        aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
-        acc0.mac(in_a0, in_b);
-        acc1.mac(in_a1, in_b);
+        int wts_off_a = wts_tile_off_1x1(oc_t_a, local_ic_t, kIcTiles);
+        int wts_off_b = wts_tile_off_1x1(oc_t_b, local_ic_t, kIcTiles);
+        aie::vector<int8, 64> in_b_0 = aie::load_v<64>(&wts[wts_off_a]);
+        aie::vector<int8, 64> in_b_1 = aie::load_v<64>(&wts[wts_off_b]);
+        acc_a0.mac(in_a_a, in_b_0);
+        acc_a1.mac(in_a_a, in_b_1);
+        acc_b0.mac(in_a_b, in_b_0);
+        acc_b1.mac(in_a_b, in_b_1);
       }
-      // in_bot (src_idx=1, ic_t = kIcTilesPerSrc..2*kIcTilesPerSrc-1)
+      // in_bot
       AIE_LOOP_RANGE(kIcTilesPerSrc, kIcTilesPerSrc)
       for (int local_ic_t = 0; local_ic_t < kIcTilesPerSrc; ++local_ic_t) {
-        aie::vector<int8, 32> in_a0 = aie::load_v<32>(
+        aie::vector<int8, 32> in_a_a = aie::load_v<32>(
             in_bot + local_ic_t * kPackedIcStride + x_tile_base * 32);
-        aie::vector<int8, 32> in_a1 = aie::load_v<32>(
+        aie::vector<int8, 32> in_a_b = aie::load_v<32>(
             in_bot + local_ic_t * kPackedIcStride + (x_tile_base + 1) * 32);
         int ic_t = kIcTilesPerSrc + local_ic_t;
-        int wts_off = wts_tile_off_1x1(oc_t, ic_t, kIcTiles);
-        aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
-        acc0.mac(in_a0, in_b);
-        acc1.mac(in_a1, in_b);
+        int wts_off_a = wts_tile_off_1x1(oc_t_a, ic_t, kIcTiles);
+        int wts_off_b = wts_tile_off_1x1(oc_t_b, ic_t, kIcTiles);
+        aie::vector<int8, 64> in_b_0 = aie::load_v<64>(&wts[wts_off_a]);
+        aie::vector<int8, 64> in_b_1 = aie::load_v<64>(&wts[wts_off_b]);
+        acc_a0.mac(in_a_a, in_b_0);
+        acc_a1.mac(in_a_a, in_b_1);
+        acc_b0.mac(in_a_b, in_b_0);
+        acc_b1.mac(in_a_b, in_b_1);
       }
-      // in_m0 (src_idx=2, ic_t = 2*kIcTilesPerSrc..3*kIcTilesPerSrc-1)
+      // in_m0
       AIE_LOOP_RANGE(kIcTilesPerSrc, kIcTilesPerSrc)
       for (int local_ic_t = 0; local_ic_t < kIcTilesPerSrc; ++local_ic_t) {
-        aie::vector<int8, 32> in_a0 = aie::load_v<32>(
+        aie::vector<int8, 32> in_a_a = aie::load_v<32>(
             in_m0 + local_ic_t * kPackedIcStride + x_tile_base * 32);
-        aie::vector<int8, 32> in_a1 = aie::load_v<32>(
+        aie::vector<int8, 32> in_a_b = aie::load_v<32>(
             in_m0 + local_ic_t * kPackedIcStride + (x_tile_base + 1) * 32);
         int ic_t = 2 * kIcTilesPerSrc + local_ic_t;
-        int wts_off = wts_tile_off_1x1(oc_t, ic_t, kIcTiles);
-        aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
-        acc0.mac(in_a0, in_b);
-        acc1.mac(in_a1, in_b);
+        int wts_off_a = wts_tile_off_1x1(oc_t_a, ic_t, kIcTiles);
+        int wts_off_b = wts_tile_off_1x1(oc_t_b, ic_t, kIcTiles);
+        aie::vector<int8, 64> in_b_0 = aie::load_v<64>(&wts[wts_off_a]);
+        aie::vector<int8, 64> in_b_1 = aie::load_v<64>(&wts[wts_off_b]);
+        acc_a0.mac(in_a_a, in_b_0);
+        acc_a1.mac(in_a_a, in_b_1);
+        acc_b0.mac(in_a_b, in_b_0);
+        acc_b1.mac(in_a_b, in_b_1);
       }
 
-#ifdef YOLO_USE_PARALLEL_LUT
-      write_x_tile_result_vec_pl(acc0, output, oc_t, OUT_C, x_out_base + 0,
-                                 right_shift);
-      write_x_tile_result_vec_pl(acc1, output, oc_t, OUT_C, x_out_base + 4,
-                                 right_shift);
-#else
-      write_x_tile_result_vec(acc0, silu_lut, output, oc_t, OUT_C,
-                              x_out_base + 0, right_shift);
-      write_x_tile_result_vec(acc1, silu_lut, output, oc_t, OUT_C,
-                              x_out_base + 4, right_shift);
-#endif
+      // Per-pixel vec_store<16> emit (per-pixel scratch to keep register
+      // pressure low -- combining into one big silu_buf disturbed peano
+      // scheduling, see commit 21c15253 for the chunked-conv version).
+      {
+        aie::vector<int8, 32> sa0 =
+            acc_a0.template to_vector<int8>(right_shift);
+        aie::vector<int8, 32> sa1 =
+            acc_a1.template to_vector<int8>(right_shift);
+        for (int p = 0; p < 4; ++p) {
+          alignas(16) int8_t pix_buf[16];
+          for (int j = 0; j < 8; ++j) {
+            pix_buf[j] = silu_lut[int(sa0[p * 8 + j]) + 128];
+            pix_buf[8 + j] = silu_lut[int(sa1[p * 8 + j]) + 128];
+          }
+          aie::vector<int8, 16> chunk = aie::load_v<16>(pix_buf);
+          aie::store_v(output + (x_out_base + p) * OUT_C + oc_t_a * 8, chunk);
+        }
+      }
+      {
+        aie::vector<int8, 32> sb0 =
+            acc_b0.template to_vector<int8>(right_shift);
+        aie::vector<int8, 32> sb1 =
+            acc_b1.template to_vector<int8>(right_shift);
+        for (int p = 0; p < 4; ++p) {
+          alignas(16) int8_t pix_buf[16];
+          for (int j = 0; j < 8; ++j) {
+            pix_buf[j] = silu_lut[int(sb0[p * 8 + j]) + 128];
+            pix_buf[8 + j] = silu_lut[int(sb1[p * 8 + j]) + 128];
+          }
+          aie::vector<int8, 16> chunk = aie::load_v<16>(pix_buf);
+          aie::store_v(output + (x_out_base + 4 + p) * OUT_C + oc_t_a * 8,
+                       chunk);
+        }
+      }
     }
 
     // --- x_tile tail ---------------------------------------------------
