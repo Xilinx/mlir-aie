@@ -25,14 +25,14 @@ from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
-from bottleneck._common import (
+from ._common import (
     i8 as _i8,
     u8 as _u8,
     layer_sf as _layer_sf,
     skip_sf as _skip_sf,
     wts_buffer as _wts_buffer,
 )
-from network_spec import block as nsblock
+from ..network_spec import block as nsblock
 
 
 # ---------------------------------------------------------------------------

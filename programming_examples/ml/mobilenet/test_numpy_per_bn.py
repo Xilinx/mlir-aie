@@ -26,8 +26,8 @@ import tempfile
 
 import numpy as np
 
-from mobilenet_numpy import _run_block
-from network_spec import block as nsblock
+from .mobilenet_numpy import _run_block
+from .network_spec import block as nsblock
 
 ROOT = os.path.dirname(__file__)
 A_DATA = os.path.join(ROOT, "bottleneck_A/data/")

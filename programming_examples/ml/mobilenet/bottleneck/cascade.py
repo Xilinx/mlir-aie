@@ -30,8 +30,8 @@ from aie.iron import Buffer, ObjectFifo, Worker, kernels
 from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.controlflow import range_
 
-from bottleneck._common import load_wts, layer_sf as _layer_sf, skip_sf as _skip_sf
-from network_spec import block as nsblock
+from ._common import load_wts, layer_sf as _layer_sf, skip_sf as _skip_sf
+from ..network_spec import block as nsblock
 
 # ---------------------------------------------------------------------------
 # Algorithm dimensions — derived from network_spec (bn13 and bn14 share shape)

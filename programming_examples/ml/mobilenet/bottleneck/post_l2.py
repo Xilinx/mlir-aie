@@ -19,9 +19,9 @@ import numpy as np
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
-from bottleneck._common import i8, load_wts
-from lowlevel_dma import StaticWeightStream
-from network_spec import block as nsblock
+from ._common import i8, load_wts
+from ..lowlevel_dma import StaticWeightStream
+from ..network_spec import block as nsblock
 
 
 def post_l2(act_in, sf, *, tiles, data_dir):

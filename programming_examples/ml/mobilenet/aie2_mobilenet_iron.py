@@ -41,14 +41,14 @@ from aie.utils.hostruntime.cli import run_design_cli
 
 # Sibling imports below resolve via the script's parent dir (auto-added
 # to sys.path[0] when invoked as ``python3 .../aie2_mobilenet_iron.py``).
-from bottleneck.init import init_conv
-from bottleneck.regular import regular_bottlenecks
-from bottleneck.pipeline import pipeline_bottlenecks
-from bottleneck.cascade import cascade_bottlenecks
-from bottleneck.post_l1 import post_l1
-from bottleneck.post_l2 import post_l2
-from network_spec import block as nsblock
-import mb_utils
+from .bottleneck.init import init_conv
+from .bottleneck.regular import regular_bottlenecks
+from .bottleneck.pipeline import pipeline_bottlenecks
+from .bottleneck.cascade import cascade_bottlenecks
+from .bottleneck.post_l1 import post_l1
+from .bottleneck.post_l2 import post_l2
+from .network_spec import block as nsblock
+from . import mb_utils
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -70,7 +70,7 @@ post_L2_OutC = nsblock("post_l2").layers[-1].out_shape[2]
 
 
 # Physical tile placement lives in placement.py (algorithm/mapping split).
-from placement import PLACEMENT
+from .placement import PLACEMENT
 
 
 # ---------------------------------------------------------------------------

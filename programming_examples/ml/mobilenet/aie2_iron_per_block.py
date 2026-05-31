@@ -35,11 +35,11 @@ from aie.iron.device import Tile, device_from_args
 from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
 
-from network_spec import block as nsblock, CASCADE_NAMES
-from bottleneck._common import i8 as _i8, u8 as _u8
-from bottleneck.regular import build_2layer_skip, build_3layer, build_fused_pair
-from bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
-from bottleneck.cascade import build_cascade
+from .network_spec import block as nsblock, CASCADE_NAMES
+from .bottleneck._common import i8 as _i8, u8 as _u8
+from .bottleneck.regular import build_2layer_skip, build_3layer, build_fused_pair
+from .bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
+from .bottleneck.cascade import build_cascade
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data") + "/"
 SCALE_FACTORS = None  # Lazy-loaded in per_block_iron from --scales-json or default.

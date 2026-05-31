@@ -20,7 +20,7 @@ from aie.iron.algorithms import row_at_a_time, row_at_a_time_with_skip, sliding_
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
-from bottleneck._common import (
+from ._common import (
     i8 as _i8,
     u8 as _u8,
     load_wts as _load_weights,
@@ -28,7 +28,7 @@ from bottleneck._common import (
     skip_sf as _skip_sf,
     wts_buffer as _wts_buf,
 )
-from network_spec import block as nsblock
+from ..network_spec import block as nsblock
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import math
 from aie.utils.ml import DataShaper
 import time
 import os
+from pathlib import Path
 import numpy as np
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
@@ -28,11 +29,11 @@ torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 vectorSize = 8
 
-sys.path.append("..")
-import mb_utils
 
-log_dir = "log/"
-data_dir = "data/"
+from .. import mb_utils
+
+log_dir = str(Path(__file__).parent / "log") + "/"
+data_dir = str(Path(__file__).parent / "data") + "/"
 
 # bn3
 tensorInW = 56

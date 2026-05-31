@@ -37,11 +37,11 @@ from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.helpers.taplib import TensorAccessPattern
 
-from network_spec import block as nsblock
-from bottleneck._common import i8 as _i8, u8 as _u8
-from bottleneck.regular import regular_bottlenecks
-from bottleneck.pipeline import pipeline_bottlenecks
-from bottleneck.cascade import cascade_bottlenecks
+from .network_spec import block as nsblock
+from .bottleneck._common import i8 as _i8, u8 as _u8
+from .bottleneck.regular import regular_bottlenecks
+from .bottleneck.pipeline import pipeline_bottlenecks
+from .bottleneck.cascade import cascade_bottlenecks
 
 T = Tile
 

@@ -19,8 +19,8 @@ import numpy as np
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
-from bottleneck._common import wts_buffer
-from network_spec import block as nsblock
+from ._common import wts_buffer
+from ..network_spec import block as nsblock
 
 
 def init_conv(sf, *, tile, data_dir):

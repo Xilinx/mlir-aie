@@ -47,12 +47,12 @@ TEST_FILE = test_mobilenet
 
 build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
-	python3 $< > $@
+	python3 -m mobilenet.${MLIR_FILE} --emit-mlir -d ${devicename} > $@
 
-# build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}_trace.py 
+# build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}_trace.py
 build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
-	python3 $< -t ${trace_size} > $@
+	python3 -m mobilenet.${MLIR_FILE} --emit-mlir -d ${devicename} -t ${trace_size} > $@
 
 # Every mobilenet kernel (init, bn0..bn14, post_l1, post_l2) is built via
 # the iron kernel library; bottleneck/*.py calls kernels.bn_*. aiecc
@@ -65,7 +65,7 @@ build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 # --dynamic-objFifos=false, set on the decorator).
 build/final_mobilenet.xclbin:
 	mkdir -p $(dir $@)
-	python3 ${srcdir}/${MLIR_FILE}.py \
+	python3 -m mobilenet.${MLIR_FILE} \
 		--xclbin-path $@ --insts-path build/insts.bin -d ${devicename}
 
 build/trace_mobilenet.xclbin: build/${MLIR_FILE}_trace.mlir $(OBJ)
@@ -80,10 +80,10 @@ else
 endif
 
 run_py: build/final_mobilenet.xclbin build/${MLIR_FILE}.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} python3 -m mobilenet.${TEST_FILE} -x build/final_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace_py: build/trace_mobilenet.xclbin build/${MLIR_FILE}_trace.mlir
-	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
+	${powershell} python3 -m mobilenet.${TEST_FILE} -x build/trace_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift 1 > trace_mbv4_full.json
 
 shallow_clean:
