@@ -26,7 +26,6 @@ Usage:
 """
 
 import argparse
-import json
 import os
 import pathlib
 import sys
@@ -51,6 +50,7 @@ from bottleneck.cascade import cascade_bottlenecks
 from bottleneck.post_l1 import post_l1
 from bottleneck.post_l2 import post_l2
 from network_spec import block as nsblock
+import mb_utils
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -58,8 +58,7 @@ from network_spec import block as nsblock
 data_dir = os.path.join(os.path.dirname(__file__), "data") + "/"
 scale_factor_file = "scale_factors_final.json"
 
-with open(data_dir + scale_factor_file) as f:
-    sf = json.load(f)
+sf = mb_utils.read_scale_factors(data_dir + scale_factor_file)
 
 
 # ---------------------------------------------------------------------------

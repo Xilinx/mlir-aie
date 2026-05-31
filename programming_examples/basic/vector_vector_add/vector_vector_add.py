@@ -13,13 +13,13 @@ element-wise lambda.
 """
 
 import argparse
-import sys
 
 import numpy as np
 
 import aie.iron as iron
 from aie.iron import Compile, In, Out
 from aie.iron.algorithms import transform_binary_typed
+from aie.utils.verify import assert_pass
 
 
 @iron.jit
@@ -38,16 +38,8 @@ def vector_vector_add(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose output"
-    )
-    parser.add_argument(
-        "-n",
-        "--num-elements",
-        type=int,
-        default=32,
-        help="Number of elements (default: 32)",
-    )
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-n", "--num-elements", type=int, default=32)
     args = parser.parse_args()
 
     input0 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
@@ -69,25 +61,17 @@ def main():
         dtype=input0.dtype,
     )
 
-    e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
-    errors = np.size(e) - np.count_nonzero(e)
-
     if args.verbose:
         print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
         print("-" * 34)
-        count = input0.numel()
-        for idx, (a, b, c) in enumerate(
-            zip(input0[:count], input1[:count], output[:count])
-        ):
+        for idx, (a, b, c) in enumerate(zip(input0[:10], input1[:10], output[:10])):
             print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
 
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count:", errors)
-        print("\nFailed.\n")
-        sys.exit(-1)
+    assert_pass(
+        input0.numpy() + input1.numpy(),
+        output.numpy(),
+        fail_msg="vector_vector_add output mismatch",
+    )
 
 
 if __name__ == "__main__":

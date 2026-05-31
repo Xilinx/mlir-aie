@@ -4,9 +4,10 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
-from ml_dtypes import bfloat16
+from pathlib import Path
+
 import numpy as np
-import os
+from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import Compile, ExternalFunction, In, Out
@@ -44,7 +45,7 @@ def saxpy(
 
     saxpy_kernel = ExternalFunction(
         "saxpy",
-        source_file=os.path.join(os.path.dirname(__file__), "saxpy.cc"),
+        source_file=str(Path(__file__).parent / "saxpy.cc"),
         arg_types=[in_ty, in_ty, out_ty],
         include_dirs=[cxx_header_path()],
     )
