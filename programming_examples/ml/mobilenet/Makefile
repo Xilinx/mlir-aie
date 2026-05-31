@@ -46,15 +46,6 @@ newFlag=_NEW
 MLIR_FILE = aie2_mobilenet_iron
 TEST_FILE = test_mobilenet
 OBJ = \
-	build/bn1_conv2dk1_fused_relu.o build/bn1_conv2dk3_dw_stride2.o build/bn1_conv2dk1_i8.o \
-	build/bn2_conv2dk1_fused_relu.o build/bn2_conv2dk3_dw_stride1.o build/bn2_conv2dk1_skip.o \
-	build/bn3_conv2dk1_fused_relu.o build/bn3_conv2dk3_dw_stride2.o build/bn3_conv2dk1_i8.o \
-	build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o \
-	build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o build/bn5_conv2dk1_i8.o \
-	build/bn6_conv2dk1_fused_relu.o build/bn6_conv2dk3_dw_stride2.o build/bn6_conv2dk1_i8.o \
-	build/bn7_conv2dk1_fused_relu.o build/bn7_conv2dk3_dw_stride1.o build/bn7_conv2dk1_skip.o \
-	build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn8_conv2dk1_i8.o \
-	build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o \
 	build/bn10_conv2dk1_fused_relu.o build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o \
 	build/bn11_conv2dk1_fused_relu.o build/bn11_conv2dk3_dw.o build/bn11_conv2dk1_skip.o \
 	build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o \
@@ -75,140 +66,18 @@ build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	python3 $< > $@
 
 # build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}_trace.py 
-build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py 
+build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< -t ${trace_size} > $@
 
-# ************************************** bottleneck 1 **************************************
-# init (3x3 stride-2) and bn0 (DW-stride1 + 1x1-skip-uint8) are built via
-# the iron kernel library; init.py:init_conv calls kernels.bn_conv2dk3,
-# and regular.py:build_2layer_skip calls kernels.bn_conv2dk3_dw(stride=1)
-# + kernels.bn_conv2dk1_skip(skip_dtype=np.uint8). aiecc compiles the .o
-# files as part of the JIT pipeline.
-build/bn1_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN1 -DINT8_ACT -c $< -o ${@F}
-
-build/bn1_conv2dk3_dw_stride2.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN1 -DSCALAR -DSTRIDE2 -c $< -o ${@F}
-
-build/bn1_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN1 -c $< -o ${@F}
-
-# ************************************** bottleneck 2 **************************************
-build/bn2_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN2 -DINT8_ACT -c $< -o ${@F}
-
-build/bn2_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN2 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
-
-build/bn2_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN2 -DSCALAR -c $< -o ${@F}
-
-# ************************************** bottleneck 3 **************************************
-build/bn3_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN3 -DINT8_ACT -c $< -o ${@F}
-
-build/bn3_conv2dk3_dw_stride2.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN3 -DSCALAR -DSTRIDE2 -c $< -o ${@F}
-
-build/bn3_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN3 -c $< -o ${@F}
-
-# ************************************** bottleneck 4 **************************************
-build/bn4_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN4 -DINT8_ACT -c $< -o ${@F}
-
-build/bn4_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN4 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
-
-build/bn4_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN4 -DSCALAR -c $< -o ${@F}
-
-# ************************************** bottleneck 5 **************************************
-build/bn5_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN5 -DINT8_ACT -c $< -o ${@F}
-
-build/bn5_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN5 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
-
-build/bn5_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN5 -DSCALAR -c $< -o ${@F}
-
-build/bn5_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN5 -c $< -o ${@F}
-
-# ************************************** bottleneck 6 **************************************
-build/bn6_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN6 -DINT8_ACT -c $< -o ${@F}
-
-build/bn6_conv2dk3_dw_stride2.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN6 -DSCALAR -DSTRIDE2 -c $< -o ${@F}
-
-build/bn6_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN6 -c $< -o ${@F}
-
-# ************************************** bottleneck 7 **************************************
-build/bn7_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN7 -DINT8_ACT -c $< -o ${@F}
-
-build/bn7_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN7 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
-build/bn7_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN7 -DSCALAR -c $< -o ${@F}
-
-# ************************************** bottleneck 8 **************************************
-build/bn8_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN8 -DINT8_ACT -c $< -o ${@F}
-
-build/bn8_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN8 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
-
-build/bn8_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN8 -DSCALAR -c $< -o ${@F}
-
-build/bn8_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN8 -c $< -o ${@F}
-
-# ************************************** bottleneck 9 **************************************
-build/bn9_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN9 -DINT8_ACT -c $< -o ${@F}
-
-build/bn9_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN9 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
-build/bn9_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN9 -DSCALAR -c $< -o ${@F}
+# init (3x3 stride-2) and bn0..bn9 are built via the iron kernel library;
+# init.py:init_conv calls kernels.bn_conv2dk3, regular.py uses
+# kernels.bn_conv2dk3_dw / bn_conv2dk1_relu / bn_conv2dk1_i8 / bn_conv2dk1_skip.
+# aiecc compiles the .o files as part of the @iron.jit pipeline.
 
 # ************************************** bottleneck 10 *************************************
 build/bn10_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
+	mkdir -p ${@D}
 	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN10 -DINT8_ACT -c $< -o ${@F}
 
 build/bn10_conv2dk3_dw.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
