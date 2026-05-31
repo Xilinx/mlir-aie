@@ -286,6 +286,21 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir, tiles):
     Returns (out_fifo, wts_l1_full, wts_l3_full, [workers]).
     """
     name = blk.name
+    # Module-level _InW/_InH/_InC/_L1_OutC/_L3_OutC are derived from bn13's
+    # shape (line 39). bn14 reuses the same cascade topology because it has
+    # the same shape — enforce that here instead of leaving it implicit.
+    assert blk.layers[0].in_shape == (_InW, _InH, _InC), (
+        f"cascade builder is shape-locked to bn13 ({_InW},{_InH},{_InC}); "
+        f"{name} has in_shape {blk.layers[0].in_shape}"
+    )
+    assert blk.layers[0].out_shape[2] == _L1_OutC, (
+        f"cascade builder expects L1 out_c={_L1_OutC}; "
+        f"{name} layer[0] out_c={blk.layers[0].out_shape[2]}"
+    )
+    assert blk.layers[-1].out_shape[2] == _L3_OutC, (
+        f"cascade builder expects L3 out_c={_L3_OutC}; "
+        f"{name} layer[-1] out_c={blk.layers[-1].out_shape[2]}"
+    )
     block_index = int(name[2:])  # bn13 / bn14 → 13 / 14
     s1, s2, s3 = (_layer_sf(blk, sf, i) for i in (0, 1, 2))
     s_add = _skip_sf(blk, sf)

@@ -16,10 +16,10 @@ can address it.
 
 import numpy as np
 
-from aie.iron import Buffer, ObjectFifo, Worker, kernels
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
-from bottleneck._common import i8, u8, load_wts
+from bottleneck._common import wts_buffer
 from network_spec import block as nsblock
 
 
@@ -55,12 +55,7 @@ def init_conv(sf, *, tile, data_dir):
     # 3x3 stride-2 conv: InC=8, OutC=16 -> wts = 3*3*8*16 = 1152
     # ------------------------------------------------------------------
     init_wts_sz = 3 * 3 * tensorInC * init_OutC  # 1152
-    init_wts_data = load_wts(data_dir, "init_chain.txt", init_wts_sz)
-
-    init_wts = Buffer(
-        i8((init_wts_sz,)),
-        initial_value=init_wts_data,
-    )
+    init_wts = wts_buffer(data_dir, "init_chain.txt", init_wts_sz)
 
     # Init conv kernel: 3x3 stride-2, int8 in, uint8 out.
     # C++ signature (aie_kernels/aie2/bottleneck/bn_conv2dk3.cc):
