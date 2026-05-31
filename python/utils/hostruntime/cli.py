@@ -45,7 +45,7 @@ def run_design_cli(
     opts,
     *,
     compile_kwargs: Mapping[str, Any] | Callable[[Any], Mapping[str, Any]],
-    run_and_verify: Callable[[Any], None],
+    run_and_verify: Callable[[Any], None] | None = None,
     device: Any | Callable[[Any], Any] | None = None,
     emit_mlir: Callable[[Any], None] | None = None,
     validate: Callable[[Any], None] | None = None,
@@ -82,6 +82,9 @@ def run_design_cli(
         run_and_verify: Callable invoked in the default (NPU
             run + numpy verify) branch.  Takes ``opts``, returns nothing
             — exits non-zero on failure (e.g. via ``assert_pass``).
+            Optional: ml/ designs whose verification lives in a C++ test
+            harness omit this; reaching the run branch without it exits
+            with a clear "no python run path" message.
         device: Optional iron ``Device`` instance OR callable
             ``opts -> Device``.  If omitted, defaults to
             ``from_name(opts.dev)`` (using whatever device choices the
@@ -140,4 +143,10 @@ def run_design_cli(
         spec.compile(**compile_opts)
         return
 
+    if run_and_verify is None:
+        sys.exit(
+            "run_design_cli: no run_and_verify callback was provided — this "
+            "design only supports the compile-only path (pass "
+            "--xclbin-path + --insts-path) or --emit-mlir."
+        )
     run_and_verify(opts)

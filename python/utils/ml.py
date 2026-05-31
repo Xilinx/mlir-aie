@@ -13,13 +13,16 @@ ML related utilties
 * `unpickle`
 * `fuse_single_conv_bn_pair`
 * class `DataShaper`
+* `run_conv_torch_test`
 """
 
 import csv
 import json
 import math
-import numpy as np
 import os
+import sys
+
+import numpy as np
 import torch
 
 
@@ -343,3 +346,155 @@ class DataShaper:
             cur *= s
         step[-1] = cur
         return step
+
+
+def run_conv_torch_test(
+    *,
+    xclbin_path,
+    insts_path,
+    golden_model,
+    int_inp,
+    int_weights,
+    out_shape_in_layout,
+    out_shape_final,
+    out_scale,
+    atol,
+    kernel_name=None,
+    in_layout=("YCXC8", "CYX"),
+    wts_layout=("OIYXI8O8", "OIYX"),
+    out_reorder=("CDYX", "YCXD"),
+    dtype_in=np.int8,
+    dtype_wts=np.int8,
+    dtype_out=np.int8,
+    trace_size=0,
+    trace_file=None,
+    log_dir=None,
+):
+    """Run a torch conv-style design on the NPU and compare against a golden model.
+
+    Loads the JIT-built ``xclbin``/``insts``, feeds reshaped input + concatenated
+    weights, executes via ``DefaultNPURuntime``, reshapes the output back to a
+    torch-compatible layout, and prints ``"PASS!"`` (exit 0) on match or
+    ``"Failed."`` (exit -1) on mismatch.
+
+    Intended for the conv-style ``test.py`` harnesses under ``programming_examples/ml/``;
+    those files collapse to building ``golden_model`` + computing ``int_inp`` and
+    ``int_weights``, then delegating here.
+
+    Args:
+        xclbin_path, insts_path: paths from the Makefile (``--xclbin`` / ``--instr``).
+        golden_model: ``torch.nn.Module`` instance with weights already loaded;
+            called as ``golden_model(int_inp)`` to produce the reference output.
+        int_inp: ``torch.Tensor`` with shape ``(1, ci, h, w)`` of integer-valued
+            ``FloatTensor`` values (the conv harnesses store ints in float
+            tensors for torch compatibility).
+        int_weights: list of ``torch.Tensor`` weights (one per conv) — each
+            reshaped via ``DataShaper(wts_layout)`` and concatenated into a
+            single flat ``int_wts`` buffer for the NPU.
+        out_shape_in_layout: shape used to reshape the raw NPU output before
+            the AIE→torch reorder (e.g. ``(h, co8, w, 8)``).
+        out_shape_final: shape of the torch-ready output after the reorder
+            (e.g. ``(co, h, w)``).
+        out_scale: float multiplier applied to the AIE int output before comparison.
+        atol: ``np.allclose`` absolute tolerance.
+        kernel_name: name passed to :class:`NPUKernel`; default ``None`` lets
+            the runtime pick the first kernel in the xclbin.
+        in_layout, wts_layout, out_reorder: ``(order, defOrder)`` token pairs
+            passed positionally to :meth:`DataShaper.reorder_mat`.  Defaults
+            match the standard conv2d harness shapes (``YCXC8 / CYX``,
+            ``OIYXI8O8 / OIYX``, ``CDYX / YCXD``).
+        dtype_in, dtype_wts, dtype_out: numpy dtypes for the NPU buffers.
+            Default int8 / int8 / int8.
+        trace_size: when >0, enables the trace shim and writes a trace file.
+            Default 0 (off).
+        trace_file: path to write the trace text; required when ``trace_size > 0``.
+        log_dir: when set, writes ``before_ifm.txt`` / ``after_ifm.txt`` /
+            ``weights.txt`` / ``after_ofm.txt`` debug dumps to this directory.
+            Default ``None`` (no dumps).
+    """
+    import aie.iron as iron
+    from aie.utils import HostRuntime, NPUKernel, DefaultNPURuntime, TraceConfig
+
+    dtype_in = np.dtype(dtype_in)
+    dtype_wts = np.dtype(dtype_wts)
+    dtype_out = np.dtype(dtype_out)
+
+    if log_dir is not None:
+        os.makedirs(log_dir, exist_ok=True)
+
+    golden_model.eval()
+    golden_output = golden_model(int_inp)
+
+    ds = DataShaper()
+    before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
+    ifm_mem_fmt = ds.reorder_mat(before_input, *in_layout)
+
+    reordered = [
+        ds.reorder_mat(w.data.numpy().astype(dtype_wts), *wts_layout)
+        for w in int_weights
+    ]
+    total_wts = np.concatenate(reordered, axis=None)
+
+    if log_dir is not None:
+        before_input.tofile(
+            os.path.join(log_dir, "before_ifm.txt"), sep=",", format="%d"
+        )
+        ifm_mem_fmt.tofile(os.path.join(log_dir, "after_ifm.txt"), sep=",", format="%d")
+        total_wts.tofile(os.path.join(log_dir, "weights.txt"), sep=",", format="%d")
+
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(total_wts, dtype=dtype_wts)
+    out_size = int(np.prod(out_shape_in_layout) * dtype_out.itemsize)
+    out = iron.zeros(out_size, dtype=dtype_out)
+    buffers = [in1, in2, out]
+
+    trace_config = None
+    if trace_size > 0:
+        if trace_file is None:
+            raise ValueError("trace_file is required when trace_size > 0")
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_file=trace_file,
+            ddr_id=-1,
+            enable_ctrl_pkts=False,
+            last_tensor_shape=out.shape,
+            last_tensor_dtype=out.dtype,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
+
+    npu_kernel_kwargs = {} if kernel_name is None else {"kernel_name": kernel_name}
+    npu_kernel = NPUKernel(xclbin_path, insts_path, **npu_kernel_kwargs)
+    kernel_handle = DefaultNPURuntime.load(npu_kernel)
+    ret = DefaultNPURuntime.run(kernel_handle, buffers)
+
+    if trace_config is not None:
+        trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
+        trace_config.write_trace(trace_buffer.view(np.uint32))
+
+    out_tensor = buffers[-1]
+    if not isinstance(out_tensor, np.ndarray):
+        out_tensor = out_tensor.numpy()
+    data_buffer = out_tensor * out_scale
+
+    temp_out = data_buffer.reshape(out_shape_in_layout)
+    temp_out = ds.reorder_mat(temp_out, *out_reorder)
+    ofm_mem_fmt = temp_out.reshape(out_shape_final)
+    if log_dir is not None:
+        ofm_mem_fmt.tofile(os.path.join(log_dir, "after_ofm.txt"), sep=",", format="%d")
+    ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
+
+    # npu_time is in nanoseconds in the runtime; the legacy harnesses
+    # divide by 1000 to print microseconds.
+    print(f"\nAvg NPU time: {int(ret.npu_time / 1000)}us.")
+
+    if np.allclose(
+        ofm_mem_fmt_out.detach().numpy(),
+        golden_output.detach().numpy(),
+        rtol=0,
+        atol=atol,
+    ):
+        print("\nPASS!\n")
+        sys.exit(0)
+    else:
+        print("\nFailed.\n")
+        sys.exit(-1)

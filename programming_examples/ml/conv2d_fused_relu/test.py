@@ -4,171 +4,59 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+"""Conv2d 1x1 + fused ReLU int8 host test."""
 
+import argparse
+import sys
+
+import numpy as np
 import torch
 import torch.nn as nn
-import sys
-import math
-from aie.utils.ml import DataShaper
-import time
-import os
-import numpy as np
-import argparse
+
 from aie.utils.hostruntime.argparse import add_runtime_args
-from aie.utils.test import create_npu_kernel
-import aie.iron as iron
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
-from pathlib import Path
+from aie.utils.ml import run_conv_torch_test
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
 
 def main(opts):
-    design = "conv2d_with_relu"
-    xclbin_path = opts.xclbin
-    insts_path = opts.instr
+    conv_scale = 0.0039
+    relu_scale = 0.0078
 
-    log_folder = "log/"
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-
-    num_iter = 1
-    npu_time_total = 0
-    npu_time_min = 9999999
-    npu_time_max = 0
-    trace_size = 16384
-    enable_trace = False
-    trace_file = "log/trace_" + design + ".txt"
-    # ------------------------------------------------------
-    # Configure this to match your design's buffer size
-    # ------------------------------------------------------
-    dtype_in = np.dtype("int8")
-    dtype_wts = np.dtype("int8")
-    dtype_out = np.dtype("uint8")
-
-    shape_total_wts = (4096, 1)
-    shape_in_act = (32, 8, 32, 8)  #'YCXC8' , 'CYX'
-    shape_in_wts1 = (8, 8, 1, 1, 8, 8)  # out,in,ky,kx,in8,out8
-    shape_out = (32, 8, 32, 8)
-
-    # ------------------------------------------------------
-    # Initialize activation, weights, scaling factor for int8 model
-    # ------------------------------------------------------
     int_inp = torch.randint(1, 100, (1, 64, 32, 32)).type(torch.FloatTensor)
     int_weight = torch.randint(50, 100, (64, 64, 1, 1)).type(torch.FloatTensor)
-    conv_scale = 0.0039  # scale to convert int8 output to floating point
-    relu_scale = 0.0078  # scale to convert int8 output to floating point
-    min = 0
-    max = 255
 
-    # ------------------------------------------------------
-    # Get device, load the xclbin & kernel and register them
-    # ------------------------------------------------------
-    npu_kernel = NPUKernel(xclbin_path, insts_path)
-    kernel_handle = DefaultNPURuntime.load(npu_kernel)
-
-    # ------------------------------------------------------
-    # Define your golden reference
-    # ------------------------------------------------------
-    class conv2d_relu_int_model(nn.Module):
-        def __init__(self, in_planes=64, planes=64):
-            super(conv2d_relu_int_model, self).__init__()
+    class Conv2dReluInt(nn.Module):
+        def __init__(self):
+            super().__init__()
             self.conv = nn.Conv2d(64, 64, kernel_size=1, bias=False)
             self.relu = nn.ReLU()
 
         def forward(self, x):
-            out_int = self.conv(x)
-            out_float = out_int * conv_scale
-            out_int = self.relu(out_float)
-            out_float = relu_scale * torch.clamp(
-                torch.round(out_int / relu_scale), min, max
-            )  # converting to int to do proper clipping
-            return out_float
-
-    # ------------------------------------------------------
-    # Pytorch baseline
-    # ------------------------------------------------------
-    model = conv2d_relu_int_model()
-    model.eval()
-    model.conv.weight.data.copy_(int_weight)
-    golden_output = model(int_inp)
-
-    # ------------------------------------------------------
-    # Reorder input data-layout
-    # ------------------------------------------------------
-    ds = DataShaper()
-    before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-    before_input.tofile(
-        log_folder + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d"
-    )
-    ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-    ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
-
-    wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX")
-    total_wts = np.concatenate((wts1), axis=None)
-    total_wts.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
-
-    # ------------------------------------------------------
-    # Main run loop
-    # ------------------------------------------------------
-    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-    in2 = iron.tensor(total_wts, dtype=dtype_wts)
-    out_size = np.prod(shape_out) * dtype_out.itemsize
-    out = iron.zeros(out_size, dtype=dtype_out)
-
-    trace_config = None
-    for i in range(num_iter):
-        buffers = [in1, in2, out]
-        if enable_trace:
-            trace_config = TraceConfig(
-                trace_size=trace_size,
-                trace_file=trace_file,
-                enable_ctrl_pkts=False,
-                last_tensor_shape=out.shape,
-                last_tensor_dtype=out.dtype,
+            out_float = self.conv(x) * conv_scale
+            return relu_scale * torch.clamp(
+                torch.round(self.relu(out_float) / relu_scale), 0, 255
             )
-            HostRuntime.prepare_args_for_trace(buffers, trace_config)
-        ret = DefaultNPURuntime.run(kernel_handle, buffers)
 
-        if trace_config:
-            trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
-            trace_buffer = trace_buffer.view(np.uint32)
-            trace_config.write_trace(trace_buffer)
-        aie_output = out.numpy() * relu_scale
-        npu_time_total = npu_time_total + ret.npu_time
+    model = Conv2dReluInt()
+    model.conv.weight.data.copy_(int_weight)
 
-    # ------------------------------------------------------
-    # Reorder output data-layout
-    # ------------------------------------------------------
-    temp_out = aie_output.reshape(32, 8, 32, 8)
-    temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
-    ofm_mem_fmt = temp_out.reshape(64, 32, 32)
-    ofm_mem_fmt.tofile(
-        log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%d"
-    )
-    ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
-
-    # ------------------------------------------------------
-    # Compare the AIE output and the golden reference
-    # ------------------------------------------------------
-    print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
-
-    if np.allclose(
-        ofm_mem_fmt_out.detach().numpy(),
-        golden_output.detach().numpy(),
-        rtol=0,
+    run_conv_torch_test(
+        xclbin_path=opts.xclbin,
+        insts_path=opts.instr,
+        golden_model=model,
+        int_inp=int_inp,
+        int_weights=[int_weight],
+        out_shape_in_layout=(32, 8, 32, 8),
+        out_shape_final=(64, 32, 32),
+        out_scale=relu_scale,
         atol=2 * relu_scale,
-    ):
-        print("\nPASS!\n")
-        exit(0)
-    else:
-        print("\nFailed.\n")
-        exit(-1)
+        dtype_out=np.uint8,
+    )
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     add_runtime_args(p, with_io_sizes=True)
-    opts = p.parse_args(sys.argv[1:])
-    main(opts)
+    main(p.parse_args(sys.argv[1:]))
