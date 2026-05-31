@@ -10,12 +10,13 @@
 Two int32 vectors are multiplied element-wise on a single AIE compute tile,
 in tile-of-16 sub-vectors fed via three depth-2 ObjectFifos (two in, one out).
 
-This script has two modes:
+Driven via the standard 3-mode CLI:
 
-* default  — JIT-compiles the design and runs it on the attached NPU,
-  then verifies the result against ``a * b`` computed on the host.
-* ``--emit-mlir-vck5000`` — emits MLIR for the VCK5000 (XCVC1902) toolchain
-  to consume via ``aiecc``; the design body is shared between the two paths.
+* default          — JIT-compile + run on the attached NPU + verify.
+* ``--xclbin-path`` / ``--insts-path`` — compile-only, used by the
+  Makefile so a C++ testbench can drive the design.
+* ``--emit-mlir``  — print MLIR to stdout for the selected ``--dev``
+  (e.g. ``-d xcvc1902 --emit-mlir`` for the VCK5000 toolchain).
 """
 
 import argparse
@@ -25,16 +26,25 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import XCVC1902
+from aie.iron.device import device_from_args
 from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.hostruntime.argparse import (
+    add_benchmark_args,
+    add_compile_args,
+)
+from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
 
-def _build_design(dev, num_elements, dtype):
-    """Build the vector-vector-multiply IRON design and resolve to MLIR.
-
-    Shared by the JIT path (NPU) and the ``--emit-mlir-vck5000`` path.
-    """
+@iron.jit
+def vector_vector_mul(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    num_elements: Compile[int],
+    dtype: Compile[type] = np.int32,
+):
     n = 16
     if num_elements % n != 0:
         raise ValueError(f"num_elements ({num_elements}) must be a multiple of {n}")
@@ -48,8 +58,6 @@ def _build_design(dev, num_elements, dtype):
     of_out = ObjectFifo(tile_ty, name="out")
 
     def core_body(of_in1, of_in2, of_out):
-        # Worker wraps this body in `while True` by default (while_true=True),
-        # so the inner loop just iterates over one full vector's worth of tiles.
         for _ in range_(n_tiles):
             elem_in1 = of_in1.acquire(1)
             elem_in2 = of_in2.acquire(1)
@@ -69,48 +77,18 @@ def _build_design(dev, num_elements, dtype):
         rt.fill(of_in2.prod(), B)
         rt.drain(of_out.cons(), C, wait=True)
 
-    return Program(dev, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-@iron.jit
-def vector_vector_mul(
-    input0: In,
-    input1: In,
-    output: Out,
-    *,
-    num_elements: Compile[int],
-    dtype: Compile[type],
-):
-    return _build_design(iron.get_current_device(), num_elements, dtype)
+def _compile_kwargs(opts):
+    return dict(num_elements=opts.num_elements, dtype=np.int32)
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument(
-        "--emit-mlir-vck5000",
-        action="store_true",
-        help=(
-            "Emit MLIR targeting the VCK5000 (XCVC1902) to stdout instead of "
-            "JIT-running on the NPU. Consumed by the Makefile's `vck5000` target."
-        ),
-    )
-    p.add_argument(
-        "-n",
-        "--num-elements",
-        type=int,
-        default=256,
-        help="Total elements per input vector (must be a multiple of 16).",
-    )
-    p.add_argument("-w", "--warmup", type=int, default=10)
-    p.add_argument("-i", "--iters", type=int, default=20)
-    opts = p.parse_args()
+def _emit_mlir(opts):
+    print(vector_vector_mul.as_mlir(None, None, None, **_compile_kwargs(opts)))
 
-    if opts.emit_mlir_vck5000:
-        # VCK5000 toolchain consumes the printed MLIR via aiecc.
-        print(_build_design(XCVC1902(), opts.num_elements, np.int32))
-        return
 
-    # NPU JIT path: build random inputs on the device, run, verify on host.
+def _run_and_verify(opts):
     input0 = iron.randint(0, 100, (opts.num_elements,), dtype=np.int32, device="npu")
     input1 = iron.randint(0, 100, (opts.num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input0)
@@ -137,6 +115,28 @@ def main():
     print()
     print_benchmark(bench)
     print("PASS!")
+
+
+def main():
+    p = argparse.ArgumentParser(prog="AIE Vector-Vector Multiply")
+    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
+    add_benchmark_args(p)
+    p.add_argument(
+        "-n",
+        "--num-elements",
+        type=int,
+        default=256,
+        help="Total elements per input vector (must be a multiple of 16).",
+    )
+    opts = p.parse_args()
+    run_design_cli(
+        vector_vector_mul,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        emit_mlir=_emit_mlir,
+        device=lambda o: device_from_args(o, n_cols=1),
+    )
 
 
 if __name__ == "__main__":

@@ -33,7 +33,7 @@ run_py:
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< --emit-mlir-vck5000 > $@
+	python3 $< -d xcvc1902 --emit-mlir > $@
 
 vck5000: build/aie.mlir
 	aiecc --xchesscc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
