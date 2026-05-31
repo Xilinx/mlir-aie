@@ -363,6 +363,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
                                    (kIcTiles * kKernelH * kKernelW * 64);
 
     // 2X×2OC pair loop. m3 → 7 pairs, m5 → 3 pairs.
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_RANGE(1, 7)
     for (int x_pair = 0; x_pair < n_x_pairs; ++x_pair) {
       const int x_tile_a = 1 + 2 * x_pair;
@@ -378,6 +379,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       acc_b1 = bias_acc_oc1; // x_b + oc1
 
       AIE_LOOP_RANGE(8, 16)
+      AIE_LOOP_UNROLL(2)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         AIE_LOOP_RANGE(2, 3)
         for (int ky = ky_start; ky < ky_end; ++ky) {
@@ -532,6 +534,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       const int wts_oc_pair_base = (oc_pair_idx * 2) *
                                    (kIcTiles * kKernelH * kKernelW * 64);
 
+      AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_RANGE(2, 14)
       for (int x_tile = 1; x_tile < x_tiles - 1; ++x_tile) {
         MMUL4x8x8 acc_0;
