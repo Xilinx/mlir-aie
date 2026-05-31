@@ -21,7 +21,7 @@ NETWORK and dispatches to the right builder per block.
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker, kernels
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 

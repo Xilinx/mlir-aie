@@ -26,7 +26,7 @@ Tile placements live in PLACEMENT["cascade"] in aie2_mobilenet_iron.py.
 
 import numpy as np
 
-from aie.iron import Buffer, Kernel, ObjectFifo, Worker, kernels
+from aie.iron import Buffer, ObjectFifo, Worker, kernels
 from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.controlflow import range_
 

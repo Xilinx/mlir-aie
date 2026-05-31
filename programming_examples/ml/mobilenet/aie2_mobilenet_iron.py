@@ -107,7 +107,7 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
     # returns the activation handoff for the next stage.
     # ------------------------------------------------------------------
     init_workers, act_in, act_init_out = init_conv(
-        sf, placement=PLACEMENT["init"], data_dir=data_dir
+        sf, tile=PLACEMENT["init"], data_dir=data_dir
     )
     a_workers, act_bn9_out = regular_bottlenecks(
         act_init_out, sf, placement=PLACEMENT["regular"], data_dir=data_dir
@@ -119,7 +119,7 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
         act_bn12_out, sf, placement=PLACEMENT["cascade"], data_dir=data_dir
     )
     l1_workers, act_out_post_avgpool_shim = post_l1(
-        act_bn14_out, sf, placement=PLACEMENT["post_l1"], data_dir=data_dir
+        act_bn14_out, sf, tiles=PLACEMENT["post_l1"], data_dir=data_dir
     )
 
     # post_l1 drains to host scratch and post_l2 fills from host scratch; this
@@ -131,7 +131,7 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
     )
 
     l2_workers, act_out_of = post_l2(
-        act_out_post_shim_FC, sf, placement=PLACEMENT["post_l2"], data_dir=data_dir
+        act_out_post_shim_FC, sf, tiles=PLACEMENT["post_l2"], data_dir=data_dir
     )
 
     # ------------------------------------------------------------------

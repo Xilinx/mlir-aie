@@ -17,7 +17,7 @@ Input:  (7,1,80) int8   Output: (1,1,1280) uint16 (post_L2_InC wide)
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker, kernels
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
 from bottleneck._common import i8, load_wts
@@ -25,13 +25,13 @@ from lowlevel_dma import StaticWeightStream
 from network_spec import block as nsblock
 
 
-def post_l1(act_in, sf, *, placement, data_dir):
+def post_l1(act_in, sf, *, tiles, data_dir):
     """Build the post-L1 (avg-pool + 1x1 expand) block.
 
     Args:
         act_in: ObjectFifo  — handoff from the cascade bottleneck (bn14 out).
         sf: dict            — full scale-factor mapping (uses sf["POST"]["conv1x1_1"]).
-        placement: dict     — PLACEMENT["post_l1"] with keys "compute", "memtile".
+        tiles: dict         — PLACEMENT["post_l1"] with keys "compute", "memtile".
         data_dir: str       — directory holding `post_conv_chain.txt`.
 
     Returns:
@@ -63,8 +63,8 @@ def post_l1(act_in, sf, *, placement, data_dir):
         name="post_L1_wts",
         recv_type=i8((post_l1_wts_chunk,)),
         repeat_count=PostRepeatChannels,
-        memtile_placement=placement["memtile"],
-        compute_placement=placement["compute"],
+        memtile_placement=tiles["memtile"],
+        compute_placement=tiles["compute"],
         mem_lock_id=2,
         comp_lock_id=0,
     )
@@ -136,7 +136,7 @@ def post_l1(act_in, sf, *, placement, data_dir):
             post_L2_InC,  # outC_padd=1280 (next layer's input width)
             post_sf,
         ],
-        tile=placement["compute"],
+        tile=tiles["compute"],
         # dynamic_objfifo_lowering keeps the inner loop intact instead of
         # unrolling for ping-pong; kernel uses runtime modulo indexing.
         # Without this attribute, the static objfifo lowering UNROLLS the

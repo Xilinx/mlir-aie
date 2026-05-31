@@ -16,14 +16,14 @@ can address it.
 
 import numpy as np
 
-from aie.iron import Buffer, Kernel, ObjectFifo, Worker, kernels
+from aie.iron import Buffer, ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
 from bottleneck._common import i8, u8, load_wts
 from network_spec import block as nsblock
 
 
-def init_conv(sf, *, placement, data_dir):
+def init_conv(sf, *, tile, data_dir):
     """Build the init 3x3 stride-2 conv block.
 
     Returns:
@@ -117,7 +117,7 @@ def init_conv(sf, *, placement, data_dir):
             init_OutC,
             init_scaleFactor,
         ],
-        tile=placement,
+        tile=tile,
     )
 
     return [w_init], act_in, act_init_out
