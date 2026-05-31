@@ -97,6 +97,7 @@ void yolo_m9_attn_score_fused_i8_i8(
   // === Phase 1+2: qk + scale → i8 scores row in chunk_io ===
   // Inner mac is vector. SRS+clip + scale+SRS+clip vectorized via two
   // to_vector<int8>(rs) calls bracketing a vec `aie::mul(qk_v, mul_int)`.
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_RANGE(kJGroups, kJGroups)
   for (int g = 0; g < kJGroups; ++g) {
     aie::accum<acc32, kJVec> acc;
@@ -104,6 +105,7 @@ void yolo_m9_attn_score_fused_i8_i8(
 
     const int8_t *__restrict k_strip = k_base + g * kJVec;
 
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_RANGE(kKd, kKd)
     for (int k = 0; k < kKd; ++k) {
       const int8_t q_scalar = q_col[k * kN];
@@ -136,15 +138,34 @@ void yolo_m9_attn_score_fused_i8_i8(
   const int32_t out_scale_int = 1 << (-out_log2_scale); // 128 for m9
 
   alignas(8) float exp_cache[kN];
-  float sum = 0.0f;
-  for (int j = 0; j < kN; ++j) {
-    int32_t shifted = (int32_t)scores_row[j] - row_max;
-    if (shifted < -128)
-      shifted = -128;
-    float e = exp_lut[shifted + 128];
-    exp_cache[j] = e;
-    sum += e;
+  // 4 parallel float accumulators break the serial fp-add dependency chain,
+  // letting peano overlap 4 independent (lda + fadd) issue streams instead
+  // of stalling on the 1 fadd per iter.
+  float sum0 = 0.0f, sum1 = 0.0f, sum2 = 0.0f, sum3 = 0.0f;
+  static_assert(kN % 4 == 0, "kN must be multiple of 4 for 4-way sum unroll");
+  for (int j = 0; j < kN; j += 4) {
+    int32_t s0 = (int32_t)scores_row[j + 0] - row_max;
+    int32_t s1 = (int32_t)scores_row[j + 1] - row_max;
+    int32_t s2 = (int32_t)scores_row[j + 2] - row_max;
+    int32_t s3 = (int32_t)scores_row[j + 3] - row_max;
+    if (s0 < -128) s0 = -128;
+    if (s1 < -128) s1 = -128;
+    if (s2 < -128) s2 = -128;
+    if (s3 < -128) s3 = -128;
+    float e0 = exp_lut[s0 + 128];
+    float e1 = exp_lut[s1 + 128];
+    float e2 = exp_lut[s2 + 128];
+    float e3 = exp_lut[s3 + 128];
+    exp_cache[j + 0] = e0;
+    exp_cache[j + 1] = e1;
+    exp_cache[j + 2] = e2;
+    exp_cache[j + 3] = e3;
+    sum0 += e0;
+    sum1 += e1;
+    sum2 += e2;
+    sum3 += e3;
   }
+  float sum = (sum0 + sum1) + (sum2 + sum3);
 
   // === Phase 3c: pass 3 — vec FP normalize + quantize ===
   // aie::inv(float) = HW reciprocal (single op) — replaces __divsf3.
@@ -157,6 +178,7 @@ void yolo_m9_attn_score_fused_i8_i8(
   aie::vector<int32, kFVec> smax_v = aie::broadcast<int32, kFVec>(I8_SMAX);
   aie::vector<int32, kFVec> smin_v = aie::broadcast<int32, kFVec>(I8_UMIN);
 
+  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_RANGE(kN / kFVec, kN / kFVec)
   for (int j = 0; j < kN; j += kFVec) {
     aie::vector<float, kFVec> e_v = aie::load_v<kFVec>(exp_cache + j);
@@ -165,7 +187,9 @@ void yolo_m9_attn_score_fused_i8_i8(
         aie::to_fixed<int32>(p_acc.template to_vector<float>(), 0);
     q_v = aie::min(q_v, smax_v);
     q_v = aie::max(q_v, smin_v);
-    // Narrow i32 → i8 via scalar stores (no branches; q_v is already clamped).
+    // Narrow i32 → i8. UNROLL_FULL lets peano pipeline 16 stores (and the
+    // scalar-extracts) instead of running them as a serial loop.
+    AIE_LOOP_UNROLL_FULL
     for (int i = 0; i < kFVec; ++i)
       scores_row[j + i] = (int8_t)q_v[i];
   }
