@@ -53,6 +53,9 @@ def vector_scalar_mul(
 ):
     in1_dtype = np.int16 if int_bit_width == 16 else np.int32
     tensor_size = in1_size // np.dtype(in1_dtype).itemsize
+    # The compute core processes the tensor in 4 equal sub-vectors via a
+    # depth-2 ObjectFifo, which gives the AIE-array enough pipelining to
+    # hide load latency while keeping per-tile L1 footprint modest.
     num_sub_vectors = 4
     tile_size = tensor_size // num_sub_vectors
 

@@ -73,9 +73,24 @@ def vector_scalar_add(
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Scalar Add")
     add_compile_args(p, with_elf=True)
-    p.add_argument("--problem-size", type=int, default=1024)
-    p.add_argument("--mem-tile-width", type=int, default=64)
-    p.add_argument("--aie-tile-width", type=int, default=32)
+    p.add_argument(
+        "--problem-size",
+        type=int,
+        default=1024,
+        help="total elements in the input vector",
+    )
+    p.add_argument(
+        "--mem-tile-width",
+        type=int,
+        default=64,
+        help="elements per memtile OF buffer (one stride from shim → memtile)",
+    )
+    p.add_argument(
+        "--aie-tile-width",
+        type=int,
+        default=32,
+        help="elements per compute-tile OF buffer (memtile → compute split)",
+    )
     return p
 
 
