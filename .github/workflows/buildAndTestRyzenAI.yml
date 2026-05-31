@@ -217,6 +217,14 @@ jobs:
           rm -rf $NPU_CACHE_HOME
           mkdir $NPU_CACHE_HOME
 
+          # TEMP(#3059): dump NPU stack versions to diagnose mobilenet/run_e2e.lit
+          # bn1 NPU timeout that reproduces on amdhx370 CI but not on the same
+          # HX 370 chip locally. Revert once the divergence is understood.
+          echo "===== NPU STACK VERSIONS (${{ matrix.runner_type }}) ====="
+          uname -a || true
+          xrt-smi examine 2>&1 | head -40 || true
+          echo "===== END NPU STACK VERSIONS ====="
+
           ninja install
 
           # gemm_asymmetric_tile_buffering chess builds peak ~8 GB RSS and

@@ -8,6 +8,7 @@ import numpy as np
 import sys
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron.algorithms import sliding_3row
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
@@ -107,53 +108,14 @@ def edge_detect(dev, width, height):
         initial_value=initial_value,
     )
 
-    # Task for the core to perform
+    # Task for the core to perform.
+    # `kernel` is a static Buffer (no acquire/release), so of_wts=None;
+    # the `kernel` value is captured by the closure.
     def filter_fn(of_in, of_out, kernel, filter2d_line):
-        # OF_2to3 -> intermediates[0]
-        # OF_3to4 -> intermediates[1]
+        def call(top, mid, bot, r_out, _, border):
+            filter2d_line(top, mid, bot, r_out, lineWidth, kernel)
 
-        for _ in range_(sys.maxsize):
-            # Preamble : Top Border
-            elems_in_pre = of_in.acquire(2)
-            elem_pre_out = of_out.acquire(1)
-            filter2d_line(
-                elems_in_pre[0],
-                elems_in_pre[0],
-                elems_in_pre[1],
-                elem_pre_out,
-                lineWidth,
-                kernel,
-            )
-            of_out.release(1)
-
-            # Steady State : Middle
-            for _ in range_(1, heightMinus1):
-                elems_in = of_in.acquire(3)
-                elem_out = of_out.acquire(1)
-                filter2d_line(
-                    elems_in[0],
-                    elems_in[1],
-                    elems_in[2],
-                    elem_out,
-                    lineWidth,
-                    kernel,
-                )
-                of_in.release(1)
-                of_out.release(1)
-
-            # Postamble : Bottom Border
-            elems_in_post = of_in.acquire(2)
-            elem_post_out = of_out.acquire(1)
-            filter2d_line(
-                elems_in_post[0],
-                elems_in_post[1],
-                elems_in_post[1],
-                elem_post_out,
-                lineWidth,
-                kernel,
-            )
-            of_in.release(2)
-            of_out.release(1)
+        sliding_3row(of_in, of_out, n_out_rows=height, do_kernel=call)
 
     # Worker to run the task
     workers.append(
@@ -165,7 +127,6 @@ def edge_detect(dev, width, height):
                 filter_kernel_buff,
                 filter2d_line_kernel,
             ],
-            while_true=False,
         )
     )
 
