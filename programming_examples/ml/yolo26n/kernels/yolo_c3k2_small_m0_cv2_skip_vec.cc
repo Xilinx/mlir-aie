@@ -176,7 +176,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
 
-          AIE_LOOP_RANGE(3, 3)
+          AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < KW; ++kx) {
             aie::vector<int8, 32> in_a =
                 load_a_mmul_kx_4p<IN_C, IN_W>(line_ptr, ic_t, x_tile, kx);

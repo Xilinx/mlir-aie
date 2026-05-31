@@ -208,7 +208,7 @@ void KERNEL_NAME(
       for (int ky = ky_start; ky < ky_end; ++ky) {
         int8_t *line_ptr = line[ky];
 
-        AIE_LOOP_RANGE(3, 3)
+        AIE_LOOP_UNROLL_FULL
         for (int kx = 0; kx < KW; ++kx) {
           AIE_HINT_IC
           for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
@@ -249,7 +249,7 @@ void KERNEL_NAME(
         for (int ky = ky_start; ky < ky_end; ++ky) {
           int8_t *line_ptr = line[ky];
 
-          AIE_LOOP_RANGE(3, 3)
+          AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < KW; ++kx) {
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;

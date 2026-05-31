@@ -125,7 +125,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
 #define AIE_HINT_OC AIE_LOOP_RANGE(oc_tiles, oc_tiles)
 #define AIE_HINT_X AIE_LOOP_RANGE(x_tiles, x_tiles)
 #define AIE_HINT_IC AIE_LOOP_RANGE(ic_tiles, ic_tiles)
-#define AIE_HINT_KX AIE_LOOP_RANGE(3, 3)
+#define AIE_HINT_KX AIE_LOOP_UNROLL_FULL
 #else
   const int ic_tiles = IN_C / 8;
   const int oc_tiles = OUT_C / 8;
@@ -182,7 +182,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
       for (int ky = ky_start; ky < ky_end; ++ky) {
         int8_t *line_ptr = line[ky];
 
-        AIE_LOOP_RANGE(3, 3)
+        AIE_LOOP_UNROLL_FULL
         for (int kx = 0; kx < KW; ++kx) {
           AIE_HINT_IC
           for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
