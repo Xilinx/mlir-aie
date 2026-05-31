@@ -27,7 +27,6 @@ Usage:
 
 import argparse
 import os
-import pathlib
 import sys
 
 import numpy as np
@@ -40,9 +39,8 @@ from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 
-# Allow importing the local bottleneck/ package when running this file directly.
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-
+# Sibling imports below resolve via the script's parent dir (auto-added
+# to sys.path[0] when invoked as ``python3 .../aie2_mobilenet_iron.py``).
 from bottleneck.init import init_conv
 from bottleneck.regular import regular_bottlenecks
 from bottleneck.pipeline import pipeline_bottlenecks
