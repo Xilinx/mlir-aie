@@ -446,6 +446,229 @@ def bn_conv2dk1_relu_xy_pool_padded(
     )
 
 
+def _validate_bn_block_index(block_index: int, factory_name: str) -> None:
+    if block_index not in (13, 14):
+        raise ValueError(
+            f"{factory_name}(): block_index must be 13 or 14 (the only "
+            f"per-block symbols defined in the .cc), got {block_index}."
+        )
+
+
+def bn_conv2dk1_partial_put_i8(
+    input_width: int = 7,
+    input_channels: int = 80,
+    weight_count: int = 4800,
+    *,
+    block_index: int = 13,
+) -> ExternalFunction:
+    """Cascade-PUT half of a width-split 1x1 conv on int8 activations.
+
+    The PUT tile of a two-tile cascade-split pointwise conv: consumes a
+    width slice of the activation, multiplies against its weight half,
+    and emits the partial sum onto the cascade stream (no separate
+    output buffer — cascade-only).  Sister of
+    :func:`bn_conv2dk1_partial_get_relu_i8`.
+
+    Currently defined in the .cc only for MobileNet V3's bn13 / bn14
+    (one wrapper symbol per block); ``block_index`` selects which.
+    Generalising this to arbitrary block names would require adding a
+    non-prefixed wrapper to ``bn_conv2dk1_i8.cc``.
+
+    Args:
+        input_width: Spatial width of the input slice.
+        input_channels: Number of input channels.
+        weight_count: Per-call weight chunk size in elements (the design
+            streams weights in chunks; full weight tensor is shared
+            across multiple kernel invocations).
+        block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+
+    Returns:
+        ExternalFunction configured for the PUT tile.
+
+    Raises:
+        ValueError: When ``block_index`` is not 13 or 14.
+    """
+    _validate_bn_block_index(block_index, "bn_conv2dk1_partial_put_i8")
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[(weight_count,), np.dtype[np.int8]]
+    return _make_extern(
+        f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_put_new",
+        _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
+        [in_ty, wt_ty, *_i32s(7)],
+        compile_flags=[f"-DBN{block_index}_1_PARTIAL_PUT_I8_CAS_WIDTH_NEW"],
+    )
+
+
+def bn_conv2dk1_partial_get_relu_i8(
+    input_width: int = 7,
+    input_channels: int = 80,
+    output_channels: int = 480,
+    weight_count: int = 4800,
+    *,
+    block_index: int = 13,
+) -> ExternalFunction:
+    """Cascade-GET half of a width-split 1x1 conv + ReLU on int8 activations.
+
+    The GET tile of a two-tile cascade-split pointwise conv: consumes
+    the cascade partial sum from its sister PUT tile, finishes the dot
+    product against its weight half, applies ReLU, and writes the full
+    output buffer.  Sister of :func:`bn_conv2dk1_partial_put_i8`.
+
+    Currently defined in the .cc only for MobileNet V3's bn13 / bn14
+    (one wrapper symbol per block); ``block_index`` selects which.
+
+    Args:
+        input_width: Spatial width of the input slice.
+        input_channels: Number of input channels.
+        output_channels: Number of output channels (full L1 output width).
+        weight_count: Per-call weight chunk size in elements.
+        block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+
+    Returns:
+        ExternalFunction configured for the GET tile.
+
+    Raises:
+        ValueError: When ``block_index`` is not 13 or 14.
+    """
+    _validate_bn_block_index(block_index, "bn_conv2dk1_partial_get_relu_i8")
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[(weight_count,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.uint8]]
+    return _make_extern(
+        f"bn{block_index}_1_conv2dk1_i8_ui8_partial_width_get_new",
+        _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
+        [in_ty, wt_ty, out_ty, *_i32s(9)],
+        compile_flags=[f"-DBN{block_index}_1_PARTIAL_GET_I8_CAS_WIDTH_NEW"],
+    )
+
+
+def bn_conv2dk3_dw_out_split(
+    input_width: int = 7,
+    input_channels: int = 480,
+    output_split_channels: int = 240,
+    *,
+    block_index: int = 13,
+) -> ExternalFunction:
+    """Depthwise 3x3 stride-1 conv with split output stream (uint8 in/out).
+
+    A variant of :func:`bn_conv2dk3_dw` (stride=1) that writes its output
+    to TWO separate buffers — the channel dimension is split in half so
+    downstream cascade-PUT tiles can each consume one slice.  Used by
+    MobileNet V3's bn13 / bn14 depthwise stage to feed the L3 cascade.
+
+    Currently defined in the .cc only via per-block extern wrappers
+    (BN13 or BN14 macro picks the symbol prefix); ``block_index`` selects
+    which.
+
+    Args:
+        input_width: Spatial width of the input.
+        input_channels: Number of input channels (== output channels —
+            depthwise).
+        output_split_channels: Channels per output slice (half of
+            ``input_channels`` for the typical 2-way split).
+        block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+
+    Returns:
+        ExternalFunction configured for the split-output DW kernel.
+
+    Raises:
+        ValueError: When ``block_index`` is not 13 or 14.
+    """
+    _validate_bn_block_index(block_index, "bn_conv2dk3_dw_out_split")
+    line_size = input_width * input_channels
+    line_ty = np.ndarray[(line_size,), np.dtype[np.uint8]]
+    wt_ty = np.ndarray[(3 * 3 * input_channels,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_split_channels,), np.dtype[np.uint8]]
+    return _make_extern(
+        f"bn{block_index}_conv2dk3_ui8_out_split",
+        _default_source_path("bottleneck/bn_conv2dk3_dw.cc", subdir="aie2"),
+        [line_ty, line_ty, line_ty, wt_ty, out_ty, out_ty, *_i32s(8)],
+        compile_flags=["-DSCALAR", f"-DBN{block_index}", "-DSTRIDE1_OUT_SPLIT"],
+    )
+
+
+def bn_conv2dk1_input_split_partial_put_ui8(
+    input_width: int = 7,
+    input_channels: int = 240,
+    weight_count: int = 9600,
+    *,
+    block_index: int = 13,
+) -> ExternalFunction:
+    """Input-split cascade-PUT half of a 1x1 conv on uint8 activations.
+
+    Like :func:`bn_conv2dk1_partial_put_i8` but consumes a CHANNEL slice
+    (input-split) of a uint8 activation instead of a width slice of int8.
+    Used by MobileNet V3's bn13 / bn14 L3 stage.
+
+    Args:
+        input_width: Spatial width of the input slice.
+        input_channels: Number of input channels (one half of the
+            full input after split).
+        weight_count: Per-call weight chunk size in elements.
+        block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+
+    Returns:
+        ExternalFunction configured for the input-split PUT tile.
+
+    Raises:
+        ValueError: When ``block_index`` is not 13 or 14.
+    """
+    _validate_bn_block_index(block_index, "bn_conv2dk1_input_split_partial_put_ui8")
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
+    wt_ty = np.ndarray[(weight_count,), np.dtype[np.int8]]
+    return _make_extern(
+        f"bn{block_index}_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new",
+        _default_source_path("bottleneck/bn_conv2dk1_i8.cc", subdir="aie2"),
+        [in_ty, wt_ty, *_i32s(7)],
+        compile_flags=[
+            f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW"
+        ],
+    )
+
+
+def bn_conv2dk1_input_split_partial_skip_get(
+    input_width: int = 7,
+    input_channels: int = 240,
+    output_channels: int = 80,
+    weight_count: int = 9600,
+    *,
+    block_index: int = 13,
+) -> ExternalFunction:
+    """Input-split cascade-GET half of a 1x1 conv + skip-add (uint8 in, int8 out).
+
+    The GET tile completes the cascade-split 1x1 + ReLU + residual add
+    pattern: consumes the partial sum from its sister PUT tile, finishes
+    the dot product, adds a skip row of int8 activations, and writes int8
+    output.  Sister of :func:`bn_conv2dk1_input_split_partial_put_ui8`.
+
+    Args:
+        input_width: Spatial width of the input slice.
+        input_channels: Number of input channels (one half after split).
+        output_channels: Final output channels.
+        weight_count: Per-call weight chunk size in elements.
+        block_index: ``13`` or ``14``; selects the per-block C++ wrapper.
+
+    Returns:
+        ExternalFunction configured for the input-split skip-GET tile.
+
+    Raises:
+        ValueError: When ``block_index`` is not 13 or 14.
+    """
+    _validate_bn_block_index(block_index, "bn_conv2dk1_input_split_partial_skip_get")
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.uint8]]
+    wt_ty = np.ndarray[(weight_count,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
+    skip_ty = np.ndarray[(input_width * output_channels,), np.dtype[np.int8]]
+    return _make_extern(
+        f"bn_{block_index}_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
+        _default_source_path("bottleneck/bn_conv2dk1_skip.cc", subdir="aie2"),
+        [in_ty, wt_ty, out_ty, skip_ty, *_i32s(10)],
+        compile_flags=[
+            f"-DBN{block_index}_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH_NEW"
+        ],
+    )
+
+
 def bn_fc_relu_ui16_pad(
     input_channels: int = 1280,
     output_channels: int = 16,

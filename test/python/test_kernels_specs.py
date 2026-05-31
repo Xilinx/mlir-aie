@@ -569,6 +569,62 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=8,
         expected_name="post_L2_conv2dk1_relu_i16_ui16_pad",
     ),
+    KernelSpec(
+        name="bn_conv2dk1_partial_put_i8",
+        factory=kernels.bn_conv2dk1_partial_put_i8,
+        kwargs=dict(),
+        arg_count=9,
+        expected_name="bn13_1_conv2dk1_i8_ui8_partial_width_put_new",
+        name_variants=[
+            (dict(block_index=13), "bn13_1_conv2dk1_i8_ui8_partial_width_put_new"),
+            (dict(block_index=14), "bn14_1_conv2dk1_i8_ui8_partial_width_put_new"),
+        ],
+        invalid_kwargs=[(dict(block_index=12), "block_index")],
+    ),
+    KernelSpec(
+        name="bn_conv2dk1_partial_get_relu_i8",
+        factory=kernels.bn_conv2dk1_partial_get_relu_i8,
+        kwargs=dict(),
+        arg_count=12,
+        expected_name="bn13_1_conv2dk1_i8_ui8_partial_width_get_new",
+        name_variants=[
+            (dict(block_index=14), "bn14_1_conv2dk1_i8_ui8_partial_width_get_new"),
+        ],
+        invalid_kwargs=[(dict(block_index=12), "block_index")],
+    ),
+    KernelSpec(
+        name="bn_conv2dk3_dw_out_split",
+        factory=kernels.bn_conv2dk3_dw_out_split,
+        kwargs=dict(),
+        arg_count=14,
+        expected_name="bn13_conv2dk3_ui8_out_split",
+        name_variants=[
+            (dict(block_index=14), "bn14_conv2dk3_ui8_out_split"),
+        ],
+        invalid_kwargs=[(dict(block_index=12), "block_index")],
+    ),
+    KernelSpec(
+        name="bn_conv2dk1_input_split_partial_put_ui8",
+        factory=kernels.bn_conv2dk1_input_split_partial_put_ui8,
+        kwargs=dict(),
+        arg_count=9,
+        expected_name="bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new",
+        name_variants=[
+            (dict(block_index=14), "bn14_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new"),
+        ],
+        invalid_kwargs=[(dict(block_index=12), "block_index")],
+    ),
+    KernelSpec(
+        name="bn_conv2dk1_input_split_partial_skip_get",
+        factory=kernels.bn_conv2dk1_input_split_partial_skip_get,
+        kwargs=dict(),
+        arg_count=14,
+        expected_name="bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
+        name_variants=[
+            (dict(block_index=14), "bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new"),
+        ],
+        invalid_kwargs=[(dict(block_index=12), "block_index")],
+    ),
 ]
 
 

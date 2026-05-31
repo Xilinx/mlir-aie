@@ -44,6 +44,11 @@ from .conv import (
     bn_conv2dk3_dw,
     bn_conv2dk1_relu_xy_pool_padded,
     bn_fc_relu_ui16_pad,
+    bn_conv2dk1_partial_put_i8,
+    bn_conv2dk1_partial_get_relu_i8,
+    bn_conv2dk3_dw_out_split,
+    bn_conv2dk1_input_split_partial_put_ui8,
+    bn_conv2dk1_input_split_partial_skip_get,
 )
 
 __all__ = [
@@ -85,4 +90,9 @@ __all__ = [
     "bn_conv2dk3_dw",
     "bn_conv2dk1_relu_xy_pool_padded",
     "bn_fc_relu_ui16_pad",
+    "bn_conv2dk1_partial_put_i8",
+    "bn_conv2dk1_partial_get_relu_i8",
+    "bn_conv2dk3_dw_out_split",
+    "bn_conv2dk1_input_split_partial_put_ui8",
+    "bn_conv2dk1_input_split_partial_skip_get",
 ]

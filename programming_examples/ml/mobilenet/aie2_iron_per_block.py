@@ -172,11 +172,8 @@ def _build_one(block_name, act_in):
         return out_fifo, ws, []
 
     if block_name in CASCADE_NAMES:
-        n = block_name[2:]
-        sym = f"bn_{n}_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new"
         out_fifo, wts_l1, wts_l3, ws = build_cascade(
             nsblock(block_name),
-            l3_get_sym=sym,
             act_in=act_in,
             skip_in=act_in,
             sf=_SCALES,

@@ -45,16 +45,6 @@ newFlag=_NEW
 
 MLIR_FILE = aie2_mobilenet_iron
 TEST_FILE = test_mobilenet
-OBJ = \
-	build/bn13_1_conv2dk1_put.o build/bn13_1_conv2dk1_get.o build/bn13_conv2dk3_dw.o build/bn13_conv2dk1_put.o build/bn13_conv2dk1_skip_get.o \
-	build/bn14_1_conv2dk1_put.o build/bn14_1_conv2dk1_get.o build/bn14_conv2dk3_dw.o build/bn14_conv2dk1_put.o build/bn14_conv2dk1_skip_get.o
-
-# Build only the kernel .o files (no MLIR/xclbin). Used by run_e2e.lit to
-# bootstrap kernels on a fresh CI checkout where the main mobilenet hasn't
-# been built yet.
-.PHONY: objs
-objs: $(OBJ)
-
 
 build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
@@ -65,60 +55,17 @@ build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< -t ${trace_size} > $@
 
-# init, bn0..bn12, and post_l1/post_l2 are built via the iron kernel
-# library; init.py / regular.py / pipeline.py / post_l1.py / post_l2.py
-# call kernels.bn_*. aiecc compiles the .o files as part of the
-# @iron.jit pipeline.
-
-# ************************************** bottlneck 13 **************************************
-build/bn13_1_conv2dk1_put.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	mkdir -p ${@D}
-	echo $(new) World with ${newFlag}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN13_1_PARTIAL_PUT_I8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
-build/bn13_1_conv2dk1_get.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	echo $(new) World with ${newFlag}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN13_1_PARTIAL_GET_I8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
-build/bn13_conv2dk3_dw.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	echo $(new) World with ${newFlag}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN13 -DSTRIDE1_OUT_SPLIT -c $< -o ${@F}
-
-build/bn13_conv2dk1_put.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN13_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
-
-build/bn13_conv2dk1_skip_get.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN13_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
-# ************************************** bottlneck 14 **************************************
-build/bn14_1_conv2dk1_put.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN14_1_PARTIAL_PUT_I8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
-build/bn14_1_conv2dk1_get.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN14_1_PARTIAL_GET_I8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
-build/bn14_conv2dk3_dw.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN14 -DSTRIDE1_OUT_SPLIT -c $< -o ${@F}
-
-
-build/bn14_conv2dk1_put.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN14_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
-build/bn14_conv2dk1_skip_get.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN14_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
+# Every mobilenet kernel (init, bn0..bn14, post_l1, post_l2) is built via
+# the iron kernel library; bottleneck/*.py calls kernels.bn_*. aiecc
+# compiles all .o files as part of the @iron.jit pipeline.
 
 # ************************************** mobilenet ********************************************
 
-# mobilenet_iron is @iron.jit, so the design's compile path builds the
-# kernels.X-managed .o files itself and invokes aiecc directly with the
-# right flags (incl. --dynamic-objFifos=false, set on the decorator).
-# The non-library kernels (bn1..bn14 + post + cascade — see $(OBJ)) still
-# come from the Makefile rules below and land in build/ alongside the
-# library-built .o files; aiecc picks up both.
-build/final_mobilenet.xclbin: $(OBJ)
-	mkdir -p ${@D}
+# mobilenet_iron is @iron.jit; the design's compile path builds every
+# .o file itself and invokes aiecc directly with the right flags (incl.
+# --dynamic-objFifos=false, set on the decorator).
+build/final_mobilenet.xclbin:
+	mkdir -p $(dir $@)
 	python3 ${srcdir}/${MLIR_FILE}.py \
 		--xclbin-path $@ --insts-path build/insts.bin -d ${devicename}
 
