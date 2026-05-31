@@ -10,14 +10,14 @@ repos:
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: 05241dc3def184dba136e62d54ff57f1c8a497a9  # frozen: v17.0.6
+  rev: dd18dad857d6133e90bbe478f4f2f22ec0030269  # frozen: v22.1.5
   hooks:
     - id: clang-format
       types_or: [c, c++]
       stages: [pre-push]
 
 - repo: https://github.com/psf/black
-  rev: 1b2427a2b785cc4aac97c19bb4b9a0de063f9547  # frozen: 24.10.0
+  rev: 87928e6d6761a4a6d22250e1fee5601b3998086e  # frozen: 26.5.1
   hooks:
     - id: black
       stages: [pre-push]
