@@ -20,6 +20,14 @@ LABEL=${3:-rehearsal}
 PYPI_DEFAULT_CAP=$((100 * 1024 * 1024))
 PYPI_CLOSE_THRESH=$((80 * 1024 * 1024))
 
+# `stat` flag differs: GNU (Linux) uses `-c%s`, BSD (macOS) uses `-f%z`.
+# Detect once so future macOS runners don't silently emit empty size columns.
+if stat -c%s "$0" >/dev/null 2>&1; then
+  STAT_SIZE='stat -c%s'
+else
+  STAT_SIZE='stat -f%z'
+fi
+
 # Strip tool: prefer llvm-strip — handles both ELF (Linux/macOS .so) and PE
 # (Windows .pyd/.dll/.exe). Plain binutils `strip` silently no-ops on PE so
 # Windows wheels would otherwise show 0% reduction in this rehearsal.
@@ -48,7 +56,7 @@ twine_failed=0
 for whl in "$WHEELS_IN"/*.whl; do
   [ -e "$whl" ] || { echo "no wheels in $WHEELS_IN"; exit 0; }
   name=$(basename "$whl")
-  orig_bytes=$(stat -c%s "$whl")
+  orig_bytes=$($STAT_SIZE "$whl")
 
   workdir=$(mktemp -d)
   python -m wheel unpack -d "$workdir" "$whl" >/dev/null
@@ -76,7 +84,7 @@ for whl in "$WHEELS_IN"/*.whl; do
 
   # `wheel pack` may rename if build tag changes; pick up whatever landed
   out_whl=$(ls -t "$WHEELS_OUT"/*.whl | head -1)
-  strip_bytes=$(stat -c%s "$out_whl")
+  strip_bytes=$($STAT_SIZE "$out_whl")
   reduction=$(( orig_bytes > 0 ? 100 - (strip_bytes * 100 / orig_bytes) : 0 ))
 
   orig_mb=$(awk "BEGIN { printf \"%.1f\", $orig_bytes / 1024 / 1024 }")
