@@ -42,6 +42,8 @@ from .conv import (
     bn_conv2dk1_i8,
     bn_conv2dk1_skip,
     bn_conv2dk3_dw,
+    bn_conv2dk1_relu_xy_pool_padded,
+    bn_fc_relu_ui16_pad,
 )
 
 __all__ = [
@@ -81,4 +83,6 @@ __all__ = [
     "bn_conv2dk1_i8",
     "bn_conv2dk1_skip",
     "bn_conv2dk3_dw",
+    "bn_conv2dk1_relu_xy_pool_padded",
+    "bn_fc_relu_ui16_pad",
 ]

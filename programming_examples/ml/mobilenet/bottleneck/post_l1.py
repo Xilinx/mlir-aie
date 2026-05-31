@@ -17,7 +17,7 @@ Input:  (7,1,80) int8   Output: (1,1,1280) uint16 (post_L2_InC wide)
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker
+from aie.iron import Kernel, ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
 from bottleneck._common import i8, load_wts
@@ -79,22 +79,11 @@ def post_l1(act_in, sf, *, placement, data_dir):
         depth=2,
     )
 
-    k_post_l1 = Kernel(
-        "conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
-        "post_conv2dk1_relu_xy_pool_padded_i8_ui8.o",
-        [
-            i8((post_L1_InW, 1, post_L1_InC)),
-            i8((post_l1_wts_chunk,)),
-            np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    k_post_l1 = kernels.bn_conv2dk1_relu_xy_pool_padded(
+        input_width=post_L1_InW,
+        input_channels=post_L1_InC,
+        output_channels=post_L2_InC,
+        weight_chunk_count=post_l1_wts_chunk,
     )
 
     def post_l1_fn(

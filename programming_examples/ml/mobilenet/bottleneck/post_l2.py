@@ -16,7 +16,7 @@ Input:  (1,1,1280) uint16  Output: (1,1,1280) uint16 (4 tiles, joined)
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker
+from aie.iron import Kernel, ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
 from bottleneck._common import i8, load_wts
@@ -91,19 +91,10 @@ def post_l2(act_in, sf, *, placement, data_dir):
         return np.ndarray[shape, np.dtype[np.uint16]]
 
     # Post-L2 FC: uint16 input (avgpool output) → uint16 output, in `co`-element slices.
-    k_post_l2 = Kernel(
-        "post_L2_conv2dk1_relu_i16_ui16_pad",
-        "post_L2_conv2dk1_relu_ui16_ui16_pad.o",
-        [
-            np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
-            i8((fc_recv_per_tile,)),
-            _u16((co,)),
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    k_post_l2 = kernels.bn_fc_relu_ui16_pad(
+        input_channels=post_L2_InC,
+        output_channels=co,
+        weight_chunk_count=fc_recv_per_tile,
     )
 
     post_l2_workers = []

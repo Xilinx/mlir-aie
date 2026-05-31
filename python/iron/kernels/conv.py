@@ -400,3 +400,87 @@ def bn_conv2dk3_dw(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"],
     )
+
+
+def bn_conv2dk1_relu_xy_pool_padded(
+    input_width: int = 7,
+    input_channels: int = 80,
+    output_channels: int = 1280,
+    weight_chunk_count: int | None = None,
+) -> ExternalFunction:
+    """Fused 1x1 conv + ReLU + xy-pool with channel padding (int8 in, uint16 out).
+
+    A post-stage kernel that fuses a pointwise (1x1) convolution, ReLU
+    activation, and global xy avg-pool into a single pass, with output
+    channels padded to a DMA-friendly multiple.  Sized for MobileNet V3's
+    post-bottleneck stage where the final 1x1 expand-conv collapses the
+    7x7 feature map into a 1x1 vector.
+
+    Args:
+        input_width: Spatial width of the input.
+        input_channels: Number of input channels.
+        output_channels: Logical output channels (e.g. 1280).  Sets both
+            the output buffer length AND, when ``weight_chunk_count`` is
+            None, the weight buffer length (``input_channels * output_channels``).
+        weight_chunk_count: Override the weight buffer's element count when
+            the design streams weights in chunks (cascade/output-split).
+            ``None`` means use the full ``input_channels * output_channels``
+            tile.
+
+    Returns:
+        ExternalFunction configured for the fused conv+relu+xy_pool kernel.
+    """
+    wts_count = (
+        weight_chunk_count
+        if weight_chunk_count is not None
+        else input_channels * output_channels
+    )
+    in_ty = np.ndarray[(input_width * input_channels,), np.dtype[np.int8]]
+    wt_ty = np.ndarray[(wts_count,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(output_channels,), np.dtype[np.uint16]]
+    return _make_extern(
+        "conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
+        _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
+        [in_ty, wt_ty, out_ty, *_i32s(8)],
+        compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
+    )
+
+
+def bn_fc_relu_ui16_pad(
+    input_channels: int = 1280,
+    output_channels: int = 16,
+    weight_chunk_count: int | None = None,
+) -> ExternalFunction:
+    """Fully-connected layer (1x1 conv on (1,1,C)) + ReLU, uint16 in/out, with padding.
+
+    A post-stage FC kernel used by MobileNet V3's classifier head.  Input is
+    a (1,1,input_channels) feature vector held as uint16; output is
+    ``output_channels`` uint16 logits.  Weights stored in a padded layout
+    (the ``input_channels_pad`` runtime arg selects the actual stride).
+
+    Args:
+        input_channels: Number of input channels (e.g. 1280).
+        output_channels: Number of output channels per call (slice width,
+            since the full FC is split across multiple tiles).
+        weight_chunk_count: Override the weight buffer's element count when
+            the design streams weights in chunks (cascade/ping-pong).
+            ``None`` means use the full ``input_channels * output_channels``
+            tile.
+
+    Returns:
+        ExternalFunction configured for the post-L2 FC kernel.
+    """
+    wts_count = (
+        weight_chunk_count
+        if weight_chunk_count is not None
+        else input_channels * output_channels
+    )
+    in_ty = np.ndarray[(input_channels,), np.dtype[np.uint16]]
+    wt_ty = np.ndarray[(wts_count,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(output_channels,), np.dtype[np.uint16]]
+    return _make_extern(
+        "post_L2_conv2dk1_relu_i16_ui16_pad",
+        _default_source_path("bottleneck/bn_conv2dk1_relu.cc", subdir="aie2"),
+        [in_ty, wt_ty, out_ty, *_i32s(5)],
+        compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
+    )

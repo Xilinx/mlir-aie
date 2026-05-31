@@ -47,9 +47,7 @@ MLIR_FILE = aie2_mobilenet_iron
 TEST_FILE = test_mobilenet
 OBJ = \
 	build/bn13_1_conv2dk1_put.o build/bn13_1_conv2dk1_get.o build/bn13_conv2dk3_dw.o build/bn13_conv2dk1_put.o build/bn13_conv2dk1_skip_get.o \
-	build/bn14_1_conv2dk1_put.o build/bn14_1_conv2dk1_get.o build/bn14_conv2dk3_dw.o build/bn14_conv2dk1_put.o build/bn14_conv2dk1_skip_get.o \
-	build/post_conv2dk1_relu_xy_pool_padded_i8_ui8.o \
-	build/post_L2_conv2dk1_relu_ui16_ui16_pad.o
+	build/bn14_1_conv2dk1_put.o build/bn14_1_conv2dk1_get.o build/bn14_conv2dk3_dw.o build/bn14_conv2dk1_put.o build/bn14_conv2dk1_skip_get.o
 
 # Build only the kernel .o files (no MLIR/xclbin). Used by run_e2e.lit to
 # bootstrap kernels on a fresh CI checkout where the main mobilenet hasn't
@@ -67,10 +65,10 @@ build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< -t ${trace_size} > $@
 
-# init (3x3 stride-2) and bn0..bn12 are built via the iron kernel library;
-# init.py:init_conv calls kernels.bn_conv2dk3, regular.py + pipeline.py use
-# kernels.bn_conv2dk3_dw / bn_conv2dk1_relu / bn_conv2dk1_i8 / bn_conv2dk1_skip.
-# aiecc compiles the .o files as part of the @iron.jit pipeline.
+# init, bn0..bn12, and post_l1/post_l2 are built via the iron kernel
+# library; init.py / regular.py / pipeline.py / post_l1.py / post_l2.py
+# call kernels.bn_*. aiecc compiles the .o files as part of the
+# @iron.jit pipeline.
 
 # ************************************** bottlneck 13 **************************************
 build/bn13_1_conv2dk1_put.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
@@ -109,19 +107,6 @@ build/bn14_conv2dk1_put.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
 
 build/bn14_conv2dk1_skip_get.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
 	cd ${@D} && ${COMPILE_WRAPPER} -DBN14_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH${newFlag} -c $< -o ${@F}
-
-# ************************************** POST ************************************************
-build/post_conv2dk1_relu_xy_pool_i8_ui8.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DCONV_XYPOOL_FUSED_LARGE -DINT8_ACT -c $< -o ${@F}
-
-build/post_L2_conv2dk1_relu_ui16_ui8.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DPOSTL2 -DUINT16_ACT -c $< -o ${@F}
-
-build/post_conv2dk1_relu_xy_pool_padded_i8_ui8.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DCONV_XYPOOL_FUSED_LARGE_PADDED -DINT8_ACT -c $< -o ${@F}
-
-build/post_L2_conv2dk1_relu_ui16_ui16_pad.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DPOSTL2_PAD -DUINT16_ACT -c $< -o ${@F}
 
 
 # ************************************** mobilenet ********************************************

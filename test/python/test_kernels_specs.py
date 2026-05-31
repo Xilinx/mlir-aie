@@ -555,6 +555,20 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         invalid_kwargs=[(dict(stride=3), "stride")],
     ),
+    KernelSpec(
+        name="bn_conv2dk1_relu_xy_pool_padded",
+        factory=kernels.bn_conv2dk1_relu_xy_pool_padded,
+        kwargs=dict(),
+        arg_count=11,
+        expected_name="conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
+    ),
+    KernelSpec(
+        name="bn_fc_relu_ui16_pad",
+        factory=kernels.bn_fc_relu_ui16_pad,
+        kwargs=dict(),
+        arg_count=8,
+        expected_name="post_L2_conv2dk1_relu_i16_ui16_pad",
+    ),
 ]
 
 
