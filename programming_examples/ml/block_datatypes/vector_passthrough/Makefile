@@ -14,7 +14,6 @@ include ${srcdir}/../../../makefile-common
 
 targetname = vector_passthrough
 use_chess?=0
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 col = 0
 
 aie_py_src=${targetname}.py

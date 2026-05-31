@@ -19,7 +19,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = relu
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 length ?= 65536
 chans ?= 2
 

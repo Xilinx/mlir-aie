@@ -16,7 +16,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_scalar_mul
 int_bit_width ?= 16
 

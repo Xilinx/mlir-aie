@@ -19,7 +19,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = vector_vector_add
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 col ?= 0
 
 aie_py_src = ${targetname}.py

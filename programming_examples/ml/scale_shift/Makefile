@@ -15,7 +15,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = scale_shift
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 length ?= 65536
 
 aie_py_src = ${targetname}.py

@@ -5,6 +5,12 @@ AIE2_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/aie_ml/lib
 
 MLIR_AIE_DIR ?= $(shell python3 -c "from aie.utils.config import root_path; print(root_path())")
 
+# Default NPU device family.  Per-example Makefiles can pin a specific
+# device with ``devicename = npu2`` (or ``?= npu2``) before including
+# this file; otherwise the ``NPU2=1`` env var selects between npu1 and
+# npu2 the same way our lit tests do.
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+
 WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw
 
 CHESSCC1_FLAGS = -f -p me -P ${AIE_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include

@@ -19,7 +19,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = softmax
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 size ?= 262144
 chans ?= 2
 n_iterations ?= 20

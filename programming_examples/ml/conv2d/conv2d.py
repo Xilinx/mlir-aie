@@ -25,7 +25,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
+from aie.iron.device import device_from_args
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -134,7 +134,7 @@ def main():
         conv2d,
         opts,
         compile_kwargs=_compile_kwargs,
-        device=lambda o: from_name(o.dev, n_cols=1),
+        device=lambda o: device_from_args(o, n_cols=1),
     )
 
 

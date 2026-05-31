@@ -20,7 +20,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = mlir_trace_example
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 in1_size   = 16384
 in2_size   = 4

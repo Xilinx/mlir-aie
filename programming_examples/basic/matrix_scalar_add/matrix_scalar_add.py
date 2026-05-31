@@ -30,7 +30,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import from_name
+from aie.iron.device import device_from_args
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -136,7 +136,7 @@ def main():
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
         emit_mlir=_emit_mlir,
-        device=lambda o: from_name(o.dev, n_cols=None if o.dev == "npu2" else 1),
+        device=device_from_args,
     )
 
 

@@ -36,7 +36,7 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.iron.device import from_name
+from aie.iron.device import device_from_args
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -227,7 +227,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: from_name(o.dev, n_cols=1),
+        device=lambda o: device_from_args(o, n_cols=1),
     )
 
 

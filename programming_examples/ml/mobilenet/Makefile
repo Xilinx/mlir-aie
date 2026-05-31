@@ -8,7 +8,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 ifeq (${devicename}, npu)
 	LOCAL_CHESS_FLAGS := ${CHESSCCWRAP2_FLAGS}
 	LOCAL_PEANO_FLAGS := ${PEANOWRAP2_FLAGS}

@@ -20,7 +20,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = transposes
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 STRATEGY ?= dma
 

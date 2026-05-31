@@ -13,7 +13,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../../makefile-common
 
 targetname = resnet
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 .PHONY: all run run_py clean
 

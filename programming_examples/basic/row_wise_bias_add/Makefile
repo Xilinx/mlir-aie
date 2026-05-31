@@ -34,7 +34,6 @@ xclbin_target?=build/final.xclbin
 insts_target?=build/insts.bin
 host_target?=build/test
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 M=768
 N=2304
 m=96

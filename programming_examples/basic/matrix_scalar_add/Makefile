@@ -18,7 +18,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = matrix_scalar_add
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 aie_py_src = ${targetname}.py
 aieargs = -d ${devicename}

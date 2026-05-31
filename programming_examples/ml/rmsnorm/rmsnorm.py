@@ -23,7 +23,7 @@ from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import from_name
+from aie.iron.device import device_from_args
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorTiler2D
@@ -151,7 +151,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: from_name(o.dev, n_cols=None),
+        device=lambda o: device_from_args(o, n_cols=None),
     )
 
 

@@ -302,7 +302,9 @@ def _make_argparser():
 def main():
     opts = _make_argparser().parse_args()
     set_current_device(device_from_args(opts))
-    print(per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json))
+    print(
+        per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json)
+    )
 
 
 if __name__ == "__main__":

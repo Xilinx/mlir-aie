@@ -19,7 +19,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = conv2d_fused_relu
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 width ?= 32
 height ?= 32

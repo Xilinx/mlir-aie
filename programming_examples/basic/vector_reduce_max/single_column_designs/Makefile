@@ -21,7 +21,6 @@ include ${srcdir}/../../../makefile-common
 SHELL := /bin/bash
 
 orig_targetname = vector_reduce_max
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 in1_size ?= 524288
 out_size ?= 4
 trace_size ?= 1024

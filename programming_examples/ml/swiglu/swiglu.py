@@ -19,7 +19,7 @@ from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
-from aie.iron.device import from_name
+from aie.iron.device import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -157,7 +157,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: from_name(o.dev, n_cols=None),
+        device=lambda o: device_from_args(o, n_cols=None),
     )
 
 

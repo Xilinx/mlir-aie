@@ -19,7 +19,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = swiglu
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 length ?= 16384
 cols ?= 4
 

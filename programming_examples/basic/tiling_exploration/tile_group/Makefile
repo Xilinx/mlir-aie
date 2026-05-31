@@ -18,7 +18,6 @@ include ${srcdir}/../../../makefile-common
 
 SHELL := /bin/bash
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 tensor_height ?= 8
 tensor_width ?= 8
 tile_height ?= 2

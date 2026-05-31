@@ -18,7 +18,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = passthrough_dmas
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 LENGTH ?= 4096
 
 aie_py_src = ${targetname}.py

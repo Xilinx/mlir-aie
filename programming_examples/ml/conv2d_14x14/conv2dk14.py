@@ -34,7 +34,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile, from_name
+from aie.iron.device import Tile, device_from_args, from_name
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorAccessPattern
 from aie.utils import config
@@ -455,7 +455,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: from_name(o.dev, n_cols=8 if opts.multi else 1),
+        device=lambda o: device_from_args(o, n_cols=8 if opts.multi else 1),
     )
 
 

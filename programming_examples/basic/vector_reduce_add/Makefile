@@ -13,7 +13,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
 targetname = vector_reduce_add
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 aie_py_src = ${targetname}.py
 aieargs = -d ${devicename}

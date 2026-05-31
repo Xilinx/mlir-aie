@@ -19,7 +19,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = memcpy
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 length ?= 16384
 cols ?= 1
 chans ?= 1

@@ -93,33 +93,43 @@ def from_name(name: str, *, n_cols: int | None = 1) -> Device:
     return getattr(_device_module, cls_name)()
 
 
-def device_from_args(args, *, dev_attr: str = "dev") -> Device:
+def device_from_args(
+    args,
+    *,
+    dev_attr: str = "dev",
+    n_cols: "int | None | str" = "auto",
+) -> Device:
     """Resolve a parsed-argparse namespace to a Device.
 
-    Collapses the boilerplate that every example repeats::
+    Collapses the three boilerplate variants the example suite used to
+    repeat across ~30 sites::
 
-        dev = from_name(args.dev, n_cols=1 if args.dev == "npu" else None)
+        from_name(args.dev, n_cols=None)                          # "use all cols"
+        from_name(args.dev, n_cols=1)                             # "single col"
+        from_name(args.dev, n_cols=None if args.dev=="npu2" else 1)  # the ternary
 
-    into::
-
-        dev = device_from_args(args)
-
-    The single-column-for-npu1, full-width-for-npu2 default reflects the
-    historic Phoenix vs Strix behaviour of the example suite.  Override by
-    setting ``args.n_cols`` to a specific integer.
+    into one helper with an explicit ``n_cols`` knob.
 
     Args:
         args: An ``argparse.Namespace`` with a ``.dev`` attribute (or
-            whatever ``dev_attr`` names).  Optionally also a
-            ``.n_cols`` attribute that overrides the default.
+            whatever ``dev_attr`` names).  When ``n_cols="auto"`` and
+            ``args`` also has an ``.n_cols`` attribute, that attribute
+            overrides the default.
         dev_attr: Name of the device-string attribute on ``args``.
             Defaults to ``"dev"``.
+        n_cols: Column-count selector.  ``"auto"`` (default) preserves
+            the historic Phoenix/Strix behaviour: single column on
+            ``npu``/``npu1``, full width on ``npu2``.  Pass an explicit
+            ``int`` (``1`` for single-col, etc.) or ``None`` (always
+            full width) to override.  Passing through ``args.n_cols``
+            still works when ``n_cols="auto"`` is in effect.
 
     Returns:
         Device instance.
     """
     dev = getattr(args, dev_attr)
-    n_cols = getattr(args, "n_cols", None)
-    if n_cols is None:
-        n_cols = 1 if dev == "npu" else None
+    if n_cols == "auto":
+        n_cols = getattr(args, "n_cols", None)
+        if n_cols is None:
+            n_cols = 1 if dev == "npu" else None
     return from_name(dev, n_cols=n_cols)

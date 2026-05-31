@@ -15,7 +15,6 @@ include ${srcdir}/../../makefile-common
 SHELL := /bin/bash
 
 targetname = layernorm
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 sequence_length ?= 64
 embedding_dim ?= 4096
 
