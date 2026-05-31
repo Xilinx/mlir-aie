@@ -64,8 +64,83 @@ alignas(64) constexpr FlatLUT FLAT_LUT_CD = make_flat_lut_v11();
 } // namespace
 #endif
 
+#if LAYOUT_VARIANT == 15
+// LAYOUT 15 — int8 LUT, 2-byte stride hypothesis.
+// Observed in v14: idx-stride is 2 bytes (not the nominal 4). Pack picks the
+// low byte of an int16 word. So layout each entry as (sentinel, 0) over
+// 2 bytes; AB and CD identical.
+namespace {
+struct FlatLUT8_v15 {
+  int8_t data[512]; // 256 entries × 2 bytes
+};
+constexpr FlatLUT8_v15 make_flat_lut_v15() {
+  FlatLUT8_v15 l{};
+  for (int k = 0; k < 256; ++k) {
+    l.data[k * 2 + 0] = (int8_t)(k - 128);
+    l.data[k * 2 + 1] = 0;
+  }
+  return l;
+}
+alignas(64) constexpr FlatLUT8_v15 FLAT_LUT8_AB = make_flat_lut_v15();
+alignas(64) constexpr FlatLUT8_v15 FLAT_LUT8_CD = make_flat_lut_v15();
+} // namespace
+#endif
+
+#if LAYOUT_VARIANT == 14
+// LAYOUT 14 — int8 LUT path, not previously tested.
+// Use aie::lut<4, int8, int8>: 4 bytes per entry, AB & CD halves. The
+// parallel_lookup fetch path packs the int16 coeff back to int8 at the end
+// (ValueWords==1 branch in detail/aie2/parallel_lookup.hpp line 211), so
+// we get 32-wide int8→int8 lookups per fetch.
+//
+// First-pass layout: each 4-byte entry filled (sentinel, 0, 0, 0); AB and
+// CD identical. Sentinel: lut[k] = k - 128 (identity over int8 input).
+// If output != input we iterate on layout based on the failure pattern.
+namespace {
+struct FlatLUT8 {
+  int8_t data[1024]; // 256 entries × 4 bytes
+};
+constexpr FlatLUT8 make_flat_lut_v14() {
+  FlatLUT8 l{};
+  for (int k = 0; k < 256; ++k) {
+    int8_t v = (int8_t)(k - 128);
+    l.data[k * 4 + 0] = v;
+    l.data[k * 4 + 1] = 0;
+    l.data[k * 4 + 2] = 0;
+    l.data[k * 4 + 3] = 0;
+  }
+  return l;
+}
+alignas(64) constexpr FlatLUT8 FLAT_LUT8_AB = make_flat_lut_v14();
+alignas(64) constexpr FlatLUT8 FLAT_LUT8_CD = make_flat_lut_v14();
+} // namespace
+#endif
+
 extern "C" {
 
+#if LAYOUT_VARIANT == 14 || LAYOUT_VARIANT == 15
+void pl_lookup(int8_t *in, int8_t *out, int32_t n_bytes) {
+  using lut_t = aie::lut<4, int8, int8>;
+  int8_t __aie_dm_resource_a *p_ab =
+      (int8_t __aie_dm_resource_a *)FLAT_LUT8_AB.data;
+  int8_t __aie_dm_resource_b *p_cd =
+      (int8_t __aie_dm_resource_b *)FLAT_LUT8_CD.data;
+  lut_t my_lut(256, (const void *)p_ab, (const void *)p_cd);
+#ifndef STEP_BITS
+#define STEP_BITS 2 // linear_approx int8 sets min_step_bits = 2
+#endif
+  aie::parallel_lookup<uint8, lut_t, aie::lut_oor_policy::truncate> lookup(
+      my_lut, STEP_BITS);
+
+  for (int i = 0; i < n_bytes; i += 32) {
+    aie::vector<int8, 32> v_in = aie::load_v<32>((int8_t *)(in + i));
+    aie::vector<uint8, 32> v_idx =
+        aie::add(v_in.cast_to<uint8>(), aie::broadcast<uint8, 32>(128));
+    aie::vector<int8, 32> v_res = lookup.fetch(v_idx);
+    aie::store_v((int8_t *)(out + i), v_res);
+  }
+}
+#else
 void pl_lookup(int8_t *in, int8_t *out, int32_t n_bytes) {
   // Build LUT in stack (256 sentinel int16 values, with chosen layout).
   // 256 entries × 4 bytes/entry (offset+slope pair) × 2 copies (bank-dup) =
@@ -226,5 +301,6 @@ void pl_lookup(int8_t *in, int8_t *out, int32_t n_bytes) {
       out[i + j] = (int8_t)v_res[j];
   }
 }
+#endif
 
 } // extern "C"

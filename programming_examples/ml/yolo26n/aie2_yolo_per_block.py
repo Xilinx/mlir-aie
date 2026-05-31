@@ -170,13 +170,19 @@ def _build_m0(act_in, manifest):
     op_meta = _op_meta(manifest, layer.manifest_name)
     right_shift = op_meta["right_shift"]  # post-MAC shift baked into requant
 
-    # Weights: load raw (16,3,3,3) then pad I dim to 8 with zeros.
+    # Weights: load raw (16,3,3,3), pad I dim to 8 with zeros, then pre-pack
+    # to the kernel's mmul.B layout: [oc_tile][ky][kx][ic_inner=8][oc_inner=8].
+    # Doing the pack here means the kernel just does aie::load_v<64> at the
+    # right offset — no per-row pack_wts() on the hot path.
     wts_raw_sz = int(np.prod(op_meta["weights_shape"]))  # 432
     wts_raw = _load_bin(op_meta["weights_file"], np.int8, wts_raw_sz)
     wts_raw = wts_raw.reshape(16, 3, 3, 3)
     wts_padded = np.zeros((16, in_c, 3, 3), dtype=np.int8)
-    wts_padded[:, :3, :, :] = wts_raw
-    wts_flat = wts_padded.reshape(-1)
+    wts_padded[:, :3, :, :] = wts_raw  # (O=16, I=8, Y=3, X=3)
+    oc_tiles = out_c // 8
+    w_byoc = wts_padded.reshape(oc_tiles, 8, in_c, 3, 3)  # (oc_t, oo, I, Y, X)
+    w_packed = w_byoc.transpose(0, 3, 4, 2, 1)  # (oc_t, Y, X, I, oo=8)
+    wts_flat = np.ascontiguousarray(w_packed).reshape(-1)
     assert wts_flat.size == wts_padded_sz
 
     # Bias: 16 INT32 values, already promoted as (bias_i8 << bias_pre_shift).

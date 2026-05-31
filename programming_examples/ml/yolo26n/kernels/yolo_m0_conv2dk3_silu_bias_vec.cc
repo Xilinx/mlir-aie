@@ -1,15 +1,15 @@
 //===- yolo_m0_conv2dk3_silu_bias_vec.cc ---------------------------*- C++
 //-*-===//
 //
-// Deep-opt vectorized stem kernel for m0: 3x3 stride-2 INT8 conv, raw OIYX
-// weight layout (in_c=3 padded to 8 — not OIYXI8O8 since in_c isn't
-// 8-aligned). Drop-in .o-level replacement.
+// Deep-opt vectorized stem kernel for m0: 3x3 stride-2 INT8 conv. Weights
+// arrive host-pre-packed as [oc_tile][ky][kx][ic_inner=8][oc_inner=8] (the
+// mmul.B layout), so the kernel does aie::load_v<64> at the right offset
+// per (ky,kx) — no per-row pack on the hot path.
 //
-// Inner reduction: aie::mmul<4, 8, 8, int8, int8>. The B-operand is
-// pre-packed once per (oc_tile) into a 9×64-byte buffer covering all
-// 3×3 (ky, kx) tiles. K=8 with only 3 real ic + 5 zero-padded ic
-// (host-managed) means 62.5% of the K throughput is wasted on zeros;
-// fixing that needs a smaller-K mmul + host weight re-pack (Phase 2).
+// Inner reduction: aie::mmul<4, 8, 8, int8, int8>. K=8 with only 3 real ic
+// + 5 zero-padded ic (host-managed) means 62.5% of the K throughput is
+// wasted on zeros; fixing that needs a smaller-K mmul + different pack
+// (Phase 2).
 //
 // Deep-opt levers in this pass:
 //   - Compile-time shape #defines: in_w=512, in_c=8, out_c=16, K=3.
@@ -68,34 +68,12 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
   return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
 }
 
-static inline int wts_idx_oiyx(int oc_full, int ic_full, int ky, int kx) {
-  // OIYX raw: byte[oc][ic][ky][kx]. in_c=8 padded.
-  return ((oc_full * kInC + ic_full) * kKH + ky) * kKW + kx;
-}
-
 using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
-// Pack the 9 (ky, kx) weight tiles for one oc_tile into a contiguous
-// 9 × 64-byte buffer in row-major [ic_inner=8][oc_inner=8] order so a
-// single aie::load_v<64> per (ky, kx) yields the mmul.B vector.
-static __attribute__((always_inline)) inline void
-pack_wts(const int8_t *__restrict wts, int oc_tile_base,
-         int8_t *__restrict wbuf) {
-  // No UNROLL_FULL — peano blows up compile time on 9×8×8=576 unrolled
-  // iters and the pack runs once per (oc_tile) per call, dwarfed by
-  // the inner mmul work anyway.
-  for (int ky = 0; ky < kKH; ++ky) {
-    for (int kx = 0; kx < kKW; ++kx) {
-      int wt_off = (ky * kKW + kx) * 64;
-      for (int ii = 0; ii < 8; ++ii) {
-        for (int oo = 0; oo < 8; ++oo) {
-          wbuf[wt_off + ii * 8 + oo] =
-              wts[wts_idx_oiyx(oc_tile_base + oo, ii, ky, kx)];
-        }
-      }
-    }
-  }
-}
+// Weights are pre-packed host-side as [oc_tile][ky][kx][ic_inner=8][oc_inner=8],
+// so the per-(ky,kx) mmul.B vector is at byte offset
+// (oc_tile * 9 + ky * 3 + kx) * 64 in the input buffer.
+static constexpr int kWtsBytesPerOcTile = 9 * 64; // 576
 
 // DMA-deinterleaved layout: each row is [even_half (kInW/2 pixels),
 // odd_half (kInW/2 pixels)] via memtile dims_to_stream in _build_m0.
@@ -201,10 +179,8 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
   // keeps the body amenable to oc_tiles=4 (out_c=32) callers in the future.
   AIE_LOOP_RANGE(kOcTiles / 2, kOcTiles / 2)
   for (int oc_pair = 0; oc_pair < kOcTiles / 2; ++oc_pair) {
-    alignas(32) int8_t wbuf_a[9 * 64];
-    alignas(32) int8_t wbuf_b[9 * 64];
-    pack_wts(wts, (oc_pair * 2 + 0) * 8, wbuf_a);
-    pack_wts(wts, (oc_pair * 2 + 1) * 8, wbuf_b);
+    const int8_t *__restrict wts_a = wts + (oc_pair * 2 + 0) * kWtsBytesPerOcTile;
+    const int8_t *__restrict wts_b = wts + (oc_pair * 2 + 1) * kWtsBytesPerOcTile;
     const int oc_full_base_a = (oc_pair * 2 + 0) * 8;
     const int oc_full_base_b = (oc_pair * 2 + 1) * 8;
 
@@ -227,8 +203,8 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
           aie::vector<int8, 32> in_a =
               load_a_deinterleaved_left(line_ptr, kx);
           int wt_off = (ky * kKW + kx) * 64;
-          acc_a.mac(in_a, aie::load_v<64>(&wbuf_a[wt_off]));
-          acc_b.mac(in_a, aie::load_v<64>(&wbuf_b[wt_off]));
+          acc_a.mac(in_a, aie::load_v<64>(&wts_a[wt_off]));
+          acc_b.mac(in_a, aie::load_v<64>(&wts_b[wt_off]));
         }
       }
 
@@ -252,8 +228,8 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
           aie::vector<int8, 32> in_a =
               load_a_deinterleaved_interior(line_ptr, x_tile, kx);
           int wt_off = (ky * kKW + kx) * 64;
-          acc_a.mac(in_a, aie::load_v<64>(&wbuf_a[wt_off]));
-          acc_b.mac(in_a, aie::load_v<64>(&wbuf_b[wt_off]));
+          acc_a.mac(in_a, aie::load_v<64>(&wts_a[wt_off]));
+          acc_b.mac(in_a, aie::load_v<64>(&wts_b[wt_off]));
         }
       }
 
