@@ -7,6 +7,13 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 """14x14 Conv2D — Iron API designs (single-core + 32-core) with @iron.jit.
 
+KNOWN: ``make run_py`` fails on Strix Halo (npu2). The aie2p variant of
+``conv2dk14.cc`` exists but produces output whose layout doesn't match
+what ``test.py``'s reshape assumes (max abs diff ~70 against golden range
+~[56, 73]). Diffing the aie2 vs aie2p ``conv2dk14.cc`` is the next step;
+expect to update the test's output-reorder spec. Tracked in
+``project_aie2p_kernel_port_gaps``.
+
 Two parallelism modes share the same conv2dk14 sub-kernel:
 
   * single-core (default): one shim DMA in/out pair, one worker; processes
