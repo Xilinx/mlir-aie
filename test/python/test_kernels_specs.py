@@ -36,7 +36,6 @@ from ml_dtypes import bfloat16
 from aie.iron import kernels
 from aie.iron.kernel import ExternalFunction
 
-
 # ---------------------------------------------------------------------------
 # Spec table
 # ---------------------------------------------------------------------------
@@ -610,7 +609,10 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=9,
         expected_name="bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new",
         name_variants=[
-            (dict(block_index=14), "bn14_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new"),
+            (
+                dict(block_index=14),
+                "bn14_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new",
+            ),
         ],
         invalid_kwargs=[(dict(block_index=12), "block_index")],
     ),
@@ -621,7 +623,10 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=14,
         expected_name="bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
         name_variants=[
-            (dict(block_index=14), "bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new"),
+            (
+                dict(block_index=14),
+                "bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
+            ),
         ],
         invalid_kwargs=[(dict(block_index=12), "block_index")],
     ),

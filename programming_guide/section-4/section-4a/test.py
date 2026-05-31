@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 
+import argparse
 import numpy as np
 import sys
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import aie.iron as iron
 import aie.utils
 import aie.utils.test as test_utils
+from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.npukernel import NPUKernel
 
 
@@ -97,6 +99,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     opts = p.parse_args(sys.argv[1:])
     main(opts)

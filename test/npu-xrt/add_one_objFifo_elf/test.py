@@ -12,12 +12,14 @@
 # REQUIRES: dont_run
 # RUN: echo FAIL | FileCheck %s
 # CHECK: PASS
+import argparse
 import sys
 import numpy as np
 
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
+from aie.utils.hostruntime.argparse import add_runtime_args
 
 IN_SIZE = 64
 OUT_SIZE = 64
@@ -44,6 +46,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     opts = p.parse_args(sys.argv[1:])
     sys.exit(main(opts))

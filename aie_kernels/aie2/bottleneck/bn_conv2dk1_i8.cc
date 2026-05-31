@@ -713,7 +713,6 @@ void conv2dk1_ui8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 //*****************************************************************************
 extern "C" {
 
-
 #ifdef BN13_1_INPUT_SPLIT_PARTIAL_PUT_UI8_UI8_CAS_WIDTH_NEW
 void bn13_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new(
     uint8_t *input, int8_t *kernels, const int32_t input_width,

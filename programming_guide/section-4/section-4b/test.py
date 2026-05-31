@@ -5,11 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+import argparse
 import numpy as np
 import sys
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
+from aie.utils.hostruntime.argparse import add_runtime_args
 
 
 def main(opts):
@@ -70,6 +72,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p, with_io_sizes=True)
     opts = p.parse_args(sys.argv[1:])
     main(opts)

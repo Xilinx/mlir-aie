@@ -910,7 +910,6 @@ void conv2dk1_skip_ui8_i8_i8_get(uint8_t *input0, int8_t *kernels,
 
 #endif // GET
 
-
 #ifdef REGULAR
 #ifdef SCALAR
 
