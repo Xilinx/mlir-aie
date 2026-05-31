@@ -405,7 +405,13 @@ jobs:
     # are some amount ahead in time (maybe 12 hours?). that means if you try to rebuild at any point
     # within that window ccache will not hit because the timestamps of the cached objects are ahead of
     # your build time. I'm not 100% sure about this explanation/mechanism but this fixed ccache misses for me.
+    #
+    # Windows cibuildwheel doesn't use a Linux docker container, so the timestamp drift doesn't
+    # happen there. Also, the per-file `-exec ... \;` blows MSYS bash's env-block limit on the
+    # Windows runner ("find: The environment is too large for exec()") because each spawned
+    # `touch` inherits the giant Visual Studio INCLUDE/LIB/Path block. Skip on Windows.
     - name: Reset datetime ccache
+      if: runner.os != 'Windows'
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |

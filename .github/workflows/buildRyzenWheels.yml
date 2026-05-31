@@ -428,8 +428,12 @@ jobs:
           done
           python -m zipfile -e mlir*.whl .
   
-          # Linux-style timestamp magic should work fine on Windows.
-          find "mlir${NO_RTTI_UNDERSCORE}" -exec touch -a -m -t 201108231405.14 {} \;
+          # Normalize timestamps on the unpacked MLIR wheel so ccache hashes stay stable
+          # across runs. Per-file `find -exec touch ... \;` blows MSYS bash's env-block
+          # limit on the Windows runner ("find: The environment is too large for exec()")
+          # because each spawned `touch` inherits the giant Visual Studio INCLUDE/LIB/Path
+          # block. One python process avoids the per-file fork and the env explosion.
+          python -c "import os, pathlib; ts = 1314108314; [os.utime(p, (ts, ts)) for p in pathlib.Path('mlir${NO_RTTI_UNDERSCORE}').rglob('*')]"
   
           # Match Linux wheel version metadata on non-tag builds.
           export DATETIME=$(date +"%Y%m%d%H")
