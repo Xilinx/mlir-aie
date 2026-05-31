@@ -5,36 +5,31 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-import argparse
-import sys
-import numpy as np
-import aie.iron as iron
+"""Tutorial: in-place tile-by-tile transform on the NPU.
 
+Applies ``lambda a: a + 1`` to each ``tile_size``-element tile of a
+single 1-D int32 tensor in place via :func:`aie.iron.algorithms.for_each`.
+"""
+
+import argparse
+
+import numpy as np
+
+import aie.iron as iron
 from aie.iron.algorithms import for_each
+from aie.utils.verify import assert_pass
 
 
 def main():
-
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose output"
-    )
-    parser.add_argument(
-        "-n",
-        "--num-elements",
-        type=int,
-        default=1024,
-        help="Number of elements (default: 1024)",
-    )
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-n", "--num-elements", type=int, default=1024)
     args = parser.parse_args()
 
     dtype = np.int32
-    # Construct two input random tensors and an output zeroed tensor
-    # The three tensor are in memory accessible to the NPU
     tensor = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
-    initial_tensor = tensor.numpy().copy()
+    initial = tensor.numpy().copy()
 
-    # JIT compile the algorithm
     iron.jit(for_each)(
         tensor,
         func=lambda a: a + 1,
@@ -43,27 +38,13 @@ def main():
         tile_size=16,
     )
 
-    # Check the correctness of the result
-    e = np.equal(initial_tensor + 1, tensor.numpy())
-    errors = np.size(e) - np.count_nonzero(e)
-
-    # Optionally, print the results
     if args.verbose:
         print(f"{'input':>6} + 1 = {'output':>6}")
         print("-" * 22)
-        count = tensor.numel()
-        for idx, (a, b) in enumerate(zip(initial_tensor[:count], tensor[:count])):
+        for idx, (a, b) in enumerate(zip(initial[:10], tensor[:10])):
             print(f"{idx:2}: {a:6} + 1 = {b:6}")
 
-    # If the result is correct, exit with a success code.
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
-        sys.exit(-1)
+    assert_pass(initial + 1, tensor.numpy(), fail_msg="for_each output mismatch")
 
 
 if __name__ == "__main__":
