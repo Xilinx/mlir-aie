@@ -5,18 +5,21 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-import sys
-import math
-
-import time
-import os
-import numpy as np
 import argparse
-from aie.utils.hostruntime.argparse import add_runtime_args
-from aie.utils.test import create_npu_kernel
-import aie.iron as iron
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
+import math
+import os
+import sys
+import time
 from pathlib import Path
+
+import ml_dtypes
+import numpy as np
+
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
+from aie.utils.hostruntime.argparse import add_runtime_args
+from aie.utils.ml import DataShaper
+from aie.utils.test import create_npu_kernel
 
 
 def get_evm(array_len, gold, dut):
@@ -126,8 +129,6 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    import ml_dtypes
-
     aie_output_int = aie_output.astype(int)
     aie_output_int.tofile(log_folder + "/aie_output_int.txt", sep="\n", format="%d")
     aie_output_bfloat16 = aie_output.view(ml_dtypes.bfloat16)
@@ -144,8 +145,6 @@ def main(opts):
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
 
     ref = np.loadtxt("./data/g0b.txt")
-
-    from aie.utils.ml import DataShaper
 
     ds = DataShaper()
     reshape_ref = ref.reshape(8, 64, 512)

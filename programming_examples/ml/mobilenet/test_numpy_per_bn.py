@@ -18,13 +18,16 @@ network (max=2 vs golden) comes from blocks that don't have standalone
 fixtures: init / bn0 / post_l1 / post_l2.
 """
 
-import os
 import json
+import os
+import shutil
 import sys
+import tempfile
+
 import numpy as np
 
-from network_spec import block as nsblock
 from mobilenet_numpy import _run_block
+from network_spec import block as nsblock
 
 ROOT = os.path.dirname(__file__)
 A_DATA = os.path.join(ROOT, "bottleneck_A/data/")
@@ -79,8 +82,6 @@ def main():
         # Per-bn block reads bnN_chain.txt (NOT bnN_single.txt — _run_block expects the chain naming).
         # We symlink in a temp dir... actually simpler: rename single -> chain at load.
         # Workaround: create a small staging dir with `bnN_chain.txt` -> single.
-        import shutil, tempfile
-
         with tempfile.TemporaryDirectory() as tmp:
             shutil.copy(
                 A_DATA + f"bn{name[2:]}_single.txt", tmp + f"/bn{name[2:]}_chain.txt"

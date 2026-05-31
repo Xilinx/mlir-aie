@@ -27,11 +27,15 @@ End-to-end verification lives in ``test.py``.
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
+import torch
+import torch.nn as nn
 
 import aie.iron as iron
+from aie.utils.ml import DataShaper
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile, device_from_args, from_name
@@ -387,13 +391,6 @@ _INT8_SCALE = 0.03125
 
 def _run_and_verify(opts):
     """Compile, run on NPU, and check against a torch Conv2d golden."""
-    import sys
-
-    import torch
-    import torch.nn as nn
-
-    from aie.utils.ml import DataShaper
-
     design = conv2dk14_multi if opts.multi else conv2dk14
     width, height, ksz = int(opts.width), int(opts.height), int(opts.scale)
     ci, co = _IN_CHANNELS, _OUT_CHANNELS

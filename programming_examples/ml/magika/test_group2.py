@@ -5,18 +5,20 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-import sys
-import math
-
-import time
-import os
-import numpy as np
 import argparse
+import math
+import os
+import sys
+import time
+from pathlib import Path
+
+import ml_dtypes
+import numpy as np
+
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
 from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.test import create_npu_kernel
-import aie.iron as iron
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
-from pathlib import Path
 
 
 def get_evm(array_len, gold, dut):
@@ -96,8 +98,6 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------
-    import ml_dtypes
-
     before_input_orig = int_inp.astype(dtype_in)
     before_input_orig.tofile(log_folder + "/before_g2_orig.txt", sep=",", format="%d")
 
