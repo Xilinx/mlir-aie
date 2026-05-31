@@ -466,6 +466,12 @@ def _build_conv_stride_block_streamed(
     wts_data = _load_bin(op_meta["weights_file"], np.int8, wts_sz_total)
     bias_data = _load_bin(op_meta["bias_file"], np.int32, out_c)
 
+    # m5 mmul A-layout pre-pack: memtile reshapes (row, col, ic) into
+    # (row, parity, ic_tile, col_in_half, ic_inner) so the kernel can fetch
+    # mmul A via a single vec_load<32>. Kernel side gated by
+    # -DM5_PREPACK_LAYOUT.
+    prepack_input = block_name == "m5"
+
     n_splits = out_c // oc_per_chunk
     # Weight chunk: (oc_per_chunk/8, in_c/8, 3, 3, 8, 8) bytes — slice of the
     # OIYXI8O8-packed weights along the oc_outer dim. Since OIYXI8O8's first
@@ -517,6 +523,19 @@ def _build_conv_stride_block_streamed(
     # via_DMA on the block-output fifo so standalone (shim drain) and chain
     # (next block's input) share the same DMA-routed transport; see m0 above.
     act_out = ObjectFifo(_i8((out_w, 1, out_c)), depth=out_depth, via_DMA=True)
+
+    if prepack_input:
+        in_half = in_w // 2
+        ic_tiles_m = in_c // 8
+        PREPACK_DIMS = [
+            (2, in_c),
+            (ic_tiles_m, 8),
+            (in_half, 2 * in_c),
+            (8, 1),
+        ]
+        act_in = act_in.cons().forward(
+            depth=6, dims_to_stream=PREPACK_DIMS, name="m5_in_prepack"
+        )
 
     k = Kernel(
         f"yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_i8_i8_{block_name}",
@@ -603,7 +622,7 @@ def _build_conv_stride_block_streamed(
     w = Worker(
         block_fn,
         fn_args=[
-            act_in.cons(depth=3),
+            act_in.cons(depth=5 if prepack_input else 3),
             act_out.prod(depth=out_depth),
             wts_fifo.cons(depth=1),
             bias_buf,
@@ -2719,7 +2738,9 @@ _BUILDERS = {
     # via chunked_dma.ChunkedWeightStream (fork of StaticWeightStream that
     # actually emits N source BDs, one per chunk).
     "m3": lambda act_in, m: _build_conv_stride_block_streamed("m3", act_in, m),
-    "m5": lambda act_in, m: _build_conv_stride_block_streamed("m5", act_in, m),
+    "m5": lambda act_in, m: _build_conv_stride_block_streamed(
+        "m5", act_in, m, out_depth=1
+    ),
     # m7 out_depth=1 (vs default 2): m8 4-tile in chain context overflows
     # tile A=(5,3)'s 64KB L1 if the m7→m8 cons buffer is 8KB (depth=2 × 4KB
     # element). depth=1 → 4KB cons buffer, matches m8 standalone act_in

@@ -75,6 +75,18 @@ static constexpr int kXTiles = kOutputWidth / 4;
 static constexpr int kChunkOcTiles = kOcPerChunk / 8;
 static constexpr int kChunkOcPairs = kChunkOcTiles / 2;
 
+#ifdef M5_PREPACK_LAYOUT
+// Pre-packed deinterleaved input layout.
+// Producer (memtile dims_to_stream) writes input as
+//   act[row][parity][ic_tile][col_in_half][ic_inner]
+// where parity ∈ {even, odd} (= col & 1), ic_tile = ic/8, col_in_half = col/2,
+// ic_inner = ic & 7. Lets the mmul A-input (4 pix × 8 ic = 32 bytes) be
+// fetched via single vec_load<32> per (ic_t, x_tile) — no scalar a_buf pack.
+// kx=1 → even half; kx=0,2 → odd half (kx=0 unaligned by 1 pixel, 2-load+shfl).
+static constexpr int kIcStrideInHalf = (kInputWidth / 2) * 8; // 32×8 = 256
+static constexpr int kHalfBytes = kIcTiles * kIcStrideInHalf;
+#endif
+
 static_assert(kInputChannels % 8 == 0, "YOLO_IN_C must be a multiple of 8");
 static_assert(kOcPerChunk % 8 == 0,
               "YOLO_OC_PER_CHUNK must be a multiple of 8");
@@ -115,6 +127,51 @@ static inline int wts_chunk_idx_oiyxi8o8(int chunk_oc_full, int ic_full, int ky,
   return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 +
          oc_i;
 }
+
+#ifdef M5_PREPACK_LAYOUT
+// Interior x_tile (1..x_tiles-2): all 3 kx land fully in-range.
+//   kx=1 → even half, aligned vec_load<32>
+//   kx=2 → odd half, aligned vec_load<32>
+//   kx=0 → odd half, unaligned by 1 pixel (-8 bytes) → 2 aligned loads +
+//          shuffle_down 24, same trick as m0.
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+load_a_prepacked_interior(const int8_t *__restrict line_ptr, int ic_t,
+                          int x_tile, int kx) {
+  if (kx == 1) {
+    return aie::load_v<32>(line_ptr + ic_t * kIcStrideInHalf + x_tile * 32);
+  }
+  if (kx == 2) {
+    return aie::load_v<32>(line_ptr + kHalfBytes + ic_t * kIcStrideInHalf +
+                           x_tile * 32);
+  }
+  // kx == 0: odd half at (x_tile-1)*32, shuffle_down 24 → effective offset
+  // (x_tile*32 - 8) = pixel index (4*x_tile - 1) within odd half.
+  const int base = kHalfBytes + ic_t * kIcStrideInHalf + (x_tile - 1) * 32;
+  aie::vector<int8, 32> lo = aie::load_v<32>(line_ptr + base);
+  aie::vector<int8, 32> hi = aie::load_v<32>(line_ptr + base + 32);
+  aie::vector<int8, 64> combined = aie::concat(lo, hi);
+  return aie::shuffle_down(combined, 24).template extract<32>(0);
+}
+
+// Left edge (x_tile=0): col=-1 (p=0, kx=0) is invalid → zero pixel.
+// kx=1 and kx=2 use aligned vec_load<32> at offset 0.
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+load_a_prepacked_left(const int8_t *__restrict line_ptr, int ic_t, int kx) {
+  if (kx == 1) {
+    return aie::load_v<32>(line_ptr + ic_t * kIcStrideInHalf);
+  }
+  if (kx == 2) {
+    return aie::load_v<32>(line_ptr + kHalfBytes + ic_t * kIcStrideInHalf);
+  }
+  // kx == 0: load odd[ic_t][0..3] (cols {1,3,5,7}), shuffle to drop col 7 and
+  // prepend a zero pixel → result [zero, col1, col3, col5].
+  aie::vector<int8, 32> v =
+      aie::load_v<32>(line_ptr + kHalfBytes + ic_t * kIcStrideInHalf);
+  aie::vector<int8, 32> z = aie::zeros<int8, 32>();
+  aie::vector<int8, 64> combined = aie::concat(z, v);
+  return aie::shuffle_down(combined, 24).template extract<32>(0);
+}
+#endif // M5_PREPACK_LAYOUT
 
 static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
     int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts_chunk,
@@ -222,6 +279,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
           int8_t *line_ptr = line[ky];
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
+#ifdef M5_PREPACK_LAYOUT
+            aie::vector<int8, 32> in_a =
+                load_a_prepacked_left(line_ptr, ic_t, kx);
+#else
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;
             for (int p = 0; p < 4; ++p) {
@@ -238,6 +299,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
             if (!any_valid)
               continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+#endif
             int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
                                              kernel_height, kernel_width);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
@@ -262,6 +324,12 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
           int8_t *line_ptr = line[ky];
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
+#ifdef M5_PREPACK_LAYOUT
+            // For m5 (in_w=64, x_tile=7): all in_cols [55..63] valid. Use
+            // interior helper (no bounds issue).
+            aie::vector<int8, 32> in_a =
+                load_a_prepacked_interior(line_ptr, ic_t, x_tile, kx);
+#else
             alignas(32) int8_t a_buf[32];
             bool any_valid = false;
             for (int p = 0; p < 4; ++p) {
@@ -278,6 +346,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
             if (!any_valid)
               continue;
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+#endif
             int wts_off = wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles,
                                              kernel_height, kernel_width);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
@@ -387,6 +456,12 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
 
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
+#ifdef M5_PREPACK_LAYOUT
+            aie::vector<int8, 32> in_a_a =
+                load_a_prepacked_interior(line_ptr, ic_t, x_tile_a, kx);
+            aie::vector<int8, 32> in_a_b =
+                load_a_prepacked_interior(line_ptr, ic_t, x_tile_a + 1, kx);
+#else
             // Gather x_tile_a inputs: 4 cols × 8 ic-bytes, 64-bit word copies.
             alignas(32) int8_t a_buf_a[32];
             int8_t *sa0 =
@@ -420,6 +495,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
 
             aie::vector<int8, 32> in_a_a = aie::load_v<32>(a_buf_a);
             aie::vector<int8, 32> in_a_b = aie::load_v<32>(a_buf_b);
+#endif
 
             // Two weight banks, each shared across both X positions.
             int wts_off_0 = wts_oc_pair_base +
