@@ -73,7 +73,7 @@ static constexpr int kIcTiles = kInputChannels / 8;
 static constexpr int kOutputWidth = kInputWidth / 2;
 static constexpr int kXTiles = kOutputWidth / 4;
 static constexpr int kChunkOcTiles = kOcPerChunk / 8;
-static constexpr bool kOcPair = (kChunkOcTiles == 2);
+static constexpr int kChunkOcPairs = kChunkOcTiles / 2;
 
 static_assert(kInputChannels % 8 == 0, "YOLO_IN_C must be a multiple of 8");
 static_assert(kOcPerChunk % 8 == 0,
@@ -83,13 +83,13 @@ static_assert(
     "YOLO_IN_W must be a multiple of 8 (output_width/4 = x_tiles ≥ 1)");
 static_assert(kInteriorMode == 1 || kInteriorMode == 2,
               "YOLO_INTERIOR_MODE must be 1 (OC×2 single-X) or 2 (2X×2OC)");
-// Both interior modes rely on the OC×2 fold (two weight banks per call) for
-// their epilogue + addressing. The current per-block builds (m3/m5/m7) all
-// pass oc_per_chunk=16 → chunk_oc_tiles=2. Bump YOLO_OC_PER_CHUNK and add a
-// non-OC-paired variant if a future caller ever needs a different cadence.
+// Interior modes rely on the OC×2 fold (two weight banks per call). We
+// support oc_per_chunk in multiples of 16 (= chunk_oc_tiles even & ≥ 2);
+// the interior body loops over OC pairs internally, amortizing per-call
+// overhead when callers can afford bigger chunks.
 static_assert(
-    kOcPair,
-    "kOcPair (chunk_oc_tiles == 2) is required; pass YOLO_OC_PER_CHUNK=16");
+    kChunkOcTiles >= 2 && (kChunkOcTiles % 2 == 0),
+    "kChunkOcTiles must be a multiple of 2 (oc_per_chunk a multiple of 16)");
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -339,16 +339,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
   //           interior tiles.
   // The non-selected variant is dead-stripped by `if constexpr`.
   // -------------------------------------------------------------------------
-  constexpr int oc_full_base_0_offset = 0;
-  constexpr int oc_full_base_1_offset = 8;
-  const int oc_full_base_0 = oc_offset + oc_full_base_0_offset;
-  const int oc_full_base_1 = oc_offset + oc_full_base_1_offset;
-  // Bias seeds for the two OC banks; reused across all interior x_tiles.
-  auto bias_acc_oc0 = make_bias_acc(&bias[oc_full_base_0]);
-  auto bias_acc_oc1 = make_bias_acc(&bias[oc_full_base_1]);
-  // Per-(ic,ky,kx) offset between the two weight banks: stepping chunk_oc_t
-  // by 1 adds (ic_tiles * kH * kW * 64) bytes to wts_chunk_tile_off. With
-  // ic_tiles, kH, kW all compile-time constants this folds to a literal.
+  // Per-(ic,ky,kx) offset between two consecutive OC banks: stepping
+  // chunk_oc_t by 1 adds (ic_tiles * kH * kW * 64) bytes to wts_chunk_tile_off.
   constexpr int wts_oc_bank_stride = (kIcTiles * kKernelH * kKernelW) << 6;
 
   if constexpr (kInteriorMode == 2) {
@@ -356,6 +348,19 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
     constexpr int n_interior = kXTiles - 2; // x_tile in [1, x_tiles-2]
     constexpr int n_x_pairs = n_interior >> 1;
     constexpr bool has_x_tail = (n_interior & 1) != 0;
+
+    // Outer loop over OC-pairs within this chunk. Each pair handles 16 OC
+    // (2 tiles × 8); chunk_oc_pairs = chunk_oc_tiles / 2. For oc_per_chunk=16
+    // this is 1 iter (same as before); for oc_per_chunk=32 it's 2 iters,
+    // amortizing per-call setup over more output channels.
+    AIE_LOOP_RANGE(1, 4)
+    for (int oc_pair_idx = 0; oc_pair_idx < kChunkOcPairs; ++oc_pair_idx) {
+      const int oc_full_base_0 = oc_offset + oc_pair_idx * 16 + 0;
+      const int oc_full_base_1 = oc_offset + oc_pair_idx * 16 + 8;
+      auto bias_acc_oc0 = make_bias_acc(&bias[oc_full_base_0]);
+      auto bias_acc_oc1 = make_bias_acc(&bias[oc_full_base_1]);
+      const int wts_oc_pair_base = (oc_pair_idx * 2) *
+                                   (kIcTiles * kKernelH * kKernelW * 64);
 
     // 2X×2OC pair loop. m3 → 7 pairs, m5 → 3 pairs.
     AIE_LOOP_RANGE(1, 7)
@@ -415,7 +420,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
             aie::vector<int8, 32> in_a_b = aie::load_v<32>(a_buf_b);
 
             // Two weight banks, each shared across both X positions.
-            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
+            int wts_off_0 = wts_oc_pair_base +
+                            wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
                                                kernel_height, kernel_width);
             aie::vector<int8, 64> in_b_0 =
                 aie::load_v<64>(&wts_chunk[wts_off_0]);
@@ -499,7 +505,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
             *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
                 *reinterpret_cast<const uint64_t *>(src3);
             aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
+            int wts_off_0 = wts_oc_pair_base +
+                            wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
                                                kernel_height, kernel_width);
             aie::vector<int8, 64> in_b_0 =
                 aie::load_v<64>(&wts_chunk[wts_off_0]);
@@ -513,52 +520,64 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       write_x_tile_result(acc_0, x_out_base, oc_full_base_0);
       write_x_tile_result(acc_1, x_out_base, oc_full_base_1);
     }
+    } // end OC-pair loop
   } else {
     // ----- OC×2 single-X interior (m7) -----
-    AIE_LOOP_RANGE(2, 14)
-    for (int x_tile = 1; x_tile < x_tiles - 1; ++x_tile) {
-      MMUL4x8x8 acc_0;
-      MMUL4x8x8 acc_1;
-      acc_0 = bias_acc_oc0;
-      acc_1 = bias_acc_oc1;
-      const int x_out_base = x_tile * 4;
-      const int x_in_base = 2 * x_out_base - 1;
-      AIE_LOOP_RANGE(8, 16)
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        AIE_LOOP_RANGE(2, 3)
-        for (int ky = ky_start; ky < ky_end; ++ky) {
-          int8_t *line_ptr = line[ky];
-          AIE_LOOP_UNROLL_FULL
-          for (int kx = 0; kx < 3; ++kx) {
-            alignas(32) int8_t a_buf[32];
-            int8_t *src0 =
-                line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
-            int8_t *src1 = src0 + 2 * input_channels;
-            int8_t *src2 = src0 + 4 * input_channels;
-            int8_t *src3 = src0 + 6 * input_channels;
-            *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
-                *reinterpret_cast<const uint64_t *>(src0);
-            *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
-                *reinterpret_cast<const uint64_t *>(src1);
-            *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
-                *reinterpret_cast<const uint64_t *>(src2);
-            *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
-                *reinterpret_cast<const uint64_t *>(src3);
-            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-            int wts_off_0 = wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
-                                               kernel_height, kernel_width);
-            aie::vector<int8, 64> in_b_0 =
-                aie::load_v<64>(&wts_chunk[wts_off_0]);
-            aie::vector<int8, 64> in_b_1 =
-                aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
-            acc_0.mac(in_a, in_b_0);
-            acc_1.mac(in_a, in_b_1);
+    AIE_LOOP_RANGE(1, 4)
+    for (int oc_pair_idx = 0; oc_pair_idx < kChunkOcPairs; ++oc_pair_idx) {
+      const int oc_full_base_0 = oc_offset + oc_pair_idx * 16 + 0;
+      const int oc_full_base_1 = oc_offset + oc_pair_idx * 16 + 8;
+      auto bias_acc_oc0 = make_bias_acc(&bias[oc_full_base_0]);
+      auto bias_acc_oc1 = make_bias_acc(&bias[oc_full_base_1]);
+      const int wts_oc_pair_base = (oc_pair_idx * 2) *
+                                   (kIcTiles * kKernelH * kKernelW * 64);
+
+      AIE_LOOP_RANGE(2, 14)
+      for (int x_tile = 1; x_tile < x_tiles - 1; ++x_tile) {
+        MMUL4x8x8 acc_0;
+        MMUL4x8x8 acc_1;
+        acc_0 = bias_acc_oc0;
+        acc_1 = bias_acc_oc1;
+        const int x_out_base = x_tile * 4;
+        const int x_in_base = 2 * x_out_base - 1;
+        AIE_LOOP_RANGE(8, 16)
+        for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+          AIE_LOOP_RANGE(2, 3)
+          for (int ky = ky_start; ky < ky_end; ++ky) {
+            int8_t *line_ptr = line[ky];
+            AIE_LOOP_UNROLL_FULL
+            for (int kx = 0; kx < 3; ++kx) {
+              alignas(32) int8_t a_buf[32];
+              int8_t *src0 =
+                  line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
+              int8_t *src1 = src0 + 2 * input_channels;
+              int8_t *src2 = src0 + 4 * input_channels;
+              int8_t *src3 = src0 + 6 * input_channels;
+              *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+                  *reinterpret_cast<const uint64_t *>(src0);
+              *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+                  *reinterpret_cast<const uint64_t *>(src1);
+              *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+                  *reinterpret_cast<const uint64_t *>(src2);
+              *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+                  *reinterpret_cast<const uint64_t *>(src3);
+              aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+              int wts_off_0 = wts_oc_pair_base +
+                              wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
+                                                 kernel_height, kernel_width);
+              aie::vector<int8, 64> in_b_0 =
+                  aie::load_v<64>(&wts_chunk[wts_off_0]);
+              aie::vector<int8, 64> in_b_1 =
+                  aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
+              acc_0.mac(in_a, in_b_0);
+              acc_1.mac(in_a, in_b_1);
+            }
           }
         }
+        write_x_tile_result(acc_0, x_out_base, oc_full_base_0);
+        write_x_tile_result(acc_1, x_out_base, oc_full_base_1);
       }
-      write_x_tile_result(acc_0, x_out_base, oc_full_base_0);
-      write_x_tile_result(acc_1, x_out_base, oc_full_base_1);
-    }
+    } // end OC-pair loop
   }
 
   event1();
