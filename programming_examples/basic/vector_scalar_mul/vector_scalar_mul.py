@@ -29,14 +29,14 @@ import aie.iron as iron
 from aie.iron import Compile, In, Out, kernels
 from aie.iron.algorithms import transform_typed
 from aie.iron.device import device_from_args
-from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
     add_compile_args,
     add_trace_arg,
 )
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.verify import assert_pass
+from aie.utils.verify import assert_close_with_benchmark
 
 
 @iron.jit
@@ -131,13 +131,12 @@ def _run_and_verify(opts):
 
     expected = (a_np.astype(np.int64) * 3).astype(in1_dtype)
     actual = c_t.numpy()
-    assert_pass(
-        actual, expected, fail_msg="output does not match a * factor", print_pass=False
+    assert_close_with_benchmark(
+        actual,
+        expected,
+        bench=bench,
+        fail_msg="output does not match a * factor",
     )
-
-    print()
-    print_benchmark(bench)
-    print("PASS!")
 
 
 def main():

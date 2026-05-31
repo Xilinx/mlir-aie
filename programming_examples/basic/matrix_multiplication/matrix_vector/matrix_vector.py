@@ -27,10 +27,10 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
-from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.verify import assert_pass
+from aie.utils.verify import assert_close_with_benchmark
 
 
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
@@ -170,17 +170,14 @@ def _run_and_verify(opts):
 
     expected = (A_np.astype(np.int64) @ B_np.astype(np.int64)).astype(np.int32)
     actual = C_t.numpy().reshape(opts.M)
-    assert_pass(
-        actual, expected, fail_msg="output does not match A @ b", print_pass=False
+    assert_close_with_benchmark(
+        actual,
+        expected,
+        bench=bench,
+        ops=2.0 * opts.M * opts.K,
+        gflops_fmt=".4f",
+        fail_msg="output does not match A @ b",
     )
-
-    print()
-    print_benchmark(bench)
-    macs = 2.0 * opts.M * opts.K
-    if bench.npu is not None:
-        gflops = macs / (1000 * bench.npu.avg_us)
-        print(f"NPU GFLOPS                    : {gflops:.4f}")
-    print("PASS!")
 
 
 def _compile_kwargs(opts):

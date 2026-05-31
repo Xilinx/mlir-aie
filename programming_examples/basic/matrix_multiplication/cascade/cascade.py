@@ -33,14 +33,14 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile, from_name
 from aie.helpers.taplib import TensorTiler2D
-from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
     add_compile_args,
     add_trace_arg,
 )
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.verify import assert_pass
+from aie.utils.verify import assert_close_with_benchmark
 
 
 def _device_for(dev_str, n_aie_cols):
@@ -433,27 +433,16 @@ def _run_and_verify(opts):
     actual = C_t.numpy().reshape(opts.M, opts.N)
     if np.issubdtype(dtype_out, np.integer):
         expected = (A_np.astype(np.int64) @ B_np.astype(np.int64)).astype(dtype_out)
-        assert_pass(
-            actual, expected, fail_msg="output does not match A @ B", print_pass=False
-        )
     else:
         expected = (A_np.astype(np.float32) @ B_np.astype(np.float32)).astype(dtype_out)
-        assert_pass(
-            actual,
-            expected,
-            rtol=0.05,
-            atol=0.5,
-            fail_msg="output does not match A @ B",
-            print_pass=False,
-        )
 
-    print()
-    print_benchmark(bench)
-    macs = 2.0 * opts.M * opts.K * opts.N
-    if bench.npu is not None:
-        gflops = macs / (1000 * bench.npu.avg_us)
-        print(f"NPU GFLOPS                    : {gflops:.2f}")
-    print("PASS!")
+    assert_close_with_benchmark(
+        actual,
+        expected,
+        bench=bench,
+        ops=2.0 * opts.M * opts.K * opts.N,
+        fail_msg="output does not match A @ B",
+    )
 
 
 def main():
