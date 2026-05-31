@@ -15,6 +15,14 @@ from aie.iron.controlflow import range_
 import aie.iron as iron
 
 
+def _check_num_channels(num_channels: int) -> None:
+    if num_channels not in (1, 2):
+        raise ValueError(
+            f"num_channels must be 1 or 2 (shim DMA has 2 channels per "
+            f"direction per column); got {num_channels}"
+        )
+
+
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
     """
     General tiled transform to apply a function on inputs and obtain a single output.
@@ -189,11 +197,24 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
 
 
 def _transform_parallel_gen(
-    func, inputs: list, output, *params, tile_size=16, trace_size=0
+    func,
+    inputs: list,
+    output,
+    *params,
+    tile_size=16,
+    trace_size=0,
+    num_channels=1,
+    pass_size_to_kernel=True,
 ):
     """
     General parallel transform to apply a function on inputs and obtain a single output.
     Distributes work across multiple AIE tiles for parallel execution.
+
+    With ``num_channels=2`` (and no extra ``*params``), the design also drives
+    both shim DMA channels per column — one worker per (column, channel) pair
+    — which is the right shape for DDR-bandwidth-bound element-wise kernels
+    like ReLU/GELU/SiLU/eltwise_add.  The single-channel default (``num_channels=1``)
+    reproduces the original one-worker-per-column behaviour bit-for-bit.
 
     Args:
         func: Function to apply, either a lambda/callable or ExternalFunction.
@@ -207,7 +228,22 @@ def _transform_parallel_gen(
         trace_size: When > 0, enable per-column-Worker core trace and a
             ``trace_size``-byte runtime trace buffer (default: 0).  Same
             event0()/event1() expectation as :func:`_transform_gen`.
+        num_channels: Shim DMA channels per column to drive, 1 or 2 (default: 1).
+            With 2, two workers per column run in parallel on disjoint
+            sub-ranges, doubling DDR throughput.  Not compatible with shared
+            tensor ``*params`` (each per-(col, chan) worker would need its own
+            param OF) — use ``num_channels=1`` if you need ``*params``.
+        pass_size_to_kernel: When True (default), the kernel receives an extra
+            trailing ``int`` argument equal to ``tile_size``.  Set False for
+            kernels whose signature is just ``(*in_tiles, out_tile)`` (e.g.
+            ``iron.kernels.relu``, ``iron.kernels.add``).
     """
+    _check_num_channels(num_channels)
+    if num_channels > 1 and params:
+        raise ValueError(
+            "num_channels=2 is not supported together with shared *params; "
+            "use num_channels=1 instead."
+        )
     is_external_func = isinstance(func, iron.ExternalFunction)
 
     # Validate tile_size matches ExternalFunction arg_type
@@ -246,11 +282,13 @@ def _transform_parallel_gen(
     num_columns = device.cols
 
     per_tile_elements = tile_size
-    n = per_tile_elements * num_columns
+    n = per_tile_elements * num_columns * num_channels
 
     if num_elements % n != 0:
         raise ValueError(
-            f"Number of elements ({num_elements}) must be a multiple of tile size ({n})."
+            f"Number of elements ({num_elements}) must be a multiple of "
+            f"tile_size × num_columns × num_channels "
+            f"({per_tile_elements} × {num_columns} × {num_channels} = {n})."
         )
     N_div_n = num_elements // n
 
@@ -258,12 +296,36 @@ def _transform_parallel_gen(
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(per_tile_elements,), np.dtype[dtype]]
 
-    # Create ObjectFifos for each input and output per column
+    # Create ObjectFifos for each (input, column, channel) and (column, channel).
+    # The inner channel list collapses to length 1 when num_channels=1, which
+    # preserves the original per-column naming ("in0_0") for that common case.
     of_inputs = [
-        [ObjectFifo(tile_ty, name=f"in{inp_idx}_{col}") for col in range(num_columns)]
+        [
+            [
+                ObjectFifo(
+                    tile_ty,
+                    name=(
+                        f"in{inp_idx}_{col}"
+                        if num_channels == 1
+                        else f"in{inp_idx}_{col}_{chan}"
+                    ),
+                )
+                for chan in range(num_channels)
+            ]
+            for col in range(num_columns)
+        ]
         for inp_idx in range(num_inputs)
     ]
-    of_outs = [ObjectFifo(tile_ty, name=f"out_{col}") for col in range(num_columns)]
+    of_outs = [
+        [
+            ObjectFifo(
+                tile_ty,
+                name=(f"out_{col}" if num_channels == 1 else f"out_{col}_{chan}"),
+            )
+            for chan in range(num_channels)
+        ]
+        for col in range(num_columns)
+    ]
 
     # Handle params for ExternalFunction
     tensor_params = []  # params that need ObjectFifos
@@ -313,7 +375,10 @@ def _transform_parallel_gen(
             elem_out = of_output.acquire(1)
 
             if is_external_func:
-                func_to_apply(*elem_ins, elem_out, *all_params, per_tile_elements)
+                if pass_size_to_kernel:
+                    func_to_apply(*elem_ins, elem_out, *all_params, per_tile_elements)
+                else:
+                    func_to_apply(*elem_ins, elem_out, *all_params)
             else:
                 # Lambda/callable: apply element-wise
                 # Without this explicit loop, only the
@@ -331,30 +396,34 @@ def _transform_parallel_gen(
         for of_param in of_params:
             of_param.release(1)
 
-    # Create a worker for each column
+    # Create a worker per (column, channel).  When num_channels=1, this is
+    # one worker per column, matching the original layout exactly.
     my_workers = [
         Worker(
             core_body,
-            [of_inputs[inp_idx][col].cons() for inp_idx in range(num_inputs)]
+            [of_inputs[inp_idx][col][chan].cons() for inp_idx in range(num_inputs)]
             + [of.cons() for of in param_of_list]
-            + [of_outs[col].prod()]
+            + [of_outs[col][chan].prod()]
             + [func],
             trace=(1 if trace_size > 0 else 0),
         )
         for col in range(num_columns)
+        for chan in range(num_channels)
     ]
 
-    # Create a TensorAccessPattern for each column
-    # The pattern chops the data in equal chunks and moves them in parallel
-    per_worker_elements = num_elements // num_columns
+    # One TensorAccessPattern per (column, channel) — each carries its own
+    # disjoint sub-range of the input, addressed by its position in
+    # row-major (col, chan) order.
+    per_worker_elements = num_elements // (num_columns * num_channels)
     taps = [
         TensorAccessPattern(
             (1, num_elements),
-            per_worker_elements * col,
+            per_worker_elements * (col * num_channels + chan),
             [1, 1, 1, per_worker_elements],
             [0, 0, 0, 1],
         )
         for col in range(num_columns)
+        for chan in range(num_channels)
     ]
 
     # Runtime operations to move data to/from the AIE-array
@@ -372,13 +441,15 @@ def _transform_parallel_gen(
         # Fill input ObjectFifos with data
         tg_in = rt.task_group()
         for col in range(num_columns):
-            for inp_idx in range(num_inputs):
-                rt.fill(
-                    of_inputs[inp_idx][col].prod(),
-                    input_seq_args[inp_idx],
-                    taps[col],
-                    task_group=tg_in,
-                )
+            for chan in range(num_channels):
+                tap = taps[col * num_channels + chan]
+                for inp_idx in range(num_inputs):
+                    rt.fill(
+                        of_inputs[inp_idx][col][chan].prod(),
+                        input_seq_args[inp_idx],
+                        tap,
+                        task_group=tg_in,
+                    )
         rt.finish_task_group(tg_in)
 
         # Fill tensor param ObjectFifos (ExternalFunction only, shared across workers)
@@ -388,13 +459,14 @@ def _transform_parallel_gen(
         # Drain output ObjectFifos
         tg_out = rt.task_group()
         for col in range(num_columns):
-            rt.drain(
-                of_outs[col].cons(),
-                output_seq_arg,
-                taps[col],
-                wait=True,
-                task_group=tg_out,
-            )
+            for chan in range(num_channels):
+                rt.drain(
+                    of_outs[col][chan].cons(),
+                    output_seq_arg,
+                    taps[col * num_channels + chan],
+                    wait=True,
+                    task_group=tg_out,
+                )
         rt.finish_task_group(tg_out)
 
     # Place program components and generate an MLIR module
@@ -557,7 +629,15 @@ def transform_binary_typed(func, tensor_ty, tile_size=16, trace_size=0):
     )
 
 
-def transform_parallel_typed(func, tensor_ty, *params, tile_size=16, trace_size=0):
+def transform_parallel_typed(
+    func,
+    tensor_ty,
+    *params,
+    tile_size=16,
+    trace_size=0,
+    num_channels=1,
+    pass_size_to_kernel=True,
+):
     """Apply ``func`` element-wise in parallel using a tensor type descriptor.
 
     Like :func:`transform_parallel` but accepts a numpy ``ndarray`` type
@@ -570,11 +650,18 @@ def transform_parallel_typed(func, tensor_ty, *params, tile_size=16, trace_size=
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
         *params: Additional compile-time scalar parameters forwarded to
             ``func`` (ExternalFunction only).
-        tile_size (int, optional): Number of elements per tile per column.
+        tile_size (int, optional): Number of elements per tile per worker.
             Defaults to 16.
         trace_size (int, optional): When > 0, enable per-column Worker core
             trace and a ``trace_size``-byte runtime trace buffer.
             Defaults to 0 (off).
+        num_channels (int, optional): Shim DMA channels per column to drive,
+            1 or 2.  ``num_channels=2`` runs one worker per (column, channel),
+            doubling DDR throughput for bandwidth-bound element-wise kernels.
+            Not compatible with shared tensor ``*params``.  Defaults to 1.
+        pass_size_to_kernel (bool, optional): Append ``tile_size`` as a
+            trailing ``int`` argument on every kernel call.  Defaults to True;
+            set False for kernels with bare ``(in, out)`` signatures.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
@@ -588,10 +675,19 @@ def transform_parallel_typed(func, tensor_ty, *params, tile_size=16, trace_size=
         *expanded_params,
         tile_size=tile_size,
         trace_size=trace_size,
+        num_channels=num_channels,
+        pass_size_to_kernel=pass_size_to_kernel,
     )
 
 
-def transform_parallel_binary_typed(func, tensor_ty, tile_size=16, trace_size=0):
+def transform_parallel_binary_typed(
+    func,
+    tensor_ty,
+    tile_size=16,
+    trace_size=0,
+    num_channels=1,
+    pass_size_to_kernel=True,
+):
     """Apply ``func`` over two tensors in parallel using a tensor type descriptor.
 
     Like :func:`transform_parallel_binary` but accepts a numpy ``ndarray``
@@ -602,11 +698,15 @@ def transform_parallel_binary_typed(func, tensor_ty, tile_size=16, trace_size=0)
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
         tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
-        tile_size (int, optional): Number of elements per tile per column.
+        tile_size (int, optional): Number of elements per tile per worker.
             Defaults to 16.
         trace_size (int, optional): When > 0, enable per-column Worker core
             trace and a ``trace_size``-byte runtime trace buffer.
             Defaults to 0 (off).
+        num_channels (int, optional): Shim DMA channels per column to drive,
+            1 or 2.  Defaults to 1.  See :func:`transform_parallel_typed`.
+        pass_size_to_kernel (bool, optional): Append ``tile_size`` as a
+            trailing ``int`` argument on every kernel call.  Defaults to True.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
@@ -620,6 +720,8 @@ def transform_parallel_binary_typed(func, tensor_ty, tile_size=16, trace_size=0)
         fake_tensor,
         tile_size=tile_size,
         trace_size=trace_size,
+        num_channels=num_channels,
+        pass_size_to_kernel=pass_size_to_kernel,
     )
 
 
@@ -704,11 +806,14 @@ def transform_parallel(
     dtype: Compile[type],
     tile_size: Compile[int] = 16,
     trace_size: Compile[int] = 0,
+    num_channels: Compile[int] = 1,
+    pass_size_to_kernel: Compile[bool] = True,
 ):
     """Apply ``func`` to ``input`` in parallel across all available NPU
     columns.  JIT-friendly.
 
-    Distributes the input tensor evenly across columns; each column processes
+    Distributes the input tensor evenly across columns (and, when
+    ``num_channels=2``, both shim channels per column); each worker processes
     ``tile_size`` elements per iteration.
 
     Args:
@@ -718,16 +823,27 @@ def transform_parallel(
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
         N: Number of elements in the (1-D) tensors.
         dtype: Element dtype shared by input and output.
-        tile_size: Number of elements per tile per column. Defaults to 16.
+        tile_size: Number of elements per tile per worker. Defaults to 16.
         trace_size: When > 0, enable per-column Worker core trace and a
             runtime trace buffer of this size in bytes. Defaults to 0 (off).
+        num_channels: Shim DMA channels per column, 1 or 2.  Use 2 for
+            DDR-bandwidth-bound element-wise kernels (relu/gelu/silu/eltwise_*)
+            so both shim channels per column run a worker.  Defaults to 1.
+        pass_size_to_kernel: When True (default), the kernel receives an extra
+            trailing ``int`` arg equal to ``tile_size``.  Set False for
+            ``(in, out)``-only kernels.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
     return transform_parallel_typed(
-        func, tensor_ty, tile_size=tile_size, trace_size=trace_size
+        func,
+        tensor_ty,
+        tile_size=tile_size,
+        trace_size=trace_size,
+        num_channels=num_channels,
+        pass_size_to_kernel=pass_size_to_kernel,
     )
 
 
@@ -741,6 +857,8 @@ def transform_parallel_binary(
     dtype: Compile[type],
     tile_size: Compile[int] = 16,
     trace_size: Compile[int] = 0,
+    num_channels: Compile[int] = 1,
+    pass_size_to_kernel: Compile[bool] = True,
 ):
     """Apply ``func`` to ``first`` and ``second`` in parallel across all
     available NPU columns.  JIT-friendly.
@@ -753,14 +871,23 @@ def transform_parallel_binary(
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
         N: Number of elements in each tensor.
         dtype: Element dtype shared by all three tensors.
-        tile_size: Number of elements per tile per column. Defaults to 16.
+        tile_size: Number of elements per tile per worker. Defaults to 16.
         trace_size: When > 0, enable per-column Worker core trace and a
             runtime trace buffer of this size in bytes. Defaults to 0 (off).
+        num_channels: Shim DMA channels per column, 1 or 2.  Defaults to 1.
+            See :func:`transform_parallel`.
+        pass_size_to_kernel: Append ``tile_size`` as a trailing ``int`` arg
+            on every kernel call.  Defaults to True.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
     return transform_parallel_binary_typed(
-        func, tensor_ty, tile_size=tile_size, trace_size=trace_size
+        func,
+        tensor_ty,
+        tile_size=tile_size,
+        trace_size=trace_size,
+        num_channels=num_channels,
+        pass_size_to_kernel=pass_size_to_kernel,
     )

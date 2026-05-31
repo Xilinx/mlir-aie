@@ -7,14 +7,8 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 """Element-wise bf16 add — Iron API design with ``@iron.jit`` compilation.
 
-Saturates DDR bandwidth by using every column's shim DMA in/out pairs.
-The per-tile kernel comes from ``aie.iron.kernels.add`` (auto-built by
-``compile_mlir_module(device=...)`` into the JIT work_dir).
-
-Two invocation modes:
-
-  * standalone:   ``python3 eltwise_add.py``
-  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH [--elf-path=PATH]``
+Body delegates to ``iron.algorithms.transform_parallel_binary_typed``; the
+per-tile kernel comes from ``aie.iron.kernels.add``.
 """
 
 import argparse
@@ -23,9 +17,9 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
-from aie.iron.device import from_name
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.iron import Compile, In, Out, kernels
+from aie.iron.algorithms import transform_parallel_binary_typed
+from aie.iron.device import device_from_args
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -40,79 +34,18 @@ def eltwise_add(
     size: Compile[int] = 65536,
     num_channels: Compile[int] = 1,
 ):
-    xfr_dtype = bfloat16
-    device = iron.get_current_device()
-    num_columns = device.cols
-
-    if num_channels not in (1, 2):
-        raise ValueError(f"num_channels must be 1 or 2, got {num_channels}")
-    if (size % 1024) % num_columns % num_channels != 0:
-        raise ValueError(
-            f"size ({size}) must be a multiple of 1024 and divisible by "
-            f"{num_columns} columns × {num_channels} channels"
-        )
-
-    line_size = 1024
-    line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
-    transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
-    chunk = size // num_columns // num_channels
-
-    of_in1s = [
-        [ObjectFifo(line_type, name=f"in1_{i}_{j}") for j in range(num_channels)]
-        for i in range(num_columns)
-    ]
-    of_in2s = [
-        [ObjectFifo(line_type, name=f"in2_{i}_{j}") for j in range(num_channels)]
-        for i in range(num_columns)
-    ]
-    of_outs = [
-        [ObjectFifo(line_type, name=f"out_{i}_{j}") for j in range(num_channels)]
-        for i in range(num_columns)
-    ]
-
-    add_fn = kernels.add(tile_size=line_size)
-
-    def core_fn(of_in1, of_in2, of_out, kernel):
-        elem_out = of_out.acquire(1)
-        elem_in1 = of_in1.acquire(1)
-        elem_in2 = of_in2.acquire(1)
-        kernel(elem_in1, elem_in2, elem_out)
-        of_in1.release(1)
-        of_in2.release(1)
-        of_out.release(1)
-
-    workers = Worker.grid(
-        num_columns,
-        num_channels,
-        lambda i, j: Worker(
-            core_fn,
-            [of_in1s[i][j].cons(), of_in2s[i][j].cons(), of_outs[i][j].prod(), add_fn],
-        ),
+    return transform_parallel_binary_typed(
+        kernels.add(tile_size=1024),
+        np.ndarray[(size,), np.dtype[bfloat16]],
+        tile_size=1024,
+        num_channels=num_channels,
+        pass_size_to_kernel=False,
     )
-
-    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
-
-    rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type, transfer_type) as (a, b, c):
-        rt.start(*[w for row in workers for w in row])
-        tg = rt.task_group()
-        for i in range(num_columns):
-            for j in range(num_channels):
-                tap = taps[i * num_channels + j]
-                rt.fill(of_in1s[i][j].prod(), a, tap, task_group=tg)
-                rt.fill(of_in2s[i][j].prod(), b, tap, task_group=tg)
-        for i in range(num_columns):
-            for j in range(num_channels):
-                tap = taps[i * num_channels + j]
-                rt.drain(of_outs[i][j].cons(), c, tap, wait=True, task_group=tg)
-        rt.finish_task_group(tg)
-
-    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Eltwise Add")
-    add_compile_args(p)
+    add_compile_args(p, with_elf=True)
     p.add_argument("-l", "--length", type=int, default=65536, help="elements")
     p.add_argument(
         "-ch", "--channels", type=int, default=1, help="channels per column (1 or 2)"
@@ -152,7 +85,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: from_name(o.dev, n_cols=None),
+        device=lambda o: device_from_args(o, n_cols=None),
     )
 
 

@@ -8,9 +8,10 @@
 """Tile-wise bf16 softmax — Iron API design with ``@iron.jit`` compilation.
 
 Softmax is computed independently per 1024-element tile (no cross-tile
-reduction), so the design scales the same way as ml/relu — one shim-DMA
-in/out pair per (column, channel), each core looping over its share of
-the input in 1024-element lines.
+reduction), so the design scales the same way as ml/relu: body delegates to
+``iron.algorithms.transform_parallel_typed`` with ``num_channels=2`` and
+``pass_size_to_kernel=True`` (the softmax kernel signature is
+``(in, out, line_size)``).
 """
 
 import argparse
@@ -19,9 +20,9 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
-from aie.iron.device import from_name
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.iron import Compile, In, Out, kernels
+from aie.iron.algorithms import transform_parallel_typed
+from aie.iron.device import device_from_args
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -35,87 +36,18 @@ def softmax(
     size: Compile[int] = 262144,
     num_channels: Compile[int] = 2,
 ):
-    xfr_dtype = bfloat16
-    device = iron.get_current_device()
-    num_columns = device.cols
-
-    if num_channels not in (1, 2):
-        raise ValueError(f"num_channels must be 1 or 2, got {num_channels}")
-    if (size % 1024) % num_columns % num_channels != 0:
-        raise ValueError(
-            f"size ({size}) must be a multiple of 1024 and divisible by "
-            f"{num_columns} columns × {num_channels} channels"
-        )
-
-    line_size = 1024
-    line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
-    transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
-    chunk = size // num_columns // num_channels
-
-    of_ins = [
-        ObjectFifo(line_type, name=f"in{i}_{j}")
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
-    of_outs = [
-        ObjectFifo(line_type, name=f"out{i}_{j}")
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
-
-    softmax_fn = kernels.softmax(tile_size=line_size)
-
-    def core_fn(of_in, of_out, kernel):
-        elem_out = of_out.acquire(1)
-        elem_in = of_in.acquire(1)
-        kernel(elem_in, elem_out, line_size)
-        of_in.release(1)
-        of_out.release(1)
-
-    workers = [
-        Worker(
-            core_fn,
-            [
-                of_ins[i * num_channels + j].cons(),
-                of_outs[i * num_channels + j].prod(),
-                softmax_fn,
-            ],
-        )
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
-
-    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
-
-    rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type) as (a, b):
-        rt.start(*workers)
-        tg = rt.task_group()
-        for i in range(num_columns):
-            for j in range(num_channels):
-                rt.fill(
-                    of_ins[i * num_channels + j].prod(),
-                    a,
-                    taps[i * num_channels + j],
-                    task_group=tg,
-                )
-        for i in range(num_columns):
-            for j in range(num_channels):
-                rt.drain(
-                    of_outs[i * num_channels + j].cons(),
-                    b,
-                    taps[i * num_channels + j],
-                    wait=True,
-                    task_group=tg,
-                )
-        rt.finish_task_group(tg)
-
-    return Program(device, rt).resolve_program()
+    return transform_parallel_typed(
+        kernels.softmax(tile_size=1024),
+        np.ndarray[(size,), np.dtype[bfloat16]],
+        tile_size=1024,
+        num_channels=num_channels,
+        pass_size_to_kernel=True,
+    )
 
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Softmax")
-    add_compile_args(p)
+    add_compile_args(p, with_elf=True)
     p.add_argument("-l", "--length", type=int, default=262144, help="elements")
     p.add_argument(
         "-ch", "--channels", type=int, default=2, help="channels per column (1 or 2)"
@@ -163,7 +95,7 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        device=lambda o: from_name(o.dev, n_cols=None),
+        device=lambda o: device_from_args(o, n_cols=None),
     )
 
 

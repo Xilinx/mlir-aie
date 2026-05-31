@@ -6,13 +6,16 @@
 """Multi-column memcpy microbenchmark.
 
 Uses every shim DMA in-out pair on the device to saturate DDR bandwidth.
+The design body is a one-liner delegating to
+``iron.algorithms.transform_parallel_typed`` with ``num_channels=2``; the
+per-tile kernel is the library passthrough.
 """
 
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, kernels, ObjectFifo, Program, Runtime, Worker
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.iron import Compile, In, Out, kernels
+from aie.iron.algorithms import transform_parallel_typed
 from aie.utils.benchmark import run_iters
 from aie.utils.verify import assert_pass
 
@@ -25,84 +28,17 @@ def my_memcpy(
     size: Compile[int],
     xfr_dtype: Compile[type] = np.int32,
 ):
-    num_channels = 2
-    device = iron.get_current_device()
-    num_columns = device.cols
-
-    if num_channels < 1 or num_channels > 2:
-        raise ValueError("Number of channels must be 1 or 2")
-    if ((size % 1024) % num_columns % num_channels) != 0:
-        raise ValueError(
-            f"transfer size ({size}) must be a multiple of 1024 and divisible "
-            f"by {num_columns} columns and {num_channels} channels per column"
-        )
-
-    line_size = 1024
-    line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
-    transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
-    chunk = size // num_columns // num_channels
-
-    of_ins = [
-        [ObjectFifo(line_type, name=f"in{i}_{j}") for j in range(num_channels)]
-        for i in range(num_columns)
-    ]
-    of_outs = [
-        [ObjectFifo(line_type, name=f"out{i}_{j}") for j in range(num_channels)]
-        for i in range(num_columns)
-    ]
-
-    passthrough_fn = kernels.passthrough(tile_size=line_size, dtype=xfr_dtype)
-
-    def core_fn(of_in, of_out, passthrough_line):
-        elem_out = of_out.acquire(1)
-        elem_in = of_in.acquire(1)
-        passthrough_line(elem_in, elem_out, line_size)
-        of_in.release(1)
-        of_out.release(1)
-
-    my_workers = Worker.grid(
-        num_columns,
-        num_channels,
-        lambda i, j: Worker(
-            core_fn,
-            [of_ins[i][j].cons(), of_outs[i][j].prod(), passthrough_fn],
-        ),
+    return transform_parallel_typed(
+        kernels.passthrough(tile_size=1024, dtype=xfr_dtype),
+        np.ndarray[(size,), np.dtype[xfr_dtype]],
+        tile_size=1024,
+        num_channels=2,
+        pass_size_to_kernel=True,
     )
-
-    # One TAP per (column, channel) shim DMA — equivalent to iterating
-    # ``(1, chunk)`` tiles row-major across the ``(1, size)`` tensor.
-    # See programming_guide/section-2/section-2c/ for a full explanation
-    # of n-dimensional data layout transformations.
-    taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
-
-    rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
-        rt.start(*[w for row in my_workers for w in row])
-        tg = rt.task_group()
-        for i in range(num_columns):
-            for j in range(num_channels):
-                rt.fill(
-                    of_ins[i][j].prod(),
-                    a_in,
-                    taps[i * num_channels + j],
-                    task_group=tg,
-                )
-        for i in range(num_columns):
-            for j in range(num_channels):
-                rt.drain(
-                    of_outs[i][j].cons(),
-                    b_out,
-                    taps[i * num_channels + j],
-                    wait=True,
-                    task_group=tg,
-                )
-        rt.finish_task_group(tg)
-
-    return Program(device, rt).resolve_program()
 
 
 def main():
-    # Transfer size must be a multiple of 1024 and divisible by columns*channels.
+    # Transfer size must be a multiple of 1024 × num_columns × num_channels(=2).
     length = 16777216
     element_type = np.int32
 
