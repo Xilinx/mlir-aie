@@ -46,9 +46,6 @@ newFlag=_NEW
 MLIR_FILE = aie2_mobilenet_iron
 TEST_FILE = test_mobilenet
 OBJ = \
-	build/bn10_conv2dk1_fused_relu.o build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o \
-	build/bn11_conv2dk1_fused_relu.o build/bn11_conv2dk3_dw.o build/bn11_conv2dk1_skip.o \
-	build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o \
 	build/bn13_1_conv2dk1_put.o build/bn13_1_conv2dk1_get.o build/bn13_conv2dk3_dw.o build/bn13_conv2dk1_put.o build/bn13_conv2dk1_skip_get.o \
 	build/bn14_1_conv2dk1_put.o build/bn14_1_conv2dk1_get.o build/bn14_conv2dk3_dw.o build/bn14_conv2dk1_put.o build/bn14_conv2dk1_skip_get.o \
 	build/post_conv2dk1_relu_xy_pool_padded_i8_ui8.o \
@@ -70,47 +67,14 @@ build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< -t ${trace_size} > $@
 
-# init (3x3 stride-2) and bn0..bn9 are built via the iron kernel library;
-# init.py:init_conv calls kernels.bn_conv2dk3, regular.py uses
+# init (3x3 stride-2) and bn0..bn12 are built via the iron kernel library;
+# init.py:init_conv calls kernels.bn_conv2dk3, regular.py + pipeline.py use
 # kernels.bn_conv2dk3_dw / bn_conv2dk1_relu / bn_conv2dk1_i8 / bn_conv2dk1_skip.
 # aiecc compiles the .o files as part of the @iron.jit pipeline.
 
-# ************************************** bottleneck 10 *************************************
-build/bn10_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN10 -DINT8_ACT -c $< -o ${@F}
-
-build/bn10_conv2dk3_dw.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN10 -DSTRIDE1  -c $< -o ${@F}
-
-build/bn10_conv2dk1_ui8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN10 -DSCALAR -c $< -o ${@F}
-
-# ************************************** bottleneck 11 *************************************
-build/bn11_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN11 -DINT8_ACT -c $< -o ${@F}
-
-build/bn11_conv2dk3_dw.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN11 -DSTRIDE1 -c $< -o ${@F}
-
-build/bn11_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN11 -DSCALAR -c $< -o ${@F}
-
-# ************************************** bottleneck 12 *************************************
-build/bn12_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DBN12 -DINT8_ACT -c $< -o ${@F}
-
-build/bn12_conv2dk3_dw_stride2.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
-	cd ${@D} && ${COMPILE_WRAPPER} -DSCALAR -DSTRIDE2 -DBN12 -c $< -o ${@F}
-
-build/bn12_conv2dk1_ui8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${COMPILE_WRAPPER} -DBN12 -DSCALAR -c $< -o ${@F}
-
 # ************************************** bottlneck 13 **************************************
 build/bn13_1_conv2dk1_put.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
+	mkdir -p ${@D}
 	echo $(new) World with ${newFlag}
 	cd ${@D} && ${COMPILE_WRAPPER} -DBN13_1_PARTIAL_PUT_I8_CAS_WIDTH${newFlag} -c $< -o ${@F}
 
