@@ -129,7 +129,7 @@ jobs:
           submodules: "true"
 
       - name: Install clang-format
-        uses: aminya/setup-cpp@1f17f92d6a52bfcb1a25348e2c526c2e5cbb1134  # v1.8.0  # v1.8.0
+        uses: aminya/setup-cpp@1f17f92d6a52bfcb1a25348e2c526c2e5cbb1134  # v1.8.0
         with:
           clangformat: 17.0.1
 
@@ -143,8 +143,8 @@ jobs:
 
       - name: Install pre-commit
         run: |
-          pip install --upgrade pip
-          pip install -r python/requirements_dev.txt
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Run git-clang-format
         id: git-clang-format
