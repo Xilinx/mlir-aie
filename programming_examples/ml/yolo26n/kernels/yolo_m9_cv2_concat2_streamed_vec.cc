@@ -97,6 +97,7 @@ void yolo_m9_cv2_concat2_streamed_silu_bias_i8_i8(
       bias_acc.from_vector(b32);
     }
 
+    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_RANGE(kXTiles, kXTiles)
     for (int x_tile = 0; x_tile < kXTiles; ++x_tile) {
       MMUL4x8x8 acc;
@@ -105,33 +106,60 @@ void yolo_m9_cv2_concat2_streamed_silu_bias_i8_i8(
       const int x_out_base = x_tile * 4;
       const int8_t *__restrict b_ptr = wts_chunk + ((oc_t * kIcTiles) << 6);
 
-      AIE_LOOP_RANGE(kIcTiles, kIcTiles)
-      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+      // Split ic loop into 2 straight-line per-source halves (per "no branches
+      // in inner mac loop" feedback) — peano can VLIW-bundle vlda+vldb+vmac
+      // when the inner body is a single source. uint64 word copies for the
+      // 32-byte A-pack (instead of byte-by-byte) cuts pack cost too.
+      AIE_LOOP_RANGE(kCHalfTiles, kCHalfTiles)
+      for (int ic_t = 0; ic_t < kCHalfTiles; ++ic_t) {
         alignas(32) int8_t a_buf[32];
-        const bool from_top = (ic_t < kCHalfTiles);
-        const int8_t *__restrict src_row = from_top ? top_row : ffn_row;
-        const int local_ic_t = from_top ? ic_t : (ic_t - kCHalfTiles);
-        for (int p = 0; p < 4; ++p) {
-          int col = x_out_base + p;
-          const int8_t *__restrict src =
-              src_row + col * kCHalf + local_ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = src[b];
-        }
+        const int8_t *__restrict sp = top_row + x_out_base * kCHalf + ic_t * 8;
+        *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+            *reinterpret_cast<const uint64_t *>(sp);
+        *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+            *reinterpret_cast<const uint64_t *>(sp + kCHalf);
+        *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+            *reinterpret_cast<const uint64_t *>(sp + 2 * kCHalf);
+        *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+            *reinterpret_cast<const uint64_t *>(sp + 3 * kCHalf);
+        aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+        aie::vector<int8, 64> in_b = aie::load_v<64>(b_ptr);
+        b_ptr += 64;
+        acc.mac(in_a, in_b);
+      }
+      AIE_LOOP_RANGE(kCHalfTiles, kCHalfTiles)
+      for (int ic_t = 0; ic_t < kCHalfTiles; ++ic_t) {
+        alignas(32) int8_t a_buf[32];
+        const int8_t *__restrict sp = ffn_row + x_out_base * kCHalf + ic_t * 8;
+        *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+            *reinterpret_cast<const uint64_t *>(sp);
+        *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+            *reinterpret_cast<const uint64_t *>(sp + kCHalf);
+        *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+            *reinterpret_cast<const uint64_t *>(sp + 2 * kCHalf);
+        *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+            *reinterpret_cast<const uint64_t *>(sp + 3 * kCHalf);
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
         aie::vector<int8, 64> in_b = aie::load_v<64>(b_ptr);
         b_ptr += 64;
         acc.mac(in_a, in_b);
       }
 
+      // Vec SiLU emit: build 32-byte silu_buf via scalar gather (LUT is
+      // scalar-bound), then 4 vec_store<8> stuck across the strided output.
+      // Output stride is kOutC (not contiguous), so 4 8-byte stores.
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
+      alignas(32) int8_t silu_buf[32];
+      AIE_LOOP_UNROLL_FULL
+      for (int i = 0; i < 32; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      AIE_LOOP_UNROLL_FULL
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
         int8_t *__restrict row_dst =
             out_row + x_out * kOutC + dst_oc_offset + oc_t * 8;
-        for (int j = 0; j < 8; ++j) {
-          row_dst[j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
-        }
+        *(reinterpret_cast<uint64_t *>(row_dst)) =
+            *reinterpret_cast<const uint64_t *>(&silu_buf[p * 8]);
       }
     }
   }
