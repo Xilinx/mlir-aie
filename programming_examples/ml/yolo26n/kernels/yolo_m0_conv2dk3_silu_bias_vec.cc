@@ -145,9 +145,24 @@ emit_16_lanes(aie::vector<int8, 32> srs_a, aie::vector<int8, 32> srs_b,
   auto [lo, hi] = aie::interleave_zip(srs_a, srs_b, 8u);
   aie::vector<int8, 64> combined = aie::concat(lo, hi);
   alignas(64) int8_t silu_buf[64];
+  // Explicit 4-way batch: 4 independent loads issued before any store, so
+  // peano allocates distinct dest registers and pipelines load/store across
+  // the 4 lanes (vs the dependent-chain pattern of the single-element loop).
   AIE_LOOP_UNROLL_FULL
-  for (int i = 0; i < 64; ++i)
-    silu_buf[i] = silu_lut[int(combined[i]) + 128];
+  for (int i = 0; i < 64; i += 4) {
+    int idx0 = int(combined[i + 0]) + 128;
+    int idx1 = int(combined[i + 1]) + 128;
+    int idx2 = int(combined[i + 2]) + 128;
+    int idx3 = int(combined[i + 3]) + 128;
+    int8_t v0 = silu_lut[idx0];
+    int8_t v1 = silu_lut[idx1];
+    int8_t v2 = silu_lut[idx2];
+    int8_t v3 = silu_lut[idx3];
+    silu_buf[i + 0] = v0;
+    silu_buf[i + 1] = v1;
+    silu_buf[i + 2] = v2;
+    silu_buf[i + 3] = v3;
+  }
   aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
   aie::store_v(output + x_out_base * kOutC, silu_v);
 }
@@ -198,7 +213,7 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
       AIE_LOOP_RANGE(1, 3)
       for (int ky = ky_start; ky < ky_end; ++ky) {
         const int8_t *__restrict line_ptr = line[ky];
-        AIE_LOOP_RANGE(3, 3)
+        AIE_LOOP_UNROLL_FULL
         for (int kx = 0; kx < kKW; ++kx) {
           aie::vector<int8, 32> in_a =
               load_a_deinterleaved_left(line_ptr, kx);
@@ -223,7 +238,7 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
       AIE_LOOP_RANGE(1, 3)
       for (int ky = ky_start; ky < ky_end; ++ky) {
         const int8_t *__restrict line_ptr = line[ky];
-        AIE_LOOP_RANGE(3, 3)
+        AIE_LOOP_UNROLL_FULL
         for (int kx = 0; kx < kKW; ++kx) {
           aie::vector<int8, 32> in_a =
               load_a_deinterleaved_interior(line_ptr, x_tile, kx);
