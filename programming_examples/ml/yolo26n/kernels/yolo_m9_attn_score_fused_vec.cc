@@ -107,6 +107,7 @@ void yolo_m9_attn_score_fused_i8_i8(
 
     AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_RANGE(kKd, kKd)
+    AIE_LOOP_UNROLL(4)
     for (int k = 0; k < kKd; ++k) {
       const int8_t q_scalar = q_col[k * kN];
       aie::vector<int8, kJVec> q_v = aie::broadcast<int8, kJVec>(q_scalar);
