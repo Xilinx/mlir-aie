@@ -1,7 +1,8 @@
 aiofiles
 # dataclasses is deprecated above Python 3.6
 dataclasses>=0.6,<=0.8; python_version < "3.7"
-numpy>=2.4.6,<3.0
+numpy>=1.26,<2.3; python_version < "3.11"
+numpy>=2.4.6,<3.0; python_version >= "3.11"
 rich
 ml_dtypes>=0.5.4
 cloudpickle # required by eudsl when it is vendored instead of installed
