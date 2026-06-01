@@ -95,12 +95,15 @@ void yolo_m9_proj_skip_row_i8_i8(int8_t *in_row, int8_t *b_cache, int8_t *wts,
       AIE_LOOP_RANGE(ic_tiles, ic_tiles)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_out_base + p;
-          int8_t *src = in_row + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = src[b];
-        }
+        int8_t *s0 = in_row + (x_out_base + 0) * input_channels + ic_t * 8;
+        *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+            *reinterpret_cast<const uint64_t *>(s0);
+        *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+            *reinterpret_cast<const uint64_t *>(s0 + input_channels);
+        *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+            *reinterpret_cast<const uint64_t *>(s0 + 2 * input_channels);
+        *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+            *reinterpret_cast<const uint64_t *>(s0 + 3 * input_channels);
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
         int wts_off = wts_tile_off(oc_t, ic_t, ic_tiles);
@@ -120,11 +123,15 @@ void yolo_m9_proj_skip_row_i8_i8(int8_t *in_row, int8_t *b_cache, int8_t *wts,
       // int16 (no int8 UNPACK in the codegen path); saturation to i8
       // range is done with explicit aie::min/max before the strided store.
       alignas(32) int8_t b_buf[32];
-      for (int p = 0; p < 4; ++p) {
-        int8_t *src = b_row + (x_out_base + p) * output_channels + oc_t * 8;
-        for (int b = 0; b < 8; ++b)
-          b_buf[p * 8 + b] = src[b];
-      }
+      int8_t *b0 = b_row + (x_out_base + 0) * output_channels + oc_t * 8;
+      *(reinterpret_cast<uint64_t *>(&b_buf[0])) =
+          *reinterpret_cast<const uint64_t *>(b0);
+      *(reinterpret_cast<uint64_t *>(&b_buf[8])) =
+          *reinterpret_cast<const uint64_t *>(b0 + output_channels);
+      *(reinterpret_cast<uint64_t *>(&b_buf[16])) =
+          *reinterpret_cast<const uint64_t *>(b0 + 2 * output_channels);
+      *(reinterpret_cast<uint64_t *>(&b_buf[24])) =
+          *reinterpret_cast<const uint64_t *>(b0 + 3 * output_channels);
       aie::vector<int8, 32> b_v = aie::load_v<32>(b_buf);
 
       // Bisect: skip the aie::mul/mac chain entirely; just do scalar

@@ -106,6 +106,7 @@ void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
       bias_acc.from_vector(b32);
     }
 
+    AIE_PREPARE_FOR_PIPELINING
     AIE_HINT_X
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
@@ -115,13 +116,17 @@ void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
 
       AIE_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+        // uint64 word copies instead of byte-by-byte scalar A-pack.
         alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_out_base + p;
-          int8_t *src = in_row + col * IN_C + ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = src[b];
-        }
+        int8_t *s0 = in_row + (x_out_base + 0) * IN_C + ic_t * 8;
+        *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+            *reinterpret_cast<const uint64_t *>(s0);
+        *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+            *reinterpret_cast<const uint64_t *>(s0 + IN_C);
+        *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+            *reinterpret_cast<const uint64_t *>(s0 + 2 * IN_C);
+        *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+            *reinterpret_cast<const uint64_t *>(s0 + 3 * IN_C);
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
         int wts_off = wts_tile_off(oc_t, ic_t, ic_tiles);
@@ -129,12 +134,16 @@ void yolo_m9_qkv_i8_i8(int8_t *in_row, int8_t *wts, int32_t *bias,
         acc.mac(in_a, in_b);
       }
 
+      // uint64 word stores (8 bytes per pixel = 1 op) instead of 8 byte stores.
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
+      alignas(32) int8_t out_buf[32];
+      aie::store_v(out_buf, srs_v);
+      AIE_LOOP_UNROLL_FULL
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
         int8_t *dst = out_row + x_out * OUT_C + oc_t * 8;
-        for (int j = 0; j < 8; ++j)
-          dst[j] = srs_v[p * 8 + j];
+        *(reinterpret_cast<uint64_t *>(dst)) =
+            *reinterpret_cast<const uint64_t *>(&out_buf[p * 8]);
       }
     }
 
