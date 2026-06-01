@@ -55,6 +55,73 @@ def requant(fp, inv):
     return r.clip(-128, 127).astype(np.int8)
 
 
+def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
+    """Phase 7a real-weight loader: full Q_DIM/KV_DIM Llama 3.2 1B weights
+    sliced into the 8 KV-head layout the mh xclbin expects. KV cache stays
+    random per-seed (chain doesn't model real k_proj/v_proj yet).
+    Mirrors test_chain_dynscale.gen_real_layer but without head-0 slicing.
+    """
+    from pathlib import Path
+    ld = Path(data_dir) / f"layer_{L:02d}"
+
+    def _i8(name, shape):
+        return np.frombuffer((ld / name).read_bytes(),
+                             dtype=np.int8).reshape(shape).copy()
+    def _f32(name, shape):
+        return np.frombuffer((ld / name).read_bytes(),
+                             dtype=np.float32).reshape(shape).copy()
+    def _bf16(name, shape):
+        return np.frombuffer((ld / name).read_bytes(),
+                             dtype=bfloat16).reshape(shape).copy()
+
+    wq_i8 = _i8("wq.i8.bin",         (Q_DIM, D))
+    wq_sc = _f32("wq.scales.f32.bin", (Q_DIM,))
+    bq    = np.zeros(Q_DIM, np.int32)
+
+    wo_i8 = _i8("wo.i8.bin",         (D, Q_DIM))
+    wo_sc = _f32("wo.scales.f32.bin", (D,))
+    bo    = np.zeros(D, np.int32)
+
+    wg_i8 = _i8("wg.i8.bin",         (HD, D))
+    wg_sc = _f32("wg.scales.f32.bin", (HD,))
+    bg    = np.zeros(HD, np.int32)
+    wu_i8 = _i8("wu.i8.bin",         (HD, D))
+    wu_sc = _f32("wu.scales.f32.bin", (HD,))
+    bu    = np.zeros(HD, np.int32)
+    wd_i8 = _i8("wd.i8.bin",         (D, HD))
+    wd_sc = _f32("wd.scales.f32.bin", (D,))
+    bd    = np.zeros(D, np.int32)
+
+    gamma_in   = _bf16("gamma_in.bf16.bin",   (D,))
+    gamma_post = _bf16("gamma_post.bf16.bin", (D,))
+
+    half = HEAD_DIM // 2
+    ang = rng.uniform(0, 2 * np.pi, size=half).astype(np.float32)
+    cos_half = np.cos(ang).astype(bfloat16)
+    sin_half = np.sin(ang).astype(bfloat16)
+    cos = np.concatenate([cos_half, cos_half])
+    sin = np.concatenate([sin_half, sin_half])
+
+    kcaches = [rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
+               for _ in range(N_HEADS_KV)]
+    vcaches = [rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
+               for _ in range(N_HEADS_KV)]
+    k_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
+    v_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
+
+    return dict(
+        wq_i8=wq_i8, wq_sc=wq_sc, bq=bq,
+        wo_i8=wo_i8, wo_sc=wo_sc, bo=bo,
+        wg_i8=wg_i8, wg_sc=wg_sc, bg=bg,
+        wu_i8=wu_i8, wu_sc=wu_sc, bu=bu,
+        wd_i8=wd_i8, wd_sc=wd_sc, bd=bd,
+        cos=cos, sin=sin,
+        kcaches=kcaches, vcaches=vcaches,
+        k_scales=k_scales, v_scales=v_scales,
+        gamma_in=gamma_in, gamma_post=gamma_post,
+    )
+
+
 def gen_layer_mh(rng: np.random.Generator) -> dict:
     """Random per-layer fixture at multi-head GQA shapes."""
     def random_w(out_dim, in_dim):
