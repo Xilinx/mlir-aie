@@ -14,6 +14,7 @@ include ${srcdir}/../../makefile-common
 
 targetname = vector_vector_mul
 aie_py_src = ${targetname}.py
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 .PHONY: all run run_py vck5000 clean
 
@@ -24,7 +25,7 @@ all:
 run: run_py
 
 run_py:
-	${powershell} python3 ${srcdir}/${aie_py_src}
+	${powershell} python3 ${srcdir}/${aie_py_src} --dev ${devicename}
 
 # ----------------------------------------------------------------------------
 # VCK5000 path: emit MLIR for XCVC1902, build host via aiecc + test_vck5000.cpp.
