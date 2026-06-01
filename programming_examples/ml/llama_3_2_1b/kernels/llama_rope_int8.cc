@@ -111,6 +111,14 @@ void llama_rope_int8_dyn(int8_t *restrict x, bfloat16 *restrict cs_packed,
                          int8_t *restrict out) {
   event0();
 
+  // Explicit rounding mode. Default fp rounding mode on AIE2P is NOT
+  // round-to-nearest-even -- multiple kernels share the same core context
+  // across chain iterations and the mode set by another kernel (e.g.
+  // flowkv's conv_even) could leak. Set explicitly to match numpy's
+  // astype semantics.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+
   constexpr int kHD     = LLAMA_ROPE_HEAD_DIM;
   constexpr int kNHeads = LLAMA_ROPE_N_HEADS;
   constexpr int kHalf   = kHD / 2;

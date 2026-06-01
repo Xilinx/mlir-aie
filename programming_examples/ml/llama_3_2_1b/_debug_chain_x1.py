@@ -132,21 +132,28 @@ def main():
         kvblob[v_off:v_off + KV_HEADER] = np.frombuffer(fp32_bytes(sc["v_scale"], sc["sv_inv_out_scale"]), np.int8)
         kvblob[v_off + KV_HEADER:v_off + KV_HEADER + VCACHE_BYTES] = layers[L]["vcache"]
 
+    from aie2_chain_dynscale import QF_BYTES, QR_BYTES
     trace_af = os.environ.get("LLAMA_CHAIN_TRACE_AF", "0") == "1"
     trace_x1 = os.environ.get("LLAMA_CHAIN_TRACE_X1", "0") == "1"
+    trace_qf = os.environ.get("LLAMA_CHAIN_TRACE_QF", "0") == "1"
+    trace_qr = os.environ.get("LLAMA_CHAIN_TRACE_QR", "0") == "1"
     x_t  = iron.tensor(x_in_orig, dtype=np.int8)
     w_t  = iron.tensor(wblob, dtype=np.int8)
     kv_t = iron.tensor(kvblob, dtype=np.int8)
     o_t  = iron.zeros([D], dtype=np.int8)
     tr_t = iron.zeros([N_LAYERS * D], dtype=np.int8)
     ta_t = iron.zeros([N_LAYERS * QD], dtype=np.int8)
+    tqf_t = iron.zeros([N_LAYERS * QF_BYTES], dtype=np.int8)
+    tqr_t = iron.zeros([N_LAYERS * QR_BYTES], dtype=np.int8)
 
     # XRT 5-arg ceiling: can have at most 5 runtime args. Always include
     # xin, w, kv, out (4). The 5th is whichever trace is enabled.
     args = [x_t, w_t, kv_t, o_t]
     if trace_x1: args.append(tr_t)
     if trace_af: args.append(ta_t)
-    assert len(args) <= 5, "XRT 5-arg ceiling"
+    if trace_qf: args.append(tqf_t)
+    if trace_qr: args.append(tqr_t)
+    assert len(args) <= 5, f"XRT 5-arg ceiling (got {len(args)})"
 
     npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
     rc = DefaultNPURuntime.run_test(npu_kernel, args, {}, verify=False, verbosity=opts.verbosity)
@@ -188,6 +195,54 @@ def main():
             max_abs = int(np.abs(diff).max()) if n_diff else 0
             mark = "  ✓" if n_diff == 0 else "  ✗"
             print(f"  L={L}: af mismatches={n_diff:>4}/{QD}  max|diff|={max_abs}{mark}")
+            x, _ = numpy_layer_forward(x, layer)
+
+    if trace_qf:
+        tqf_t.to("cpu")
+        qf_trace = tqf_t.numpy()
+        print(f"PER-LAYER QF DRAIN (seed={seed})")
+        x = x_in_orig.copy()
+        for L in range(N_LAYERS):
+            layer = layers[L]
+            sc = layer["scales"]
+            h1 = numpy_rmsnorm_int8(x, layer["gamma_in"], ACT_SCALE, INV_ACT_SCALE)
+            fp_q = (layer["wq_i8"].astype(np.int32) @ h1.astype(np.int32) + layer["bq"]).astype(np.float32) \
+                   * np.float32(ACT_SCALE) * layer["wq_sc"].astype(np.float32)
+            qf_ref = requant(fp_q, sc["q_inv_out"])
+            qf_actual = qf_trace[L*QF_BYTES:L*QF_BYTES + QD]
+            diff = qf_actual.astype(np.int16) - qf_ref.astype(np.int16)
+            n_diff = int((diff != 0).sum()); max_abs = int(np.abs(diff).max()) if n_diff else 0
+            mark = "  ✓" if n_diff == 0 else "  ✗"
+            print(f"  L={L}: qf mismatches={n_diff:>4}/{QD}  max|diff|={max_abs}{mark}")
+            # Tail check: bytes [QD..QD+8] should be (q_out_scale, 0.0) fp32.
+            tail = np.frombuffer(qf_trace[L*QF_BYTES + QD:L*QF_BYTES + QD + 8].tobytes(),
+                                 dtype=np.float32)
+            packed_scale = np.float32(sc["q_out_scale"])
+            tail_ok = "✓" if tail[0] == packed_scale else f"✗ tail={tail[0]} expect={packed_scale}"
+            print(f"      tail bytes: q_scale={tail[0]:.10f}  spare={tail[1]:.6f}  ({tail_ok})")
+            x, _ = numpy_layer_forward(x, layer)
+
+    if trace_qr:
+        tqr_t.to("cpu")
+        qr_trace = tqr_t.numpy()
+        print(f"PER-LAYER QR DRAIN (seed={seed})")
+        x = x_in_orig.copy()
+        for L in range(N_LAYERS):
+            layer = layers[L]
+            sc = layer["scales"]
+            h1 = numpy_rmsnorm_int8(x, layer["gamma_in"], ACT_SCALE, INV_ACT_SCALE)
+            fp_q = (layer["wq_i8"].astype(np.int32) @ h1.astype(np.int32) + layer["bq"]).astype(np.float32) \
+                   * np.float32(ACT_SCALE) * layer["wq_sc"].astype(np.float32)
+            qf = requant(fp_q, sc["q_inv_out"])
+            qr_ref = numpy_rope(qf, layer["cos"], layer["sin"], N_HEADS, HEAD_D, sc["q_out_scale"])
+            qr_actual = qr_trace[L*QR_BYTES:L*QR_BYTES + QD]
+            diff = qr_actual.astype(np.int16) - qr_ref.astype(np.int16)
+            n_diff = int((diff != 0).sum()); max_abs = int(np.abs(diff).max()) if n_diff else 0
+            mark = "  ✓" if n_diff == 0 else "  ✗"
+            print(f"  L={L}: qr mismatches={n_diff:>4}/{QD}  max|diff|={max_abs}{mark}")
+            if n_diff and L == 0:
+                for i in np.argwhere(diff != 0).flatten()[:5]:
+                    print(f"      i={i}: NPU={qr_actual[i]} ref={qr_ref[i]} qf[i]={qf[i]}")
             x, _ = numpy_layer_forward(x, layer)
 
 

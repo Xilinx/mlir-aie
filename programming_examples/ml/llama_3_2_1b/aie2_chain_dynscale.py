@@ -190,6 +190,8 @@ def build():
     # af = sv-output, pre-o_proj (QD bytes/layer).
     trace_x1 = _os.environ.get("LLAMA_CHAIN_TRACE_X1", "0") == "1"
     trace_af = _os.environ.get("LLAMA_CHAIN_TRACE_AF", "0") == "1"
+    trace_qr = _os.environ.get("LLAMA_CHAIN_TRACE_QR", "0") == "1"
+    trace_qf = _os.environ.get("LLAMA_CHAIN_TRACE_QF", "0") == "1"
 
     rt_xin_ty      = _i8(D)
     rt_w_ty        = _i8(WEIGHTS_BYTES)
@@ -197,6 +199,8 @@ def build():
     rt_out_ty      = _i8(D)
     rt_trace_x1_ty = _i8(N_LAYERS * D)
     rt_trace_af_ty = _i8(N_LAYERS * QD)
+    rt_trace_qf_ty = _i8(N_LAYERS * QF_BYTES)
+    rt_trace_qr_ty = _i8(N_LAYERS * QR_BYTES)
 
     t_D_i8       = _i8(D)
     t_QF_i8      = _i8(QF_BYTES)
@@ -425,17 +429,18 @@ def build():
 
     rt = Runtime()
     seq_tys = (rt_xin_ty, rt_w_ty, rt_kv_ty, rt_out_ty)
-    if trace_x1:
-        seq_tys = seq_tys + (rt_trace_x1_ty,)
-    if trace_af:
-        seq_tys = seq_tys + (rt_trace_af_ty,)
+    if trace_x1: seq_tys = seq_tys + (rt_trace_x1_ty,)
+    if trace_af: seq_tys = seq_tys + (rt_trace_af_ty,)
+    if trace_qf: seq_tys = seq_tys + (rt_trace_qf_ty,)
+    if trace_qr: seq_tys = seq_tys + (rt_trace_qr_ty,)
     with rt.sequence(*seq_tys) as seq_args:
         xin = seq_args[0]; wblob = seq_args[1]; kvblob = seq_args[2]; out = seq_args[3]
         idx = 4
-        trace = None
-        traf = None
+        trace = traf = trqf = trqr = None
         if trace_x1: trace = seq_args[idx]; idx += 1
         if trace_af: traf  = seq_args[idx]; idx += 1
+        if trace_qf: trqf  = seq_args[idx]; idx += 1
+        if trace_qr: trqr  = seq_args[idx]; idx += 1
         rt.start(*workers)
 
         tgs = []
@@ -507,6 +512,16 @@ def build():
             rt.drain(of_af.cons(), traf,
                      tap=strided_tap(N_LAYERS * QD, 0, QD, QD, N_LAYERS),
                      wait=True, task_group=ta_tg)
+        if trace_qf:
+            tqf_tg = rt.task_group(); tgs.append(tqf_tg)
+            rt.drain(of_qf.cons(), trqf,
+                     tap=strided_tap(N_LAYERS * QF_BYTES, 0, QF_BYTES, QF_BYTES, N_LAYERS),
+                     wait=True, task_group=tqf_tg)
+        if trace_qr:
+            tqr_tg = rt.task_group(); tgs.append(tqr_tg)
+            rt.drain(of_qr.cons(), trqr,
+                     tap=strided_tap(N_LAYERS * QR_BYTES, 0, QR_BYTES, QR_BYTES, N_LAYERS),
+                     wait=True, task_group=tqr_tg)
 
         for tg in tgs:
             rt.finish_task_group(tg)
