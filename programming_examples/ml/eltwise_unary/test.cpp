@@ -4,11 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
 #include "cxxopts.hpp"
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -27,15 +28,32 @@
 
 #include "test_utils.h"
 
-// relu reference implementation
-std::bfloat16_t relu_bf16(std::bfloat16_t &input) {
-  // Return the relu output
-  return (input > std::bfloat16_t(0.0f)) ? input : std::bfloat16_t(0.0f);
+static std::bfloat16_t relu_bf16(std::bfloat16_t x) {
+  return (x > std::bfloat16_t(0.0f)) ? x : std::bfloat16_t(0.0f);
+}
+
+static std::bfloat16_t silu_bf16(std::bfloat16_t x) {
+  // tanh-based sigmoid approximation matching the LUT kernel
+  std::bfloat16_t half_x = x * std::bfloat16_t(0.5f);
+  std::bfloat16_t tanh_half_x = std::tanh(half_x);
+  std::bfloat16_t sigmoid_approx =
+      std::bfloat16_t(0.5f) * (tanh_half_x + std::bfloat16_t(1.0f));
+  return x * sigmoid_approx;
+}
+
+static std::bfloat16_t gelu_bf16(std::bfloat16_t x) {
+  // tanh-approximation GELU computed in bf16 arithmetic so the precision
+  // loss path tracks the LUT-backed kernel.
+  constexpr auto sqrt_2_over_pi = std::bfloat16_t(0.79788456f);
+  constexpr auto beta = std::bfloat16_t(0.044715f);
+  std::bfloat16_t x3 = x * x * x;
+  std::bfloat16_t inner = sqrt_2_over_pi * (x + beta * x3);
+  std::bfloat16_t tanh_val = std::tanh(inner);
+  return std::bfloat16_t(0.5f) * x * (std::bfloat16_t(1.0f) + tanh_val);
 }
 
 int main(int argc, const char *argv[]) {
-  // Program arguments parsing
-  cxxopts::Options options("Passthrough DMAs Test");
+  cxxopts::Options options("Eltwise Unary Test");
   cxxopts::ParseResult vm;
 
   options.add_options()("help,h", "produce help message")(
@@ -48,7 +66,9 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the LX6",
       cxxopts::value<std::string>())(
       "length,l", "the length of the transfer in std::bfloat16_t",
-      cxxopts::value<int>()->default_value("4096"));
+      cxxopts::value<int>()->default_value("4096"))(
+      "op,o", "Unary op the kernel computes (relu | silu | gelu)",
+      cxxopts::value<std::string>()->default_value("relu"));
 
   try {
     vm = options.parse(argc, argv);
@@ -58,7 +78,6 @@ int main(int argc, const char *argv[]) {
       return 1;
     }
 
-    // Check required options
     if (!vm.count("xclbin") || !vm.count("kernel") || !vm.count("instr")) {
       std::cerr << "Error: Required options missing\n\n";
       std::cerr << "Usage:\n" << options.help() << std::endl;
@@ -70,6 +89,29 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
+  std::string op = vm["op"].as<std::string>();
+  std::bfloat16_t (*ref_fn)(std::bfloat16_t) = nullptr;
+  float rel_tol = 0.0f;
+  // Larger abs_th lets the near-zero region pass when the LUT-backed
+  // kernel rounds to 0 but the bf16-arith reference produces tiny
+  // non-zero values (e.g., gelu near x = -3 yields ~-0.006).
+  float abs_th = 0.001f;
+  if (op == "relu") {
+    ref_fn = relu_bf16;
+    rel_tol = 0.001f;
+  } else if (op == "silu") {
+    ref_fn = silu_bf16;
+    rel_tol = 0.04f;
+  } else if (op == "gelu") {
+    ref_fn = gelu_bf16;
+    rel_tol = 0.1f;
+    abs_th = 0.01f;
+  } else {
+    std::cerr << "--op must be 'relu', 'silu', or 'gelu' (got '" << op
+              << "')\n";
+    return 1;
+  }
+
   int verbosity = vm["verbosity"].as<int>();
 
   int N = vm["length"].as<int>();
@@ -78,12 +120,9 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
-  // Start the XRT test code
-  // Get a device handle
   unsigned int device_index = 0;
   auto device = xrt::device(device_index);
 
-  // Load the xclbin
   if (verbosity >= 1)
     std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>()
               << std::endl;
@@ -94,7 +133,6 @@ int main(int argc, const char *argv[]) {
               << std::endl;
   std::string Node = vm["kernel"].as<std::string>();
 
-  // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
                                [Node](xrt::xclbin::kernel &k) {
@@ -110,7 +148,6 @@ int main(int argc, const char *argv[]) {
 
   device.register_xclbin(xclbin);
 
-  // get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context." << std::endl;
   xrt::hw_context context(device, xclbin.get_uuid());
@@ -118,7 +155,6 @@ int main(int argc, const char *argv[]) {
   xrt::elf elf(vm["instr"].as<std::string>());
   xrt::module mod{elf};
 
-  // get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << std::endl;
   auto kernel = xrt::ext::kernel(context, mod, kernelName);
@@ -132,7 +168,7 @@ int main(int argc, const char *argv[]) {
   std::bfloat16_t *bufInA = bo_inA.map<std::bfloat16_t *>();
   std::vector<std::bfloat16_t> srcVecA;
   for (int i = 0; i < N; i++)
-    srcVecA.push_back(std::bfloat16_t(i * 0.05f + -3.0f)); // Example data
+    srcVecA.push_back(std::bfloat16_t(i * 0.05f + -3.0f));
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(std::bfloat16_t)));
 
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -140,11 +176,9 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
-  // Setup run to configure
   auto cfg_run = kernel(opcode, 0, 0, bo_inA, bo_out);
   cfg_run.wait();
   auto start = std::chrono::high_resolution_clock::now();
-  // Test run
   auto run = kernel(opcode, 0, 0, bo_inA, bo_out);
   run.wait();
   auto stop = std::chrono::high_resolution_clock::now();
@@ -157,7 +191,7 @@ int main(int argc, const char *argv[]) {
   std::cout << "Latency (us): " << npu_time << std::endl;
   std::cout << std::endl;
 
-  double total_bytes = 2.0 * N * sizeof(std::bfloat16_t); // input and output
+  double total_bytes = 2.0 * N * sizeof(std::bfloat16_t);
   double bandwidth_GBps = total_bytes / (npu_time * 1e-6) / 1e9;
   std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s"
             << std::endl;
@@ -167,10 +201,9 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (int i = 0; i < N; i++) {
-    std::bfloat16_t ref = relu_bf16(srcVecA[i]);
-    if (!test_utils::nearly_equal(*(bufOut + i), ref)) {
+    std::bfloat16_t ref = ref_fn(srcVecA[i]);
+    if (!test_utils::nearly_equal(*(bufOut + i), ref, rel_tol, abs_th)) {
       errors++;
-      // Print the first 100 mismatches
       if (errors <= 100) {
         std::cout << "Mismatch at index " << i << ": "
                   << "Expected: " << ref << ", "
