@@ -31,8 +31,8 @@ $(eval $(call jit_xclbin_elf,${xclbin_target},${insts_target},${elf_target},${ai
 $(eval $(call build_host_exe,${targetname},_build,test.cpp))
 
 .PHONY: run
-run: ${targetname}.exe ${xclbin_target} ${elf_target}
-	${powershell} ./$< -x ${xclbin_target} -i ${elf_target} -k MLIR_AIE
+run: ${targetname}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
 .PHONY: clean
 clean:
