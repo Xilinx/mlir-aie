@@ -394,8 +394,8 @@ def build():
         k(a, b, o)
         c_a.release(1); c_b.release(1); c_out.release(1)
 
-    PSK  = 16384
-    ATSK = 16384
+    PSK  = 8192   # match layer_d2048 exactly
+    ATSK = 16384  # attn workers (flowkv_mh has local arrays + many loops)
     FFNSK = PSK
 
     workers = [
