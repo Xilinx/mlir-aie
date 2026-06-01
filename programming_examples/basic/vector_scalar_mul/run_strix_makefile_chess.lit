@@ -6,7 +6,7 @@
 // RUN: mkdir -p test_stx_chess
 // RUN: cd test_stx_chess
 // RUN: make -f %S/Makefile clean
-// RUN: env CHESS=true make -f %S/Makefile devicename=npu2 
+// RUN: env CHESS=true make -f %S/Makefile devicename=npu2
 // RUN: env CHESS=true %run_on_npu2% make -f %S/Makefile run devicename=npu2
 // RUN: make -f %S/Makefile clean
 // RUN: env CHESS=true %run_on_npu2% make -f %S/Makefile trace devicename=npu2

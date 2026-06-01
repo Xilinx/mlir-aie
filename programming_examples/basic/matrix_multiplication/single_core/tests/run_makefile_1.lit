@@ -6,7 +6,7 @@
 // RUN: mkdir -p test_2
 // RUN: cd test_2
 // RUN: make -f %S/../Makefile clean
-// RUN: env M=768 K=512 N=512 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 make -f %S/../Makefile 
+// RUN: env M=768 K=512 N=512 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 make -f %S/../Makefile
 // RUN: %run_on_npu1% env M=768 K=512 N=512 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 make -f %S/../Makefile run
 // RUN: make -f %S/../Makefile clean
 // RUN: %run_on_npu1% env M=768 K=512 N=512 m=64 k=64 n=64 dtype_in=i16 dtype_out=i16 make -f %S/../Makefile trace

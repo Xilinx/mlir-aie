@@ -14,4 +14,4 @@
 // RUN: %run_on_npu1% make -f %S/Makefile targetname=group2 run_py
 // RUN: make -f %S/Makefile clean
 // RUN: %run_on_npu1% make -f %S/Makefile targetname=group2 trace_py
-  
+
