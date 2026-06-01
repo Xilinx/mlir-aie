@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 COLORDETECT_WIDTH = 1920
 COLORDETECT_HEIGHT = 1080
 
@@ -25,7 +25,7 @@ COLORDETECT_HEIGHT = 1080
 targetname = color_detect
 
 aie_py_src = ${targetname}.py
-aieargs = -d ${device} -W ${COLORDETECT_WIDTH} -H ${COLORDETECT_HEIGHT}
+aieargs = -d ${devicename} -W ${COLORDETECT_WIDTH} -H ${COLORDETECT_HEIGHT}
 
 xclbin_target = build/final_${COLORDETECT_WIDTH}.xclbin
 insts_target = build/insts.bin

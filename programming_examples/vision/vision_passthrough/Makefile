@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 PASSTHROUGH_WIDTH = 1920
 PASSTHROUGH_HEIGHT = 1080
 
@@ -22,7 +22,7 @@ PASSTHROUGH_HEIGHT = 1080
 targetname = vision_passthrough
 
 aie_py_src = ${targetname}.py
-aieargs = -d ${device} -W ${PASSTHROUGH_WIDTH} -H ${PASSTHROUGH_HEIGHT}
+aieargs = -d ${devicename} -W ${PASSTHROUGH_WIDTH} -H ${PASSTHROUGH_HEIGHT}
 
 xclbin_target = build/final_${PASSTHROUGH_WIDTH}.xclbin
 insts_target = build/insts.bin

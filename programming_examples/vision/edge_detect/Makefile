@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 EDGEDETECT_WIDTH = 1920
 EDGEDETECT_HEIGHT = 1080
 
@@ -26,7 +26,7 @@ targetname = edge_detect
 webcam ?= 0
 
 aie_py_src = ${targetname}.py
-aieargs = -d ${device} -W ${EDGEDETECT_WIDTH} -H ${EDGEDETECT_HEIGHT}
+aieargs = -d ${devicename} -W ${EDGEDETECT_WIDTH} -H ${EDGEDETECT_HEIGHT}
 
 xclbin_target = build/final_${EDGEDETECT_WIDTH}.xclbin
 insts_target = build/insts.bin

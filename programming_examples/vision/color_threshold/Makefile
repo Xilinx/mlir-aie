@@ -12,7 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 COLORTHRESHOLD_WIDTH  = 1920
 COLORTHRESHOLD_HEIGHT = 1080
 
@@ -22,7 +22,7 @@ COLORTHRESHOLD_HEIGHT = 1080
 targetname = color_threshold
 
 aie_py_src = ${targetname}.py
-aieargs = -d ${device} -W ${COLORTHRESHOLD_WIDTH} -H ${COLORTHRESHOLD_HEIGHT}
+aieargs = -d ${devicename} -W ${COLORTHRESHOLD_WIDTH} -H ${COLORTHRESHOLD_HEIGHT}
 
 xclbin_target = build/final_${COLORTHRESHOLD_WIDTH}.xclbin
 insts_target = build/insts.bin
