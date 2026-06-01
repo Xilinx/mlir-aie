@@ -58,25 +58,48 @@ static inline int8_t round_to_i8(float v) {
   return (int8_t)r;
 }
 
+// Trivial sv_lo + sv_hi -> sv_full memcpy worker. Needed because af_concat
+// can't pull from 3 input fifos on one CT (2-in DMA channel cap), so we
+// merge the two halves first.
+extern "C" void llama_sv_merge(int8_t *restrict in_lo,
+                               int8_t *restrict in_hi,
+                               int8_t *restrict out) {
+  event0();
+  constexpr int kHalf = (kNHeadsQ / 2) * kHD;
+  memcpy(out,         in_lo, kHalf);
+  memcpy(out + kHalf, in_hi, kHalf);
+  event1();
+}
+
+// 2-output split: lower half (KV groups 0..kHalf) and upper half. Required
+// to keep memtile DMA fanout under 4-out per stage; one memtile can't
+// emit all 8 streams.
+static constexpr int kHalfKV    = kNHeadsKV / 2;             // 4
+static constexpr int kHalfChunk = kHalfKV * kChunk;          // 1152
+
 extern "C" void llama_q_split(int8_t *restrict in_full,
-                              int8_t *restrict out_chunked) {
+                              int8_t *restrict out_lo,
+                              int8_t *restrict out_hi) {
   event0();
   int8_t *body = in_full;
   int8_t *tail = in_full + kQD;
   for (int g = 0; g < kNHeadsKV; g++) {
-    int8_t *dst = out_chunked + g * kChunk;
+    int8_t *base = (g < kHalfKV) ? out_lo : out_hi;
+    int local = (g < kHalfKV) ? g : (g - kHalfKV);
+    int8_t *dst = base + local * kChunk;
     memcpy(dst,              body + g * kBodyChunk, kBodyChunk);
     memcpy(dst + kBodyChunk, tail + g * kTailChunk, kTailChunk);
   }
   event1();
 }
 
+// af_concat consumes the full merged sv buffer (2048 B = 32 heads * 64).
+// Per-Q-head dequant (sv_out_scale[h]) + global requant (o_inv_act_scale).
 extern "C" void llama_af_concat(int8_t *restrict af_in,
                                 int8_t *restrict scales,
                                 int8_t *restrict af_out) {
   event0();
   ::aie::set_rounding(aie::rounding_mode::conv_even);
-  // scales[0..128] = 32 sv_out_scales fp32; scales[128..132] = o_inv_act_scale.
   const float *sv_out_scales =
       reinterpret_cast<const float *>(scales);
   float o_inv_act_scale;

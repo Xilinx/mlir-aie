@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh
 
 all: gemm_pt
 
@@ -798,6 +798,69 @@ run_chain_sample: chain_sample
 	cd ${srcdir} && LLAMA_CHAIN_SAMPLE_V=${CHAIN_SAMPLE_V} python3 test_chain_sample.py \
 		-x ${BUILD}/final_chain_sample.xclbin \
 		-i ${BUILD}/insts_chain_sample.bin \
+		-k MLIR_AIE
+
+# ---------- Single-layer multi-head GQA (Phase 7a) ----------
+# Production multi-head shapes: 32 Q heads, 8 KV heads, REP=4, HEAD_DIM=64.
+# 21 workers: 8 attn workers (one per KV head) + q_split + af_concat + the
+# usual rmsnorm/q/o/gate/up/silu/down/add fabric.
+LAYER_MH_T ?= 128
+
+# Per-shape kernel objects.
+${BUILD}/llama_rope_int8_mh_T${LAYER_MH_T}.cc.o: ${KDIR}/llama_rope_int8_mh.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
+		-ffp-contract=off \
+		-DLLAMA_ROPE_MH_HEAD_DIM=64 -DLLAMA_ROPE_MH_N_HEADS=32 -c $< -o ${@F}
+
+${BUILD}/llama_flowkv_mh_T${LAYER_MH_T}.cc.o: ${KDIR}/llama_flowkv_mh.cc ${BUILD}/exp_lut.h
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
+		-DLLAMA_FLOWKV_HEAD_DIM=64 -DLLAMA_FLOWKV_T=${LAYER_MH_T} \
+		-DLLAMA_FLOWKV_REP=4 -DLLAMA_FLOWKV_EXP_QUANT_SCALE=0.05f \
+		-I${srcdir} -c $< -o ${@F}
+
+${BUILD}/llama_gqa_glue.cc.o: ${KDIR}/llama_gqa_glue.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
+		-DLLAMA_GQA_HEAD_DIM=64 -DLLAMA_GQA_N_HEADS_Q=32 \
+		-DLLAMA_GQA_N_HEADS_KV=8 -c $< -o ${@F}
+
+${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_layer_mh.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+
+LAYER_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
+                ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o \
+                ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
+                ${BUILD}/llama_silu_mul_int8_8192.cc.o \
+                ${BUILD}/llama_rope_int8_mh_T${LAYER_MH_T}.cc.o \
+                ${BUILD}/llama_flowkv_mh_T${LAYER_MH_T}.cc.o \
+                ${BUILD}/llama_gqa_glue.cc.o \
+                ${BUILD}/llama_layer_pt.cc.o
+
+${BUILD}/aie_layer_mh_T${LAYER_MH_T}.mlir: ${srcdir}/aie2_layer_mh.py
+	mkdir -p ${@D}
+	LLAMA_LAYER_T=${LAYER_MH_T} python3 $< > $@
+
+${BUILD}/final_layer_mh_T${LAYER_MH_T}.xclbin: ${BUILD}/aie_layer_mh_T${LAYER_MH_T}.mlir ${LAYER_MH_DEPS}
+	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
+	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
+	cp ${BUILD}/llama_rope_int8_mh_T${LAYER_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
+	cp ${BUILD}/llama_flowkv_mh_T${LAYER_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_layer_mh_T${LAYER_MH_T}.bin \
+		$(notdir $<)
+
+layer_mh: ${BUILD}/final_layer_mh_T${LAYER_MH_T}.xclbin
+
+run_layer_mh: layer_mh
+	cd ${srcdir} && LLAMA_LAYER_T=${LAYER_MH_T} python3 test_layer_mh.py \
+		-x ${BUILD}/final_layer_mh_T${LAYER_MH_T}.xclbin \
+		-i ${BUILD}/insts_layer_mh_T${LAYER_MH_T}.bin \
 		-k MLIR_AIE
 
 # ---------- clean ----------

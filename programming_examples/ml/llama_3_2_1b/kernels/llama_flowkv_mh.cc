@@ -84,6 +84,21 @@ static inline float sw_recip(float a) {
   return x;
 }
 
+// Forward decl of the 3-arg signature -- the combined wrapper just calls
+// this with k_one = kv_one and v_one = kv_one + (4 + kT*kHD).
+extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
+                                int8_t *restrict k_one,
+                                int8_t *restrict v_one,
+                                int8_t *restrict out_chunk);
+
+extern "C" void llama_flowkv_mh_kvc(int8_t *restrict q_chunk,
+                                    int8_t *restrict kv_one,
+                                    int8_t *restrict out_chunk) {
+  // kv_one layout: [4 B k_scale | kT*kHD k body | 4 B v_scale | kT*kHD v body]
+  constexpr int kKHalf = 4 + kT * kHD;
+  llama_flowkv_mh(q_chunk, kv_one, kv_one + kKHalf, out_chunk);
+}
+
 extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
                                 int8_t *restrict k_one,
                                 int8_t *restrict v_one,
