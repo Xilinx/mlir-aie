@@ -292,7 +292,7 @@ jobs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        python -m pip install --require-hashes -r utils/mlir_wheels/ci-tools.lock
+        python -m pip install --require-hashes -r ci-tools.lock
         WHL=$(ls wheelhouse/mlir*whl)
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
