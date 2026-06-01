@@ -21,7 +21,16 @@ from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    Compile,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.controlflow import range_
 from aie.iron.device import device_from_args
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -95,9 +104,9 @@ def whole_array_mixed(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        dims_to_stream = [
-            [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-        ] * (stop_row - start_row)
+        dims_to_stream = [[(m // r, r * k), (k // s, s), (r, k), (s, 1)]] * (
+            stop_row - start_row
+        )
         a_tmp_fifos = (
             A_l3l2_fifos[i]
             .cons()
@@ -114,9 +123,7 @@ def whole_array_mixed(
     for col in range(n_aie_cols):
         B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         B_l2l1_fifos[col] = (
-            B_l3l2_fifos[col]
-            .cons()
-            .forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
+            B_l3l2_fifos[col].cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
         )
 
         C_l2l3_fifos[col] = ObjectFifo(
@@ -252,14 +259,22 @@ def _make_argparser():
     p.add_argument("-m", type=int, default=64)
     p.add_argument("-k", type=int, default=64)
     p.add_argument("-n", type=int, default=64)
-    p.add_argument("--n-aie-cols", dest="n_aie_cols", type=int,
-                   choices=[1, 2, 4, 8], default=4)
+    p.add_argument(
+        "--n-aie-cols", dest="n_aie_cols", type=int, choices=[1, 2, 4, 8], default=4
+    )
     return p
 
 
 def _compile_kwargs(opts):
-    return dict(M=opts.M, K=opts.K, N=opts.N, m=opts.m, k=opts.k, n=opts.n,
-                n_aie_cols=opts.n_aie_cols)
+    return dict(
+        M=opts.M,
+        K=opts.K,
+        N=opts.N,
+        m=opts.m,
+        k=opts.k,
+        n=opts.n,
+        n_aie_cols=opts.n_aie_cols,
+    )
 
 
 def main():

@@ -22,7 +22,16 @@ from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    Compile,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.controlflow import range_
 from aie.iron.device import device_from_args
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -93,14 +102,18 @@ def n32_core_gemm(
 
     for row in range(n_aie_rows):
         A_l3l2_fifos[row] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{row}", depth=2)
-        A_l2l1_fifos[row] = A_l3l2_fifos[row].cons().forward(
-            obj_type=A_l1_ty, name=f"A_L2L1_{row}", depth=2
+        A_l2l1_fifos[row] = (
+            A_l3l2_fifos[row]
+            .cons()
+            .forward(obj_type=A_l1_ty, name=f"A_L2L1_{row}", depth=2)
         )
 
     for col in range(n_aie_cols):
         B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=2)
-        B_l2l1_fifos[col] = B_l3l2_fifos[col].cons().forward(
-            obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2
+        B_l2l1_fifos[col] = (
+            B_l3l2_fifos[col]
+            .cons()
+            .forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2)
         )
 
     for col in range(n_aie_cols):
@@ -175,19 +188,31 @@ def n32_core_gemm(
 
             a_base_idx = (group_idx // num_col_tile) * n_aie_rows
             for row in range(n_aie_rows):
-                rt.fill(A_l3l2_fifos[row].prod(), a,
-                        tap=A_taps[a_base_idx + row],
-                        task_group=tg, wait=False)
+                rt.fill(
+                    A_l3l2_fifos[row].prod(),
+                    a,
+                    tap=A_taps[a_base_idx + row],
+                    task_group=tg,
+                    wait=False,
+                )
             b_base_idx = (group_idx % num_col_tile) * n_aie_cols
             for col in range(n_aie_cols):
-                rt.fill(B_l3l2_fifos[col].prod(), b,
-                        tap=B_taps[b_base_idx + col],
-                        task_group=tg, wait=False)
+                rt.fill(
+                    B_l3l2_fifos[col].prod(),
+                    b,
+                    tap=B_taps[b_base_idx + col],
+                    task_group=tg,
+                    wait=False,
+                )
             c_base_idx = group_idx * n_aie_cols
             for col in range(n_aie_cols):
-                rt.drain(C_l2l3_fifos[col].cons(), c,
-                         tap=C_taps[c_base_idx + col],
-                         task_group=tg, wait=True)
+                rt.drain(
+                    C_l2l3_fifos[col].cons(),
+                    c,
+                    tap=C_taps[c_base_idx + col],
+                    task_group=tg,
+                    wait=True,
+                )
 
             if slot_idx == 1 and group_idx != 1:
                 rt.finish_task_group(slots[2])

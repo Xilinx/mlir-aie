@@ -16,7 +16,16 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    Compile,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.controlflow import range_
 from aie.helpers.dialects.func import func
 from aie.iron.device import Tile
@@ -381,9 +390,7 @@ def dma_compression(
             rt.start(ct_worker)
             rt.fill(of_a.prod(), a_in)
             rt.drain(of_c.cons(), c_out, tap=out_tap_rt, wait=True)
-        return Program(
-            iron.get_current_device(), rt
-        ).resolve_program()
+        return Program(iron.get_current_device(), rt).resolve_program()
 
     is_memtile = config in MEMTILE_CONFIGS
     if is_memtile:
@@ -494,6 +501,4 @@ def dma_compression(
         rt.fill(of_in.prod(), a_in, tap=in_tap)
         rt.drain(of_out.cons(), c_out, tap=out_tap, wait=True)
 
-    return Program(
-        iron.get_current_device(), rt
-    ).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()

@@ -126,9 +126,7 @@ def whole_array_shuffle(
     for col in range(n_aie_cols):
         B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         B_l2l1_fifos[col] = (
-            B_l3l2_fifos[col]
-            .cons()
-            .forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
+            B_l3l2_fifos[col].cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
         )
 
         C_l2l3_fifos[col] = ObjectFifo(C_l2_ty, name=f"C_L2L3_{col}", depth=fifo_depth)
@@ -262,14 +260,22 @@ def _make_argparser():
     p.add_argument("-m", type=int, default=64)
     p.add_argument("-k", type=int, default=64)
     p.add_argument("-n", type=int, default=64)
-    p.add_argument("--n-aie-cols", dest="n_aie_cols", type=int,
-                   choices=[1, 2, 4, 8], default=4)
+    p.add_argument(
+        "--n-aie-cols", dest="n_aie_cols", type=int, choices=[1, 2, 4, 8], default=4
+    )
     return p
 
 
 def _compile_kwargs(opts):
-    return dict(M=opts.M, K=opts.K, N=opts.N, m=opts.m, k=opts.k, n=opts.n,
-                n_aie_cols=opts.n_aie_cols)
+    return dict(
+        M=opts.M,
+        K=opts.K,
+        N=opts.N,
+        m=opts.m,
+        k=opts.k,
+        n=opts.n,
+        n_aie_cols=opts.n_aie_cols,
+    )
 
 
 def main():

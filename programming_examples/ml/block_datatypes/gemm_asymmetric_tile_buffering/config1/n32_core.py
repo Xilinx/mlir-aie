@@ -23,7 +23,16 @@ from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    Compile,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.controlflow import range_
 from aie.iron.device import device_from_args
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -117,19 +126,25 @@ def n32_core_gemm(
         # (A_l2l1) fifo's producer-side `dims_to_stream` is the memtile
         # TX layout, and per-cons `dims_from_stream` is the layout each
         # of the 8 compute-tile consumers reads from the stream.
-        A_l2l1_fifos[row] = A_l3l2_fifos[row].cons().forward(
-            obj_type=A_l1_ty,
-            name=f"A_L2L1_{row}",
-            depth=2,
-            dims_to_stream=a_l2l1_in_dims,
-            dims_from_stream=a_l2l1_out_dims,
+        A_l2l1_fifos[row] = (
+            A_l3l2_fifos[row]
+            .cons()
+            .forward(
+                obj_type=A_l1_ty,
+                name=f"A_L2L1_{row}",
+                depth=2,
+                dims_to_stream=a_l2l1_in_dims,
+                dims_from_stream=a_l2l1_out_dims,
+            )
         )
 
     # Input B: 8 cols, each shim→memtile→fan to 4 rows of cores.
     for col in range(n_aie_cols):
         B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=2)
-        B_l2l1_fifos[col] = B_l3l2_fifos[col].cons().forward(
-            obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2
+        B_l2l1_fifos[col] = (
+            B_l3l2_fifos[col]
+            .cons()
+            .forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2)
         )
 
     # Output C: per-col, 4 cores join at memtile, memtile→shim with the

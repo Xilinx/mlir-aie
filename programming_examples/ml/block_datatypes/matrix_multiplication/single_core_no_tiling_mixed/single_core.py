@@ -20,7 +20,16 @@ from ml_dtypes import bfloat16
 from aie.dialects.aiex import v8bfp16ebs8
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    Compile,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.device import device_from_args
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
