@@ -266,21 +266,28 @@ def numpy_layer_mh_forward(x, layer, position=None):
     qr = numpy_rope_dyn(qf, cos, sin, N_HEADS_Q, HEAD_DIM)
 
     # 5) Per-Q-head attention. GQA: kvh = h_q // REP. Each Q head gets
-    #    its own sv_out_scale + sv_inv_out_scale.
+    #    its own sv_out_scale + sv_inv_out_scale. T_used (Phase 8c):
+    #    when caller passes position, only the first position+1 cache
+    #    slots are considered (causal mask). Otherwise attend over all
+    #    T slots (Phase 7 / 8a behavior, preserves BIT-EXACT for
+    #    random-fixture tests).
+    t_used = (position + 1) if position is not None else T
     sv_out_scales      = np.zeros(N_HEADS_Q, dtype=np.float32)
     sv_inv_out_scales  = np.zeros(N_HEADS_Q, dtype=np.float32)
     sv_i8_per_head     = []
     for h_q in range(N_HEADS_Q):
         kvh = h_q // REP
         q_h = qr[h_q * HEAD_DIM:(h_q + 1) * HEAD_DIM]
-        sv_fp_h = compute_sv_fp(q_h, kcaches[kvh], vcaches[kvh], HEAD_DIM, T,
+        k_slice = kcaches[kvh][:t_used * HEAD_DIM]
+        v_slice = vcaches[kvh][:t_used * HEAD_DIM]
+        sv_fp_h = compute_sv_fp(q_h, k_slice, v_slice, HEAD_DIM, t_used,
                                 float(q_out_scales[h_q]),
                                 float(k_scales[kvh]), float(v_scales[kvh]),
                                 lut_exp)
         s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
         sv_out_scales[h_q]     = np.float32(s)
         sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
-        sv_i8 = numpy_attention(q_h, kcaches[kvh], vcaches[kvh], HEAD_DIM, T,
+        sv_i8 = numpy_attention(q_h, k_slice, v_slice, HEAD_DIM, t_used,
                                 float(q_out_scales[h_q]),
                                 float(k_scales[kvh]), float(v_scales[kvh]),
                                 float(sv_inv_out_scales[h_q]), lut_exp)

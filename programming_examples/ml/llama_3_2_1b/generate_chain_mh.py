@@ -69,12 +69,14 @@ def update_layer_cos_sin(layers, cos_lut, sin_lut, pos):
 
 def numpy_forward_all_layers(x, layers, pos):
     """Numpy forward through all N_LAYERS, with K/V append at `pos`.
-    Sets layer["scales"] per layer (used by pack_blobs). Returns the
-    final hidden state (int8)."""
+    Sets layer["scales"] per layer (used by pack_blobs) and per-layer
+    ["t_used"] = pos + 1 so the device's flowkv_mh only attends over
+    valid cache positions (Phase 8c causal mask)."""
     x_cur = x.copy()
     for L in range(N_LAYERS):
         x_cur, scales = numpy_layer_mh_forward(x_cur, layers[L], position=pos)
         layers[L]["scales"] = scales
+        layers[L]["t_used"] = pos + 1
     return x_cur
 
 

@@ -108,11 +108,13 @@ OFF_WU         = OFF_WG         + WG_TOTAL
 OFF_WD         = OFF_WU         + WU_TOTAL
 WEIGHTS_BYTES  = OFF_WD         + WD_TOTAL
 
-# kvblob: per-layer block, each containing 8 KV heads' (k_header+kcache,
-# v_header+vcache) combined slots = 8 * 16392 = 131136 B per layer.
-PER_KV_HEAD_BYTES = KCACHE_PADDED + VCACHE_PADDED     # 16392
-PER_LAYER_KV      = N_HEADS_KV * PER_KV_HEAD_BYTES    # 131136
-KV_HALF_BYTES     = (N_HEADS_KV // 2) * PER_KV_HEAD_BYTES  # 65568
+# kvblob: per-layer block, each containing 8 KV heads' (T_used | k_header |
+# kcache | v_header | vcache) combined slots. Phase 8c adds the 4-byte
+# T_used prefix per KV head -> per-head slot grows from 16392 to 16396 B.
+T_USED_BYTES      = 8   # 4 B T_used + 4 B pad -> 16400 B per-head (factorable)
+PER_KV_HEAD_BYTES = T_USED_BYTES + KCACHE_PADDED + VCACHE_PADDED   # 16400
+PER_LAYER_KV      = N_HEADS_KV * PER_KV_HEAD_BYTES                 # 131168
+KV_HALF_BYTES     = (N_HEADS_KV // 2) * PER_KV_HEAD_BYTES          # 65584
 KV_BYTES          = N_LAYERS * PER_LAYER_KV
 
 
@@ -177,7 +179,7 @@ def build():
     t_WG_slot     = _i8(WG_SLOT)
     t_WU_slot     = _i8(WU_SLOT)
     t_WD_slot     = _i8(WD_SLOT)
-    t_KV_i8       = _i8(KCACHE_PADDED + VCACHE_PADDED)
+    t_KV_i8       = _i8(PER_KV_HEAD_BYTES)
     t_KV_HALF_i8  = _i8(KV_HALF_BYTES)
 
     # --- ObjectFifos (all depth=1) ---
@@ -211,13 +213,13 @@ def build():
     of_kv_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kv_lo")
     of_kv_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kv_hi")
     kv_lo_eps = of_kv_lo.cons().split(
-        offsets=[i * (KCACHE_PADDED + VCACHE_PADDED)
+        offsets=[i * PER_KV_HEAD_BYTES
                  for i in range(N_HEADS_KV // 2)],
         obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
         names=[f"kv_{i}" for i in range(N_HEADS_KV // 2)],
     )
     kv_hi_eps = of_kv_hi.cons().split(
-        offsets=[i * (KCACHE_PADDED + VCACHE_PADDED)
+        offsets=[i * PER_KV_HEAD_BYTES
                  for i in range(N_HEADS_KV // 2)],
         obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
         names=[f"kv_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],

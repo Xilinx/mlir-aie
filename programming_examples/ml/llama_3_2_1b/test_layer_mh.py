@@ -32,7 +32,8 @@ from aie2_layer_mh import (
     OFF_GAMMA_POST, OFF_WG, OFF_WU, OFF_WD,
     GAMMA_BYTES, CS_BYTES, AF_SCALES_BYTES,
     KCACHE_BYTES, VCACHE_BYTES, KCACHE_PADDED, VCACHE_PADDED, KV_HEADER,
-    PER_KV_HEAD_BYTES, kv_off_k, kv_off_v, KV_BYTES, WEIGHTS_BYTES,
+    PER_KV_HEAD_BYTES, kv_off_t_used, kv_off_k, kv_off_v,
+    KV_BYTES, WEIGHTS_BYTES, T_USED_BYTES,
     ACT_SCALE, INV_ACT_SCALE, SILU_GATE_SCALE,
 )
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
@@ -135,17 +136,23 @@ def pack_blobs(layer):
     assert wd_packed.size == N_TILES_D * WD_SLOT
     wblob[OFF_WD:OFF_WD + wd_packed.size] = wd_packed
 
-    # kvblob: 8 KV heads sequentially.
+    # kvblob: 8 KV heads sequentially. Per-head slot layout (Phase 8c):
+    # [T_used i32 | k_scale fp32 | k body | v_scale fp32 | v body].
+    # Random-fixture tests pass T_used=T so flowkv_mh attends over all
+    # slots (preserves Phase 7b BIT-EXACT behavior).
+    t_used = layer.get("t_used", T)
     kvblob = np.zeros(KV_BYTES, dtype=np.int8)
     for h in range(N_HEADS_KV):
+        # Write 4-byte T_used into the 8-byte prefix; the remaining 4 B
+        # are pad (stay zero).
+        kvblob[kv_off_t_used(h):kv_off_t_used(h) + 4] = \
+            np.frombuffer(np.int32(t_used).tobytes(), dtype=np.int8)
         k_off = kv_off_k(h)
         v_off = kv_off_v(h)
-        # 4 B k_scale header
         kvblob[k_off:k_off + 4] = np.frombuffer(
             fp32_bytes(float(layer["k_scales"][h])), dtype=np.int8)
         kvblob[k_off + KV_HEADER:k_off + KV_HEADER + KCACHE_BYTES] = \
             layer["kcaches"][h]
-        # 4 B v_scale header
         kvblob[v_off:v_off + 4] = np.frombuffer(
             fp32_bytes(float(layer["v_scales"][h])), dtype=np.int8)
         kvblob[v_off + KV_HEADER:v_off + KV_HEADER + VCACHE_BYTES] = \

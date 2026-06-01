@@ -34,7 +34,7 @@ from aie2_chain_dynscale_mh import (
     OFF_GAMMA_POST, OFF_WG, OFF_WU, OFF_WD,
     GAMMA_BYTES, CS_BYTES, AF_SCALES_BYTES,
     KCACHE_BYTES, VCACHE_BYTES, KCACHE_PADDED, VCACHE_PADDED, KV_HEADER,
-    PER_KV_HEAD_BYTES, PER_LAYER_KV, KV_BYTES, WEIGHTS_BYTES,
+    PER_KV_HEAD_BYTES, PER_LAYER_KV, KV_BYTES, WEIGHTS_BYTES, T_USED_BYTES,
     ACT_SCALE, INV_ACT_SCALE, SILU_GATE_SCALE,
 )
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward
@@ -112,14 +112,20 @@ def pack_blobs(layers):
         assert wd_packed.size == N_TILES_D * WD_SLOT
         wblob[off:off + wd_packed.size] = wd_packed
 
-    # kvblob: per-layer contiguous block of 8 KV heads.
+    # kvblob: per-layer contiguous block of 8 KV heads. Phase 8c per-head
+    # layout: [T_used i32 | k_scale fp32 | k body | v_scale fp32 | v body].
+    # Random-fixture tests pass T_used=T to preserve Phase 7b BIT-EXACT.
     kvblob = np.zeros(KV_BYTES, dtype=np.int8)
     for L in range(N_LAYERS):
         layer = layers[L]
+        t_used = layer.get("t_used", T)
         layer_base = L * PER_LAYER_KV
         for h in range(N_HEADS_KV):
-            k_off = layer_base + h * PER_KV_HEAD_BYTES
-            v_off = k_off + KCACHE_PADDED
+            tu_off = layer_base + h * PER_KV_HEAD_BYTES
+            k_off  = tu_off + T_USED_BYTES
+            v_off  = k_off + KCACHE_PADDED
+            kvblob[tu_off:tu_off + 4] = \
+                np.frombuffer(np.int32(t_used).tobytes(), dtype=np.int8)
             kvblob[k_off:k_off + 4] = np.frombuffer(
                 fp32_bytes(float(layer["k_scales"][h])), dtype=np.int8)
             kvblob[k_off + KV_HEADER:k_off + KV_HEADER + KCACHE_BYTES] = \

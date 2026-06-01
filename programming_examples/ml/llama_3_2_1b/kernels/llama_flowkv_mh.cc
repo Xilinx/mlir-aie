@@ -84,25 +84,48 @@ static inline float sw_recip(float a) {
   return x;
 }
 
-// Forward decl of the 3-arg signature -- the combined wrapper just calls
-// this with k_one = kv_one and v_one = kv_one + (4 + kT*kHD).
+// Forward decl of the inner kernel with explicit T_used (causal-mask
+// support). The combined wrapper reads T_used + per-head scales from
+// kv_one's prefix and forwards.
 extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
                                 int8_t *restrict k_one,
                                 int8_t *restrict v_one,
-                                int8_t *restrict out_chunk);
+                                int8_t *restrict out_chunk,
+                                int T_used);
 
+// Phase 8c kv_one layout (was: [k_scale | kbody | v_scale | vbody]):
+//   [0..4]:                       T_used (int32)   -- NEW Phase 8c
+//   [4..8]:                       pad (host writes 0; needed so the next
+//                                       region starts at offset 8 -> total
+//                                       slot 16400 B = factorable for the
+//                                       shim DMA TAP)
+//   [8..12]:                      k_scale (float32)
+//   [12..12+kT*kHD]:              k body
+//   [12+kT*kHD..16+kT*kHD]:       v_scale (float32)
+//   [16+kT*kHD..16+2*kT*kHD]:     v body
+// k_one passed to inner kernel is kv_one + 8 (skips T_used + pad), so
+// the inner kernel's "k_one[0..4] = k_scale, k_one+4 = k_body" layout
+// matches the pre-8c convention. v_one is k_one + (4 + kT*kHD).
+constexpr int kTUsedPrefix = 8;
 extern "C" void llama_flowkv_mh_kvc(int8_t *restrict q_chunk,
                                     int8_t *restrict kv_one,
                                     int8_t *restrict out_chunk) {
-  // kv_one layout: [4 B k_scale | kT*kHD k body | 4 B v_scale | kT*kHD v body]
+  int T_used;
+  memcpy(&T_used, kv_one, 4);
+  if (T_used <= 0) T_used = 1;
+  if (T_used > kT) T_used = kT;
   constexpr int kKHalf = 4 + kT * kHD;
-  llama_flowkv_mh(q_chunk, kv_one, kv_one + kKHalf, out_chunk);
+  llama_flowkv_mh(q_chunk,
+                  kv_one + kTUsedPrefix,
+                  kv_one + kTUsedPrefix + kKHalf,
+                  out_chunk, T_used);
 }
 
 extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
                                 int8_t *restrict k_one,
                                 int8_t *restrict v_one,
-                                int8_t *restrict out_chunk) {
+                                int8_t *restrict out_chunk,
+                                int T_used) {
   event0();
   ::aie::set_rounding(aie::rounding_mode::conv_even);
   static_assert(kHD == 64, "qk_scale hardcoded for head_dim=64");
@@ -135,9 +158,11 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
     int8_t *restrict q_h   = q_chunk   + h * kHD;
     int8_t *restrict out_h = out_chunk + h * kHD;
 
-    // 1) Scores: int32 dot -> ONE combined float multiply.
+    // 1) Scores: int32 dot -> ONE combined float multiply. Causal mask:
+    // only iterate over the first T_used positions. When T_used == kT
+    // (Phase 7b legacy path) the loop is identical to before.
     float max_s = -1e30f;
-    for (int i = 0; i < kT; i++) {
+    for (int i = 0; i < T_used; i++) {
       int32_t dot = 0;
       for (int d = 0; d < kHD; d++) {
         dot += (int32_t)q_h[d] * (int32_t)k_body[i * kHD + d];
@@ -149,7 +174,7 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
 
     // 2) Shift, quantize via LUT-step, sum.
     float sum = 0.0f;
-    for (int i = 0; i < kT; i++) {
+    for (int i = 0; i < T_used; i++) {
       int32_t q = quant_shifted(scores[i] - max_s);
       qvals[i] = q;
       sum += lookup_exp(q);
@@ -161,7 +186,7 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
     // avoid Bug 2 (fp32 stack array between loops).
     for (int j = 0; j < kHD; j++) {
       float acc = 0.0f;
-      for (int i = 0; i < kT; i++) {
+      for (int i = 0; i < T_used; i++) {
         float p = lookup_exp(qvals[i]) * inv_sum;
         acc += p * (float)v_body[i * kHD + j];
       }
