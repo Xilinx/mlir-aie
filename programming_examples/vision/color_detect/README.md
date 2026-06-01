@@ -43,4 +43,4 @@ make
 make run
 ```
 
-For NPU2 (Strix): `make device=npu2 && make run device=npu2`.
+For NPU2 (Strix): `make devicename=npu2 && make run devicename=npu2`.

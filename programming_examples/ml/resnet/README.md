@@ -31,7 +31,6 @@ ResNet consists of the following key components:
 .
 +-- layers_conv2_x                  # Implementation of ResNet conv2_x layers on NPU
 |   +-- resnet.py                   # A Python script that defines the AIE array structural design using MLIR-AIE operations.
-|   +-- resnet_placed.py               # A Python script that defines the AIE array structural design using MLIR-AIE operations using a lower-level version of IRON
 |   +-- Makefile                    # Contains instructions for building and compiling software projects.
 |   +-- resnet_conv2x_pipeline.png  # Figure describing our implementation of conv2_x layers on NPU.
 |   +-- run.lit                     # For LLVM Integrated Tester (LIT) of the design.
@@ -67,11 +66,6 @@ After the initial processing in the first bottleneck block, the output is sent d
 To compile the design:
 ```shell
 make
-```
-
-To compile the placed design:
-```shell
-env use_placed=1 make
 ```
 
 To run the design:

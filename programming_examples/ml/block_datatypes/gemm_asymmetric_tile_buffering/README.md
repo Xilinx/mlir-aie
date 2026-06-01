@@ -58,12 +58,14 @@ combined tradeoff) see Sections 3 – 5 of the paper.
 
 ## Examples
 
-These designs use the placed (`*_placed.py`) IRON flow and are currently only
-supported with the **chess** compiler. Build any of them with:
+These designs use IRON and currently require the **chess** compiler (the per-
+design Makefile already pulls in `xchesscc` via the shared `makefile_common`
+since Peano's AIE2P backend can't yet legalize the bfp16 mac kernels). Build
+any of them with:
 
 ```shell
 cd <config_dir>
-make use_chess=1 use_placed=1 devicename=npu2 run
+make devicename=npu2 run
 ```
 
 The Makefile defaults match the paper-scale shapes listed in the table
@@ -80,7 +82,7 @@ example:
 
 ```shell
 cd config1
-make use_chess=1 use_placed=1 devicename=npu2 run M=4096 K=4096 N=2048
+make devicename=npu2 run M=4096 K=4096 N=2048
 ```
 
 ## Notes

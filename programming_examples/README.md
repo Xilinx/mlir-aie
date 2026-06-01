@@ -12,7 +12,7 @@
 
 These programming examples are provided so that application programmers can learn how to leverage the IRON design flow with mlir-aie python bindings, and the mlir-aie intermediate representation directly to build applications targeting AI Engines. 
 
-Most examples are a single `<example_name>.py` design driven by `@iron.jit` — one file describes the AIE-array dataflow, JIT-compiles to xclbin/insts, and runs end-to-end (or feeds the prebuilt artifacts to a C++ host).  A few examples additionally provide an `<example_name>_placed.py` variant written against a lower-level form of IRON for the cases where explicit tile/core placement is the pedagogical point.
+Most examples are a single `<example_name>.py` design driven by `@iron.jit` — one file describes the AIE-array dataflow, JIT-compiles to xclbin/insts, and runs end-to-end (or feeds the prebuilt artifacts to a C++ host).
 
 They are organized into the following directories:
 

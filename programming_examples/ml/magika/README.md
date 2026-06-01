@@ -23,9 +23,9 @@ NOTE: Currently, the design supports standalone group0 and group2 blocks with an
 +-- inc                         # Include files, such as LUT headers and sub kernel functions
 +-- kernels                     # group kernel functions
 +-- py                          # python utilities for extrapolating stimulus from onnx file
-+-- group0_placed.py            # Placed group 0 design
-+-- group1_placed.py            # Placed group 1 design (placeholder)
-+-- group2_placed.py            # Placed group 2 design
++-- group0_placed.py            # Group 0 design
++-- group1_placed.py            # Group 1 design (placeholder)
++-- group2_placed.py            # Group 2 design
 +-- Makefile                    # 
 +-- README.md                   # This file.
 +-- run.lit                     # For LLVM Integrated Tester (LIT) of the design.
@@ -39,7 +39,7 @@ To compile the design for group 0 and run it.
 make run_py
 ```
 
-To compile the placed design for group 2:
+To compile the design for group 2:
 ```shell
 make targetname=group2 run_py
 ```
