@@ -236,13 +236,13 @@ python3 test_dma_compression.py both -v
 
 ```bash
 python3 -c "
-import numpy as np
 from aie.iron.device import NPU1Col1
-from aie.extras.context import mlir_mod_ctx
+from aie.utils.hostruntime import set_current_device
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from dma_compression import dma_compression
-a = np.arange(4096, dtype=np.int32); c = np.zeros(4096, dtype=np.int32)
-with mlir_mod_ctx() as ctx:
-    print(dma_compression(a, c, config='both', dev=NPU1Col1()))
+set_current_device(NPU1Col1())
+spec = CompilableDesign(dma_compression, compile_kwargs={'config': 'both'})
+print(spec.as_mlir(spec.generator))
 "
 ```
 
