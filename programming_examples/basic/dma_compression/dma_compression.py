@@ -155,7 +155,11 @@ def _build_multi_cmp_only():
     raw_ty = np.ndarray[(LINE_SIZE,), np.dtype[np.int32]]
     comp_ty = np.ndarray[(RATIOED_PER_LINE,), np.dtype[np.int32]]
     vec_ty_in = np.ndarray[(N,), np.dtype[np.int32]]
-    vec_ty_out = np.ndarray[(RATIOED_N,), np.dtype[np.int32]]
+    # Host-facing out memref is full N so the JIT tensor-size check accepts
+    # the test's N-element out_tensor; the shim S2MM BD below still writes
+    # only RATIOED_N ints (the compressed stream length), leaving the tail
+    # at SENTINEL — which the test scores as "untouched".
+    vec_ty_out = np.ndarray[(N,), np.dtype[np.int32]]
 
     def _emit_passthrough_mem(t, buf0, buf1, full_lock, empty_lock):
         """2-BD ping-pong S2MM ch0 -> MM2S ch0 on tile `t` (pure DMA)."""
@@ -317,6 +321,13 @@ def dma_compression(
 
     if config == "regdump":
         return _build_regdump()
+
+    # @func caches its emitted FuncOp on the decorator instance, but each
+    # @iron.jit invocation builds in its own MLIR context. Reset the cache
+    # so passthrough_line emits a fresh FuncOp into THIS context (otherwise
+    # the second config in a multi-config sweep tries to reference a
+    # FuncOp owned by a now-dead context — KeyError at func call site).
+    passthrough_line._func_op = None
 
     vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
