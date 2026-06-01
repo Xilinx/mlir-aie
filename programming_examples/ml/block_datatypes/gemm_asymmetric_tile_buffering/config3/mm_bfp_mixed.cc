@@ -52,6 +52,12 @@ static int g_counter = 0;
 
 static int k_counter = 0;
 
+// matmul + zero share the TU-local `c_bf16_2nd_half` staging buffer
+// (matmul accumulates into it, zero clears it), so we can't split them
+// into per-symbol .o builds the way mm_bfp.cc allows. The @iron.jit
+// design points both ExternalFunctions at the same .o; chess emits
+// both symbols here and the link picks one resolution per symbol.
+
 void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
                              bfp16ebs8 *__restrict pC_bfp16) {
 
