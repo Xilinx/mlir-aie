@@ -40,6 +40,87 @@ from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
 from gen_llama_data import quant_int8_perchan_absmax
 
+from pathlib import Path
+
+
+# --- Phase 6c.6: real-weight loader (single-head slice) ---
+# Real Llama 3.2 1B has Q_DIM=2048 = 32 heads * HEAD_DIM=64. The chain
+# runs single-head (N_HEADS=1, HEAD_D=64), so we slice head 0 of wq/wo.
+# wg/wu/wd/gammas are per-token and load as-is. kcache/vcache stay
+# random (chain doesn't model real k_proj/v_proj or position history).
+
+LLAMA_Q_DIM    = 2048  # full real Q_DIM
+LLAMA_HEAD_DIM = 64    # real HEAD_DIM, matches chain HEAD_D
+
+
+def _load_i8(path: Path, shape: tuple[int, ...]) -> np.ndarray:
+    return np.frombuffer(path.read_bytes(), dtype=np.int8).reshape(shape).copy()
+
+
+def _load_f32(path: Path, shape: tuple[int, ...]) -> np.ndarray:
+    return np.frombuffer(path.read_bytes(), dtype=np.float32).reshape(shape).copy()
+
+
+def _load_bf16(path: Path, shape: tuple[int, ...]) -> np.ndarray:
+    return np.frombuffer(path.read_bytes(), dtype=bfloat16).reshape(shape).copy()
+
+
+def gen_real_layer(L: int, data_dir: Path, rng: np.random.Generator) -> dict:
+    """Load layer L from data_dir/layer_<L>/, slice head 0 for attn."""
+    ld = data_dir / f"layer_{L:02d}"
+
+    # wq: real (Q_DIM=2048, D), take rows [0:HEAD_D] = head 0 of Q.
+    wq_full_i8 = _load_i8(ld / "wq.i8.bin", (LLAMA_Q_DIM, D))
+    wq_full_sc = _load_f32(ld / "wq.scales.f32.bin", (LLAMA_Q_DIM,))
+    wq_i8 = wq_full_i8[:HEAD_D].copy()        # (HEAD_D=QD, D)
+    wq_sc = wq_full_sc[:HEAD_D].copy()
+    bq = np.zeros(QD, np.int32)
+
+    # wo: real (D, Q_DIM=2048), take cols [0:HEAD_D] = head 0's input slice.
+    wo_full_i8 = _load_i8(ld / "wo.i8.bin", (D, LLAMA_Q_DIM))
+    wo_full_sc = _load_f32(ld / "wo.scales.f32.bin", (D,))   # per-output-row
+    wo_i8 = wo_full_i8[:, :HEAD_D].copy()     # (D, HEAD_D=QD)
+    wo_sc = wo_full_sc.copy()
+    bo = np.zeros(D, np.int32)
+
+    # wg / wu / wd: full as-is.
+    wg_i8 = _load_i8(ld / "wg.i8.bin", (HD, D))
+    wg_sc = _load_f32(ld / "wg.scales.f32.bin", (HD,))
+    bg = np.zeros(HD, np.int32)
+    wu_i8 = _load_i8(ld / "wu.i8.bin", (HD, D))
+    wu_sc = _load_f32(ld / "wu.scales.f32.bin", (HD,))
+    bu = np.zeros(HD, np.int32)
+    wd_i8 = _load_i8(ld / "wd.i8.bin", (D, HD))
+    wd_sc = _load_f32(ld / "wd.scales.f32.bin", (D,))
+    bd = np.zeros(D, np.int32)
+
+    # Real gammas.
+    gamma_in   = _load_bf16(ld / "gamma_in.bf16.bin",   (D,))
+    gamma_post = _load_bf16(ld / "gamma_post.bf16.bin", (D,))
+
+    # Random RoPE angles + KV cache (chain doesn't model real k_proj/positions).
+    half = HEAD_D // 2
+    ang = rng.uniform(0, 2 * np.pi, size=half).astype(np.float32)
+    cos_half = np.cos(ang).astype(bfloat16)
+    sin_half = np.sin(ang).astype(bfloat16)
+    cos = np.concatenate([cos_half, cos_half])
+    sin = np.concatenate([sin_half, sin_half])
+
+    kcache = rng.integers(-32, 33, size=T * KVD, dtype=np.int8)
+    vcache = rng.integers(-32, 33, size=T * KVD, dtype=np.int8)
+
+    return dict(
+        wq_i8=wq_i8, wq_sc=wq_sc, bq=bq,
+        wo_i8=wo_i8, wo_sc=wo_sc, bo=bo,
+        wg_i8=wg_i8, wg_sc=wg_sc, bg=bg,
+        wu_i8=wu_i8, wu_sc=wu_sc, bu=bu,
+        wd_i8=wd_i8, wd_sc=wd_sc, bd=bd,
+        cos=cos, sin=sin,
+        kcache=kcache, vcache=vcache,
+        gamma_in=gamma_in, gamma_post=gamma_post,
+        k_scale=0.05, v_scale=0.05,
+    )
+
 
 def requant(fp, inv):
     s = fp * np.float32(inv)
@@ -180,7 +261,10 @@ def run_one_seed(seed: int, opts, npu_kernel) -> int:
     lut_silu = silu_lut(SILU_GATE_SCALE)
     layers = []
     for L in range(N_LAYERS):
-        layer = gen_layer(rng)
+        if opts.real_weights:
+            layer = gen_real_layer(L, Path(opts.data_dir), rng)
+        else:
+            layer = gen_layer(rng)
         layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
         layers.append(layer)
@@ -291,6 +375,11 @@ def main():
     p = test_utils.create_default_argparser()
     p.add_argument("--seeds", type=str, default=None,
                    help="Comma-separated seed list (default: LLAMA_CHAIN_SEED env or 0,1,7,42)")
+    p.add_argument("--real-weights", action="store_true",
+                   help="Load real Llama 3.2 1B weights (single-head slice) from --data-dir.")
+    p.add_argument("--data-dir", type=str,
+                   default=str(Path(__file__).parent / "data"),
+                   help="Directory of extracted weights (from gen_llama_data.py).")
     opts = p.parse_args()
 
     npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
