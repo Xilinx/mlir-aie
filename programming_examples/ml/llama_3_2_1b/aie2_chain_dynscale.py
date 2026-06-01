@@ -489,27 +489,10 @@ def build():
             (of_vcache.prod(), kvblob, OFF_V, PER_LAYER_KV,
              VCACHE_PADDED, 1, KV_BYTES),
         ]
-        # Ping-pong task groups: one task_group per layer, finished
-        # PINGPONG_DEPTH layers behind the issue cursor. The BD allocator
-        # frees BD IDs on each finish_task_group, so peak per-channel BD
-        # use stays at PINGPONG_DEPTH instead of N_LAYERS.
-        PINGPONG_DEPTH = int(_os.environ.get("LLAMA_CHAIN_PINGPONG", "2"))
-        layer_tgs = [rt.task_group() for _ in range(N_LAYERS)]
-        for L in range(N_LAYERS):
-            for (prod, src, base_off, per_layer_stride,
-                 slot_bytes, slots_per_layer, total) in (fill_specs + kv_specs):
-                rt.fill(prod, src,
-                        tap=strided_tap(total,
-                                        base_off + L * per_layer_stride,
-                                        slot_bytes, slot_bytes, slots_per_layer),
-                        task_group=layer_tgs[L],
-                        wait=True)
-            if L >= PINGPONG_DEPTH:
-                rt.finish_task_group(layer_tgs[L - PINGPONG_DEPTH])
-        # Tail: finish the final PINGPONG_DEPTH layers' groups.
-        for L in range(max(0, N_LAYERS - PINGPONG_DEPTH), N_LAYERS):
-            rt.finish_task_group(layer_tgs[L])
-
+        # Drains BEFORE fills so S2MM BDs are queued and ready as soon as
+        # workers produce. Otherwise the inline ping-pong finishes below
+        # block waiting for workers, but workers block on full depth=1
+        # output/trace fifos with no drain queued -> deadlock.
         out_tg = rt.task_group(); tgs.append(out_tg)
         rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
 
@@ -538,6 +521,27 @@ def build():
             rt.drain(of_cs.cons(), trcs,
                      tap=strided_tap(N_LAYERS * CS_BYTES, 0, CS_BYTES, CS_BYTES, N_LAYERS),
                      wait=True, task_group=tcs_tg)
+
+        # Ping-pong task groups: one task_group per layer, finished
+        # PINGPONG_DEPTH layers behind the issue cursor. The BD allocator
+        # frees BD IDs on each finish_task_group, so peak per-channel BD
+        # use stays at PINGPONG_DEPTH instead of N_LAYERS.
+        PINGPONG_DEPTH = int(_os.environ.get("LLAMA_CHAIN_PINGPONG", "2"))
+        layer_tgs = [rt.task_group() for _ in range(N_LAYERS)]
+        for L in range(N_LAYERS):
+            for (prod, src, base_off, per_layer_stride,
+                 slot_bytes, slots_per_layer, total) in (fill_specs + kv_specs):
+                rt.fill(prod, src,
+                        tap=strided_tap(total,
+                                        base_off + L * per_layer_stride,
+                                        slot_bytes, slot_bytes, slots_per_layer),
+                        task_group=layer_tgs[L],
+                        wait=True)
+            if L >= PINGPONG_DEPTH:
+                rt.finish_task_group(layer_tgs[L - PINGPONG_DEPTH])
+        # Tail: finish the final PINGPONG_DEPTH layers' groups.
+        for L in range(max(0, N_LAYERS - PINGPONG_DEPTH), N_LAYERS):
+            rt.finish_task_group(layer_tgs[L])
 
         for tg in tgs:
             rt.finish_task_group(tg)
