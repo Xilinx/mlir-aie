@@ -14,12 +14,13 @@ include ${srcdir}/../../makefile-common
 
 SHELL := /bin/bash
 
-targetname = rmsnorm
+targetname = norm
+op ?= rms
 sequence_length ?= 64
 embedding_dim ?= 4096
 
 aie_py_src = ${targetname}.py
-aieargs = -d ${devicename} -s ${sequence_length} -e ${embedding_dim}
+aieargs = -d ${devicename} -s ${sequence_length} -e ${embedding_dim} -o ${op}
 
 xclbin_target = build/final.xclbin
 insts_target  = build/insts.bin
@@ -33,7 +34,7 @@ $(eval $(call build_host_exe,${targetname},_build,test.cpp,-DROWS=${sequence_len
 
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${insts_target}
-	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
+	NORM_OP=${op} ${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
 .PHONY: clean
 clean:

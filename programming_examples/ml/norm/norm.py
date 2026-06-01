@@ -1,18 +1,23 @@
-# rmsnorm/rmsnorm.py -*- Python -*-
+# norm/norm.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Row-wise bf16 RMSNorm — Iron API design with ``@iron.jit`` compilation.
+"""Row-wise bf16 norm (RMSNorm | LayerNorm) — Iron API + ``@iron.jit``.
 
-NPU2-only: the underlying ``rms_norm.cc`` kernel lives under
-``aie_kernels/aie2p/`` and has no aie2 counterpart.
+NPU2-only: the underlying ``{rms,layer}_norm.cc`` kernels live under
+``aie_kernels/aie2p/`` and have no aie2 counterpart.
 
 Eight cores process ``sequence_length // 8`` rows each; one row =
-``embedding_dim`` bf16 values.  Per row:
-    rms = sqrt(mean(x²) + eps), out = (x * gamma) / rms.
+``embedding_dim`` bf16 values. Per row:
+
+  * rms (gamma=1, eps=1e-5):
+      out = (x * gamma) / sqrt(mean(x^2) + eps)
+
+  * layer (gamma=1, beta=0, eps=1e-5):
+      out = (x - mean(x)) / sqrt(var(x) + eps) * gamma + beta
 """
 
 import argparse
@@ -32,25 +37,32 @@ from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/rms_norm.cc"
+
+_KERNEL_DIR = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p"
+_KERNEL_SPEC = {
+    "rms": ("rms_norm", _KERNEL_DIR / "rms_norm.cc"),
+    "layer": ("layer_norm", _KERNEL_DIR / "layer_norm.cc"),
+}
 
 
-def _rms_norm_extern(chunk_type):
+def _norm_extern(op, chunk_type):
+    sym, src = _KERNEL_SPEC[op]
     return ExternalFunction(
-        "rms_norm",
-        source_file=str(_KERNEL_SRC),
+        sym,
+        source_file=str(src),
         arg_types=[chunk_type, chunk_type, np.int32],
         include_dirs=[config.cxx_header_path()],
     )
 
 
 @iron.jit
-def rmsnorm(
+def norm(
     a_in: In,
     c_out: Out,
     *,
     sequence_length: Compile[int] = 64,
     embedding_dim: Compile[int] = 4096,
+    op: Compile[str] = "rms",
 ):
     device = iron.get_current_device()
     n_cores = 8
@@ -69,7 +81,7 @@ def rmsnorm(
     of_ins = [ObjectFifo(chunk_ty, name=f"in_{i}") for i in range(n_cores)]
     of_outs = [ObjectFifo(chunk_ty, name=f"out_{i}") for i in range(n_cores)]
 
-    rms_norm_fn = _rms_norm_extern(chunk_ty)
+    norm_fn = _norm_extern(op, chunk_ty)
 
     def core_fn(of_in, of_out, kernel):
         for _ in range_(rows_per_core):
@@ -80,7 +92,7 @@ def rmsnorm(
             of_out.release(1)
 
     workers = [
-        Worker(core_fn, [of_ins[i].cons(), of_outs[i].prod(), rms_norm_fn])
+        Worker(core_fn, [of_ins[i].cons(), of_outs[i].prod(), norm_fn])
         for i in range(n_cores)
     ]
 
@@ -100,10 +112,13 @@ def rmsnorm(
 
 
 def _make_argparser():
-    p = argparse.ArgumentParser(prog="AIE RMSNorm")
+    p = argparse.ArgumentParser(prog="AIE Norm")
     add_compile_args(p, with_elf=True)
     p.add_argument("-s", "--sequence_length", type=int, default=64, help="rows")
     p.add_argument("-e", "--embedding_dim", type=int, default=4096, help="cols per row")
+    p.add_argument(
+        "-o", "--op", choices=("rms", "layer"), default="rms", help="norm flavor"
+    )
     return p
 
 
@@ -111,17 +126,30 @@ def _compile_kwargs(opts):
     return dict(
         sequence_length=opts.sequence_length,
         embedding_dim=opts.embedding_dim,
+        op=opts.op,
     )
 
 
-def _rms_norm_reference(x_np: np.ndarray) -> np.ndarray:
-    eps = 1e-5
-    gamma = 1.0
+def _rms_norm_reference(x_np):
+    eps, gamma = 1e-5, 1.0
     x32 = x_np.astype(np.float32)
-    sum_sq = np.sum(x32 * x32, axis=1)
-    rms = np.sqrt(sum_sq / x32.shape[1] + eps)
-    out = (x32 * gamma) / rms[:, None]
-    return out.astype(bfloat16)
+    rms = np.sqrt(np.sum(x32 * x32, axis=1) / x32.shape[1] + eps)
+    return ((x32 * gamma) / rms[:, None]).astype(bfloat16)
+
+
+def _layer_norm_reference(x_np):
+    eps, gamma, beta = 1e-5, 1.0, 0.0
+    x32 = x_np.astype(np.float32)
+    mean = x32.mean(axis=1, keepdims=True)
+    var = (x32 * x32).mean(axis=1, keepdims=True) - mean * mean
+    inv_std = 1.0 / np.sqrt(var + eps)
+    return ((x32 - mean) * inv_std * gamma + beta).astype(bfloat16)
+
+
+_VERIFY_CFG = {
+    "rms": (_rms_norm_reference, 0.05),
+    "layer": (_layer_norm_reference, 0.1),
+}
 
 
 def _run_and_verify(opts):
@@ -133,21 +161,21 @@ def _run_and_verify(opts):
     a_t = iron.tensor(a_np.reshape(-1), dtype=bfloat16, device="npu")
     c_t = iron.tensor(c_np.reshape(-1), dtype=bfloat16, device="npu")
 
-    rmsnorm(a_t, c_t, **_compile_kwargs(opts))
+    norm(a_t, c_t, **_compile_kwargs(opts))
 
-    expected = _rms_norm_reference(a_np)
+    ref_fn, atol = _VERIFY_CFG[opts.op]
     assert_pass(
         c_t.numpy().reshape(rows, cols),
-        expected,
-        atol=0.05,
-        fail_msg="rmsnorm output mismatch",
+        ref_fn(a_np),
+        atol=atol,
+        fail_msg=f"{opts.op}norm output mismatch",
     )
 
 
 def main():
     opts = _make_argparser().parse_args()
     run_design_cli(
-        rmsnorm,
+        norm,
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
