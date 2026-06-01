@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale
 
 all: gemm_pt
 
@@ -712,6 +712,43 @@ run_layer_d2048: layer_d2048
 	cd ${srcdir} && LLAMA_LAYER_T=${LAYER_D2048_T} python3 test_layer_d2048.py \
 		-x ${BUILD}/final_layer_d2048_T${LAYER_D2048_T}.xclbin \
 		-i ${BUILD}/insts_layer_d2048_T${LAYER_D2048_T}.bin \
+		-k MLIR_AIE
+
+# ---------- N-layer chain with perchan + dynamic scales (Phase 6c.5b.5) ----------
+# Reuses the LAYER_D2048 kernel deps + the production-shape rmsnorm/silu/rope/flowkv .o
+# files. N_LAYERS configurable via LLAMA_CHAIN_N env var (default 2 in the IRON design).
+CHAIN_DYNSCALE_T ?= 128
+CHAIN_DYNSCALE_N ?= 2
+
+CHAIN_DYNSCALE_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
+                      ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
+                      ${BUILD}/llama_silu_mul_int8_8192.cc.o \
+                      ${BUILD}/llama_rope_int8_attn.cc.o \
+                      ${BUILD}/llama_flowkv_attn_T${CHAIN_DYNSCALE_T}.cc.o \
+                      ${BUILD}/llama_layer_pt.cc.o
+
+${BUILD}/aie_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.mlir: ${srcdir}/aie2_chain_dynscale.py
+	mkdir -p ${@D}
+	LLAMA_CHAIN_N=${CHAIN_DYNSCALE_N} LLAMA_CHAIN_T=${CHAIN_DYNSCALE_T} python3 $< > $@
+
+${BUILD}/final_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.xclbin: ${BUILD}/aie_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.mlir ${CHAIN_DYNSCALE_DEPS}
+	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
+	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
+	cp ${BUILD}/llama_rope_int8_attn.cc.o ${BUILD}/llama_rope_int8.cc.o
+	cp ${BUILD}/llama_flowkv_attn_T${CHAIN_DYNSCALE_T}.cc.o ${BUILD}/llama_flowkv.cc.o
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.bin \
+		$(notdir $<)
+
+chain_dynscale: ${BUILD}/final_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.xclbin
+
+run_chain_dynscale: chain_dynscale
+	cd ${srcdir} && LLAMA_CHAIN_N=${CHAIN_DYNSCALE_N} LLAMA_CHAIN_T=${CHAIN_DYNSCALE_T} python3 test_chain_dynscale.py \
+		-x ${BUILD}/final_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.xclbin \
+		-i ${BUILD}/insts_chain_dynscale_N${CHAIN_DYNSCALE_N}_T${CHAIN_DYNSCALE_T}.bin \
 		-k MLIR_AIE
 
 # ---------- chain + lm_head + sample (Phase 6b) ----------
