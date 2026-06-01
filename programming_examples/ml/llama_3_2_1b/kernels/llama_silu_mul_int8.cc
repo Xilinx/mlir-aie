@@ -67,4 +67,28 @@ void llama_silu_mul_int8(int8_t *restrict gate, int8_t *restrict up,
   event1();
 }
 
+// Dynamic-scale variant (Phase 6c.5b.2). The `up` buffer is sized
+// kCols + 8 bytes; the last 8 bytes carry (up_scale fp32, inv_out_scale
+// fp32) written by the up-gemm worker upstream. gate_scale stays baked
+// into the LUT.
+void llama_silu_mul_int8_dyn(int8_t *restrict gate, int8_t *restrict up,
+                             int8_t *restrict out) {
+  event0();
+
+  constexpr int kCols = LLAMA_SILU_MUL_COLS;
+  float up_scale, inv_out_scale;
+  memcpy(&up_scale,      up + kCols,     4);
+  memcpy(&inv_out_scale, up + kCols + 4, 4);
+
+  for (int i = 0; i < kCols; i++) {
+    bfloat16 s_bf = silu_lookup(gate[i]);
+    float    s_f  = (float)s_bf;
+    float    u_f  = (float)up[i] * up_scale;
+    float    out_f = s_f * u_f * inv_out_scale;
+    out[i] = round_to_i8(out_f);
+  }
+
+  event1();
+}
+
 } // extern "C"
