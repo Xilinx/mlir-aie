@@ -102,10 +102,14 @@ void yolo_m9_pe_add_row_i8_i8(
         continue; // y-edge zero pad → skip whole ky band
 
       // Pad row: [0] and [17] are zero; [1..16] hold v_row[yy*kInW+0..15].
+      // 16-byte vec_load + offset vec_store replaces 16-iter scalar copy.
+      // padded is alignas(32) so padded[0] is 32-aligned; storing to
+      // padded+1 (unaligned) — peano supports unaligned aie::store_v at
+      // this width (verified by sibling aie::load_v<16>(&padded[kx])
+      // unaligned loads at kx=1,2 in the inner kx loop below).
       alignas(32) int8_t padded[32] = {0};
       const int8_t *row_p = v_row + yy * kInW;
-      for (int xx = 0; xx < kInW; xx++)
-        padded[xx + 1] = row_p[xx];
+      aie::store_v(&padded[1], aie::load_v<16>(row_p));
 
       AIE_LOOP_UNROLL_FULL
       for (int kx = 0; kx < 3; kx++) {
