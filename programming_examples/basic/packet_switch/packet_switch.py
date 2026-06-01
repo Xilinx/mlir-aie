@@ -41,9 +41,12 @@ from aie.iron import (
     Acquire,
     Bd,
     Buffer,
+    Compile,
     DmaChannel,
     ExternalFunction,
+    In,
     Lock,
+    Out,
     PacketFlow,
     Program,
     Release,
@@ -61,8 +64,8 @@ from aie.dialects.aiex import (
     dma_start_task,
     shim_dma_bd,
 )
-from aie.utils.compile import compile_mlir_module
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
 _OP_PACKET_ID = {"add": 0, "mul": 1}
 
@@ -75,7 +78,15 @@ def _device_for(dev_str: str):
     return from_name(dev_str, n_cols=None if dev_str == "npu2" else 1)
 
 
-def _build_program(dev, in_out_size: int, input_packet_id: int):
+@iron.jit
+def packet_switch(
+    A: In,
+    B: Out,
+    *,
+    in_out_size: Compile[int] = 256,
+    input_packet_id: Compile[int] = 0,
+):
+    dev = iron.get_current_device()
     in_out_ty = np.dtype[np.int8]
     vector_ty = np.ndarray[(in_out_size,), in_out_ty]
     # +4 bytes for the kept packet header at the memtile.
@@ -430,7 +441,7 @@ def _build_program(dev, in_out_size: int, input_packet_id: int):
         rt.start(c02_worker, c03_worker)
         rt.inline_ops(emit_seq, [A, B])
 
-    return Program(dev, rt)
+    return Program(dev, rt).resolve_program()
 
 
 def _make_argparser():
@@ -448,31 +459,26 @@ def _make_argparser():
     return p
 
 
+def _compile_kwargs(opts):
+    return dict(in_out_size=opts.length, input_packet_id=_OP_PACKET_ID[opts.op])
+
+
+def _emit_mlir(opts):
+    from aie.utils.compile.jit.compilabledesign import CompilableDesign
+
+    spec = CompilableDesign(packet_switch, compile_kwargs=_compile_kwargs(opts))
+    print(spec.as_mlir(spec.generator))
+
+
 def main():
     opts = _make_argparser().parse_args()
-    program = _build_program(
-        dev=_device_for(opts.dev),
-        in_out_size=opts.length,
-        input_packet_id=_OP_PACKET_ID[opts.op],
+    run_design_cli(
+        packet_switch,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        device=lambda o: _device_for(o.dev),
+        emit_mlir=_emit_mlir,
     )
-    module = program.resolve_program()
-    if opts.emit_mlir:
-        print(module)
-        return
-    if opts.xclbin_path:
-        if not opts.insts_path:
-            sys.exit("--xclbin-path requires --insts-path (must be set together)")
-        compile_mlir_module(
-            mlir_module=str(module),
-            xclbin_path=opts.xclbin_path,
-            insts_path=opts.insts_path,
-            work_dir=str(Path(opts.xclbin_path).resolve().parent),
-            # Pass device= so any ExternalFunction(source_file=…) (here:
-            # add_mul.cc) gets auto-built into work_dir.
-            device=_device_for(opts.dev),
-        )
-        return
-    print(module)
 
 
 if __name__ == "__main__":

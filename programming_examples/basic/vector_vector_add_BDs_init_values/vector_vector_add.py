@@ -34,9 +34,12 @@ from aie.iron import (
     Acquire,
     Bd,
     Buffer,
+    Compile,
     DmaChannel,
     Flow,
+    In,
     Lock,
+    Out,
     Program,
     Release,
     Runtime,
@@ -44,7 +47,7 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile, from_name
+from aie.iron.device import Tile, device_from_args
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.dialects.aiex import (
     dma_await_task,
@@ -52,11 +55,19 @@ from aie.dialects.aiex import (
     dma_start_task,
     shim_dma_single_bd_task,
 )
-from aie.utils.compile import compile_mlir_module
 from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
 
-def _build_program(dev, col: int):
+@iron.jit
+def vector_vector_add(
+    A: In,
+    B: In,
+    C: Out,
+    *,
+    col: Compile[int] = 0,
+):
+    dev = iron.get_current_device()
     N = 256
     n = 16
     N_div_n = N // n
@@ -203,7 +214,7 @@ def _build_program(dev, col: int):
         rt.start(worker)
         rt.inline_ops(emit_seq, [A, B, C])
 
-    return Program(dev, rt)
+    return Program(dev, rt).resolve_program()
 
 
 def _make_argparser():
@@ -213,24 +224,26 @@ def _make_argparser():
     return p
 
 
+def _compile_kwargs(opts):
+    return dict(col=opts.col)
+
+
+def _emit_mlir(opts):
+    from aie.utils.compile.jit.compilabledesign import CompilableDesign
+
+    spec = CompilableDesign(vector_vector_add, compile_kwargs=_compile_kwargs(opts))
+    print(spec.as_mlir(spec.generator))
+
+
 def main():
     opts = _make_argparser().parse_args()
-    program = _build_program(dev=from_name(opts.dev), col=opts.col)
-    module = program.resolve_program()
-    if opts.emit_mlir:
-        print(module)
-        return
-    if opts.xclbin_path:
-        if not opts.insts_path:
-            sys.exit("--xclbin-path requires --insts-path (must be set together)")
-        compile_mlir_module(
-            mlir_module=str(module),
-            xclbin_path=opts.xclbin_path,
-            insts_path=opts.insts_path,
-            work_dir=str(Path(opts.xclbin_path).resolve().parent),
-        )
-        return
-    print(module)
+    run_design_cli(
+        vector_vector_add,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        device=device_from_args,
+        emit_mlir=_emit_mlir,
+    )
 
 
 if __name__ == "__main__":
