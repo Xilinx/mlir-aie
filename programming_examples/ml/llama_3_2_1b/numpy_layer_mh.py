@@ -78,6 +78,12 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     wq_sc = _f32("wq.scales.f32.bin", (Q_DIM,))
     bq    = np.zeros(Q_DIM, np.int32)
 
+    # k_proj, v_proj: (KV_DIM, D) -- Phase 8a real K/V projection.
+    wk_i8 = _i8("wk.i8.bin",         (KV_DIM, D))
+    wk_sc = _f32("wk.scales.f32.bin", (KV_DIM,))
+    wv_i8 = _i8("wv.i8.bin",         (KV_DIM, D))
+    wv_sc = _f32("wv.scales.f32.bin", (KV_DIM,))
+
     wo_i8 = _i8("wo.i8.bin",         (D, Q_DIM))
     wo_sc = _f32("wo.scales.f32.bin", (D,))
     bo    = np.zeros(D, np.int32)
@@ -102,15 +108,18 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     cos = np.concatenate([cos_half, cos_half])
     sin = np.concatenate([sin_half, sin_half])
 
-    kcaches = [rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
-               for _ in range(N_HEADS_KV)]
-    vcaches = [rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
-               for _ in range(N_HEADS_KV)]
-    k_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
-    v_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
+    # Phase 8a: empty caches; the host harness fills slots 0..t_cur as
+    # tokens are processed. k/v_scales start at a tiny epsilon and get
+    # overwritten per token by numpy_layer_mh_forward(position=...).
+    kcaches = [np.zeros(T * HEAD_DIM, dtype=np.int8) for _ in range(N_HEADS_KV)]
+    vcaches = [np.zeros(T * HEAD_DIM, dtype=np.int8) for _ in range(N_HEADS_KV)]
+    k_scales = np.full(N_HEADS_KV, 1e-6, dtype=np.float32)
+    v_scales = np.full(N_HEADS_KV, 1e-6, dtype=np.float32)
 
     return dict(
         wq_i8=wq_i8, wq_sc=wq_sc, bq=bq,
+        wk_i8=wk_i8, wk_sc=wk_sc,
+        wv_i8=wv_i8, wv_sc=wv_sc,
         wo_i8=wo_i8, wo_sc=wo_sc, bo=bo,
         wg_i8=wg_i8, wg_sc=wg_sc, bg=bg,
         wu_i8=wu_i8, wu_sc=wu_sc, bu=bu,
@@ -159,8 +168,17 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
     gamma_in   = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
     gamma_post = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
 
+    # Phase 8a: wk/wv drawn LAST so adding them doesn't shift earlier rng
+    # consumers (kcaches/vcaches/gammas) -- preserves test_chain_mh BIT-EXACT.
+    wk_fp = random_w(KV_DIM, D)
+    wv_fp = random_w(KV_DIM, D)
+    wk_i8, wk_sc = quant_int8_perchan_absmax(wk_fp)
+    wv_i8, wv_sc = quant_int8_perchan_absmax(wv_fp)
+
     return dict(
         wq_i8=wq_i8, wq_sc=wq_sc, bq=bq,
+        wk_i8=wk_i8, wk_sc=wk_sc,
+        wv_i8=wv_i8, wv_sc=wv_sc,
         wo_i8=wo_i8, wo_sc=wo_sc, bo=bo,
         wg_i8=wg_i8, wg_sc=wg_sc, bg=bg,
         wu_i8=wu_i8, wu_sc=wu_sc, bu=bu,
@@ -172,7 +190,7 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
     )
 
 
-def numpy_layer_mh_forward(x, layer):
+def numpy_layer_mh_forward(x, layer, position=None):
     """Multi-head GQA single-layer forward + per-Q-head scale calibration.
 
     Returns (x_out, scales) where scales is a dict packing every
@@ -193,6 +211,41 @@ def numpy_layer_mh_forward(x, layer):
 
     # 1) rmsnorm1 -> h1
     h1 = numpy_rmsnorm_int8(x, gamma_in, ACT_SCALE, INV_ACT_SCALE)
+
+    # 1b) Phase 8a: real K/V projection + rope_k + per-KV-head requant +
+    # cache append at `position`. Only runs when caller passes position;
+    # otherwise the test-fixture caches are used as-is (Phase 7 behavior).
+    if position is not None:
+        wk_i8 = layer["wk_i8"]; wk_sc = layer["wk_sc"]
+        wv_i8 = layer["wv_i8"]; wv_sc = layer["wv_sc"]
+        k_fp = (wk_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32) \
+               * np.float32(ACT_SCALE) * wk_sc.astype(np.float32)   # (KV_DIM,)
+        v_fp = (wv_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32) \
+               * np.float32(ACT_SCALE) * wv_sc.astype(np.float32)
+        # Apply rope to k per KV head (Llama half-split convention).
+        # cos / sin are full HEAD_DIM (two copies of half), bf16; cast to fp32.
+        cosf = np.asarray(cos, dtype=np.float32)
+        sinf = np.asarray(sin, dtype=np.float32)
+        half = HEAD_DIM // 2
+        k_rope = np.empty_like(k_fp)
+        for h in range(N_HEADS_KV):
+            kh = k_fp[h * HEAD_DIM:(h + 1) * HEAD_DIM].copy()
+            x1 = kh[:half]; x2 = kh[half:]
+            kh[:half]  = x1 * cosf[:half]  - x2 * sinf[:half]
+            kh[half:]  = x2 * cosf[half:]  + x1 * sinf[half:]
+            k_rope[h * HEAD_DIM:(h + 1) * HEAD_DIM] = kh
+        # Per-KV-head dynamic quant + cache append at slot `position`.
+        for h in range(N_HEADS_KV):
+            kh = k_rope[h * HEAD_DIM:(h + 1) * HEAD_DIM]
+            vh = v_fp  [h * HEAD_DIM:(h + 1) * HEAD_DIM]
+            ks = float(np.maximum(np.abs(kh).max(), 1e-12)) / 127.0
+            vs = float(np.maximum(np.abs(vh).max(), 1e-12)) / 127.0
+            k_scales[h] = np.float32(ks)
+            v_scales[h] = np.float32(vs)
+            kcaches[h][position * HEAD_DIM:(position + 1) * HEAD_DIM] = \
+                requant(kh, np.float32(1.0) / np.float32(ks))
+            vcaches[h][position * HEAD_DIM:(position + 1) * HEAD_DIM] = \
+                requant(vh, np.float32(1.0) / np.float32(vs))
 
     # 2) q_proj (full Q_DIM=2048)
     fp_q_full = (wq_i8.astype(np.int32) @ h1.astype(np.int32) + bq).astype(np.float32) \
