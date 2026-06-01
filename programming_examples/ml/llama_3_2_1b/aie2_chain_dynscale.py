@@ -21,6 +21,17 @@ times per fifo.
 
 All ObjectFifos at depth=1 (Bug 8 audit -- same constraint as 6c.5b.4).
 All slot prefixes 64 B (Bug 7 alignment).
+
+Known limit: N_LAYERS <= 3 at production shapes. At N >= 4 the single
+BD-chained TAP per fifo exceeds the shim-NoC BD's effective wrap-size
+limit (HW seems to truncate dim sizes silently while the verifier
+exempts contiguous transfers from the 10-bit check). Per-layer rt.fill
+loops sidestep the wrap limit but then hit the 4-deep per-channel task
+queue (Bug 3b) and even with inline finish_task_group between batches
+the chain still corrupts. Real fix is memtile-staged ObjectFifo (shim
+does a single linear DMA into memtile; memtile re-DMAs strided into
+CT) -- to file as 6c.5b.5b. For now N<=3 validates the per-layer
+dynamic-scale plumbing.
 """
 
 import argparse
@@ -407,30 +418,50 @@ def build():
             rt.fill(prod, src,
                     tap=strided_tap(total, off, slot_bytes, slot_bytes, n_slots),
                     task_group=tg)
+        # Compatibility alias for the older code path's call sites.
+        def add_fill_per_layer(prod, src, base_off, per_layer_stride,
+                               slot_bytes, slots_per_layer, total):
+            # Single BD-chained TAP per fifo covering ALL N_LAYERS * slots_per_layer
+            # slots. Hits the AIE2P shim BD wrap-size limit at N >= 4 for
+            # production-shape slots, but kept this way for N=2/3 (single
+            # task per channel; no Bug 3b queue pressure).
+            add_fill_n(prod, src, base_off, slot_bytes,
+                       N_LAYERS * slots_per_layer, total)
 
         # Runtime activation in -> seed (1 slot, layer 0's input).
         seed_tg = rt.task_group(); tgs.append(seed_tg)
         rt.fill(of_seed.prod(), xin, task_group=seed_tg)
 
-        # Per-fifo BD-chained TAPs walking N_LAYERS * (per-layer slot count).
-        add_fill_n(of_gam_in.prod(),   wblob, OFF_GAMMA_IN,   GAMMA_BYTES, TOT_GAMMA, WEIGHTS_BYTES)
-        add_fill_n(of_wq.prod(),       wblob, OFF_WQ,         WQ_SLOT,     TOT_WQ,    WEIGHTS_BYTES)
-        add_fill_n(of_cs.prod(),       wblob, OFF_CS,         CS_BYTES,    TOT_CS,    WEIGHTS_BYTES)
-        add_fill_n(of_wo.prod(),       wblob, OFF_WO,         WO_SLOT,     TOT_WO,    WEIGHTS_BYTES)
-        add_fill_n(of_gam_post.prod(), wblob, OFF_GAMMA_POST, GAMMA_BYTES, TOT_GAMMA, WEIGHTS_BYTES)
-        add_fill_n(of_wg.prod(),       wblob, OFF_WG,         WG_SLOT,     TOT_WG,    WEIGHTS_BYTES)
-        add_fill_n(of_wu.prod(),       wblob, OFF_WU,         WU_SLOT,     TOT_WU,    WEIGHTS_BYTES)
-        add_fill_n(of_wd.prod(),       wblob, OFF_WD,         WD_SLOT,     TOT_WD,    WEIGHTS_BYTES)
+        # Per-fifo, per-layer rt.fill (N_LAYERS calls per fifo). Each fill's
+        # TAP covers slots_per_layer slots for one layer.
+        add_fill_per_layer(of_gam_in.prod(),   wblob, OFF_GAMMA_IN,
+                           GAMMA_BYTES, GAMMA_BYTES, 1, WEIGHTS_BYTES)
+        add_fill_per_layer(of_wq.prod(),       wblob, OFF_WQ,
+                           N_TILES_Q * WQ_SLOT, WQ_SLOT, N_TILES_Q, WEIGHTS_BYTES)
+        add_fill_per_layer(of_cs.prod(),       wblob, OFF_CS,
+                           CS_BYTES, CS_BYTES, 1, WEIGHTS_BYTES)
+        add_fill_per_layer(of_wo.prod(),       wblob, OFF_WO,
+                           N_TILES_O * WO_SLOT, WO_SLOT, N_TILES_O, WEIGHTS_BYTES)
+        add_fill_per_layer(of_gam_post.prod(), wblob, OFF_GAMMA_POST,
+                           GAMMA_BYTES, GAMMA_BYTES, 1, WEIGHTS_BYTES)
+        add_fill_per_layer(of_wg.prod(),       wblob, OFF_WG,
+                           N_TILES_G * WG_SLOT, WG_SLOT, N_TILES_G, WEIGHTS_BYTES)
+        add_fill_per_layer(of_wu.prod(),       wblob, OFF_WU,
+                           N_TILES_U * WU_SLOT, WU_SLOT, N_TILES_U, WEIGHTS_BYTES)
+        add_fill_per_layer(of_wd.prod(),       wblob, OFF_WD,
+                           N_TILES_D * WD_SLOT, WD_SLOT, N_TILES_D, WEIGHTS_BYTES)
 
-        # KV: per-layer kcache+vcache interleaved. Per-fifo TAP walks N_LAYERS
-        # slots with stride PER_LAYER_KV.
+        # KV: single TAP per cache walking N_LAYERS slots with
+        # stride PER_LAYER_KV.
         kc_tg = rt.task_group(); tgs.append(kc_tg)
         rt.fill(of_kcache.prod(), kvblob,
-                tap=strided_tap(KV_BYTES, OFF_K, PER_LAYER_KV, KCACHE_PADDED, N_LAYERS),
+                tap=strided_tap(KV_BYTES, OFF_K, PER_LAYER_KV,
+                                KCACHE_PADDED, N_LAYERS),
                 task_group=kc_tg)
         vc_tg = rt.task_group(); tgs.append(vc_tg)
         rt.fill(of_vcache.prod(), kvblob,
-                tap=strided_tap(KV_BYTES, OFF_V, PER_LAYER_KV, VCACHE_PADDED, N_LAYERS),
+                tap=strided_tap(KV_BYTES, OFF_V, PER_LAYER_KV,
+                                VCACHE_PADDED, N_LAYERS),
                 task_group=vc_tg)
 
         out_tg = rt.task_group(); tgs.append(out_tg)
