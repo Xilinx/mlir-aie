@@ -408,6 +408,80 @@ static void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
   }
 }
 
+// Try to place `buffer` spanning multiple contiguous banks. Only works
+// when each spanned bank is currently empty (nextAddrInBanks[bank] ==
+// bankLimits[bank].startAddr); we don't yet support splitting a buffer
+// across an already-partially-used bank because the allocator wants
+// contiguous addresses.
+//
+// On success: sets buffer's address (start of first spanned bank, then
+// aligned) and mem_bank (the first spanned bank). Marks every spanned
+// bank as fully used by advancing nextAddrInBanks[bank] to the end of
+// the buffer slice that lands in that bank. Returns true.
+//
+// On failure (no run of contiguous-empty banks long enough): returns
+// false without mutating state.
+//
+// This is the L1-spanning extension to single-bank placement. Without
+// it, buffers larger than one bank silently trip the basic-sequential
+// fallback, which produces a layout that the downstream ObjectFifo
+// lowering cannot route correctly (silent wrong-results, see Bug 3a
+// in the llama_3_2_1b bring-up notes).
+static bool setBufferAddressMultiBank(BufferOp buffer, int numBanks,
+                                      int64_t bankSize,
+                                      uint32_t tileAlignBitWidth,
+                                      int &startBankIndex,
+                                      std::vector<int64_t> &nextAddrInBanks,
+                                      std::vector<BankLimits> &bankLimits) {
+  int64_t size = buffer.getAllocationSize();
+  if (size <= bankSize)
+    return false;  // single-bank path is the correct choice
+  int spanBanks = (size + bankSize - 1) / bankSize;  // ceil
+  if (spanBanks > numBanks)
+    return false;
+
+  for (int trial = 0; trial < numBanks; trial++) {
+    int firstBank = (startBankIndex + trial) % numBanks;
+    if (firstBank + spanBanks > numBanks)
+      continue;  // can't wrap a single buffer across the top of L1
+    // All spanned banks must be empty (start == nextAddr).
+    bool clean = true;
+    for (int j = 0; j < spanBanks; j++) {
+      if (nextAddrInBanks[firstBank + j] != bankLimits[firstBank + j].startAddr) {
+        clean = false;
+        break;
+      }
+    }
+    if (!clean)
+      continue;
+
+    int64_t startAddr = bankLimits[firstBank].startAddr;
+    if (buffer.getAligned())
+      startAddr = getAlignedAddress(startAddr, tileAlignBitWidth);
+    int64_t endAddr = startAddr + size;
+    // Sanity: must fit inside the spanned range.
+    if (endAddr > bankLimits[firstBank + spanBanks - 1].endAddr)
+      continue;
+
+    buffer.setAddress(startAddr);
+    buffer.setMemBank(firstBank);
+    // Mark every spanned bank as occupied. For all but the last
+    // spanned bank, the buffer fills the bank entirely; for the last,
+    // mark up to endAddr so any leftover space in that bank can host
+    // smaller buffers afterward.
+    for (int j = 0; j < spanBanks; j++) {
+      int bk = firstBank + j;
+      if (bk == firstBank + spanBanks - 1)
+        nextAddrInBanks[bk] = endAddr;
+      else
+        nextAddrInBanks[bk] = bankLimits[bk].endAddr;
+    }
+    startBankIndex = (firstBank + spanBanks) % numBanks;
+    return true;
+  }
+  return false;
+}
+
 // Function that given a buffer will iterate over all the memory banks
 // starting from the given index to try and find a bank with enough
 // space. If it does, it will set the buffer's address and mem_bank
@@ -417,6 +491,7 @@ static void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
 // If no bank has enough space to accommodate the buffer, an error is emitted.
 
 static int setBufferAddress(BufferOp buffer, int numBanks,
+                            int64_t bankSize,
                             uint32_t tileAlignBitWidth, int &startBankIndex,
                             std::vector<int64_t> &nextAddrInBanks,
                             std::vector<BankLimits> &bankLimits) {
@@ -442,6 +517,15 @@ static int setBufferAddress(BufferOp buffer, int numBanks,
     }
     // Move to the next bank
     bankIndex = (bankIndex + 1) % numBanks;
+  }
+  // Single-bank placement failed; try multi-bank spanning for
+  // larger-than-one-bank buffers before giving up.
+  if (!allocated) {
+    if (setBufferAddressMultiBank(buffer, numBanks, bankSize,
+                                  tileAlignBitWidth, startBankIndex,
+                                  nextAddrInBanks, bankLimits)) {
+      allocated = true;
+    }
   }
   // If no bank has enough space, throws error
   if (!allocated) {
@@ -619,8 +703,8 @@ static bool simpleBankAwareAllocation(TileOp tile) {
     // it prints the current memory map of the banks,
     // deallocates all the buffers, and
     // returns a failure.
-    if (!setBufferAddress(buffer, numBanks, tileAlignBitWidth, bankIndex,
-                          nextAddrInBanks, bankLimits)) {
+    if (!setBufferAddress(buffer, numBanks, bankSize, tileAlignBitWidth,
+                          bankIndex, nextAddrInBanks, bankLimits)) {
 
       printMemMap(tile, allocatedBuffers, preAllocatedBuffers, numBanks,
                   bankLimits, stacksize);
@@ -718,8 +802,21 @@ struct AIEAssignBufferAddressesPass
         }
       } else {
         if (!simpleBankAwareAllocation(tile)) {
+          // Bank-aware (now with multi-bank spanning) can still fail when
+          // there isn't enough contiguous-empty-bank space for a large
+          // buffer. Fall back to basic-sequential -- it doesn't set
+          // mem_bank, which causes silent wrong DMA routing for some
+          // downstream lowering paths (Bug 3a; partial fix is the
+          // multi-bank spanning above). Long-term the right fix is to
+          // post-process basic-sequential's output to derive mem_bank
+          // from final addresses, but that's a larger change; for now
+          // emit a warning so users at least know they're in the
+          // potentially-wrong-routing path.
           tile.emitWarning("Bank-aware allocation failed, trying basic "
-                           "sequential allocation.");
+                           "sequential allocation. NOTE: basic-sequential "
+                           "does not set mem_bank attributes; downstream "
+                           "lowering that depends on them may produce wrong "
+                           "DMA routing.");
           if (!basicAllocation(tile)) {
             tile.emitOpError("Basic sequential allocation also failed.");
             return signalPassFailure();
