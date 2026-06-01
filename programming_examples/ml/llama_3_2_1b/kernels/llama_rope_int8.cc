@@ -123,11 +123,6 @@ void llama_rope_int8_dyn(int8_t *restrict x, bfloat16 *restrict cs_packed,
                          int8_t *restrict out) {
   event0();
 
-  // Explicit rounding mode. Default fp rounding mode on AIE2P is NOT
-  // round-to-nearest-even -- multiple kernels share the same core context
-  // across chain iterations and the mode set by another kernel (e.g.
-  // flowkv's conv_even) could leak. Set explicitly to match numpy's
-  // astype semantics.
   ::aie::set_rounding(aie::rounding_mode::conv_even);
   ::aie::set_saturation(aie::saturation_mode::saturate);
 
@@ -138,18 +133,26 @@ void llama_rope_int8_dyn(int8_t *restrict x, bfloat16 *restrict cs_packed,
 
   static_assert(kHD % 2 == 0, "head_dim must be even");
 
-  float act_scale;
-  memcpy(&act_scale, x + kBody, 4);
+  // act_scale read for tail passthrough (kept so downstream consumers
+  // still see q_scale in out tail). NOT used in the math: rope is
+  // norm-preserving so the act_scale * cos +/- act_scale * sin cancels
+  // when later divided by inv_scale. By dropping the explicit ac/inv_ac
+  // multiplications we remove ULP-noise fp32 multiplies that were
+  // causing chain L=0 i=20 to land off a .5 rounding boundary
+  // differently than numpy (see chain_dynscale bug analysis).
+  //
+  // Math: ((x*ac)*c - (x'*ac)*s) * (1/ac) ≡ x*c - x'*s   (real arith).
+  // In fp32 the simplified form has fewer rounding steps and matches
+  // numpy_rope when numpy is updated to the same simplified form.
 
   const bfloat16 *cos = cs_packed;
   const bfloat16 *sin = cs_packed + kHD;
-  const float inv_scale = sw_recip(act_scale);
 
   for (int h = 0; h < kNHeads; h++) {
     int base = h * kHD;
     for (int i = 0; i < kHalf; i++) {
-      float x1f = (float)x[base + i]          * act_scale;
-      float x2f = (float)x[base + kHalf + i]  * act_scale;
+      float x1f = (float)x[base + i];
+      float x2f = (float)x[base + kHalf + i];
       float c1  = (float)cos[i];
       float s1  = (float)sin[i];
       float c2  = (float)cos[kHalf + i];
@@ -158,8 +161,8 @@ void llama_rope_int8_dyn(int8_t *restrict x, bfloat16 *restrict cs_packed,
       float o1 = x1f * c1 - x2f * s1;
       float o2 = x2f * c2 + x1f * s2;
 
-      out[base + i]         = round_to_i8(o1 * inv_scale);
-      out[base + kHalf + i] = round_to_i8(o2 * inv_scale);
+      out[base + i]         = round_to_i8(o1);
+      out[base + kHalf + i] = round_to_i8(o2);
     }
   }
 

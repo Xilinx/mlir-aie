@@ -33,6 +33,25 @@ def numpy_rope(x_i8, cos_bf, sin_bf, n_heads, head_dim, act_scale):
     return round_to_i8((out * inv_scale).flatten())
 
 
+def numpy_rope_dyn(x_i8, cos_bf, sin_bf, n_heads, head_dim):
+    """Simplified rope matching the `llama_rope_int8_dyn` kernel that
+    drops the redundant `* act_scale` and `* inv_scale` ops. They cancel
+    mathematically (rope is norm-preserving) and dropping them removes
+    two scalar-fp32 multiplies whose ULP noise was flipping rounding-tie
+    boundaries differently than numpy at chain depth >= 4.
+
+    No act_scale arg (not needed for the math).
+    """
+    half = head_dim // 2
+    x_f = x_i8.astype(np.float32).reshape(n_heads, head_dim)
+    c = cos_bf.astype(np.float32)
+    s = sin_bf.astype(np.float32)
+    out = np.empty_like(x_f)
+    out[:, :half] = x_f[:, :half] * c[:half] - x_f[:, half:] * s[:half]
+    out[:, half:] = x_f[:, half:] * c[half:] + x_f[:, :half] * s[half:]
+    return round_to_i8(out.flatten())
+
+
 def main():
     p = test_utils.create_default_argparser()
     p.add_argument("--head-dim", type=int, default=64)

@@ -27,7 +27,7 @@ from aie2_layer_d2048 import (
     ACT_SCALE, INV_ACT_SCALE, SILU_GATE_SCALE, GATE_INV_OUT_SCALE,
 )
 from test_rmsnorm_int8 import numpy_rmsnorm_int8
-from test_rope_int8 import numpy_rope
+from test_rope_int8 import numpy_rope, numpy_rope_dyn
 from test_flowkv import numpy_attention, EXP_QUANT_SCALE
 from test_silu_mul_int8 import numpy_silu_mul
 from test_attn_half import compute_sv_fp
@@ -98,7 +98,7 @@ def run_one_seed(seed: int, opts, npu_kernel) -> int:
     qf = requant(fp_q, q_inv_out)
 
     # 3. rope
-    qr = numpy_rope(qf, cos, sin, N_HEADS, HEAD_D, q_out_scale)
+    qr = numpy_rope_dyn(qf, cos, sin, N_HEADS, HEAD_D)
 
     # 4. flowkv (calibrate sv output scale)
     sv_fp = compute_sv_fp(qr, kcache, vcache, HEAD_D, T,

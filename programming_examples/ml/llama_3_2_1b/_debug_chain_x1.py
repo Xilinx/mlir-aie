@@ -23,7 +23,7 @@ from aie2_chain_dynscale import (
     ACT_SCALE, INV_ACT_SCALE, SILU_GATE_SCALE, GATE_INV_OUT_SCALE,
 )
 from test_rmsnorm_int8 import numpy_rmsnorm_int8
-from test_rope_int8 import numpy_rope
+from test_rope_int8 import numpy_rope, numpy_rope_dyn
 from test_flowkv import numpy_attention, EXP_QUANT_SCALE
 from test_attn_half import compute_sv_fp
 from test_ffn_half import pack_perchan_slots, fp32_bytes, numpy_gemm_perchan, i8_add_wrap
@@ -55,7 +55,7 @@ def numpy_per_layer_x1(x_in, layers):
         q_out_scale = float(np.maximum(np.abs(fp_q).max(), 1e-12)) / 127.0
         q_inv_out = float(np.float32(1.0) / np.float32(q_out_scale))
         qf = requant(fp_q, q_inv_out)
-        qr = numpy_rope(qf, cos, sin, N_HEADS, HEAD_D, q_out_scale)
+        qr = numpy_rope_dyn(qf, cos, sin, N_HEADS, HEAD_D)
         sv_fp = compute_sv_fp(qr, kcache, vcache, HEAD_D, T,
                               q_out_scale, k_scale, v_scale, lut_exp)
         sv_out_scale = float(np.maximum(np.abs(sv_fp).max(), 1e-12)) / 127.0
@@ -188,7 +188,7 @@ def main():
             fp_q = (layer["wq_i8"].astype(np.int32) @ h1.astype(np.int32) + layer["bq"]).astype(np.float32) \
                    * np.float32(ACT_SCALE) * layer["wq_sc"].astype(np.float32)
             qf = requant(fp_q, sc["q_inv_out"])
-            qr = numpy_rope(qf, layer["cos"], layer["sin"], N_HEADS, HEAD_D, sc["q_out_scale"])
+            qr = numpy_rope_dyn(qf, layer["cos"], layer["sin"], N_HEADS, HEAD_D)
             af_ref = numpy_attention(qr, layer["kcache"], layer["vcache"], HEAD_D, T,
                                      sc["q_out_scale"], sc["k_scale"], sc["v_scale"],
                                      sc["sv_inv_out_scale"], lut_exp)
@@ -256,7 +256,7 @@ def main():
             fp_q = (layer["wq_i8"].astype(np.int32) @ h1.astype(np.int32) + layer["bq"]).astype(np.float32) \
                    * np.float32(ACT_SCALE) * layer["wq_sc"].astype(np.float32)
             qf = requant(fp_q, sc["q_inv_out"])
-            qr_ref = numpy_rope(qf, layer["cos"], layer["sin"], N_HEADS, HEAD_D, sc["q_out_scale"])
+            qr_ref = numpy_rope_dyn(qf, layer["cos"], layer["sin"], N_HEADS, HEAD_D)
             qr_actual = qr_trace[L*QR_BYTES:L*QR_BYTES + QD]
             diff = qr_actual.astype(np.int16) - qr_ref.astype(np.int16)
             n_diff = int((diff != 0).sum()); max_abs = int(np.abs(diff).max()) if n_diff else 0

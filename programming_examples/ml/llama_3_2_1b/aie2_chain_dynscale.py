@@ -489,11 +489,12 @@ def build():
             (of_vcache.prod(), kvblob, OFF_V, PER_LAYER_KV,
              VCACHE_PADDED, 1, KV_BYTES),
         ]
-        # Interleaved issue, single task_group, deferred finish at end:
-        # for each layer, issue all-fifo fills back-to-back. Per fifo,
-        # N_LAYERS tasks queued sequentially -- relies on shim NoC
-        # per-channel queue depth >= N_LAYERS (Bug 3b: depth 4).
-        all_tg = rt.task_group(); tgs.append(all_tg)
+        # Ping-pong task groups: one task_group per layer, finished
+        # PINGPONG_DEPTH layers behind the issue cursor. The BD allocator
+        # frees BD IDs on each finish_task_group, so peak per-channel BD
+        # use stays at PINGPONG_DEPTH instead of N_LAYERS.
+        PINGPONG_DEPTH = int(_os.environ.get("LLAMA_CHAIN_PINGPONG", "2"))
+        layer_tgs = [rt.task_group() for _ in range(N_LAYERS)]
         for L in range(N_LAYERS):
             for (prod, src, base_off, per_layer_stride,
                  slot_bytes, slots_per_layer, total) in (fill_specs + kv_specs):
@@ -501,7 +502,13 @@ def build():
                         tap=strided_tap(total,
                                         base_off + L * per_layer_stride,
                                         slot_bytes, slot_bytes, slots_per_layer),
-                        task_group=all_tg)
+                        task_group=layer_tgs[L],
+                        wait=True)
+            if L >= PINGPONG_DEPTH:
+                rt.finish_task_group(layer_tgs[L - PINGPONG_DEPTH])
+        # Tail: finish the final PINGPONG_DEPTH layers' groups.
+        for L in range(max(0, N_LAYERS - PINGPONG_DEPTH), N_LAYERS):
+            rt.finish_task_group(layer_tgs[L])
 
         out_tg = rt.task_group(); tgs.append(out_tg)
         rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
