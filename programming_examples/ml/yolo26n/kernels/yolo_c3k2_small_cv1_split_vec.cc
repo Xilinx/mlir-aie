@@ -121,13 +121,19 @@ void KERNEL_NAME(yolo_c3k2_small_cv1_split_silu_bias_i8_i8)(
 
       AIE_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+        // 4× uint64 word copies replace byte-by-byte gather (peano
+        // doesn't reliably lower the scalar loop — see
+        // feedback_explicit_uint64_over_byte_loop).
         alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_out_base + p;
-          int8_t *src = in_row + col * IN_C + ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = src[b];
-        }
+        int8_t *s0 = in_row + (x_out_base + 0) * IN_C + ic_t * 8;
+        *reinterpret_cast<uint64_t *>(&a_buf[0]) =
+            *reinterpret_cast<const uint64_t *>(s0);
+        *reinterpret_cast<uint64_t *>(&a_buf[8]) =
+            *reinterpret_cast<const uint64_t *>(s0 + IN_C);
+        *reinterpret_cast<uint64_t *>(&a_buf[16]) =
+            *reinterpret_cast<const uint64_t *>(s0 + 2 * IN_C);
+        *reinterpret_cast<uint64_t *>(&a_buf[24]) =
+            *reinterpret_cast<const uint64_t *>(s0 + 3 * IN_C);
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
