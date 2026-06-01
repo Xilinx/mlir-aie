@@ -8,9 +8,10 @@
 
 """Test for the custom_dma scatter-read example.
 
-Expected output (32 x i32):
+Expected output (48 x i32):
   [0..15]  = row 0: [100, 101, ..., 115]
-  [16..31] = row 2: [200, 201, ..., 215]
+  [16..31] = row 1: [200, 201, ..., 215]
+  [32..47] = row 3: [400, 401, ..., 415]
 """
 
 import numpy as np
@@ -23,11 +24,12 @@ from aie.utils import DefaultNPURuntime
 def main(opts):
     out_dtype = np.int32
     cols = 16
-    out_volume = cols * 2  # two row transfers
+    out_volume = cols * 3  # three row transfers
 
     row0 = np.arange(100, 100 + cols, dtype=out_dtype)
-    row2 = np.arange(200, 200 + cols, dtype=out_dtype)
-    ref = np.concatenate([row0, row2])
+    row1 = np.arange(200, 200 + cols, dtype=out_dtype)
+    row3 = np.arange(400, 400 + cols, dtype=out_dtype)
+    ref = np.concatenate([row0, row1, row3])
 
     out = iron.zeros([out_volume], dtype=out_dtype)
     dummy = iron.zeros([out_volume], dtype=out_dtype)

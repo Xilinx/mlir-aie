@@ -18,11 +18,10 @@ from aie.dialects.aiex import set_lock_value
 
 
 class ScatterReadDMA(Resolvable):
-    """Read two equal-sized sections at different offsets from a MemTile buffer.
+    """Read three equal-sized sections at non-uniform offsets from a MemTile buffer.
 
-    A two-BD chain reads ``transfer_len`` elements from ``offset_a``, then
-    ``transfer_len`` elements from ``offset_b``, cycling.  Both sections
-    share a single recv buffer on the compute tile.
+    A custom three-BD chain pattern reads ``transfer_len`` elements from ``offset_a``,
+    ``offset_b``, and ``offset_c``, cycling.
 
     Usage: pass an instance as a Worker ``fn_arg``.  Inside the worker
     function, call ``acquire(1)`` / ``release(1)`` to synchronize with
@@ -38,6 +37,7 @@ class ScatterReadDMA(Resolvable):
         transfer_len: int,
         offset_a: int,
         offset_b: int,
+        offset_c: int,
         memtile_placement=None,
         compute_placement=None,
     ):
@@ -48,6 +48,7 @@ class ScatterReadDMA(Resolvable):
         self._transfer_len = transfer_len
         self._offset_a = offset_a
         self._offset_b = offset_b
+        self._offset_c = offset_c
         self._memtile = memtile_placement
         self._compute = compute_placement
 
@@ -122,21 +123,26 @@ class ScatterReadDMA(Resolvable):
         # --- DMA flow: MemTile MM2S → compute S2MM ---
         flow(memtile_op, WireBundle.DMA, 0, compute_op, WireBundle.DMA, 0)
 
-        # --- MemTile DMA: two-BD chain with different offsets ---
+        # --- MemTile DMA: three-BD chain with non-uniform offsets ---
         @memtile_dma(memtile_op)
         def _mtdma(block):
-            dma_start(DMAChannelDir.MM2S, 0, dest=block[1], chain=block[3])
-            with block[1]:  # BD1: section A
+            dma_start(DMAChannelDir.MM2S, 0, dest=block[1], chain=block[4])
+            with block[1]:  # BD1: row at offset_a
                 use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
                 dma_bd(src_buf, offset=self._offset_a, len=self._transfer_len)
                 use_lock(mem_prod_lock, LockAction.Release)
                 next_bd(block[2])
-            with block[2]:  # BD2: section B (different offset, same length)
+            with block[2]:  # BD2: row at offset_b
                 use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
                 dma_bd(src_buf, offset=self._offset_b, len=self._transfer_len)
                 use_lock(mem_prod_lock, LockAction.Release)
+                next_bd(block[3])
+            with block[3]:  # BD3: row at offset_c
+                use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
+                dma_bd(src_buf, offset=self._offset_c, len=self._transfer_len)
+                use_lock(mem_prod_lock, LockAction.Release)
                 next_bd(block[1])
-            with block[3]:
+            with block[4]:
                 EndOp()
 
         # --- Compute tile DMA: S2MM, loops forever ---
@@ -153,21 +159,23 @@ class ScatterReadDMA(Resolvable):
 
 
 def custom_dma_design(dev):
-    # Buffer layout on MemTile: 3 rows × 16 columns (48 x i32).
-    # BD1 reads row 0, BD2 reads row 2, skipping row 1.
+    # Buffer layout on MemTile: 4 rows × 16 columns (64 x i32).
+    # Three BDs read rows 0, 1, and 3 — gaps of 1 and 2 rows (non-uniform).
     cols = 16
+    total_elems = 4 * cols
     transfer_len = cols
     offset_a = 0 * cols  # row 0
-    offset_b = 2 * cols  # row 2
-    total_elems = 3 * cols  # 48
+    offset_b = 1 * cols  # row 1
+    offset_c = 3 * cols  # row 3 (skips row 2)
 
     buf_type = np.ndarray[(total_elems,), np.dtype[np.int32]]
     transfer_type = np.ndarray[(transfer_len,), np.dtype[np.int32]]
 
     init_data = np.zeros(total_elems, dtype=np.int32)
-    init_data[offset_a : offset_a + cols] = np.arange(100, 100 + cols, dtype=np.int32)
-    init_data[1 * cols : 2 * cols] = np.arange(300, 300 + cols, dtype=np.int32)
-    init_data[offset_b : offset_b + cols] = np.arange(200, 200 + cols, dtype=np.int32)
+    for r in range(4):
+        init_data[r * cols : (r + 1) * cols] = np.arange(
+            (r + 1) * 100, (r + 1) * 100 + cols, dtype=np.int32
+        )
 
     # Request one MemTile and one compute tile; the placer assigns coordinates.
     memtile = AnyMemTile.copy()
@@ -181,6 +189,7 @@ def custom_dma_design(dev):
         transfer_len=transfer_len,
         offset_a=offset_a,
         offset_b=offset_b,
+        offset_c=offset_c,
         memtile_placement=memtile,
         compute_placement=compute,
     )
@@ -188,14 +197,21 @@ def custom_dma_design(dev):
     of_out = ObjectFifo(transfer_type, depth=1, name="out")
 
     def core_fn(scatter_h, of_out, n):
-        # Section A
+        # Row 0
         chunk = scatter_h.acquire(1)
         elem_out = of_out.acquire(1)
         for i in range_(n):
             elem_out[i] = chunk[i]
         scatter_h.release(1)
         of_out.release(1)
-        # Section B
+        # Row 1
+        chunk = scatter_h.acquire(1)
+        elem_out = of_out.acquire(1)
+        for i in range_(n):
+            elem_out[i] = chunk[i]
+        scatter_h.release(1)
+        of_out.release(1)
+        # Row 3
         chunk = scatter_h.acquire(1)
         elem_out = of_out.acquire(1)
         for i in range_(n):
@@ -210,11 +226,10 @@ def custom_dma_design(dev):
         while_true=True,
     )
 
-    # Output: two transfers (section A + section B)
-    out_type = np.ndarray[(transfer_len * 2,), np.dtype[np.int32]]
+    out_type = np.ndarray[(transfer_len * 3,), np.dtype[np.int32]]
 
     def rt_start_memtile_dma(scatter_obj):
-        set_lock_value(scatter_obj._mem_cons_lock, 2)
+        set_lock_value(scatter_obj._mem_cons_lock, 3)
 
     rt = Runtime()
     with rt.sequence(out_type, out_type, out_type) as (_, b_out, _):
