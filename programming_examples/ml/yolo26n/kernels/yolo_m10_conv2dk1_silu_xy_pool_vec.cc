@@ -16,6 +16,8 @@
 
 #include <aie_api/aie.hpp>
 
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
@@ -25,14 +27,6 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 
 static inline int wts_tile_off_1x1(int oc_tile, int ic_tile, int ic_tiles) {
   return (oc_tile * ic_tiles + ic_tile) << 6;
-}
-
-static inline int wts_chunk_idx_1x1(int chunk_oc_full, int ic_full, int in_c) {
-  int oc_t = chunk_oc_full >> 3;
-  int oc_i = chunk_oc_full & 7;
-  int ic_t = ic_full >> 3;
-  int ic_i = ic_full & 7;
-  return ((oc_t * (in_c >> 3) + ic_t) << 6) + ic_i * 8 + oc_i;
 }
 
 extern "C" {
@@ -73,6 +67,7 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
+  AIE_LOOP_RANGE(chunk_oc_tiles, chunk_oc_tiles)
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     int32_t row_sums[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -88,14 +83,15 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
       bias_acc.from_vector(b32);
     }
 
+    AIE_LOOP_RANGE(x_tiles, x_tiles)
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
 
       const int x_base = x_tile * 4;
 
-      // 8-byte block copies (mirror of m1's gather_interior pattern) -- 4
-      // uint64 loads + stores instead of 32 scalar byte loads + stores.
+      // 4 uint64 word copies for the A-pack (4 pixels × 8 ic_inner bytes).
+      AIE_LOOP_RANGE(ic_tiles, ic_tiles)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         alignas(32) int8_t a_buf[32];
         int8_t *s0 = in_row + (x_base + 0) * input_channels + ic_t * 8;
@@ -121,33 +117,17 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
       // gather + sum into row_sums[8]. The LUT lookup is per-element scalar
       // (silu_lut[sr+128]) but the SRS+clamp chain is now one vec op.
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
+      AIE_LOOP_UNROLL_FULL
       for (int p = 0; p < 4; ++p) {
+        AIE_LOOP_UNROLL_FULL
         for (int j = 0; j < 8; ++j) {
           row_sums[j] += (int32_t)silu_lut[int(srs_v[p * 8 + j]) + 128];
         }
       }
     }
 
-    // Tail spatial fallback (in_w not multiple of 4).
-    for (int x = x_tiles * 4; x < input_width; ++x) {
-      for (int j = 0; j < 8; ++j) {
-        int chunk_oc_full = chunk_oc_t * 8 + j;
-        int32_t sum = bias_full[oc_offset + chunk_oc_full];
-        for (int ic = 0; ic < input_channels; ++ic) {
-          sum +=
-              in_row[x * input_channels + ic] *
-              wts_chunk[wts_chunk_idx_1x1(chunk_oc_full, ic, input_channels)];
-        }
-        int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX)
-          sr = I8_MAX;
-        if (sr < I8_MIN)
-          sr = I8_MIN;
-        row_sums[j] += (int32_t)silu_lut[sr + 128];
-      }
-    }
-
     // Commit per-oc row sums into the persistent accumulator.
+    AIE_LOOP_UNROLL_FULL
     for (int j = 0; j < 8; ++j) {
       int chunk_oc_full = chunk_oc_t * 8 + j;
       accum[oc_offset + chunk_oc_full] += row_sums[j];
