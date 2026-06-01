@@ -277,6 +277,9 @@ struct AIEObjectFifoStatefulTransformPass
     if (createOp.getAieStream())
       return true;
 
+    if (createOp.getConsumerElemType().has_value())
+      return true;
+
     if (createOp.getConsumerTiles().size() == 1 &&
         createOp.getDimensionsToStream().empty()) {
 
@@ -1909,7 +1912,9 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         builder.setInsertionPointAfter(createOp);
-        auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
+        // Use consumer element type if specified (asymmetric transfer)
+        auto datatype = llvm::cast<AIEObjectFifoType>(
+            createOp.getConsumerElemTypeOrDefault());
         auto consumerObjFifoSize =
             builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
         // rename and replace split objectFifo
