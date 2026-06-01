@@ -62,6 +62,16 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
 #define BR_HINT_X AIE_LOOP_RANGE(x_tiles, x_tiles)
 #define BR_HINT_IC AIE_LOOP_RANGE(ic_tiles, ic_tiles)
 
+  // 4-acc fold (matches m9_cv1's proven pattern; 8-acc fold trips the
+  // peano load+grow bug — see reference_peano_mmul_a_grow_fusion_bug.md).
+  // x_tiles=8 → 2 outer iters of 4-acc inner.
+  constexpr int kXTiles4_in = SPLIT_IN_W / 4;
+  constexpr int kInPackedIcStride = kXTiles4_in * 32;
+  constexpr int kXTiles8 = SPLIT_IN_W / 8;
+  constexpr int kAccGroup = 4;
+  constexpr int kGroups = x_tiles / kAccGroup;
+  static_assert(x_tiles % kAccGroup == 0, "x_tiles must be multiple of 4");
+
   BR_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     aie::accum<acc32, 32> bias_acc;
@@ -72,42 +82,42 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
       bias_acc.from_vector(b32);
     }
 
-    BR_HINT_X
-    for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
-      MMUL4x8x8 acc;
-      acc = bias_acc;
-      const int x_base = x_tile * 4;
+    AIE_LOOP_RANGE(kGroups, kGroups)
+    for (int g = 0; g < kGroups; ++g) {
+      const int x_tile_base = g * kAccGroup;
+      MMUL4x8x8 acc[kAccGroup];
+      AIE_LOOP_UNROLL_FULL
+      for (int xt = 0; xt < kAccGroup; ++xt)
+        acc[xt] = bias_acc;
 
-      // mmul-packed input read: in_row producer (c3k2_small cv1_split,
-      // m6 only) now writes (ic_t, x_block, p*8+chan) 4-pixel block
-      // layout. Single 32-byte vec_load per (ic_t, x_tile).
-      constexpr int kXTiles4_in = SPLIT_IN_W / 4;
-      const int kInPackedIcStride = kXTiles4_in * 32;
       BR_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        aie::vector<int8, 32> in_a = aie::load_v<32>(
-            in_row + ic_t * kInPackedIcStride + x_tile * 32);
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
-        acc.mac(in_a, in_b);
+        const int8_t *a_base = in_row + ic_t * kInPackedIcStride;
+        AIE_LOOP_UNROLL_FULL
+        for (int xt = 0; xt < kAccGroup; ++xt) {
+          aie::vector<int8, 32> in_a =
+              aie::load_v<32>(a_base + (x_tile_base + xt) * 32);
+          acc[xt].mac(in_a, in_b);
+        }
       }
 
-      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      // mmul-packed output: pair x_tile iters into 8-pixel blocks. Consumer
-      // (inner_pair_cv1's input for split_a, cv3_concat2's in_a/in_b for
-      // split_b) reads via vec_load (32-byte half-blocks for the 4-pixel
-      // mmul<4,8,8> consumer in cv3_concat2; full 64-byte blocks for the
-      // 8-pixel mmul<8,8,8> consumer in pair_cv1).
-      constexpr int kXTiles8 = SPLIT_IN_W / 8; // 32/8 = 4 for m6
-      alignas(32) int8_t silu_buf[32];
-      for (int i = 0; i < 32; ++i)
-        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
-      aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
-      aie::store_v(out + oc_t * (kXTiles8 * 64) + (x_tile >> 1) * 64 +
-                       (x_tile & 1) * 32,
-                   silu_v);
+      AIE_LOOP_UNROLL_FULL
+      for (int xt = 0; xt < kAccGroup; ++xt) {
+        int x_tile = x_tile_base + xt;
+        aie::vector<int8, 32> srs_v =
+            acc[xt].template to_vector<int8>(right_shift);
+        alignas(32) int8_t silu_buf[32];
+        AIE_LOOP_UNROLL_FULL
+        for (int i = 0; i < 32; ++i)
+          silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+        aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+        aie::store_v(out + oc_t * (kXTiles8 * 64) + (x_tile >> 1) * 64 +
+                         (x_tile & 1) * 32,
+                     silu_v);
+      }
     }
-
   }
 }
 
