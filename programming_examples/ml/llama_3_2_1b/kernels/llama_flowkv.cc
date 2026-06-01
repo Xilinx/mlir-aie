@@ -173,6 +173,28 @@ void llama_flowkv_sv(int8_t *restrict v_i8, float *restrict probs_in,
   event1();
 }
 
+// Dynamic-scale variants (Phase 6c.5b.3).
+//   _dyn qk: `q` is sized kHD+8 (trailing 8 B = q_scale + spare, written
+//           by rope_int8_dyn passthrough). `k` is sized kT*kHD+8 (leading
+//           8 B = k_scale + spare). Kernel reads scales from those tails
+//           and bodies from the rest.
+//   _dyn sv: `v` is sized kT*kHD+8 (leading 8 B = v_scale + inv_out_scale).
+void llama_flowkv_qk_dyn(int8_t *restrict q_i8, int8_t *restrict k_i8,
+                         float *restrict probs_out) {
+  float q_scale, k_scale;
+  memcpy(&q_scale, q_i8 + kHD, 4);
+  memcpy(&k_scale, k_i8,       4);
+  llama_flowkv_qk(q_i8, k_i8 + 8, probs_out, q_scale, k_scale);
+}
+
+void llama_flowkv_sv_dyn(int8_t *restrict v_i8, float *restrict probs_in,
+                         int8_t *restrict out_i8) {
+  float v_scale, inv_out_scale;
+  memcpy(&v_scale,       v_i8,     4);
+  memcpy(&inv_out_scale, v_i8 + 4, 4);
+  llama_flowkv_sv(v_i8 + 8, probs_in, out_i8, v_scale, inv_out_scale);
+}
+
 // Debug-only wrapper: writes probs as a bytes view (reinterprets the
 // fp32 output buffer as int8) so the IRON probe design can carry it
 // through a bytes-typed ObjectFifo.

@@ -102,4 +102,52 @@ void llama_rope_int8(int8_t *restrict x, bfloat16 *restrict cs_packed,
   event1();
 }
 
+// Dynamic-scale variant (Phase 6c.5b.3). The `x` buffer is sized
+// kHD*kNHeads + 8 bytes; the trailing 8 bytes carry (act_scale fp32,
+// spare fp32) written upstream by q_proj's _perchan_v2_up variant. We
+// read act_scale from there and additionally PASSTHROUGH the 8 B tail
+// from x to out so flowkv_qk can pick up q_scale from the same offset.
+void llama_rope_int8_dyn(int8_t *restrict x, bfloat16 *restrict cs_packed,
+                         int8_t *restrict out) {
+  event0();
+
+  constexpr int kHD     = LLAMA_ROPE_HEAD_DIM;
+  constexpr int kNHeads = LLAMA_ROPE_N_HEADS;
+  constexpr int kHalf   = kHD / 2;
+  constexpr int kBody   = kHD * kNHeads;
+
+  static_assert(kHD % 2 == 0, "head_dim must be even");
+
+  float act_scale;
+  memcpy(&act_scale, x + kBody, 4);
+
+  const bfloat16 *cos = cs_packed;
+  const bfloat16 *sin = cs_packed + kHD;
+  const float inv_scale = sw_recip(act_scale);
+
+  for (int h = 0; h < kNHeads; h++) {
+    int base = h * kHD;
+    for (int i = 0; i < kHalf; i++) {
+      float x1f = (float)x[base + i]          * act_scale;
+      float x2f = (float)x[base + kHalf + i]  * act_scale;
+      float c1  = (float)cos[i];
+      float s1  = (float)sin[i];
+      float c2  = (float)cos[kHalf + i];
+      float s2  = (float)sin[kHalf + i];
+
+      float o1 = x1f * c1 - x2f * s1;
+      float o2 = x2f * c2 + x1f * s2;
+
+      out[base + i]         = round_to_i8(o1 * inv_scale);
+      out[base + kHalf + i] = round_to_i8(o2 * inv_scale);
+    }
+  }
+
+  // Passthrough the 8 B tail so downstream (flowkv_qk_dyn) reads the
+  // same q_scale from out[kBody..kBody+8].
+  memcpy(out + kBody, x + kBody, 8);
+
+  event1();
+}
+
 } // extern "C"
