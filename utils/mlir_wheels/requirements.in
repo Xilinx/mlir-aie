@@ -1,7 +1,9 @@
 # Build-time dependencies for the mlir distro wheel.
 # Mirror of [build-system].requires in pyproject.toml.
-# Compile with:
-#   pip-compile --generate-hashes --allow-unsafe -o requirements.lock requirements.in
+#
+# Source for utils/mlir_wheels/requirements.lock. After editing this file,
+# regenerate the .lock with:
+#   utils/regenerate_lockfiles.sh
 setuptools>=82.0.1
 wheel
 ninja!=1.13.0

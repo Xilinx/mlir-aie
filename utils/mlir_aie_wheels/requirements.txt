@@ -1,3 +1,6 @@
+# Source for utils/mlir_aie_wheels/requirements.lock (hash-pinned, installed by
+# cibuildwheel before-build). After editing this file, regenerate the .lock with:
+#   utils/regenerate_lockfiles.sh
 cmake>=4.3.2
 dataclasses
 importlib-metadata

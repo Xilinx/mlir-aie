@@ -1,3 +1,6 @@
+# Source for python/requirements_dev.lock (hash-pinned, --require-hashes-installed in CI).
+# After editing this file, regenerate the .lock with:
+#   utils/regenerate_lockfiles.sh
 cmake>=4.3.2, <5.0
 pybind11>=3.0.4
 setuptools>=82.0.1

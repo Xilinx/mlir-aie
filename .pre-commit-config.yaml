@@ -64,3 +64,15 @@ repos:
       stages: [pre-push]
       args: [--fix=lf]
       exclude: *generated_exclude
+
+# Regenerate hash-pinned lockfiles when their source manifests change.
+# Only fires if you've staged one of the source files below; if uv is missing
+# locally the hook fails with a clear install hint (the script does the check).
+- repo: local
+  hooks:
+    - id: regenerate-lockfiles
+      name: Regenerate hash-pinned lockfiles
+      language: script
+      entry: utils/regenerate_lockfiles.sh
+      pass_filenames: false
+      files: ^(python/requirements_dev\.txt|utils/mlir_(aie_)?wheels/(requirements|ci-tools)\.(in|txt))$
