@@ -11,8 +11,7 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=${srcdir}
 targetname=whole_array
-devicename=npu2
-kernelsrc:= mm_bfp.cc
+devicename?=npu2
 hostsrc := $(firstword $(wildcard ${srcdir}/../*bfp_test.cpp))
 
 n_aie_cols?=4
