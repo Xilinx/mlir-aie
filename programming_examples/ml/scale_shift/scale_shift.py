@@ -184,7 +184,7 @@ def scale_shift(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Scale Shift")
-    add_compile_args(p)
+    add_compile_args(p, with_elf=True)
     p.add_argument("-l", "--length", type=int, default=65536, help="elements")
     return p
 

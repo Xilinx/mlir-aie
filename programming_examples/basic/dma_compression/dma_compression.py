@@ -16,10 +16,10 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.helpers.dialects.func import func
-from aie.iron.device import Tile
+from aie.iron.device import Device, Tile
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.dialects.aiex import npu_maskwrite32
@@ -295,7 +295,13 @@ def _build_regdump(dev):
     ).resolve_program()
 
 
-def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
+def dma_compression(
+    in_tensor: In,
+    out_tensor: Out,
+    *,
+    config: Compile[str] = "base",
+    dev: Compile[Device | None] = None,
+):
     """Build the IRON program for one compression config and return its MLIR module."""
     if config not in CONFIGS:
         raise ValueError(f"unknown config {config!r}; pick from {CONFIGS}")
@@ -308,12 +314,6 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
 
     # Reset the @func cache so a previous build's FuncOp doesn't leak.
     passthrough_line._func_op = None
-
-    n = int(np.size(in_tensor))
-    assert n == N and int(np.size(out_tensor)) == N, (
-        f"in/out tensors must both be {N} elements, got "
-        f"in={np.size(in_tensor)} out={np.size(out_tensor)}"
-    )
 
     vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
 

@@ -154,18 +154,9 @@ int main(int argc, const char *argv[]) {
     uint32_t s = bufInA[i];
     uint32_t d = bufOut[i];
 
-    if (row < TILE_HEIGHT && col < TILE_WIDTH) {
-      if (d != s + 1) {
-        errors++;
-        printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
-      }
-    } else {
-      if (d == s + 1) {
-        errors++;
-        printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed "
-               "to be changed\n",
-               row, col, s, d);
-      }
+    if (d != s + 1) {
+      errors++;
+      printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
     }
 
     printf("s[%d, %d] = 0x%x\n", row, col, s);
