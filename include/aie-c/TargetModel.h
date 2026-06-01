@@ -55,8 +55,8 @@ MLIR_CAPI_EXPORTED int aieTargetModelRows(AieTargetModel targetModel);
 /// Returns true if this is an NPU target model.
 MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
 
-/// Returns the AIE architecture (as the underlying value of xilinx::AIE::AIEArch:
-/// AIE1=1, AIE2=2, AIE2p=3).
+/// Returns the AIE architecture (as the underlying value of
+/// xilinx::AIE::AIEArch: AIE1=1, AIE2=2, AIE2p=3).
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetTargetArch(AieTargetModel targetModel);
 
