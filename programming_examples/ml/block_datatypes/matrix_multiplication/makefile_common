@@ -11,6 +11,12 @@ include ${srcdir}/../../../../makefile-common
 
 matrix_multiplication_dir := ${srcdir}/../../../../basic/matrix_multiplication
 
+# Shared defaults — per-design Makefile only sets what differs.
+devicename ?= npu2
+m ?= 64
+k ?= 64
+n ?= 64
+
 aieargs+=-d ${devicename} -m $m -k $k -n $n -M $M -K $K -N $N
 target_suffix?=${M}x${K}x${N}_${m}x${k}x${n}
 
