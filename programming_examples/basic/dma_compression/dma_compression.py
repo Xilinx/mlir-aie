@@ -309,9 +309,6 @@ def dma_compression(
     if config == "regdump":
         return _build_regdump()
 
-    # Reset the @func cache so a previous build's FuncOp doesn't leak.
-    passthrough_line._func_op = None
-
     vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
     # Cross-tile chains: CT(0,2) runs a copy Worker (not a link, because
