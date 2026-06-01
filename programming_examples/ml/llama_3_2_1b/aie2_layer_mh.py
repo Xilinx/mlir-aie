@@ -394,8 +394,9 @@ def build():
         k(a, b, o)
         c_a.release(1); c_b.release(1); c_out.release(1)
 
-    PSK  = 16384  # bumped 2x from layer_d2048 to rule out stack-overflow corruption
-    ATSK = 16384  # attn workers (flowkv_mh has int32 qvals[128] + float scores[128])
+    PSK  = 16384
+    ATSK = 16384
+    FFNSK = PSK
 
     workers = [
         # ---- Attention front ----
@@ -448,13 +449,13 @@ def build():
         Worker(w_rms,  [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
                tile=Tile(6, 4)),
         Worker(w_gate, [of_h2.cons(), of_wg.cons(), of_gf.prod(), k_gate],
-               tile=Tile(4, 2), stack_size=PSK),
+               tile=Tile(4, 2), stack_size=FFNSK),
         Worker(w_up,   [of_h2.cons(), of_wu.cons(), of_uf.prod(), k_up],
-               tile=Tile(5, 2), stack_size=PSK),
+               tile=Tile(5, 2), stack_size=FFNSK),
         Worker(w_silu, [of_gf.cons(), of_uf.cons(), of_sf.prod(), k_silu],
-               tile=Tile(4, 5), stack_size=PSK),
+               tile=Tile(4, 5), stack_size=FFNSK),
         Worker(w_down, [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
-               tile=Tile(6, 2), stack_size=PSK),
+               tile=Tile(6, 2), stack_size=FFNSK),
         Worker(w_add,  [of_df.cons(), of_x1.cons(), of_out.prod(), k_add],
                tile=Tile(7, 5)),
     ]
