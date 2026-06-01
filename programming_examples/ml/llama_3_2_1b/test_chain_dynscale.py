@@ -167,6 +167,14 @@ def gen_layer(rng):
 def run_one_seed(seed: int, opts, npu_kernel) -> int:
     rng = np.random.default_rng(seed)
 
+    # Initial activation FIRST so x is N_LAYERS-independent. Otherwise
+    # x consumes a different rng slice depending on how many layers were
+    # generated before it, which makes (seed, N) pairs non-comparable
+    # for tie-boundary analysis (e.g., seed=0 N=6 used to hit a flowkv
+    # ULP tie that seed=0 N=4/8/16 didn't, purely because x differed).
+    x = rng.integers(-32, 33, size=D, dtype=np.int8)
+    x_in_original = x.copy()
+
     # Generate per-layer data + LUTs (LUTs shared across layers).
     lut_exp  = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
@@ -176,10 +184,6 @@ def run_one_seed(seed: int, opts, npu_kernel) -> int:
         layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
         layers.append(layer)
-
-    # Initial activation (residual seed).
-    x = rng.integers(-32, 33, size=D, dtype=np.int8)
-    x_in_original = x.copy()
 
     # Numpy forward through N_LAYERS.
     for L in range(N_LAYERS):
