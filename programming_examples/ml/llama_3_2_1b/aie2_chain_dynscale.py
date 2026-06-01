@@ -192,6 +192,7 @@ def build():
     trace_af = _os.environ.get("LLAMA_CHAIN_TRACE_AF", "0") == "1"
     trace_qr = _os.environ.get("LLAMA_CHAIN_TRACE_QR", "0") == "1"
     trace_qf = _os.environ.get("LLAMA_CHAIN_TRACE_QF", "0") == "1"
+    trace_cs = _os.environ.get("LLAMA_CHAIN_TRACE_CS", "0") == "1"
 
     rt_xin_ty      = _i8(D)
     rt_w_ty        = _i8(WEIGHTS_BYTES)
@@ -201,6 +202,7 @@ def build():
     rt_trace_af_ty = _i8(N_LAYERS * QD)
     rt_trace_qf_ty = _i8(N_LAYERS * QF_BYTES)
     rt_trace_qr_ty = _i8(N_LAYERS * QR_BYTES)
+    rt_trace_cs_ty = _i8(N_LAYERS * CS_BYTES)
 
     t_D_i8       = _i8(D)
     t_QF_i8      = _i8(QF_BYTES)
@@ -433,14 +435,16 @@ def build():
     if trace_af: seq_tys = seq_tys + (rt_trace_af_ty,)
     if trace_qf: seq_tys = seq_tys + (rt_trace_qf_ty,)
     if trace_qr: seq_tys = seq_tys + (rt_trace_qr_ty,)
+    if trace_cs: seq_tys = seq_tys + (rt_trace_cs_ty,)
     with rt.sequence(*seq_tys) as seq_args:
         xin = seq_args[0]; wblob = seq_args[1]; kvblob = seq_args[2]; out = seq_args[3]
         idx = 4
-        trace = traf = trqf = trqr = None
+        trace = traf = trqf = trqr = trcs = None
         if trace_x1: trace = seq_args[idx]; idx += 1
         if trace_af: traf  = seq_args[idx]; idx += 1
         if trace_qf: trqf  = seq_args[idx]; idx += 1
         if trace_qr: trqr  = seq_args[idx]; idx += 1
+        if trace_cs: trcs  = seq_args[idx]; idx += 1
         rt.start(*workers)
 
         tgs = []
@@ -522,6 +526,11 @@ def build():
             rt.drain(of_qr.cons(), trqr,
                      tap=strided_tap(N_LAYERS * QR_BYTES, 0, QR_BYTES, QR_BYTES, N_LAYERS),
                      wait=True, task_group=tqr_tg)
+        if trace_cs:
+            tcs_tg = rt.task_group(); tgs.append(tcs_tg)
+            rt.drain(of_cs.cons(), trcs,
+                     tap=strided_tap(N_LAYERS * CS_BYTES, 0, CS_BYTES, CS_BYTES, N_LAYERS),
+                     wait=True, task_group=tcs_tg)
 
         for tg in tgs:
             rt.finish_task_group(tg)

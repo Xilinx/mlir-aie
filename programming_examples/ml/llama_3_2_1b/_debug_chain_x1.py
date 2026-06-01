@@ -137,6 +137,7 @@ def main():
     trace_x1 = os.environ.get("LLAMA_CHAIN_TRACE_X1", "0") == "1"
     trace_qf = os.environ.get("LLAMA_CHAIN_TRACE_QF", "0") == "1"
     trace_qr = os.environ.get("LLAMA_CHAIN_TRACE_QR", "0") == "1"
+    trace_cs = os.environ.get("LLAMA_CHAIN_TRACE_CS", "0") == "1"
     x_t  = iron.tensor(x_in_orig, dtype=np.int8)
     w_t  = iron.tensor(wblob, dtype=np.int8)
     kv_t = iron.tensor(kvblob, dtype=np.int8)
@@ -145,6 +146,7 @@ def main():
     ta_t = iron.zeros([N_LAYERS * QD], dtype=np.int8)
     tqf_t = iron.zeros([N_LAYERS * QF_BYTES], dtype=np.int8)
     tqr_t = iron.zeros([N_LAYERS * QR_BYTES], dtype=np.int8)
+    tcs_t = iron.zeros([N_LAYERS * CS_BYTES], dtype=np.int8)
 
     # XRT 5-arg ceiling: can have at most 5 runtime args. Always include
     # xin, w, kv, out (4). The 5th is whichever trace is enabled.
@@ -153,6 +155,7 @@ def main():
     if trace_af: args.append(ta_t)
     if trace_qf: args.append(tqf_t)
     if trace_qr: args.append(tqr_t)
+    if trace_cs: args.append(tcs_t)
     assert len(args) <= 5, f"XRT 5-arg ceiling (got {len(args)})"
 
     npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
@@ -221,6 +224,25 @@ def main():
             tail_ok = "✓" if tail[0] == packed_scale else f"✗ tail={tail[0]} expect={packed_scale}"
             print(f"      tail bytes: q_scale={tail[0]:.10f}  spare={tail[1]:.6f}  ({tail_ok})")
             x, _ = numpy_layer_forward(x, layer)
+
+    if trace_cs:
+        tcs_t.to("cpu")
+        cs_trace = tcs_t.numpy()
+        print(f"PER-LAYER CS DRAIN (seed={seed})")
+        for L in range(N_LAYERS):
+            actual = cs_trace[L*CS_BYTES:(L+1)*CS_BYTES]
+            ref = np.concatenate([layers[L]["cos"], layers[L]["sin"]]).view(np.int8)
+            diff = (actual != ref).sum()
+            mark = "  ✓" if diff == 0 else "  ✗"
+            print(f"  L={L}: cs byte mismatches={diff}/{CS_BYTES}{mark}")
+            if diff and L == 0:
+                actual_bf = np.frombuffer(actual.tobytes(), dtype=bfloat16)
+                ref_bf = np.frombuffer(ref.tobytes(), dtype=bfloat16)
+                bdiff = (actual_bf != ref_bf).sum()
+                first = np.argwhere(actual_bf != ref_bf).flatten()[:5]
+                print(f"      bf16 mismatches: {bdiff}/{len(actual_bf)}  first={first.tolist()}")
+                for i in first:
+                    print(f"      bf16 i={i}: NPU={float(actual_bf[i])} ref={float(ref_bf[i])}")
 
     if trace_qr:
         tqr_t.to("cpu")

@@ -636,6 +636,7 @@ ${BUILD}/llama_gemm_int8_srs_tiled_attn.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_
 ${BUILD}/llama_rope_int8_attn.cc.o: ${KDIR}/llama_rope_int8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
+		-ffp-contract=off \
 		-DLLAMA_ROPE_HEAD_DIM=64 -DLLAMA_ROPE_N_HEADS=1 -c $< -o ${@F}
 
 # Per-T flowkv (HEAD_DIM=64, T set by ATTN_HALF_T).

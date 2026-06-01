@@ -39,7 +39,19 @@ static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
 static inline int8_t round_to_i8(float v) {
-  int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
+  // Half-away-from-zero rounding implemented in INTEGER math to be
+  // deterministic regardless of inherited fp rounding mode or 1-ULP
+  // noise. Trick: compute s*((int)(s*v*2 + 1)/2) where s = sign.
+  //   For v = -52.5:   s=-1, s*v*2 = 105.0, +1 = 106.0, (int)/2 = 53, *s = -53. (matches numpy half-away)
+  //   For v = -52.499: s=-1, s*v*2 = 104.998, +1 = 105.998, (int)/2 = 52, *s = -52.
+  // The integer truncation in `(int32_t)(scaled) / 2` is what gives us
+  // the half-away semantics deterministically -- (int) cast on a value
+  // that ROUNDED to an integer-plus-one is independent of fp rounding
+  // mode because the .5 boundary is doubled to a .0 (integer) value.
+  int32_t sign = (v >= 0.0f) ? 1 : -1;
+  float scaled = (float)sign * v * 2.0f + 1.0f;
+  int32_t doubled = (int32_t)scaled;
+  int32_t r = sign * (doubled / 2);
   if (r > I8_MAX) r = I8_MAX;
   if (r < I8_MIN) r = I8_MIN;
   return (int8_t)r;
