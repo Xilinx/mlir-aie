@@ -82,7 +82,7 @@ jobs:
               echo -e 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
                 | tee /etc/apt/preferences.d/rocm-pin-600
             apt update
-            apt install -y rocm-hip-runtime-dev5.6.0 python3.10-venv \
+            apt install -y rocm-hip-runtime-dev5.6.0 python3.12-venv \
                            pkg-config libelf-dev elfutils \
                            libdwarf-dev libsysfs-dev clang libssl-dev uuid-dev
             apt-get clean
@@ -106,7 +106,7 @@ jobs:
             cp -a third_party/aie-rt/driver/src/*.so* /install/aie-rt/lib
             cp -a third_party/aie-rt/driver/include /install/aie-rt
 
-            apt install python3.10-venv
+            apt install python3.12-venv
             python -m venv aie-venv
             source aie-venv/bin/activate
             pip install --upgrade pip

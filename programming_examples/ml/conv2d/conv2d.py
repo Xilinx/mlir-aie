@@ -16,6 +16,7 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
+from aie.iron.algorithms import row_at_a_time
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
@@ -94,16 +95,10 @@ def conv2dk1(
         barrier.wait_for_value(1)
         scale = my_rtp[0]
 
-        elemWts = of_wts.acquire(1)
+        def call(r_in, r_out, wts):
+            conv2dk1_i8(r_in, wts, r_out, x_dim, ci, co, scale)
 
-        for _ in range_(y_dim):
-            elemIn = of_act.acquire(1)
-            elemOut0 = of_out.acquire(1)
-
-            conv2dk1_i8(elemIn, elemWts, elemOut0, x_dim, ci, co, scale)
-            of_act.release(1)
-            of_out.release(1)
-        of_wts.release(1)
+        row_at_a_time(of_act, of_out, n_rows=y_dim, do_kernel=call, of_wts=of_wts)
 
     # Create a worker to perform the task
     worker = Worker(

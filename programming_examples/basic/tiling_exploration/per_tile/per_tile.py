@@ -9,13 +9,18 @@ import argparse
 import numpy as np
 
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1
+from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 
 
 def generate_module(
-    tensor_height, tensor_width, tile_height, tile_width, generate_access_map=False
+    tensor_height,
+    tensor_width,
+    tile_height,
+    tile_width,
+    generate_access_map=False,
+    device="npu",
 ):
     tensor_size = tensor_height * tensor_width
     tile_size = tile_height * tile_width
@@ -57,8 +62,15 @@ def generate_module(
         for t in tiler:
             rt.drain(of_out.cons(), tensor_out, t, wait=True)
 
+    if device == "npu":
+        dev = NPU1Col1()
+    elif device == "npu2":
+        dev = NPU2()
+    else:
+        raise ValueError(f"[ERROR] Device name {device} is unknown")
+
     # Create the program from the device type and runtime
-    my_program = Program(NPU1Col1(), rt)
+    my_program = Program(dev, rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program()
@@ -71,6 +83,7 @@ def main(opts):
         opts.tile_height,
         opts.tile_width,
         opts.generate_access_map,
+        opts.device,
     )
     if not opts.generate_access_map:
         print(module)
@@ -86,6 +99,13 @@ def get_arg_parser():
         "--generate-access-map",
         action="store_true",
         help="Produce a file showing data access order",
+    )
+    p.add_argument(
+        "-d",
+        "--device",
+        default="npu",
+        choices=["npu", "npu2"],
+        help="Target NPU device",
     )
     return p
 

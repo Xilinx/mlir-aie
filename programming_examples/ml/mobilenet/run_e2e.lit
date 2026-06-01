@@ -1,0 +1,72 @@
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Per-block + per-chain IRON e2e bit-exactness on the NPU2.
+//
+// For each test target this lit:
+//   1. Generates IRON MLIR via aie2_iron_per_block.py | aie2_iron_chain.py
+//      with the matching brevitas scales + weights from bottleneck_A|B|C/data/.
+//   2. Compiles MLIR -> xclbin via aiecc (links the .o files from
+//      `make build/aie2_mobilenet_iron.mlir.prj/...` of the main mobilenet).
+//   3. Runs the xclbin on the NPU via test_e2e.py and bit-exact compares the
+//      output against the matching brevitas golden_output_*.txt.
+//
+// Verified locally on Strix NPU — every target passes with atol=0.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: mkdir -p %t.work
+// RUN: cd %t.work
+// RUN: cp %S/mb_utils.py .
+//
+// Build all kernel .o files into ./build/ once; run_e2e.sh symlinks from there.
+// Pass devicename=npu2 explicitly: lit's test env does not propagate NPU2=1
+// from env_setup.sh, so without this the Makefile defaults to npu (aie2) and
+// produces wrong-arch .o files that hang the NPU at dispatch.
+// RUN: make -f %S/Makefile objs devicename=npu2
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh block bn1 %S | tee %t.bn1.log
+// RUN: FileCheck --check-prefix=BN1 %s < %t.bn1.log
+// BN1: PASS_E2E block:bn1
+// BN1-NOT: FAIL_E2E
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh block bn2 %S | tee %t.bn2.log
+// RUN: FileCheck --check-prefix=BN2 %s < %t.bn2.log
+// BN2: PASS_E2E block:bn2
+// BN2-NOT: FAIL_E2E
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh block bn3 %S | tee %t.bn3.log
+// RUN: FileCheck --check-prefix=BN3 %s < %t.bn3.log
+// BN3: PASS_E2E block:bn3
+// BN3-NOT: FAIL_E2E
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh block bn6 %S | tee %t.bn6.log
+// RUN: FileCheck --check-prefix=BN6 %s < %t.bn6.log
+// BN6: PASS_E2E block:bn6
+// BN6-NOT: FAIL_E2E
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh block bn7 %S | tee %t.bn7.log
+// RUN: FileCheck --check-prefix=BN7 %s < %t.bn7.log
+// BN7: PASS_E2E block:bn7
+// BN7-NOT: FAIL_E2E
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh block bn8 %S | tee %t.bn8.log
+// RUN: FileCheck --check-prefix=BN8 %s < %t.bn8.log
+// BN8: PASS_E2E block:bn8
+// BN8-NOT: FAIL_E2E
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh chain regular %S | tee %t.regular.log
+// RUN: FileCheck --check-prefix=REG %s < %t.regular.log
+// REG: PASS_E2E chain:regular
+// (regular chain runs at atol=14 to match the original — see #3009 known
+//  bottleneck_A drift; bit-exactness is gated on closing init/bn0 propagation)
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh chain pipeline %S | tee %t.pipeline.log
+// RUN: FileCheck --check-prefix=PIPE %s < %t.pipeline.log
+// PIPE: PASS_E2E chain:pipeline
+// PIPE-NOT: FAIL_E2E
+//
+// RUN: %run_on_npu2% bash %S/run_e2e.sh chain cascade %S | tee %t.cascade.log
+// RUN: FileCheck --check-prefix=CAS %s < %t.cascade.log
+// CAS: PASS_E2E chain:cascade
+// CAS-NOT: FAIL_E2E
