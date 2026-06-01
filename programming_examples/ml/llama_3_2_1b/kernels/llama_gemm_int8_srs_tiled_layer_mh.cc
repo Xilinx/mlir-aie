@@ -103,10 +103,9 @@ static inline void gemm_tile_perchan_v2_qmh_impl(int8_t *restrict act,
   int head_idx = tile_idx / (kHD / kNTile);
   float inv_out_scale = q_inv_outs[head_idx];
 
-  // Mirror 256 B tail (per-head [q_out_scale, sv_inv_out_scale] pairs)
-  // once per dispatch -- the prefix bytes don't change across tile calls
-  // because the IRON design feeds the same wblob region repeatedly.
-  if (tile_idx == 0) {
+  // Mirror 256 B tail (per-head [q_out_scale, sv_inv_out_scale] pairs).
+  // Done every tile call (idempotent, same as single-head v2_up_q pattern).
+  {
     constexpr int kOutDim = kNHeadsQ * kHD;
     memcpy(out_full_base + kOutDim,
            w_tile + kMhTailOffset, kMhTailBytes);
