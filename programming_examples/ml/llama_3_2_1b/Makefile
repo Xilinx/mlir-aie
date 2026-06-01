@@ -863,6 +863,43 @@ run_layer_mh: layer_mh
 		-i ${BUILD}/insts_layer_mh_T${LAYER_MH_T}.bin \
 		-k MLIR_AIE
 
+# ---------- N-layer multi-head GQA chain (Phase 7b) ----------
+CHAIN_MH_T ?= 128
+CHAIN_MH_N ?= 2
+
+CHAIN_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
+                ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o \
+                ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
+                ${BUILD}/llama_silu_mul_int8_8192.cc.o \
+                ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o \
+                ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o \
+                ${BUILD}/llama_gqa_glue.cc.o \
+                ${BUILD}/llama_layer_pt.cc.o
+
+${BUILD}/aie_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py
+	mkdir -p ${@D}
+	LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
+
+${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${BUILD}/aie_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir ${CHAIN_MH_DEPS}
+	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
+	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
+	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
+	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
+		$(notdir $<)
+
+chain_mh: ${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin
+
+run_chain_mh: chain_mh
+	cd ${srcdir} && LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 test_chain_mh.py \
+		-x ${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin \
+		-i ${BUILD}/insts_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
+		-k MLIR_AIE
+
 # ---------- clean ----------
 clean:
 	rm -rf ${BUILD}
