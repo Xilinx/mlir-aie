@@ -132,34 +132,63 @@ def main():
         kvblob[v_off:v_off + KV_HEADER] = np.frombuffer(fp32_bytes(sc["v_scale"], sc["sv_inv_out_scale"]), np.int8)
         kvblob[v_off + KV_HEADER:v_off + KV_HEADER + VCACHE_BYTES] = layers[L]["vcache"]
 
+    trace_af = os.environ.get("LLAMA_CHAIN_TRACE_AF", "0") == "1"
+    trace_x1 = os.environ.get("LLAMA_CHAIN_TRACE_X1", "0") == "1"
     x_t  = iron.tensor(x_in_orig, dtype=np.int8)
     w_t  = iron.tensor(wblob, dtype=np.int8)
     kv_t = iron.tensor(kvblob, dtype=np.int8)
     o_t  = iron.zeros([D], dtype=np.int8)
     tr_t = iron.zeros([N_LAYERS * D], dtype=np.int8)
+    ta_t = iron.zeros([N_LAYERS * QD], dtype=np.int8)
+
+    # XRT 5-arg ceiling: can have at most 5 runtime args. Always include
+    # xin, w, kv, out (4). The 5th is whichever trace is enabled.
+    args = [x_t, w_t, kv_t, o_t]
+    if trace_x1: args.append(tr_t)
+    if trace_af: args.append(ta_t)
+    assert len(args) <= 5, "XRT 5-arg ceiling"
 
     npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
-    rc = DefaultNPURuntime.run_test(npu_kernel, [x_t, w_t, kv_t, o_t, tr_t], {}, verify=False, verbosity=opts.verbosity)
+    rc = DefaultNPURuntime.run_test(npu_kernel, args, {}, verify=False, verbosity=opts.verbosity)
     if rc != 0:
         return rc
-    tr_t.to("cpu")
-    trace = tr_t.numpy()
+    if trace_x1:
+        tr_t.to("cpu")
+        trace = tr_t.numpy()
+        print(f"PER-LAYER X1 DRAIN (seed={seed}, N_LAYERS={N_LAYERS})")
+        for L in range(N_LAYERS):
+            actual = trace[L*D:(L+1)*D]
+            ref = ref_x1s[L]
+            diff = actual.astype(np.int16) - ref.astype(np.int16)
+            n_diff = int((diff != 0).sum())
+            max_abs = int(np.abs(diff).max()) if n_diff else 0
+            mark = "  ✓" if n_diff == 0 else "  ✗"
+            print(f"  L={L}: x1 mismatches={n_diff:>5}/{D}  max|diff|={max_abs}{mark}")
 
-    print(f"PER-LAYER X1 DRAIN (seed={seed}, N_LAYERS={N_LAYERS})")
-    for L in range(N_LAYERS):
-        actual = trace[L*D:(L+1)*D]
-        ref = ref_x1s[L]
-        diff = actual.astype(np.int16) - ref.astype(np.int16)
-        n_diff = int((diff != 0).sum())
-        max_abs = int(np.abs(diff).max()) if n_diff else 0
-        mark = "  ✓" if n_diff == 0 else "  ✗"
-        print(f"  L={L}: x1 mismatches={n_diff:>5}/{D}  max|diff|={max_abs}{mark}")
-        if n_diff and L > 0:
-            # Show first divergent layer in detail.
-            print(f"     first 8 mismatches:")
-            for i in np.argwhere(diff != 0).flatten()[:8]:
-                print(f"     i={i}: NPU={actual[i]}  ref={ref[i]}")
-            break
+    if trace_af:
+        ta_t.to("cpu")
+        af_trace = ta_t.numpy()
+        # Compute numpy AF per-layer (need to track x across layers).
+        print(f"PER-LAYER AF DRAIN (seed={seed})")
+        x = x_in_orig.copy()
+        for L in range(N_LAYERS):
+            layer = layers[L]
+            sc = layer["scales"]  # use cached scales (same as wblob)
+            h1 = numpy_rmsnorm_int8(x, layer["gamma_in"], ACT_SCALE, INV_ACT_SCALE)
+            fp_q = (layer["wq_i8"].astype(np.int32) @ h1.astype(np.int32) + layer["bq"]).astype(np.float32) \
+                   * np.float32(ACT_SCALE) * layer["wq_sc"].astype(np.float32)
+            qf = requant(fp_q, sc["q_inv_out"])
+            qr = numpy_rope(qf, layer["cos"], layer["sin"], N_HEADS, HEAD_D, sc["q_out_scale"])
+            af_ref = numpy_attention(qr, layer["kcache"], layer["vcache"], HEAD_D, T,
+                                     sc["q_out_scale"], sc["k_scale"], sc["v_scale"],
+                                     sc["sv_inv_out_scale"], lut_exp)
+            af_actual = af_trace[L*QD:(L+1)*QD]
+            diff = af_actual.astype(np.int16) - af_ref.astype(np.int16)
+            n_diff = int((diff != 0).sum())
+            max_abs = int(np.abs(diff).max()) if n_diff else 0
+            mark = "  ✓" if n_diff == 0 else "  ✗"
+            print(f"  L={L}: af mismatches={n_diff:>4}/{QD}  max|diff|={max_abs}{mark}")
+            x, _ = numpy_layer_forward(x, layer)
 
 
 if __name__ == "__main__":

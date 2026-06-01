@@ -185,16 +185,18 @@ def strided_tap(total, base_off, per_slot_stride, slot_bytes, n_slots):
 
 
 def build():
-    # Optional per-layer x1 (post-attn, pre-FFN) trace, for debugging
-    # data-dependent failures at N>=4. When set, adds a 5th runtime arg
-    # of N_LAYERS*D bytes and broadcasts of_x1 to a shim drain.
+    # Optional per-layer trace drains for debugging the N>=4 chain bug.
+    # x1 = post-attn pre-FFN intermediate (D bytes/layer).
+    # af = sv-output, pre-o_proj (QD bytes/layer).
     trace_x1 = _os.environ.get("LLAMA_CHAIN_TRACE_X1", "0") == "1"
+    trace_af = _os.environ.get("LLAMA_CHAIN_TRACE_AF", "0") == "1"
 
-    rt_xin_ty   = _i8(D)
-    rt_w_ty     = _i8(WEIGHTS_BYTES)
-    rt_kv_ty    = _i8(KV_BYTES)
-    rt_out_ty   = _i8(D)
-    rt_trace_ty = _i8(N_LAYERS * D)
+    rt_xin_ty      = _i8(D)
+    rt_w_ty        = _i8(WEIGHTS_BYTES)
+    rt_kv_ty       = _i8(KV_BYTES)
+    rt_out_ty      = _i8(D)
+    rt_trace_x1_ty = _i8(N_LAYERS * D)
+    rt_trace_af_ty = _i8(N_LAYERS * QD)
 
     t_D_i8       = _i8(D)
     t_QF_i8      = _i8(QF_BYTES)
@@ -424,10 +426,16 @@ def build():
     rt = Runtime()
     seq_tys = (rt_xin_ty, rt_w_ty, rt_kv_ty, rt_out_ty)
     if trace_x1:
-        seq_tys = seq_tys + (rt_trace_ty,)
+        seq_tys = seq_tys + (rt_trace_x1_ty,)
+    if trace_af:
+        seq_tys = seq_tys + (rt_trace_af_ty,)
     with rt.sequence(*seq_tys) as seq_args:
         xin = seq_args[0]; wblob = seq_args[1]; kvblob = seq_args[2]; out = seq_args[3]
-        trace = seq_args[4] if trace_x1 else None
+        idx = 4
+        trace = None
+        traf = None
+        if trace_x1: trace = seq_args[idx]; idx += 1
+        if trace_af: traf  = seq_args[idx]; idx += 1
         rt.start(*workers)
 
         tgs = []
@@ -490,12 +498,15 @@ def build():
         rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
 
         if trace_x1:
-            # Drain N_LAYERS slots of D bytes from of_x1 (broadcast: rmsnorm2,
-            # add2, shim). Each slot = one layer's x1 = post-attn pre-FFN.
             tr_tg = rt.task_group(); tgs.append(tr_tg)
             rt.drain(of_x1.cons(), trace,
                      tap=strided_tap(N_LAYERS * D, 0, D, D, N_LAYERS),
                      wait=True, task_group=tr_tg)
+        if trace_af:
+            ta_tg = rt.task_group(); tgs.append(ta_tg)
+            rt.drain(of_af.cons(), traf,
+                     tap=strided_tap(N_LAYERS * QD, 0, QD, QD, N_LAYERS),
+                     wait=True, task_group=ta_tg)
 
         for tg in tgs:
             rt.finish_task_group(tg)
