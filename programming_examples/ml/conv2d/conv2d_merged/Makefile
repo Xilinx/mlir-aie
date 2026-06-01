@@ -9,8 +9,9 @@
 ##===----------------------------------------------------------------------===##
 #
 # @iron.jit drives aiecc via --xclbin-path / --insts-path; the library
-# ``kernels.conv2dk1_i8`` is auto-built into the JIT work_dir, so no
-# separate Makefile rule for the .o is needed.
+# ``kernels.conv2dk1_i8`` (or ``kernels.conv2dk1`` when fuse_relu=1) is
+# auto-built into the JIT work_dir, so no separate Makefile rule for the
+# .o is needed.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
@@ -20,6 +21,7 @@ SHELL := /bin/bash
 
 targetname = conv2d
 
+fuse_relu ?= 0
 width ?= 32
 height ?= 32
 in_channels ?= 64
@@ -27,6 +29,11 @@ out_channels ?= 64
 
 aie_py_src = ${targetname}.py
 aieargs = -d ${devicename} -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
+test_py_args =
+ifeq ($(fuse_relu),1)
+aieargs += --fuse_relu
+test_py_args += --fuse_relu
+endif
 
 xclbin_target = build/final.xclbin
 insts_target  = build/insts.bin
@@ -39,7 +46,7 @@ $(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aiearg
 .PHONY: run_py
 run_py: ${xclbin_target} ${insts_target}
 	${powershell} python3 ${srcdir}/test.py --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE \
-		-wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels}
+		-wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels} ${test_py_args}
 
 .PHONY: clean
 clean:
