@@ -1,0 +1,254 @@
+"""Phase 7a: multi-head GQA reference + per-Q-head dynamic-scale
+calibration for the single-layer multi-head xclbin (aie2_layer_mh.py).
+
+Mirrors numpy_layer_forward in test_chain_dynscale.py but at full
+Llama 3.2 1B attn shapes: 32 Q heads, 8 KV heads (GQA, REP=4 Q per
+KV), HEAD_DIM=64, Q_DIM=2048, KV_DIM=512.
+
+Key changes vs single-head:
+  - wq, wo are full (Q_DIM, D) / (D, Q_DIM)
+  - q_out_scale, sv_inv_out_scale are PER Q HEAD (length 32)
+  - k_scale, v_scale are PER KV HEAD (length 8)
+  - sv outputs from each Q head are concatenated, dequanted with each
+    head's sv_out_scale, then globally requanted to int8 with a single
+    o_act_scale before o_proj. This matches the on-device topology
+    where 8 attn workers emit per-head int8 sv chunks and an "af-concat"
+    worker stitches + requantizes for the (single-act_scale) o_proj.
+  - FFN stays unchanged (per-token scales, single act for gate/up/down).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from ml_dtypes import bfloat16
+
+from aie2_layer_d2048 import (
+    ACT_SCALE, INV_ACT_SCALE, SILU_GATE_SCALE, GATE_INV_OUT_SCALE,
+)
+from test_rmsnorm_int8 import numpy_rmsnorm_int8
+from test_rope_int8 import numpy_rope_dyn
+from test_flowkv import numpy_attention, EXP_QUANT_SCALE
+from test_silu_mul_int8 import numpy_silu_mul
+from test_attn_half import compute_sv_fp
+from test_ffn_half import numpy_gemm_perchan, i8_add_wrap
+from gen_exp_lut import exp_lut
+from gen_silu_lut import silu_lut
+from gen_llama_data import quant_int8_perchan_absmax
+
+
+# --- Multi-head GQA shape constants ---
+D            = 2048
+N_HEADS_Q    = 32
+N_HEADS_KV   = 8
+HEAD_DIM     = 64
+REP          = N_HEADS_Q // N_HEADS_KV     # 4
+Q_DIM        = N_HEADS_Q * HEAD_DIM        # 2048
+KV_DIM       = N_HEADS_KV * HEAD_DIM       # 512
+HD           = 8192
+T            = 128
+
+
+def requant(fp, inv):
+    s = fp * np.float32(inv)
+    r = np.where(s >= 0, np.floor(s + np.float32(0.5)),
+                          np.ceil(s - np.float32(0.5)))
+    return r.clip(-128, 127).astype(np.int8)
+
+
+def gen_layer_mh(rng: np.random.Generator) -> dict:
+    """Random per-layer fixture at multi-head GQA shapes."""
+    def random_w(out_dim, in_dim):
+        base = rng.standard_normal((out_dim, in_dim)).astype(np.float32) * 0.05
+        row_scale = rng.uniform(0.1, 1.0, size=out_dim).astype(np.float32)
+        return base * row_scale[:, None]
+
+    wq_fp = random_w(Q_DIM,  D);    bq = np.zeros(Q_DIM,  np.int32)
+    wo_fp = random_w(D,      Q_DIM); bo = np.zeros(D,      np.int32)
+    wg_fp = random_w(HD,     D);    bg = np.zeros(HD,     np.int32)
+    wu_fp = random_w(HD,     D);    bu = np.zeros(HD,     np.int32)
+    wd_fp = random_w(D,      HD);   bd = np.zeros(D,      np.int32)
+    wq_i8, wq_sc = quant_int8_perchan_absmax(wq_fp)
+    wo_i8, wo_sc = quant_int8_perchan_absmax(wo_fp)
+    wg_i8, wg_sc = quant_int8_perchan_absmax(wg_fp)
+    wu_i8, wu_sc = quant_int8_perchan_absmax(wu_fp)
+    wd_i8, wd_sc = quant_int8_perchan_absmax(wd_fp)
+
+    # Rope: one (cos, sin) pair for the single decode position.
+    half = HEAD_DIM // 2
+    ang = rng.uniform(0, 2 * np.pi, size=half).astype(np.float32)
+    cos_half = np.cos(ang).astype(bfloat16)
+    sin_half = np.sin(ang).astype(bfloat16)
+    cos = np.concatenate([cos_half, cos_half])
+    sin = np.concatenate([sin_half, sin_half])
+
+    # Per-KV-head cache + scale.
+    kcaches = [rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
+               for _ in range(N_HEADS_KV)]
+    vcaches = [rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
+               for _ in range(N_HEADS_KV)]
+    k_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
+    v_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
+
+    gamma_in   = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
+    gamma_post = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
+
+    return dict(
+        wq_i8=wq_i8, wq_sc=wq_sc, bq=bq,
+        wo_i8=wo_i8, wo_sc=wo_sc, bo=bo,
+        wg_i8=wg_i8, wg_sc=wg_sc, bg=bg,
+        wu_i8=wu_i8, wu_sc=wu_sc, bu=bu,
+        wd_i8=wd_i8, wd_sc=wd_sc, bd=bd,
+        cos=cos, sin=sin,
+        kcaches=kcaches, vcaches=vcaches,
+        k_scales=k_scales, v_scales=v_scales,
+        gamma_in=gamma_in, gamma_post=gamma_post,
+    )
+
+
+def numpy_layer_mh_forward(x, layer):
+    """Multi-head GQA single-layer forward + per-Q-head scale calibration.
+
+    Returns (x_out, scales) where scales is a dict packing every
+    dynamic scale that the on-device design needs in its wblob/kvblob
+    prefixes/tails.
+    """
+    lut_exp  = layer["lut_exp"]
+    lut_silu = layer["lut_silu"]
+    gamma_in = layer["gamma_in"]; gamma_post = layer["gamma_post"]
+    wq_i8 = layer["wq_i8"]; wq_sc = layer["wq_sc"]; bq = layer["bq"]
+    wo_i8 = layer["wo_i8"]; wo_sc = layer["wo_sc"]; bo = layer["bo"]
+    wg_i8 = layer["wg_i8"]; wg_sc = layer["wg_sc"]; bg = layer["bg"]
+    wu_i8 = layer["wu_i8"]; wu_sc = layer["wu_sc"]; bu = layer["bu"]
+    wd_i8 = layer["wd_i8"]; wd_sc = layer["wd_sc"]; bd = layer["bd"]
+    cos = layer["cos"]; sin = layer["sin"]
+    kcaches = layer["kcaches"]; vcaches = layer["vcaches"]
+    k_scales = layer["k_scales"]; v_scales = layer["v_scales"]
+
+    # 1) rmsnorm1 -> h1
+    h1 = numpy_rmsnorm_int8(x, gamma_in, ACT_SCALE, INV_ACT_SCALE)
+
+    # 2) q_proj (full Q_DIM=2048)
+    fp_q_full = (wq_i8.astype(np.int32) @ h1.astype(np.int32) + bq).astype(np.float32) \
+                * np.float32(ACT_SCALE) * wq_sc.astype(np.float32)
+
+    # 3) Per-Q-head requant. qf shape (Q_DIM,).
+    q_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
+    q_inv_outs   = np.zeros(N_HEADS_Q, dtype=np.float32)
+    qf = np.zeros(Q_DIM, dtype=np.int8)
+    for h in range(N_HEADS_Q):
+        slice_h = fp_q_full[h * HEAD_DIM:(h + 1) * HEAD_DIM]
+        s = float(np.maximum(np.abs(slice_h).max(), 1e-12)) / 127.0
+        q_out_scales[h] = np.float32(s)
+        q_inv_outs[h]   = np.float32(1.0) / np.float32(s)
+        qf[h * HEAD_DIM:(h + 1) * HEAD_DIM] = requant(slice_h, q_inv_outs[h])
+
+    # 4) rope (per-head). numpy_rope_dyn reshapes to (n_heads, head_dim) internally.
+    qr = numpy_rope_dyn(qf, cos, sin, N_HEADS_Q, HEAD_DIM)
+
+    # 5) Per-Q-head attention. GQA: kvh = h_q // REP. Each Q head gets
+    #    its own sv_out_scale + sv_inv_out_scale.
+    sv_out_scales      = np.zeros(N_HEADS_Q, dtype=np.float32)
+    sv_inv_out_scales  = np.zeros(N_HEADS_Q, dtype=np.float32)
+    sv_i8_per_head     = []
+    for h_q in range(N_HEADS_Q):
+        kvh = h_q // REP
+        q_h = qr[h_q * HEAD_DIM:(h_q + 1) * HEAD_DIM]
+        sv_fp_h = compute_sv_fp(q_h, kcaches[kvh], vcaches[kvh], HEAD_DIM, T,
+                                float(q_out_scales[h_q]),
+                                float(k_scales[kvh]), float(v_scales[kvh]),
+                                lut_exp)
+        s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
+        sv_out_scales[h_q]     = np.float32(s)
+        sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
+        sv_i8 = numpy_attention(q_h, kcaches[kvh], vcaches[kvh], HEAD_DIM, T,
+                                float(q_out_scales[h_q]),
+                                float(k_scales[kvh]), float(v_scales[kvh]),
+                                float(sv_inv_out_scales[h_q]), lut_exp)
+        sv_i8_per_head.append(sv_i8)
+
+    # 6) af-concat: per-head dequant (using each head's sv_out_scale),
+    #    concat to Q_DIM fp32, then global requant with o_act_scale.
+    af_fp = np.concatenate([sv_i8_per_head[h].astype(np.float32)
+                            * np.float32(sv_out_scales[h])
+                            for h in range(N_HEADS_Q)])
+    o_act_scale     = float(np.maximum(np.abs(af_fp).max(), 1e-12)) / 127.0
+    o_inv_act_scale = float(np.float32(1.0) / np.float32(o_act_scale))
+    af = requant(af_fp, o_inv_act_scale)
+
+    # 7) o_proj (single global act_scale = o_act_scale, baked INV_ACT_SCALE out)
+    op = numpy_gemm_perchan(af, o_act_scale, wo_i8, wo_sc, bo, INV_ACT_SCALE)
+    x1 = i8_add_wrap(op, x)
+
+    # 8) rmsnorm2
+    h2 = numpy_rmsnorm_int8(x1, gamma_post, ACT_SCALE, INV_ACT_SCALE)
+
+    # 9) gate (closure-baked GATE_INV_OUT_SCALE = 1/SILU_GATE_SCALE)
+    fp_gate = (wg_i8.astype(np.int32) @ h2.astype(np.int32) + bg).astype(np.float32) \
+              * np.float32(ACT_SCALE) * wg_sc.astype(np.float32)
+    gf = requant(fp_gate, GATE_INV_OUT_SCALE)
+
+    # 10) up (dynamic out scale)
+    fp_up = (wu_i8.astype(np.int32) @ h2.astype(np.int32) + bu).astype(np.float32) \
+            * np.float32(ACT_SCALE) * wu_sc.astype(np.float32)
+    up_out_scale = float(np.maximum(np.abs(fp_up).max(), 1e-12)) / 127.0
+    up_inv_out   = float(np.float32(1.0) / np.float32(up_out_scale))
+    uf = requant(fp_up, up_inv_out)
+
+    # 11) silu_mul
+    silu_up_scale = up_out_scale
+    s_gate_fp = lut_silu[gf.astype(np.int32) + 128].astype(np.float32)
+    s_up_fp = uf.astype(np.float32) * np.float32(silu_up_scale)
+    sf_fp = s_gate_fp * s_up_fp
+    silu_out_scale     = float(np.maximum(np.abs(sf_fp).max(), 1e-12)) / 127.0
+    silu_inv_out_scale = float(np.float32(1.0) / np.float32(silu_out_scale))
+    sf = numpy_silu_mul(gf, uf, lut_silu, silu_up_scale, silu_inv_out_scale)
+
+    # 12) down
+    down_act_scale = silu_out_scale
+    df = numpy_gemm_perchan(sf, down_act_scale, wd_i8, wd_sc, bd, INV_ACT_SCALE)
+
+    # 13) add
+    x_out = i8_add_wrap(df, x1)
+
+    scales = dict(
+        q_out_scales=q_out_scales, q_inv_outs=q_inv_outs,
+        sv_out_scales=sv_out_scales, sv_inv_out_scales=sv_inv_out_scales,
+        o_act_scale=o_act_scale, o_inv_act_scale=o_inv_act_scale,
+        k_scales=k_scales, v_scales=v_scales,
+        up_out_scale=up_out_scale, up_inv_out=up_inv_out,
+        silu_up_scale=silu_up_scale, silu_inv_out_scale=silu_inv_out_scale,
+        down_act_scale=down_act_scale,
+    )
+    return x_out, scales
+
+
+def _selftest():
+    """Quick numpy-only sanity: layer runs end-to-end, output shape/dtype
+    matches, no NaNs, scale magnitudes are plausible."""
+    rng = np.random.default_rng(0)
+    layer = gen_layer_mh(rng)
+    layer["lut_exp"]  = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
+    layer["lut_silu"] = silu_lut(SILU_GATE_SCALE)
+
+    x = rng.integers(-32, 33, size=D, dtype=np.int8)
+    y, scales = numpy_layer_mh_forward(x, layer)
+
+    assert y.shape == (D,) and y.dtype == np.int8
+    assert not np.isnan(y).any()
+    sat = int((y == 127).sum() + (y == -128).sum())
+
+    print(f"selftest: out shape={y.shape} dtype={y.dtype} sat={sat}/{D}")
+    print(f"  q_out_scales:     min={scales['q_out_scales'].min():.4f} "
+          f"max={scales['q_out_scales'].max():.4f}")
+    print(f"  sv_out_scales:    min={scales['sv_out_scales'].min():.4f} "
+          f"max={scales['sv_out_scales'].max():.4f}")
+    print(f"  o_act_scale:      {scales['o_act_scale']:.4f}")
+    print(f"  up_out_scale:     {scales['up_out_scale']:.4f}")
+    print(f"  silu_out_scale:   {scales['silu_inv_out_scale']:.4f}^-1")
+    print(f"  down_act_scale:   {scales['down_act_scale']:.4f}")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(_selftest())
