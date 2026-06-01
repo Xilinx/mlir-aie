@@ -79,10 +79,15 @@ def build(head_dim: int, t: int):
         c_probs.release(1)
         c_out.release(1)
 
+    # qk_fn allocates `scores[T]` + `qvals[T]` on the worker stack (= 8*T B).
+    # At T>=128 this overflows the default 1 KB stack -- Peano Bug 5:
+    # silently corrupts (off-by-1 i8 mismatches that look like rounding).
+    # 16 KB stack handles T up to ~2048; beyond that move to a L1 Buffer.
     worker_qk = Worker(
         qk_fn,
         [of_q.cons(), of_k.cons(), of_probs.prod(), k_qk],
         tile=Tile(PAIR_COL, QK_ROW),
+        stack_size=16384,
     )
     worker_sv = Worker(
         sv_fn,

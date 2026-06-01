@@ -24,6 +24,10 @@
 // Llama 3.2 1B integration test sizes (small for first bring-up).
 static constexpr int kD  = 64;
 static constexpr int kHD = 256;
+#ifndef LLAMA_GEMM_VOCAB
+#define LLAMA_GEMM_VOCAB 256        // first-cut lm_head vocab (Phase 6b)
+#endif
+static constexpr int kV  = LLAMA_GEMM_VOCAB;
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -81,6 +85,10 @@ void llama_gemm_int8_srs_D_to_HD(int8_t *act, int8_t *w, int8_t *out, int32_t rs
 }
 void llama_gemm_int8_srs_HD_to_D(int8_t *act, int8_t *w, int8_t *out, int32_t rs) {
   gemm_impl<kHD, kD>(act, w, out, rs);
+}
+// lm_head: D-dim activation -> V-dim int8 logits.
+void llama_gemm_int8_srs_D_to_V(int8_t *act, int8_t *w, int8_t *out, int32_t rs) {
+  gemm_impl<kD, kV>(act, w, out, rs);
 }
 
 // Compat alias used by the standalone gemm bring-up test

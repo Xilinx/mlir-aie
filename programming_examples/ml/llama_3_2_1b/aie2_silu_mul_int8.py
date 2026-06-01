@@ -20,9 +20,11 @@ SILU_COL, SILU_ROW = 4, 5
 
 # Scales baked at build time. The Makefile passes GATE_SCALE to
 # gen_silu_lut.py; UP_SCALE and INV_OUT_SCALE are baked here.
-GATE_SCALE     = 0.05   # MUST match what was passed to gen_silu_lut.py
-UP_SCALE       = 0.05
-INV_OUT_SCALE  = 1.0 / 0.05
+# Env-var overridable so the test can drive specific calibrations.
+import os as _os
+GATE_SCALE     = float(_os.environ.get("SILU_GATE_SCALE",    "0.05"))
+UP_SCALE       = float(_os.environ.get("SILU_UP_SCALE",      "0.05"))
+INV_OUT_SCALE  = float(_os.environ.get("SILU_INV_OUT_SCALE", str(1.0 / 0.05)))
 
 
 def build(D: int):
