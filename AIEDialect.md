@@ -1160,6 +1160,7 @@ operation ::= `aie.objectfifo` $sym_name
               `,`
               $elemNumber
               `)` attr-dict `:` $elemType
+              custom<ObjectFifoConsumerElemType>($consumerElemType)
               custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
 ```
 
@@ -1258,6 +1259,7 @@ Interfaces: `Symbol`
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>elemNumber</code></td><td>::mlir::Attribute</td><td>32-bit signless integer attribute whose minimum value is 0 or array attribute</td></tr>
 <tr><td><code>elemType</code></td><td>::mlir::TypeAttr</td><td>type attribute of </td></tr>
+<tr><td><code>consumerElemType</code></td><td>::mlir::TypeAttr</td><td>type attribute of </td></tr>
 <tr><td><code>dimensionsToStream</code></td><td>::xilinx::AIE::BDDimLayoutArrayAttr</td><td></td></tr>
 <tr><td><code>dimensionsFromStreamPerConsumer</code></td><td>::xilinx::AIE::BDDimLayoutArrayArrayAttr</td><td></td></tr>
 <tr><td><code>via_DMA</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
