@@ -254,6 +254,10 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                     k_qkv,
                 ],
                 tile=plc["qkv"],
+                # qkv vec kernel now uses 2 KB YCXC8 prepack scratch (matches
+                # m9_cv1 / ffn_0); default 1 KB stack would silently overflow
+                # into the wts buffer above (see feedback_iron_worker_stack_overflow).
+                stack_size=4096,
             )
         )
 
@@ -605,14 +609,13 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
             [
                 B._i8((in_w, 1, twoc)),
                 B._i8((head_dim, N_tokens)),
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
+                np.int32,  # input_width
+                np.int32,  # twoc
+                np.int32,  # head_dim (slots)
+                np.int32,  # head_stride
+                np.int32,  # N
+                np.int32,  # head_idx
+                np.int32,  # row_idx
             ],
         )
         k_sv_row = Kernel(
@@ -653,8 +656,11 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
             # (head_stride=128, v offset within head = 64).
             for yi in range_(in_h):
                 row = qkv_c.acquire(1)
-                kvpack(row, vh0, in_w, twoc, head_dim, 64, 128, N_tokens, 0, yi)
-                kvpack(row, vh1, in_w, twoc, head_dim, 64, 128, N_tokens, 1, yi)
+                # v_offset_in_head (=64) is now a compile-time constant
+                # in yolo_m9_pack.cc (-DYOLO_M9_PACK_EXTRA_OFFSET=64 for the
+                # v_pack variant), so the arg is no longer needed.
+                kvpack(row, vh0, in_w, twoc, head_dim, 128, N_tokens, 0, yi)
+                kvpack(row, vh1, in_w, twoc, head_dim, 128, N_tokens, 1, yi)
                 qkv_c.release(1)
             # Phase 2 (head 0): consume softmaxed score chunks, run sv per row.
             for ci in range_(n_chunks_per_head):
@@ -799,8 +805,11 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
             # Phase 1: pack V from qkv.
             for yi in range_(in_h):
                 row = qkv_c.acquire(1)
-                kvpack(row, vh0, in_w, twoc, head_dim, 64, 128, N_tokens, 0, yi)
-                kvpack(row, vh1, in_w, twoc, head_dim, 64, 128, N_tokens, 1, yi)
+                # v_offset_in_head (=64) is now a compile-time constant
+                # in yolo_m9_pack.cc (-DYOLO_M9_PACK_EXTRA_OFFSET=64 for the
+                # v_pack variant), so the arg is no longer needed.
+                kvpack(row, vh0, in_w, twoc, head_dim, 128, N_tokens, 0, yi)
+                kvpack(row, vh1, in_w, twoc, head_dim, 128, N_tokens, 1, yi)
                 qkv_c.release(1)
 
             # Phase 2a: head 0 chunks → sv_h0_acc ((N, head_dim) accumulator).
@@ -986,6 +995,11 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                     k_proj_skip,
                 ],
                 tile=plc["proj"],
+                # proj_skip vec kernel uses 2 KB YCXC8 prepack scratch
+                # (matches m9_cv1 / qkv / ffn_0); default 1 KB stack
+                # would silently overflow. See
+                # feedback_iron_worker_stack_overflow.md.
+                stack_size=4096,
             )
         )
 

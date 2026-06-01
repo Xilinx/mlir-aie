@@ -21,10 +21,10 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
+
+#include "../../../../aie_kernels/aie_kernel_utils.h"
 
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
@@ -84,14 +84,17 @@ static inline void cv3_compute_row(int8_t *inner1, int8_t *split_b, int8_t *wts,
   // straight-line — no per-iteration if inside the mac loop.
   constexpr int kPackedIcStride = x_tiles * 64;
 
+  AIE_LOOP_RANGE(oc_tiles, oc_tiles)
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
+    AIE_LOOP_RANGE(x_tiles, x_tiles)
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL8x8x8 acc;
       acc = bias_acc;
       const int x_base = x_tile * MMUL_M;
 
       // inner1 (packed, from pair_cv2_skip output, ic_t = 0..ic_tiles_per_src-1)
+      AIE_LOOP_RANGE(ic_tiles_per_src, ic_tiles_per_src)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
         aie::vector<int8, 64> in_a = aie::load_v<64>(
             inner1 + local_ic_t * kPackedIcStride + x_tile * 64);
@@ -100,6 +103,7 @@ static inline void cv3_compute_row(int8_t *inner1, int8_t *split_b, int8_t *wts,
         acc.mac(in_a, in_b);
       }
       // split_b (packed, ic_t = ic_tiles_per_src..2*ic_tiles_per_src-1)
+      AIE_LOOP_RANGE(ic_tiles_per_src, ic_tiles_per_src)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
         aie::vector<int8, 64> in_a = aie::load_v<64>(
             split_b + local_ic_t * kPackedIcStride + x_tile * 64);
@@ -113,6 +117,7 @@ static inline void cv3_compute_row(int8_t *inner1, int8_t *split_b, int8_t *wts,
       // mmul-packed scratch write: cv2_compute_chunk reads in_m0 as packed
       // via the same vec_load path as in_top / in_bot.
       alignas(64) int8_t silu_buf[64];
+      AIE_LOOP_UNROLL_FULL
       for (int i = 0; i < 64; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
@@ -153,16 +158,19 @@ static inline void cv2_compute_chunk(int8_t *in_top, int8_t *in_bot,
   constexpr int kPackedIcStride = x_tiles * 64;
   constexpr int kPackedIcTiles = 2 * ic_tiles_per_src; // top + bot
 
+  AIE_LOOP_RANGE(chunk_oc_tiles, chunk_oc_tiles)
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int oc_full_base = oc_offset + chunk_oc_t * 8;
     auto bias_acc = make_bias_acc(&bias_full[oc_full_base]);
 
+    AIE_LOOP_RANGE(x_tiles, x_tiles)
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL8x8x8 acc;
       acc = bias_acc;
       const int x_base = x_tile * MMUL_M;
 
       // in_top (packed, ic_t = 0..ic_tiles_per_src-1)
+      AIE_LOOP_RANGE(ic_tiles_per_src, ic_tiles_per_src)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
         aie::vector<int8, 64> in_a = aie::load_v<64>(
             in_top + local_ic_t * kPackedIcStride + x_tile * 64);
@@ -171,6 +179,7 @@ static inline void cv2_compute_chunk(int8_t *in_top, int8_t *in_bot,
         acc.mac(in_a, in_b);
       }
       // in_bot (packed, ic_t = ic_tiles_per_src..2*ic_tiles_per_src-1)
+      AIE_LOOP_RANGE(ic_tiles_per_src, ic_tiles_per_src)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
         aie::vector<int8, 64> in_a = aie::load_v<64>(
             in_bot + local_ic_t * kPackedIcStride + x_tile * 64);
@@ -180,6 +189,7 @@ static inline void cv2_compute_chunk(int8_t *in_top, int8_t *in_bot,
         acc.mac(in_a, in_b);
       }
       // in_m0 = cv3 scratch (packed, ic_t = 2*ic_tiles_per_src..)
+      AIE_LOOP_RANGE(ic_tiles_per_src, ic_tiles_per_src)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
         aie::vector<int8, 64> in_a = aie::load_v<64>(
             in_m0 + local_ic_t * kPackedIcStride + x_tile * 64);
@@ -190,13 +200,19 @@ static inline void cv2_compute_chunk(int8_t *in_top, int8_t *in_bot,
       }
 
       aie::vector<int8, 64> srs_v = acc.template to_vector<int8>(right_shift);
+      // SiLU gather into 8 contiguous bytes per pixel, then one uint64 store
+      // per pixel to the (W, oc) raster (8 strided dest words instead of 64
+      // scalar byte stores).
+      alignas(8) int8_t silu_buf[64];
+      AIE_LOOP_UNROLL_FULL
+      for (int i = 0; i < 64; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+      AIE_LOOP_UNROLL_FULL
       for (int p = 0; p < MMUL_M; ++p) {
         int x_out = x_base + p;
-        for (int j = 0; j < 8; ++j) {
-          int oc_full = oc_full_base + j;
-          output[x_out * output_channels + oc_full] =
-              silu_lut[int(srs_v[p * 8 + j]) + 128];
-        }
+        *reinterpret_cast<uint64_t *>(
+            &output[x_out * output_channels + oc_full_base]) =
+            *reinterpret_cast<const uint64_t *>(&silu_buf[p * 8]);
       }
     }
   }

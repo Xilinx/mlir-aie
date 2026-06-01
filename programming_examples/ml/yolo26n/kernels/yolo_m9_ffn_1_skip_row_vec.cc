@@ -17,8 +17,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -72,8 +70,8 @@ void yolo_m9_ffn_1_skip_row_i8_i8(int8_t *mid_row, int8_t *wts, int32_t *bias,
     for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
       const int8_t *__restrict src = mid_row + x * kInC + ic_t * 8;
       int8_t *__restrict d = scratch + ic_t * kInW * 8 + x * 8;
-      for (int b = 0; b < 8; ++b)
-        d[b] = src[b];
+      *reinterpret_cast<uint64_t *>(d) =
+          *reinterpret_cast<const uint64_t *>(src);
     }
   }
 

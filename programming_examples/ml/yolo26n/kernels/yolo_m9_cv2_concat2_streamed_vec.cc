@@ -20,8 +20,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -55,13 +53,6 @@ static constexpr int kCHalfTiles = kCHalf / 8;
 static_assert(kInW % 4 == 0, "CV2 IN_W must be multiple of 4");
 static_assert(kCHalf % 8 == 0, "CV2 C_HALF must be multiple of 8");
 static_assert(kOutC % 8 == 0, "CV2 OUT_C must be multiple of 8");
-
-static constexpr int32_t I8_MAX = 127;
-static constexpr int32_t I8_MIN = -128;
-
-static inline int32_t banker_srs(int32_t sum, int32_t rs) {
-  return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
-}
 
 extern "C" {
 
@@ -97,7 +88,6 @@ void yolo_m9_cv2_concat2_streamed_silu_bias_i8_i8(
       bias_acc.from_vector(b32);
     }
 
-    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_RANGE(kXTiles, kXTiles)
     for (int x_tile = 0; x_tile < kXTiles; ++x_tile) {
       MMUL4x8x8 acc;

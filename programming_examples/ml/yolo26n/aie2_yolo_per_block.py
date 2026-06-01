@@ -466,11 +466,11 @@ def _build_conv_stride_block_streamed(
     wts_data = _load_bin(op_meta["weights_file"], np.int8, wts_sz_total)
     bias_data = _load_bin(op_meta["bias_file"], np.int32, out_c)
 
-    # m5 mmul A-layout pre-pack: memtile reshapes (row, col, ic) into
+    # mmul A-layout pre-pack: memtile reshapes (row, col, ic) into
     # (row, parity, ic_tile, col_in_half, ic_inner) so the kernel can fetch
     # mmul A via a single vec_load<32>. Kernel side gated by
     # -DM5_PREPACK_LAYOUT.
-    prepack_input = block_name == "m5"
+    prepack_input = block_name in ("m3", "m5", "m7")
 
     n_splits = out_c // oc_per_chunk
     # Weight chunk: (oc_per_chunk/8, in_c/8, 3, 3, 8, 8) bytes — slice of the
@@ -533,8 +533,21 @@ def _build_conv_stride_block_streamed(
             (in_half, 2 * in_c),
             (8, 1),
         ]
+        # Pin the prepack memtile to the compute tile's column. AnyMemTile
+        # resolution can pick a memtile that doesn't share a tile with the
+        # upstream act_in's link (fails in chain for m7 where upstream is
+        # m6 in col 3 but compute is col 4). Pinning to the compute column's
+        # memtile gives the link op a deterministic shared tile.
+        prepack_memtile = next(
+            t
+            for t in placement.PLACEMENT["memtile"]["available"]
+            if t.col == compute_tile.col
+        )
         act_in = act_in.cons().forward(
-            depth=6, dims_to_stream=PREPACK_DIMS, name="m5_in_prepack"
+            tile=prepack_memtile,
+            depth=6,
+            dims_to_stream=PREPACK_DIMS,
+            name=f"{block_name}_in_prepack",
         )
 
     k = Kernel(
@@ -630,6 +643,7 @@ def _build_conv_stride_block_streamed(
             k,
         ],
         tile=compute_tile,
+        stack_size=2048 if block_name == "m3" else None,
     )
     return act_out, [w]
 
@@ -2737,7 +2751,7 @@ _BUILDERS = {
     # m3/m5/m7: weights exceed AIE2P tile budget — stream chunked from MemTile
     # via chunked_dma.ChunkedWeightStream (fork of StaticWeightStream that
     # actually emits N source BDs, one per chunk).
-    "m3": lambda act_in, m: _build_conv_stride_block_streamed("m3", act_in, m),
+    "m3": lambda act_in, m: _build_conv_stride_block_streamed("m3", act_in, m, out_depth=1),
     "m5": lambda act_in, m: _build_conv_stride_block_streamed(
         "m5", act_in, m, out_depth=1
     ),

@@ -27,8 +27,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -104,8 +102,8 @@ void yolo_m9_ffn_0_silu_row_i8_i8(
     for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
       const int8_t *__restrict src = in_row + x * kInC + ic_t * 8;
       int8_t *__restrict d = scratch + ic_t * kInW * 8 + x * 8;
-      for (int b = 0; b < 8; ++b)
-        d[b] = src[b];
+      *reinterpret_cast<uint64_t *>(d) =
+          *reinterpret_cast<const uint64_t *>(src);
     }
   }
 
@@ -149,21 +147,25 @@ void yolo_m9_ffn_0_silu_row_i8_i8(
       }
     }
 
-    // Vec SRS+saturate per x_tile (bias baked in) + scalar SiLU LUT gather.
+    // Vec SRS+saturate per x_tile (bias baked in), scalar SiLU LUT gather
+    // into a contiguous 8B/pixel buffer, then one uint64 strided store per
+    // pixel (vs 8 byte stores). Same pattern as m8 B::cv2 emit (+63% fps).
     AIE_LOOP_UNROLL_FULL
     for (int xt = 0; xt < kXTiles; ++xt) {
       aie::vector<int8, 32> srs_v =
           acc[xt].template to_vector<int8>(right_shift);
+      alignas(8) int8_t silu_buf[32];
+      AIE_LOOP_UNROLL_FULL
+      for (int i = 0; i < 32; ++i)
+        silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       const int x_out_base = xt * 4;
       AIE_LOOP_UNROLL_FULL
       for (int p = 0; p < 4; ++p) {
         int x_out = x_out_base + p;
         int8_t *__restrict row_dst =
             mid_out + x_out * kOutC + dst_oc_offset + oc_t * 8;
-        AIE_LOOP_UNROLL_FULL
-        for (int j = 0; j < 8; ++j) {
-          row_dst[j] = silu_lut[int(srs_v[p * 8 + j]) + 128];
-        }
+        *reinterpret_cast<uint64_t *>(row_dst) =
+            *reinterpret_cast<const uint64_t *>(&silu_buf[p * 8]);
       }
     }
   }

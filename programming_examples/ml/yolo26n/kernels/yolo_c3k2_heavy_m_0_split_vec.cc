@@ -9,8 +9,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -26,32 +24,22 @@
 // m_0_split is a 1x1 conv with two parallel branches sharing the same shape.
 // Branch a and b take the same input row and use independent weight/bias/lut/
 // shift sets but identical (in_w, in_c, out_c).
-#ifdef YOLO_M6_SPLIT_IN_W
+// Compile-time shape macros — required.
+#ifndef YOLO_M6_SPLIT_IN_W
+#error "YOLO_M6_SPLIT_IN_W must be defined at compile time"
+#endif
+#ifndef YOLO_M6_SPLIT_IN_C
+#error "YOLO_M6_SPLIT_IN_C must be defined at compile time"
+#endif
+#ifndef YOLO_M6_SPLIT_OUT_C
+#error "YOLO_M6_SPLIT_OUT_C must be defined at compile time"
+#endif
 #define SPLIT_IN_W YOLO_M6_SPLIT_IN_W
 #define SPLIT_IN_C YOLO_M6_SPLIT_IN_C
 #define SPLIT_OUT_C YOLO_M6_SPLIT_OUT_C
-#define SHAPES_ARE_CONST 1
-#else
-#define SHAPES_ARE_CONST 0
-#endif
-
-static constexpr int32_t I8_MAX = 127;
-static constexpr int32_t I8_MIN = -128;
-
-static inline int32_t banker_srs(int32_t sum, int32_t rs) {
-  return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
-}
 
 static inline int wts_tile_off_1x1(int oc_tile, int ic_tile, int ic_tiles) {
   return (oc_tile * ic_tiles + ic_tile) << 6;
-}
-
-static inline int wts_idx_oiyxi8o8_1x1(int oc_full, int ic_full, int in_c) {
-  int oc_t = oc_full >> 3;
-  int oc_i = oc_full & 7;
-  int ic_t = ic_full >> 3;
-  int ic_i = ic_full & 7;
-  return ((oc_t * (in_c >> 3) + ic_t) << 6) + ic_i * 8 + oc_i;
 }
 
 // One 1x1 branch: input -> SiLU LUT -> output. Bias-seeded mmul so
@@ -62,7 +50,6 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
                        int input_channels, int output_channels,
                        int right_shift) {
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
-#if SHAPES_ARE_CONST
   (void)input_width;
   (void)input_channels;
   (void)output_channels;
@@ -74,16 +61,6 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
 #define BR_HINT_OC AIE_LOOP_RANGE(oc_tiles, oc_tiles)
 #define BR_HINT_X AIE_LOOP_RANGE(x_tiles, x_tiles)
 #define BR_HINT_IC AIE_LOOP_RANGE(ic_tiles, ic_tiles)
-#else
-  const int ic_tiles = input_channels / 8;
-  const int oc_tiles = output_channels / 8;
-  const int x_tiles = input_width / 4;
-  const int kInC = input_channels;
-  const int kOutC = output_channels;
-#define BR_HINT_OC
-#define BR_HINT_X
-#define BR_HINT_IC
-#endif
 
   BR_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
@@ -104,11 +81,7 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
       // mmul-packed input read: in_row producer (c3k2_small cv1_split,
       // m6 only) now writes (ic_t, x_block, p*8+chan) 4-pixel block
       // layout. Single 32-byte vec_load per (ic_t, x_tile).
-#if SHAPES_ARE_CONST
       constexpr int kXTiles4_in = SPLIT_IN_W / 4;
-#else
-      const int kXTiles4_in = input_width >> 2;
-#endif
       const int kInPackedIcStride = kXTiles4_in * 32;
       BR_HINT_IC
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
@@ -125,11 +98,7 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
       // split_b) reads via vec_load (32-byte half-blocks for the 4-pixel
       // mmul<4,8,8> consumer in cv3_concat2; full 64-byte blocks for the
       // 8-pixel mmul<8,8,8> consumer in pair_cv1).
-#if SHAPES_ARE_CONST
       constexpr int kXTiles8 = SPLIT_IN_W / 8; // 32/8 = 4 for m6
-#else
-      const int kXTiles8 = input_width >> 3;
-#endif
       alignas(32) int8_t silu_buf[32];
       for (int i = 0; i < 32; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
@@ -139,23 +108,6 @@ static void branch_1x1(int8_t *in_row, int8_t *wts, int32_t *bias,
                    silu_v);
     }
 
-    // Tail scalar fallback.
-    for (int x = x_tiles * 4; x < input_width; ++x) {
-      for (int j = 0; j < 8; ++j) {
-        int oc_full = oc_t * 8 + j;
-        int32_t sum = bias[oc_full];
-        for (int ic = 0; ic < input_channels; ++ic) {
-          sum += in_row[x * input_channels + ic] *
-                 wts[wts_idx_oiyxi8o8_1x1(oc_full, ic, input_channels)];
-        }
-        int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX)
-          sr = I8_MAX;
-        if (sr < I8_MIN)
-          sr = I8_MIN;
-        out[x * output_channels + oc_full] = silu_lut[sr + 128];
-      }
-    }
   }
 }
 

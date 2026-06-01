@@ -296,10 +296,11 @@ $(BUILD)/yolo_m9_ffn_0_silu_row.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_FFN0_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_ffn_0_silu_row,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
+M9_PROJ_SHAPE := -DYOLO_M9_PROJ_IN_W=16 -DYOLO_M9_PROJ_IN_C=128 -DYOLO_M9_PROJ_OUT_C=128
 $(BUILD)/yolo_m9_proj_skip_row.o: \
     $(SRCDIR)/kernels/yolo_m9_proj_skip_row_vec.cc
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_proj_skip_row,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_PROJ_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_proj_skip_row,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_FFN1_SHAPE := -DYOLO_M9_FFN1_IN_W=16 -DYOLO_M9_FFN1_IN_C=256 -DYOLO_M9_FFN1_OUT_C=128
 $(BUILD)/yolo_m9_ffn_1_skip_row.o: \
@@ -313,6 +314,28 @@ $(BUILD)/yolo_m9_cv2_concat2_streamed.o: \
     $(SRCDIR)/kernels/yolo_m9_cv2_concat2_streamed_vec.cc
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV2_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_cv2_concat2_streamed,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
+
+# Three packers share one source (yolo_m9_pack.cc) compiled with different
+# -D flags + a unique extern "C" symbol name per .o. Replaces the three
+# near-identical qkv_pack.cc / qk_pack.cc / v_pack.cc sources.
+M9_PACK_QKV := -DYOLO_M9_PACK_SLOTS=128 -DYOLO_M9_PACK_EXTRA_OFFSET=0 \
+               -DYOLO_M9_PACK_SYMBOL=yolo_m9_qkv_pack_i8_i8
+M9_PACK_QK  := -DYOLO_M9_PACK_SLOTS=64  -DYOLO_M9_PACK_EXTRA_OFFSET=0 \
+               -DYOLO_M9_PACK_SYMBOL=yolo_m9_qk_pack_i8_i8
+M9_PACK_V   := -DYOLO_M9_PACK_SLOTS=64  -DYOLO_M9_PACK_EXTRA_OFFSET=64 \
+               -DYOLO_M9_PACK_SYMBOL=yolo_m9_v_pack_i8_i8
+
+$(BUILD)/yolo_m9_qkv_pack.o: $(SRCDIR)/kernels/yolo_m9_pack.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_PACK_QKV) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_qkv_pack,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
+
+$(BUILD)/yolo_m9_qk_pack.o: $(SRCDIR)/kernels/yolo_m9_pack.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_PACK_QK) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_qk_pack,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
+
+$(BUILD)/yolo_m9_v_pack.o: $(SRCDIR)/kernels/yolo_m9_pack.cc
+	mkdir -p $(BUILD)
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_PACK_V) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_v_pack,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_ATTN_SCORE_SHAPE := -DYOLO_M9_QK_KD=32 -DYOLO_M9_QK_N=256
 $(BUILD)/yolo_m9_attn_score_fused.o: \
@@ -411,9 +434,9 @@ $(foreach blk,$(C3K2_HEAVY_BLOCKS), \
 # unused interior variant. INTERIOR_MODE=2 (2X×2OC, 4 accs) for blocks with
 # enough x_tiles to amortize the pair-setup; INTERIOR_MODE=1 (OC×2 single-X,
 # 2 accs) for m7 (x_tiles=4).
-CHUNKED_SHAPE_m3 := -DYOLO_IN_W=128 -DYOLO_IN_C=64  -DYOLO_OUT_C=64  -DYOLO_INTERIOR_MODE=2
+CHUNKED_SHAPE_m3 := -DYOLO_IN_W=128 -DYOLO_IN_C=64  -DYOLO_OUT_C=64  -DYOLO_INTERIOR_MODE=2 -DM5_PREPACK_LAYOUT
 CHUNKED_SHAPE_m5 := -DYOLO_IN_W=64  -DYOLO_IN_C=128 -DYOLO_OUT_C=128 -DYOLO_INTERIOR_MODE=2 -DM5_PREPACK_LAYOUT
-CHUNKED_SHAPE_m7 := -DYOLO_IN_W=32  -DYOLO_IN_C=128 -DYOLO_OUT_C=256 -DYOLO_INTERIOR_MODE=1
+CHUNKED_SHAPE_m7 := -DYOLO_IN_W=32  -DYOLO_IN_C=128 -DYOLO_OUT_C=256 -DYOLO_INTERIOR_MODE=1 -DM5_PREPACK_LAYOUT
 
 $(foreach blk,$(CHUNKED_CONV_BLOCKS), \
   $(eval $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_$(blk).o: $(SRCDIR)/kernels/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc ; \

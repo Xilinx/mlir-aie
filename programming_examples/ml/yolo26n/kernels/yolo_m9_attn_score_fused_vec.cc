@@ -34,8 +34,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -97,7 +95,6 @@ void yolo_m9_attn_score_fused_i8_i8(
   // === Phase 1+2: qk + scale → i8 scores row in chunk_io ===
   // Inner mac is vector. SRS+clip + scale+SRS+clip vectorized via two
   // to_vector<int8>(rs) calls bracketing a vec `aie::mul(qk_v, mul_int)`.
-  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_RANGE(kJGroups, kJGroups)
   for (int g = 0; g < kJGroups; ++g) {
     aie::accum<acc32, kJVec> acc;
@@ -105,7 +102,6 @@ void yolo_m9_attn_score_fused_i8_i8(
 
     const int8_t *__restrict k_strip = k_base + g * kJVec;
 
-    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_RANGE(kKd, kKd)
     AIE_LOOP_UNROLL(4)
     for (int k = 0; k < kKd; ++k) {
@@ -179,7 +175,6 @@ void yolo_m9_attn_score_fused_i8_i8(
   aie::vector<int32, kFVec> smax_v = aie::broadcast<int32, kFVec>(I8_SMAX);
   aie::vector<int32, kFVec> smin_v = aie::broadcast<int32, kFVec>(I8_UMIN);
 
-  AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_RANGE(kN / kFVec, kN / kFVec)
   for (int j = 0; j < kN; j += kFVec) {
     aie::vector<float, kFVec> e_v = aie::load_v<kFVec>(exp_cache + j);

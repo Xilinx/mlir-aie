@@ -18,8 +18,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -432,7 +430,6 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
                                    (kIcTiles * kKernelH * kKernelW * 64);
 
     // 2X×2OC pair loop. m3 → 7 pairs, m5 → 3 pairs.
-    AIE_PREPARE_FOR_PIPELINING
     AIE_LOOP_RANGE(1, 7)
     for (int x_pair = 0; x_pair < n_x_pairs; ++x_pair) {
       const int x_tile_a = 1 + 2 * x_pair;
@@ -610,7 +607,6 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       const int wts_oc_pair_base = (oc_pair_idx * 2) *
                                    (kIcTiles * kKernelH * kKernelW * 64);
 
-      AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_RANGE(2, 14)
       for (int x_tile = 1; x_tile < x_tiles - 1; ++x_tile) {
         MMUL4x8x8 acc_0;
@@ -626,6 +622,10 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
             int8_t *line_ptr = line[ky];
             AIE_LOOP_UNROLL_FULL
             for (int kx = 0; kx < 3; ++kx) {
+#ifdef M5_PREPACK_LAYOUT
+              aie::vector<int8, 32> in_a =
+                  load_a_prepacked_interior(line_ptr, ic_t, x_tile, kx);
+#else
               alignas(32) int8_t a_buf[32];
               int8_t *src0 =
                   line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
@@ -641,6 +641,7 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
               *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
                   *reinterpret_cast<const uint64_t *>(src3);
               aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+#endif
               int wts_off_0 = wts_oc_pair_base +
                               wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
                                                  kernel_height, kernel_width);

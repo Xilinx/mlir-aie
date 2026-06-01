@@ -12,8 +12,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -26,35 +24,25 @@
 #define _MAKE(name, suffix) _PASTE(name, suffix)
 #define KERNEL_NAME(base) _MAKE(base, KERNEL_SUFFIX)
 
-#ifdef YOLO_M6_CV3_IN_W
+// Compile-time shape macros — required.
+#ifndef YOLO_M6_CV3_IN_W
+#error "YOLO_M6_CV3_IN_W must be defined at compile time"
+#endif
+#ifndef YOLO_M6_CV3_TWO_CP
+#error "YOLO_M6_CV3_TWO_CP must be defined at compile time"
+#endif
+#ifndef YOLO_M6_CV3_OUT_C
+#error "YOLO_M6_CV3_OUT_C must be defined at compile time"
+#endif
 #define IN_W YOLO_M6_CV3_IN_W
 #define TWO_CP YOLO_M6_CV3_TWO_CP
 #define OUT_C YOLO_M6_CV3_OUT_C
-#define SHAPES_ARE_CONST 1
-#else
-#define IN_W input_width
-#define TWO_CP two_cp
-#define OUT_C output_channels
-#define SHAPES_ARE_CONST 0
-#endif
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
-static inline int32_t banker_srs(int32_t sum, int32_t rs) {
-  return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
-}
-
 static inline int wts_tile_off_1x1(int oc_tile, int ic_tile, int ic_tiles) {
   return (oc_tile * ic_tiles + ic_tile) << 6;
-}
-
-static inline int wts_idx_oiyxi8o8_1x1(int oc_full, int ic_full, int in_c) {
-  int oc_t = oc_full >> 3;
-  int oc_i = oc_full & 7;
-  int ic_t = ic_full >> 3;
-  int ic_i = ic_full & 7;
-  return ((oc_t * (in_c >> 3) + ic_t) << 6) + ic_i * 8 + oc_i;
 }
 
 extern "C" {
@@ -68,7 +56,6 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
 #endif
   event0();
 
-#if SHAPES_ARE_CONST
   (void)input_width;
   (void)two_cp;
   (void)output_channels;
@@ -80,16 +67,6 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
 #define AIE_HINT_OC AIE_LOOP_RANGE(oc_tiles, oc_tiles)
 #define AIE_HINT_X AIE_LOOP_RANGE(x_tiles, x_tiles)
 #define AIE_HINT_IC AIE_LOOP_RANGE(ic_tiles, ic_tiles)
-#else
-  const int32_t cp = TWO_CP / 2;
-  const int ic_tiles = TWO_CP / 8;
-  const int ic_tiles_per_src = cp / 8;
-  const int oc_tiles = OUT_C / 8;
-  const int x_tiles = IN_W / 4;
-#define AIE_HINT_OC
-#define AIE_HINT_X
-#define AIE_HINT_IC
-#endif
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   // conv_even matches scalar banker_srs; enables vec to_vector<int8>(rs).
@@ -101,11 +78,7 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
   // are both mmul-packed (oc_t, x_block, p*8+chan) with 8-pixel 64-byte
   // blocks. cv3 uses mmul<4,8,8>, so each (x_tile, ic_t) loads 32 bytes
   // (4 pixels x 8 chans) — exactly one half of an 8-pixel block.
-#if SHAPES_ARE_CONST
   constexpr int kXTiles8 = IN_W / 8;
-#else
-  const int kXTiles8 = input_width >> 3;
-#endif
   const int kPackedIcStride = kXTiles8 * 64;
 
   AIE_HINT_OC
@@ -154,23 +127,6 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
       aie::store_v(output + oc_t * (x_tiles * 32) + x_tile * 32, silu_v);
     }
 
-    // Tail scalar fallback.
-    for (int x = x_tiles * 4; x < input_width; ++x) {
-      for (int j = 0; j < 8; ++j) {
-        int oc_full = oc_t * 8 + j;
-        int32_t sum = bias[oc_full];
-        for (int ic = 0; ic < two_cp; ++ic) {
-          int8_t a = (ic < cp) ? in_a[x * cp + ic] : in_b[x * cp + (ic - cp)];
-          sum += a * wts[wts_idx_oiyxi8o8_1x1(oc_full, ic, two_cp)];
-        }
-        int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX)
-          sr = I8_MAX;
-        if (sr < I8_MIN)
-          sr = I8_MIN;
-        output[x * output_channels + oc_full] = silu_lut[sr + 128];
-      }
-    }
   }
 
   event1();

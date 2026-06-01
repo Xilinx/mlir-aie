@@ -13,34 +13,35 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
 #include "../../../../aie_kernels/aie_kernel_utils.h"
+#include "yolo_kernel_common.h"
 
 // Per-block deep-opt: if YOLO_M8_PAIR_IN_W etc. are defined at compile
 // time, shape constants fold into shifts + immediates, peano gets exact
 // loop trip counts via AIE_LOOP_RANGE hints, and bias is folded into the
 // mmul accumulator init (no separate vec epilogue needed).
-#ifdef YOLO_M8_PAIR_IN_W
+// Compile-time shape macros — required.
+#ifndef YOLO_M8_PAIR_IN_W
+#error "YOLO_M8_PAIR_IN_W must be defined at compile time"
+#endif
+#ifndef YOLO_M8_PAIR_IN_C
+#error "YOLO_M8_PAIR_IN_C must be defined at compile time"
+#endif
+#ifndef YOLO_M8_PAIR_OUT_C
+#error "YOLO_M8_PAIR_OUT_C must be defined at compile time"
+#endif
+#ifndef YOLO_M8_PAIR_N_CHUNKS
+#error "YOLO_M8_PAIR_N_CHUNKS must be defined at compile time"
+#endif
 #define IN_W YOLO_M8_PAIR_IN_W
 #define IN_C YOLO_M8_PAIR_IN_C
 #define OUT_C YOLO_M8_PAIR_OUT_C
 #define N_CHUNKS YOLO_M8_PAIR_N_CHUNKS
 #define KW 3
 #define KH 3
-#define SHAPES_ARE_CONST 1
-#else
-#define IN_W input_width
-#define IN_C input_channels
-#define OUT_C output_channels
-#define N_CHUNKS n_chunks
-#define KW kernel_width
-#define KH kernel_height
-#define SHAPES_ARE_CONST 0
-#endif
 
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
@@ -52,49 +53,12 @@
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
-static inline int32_t banker_srs(int32_t sum, int32_t rs) {
-  return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
-}
-
 static inline int wts_chunk_tile_off(int chunk_oc_tile, int ic_tile, int ky,
                                      int kx, int ic_tiles, int kH, int kW) {
   return (((chunk_oc_tile * ic_tiles + ic_tile) * kH + ky) * kW + kx) << 6;
 }
 
-static inline int wts_chunk_idx(int chunk_oc, int ic_full, int ky, int kx,
-                                int in_c, int kH, int kW) {
-  int oc_t = chunk_oc >> 3;
-  int oc_i = chunk_oc & 7;
-  int ic_t = ic_full >> 3;
-  int ic_i = ic_full & 7;
-  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 +
-         oc_i;
-}
-
-#if SHAPES_ARE_CONST
-// 3x3 conv mmul A load with kx slide (kx=1 fast path; kx=0/2 use 2 vlda +
-// shuffle_down). Consumer-side mirror of pair_cv2_skip's helper; producer
-// is m_0_split (split_a, pair0_cv1) or pair_cv2_skip (inner_0_xt, pair1_cv1).
-static __attribute__((always_inline)) inline aie::vector<int8, 64>
-load_a_mmul_kx(int8_t *line_ptr, int ic_t, int x_tile, int kx, int stride,
-               int kXTiles8) {
-  int8_t *base = line_ptr + ic_t * stride;
-  if (kx == 1) {
-    return aie::load_v<64>(base + x_tile * 64);
-  }
-  int blk_lo = (kx == 0) ? x_tile - 1 : x_tile;
-  int blk_hi = blk_lo + 1;
-  aie::vector<int8, 64> lo = (blk_lo >= 0 && blk_lo < kXTiles8)
-                                 ? aie::load_v<64>(base + blk_lo * 64)
-                                 : aie::zeros<int8, 64>();
-  aie::vector<int8, 64> hi = (blk_hi >= 0 && blk_hi < kXTiles8)
-                                 ? aie::load_v<64>(base + blk_hi * 64)
-                                 : aie::zeros<int8, 64>();
-  aie::vector<int8, 128> combined = aie::concat(lo, hi);
-  const unsigned shift = (kx == 0) ? 56u : 8u;
-  return aie::shuffle_down(combined, shift).template extract<64>(0);
-}
-#endif
+// load_a_mmul_kx now lives in yolo_kernel_common.h
 
 extern "C" {
 
@@ -112,14 +76,12 @@ void KERNEL_NAME(
 #endif
   event0();
 
-#if SHAPES_ARE_CONST
   (void)input_width;
   (void)input_channels;
   (void)output_channels;
   (void)kernel_width;
   (void)kernel_height;
   (void)n_chunks;
-#endif
 
   const int32_t chunk_oc = OUT_C / N_CHUNKS;
   const int32_t oc_offset = chunk_idx * chunk_oc;
@@ -137,7 +99,6 @@ void KERNEL_NAME(
   // conv_even matches the scalar banker_srs used by the runtime tail.
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
-#if SHAPES_ARE_CONST
   // SHAPES_ARE_CONST path uses mmul<8,8,8>: 8 pixels per acc (vs 4 in the
   // runtime fallback's <4,8,8>). Same underlying HW instruction
   // (mac_8x8_8x8_conf); the 8-wide variant exposes more outputs per call,
@@ -147,25 +108,13 @@ void KERNEL_NAME(
   using MMUL_T = MMUL8x8x8;
   constexpr int MMUL_M = 8;
   constexpr int MMUL_MN = 64; // M*N outputs per acc
-#else
-  using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
-  using MMUL_T = MMUL4x8x8;
-  constexpr int MMUL_M = 4;
-  constexpr int MMUL_MN = 32;
-#endif
 
   int8_t *line[3] = {line0, line1, line2};
 
-#if SHAPES_ARE_CONST
   constexpr int kXTiles8 = IN_W / 8; // pair_cv1 (IN_W=16): 2
 #define AIE_HINT_OC AIE_LOOP_RANGE(chunk_oc_tiles, chunk_oc_tiles)
 #define AIE_HINT_X AIE_LOOP_RANGE(kXTiles8, kXTiles8)
 #define AIE_HINT_IC AIE_LOOP_RANGE(IN_C / 8, IN_C / 8)
-#else
-#define AIE_HINT_OC
-#define AIE_HINT_X
-#define AIE_HINT_IC
-#endif
 
   AIE_HINT_OC
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
@@ -181,15 +130,10 @@ void KERNEL_NAME(
       aie::vector<int32, 8> b8 = aie::load_v<8>(&bias_full[oc_full_base]);
       aie::vector<int32, 16> b16 = aie::concat(b8, b8);
       aie::vector<int32, 32> b32 = aie::concat(b16, b16);
-#if SHAPES_ARE_CONST
       aie::vector<int32, 64> b64 = aie::concat(b32, b32);
       bias_acc.from_vector(b64);
-#else
-      bias_acc.from_vector(b32);
-#endif
     }
 
-#if SHAPES_ARE_CONST
     // M=8 path: x_tile loop runs IN_W/8 iters (vs IN_W/4 for M=4).
     AIE_HINT_X
     for (int x_tile = 0; x_tile < kXTiles8; ++x_tile) {
@@ -227,6 +171,7 @@ void KERNEL_NAME(
       // store at offset (chunk_oc_t_full, x_tile). Consumer (cv2) reads with
       // a vec load instead of 64 scalar lda.s8 + vpush gather.
       alignas(64) int8_t silu_buf[64];
+      AIE_LOOP_UNROLL_FULL
       for (int i = 0; i < 64; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
@@ -234,98 +179,7 @@ void KERNEL_NAME(
       aie::store_v(output + chunk_oc_t_full * (kXTiles8 * 64) + x_tile * 64,
                    silu_v);
     }
-#else
-    AIE_HINT_X
-    for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
-      MMUL_T acc;
-      acc = bias_acc;
 
-      const int x_out_base = x_tile * MMUL_M;
-      const int x_in_base = x_out_base - 1;
-
-      AIE_HINT_IC
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        AIE_LOOP_RANGE(1, 3)
-        for (int ky = ky_start; ky < ky_end; ++ky) {
-          int8_t *line_ptr = line[ky];
-
-          AIE_LOOP_UNROLL_FULL
-          for (int kx = 0; kx < KW; ++kx) {
-            alignas(32) int8_t a_buf[32];
-            bool any_valid = false;
-            for (int p = 0; p < MMUL_M; ++p) {
-              int col = x_in_base + p + kx;
-              if (col < 0 || col >= IN_W) {
-                for (int b = 0; b < 8; ++b)
-                  a_buf[p * 8 + b] = 0;
-              } else {
-                int8_t *src = line_ptr + col * IN_C + ic_t * 8;
-                for (int b = 0; b < 8; ++b)
-                  a_buf[p * 8 + b] = src[b];
-                any_valid = true;
-              }
-            }
-            if (!any_valid)
-              continue;
-            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-
-            int wts_off =
-                wts_chunk_tile_off(chunk_oc_t, ic_t, ky, kx, ic_tiles, KH, KW);
-            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);
-            acc.mac(in_a, in_b);
-          }
-        }
-      }
-
-      aie::vector<int8, MMUL_MN> srs_v =
-          acc.template to_vector<int8>(right_shift);
-      for (int p = 0; p < MMUL_M; ++p) {
-        int x_out = x_out_base + p;
-        for (int j = 0; j < 8; ++j) {
-          int oc_full = oc_full_base + j;
-          output[x_out * OUT_C + oc_full] =
-              silu_lut[int(srs_v[p * 8 + j]) + 128];
-        }
-      }
-    }
-#endif
-
-    // Tail scalar fallback.
-    for (int x = x_tiles * 4; x < output_width; ++x) {
-      for (int j = 0; j < 8; ++j) {
-        int chunk_oc_local = chunk_oc_t * 8 + j;
-        int oc_full = oc_offset + chunk_oc_local;
-        int32_t sum = bias_full[oc_full];
-        for (int ic_full = 0; ic_full < input_channels; ++ic_full) {
-          for (int kx = 0; kx < kernel_width; ++kx) {
-            int col = x - 1 + kx;
-            if (col < 0 || col >= input_width)
-              continue;
-            int in_indx = col * input_channels + ic_full;
-            int w0 = wts_chunk[wts_chunk_idx(chunk_oc_local, ic_full, 0, kx,
-                                             input_channels, kernel_height,
-                                             kernel_width)];
-            int w1 = wts_chunk[wts_chunk_idx(chunk_oc_local, ic_full, 1, kx,
-                                             input_channels, kernel_height,
-                                             kernel_width)];
-            int w2 = wts_chunk[wts_chunk_idx(chunk_oc_local, ic_full, 2, kx,
-                                             input_channels, kernel_height,
-                                             kernel_width)];
-            if (!skip_top)
-              sum += line0[in_indx] * w0;
-            sum += line1[in_indx] * w1;
-            if (!skip_bot)
-              sum += line2[in_indx] * w2;
-          }
-        }
-        int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX)
-          sr = I8_MAX;
-        if (sr < I8_MIN)
-          sr = I8_MIN;
-        output[x * output_channels + oc_full] = silu_lut[sr + 128];
-      }
-    }
   }
 
   event1();

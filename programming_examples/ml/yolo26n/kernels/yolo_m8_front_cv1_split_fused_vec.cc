@@ -24,10 +24,10 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
+
+#include "../../../../aie_kernels/aie_kernel_utils.h"
 
 #ifndef KERNEL_SUFFIX
 #define KERNEL_SUFFIX
@@ -91,24 +91,30 @@ static inline void cv1_chunk_compute(int8_t *in_row, int8_t *wts_chunk,
   constexpr int chunk_oc_tiles = 4; // chunk_oc / 8
   constexpr int x_tiles = 4;        // input_width / 4 = 16/4
 
+  AIE_LOOP_RANGE(chunk_oc_tiles, chunk_oc_tiles)
   for (int chunk_oc_t = 0; chunk_oc_t < chunk_oc_tiles; ++chunk_oc_t) {
     const int dst_oc_full_base = dst_oc_offset + chunk_oc_t * 8;
     const int bias_full_base = bias_offset + chunk_oc_t * 8;
     auto bias_acc = make_bias_acc(&bias_full[bias_full_base]);
 
+    AIE_LOOP_RANGE(x_tiles, x_tiles)
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
       const int x_base = x_tile * 4;
 
+      AIE_LOOP_RANGE(ic_tiles, ic_tiles)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_base + p;
-          int8_t *src = in_row + col * input_channels + ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = src[b];
-        }
+        int8_t *s0 = in_row + (x_base + 0) * input_channels + ic_t * 8;
+        *reinterpret_cast<uint64_t *>(&a_buf[0]) =
+            *reinterpret_cast<const uint64_t *>(s0);
+        *reinterpret_cast<uint64_t *>(&a_buf[8]) =
+            *reinterpret_cast<const uint64_t *>(s0 + input_channels);
+        *reinterpret_cast<uint64_t *>(&a_buf[16]) =
+            *reinterpret_cast<const uint64_t *>(s0 + 2 * input_channels);
+        *reinterpret_cast<uint64_t *>(&a_buf[24]) =
+            *reinterpret_cast<const uint64_t *>(s0 + 3 * input_channels);
         aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
 
         int wts_off = wts_tile_off_1x1(chunk_oc_t, ic_t, ic_tiles);
@@ -123,6 +129,7 @@ static inline void cv1_chunk_compute(int8_t *in_row, int8_t *wts_chunk,
       // covering 4 pixels x 8 chans; pair pairs of x_tile iters into one
       // 8-pixel block in the back-side layout.
       alignas(32) int8_t silu_buf[32];
+      AIE_LOOP_UNROLL_FULL
       for (int i = 0; i < 32; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
@@ -159,8 +166,10 @@ static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
   constexpr int oc_tiles = 8;  // 64 / 8
   constexpr int x_tiles = 4;   // 16 / 4
 
+  AIE_LOOP_RANGE(oc_tiles, oc_tiles)
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
     auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
+    AIE_LOOP_RANGE(x_tiles, x_tiles)
     for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
       MMUL4x8x8 acc;
       acc = bias_acc;
@@ -170,6 +179,7 @@ static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
       // s_bot store. 32-byte vec_load per (ic_t, x_tile) -- mmul<4,8,8>'s
       // A vec lands exactly on one half of an 8-pixel back-side block.
       constexpr int kXTiles8_in = 2; // 16W / 8 pixels per back-side block
+      AIE_LOOP_RANGE(ic_tiles, ic_tiles)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         aie::vector<int8, 32> in_a = aie::load_v<32>(
             in_bot + ic_t * (kXTiles8_in * 64) + (x_tile >> 1) * 64 +
@@ -181,7 +191,8 @@ static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
       }
 
       aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
-      alignas(32) int8_t silu_buf[32];
+      alignas(8) int8_t silu_buf[32];
+      AIE_LOOP_UNROLL_FULL
       for (int i = 0; i < 32; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       if (packed_output) {
@@ -191,10 +202,13 @@ static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
                          (x_tile & 1) * 32,
                      silu_v);
       } else {
+        // Strided (W,oc) raster: one uint64 per pixel instead of 8 scalars.
+        AIE_LOOP_UNROLL_FULL
         for (int p = 0; p < 4; ++p) {
           int x_out = x_base + p;
-          for (int j = 0; j < 8; ++j)
-            out[x_out * output_channels + oc_t * 8 + j] = silu_buf[p * 8 + j];
+          *reinterpret_cast<uint64_t *>(
+              &out[x_out * output_channels + oc_t * 8]) =
+              *reinterpret_cast<const uint64_t *>(&silu_buf[p * 8]);
         }
       }
     }

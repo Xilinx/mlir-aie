@@ -24,8 +24,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -38,69 +36,27 @@
 #define _MAKE(name, suffix) _PASTE(name, suffix)
 #define KERNEL_NAME(base) _MAKE(base, KERNEL_SUFFIX)
 
-#ifdef YOLO_C3K2_CV2_IN_W
+// Compile-time shape macros — required.
+#ifndef YOLO_C3K2_CV2_IN_W
+#error "YOLO_C3K2_CV2_IN_W must be defined at compile time"
+#endif
+#ifndef YOLO_C3K2_CV2_THREE_C
+#error "YOLO_C3K2_CV2_THREE_C must be defined at compile time"
+#endif
+#ifndef YOLO_C3K2_CV2_OUT_C
+#error "YOLO_C3K2_CV2_OUT_C must be defined at compile time"
+#endif
 #define IN_W YOLO_C3K2_CV2_IN_W
 #define THREE_C YOLO_C3K2_CV2_THREE_C
 #define OUT_C YOLO_C3K2_CV2_OUT_C
-#define SHAPES_ARE_CONST 1
-#else
-#define IN_W input_width
-#define THREE_C three_c
-#define OUT_C output_channels
-#define SHAPES_ARE_CONST 0
-#endif
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
-
-static inline int32_t banker_srs(int32_t sum, int32_t rs) {
-  return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
-}
 
 // OIYXI8O8 weight base for one (oc_tile, ic_tile) of a 1x1 conv:
 //   (((oc_tile * ic_tiles) + ic_tile)) * 64 bytes.
 static inline int wts_tile_off_1x1(int oc_tile, int ic_tile, int ic_tiles) {
   return (oc_tile * ic_tiles + ic_tile) << 6;
-}
-
-// Scalar fallback weight index (tail path).
-static inline int wts_idx_oiyxi8o8_1x1(int oc_full, int ic_full, int in_c) {
-  int oc_t = oc_full >> 3;
-  int oc_i = oc_full & 7;
-  int ic_t = ic_full >> 3;
-  int ic_i = ic_full & 7;
-  return ((oc_t * (in_c >> 3) + ic_t) << 6) + ic_i * 8 + oc_i;
-}
-
-// Per-pixel 8-byte gather (always 4 pixels). C_LOCAL = per-source channel
-// stride (c = THREE_C/3, or runtime c).
-template <int C_LOCAL>
-static __attribute__((always_inline)) inline void
-gather4(int8_t *src, int x_base, int local_ic_t, int8_t *a_buf) {
-  for (int p = 0; p < 4; ++p) {
-    int8_t *psrc = src + (x_base + p) * C_LOCAL + local_ic_t * 8;
-    for (int b = 0; b < 8; ++b)
-      a_buf[p * 8 + b] = psrc[b];
-  }
-}
-
-// Scalar epilogue for one mmul<4,8,8> accumulator's worth of output.
-static __attribute__((always_inline)) inline void
-write_x_tile_result(const aie::vector<int32, 32> &acc_vec, int32_t *bias,
-                    int8_t *silu_lut, int8_t *output, int oc_t, int out_c,
-                    int x_out_base, int32_t right_shift) {
-  for (int p = 0; p < 4; ++p) {
-    int x_out = x_out_base + p;
-    for (int j = 0; j < 8; ++j) {
-      int32_t s = acc_vec[p * 8 + j] + bias[oc_t * 8 + j];
-      int32_t sr = banker_srs(s, right_shift);
-      if (sr > I8_MAX)
-        sr = I8_MAX;
-      if (sr < I8_MIN)
-        sr = I8_MIN;
-      output[x_out * out_c + oc_t * 8 + j] = silu_lut[sr + 128];
-    }
-  }
 }
 
 // 8 int32 biases -> 32-wide acc<acc32> seed.
@@ -131,21 +87,6 @@ write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc, int8_t *silu_lut,
   }
 }
 
-#ifdef YOLO_USE_PARALLEL_LUT
-// SPRINT 2A — parallel_lookup integration attempt. Outcome: PL works in
-// isolation (programming_examples/basic/pl_layout_test verified) but
-// fundamentally lacks throughput for plain-LUT use here. The lut<4> API
-// returns groups-of-2 alternating AB/CD bank reads per fetch — only ~4
-// unique LUT lookups per 16-lane fetch (the rest are bank duplicates and
-// +stride siblings). For our 32-byte cv2_concat3 epilogue this needs ~8
-// fetches → ~40-80 cycles vs scalar ~32-64 cycles. Not worth it for plain
-// lookup; the API is designed for linear-approx (offset + slope * frac)
-// where both bank reads are productive.
-//
-// Test harness preserved at programming_examples/basic/pl_layout_test/
-// for future re-attempt (e.g. if SiLU is re-derived as linear-approx).
-#endif
-
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
@@ -158,18 +99,15 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
 #endif
   event0();
 
-#if SHAPES_ARE_CONST
   (void)input_width;
   (void)three_c;
   (void)output_channels;
-#endif
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
-#if SHAPES_ARE_CONST
   constexpr int kC = THREE_C / 3;
   constexpr int kIcTiles = THREE_C / 8;
   constexpr int kIcTilesPerSrc = kC / 8;
@@ -307,76 +245,6 @@ void KERNEL_NAME(yolo_c3k2_small_cv2_concat3_silu_bias_i8_i8)(
     static_assert(kXPairs * 2 == kXTiles,
                   "cv2_concat3 SHAPES_ARE_CONST path assumes IN_W % 8 == 0");
   }
-#else
-  // Runtime-fallback path (legacy single-acc body).
-  const int32_t c = three_c / 3;
-  const int ic_tiles = three_c / 8;
-  const int ic_tiles_per_src = c / 8;
-  const int oc_tiles = output_channels / 8;
-  const int x_tiles = input_width / 4;
-
-  int8_t *src_for_ic_tile[48];
-  int local_ic_t_for[48];
-  for (int ict = 0; ict < ic_tiles; ++ict) {
-    int src_idx = ict / ic_tiles_per_src;
-    src_for_ic_tile[ict] = (src_idx == 0)   ? in_top
-                           : (src_idx == 1) ? in_bot
-                                            : in_m0;
-    local_ic_t_for[ict] = ict - src_idx * ic_tiles_per_src;
-  }
-
-  for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
-    for (int x_tile = 0; x_tile < x_tiles; ++x_tile) {
-      MMUL4x8x8 acc;
-      acc = aie::zeros<acc32, 32>();
-      const int x_out_base = x_tile * 4;
-
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        int8_t *src = src_for_ic_tile[ic_t];
-        int local_ic_t = local_ic_t_for[ic_t];
-        alignas(32) int8_t a_buf[32];
-        for (int p = 0; p < 4; ++p) {
-          int col = x_out_base + p;
-          int8_t *psrc = src + col * c + local_ic_t * 8;
-          for (int b = 0; b < 8; ++b)
-            a_buf[p * 8 + b] = psrc[b];
-        }
-        aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-        int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
-        aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
-        acc.mac(in_a, in_b);
-      }
-
-      aie::vector<int32, 32> acc_vec = acc.template to_vector<int32>();
-      write_x_tile_result(acc_vec, bias, silu_lut, output, oc_t,
-                          output_channels, x_out_base, right_shift);
-    }
-
-    // Tail scalar fallback for output_width not a multiple of 4.
-    for (int x = x_tiles * 4; x < input_width; ++x) {
-      for (int j = 0; j < 8; ++j) {
-        int oc_full = oc_t * 8 + j;
-        int32_t sum = bias[oc_full];
-        for (int ic = 0; ic < three_c; ++ic) {
-          int8_t a;
-          if (ic < c)
-            a = in_top[x * c + ic];
-          else if (ic < 2 * c)
-            a = in_bot[x * c + (ic - c)];
-          else
-            a = in_m0[x * c + (ic - 2 * c)];
-          sum += a * wts[wts_idx_oiyxi8o8_1x1(oc_full, ic, three_c)];
-        }
-        int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX)
-          sr = I8_MAX;
-        if (sr < I8_MIN)
-          sr = I8_MIN;
-        output[x * output_channels + oc_full] = silu_lut[sr + 128];
-      }
-    }
-  }
-#endif
 
   event1();
 }

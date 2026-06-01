@@ -16,8 +16,6 @@
 #define NOCPP
 
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #include <aie_api/aie.hpp>
 
@@ -30,45 +28,30 @@
 #define _MAKE(name, suffix) _PASTE(name, suffix)
 #define KERNEL_NAME(base) _MAKE(base, KERNEL_SUFFIX)
 
-#ifdef YOLO_C3K2_M0CV2_SKIP_IN_W
+// Compile-time shape macros — required.
+#ifndef YOLO_C3K2_M0CV2_SKIP_IN_W
+#error "YOLO_C3K2_M0CV2_SKIP_IN_W must be defined at compile time"
+#endif
+#ifndef YOLO_C3K2_M0CV2_SKIP_IN_C
+#error "YOLO_C3K2_M0CV2_SKIP_IN_C must be defined at compile time"
+#endif
+#ifndef YOLO_C3K2_M0CV2_SKIP_OUT_C
+#error "YOLO_C3K2_M0CV2_SKIP_OUT_C must be defined at compile time"
+#endif
 #define IN_W YOLO_C3K2_M0CV2_SKIP_IN_W
 #define IN_C YOLO_C3K2_M0CV2_SKIP_IN_C
 #define OUT_C YOLO_C3K2_M0CV2_SKIP_OUT_C
 #define KW 3
 #define KH 3
-#define SHAPES_ARE_CONST 1
-#else
-#define IN_W input_width
-#define IN_C input_channels
-#define OUT_C output_channels
-#define KW kernel_width
-#define KH kernel_height
-#define SHAPES_ARE_CONST 0
-#endif
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
-
-static inline int32_t banker_srs(int32_t sum, int32_t rs) {
-  return (sum + (1 << (rs - 1)) - 1 + ((sum >> rs) & 1)) >> rs;
-}
 
 static inline int wts_tile_off(int oc_tile, int ic_tile, int ky, int kx,
                                int ic_tiles, int kH, int kW) {
   return (((oc_tile * ic_tiles + ic_tile) * kH + ky) * kW + kx) << 6;
 }
 
-static inline int wts_idx_oiyxi8o8(int oc_full, int ic_full, int ky, int kx,
-                                   int in_c, int kH, int kW) {
-  int oc_t = oc_full >> 3;
-  int oc_i = oc_full & 7;
-  int ic_t = ic_full >> 3;
-  int ic_i = ic_full & 7;
-  return ((((oc_t * (in_c >> 3) + ic_t) * kH + ky) * kW + kx) << 6) + ic_i * 8 +
-         oc_i;
-}
-
-#if SHAPES_ARE_CONST
 // 4-pixel mmul A load with kx slide from mmul-packed line buffer. Mirror
 // of m0_cv1's helper.
 template <int IN_C_LOCAL, int IN_W_LOCAL>
@@ -92,7 +75,6 @@ load_a_mmul_kx_4p(int8_t *line_ptr, int ic_t, int x_tile, int kx) {
   const unsigned shift = (kx == 0) ? 24u : 8u;
   return aie::shuffle_down(combined, shift).template extract<32>(0);
 }
-#endif
 
 extern "C" {
 
@@ -108,13 +90,11 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
 #endif
   event0();
 
-#if SHAPES_ARE_CONST
   (void)input_width;
   (void)input_channels;
   (void)output_channels;
   (void)kernel_width;
   (void)kernel_height;
-#endif
 
   const bool skip_top = (border == 0);
   const bool skip_bot = (border == 2);
@@ -136,15 +116,9 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
 
   int8_t *line[3] = {line0, line1, line2};
 
-#if SHAPES_ARE_CONST
 #define AIE_HINT_OC AIE_LOOP_RANGE(OUT_C / 8, OUT_C / 8)
 #define AIE_HINT_X AIE_LOOP_RANGE(IN_W / 4, IN_W / 4)
 #define AIE_HINT_IC AIE_LOOP_RANGE(IN_C / 8, IN_C / 8)
-#else
-#define AIE_HINT_OC
-#define AIE_HINT_X
-#define AIE_HINT_IC
-#endif
 
   AIE_HINT_OC
   for (int oc_t = 0; oc_t < oc_tiles; ++oc_t) {
@@ -208,44 +182,6 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
       aie::store_v(output + oc_t * kOutOcStride + x_tile * 32, out_v);
     }
 
-    // Tail scalar fallback.
-    for (int x = x_tiles * 4; x < output_width; ++x) {
-      for (int j = 0; j < 8; ++j) {
-        int oc_full = oc_t * 8 + j;
-        int32_t sum = bias[oc_full];
-        for (int ic_full = 0; ic_full < IN_C; ++ic_full) {
-          for (int kx = 0; kx < KW; ++kx) {
-            int col = x - 1 + kx;
-            if (col < 0 || col >= IN_W)
-              continue;
-            int in_indx = col * IN_C + ic_full;
-            int w0 =
-                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 0, kx, IN_C, KH, KW)];
-            int w1 =
-                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 1, kx, IN_C, KH, KW)];
-            int w2 =
-                wts[wts_idx_oiyxi8o8(oc_full, ic_full, 2, kx, IN_C, KH, KW)];
-            if (!skip_top)
-              sum += line0[in_indx] * w0;
-            sum += line1[in_indx] * w1;
-            if (!skip_bot)
-              sum += line2[in_indx] * w2;
-          }
-        }
-        int32_t sr = banker_srs(sum, right_shift);
-        if (sr > I8_MAX)
-          sr = I8_MAX;
-        if (sr < I8_MIN)
-          sr = I8_MIN;
-        int32_t silu = silu_lut[sr + 128];
-        int32_t added = silu + (int32_t)skip_row[x * OUT_C + oc_full];
-        if (added > I8_MAX)
-          added = I8_MAX;
-        if (added < I8_MIN)
-          added = I8_MIN;
-        output[x * OUT_C + oc_full] = (int8_t)added;
-      }
-    }
   }
 
   event1();
