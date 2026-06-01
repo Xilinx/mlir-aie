@@ -11,3 +11,4 @@ delvewheel
 patchelf;   platform_system == "Linux"
 pkginfo
 twine
+wheel
