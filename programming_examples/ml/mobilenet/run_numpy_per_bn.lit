@@ -1,0 +1,22 @@
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Pure-numpy bit-exactness test for the mobilenet kernel implementations.
+// Cross-validates mobilenet_numpy.py kernels against the brevitas-generated
+// per-bn fixtures already checked in under bottleneck_A/B/C/data/.
+// No hardware required — runs on any host with python+numpy.
+//
+// REQUIRES: peano
+//
+// RUN: cd %S && python3 test_numpy_per_bn.py | tee %t.log
+// RUN: FileCheck --check-prefix=NUMPY %s < %t.log
+//
+// NUMPY: bn1 (per-bn){{.*}}BIT-EXACT
+// NUMPY: bn2 (per-bn){{.*}}BIT-EXACT
+// NUMPY: bn3 (per-bn){{.*}}BIT-EXACT
+// NUMPY: bn6 (per-bn){{.*}}BIT-EXACT
+// NUMPY: bn7 (per-bn){{.*}}BIT-EXACT
+// NUMPY: bn8 (per-bn){{.*}}BIT-EXACT
+// NUMPY: bn10->bn11->bn12 chain{{.*}}BIT-EXACT
+// NUMPY: bn13->bn14 cascade chain{{.*}}BIT-EXACT
+// NUMPY: ALL VERIFIED BLOCKS BIT-EXACT

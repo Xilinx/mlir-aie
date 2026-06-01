@@ -12,6 +12,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../makefile-common
 
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 tensor_height = 8
 tensor_width = 8
 tile_height = 2
@@ -25,7 +26,7 @@ all: build/final_${data_str}.xclbin
 
 build/aie_${data_str}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< --tensor-height ${tensor_height} --tensor-width ${tensor_width} --tile-height ${tile_height} --tile-width ${tile_width} > $@
+	python3 $< --tensor-height ${tensor_height} --tensor-width ${tensor_width} --tile-height ${tile_height} --tile-width ${tile_width} --device ${devicename} > $@
 
 build/final_${data_str}.xclbin: build/aie_${data_str}.mlir
 	mkdir -p ${@D}

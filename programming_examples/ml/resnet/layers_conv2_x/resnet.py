@@ -8,6 +8,7 @@ import numpy as np
 import sys
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron.algorithms import row_at_a_time, row_at_a_time_with_skip, sliding_3row
 from aie.iron.device import NPU1Col3, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -299,125 +300,52 @@ conv3_out_fifos = [
 # Task for a worker to perform. Note that idx is a metaprogramming value,
 # e.g., it is a Python variable but will compile to a scalar constant.
 def conv1_fn(of_wts, of_act1, of_act2, conv1_kernel, rtp, idx):
-    # acquire weights once
-    element0Weights = of_wts.acquire(1)
     scale = rtp[0]
-    for _ in range_(tensorInH):
-        element0ActivactionsIn = of_act1.acquire(1)
-        element0ActivactionsOut = of_act2.acquire(1)
-        if idx == 0:
-            conv1_kernel(
-                element0ActivactionsIn,
-                element0Weights,
-                element0ActivactionsOut,
-                tensorInW,
-                tensorInCInit,
-                tensorInCInit,
-                scale,
-            )
-        else:
-            conv1_kernel(
-                element0ActivactionsIn,
-                element0Weights,
-                element0ActivactionsOut,
-                tensorInW,
-                tensorInCRest,
-                tensorInCInit,
-                scale,
-            )
+    inC = tensorInCInit if idx == 0 else tensorInCRest
 
-        of_act1.release(1)
-        of_act2.release(1)
-    of_wts.release(1)
+    def call(r_in, r_out, wts):
+        conv1_kernel(r_in, wts, r_out, tensorInW, inC, tensorInCInit, scale)
+
+    row_at_a_time(of_act1, of_act2, n_rows=tensorInH, do_kernel=call, of_wts=of_wts)
 
 
 # 3x3 conv2d
 # Task for a worker to perform. Note that last_arg_zero is a metaprogramming value,
 # e.g., it is a Python variable that will not be present in compiled code.
 def conv2_fn(of_wts, of_act2, of_act3, conv2dk3_kernel, last_arg_zero=False):
-    last_arg = 0
-    if not last_arg_zero:
-        last_arg = tensorInCInit // 2
+    last_arg = 0 if last_arg_zero else tensorInCInit // 2
     scale = 1
 
-    # acquire weights and rtps once
-    element0Weights = of_wts.acquire(1)
-    # scale = memref.load(rtpComputeTile03, 0)
-
-    # pre-amble: top row
-    elementActivactionsIn = of_act2.acquire(2)
-    element0ActivactionsOut = of_act3.acquire(1)
-    conv2dk3_kernel(
-        elementActivactionsIn[0],
-        elementActivactionsIn[0],
-        elementActivactionsIn[1],
-        element0Weights,
-        element0ActivactionsOut,
-        tensorInW,
-        tensorInCInit,
-        tensorInCInit // 2,
-        3,
-        3,
-        0,
-        scale,
-        last_arg,
-    )
-    of_act3.release(1)
-
-    # middle
-    for _ in range_(tensorInH - 2):
-        elementActivactionsIn = of_act2.acquire(3)
-        element0ActivactionsOut = of_act3.acquire(1)
+    def call(top, mid, bot, r_out, wts, border):
         conv2dk3_kernel(
-            elementActivactionsIn[0],
-            elementActivactionsIn[1],
-            elementActivactionsIn[2],
-            element0Weights,
-            element0ActivactionsOut,
+            top,
+            mid,
+            bot,
+            wts,
+            r_out,
             tensorInW,
             tensorInCInit,
             tensorInCInit // 2,
             3,
             3,
-            1,
+            border,
             scale,
             last_arg,
         )
 
-        of_act2.release(1)
-        of_act3.release(1)
-
-    # last part
-    elementActivactionsIn = of_act2.acquire(2)
-    element0ActivactionsOut = of_act3.acquire(1)
-    conv2dk3_kernel(
-        elementActivactionsIn[0],
-        elementActivactionsIn[1],
-        elementActivactionsIn[1],
-        element0Weights,
-        element0ActivactionsOut,
-        tensorInW,
-        tensorInCInit,
-        tensorInCInit // 2,
-        3,
-        3,
-        2,
-        scale,
-        last_arg,
-    )
-    of_act2.release(2)
-    of_act3.release(1)
-    of_wts.release(1)
+    sliding_3row(of_act2, of_act3, n_out_rows=tensorInH, do_kernel=call, of_wts=of_wts)
 
 
 # # 1x1 conv2d and add skip
 # Task for a worker to perform. Note that idx is a metaprogramming value,
 # e.g., it is a Python variable that will not be present in compiled code.
+#
+# of_act3_1 and of_act3_2 are two halves of the same input row, joined per
+# acquire/release. Treat (of_act3_1, of_act3_2) as a logical pair: the helper
+# drives of_act3_1, and we lockstep-acquire of_act3_2 inside `call`.
 def conv1_skip_fn(
     of_wts, of_act3_1, of_act3_2, of_conv3, of_skip, conv3_kernel, my_rtp, idx
 ):
-    # acquire weights and rtps once
-    element0Weights = of_wts.acquire(1)
     if idx == 0:
         scale = my_rtp[0]
         skipScale = my_rtp[1]
@@ -426,19 +354,15 @@ def conv1_skip_fn(
         scale = my_rtp[0]
         skipScale = my_rtp[1]
 
-    for _ in range_(tensorInH):
-        element0ActivactionsIn = of_act3_1.acquire(1)
-        element1ActivactionsIn = of_act3_2.acquire(1)
-
-        elementActivactionsOut = of_conv3.acquire(1)
-        elementSkipsIn = of_skip.acquire(1)
+    def call(r_in1, r_out, r_skip, wts):
+        r_in2 = of_act3_2.acquire(1)
         if idx == 0:
             conv3_kernel(
-                element0ActivactionsIn,
-                element1ActivactionsIn,
-                element0Weights,
-                elementActivactionsOut,
-                elementSkipsIn,
+                r_in1,
+                r_in2,
+                wts,
+                r_out,
+                r_skip,
                 tensorInW,
                 tensorInCInit,
                 tensorInCRest,
@@ -449,22 +373,27 @@ def conv1_skip_fn(
             )
         else:
             conv3_kernel(
-                element0ActivactionsIn,
-                element1ActivactionsIn,
-                element0Weights,
-                elementActivactionsOut,
-                elementSkipsIn,
+                r_in1,
+                r_in2,
+                wts,
+                r_out,
+                r_skip,
                 tensorInW,
                 tensorInCInit,
                 tensorInCRest,
                 scale,
                 skipScale,
             )
-        of_act3_1.release(1)
         of_act3_2.release(1)
-        of_conv3.release(1)
-        of_skip.release(1)
-    of_wts.release(1)
+
+    row_at_a_time_with_skip(
+        of_act3_1,
+        of_conv3,
+        of_skip,
+        n_rows=tensorInH,
+        do_kernel=call,
+        of_wts=of_wts,
+    )
 
 
 # Create workers and place each one on a particular compute core

@@ -991,9 +991,14 @@ struct AIEObjectFifoStatefulTransformPass
     Block *bdBlock = builder.createBlock(endBlock);
 
     // create DMA channel
+    // With a single buffer, the DMA hardware repeat_count avoids
+    // duplicating identical BDs.
+    bool useHwRepeat = (repeatCount > 1 && numBlocks == 1);
+    int dmaRepeatCount = useHwRepeat ? repeatCount - 1 : 0;
+    int bdRepeatCount = useHwRepeat ? 1 : repeatCount;
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, builder.getUnknownLoc(), channelDir,
-                       channelIndex, /*repeatCout*/ 0, bdBlock, endBlock);
+                       channelIndex, dmaRepeatCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1005,8 +1010,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (size_t i = 0; i < numBlocks; i++) {
       if (elemIndex >= state.buffersPerFifo[target].size())
         break;
-      for (int r = 0; r < repeatCount; r++) {
-        if (totalBlocks == numBlocks * repeatCount - 1)
+      for (int r = 0; r < bdRepeatCount; r++) {
+        if (totalBlocks == numBlocks * bdRepeatCount - 1)
           succ = bdBlock;
         else
           succ = builder.createBlock(endBlock);
@@ -1232,13 +1237,19 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
 
-    // Use iter_count if available, otherwise default to 0
     int taskCount = 0;
     bool isBdChainMode = false;
     if (bdChainIterCount.has_value()) {
       taskCount = bdChainIterCount.value() - 1;
       isBdChainMode = true;
     }
+    // With a single buffer and no join/distribute, the DMA hardware
+    // repeat_count avoids duplicating identical BDs.
+    bool useHwRepeat = (repeatCount > 1 && numBlocks == 1 &&
+                        joinDistribFactor == 1 && !isBdChainMode);
+    if (useHwRepeat)
+      taskCount = repeatCount - 1;
+    int bdRepeatFactor = useHwRepeat ? 1 : repeatCount;
     DMAStartOp::create(builder, builder.getUnknownLoc(), channelDir,
                        channelIndex, taskCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
@@ -1255,8 +1266,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (size_t i = 0; i < numBlocks; i++) {
       if (elemIndex >= state.buffersPerFifo[target].size())
         break;
-      for (int r = 0; r < repeatCount * joinDistribFactor; r++) {
-        if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1) {
+      for (int r = 0; r < bdRepeatFactor * joinDistribFactor; r++) {
+        if (totalBlocks == numBlocks * bdRepeatFactor * joinDistribFactor - 1) {
           // If iter_count attribute is set (BD chain mode), create a
           // dedicated terminating block
           if (isBdChainMode) {

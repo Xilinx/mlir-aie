@@ -60,44 +60,56 @@ AIEX::traceSubviewToBlockArgument(Value value) {
       continue;
     }
 
-    // Handle memref.subview (accumulate offset and validate)
+    // Handle memref.subview. Accepts any source rank; byte-offset delta is
+    // (resultOffset - sourceOffset) from the strided layouts. The result
+    // slice must remain row-major contiguous so callers can treat it as
+    // linear from the returned base offset.
     if (auto subviewOp = dyn_cast<memref::SubViewOp>(defOp)) {
-      // Verify static offsets, sizes, strides
-      if (!subviewOp.getStaticOffsets().empty() &&
-          subviewOp.getStaticOffsets()[0] == ShapedType::kDynamic) {
-        return std::nullopt;
-      }
-      if (!subviewOp.getStaticSizes().empty() &&
-          subviewOp.getStaticSizes()[0] == ShapedType::kDynamic) {
-        return std::nullopt;
-      }
-      if (!subviewOp.getStaticStrides().empty() &&
-          subviewOp.getStaticStrides()[0] == ShapedType::kDynamic) {
-        return std::nullopt;
-      }
-
-      // Only support rank-1 subviews
-      if (subviewOp.getSourceType().getRank() != 1 ||
-          subviewOp.getType().getRank() != 1) {
-        return std::nullopt;
-      }
-
-      // Only support stride of 1 (contiguous)
-      if (!subviewOp.getStaticStrides().empty() &&
-          subviewOp.getStaticStrides()[0] != 1) {
-        return std::nullopt;
-      }
-
-      // Calculate and accumulate offset in bytes
       auto sourceType = subviewOp.getSourceType();
+      auto resultType = subviewOp.getType();
+
+      if (llvm::any_of(subviewOp.getStaticOffsets(), ShapedType::isDynamic) ||
+          llvm::any_of(subviewOp.getStaticSizes(), ShapedType::isDynamic) ||
+          llvm::any_of(subviewOp.getStaticStrides(), ShapedType::isDynamic))
+        return std::nullopt;
+
+      // No skipping in source.
+      if (llvm::any_of(subviewOp.getStaticStrides(),
+                       [](int64_t s) { return s != 1; }))
+        return std::nullopt;
+
       unsigned elemSizeInBits =
           sourceType.getElementType().getIntOrFloatBitWidth();
-      if (elemSizeInBits % 8 != 0) {
+      if (elemSizeInBits % 8 != 0)
         return std::nullopt;
+
+      llvm::SmallVector<int64_t> srcStrides, resStrides;
+      int64_t srcOff, resOff;
+      if (failed(sourceType.getStridesAndOffset(srcStrides, srcOff)) ||
+          failed(resultType.getStridesAndOffset(resStrides, resOff)))
+        return std::nullopt;
+      if (srcOff == ShapedType::kDynamic || resOff == ShapedType::kDynamic)
+        return std::nullopt;
+
+      // Result must be row-major contiguous: innermost stride == 1, and each
+      // outer stride equals the product of all inner sizes. (Size-1 dims are
+      // free: their stride is never stepped.) Without this, e.g. a column
+      // slice of a 2D row-major memref would be accepted and patched as if
+      // linear.
+      ArrayRef<int64_t> resShape = resultType.getShape();
+      if (!resShape.empty()) {
+        if (resStrides.back() != 1)
+          return std::nullopt;
+        uint64_t product = 1;
+        for (int d = static_cast<int>(resShape.size()) - 1; d > 0; --d) {
+          product *= static_cast<uint64_t>(resShape[d]);
+          if (resShape[d - 1] > 1 &&
+              static_cast<uint64_t>(resStrides[d - 1]) != product)
+            return std::nullopt;
+        }
       }
-      unsigned elemSizeInBytes = elemSizeInBits / 8;
-      int64_t offsetInElements = subviewOp.getStaticOffsets()[0];
-      offsetInBytes += offsetInElements * elemSizeInBytes;
+
+      offsetInBytes += (resOff - srcOff) * (elemSizeInBits / 8);
 
       current = subviewOp.getSource();
       continue;
