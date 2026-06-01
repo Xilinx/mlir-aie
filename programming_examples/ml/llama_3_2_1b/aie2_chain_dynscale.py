@@ -22,16 +22,25 @@ times per fifo.
 All ObjectFifos at depth=1 (Bug 8 audit -- same constraint as 6c.5b.4).
 All slot prefixes 64 B (Bug 7 alignment).
 
-Known limit: N_LAYERS <= 3 at production shapes. At N >= 4 the single
-BD-chained TAP per fifo exceeds the shim-NoC BD's effective wrap-size
-limit (HW seems to truncate dim sizes silently while the verifier
-exempts contiguous transfers from the 10-bit check). Per-layer rt.fill
-loops sidestep the wrap limit but then hit the 4-deep per-channel task
-queue (Bug 3b) and even with inline finish_task_group between batches
-the chain still corrupts. Real fix is memtile-staged ObjectFifo (shim
-does a single linear DMA into memtile; memtile re-DMAs strided into
-CT) -- to file as 6c.5b.5b. For now N<=3 validates the per-layer
-dynamic-scale plumbing.
+Known limit: N_LAYERS <= 3 at production shapes is fully bit-exact.
+N=4 is DATA-DEPENDENT: roughly half the seeds pass clean, the other
+half corrupt entirely (mismatches=2038/2048, max|diff|=255). N>=5
+similar. Deterministic per (N, seed) pair, but the failing seed set
+shifts with N (e.g. N=4 fails seeds 0/5/100; N=5 fails seed 7). Two
+candidate explanations:
+  (a) Per-channel shim NoC task queue (depth 4, see Bug 3b) overruns;
+      data-dependent because consumer-driven backpressure determines
+      whether queue actually exceeds 4 in a given run.
+  (b) Some shim-DMA / multi-channel BD race that's sensitive to slot
+      bytes specifically.
+Pure stack bumping (Bug 5 hypothesis) doesn't fix it -- 16KB stack
+broke even the passing seeds (L1 layout collateral).
+Real fix likely requires memtile staging that decouples shim BDs from
+CT delivery rate, or rt.fill chunking with explicit serialization.
+To file as Bug 11 and follow-up 6c.5b.5b.
+For now N<=3 validates the per-layer dynamic-scale plumbing. Real
+16-layer decode goes via single-layer xclbin dispatched 16x per token
+(6c.5b.4 + 6c.5b.2 load-once-dispatch-many pattern).
 """
 
 import argparse
@@ -208,15 +217,15 @@ def build():
     # Attention side
     of_gam_in   = ObjectFifo(t_D_bf16,     depth=1, name="gam_in")
     of_h1       = ObjectFifo(t_D_i8,       depth=1, name="h1")
-    of_wq       = ObjectFifo(t_WQ_slot,    depth=1, name="wq")
+    of_wq       = ObjectFifo(t_WQ_slot,    depth=2, name="wq")
     of_qf       = ObjectFifo(t_QF_i8,      depth=1, name="qf")
     of_cs       = ObjectFifo(t_CS_bf16,    depth=1, name="cs")
     of_qr       = ObjectFifo(t_QR_i8,      depth=1, name="qr")
-    of_kcache   = ObjectFifo(t_KCACHE_i8,  depth=1, name="kcache")
-    of_vcache   = ObjectFifo(t_VCACHE_i8,  depth=1, name="vcache")
+    of_kcache   = ObjectFifo(t_KCACHE_i8,  depth=2, name="kcache")
+    of_vcache   = ObjectFifo(t_VCACHE_i8,  depth=2, name="vcache")
     of_probs    = ObjectFifo(t_PROBS_fp32, depth=1, name="probs")
     of_af       = ObjectFifo(t_AF_i8,      depth=1, name="af")
-    of_wo       = ObjectFifo(t_WO_slot,    depth=1, name="wo")
+    of_wo       = ObjectFifo(t_WO_slot,    depth=2, name="wo")
     of_op       = ObjectFifo(t_D_i8,       depth=1, name="op")
 
     # Residual link 1 (broadcast: rmsnorm2 + add2)
@@ -225,9 +234,9 @@ def build():
     # FFN side
     of_gam_post = ObjectFifo(t_D_bf16,     depth=1, name="gam_post")
     of_h2       = ObjectFifo(t_D_i8,       depth=1, name="h2")  # broadcast: gate + up
-    of_wg       = ObjectFifo(t_WG_slot,    depth=1, name="wg")
-    of_wu       = ObjectFifo(t_WU_slot,    depth=1, name="wu")
-    of_wd       = ObjectFifo(t_WD_slot,    depth=1, name="wd")
+    of_wg       = ObjectFifo(t_WG_slot,    depth=2, name="wg")
+    of_wu       = ObjectFifo(t_WU_slot,    depth=2, name="wu")
+    of_wd       = ObjectFifo(t_WD_slot,    depth=1, name="wd")  # K=8192 L1 budget
     of_gf       = ObjectFifo(t_HD_i8,      depth=1, name="gf")
     of_uf       = ObjectFifo(t_UF_i8,      depth=1, name="uf")
     of_sf       = ObjectFifo(t_HD_i8,      depth=1, name="sf")
@@ -370,7 +379,7 @@ def build():
         # Router (residual loop-back driver).
         Worker(w_router,
                [of_seed.cons(), of_back.cons(), of_routed.prod()],
-               tile=Tile(7, 4)),
+               tile=Tile(7, 4), stack_size=8192),
 
         # Attention side
         Worker(w_rms, [of_routed.cons(), of_gam_in.cons(), of_h1.prod(), k_rms],
@@ -413,20 +422,16 @@ def build():
         rt.start(*workers)
 
         tgs = []
-        def add_fill_n(prod, src, off, slot_bytes, n_slots, total):
-            tg = rt.task_group(); tgs.append(tg)
-            rt.fill(prod, src,
-                    tap=strided_tap(total, off, slot_bytes, slot_bytes, n_slots),
-                    task_group=tg)
-        # Compatibility alias for the older code path's call sites.
+        # Collect per-fifo fill specs for INTERLEAVED issue (all fifos
+        # layer 0, then all fifos layer 1, ...). Each layer's fills go
+        # into one task_group; finish-inline between layers bounds the
+        # per-channel queue depth to 1 task at a time.
+        fill_specs = []  # list of (prod, src, base_off, per_layer_stride,
+                         #         slot_bytes, slots_per_layer, total)
         def add_fill_per_layer(prod, src, base_off, per_layer_stride,
                                slot_bytes, slots_per_layer, total):
-            # Single BD-chained TAP per fifo covering ALL N_LAYERS * slots_per_layer
-            # slots. Hits the AIE2P shim BD wrap-size limit at N >= 4 for
-            # production-shape slots, but kept this way for N=2/3 (single
-            # task per channel; no Bug 3b queue pressure).
-            add_fill_n(prod, src, base_off, slot_bytes,
-                       N_LAYERS * slots_per_layer, total)
+            fill_specs.append((prod, src, base_off, per_layer_stride,
+                               slot_bytes, slots_per_layer, total))
 
         # Runtime activation in -> seed (1 slot, layer 0's input).
         seed_tg = rt.task_group(); tgs.append(seed_tg)
@@ -451,18 +456,26 @@ def build():
         add_fill_per_layer(of_wd.prod(),       wblob, OFF_WD,
                            N_TILES_D * WD_SLOT, WD_SLOT, N_TILES_D, WEIGHTS_BYTES)
 
-        # KV: single TAP per cache walking N_LAYERS slots with
-        # stride PER_LAYER_KV.
-        kc_tg = rt.task_group(); tgs.append(kc_tg)
-        rt.fill(of_kcache.prod(), kvblob,
-                tap=strided_tap(KV_BYTES, OFF_K, PER_LAYER_KV,
-                                KCACHE_PADDED, N_LAYERS),
-                task_group=kc_tg)
-        vc_tg = rt.task_group(); tgs.append(vc_tg)
-        rt.fill(of_vcache.prod(), kvblob,
-                tap=strided_tap(KV_BYTES, OFF_V, PER_LAYER_KV,
-                                VCACHE_PADDED, N_LAYERS),
-                task_group=vc_tg)
+        # KV adds to the per-layer interleave too.
+        kv_specs = [
+            (of_kcache.prod(), kvblob, OFF_K, PER_LAYER_KV,
+             KCACHE_PADDED, 1, KV_BYTES),
+            (of_vcache.prod(), kvblob, OFF_V, PER_LAYER_KV,
+             VCACHE_PADDED, 1, KV_BYTES),
+        ]
+        # Interleaved issue, single task_group, deferred finish at end:
+        # for each layer, issue all-fifo fills back-to-back. Per fifo,
+        # N_LAYERS tasks queued sequentially -- relies on shim NoC
+        # per-channel queue depth >= N_LAYERS (Bug 3b: depth 4).
+        all_tg = rt.task_group(); tgs.append(all_tg)
+        for L in range(N_LAYERS):
+            for (prod, src, base_off, per_layer_stride,
+                 slot_bytes, slots_per_layer, total) in (fill_specs + kv_specs):
+                rt.fill(prod, src,
+                        tap=strided_tap(total,
+                                        base_off + L * per_layer_stride,
+                                        slot_bytes, slot_bytes, slots_per_layer),
+                        task_group=all_tg)
 
         out_tg = rt.task_group(); tgs.append(out_tg)
         rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
