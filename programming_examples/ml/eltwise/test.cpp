@@ -35,14 +35,15 @@ using INOUT2_DATATYPE = std::bfloat16_t;
 // ----------------------------------------------------------------------------
 template <typename T>
 int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
-           int verbosity) {
+           const std::string &op, int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < size; i++) {
-    T ref = A[i] * B[i];
+    T ref = (op == "mul") ? T(A[i] * B[i]) : T(A[i] + B[i]);
     if (!test_utils::nearly_equal(ref, C[i], 0.00390625)) {
       if (errors < 100) {
         std::cout << "Error in output " << C[i] << " != " << ref << " from "
-                  << A[i] << " * " << B[i] << std::endl;
+                  << A[i] << " " << (op == "mul" ? "*" : "+") << " " << B[i]
+                  << std::endl;
       } else if (errors == 100) {
         std::cout << "..." << std::endl;
         std::cout << "[Errors truncated]" << std::endl;
@@ -64,11 +65,19 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  cxxopts::Options options("Eltwise Mul Test");
+  cxxopts::Options options("Eltwise Test");
   cxxopts::ParseResult vm;
   test_utils::add_default_options(options);
+  options.add_options()("o,op",
+                        "Binary op the kernel computes (add | mul)",
+                        cxxopts::value<std::string>()->default_value("add"));
 
   test_utils::parse_options(argc, argv, options, vm);
+  std::string op = vm["op"].as<std::string>();
+  if (op != "add" && op != "mul") {
+    std::cerr << "--op must be 'add' or 'mul' (got '" << op << "')\n";
+    return 1;
+  }
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -231,7 +240,7 @@ int main(int argc, const char *argv[]) {
         std::cout << "Verifying results ..." << std::endl;
       }
       auto vstart = std::chrono::system_clock::now();
-      errors = verify(INOUT0_VOLUME, AVec, BVec, CVec, verbosity);
+      errors = verify(INOUT0_VOLUME, AVec, BVec, CVec, op, verbosity);
       auto vstop = std::chrono::system_clock::now();
       float vtime =
           std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)

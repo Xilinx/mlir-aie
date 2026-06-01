@@ -14,12 +14,13 @@ include ${srcdir}/../../makefile-common
 
 SHELL := /bin/bash
 
-targetname = eltwise_add
+targetname = eltwise
+op ?= add
 length ?= 65536
 chans ?= 1
 
 aie_py_src = ${targetname}.py
-aieargs = -d ${devicename} -l ${length} -ch ${chans}
+aieargs = -d ${devicename} -l ${length} -ch ${chans} -o ${op}
 
 xclbin_target = build/final.xclbin
 insts_target  = build/insts.bin
@@ -33,7 +34,7 @@ $(eval $(call build_host_exe,${targetname},_build,test.cpp))
 
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${insts_target}
-	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE --op ${op}
 
 .PHONY: clean
 clean:
