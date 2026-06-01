@@ -1,83 +1,38 @@
 ##===- makefile_common ----------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
 include ${srcdir}/../../../../makefile-common
 
 matrix_multiplication_dir := ${srcdir}/../../../../basic/matrix_multiplication
-kernel_dir := ${srcdir}/../../../../../aie_kernels/aie2p
 
-kernels=mm_${m}x${k}x${n}
-aieargs+=-m $m -k $k -n $n
-target_suffix=${M}x${K}x${N}_${m}x${k}x${n}
+aieargs+=-d ${devicename} -m $m -k $k -n $n -M $M -K $K -N $N
+target_suffix?=${M}x${K}x${N}_${m}x${k}x${n}
 
-target_suffix?=${M}x${K}x${N}
-mlir_target?=build/aie_${target_suffix}.mlir
 xclbin_target?=build/final_${target_suffix}.xclbin
-insts_target?=build/insts_${target_suffix}.txt
+insts_target?=build/insts_${target_suffix}.bin
 aie_py_src?=${targetname}.py
 
 runargs?=-v 2 --warmup 1 --iters 1
-aieargs+=-M $M -K $K -N $N
-
-use_chess?=0
-
-opt_perf?=0
-
-ifneq (${use_chess}, 1)
-aiecc_peano_flags=--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}
-else
-# --unified compiles all cores in a single xchesscc invocation, reducing
-# per-core Chess process startups and peak memory usage on CI runners.
-aiecc_chess_flags=--unified
-endif
-
-# KERNEL_CC defines the C compiler used to compile the kernel.
-# KERNEL_CFLAGS holds the flags passed to that compiler.
-# By default, we use Peano, a.k.a. llvm-aie.
-KERNEL_CC=${PEANO_INSTALL_DIR}/bin/clang++
-KERNEL_CFLAGS=${PEANOWRAP2P_FLAGS}
-
-ifeq (${use_chess}, 1)
-KERNEL_CC=xchesscc_wrapper
-KERNEL_CFLAGS=${CHESSCCWRAP2P_FLAGS}
-endif
-
-KERNEL_DEFINES=-DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
-
-ifeq (${opt_perf}, 1)
-	KERNEL_DEFINES+=-DOPT_PERF_ENABLED
-endif
-
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
 
 # ##########################################################################
 # Targets
 # ##########################################################################
 
 .PHONY: all
-all: ${xclbin_target} ${targetname}.exe
+all: ${xclbin_target} ${insts_target} ${targetname}.exe
 
-build/mm_${m}x${k}x${n}.o: ${kernel_dir}/${kernelsrc}
-	mkdir -p ${@D}
-	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
-
-${mlir_target}: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${aieargs} > $@
-
-${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --alloc-scheme=${buffer_aloc_flag} --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				${aiecc_peano_flags} ${aiecc_chess_flags} --dynamic-objFifos \
-				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
+# @iron.jit's compile() drives kernel compilation (xchesscc for the
+# bfp16 mac kernels — Peano's AIE2P backend can't yet legalize them);
+# the python invocation produces the xclbin + insts.bin in one step.
+${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
+	mkdir -p $$(dirname ${xclbin_target})
+	python3 $< ${aieargs} --xclbin-path=${xclbin_target} --insts-path=${insts_target}
 
 ${targetname}.exe: ${hostsrc} ${matrix_multiplication_dir}/common.h ${srcdir}/../../helper.h
 	rm -rf _build
@@ -88,10 +43,10 @@ ${targetname}.exe: ${hostsrc} ${matrix_multiplication_dir}/common.h ${srcdir}/..
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
-run: ${targetname}.exe ${xclbin_target}
+run: ${targetname}.exe ${xclbin_target} ${insts_target}
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -w $m -y $k -z $n ${runargs}
 
 .PHONY: clean
