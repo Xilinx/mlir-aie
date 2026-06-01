@@ -18,38 +18,24 @@ Other available datatypes can be consulted [here](https://xilinx.github.io/aie_a
 
 ## Source Files Overview
 
-1. `bfp_conversion.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `bfp_conversion.py`: An `@iron.jit` IRON design (high-level `ObjectFifo` / `Worker` / `Runtime`). The Makefile invokes it once in compile-only mode (`--xclbin-path` / `--insts-path`) to produce the XCLBIN and instruction binary in a single step.
 
-1. `bfp_conversion_placed.py`: An alternative version of the design in `bfp_conversion.py`, that is expressed in a lower-level version of IRON.
+1. `kernel.cc`: The bf16→bfp16 conversion + bfp16 matmul core functions (Peano-compiled by `ExternalFunction` at design-build time).
 
-1. `test.cpp`: This C++ code is a testbench for the design example targeting Ryzen™ AI (AIE-ML). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
+1. `test.cpp`: C++ host harness — loads the XCLBIN, runs it on the NPU, verifies output.
 
 ## Ryzen™ AI Usage
 
-### C++ Testbench
-
 ### Compilation
 
-To compile the design:
+To compile the design and host testbench:
 ```shell
-make
+make devicename=npu2
 ```
 
-To compile the placed design:
-```shell
-env use_placed=1 make
-```
-
-To compile the C++ testbench:
-```shell
-make bfp_conversion.exe
-```
-
-### C++ Testbench
-
-To run the design:
+### Run
 
 ```shell
-make run
+make devicename=npu2 run
 ```
 
