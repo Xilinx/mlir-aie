@@ -759,10 +759,16 @@ struct AIEObjectFifoStatefulTransformPass
               }
             }
 
-            // try to allocate on neighbor tiles
+            // Try neighbor with more remaining capacity first to avoid
+            // blocking adjacent MemTiles that also need spill space.
             if (!neighborTiles.empty()) {
+              llvm::stable_sort(neighborTiles, [&](TileOp a, TileOp b) {
+                return calculateCurrentUsedMemory(a, state.buffersPerFifo,
+                                                  buffers) <
+                       calculateCurrentUsedMemory(b, state.buffersPerFifo,
+                                                  buffers);
+              });
               for (auto &tile : neighborTiles) {
-                // Try to allocate on this neighbor tile
                 int neighborUsedMemory = calculateCurrentUsedMemory(
                     tile, state.buffersPerFifo, buffers);
                 if (static_cast<int>(neighborUsedMemory + totalSizeBytes) <=
@@ -1993,7 +1999,39 @@ struct AIEObjectFifoStatefulTransformPass
     //   the acquires/releases (uses of the FIFO).
     // - Global release counter tracker to keep track of the objectFifo state
     //===------------------------------------------------------------------===//
-    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+    // Process MemTile ObjectFifos largest-first so large buffers get
+    // priority for home placement and spill targets are chosen before
+    // smaller fifos consume neighbor capacity.
+    SmallVector<ObjectFifoCreateOp> sortedCreateOps(
+        device.getOps<ObjectFifoCreateOp>());
+    if (!sortedCreateOps.empty()) {
+      DataLayout dataLayout = DataLayout::closest(sortedCreateOps[0]);
+      // Sort only among MemTile-producer fifos by buffer size descending.
+      // Non-MemTile fifos keep their IR-order positions undisturbed.
+      auto getBufSize = [&](ObjectFifoCreateOp op) -> int64_t {
+        auto fifoType = llvm::cast<AIEObjectFifoType>(op.getElemType());
+        auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
+        int64_t bits = dataLayout.getTypeSizeInBits(elemType.getElementType());
+        return elemType.getNumElements() * bits / 8;
+      };
+      SmallVector<size_t> memTileSlots;
+      SmallVector<ObjectFifoCreateOp> memTileFifos;
+      for (size_t i = 0; i < sortedCreateOps.size(); i++) {
+        auto prodTile = dyn_cast<TileOp>(
+            sortedCreateOps[i].getProducerTile().getDefiningOp());
+        if (prodTile && prodTile.isMemTile()) {
+          memTileSlots.push_back(i);
+          memTileFifos.push_back(sortedCreateOps[i]);
+        }
+      }
+      llvm::stable_sort(memTileFifos,
+                        [&](ObjectFifoCreateOp a, ObjectFifoCreateOp b) {
+                          return getBufSize(a) > getBufSize(b);
+                        });
+      for (size_t i = 0; i < memTileSlots.size(); i++)
+        sortedCreateOps[memTileSlots[i]] = memTileFifos[i];
+    }
+    for (auto createOp : sortedCreateOps) {
 
       int share_direction = 0;
       bool shared = !requiresDMAs(createOp, share_direction, state);
