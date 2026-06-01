@@ -115,7 +115,7 @@ def rope(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE RoPE")
-    add_compile_args(p)
+    add_compile_args(p, with_elf=True)
     p.add_argument("-s", "--sequence_length", type=int, default=64, help="rows")
     p.add_argument("-e", "--embedding_dim", type=int, default=4096, help="cols per row")
     return p

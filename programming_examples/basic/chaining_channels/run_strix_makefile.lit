@@ -6,9 +6,9 @@
 // RUN: mkdir -p test_stx
 // RUN: cd test_stx
 // RUN: make -f %S/Makefile clean clean_trace
-// RUN: make -f %S/Makefile
-// RUN: %run_on_npu2% make -f %S/Makefile run
+// RUN: make -f %S/Makefile devicename=npu2
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run
 // RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile TRACE=1
-// RUN: %run_on_npu2% make -f %S/Makefile run TRACE=1
-// RUN: %run_on_npu2% make -f %S/Makefile parse_trace
+// RUN: make -f %S/Makefile devicename=npu2 TRACE=1
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run TRACE=1
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 parse_trace

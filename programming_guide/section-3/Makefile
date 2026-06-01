@@ -50,7 +50,7 @@ run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 run_py: build/final.xclbin build/insts.bin
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py --xclbin build/final.xclbin --instr build/insts.bin -k MLIR_AIE
 
 clean: 
 	rm -rf build _build ${targetname}.exe

@@ -75,7 +75,7 @@ run: ${targetname}.exe build/final.xclbin build/insts.bin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 run_py: build/final.xclbin build/insts.bin
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
+	${powershell} python3 ${srcdir}/test.py --xclbin build/final.xclbin --instr build/insts.bin -k MLIR_AIE --in1-size ${in1_size} --in2-size ${in2_size} --out-size ${out_size}
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
@@ -83,7 +83,7 @@ trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_4b.json
 
 trace_py: build/final_trace.xclbin build/insts.bin
-	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
+	${powershell} python3 ${srcdir}/test.py --xclbin build/final_trace.xclbin --instr build/insts.bin -k MLIR_AIE -t ${trace_size} --in1-size ${in1_size} --in2-size ${in2_size} --out-size ${out_size}
 	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir.prj/input_with_addresses.mlir --output trace_4b.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_4b.json
 
