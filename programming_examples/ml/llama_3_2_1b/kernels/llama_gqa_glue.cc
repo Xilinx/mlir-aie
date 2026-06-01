@@ -1,0 +1,94 @@
+//===- llama_gqa_glue.cc ------------------------------------*- C++ -*-===//
+// Phase 7a glue kernels for the multi-head single-layer design.
+//
+// llama_q_split:
+//   Reorder rope_mh's flat output (32 heads body || 32-head scale tail)
+//   into 8 KV-group chunks of [4 Q heads body || 4 scale pairs].
+//   Input  layout (QD + Tail = 2048 + 256 = 2304 B):
+//     [h0..h31 body 2048 B] [s0..s31 tail 256 B]
+//     where s_h = [q_scale_h fp32 | sv_inv_out_scale_h fp32]
+//   Output layout (8 * 288 = 2304 B):
+//     for g in 0..8:
+//       out[g*288 .. g*288+256]   = body[g*256 .. g*256+256]      (4 Q heads)
+//       out[g*288+256 .. g*288+288] = tail[g*32 .. g*32+32]       (4 scale pairs)
+//
+// llama_af_concat:
+//   Take the concatenated 8x256 = 2048 B int8 sv buffer (produced by
+//   memtile concat of 8 attn workers' outputs), per-Q-head dequant +
+//   global requant to o_act_scale.  Mirrors the numpy_layer_mh "af-concat"
+//   step:
+//     af_fp[h*64+j] = sv_in[h*64+j] * sv_out_scale[h]
+//     af_out[h*64+j] = round(af_fp[h*64+j] * o_inv_act_scale)
+//   scales buffer layout (192 B, host-packed):
+//     scales[0..128]  = 32 sv_out_scales fp32
+//     scales[128..132] = o_inv_act_scale fp32
+//     scales[132..192] = padding
+//===---------------------------------------------------------------------===//
+
+#include <aie_api/aie.hpp>
+#include <stdint.h>
+#include <string.h>
+
+#ifndef LLAMA_GQA_HEAD_DIM
+#define LLAMA_GQA_HEAD_DIM 64
+#endif
+#ifndef LLAMA_GQA_N_HEADS_Q
+#define LLAMA_GQA_N_HEADS_Q 32
+#endif
+#ifndef LLAMA_GQA_N_HEADS_KV
+#define LLAMA_GQA_N_HEADS_KV 8
+#endif
+
+static constexpr int kHD       = LLAMA_GQA_HEAD_DIM;
+static constexpr int kNHeadsQ  = LLAMA_GQA_N_HEADS_Q;
+static constexpr int kNHeadsKV = LLAMA_GQA_N_HEADS_KV;
+static constexpr int kREP      = kNHeadsQ / kNHeadsKV;
+static constexpr int kQD       = kNHeadsQ * kHD;             // 2048
+static constexpr int kBodyChunk = kREP * kHD;                // 256
+static constexpr int kTailChunk = kREP * 8;                  // 32
+static constexpr int kChunk     = kBodyChunk + kTailChunk;   // 288
+
+static constexpr int32_t I8_MAX = 127;
+static constexpr int32_t I8_MIN = -128;
+
+static inline int8_t round_to_i8(float v) {
+  int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
+  if (r > I8_MAX) r = I8_MAX;
+  if (r < I8_MIN) r = I8_MIN;
+  return (int8_t)r;
+}
+
+extern "C" void llama_q_split(int8_t *restrict in_full,
+                              int8_t *restrict out_chunked) {
+  event0();
+  int8_t *body = in_full;
+  int8_t *tail = in_full + kQD;
+  for (int g = 0; g < kNHeadsKV; g++) {
+    int8_t *dst = out_chunked + g * kChunk;
+    memcpy(dst,              body + g * kBodyChunk, kBodyChunk);
+    memcpy(dst + kBodyChunk, tail + g * kTailChunk, kTailChunk);
+  }
+  event1();
+}
+
+extern "C" void llama_af_concat(int8_t *restrict af_in,
+                                int8_t *restrict scales,
+                                int8_t *restrict af_out) {
+  event0();
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  // scales[0..128] = 32 sv_out_scales fp32; scales[128..132] = o_inv_act_scale.
+  const float *sv_out_scales =
+      reinterpret_cast<const float *>(scales);
+  float o_inv_act_scale;
+  memcpy(&o_inv_act_scale, scales + 128, 4);
+
+  for (int h = 0; h < kNHeadsQ; h++) {
+    float combined = sv_out_scales[h] * o_inv_act_scale;
+    int8_t *src = af_in  + h * kHD;
+    int8_t *dst = af_out + h * kHD;
+    for (int j = 0; j < kHD; j++) {
+      dst[j] = round_to_i8((float)src[j] * combined);
+    }
+  }
+  event1();
+}
