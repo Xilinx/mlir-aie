@@ -178,7 +178,7 @@ jobs:
       # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
     - name: Enable vcpkg binary caching
       if: ${{ runner.os == 'Windows' }}
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       with:
         script: |
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
@@ -553,7 +553,7 @@ jobs:
 
       - name: Release current commit
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.21.0
         with:
           artifacts: "dist/*.whl"
           token: "${{ secrets.GITHUB_TOKEN }}"

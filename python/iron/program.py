@@ -77,8 +77,18 @@ class Program:
                             )
                         worker_tile_coords.add(coord)
                     all_tiles.append(w.tile)
+                    # Generic: any user-side Resolvable in fn_args may declare
+                    # additional tile dependencies via tiles(). Default is [].
+                    for arg in w.fn_args:
+                        if isinstance(arg, Resolvable):
+                            all_tiles.extend(arg.tiles())
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
+                    # Shared-memory delegate tile (ObjectFifo.delegate_tile kwarg)
+                    # may not appear in any prod/cons endpoint, so pick it up
+                    # explicitly so resolve_tile() runs on it before fifo resolution.
+                    if f._object_fifo._delegate_tile is not None:
+                        all_tiles.append(f._object_fifo._delegate_tile)
 
                 # Resolve tiles
                 for t in all_tiles:
@@ -99,6 +109,12 @@ class Program:
                 # Generate core programs
                 for w in self._rt.workers:
                     w.resolve()
+
+                # Emit aie.cascade_flow ops for each Worker's outgoing edges.
+                # Must run after worker.resolve() so both tiles are placed.
+                for w in self._rt.workers:
+                    for cf in w._outgoing_cascades:
+                        cf.resolve()
 
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace

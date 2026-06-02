@@ -52,12 +52,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - python_version: "3.10"
-            ENABLE_RTTI: ON
-
-          - python_version: "3.10"
-            ENABLE_RTTI: OFF
-
           - python_version: "3.11"
             ENABLE_RTTI: ON
 
@@ -239,27 +233,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - python_version: "3.10"
-            ENABLE_RTTI: ON
-  
-          - python_version: "3.10"
-            ENABLE_RTTI: OFF
-  
           - python_version: "3.11"
             ENABLE_RTTI: ON
-  
+
           - python_version: "3.11"
             ENABLE_RTTI: OFF
-  
+
           - python_version: "3.12"
             ENABLE_RTTI: ON
-  
+
           - python_version: "3.12"
             ENABLE_RTTI: OFF
-  
+
           - python_version: "3.13"
             ENABLE_RTTI: ON
-  
+
           - python_version: "3.13"
             ENABLE_RTTI: OFF
   
@@ -314,7 +302,7 @@ jobs:
       # We don't get OpenSSL for free on Windows. Manage the pain.
       # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
       - name: Enable vcpkg binary caching
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
@@ -495,7 +483,7 @@ jobs:
 
       - name: Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.21.0
         with:
           artifacts: wheels_all/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
@@ -508,7 +496,7 @@ jobs:
 
       - name: Release latest wheels (RTTI ON)
         if: github.event_name != 'push'
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.21.0
         with:
           artifacts: wheels_on_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
@@ -521,7 +509,7 @@ jobs:
 
       - name: Release latest wheels (RTTI OFF)
         if: github.event_name != 'push'
-        uses: ncipollo/release-action@v1.12.0
+        uses: ncipollo/release-action@v1.21.0
         with:
           artifacts: wheels_off_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
