@@ -326,7 +326,7 @@ struct AIEInsertTraceFlowsPass
     if (routing == TraceShimRouting::Single) {
       // All traces route to a single shim, controlled by the egress_shim_col parameter (default is 0).
       int targetCol = egressShimColFromIR;
-      if (targetCol >= targetModel.columns() ||
+      if (targetCol < 0 || targetCol >= targetModel.columns() ||
           !targetModel.isShimNOCTile(targetCol, 0)) {
         device.emitError() << "egress_shim_col " << targetCol
                            << " is not a valid shim NOC tile (device has "

@@ -184,7 +184,7 @@ module {
       // ========================================================================
 
       // Configure trace output buffer (8192 bytes, default arg_idx=4).
-      // Select which shim should be used by the egress trace transfer (default is the shim tile from column 0). 
+      // Select which shim should be used by the egress trace transfer (default is the shim tile from column 0).
       aie.trace.host_config buffer_size = 8192 egress_shim_col = 4
 
       // Start trace configuration
