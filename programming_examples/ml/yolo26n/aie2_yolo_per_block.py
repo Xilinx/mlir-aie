@@ -2320,7 +2320,7 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
 #     the entire attn_core barrier). May benefit from memtile staging.
 #   - `a` fifo: 1 consumer (cv2 phase) but waits across the entire attn+ffn
 #     round-trip. Same staging concern.
-#   - The attention path is split into per-row kernels (qkv_pack, qk_row,
+#   - The attention path is split into per-row kernels (qk_row, qk_pack,
 #     softmax_row, v_pack, sv_row, sv_row_acc, pe_add_row, proj_skip_row)
 #     rather than one monolithic attn_core kernel — keeps each .cc small
 #     and lets us place them across multiple tiles.
@@ -2329,7 +2329,7 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
 #
 # Kernel objects used (kernels/yolo_m9_*.cc):
 #   cv1_split           1x1 + chunk(2)
-#   qkv / qkv_pack      1x1 c -> 2c, output reshape for per-head packing
+#   qkv                 1x1 c -> 2c
 #   qk_row / qk_pack    Q @ K^T per-row
 #   attn_scale          INT8 requant + scale fold
 #   softmax_row         per-row INT8 softmax
@@ -2775,12 +2775,12 @@ def _build_psa(block_name, act_in, manifest):
 
 
 def _build_m8_chain(act_in, manifest):
-    """Chain builder for m8 — megakernel; default 2-tile, M8_TILES=4 for 4-tile."""
+    """Chain builder for m8 — megakernel; default 4-tile, M8_TILES=2 for 2-tile."""
     import importlib.util
     import pathlib
     import os
 
-    n_tiles = int(os.environ.get("M8_TILES", "2"))
+    n_tiles = int(os.environ.get("M8_TILES", "4"))
     script_name = f"m8_megakernel_{n_tiles}tile"
     spec = importlib.util.spec_from_file_location(
         script_name,
@@ -2879,14 +2879,14 @@ def per_block_iron(block_name: str) -> str:
         spec.loader.exec_module(mod)
         return mod.build(stage=stage, return_program=True)
 
-    # m8: megakernel. Default 2-tile (scripts/m8_megakernel_2tile.py);
-    # set M8_TILES=4 for the 4-tile variant (scripts/m8_megakernel_4tile.py),
-    # which targets ~5 ms standalone vs 2-tile's ~16 ms by giving each pair
-    # kernel its own dedicated worker tile.
+    # m8: megakernel. Default 4-tile (scripts/m8_megakernel_4tile.py),
+    # which targets ~5 ms standalone by giving each pair kernel its own
+    # dedicated worker tile. Set M8_TILES=2 for the smaller 2-tile variant
+    # (scripts/m8_megakernel_2tile.py, ~16 ms standalone).
     if block_name == "m8":
         import importlib.util, pathlib, os
 
-        n_tiles = int(os.environ.get("M8_TILES", "2"))
+        n_tiles = int(os.environ.get("M8_TILES", "4"))
         script_name = f"m8_megakernel_{n_tiles}tile"
         spec = importlib.util.spec_from_file_location(
             script_name,

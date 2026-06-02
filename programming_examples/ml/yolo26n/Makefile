@@ -36,9 +36,10 @@ PEANOWRAP2P_FLAGS := -O2 -std=c++20 --target=aie2p-none-unknown-elf \
 #   m2/m4       -> yolo_c3k2_small_*_m{2,4}.o     (per-block symbol mangling)
 #   m3/m5/m7    -> yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_{m3,m5,m7}.o
 #   m6         -> yolo_c3k2_heavy_*_m6.o + c3k2_small cv1_split/cv2_concat3
-#   m8         -> 2-tile megakernel: yolo_m8_front_cv1_split_fused_m8.o,
+#   m8         -> 4-tile megakernel (default): yolo_m8_front_cv1_split_fused_m8.o,
 #                  yolo_m8_back_cv3_cv2_fused_m8.o, plus streamed inner-pair
 #                  kernels yolo_c3k2_heavy_inner_pair_cv{1,2}*_streamed_m8.o.
+#                  Set M8_TILES=2 for the smaller 2-tile variant.
 #   m9         -> single-block yolo_m9_*.o (no symbol mangling)
 #   m10        -> single-block yolo_m10_*.o
 # We build all .o files so any BLOCK or chain target can link without
@@ -83,12 +84,12 @@ KERNEL_OBJS += $(foreach blk,$(C3K2_STREAMED_BLOCKS), \
 KERNEL_OBJS += $(foreach blk,$(CHUNKED_CONV_BLOCKS), \
                  $(BUILD)/yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_$(blk).o)
 
-M9_KERNELS := cv1_split qkv qkv_pack qk_pack attn_score_fused \
+M9_KERNELS := cv1_split qkv qk_pack attn_score_fused \
               v_pack sv_row pe_add_row proj_skip_row \
               ffn_0_silu_row ffn_1_skip_row cv2_concat2_streamed
 KERNEL_OBJS += $(foreach k,$(M9_KERNELS),$(BUILD)/yolo_m9_$(k).o)
 
-M10_KERNELS := conv2dk1_silu_xy_pool linear_gemm softmax
+M10_KERNELS := conv2dk1_silu_xy_pool linear_gemm softmax concat_pool
 KERNEL_OBJS += $(foreach k,$(M10_KERNELS),$(BUILD)/yolo_m10_$(k).o)
 
 MLIR   := $(BUILD)/aie_$(BLOCK).mlir
@@ -106,12 +107,12 @@ INSTS  := $(BUILD)/insts_$(BLOCK).bin
 # the .chain_n_samples stamp file below forces a chain rebuild if it changes.
 CHAIN_N_SAMPLES ?= 1
 
-# Number of compute tiles for m8's megakernel in chain context (2, 4, or 6).
-# 4-tile is the chain default (6-tile has memtile conflicts with m9 in chain
-# context — m9 uses (2,1) and (7,1) which m8 6-tile also needs; standalone
-# 6-tile compiles but chain-integration is blocked pending memtile reshuffle).
-# Per-block standalone m8 (`BLOCK=m8`) still defaults to 2-tile via
-# aie2_yolo_per_block.py.
+# Number of compute tiles for m8's megakernel (2, 4, or 6). 4-tile is the
+# default for both chain and per-block standalone (`BLOCK=m8`). 6-tile has
+# memtile conflicts with m9 in chain context — m9 uses (2,1) and (7,1)
+# which m8 6-tile also needs; standalone 6-tile compiles but chain
+# integration is blocked pending memtile reshuffle. Set M8_TILES=2 for the
+# smaller 2-tile variant.
 M8_TILES ?= 4
 
 # Extra args forwarded to scripts/time_block.py and scripts/time_chain.py,
@@ -315,19 +316,12 @@ $(BUILD)/yolo_m9_cv2_concat2_streamed.o: \
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_CV2_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_cv2_concat2_streamed,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
-# Three packers share one source (yolo_m9_pack.cc) compiled with different
-# -D flags + a unique extern "C" symbol name per .o. Replaces the three
-# near-identical qkv_pack.cc / qk_pack.cc / v_pack.cc sources.
-M9_PACK_QKV := -DYOLO_M9_PACK_SLOTS=128 -DYOLO_M9_PACK_EXTRA_OFFSET=0 \
-               -DYOLO_M9_PACK_SYMBOL=yolo_m9_qkv_pack_i8_i8
+# Two packers share one source (yolo_m9_pack.cc) compiled with different
+# -D flags + a unique extern "C" symbol name per .o.
 M9_PACK_QK  := -DYOLO_M9_PACK_SLOTS=64  -DYOLO_M9_PACK_EXTRA_OFFSET=0 \
                -DYOLO_M9_PACK_SYMBOL=yolo_m9_qk_pack_i8_i8
 M9_PACK_V   := -DYOLO_M9_PACK_SLOTS=64  -DYOLO_M9_PACK_EXTRA_OFFSET=64 \
                -DYOLO_M9_PACK_SYMBOL=yolo_m9_v_pack_i8_i8
-
-$(BUILD)/yolo_m9_qkv_pack.o: $(SRCDIR)/kernels/yolo_m9_pack.cc
-	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_PACK_QKV) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_qkv_pack,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 $(BUILD)/yolo_m9_qk_pack.o: $(SRCDIR)/kernels/yolo_m9_pack.cc
 	mkdir -p $(BUILD)

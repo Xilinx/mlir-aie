@@ -95,7 +95,7 @@ BLOCKS = [
         337_000,
         0.352,
         640 * (1 << 10),
-        "C3k2 heavy: 2-tile megakernel (m8_megakernel_2tile.py)",
+        "C3k2 heavy: 4-tile megakernel (m8_megakernel_4tile.py; M8_TILES=2 for 2-tile)",
     ),
     Block(
         "m.9",
@@ -216,7 +216,7 @@ def render_dataflow():
         "  ─► m.3 (2,3) ─► m.4 (col 1, rows 3-5) ─► m.5 (2,4)",
         "  ─► m.6 (col 2 r5 + col 3 rows 2-5) [c3k2_heavy, 5 tiles]",
         "  ─► m.7 (4,3)",
-        "  ─► m.8 (5,3)+(5,4) [2-tile megakernel; delegate buffers at (5,2),(4,4)]",
+        "  ─► m.8 (5,3)+(5,4)+delegates [4-tile megakernel default; M8_TILES=2 for 2-tile (5,3)+(5,4)]",
         "  ─► m.9 PSA (cv1+qkv+attn+sv on col 7; cv2+ffn+proj scattered)",
         "  ─► m.10 (2,2)  [head, fused: Conv 256→1280 + GAP + Gemm 1280→2 + softmax]",
         "  ─► memtile(c7) ─► shim(c7) ─► DRAM (probs)",

@@ -50,8 +50,8 @@ static constexpr int kExtraOffset = YOLO_M9_PACK_EXTRA_OFFSET;
 extern "C" {
 
 void YOLO_M9_PACK_SYMBOL(
-    int8_t *in_row,  // (in_w, twoc) natural-layout qkv row
-    int8_t *dst,     // (kSlots, kN) destination per-head buffer
+    int8_t *__restrict in_row,  // (in_w, twoc) natural-layout qkv row
+    int8_t *__restrict dst,     // (kSlots, kN) destination per-head buffer
     const int32_t /*input_width*/, const int32_t /*twoc*/,
     const int32_t /*slots*/, const int32_t /*head_stride*/,
     const int32_t /*N*/,
@@ -65,12 +65,16 @@ void YOLO_M9_PACK_SYMBOL(
   const int32_t chan_offset = head_idx * kHeadStride + kExtraOffset;
   const int32_t n_base = row_idx * kInW;
 
+  static_assert(kInW == 16, "yolo_m9_pack vec store assumes kInW == 16");
+
   AIE_LOOP_RANGE(kSlots, kSlots)
   for (int s = 0; s < kSlots; s++) {
-    AIE_LOOP_RANGE(kInW, kInW)
+    alignas(16) int8_t buf[16];
+    AIE_LOOP_UNROLL_FULL
     for (int x = 0; x < kInW; x++) {
-      dst[s * kN + (n_base + x)] = in_row[x * kTwoC + (chan_offset + s)];
+      buf[x] = in_row[x * kTwoC + (chan_offset + s)];
     }
+    aie::store_v(&dst[s * kN + n_base], aie::load_v<16>(buf));
   }
 
   event1();

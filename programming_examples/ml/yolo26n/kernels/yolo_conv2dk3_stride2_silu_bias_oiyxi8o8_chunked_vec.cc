@@ -445,7 +445,6 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       acc_b1 = bias_acc_oc1; // x_b + oc1
 
       AIE_LOOP_RANGE(8, 16)
-      AIE_LOOP_UNROLL(2)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
         AIE_LOOP_RANGE(2, 3)
         for (int ky = ky_start; ky < ky_end; ++ky) {

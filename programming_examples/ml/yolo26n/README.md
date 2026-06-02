@@ -546,28 +546,36 @@ The 11 blocks map to these kernel families:
 | m3, m5, m7 | conv_stride | `yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked` (per-block, weight-streamed) | 1 each |
 | m2, m4 | c3k2_small | `yolo_c3k2_small_{cv1_split, m0_cv1, m0_cv2_skip, cv2_concat3}` | 3 each |
 | m6 | c3k2_heavy | `yolo_c3k2_heavy_{m_0_split, inner_pair_cv1, inner_pair_cv2_skip, cv3_concat2}` + `c3k2_small_{cv1_split, cv2_concat3}` | 5 |
-| **m8** | **c3k2_heavy 2-tile megakernel** | `yolo_m8_front_cv1_split_fused` + `yolo_m8_back_cv3_cv2_fused` + `yolo_c3k2_heavy_inner_pair_{cv1,cv2_skip}_streamed` | **2** |
-| m9 | PSA (attention + FFN) | 12 kernels: `yolo_m9_{cv1_split, qkv, qkv_pack, qk_pack, attn_score_fused, v_pack, sv_row, pe_add_row, proj_skip_row, ffn_0_silu_row, ffn_1_skip_row, cv2_concat2_streamed}` (qk_row + attn_scale + softmax_row collapsed into `attn_score_fused_vec.cc`; sv_row + sv_row_acc share the same `.o` with two extern C entries) | 7 |
+| **m8** | **c3k2_heavy 4-tile megakernel** (set `M8_TILES=2` for the smaller 2-tile variant) | `yolo_m8_front_cv1_split_fused` + `yolo_m8_back_cv3_cv2_fused` + `yolo_c3k2_heavy_inner_pair_{cv1,cv2_skip}_streamed` | **4** |
+| m9 | PSA (attention + FFN) | 11 kernels: `yolo_m9_{cv1_split, qkv, qk_pack, attn_score_fused, v_pack, sv_row, pe_add_row, proj_skip_row, ffn_0_silu_row, ffn_1_skip_row, cv2_concat2_streamed}` (qk_row + attn_scale + softmax_row collapsed into `attn_score_fused_vec.cc`; sv_row + sv_row_acc share the same `.o` with two extern C entries) | 7 |
 | m10 | head | `yolo_m10_{conv2dk1_silu_xy_pool, linear_gemm, softmax}` (fused onto 1 tile) | 1 |
 
-Total: **26 of 32** compute tiles used.
+Total: **28 of 32** compute tiles used.
 
-### m8 — 2-tile megakernel
+### m8 — megakernel (4-tile default; 2-tile variant available)
 
-The most compute-dense block. Implementation lives in
-[`scripts/m8_megakernel_2tile.py`](scripts/m8_megakernel_2tile.py).
+The most compute-dense block. `M8_TILES` selects the variant (default 4,
+applies to both chain and per-block standalone):
 
-Two compute tiles, each running a single Worker that fuses three c3k2_heavy
-sub-operations into one C kernel call per chunk:
-
-- **Tile A (5,3)** — `k_m8_front` (cv1 + m_0_split) + `k_pair_cv1` + `k_pair_cv2` for pair0
-- **Tile B (5,4)** — `k_pair_cv1` + `k_pair_cv2` for pair1 + `k_m8_back` (cv3 + cv2)
+- **4-tile (default)** — [`scripts/m8_megakernel_4tile.py`](scripts/m8_megakernel_4tile.py).
+  Four compute workers (`worker_a/b/c/d` on tiles (5,3), (5,4), and two
+  delegates). Each pair kernel gets its own dedicated worker, targeting
+  ~5 ms standalone.
+- **2-tile** (`M8_TILES=2`) — [`scripts/m8_megakernel_2tile.py`](scripts/m8_megakernel_2tile.py).
+  Two compute tiles, each running a single Worker that fuses three
+  c3k2_heavy sub-operations into one C kernel call per chunk:
+  - **Tile A (5,3)** — `k_m8_front` (cv1 + m_0_split) + `k_pair_cv1` +
+    `k_pair_cv2` for pair0
+  - **Tile B (5,4)** — `k_pair_cv1` + `k_pair_cv2` for pair1 +
+    `k_m8_back` (cv3 + cv2)
+- **6-tile** (`M8_TILES=6`) — compiles standalone but blocked in chain by
+  memtile conflicts with m9 ((2,1) + (7,1) overlap). Standalone-only
+  until placement is reworked.
 
 Cross-tile data lives in shared L1 ObjectFifos (no DMA hop). Weights for
 the big convs (cv1, cv2, pair0, pair1) are streamed from memtiles via
 `StaticWeightStream`; the small m_0_split and cv3 weights are static on
-the compute tiles. Tile A reads ws_pair1's recv buffer via west-neighbor
-shared L1 from (4,4).
+the compute tiles.
 
 ### m9 — staged PSA
 

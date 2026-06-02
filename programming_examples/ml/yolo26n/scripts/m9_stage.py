@@ -7,9 +7,12 @@ from 1..N. Stage 11 is a guard rail that raises NotImplementedError.
 Stage map:
     1:  cv1_split — emits the cv1 output (in_h, in_w, twoc=256) as a
         single concat(top, bot) frame to the shim.
-    2:  + qkv pack — emits the (n_heads=2, 128, N=256) packed qkv frame.
-    3:  + qk_pack — emits per-head (Q + K, kd=32, N=256) chunks.
-    4:  + qk_row + attn_scale — emits the (N, N) pre-softmax scores.
+    2:  + qkv 1x1 — emits the natural-layout qkv row stream.
+    3:  (retired — qkv_pack debug emit; removed because attn_qk + sv
+        now do their own per-head packing inline. M9_STAGE=3 is a hard
+        error so callers update.)
+    4:  + qk_pack + qk_row + attn_scale — emits the (N, N) pre-softmax
+        scores per head.
     5:  + softmax_row — emits the (N, N) post-softmax attention weights.
     6:  + v_pack + sv_row + sv_row_acc — emits per-head SV output.
     7:  + pe_add_row — emits the (c=128, H, W) pre-projection attn frame.
@@ -261,76 +264,19 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
             )
         )
 
-    # ----- Stage 3: qkv per-head packing -----
-    # Validates the (nh, head_slots=128, N=H*W=256) packed layout that
-    # attn_core will need. Emits per-(head, row) chunks of shape
-    # (head_slots, in_w) = (128, 16) = 2KB each. Per sample the worker
-    # emits in_h * n_heads = 32 chunks in (yi=0,h=0), (yi=0,h=1), ...
-    # order; the host reshape recovers (n_heads, head_slots, N).
-    #
-    # Chunked dataflow keeps L1 minimal: full per-head 32KB frames don't
-    # need to live on the attn_core tile at any point, and the same shape
-    # is what attn_core itself will consume in stages 4+ when streaming Q
-    # tiles for flash-style attention.
-    packed_chunk_fifo = None
-    if stage >= 3:
-        N_tokens = in_h * in_w  # 256, kept as a kernel arg for clarity
-        head_slots = 128
-
-        k_qkv_pack = Kernel(
-            "yolo_m9_qkv_pack_i8_i8",
-            "yolo_m9_qkv_pack.o",
-            [
-                B._i8((in_w, 1, twoc)),  # qkv natural-layout row
-                B._i8((head_slots, in_w)),  # per-(head, row) chunk out
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-                np.int32,
-            ],
+    # Stage 3 (qkv_pack debug emit worker) was retired: attn_qk + sv now
+    # do their own per-head packing inline. Hard-fail rather than silently
+    # skipping so callers update.
+    if stage == 3:
+        raise NotImplementedError(
+            "M9_STAGE=3 (qkv_pack debug emit) was retired — attn_qk + sv "
+            "now do their own per-head packing inline. Use M9_STAGE=2 for "
+            "the qkv row stream or M9_STAGE>=4 for the pre-softmax scores."
         )
 
-        # packed_chunk_fifo + pack worker are the stage-3 output. Skip both
-        # when stage 4+ replaces this worker with attn_qk; an orphan
-        # via_DMA fifo allocates DMA channels that collide with the new
-        # scores_fifo and silently hangs the runtime.
-        packed_chunk_fifo = None
-        if stage == 3:
-            packed_chunk_fifo = ObjectFifo(
-                B._i8((head_slots, in_w)),
-                depth=2,
-                via_DMA=True,
-                name="m9_packed_chunks",
-            )
-
-            def qkv_pack_fn(qkv_c, chunk_p, k):
-                for _ in range_(in_h):
-                    row = qkv_c.acquire(1)
-                    # head 0 chunk: copy full 128 head slots, head stride=128
-                    ch0 = chunk_p.acquire(1)
-                    k(row, ch0, in_w, twoc, head_slots, head_slots, in_w, 0, 0)
-                    chunk_p.release(1)
-                    # head 1 chunk
-                    ch1 = chunk_p.acquire(1)
-                    k(row, ch1, in_w, twoc, head_slots, head_slots, in_w, 1, 0)
-                    chunk_p.release(1)
-                    qkv_c.release(1)
-
-            workers.append(
-                Worker(
-                    qkv_pack_fn,
-                    fn_args=[qkv_out_fifo.cons(), packed_chunk_fifo.prod(), k_qkv_pack],
-                    tile=plc["attn_core"],
-                )
-            )
-
     # ----- Stage 4: + qk matmul (scalar i8, per-head sequential) -----
-    # attn_core tile (6,5) now does pack-into-local-buffer + qk matmul in
-    # one worker. We REPLACE stage 3's pack-only worker (the chunked-emit
-    # output from stage 3 is regression-checkable by re-running --stage 3).
+    # attn_core tile (6,5) does pack-into-local-buffer + qk matmul in one
+    # worker.
     #
     # L1 budget on attn_core (6,5):
     #   qkv_out row in:           2KB × depth=2 = 4KB
@@ -1366,14 +1312,6 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                 tile=t_qkv_pt,
             )
         )
-    elif stage == 3:
-        # Stage 3 emits the packed chunks directly via packed_chunk_fifo
-        # (it's already via_DMA so the shim can drain it). The host
-        # receives 32 chunks per sample (16 rows × 2 heads), each
-        # (head_slots=128, in_w=16) = 2KB; total 64KB ordered
-        # (yi=0,h=0), (yi=0,h=1), ..., (yi=15,h=0), (yi=15,h=1).
-        block_out = packed_chunk_fifo
-        out_bytes_stage3 = head_slots * in_w * in_h * 2  # 64KB
     elif stage in (4, 5):
         # scores_fifo emits 2*N_tokens=512 rows of N_tokens=256 bytes per
         # sample, in (head, query_idx) order. Total 128KB.
@@ -1410,9 +1348,7 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
 
     in_bytes = in_w * in_h * in_c
     in_ty = B._i32((in_bytes // 4,))
-    if stage == 3:
-        out_bytes = out_bytes_stage3
-    elif stage in (4, 5):
+    if stage in (4, 5):
         out_bytes = out_bytes_stage4
     elif stage == 6:
         out_bytes = out_bytes_stage6
