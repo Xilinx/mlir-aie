@@ -332,7 +332,10 @@ class CompilableDesign:
 
     Args:
         mlir_generator: A callable that accepts ``Compile[T]`` kwargs and
-            returns an MLIR module (unplaced style) or ``None`` (placed style),
+            either returns an MLIR module (e.g., built inside an
+            ``mlir_mod_ctx()`` block) or returns ``None`` after building the
+            module into the active MLIR context (e.g., via
+            ``Program(...).resolve_program()``),
             OR a ``pathlib.Path`` to a pre-written ``.mlir`` file.
         use_cache: When ``True`` (default), a file-system cache keyed by the
             bytecode+kwargs hash is consulted before recompiling.

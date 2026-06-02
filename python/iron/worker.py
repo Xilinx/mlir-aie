@@ -196,10 +196,10 @@ class Worker(ObjectFifoEndpoint):
         )
         def core_body():
             # Always wrap in an scf.for so the lowered MLIR matches expectations
-            # downstream (placed-API uses the same pattern with bound=1 for
-            # single-shot workers). Using Python range(1) here would emit the
-            # body inline with no scf.for wrapper, which the dataflow lowerer
-            # treats differently and can cause runtime hangs.
+            # downstream (the lower-level aie dialect uses the same pattern with
+            # bound=1 for single-shot workers). Using Python range(1) here would
+            # emit the body inline with no scf.for wrapper, which the dataflow
+            # lowerer treats differently and can cause runtime hangs.
             for _ in range_(sys.maxsize if self._while_true else 1):
                 self.core_fn(*self.fn_args)
 
