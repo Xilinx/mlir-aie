@@ -219,7 +219,7 @@ xrt-smi examine
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
 
-For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
+For your design of interest, for instance from [programming_examples](programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
 
 ### Build Device AIE Part
 

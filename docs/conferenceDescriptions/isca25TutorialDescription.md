@@ -32,7 +32,7 @@ Location: Tokyo, Japan
 | 08:15am | "Hello World" from Ryzen™ AI | Joe | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
 | 08:35am | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
 | 08:50am | Data movement on Ryzen™ AI with objectFIFOs | Joe | [Data Movement](../../programming_guide/section-2/) |
-| 09:10am | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
+| 09:10am | Exercise 2: Explore AIE DMA capabilities | All | [Transposes](../../programming_examples/basic/transposes/) (using `--strategy=dma`) |
 | 09:20am | Your First Program | Joe | [My First Program](../../programming_guide/section-3) |
 | 09:50am | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 10:00am | Coffee Break | | |

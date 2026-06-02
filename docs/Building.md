@@ -172,7 +172,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ## Contributing:
 
-Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
+Interested in contributing MLIR-AIE? [Information for developers](../CONTRIBUTING.md)
 
 ## Alternative: Build XDNA™ Driver and XRT from source
 

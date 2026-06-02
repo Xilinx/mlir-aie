@@ -5,10 +5,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Chaining channels — low-level placed IRON, two compile modes.
+"""Chaining channels — direct AIE dialect, two compile modes.
 
-The design body intentionally uses low-level IRON (explicit ``flow``,
-``@mem`` / ``@memtile_dma``, manual ``npu_writebd`` /
+The design body intentionally uses the AIE dialect directly (explicit
+``flow``, ``@mem`` / ``@memtile_dma``, manual ``npu_writebd`` /
 ``npu_address_patch`` / ``npu_push_queue`` / ``npu_sync``) — that's the
 lesson here.  This file just wraps the design with a small ``main()``
 that supports both:
