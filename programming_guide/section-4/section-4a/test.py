@@ -39,7 +39,7 @@ def main(opts):
     # ------------------------------------------------------
     # Initialize run configs
     # ------------------------------------------------------
-    num_iter = opts.iters + opts.warmup_iters
+    num_iter = opts.iters + opts.warmup
     npu_time_total = 0
     npu_time_min = 9999999
     npu_time_max = 0
@@ -56,7 +56,7 @@ def main(opts):
         npu_time = result.npu_time
 
         # Warmup iterations do not count towards average runtime.
-        if i < opts.warmup_iters:
+        if i < opts.warmup:
             continue
 
         # Copy output results and verify they are correct
@@ -80,7 +80,7 @@ def main(opts):
         "\nNumber of iterations:",
         str(opts.iters),
         "(warmup iterations:",
-        str(opts.warmup_iters),
+        str(opts.warmup),
         ")",
     )
 
@@ -99,6 +99,6 @@ def main(opts):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    add_runtime_args(p)
+    add_runtime_args(p, with_benchmark=True)
     opts = p.parse_args(sys.argv[1:])
     main(opts)
