@@ -14,14 +14,10 @@ targetname = group0
 mlirFileName = aie
 
 aie_py_src=${targetname}.py
-use_placed?=1
+
 CHESS ?= false
 trace_size = 16384
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
-
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
 
 #ifeq (${targetname}, group2)
 #alloc_scheme=--alloc-scheme=basic-sequential
@@ -37,11 +33,11 @@ all: build/aie.mlir
 
 build/${mlirFileName}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} > $@
+	python3 $< -d ${devicename} --emit-mlir > $@
 
 build/${mlirFileName}_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -t ${trace_size} > $@
+	python3 $< -d ${devicename} --emit-mlir -t ${trace_size} > $@
 
 build/%.o: %.cc
 	mkdir -p ${@D}
@@ -97,8 +93,13 @@ else
 	echo "Device type not supported"
 endif
 
-#build/final.xclbin: build/${mlirFileName}.mlir build/group0a.o build/group0b.o build/group1.o build/group2.o
-build/final.xclbin: build/${mlirFileName}.mlir build/group0a.o build/group0b.o build/group2.o
+# Per-target object dependencies.  group0 needs the GROUPA + GROUPB
+# variants of group0.cc; group2 needs group2.cc.
+group_objs_group0=build/group0a.o build/group0b.o
+group_objs_group2=build/group2.o
+group_objs=${group_objs_${targetname}}
+
+build/final.xclbin: build/${mlirFileName}.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
@@ -109,7 +110,7 @@ else
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
-build/final_trace.xclbin: build/${mlirFileName}_trace.mlir build/group0a.o build/group0b.o build/group2.o
+build/final_trace.xclbin: build/${mlirFileName}_trace.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
