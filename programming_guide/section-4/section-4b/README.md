@@ -58,7 +58,7 @@ Here, we add `trace=1` to indicate that worker should be traced. And we can omit
 
 Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically.
 
->**NOTE**: The higher-level `enable_trace` API can only trace workers (core tiles). To trace mem tiles, shim tiles, or use the full `PortEvent` API, use the lower-level IRON tracing API described in [README-placed](./README-placed.md).
+The `workers=[...]` argument picks the core tiles to trace.  To trace **mem tiles** or **shim tiles**, pass `memtile_events=[...]` / `shimtile_events=[...]` — those event lists apply to the matching tiles in the design without needing to enumerate Workers (the design's mem/shim tiles are implicit in the data movement).  Full event vocabularies are listed in the [Customizing Trace Behavior](#customizing-trace-behavior) subsection below.
 
 ### <u>Customizing Trace Behavior</u>
 
@@ -88,14 +88,40 @@ The trace configuration chooses helpful default settings so you can trace your d
         )
     ```
 
-Additional customizations are available in the closer-to-metal IRON and is described more in [README-placed](./README-placed.md).
+### <u>PortEvent API</u>
+
+Port events monitor activity on stream switch ports. A **physical port** on the stream switch is identified by three components: the **bundle** (which interface on the tile, e.g., DMA, North, South), the **channel** (which channel within that bundle), and the **direction** (master for input/S2MM, slave for output/MM2S).
+
+The hardware provides 8 port monitor slots (0-7), each configured to watch a specific physical port. The slot number is determined by the suffix of the event name (e.g., `PORT_RUNNING_0` uses slot 0).
+
+```python
+from aie.utils.trace.events import PortEvent, MemTilePortEvent, ShimTilePortEvent, CoreEvent, MemTileEvent, ShimTileEvent
+from aie.dialects.aie import WireBundle
+
+# Core tile port monitoring
+PortEvent(CoreEvent.PORT_RUNNING_0, port=WireBundle.DMA, channel=0, master=True)
+
+# Parameters:
+# - code: PORT_RUNNING_N, PORT_IDLE_N, PORT_STALLED_N, or PORT_TLAST_N (N=0-7)
+# - bundle: WireBundle.DMA, WireBundle.North, WireBundle.South, etc.
+# - channel: Channel number within the bundle (e.g., 0 for DMA channel 0)
+# - master: Direction - True for input to tile (S2MM), False for output from tile (MM2S)
+
+# Mem tile port monitoring
+MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.DMA, channel=0, master=True)
+
+# Shim tile port monitoring
+ShimTilePortEvent(ShimTileEvent.PORT_RUNNING_0, WireBundle.South, channel=2, master=True)
+```
+
+**Sharing a monitor slot across event types:** Multiple event types can share the same slot to observe different conditions on the same port. The event name suffix determines the slot number (`PORT_RUNNING_0` and `PORT_TLAST_0` both use slot 0). When events share a slot, each event type independently triggers in the trace whenever its condition is met on the monitored port — `PORT_RUNNING_0` fires while data is flowing and `PORT_TLAST_0` fires on the last beat of a transfer. They must be configured to monitor the same physical port or an error is raised.
 
 ## <u>2. Configure host code to read trace data and write it to a text file</u>
 
 Once the trace units are configured and routed, we want the host code to read the trace data from DDR and write it out to a text file for post-run processing. To give a better sense of how this comes together, this section provides an example design that is again a simplifed version of the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/).
 
-### <u>AIE structural design code ([aie2.py](./aie2.py))</u>
-In order to write the DDR data to a text file, we need to know where in DDR the trace data is stored and then read from that location. This starts inside the [aie2.py](./aie2.py) file where the `enable_trace` function under the hood expands to calls to configure the trace units and program the shimDMA to write to one of XRT inout buffers. It is helpful to have a more in-depth understanding about the *XRT buffer objects* described in [section 3](../../section-3). There we had described that our XRT supports up to 5 inout buffer objects. Common usage patterns include 1 input/ 1 output and 2 input/ 1 output. These patterns then map in the following way where the *group_id* is listed next to each XRT buffer object, `inoutN (group_id)`.
+### <u>AIE structural design code ([vector_scalar_mul.py](./vector_scalar_mul.py))</u>
+In order to write the DDR data to a text file, we need to know where in DDR the trace data is stored and then read from that location. This starts inside the [vector_scalar_mul.py](./vector_scalar_mul.py) file where the `enable_trace` function under the hood expands to calls to configure the trace units and program the shimDMA to write to one of XRT inout buffers. It is helpful to have a more in-depth understanding about the *XRT buffer objects* described in [section 3](../../section-3). There we had described that our XRT supports up to 5 inout buffer objects. Common usage patterns include 1 input/ 1 output and 2 input/ 1 output. These patterns then map in the following way where the *group_id* is listed next to each XRT buffer object, `inoutN (group_id)`.
 
 | inout0 (3) | inout1 (4) |
 |--------|--------|
@@ -154,15 +180,15 @@ Once the design has been executed. We can then use the convenience function `wri
 Because the code patterns for measuring host code timing and configuring trace are so often repeated, they have been further wrapped into the convenience function `setup_and_run_aie` in [xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h) which then allows us to create a simpler top level host code [test.cpp](./test.cpp).
 
 In our template host code [test.cpp](./test.cpp) for 2 inputs and 1 output, we customize the following:
-* Input and output buffer size (in bytes) - Specified in the [Makefile](./Makefile) and [CMakeLists.txt](./CMakeLists.txt) and then passed into the [aie2_placed.py](./aie2_placed.py) and [test.cpp](./test.cpp)
+* Input and output buffer size (in bytes) - Specified in the [Makefile](./Makefile) and [CMakeLists.txt](./CMakeLists.txt) and then passed into the [vector_scalar_mul.py](./vector_scalar_mul.py) and [test.cpp](./test.cpp)
     ```Makefile
         in1_size = 16384 # in bytes
         in2_size = 4 # in bytes, should always be 4 (1x int32)
         out_size = 16384 # in bytes, should always be equal to in1_size
     ```
-* Buffer data types - Defined in [aie2_placed.py](./aie2_placed.py) and [test.cpp](./test.cpp). The types should match but even if they don't, the buffer size will match and prevent hangs.
+* Buffer data types - Defined in [vector_scalar_mul.py](./vector_scalar_mul.py) and [test.cpp](./test.cpp). The types should match but even if they don't, the buffer size will match and prevent hangs.
 
-    In [aie2_placed.py](./aie2_placed.py):
+    In [vector_scalar_mul.py](./vector_scalar_mul.py):
     ```Python
         in1_dtype = np.int32
         in2_dtype = np.int32
@@ -304,7 +330,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * `INSTR_EVENT_0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.
     * `INSTR_EVENT_1` - The event marking the end of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event1()` after the loop. Much like event0, attaching event1 to the end of our kernel is also helpful.
     * `INSTR_VECTOR` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
-    * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 8 ports. To select which port to listen to, use the `PortEvent` Python class. See [README-placed](./README-placed.md#portevent-api) for the full `PortEvent` API and examples.
+    * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 8 ports. To select which port to listen to, use the `PortEvent` Python class. See [PortEvent API](#portevent-api) for the full `PortEvent` API and examples.
     * `PORT_RUNNING_1` - Mapped to Port 1 which is configured to the MM2S0 output (DMA from local memory to stream) in this example. This is usually the first output based on routing algorithm.
     * `LOCK_STALL` - Any locks stalls.
     * `INSTR_LOCK_ACQUIRE_REQ` - Any lock acquire requests.
