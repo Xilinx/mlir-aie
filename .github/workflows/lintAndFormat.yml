@@ -39,7 +39,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Install Python packages
         run: |
@@ -133,15 +133,15 @@ jobs:
       - name: Setup Python env
         uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Check Liquid Syntax
         run: python3 utils/check_liquid_syntax.py
 
-      - name: Install black
+      - name: Install pre-commit
         run: |
           pip install --upgrade pip
-          pip install black[jupyter]
+          pip install -r python/requirements_dev.txt
 
       - name: Run git-clang-format
         id: git-clang-format
@@ -159,7 +159,7 @@ jobs:
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@v1.22
+        uses: reviewdog/action-suggester@v1.24
         with:
           tool_name: clang-format
           level: error
@@ -170,7 +170,7 @@ jobs:
         if: success() || failure()
         id: black-format
         run: |
-          black . || true
+          pre-commit run black --hook-stage pre-push --all-files --color never || true
           git diff > black-format.diff
           cat black-format.diff
 
@@ -182,7 +182,7 @@ jobs:
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@v1.22
+        uses: reviewdog/action-suggester@v1.24
         with:
           tool_name: black
           level: error
@@ -220,7 +220,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Install Python and other packages
         run: |

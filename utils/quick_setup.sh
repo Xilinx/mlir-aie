@@ -44,11 +44,8 @@ fi
 if hash python3.12; then
    echo "Using python version `python3.12 --version`"
    my_python=python3.12
-elif hash python3.10; then
-   echo "Using python version `python3.10 --version`"
-   my_python=python3.10
 else
-   echo "This script requires python3.10 or python3.12"
+   echo "This script requires python3.12"
    return 1
 fi
 
