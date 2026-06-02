@@ -165,6 +165,12 @@ void registerAIETranslations() {
       "aie-sequence-name", llvm::cl::init(""),
       llvm::cl::desc(
           "Specify the name of the aiex.runtime_sequence to translate"));
+  static llvm::cl::opt<bool> npuEmitLocmap(
+      "aie-npu-emit-locmap", llvm::cl::init(false),
+      llvm::cl::desc(
+          "For aie-npu-to-binary, emit a JSON sidecar mapping each transaction "
+          "word's byte offset to its source MLIR Location (and regdb register "
+          "name where applicable) instead of the binary itself."));
 
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
@@ -369,10 +375,19 @@ void registerAIETranslations() {
       "aie-npu-to-binary", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
         std::vector<uint32_t> instructions;
+        std::vector<TxnLocEntry> locmap;
         auto r = AIETranslateNpuToBinary(module, instructions, deviceName,
-                                         sequenceName);
+                                         sequenceName,
+                                         npuEmitLocmap ? &locmap : nullptr);
         if (failed(r))
           return r;
+        // With -aie-npu-emit-locmap, emit the JSON location sidecar mapping
+        // each transaction word's byte offset to its source MLIR Location
+        // instead of the binary itself.
+        if (npuEmitLocmap) {
+          emitNpuLocmapJSON(output, deviceName, /*binaryName=*/"", locmap);
+          return success();
+        }
         if (outputBinary) {
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
@@ -380,22 +395,6 @@ void registerAIETranslations() {
           for (auto w : instructions)
             output << llvm::format("%08X\n", w);
         }
-        return success();
-      },
-      registerDialects);
-  TranslateFromMLIRRegistration registrationNPULocmap(
-      "aie-npu-to-binary-locmap",
-      "Translate npu instructions to a JSON sidecar mapping each transaction "
-      "word's byte offset to its source MLIR Location (and regdb register "
-      "name where applicable). The .bin itself is not emitted.",
-      [](ModuleOp module, raw_ostream &output) {
-        std::vector<uint32_t> instructions;
-        std::vector<TxnLocEntry> locmap;
-        auto r = AIETranslateNpuToBinary(module, instructions, deviceName,
-                                         sequenceName, &locmap);
-        if (failed(r))
-          return r;
-        emitNpuLocmapJSON(output, deviceName, /*binaryName=*/"", locmap);
         return success();
       },
       registerDialects);

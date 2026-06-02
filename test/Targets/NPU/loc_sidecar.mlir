@@ -6,11 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Verifies aie-translate --aie-npu-to-binary-locmap emits a JSON sidecar
-// keying each transaction word's byte_offset to the source aiex.npu.* op's
-// MLIR Location, including IRON-style NameLoc names from Phase 1 capture.
+// Verifies aie-translate --aie-npu-to-binary --aie-npu-emit-locmap emits a JSON
+// sidecar keying each transaction word's byte_offset to the source aiex.npu.*
+// op's MLIR Location, including IRON-style NameLoc names from Phase 1 capture.
 
-// RUN: aie-translate --aie-npu-to-binary-locmap %s | FileCheck %s
+// RUN: aie-translate --aie-npu-to-binary --aie-npu-emit-locmap %s | FileCheck %s
 
 #user_w32 = loc("user.py":42:4)
 #user_bw  = loc("user.py":50:4)
