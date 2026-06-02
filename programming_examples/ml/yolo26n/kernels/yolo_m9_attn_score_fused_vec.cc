@@ -167,27 +167,30 @@ void yolo_m9_attn_score_fused_i8_i8(
   // === Phase 3c: pass 3 — vec FP normalize + quantize ===
   // aie::inv(float) = HW reciprocal (single op) — replaces __divsf3.
   // Fold out_scale into the broadcast scale so per-element work is one
-  // vec fpmul. Clamp + narrow via aie::min/max (no scalar if/else).
+  // vec fpmul. Pre-clamp at fp (softmax probs are ≥0 in math; defensive
+  // against FP edge rounding) then narrow fp→i8 via the i32 saturating
+  // pack chain — one 16-byte vector store per iter, no scalar tail.
   const float scale = (float)out_scale_int * aie::inv(sum);
 
   constexpr int kFVec = 16;
   aie::vector<float, kFVec> scale_v = aie::broadcast<float, kFVec>(scale);
-  aie::vector<int32, kFVec> smax_v = aie::broadcast<int32, kFVec>(I8_SMAX);
-  aie::vector<int32, kFVec> smin_v = aie::broadcast<int32, kFVec>(I8_UMIN);
+  aie::vector<float, kFVec> zero_f = aie::zeros<float, kFVec>();
+  aie::vector<float, kFVec> max_f = aie::broadcast<float, kFVec>((float)I8_SMAX);
 
   AIE_LOOP_RANGE(kN / kFVec, kN / kFVec)
   for (int j = 0; j < kN; j += kFVec) {
     aie::vector<float, kFVec> e_v = aie::load_v<kFVec>(exp_cache + j);
-    aie::accum<accfloat, kFVec> p_acc = aie::mul(e_v, scale_v);
-    aie::vector<int32, kFVec> q_v =
-        aie::to_fixed<int32>(p_acc.template to_vector<float>(), 0);
-    q_v = aie::min(q_v, smax_v);
-    q_v = aie::max(q_v, smin_v);
-    // Narrow i32 → i8. UNROLL_FULL lets peano pipeline 16 stores (and the
-    // scalar-extracts) instead of running them as a serial loop.
-    AIE_LOOP_UNROLL_FULL
-    for (int i = 0; i < kFVec; ++i)
-      scores_row[j + i] = (int8_t)q_v[i];
+    aie::vector<float, kFVec> p_v =
+        aie::mul(e_v, scale_v).template to_vector<float>();
+    // Pre-clamp at fp so the truncating pack chain is safe; aie::pack
+    // narrows by taking low bits, not saturating, so values outside
+    // [0, 127] would alias on the int8 wrap.
+    p_v = aie::max(p_v, zero_f);
+    p_v = aie::min(p_v, max_f);
+    aie::vector<int32, kFVec> q32 = aie::to_fixed<int32>(p_v, 0);
+    aie::vector<int16, kFVec> q16 = q32.template pack<int16>();
+    aie::vector<int8, kFVec> q8 = q16.template pack<int8>();
+    aie::store_v(scores_row + j, q8);
   }
 
   event1();

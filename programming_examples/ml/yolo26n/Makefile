@@ -331,11 +331,27 @@ $(BUILD)/yolo_m9_v_pack.o: $(SRCDIR)/kernels/yolo_m9_pack.cc
 	mkdir -p $(BUILD)
 	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_PACK_V) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_v_pack,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
+# M9_ATTN_PHASE: investigation toggle for the fused kernel. full = default
+# (no phase guard), phase1 = early-return after qk+scale, phase12 = early-
+# return after softmax pass-2 sum (no normalize/store). Pairwise subtraction
+# of the three timings attributes ms to each phase.
+M9_ATTN_PHASE ?= full
+M9_ATTN_PHASE_FLAG := $(if $(filter phase1,$(M9_ATTN_PHASE)),-DPHASE1_ONLY,)$(if $(filter phase12,$(M9_ATTN_PHASE)),-DPHASE12_ONLY,)
+
+$(BUILD)/.m9_attn_phase: FORCE
+	@mkdir -p $(BUILD)
+	@new="$(M9_ATTN_PHASE)"; old=$$(cat $@ 2>/dev/null || echo ""); \
+	  if [ "$$old" != "$$new" ]; then \
+	    echo "[m9] M9_ATTN_PHASE = $$new (was $${old:-unset}); attn_score .o will rebuild"; \
+	    echo "$$new" > $@; \
+	  fi
+
 M9_ATTN_SCORE_SHAPE := -DYOLO_M9_QK_KD=32 -DYOLO_M9_QK_N=256
 $(BUILD)/yolo_m9_attn_score_fused.o: \
-    $(SRCDIR)/kernels/yolo_m9_attn_score_fused_vec.cc
+    $(SRCDIR)/kernels/yolo_m9_attn_score_fused_vec.cc \
+    $(BUILD)/.m9_attn_phase
 	mkdir -p $(BUILD)
-	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_ATTN_SCORE_SHAPE) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_attn_score_fused,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
+	$(PEANO_INSTALL_DIR)/bin/clang++ $(PEANOWRAP2P_FLAGS) $(M9_ATTN_SCORE_SHAPE) $(M9_ATTN_PHASE_FLAG) $(NOOP_FLAGS_m9) $(if $(filter yolo_m9_attn_score_fused,$(NOOP_KERNEL_FILES)),-DNOOP_KERNEL,) -c $< -o $@
 
 M9_SV_SHAPE := -DYOLO_M9_SV_HEAD_DIM=64 -DYOLO_M9_SV_N=256
 $(BUILD)/yolo_m9_sv_row.o: \
