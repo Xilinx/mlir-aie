@@ -21,7 +21,7 @@
 
 -----
 
-This section will focus on the process of taking code written for a single core and transforming it into a design with multiple cores relatively quickly. We will go over this process both for the highest level of IRON API as well as for the explicitly placed level.
+This section will focus on the process of taking code written for a single core and transforming it into a design with multiple cores relatively quickly. We will go over this process both for the highest level of IRON API as well as for the lower-level IRON API.
 
 ### High-Level IRON
 

@@ -58,7 +58,7 @@ Here, we add `trace=1` to indicate that worker should be traced. And we can omit
 
 Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically.
 
->**NOTE**: The unplaced `enable_trace` API can only trace workers (core tiles). To trace mem tiles, shim tiles, or use the full `PortEvent` API, use the placed design API described in [README-placed](./README-placed.md).
+>**NOTE**: The higher-level `enable_trace` API can only trace workers (core tiles). To trace mem tiles, shim tiles, or use the full `PortEvent` API, use the lower-level IRON tracing API described in [README-placed](./README-placed.md).
 
 ### <u>Customizing Trace Behavior</u>
 
@@ -221,7 +221,7 @@ make trace
 ```
 
 
-### <u>(2b) Python Host code ([test.py](./test.py), [../../../python/utils/xrt.py](../../../python/utils/xrt.py))</u>
+### <u>(2b) Python Host code ([test.py](./test.py), [../../../python/xrt.py](../../../python/xrt.py))</u>
 In the [Makefile](./Makefile), we also have a `trace_py` target which calls the python host code `test.py` instead of the C/C++ host code `test.cpp`.
 
 #### test_utils (recommended)
@@ -235,12 +235,12 @@ npu_opts = test_utils.create_npu_kernel(opts)
 res = DefaultNPURuntime.run_test(npu_opts.npu_kernel, ...)
 ```
 
-The relevant CLI arguments (from `test_utils.create_default_args()`) are:
+The relevant CLI arguments (added by `aie.utils.hostruntime.argparse.add_runtime_args`) are:
 - `--trace-sz` (`-t`): Trace buffer size in bytes. Tracing is enabled when this is > 0.
 - `--trace-file`: Path to write raw trace data (default: `trace.txt`).
 - `--ddr-id`: DDR buffer index for trace (0-4, or -1 to append after last tensor). Default is 4.
 
-> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` (unplaced) / `start_trace()` (placed) call, or buffer allocation will be incorrect.
+> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` (higher-level) / `start_trace()` (lower-level) call, or buffer allocation will be incorrect.
 
 #### TraceConfig (manual setup)
 
@@ -286,7 +286,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * Did you write to the correct XRT buffer object that your host code is reading from? The default is `ddr_id=4` (`group_id=7`), which means trace data is written to a dedicated XRT buffer. If using `ddr_id=-1`, trace data is appended after the last tensor argument.
         * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically. However, `ddr_id` in `TraceConfig` must match the corresponding parameter in your IRON `enable_trace()` / `start_trace()` call.
         * If using a **C/C++ host** with `ddr_id=-1`, trace data is appended to the last `runtime_sequence` argument's buffer at an offset equal to the output size. Allocate that buffer large enough for both output and trace data, and do **not** create a separate `bo_trace` at `group_id(7)`.
-    * It's possible that a simple core may have too few events to create a valid trace packet. For placed designs, you can work around this by adding a ShimTile to the `tiles_to_trace` array in `configure_trace()` to generate additional trace data.
+    * It's possible that a simple core may have too few events to create a valid trace packet. For lower-level IRON designs, you can work around this by adding a ShimTile to the `tiles_to_trace` array in `configure_trace()` to generate additional trace data.
     * Check that the correct tile is being routed to the correct shim DMA. Using the declarative trace API handles this automatically.
     * You may get an invalid tile error if the `colshift` doesn't match the actually starting column of the design. This should automatically be set by the `parse.py` script but can also be specified manually. Phoenix (npu) devices should have `colshift=1` while Strix (npu2) should have `colshift=0` when allocated to an unused NPU.
     * For designs with packet-routing flows, check for correctly matching packet flow IDs. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed. Using the declarative trace API handles this automatically.

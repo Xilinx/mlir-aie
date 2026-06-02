@@ -80,7 +80,7 @@ print(module)
 
 ## <ins>Walkthrough of Python source file (aie2_placed.py)</ins>
 
-IRON also enables users to describe their design at the tile level of granularity where components are explicitly placed on AIE tiles using coordinates. Let's again look through a basic Python source file (named [aie2_placed.py](./aie2_placed.py)) for an IRON design at this level.
+IRON also enables users to describe their design at the tile level of granularity where components are explicitly assigned to AIE tiles using coordinates. Let's again look through a basic Python source file (named [aie2_placed.py](./aie2_placed.py)) for an IRON design at this lower level.
 
 At the top of this Python source, we include modules that define the IRON AIE libraries `aie.dialects.aie` and the mlir-aie context `aie.extras.context`, which binds to MLIR definitions for AI Engines.
 ```python
@@ -157,7 +157,7 @@ Next to the compute tiles, an AIE-array also contains data movers for accessing 
 
 5. Run `make clean` again. Restore the Worker tile to its original coordinates. Remove the `while_true=False` attribute from the Worker and run `make` again. What do you observe? <img src="../../mlir_exercises/images/answer1.jpg" title="The Worker task code is nested within a for loop." height=25>
 
-6. Now let's take a look at the placed version of the code. Run `make placed` and look at the generated MLIR source under `build/aie_placed.mlir`.
+6. Now let's take a look at the lower-level IRON version of the code. Run `make placed` and look at the generated MLIR source under `build/aie_placed.mlir`.
 
 7. Run `make clean` to remove the generated files. Introduce the same error as above by changing the coordinates of `ComputeTile1` to (-1,3). Run `make placed` again. What message do you see now? <img src="../../mlir_exercises/images/answer1.jpg" title="There is no error." height=25>
 

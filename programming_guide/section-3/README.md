@@ -249,10 +249,11 @@ The host code contains the following sections (with C/C++ code examples):
 
 The same configuration steps in the C++ host code is also required for the python version. However, the python version is able to leverage python classes built into IRON which simplifies the is designed to abstract away the lower level parameters.
 
-1. *Parse program arguments*: Functions the same way as the C++ via the python argument parser. The parser functions under `test_utils` are defined under [aie.utils.test](../../python/utils/test.py).
+1. *Parse program arguments*: Functions the same way as the C++ via the python argument parser. The shared `add_runtime_args` helper lives in [aie.utils.hostruntime.argparse](../../python/utils/hostruntime/argparse.py) and adds the standard `--xclbin` / `--instr` / `--kernel` options.
 
     ```python
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     opts = p.parse_args(sys.argv[1:])
     main(opts)
     ```

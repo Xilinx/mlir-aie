@@ -14,7 +14,7 @@ There are several options that exist to configure the IRON Python programming en
 
 ## Default IRON Tensor Class
 
-This is a variable that controls the types of [```aie.utils.Tensor```](../python/utils/tensor.py)s that are produced by the utility functions ```tensor```, ```ones```, etc. Right now there are two tensor implementations: [```CPUOnlyTensor```](../python/utils/tensor.py) and [```XRTTensor```](../python/utils/xrtruntime/tensor.py).
+This is a variable that controls the types of [```aie.utils.Tensor```](../python/utils/hostruntime/tensor_class.py)s that are produced by the utility functions ```tensor```, ```ones```, etc. Right now there are two tensor implementations: [```CPUOnlyTensor```](../python/utils/hostruntime/tensor_class.py) and [```XRTTensor```](../python/utils/hostruntime/xrtruntime/tensor.py).
 
 By default, if ```pyxrt``` is available, the ```DEFAULT_TENSOR_CLASS``` is set to ```XRTTensor```. However, you can also manually set this value through the ```set_tensor_class()```, e.g.:
 ```python
@@ -32,7 +32,7 @@ CPUOnlyTensor
 
 ## Default IRON Device
 
-If the IRON device is not set, many designs will try it fetch it on demand using the utility function [```detect_npu_device()```](../python/iron/hostruntime/config.py). However, this can be overriden by calling the [```set_current_device()```](../python/iron/hostruntime/config.py) function, which takes as an argument the new device and returns the previous device:
+If the IRON device is not set, many designs will fetch it on demand from the [`DefaultNPURuntime`](../python/utils/__init__.py) (a `CachedXRTRuntime` instance), which queries XRT for the attached NPU. You can override this by calling [`iron.set_current_device()`](../python/utils/hostruntime/__init__.py), which takes the new device and returns the previous one:
 ```python
 >>> import aie.iron as iron
 >>> iron.set_current_device(iron.device.NPU1())

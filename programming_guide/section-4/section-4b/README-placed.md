@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Trace Details (Unplaced and Placed designs)</ins>
+# <ins>Trace Details (higher- and lower-level IRON)</ins>
 
 * [Section 4 - Performance Measurement & Vector Programming](../../section-4)
     * [Section 4a - Timers](../section-4a)
@@ -17,14 +17,14 @@
 
 -----
 
-In [section-4b](../section-4b), we introduced how trace is enabled in our high-level IRON python designs. These designs are unplaced and relies on the tools to decide on a placement for the tiles. Because of this, certain assumptions and limitations are introduced to help simplify the trace configuration:
+In [section-4b](../section-4b), we introduced how trace is enabled in our high-level IRON python designs. These designs do not declare explicit tile coordinates and rely on the tools to pick a placement. Because of this, certain assumptions and limitations are introduced to help simplify the trace configuration:
 
 ## Trace Considerations for High-level IRON Python
 * Only core tiles are currently able to be traced in high-level IRON python since we trace workers and workers are attached to core tiles. If you want to trace mem tiles and shim tiles, see the next section on how to do that in close-to-metal IRON python (adding this to high level IRON python TBD).
 
 ## <u>1. Enable and configure AIE trace units for close-to-metal IRON Python ([aie2_placed.py](./aie2_placed.py))</u>
 
-For placed designs using explicit tile declarations, we have more direct control over trace configuration, including tracing mem tiles, shim tiles, and customizing port events. Tracing uses a two-phase declarative API where:
+For lower-level IRON designs using explicit tile declarations, we have more direct control over trace configuration, including tracing mem tiles, shim tiles, and customizing port events. Tracing uses a two-phase declarative API where:
 1. **`configure_trace()`** - called outside `runtime_sequence` to declare which tiles and events to trace. This emits `aie.trace` ops into the MLIR.
 2. **`start_trace()`** - called inside `runtime_sequence` to configure the trace buffer and activate tracing. This emits `aie.trace.host_config` and `aie.trace.start_config` ops.
 
@@ -205,7 +205,7 @@ For additional examples with both Python and MLIR syntax, see:
 - [Event Trace Example](../../../programming_examples/basic/event_trace/)
 
 ### <u>Exercises</u>
-1. Build the placed design with trace: `make clean; make trace`. This compiles the placed design, generates a trace data file, and runs `parse.py` to generate the `trace_4b.json` waveform file.
+1. Build the lower-level IRON design with trace: `make clean; make trace`. This compiles the lower-level IRON design, generates a trace data file, and runs `parse.py` to generate the `trace_4b.json` waveform file.
 
 ## <u>5. How Trace Lowering Works</u>
 

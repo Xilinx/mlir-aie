@@ -4,7 +4,7 @@
 
 ## <ins>Key Components: Workers, ObjectFifos, Runtime</ins>
 
-IRON provides an unplaced (deferred placement) [API](../../python/iron/) for NPU programming. Below are examples describing AIE compute code and the Object FIFO data movement primitive:
+IRON provides a higher-level (deferred-placement) [API](../../python/iron/) for NPU programming. Below are examples describing AIE compute code and the Object FIFO data movement primitive:
 
 Compute code using workers:
 ```python

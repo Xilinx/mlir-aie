@@ -28,7 +28,7 @@ make
 make run
 ```
 
-The explicitly placed level of IRON programming for this design is available in [ext_to_core_placed.py](./ext_to_core_placed.py). It can be compiled, run and tested with the following commands:
+The lower-level IRON variant of this design is available in [ext_to_core_placed.py](./ext_to_core_placed.py). It can be compiled, run and tested with the following commands:
 ```bash
 env use_placed=1 make
 make run

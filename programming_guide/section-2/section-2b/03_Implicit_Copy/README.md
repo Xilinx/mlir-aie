@@ -51,7 +51,7 @@ of_out = of_in.cons().forward(obj_type=line_type, name="out")
 ```
 Where a consumer `ObjectFifoHandle` to `of_in` is forwarded to `of_out` as its producer.
 
-This functionality is also available at the explicitly placed level of abstraction. The Object FIFO API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../../python/dialects/aie.py)):
+This functionality is also available at the lower-level IRON abstraction. The Object FIFO API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../../python/dialects/aie.py)):
 ```python
 class object_fifo_link(ObjectFifoLinkOp):
     def __init__(
