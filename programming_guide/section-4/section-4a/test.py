@@ -13,7 +13,6 @@ from pathlib import Path
 
 import aie.iron as iron
 import aie.utils
-import aie.utils.test as test_utils
 from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.npukernel import NPUKernel
 

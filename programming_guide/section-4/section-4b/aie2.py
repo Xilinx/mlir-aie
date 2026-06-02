@@ -1,4 +1,4 @@
-# section-3/aie2.py -*- Python -*-
+# section-4/section-4b/aie2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
