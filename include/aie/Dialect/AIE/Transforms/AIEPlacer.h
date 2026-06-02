@@ -27,6 +27,15 @@ struct TileAvailability {
   std::vector<TileID> compTiles;
   std::vector<TileID> nonCompTiles; // Memory and shim tiles
 
+  // O(1) membership shadow of `compTiles` used by SequentialPlacer's
+  // satisfiesComputePeer forward-look, which checks whether each of a
+  // candidate's physical compute neighbors is still free. Without it the
+  // forward-look would do an O(|compTiles|) std::find per direction per
+  // candidate per LTO, which scales as O(N * M^2) on large arrays. Must be
+  // kept in sync with `compTiles` by any code that mutates the vector
+  // (initialize(), limitCoresPerColumn(), removeTile()).
+  llvm::DenseSet<TileID> compTilesSet;
+
   llvm::DenseMap<TileID, int> inputChannelsUsed;
   llvm::DenseMap<TileID, int> outputChannelsUsed;
 
@@ -58,19 +67,42 @@ protected:
 
 // Sequential placement algorithm
 //
-// Places logical tiles to physical tiles using a simple strategy:
-// - Compute tiles: Sequential column-major placement (fill column before next)
-// - Memory/shim tiles: DMA Channel capacity placement near common column
+// Greedy, single-pass placer that maps each `aie.logical_tile` (LTO) to a
+// physical (col, row). Four phases:
 //
-// Core-to-core connections are NOT validated because SequentialPlacer
-// doesn't account for shared memory optimization.
+//   1. Collect LogicalTileOp / ObjectFifo* / Cascade* / Flow* / PacketFlow*
+//      from the device.
+//   2. Build per-LTO constraints: buffer/cascade/compute-peer adjacencies,
+//      channel requirements, and needNeighborIn/Out (the minimum number of
+//      compute peers per LTO that MUST land on a shared-L1 neighbor to fit
+//      the per-tile DMA budget).
+//   3. Place compute tiles. Sort by constraint level (pinned -> partial ->
+//      unpinned) then by descending placementPriority. For each LTO:
+//      validate buffer/cascade/compute-peer constraints and channel budget,
+//      then claim the tile. Unpinned candidates are tried in two passes:
+//      first the slots not soft-reserved for another demand-bearing LTO's
+//      peers, then a fallback pass that accepts reserved slots. Each
+//      placement of a demand-bearing LTO soft-reserves its mem-affinity
+//      neighbor slots for that LTO's compute peers.
+//   4. Place each remaining non-core (mem/shim) LTO near the column
+//      centroid of its placed-core peers. With mergeLogicalTiles == true
+//      (default) several non-core LTOs may share one physical tile when
+//      DMA capacity allows; with mergeLogicalTiles == false each non-core
+//      LTO claims its own physical tile.
 //
-// Shim/Mem tiles with identical placement constraints and sufficient
-// DMA capacity are merged to the same physical tile.
+// Greedy: once a tile is chosen the decision is final, with no backtracking.
+// If a later LTO's constraints become unsatisfiable given prior placements,
+// the placer emits an error pointing at the LTOs the user can manually pin
+// to break the deadlock.
+//
+// Compute-to-compute ObjectFifos consume no DMA channel when their endpoints
+// land on shared-L1 neighbor tiles, so they enter the placer as a separate
+// compute-peer adjacency rather than as channel demand.
 class SequentialPlacer : public Placer {
 public:
-  SequentialPlacer(std::optional<int> coresPerCol = std::nullopt)
-      : coresPerCol(coresPerCol) {}
+  SequentialPlacer(std::optional<int> coresPerCol = std::nullopt,
+                   bool mergeLogicalTiles = true)
+      : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles) {}
 
   void initialize(const AIETargetModel &targetModel) override;
 
@@ -78,21 +110,53 @@ public:
 
   llvm::StringRef getName() const override { return "sequential_placer"; }
 
+  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
+  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own
+  // coords. Public so file-local helpers in AIEPlacer.cpp (notably the
+  // forEachPeer template) can take it by reference.
+  struct Adjacency {
+    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
+        tileToEdges;
+
+    void addEdge(TileLike first, TileLike second);
+
+    // Convenience for IR walkers: skip if either Value isn't a TileLike.
+    void addEdgeFromValues(mlir::Value a, mlir::Value b);
+
+    // True if `op` has at least one edge in this adjacency.
+    bool hasEdges(mlir::Operation *op) const {
+      return tileToEdges.count(op) != 0;
+    }
+  };
+
 private:
   std::optional<int> coresPerCol;
+  bool mergeLogicalTiles;
+  // Physical tiles already assigned to a non-core aie.logical_tile. Used
+  // only when mergeLogicalTiles == false to forbid mapping a second
+  // non-core aie.logical_tile onto a tile that already hosts one.
+  llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
   TileAvailability availability;
   const AIETargetModel *targetModel = nullptr;
 
+  // DMA channel direction selector.
+  enum class DmaDir { In, Out };
+
+  // Whether an LTO's placement was pinned by the user (via col/row
+  // attributes) or chosen by the placer.
+  enum class PlacementOrigin { Pinned, Selected };
+
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
   std::optional<TileID> findTileWithCapacity(int targetCol,
-                                             std::vector<TileID> &tiles,
+                                             llvm::ArrayRef<TileID> tiles,
                                              int requiredInputChannels,
                                              int requiredOutputChannels,
                                              AIETileType requestedType);
 
-  void updateChannelUsage(TileID tile, bool isOutput, int numChannels);
+  void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
   bool hasAvailableChannels(TileID tile, int inputChannels, int outputChannels);
 
@@ -100,43 +164,116 @@ private:
       LogicalTileOp logicalTile, TileID tile,
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements,
-      bool isConstrained);
+      PlacementOrigin origin);
 
   llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
   buildChannelRequirements(
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
 
-  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
-  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own coords.
-  struct Adjacency {
-    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
-    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
-        tileToEdges;
+  // Per-place() neighbor-demand maps and soft-reservation table.
+  struct PlacementContext {
+    const AIETargetModel &targetModel;
+    const Adjacency &computePeerAdjacency;
+    const llvm::DenseMap<mlir::Operation *, int> &needNeighborIn;
+    const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut;
+    // Mutable: each placement of an LTO with neighbor demand reserves
+    // its mem-affinity neighbor slots for that LTO's compute peers.
+    llvm::DenseMap<TileID, llvm::SmallVector<mlir::Operation *, 2>>
+        reservedFor{};
 
-    void addEdge(TileLike first, TileLike second) {
-      unsigned idx = edges.size();
-      edges.push_back({first, second});
-      if (mlir::isa<LogicalTileOp>(first.getOperation()))
-        tileToEdges[first.getOperation()].push_back(idx);
-      if (mlir::isa<LogicalTileOp>(second.getOperation()))
-        tileToEdges[second.getOperation()].push_back(idx);
+    int neighborDemand(mlir::Operation *op) const {
+      return needNeighborIn.lookup(op) + needNeighborOut.lookup(op);
     }
-
-    // Convenience for IR walkers: skip if either Value isn't a TileLike.
-    void addEdgeFromValues(mlir::Value a, mlir::Value b) {
-      auto aT = mlir::dyn_cast_or_null<TileLike>(a.getDefiningOp());
-      auto bT = mlir::dyn_cast_or_null<TileLike>(b.getDefiningOp());
-      if (aT && bT)
-        addEdge(aT, bT);
-    }
+    // Priority = max(self demand, highest peer demand). A peer of a
+    // high-fanin Worker rises to the front of the sort so its neighbor
+    // slots aren't consumed by unrelated LTOs.
+    int placementPriority(mlir::Operation *op) const;
+    // Soft-reserve `at`'s mem-affinity compute-tile neighbors for
+    // `placedOp`'s peers, if `placedOp` has non-zero neighbor demand.
+    void reserveNeighborSlots(mlir::Operation *placedOp, TileID at);
+    // True if `candidate` is reserved by any LTO that is NOT a compute
+    // peer of `lto` (i.e. would compete for the slot).
+    bool isReservedForOther(mlir::Operation *lto, TileID candidate) const;
   };
+
+  // A pairwise-legality adjacency constraint (buffer, cascade, ...)
+  // bundled with everything the placer needs to check it and report a
+  // useful diagnostic when it fails: the edge set, the predicate, the
+  // peer-role label for notes, the short name for the error message,
+  // and the educational hint text appended after the peer notes.
+  struct AdjacencyKind {
+    const Adjacency &adjacency;
+    llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred;
+    llvm::function_ref<llvm::StringRef(bool thisIsFirst)> peerLabel;
+    llvm::StringRef name;           // e.g. "shared-L1 buffer", "cascade"
+    llvm::StringRef constraintHint; // appended as a final attachNote
+  };
+
+  // Check `logicalTile` at `tile` against `kind`'s adjacency. On
+  // failure, emit a fully-formed diagnostic (error + peer notes +
+  // constraint hint) and return failure.
+  mlir::LogicalResult enforceAdjacency(LogicalTileOp logicalTile, TileID tile,
+                                       const AdjacencyKind &kind);
+
+  // Record that `logicalTile` is placed at `tile`. For CoreTile LTOs
+  // this also removes the tile from availability and asks `ctx` to
+  // soft-reserve the tile's mem-affinity neighbor slots for the LTO's
+  // compute peers. `debugLabel` ("pinned" / "unconstrained") names the
+  // placement path in the LLVM_DEBUG trace.
+  void recordPlacement(LogicalTileOp logicalTile, TileID tile,
+                       PlacementContext &ctx, llvm::StringRef debugLabel);
+
+  // Per-call inputs for `findUnconstrainedCoreCandidate`. Bundles the
+  // adjacency + demand state that Phase 3 builds for each candidate
+  // filter.
+  struct UnpinnedPlacementInputs {
+    const Adjacency &bufferAdjacency;
+    llvm::function_ref<bool(TileID, TileID)> bufferPred;
+    const Adjacency &cascadeAdjacency;
+    llvm::function_ref<bool(TileID, TileID)> cascadePred;
+    const Adjacency &computePeerAdjacency;
+    const llvm::DenseMap<mlir::Operation *, int> &needNeighborIn;
+    const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut;
+    llvm::function_ref<bool(mlir::Operation *, TileID)> isReservedForOther;
+  };
+
+  // Outputs of `findUnconstrainedCoreCandidate`. `placement` is set on
+  // success; on failure the three boolean flags describe which filter
+  // rejected the most candidates so place() can construct an actionable
+  // diagnostic.
+  struct UnpinnedSearchResult {
+    std::optional<TileID> placement;
+    bool sawConstraintMatch = false;
+    bool allConstraintMatchesFailedAdjacency = true;
+    bool computePeerWasCause = false;
+  };
+
+  // Two-pass candidate search for an unpinned (or partially-pinned)
+  // CoreTile LTO. First pass prefers candidates that aren't
+  // soft-reserved by an unrelated demand-bearing LTO's peers; second
+  // pass falls back to reserved candidates. Each candidate is filtered
+  // by buffer adjacency, cascade adjacency, and the compute-peer DMA
+  // budget. Does not mutate placer state.
+  UnpinnedSearchResult
+  findUnconstrainedCoreCandidate(LogicalTileOp logicalTile,
+                                 std::optional<int> col, std::optional<int> row,
+                                 const UnpinnedPlacementInputs &inputs);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
   Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
 
   // Edge: (cascade source, dest).
   Adjacency buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
+
+  // Edge: (producer LTO, consumer LTO) for every ObjectFifo whose producer
+  // AND consumer are CoreTile LTOs. Used to constrain placement so that
+  // high-fanin compute Workers (those whose total fifo count exceeds the
+  // compute-tile DMA budget) land on tiles with their peer producers as
+  // physical neighbors — the peer fifo then uses shared neighbor memory
+  // instead of a DMA channel.
+  Adjacency
+  buildComputePeerAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
 
   // Edge: (producer, consumer_i) per fifo. Linked fifos connect transitively
   // through the link tile (it's the consumer of every source fifo and the
@@ -147,6 +284,27 @@ private:
   // Edge: (src, dst) per `aie.flow`; cross-product per `aie.packet_flow`.
   Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
                                llvm::ArrayRef<PacketFlowOp> pktFlows);
+
+  // Phase 4 driver: for every still-unplaced non-core LTO, place it near
+  // the centroid column of its core peers. Internally builds the per-fifo
+  // and per-flow connectivity adjacencies needed to find the centroid,
+  // then iterates non-core LTOs in descending channel-demand order so the
+  // heaviest consumers get first pick of physical tiles.
+  mlir::LogicalResult placeNonCoreLogicalTiles(
+      llvm::ArrayRef<LogicalTileOp> logicalTiles,
+      llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+      llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
+      const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
+          &channelRequirements);
+
+  // BFS the connectivity component of `logicalTile` through the given
+  // adjacencies and return the column-average of every placed CoreTile
+  // peer reached transitively. Returns 0 if no placed cores are
+  // reachable (the caller then falls back to a user-supplied column
+  // constraint or column 0).
+  int computeCentroidColumn(
+      LogicalTileOp logicalTile,
+      llvm::ArrayRef<const Adjacency *> connectivityAdjacencies);
 
   // Place a non-core (mem/shim) LTO near the centroid column of its placed
   // core peers, reached transitively through `connectivityAdjacencies`.
@@ -161,6 +319,26 @@ private:
   bool satisfiesAdjacency(
       LogicalTileOp logicalTile, TileID candidate, const Adjacency &adjacency,
       llvm::function_ref<bool(TileID firstPos, TileID secondPos)> pred) const;
+
+  // Compute-peer DMA budget check. Returns true if placing `logicalTile` at
+  // `candidate` keeps the compute-peer neighbor demand satisfiable for BOTH
+  // the LTO being placed AND every already-placed compute peer of the LTO.
+  // A compute LTO with peer demand N (N compute-peer fifos must use shared
+  // neighbor memory to fit DMA budget) has slack (totalComputePeers − N): it
+  // can afford at most that many non-neighbor compute peers. The check also
+  // forward-looks: unplaced peers still need a free physical compute-tile
+  // neighbor of `candidate` to land on.
+  bool satisfiesComputePeer(
+      LogicalTileOp logicalTile, TileID candidate,
+      const Adjacency &computePeerAdjacency,
+      const llvm::DenseMap<mlir::Operation *, int> &needNeighborIn,
+      const llvm::DenseMap<mlir::Operation *, int> &needNeighborOut) const;
+
+  // Compute-peer in/out edge counts for `op`, looked up from a prebuilt
+  // `computePeerAdjacency`. Returns {0, 0} if `op` has no entry. Producer
+  // is edges[idx].first, consumer is .second (per buildComputePeerAdjacency).
+  static std::pair<int, int> totalComputePeers(mlir::Operation *op,
+                                               const Adjacency &adjacency);
 
   // Diagnostic peer notes. `labelPeer(thisIsFirst)` names the peer endpoint
   // role; the attached note reads "<label> peer placed at (col, row)".

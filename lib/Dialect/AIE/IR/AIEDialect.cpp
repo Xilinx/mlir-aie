@@ -536,6 +536,30 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
+  if (getConsumerElemType().has_value()) {
+    auto consType =
+        llvm::dyn_cast<AIEObjectFifoType>(getConsumerElemType().value());
+    if (!consType)
+      return emitError("consumer element type must be an "
+                       "!aie.objectfifo<memref<...>> type");
+    auto prodType = llvm::cast<AIEObjectFifoType>(getElemType());
+    auto prodMemref = prodType.getElementType();
+    auto consMemref = consType.getElementType();
+    if (prodMemref.getElementType() != consMemref.getElementType())
+      return emitError("producer and consumer must have the same scalar "
+                       "element type, but got ")
+             << prodMemref.getElementType() << " vs "
+             << consMemref.getElementType();
+    int64_t prodSize = prodMemref.getNumElements();
+    int64_t consSize = consMemref.getNumElements();
+    if (consSize <= 0)
+      return emitError("consumer element count must be positive");
+    if (prodSize % consSize != 0)
+      return emitError("producer element size (")
+             << prodSize << ") must be an integer multiple of consumer "
+             << "element size (" << consSize << ")";
+  }
+
   return success();
 }
 
@@ -637,12 +661,40 @@ void xilinx::AIE::printObjectFifoConsumerTiles(
   }
 }
 
+static void printObjectFifoConsumerElemType(OpAsmPrinter &p,
+                                            ObjectFifoCreateOp op,
+                                            TypeAttr consumerElemType) {
+  if (consumerElemType)
+    p << " -> " << consumerElemType;
+}
+
+static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
+                                                   TypeAttr &consumerElemType) {
+  if (failed(parser.parseOptionalArrow()))
+    return success(); // no consumer type
+  Type type;
+  if (parser.parseType(type))
+    return failure();
+  consumerElemType = TypeAttr::get(type);
+  return success();
+}
+
 static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
                                       Attribute numElem, TypeAttr type,
                                       Attribute initValues) {
   if (op.getInitValues()) {
     p << "= [";
-    int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    // `numElem` may be an IntegerAttr (scalar depth) or an ArrayAttr of
+    // per-endpoint depths; initValues populates the producer side, which
+    // is the first entry of the ArrayAttr.
+    int depth;
+    if (isa<ArrayAttr>(numElem)) {
+      depth = llvm::dyn_cast<mlir::IntegerAttr>(
+                  llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0])
+                  .getInt();
+    } else {
+      depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    }
     for (int i = 0; i < depth; i++) {
       p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
       if (i < depth - 1) {
@@ -989,7 +1041,15 @@ LogicalResult ObjectFifoAcquireOp::verify() {
   auto objFifoSubviewElem =
       llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
           .getElementType();
-  if (objFifoElem != objFifoSubviewElem)
+  // Also accept the consumer element type for asymmetric ObjectFifos
+  auto objFifoConsType = llvm::dyn_cast<AIEObjectFifoType>(
+      getObjectFifo().getConsumerElemTypeOrDefault());
+  if (!objFifoConsType)
+    return emitOpError("ObjectFifo consumer element type must be an "
+                       "!aie.objectfifo<memref<...>> type");
+  auto objFifoConsElem = objFifoConsType.getElementType();
+  if (objFifoElem != objFifoSubviewElem &&
+      objFifoConsElem != objFifoSubviewElem)
     return emitOpError(
         "ObjectFifo element and ObjectFifoSubview element must match.\n");
 
@@ -1715,9 +1775,8 @@ LogicalResult PacketFlowOp::verify() {
       ++numDests;
   }
 
-  if (numSources != 1)
-    return emitOpError("must have exactly one aie.packet_source (got ")
-           << numSources << ")";
+  if (numSources < 1)
+    return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
 
