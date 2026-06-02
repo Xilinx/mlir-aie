@@ -35,7 +35,7 @@ from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 
 import yolo_spec
 import placement
-from lowlevel_dma import StaticWeightStream
+from lowlevel_dma import StaticWeightStream, PairedStaticWeightStream
 
 # ---------------------------------------------------------------------------
 # Trace gating. When env var TRACE_SIZE_PER_WORKER > 0 at MLIR-generation
@@ -1064,54 +1064,104 @@ def _build_head(block_name, act_in, manifest):
     meta_softmax = _op_meta(manifest, L_softmax.manifest_name)
     rs_conv = meta_conv["right_shift"]  # 8
     rs_lin = meta_lin["right_shift"]  # 10
-    # softmax has no right_shift (LUT-driven); uses in_log2_scale to size the
-    # exp table. Output scale is our choice (2^-7 for [0,1) → [0,127] INT8).
     softmax_in_log2 = meta_softmax["in_log2_scale"]  # = -3 per extractor
 
-    # ----- conv_pool: weight staging via memtile -----
-    # Mobilenet's StaticWeightStream lives in `lowlevel_dma.py` from their
-    # mobilenet folder — when we stage on Linux, we'll either import that
-    # module or fold it into our package. Import path noted but unused at
-    # sketch time (this file already won't import on Mac).
-    n_splits = 16
+    # ----- 2-tile output-channel split -----
+    # Per-block ablation (2026-06-01) showed m10 = 1.66 ms / 19% of chain;
+    # nooping conv_pool alone saves 2.1 ms, so conv compute (not memtile DMA)
+    # is the bottleneck. Split output channels across two tiles:
+    #   tile_x = (2,2): handles channels 0..639 (8 of 16 chunks)
+    #   tile_y = (6,3): handles channels 640..1279 + Gemm + softmax + drain
+    # Each tile sees a "local" 640-channel view (own bias slice + own accum
+    # half), runs the existing kernel with expand_c=640 (now used by the
+    # init loop after a one-line change), n_splits=8 so the per-tile last
+    # call (yi=15, wi=7) triggers in-kernel finalize over the 640-element
+    # slice. tile_x ships its 640-byte pool half via DMA to tile_y; tile_y
+    # concats into pool_full[1280] then runs Gemm 1280→2 + softmax.
+    n_splits_total = 16
+    n_splits_local = n_splits_total // 2  # 8 chunks/tile
+    expand_c_local = expand_c // 2  # 640 channels/tile
     conv_wts_total = expand_c * in_c  # 327,680
-    conv_wts_chunk = conv_wts_total // n_splits  # 20,480
-    assert conv_wts_total % n_splits == 0
+    conv_wts_chunk = conv_wts_total // n_splits_total  # 20,480
+    conv_wts_per_tile = conv_wts_total // 2  # 163,840
+    assert conv_wts_total % n_splits_total == 0
+    assert expand_c % 2 == 0
 
     conv_wts_data = _load_bin(meta_conv["weights_file"], np.int8, conv_wts_total)
     conv_bias_data = _load_bin(meta_conv["bias_file"], np.int32, expand_c)
-    conv_bias_buf = Buffer(_i32((expand_c,)), initial_value=conv_bias_data)
+    # Split weights + bias at the channel-half boundary (chunk 8). The
+    # weight layout is contiguous per-chunk (8 chunks × 20480 B each = 160 KB
+    # per half), so a flat numpy slice is sufficient.
+    # Natural slice: tile_x gets channels 0..639 (lo), tile_y gets 640..1279.
+    # (Earlier debug variant: swap both pairs to triangulate which side fails.)
+    wts_lo_data = conv_wts_data[:conv_wts_per_tile]
+    wts_hi_data = conv_wts_data[conv_wts_per_tile:]
+    bias_lo_data = conv_bias_data[:expand_c_local]
+    bias_hi_data = conv_bias_data[expand_c_local:]
 
-    # Memtile placement: in chain context cols 2-6 are all claimed by m8
-    # streams ((3,1)–(6,1)) or m9 streams ((1,1) cv2, (2,1) ffn.0, (7,1)
-    # cv1). Use (0,1) for m10's conv wts — fully free, just costs a
-    # stream-switch hop to the fused_tile at (2,2).
-    fused_tile = placement.PLACEMENT["m10"]["fused"]
-    conv_wts_pb = StaticWeightStream(
-        obj_type=_i8((conv_wts_total,)),
-        initial_value=conv_wts_data,
-        name="m10_conv_wts",
+    tile_x = placement.PLACEMENT["m10"]["conv_lo"]
+    tile_y = placement.PLACEMENT["m10"]["conv_hi_gemm"]
+
+    # Both halves share memtile (0,1) — chain layout has no other free
+    # memtile (cols 1..7 are owned by m8/m9). Two plain StaticWeightStream
+    # on one tile silently collapse at lowering (only one source buffer
+    # routes), so use the paired helper that emits ONE memtile_dma region
+    # with two MM2S channels feeding distinct compute tiles.
+    conv_wts_pair = PairedStaticWeightStream(
+        obj_type=_i8((conv_wts_per_tile,)),
+        initial_value_lo=wts_lo_data,
+        initial_value_hi=wts_hi_data,
+        name_lo="m10_conv_wts_lo",
+        name_hi="m10_conv_wts_hi",
         recv_type=_i8((conv_wts_chunk,)),
-        repeat_count=in_h,  # n_splits chunks per row × in_h rows
         memtile_placement=Tile(0, 1),
-        compute_placement=fused_tile,
-        mem_lock_id=0,
-        comp_lock_id=0,
+        compute_placement_lo=tile_x,
+        compute_placement_hi=tile_y,
+        mm2s_channel_lo=0,
+        mm2s_channel_hi=1,
+        s2mm_channel_lo=0,
+        s2mm_channel_hi=0,
+        comp_lock_id_lo=0,
+        comp_lock_id_hi=0,
     )
+    conv_wts_lo_pb = conv_wts_pair.lo
+    conv_wts_hi_pb = conv_wts_pair.hi
 
-    # ----- ObjectFifos -----
-    # m10 fused onto one tile per placement — no inter-tile pool_out fifo;
-    # pool intermediate stays in a local Buffer. Same for gemm-to-softmax.
-    # block output: 2 i8 probs per sample. Padded to 4 bytes because shim
-    # DMA requires 4-byte aligned transfer length. softmax kernel only
-    # writes the first out_c (=2) entries; the trailing 2 are unused.
-    OUT_PAD = 4
-    assert out_c <= OUT_PAD
-    out_fifo = ObjectFifo(_i8((OUT_PAD,)), depth=2)
-    pool_scratch = Buffer(
+    # Per-tile bias + SiLU LUT + accumulator + pool half (all in L1).
+    conv_bias_lo_buf = Buffer(
+        _i32((expand_c_local,)), initial_value=bias_lo_data, name="m10_bias_lo"
+    )
+    conv_bias_hi_buf = Buffer(
+        _i32((expand_c_local,)), initial_value=bias_hi_data, name="m10_bias_hi"
+    )
+    silu_lut_path = os.path.join(DATA_DIR, "model.10", "silu_lut.bin")
+    silu_lut_data = np.fromfile(silu_lut_path, dtype=np.int8)
+    assert silu_lut_data.size == 256, (silu_lut_path, silu_lut_data.size)
+    silu_lut_lo_buf = Buffer(
+        _i8((256,)), initial_value=silu_lut_data, name="m10_silu_lut_lo"
+    )
+    silu_lut_hi_buf = Buffer(
+        _i8((256,)), initial_value=silu_lut_data, name="m10_silu_lut_hi"
+    )
+    accum_lo_buf = Buffer(
+        _i32((expand_c_local,)),
+        initial_value=np.zeros(expand_c_local, dtype=np.int32),
+        name="m10_accum_lo",
+    )
+    accum_hi_buf = Buffer(
+        _i32((expand_c_local,)),
+        initial_value=np.zeros(expand_c_local, dtype=np.int32),
+        name="m10_accum_hi",
+    )
+    pool_hi_buf = Buffer(
+        _i8((expand_c_local,)),
+        initial_value=np.zeros(expand_c_local, dtype=np.int8),
+        name="m10_pool_hi",
+    )
+    pool_full_buf = Buffer(
         _i8((expand_c,)),
         initial_value=np.zeros(expand_c, dtype=np.int8),
-        name="m10_pool_scratch",
+        name="m10_pool_full",
     )
     gemm_scratch = Buffer(
         _i8((out_c,)),
@@ -1119,46 +1169,40 @@ def _build_head(block_name, act_in, manifest):
         name="m10_gemm_scratch",
     )
 
-    # ----- Kernels -----
-    # Persistent i32 accumulator on the compute tile (5KB). Holds the
-    # post-SiLU spatial sum across all (yi, wi) calls within one sample,
-    # finalized on the last call (yi=in_h-1, wi=n_splits-1) into elem_out.
-    conv_accum_buf = Buffer(
-        _i32((expand_c,)),
-        initial_value=np.zeros(expand_c, dtype=np.int32),
-        name="m10_conv_pool_accum",
-    )
-    # SiLU LUT generated by gen_yolo_silu_luts.py from model.10's
-    # HardSiLU chain (conv_out=2^-1, silu_out=2^-2).
-    silu_lut_path = os.path.join(DATA_DIR, "model.10", "silu_lut.bin")
-    silu_lut_data = np.fromfile(silu_lut_path, dtype=np.int8)
-    assert silu_lut_data.size == 256, (silu_lut_path, silu_lut_data.size)
-    conv_silu_lut_buf = Buffer(
-        _i8((256,)), initial_value=silu_lut_data, name="m10_conv_silu_lut"
+    # tile_x → tile_y pool half (640 B). tile_x at (2,2) and tile_y at
+    # (1,2) are memory-adjacent, so this fifo uses shared L1 (no DMA
+    # channel, fitting tile_y's 2-S2MM budget).
+    pool_lo_fifo = ObjectFifo(
+        _i8((expand_c_local,)),
+        depth=2,
+        name="m10_pool_lo",
     )
 
+    # Output to shim — 2 i8 probs padded to 4 bytes (shim DMA min xfer).
+    OUT_PAD = 4
+    assert out_c <= OUT_PAD
+    out_fifo = ObjectFifo(_i8((OUT_PAD,)), depth=2)
+
+    # ----- Kernels -----
+    # conv_pool with per-tile (local) view: expand_c=640 → init loop + in-
+    # kernel finalize loop both iterate the local 640-element slice.
     k_conv_pool = Kernel(
         "yolo_m10_conv2dk1_silu_xy_pool_i8_i8",
         "yolo_m10_conv2dk1_silu_xy_pool.o",
         [
-            _i8((in_w, 1, in_c)),  # one input row
-            _i8((conv_wts_chunk,)),  # one weight chunk
-            _i32((expand_c,)),  # bias
-            _i8((256,)),  # silu LUT
-            _i32((expand_c,)),  # i32 accumulator
-            _i8((expand_c,)),  # i8 final output
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,  # in_w, in_c, expand_c, in_h
+            _i8((in_w, 1, in_c)),
+            _i8((conv_wts_chunk,)),
+            _i32((expand_c_local,)),  # local bias (640)
+            _i8((256,)),
+            _i32((expand_c_local,)),  # local accum (640)
+            _i8((expand_c_local,)),  # local pool out (640)
+            np.int32, np.int32, np.int32, np.int32,  # in_w, in_c, expand_c, in_h
             np.int32,  # right_shift
-            np.int32,
-            np.int32,
-            np.int32,  # yi, n_splits, wi
+            np.int32, np.int32, np.int32,  # yi, n_splits, wi
         ],
     )
 
-    # Gemm: load full weights as a single Buffer since 2,560 B fits comfortably.
+    # Gemm 1280→2 (unchanged signature — reads full 1280-element pool).
     lin_wts_data = _load_bin(meta_lin["weights_file"], np.int8, expand_c * out_c)
     lin_bias_data = _load_bin(meta_lin["bias_file"], np.int32, out_c)
     lin_wts_buf = Buffer(_i8((expand_c * out_c,)), initial_value=lin_wts_data)
@@ -1168,21 +1212,15 @@ def _build_head(block_name, act_in, manifest):
         "yolo_m10_linear_gemm_i8_i8",
         "yolo_m10_linear_gemm.o",
         [
-            _i8((expand_c,)),  # input vector (1280)
-            _i8((expand_c * out_c,)),  # weights (2x1280 flat)
-            _i32((out_c,)),  # bias (2)
-            _i8((out_c,)),  # output (2 logits)
+            _i8((expand_c,)),
+            _i8((expand_c * out_c,)),
+            _i32((out_c,)),
+            _i8((out_c,)),
+            np.int32, np.int32,
             np.int32,
-            np.int32,  # in_dim (=1280), out_dim (=2)
-            np.int32,  # right_shift
         ],
     )
 
-    # ----- Final softmax (on the linear tile, chained after Gemm) -----
-    # 2-class softmax: subtract max, exp via fp32 LUT, normalize. INT8 in,
-    # INT8 out at scale 2^-7. LUT computed host-side from softmax_in_log2:
-    #     softmax_exp_lut[idx] = exp((idx - 128) * 2^softmax_in_log2)
-    # Same pattern as m9's softmax_row but flat (n_classes=2).
     softmax_exp_in_scale = 2.0**softmax_in_log2
     softmax_lut_data = np.array(
         [np.exp((i - 128) * softmax_exp_in_scale) for i in range(256)],
@@ -1197,87 +1235,124 @@ def _build_head(block_name, act_in, manifest):
         "yolo_m10_softmax_i8_i8",
         "yolo_m10_softmax.o",
         [
-            _i8((out_c,)),  # input logits
-            _f32((256,)),  # exp LUT
-            _i8((OUT_PAD,)),  # output probs (scale 2^-7), padded to 4 bytes for shim
-            np.int32,
-            np.int32,  # n_classes, in_log2_scale
+            _i8((out_c,)),
+            _f32((256,)),
+            _i8((OUT_PAD,)),
+            np.int32, np.int32,
         ],
     )
 
-    # ----- Single fused worker (conv+pool → gemm → softmax) on one tile -----
-    # In chain context only (2,2) is free for m10, so we collapse the
-    # original 2-tile (conv_pool + linear) design into one worker that
-    # runs the full pipeline sequentially per sample. No inter-tile
-    # fifo overhead; same total wall time since the work is serial.
-    def fused_fn(
-        act_in_f,
-        wts_pb,
-        conv_bias,
-        conv_silu,
-        accum,
-        pool,
-        lin_wts,
-        lin_bias,
-        gemm_out,
-        sm_lut,
-        out_p,
-        k_conv,
-        k_gemm_,
-        k_softmax_,
-    ):
-        # Phase 1: conv + SiLU + GAP via the streamed conv_pool kernel.
+    # Concat helper: tile_y merges pool_lo (received from tile_x) and its
+    # local pool_hi into pool_full[1280] before Gemm.
+    k_concat_pool = Kernel(
+        "yolo_m10_concat_pool_i8",
+        "yolo_m10_concat_pool.o",
+        [
+            _i8((expand_c_local,)),  # lo (640)
+            _i8((expand_c_local,)),  # hi (640)
+            _i8((expand_c,)),        # full (1280)
+            np.int32, np.int32,
+        ],
+    )
+
+    # ----- tile_x worker: conv for lo half, ship pool_lo via fifo -----
+    # Acquire one outgoing pool_lo fifo buffer at sample start; the conv
+    # kernel only writes pool on its last call (yi=15, wi=7) so reusing the
+    # same buffer across all (yi, wi) iterations is safe and avoids an
+    # extra local buffer + copy step.
+    def conv_lo_fn(act_in_x, wts_pb, bias, silu, accum, pool_lo_p, k_conv):
+        pool_lo_buf = pool_lo_p.acquire(1)
         for yi in range_(in_h):
-            elem_in = act_in_f.acquire(1)
-            for wi in range_(n_splits):
+            elem_in = act_in_x.acquire(1)
+            for wi in range_(n_splits_local):
                 wts_chunk = wts_pb.acquire(1)
                 k_conv(
                     elem_in,
                     wts_chunk,
-                    conv_bias,
-                    conv_silu,
+                    bias,
+                    silu,
                     accum,
-                    pool,
-                    in_w,
-                    in_c,
-                    expand_c,
-                    in_h,
+                    pool_lo_buf,
+                    in_w, in_c, expand_c_local, in_h,
                     rs_conv,
-                    yi,
-                    n_splits,
-                    wi,
+                    yi, n_splits_local, wi,
                 )
                 wts_pb.release(1)
-            act_in_f.release(1)
-        # Phase 2: Gemm 1280→2 → softmax → output.
+            act_in_x.release(1)
+        pool_lo_p.release(1)
+
+    # ----- tile_y worker: conv for hi half, concat, gemm, softmax -----
+    def conv_hi_tail_fn(
+        act_in_y, wts_pb, bias, silu, accum, pool_hi, pool_lo_c, pool_full,
+        lin_wts, lin_bias, gemm_out, sm_lut, out_p,
+        k_conv, k_concat, k_gemm_, k_softmax_,
+    ):
+        for yi in range_(in_h):
+            elem_in = act_in_y.acquire(1)
+            for wi in range_(n_splits_local):
+                wts_chunk = wts_pb.acquire(1)
+                k_conv(
+                    elem_in,
+                    wts_chunk,
+                    bias,
+                    silu,
+                    accum,
+                    pool_hi,
+                    in_w, in_c, expand_c_local, in_h,
+                    rs_conv,
+                    yi, n_splits_local, wi,
+                )
+                wts_pb.release(1)
+            act_in_y.release(1)
+        # Receive tile_x's pool_lo, concat into pool_full, run Gemm + softmax.
+        lo_buf = pool_lo_c.acquire(1)
+        k_concat(lo_buf, pool_hi, pool_full, expand_c_local, expand_c_local)
+        pool_lo_c.release(1)
         out_row = out_p.acquire(1)
-        k_gemm_(pool, lin_wts, lin_bias, gemm_out, expand_c, out_c, rs_lin)
+        k_gemm_(pool_full, lin_wts, lin_bias, gemm_out, expand_c, out_c, rs_lin)
         k_softmax_(gemm_out, sm_lut, out_row, out_c, softmax_in_log2)
         out_p.release(1)
 
-    w_fused = Worker(
-        fused_fn,
+    w_x = Worker(
+        conv_lo_fn,
         fn_args=[
             act_in.cons(),
-            conv_wts_pb,
-            conv_bias_buf,
-            conv_silu_lut_buf,
-            conv_accum_buf,
-            pool_scratch,
+            conv_wts_lo_pb,
+            conv_bias_lo_buf,
+            silu_lut_lo_buf,
+            accum_lo_buf,
+            pool_lo_fifo.prod(),
+            k_conv_pool,
+        ],
+        tile=tile_x,
+        dynamic_objfifo_lowering=True,
+    )
+    w_y = Worker(
+        conv_hi_tail_fn,
+        fn_args=[
+            act_in.cons(),
+            conv_wts_hi_pb,
+            conv_bias_hi_buf,
+            silu_lut_hi_buf,
+            accum_hi_buf,
+            pool_hi_buf,
+            pool_lo_fifo.cons(),
+            pool_full_buf,
             lin_wts_buf,
             lin_bias_buf,
             gemm_scratch,
             softmax_lut_buf,
             out_fifo.prod(),
             k_conv_pool,
+            k_concat_pool,
             k_gemm,
             k_softmax,
         ],
-        tile=fused_tile,
+        tile=tile_y,
         dynamic_objfifo_lowering=True,
     )
 
-    return out_fifo, [w_fused]
+    return out_fifo, [w_x, w_y]
 
 
 # ---------------------------------------------------------------------------

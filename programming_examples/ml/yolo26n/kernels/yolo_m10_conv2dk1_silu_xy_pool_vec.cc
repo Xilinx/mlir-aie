@@ -42,21 +42,24 @@ void yolo_m10_conv2dk1_silu_xy_pool_i8_i8(
 #endif
   event0();
 
-  // Hardcoded for m10 call site (in_w=16, in_c=256, expand_c=1280, N=16).
-  // Original had `expand_c / n_splits` as runtime signed divide → __divsi3
-  // call on tile (2,2). Constexpr lowers all trip counts to immediates.
+  // Hardcoded for m10's per-call shape (in_w=16, in_c=256, chunk_oc=80,
+  // ic_tiles=32). Original had `expand_c / n_splits` as runtime signed
+  // divide → __divsi3 call on tile (2,2); the constexprs below lower all
+  // per-call trip counts to immediates. `expand_c` IS used at runtime for
+  // the per-sample init + finalize loops so the same .o supports both the
+  // single-tile (expand_c=1280) and 2-tile-split (expand_c=640 per tile)
+  // callers.
   (void)input_width;
   (void)input_channels;
-  (void)expand_c;
   (void)n_splits;
-  constexpr int32_t chunk_oc = 80;   // expand_c / n_splits = 1280/16
+  constexpr int32_t chunk_oc = 80;   // single-call channel count (compile-time)
   constexpr int ic_tiles = 32;       // input_channels / 8 = 256/8
   constexpr int chunk_oc_tiles = 10; // chunk_oc / 8 = 80/8
   constexpr int x_tiles = 4;         // input_width / 4 = 16/4
   const int32_t oc_offset = wi * chunk_oc;
 
   if (yi == 0 && wi == 0) {
-    for (int i = 0; i < 1280; i++)
+    for (int i = 0; i < expand_c; i++)
       accum[i] = 0;
   }
 

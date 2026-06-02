@@ -15,9 +15,11 @@ Compute tile budget: 26 of 32 used (6 spares). Per-block:
   m2/m4 (c3k2_small)               : 3 tiles each
   m3/m5/m7 (conv_stride chunked)   : 1 tile each
   m6    (c3k2_heavy)               : 5 tiles
-  m8    (c3k2_heavy 2-tile megakernel — see scripts/m8_megakernel_2tile.py
-         which hardcodes Tile(5,3) + Tile(5,4); the PLACEMENT["m8"] dict
-         below is documentary, not load-bearing for m8): 2 tiles
+  m8    (c3k2_heavy megakernel — chain + standalone default is 4-tile via
+         scripts/m8_megakernel_4tile.py; M8_TILES=2 selects the 2-tile
+         scripts/m8_megakernel_2tile.py variant. Both scripts hardcode
+         their own tile coords; the PLACEMENT["m8"] dict below is
+         documentary, not load-bearing for m8): 4 tiles (default)
   m9    (PSA staged build)         : 7 tiles
   m10   (head, fused)              : 1 tile
 
@@ -179,7 +181,13 @@ except ImportError:
 PLACEMENT: dict = {
     # ---- Stem + downsamplers (variant A, 1 tile each) ----
     "m0": Tile(0, 2),
-    "m1": Tile(1, 2),
+    # m1 relocated 2026-06-01 from (1,2) → (6,2) to free (1,2) for m10's
+    # conv_hi_gemm tile (memory-adjacent to m10 conv_lo at (2,2) → pool_lo
+    # via shared L1 instead of DMA, fitting AIE2P's 2-S2MM channel budget
+    # on conv_hi_gemm). m1's chain cost is noise-level (per ablation
+    # 2026-06-01), so the extra m0→m1 DMA hop from col 0 to col 6 is
+    # absorbed by pipeline slack.
+    "m1": Tile(6, 2),
     "m3": Tile(2, 3),
     "m5": Tile(2, 4),
     "m7": Tile(4, 3),
@@ -242,12 +250,24 @@ PLACEMENT: dict = {
         "ffn": Tile(5, 5),  # shared-mem east of cv2 for ffn_block_out
         "proj": Tile(4, 2),  # far from sv/cv1; attn_pre_proj + b via DMA
     },
-    # ---- Head (1 tile, fused conv+pool+gemm+softmax) ----
-    # Single tile because chain budget only leaves (2,2) free after m9
-    # claims 7. m10's pipeline is sequential per-sample anyway so the
-    # fused worker has the same wall time as the 2-tile version.
+    # ---- Head (2 tiles: conv-lo + conv-hi-gemm-softmax) ----
+    # Per-block ablation (2026-06-01) showed m10 = 1.66 ms / 19% of chain
+    # with compute (not memtile DMA) as the bottleneck. Split m10 conv
+    # across two tiles by output-channel halves:
+    #   conv_lo         at (2,2): output channels 0..639 (8 of 16 chunks),
+    #                              ships its pool half to conv_hi_gemm via
+    #                              shared L1 (east neighbor).
+    #   conv_hi_gemm    at (1,2): output channels 640..1279, plus the
+    #                              Gemm 1280→2 + softmax + drain to shim.
+    #                              (1,2) was freed by relocating m1 to
+    #                              (6,2) — see "m1" above for rationale.
+    # Both stream weights from memtile (0,1) (different lock_id pairs;
+    # 2 of 6 outbound DMA channels). pool_lo uses shared L1 (no DMA
+    # channel), keeping conv_hi_gemm within AIE2P's 2-S2MM budget
+    # (act_in + wts_hi = 2; pool_lo via shared L1).
     "m10": {
-        "fused": Tile(2, 2),
+        "conv_lo": Tile(2, 2),
+        "conv_hi_gemm": Tile(1, 2),
     },
     # ---- Shim DMA endpoints (row 0) ----
     # SHIM_OUT_COL env override: pin drain column for routing-cost

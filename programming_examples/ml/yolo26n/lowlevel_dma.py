@@ -229,3 +229,193 @@ class StaticWeightStream(Resolvable):
                 next_bd(block[1])  # infinite loop
             with block[2]:
                 EndOp()
+
+
+class _PairedSide(Resolvable):
+    """Acquire/release handle for one half of a PairedStaticWeightStream.
+
+    Delegates resolve() to the parent PairedStaticWeightStream (guarded so
+    it fires exactly once even if both sides appear in worker fn_args).
+    """
+
+    def __init__(self, parent):
+        self._parent = parent
+        self._prod_lock = None
+        self._cons_lock = None
+        self._recv_buf = None
+
+    def tiles(self) -> list:
+        return self._parent.tiles()
+
+    def resolve(self, loc=None, ip=None) -> None:
+        self._parent._resolve_once(loc=loc, ip=ip)
+
+    def acquire(self, n: int = 1):
+        from aie.dialects.aie import use_lock, LockAction
+
+        use_lock(self._cons_lock, LockAction.AcquireGreaterEqual)
+        return self._recv_buf
+
+    def release(self, n: int = 1):
+        from aie.dialects.aie import use_lock, LockAction
+
+        use_lock(self._prod_lock, LockAction.Release)
+
+
+class PairedStaticWeightStream(Resolvable):
+    """Two static-weight streams on ONE MemTile, with two MM2S channels.
+
+    A plain ``StaticWeightStream`` emits its own ``aie.memtile_dma`` region.
+    Putting two of them on the same MemTile produces two ``memtile_dma``
+    ops on one tile, which silently collapses at lowering and both flows
+    end up sourcing the same buffer. This class emits a single
+    ``memtile_dma`` region with two ``dma_start`` blocks (one per MM2S
+    channel), each driving a distinct source buffer to a distinct
+    compute tile.
+
+    Expose ``.lo`` and ``.hi`` as the per-side handles to hand to two
+    different Workers' ``fn_args`` lists. The compute-side ``@mem``
+    regions and locks are emitted normally per side.
+    """
+
+    def __init__(
+        self,
+        obj_type,
+        initial_value_lo,
+        initial_value_hi,
+        name_lo: str,
+        name_hi: str,
+        recv_type,
+        memtile_placement,
+        compute_placement_lo,
+        compute_placement_hi,
+        mm2s_channel_lo: int = 0,
+        mm2s_channel_hi: int = 1,
+        s2mm_channel_lo: int = 0,
+        s2mm_channel_hi: int = 0,
+        comp_lock_id_lo: int = 0,
+        comp_lock_id_hi: int = 0,
+    ):
+        self._obj_type = obj_type
+        self._iv_lo = np.asarray(initial_value_lo, dtype=np.int8)
+        self._iv_hi = np.asarray(initial_value_hi, dtype=np.int8)
+        self._name_lo = name_lo
+        self._name_hi = name_hi
+        self._recv_type = recv_type
+        self._memtile = memtile_placement
+        self._compute_lo = compute_placement_lo
+        self._compute_hi = compute_placement_hi
+        self._mm2s_lo = mm2s_channel_lo
+        self._mm2s_hi = mm2s_channel_hi
+        self._s2mm_lo = s2mm_channel_lo
+        self._s2mm_hi = s2mm_channel_hi
+        self._comp_lock_lo = comp_lock_id_lo
+        self._comp_lock_hi = comp_lock_id_hi
+
+        self.lo = _PairedSide(self)
+        self.hi = _PairedSide(self)
+        self._resolved = False
+
+    def tiles(self) -> list:
+        return [self._memtile, self._compute_lo, self._compute_hi]
+
+    def _resolve_once(self, loc=None, ip=None) -> None:
+        if self._resolved:
+            return
+        self._resolved = True
+        self._do_resolve(loc=loc, ip=ip)
+
+    def resolve(self, loc=None, ip=None) -> None:
+        self._resolve_once(loc=loc, ip=ip)
+
+    def _do_resolve(self, loc=None, ip=None) -> None:
+        from aie.dialects.aie import (
+            buffer,
+            lock,
+            flow,
+            memtile_dma,
+            mem,
+            dma_start,
+            dma_bd,
+            next_bd,
+            use_lock,
+            DMAChannelDir,
+            LockAction,
+            WireBundle,
+            EndOp,
+        )
+
+        memtile_op = self._memtile.op
+        comp_lo_op = self._compute_lo.op
+        comp_hi_op = self._compute_hi.op
+
+        # MemTile source buffers (one per half).
+        buf_lo = buffer(
+            memtile_op, self._obj_type, self._name_lo, initial_value=self._iv_lo
+        )
+        buf_hi = buffer(
+            memtile_op, self._obj_type, self._name_hi, initial_value=self._iv_hi
+        )
+
+        # Compute-tile recv buffers + lock pairs.
+        prod_lo = lock(comp_lo_op, lock_id=self._comp_lock_lo, init=1)
+        cons_lo = lock(comp_lo_op, lock_id=self._comp_lock_lo + 1, init=0)
+        recv_lo = buffer(comp_lo_op, self._recv_type, f"{self._name_lo}_recv")
+        prod_hi = lock(comp_hi_op, lock_id=self._comp_lock_hi, init=1)
+        cons_hi = lock(comp_hi_op, lock_id=self._comp_lock_hi + 1, init=0)
+        recv_hi = buffer(comp_hi_op, self._recv_type, f"{self._name_hi}_recv")
+
+        self.lo._prod_lock = prod_lo
+        self.lo._cons_lock = cons_lo
+        self.lo._recv_buf = recv_lo
+        self.hi._prod_lock = prod_hi
+        self.hi._cons_lock = cons_hi
+        self.hi._recv_buf = recv_hi
+
+        flow(memtile_op, WireBundle.DMA, self._mm2s_lo,
+             comp_lo_op, WireBundle.DMA, self._s2mm_lo)
+        flow(memtile_op, WireBundle.DMA, self._mm2s_hi,
+             comp_hi_op, WireBundle.DMA, self._s2mm_hi)
+
+        # ONE memtile_dma region, two dma_start blocks, one per channel.
+        @memtile_dma(memtile_op)
+        def _mtdma(block):
+            # block[0]: entry. block[1..2]: lo BD + end-chain.
+            # block[3..4]: hi BD + end-chain.
+            dma_start(DMAChannelDir.MM2S, self._mm2s_lo,
+                      dest=block[1], chain=block[3])
+            with block[1]:
+                dma_bd(buf_lo)
+                next_bd(block[1])
+            with block[3]:
+                dma_start(DMAChannelDir.MM2S, self._mm2s_hi,
+                          dest=block[4], chain=block[2])
+            with block[4]:
+                dma_bd(buf_hi)
+                next_bd(block[4])
+            with block[2]:
+                EndOp()
+
+        @mem(comp_lo_op)
+        def _cdma_lo(block):
+            dma_start(DMAChannelDir.S2MM, self._s2mm_lo,
+                      dest=block[1], chain=block[2])
+            with block[1]:
+                use_lock(prod_lo, LockAction.AcquireGreaterEqual)
+                dma_bd(recv_lo)
+                use_lock(cons_lo, LockAction.Release)
+                next_bd(block[1])
+            with block[2]:
+                EndOp()
+
+        @mem(comp_hi_op)
+        def _cdma_hi(block):
+            dma_start(DMAChannelDir.S2MM, self._s2mm_hi,
+                      dest=block[1], chain=block[2])
+            with block[1]:
+                use_lock(prod_hi, LockAction.AcquireGreaterEqual)
+                dma_bd(recv_hi)
+                use_lock(cons_hi, LockAction.Release)
+                next_bd(block[1])
+            with block[2]:
+                EndOp()
