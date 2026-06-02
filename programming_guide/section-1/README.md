@@ -10,7 +10,7 @@
 
 # <ins>Section 1 - Basic AI Engine building blocks</ins>
 
-When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, memory tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to NPU-external memory (i.e., main memory). In this programming guide, we will utilize the IRON Python library, which describes our overall NPU design — selecting which AI Engine tiles to use, what code each tile should run, how to move data between tiles, and how the design is invoked from the CPU side. Later on, we will explore vector programming in C/C++, which is useful for optimizing computation kernels for individual compute tiles.
+When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, mem tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to NPU-external memory (i.e., main memory). In this programming guide, we will utilize the IRON Python library, which describes our overall NPU design — selecting which AI Engine tiles to use, what code each tile should run, how to move data between tiles, and how the design is invoked from the CPU side. Later on, we will explore vector programming in C/C++, which is useful for optimizing computation kernels for individual compute tiles.
 
 ## <ins>Walkthrough of Python source file (aie2.py)</ins>
 

@@ -10,7 +10,7 @@
 
 # <ins>Object FIFO Broadcast Pattern</ins>
 
-As was explained in the Introduction [section](../../section-2a/README.md), an Object FIFO may have one or multiple consumers. At the highest abstraction level, each call of `cons()` will return a new `ObjectFifoHandle` for that consumer. At the lower-level IRON abstraction the `consumerTiles` input can be either a single tile or an array of tiles. When the input is specified as an array of tiles, this creates a broadcast communication from a single producer tile to multiple consumer tiles. The data from the producer tile's memory module is sent to each of the consumer tiles' memory modules via the AXI stream interconnect, which handles the back-pressure from consumers with different execution times. The AXI stream is also where the low-level copy of the data is made before being sent to each of the consumers. To achieve the broadcast, the lowering will use one output port of the producer tile to establish a connection to all consumer tiles, as shown in the figure below:
+As was explained in the Introduction [section](../../section-2a/README.md), an Object FIFO may have one or multiple consumers. In IRON, each call of `cons()` will return a new `ObjectFifoHandle` for that consumer. At the dialect level the `consumerTiles` input can be either a single tile or an array of tiles. When the input is specified as an array of tiles, this creates a broadcast communication from a single producer tile to multiple consumer tiles. The data from the producer tile's memory module is sent to each of the consumer tiles' memory modules via the AXI stream interconnect, which handles the back-pressure from consumers with different execution times. The AXI stream is also where the low-level copy of the data is made before being sent to each of the consumers. To achieve the broadcast, the lowering will use one output port of the producer tile to establish a connection to all consumer tiles, as shown in the figure below:
 
 <img src="./../../../assets/Broadcast.png" height="200">
 
@@ -33,7 +33,7 @@ my_worker2 = Worker(core_fn2, [of0.cons(), test_fn2])
 my_worker3 = Worker(core_fn3, [of0.cons(), test_fn2])
 my_worker4 = Worker(core_fn4, [of0.cons(), test_fn2])
 ```
-The following code snippet shows how the same example as above is written at the lower-level IRON abstraction with explicit tile endpoints where the producer Worker is mapped on tile A and the consumer Workers are mapped to tiles B, C and D:
+The following code snippet shows how the same example as above is written in the AIE dialect (the form `@iron.jit` compiles to) with explicit tile endpoints where the producer Worker is mapped on tile A and the consumer Workers are mapped to tiles B, C and D:
 ```python
 A = tile(1, 1)
 B = tile(1, 3)
@@ -43,7 +43,7 @@ of0 = object_fifo("objfifo0", A, [B, C, D], 3, np.ndarray[(256,), np.dtype[np.in
 ```
 ### Broadcast with Skip-Connection
 
-At the lower-level IRON abstraction, the `depth` input of an Object FIFO can also be specified as an array of integers, which describe the number of objects that are available to each tile (the producer tile plus each consumer tile) when accessing the Object FIFO. For the previous example, each of the four tiles has a resource pool of 3 objects available to perform the data movement of `of_0`.
+At the dialect level, the `depth` input of an Object FIFO can also be specified as an array of integers, which describe the number of objects that are available to each tile (the producer tile plus each consumer tile) when accessing the Object FIFO. For the previous example, each of the four tiles has a resource pool of 3 objects available to perform the data movement of `of_0`.
 
 > **NOTE:**  This functionality of the Object FIFO primitive exposes what is actually going on at the hardware level when the data movement is established for a broadcast. The object pool of the Object FIFO is not a single structure but rather composed of several pools of objects that are allocated in the memory module of each tile involved in the data movement. Specifying the `depth` as an array of integers allows the user full control to set the sizes of the pools on each individual tile. Please see [Section 2a](../../section-2a/README.md/#specifying-the-object-fifo-depth-as-an-array) for more details.
 

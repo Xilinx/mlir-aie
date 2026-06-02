@@ -51,7 +51,7 @@ of_out = of_in.cons().forward(obj_type=line_type, name="out")
 ```
 Where a consumer `ObjectFifoHandle` to `of_in` is forwarded to `of_out` as its producer.
 
-This functionality is also available at the lower-level IRON abstraction. The Object FIFO API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../../python/dialects/aie.py)):
+This functionality is also available at the dialect level. The Object FIFO API provides an implicit copy via an `object_fifo_link`, which can be initialized using its class constructor (defined in [aie.py](../../../../python/dialects/aie.py)):
 ```python
 class object_fifo_link(ObjectFifoLinkOp):
     def __init__(
@@ -74,7 +74,7 @@ of_out = object_fifo("out", B, C, 2, np.ndarray[(256,), np.dtype[np.int32]])
 object_fifo_link(of_in, of_out)
 ```
 
-Depending on how many Object FIFOs are specified in `fifoIns` and `fifoOuts`, two different data patterns can be achieved: a Distribute or a Join. They are described in the two next subsections. Currently, it is not possible to do both patterns at once, i.e., if `fifoIns` is an array then `fifoOuts` can only be a single Object FIFO, and the other way around. At the highest level of abstraction these patterns are available as well.
+Depending on how many Object FIFOs are specified in `fifoIns` and `fifoOuts`, two different data patterns can be achieved: a Distribute or a Join. They are described in the two next subsections. Currently, it is not possible to do both patterns at once, i.e., if `fifoIns` is an array then `fifoOuts` can only be a single Object FIFO, and the other way around. In IRON these patterns are available as well.
 
 A full design example that uses this features is available in Section 2f: [03_external_mem_to_core_L2](../../section-2f/03_external_mem_to_core_L2/).
 

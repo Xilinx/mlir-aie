@@ -30,7 +30,7 @@ Enabling trace support can be done with the following steps:
 
 ## <u>1. Enable and configure AIE trace</u>
 
-Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For our high-level IRON descriptions, we abstract these steps into a single runtime function `enable_trace` within the larger runtime sequence as shown below:
+Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For IRON, we abstract these steps into a single runtime function `enable_trace` within the larger runtime sequence as shown below:
 ```python
 rt = Runtime()
 with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
@@ -312,7 +312,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * Did you write to the correct XRT buffer object that your host code is reading from? The default is `ddr_id=4` (`group_id=7`), which means trace data is written to a dedicated XRT buffer. If using `ddr_id=-1`, trace data is appended after the last tensor argument.
         * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically. However, `ddr_id` in `TraceConfig` must match the corresponding parameter in your IRON `enable_trace()` / `start_trace()` call.
         * If using a **C/C++ host** with `ddr_id=-1`, trace data is appended to the last `runtime_sequence` argument's buffer at an offset equal to the output size. Allocate that buffer large enough for both output and trace data, and do **not** create a separate `bo_trace` at `group_id(7)`.
-    * It's possible that a simple core may have too few events to create a valid trace packet. For lower-level IRON designs, you can work around this by adding a ShimTile to the `tiles_to_trace` array in `configure_trace()` to generate additional trace data.
+    * It's possible that a simple core may have too few events to create a valid trace packet. For dialect-level designs, you can work around this by adding a ShimTile to the `tiles_to_trace` array in `configure_trace()` to generate additional trace data.
     * Check that the correct tile is being routed to the correct shim DMA. Using the declarative trace API handles this automatically.
     * You may get an invalid tile error if the `colshift` doesn't match the actually starting column of the design. This should automatically be set by the `parse.py` script but can also be specified manually. Phoenix (npu) devices should have `colshift=1` while Strix (npu2) should have `colshift=0` when allocated to an unused NPU.
     * For designs with packet-routing flows, check for correctly matching packet flow IDs. The packet flow ID must match the configured ID value in Trace Control 1 register or else the packets don't get routed. Using the declarative trace API handles this automatically.

@@ -23,9 +23,9 @@
 
 Not all data movement patterns can be described with Object FIFOs. This **advanced** section goes into detail about how a user can express data movement using the Direct Memory Access channels (or `DMA`) on AIE tiles. To better understand the code and concepts introduced in this section it is recommended to first read the [Advanced Topic of Section - 2a on DMAs](../section-2a/README.md/#advanced-topic--data-movement-accelerators).
 
-**Please note that this part of the guide is described at the lower-level IRON API.**
+**Please note that this part of the guide is described in the AIE dialect.**
 
-The AIE architecture currently has three different types of tiles: compute tiles, referred to as "tile", memory tiles referred to as "Mem tiles", and external memory interface tiles referred to as "Shim tiles". Each of these tiles has its own attributes regarding compute capabilities and memory capacity, but the base design of their DMAs is the same. The different types of DMAs can be initialized using the constructors in [aie.py](../../../python/dialects/aie.py):
+The AIE architecture currently has three different types of tiles — compute tiles, mem tiles, and shim tiles (external memory interface). Each has its own attributes regarding compute capabilities and memory capacity, but the base design of their DMAs is the same. The different types of DMAs can be initialized using the constructors in [aie.py](../../../python/dialects/aie.py):
 ```python
 @mem(tile) # compute tile DMA
 @shim_dma(tile) # Shim tile DMA
