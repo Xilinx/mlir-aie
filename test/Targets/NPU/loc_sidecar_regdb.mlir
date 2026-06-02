@@ -12,7 +12,8 @@
 // "memory_tile", "shim"); a mismatch makes lookupRegisterByOffset silently
 // return null and drops the "register"/"register_module" fields entirely.
 
-// RUN: aie-translate --aie-npu-to-binary --aie-npu-emit-locmap %s | FileCheck %s
+// RUN: aie-translate --aie-npu-to-binary --aie-npu-emit-locmap --aie-npu-locmap-file=%t.json %s
+// RUN: FileCheck %s < %t.json
 
 module {
   aie.device(npu1) {
