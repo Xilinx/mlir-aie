@@ -31,19 +31,14 @@ of_outs = (
 
 All Workers are running the same process of acquiring one object from their respective input Object FIFOs to produce, writing `1` to all of its entries, and releasing the object.
 
-This design is combined with the previous [distribute](../04_distribute_L2/distribute_L2.py) design to achieve a full data movement from external memory to the AIE array and back. The resulting code is available in [distribute_and_join_L2.py](./distribute_and_join_L2.py). It is possible to compile, run and test it with the following commands:
+This design is combined with the previous [distribute](../04_distribute_L2/distribute_L2.py) design to achieve a full data movement from external memory to the AIE array and back. The resulting code is available in [distribute_and_join_L2.py](./distribute_and_join_L2.py), wrapped in `@iron.jit` so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make
-make run
+make run                              # builds + runs distribute_and_join_L2.py on the NPU (devicename={npu,npu2})
+make emit-mlir                        # writes the lowered MLIR for distribute_and_join_L2 to build/aie.mlir
+make emit-mlir-join                   # writes the structural-only join_L2.py MLIR to build/aie_join.mlir
 ```
 
-The lower-level IRON variant of this design is available in [distribute_and_join_L2_placed.py](./distribute_and_join_L2_placed.py). It can be compiled, run and tested with the following commands:
-```bash
-env use_placed=1 make
-make run
-```
-
-The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 2d](../../section-2d/).
+The `# To/from AIE-array data movement` section of the design code is described in detail in [Section 2d](../../section-2d/).
 
 > **NOTE:**  The design in [distribute_and_join_L2.py](./distribute_and_join_L2.py) takes [ext_to_core](../03_external_mem_to_core_L2/) and distributes smaller pieces of the input data to three Workers. This pattern is typically used when the input data is too large for a single core's memory module and needs to be processed in smaller chunks, the result of which is then joined together to produce the final output.
 
