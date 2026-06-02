@@ -166,19 +166,14 @@ void registerAIETranslations() {
       "aie-sequence-name", llvm::cl::init(""),
       llvm::cl::desc(
           "Specify the name of the aiex.runtime_sequence to translate"));
-  static llvm::cl::opt<bool> npuEmitLocmap(
-      "aie-npu-emit-locmap", llvm::cl::init(false),
+  static llvm::cl::opt<std::string> npuEmitLocmap(
+      "aie-npu-emit-locmap", llvm::cl::init(""),
+      llvm::cl::value_desc("filename"),
       llvm::cl::desc(
           "For aie-npu-to-binary, also write a JSON sidecar mapping each "
           "transaction word's byte offset to its source MLIR Location (and "
-          "regdb register name where applicable) to the file given by "
-          "-aie-npu-locmap-file. The binary is still emitted to the main "
-          "output."));
-  static llvm::cl::opt<std::string> npuLocmapFile(
-      "aie-npu-locmap-file", llvm::cl::init(""),
-      llvm::cl::desc(
-          "Destination file for the JSON location sidecar emitted when "
-          "-aie-npu-emit-locmap is set (required with that flag)."));
+          "regdb register name where applicable) to the given file. The binary "
+          "is still emitted to the main output."));
 
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
@@ -384,13 +379,10 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         std::vector<uint32_t> instructions;
         std::vector<TxnLocEntry> locmap;
-        if (npuEmitLocmap && npuLocmapFile.empty()) {
-          llvm::errs() << "-aie-npu-emit-locmap requires -aie-npu-locmap-file\n";
-          return failure();
-        }
+        bool emitLocmap = !npuEmitLocmap.empty();
         auto r = AIETranslateNpuToBinary(module, instructions, deviceName,
                                          sequenceName,
-                                         npuEmitLocmap ? &locmap : nullptr);
+                                         emitLocmap ? &locmap : nullptr);
         if (failed(r))
           return r;
         // The binary (or hex text) is always emitted to the main output.
@@ -401,15 +393,15 @@ void registerAIETranslations() {
           for (auto w : instructions)
             output << llvm::format("%08X\n", w);
         }
-        // With -aie-npu-emit-locmap, additionally write the JSON location
+        // With -aie-npu-emit-locmap=<file>, additionally write the JSON location
         // sidecar (mapping each transaction word's byte offset to its source
-        // MLIR Location) to the file named by -aie-npu-locmap-file.
-        if (npuEmitLocmap) {
+        // MLIR Location) to that file.
+        if (emitLocmap) {
           std::error_code ec;
-          llvm::raw_fd_ostream locFile(npuLocmapFile, ec,
+          llvm::raw_fd_ostream locFile(npuEmitLocmap, ec,
                                        llvm::sys::fs::OF_Text);
           if (ec) {
-            llvm::errs() << "Error opening locmap file '" << npuLocmapFile
+            llvm::errs() << "Error opening locmap file '" << npuEmitLocmap
                          << "': " << ec.message() << "\n";
             return failure();
           }
