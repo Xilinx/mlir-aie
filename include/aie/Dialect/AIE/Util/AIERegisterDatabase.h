@@ -72,8 +72,8 @@ public:
   /// Lookup register by tile-relative offset and module name. Used by the
   /// transaction-binary locmap to decorate each transaction word with its
   /// semantic register name. Module names are the JSON keys in
-  /// aie_registers_aie2.json (e.g. "core_module", "memory_module",
-  /// "mem_tile_module", "pl_module"). Returns nullptr if no register matches.
+  /// aie_registers_aie2.json: "core", "memory", "memory_tile", "shim".
+  /// Returns nullptr if no register matches.
   const RegisterInfo *lookupRegisterByOffset(uint32_t offset,
                                              llvm::StringRef module) const;
 

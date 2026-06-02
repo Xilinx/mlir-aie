@@ -40,7 +40,7 @@ struct TxnLocEntry {
   std::string sourceOpName;   // "aiex.npu.write32", etc.
   std::optional<uint64_t> address; // absolute device address when applicable
   std::string registerName;   // regdb-resolved register name; empty if unknown
-  std::string registerModule; // regdb module: "core_module", "memory_module", etc.
+  std::string registerModule; // regdb module: "core", "memory", "memory_tile", "shim"
   std::optional<mlir::Location> loc;
 };
 

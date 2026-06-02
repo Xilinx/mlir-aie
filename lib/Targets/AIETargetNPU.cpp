@@ -276,21 +276,22 @@ lookupRegisterByAddress(uint64_t address, const AIETargetModel &tm,
   uint64_t baseMask = (uint64_t{1} << rowShift) - 1;
   uint32_t offset = static_cast<uint32_t>(address & baseMask);
 
-  // Determine module from tile type.
+  // Determine module from tile type. Module names must match the JSON keys in
+  // aie_registers_aie2.json: "core", "memory", "memory_tile", "shim".
   StringRef moduleName;
   if (tm.isShimNOCTile(col, row) || tm.isShimPLTile(col, row)) {
-    moduleName = "pl_module";
+    moduleName = "shim";
   } else if (tm.isMemTile(col, row)) {
-    moduleName = "mem_tile_module";
+    moduleName = "memory_tile";
   } else {
-    // For aie tiles, regdb has both core_module and memory_module. The
-    // offset alone disambiguates. Try core first then memory.
-    if (auto *r = regdb->lookupRegisterByOffset(offset, "core_module")) {
-      outModule = "core_module";
+    // For aie tiles, regdb has both core and memory modules. The offset alone
+    // disambiguates. Try core first then memory.
+    if (auto *r = regdb->lookupRegisterByOffset(offset, "core")) {
+      outModule = "core";
       return r->name;
     }
-    if (auto *r = regdb->lookupRegisterByOffset(offset, "memory_module")) {
-      outModule = "memory_module";
+    if (auto *r = regdb->lookupRegisterByOffset(offset, "memory")) {
+      outModule = "memory";
       return r->name;
     }
     return {};
