@@ -758,8 +758,7 @@ void TraceHostConfigOp::print(OpAsmPrinter &p) {
 
   p.printOptionalAttrDict(
       (*this)->getAttrs(),
-      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing",
-                       "egress_shim_col"});
+      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing", "egress_shim_col"});
 }
 
 ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
@@ -807,8 +806,7 @@ ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
   if (succeeded(parser.parseOptionalKeyword("egress_shim_col"))) {
     IntegerAttr egressShimCol;
     if (parser.parseEqual() ||
-        parser.parseAttribute(egressShimCol,
-                              parser.getBuilder().getI32Type(),
+        parser.parseAttribute(egressShimCol, parser.getBuilder().getI32Type(),
                               "egress_shim_col", result.attributes))
       return failure();
   } else {
