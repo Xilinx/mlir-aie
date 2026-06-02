@@ -447,8 +447,7 @@ under `M8_PAIR_SHAPE` for the streamed m8 variants). Both pair kernels
 on both blocks already select `MMUL_T = MMUL8x8x8` at compile time.
 
 **`aie::parallel_lookup` investigation** (deferred). PL on AIE2P peano
-compiles + runs correctly (see standalone harness at
-`programming_examples/basic/pl_layout_test/`), but `lut<4>` is
+compiles + runs correctly, but `lut<4>` is
 fundamentally a linear-approximation API (offset + slope * frac), not
 a plain-byte lookup. For yolo's INT8 SiLU LUT use case, effective
 throughput is ~equal to or slower than scalar `silu_lut[srs+128]`.
