@@ -324,7 +324,8 @@ struct AIEInsertTraceFlowsPass
     std::map<int, ShimInfo> shimInfos; // col -> ShimInfo
 
     if (routing == TraceShimRouting::Single) {
-      // All traces route to a single shim, controlled by the egress_shim_col parameter (default is 0).
+      // All traces route to a single shim, controlled by the egress_shim_col
+      // parameter (default is 0).
       int targetCol = egressShimColFromIR;
       if (targetCol < 0 || targetCol >= targetModel.columns() ||
           !targetModel.isShimNOCTile(targetCol, 0)) {
