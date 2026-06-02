@@ -68,6 +68,18 @@ class Buffer(Resolvable):
         """The tile this buffer is on."""
         return self._tile
 
+    def tiles(self) -> list:
+        """Tile dependency for Program.resolve tile discovery.
+
+        Pinned Buffers (e.g. a compute Worker reading a neighbor tile's L1
+        directly) need their tile registered with the Device before
+        :meth:`resolve` runs.  Worker-attached Buffers without an explicit
+        placement get pinned to the Worker's tile in :class:`Worker.__init__`,
+        which is already discoverable via ``Worker.tile``; this method just
+        exposes any extra (cross-tile) placements.
+        """
+        return [self._tile] if self._tile is not None else []
+
     @property
     def shape(self) -> Sequence[int]:
         """The shape of the buffer"""
