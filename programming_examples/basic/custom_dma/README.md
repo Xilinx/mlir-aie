@@ -16,7 +16,7 @@ This IRON design demonstrates how to program custom DMA patterns that integrate 
 
 1. `custom_dma.py`: A Python script that defines the IRON design. It contains a `ScatterReadDMA` class (a `Resolvable` subclass) that emits custom locks, DMA buffer descriptors, and flows alongside standard IRON components.
 
-1. `test.py`: Host program to run the design on the NPU and verify the output against expected values.
+2. `test.py`: Host program to run the design on the NPU and verify the output against expected values.
 
 ## Design Overview
 

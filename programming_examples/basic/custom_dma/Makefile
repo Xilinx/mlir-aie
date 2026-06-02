@@ -11,7 +11,6 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
-VPATH := ${srcdir}/../../../aie_kernels/generic
 
 devicename ?= npu2
 targetname = custom_dma
@@ -20,15 +19,11 @@ targetname = custom_dma
 
 all: build/final.xclbin
 
-build/%.cc.o: %.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-
 build/aie.mlir: ${srcdir}/${targetname}.py
 	mkdir -p ${@D}
 	python3 $< -d ${devicename} > $@
 
-build/final.xclbin: build/aie.mlir build/passThrough.cc.o
+build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
 		--no-xchesscc --no-xbridge \
