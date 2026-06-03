@@ -6,7 +6,7 @@
 // RUN: mkdir -p test_1
 // RUN: cd test_1
 // RUN: make -f %S/../Makefile clean
-// RUN: make -f %S/../Makefile
+// RUN: make -f %S/../Makefile 
 // RUN: %run_on_npu1% make -f %S/../Makefile run
 // RUN: make -f %S/../Makefile clean
 // RUN: %run_on_npu1% make -f %S/../Makefile trace

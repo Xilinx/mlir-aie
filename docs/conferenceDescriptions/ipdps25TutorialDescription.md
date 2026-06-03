@@ -32,7 +32,7 @@ Location: Building 3, Room 3.2.2
 | 14:15 | 08:45 | "Hello World" from Ryzen™ AI | Andra | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
 | 14:35 | 09:05 | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
 | 14:50 | 09:20 | Data movement on Ryzen™ AI with objectFIFOs | Andra | [Data Movement](../../programming_guide/section-2/) |
-| 15:00 | 09:30 | Exercise 2: Explore AIE DMA capabilities | All | [Transposes](../../programming_examples/basic/transposes/) (using `--strategy=dma`) |
+| 15:00 | 09:30 | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
 | 15:20 | 09:50 | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
 | 15:50 | 10:20 | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 16:00 | 10:30 | Coffee Break | | |

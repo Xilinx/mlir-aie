@@ -6,5 +6,5 @@
 // RUN: mkdir -p test_2_col
 // RUN: cd test_2_col
 // RUN: make -f %S/../Makefile clean
-// RUN: env n_aie_cols=2 make -f %S/../Makefile
+// RUN: env n_aie_cols=2 make -f %S/../Makefile 
 // RUN: %run_on_npu1% env n_aie_cols=2 make -f %S/../Makefile run
