@@ -13,6 +13,7 @@ from importlib_metadata import files
 from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
+from setuptools.command.egg_info import egg_info
 from setuptools.command.install import install
 
 sys.path.append(os.path.dirname(__file__))
@@ -236,6 +237,26 @@ class CMakeBuild(build_ext):
                 "-DLLVM_USE_CRT_MINSIZEREL=MT",
                 "-DLLVM_USE_CRT_RELEASE=MT",
             ]
+        elif platform.system() == "Linux":
+            # Equivalent of MSVC's default /OPT:REF + /OPT:ICF in Release.
+            # Per-function/data sections let --gc-sections prune unused
+            # code at link time; lld's --icf=safe folds byte-identical
+            # functions (common with heavy templates in MLIR/LLVM) without
+            # breaking address-taken semantics. ICF is restricted to
+            # native x86_64 because the aarch64 cross-build drives the
+            # link through aarch64-linux-gnu-gcc, which defaults to the
+            # system ld and won't pick up lld via this flag.
+            size_compile = "-ffunction-sections -fdata-sections"
+            size_link = "-Wl,--gc-sections"
+            if os.getenv("CIBW_ARCHS") in {"x86_64", "AMD64", None}:
+                cmake_args.append("-DLLVM_USE_LINKER=lld")
+                size_link += " -Wl,--icf=safe"
+            cmake_args += [
+                f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG {size_compile}",
+                f"-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG {size_compile}",
+                f"-DCMAKE_EXE_LINKER_FLAGS={size_link}",
+                f"-DCMAKE_SHARED_LINKER_FLAGS={size_link}",
+            ]
 
         cmake_args_dict = get_cross_cmake_args()
         cmake_args += [f"-D{k}={v}" for k, v in cmake_args_dict.items()]
@@ -308,7 +329,9 @@ class CMakeBuild(build_ext):
             # C++-developer-only content: anyone pip installing this wheel
             # reaches the toolchain through Python, never through native
             # linking. aie_api/ and aie_kernels/ headers stay — user AIE
-            # kernels #include those at compile time.
+            # kernels #include those at compile time. Static archives under
+            # runtime_lib/ (xaiengine.lib, test_utils.lib) stay — those are
+            # the documented link surface for host test executables.
             dev_paths = [
                 Path(install_dir) / "include" / "aie",
                 Path(install_dir) / "include" / "aie-c",
@@ -316,7 +339,23 @@ class CMakeBuild(build_ext):
                 Path(install_dir) / "include" / "xaienginecdo_static",
                 Path(install_dir) / "lib" / "cmake",
                 *(Path(install_dir) / "lib").glob("*.a"),
+                *(Path(install_dir) / "lib").glob("*.lib"),
             ]
+
+            # Upstream MLIR install ships Python bindings for every dialect
+            # it knows about. Drop the ones nothing in the AIE Python tree
+            # imports (verified via grep). pdl/irdl/nvgpu stay — used by
+            # extras/dialects and dialects/ext.py.
+            unused_dialects = (
+                "spirv", "omp", "smt", "shard", "sparse_tensor",
+                "x86", "amdgpu", "shape", "emitc", "async",
+            )
+            dialects_dir = Path(install_dir) / "python" / "aie" / "dialects"
+            for d in unused_dialects:
+                dev_paths.extend(dialects_dir.glob(f"{d}.py"))
+                dev_paths.extend(dialects_dir.glob(f"{d}"))
+                dev_paths.extend(dialects_dir.glob(f"_{d}_*.py"))
+                dev_paths.extend(dialects_dir.glob(f"{d}_*"))
             for p in dev_paths:
                 if p.is_dir():
                     shutil.rmtree(p)
@@ -373,6 +412,21 @@ class CMakeBuild(build_ext):
         finally:
             if cleanup_build_temp and build_succeeded:
                 _remove_tree(build_temp)
+
+
+class EggInfoCorrectTopLevel(egg_info):
+    """The CMakeExtension is named "_mlir_aie" (a placeholder for the CMake
+    build), but the wheel actually installs the `mlir_aie` package tree (and
+    `mlir_aie.libs` from auditwheel). setuptools writes the extension name
+    into top_level.txt, which then misreports the install for `pip
+    uninstall`, RECORD audits, and any tool that scans top_level. Overwrite
+    it with the real top-level packages after egg_info runs."""
+
+    def run(self):
+        super().run()
+        top_level = Path(self.egg_info) / "top_level.txt"
+        if top_level.exists():
+            top_level.write_text("mlir_aie\n", encoding="utf-8")
 
 
 class DevelopWithPth(develop):
@@ -453,7 +507,6 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Topic :: Software Development :: Compilers",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
@@ -479,6 +532,7 @@ setup(
     cmdclass={
         "build_ext": CMakeBuild,
         "develop": DevelopWithPth,
+        "egg_info": EggInfoCorrectTopLevel,
         "install": InstallWithPth,
     },
     zip_safe=False,
