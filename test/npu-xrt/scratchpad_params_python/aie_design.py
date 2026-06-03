@@ -14,7 +14,7 @@
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2Col1
 from aie.iron.parameter import Parameter
 from aie.dialects.aiex import npu_load_pdi
@@ -37,15 +37,10 @@ def design():
     # ObjectFIFO for output
     of_out = ObjectFifo(out_ty, name="objfifo_out")
 
-    # Barrier to gate the core until parameters are loaded
-    barrier = WorkerRuntimeBarrier()
-
     # Core function: read parameters, multiply, write to output
-    def core_fn(of_out, foo, bar, barrier):
-        barrier.wait_for_value(1)
+    def core_fn(of_out, foo, bar):
         val_foo = foo.read()
         val_bar = bar.read()
-        barrier.release_with_value(0)
 
         elem = of_out.acquire(1)
         result = val_foo * val_bar
@@ -54,7 +49,7 @@ def design():
 
     worker = Worker(
         core_fn,
-        [of_out.prod(), foo, bar, barrier],
+        [of_out.prod(), foo, bar],
         while_true=False,
     )
 
@@ -63,10 +58,9 @@ def design():
     with rt.sequence(out_ty) as out_tensor:
         rt.inline_ops(lambda: npu_load_pdi(device_ref="empty"), [])
         rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
-        rt.set_barrier(barrier, 1)
+        rt.sync_parameters()
         rt.start(worker)
         rt.drain(of_out.cons(), out_tensor, wait=True)
-        rt.set_barrier(barrier, 0)
 
     module = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
 

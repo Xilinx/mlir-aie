@@ -1428,6 +1428,12 @@ def AIEX_ParameterOp: AIEX_Op<"parameter", [Symbol]> {
     the lower 2 bits of the scratchpad register (see `aiex.read_parameter`
     for details on how values are shifted to work around this).
 
+    You can manually specify the parameter synchronization point inside the runtime sequence using the `aiex.sync_parameters_from_host` op.
+
+    On the host, you can write parameters using the runtime library's `scratchpad_parameter.h` header library.
+
+    See `test/npu-xrt/scratchpad_params` and `test/npu-xrt/scratchpad_params_python` for a full usage example.
+
     Example (at module scope):
     ```mlir
     aiex.parameter @foo : i32

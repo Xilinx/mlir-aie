@@ -319,6 +319,15 @@ class Runtime(Resolvable):
         """
         self._tasks.append(_BarrierSetOp(barrier, value))
 
+    def sync_parameters(self):
+        """Emit ``aiex.sync_parameters_from_host`` in the runtime sequence.
+
+        Call this within a :meth:`sequence` context after all parameters have
+        been written on the host side and before starting workers that read
+        them.
+        """
+        self._tasks.append(_SyncParametersTask())
+
     @property
     def workers(self) -> list[Worker]:
         """The workers associated with the Runtime by calls to start()"""
@@ -419,3 +428,16 @@ class Runtime(Resolvable):
 
             if task_group_actions[default_task_group]:
                 finish_task_group(default_task_group, task_group_actions)
+
+
+class _SyncParametersTask(Resolvable):
+    """Emits ``aiex.sync_parameters_from_host`` during runtime sequence resolution."""
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        from ...dialects.aiex import sync_parameters_from_host
+
+        sync_parameters_from_host(loc=loc, ip=ip)
