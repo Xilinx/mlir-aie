@@ -62,7 +62,7 @@ def edge_detect(dev, width, height):
     # AIE-array data movement with object fifos
     # Input
     inOF_L3L2 = ObjectFifo(line_bytes_ty, name="inOF_L3L2")
-    inOF_L2L1 = inOF_L3L2.cons(7).forward(depth=2, name="inOF_L2L1")
+    inOF_L2L1 = inOF_L3L2.cons(7).forward(depth=7, name="inOF_L2L1")
 
     # Output
     outOF_L1L2 = ObjectFifo(line_bytes_ty, name="outOF_L1L2")

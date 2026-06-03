@@ -6,54 +6,82 @@
 
 # RUN: %python %s | FileCheck %s
 
+# Pins down the IRON-side contract for `aie.objectfifo` depth emission, which
+# mirrors the `AIE_ObjectFifoCreateOp` description in AIEOps.td and the
+# programming guide section 2a ("Specifying the Object FIFO Depth as an
+# Array") / section 2b ("Broadcast with Skip-Connection"):
+#
+#   * Symmetric per-handle depths -> emit a single int; the stateful
+#     transform is free to shrink each tile's pool to (max_acquire + 1).
+#   * Asymmetric per-handle depths -> emit an ArrayAttr
+#     [prod_depth, *cons_depths]; the stateful transform honors each
+#     declared depth verbatim (the documented override path).
+#
+# This is the IRON surface for the PG section-2b skip-connection pattern:
+# the user writes `cons(depth=N)` on the consumer that needs extra buffering
+# and a plain `cons()` on the peer, and the resulting ArrayAttr makes the
+# asymmetry explicit to the lowering.
+
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU1Col1, Tile
 
-# Regression for: IRON ObjectFifo collapsed all-equal per-handle depths to a
-# single int when emitting `aie.objectfifo`. The `aie-objectFifo-stateful-
-# transform` lowering interprets a single-int `elemNumber` as "producer
-# depth only" and auto-sizes each consumer-side buffer from max-acquire,
-# silently dropping below the user's declared depth. For multi-consumer
-# fanout with uneven acquire patterns (one consumer must buffer ahead of a
-# peer that's waiting on upstream data), this deadlocks at runtime.
-#
-# Fix: always emit the per-handle ArrayAttr `[prod_depth, *cons_depths]`
-# so the lowering uses each declared depth directly, even when all values
-# match. Applies uniformly to every ObjectFifo (1-cons and N-cons).
 
-
-# CHECK-DAG: aie.objectfifo @of_multi({{.*}}, [4 : i32, 4 : i32, 4 : i32]) : !aie.objectfifo<memref<16xi32>>
-# CHECK-DAG: aie.objectfifo @of_a_out({{.*}}, [2 : i32, 2 : i32]) : !aie.objectfifo<memref<16xi32>>
-# CHECK-DAG: aie.objectfifo @of_b_out({{.*}}, [2 : i32, 2 : i32]) : !aie.objectfifo<memref<16xi32>>
-def test_objectfifo_multi_consumer_depth_array():
-    """Multi-consumer fanout must emit ArrayAttr depth so the lowering honors
-    each cons(depth=N), not auto-minimize per consumer from max-acquire.
-    1-producer-1-consumer ObjectFifos (of_a_out, of_b_out) also emit
-    ArrayAttr — uniform handling, no silent collapse."""
+# CHECK-DAG: aie.objectfifo @of_sym({{.*}}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+def test_symmetric_depths_collapse_to_int():
+    """All handles default to ObjectFifo(depth=2). _get_depths() collapses
+    [2, 2, 2] to a single int so the lowering takes the auto-minimize path
+    documented in AIEOps.td for single-int elemNumber."""
 
     dev = NPU1Col1()
     tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
 
-    of_multi = ObjectFifo(tile_ty, depth=4, name="of_multi")
-    of_a_out = ObjectFifo(tile_ty, depth=2, name="of_a_out")
-    of_b_out = ObjectFifo(tile_ty, depth=2, name="of_b_out")
+    of_sym = ObjectFifo(tile_ty, depth=2, name="of_sym")
 
     def prod_body(p):
         for _ in range_(4):
             p.acquire(1)
             p.release(1)
 
-    def cons_a_body(c, p_out):
-        # max-acquire = 1; pre-fix lowering would shrink to ping-pong=2
-        # even though declared depth was 4.
+    def cons_body(c):
         for _ in range_(4):
             c.acquire(1)
-            p_out.acquire(1)
             c.release(1)
-            p_out.release(1)
+
+    w_prod = Worker(prod_body, fn_args=[of_sym.prod()], tile=Tile(0, 2))
+    w_cons_a = Worker(cons_body, fn_args=[of_sym.cons()], tile=Tile(0, 3))
+    w_cons_b = Worker(cons_body, fn_args=[of_sym.cons()], tile=Tile(0, 4))
+
+    rt = Runtime()
+    with rt.sequence() as ():
+        rt.start(w_prod, w_cons_a, w_cons_b)
+
+    module = Program(dev, rt).resolve_program()
+    print(module)
+
+
+# CHECK-DAG: aie.objectfifo @of_skip({{.*}}, [1 : i32, 1 : i32, 2 : i32]) : !aie.objectfifo<memref<16xi32>>
+# CHECK-DAG: aie.objectfifo @of_bc({{.*}}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+def test_skip_connection_emits_array():
+    """Programming guide section 2b: producer A broadcasts to B and C, and
+    C also depends on data from B via a separate fifo. C needs an extra
+    buffer on the broadcast to avoid back-pressuring A. The user expresses
+    this with `cons(depth=2)` on C while B keeps the default depth=1, and
+    IRON must emit ArrayAttr [1, 1, 2] so the lowering allocates per-handle
+    pools exactly as declared."""
+
+    dev = NPU1Col1()
+    tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
+
+    of_skip = ObjectFifo(tile_ty, depth=1, name="of_skip")
+    of_bc = ObjectFifo(tile_ty, depth=1, name="of_bc")
+
+    def prod_a_body(p):
+        for _ in range_(4):
+            p.acquire(1)
+            p.release(1)
 
     def cons_b_body(c, p_out):
         for _ in range_(4):
@@ -62,28 +90,33 @@ def test_objectfifo_multi_consumer_depth_array():
             c.release(1)
             p_out.release(1)
 
-    w_prod = Worker(prod_body, fn_args=[of_multi.prod()], tile=Tile(0, 2))
-    w_cons_a = Worker(
-        cons_a_body,
-        fn_args=[of_multi.cons(), of_a_out.prod()],
+    def cons_c_body(c_skip, c_from_b):
+        for _ in range_(4):
+            c_skip.acquire(1)
+            c_from_b.acquire(1)
+            c_skip.release(1)
+            c_from_b.release(1)
+
+    w_a = Worker(prod_a_body, fn_args=[of_skip.prod()], tile=Tile(0, 2))
+    w_b = Worker(
+        cons_b_body,
+        fn_args=[of_skip.cons(), of_bc.prod()],
         tile=Tile(0, 3),
     )
-    w_cons_b = Worker(
-        cons_b_body,
-        fn_args=[of_multi.cons(), of_b_out.prod()],
+    w_c = Worker(
+        cons_c_body,
+        fn_args=[of_skip.cons(depth=2), of_bc.cons()],
         tile=Tile(0, 4),
     )
 
     rt = Runtime()
-    tensor_ty = np.ndarray[(16,), np.dtype[np.int32]]
-    with rt.sequence(tensor_ty, tensor_ty) as (out_a, out_b):
-        rt.start(w_prod, w_cons_a, w_cons_b)
-        rt.drain(of_a_out.cons(), out_a, wait=True)
-        rt.drain(of_b_out.cons(), out_b, wait=True)
+    with rt.sequence() as ():
+        rt.start(w_a, w_b, w_c)
 
     module = Program(dev, rt).resolve_program()
     print(module)
 
 
 if __name__ == "__main__":
-    test_objectfifo_multi_consumer_depth_array()
+    test_symmetric_depths_collapse_to_int()
+    test_skip_connection_emits_array()
