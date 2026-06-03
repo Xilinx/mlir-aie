@@ -101,12 +101,11 @@ def device_from_args(
 ) -> Device:
     """Resolve a parsed-argparse namespace to a Device.
 
-    Collapses the three boilerplate variants the example suite used to
-    repeat across ~30 sites::
+    Collapses the boilerplate variants the example suite used to repeat
+    across ~30 sites::
 
-        from_name(args.dev, n_cols=None)                          # "use all cols"
-        from_name(args.dev, n_cols=1)                             # "single col"
-        from_name(args.dev, n_cols=None if args.dev=="npu2" else 1)  # the ternary
+        from_name(args.dev, n_cols=None)   # "use all cols"
+        from_name(args.dev, n_cols=1)      # "single col"
 
     into one helper with an explicit ``n_cols`` knob.
 
@@ -117,12 +116,14 @@ def device_from_args(
             overrides the default.
         dev_attr: Name of the device-string attribute on ``args``.
             Defaults to ``"dev"``.
-        n_cols: Column-count selector.  ``"auto"`` (default) preserves
-            the historic Phoenix/Strix behaviour: single column on
-            ``npu``/``npu1``, full width on ``npu2``.  Pass an explicit
-            ``int`` (``1`` for single-col, etc.) or ``None`` (always
-            full width) to override.  Passing through ``args.n_cols``
-            still works when ``n_cols="auto"`` is in effect.
+        n_cols: Column-count selector.  ``"auto"`` (default) means
+            single column on every NPU family — the dominant pattern
+            across the example suite and the safest "I haven't thought
+            about this yet" choice.  Pass an explicit ``int`` (``2``,
+            ``4``, ...) or ``None`` (full width) to override.  An
+            ``.n_cols`` attribute on ``args`` (e.g. from a future CLI
+            flag) takes precedence over the default when
+            ``n_cols="auto"``.
 
     Returns:
         Device instance.
@@ -131,5 +132,5 @@ def device_from_args(
     if n_cols == "auto":
         n_cols = getattr(args, "n_cols", None)
         if n_cols is None:
-            n_cols = 1 if dev == "npu" else None
+            n_cols = 1
     return from_name(dev, n_cols=n_cols)
