@@ -31,7 +31,33 @@ from aie.helpers.dialects.func import func
 from aie.iron.device import Tile
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.dialects._aie_enum_gen import AIETileType
-from aie.dialects.aiex import npu_maskwrite32
+from aie.dialects.aie import (
+    device,
+    tile,
+    buffer,
+    lock,
+    mem,
+    dma_start,
+    dma_bd,
+    next_bd,
+    use_lock,
+    flow,
+    end as aie_end,
+    core,
+    AIEDevice,
+    DMAChannelDir,
+    LockAction,
+    WireBundle,
+    shim_dma_allocation,
+)
+from aie.dialects.aiex import (
+    npu_maskwrite32,
+    runtime_sequence,
+    shim_dma_single_bd_task,
+    dma_start_task,
+    dma_await_task,
+)
+from aie.extras.context import mlir_mod_ctx
 
 N = 4096
 LINE_SIZE = 1024
@@ -125,32 +151,6 @@ def _build_multi_cmp_only():
     Built from low-level aie dialect because IRON's link API doesn't
     expose per-side BD sizing.
     """
-    from aie.dialects.aie import (
-        device,
-        tile,
-        buffer,
-        lock,
-        mem,
-        dma_start,
-        dma_bd,
-        next_bd,
-        use_lock,
-        flow,
-        end as aie_end,
-        core,
-        AIEDevice,
-        DMAChannelDir,
-        LockAction,
-        WireBundle,
-        shim_dma_allocation,
-    )
-    from aie.extras.context import mlir_mod_ctx
-    from aie.dialects.aiex import (
-        runtime_sequence,
-        shim_dma_single_bd_task,
-        dma_start_task,
-        dma_await_task,
-    )
 
     raw_ty = np.ndarray[(LINE_SIZE,), np.dtype[np.int32]]
     comp_ty = np.ndarray[(RATIOED_PER_LINE,), np.dtype[np.int32]]

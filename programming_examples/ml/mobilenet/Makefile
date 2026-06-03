@@ -71,7 +71,7 @@ build/final_mobilenet.xclbin:
 build/trace_mobilenet.xclbin: build/${MLIR_FILE}_trace.mlir $(OBJ)
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
 else
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \

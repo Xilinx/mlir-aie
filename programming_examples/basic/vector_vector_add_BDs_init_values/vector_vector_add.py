@@ -55,6 +55,7 @@ from aie.dialects.aiex import (
     dma_start_task,
     shim_dma_single_bd_task,
 )
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -229,8 +230,6 @@ def _compile_kwargs(opts):
 
 
 def _emit_mlir(opts):
-    from aie.utils.compile.jit.compilabledesign import CompilableDesign
-
     spec = CompilableDesign(vector_vector_add, compile_kwargs=_compile_kwargs(opts))
     print(spec.as_mlir(spec.generator))
 
