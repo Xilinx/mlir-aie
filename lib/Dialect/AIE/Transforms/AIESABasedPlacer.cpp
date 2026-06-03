@@ -21,20 +21,12 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-sa-placer"
 
-namespace {
-
-// Check if a tile satisfies partial placement constraints at a given position.
-static bool satisfiesConstraints(Operation *tile, TileID pos) {
-  if (auto lt = dyn_cast<LogicalTileOp>(tile)) {
-    if (auto c = lt.tryGetCol(); c && *c != pos.col)
-      return false;
-    if (auto r = lt.tryGetRow(); r && *r != pos.row)
-      return false;
-  }
-  return true;
-}
-
-} // namespace
+// Penalty weights for resource constraint violations.
+static constexpr int kMemPenaltyFactor = 30; // per KB of unresolved overflow
+static constexpr int kDmaPenaltyFactor = 20; // per channel or BD over limit
+static constexpr int kCascadeWeight = 30;    // per Manhattan distance unit
+static constexpr int kPressureFactor = 3;    // soft pressure per KB over threshold
+static constexpr double kPressureThreshold = 0.75; // utilization threshold
 
 //===----------------------------------------------------------------------===//
 // Net model
@@ -265,9 +257,8 @@ void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     // Declared depth (for shared-mem) and DMA depth (for DMA connections).
     // The appropriate depth is selected in each branch below based on
     // whether the connection uses DMA or shared memory.
-    int consDeclDepth = (ci < fb.consumerDepths.size())
-                            ? fb.consumerDepths[ci]
-                            : fb.producerDepth;
+    int consDeclDepth = (ci < fb.consumerDepths.size()) ? fb.consumerDepths[ci]
+                                                        : fb.producerDepth;
     int consDMADepth = (ci < fb.consumerDMADepths.size())
                            ? fb.consumerDMADepths[ci]
                            : fb.producerDMADepth;
@@ -338,10 +329,9 @@ void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
         currentMemUsage[prodPos] += sign * bytes;
         prodCharged = true;
       }
-      bool consIsShim =
-          consTypeIt != tileTypes.end() &&
-          (consTypeIt->second == AIETileType::ShimNOCTile ||
-           consTypeIt->second == AIETileType::ShimPLTile);
+      bool consIsShim = consTypeIt != tileTypes.end() &&
+                        (consTypeIt->second == AIETileType::ShimNOCTile ||
+                         consTypeIt->second == AIETileType::ShimPLTile);
       if (!consIsShim) {
         // MemTile consumer: use declared depth
         int64_t consBytes = fb.consumerSizeBytes * consDeclDepth;
@@ -364,10 +354,9 @@ void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
             sign * fb.producerSizeBytes * fb.producerDepth;
         prodCharged = true;
       }
-      bool consIsShim =
-          consTypeIt != tileTypes.end() &&
-          (consTypeIt->second == AIETileType::ShimNOCTile ||
-           consTypeIt->second == AIETileType::ShimPLTile);
+      bool consIsShim = consTypeIt != tileTypes.end() &&
+                        (consTypeIt->second == AIETileType::ShimNOCTile ||
+                         consTypeIt->second == AIETileType::ShimPLTile);
       if (!consIsShim) {
         int64_t consBytes = fb.consumerSizeBytes * consDeclDepth;
         currentMemUsage[consPos] += sign * consBytes;
@@ -424,8 +413,6 @@ void SABasedPlacer::initResourceTracking() {
 }
 
 int SABasedPlacer::computeMemoryPressure() const {
-  constexpr int kPressureFactor = 3;
-  constexpr double kPressureThreshold = 0.75;
   int64_t coreCapacity = targetModel->getLocalMemorySize();
   int64_t memTileCapacity = targetModel->getMemTileSize();
   int pressure = 0;
@@ -448,154 +435,134 @@ int SABasedPlacer::computeMemoryPressure() const {
 }
 
 int SABasedPlacer::computePenaltyFromMaps() const {
-  // Hard penalty: blocks legality. Separate from soft pressure.
-  constexpr int kMemPenaltyFactor = 30; // per KB of unresolved memory overflow
-  constexpr int kDmaPenaltyFactor = 20; // per DMA channel over limit
-  int64_t coreCapacity = targetModel->getLocalMemorySize();
+  return computeMemTileSpilloverPenalty() + computeCoreTileOverflowPenalty() +
+         computeDMAChannelPenalty() + computeBDCountPenalty();
+}
+
+// Simulates per-buffer MemTile allocation with neighbor spillover.
+// The stateful transform allocates each buffer individually on the home
+// MemTile, spilling to adjacent MemTiles (left first, then right) when
+// the home tile is full. We simulate this with per-buffer granularity
+// so that competing spills from adjacent MemTiles correctly consume
+// shared neighbor capacity.
+int SABasedPlacer::computeMemTileSpilloverPenalty() const {
+  int64_t memTileCapacity = targetModel->getMemTileSize();
+  int numCols = targetModel->columns();
   int penalty = 0;
 
-  // Memory penalty with neighbor spillover
-  int64_t memTileCapacity = targetModel->getMemTileSize();
+  // Collect individual buffer sizes per MemTile column.
+  llvm::SmallVector<llvm::SmallVector<int64_t>> memTileBufs(numCols);
+  llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
 
-  // MemTile per-buffer spillover simulation.
-  // The stateful transform allocates each buffer individually on the home
-  // MemTile, spilling to adjacent MemTiles (left first, then right) when
-  // the home tile is full. We simulate this with per-buffer granularity
-  // so that competing spills from adjacent MemTiles correctly consume
-  // shared neighbor capacity.
-  {
-    int numCols = targetModel->columns();
+  for (size_t fi = 0; fi < fifoBuffers.size(); fi++) {
+    const auto &fb = fifoBuffers[fi];
+    if (!fb.producer)
+      continue;
+    auto prodIt = currentPlacement.find(fb.producer);
+    if (prodIt == currentPlacement.end())
+      continue;
+    TileID prodPos = prodIt->second;
+    auto prodTypeIt = tileTypes.find(fb.producer);
+    if (prodTypeIt == tileTypes.end())
+      continue;
+    if (prodTypeIt->second != AIETileType::MemTile)
+      continue;
+    if (fb.linkSharedProd)
+      continue;
 
-    // Collect individual buffer sizes per MemTile column.
-    // Each depth element is a separate buffer that may spill independently.
-    llvm::SmallVector<llvm::SmallVector<int64_t>> memTileBufs(numCols);
-    // Non-fifo memory per MemTile (static buffers, stacks, small fifos that
-    // won't spill individually — accounted for as baseline usage).
-    llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
+    int col = prodPos.col;
+    for (int d = 0; d < fb.producerDepth; d++)
+      memTileBufs[col].push_back(fb.producerSizeBytes);
 
-    for (size_t fi = 0; fi < fifoBuffers.size(); fi++) {
-      const auto &fb = fifoBuffers[fi];
-      if (!fb.producer)
+    for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
+      auto *cons = fb.consumers[ci];
+      if (!cons)
         continue;
-      auto prodIt = currentPlacement.find(fb.producer);
-      if (prodIt == currentPlacement.end())
+      auto consIt = currentPlacement.find(cons);
+      if (consIt == currentPlacement.end())
         continue;
-      TileID prodPos = prodIt->second;
-      auto prodTypeIt = tileTypes.find(fb.producer);
-      if (prodTypeIt == tileTypes.end())
+      auto consTypeIt = tileTypes.find(cons);
+      if (consTypeIt == tileTypes.end() ||
+          consTypeIt->second != AIETileType::MemTile)
         continue;
-      bool prodIsMemTile = (prodTypeIt->second == AIETileType::MemTile);
-      bool prodIsShim = (prodTypeIt->second == AIETileType::ShimNOCTile ||
-                         prodTypeIt->second == AIETileType::ShimPLTile);
-
-      // Only care about producer-side MemTile charges
-      if (!prodIsMemTile)
-        continue;
-      if (prodIsShim || fb.linkSharedProd)
-        continue;
-
-      int64_t bufSize = fb.producerSizeBytes;
-      int depth = fb.producerDepth;
-      int col = prodPos.col;
-
-      // Each depth element is a separate buffer
-      for (int d = 0; d < depth; d++)
-        memTileBufs[col].push_back(bufSize);
-
-      // Also charge consumer-side memory on MemTiles
-      for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
-        auto *cons = fb.consumers[ci];
-        if (!cons)
-          continue;
-        auto consIt = currentPlacement.find(cons);
-        if (consIt == currentPlacement.end())
-          continue;
-        auto consTypeIt = tileTypes.find(cons);
-        if (consTypeIt == tileTypes.end())
-          continue;
-        if (consTypeIt->second != AIETileType::MemTile)
-          continue;
-        int consCol = consIt->second.col;
-        int consDepth = (ci < fb.consumerDepths.size())
-                            ? fb.consumerDepths[ci]
-                            : fb.producerDepth;
-        int64_t consBufSize = fb.consumerSizeBytes;
-        for (int d = 0; d < consDepth; d++)
-          memTileBufs[consCol].push_back(consBufSize);
-      }
+      int consCol = consIt->second.col;
+      int consDepth = (ci < fb.consumerDepths.size()) ? fb.consumerDepths[ci]
+                                                      : fb.producerDepth;
+      for (int d = 0; d < consDepth; d++)
+        memTileBufs[consCol].push_back(fb.consumerSizeBytes);
     }
+  }
 
-    // Add static buffers and stack as baseline (non-spillable)
-    for (auto &[op, bufSize] : staticBufferSizes) {
-      auto posIt = currentPlacement.find(op);
-      if (posIt == currentPlacement.end())
-        continue;
-      auto typeIt = tileTypes.find(op);
-      if (typeIt == tileTypes.end() || typeIt->second != AIETileType::MemTile)
-        continue;
-      memTileBaseline[posIt->second.col] += bufSize;
-    }
+  // Static buffers as baseline (non-spillable).
+  for (auto &[op, bufSize] : staticBufferSizes) {
+    auto posIt = currentPlacement.find(op);
+    if (posIt == currentPlacement.end())
+      continue;
+    auto typeIt = tileTypes.find(op);
+    if (typeIt == tileTypes.end() || typeIt->second != AIETileType::MemTile)
+      continue;
+    memTileBaseline[posIt->second.col] += bufSize;
+  }
 
-    // Simulate per-buffer allocation with shared capacity tracking.
-    // remaining[col] = capacity available after baseline usage.
-    llvm::SmallVector<int64_t> remaining(numCols, 0);
-    for (int col = 0; col < numCols; col++) {
-      if (targetModel->getTileType(col, 1) != AIETileType::MemTile)
-        continue;
-      remaining[col] =
-          std::max(memTileCapacity - memTileBaseline[col],
-                   static_cast<int64_t>(0));
-    }
+  // remaining[col] = capacity available after baseline.
+  llvm::SmallVector<int64_t> remaining(numCols, 0);
+  for (int col = 0; col < numCols; col++) {
+    if (targetModel->getTileType(col, 1) != AIETileType::MemTile)
+      continue;
+    remaining[col] = std::max(memTileCapacity - memTileBaseline[col],
+                              static_cast<int64_t>(0));
+  }
 
-    // Sort each column's buffers descending (place large buffers first)
-    for (int col = 0; col < numCols; col++)
-      llvm::sort(memTileBufs[col], std::greater<int64_t>());
+  // Sort descending (large buffers first, matching stateful transform).
+  for (int col = 0; col < numCols; col++)
+    llvm::sort(memTileBufs[col], std::greater<int64_t>());
 
-    // Place buffers: try home first, then left, then right.
-    // Buffers are sorted descending per column, matching the stateful
-    // transform which now also processes large MemTile fifos first.
-    for (int col = 0; col < numCols; col++) {
-      for (int64_t bufSize : memTileBufs[col]) {
-        if (remaining[col] >= bufSize) {
-          remaining[col] -= bufSize;
-        } else {
-          // Spill: try left, then right (matches stateful transform)
-          bool placed = false;
-          for (int nbr : {col - 1, col + 1}) {
-            if (nbr < 0 || nbr >= numCols)
-              continue;
-            if (targetModel->getTileType(nbr, 1) != AIETileType::MemTile)
-              continue;
-            if (remaining[nbr] >= bufSize) {
-              remaining[nbr] -= bufSize;
-              placed = true;
-              break;
-            }
+  // Try home first, then left, then right.
+  for (int col = 0; col < numCols; col++) {
+    for (int64_t bufSize : memTileBufs[col]) {
+      if (remaining[col] >= bufSize) {
+        remaining[col] -= bufSize;
+      } else {
+        bool placed = false;
+        for (int nbr : {col - 1, col + 1}) {
+          if (nbr < 0 || nbr >= numCols)
+            continue;
+          if (targetModel->getTileType(nbr, 1) != AIETileType::MemTile)
+            continue;
+          if (remaining[nbr] >= bufSize) {
+            remaining[nbr] -= bufSize;
+            placed = true;
+            break;
           }
-          if (!placed)
-            penalty += ((bufSize + 1023) / 1024) * kMemPenaltyFactor;
         }
+        if (!placed)
+          penalty += ((bufSize + 1023) / 1024) * kMemPenaltyFactor;
       }
     }
   }
 
-  // Core tile spillover via objectfifo.allocate
+  return penalty;
+}
+
+// Penalizes core tiles whose buffer usage exceeds local memory, accounting
+// for intratile fifos that can be relocated to a neighbor via allocate.
+int SABasedPlacer::computeCoreTileOverflowPenalty() const {
+  int64_t coreCapacity = targetModel->getLocalMemorySize();
+  int penalty = 0;
+
   for (auto &[tilePos, used] : currentMemUsage) {
-    auto tileType = targetModel->getTileType(tilePos.col, tilePos.row);
-    if (tileType != AIETileType::CoreTile)
+    if (targetModel->getTileType(tilePos.col, tilePos.row) !=
+        AIETileType::CoreTile)
       continue;
     if (used <= coreCapacity)
       continue;
     int64_t overflow = used - coreCapacity;
-    TileID neighbors[] = {
-        {tilePos.col - 1, tilePos.row},
-        {tilePos.col + 1, tilePos.row},
-        {tilePos.col, tilePos.row + 1},
-        {tilePos.col, tilePos.row - 1},
-    };
-    int64_t unresolved = overflow;
 
     // Build accessible neighbor spare capacities.
+    TileID neighbors[] = {{tilePos.col - 1, tilePos.row},
+                          {tilePos.col + 1, tilePos.row},
+                          {tilePos.col, tilePos.row + 1},
+                          {tilePos.col, tilePos.row - 1}};
     llvm::SmallVector<int64_t, 4> nbrSpares;
     for (auto &nbr : neighbors) {
       if (nbr.col < 0 || nbr.col >= targetModel->columns() || nbr.row < 0 ||
@@ -608,15 +575,14 @@ int SABasedPlacer::computePenaltyFromMaps() const {
         continue;
       auto it = currentMemUsage.find(nbr);
       int64_t nbrUsed = (it != currentMemUsage.end()) ? it->second : 0;
-      int64_t spare =
-          std::max(coreCapacity - nbrUsed, static_cast<int64_t>(0));
+      int64_t spare = std::max(coreCapacity - nbrUsed, static_cast<int64_t>(0));
       if (spare > 0)
         nbrSpares.push_back(spare);
     }
-    // Sort neighbors by spare descending (best-fit first).
     llvm::sort(nbrSpares, std::greater<int64_t>());
 
-    // Collect relocatable fifo sizes (1-to-1 intratile fifos on this tile).
+    // Collect relocatable intratile fifo sizes on this tile.
+    int64_t unresolved = overflow;
     auto opIt = physToLogical.find(tilePos);
     if (opIt != physToLogical.end()) {
       auto fifoIt = tileToFifoIndices.find(opIt->second);
@@ -625,18 +591,15 @@ int SABasedPlacer::computePenaltyFromMaps() const {
         llvm::DenseSet<size_t> seen;
         for (size_t fi : fifoIt->second) {
           if (!seen.insert(fi).second)
-            continue; // intratile fifos appear twice (prod+cons)
+            continue;
           const auto &fb = fifoBuffers[fi];
-          if (fb.consumers.size() != 1)
-            continue; // not 1-to-1, can't relocate
-          if (!fb.producer || !fb.consumers[0])
+          if (fb.consumers.size() != 1 || !fb.producer || !fb.consumers[0])
             continue;
           auto prodIt = currentPlacement.find(fb.producer);
           auto consIt = currentPlacement.find(fb.consumers[0]);
           if (prodIt == currentPlacement.end() ||
               consIt == currentPlacement.end())
             continue;
-          // Only intratile fifos (prod==cons==this tile) are relocatable
           if (prodIt->second != tilePos || consIt->second != tilePos)
             continue;
           int consDepth = fb.consumerDepths.empty() ? fb.producerDepth
@@ -645,10 +608,9 @@ int SABasedPlacer::computePenaltyFromMaps() const {
                        std::max(fb.producerDepth, consDepth);
           fifoSizes.push_back(sz);
         }
-        // Sort by size descending (largest first for greedy packing).
         llvm::sort(fifoSizes, std::greater<int64_t>());
 
-        // Greedy: assign each whole fifo to the first neighbor that fits.
+        // Greedy packing: assign each fifo to the first neighbor that fits.
         int64_t totalAbsorbed = 0;
         for (int64_t sz : fifoSizes) {
           for (int64_t &spare : nbrSpares) {
@@ -667,7 +629,11 @@ int SABasedPlacer::computePenaltyFromMaps() const {
       penalty += ((unresolved + 1023) / 1024) * kMemPenaltyFactor;
   }
 
-  // DMA channel penalty (hard: blocks legality)
+  return penalty;
+}
+
+int SABasedPlacer::computeDMAChannelPenalty() const {
+  int penalty = 0;
   for (auto &[tilePos, usage] : currentDMAUsage) {
     auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
     if (usage.first > static_cast<int>(maxIn))
@@ -675,42 +641,40 @@ int SABasedPlacer::computePenaltyFromMaps() const {
     if (usage.second > static_cast<int>(maxOut))
       penalty += (usage.second - static_cast<int>(maxOut)) * kDmaPenaltyFactor;
   }
+  return penalty;
+}
 
-  // MemTile BD count limit: each MemTile has getNumBDs() BD slots.
-  // Each fifo endpoint on a MemTile uses `depth` BDs. Total BDs across
-  // all fifos on one MemTile must not exceed the limit.
-  // Note: for mobilenet, memory constraints naturally keep BDs well
-  // under 48. This check is a safety net for designs with many shallow
-  // fifos that use few bytes but many BDs.
-  {
-    int memTileBDMax = targetModel->getNumBDs(AIETileType::MemTile);
-    llvm::DenseMap<TileID, int> memTileBDs;
-    for (const auto &fb : fifoBuffers) {
-      if (fb.producer) {
-        auto posIt = currentPlacement.find(fb.producer);
-        auto typeIt = tileTypes.find(fb.producer);
-        if (posIt != currentPlacement.end() && typeIt != tileTypes.end() &&
-            typeIt->second == AIETileType::MemTile && !fb.linkSharedProd)
-          memTileBDs[posIt->second] += fb.producerDepth;
-      }
-      for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
-        auto *cons = fb.consumers[ci];
-        if (!cons)
-          continue;
-        auto posIt = currentPlacement.find(cons);
-        auto typeIt = tileTypes.find(cons);
-        if (posIt == currentPlacement.end() || typeIt == tileTypes.end() ||
-            typeIt->second != AIETileType::MemTile)
-          continue;
-        int depth = (ci < fb.consumerDepths.size()) ? fb.consumerDepths[ci]
-                                                    : fb.producerDepth;
-        memTileBDs[posIt->second] += depth;
-      }
+// Penalizes MemTiles that exceed their BD slot limit.
+int SABasedPlacer::computeBDCountPenalty() const {
+  int memTileBDMax = targetModel->getNumBDs(AIETileType::MemTile);
+  int penalty = 0;
+
+  llvm::DenseMap<TileID, int> memTileBDs;
+  for (const auto &fb : fifoBuffers) {
+    if (fb.producer) {
+      auto posIt = currentPlacement.find(fb.producer);
+      auto typeIt = tileTypes.find(fb.producer);
+      if (posIt != currentPlacement.end() && typeIt != tileTypes.end() &&
+          typeIt->second == AIETileType::MemTile && !fb.linkSharedProd)
+        memTileBDs[posIt->second] += fb.producerDepth;
     }
-    for (auto &[tilePos, totalBDs] : memTileBDs) {
-      if (totalBDs > memTileBDMax)
-        penalty += (totalBDs - memTileBDMax) * kDmaPenaltyFactor;
+    for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
+      auto *cons = fb.consumers[ci];
+      if (!cons)
+        continue;
+      auto posIt = currentPlacement.find(cons);
+      auto typeIt = tileTypes.find(cons);
+      if (posIt == currentPlacement.end() || typeIt == tileTypes.end() ||
+          typeIt->second != AIETileType::MemTile)
+        continue;
+      int depth = (ci < fb.consumerDepths.size()) ? fb.consumerDepths[ci]
+                                                  : fb.producerDepth;
+      memTileBDs[posIt->second] += depth;
     }
+  }
+  for (auto &[tilePos, totalBDs] : memTileBDs) {
+    if (totalBDs > memTileBDMax)
+      penalty += (totalBDs - memTileBDMax) * kDmaPenaltyFactor;
   }
 
   return penalty;
@@ -727,7 +691,6 @@ int SABasedPlacer::computeCascadePenalty() const {
   //   Vertical:   dst at (src.col, src.row - 1)
   //
   // Penalty = kCascadeWeight × min distance to either valid config
-  constexpr int kCascadeWeight = 30;
   int penalty = 0;
 
   for (const auto &group : cascadeGroups) {
@@ -1163,11 +1126,11 @@ LogicalResult SABasedPlacer::mergeMemShimTiles(DeviceOp device) {
 }
 
 //===----------------------------------------------------------------------===//
-// Main SA loop
+// SA placement
 //===----------------------------------------------------------------------===//
 
 LogicalResult SABasedPlacer::place(DeviceOp device) {
-  auto startTime = std::chrono::steady_clock::now();
+  startTime = std::chrono::steady_clock::now();
 
   // Seed RNG
   if (rngSeed == 0) {
@@ -1176,19 +1139,25 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
     rng.seed(rngSeed);
   }
 
-  // Phase 1: Collect IR operations
-  SmallVector<LogicalTileOp> logicalTiles;
-  SmallVector<ObjectFifoCreateOp> objectFifos;
-  SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+  // Phase 1-2: Collect IR ops, build net model, fifo info, cascade groups.
+  if (failed(collectAndBuildModel(device)))
+    return failure();
+  // Phase 3: Classify tiles by type, generate initial placement.
+  if (failed(generateInitialPlacement()))
+    return failure();
+  // Phase 4: Initialize bounding boxes, resource tracking, initial cost.
+  initializeSAState();
+  // Phase 5: SA main loop (skip if nothing to optimize).
+  runSAMainLoop();
+  // Phase 6: Restore best, generate allocates, merge mem/shim, stats.
+  return finalizePlacement(device);
+}
 
-  device.walk([&](Operation *op) {
-    if (auto lt = dyn_cast<LogicalTileOp>(op))
-      logicalTiles.push_back(lt);
-    if (auto of = dyn_cast<ObjectFifoCreateOp>(op))
-      objectFifos.push_back(of);
-    if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
-      objectFifoLinks.push_back(link);
-  });
+LogicalResult SABasedPlacer::collectAndBuildModel(DeviceOp device) {
+  collected = collectOperations(device);
+  auto &logicalTiles = collected.logicalTiles;
+  auto &objectFifos = collected.objectFifos;
+  auto &objectFifoLinks = collected.objectFifoLinks;
 
   if (logicalTiles.empty())
     return success();
@@ -1213,214 +1182,212 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
     stackSizes[tileOp] = coreOp.getStackSize();
   });
 
-  // Phase 2: Build net model and buffer requirements
+  // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
+  buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
+  buildCascadeGroups(collected.cascadeFlows);
 
-  // Collect buffer requirements from ObjectFifos
-  {
-    mlir::DataLayout dataLayout(device->getParentOfType<ModuleOp>());
+  return success();
+}
 
-    for (auto ofOp : objectFifos) {
-      FifoBufferInfo fb;
-      fb.fifoOp = ofOp.getOperation();
+void SABasedPlacer::buildFifoBufferInfo(
+    DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos,
+    ArrayRef<ObjectFifoLinkOp> objectFifoLinks) {
+  mlir::DataLayout dataLayout(device->getParentOfType<ModuleOp>());
 
-      // Get producer
-      auto *prodOp = ofOp.getProducerTile().getDefiningOp();
-      fb.producer = (prodOp && isa<LogicalTileOp>(prodOp)) ? prodOp : nullptr;
+  for (auto ofOp : objectFifos) {
+    FifoBufferInfo fb;
+    fb.fifoOp = ofOp.getOperation();
 
-      // Get consumers
-      for (Value ct : ofOp.getConsumerTiles()) {
-        auto *consOp = ct.getDefiningOp();
-        if (consOp && isa<LogicalTileOp>(consOp))
-          fb.consumers.push_back(consOp);
-      }
+    // Get producer
+    auto *prodOp = ofOp.getProducerTile().getDefiningOp();
+    fb.producer = (prodOp && isa<LogicalTileOp>(prodOp)) ? prodOp : nullptr;
 
-      // Compute buffer element size (producer side)
-      auto fifoType = llvm::cast<AIEObjectFifoType>(ofOp.getElemType());
-      auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
-      int64_t elementBits =
-          dataLayout.getTypeSizeInBits(elemType.getElementType());
-      fb.producerSizeBytes = elemType.getNumElements() * elementBits / 8;
-
-      // Consumer element size (may differ with consumerElemType)
-      fb.consumerSizeBytes = fb.producerSizeBytes;
-      if (auto consType = ofOp.getConsumerElemType()) {
-        auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
-        auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
-        int64_t consBits =
-            dataLayout.getTypeSizeInBits(consMemref.getElementType());
-        fb.consumerSizeBytes = consMemref.getNumElements() * consBits / 8;
-      }
-
-      // Get per-endpoint depths: [producer, consumer0, consumer1, ...]
-      if (auto arrayAttr = dyn_cast<ArrayAttr>(ofOp.getElemNumber())) {
-        auto values = arrayAttr.getValue();
-        fb.producerDepth =
-            values.empty()
-                ? 1
-                : static_cast<int>(cast<IntegerAttr>(values[0]).getInt());
-        for (size_t i = 0; i < fb.consumers.size(); i++) {
-          int idx = i + 1; // consumer depths start at index 1
-          int d =
-              (idx < static_cast<int>(values.size()))
-                  ? static_cast<int>(cast<IntegerAttr>(values[idx]).getInt())
-                  : fb.producerDepth;
-          fb.consumerDepths.push_back(d);
-        }
-      } else {
-        int d =
-            static_cast<int>(cast<IntegerAttr>(ofOp.getElemNumber()).getInt());
-        fb.producerDepth = d;
-        for (size_t i = 0; i < fb.consumers.size(); i++)
-          fb.consumerDepths.push_back(d);
-      }
-
-      // Determine if this fifo forces DMA even when tiles are adjacent.
-      // Must match AIEObjectFifoStatefulTransform::requiresDMAs().
-      bool isLinked = false;
-      for (auto &link : objectFifoLinks) {
-        for (auto in : link.getInputObjectFifos())
-          if (in.name() == ofOp.getSymName())
-            isLinked = true;
-        for (auto out : link.getOutputObjectFifos())
-          if (out.name() == ofOp.getSymName())
-            isLinked = true;
-      }
-      fb.forcesDMA = ofOp.getVia_DMA() ||
-                     ofOp.getRepeatCount().has_value() ||
-                     ofOp.getConsumerElemType().has_value() ||
-                     !ofOp.getDimensionsToStream().empty() ||
-                     isLinked;
-      // For linked output fifos, producer buffers share memory with
-      // the link input fifo's consumer buffer on the MemTile.
-      // Mark to skip producer-side MemTile memory charge.
-      if (isLinked) {
-        for (auto &link : objectFifoLinks) {
-          for (auto out : link.getOutputObjectFifos()) {
-            if (out.name() == ofOp.getSymName())
-              fb.linkSharedProd = true;
-          }
-        }
-      }
-      fifoBuffers.push_back(fb);
+    // Get consumers
+    for (Value ct : ofOp.getConsumerTiles()) {
+      auto *consOp = ct.getDefiningOp();
+      if (consOp && isa<LogicalTileOp>(consOp))
+        fb.consumers.push_back(consOp);
     }
 
-    LLVM_DEBUG(llvm::dbgs() << "[SA] Collected " << fifoBuffers.size()
-                            << " ObjectFifo buffer requirements\n");
+    // Compute buffer element size (producer side)
+    auto fifoType = llvm::cast<AIEObjectFifoType>(ofOp.getElemType());
+    auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
+    int64_t elementBits =
+        dataLayout.getTypeSizeInBits(elemType.getElementType());
+    fb.producerSizeBytes = elemType.getNumElements() * elementBits / 8;
 
-    // Compute DMA depths per endpoint: maxAcquire + 1 from core body
-    // acquire ops, matching findObjectFifoSize() in the stateful transform.
-    // DMA depths are used when the connection requires DMA; declared
-    // depths are used for shared-mem connections. The SA selects the
-    // appropriate depth in addFifoContribution based on placement.
-    DenseMap<std::pair<Operation *, Operation *>, int> endpointMaxAcquire;
-    device.walk([&](CoreOp coreOp) {
-      auto *tileOp = coreOp.getTile().getDefiningOp();
-      if (!tileOp || !isa<LogicalTileOp>(tileOp))
+    // Consumer element size (may differ with consumerElemType)
+    fb.consumerSizeBytes = fb.producerSizeBytes;
+    if (auto consType = ofOp.getConsumerElemType()) {
+      auto consOFType = llvm::cast<AIEObjectFifoType>(consType.value());
+      auto consMemref = llvm::cast<MemRefType>(consOFType.getElementType());
+      int64_t consBits =
+          dataLayout.getTypeSizeInBits(consMemref.getElementType());
+      fb.consumerSizeBytes = consMemref.getNumElements() * consBits / 8;
+    }
+
+    // Get per-endpoint depths: [producer, consumer0, consumer1, ...]
+    if (auto arrayAttr = dyn_cast<ArrayAttr>(ofOp.getElemNumber())) {
+      auto values = arrayAttr.getValue();
+      fb.producerDepth =
+          values.empty()
+              ? 1
+              : static_cast<int>(cast<IntegerAttr>(values[0]).getInt());
+      for (size_t i = 0; i < fb.consumers.size(); i++) {
+        int idx = i + 1; // consumer depths start at index 1
+        int d = (idx < static_cast<int>(values.size()))
+                    ? static_cast<int>(cast<IntegerAttr>(values[idx]).getInt())
+                    : fb.producerDepth;
+        fb.consumerDepths.push_back(d);
+      }
+    } else {
+      int d =
+          static_cast<int>(cast<IntegerAttr>(ofOp.getElemNumber()).getInt());
+      fb.producerDepth = d;
+      for (size_t i = 0; i < fb.consumers.size(); i++)
+        fb.consumerDepths.push_back(d);
+    }
+
+    // Determine if this fifo forces DMA even when tiles are adjacent.
+    // Must match AIEObjectFifoStatefulTransform::requiresDMAs().
+    bool isLinked = false;
+    for (auto link : objectFifoLinks) {
+      for (auto in : link.getInputObjectFifos())
+        if (in.name() == ofOp.getSymName())
+          isLinked = true;
+      for (auto out : link.getOutputObjectFifos())
+        if (out.name() == ofOp.getSymName())
+          isLinked = true;
+    }
+    fb.forcesDMA = ofOp.getVia_DMA() || ofOp.getRepeatCount().has_value() ||
+                   ofOp.getConsumerElemType().has_value() ||
+                   !ofOp.getDimensionsToStream().empty() || isLinked;
+    // For linked output fifos, producer buffers share memory with
+    // the link input fifo's consumer buffer on the MemTile.
+    // Mark to skip producer-side MemTile memory charge.
+    if (isLinked) {
+      for (auto link : objectFifoLinks) {
+        for (auto out : link.getOutputObjectFifos()) {
+          if (out.name() == ofOp.getSymName())
+            fb.linkSharedProd = true;
+        }
+      }
+    }
+    fifoBuffers.push_back(fb);
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "[SA] Collected " << fifoBuffers.size()
+                          << " ObjectFifo buffer requirements\n");
+
+  // Compute DMA depths per endpoint: maxAcquire + 1 from core body
+  // acquire ops, matching findObjectFifoSize() in the stateful transform.
+  // DMA depths are used when the connection requires DMA; declared
+  // depths are used for shared-mem connections. The SA selects the
+  // appropriate depth in addFifoContribution based on placement.
+  DenseMap<std::pair<Operation *, Operation *>, int> endpointMaxAcquire;
+  device.walk([&](CoreOp coreOp) {
+    auto *tileOp = coreOp.getTile().getDefiningOp();
+    if (!tileOp || !isa<LogicalTileOp>(tileOp))
+      return;
+    coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
+      auto fifoOp = acqOp.getObjectFifo();
+      if (!fifoOp)
         return;
-      coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
-        auto fifoOp = acqOp.getObjectFifo();
-        if (!fifoOp)
-          return;
-        auto key = std::make_pair(static_cast<Operation *>(fifoOp), tileOp);
-        int acqNum = acqOp.acqNumber();
-        auto it = endpointMaxAcquire.find(key);
-        if (it == endpointMaxAcquire.end() || acqNum > it->second)
-          endpointMaxAcquire[key] = acqNum;
-      });
+      auto key = std::make_pair(static_cast<Operation *>(fifoOp), tileOp);
+      int acqNum = acqOp.acqNumber();
+      auto it = endpointMaxAcquire.find(key);
+      if (it == endpointMaxAcquire.end() || acqNum > it->second)
+        endpointMaxAcquire[key] = acqNum;
     });
+  });
 
-    for (auto &fb : fifoBuffers) {
-      // Producer DMA depth
-      fb.producerDMADepth = fb.producerDepth;
-      if (fb.producer) {
-        auto key = std::make_pair(fb.fifoOp, fb.producer);
+  for (auto &fb : fifoBuffers) {
+    // Producer DMA depth
+    fb.producerDMADepth = fb.producerDepth;
+    if (fb.producer) {
+      auto key = std::make_pair(fb.fifoOp, fb.producer);
+      auto it = endpointMaxAcquire.find(key);
+      if (it != endpointMaxAcquire.end()) {
+        int maxAcq = it->second;
+        fb.producerDMADepth =
+            (maxAcq == 1 && fb.producerDepth == 1) ? 1 : maxAcq + 1;
+      }
+    }
+    // Consumer DMA depths
+    for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
+      int dmaDepth =
+          fb.consumerDepths.empty() ? fb.producerDepth : fb.consumerDepths[ci];
+      if (fb.consumers[ci]) {
+        auto key = std::make_pair(fb.fifoOp, fb.consumers[ci]);
         auto it = endpointMaxAcquire.find(key);
         if (it != endpointMaxAcquire.end()) {
           int maxAcq = it->second;
-          fb.producerDMADepth =
-              (maxAcq == 1 && fb.producerDepth == 1) ? 1 : maxAcq + 1;
+          int declared = (ci < fb.consumerDepths.size()) ? fb.consumerDepths[ci]
+                                                         : fb.producerDepth;
+          dmaDepth = (maxAcq == 1 && declared == 1) ? 1 : maxAcq + 1;
         }
       }
-      // Consumer DMA depths
-      for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
-        int dmaDepth = fb.consumerDepths.empty()
-                           ? fb.producerDepth
-                           : fb.consumerDepths[ci];
-        if (fb.consumers[ci]) {
-          auto key = std::make_pair(fb.fifoOp, fb.consumers[ci]);
-          auto it = endpointMaxAcquire.find(key);
-          if (it != endpointMaxAcquire.end()) {
-            int maxAcq = it->second;
-            int declared = (ci < fb.consumerDepths.size())
-                               ? fb.consumerDepths[ci]
-                               : fb.producerDepth;
-            dmaDepth =
-                (maxAcq == 1 && declared == 1) ? 1 : maxAcq + 1;
-          }
-        }
-        fb.consumerDMADepths.push_back(dmaDepth);
-      }
+      fb.consumerDMADepths.push_back(dmaDepth);
+    }
+  }
+}
+
+void SABasedPlacer::buildCascadeGroups(ArrayRef<CascadeFlowOp> cascadeFlows) {
+  llvm::DenseMap<Operation *, Operation *> cascadeSrcToDst;
+  llvm::DenseMap<Operation *, Operation *> cascadeDstToSrc;
+
+  for (auto cascadeOp : cascadeFlows) {
+    Value srcTile = cascadeOp.getSourceTile();
+    Value dstTile = cascadeOp.getDestTile();
+    auto *srcOp = srcTile.getDefiningOp();
+    auto *dstOp = dstTile.getDefiningOp();
+    if (srcOp && dstOp && isa<LogicalTileOp>(srcOp) &&
+        isa<LogicalTileOp>(dstOp)) {
+      cascadeSrcToDst[srcOp] = dstOp;
+      cascadeDstToSrc[dstOp] = srcOp;
     }
   }
 
-  // Collect cascade flow ops and build cascade groups
-  {
-    // Map each tile to its cascade connections
-    llvm::DenseMap<Operation *, Operation *> cascadeSrcToDst;
-    llvm::DenseMap<Operation *, Operation *> cascadeDstToSrc;
+  // Follow chains from head (source not destination) to build groups.
+  // Heads sorted in IR order for deterministic construction.
+  SmallVector<Operation *> chainHeads;
+  for (auto &[src, dst] : cascadeSrcToDst) {
+    if (!cascadeDstToSrc.count(src))
+      chainHeads.push_back(src);
+  }
+  llvm::sort(chainHeads,
+             [](Operation *a, Operation *b) { return a->isBeforeInBlock(b); });
+  llvm::DenseSet<Operation *> visited;
+  for (auto *src : chainHeads) {
+    if (visited.count(src))
+      continue;
 
-    device.walk([&](CascadeFlowOp cascadeOp) {
-      Value srcTile = cascadeOp.getSourceTile();
-      Value dstTile = cascadeOp.getDestTile();
-      auto *srcOp = srcTile.getDefiningOp();
-      auto *dstOp = dstTile.getDefiningOp();
-      if (srcOp && dstOp && isa<LogicalTileOp>(srcOp) &&
-          isa<LogicalTileOp>(dstOp)) {
-        cascadeSrcToDst[srcOp] = dstOp;
-        cascadeDstToSrc[dstOp] = srcOp;
-      }
-    });
-
-    // Build cascade groups by following chains: find tiles that are
-    // cascade sources but not cascade destinations (chain heads).
-    // Collect heads in IR order for deterministic group construction.
-    SmallVector<Operation *> chainHeads;
-    for (auto &[src, dst] : cascadeSrcToDst) {
-      if (!cascadeDstToSrc.count(src))
-        chainHeads.push_back(src);
-    }
-    llvm::sort(chainHeads, [](Operation *a, Operation *b) {
-      return a->isBeforeInBlock(b);
-    });
-    llvm::DenseSet<Operation *> visited;
-    for (auto *src : chainHeads) {
-      if (visited.count(src))
-        continue;
-
-      CascadeGroup group;
-      Operation *current = src;
-      while (current) {
-        group.tiles.push_back(current);
-        visited.insert(current);
-        auto it = cascadeSrcToDst.find(current);
-        current = (it != cascadeSrcToDst.end()) ? it->second : nullptr;
-      }
-
-      if (group.tiles.size() >= 2) {
-        int groupIdx = cascadeGroups.size();
-        for (auto *t : group.tiles)
-          cascadeGroupOf[t] = groupIdx;
-        cascadeGroups.push_back(std::move(group));
-      }
+    CascadeGroup group;
+    Operation *current = src;
+    while (current) {
+      group.tiles.push_back(current);
+      visited.insert(current);
+      auto it = cascadeSrcToDst.find(current);
+      current = (it != cascadeSrcToDst.end()) ? it->second : nullptr;
     }
 
-    LLVM_DEBUG(llvm::dbgs()
-               << "[SA] Found " << cascadeGroups.size() << " cascade groups\n");
+    if (group.tiles.size() >= 2) {
+      int groupIdx = cascadeGroups.size();
+      for (auto *t : group.tiles)
+        cascadeGroupOf[t] = groupIdx;
+      cascadeGroups.push_back(std::move(group));
+    }
   }
 
-  // Phase 3: Classify tiles and generate initial placement
-  // Separate available tiles by type
+  LLVM_DEBUG(llvm::dbgs() << "[SA] Found " << cascadeGroups.size()
+                          << " cascade groups\n");
+}
+
+LogicalResult SABasedPlacer::generateInitialPlacement() {
+  auto &logicalTiles = collected.logicalTiles;
+
+  // Classify available tiles by type
   std::vector<TileID> availComp = availability.compTiles;
   std::vector<TileID> availMem, availShim;
   for (auto &t : availability.nonCompTiles) {
@@ -1571,16 +1538,19 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
     }
   }
 
-  // Phase 4: Initialize bounding boxes
-  initBoundingBoxes();
+  return success();
+}
 
-  // Initialize incremental resource tracking
+void SABasedPlacer::initializeSAState() {
+  initBoundingBoxes();
   initResourceTracking();
 
-  int cascadePen = computeCascadePenalty();
+  cascadePen = computeCascadePenalty();
   int memPressure = computeMemoryPressure();
-  int totalCost =
+  totalCost =
       computeTotalHPWL() + getResourcePenalty() + cascadePen + memPressure;
+
+  deviceSlots = availability.compTiles.size() + movableTiles.size();
 
   LLVM_DEBUG(llvm::dbgs() << "[SA] Initial cost: " << totalCost
                           << " (HPWL=" << computeTotalHPWL()
@@ -1588,246 +1558,293 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
                           << "), movable tiles: " << movableTiles.size()
                           << ", nets: " << nets.size()
                           << ", fifos: " << fifoBuffers.size() << "\n");
+}
 
-  // If nothing to optimize, skip SA.
-  // Run SA when there are movable tiles AND there is something to optimize:
-  // nets (HPWL), fifo buffers (memory), or cascade groups (adjacency).
+void SABasedPlacer::runSAMainLoop() {
+  // Skip SA when there is nothing to optimize.
   bool hasCostTerms =
       !nets.empty() || !fifoBuffers.empty() || !cascadeGroups.empty();
-  if (movableTiles.empty() || !hasCostTerms) {
-    if (failed(mergeMemShimTiles(device)))
-      return failure();
-  } else {
+  if (movableTiles.empty() || !hasCostTerms)
+    return;
 
-    // Phase 5: SA main loop
-    // SA schedule parameters scaled by design and device characteristics.
-    int numMovable = movableTiles.size();
-    int numNets = nets.size();
-    int deviceSlots =
-        availability.compTiles.size() + numMovable; // total core positions
+  // SA schedule parameters scaled by design and device.
+  int numMovable = movableTiles.size();
+  int numNets = nets.size();
 
-    // Moves per iteration: proportional to N * sqrt(nets) to balance
-    // exploration breadth with net complexity. Capped to avoid excessive
-    // runtime on large designs.
-    int movesPerIter = std::max(
-        static_cast<int>(numMovable * std::sqrt(std::max(numNets, 1))), 100);
-    movesPerIter = std::min(movesPerIter, 2000);
+  int movesPerIter = std::max(
+      static_cast<int>(numMovable * std::sqrt(std::max(numNets, 1))), 100);
+  movesPerIter = std::min(movesPerIter, 2000);
 
-    // Max iterations: scale with design complexity (movable tiles × nets).
-    // Larger designs need more iterations to converge.
-    // Target: small designs ~1500 iters, large designs ~10000 iters.
-    int maxIters = std::max(
-        10000,
-        static_cast<int>(1000 * std::sqrt(static_cast<double>(numMovable) *
-                                          std::max(numNets, 1))));
+  int maxIters = std::max(
+      10000, static_cast<int>(1000 * std::sqrt(static_cast<double>(numMovable) *
+                                               std::max(numNets, 1))));
 
-    // Greedy iterations: proportional to movable tiles
-    int greedyIters = 50 * numMovable;
+  int greedyIters = 50 * numMovable;
 
-    double coolingRate = 0.999;
+  double coolingRate = 0.999;
 
-    // Estimate initial temperature from sample move deltas.
-    // Target: ~80% acceptance at initial T.
-    int numSamples = std::max(10 * numMovable, 50);
-    double estimatedT = estimateInitialTemperature(numSamples);
-    // Cap to avoid runaway temperatures on designs with large penalties.
-    double initTemp =
-        std::min(10.0 * estimatedT, static_cast<double>(totalCost) * 2.0);
-    initTemp = std::max(initTemp, 1.0); // floor at 1.0
+  int numSamples = std::max(10 * numMovable, 50);
+  double estimatedT = estimateInitialTemperature(numSamples);
+  double initTemp =
+      std::min(10.0 * estimatedT, static_cast<double>(totalCost) * 2.0);
+  initTemp = std::max(initTemp, 1.0);
 
-    LLVM_DEBUG(llvm::dbgs() << "[SA] Schedule: movesPerIter=" << movesPerIter
-                            << " maxIters=" << maxIters << " cooling="
-                            << coolingRate << " initTemp=" << initTemp << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "[SA] Schedule: movesPerIter=" << movesPerIter
+                          << " maxIters=" << maxIters << " cooling="
+                          << coolingRate << " initTemp=" << initTemp << "\n");
 
-    // Cooling: T should reach ~1 at 70% of iterations, leaving 30% for greedy.
-    // initTemp * cooling^(0.7*maxIters) = 1
-    // cooling = (1/initTemp)^(1/(0.7*maxIters))
-    if (initTemp > 1.0) {
-      coolingRate = std::pow(1.0 / initTemp, 1.0 / (0.7 * maxIters));
+  if (initTemp > 1.0) {
+    coolingRate = std::pow(1.0 / initTemp, 1.0 / (0.7 * maxIters));
+  }
+
+  schedule = SASchedule(initTemp, movesPerIter, maxIters, greedyIters);
+  schedule.setCoolingFactor(coolingRate);
+
+  bestPlacement = currentPlacement;
+  bestCost =
+      (getResourcePenalty() == 0 && cascadePen == 0) ? totalCost : INT_MAX;
+  bestOverallPlacement = currentPlacement;
+  bestOverallCost = totalCost;
+  zeroDeltaMoves = posDeltaMoves = negDeltaMoves = 0;
+  acceptedUphill = rejectedMoves = 0;
+
+  std::uniform_real_distribution<double> moveDist(0.0, 1.0);
+
+  int swapAttempts = 0, swapSuccess = 0;
+  int shiftAttempts = 0, shiftSuccess = 0;
+
+  while (!schedule.limitReached()) {
+    for (int m = 0; m < schedule.getMovesPerIter(); m++) {
+
+      double r = moveDist(rng);
+      double coreOccupancy = (deviceSlots > 0)
+                                 ? static_cast<double>(numMovable) / deviceSlots
+                                 : 1.0;
+      int numNonCore = 0;
+      for (auto *t : movableTiles)
+        if (tileTypes.count(t) && tileTypes[t] != AIETileType::CoreTile)
+          numNonCore++;
+      double nonCoreFrac =
+          numMovable > 0 ? static_cast<double>(numNonCore) / numMovable : 0.0;
+      double shiftProb = (1.0 - coreOccupancy) + nonCoreFrac * 0.2;
+
+      if (r < 1.0 - shiftProb) {
+        swapAttempts++;
+        Operation *tile1 = nullptr, *tile2 = nullptr;
+        if (!generateSwapMove(tile1, tile2))
+          continue;
+        swapSuccess++;
+
+        SmallVector<std::pair<Operation *, TileID>> moves;
+        moves.push_back({tile1, currentPlacement[tile2]});
+        moves.push_back({tile2, currentPlacement[tile1]});
+        tryMultiTileMove(moves);
+
+      } else {
+        shiftAttempts++;
+        Operation *tile = nullptr;
+        TileID newPos;
+        if (!generateShiftMove(tile, newPos))
+          continue;
+        shiftSuccess++;
+
+        SmallVector<std::pair<Operation *, TileID>> moves;
+        moves.push_back({tile, newPos});
+        tryMultiTileMove(moves);
+      }
     }
 
-    schedule = SASchedule(initTemp, movesPerIter, maxIters, greedyIters);
-    schedule.setCoolingFactor(coolingRate);
-
-    // Track best placement -- only memory-legal placements are "best"
-    auto bestPlacement = currentPlacement;
-    int bestCost =
-        (getResourcePenalty() == 0 && cascadePen == 0) ? totalCost : INT_MAX;
-    // Also track best overall cost (even if not legal) as fallback
-    auto bestOverallPlacement = currentPlacement;
-    int bestOverallCost = totalCost;
-
-    std::uniform_real_distribution<double> acceptDist(0.0, 1.0);
-    std::uniform_real_distribution<double> moveDist(0.0, 1.0);
-
-    int swapAttempts = 0, swapSuccess = 0;
-    int shiftAttempts = 0, shiftSuccess = 0;
-    int zeroDeltaMoves = 0, posDeltaMoves = 0, negDeltaMoves = 0;
-    int acceptedUphill = 0, rejectedMoves = 0;
-
-    // Helper lambda: evaluate and accept/reject a multi-tile move
-    auto tryMultiTileMove =
-        [&](SmallVector<std::pair<Operation *, TileID>> &moves) {
-          // Save old positions for revert and incremental update
-          SmallVector<std::pair<Operation *, TileID>> oldPlacements;
-          for (auto &[t, _] : moves)
-            oldPlacements.push_back({t, currentPlacement[t]});
-          int oldResPenalty = cachedResourcePenalty;
-
-          // Save resource state so revert restores exact pre-move state.
-          auto savedMemUsage = currentMemUsage;
-          auto savedDMAUsage = currentDMAUsage;
-          auto savedSharedMemDest = sharedMemDestination;
-
-          // Remove affected tiles from physToLogical
-          for (auto &[t, _] : moves)
-            physToLogical.erase(currentPlacement[t]);
-
-          // Evaluate HPWL delta and apply moves
-          SmallVector<SmallVector<std::pair<size_t, NetBoundingBox>>>
-              allBackups(moves.size());
-          int hpwlDelta = 0;
-          for (size_t i = 0; i < moves.size(); i++) {
-            hpwlDelta +=
-                evaluateMove(moves[i].first, moves[i].second, allBackups[i]);
-            currentPlacement[moves[i].first] = moves[i].second;
-          }
-          for (auto &[t, pos] : moves)
-            physToLogical[pos] = t;
-
-          // Incremental cost update: resource penalty + cascade + DMA util
-          int oldCascade = cascadePen;
-          int oldPressure = computeMemoryPressure();
-          int newResPenalty = updateResourcePenalty(oldPlacements);
-          int newCascade = computeCascadePenalty();
-          int newPressure = computeMemoryPressure();
-          int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
-                      (newCascade - oldCascade) + (newPressure - oldPressure);
-
-          if (delta == 0)
-            zeroDeltaMoves++;
-          else if (delta > 0)
-            posDeltaMoves++;
-          else
-            negDeltaMoves++;
-
-          bool accept =
-              delta <= 0 ||
-              (schedule.getTemperature() > 0 &&
-               acceptDist(rng) < std::exp(-delta / schedule.getTemperature()));
-
-          if (accept) {
-            if (delta > 0)
-              acceptedUphill++;
-            totalCost += delta;
-            cascadePen = newCascade;
-            schedule.recordAccept();
-            if (totalCost < bestOverallCost) {
-              bestOverallCost = totalCost;
-              bestOverallPlacement = currentPlacement;
-            }
-            if (totalCost < bestCost && newResPenalty == 0 && newCascade == 0) {
-              bestCost = totalCost;
-              bestPlacement = currentPlacement;
-            }
-          } else {
-            // Revert: undo move and resource tracking
-            for (auto &[t, pos] : moves)
-              physToLogical.erase(pos);
-            for (int i = moves.size() - 1; i >= 0; i--) {
-              revertMove(allBackups[i]);
-              currentPlacement[moves[i].first] = oldPlacements[i].second;
-            }
-            for (auto &[op, oldPos] : oldPlacements)
-              physToLogical[oldPos] = op;
-            // Restore exact pre-move resource state
-            currentMemUsage = savedMemUsage;
-            currentDMAUsage = savedDMAUsage;
-            sharedMemDestination = savedSharedMemDest;
-            cachedResourcePenalty = oldResPenalty;
-                                          // which are now "old" to revert from
-            rejectedMoves++;
-            schedule.recordReject();
-          }
-        };
-
-    SmallVector<std::pair<size_t, NetBoundingBox>> backups;
-
-    while (!schedule.limitReached()) {
-      for (int m = 0; m < schedule.getMovesPerIter(); m++) {
-
-        // Two move types: swap and shift.
-        // Shift probability scales with empty slots and non-core fraction.
-        double r = moveDist(rng);
-        double coreOccupancy =
-            (deviceSlots > 0) ? static_cast<double>(numMovable) / deviceSlots
-                              : 1.0;
-        int numNonCore = 0;
-        for (auto *t : movableTiles)
-          if (tileTypes.count(t) && tileTypes[t] != AIETileType::CoreTile)
-            numNonCore++;
-        double nonCoreFrac =
-            numMovable > 0 ? static_cast<double>(numNonCore) / numMovable : 0.0;
-        double shiftProb = (1.0 - coreOccupancy) + nonCoreFrac * 0.2;
-
-        if (r < 1.0 - shiftProb) {
-          // Regular tile swap
-          swapAttempts++;
-          Operation *tile1 = nullptr, *tile2 = nullptr;
-          if (!generateSwapMove(tile1, tile2))
-            continue;
-          swapSuccess++;
-
-          SmallVector<std::pair<Operation *, TileID>> moves;
-          moves.push_back({tile1, currentPlacement[tile2]});
-          moves.push_back({tile2, currentPlacement[tile1]});
-          tryMultiTileMove(moves);
-
-        } else {
-          // Tile shift (only works if empty slots exist)
-          shiftAttempts++;
-          Operation *tile = nullptr;
-          TileID newPos;
-          if (!generateShiftMove(tile, newPos))
-            continue;
-          shiftSuccess++;
-
-          SmallVector<std::pair<Operation *, TileID>> moves;
-          moves.push_back({tile, newPos});
-          tryMultiTileMove(moves);
-        }
-      }
-
+    if (schedule.getIteration() % 5000 == 0)
       LLVM_DEBUG(llvm::dbgs()
                  << "[SA] Iter " << schedule.getIteration()
-                 << " T=" << schedule.getTemperature() << " cost=" << totalCost
-                 << " best=" << bestCost
-                 << " accept=" << schedule.getAcceptanceRatio()
+                 << " T=" << llvm::format("%.3e", schedule.getTemperature())
+                 << " cost=" << totalCost << " best=" << bestCost
+                 << " accept=" << llvm::format("%.3f", schedule.getAcceptanceRatio())
+                 << " d0=" << zeroDeltaMoves << " d+=" << posDeltaMoves
+                 << " d-=" << negDeltaMoves << " uphill=" << acceptedUphill
+                 << " rej=" << rejectedMoves
                  << (schedule.isGreedy() ? " (greedy)" : "") << "\n");
 
-      if (schedule.getIteration() % 5000 == 0)
-        LLVM_DEBUG(llvm::dbgs() << "[SA] Iter " << schedule.getIteration()
-                     << " T=" << llvm::format("%.3e", schedule.getTemperature())
-                     << " cost=" << totalCost << " best=" << bestCost
-                     << " d0=" << zeroDeltaMoves << " d+=" << posDeltaMoves
-                     << " d-=" << negDeltaMoves << " uphill=" << acceptedUphill
-                     << " rej=" << rejectedMoves << "\n");
-
-      // Periodic full recompute to reset incremental cost drift.
-      // The sharedMemDestination heuristic can cause forward-move drift;
-      // recomputing from scratch every 10K iterations keeps totalCost accurate.
-      if (schedule.getIteration() % 10000 == 0 && schedule.getIteration() > 0) {
-        initResourceTracking();
-        cascadePen = computeCascadePenalty();
-        totalCost = computeTotalHPWL() + getResourcePenalty() + cascadePen +
-                    computeMemoryPressure();
-      }
-
-      schedule.cool();
+    // Periodic full recompute to reset incremental cost drift.
+    if (schedule.getIteration() % 10000 == 0 && schedule.getIteration() > 0) {
+      initResourceTracking();
+      cascadePen = computeCascadePenalty();
+      totalCost = computeTotalHPWL() + getResourcePenalty() + cascadePen +
+                  computeMemoryPressure();
     }
 
-    // Restore best placement. Use legal solution if found, otherwise
-    // fall back to best overall cost (closest to legal).
+    schedule.cool();
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Move acceptance
+//===----------------------------------------------------------------------===//
+
+void SABasedPlacer::tryMultiTileMove(
+    SmallVector<std::pair<Operation *, TileID>> &moves) {
+  // Snapshot state for revert on rejection.
+  SmallVector<std::pair<Operation *, TileID>> oldPlacements;
+  for (auto &[t, _] : moves)
+    oldPlacements.push_back({t, currentPlacement[t]});
+  int oldResPenalty = cachedResourcePenalty;
+  auto savedMemUsage = currentMemUsage;
+  auto savedDMAUsage = currentDMAUsage;
+  auto savedSharedMemDest = sharedMemDestination;
+
+  // Apply moves: update placement maps and compute HPWL delta.
+  for (auto &[t, _] : moves)
+    physToLogical.erase(currentPlacement[t]);
+  SmallVector<SmallVector<std::pair<size_t, NetBoundingBox>>> allBackups(
+      moves.size());
+  int hpwlDelta = 0;
+  for (size_t i = 0; i < moves.size(); i++) {
+    hpwlDelta += evaluateMove(moves[i].first, moves[i].second, allBackups[i]);
+    currentPlacement[moves[i].first] = moves[i].second;
+  }
+  for (auto &[t, pos] : moves)
+    physToLogical[pos] = t;
+
+  // Compute total cost delta across all cost terms.
+  int oldCascade = cascadePen;
+  int oldPressure = computeMemoryPressure();
+  int newResPenalty = updateResourcePenalty(oldPlacements);
+  int newCascade = computeCascadePenalty();
+  int newPressure = computeMemoryPressure();
+  int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
+              (newCascade - oldCascade) + (newPressure - oldPressure);
+
+  if (delta == 0)
+    zeroDeltaMoves++;
+  else if (delta > 0)
+    posDeltaMoves++;
+  else
+    negDeltaMoves++;
+
+  // Accept improving moves unconditionally; accept worsening moves
+  // with probability exp(-delta/T).
+  bool accept =
+      delta <= 0 ||
+      (schedule.getTemperature() > 0 &&
+       acceptDist(rng) < std::exp(-delta / schedule.getTemperature()));
+
+  if (accept) {
+    if (delta > 0)
+      acceptedUphill++;
+    totalCost += delta;
+    cascadePen = newCascade;
+    schedule.recordAccept();
+    if (totalCost < bestOverallCost) {
+      bestOverallCost = totalCost;
+      bestOverallPlacement = currentPlacement;
+    }
+    // Only update bestPlacement when fully legal (no resource or cascade
+    // violations).
+    if (totalCost < bestCost && newResPenalty == 0 && newCascade == 0) {
+      bestCost = totalCost;
+      bestPlacement = currentPlacement;
+    }
+  } else {
+    // Revert: undo moves in reverse order and restore saved state.
+    for (auto &[t, pos] : moves)
+      physToLogical.erase(pos);
+    for (int i = moves.size() - 1; i >= 0; i--) {
+      revertMove(allBackups[i]);
+      currentPlacement[moves[i].first] = oldPlacements[i].second;
+    }
+    for (auto &[op, oldPos] : oldPlacements)
+      physToLogical[oldPos] = op;
+    currentMemUsage = savedMemUsage;
+    currentDMAUsage = savedDMAUsage;
+    sharedMemDestination = savedSharedMemDest;
+    cachedResourcePenalty = oldResPenalty;
+    rejectedMoves++;
+    schedule.recordReject();
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Debug output
+//===----------------------------------------------------------------------===//
+
+void SABasedPlacer::printPlacementStats(int64_t elapsedMs) const {
+  int finalHPWL = computeTotalHPWL();
+  int finalHardPenalty = getResourcePenalty();
+  int finalPressure = computeMemoryPressure();
+  int finalCascade = computeCascadePenalty();
+  bool isLegal = (finalHardPenalty == 0 && finalCascade == 0);
+
+  llvm::dbgs() << "[SA] Final HPWL=" << finalHPWL
+               << ", resPenalty=" << finalHardPenalty
+               << ", pressure=" << finalPressure << ", cascade=" << finalCascade
+               << ", legal=" << (isLegal ? "yes" : "NO") << "\n";
+  llvm::dbgs() << "[SA] " << schedule.getIteration() << " iters, "
+               << movableTiles.size() << " tiles, " << nets.size() << " nets, "
+               << allocates.size() << " allocates, " << elapsedMs << " ms\n";
+  llvm::dbgs() << "[SA] Moves: d-=" << negDeltaMoves << " d0=" << zeroDeltaMoves
+               << " d+=" << posDeltaMoves << " uphill=" << acceptedUphill
+               << " rej=" << rejectedMoves << "\n";
+
+  // Per-tile resource utilization (tiles above 75% capacity).
+  int64_t coreCap = targetModel->getLocalMemorySize();
+  int64_t memCap = targetModel->getMemTileSize();
+  for (auto &[pos, used] : currentMemUsage) {
+    auto type = targetModel->getTileType(pos.col, pos.row);
+    int64_t cap = (type == AIETileType::MemTile) ? memCap : coreCap;
+    if (used > cap * 3 / 4)
+      llvm::dbgs() << "[SA-RES] mem(" << pos.col << "," << pos.row
+                   << "): " << used << "/" << cap
+                   << (used > cap ? " OVERFLOW" : "") << "\n";
+  }
+  for (auto &[pos, usage] : currentDMAUsage) {
+    auto [maxIn, maxOut] = getDMACapacity(*targetModel, pos);
+    if (usage.first >= maxIn || usage.second >= maxOut)
+      llvm::dbgs() << "[SA-RES] dma(" << pos.col << "," << pos.row
+                   << "): in=" << usage.first << "/" << maxIn
+                   << " out=" << usage.second << "/" << maxOut
+                   << (usage.first > maxIn || usage.second > maxOut
+                           ? " OVERFLOW"
+                           : " AT-LIMIT")
+                   << "\n";
+  }
+
+  // Detailed breakdown for overflowing core tiles: neighbor spare capacity.
+  for (auto &[pos, used] : currentMemUsage) {
+    auto type = targetModel->getTileType(pos.col, pos.row);
+    if (type != AIETileType::CoreTile || used <= coreCap)
+      continue;
+    int64_t overflow = used - coreCap;
+    TileID nbrs[] = {{pos.col - 1, pos.row},
+                     {pos.col + 1, pos.row},
+                     {pos.col, pos.row + 1},
+                     {pos.col, pos.row - 1}};
+    for (auto &n : nbrs) {
+      if (n.col < 0 || n.col >= targetModel->columns() || n.row < 0 ||
+          n.row >= targetModel->rows())
+        continue;
+      if (targetModel->getTileType(n.col, n.row) != AIETileType::CoreTile)
+        continue;
+      if (!targetModel->isLegalMemAffinity(pos.col, pos.row, n.col, n.row))
+        continue;
+      auto it = currentMemUsage.find(n);
+      int64_t nu = it != currentMemUsage.end() ? it->second : 0;
+      llvm::dbgs() << "  nbr(" << n.col << "," << n.row << "): used=" << nu
+                   << " spare=" << std::max(coreCap - nu, (int64_t)0) << "\n";
+    }
+    llvm::dbgs() << "[SA-PENALTY] tile(" << pos.col << "," << pos.row
+                 << "): used=" << used << " cap=" << coreCap
+                 << " overflow=" << overflow << "\n";
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Post-SA finalization
+//===----------------------------------------------------------------------===//
+
+LogicalResult SABasedPlacer::finalizePlacement(DeviceOp device) {
+  // Restore best placement found during SA. Skip if SA loop didn't run
+  // (bestOverallCost stays at INT_MAX when runSAMainLoop returns early).
+  if (bestOverallCost < INT_MAX) {
     if (bestCost < INT_MAX)
       currentPlacement = bestPlacement;
     else
@@ -1836,98 +1853,21 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
     for (auto &[op, pos] : currentPlacement)
       physToLogical[pos] = op;
     initResourceTracking();
+  }
 
-    // Phase 6a: Generate allocates (state is fresh from initResourceTracking)
-    generateAllocates();
+  // Generate allocates (state is fresh from initResourceTracking)
+  generateAllocates();
 
-    // Phase 6b: Merge mem/shim tiles that SA placed at the same position
-    if (failed(mergeMemShimTiles(device)))
-      return failure();
+  // Merge mem/shim tiles that SA placed at the same position
+  if (failed(mergeMemShimTiles(device)))
+    return failure();
 
-    int finalHPWL = computeTotalHPWL();
-    int finalHardPenalty = getResourcePenalty();
-    int finalPressure = computeMemoryPressure();
-    int finalCascade = computeCascadePenalty();
-    bool isLegal = (finalHardPenalty == 0 && finalCascade == 0);
-    auto endTime = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        endTime - startTime);
+  auto endTime = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      endTime - startTime);
 
-    llvm::errs() << "[SA] HPWL=" << finalHPWL
-                 << " resPenalty=" << finalHardPenalty
-                 << " cascade=" << finalCascade
-                 << " legal=" << (isLegal ? "yes" : "NO")
-                 << " " << elapsed.count() << "ms\n";
+  LLVM_DEBUG(printPlacementStats(elapsed.count()));
 
-    LLVM_DEBUG({
-      llvm::dbgs() << "[SA] Final HPWL=" << finalHPWL
-                   << ", resPenalty=" << finalHardPenalty
-                   << ", pressure=" << finalPressure
-                   << ", cascade=" << finalCascade
-                   << ", legal=" << (isLegal ? "yes" : "NO") << "\n";
-      llvm::dbgs() << "[SA] " << schedule.getIteration() << " iters, "
-                   << movableTiles.size() << " tiles, " << nets.size()
-                   << " nets, " << allocates.size() << " allocates, "
-                   << elapsed.count() << " ms\n";
-      llvm::dbgs() << "[SA] Moves: d-=" << negDeltaMoves
-                   << " d0=" << zeroDeltaMoves << " d+=" << posDeltaMoves
-                   << " uphill=" << acceptedUphill << " rej=" << rejectedMoves
-                   << "\n";
-
-      // Per-tile resource usage
-      int64_t dbgCoreCap = targetModel->getLocalMemorySize();
-      int64_t dbgMemCap = targetModel->getMemTileSize();
-      for (auto &[pos, used] : currentMemUsage) {
-        auto type = targetModel->getTileType(pos.col, pos.row);
-        int64_t cap =
-            (type == AIETileType::MemTile) ? dbgMemCap : dbgCoreCap;
-        if (used > cap * 3 / 4)
-          llvm::dbgs() << "[SA-RES] mem(" << pos.col << "," << pos.row
-                       << "): " << used << "/" << cap
-                       << (used > cap ? " OVERFLOW" : "") << "\n";
-      }
-      for (auto &[pos, usage] : currentDMAUsage) {
-        auto [maxIn, maxOut] = getDMACapacity(*targetModel, pos);
-        if (usage.first >= maxIn || usage.second >= maxOut)
-          llvm::dbgs() << "[SA-RES] dma(" << pos.col << "," << pos.row
-                       << "): in=" << usage.first << "/" << maxIn
-                       << " out=" << usage.second << "/" << maxOut
-                       << (usage.first > maxIn || usage.second > maxOut
-                               ? " OVERFLOW"
-                               : " AT-LIMIT")
-                       << "\n";
-      }
-
-      // Detailed penalty breakdown for overflowing core tiles
-      for (auto &[pos, used] : currentMemUsage) {
-        auto type = targetModel->getTileType(pos.col, pos.row);
-        if (type != AIETileType::CoreTile || used <= dbgCoreCap)
-          continue;
-        int64_t overflow = used - dbgCoreCap;
-        TileID nbrs[] = {{pos.col - 1, pos.row}, {pos.col + 1, pos.row},
-                         {pos.col, pos.row + 1}, {pos.col, pos.row - 1}};
-        for (auto &n : nbrs) {
-          if (n.col < 0 || n.col >= targetModel->columns() || n.row < 0 ||
-              n.row >= targetModel->rows())
-            continue;
-          if (targetModel->getTileType(n.col, n.row) != AIETileType::CoreTile)
-            continue;
-          if (!targetModel->isLegalMemAffinity(pos.col, pos.row, n.col, n.row))
-            continue;
-          auto it = currentMemUsage.find(n);
-          int64_t nu = it != currentMemUsage.end() ? it->second : 0;
-          llvm::dbgs() << "  nbr(" << n.col << "," << n.row << "): used=" << nu
-                       << " spare=" << std::max(dbgCoreCap - nu, (int64_t)0)
-                       << "\n";
-        }
-        llvm::dbgs() << "[SA-PENALTY] tile(" << pos.col << "," << pos.row
-                     << "): used=" << used << " cap=" << dbgCoreCap
-                     << " overflow=" << overflow << "\n";
-      }
-    });
-  } // end of SA loop + post-SA phases (else branch)
-
-  // Write result
   result = currentPlacement;
   return success();
 }

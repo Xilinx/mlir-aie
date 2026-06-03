@@ -82,12 +82,104 @@ public:
   using AllocateInfo = std::pair<mlir::Operation *, TileID>;
   llvm::SmallVector<AllocateInfo> &getAllocates() { return allocates; }
 
+  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
+  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own
+  // coords.
+  struct Adjacency {
+    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
+        tileToEdges;
+
+    void addEdge(TileLike first, TileLike second);
+
+    // Convenience for IR walkers: skip if either Value isn't a TileLike.
+    void addEdgeFromValues(mlir::Value a, mlir::Value b);
+
+    // True if `op` has at least one edge in this adjacency.
+    bool hasEdges(mlir::Operation *op) const {
+      return tileToEdges.count(op) != 0;
+    }
+  };
+
+  // IR operations collected from a DeviceOp for placement.
+  struct CollectedOps {
+    llvm::SmallVector<LogicalTileOp> logicalTiles;
+    llvm::SmallVector<ObjectFifoCreateOp> objectFifos;
+    llvm::SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+    llvm::SmallVector<CascadeFlowOp> cascadeFlows;
+    llvm::SmallVector<FlowOp> flows;
+    llvm::SmallVector<PacketFlowOp> pktFlows;
+  };
+
+  // Collect all placement-relevant operations from the device.
+  static CollectedOps collectOperations(DeviceOp device);
+
+  // Check if a logical tile's col/row constraints are satisfied at a position.
+  static bool satisfiesConstraints(mlir::Operation *tile, TileID pos);
+
+  // Adjacency builders: pure IR walkers with no placer-specific state.
+
+  // Edge: (cascade source, dest).
+  static Adjacency
+  buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
+
+  // Edge: (producer LTO, consumer LTO) for every ObjectFifo whose producer
+  // AND consumer are CoreTile LTOs.
+  static Adjacency
+  buildComputePeerAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // Edge: (producer, consumer_i) per fifo.
+  static Adjacency
+  buildObjectFifoAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // Edge: (src, dst) per `aie.flow`; cross-product per `aie.packet_flow`.
+  static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
+                                      llvm::ArrayRef<PacketFlowOp> pktFlows);
+
 protected:
   PlacementResult result;
   llvm::SmallVector<AllocateInfo> allocates;
   const AIETargetModel *targetModel = nullptr;
   TileAvailability availability;
 };
+
+// Invoke `fn(peer, thisIsFirst)` for each edge in `adjacency` that
+// mentions `op`. `peer` is the OTHER endpoint of the edge; `thisIsFirst`
+// is true when `op` is `edge.first`.
+template <typename F>
+inline void forEachPeer(mlir::Operation *op, const Placer::Adjacency &adjacency,
+                        F &&fn) {
+  auto it = adjacency.tileToEdges.find(op);
+  if (it == adjacency.tileToEdges.end())
+    return;
+  for (unsigned idx : it->second) {
+    auto [first, second] = adjacency.edges[idx];
+    bool thisIsFirst = first.getOperation() == op;
+    TileLike peer = thisIsFirst ? second : first;
+    fn(peer, thisIsFirst);
+  }
+}
+
+// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that is a legal
+// shared-L1 mem-affinity neighbor per the target model.
+template <typename F>
+inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
+                                       TileID at, F &&fn) {
+  for (auto [dc, dr] :
+       {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{1, 0}}) {
+    int nc = at.col + dc;
+    int nr = at.row + dr;
+    if (nc < 0 || nc >= targetModel.columns())
+      continue;
+    if (nr < 0 || nr >= targetModel.rows())
+      continue;
+    if (targetModel.getTileType(nc, nr) != AIETileType::CoreTile)
+      continue;
+    if (!targetModel.isLegalMemAffinity(at.col, at.row, nc, nr))
+      continue;
+    fn(TileID{nc, nr});
+  }
+}
 
 // Sequential placement algorithm
 //
@@ -133,26 +225,6 @@ public:
   mlir::LogicalResult place(DeviceOp device) override;
 
   llvm::StringRef getName() const override { return "sequential_placer"; }
-
-  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
-  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own
-  // coords. Public so file-local helpers in AIEPlacer.cpp (notably the
-  // forEachPeer template) can take it by reference.
-  struct Adjacency {
-    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
-    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
-        tileToEdges;
-
-    void addEdge(TileLike first, TileLike second);
-
-    // Convenience for IR walkers: skip if either Value isn't a TileLike.
-    void addEdgeFromValues(mlir::Value a, mlir::Value b);
-
-    // True if `op` has at least one edge in this adjacency.
-    bool hasEdges(mlir::Operation *op) const {
-      return tileToEdges.count(op) != 0;
-    }
-  };
 
 private:
   std::optional<int> coresPerCol;
@@ -283,29 +355,8 @@ private:
                                  const UnpinnedPlacementInputs &inputs);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
+  // SequentialPlacer-only: walks CoreOps and BufferOps.
   Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
-
-  // Edge: (cascade source, dest).
-  Adjacency buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
-
-  // Edge: (producer LTO, consumer LTO) for every ObjectFifo whose producer
-  // AND consumer are CoreTile LTOs. Used to constrain placement so that
-  // high-fanin compute Workers (those whose total fifo count exceeds the
-  // compute-tile DMA budget) land on tiles with their peer producers as
-  // physical neighbors — the peer fifo then uses shared neighbor memory
-  // instead of a DMA channel.
-  Adjacency
-  buildComputePeerAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
-
-  // Edge: (producer, consumer_i) per fifo. Linked fifos connect transitively
-  // through the link tile (it's the consumer of every source fifo and the
-  // producer of every destination fifo), so per-fifo emission suffices.
-  Adjacency
-  buildObjectFifoAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
-
-  // Edge: (src, dst) per `aie.flow`; cross-product per `aie.packet_flow`.
-  Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
-                               llvm::ArrayRef<PacketFlowOp> pktFlows);
 
   // Phase 4 driver: for every still-unplaced non-core LTO, place it near
   // the centroid column of its core peers. Internally builds the per-fifo
@@ -513,9 +564,21 @@ public:
   llvm::StringRef getName() const override { return "sa_placer"; }
 
 private:
+  // Phases of place().
+  mlir::LogicalResult collectAndBuildModel(DeviceOp device);
+  mlir::LogicalResult generateInitialPlacement();
+  void initializeSAState();
+  void runSAMainLoop();
+  mlir::LogicalResult finalizePlacement(DeviceOp device);
+
+  // Evaluate and accept/reject a multi-tile move.
+  void tryMultiTileMove(
+      llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
+
   unsigned rngSeed;
   std::mt19937 rng;
   SASchedule schedule;
+  CollectedOps collected;
 
   // Net model
   llvm::SmallVector<NetInfo> nets;
@@ -532,7 +595,8 @@ private:
 
   // Static buffer sizes per logical tile
   llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
-  // Core stack sizes (from CoreOp::getStackSize(), reserved by buffer assignment)
+  // Core stack sizes (from CoreOp::getStackSize(), reserved by buffer
+  // assignment)
   llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
 
   // Cascade groups: tiles connected by cascade_flow that move as a fixed unit
@@ -549,11 +613,11 @@ private:
                                // consumerElemType, else same as producer)
     int producerDepth;         // declared depth (used for shared-mem)
     llvm::SmallVector<int> consumerDepths; // declared depths
-    int producerDMADepth;      // maxAcquire+1 depth (used for DMA connections)
+    int producerDMADepth; // maxAcquire+1 depth (used for DMA connections)
     llvm::SmallVector<int> consumerDMADepths; // maxAcquire+1 depths
-    bool forcesDMA = false;  // requires DMA even when adjacent (skip shared-mem)
-    bool linkSharedProd = false; // producer buffers shared with link input (skip
-                                 // producer mem charge on MemTile)
+    bool forcesDMA = false; // requires DMA even when adjacent (skip shared-mem)
+    bool linkSharedProd = false; // producer buffers shared with link input
+                                 // (skip producer mem charge on MemTile)
   };
   llvm::SmallVector<FifoBufferInfo> fifoBuffers;
 
@@ -568,6 +632,10 @@ private:
   void addFifoContribution(size_t fifoIdx, int sign);
   // Compute hard penalty from current maps (blocks legality)
   int computePenaltyFromMaps() const;
+  int computeMemTileSpilloverPenalty() const;
+  int computeCoreTileOverflowPenalty() const;
+  int computeDMAChannelPenalty() const;
+  int computeBDCountPenalty() const;
   // Soft memory pressure (guides optimization, not legality)
   int computeMemoryPressure() const;
   // Cascade violation penalty (hard: blocks legality when > 0)
@@ -590,6 +658,10 @@ private:
 
   void buildNetModel(llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
                      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+  void buildFifoBufferInfo(DeviceOp device,
+                           llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+                           llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
+  void buildCascadeGroups(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();
@@ -606,6 +678,20 @@ private:
 
   double estimateInitialTemperature(int numSamples);
   bool isLegalPosition(mlir::Operation *tile, TileID pos) const;
+  void printPlacementStats(int64_t elapsedMs) const;
+
+  // SA loop state shared between runSAMainLoop and tryMultiTileMove.
+  int totalCost = 0;
+  int cascadePen = 0;
+  int bestCost = INT_MAX;
+  int bestOverallCost = INT_MAX;
+  PlacementResult bestPlacement;
+  PlacementResult bestOverallPlacement;
+  std::uniform_real_distribution<double> acceptDist{0.0, 1.0};
+  int deviceSlots = 0;
+  int zeroDeltaMoves = 0, posDeltaMoves = 0, negDeltaMoves = 0;
+  int acceptedUphill = 0, rejectedMoves = 0;
+  std::chrono::steady_clock::time_point startTime;
 
   // Placement-independent memory weight estimate for initial placement sorting
   int64_t computeTileMemoryWeight(mlir::Operation *tile) const;
