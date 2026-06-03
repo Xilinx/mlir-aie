@@ -5,17 +5,23 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Vector + vector with a buffer-descriptor pre-initialized constant.
+"""Vector + vector at the iron BD level, with one operand baked into L1.
 
-This design's pedagogical point is the ``initial_value=`` parameter on
-the second operand's :class:`Buffer` — ``np.arange(N)`` is baked into
-the buffer at design startup so no shim DMA is needed for it.
+Two pedagogical points, both visible in the design body:
 
-Historically the only way to express this was dialect-level (raw
-``@device`` / ``@mem`` / ``flow`` / ``lock`` / ``buffer``).  This file
-uses the iron-level :class:`Flow` / :class:`Lock` / :class:`TileDma`
-primitives — peers of :class:`ObjectFifo` for designs that hand-wire
-routing + DMA + sync instead of letting ObjectFifo manage them.
+  1. **BD-level data movement.**  Instead of letting :class:`ObjectFifo`
+     manage routing, DMA, and lock handshakes, this design hand-wires
+     them via the iron BD-level primitives :class:`Flow`, :class:`Lock`,
+     :class:`TileDma`, :class:`DmaChannel`, :class:`Bd`, :class:`Acquire`,
+     :class:`Release`.  The core body explicitly acquires / releases the
+     producer / consumer locks that synchronise with these BDs.
+
+  2. **``Buffer(initial_value=array)``.**  The second operand lives in a
+     :class:`PreInitializedConstantBuffer` (a :class:`Buffer` subclass)
+     whose contents are written into L1 at design startup, so no shim
+     DMA is needed for it.  Compare with
+     ``programming_examples/basic/custom_dma/`` for a richer user-side
+     :class:`Resolvable` example.
 
 Two invocation modes (mirrors matrix_scalar_add):
 
@@ -24,8 +30,6 @@ Two invocation modes (mirrors matrix_scalar_add):
 """
 
 import argparse
-import sys
-from pathlib import Path
 
 import numpy as np
 
@@ -55,15 +59,28 @@ from aie.dialects.aiex import (
     dma_start_task,
     shim_dma_single_bd_task,
 )
-from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
+
+
+class PreInitializedConstantBuffer(Buffer):
+    """L1 buffer whose contents are baked into the design at startup.
+
+    A thin :class:`Buffer` subclass demonstrating the
+    ``initial_value=`` mechanism as a named, reusable component.
+    """
+
+    def __init__(self, value: np.ndarray, name: str | None = None):
+        super().__init__(
+            type=np.ndarray[value.shape, np.dtype[value.dtype]],
+            name=name,
+            initial_value=value,
+        )
 
 
 @iron.jit
 def vector_vector_add(
     A: In,
-    B: In,
     C: Out,
     *,
     col: Compile[int] = 0,
@@ -83,11 +100,8 @@ def vector_vector_add(
     # placed by Worker when passed in fn_args; we just need to give them a
     # type + name.
     in1_buff = Buffer(type=tile_ty, name="in1_cons_buff_0")
-    # The pedagogical point: in2 is initialised at design startup, no DMA.
-    in2_buff = Buffer(
-        type=tensor_ty,
-        name="in2_cons_buff_0",
-        initial_value=np.arange(N, dtype=np.int32),
+    in2_buff = PreInitializedConstantBuffer(
+        np.arange(N, dtype=np.int32), name="in2_cons_buff_0"
     )
     out_buff = Buffer(type=tile_ty, name="out_buff_0")
 
@@ -188,7 +202,7 @@ def vector_vector_add(
         tile=compute_tile,
     )
 
-    def emit_seq(A_data, _B_data, C_data):
+    def emit_seq(A_data, C_data):
         in1_task = shim_dma_single_bd_task("of_in1", A_data.op, sizes=[1, 1, 1, N])
         out_task = shim_dma_single_bd_task(
             "of_out", C_data.op, sizes=[1, 1, 1, N], issue_token=True
@@ -211,9 +225,9 @@ def vector_vector_add(
         rt.add_lock(lk)
     rt.add_tile_dma(compute_dma)
 
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
+    with rt.sequence(tensor_ty, tensor_ty) as (A, C):
         rt.start(worker)
-        rt.inline_ops(emit_seq, [A, B, C])
+        rt.inline_ops(emit_seq, [A, C])
 
     return Program(dev, rt).resolve_program()
 
@@ -230,8 +244,7 @@ def _compile_kwargs(opts):
 
 
 def _emit_mlir(opts):
-    spec = CompilableDesign(vector_vector_add, compile_kwargs=_compile_kwargs(opts))
-    print(spec.as_mlir(spec.generator))
+    print(vector_vector_add.as_mlir(None, None, **_compile_kwargs(opts)))
 
 
 def main():
