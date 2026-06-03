@@ -271,18 +271,25 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
 }
 
 def AIELowerParameters : Pass<"aie-lower-parameters", "mlir::ModuleOp"> {
-  let summary = "Lower parameter ops to scratchpad + update_from_scratchpad";
+  let summary = "Lower parameter ops and emit parameter-sync preambles";
   let description = [{
-    Assigns globally-unique state table indices to every `aiex.parameter` in the module, 
-    creates per-core buffers for each `aiex.read_parameter` usage on cores,
-    lowers `aiex.sync_parameters_from_host` to create_scratchpad + update_from_scratchpad sequences, 
-    and emits a single parameter layout file.
+    Assigns globally-unique state table indices to every `aiex.parameter` in
+    the module, creates per-core buffers for each `aiex.read_parameter` usage,
+    and automatically emits a parameter-sync preamble driven by the
+    `emit_parameter_sync_preamble` attribute on `aie.core` and
+    `aie.runtime_sequence`:
+    - In each qualifying core: inserts `aie.lock` + `aie.use_lock(Acquire, 1)`.
+    - In each qualifying runtime sequence: inserts `aiex.npu.create_scratchpad`,
+      per-parameter `aiex.npu.write32` + `aiex.npu.update_from_scratchpad`,
+      and `aiex.set_lock` for each core lock.
 
-    The scratchpad is a single hardware resource shared by all PDIs loaded by a runtime sequence, so all parameters in the module must occupy distinct indices.
-    The total parameter count is capped at 32.
+    The pass also sets a `kind` attribute on each `aiex.parameter` based on
+    how it is used: `core` if read by `aiex.read_parameter`, `addr` if used as
+    a DMA `offset_parameter`. A parameter may not be used as both.
 
-    The pass also sets a `kind` attribute on each `aiex.parameter` based on how it is used: `core` if read by `aiex.read_parameter`, `addr` if used as a DMA `offset_parameter`. 
-    A parameter may not be used as both.
+    The scratchpad is a single hardware resource shared by all PDIs loaded by a
+    runtime sequence, so all parameters in the module must occupy distinct
+    indices. The total parameter count is capped at 32.
   }];
 
   let constructor = "xilinx::AIEX::createAIELowerParametersPass()";

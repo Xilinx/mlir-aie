@@ -9,15 +9,14 @@
 scratchpad mechanism.
 
 Thin Python wrapper around the C++ ``test_utils::ParameterScratchpad``
-class (exposed via pybind11).  The encoding logic (shift-2, delta) lives
-entirely in C++; this layer only manages the ``pyxrt.bo`` handle for
-``sync()``.
+class (exposed via pybind11).  
 
 Usage::
 
     import pyxrt
     from aie.utils.parameter_scratchpad import ParameterScratchpad
 
+    # ... get kernel from ELF, etc., then:
     run = pyxrt.run(kernel)
     params = ParameterScratchpad(run, "params.txt")
     params.write("seq_len", 42)

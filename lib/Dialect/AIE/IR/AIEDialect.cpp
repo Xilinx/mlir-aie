@@ -1827,6 +1827,19 @@ TileOp CoreOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();
 }
 
+bool CoreOp::shouldEmitParameterSyncPreamble() {
+  if (auto attr = getEmitParameterSyncPreambleAttr())
+    return attr.getValue();
+  // Default: true iff any 'aiex.read_parameter' op is present in the core
+  // body. Type-erased check to avoid circular dependency with AIEX dialect.
+  bool found = false;
+  getBody().walk([&](Operation *op) {
+    if (op->getName().getStringRef() == "aiex.read_parameter")
+      found = true;
+  });
+  return found;
+}
+
 //===----------------------------------------------------------------------===//
 // BufferOp
 //===----------------------------------------------------------------------===//
@@ -3128,6 +3141,27 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
   }
 
   return success();
+}
+
+bool RuntimeSequenceOp::shouldEmitParameterSyncPreamble() {
+  if (auto attr = getEmitParameterSyncPreambleAttr())
+    return attr.getValue();
+  // Default: true iff the parent device contains any 'aiex.read_parameter' op
+  // in a core, or any 'offset_parameter' attribute on a DMA BD.
+  // Type-erased check to avoid circular dependency with AIEX dialect.
+  auto device = getOperation()->getParentOfType<DeviceOp>();
+  if (!device)
+    return false;
+  bool found = false;
+  device.walk([&](Operation *op) {
+    if (found)
+      return;
+    if (op->getName().getStringRef() == "aiex.read_parameter")
+      found = true;
+    else if (op->hasAttr("offset_parameter"))
+      found = true;
+  });
+  return found;
 }
 
 // Include implementations for custom attributes

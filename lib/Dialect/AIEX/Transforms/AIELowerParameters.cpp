@@ -8,9 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This pass lowers aiex.parameter, aiex.read_parameter, and
-// aiex.sync_parameters_from_host ops to the lower-level scratchpad ops
-// (create_scratchpad, write32, update_from_scratchpad).
+// This pass lowers aiex.parameter and aiex.read_parameter ops, and
+// automatically emits a parameter-sync preamble (lock + use_lock in each
+// qualifying core; create_scratchpad + write32 + update_from_scratchpad +
+// set_lock in each qualifying runtime sequence) driven by the
+// `emit_parameter_sync_preamble` attribute on aie.core and
+// aie.runtime_sequence.
 //
 // State table indices are assigned globally across the entire module: every
 // aiex.parameter in any aie.device gets a unique index in [0, 32).  This is
@@ -133,42 +136,75 @@ struct AIELowerParametersPass
     }
   }
 
-  // Lower sync_parameters_from_host to create_scratchpad +
-  // update_from_scratchpad sequences. `scratchpadSlots` is the total number of
-  // parameters in the whole module (the scratchpad is a single hardware
-  // resource shared across all PDIs loaded by a runtime sequence).
-  void lowerSyncOps(DeviceOp device, OpBuilder &builder,
-                    unsigned scratchpadSlots) {
-    auto module = device->getParentOfType<ModuleOp>();
-    // Collect unique (stateIdx, bufferRef) pairs from ReadParameterOp attrs.
-    SmallVector<std::pair<uint8_t, FlatSymbolRefAttr>> paramEntries;
-    DenseSet<StringRef> seenBufs;
-    device.walk([&](ReadParameterOp readOp) {
-      FlatSymbolRefAttr bufRef = readOp.getBufferAttr();
-      if (!seenBufs.insert(bufRef.getValue()).second)
+  // For each core in `device` with shouldEmitParameterSyncPreamble()==true,
+  // create an aie.lock (no lockID; AIEAssignLockIDs will assign one later) and
+  // insert aie.use_lock(Acquire, 1) at the top of the core body.  Returns the
+  // list of lock values created (one per qualifying core, in walk order).
+  SmallVector<Value> emitCorePreambles(DeviceOp device, OpBuilder &builder) {
+    SmallVector<Value> syncLocks;
+    device.walk([&](CoreOp coreOp) {
+      if (!coreOp.shouldEmitParameterSyncPreamble())
         return;
-      auto paramOp = module.lookupSymbol<ParameterOp>(readOp.getParameter());
-      uint8_t stateIdx =
-          static_cast<uint8_t>(paramOp.getStateTableIdx().value());
-      paramEntries.push_back({stateIdx, bufRef});
+
+      // Create aie.lock on the core's tile with no lockID (will be assigned).
+      TileOp tile = coreOp.getTileOp();
+      builder.setInsertionPointAfter(tile);
+      auto lockOp = builder.create<LockOp>(
+          coreOp.getLoc(), builder.getIndexType(), tile.getResult(),
+          /*lockID=*/IntegerAttr{}, builder.getI32IntegerAttr(0),
+          /*sym_name=*/StringAttr{});
+      syncLocks.push_back(lockOp.getResult());
+
+      // Insert use_lock(lock, Acquire, 1) at the very start of the core body.
+      Block &bodyBlock = coreOp.getBody().front();
+      builder.setInsertionPointToStart(&bodyBlock);
+      UseLockOp::create(builder, coreOp.getLoc(), lockOp.getResult(),
+                        LockAction::Acquire, 1);
+
+      // Mark as done so the pass is idempotent.
+      coreOp.setEmitParameterSyncPreambleAttr(builder.getBoolAttr(false));
     });
+    return syncLocks;
+  }
 
-    device.walk([&](SyncParametersFromHostOp syncOp) {
-      builder.setInsertionPoint(syncOp);
-      Location loc = syncOp.getLoc();
+  // For each runtime sequence in `device` with shouldEmitParameterSyncPreamble
+  // ()==true, insert at the beginning of the sequence body:
+  //   1. NpuCreateScratchpadOp (size = scratchpadSlots * 4 bytes)
+  //   2. For each core-kind parameter: NpuWrite32Op (reset) +
+  //      NpuUpdateFromScratchpadOp (copy value from scratchpad)
+  //   3. SetLockOp(lock, 1) for each lock in `syncLocks`
+  void emitSequencePreambles(
+      DeviceOp device, OpBuilder &builder, unsigned scratchpadSlots,
+      const SmallVector<std::pair<uint8_t, FlatSymbolRefAttr>> &paramEntries,
+      const SmallVector<Value> &syncLocks) {
+    device.walk([&](RuntimeSequenceOp seqOp) {
+      if (!seqOp.shouldEmitParameterSyncPreamble())
+        return;
 
-      NpuCreateScratchpadOp::create(builder, loc,
-                                    static_cast<uint32_t>(scratchpadSlots * 4));
+      Block &body = seqOp.getBody().front();
+      builder.setInsertionPointToStart(&body);
+      Location loc = seqOp.getLoc();
+
+      NpuCreateScratchpadOp::create(
+          builder, loc, static_cast<uint32_t>(scratchpadSlots * 4));
 
       for (auto &[stateIdx, bufRef] : paramEntries) {
+        // Since UpdateScratchpad is additive, reset the destination buffer to
+        // zero first so the subsequent increment writes the absolute value.
+        NpuWrite32Op::create(builder, loc, /*address=*/0, /*value=*/0, bufRef,
+                             /*column=*/nullptr, /*row=*/nullptr);
         NpuUpdateFromScratchpadOp::create(
             builder, loc, stateIdx, StateTableFunc::Incr,
             /*func_arg=*/static_cast<uint32_t>(0),
-            /*address=*/static_cast<uint32_t>(0), bufRef, /*column=*/nullptr,
-            /*row=*/nullptr);
+            /*address=*/static_cast<uint32_t>(0), bufRef,
+            /*column=*/nullptr, /*row=*/nullptr);
       }
 
-      syncOp.erase();
+      for (Value lock : syncLocks)
+        SetLockOp::create(builder, loc, lock, builder.getI32IntegerAttr(1));
+
+      // Mark as done so the pass is idempotent.
+      seqOp.setEmitParameterSyncPreambleAttr(builder.getBoolAttr(false));
     });
   }
 
@@ -272,7 +308,26 @@ struct AIELowerParametersPass
     module.walk([&](DeviceOp d) { devices.push_back(d); });
     for (auto d : devices) {
       allocateBuffers(d, builder);
-      lowerSyncOps(d, builder, totalParams);
+
+      // Collect unique (stateIdx, bufferRef) pairs for core-kind parameters in
+      // this device.  Buffer attrs are set by allocateBuffers() above.
+      SmallVector<std::pair<uint8_t, FlatSymbolRefAttr>> paramEntries;
+      DenseSet<StringRef> seenBufs;
+      d.walk([&](ReadParameterOp readOp) {
+        FlatSymbolRefAttr bufRef = readOp.getBufferAttr();
+        if (!seenBufs.insert(bufRef.getValue()).second)
+          return;
+        auto paramOp = module.lookupSymbol<ParameterOp>(readOp.getParameter());
+        uint8_t stateIdx =
+            static_cast<uint8_t>(paramOp.getStateTableIdx().value());
+        paramEntries.push_back({stateIdx, bufRef});
+      });
+
+      // Emit lock + use_lock preambles in cores, then the scratchpad sync ops
+      // + set_lock preambles in runtime sequences.
+      SmallVector<Value> syncLocks = emitCorePreambles(d, builder);
+      emitSequencePreambles(d, builder, totalParams, paramEntries, syncLocks);
+
       lowerReadParameters(d, builder);
     }
 

@@ -1462,6 +1462,22 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // Step 3: Canonicalize device (module-level pass)
   pm.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
 
+  // Lower parameter ops to scratchpad operations, create core buffers, and
+  // emit the parameter-sync preamble (lock + use_lock in each core that reads
+  // parameters; create_scratchpad + set_lock in each runtime sequence).
+  // This must run before AIEAssignLockIDs so the newly created locks receive
+  // IDs, and before address assignment so new buffers get addresses.
+  {
+    xilinx::AIEX::AIELowerParametersOptions paramOpts;
+    if (!tmpDirName.empty()) {
+      SmallString<128> paramsPath(tmpDirName);
+      sys::path::append(paramsPath, "params.txt");
+      paramOpts.outputParamsFile = paramsPath.str().str();
+    }
+    pm.addPass(
+        xilinx::AIEX::createAIELowerParametersPass(std::move(paramOpts)));
+  }
+
   // Step 4: Device-level passes - use nest<DeviceOp>()
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   // Note: Trace lowering runs in a separate guarded pipeline
@@ -1494,22 +1510,8 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
     }
   }
 
-  // Lower parameter ops to scratchpad operations and create buffers.
-  // This pass is module-level so it can assign globally-unique state table
-  // indices across all devices.  It must run before address assignment so new
-  // buffers get addresses.
-  {
-    xilinx::AIEX::AIELowerParametersOptions paramOpts;
-    if (!tmpDirName.empty()) {
-      SmallString<128> paramsPath(tmpDirName);
-      sys::path::append(paramsPath, "params.txt");
-      paramOpts.outputParamsFile = paramsPath.str().str();
-    }
-    pm.addPass(
-        xilinx::AIEX::createAIELowerParametersPass(std::move(paramOpts)));
-  }
-
-  // Resume device-level passes after the module-level parameter lowering.
+  // Resume device-level passes after the module-level parameter lowering
+  // (which already ran before the first devicePm, see above).
   OpPassManager &devicePm2 = pm.nest<xilinx::AIE::DeviceOp>();
 
   // Create buffer address assignment pass with alloc-scheme option

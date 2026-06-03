@@ -480,13 +480,39 @@ struct InlineRuntimeCallsPattern : RewritePattern {
       return failure();
     }
 
+    // Find the calling runtime sequence so we can hoist certain ops to its
+    // start instead of placing them at the call site.
+    AIE::RuntimeSequenceOp callerRuntimeSequence =
+        runOp.getOperation()->getParentOfType<AIE::RuntimeSequenceOp>();
+    if (!callerRuntimeSequence) {
+      runOp.emitError() << "needs to be (transitively) inside a "
+                           "aie.runtime_sequence operation";
+      return failure();
+    }
+    Block &callerBodyBlock = callerRuntimeSequence.getBody().front();
+    mlir::Block::iterator hoistPos = callerBodyBlock.begin();
+
     // Now, also inline symbol definitions referenced in the callee body;
     // this may pull in additional SSA values referenced by the symbol
     // definitions.
+    //
+    // npu.create_scratchpad ops are hoisted to the start of the calling
+    // runtime sequence instead of being placed at the call site, so they
+    // execute once before anything else.
     rewriter.setInsertionPoint(runOp);
     mlir::OpBuilder::InsertPoint clonedOpInsertionPoint =
         rewriter.saveInsertionPoint();
     for (Operation &op : calleeBody.getOps()) {
+      bool shouldHoist =
+          llvm::isa<NpuCreateScratchpadOp>(&op);
+      if (shouldHoist) {
+        // Clone into the caller's RuntimeSequenceOp body before any
+        // non-hoisted ops. No symbol definitions need inlining for these ops.
+        rewriter.setInsertionPoint(&callerBodyBlock, hoistPos);
+        rewriter.clone(op, argMap);
+        continue;
+      } 
+
       rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
       Operation *clonedOp = rewriter.clone(op, argMap);
       clonedOpInsertionPoint = rewriter.saveInsertionPoint();
@@ -641,6 +667,39 @@ struct AIEMaterializeRuntimeSequencesPass
       if (failed(applyPatternsGreedily(deviceOp, std::move(patterns_0),
                                        rewriter_config))) {
         return signalPassFailure();
+      }
+
+      // After inlining, each runtime sequence that had its own
+      // create_scratchpad and also inlined callees that had one will have
+      // multiple create_scratchpad ops at the top of its body (the callees'
+      // copies were hoisted there by InlineRuntimeCallsPattern).  Keep only
+      // the first one — all copies must have the same size because the
+      // scratchpad size is a module-level property determined by the total
+      // number of parameters.
+      for (AIE::RuntimeSequenceOp runtimeSeqOp :
+           deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
+        if (runtimeSeqOp.getBody().empty())
+          continue;
+        Block &body = runtimeSeqOp.getBody().front();
+        NpuCreateScratchpadOp firstScratchpad;
+        SmallVector<NpuCreateScratchpadOp> duplicates;
+        for (NpuCreateScratchpadOp scratchpadOp :
+             body.getOps<NpuCreateScratchpadOp>()) {
+          if (!firstScratchpad) {
+            firstScratchpad = scratchpadOp;
+          } else {
+            if (firstScratchpad.getSize() != scratchpadOp.getSize()) {
+              scratchpadOp.emitError(
+                  "create_scratchpad size mismatch after inlining: ")
+                  << scratchpadOp.getSize()
+                  << " != " << firstScratchpad.getSize();
+              return signalPassFailure();
+            }
+            duplicates.push_back(scratchpadOp);
+          }
+        }
+        for (NpuCreateScratchpadOp dup : duplicates)
+          dup.erase();
       }
 
       // Insert LoadPDI ops for each aiex.configure op

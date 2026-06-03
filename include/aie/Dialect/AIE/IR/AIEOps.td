@@ -404,7 +404,12 @@ def AIE_CoreOp: AIE_Op<"core", [
     // and the aiecc driver.  Specifying both link_with and link_files is an error.
     OptionalAttr<StrArrayAttr>:$link_files,
     OptionalAttr<StrAttr>:$elf_file,
-    OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering
+    OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
+    // If set to false, suppresses automatic insertion of the parameter-sync
+    // preamble (use_lock acquire) by `--aie-lower-parameters`.  Defaults to
+    // true when any `aiex.read_parameter` op is present in the core body.
+    // Set to false automatically after the preamble has been emitted.
+    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
   );
   let summary = "Declare a core module";
   let description = [{
@@ -468,6 +473,11 @@ def AIE_CoreOp: AIE_Op<"core", [
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }
+    /// Returns true iff the parameter-sync preamble (use_lock acquire) should
+    /// be emitted for this core. Reads the explicit attribute if present;
+    /// otherwise defaults to true iff any 'aiex.read_parameter' op is present
+    /// in the core body.
+    bool shouldEmitParameterSyncPreamble();
   }];
 
   let builders = [
@@ -2261,7 +2271,13 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
   }];
   let arguments = (
-    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name
+    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name,
+    // If set to false, suppresses automatic insertion of the parameter-sync
+    // preamble (create_scratchpad + set_lock) by `--aie-lower-parameters`.
+    // Defaults to true when any `aiex.read_parameter` is present in a core in
+    // the parent device, or any `offset_parameter` attribute on a DMA BD.
+    // Set to false automatically after the preamble has been emitted.
+    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
   );
   let regions = (region
     AnyRegion:$body
@@ -2273,6 +2289,12 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
     static RuntimeSequenceOp getForSymbolInDevice(DeviceOp module, llvm::StringRef symbol);
     static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp module, llvm::StringRef symbol);
     llvm::LogicalResult verifyBeforeMaterialization();
+    /// Returns true iff the parameter-sync preamble (create_scratchpad +
+    /// set_lock) should be emitted into this sequence. Reads the explicit
+    /// attribute if present; otherwise defaults to true iff the parent device
+    /// contains any 'aiex.read_parameter' op in a core, or any
+    /// 'offset_parameter' attribute on a DMA BD.
+    bool shouldEmitParameterSyncPreamble();
   }];
   let extraClassDefinition = [{
   }];

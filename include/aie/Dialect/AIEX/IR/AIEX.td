@@ -1463,30 +1463,6 @@ def AIEX_ReadParameterOp: AIEX_Op<"read_parameter", []> {
   let hasVerifier = 1;
 }
 
-def AIEX_SyncParametersFromHostOp: AIEX_Op<"sync_parameters_from_host",
-    [HasParent<"AIE::RuntimeSequenceOp">]> {
-  let summary = "Sync all parameters from host scratchpad to core buffers";
-  let description = [{
-    Lowers to:
-    1. `aiex.npu.create_scratchpad` with size = 4 * num_parameters
-    2. For each parameter of kind `core` with a destination aie.buffer on a core:
-       a. `aiex.npu.write32` to zero-out the target buffer
-       b. `aiex.npu.update_from_scratchpad` with func=incr, func_arg=0
-    3. For each parameter of kind `addr`:
-       a. `aiex.npu_update_from_scratchpad` that adds the parameter value as an offset to the DMA BD's address
-
-    Can only be used inside `aie.runtime_sequence`.
-
-    Example:
-    ```mlir
-    aiex.sync_parameters_from_host()
-    ```
-  }];
-  let arguments = (ins);
-  let results = (outs);
-  let assemblyFormat = [{ attr-dict }];
-}
-
 // Include CERT operations
 include "aie/Dialect/AIEX/IR/CERTOps.td"
 

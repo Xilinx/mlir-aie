@@ -320,13 +320,13 @@ class Runtime(Resolvable):
         self._tasks.append(_BarrierSetOp(barrier, value))
 
     def sync_parameters(self):
-        """Emit ``aiex.sync_parameters_from_host`` in the runtime sequence.
+        """Deprecated: parameter-sync preamble is now emitted automatically.
 
-        Call this within a :meth:`sequence` context after all parameters have
-        been written on the host side and before starting workers that read
-        them.
+        This method is a no-op. The ``--aie-lower-parameters`` pass
+        automatically inserts the necessary lock and scratchpad-sync ops into
+        every core and runtime sequence that uses parameters.
         """
-        self._tasks.append(_SyncParametersTask())
+        pass  # preamble is now emitted by --aie-lower-parameters
 
     @property
     def workers(self) -> list[Worker]:
@@ -429,15 +429,3 @@ class Runtime(Resolvable):
             if task_group_actions[default_task_group]:
                 finish_task_group(default_task_group, task_group_actions)
 
-
-class _SyncParametersTask(Resolvable):
-    """Emits ``aiex.sync_parameters_from_host`` during runtime sequence resolution."""
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        from ...dialects.aiex import sync_parameters_from_host
-
-        sync_parameters_from_host(loc=loc, ip=ip)

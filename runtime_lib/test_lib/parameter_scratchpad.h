@@ -12,7 +12,7 @@
 // to AIE cores via the scratchpad mechanism.
 //
 // Usage:
-//   auto params = test_utils::ParameterScratchpad(run, "params.json");
+//   auto params = test_utils::ParameterScratchpad(run, "params.txt");
 //   params.write("foo", 42u);
 //   params.write("bar", std::bfloat16_t(3.14f));
 //   params.sync();
@@ -52,7 +52,7 @@ public:
     parseParams(paramsPath);
     scratchpadBo = run.get_ctrl_scratchpad_bo();
     boMap = scratchpadBo.map<uint32_t *>();
-    init();
+    clear();
   }
 #endif
 
@@ -60,7 +60,7 @@ public:
   ParameterScratchpad(uint32_t *buffer, const std::string &paramsPath)
       : boMap(buffer) {
     parseParams(paramsPath);
-    init();
+    clear();
   }
 
   /// Write raw bytes (up to 4) by name, interpreted as a little-endian
@@ -69,7 +69,7 @@ public:
   /// For addr-kind parameters, the value is written raw (no shift, no delta).
   void writeBytes(const std::string &name, const void *data, size_t len) {
     uint32_t bits = 0;
-    std::memcpy(&bits, data, std::min(len, size_t(4)));
+    std::memcpy(&bits, data, std::min(len, sizeof(bits)));
     writeBits(name, bits);
   }
 
@@ -84,16 +84,12 @@ public:
                                name + "'");
     }
     uint8_t idx = it->second;
-    if (addrParams.count(name)) {
-      // addr-kind: raw absolute write, no shift-2, no delta encoding.
-      // The firmware multiplies by element_size and adds to BD address.
-      boMap[idx] = bits;
-    } else {
-      // core-kind: shift-2 + delta encoding.
-      uint32_t encoded = bits << 2;
-      boMap[idx] = encoded - prevEncoded[idx];
-      prevEncoded[idx] = encoded;
+    uint32_t encoded = bits;
+    if (coreParams.count(name)) {
+      // core parameters require shift-2 to survive masking of lowest bits by firmware op
+      encoded = bits << 2;
     }
+    boMap[idx] = encoded;
   }
 
   /// Write a typed parameter value. The raw bits of the value are
@@ -110,20 +106,18 @@ public:
 
 #ifdef TEST_UTILS_USE_XRT
   /// Sync the scratchpad buffer to device. Call after all writes for this run.
-  void sync() { scratchpadBo.sync(XCL_BO_SYNC_BO_TO_DEVICE); }
+  void sync() { 
+    scratchpadBo.sync(XCL_BO_SYNC_BO_TO_DEVICE); 
+  }
 #endif
 
   /// Read back a parameter's current encoded value (for debugging).
   uint32_t read(const std::string &name) const {
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
-      throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
-                               name + "'");
+      throw std::runtime_error("ParameterScratchpad: unknown parameter '" + name + "'");
     }
-    if (addrParams.count(name)) {
-      return boMap[it->second]; // addr-kind: raw value
-    }
-    return prevEncoded[it->second] >> 2;
+    return boMap[it->second];
   }
 
 private:
@@ -133,11 +127,9 @@ private:
   uint32_t *boMap = nullptr;
   size_t scratchpadSizeBytes = 0;
   std::unordered_map<std::string, uint8_t> paramMap;
-  std::unordered_set<std::string> addrParams; // params with kind="addr"
-  std::vector<uint32_t> prevEncoded;
+  std::unordered_set<std::string> coreParams; // params with kind="core"
 
-  void init() {
-    prevEncoded.resize(scratchpadSizeBytes / 4, 0);
+  void clear() {
     for (size_t i = 0; i < scratchpadSizeBytes / 4; i++) {
       boMap[i] = 0;
     }
@@ -146,8 +138,7 @@ private:
   void parseParams(const std::string &path) {
     std::ifstream file(path);
     if (!file.is_open()) {
-      throw std::runtime_error("ParameterScratchpad: cannot open '" + path +
-                               "'");
+      throw std::runtime_error("ParameterScratchpad: cannot open '" + path + "'");
     }
 
     // Format:
@@ -162,16 +153,13 @@ private:
     for (unsigned i = 0; i < numParams; i++) {
       std::string name, type, kind;
       unsigned idx;
-      file >> name >> idx >> type;
-      // kind column is optional for backward compatibility
-      if (file.peek() != '\n' && file.peek() != EOF) {
-        file >> kind;
-      } else {
-        kind = "core";
-      }
+      file >> name >> idx >> type >> kind;
       paramMap[name] = static_cast<uint8_t>(idx);
-      if (kind == "addr")
-        addrParams.insert(name);
+      if (kind != "core" && kind != "addr") {
+        throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind + "' for parameter '" + name + "'");
+      } else if (kind == "core") {
+        coreParams.insert(name);
+      }
     }
   }
 };

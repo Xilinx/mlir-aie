@@ -812,6 +812,28 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
     return emitOpError("size (")
            << getSize() << " bytes) exceeds maximum scratchpad size of "
            << kMaxScratchpadSizeBytes << " bytes.";
+
+  // At most one create_scratchpad may appear per runtime sequence. Walk the
+  // parent RuntimeSequenceOp to check; only report from the duplicate (i.e.
+  // the op that is NOT the first occurrence) to avoid emitting the same error
+  // twice.
+  if (auto runtimeSeq =
+          getOperation()->getParentOfType<AIE::RuntimeSequenceOp>()) {
+    NpuCreateScratchpadOp firstSeen;
+    runtimeSeq.walk([&](NpuCreateScratchpadOp op) {
+      if (!firstSeen)
+        firstSeen = op;
+    });
+    if (firstSeen != *this) {
+      InFlightDiagnostic diag =
+          emitOpError("only one 'aiex.npu.create_scratchpad' is allowed per "
+                      "runtime sequence");
+      diag.attachNote(firstSeen.getLoc())
+          << "previous 'aiex.npu.create_scratchpad' here";
+      return diag;
+    }
+  }
+
   return success();
 }
 

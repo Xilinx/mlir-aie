@@ -21,9 +21,8 @@ class Parameter(Resolvable):
 
     Declare a ``Parameter`` at design time.  Pass it to a :class:`Worker` via
     ``fn_args`` and call :meth:`read` inside the ``core_fn`` to obtain its
-    current value.  The :class:`Runtime` emits the necessary
-    ``aiex.sync_parameters_from_host`` when :meth:`Runtime.sync_parameters` is
-    called.
+    current value.  The ``--aie-lower-parameters`` pass automatically inserts
+    the necessary lock and scratchpad-sync preamble ops.
 
     Example::
 
@@ -40,7 +39,7 @@ class Parameter(Resolvable):
 
         rt = Runtime()
         with rt.sequence(output_type) as out:
-            rt.sync_parameters()
+            # No sync_parameters() call needed — the compiler inserts it.
             ...
     """
 
