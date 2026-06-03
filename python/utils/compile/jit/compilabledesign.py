@@ -19,6 +19,14 @@ from "rebuild needed":
 
 ``hash(design)`` composes both into a 24-hex cache key; no MLIR generation
 needed for a cache lookup.
+
+Generation is memoized at the instance level via :attr:`CompilableDesign._generated`
+(a ``functools.cached_property`` returning the MLIR text + collected
+``ExternalFunction`` instances). Caching the *text* — not the Module — is what
+makes this safe across MLIR Contexts: every consumer call re-parses into a
+fresh ``mlir_mod_ctx()`` and gets a Module bound to its own Context. Safe
+because all constructor inputs are frozen, so the generated MLIR is a pure
+function of the instance.
 """
 
 from __future__ import annotations
@@ -43,6 +51,7 @@ from aie.utils.compile import (
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 from aie.extras.context import mlir_mod_ctx
+from aie.ir import Module as _Module
 
 from ._dma_size_parser import parse_dma_sizes
 from .context import compile_context
@@ -874,17 +883,31 @@ class CompilableDesign:
             self.compile_flags,
         )
 
-    def _generate_mlir(self, ExternalFunction):
-        """Call the generator (or read the .mlir file) and return the MLIR module."""
-        if isinstance(self.mlir_generator, Path):
-            # Static MLIR file.
-            mlir_path = self.mlir_generator
-            with mlir_mod_ctx() as ctx:
-                ctx.module.parse(mlir_path.read_text())
-            return ctx.module
+    @functools.cached_property
+    def _generated(self) -> tuple[str, list]:
+        """Run the generator once and cache ``(mlir_text, external_kernels)``.
 
-        # Validate that all Compile[T] params are supplied.
-        # Reuse the cached intro from __init__ — same generator, same hints.
+        Generation (executing the user's MLIR builder) is the dominant
+        in-process cost on a cold-disk cache path. Caching the *text* — not
+        the Module — is safe across MLIR Contexts: the Module is bound to the
+        Context that built it, but the text is not, so each ``_generate_mlir``
+        call can re-parse into the live Context and return a fresh Module.
+
+        ExternalFunction instances are Python objects with no Context
+        affinity; cached directly. Their ``_compiled`` flag survives reuse,
+        so a second ``compile()`` correctly skips already-built kernels.
+
+        Safe to memoize because :class:`CompilableDesign` inputs are frozen
+        at ``__init__`` (``compile_kwargs`` is a ``MappingProxyType``; the
+        list fields are tuples), so the generated MLIR is a pure function
+        of ``self``.
+        """
+        from aie.iron.kernel import ExternalFunction
+
+        if isinstance(self.mlir_generator, Path):
+            # Static .mlir file: text already on disk; no kernels to collect.
+            return self.mlir_generator.read_text(), []
+
         hints = self._hints
 
         # Guard 2-A: compile_kwargs must not contain tensor param names.
@@ -929,19 +952,15 @@ class CompilableDesign:
                 f"compile_kwargs do not match Compile[T] parameters — {exc}"
             ) from exc
 
-        # Clear stale ExternalFunction instances before generation.
         ExternalFunction._instances.clear()
 
-        # Build the call kwargs: Compile[T] params from compile_kwargs,
-        # plus None placeholders for In/Out/InOut params (which are not
-        # available at compile time — the generator must not read them).
         _tensor_placeholders = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
         _gen_call_kwargs = {**_tensor_placeholders, **self.compile_kwargs}
 
         # Re-register any ExternalFunction instances passed as Compile[T] params
-        # so that compile() collects them for compilation after generation returns.
+        # so the generator's kernel-call paths see them already-registered.
         for _v in _gen_call_kwargs.values():
             if isinstance(_v, ExternalFunction):
                 ExternalFunction._instances.add(_v)
@@ -949,11 +968,28 @@ class CompilableDesign:
         with compile_context(**self.compile_kwargs):
             with mlir_mod_ctx() as ctx:
                 result = self.mlir_generator(**_gen_call_kwargs)
+                module = ctx.module if result is None else result
+                if not module.operation.verify():
+                    raise RuntimeError(
+                        f"MLIR verification failed for '{self.generator_name}'"
+                    )
+                mlir_text = str(module)
 
-        module = ctx.module if result is None else result
-        if not module.operation.verify():
-            raise RuntimeError(f"MLIR verification failed for '{self.generator_name}'")
-        return module
+        external_kernels = list(ExternalFunction._instances)
+        ExternalFunction._instances.clear()
+        return mlir_text, external_kernels
+
+    def _generate_mlir(self, ExternalFunction):
+        """Return an MLIR ``Module`` bound to a fresh Context.
+
+        Thin wrapper over :attr:`_generated`: parse the cached MLIR text into
+        a new ``mlir_mod_ctx()`` and re-register the cached ``ExternalFunction``
+        instances so ``compile()`` can collect them.
+        """
+        mlir_text, external_kernels = self._generated
+        ExternalFunction._instances.update(external_kernels)
+        with mlir_mod_ctx():
+            return _Module.parse(mlir_text)
 
     def __hash__(self) -> int:
         # Fold the 96-bit cache hash down to a signed 64-bit Python hash.

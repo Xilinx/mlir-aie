@@ -66,11 +66,11 @@ def _inout_gen():
     [
         ("use_cache", True),
         ("compile_kwargs", {}),
-        ("compile_flags", []),
-        ("aiecc_flags", []),
-        ("source_files", []),
-        ("include_paths", []),
-        ("object_files", []),
+        ("compile_flags", ()),
+        ("aiecc_flags", ()),
+        ("source_files", ()),
+        ("include_paths", ()),
+        ("object_files", ()),
     ],
 )
 def test_construction_default(attr, expected):
@@ -482,8 +482,8 @@ def test_from_json_restores_flags():
     gen = _gemm_gen()
     d = CompilableDesign(gen, aiecc_flags=["--verbose"], compile_flags=["-O3"])
     d2 = CompilableDesign.from_json(d.to_json(), generator=gen)
-    assert d2.aiecc_flags == ["--verbose"]
-    assert d2.compile_flags == ["-O3"]
+    assert d2.aiecc_flags == ("--verbose",)
+    assert d2.compile_flags == ("-O3",)
 
 
 def test_from_json_restores_source_and_include_paths():
@@ -578,18 +578,24 @@ def test_generate_mlir_clears_external_function_instances_before_call():
 
 
 def test_generate_mlir_unplaced_style_uses_return_value():
-    """When generator returns a module object, _generate_mlir must return it."""
+    """When generator returns a module object, _generate_mlir must use it (not ctx.module).
+
+    Option B memoization re-parses the cached MLIR text into a fresh Module
+    per call, so identity is not preserved — content equivalence is the
+    contract.
+    """
 
     with mlir_mod_ctx() as ctx:
         pass
     real_module = ctx.module
+    expected_text = str(real_module)
 
     def gen(*, M: Compile[int]):
         return real_module  # unplaced style
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
     result = d._generate_mlir(ExternalFunction)
-    assert result is real_module
+    assert str(result) == expected_text
 
 
 # ---------------------------------------------------------------------------

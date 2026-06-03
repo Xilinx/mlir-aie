@@ -361,7 +361,7 @@ def test_trace_config_not_forwarded_to_kernel_as_kwarg():
     with patch.object(
         CompilableDesign, "compile", return_value=(fake_xclbin, fake_insts)
     ):
-        with patch("aie.utils.callabledesign.NPUKernel", FakeKernel):
+        with patch("aie.utils.npukernel.NPUKernel", FakeKernel):
             a = object()
             cd(a, trace_config=trace_cfg)
 
@@ -390,23 +390,6 @@ def test_guard_3a_tensor_param_as_runtime_kwarg_raises():
 
 
 # ---------------------------------------------------------------------------
-# Guard 3-B: pre-bound value overrides call-time value, TypeError raised
-# ---------------------------------------------------------------------------
-
-
-def test_guard_3b_prebound_overrides_calltime_raises():
-    """When a pre-bound Compile[T] value differs from a call-time value, raise TypeError."""
-
-    def gen(a: In, *, M: Compile[int]):
-        pass
-
-    cd = CallableDesign(gen, compile_kwargs={"M": 512})
-
-    with pytest.raises(TypeError, match="pre-bound"):
-        cd(object(), M=1024)  # call-time M=1024, pre-bound M=512 — must raise
-
-
-# ---------------------------------------------------------------------------
 # Guard 3-C: too many positional args raises TypeError
 # ---------------------------------------------------------------------------
 
@@ -425,9 +408,8 @@ def test_guard_3c_too_many_positional_raises():
 def test_as_mlir_call_time_kwarg_overrides_prebound():
     """as_mlir() must let call-time Compile[T] kwargs override pre-bound values.
 
-    Asymmetric with __call__ (which raises Guard 3-B on the same conflict)
-    so callers can inspect MLIR for different configurations without
-    constructing a new CallableDesign.
+    Call-time-wins semantics are shared with __call__ so the MLIR you
+    inspect matches the MLIR that would be compiled for the same kwargs.
     """
 
     def gen(a: In, b: Out, *, N: Compile[int] = 1024):
