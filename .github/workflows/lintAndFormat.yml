@@ -146,6 +146,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
+      - name: Check filename case conflicts
+        run: pre-commit run check-case-conflict --all-files --color never
+
       - name: Run git-clang-format
         id: git-clang-format
         run: |
