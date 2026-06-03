@@ -74,8 +74,8 @@ def chaining_channels(
     trace_size: Compile[int] = 0,
 ):
     # ---- types + tiles -------------------------------------------------
-    n_elements = length_bytes // 4
-    n_elements_read = (length_bytes * 4) // 4  # 4× larger compute buffer
+    n_elements = length_bytes // np.dtype(np.int32).itemsize
+    n_elements_read = n_elements * 4  # 4× larger compute buffer
 
     vector_ty = np.ndarray[(n_elements,), np.dtype[np.int32]]
     vector_ty_read = np.ndarray[(n_elements_read,), np.dtype[np.int32]]

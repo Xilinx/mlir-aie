@@ -255,12 +255,9 @@ def main():
                 print("(Warmup iteration - not counted)")
             continue
 
-        # Read output buffer.  pyxrt's bo.read() returns a numpy buffer that
-        # may not be C-contiguous on some XRT/pyxrt versions; coerce to bytes
-        # before np.frombuffer to be robust.
-        # pyxrt's bo.read() has produced stale/empty data on some XRT
-        # versions; bo.map() returns the mapped host memoryview directly,
-        # matching what the C++ side does via bo.map<T*>().
+        # bo.read() has been unreliable across XRT versions (non-contiguous
+        # buffers, stale/empty data); bo.map() returns the mapped host
+        # memoryview directly, matching the C++ bo.map<T*>() path.
         bufOut_view = bo_out.map()
         bufOut = np.frombuffer(bufOut_view, dtype=DATATYPE_OUT, count=OUT_VOLUME)
 

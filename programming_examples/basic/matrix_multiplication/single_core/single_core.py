@@ -213,7 +213,7 @@ def _make_argparser():
         "--dtype_out",
         type=str,
         choices=["bf16", "i8", "i16", "f32", "i32"],
-        default="i16",
+        default="i32",
     )
     p.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
     p.add_argument(

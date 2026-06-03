@@ -71,6 +71,7 @@ def _build_design(
     c_col_maj,
     emulate_bf16_mmul_with_bfp16,
     use_chess,
+    scalar,
     *,
     generate_taps=False,
 ):
@@ -100,6 +101,7 @@ def _build_design(
         c_col_maj=bool(c_col_maj),
         use_chess=use_chess,
         emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
+        vectorized=not scalar,
     )
     zero_kernel = matmul_kernel.zero
     r, s, t = matmul_kernel.mac_dims
@@ -385,6 +387,7 @@ def whole_array(
     c_col_maj: Compile[int] = 0,
     emulate_bf16_mmul_with_bfp16: Compile[bool] = False,
     use_chess: Compile[bool] = False,
+    scalar: Compile[bool] = False,
 ):
     return _build_design(
         iron.get_current_device(),
@@ -401,6 +404,7 @@ def whole_array(
         c_col_maj,
         emulate_bf16_mmul_with_bfp16,
         use_chess,
+        scalar,
     )
 
 
@@ -437,6 +441,7 @@ def generate_taps(
         c_col_maj,
         emulate_bf16_mmul_with_bfp16,
         use_chess=False,
+        scalar=False,
         generate_taps=True,
     )
 
@@ -464,6 +469,13 @@ def _make_argparser():
         default="i16",
     )
     p.add_argument("--use-chess", type=int, choices=[0, 1], default=0)
+    p.add_argument(
+        "--scalar",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="use scalar (non-vector) matmul/zero kernels for debugging smaller sizes",
+    )
     add_benchmark_args(p)
     return p
 
@@ -519,6 +531,7 @@ def _compile_kwargs(opts):
         c_col_maj=opts.c_col_maj,
         emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
         use_chess=bool(opts.use_chess),
+        scalar=bool(opts.scalar),
     )
 
 
@@ -562,6 +575,7 @@ def _run_and_verify(opts):
         c_col_maj=opts.c_col_maj,
         emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
         use_chess=bool(opts.use_chess),
+        scalar=bool(opts.scalar),
         warmup=opts.warmup,
         iters=opts.iters,
     )

@@ -10,7 +10,7 @@
 
 # Matrix Multiplication - Single Core Design
 
-A single AI Engine compute core performs `C = A @ B`.  Default config: `int16` inputs / `int16` outputs, `M`&times;`K`&times;`N` = `512`&times;`512`&times;`512`, kernel tile `m`&times;`k`&times;`n` = `32`&times;`32`&times;`32`.  The host streams (m, k) x (k, n) tile pairs through one ObjectFifo per direction; the core multiply-accumulates into an (m, n) output tile and the runtime drains rows-of-tiles back to L3.
+A single AI Engine compute core performs `C = A @ B`.  Default config: `int16` inputs / `int32` outputs, `M`&times;`K`&times;`N` = `512`&times;`512`&times;`512`, kernel tile `m`&times;`k`&times;`n` = `32`&times;`32`&times;`32`.  The host streams (m, k) x (k, n) tile pairs through one ObjectFifo per direction; the core multiply-accumulates into an (m, n) output tile and the runtime drains rows-of-tiles back to L3.
 
 > This is a simplification of the [whole-array design](../whole_array/README.md): one compute core instead of the full 4xN_cols grid.  See that README for the broader IRON walkthrough.
 
@@ -28,7 +28,7 @@ make run
 For direct Python run + numpy verify (skips `test.cpp` entirely):
 
 ```shell
-python3 single_core.py                            # default i16/i16 512x512x512
+python3 single_core.py                            # default i16/i32 512x512x512
 python3 single_core.py --b-col-maj 1              # column-major B input
 python3 single_core.py --use-chess 1              # chess kernel build
 python3 single_core.py --dtype_in bf16 --dtype_out bf16
