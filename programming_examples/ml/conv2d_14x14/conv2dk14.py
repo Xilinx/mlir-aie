@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""14x14 Conv2D — Iron API designs (single-core + 32-core) with @iron.jit.
+"""14x14 Conv2D — IRON API designs (single-core + 32-core) with @iron.jit.
 
 KNOWN: ``make run_py`` fails on Strix Halo (npu2). The aie2p variant of
 ``conv2dk14.cc`` exists but produces output whose layout doesn't match

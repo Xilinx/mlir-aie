@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Element-wise bf16 SwiGLU — Iron API design with ``@iron.jit`` compilation.
+"""Element-wise bf16 SwiGLU — IRON API design with ``@iron.jit`` compilation.
 
 SwiGLU(x, w1, w2) = (x * w1) * silu(x * w2), computed per 1024-element line.
 Weights are interleaved (1024 of w1, then 1024 of w2, ...) into a single

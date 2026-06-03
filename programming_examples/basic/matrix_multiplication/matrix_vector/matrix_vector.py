@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
-"""Matrix-vector multiply — Iron API design with ``@iron.jit`` compilation.
+"""Matrix-vector multiply — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core computes ``c = A @ b`` (M-row matrix x K-vector).
 Default config: ``M=K=288``, kernel tile ``m=k=32``, vectorized mv kernel.

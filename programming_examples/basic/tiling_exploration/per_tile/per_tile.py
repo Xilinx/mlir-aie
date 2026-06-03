@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Per-tile tensor access exploration — Iron + ``@iron.jit``.
+"""Per-tile tensor access exploration — IRON + ``@iron.jit``.
 
 Demonstrates how ``TensorTiler2D.simple_tiler`` decomposes an output
 tensor into tiles, and how one ``rt.drain`` per tile reorders the

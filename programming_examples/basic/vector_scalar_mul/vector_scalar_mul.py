@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Vector scalar multiply — Iron API design with ``@iron.jit`` compilation.
+"""Vector scalar multiply — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core scales ``a`` by a runtime scalar ``factor`` to produce
 ``c = a * factor``.  Default config: 4096-element ``int16`` vector tiled into

@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
-"""Single-core matrix multiply — Iron API design with ``@iron.jit`` compilation.
+"""Single-core matrix multiply — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core computes ``C = A @ B``, optionally with B laid out
 column-major.  The host streams (m, k) x (k, n) tile pairs through an

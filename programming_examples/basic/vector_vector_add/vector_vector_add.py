@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Element-wise vector + vector add — Iron API design with ``@iron.jit``.
+"""Element-wise vector + vector add — IRON API design with ``@iron.jit``.
 
 The design body delegates to ``aie.iron.algorithms.transform_binary_typed``,
 which handles the ObjectFifo / Worker / Runtime plumbing for any binary

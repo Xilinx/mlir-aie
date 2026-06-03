@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Single-column vector reduce-max (chained variant) — Iron API + ``@iron.jit``.
+"""Single-column vector reduce-max (chained variant) — IRON API + ``@iron.jit``.
 
 4 cores compute partial max in parallel from a shared input split across
 them; each core (other than the last) consumes its right neighbor's

@@ -4,7 +4,7 @@ Vector × scalar AIE design with custom hardware-event tracing on AMD NPU device
 
 ## Contents
 
-- `aie_trace.py` — Iron (`@iron.jit`) design that wires custom `coretile_events` / `coremem_events` / `memtile_events` / `shimtile_events` lists straight through `rt.enable_trace()`.  The AIE compute kernel is the library `kernels.scale` (scalar variant) — `event0()` / `event1()` markers are already baked into the library source.
+- `aie_trace.py` — IRON (`@iron.jit`) design that wires custom `coretile_events` / `coremem_events` / `memtile_events` / `shimtile_events` lists straight through `rt.enable_trace()`.  The AIE compute kernel is the library `kernels.scale` (scalar variant) — `event0()` / `event1()` markers are already baked into the library source.
 - `test.cpp` / `test.py` — host runners (C++ via `make run_trace`, Python via `make run_trace_py`).
 - `visualize_trace.py` — renders a PNG timeline from parsed trace JSON.
 - `run_makefile.lit` / `run_strix_makefile.lit` — lit test definitions for NPU1 and NPU2.
@@ -25,7 +25,7 @@ After `make run_trace` or `make run_trace_py`:
 
 ## How the trace is wired
 
-The whole design lives in [`aie_trace.py`](./aie_trace.py).  Custom event lists go straight on the iron `Runtime`:
+The whole design lives in [`aie_trace.py`](./aie_trace.py).  Custom event lists go straight on the IRON `Runtime`:
 
 ```python
 import aie.iron as iron
@@ -53,7 +53,7 @@ def aie_trace(A: In, F: In, C: Out, *, tensor_size: Compile[int] = 4096, ...):
         ...
 ```
 
-Iron's `rt.enable_trace()` forwards the four event lists to the same `aie.utils.trace.configure_trace` machinery the lower-level dialect API uses; the difference is you no longer have to talk to `@device` / `tile()` / `object_fifo` / `configure_trace` directly.
+IRON's `rt.enable_trace()` forwards the four event lists to the same `aie.utils.trace.configure_trace` machinery the lower-level dialect API uses; the difference is you no longer have to talk to `@device` / `tile()` / `object_fifo` / `configure_trace` directly.
 
 ## Compiler Pipeline
 

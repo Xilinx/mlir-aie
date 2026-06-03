@@ -95,7 +95,7 @@ The Neural Processing Unit (NPU) is physically structured as an array of 6 rows 
 
 1. **Compute tiles** (rows 2–5): the AIE cores that run the matmul microkernel.  Across `n_aie_cols` columns × 4 rows we get a 4 × `n_aie_cols` grid of cores (16 by default with `n_aie_cols=4`).
 
-In iron we don't usually enumerate tiles by name.  Instead, the design picks the device family (and column count) via `from_name(opts.dev, n_cols=…)`, builds explicit `Tile(col, row)` handles where needed (for the per-worker placement and for the shim/memtile endpoints of `ObjectFifo.split()` / `forward()` / `join()` calls), and lets the rest of the placement fall out of the FIFO topology:
+In IRON we don't usually enumerate tiles by name.  Instead, the design picks the device family (and column count) via `from_name(opts.dev, n_cols=…)`, builds explicit `Tile(col, row)` handles where needed (for the per-worker placement and for the shim/memtile endpoints of `ObjectFifo.split()` / `forward()` / `join()` calls), and lets the rest of the placement fall out of the FIFO topology:
 
 ```python
 core_tiles = tiles[2:]                # rows 2..5: compute tiles
@@ -113,7 +113,7 @@ The design names FIFOs after the level-of-hierarchy hop they implement (L3 = hos
 
 1. **Host → Memory tiles (L3 → L2):** `A_l3l2_fifos[i]` / `B_l3l2_fifos[col]` move the input matrices from the host through the shim tiles into the memtiles.
 
-2. **Memory tiles → Compute tiles (L2 → L1):** `A_l2l1_fifos[row]` / `B_l2l1_fifos[col]` deliver each compute tile's `(m, k)` / `(k, n)` sub-matrix.  These are *derived* from the corresponding L3↔L2 FIFOs — there is no separate hand-wired `object_fifo_link` in the iron version.  Instead, you call `.cons().split(...)` on the L3↔L2 producer FIFO (for A) or `.cons().forward(...)` (for B), and iron emits the equivalent staged transfer.
+2. **Memory tiles → Compute tiles (L2 → L1):** `A_l2l1_fifos[row]` / `B_l2l1_fifos[col]` deliver each compute tile's `(m, k)` / `(k, n)` sub-matrix.  These are *derived* from the corresponding L3↔L2 FIFOs — there is no separate hand-wired `object_fifo_link` in the IRON version.  Instead, you call `.cons().split(...)` on the L3↔L2 producer FIFO (for A) or `.cons().forward(...)` (for B), and IRON emits the equivalent staged transfer.
 
 3. **Compute tiles → Memory tiles → Host (L1 → L2 → L3):** `C_l1l2_fifos[row][col]` move per-tile `(m, n)` results into the memtile, and `C_l2l3_fifos[col]` from the memtile back to the shim.  The L1↔L2 set is built via `C_l2l3_fifos[col].prod().join(...)` — again, the link is implicit in the construction.
 
@@ -275,7 +275,7 @@ for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
 rt.finish_task_group(tg)
 ```
 
-The two-phase `task_group` open/finish dance is the iron equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.
+The two-phase `task_group` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.
 
 `tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either knob too low starves the cores; too high overflows the shim DMA BD pool.
 

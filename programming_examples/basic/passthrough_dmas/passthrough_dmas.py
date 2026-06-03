@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Passthrough DMAs — Iron API design with ``@iron.jit`` compilation.
+"""Passthrough DMAs — IRON API design with ``@iron.jit`` compilation.
 
 No compute tile (in the default mode): data flows shim → memtile → shim
 via ``ObjectFifo.forward()``, exercising the implicit-copy DMA path.

@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Multi-column vector reduce-max (row-wise) — Iron + ``@iron.jit``.
+"""Multi-column vector reduce-max (row-wise) — IRON + ``@iron.jit``.
 
 8 cores spread across columns each compute a partial max from their
 input chunk; a designated reducer core (per-column-group) collects

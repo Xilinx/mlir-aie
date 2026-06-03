@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
-"""Cascade matrix multiply — Iron API design with ``@iron.jit`` compilation.
+"""Cascade matrix multiply — IRON API design with ``@iron.jit`` compilation.
 
 A 4xN_cols AIE array computes ``C = A @ B`` using AIE hardware cascade
 streams to accumulate partial products vertically within each column.  Row 3

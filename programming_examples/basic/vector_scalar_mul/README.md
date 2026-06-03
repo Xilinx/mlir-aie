@@ -38,7 +38,7 @@ It is important to note that the Shim Tile and Compute Tile DMAs move data concu
 
 ### AIE Array Structural Design in `vector_scalar_mul.py`
 
-The `@iron.jit`-decorated `vector_scalar_mul(A, F, C, ...)` function expresses the design in Iron primitives:
+The `@iron.jit`-decorated `vector_scalar_mul(A, F, C, ...)` function expresses the design in IRON primitives:
 
 1. **Compile-time configuration:** `in1_size`, `int_bit_width`, `vectorized`, `trace_size`, and `use_chess` are `Compile[...]` knobs, so different specializations live in separate JIT artifacts.
 

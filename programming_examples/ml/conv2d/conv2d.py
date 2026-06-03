@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""1x1 int8 Conv2D (optionally fused with ReLU) — Iron + ``@iron.jit``.
+"""1x1 int8 Conv2D (optionally fused with ReLU) — IRON + ``@iron.jit``.
 
 The per-tile kernel comes from the IRON kernel library, selected at compile
 time by the ``fuse_relu`` knob:

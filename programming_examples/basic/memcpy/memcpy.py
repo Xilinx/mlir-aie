@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Memcpy microbenchmark — Iron API design with ``@iron.jit`` compilation.
+"""Memcpy microbenchmark — IRON API design with ``@iron.jit`` compilation.
 
 Saturates DDR bandwidth by using every column's shim DMA in-out pairs.
 Two paths:

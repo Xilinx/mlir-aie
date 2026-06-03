@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Tile-wise bf16 softmax — Iron API design with ``@iron.jit`` compilation.
+"""Tile-wise bf16 softmax — IRON API design with ``@iron.jit`` compilation.
 
 Softmax is computed independently per 1024-element tile (no cross-tile
 reduction), so the design scales the same way as ml/relu: body delegates to

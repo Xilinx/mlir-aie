@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Element-wise bf16 unary op (ReLU | SiLU | GELU) — Iron API + ``@iron.jit``.
+"""Element-wise bf16 unary op (ReLU | SiLU | GELU) — IRON API + ``@iron.jit``.
 
 Body delegates to ``iron.algorithms.transform_parallel_typed`` with
 ``num_channels=2`` so both shim DMA channels per column are driven; the

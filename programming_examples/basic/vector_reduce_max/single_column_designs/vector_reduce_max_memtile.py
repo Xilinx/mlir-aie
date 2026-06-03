@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Single-column vector reduce-max (memtile variant) — Iron + ``@iron.jit``.
+"""Single-column vector reduce-max (memtile variant) — IRON + ``@iron.jit``.
 
 4 cores compute partial max in parallel; the memtile joins the 4 per-
 core scalars into a single 4-element vector that core 0 reduces with a

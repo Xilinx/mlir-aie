@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Element-wise bf16 binary op (add or mul) — Iron API + ``@iron.jit``.
+"""Element-wise bf16 binary op (add or mul) — IRON API + ``@iron.jit``.
 
 Body delegates to ``iron.algorithms.transform_parallel_binary_typed``; the
 per-tile kernel is selected by the ``op`` Compile knob and pulled from

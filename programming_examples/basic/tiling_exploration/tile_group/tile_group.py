@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Tile-group tensor access exploration — Iron + ``@iron.jit``.
+"""Tile-group tensor access exploration — IRON + ``@iron.jit``.
 
 Demonstrates how ``TensorTiler2D.group_tiler`` produces a single TAP
 that walks the output tensor in tiled order — one ``rt.drain`` covers

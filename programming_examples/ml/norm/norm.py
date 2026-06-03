@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Row-wise bf16 norm (RMSNorm | LayerNorm) — Iron API + ``@iron.jit``.
+"""Row-wise bf16 norm (RMSNorm | LayerNorm) — IRON API + ``@iron.jit``.
 
 NPU2-only: the underlying ``{rms,layer}_norm.cc`` kernels live under
 ``aie_kernels/aie2p/`` and have no aie2 counterpart.

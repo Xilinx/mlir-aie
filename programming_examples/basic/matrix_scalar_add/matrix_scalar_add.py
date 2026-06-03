@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Matrix scalar add — Iron API design with ``@iron.jit`` compilation.
+"""Matrix scalar add — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core reads ``TILE_HEIGHT x TILE_WIDTH`` tiles from a
 ``MATRIX_HEIGHT x MATRIX_WIDTH`` matrix (via ``TensorTiler2D.simple_tiler``),

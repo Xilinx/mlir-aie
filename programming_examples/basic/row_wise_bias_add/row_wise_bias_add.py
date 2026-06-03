@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Row-wise bias add — Iron API design with ``@iron.jit`` compilation.
+"""Row-wise bias add — IRON API design with ``@iron.jit`` compilation.
 
 The C++ kernel (``kernel.cc``) adds a per-column bias vector (``1 x N``)
 to every row of an ``M x N`` ``float32`` matrix.  Tiling is ``(m, n)``;

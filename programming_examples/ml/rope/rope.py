@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Row-wise bf16 RoPE (Rotary Position Embedding) — Iron API design.
+"""Row-wise bf16 RoPE (Rotary Position Embedding) — IRON API design.
 
 NPU2-only: ``rope.cc`` lives under ``aie_kernels/aie2p/`` only.
 

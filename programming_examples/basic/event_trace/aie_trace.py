@@ -5,12 +5,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2026, Advanced Micro Devices, Inc.
-"""Vector × scalar with custom hardware event tracing — Iron + @iron.jit.
+"""Vector × scalar with custom hardware event tracing — IRON + @iron.jit.
 
 Same compute as ``basic/vector_scalar_mul`` (a single AIE core scales an
 ``int32`` vector by a runtime scalar) but with an explicit event list
 plumbed through ``rt.enable_trace()``.  The pedagogical point is
-showing that the high-level iron Runtime API also accepts the same
+showing that the high-level IRON Runtime API also accepts the same
 ``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
 ``shimtile_events`` knobs as the lower-level ``configure_trace``.
 
@@ -90,7 +90,7 @@ def aie_trace(
 
     rt = Runtime()
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-        # Custom per-tile-class event lists, forwarded by iron's Runtime
+        # Custom per-tile-class event lists, forwarded by IRON's Runtime
         # to the same configure_trace() the dialect-level example used.
         rt.enable_trace(
             trace_size=trace_size,

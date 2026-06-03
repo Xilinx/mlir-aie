@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Vector-vector multiply — Iron API design with ``@iron.jit`` compilation.
+"""Vector-vector multiply — IRON API design with ``@iron.jit`` compilation.
 
 Two int32 vectors are multiplied element-wise on a single AIE compute tile,
 in tile-of-16 sub-vectors fed via three depth-2 ObjectFifos (two in, one out).

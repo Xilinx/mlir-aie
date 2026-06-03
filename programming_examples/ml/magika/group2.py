@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
-"""Magika group2 — Iron API design with ``@iron.jit`` compilation.
+"""Magika group2 — IRON API design with ``@iron.jit`` compilation.
 
 Single-tile design with 4 LUT buffers spread across neighboring tiles
 (south / west / north / current) for memory capacity. The kernel uses

@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
-"""Magika group0 — Iron API design with ``@iron.jit`` compilation.
+"""Magika group0 — IRON API design with ``@iron.jit`` compilation.
 
 Two-core pipeline (group0a → group0b) on one column.  Each core has its
 own LUT preloaded into local memory.  group0a takes an int16 input

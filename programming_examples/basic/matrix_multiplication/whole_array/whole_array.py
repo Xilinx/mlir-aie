@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Whole-array matrix multiply — Iron API design with ``@iron.jit`` compilation.
+"""Whole-array matrix multiply — IRON API design with ``@iron.jit`` compilation.
 
 A 4xN_cols AIE array computes ``C = A @ B`` (optionally with ``B`` column-major
 or ``C`` column-major).  Each compute tile owns one (m, n) output sub-tile and

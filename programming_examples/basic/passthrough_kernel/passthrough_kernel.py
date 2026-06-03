@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Passthrough kernel — Iron API design with ``@iron.jit`` compilation."""
+"""Passthrough kernel — IRON API design with ``@iron.jit`` compilation."""
 
 import argparse
 import sys

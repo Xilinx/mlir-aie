@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Vector scalar add — Iron API design with ``@iron.jit`` compilation.
+"""Vector scalar add — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core reads ``AIE_TILE_WIDTH``-element sub-tiles, adds 1
 to each element, and writes the result back.  The design preserves the
