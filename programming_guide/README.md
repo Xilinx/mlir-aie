@@ -75,6 +75,7 @@ my_design(a, b)              # compile + run + sync back
 | Catalog of worked example designs | [Section 5](./section-5/) (basic) and [Section 6](./section-6/) (vision + ML) |
 | The implicit-MLIR-context error you just hit | [`implicit_mlir_context.md`](./implicit_mlir_context.md) |
 | Knob-by-knob configuration (cache dir, tensor backend, log level) | [`iron_configuration.md`](./iron_configuration.md) |
+| What happens between `@iron.jit` and the NPU running | [`compilation_stages.md`](./compilation_stages.md) |
 
 ## Sections
 
