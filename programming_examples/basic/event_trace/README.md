@@ -55,6 +55,27 @@ def aie_trace(A: In, F: In, C: Out, *, tensor_size: Compile[int] = 4096, ...):
 
 IRON's `rt.enable_trace()` forwards the four event lists to the same `aie.utils.trace.configure_trace` machinery the lower-level dialect API uses; the difference is you no longer have to talk to `@device` / `tile()` / `object_fifo` / `configure_trace` directly.
 
+## Lowering reference
+
+For direct MLIR usage, the declarative `aie.trace` syntax that
+`rt.enable_trace()` ultimately lowers to looks like:
+
+```mlir
+aie.trace @core_trace(%tile_0_2) {
+  aie.trace.mode "Event-Time"
+  aie.trace.packet id=1 type=core
+  aie.trace.event<"INSTR_EVENT_0">
+  aie.trace.event<"INSTR_EVENT_1">
+  aie.trace.port<0> port=DMA channel=0 direction=S2MM
+  aie.trace.start broadcast=15
+  aie.trace.stop broadcast=14
+}
+
+aie.runtime_sequence(...) {
+  aie.trace.start_config @core_trace
+}
+```
+
 ## Compiler Pipeline
 
 Compiler lowering pipeline for declarative trace:
