@@ -64,9 +64,6 @@ module {
             aiex.npu.load_pdi { device_ref = @empty }
             aiex.npu.load_pdi { device_ref = @test }
 
-            // Load scratchpad parameters from host
-            aiex.sync_parameters_from_host
-
             // Unblock core
             aiex.set_lock(%sync_lock, 1)
 

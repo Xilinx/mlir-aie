@@ -23,16 +23,3 @@ aie.device(npu2) {
     aie.end
   }
 }
-
-// -----
-
-// Verify that sync_parameters_from_host must be inside runtime_sequence.
-
-aie.device(npu2) {
-  %t = aie.tile(0, 2)
-  aie.core(%t) {
-    // expected-error @+1 {{'aiex.sync_parameters_from_host' op expects parent op 'aie.runtime_sequence'}}
-    aiex.sync_parameters_from_host
-    aie.end
-  }
-}
