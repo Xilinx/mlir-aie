@@ -193,7 +193,7 @@ class CallableDesign:
                 scalar_runtime_kwargs[name] = val
 
         # Call-time compile_kwargs win, matching Triton (and CompilableDesign
-        # .specialized() — pre-bound is the starting set, the call-site kwarg
+        # .specialize() — pre-bound is the starting set, the call-site kwarg
         # overrides). __call__ and as_mlir share these semantics.
         effective_compile_kwargs = {
             **self.compilable.compile_kwargs,
@@ -213,7 +213,7 @@ class CallableDesign:
         future calls.  Otherwise ``self.compilable`` is returned directly.
         """
         if call_compile_kwargs:
-            return self.compilable.specialized(**call_compile_kwargs)
+            return self.compilable.specialize(**call_compile_kwargs)
         return self.compilable
 
     def _compile_and_build_kernel(
@@ -389,7 +389,7 @@ class CallableDesign:
             matmul.specialize(M=256, K=256, N=256, element_type=np.int16).compile()
         """
         return CallableDesign(
-            self.compilable.specialized(**compile_kwargs),
+            self.compilable.specialize(**compile_kwargs),
             trace_config=self.trace_config,
         )
 

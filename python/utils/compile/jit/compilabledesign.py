@@ -11,8 +11,14 @@ Pairs an MLIR generator function (or ``.mlir`` file path) with explicit
 compile-time parameters and produces an ``xclbin`` + ``insts.bin`` artifact
 pair via ``compile()``.
 
-Hashing uses ``SHA256(generator_bytecode + compile_kwargs_json +
-source_file_mtimes + flags)`` — no MLIR generation needed for a cache lookup.
+Hashing is split into two halves so callers can distinguish "recipe changed"
+from "rebuild needed":
+
+* ``recipe_hash``   — generator bytecode + compile_kwargs + aiecc/compile flags
+* ``artifact_hash`` — source / object mtimes + tool mtimes + target arch
+
+``hash(design)`` composes both into a 24-hex cache key; no MLIR generation
+needed for a cache lookup.
 """
 
 from __future__ import annotations
@@ -26,7 +32,8 @@ import os
 import sys
 import typing
 from pathlib import Path
-from typing import Any, Callable, get_args, get_origin
+from types import MappingProxyType
+from typing import Any, Callable, Mapping, get_args, get_origin
 
 from aie.utils.compile import (
     NPU_CACHE_HOME,
@@ -184,16 +191,18 @@ def split_params(generator: Callable) -> tuple[list[str], list[str], list[str]]:
     return list(cp), list(tp), list(sp)
 
 
-def _compute_hash(
+def _compute_recipe_hash(
     generator: Callable | Path,
-    compile_kwargs: dict[str, Any],
-    source_files: list[Path],
-    object_files: list[Path],
-    aiecc_flags: list[str],
-    compile_flags: list[str],
+    compile_kwargs: Mapping[str, Any],
+    aiecc_flags: list[str] | tuple[str, ...],
+    compile_flags: list[str] | tuple[str, ...],
 ) -> str:
-    """Stable SHA-256 cache key from generator bytecode, kwargs, source/object
-    mtimes, flags, and target arch — without generating MLIR."""
+    """Hash of the "recipe": generator bytecode + Compile[T] kwargs + flags.
+
+    Pure function of the design specification; does not touch the filesystem
+    or environment. Two CompilableDesigns with the same recipe_hash will
+    produce identical MLIR (modulo nondeterminism in the generator body).
+    """
     h = hashlib.sha256()
 
     if isinstance(generator, Path):
@@ -206,11 +215,9 @@ def _compute_hash(
         code = generator.__code__
         h.update(code.co_code)
         h.update(repr(code.co_consts).encode())
-        # qualname distinguishes structurally identical functions in different scopes.
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
 
-    # Hash callable kwargs by bytecode+closure; str(<lambda>) embeds a recyclable address.
     def _kwarg_repr(v):
         if callable(v) and hasattr(v, "__code__"):
             code = v.__code__
@@ -238,6 +245,25 @@ def _compute_hash(
         kwargs_json = repr(sorted(compile_kwargs.items())).encode()
     h.update(kwargs_json)
 
+    h.update(repr(sorted(aiecc_flags)).encode())
+    h.update(repr(sorted(compile_flags)).encode())
+
+    return h.hexdigest()
+
+
+def _compute_artifact_hash(
+    generator: Callable | Path,
+    source_files: list[Path] | tuple[Path, ...],
+    object_files: list[Path] | tuple[Path, ...],
+) -> str:
+    """Hash of the "artifacts": source/object mtimes + tool mtimes + target arch.
+
+    Captures everything that can change the *output* of compilation without
+    changing the *recipe*: edited C++ kernels, swapped object files, upgraded
+    Peano / aiecc, retargeted device.
+    """
+    h = hashlib.sha256()
+
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
         try:
@@ -252,9 +278,6 @@ def _compute_hash(
         except (FileNotFoundError, OSError):
             pass
 
-    h.update(repr(sorted(aiecc_flags)).encode())
-    h.update(repr(sorted(compile_flags)).encode())
-
     # Static .mlir is arch-agnostic; compiled kernels need a target identifier.
     # Missing components collapse to a constant + WARNING log so cross-arch cache
     # collisions surface instead of silently aliasing.
@@ -264,8 +287,6 @@ def _compute_hash(
             from aie.utils import DefaultNPURuntime
             from aie.utils.compile.utils import resolve_target_arch
 
-            # Prefer iron's current device (matches `iron.get_current_device()`
-            # inside the generator); fall back to XRT-detected only when unset.
             try:
                 device = _iron.get_current_device()
             except (RuntimeError, AttributeError):
@@ -277,7 +298,8 @@ def _compute_hash(
             target_arch = resolve_target_arch(device)
         except (ImportError, AttributeError, RuntimeError, ValueError) as exc:
             logger.warning(
-                "_compute_hash: target_arch unresolved (%s); using 'unknown'", exc
+                "_compute_artifact_hash: target_arch unresolved (%s); using 'unknown'",
+                exc,
             )
             target_arch = "unknown"
 
@@ -293,20 +315,17 @@ def _compute_hash(
             OSError,
             RuntimeError,
         ) as exc:
-            # peano_cxx_path / peano_install_dir raise RuntimeError (not
-            # FileNotFoundError) when Peano isn't installed; needed in tuple
-            # so hash(design) doesn't crash on Peano-less envs.
             try:
                 from aie.utils import config as _config
 
                 peano_mtime = f"path:{_config.peano_install_dir()}"
                 logger.warning(
-                    "_compute_hash: peano cxx unavailable (%s); "
+                    "_compute_artifact_hash: peano cxx unavailable (%s); "
                     "keying on install dir path only",
                     exc,
                 )
             except (ImportError, AttributeError, RuntimeError) as exc2:
-                logger.warning("_compute_hash: peano absent (%s)", exc2)
+                logger.warning("_compute_artifact_hash: peano absent (%s)", exc2)
                 peano_mtime = "absent"
 
         try:
@@ -317,14 +336,28 @@ def _compute_hash(
                 str(Path(_aiecc_path).stat().st_mtime) if _aiecc_path else "absent"
             )
         except (FileNotFoundError, OSError) as exc:
-            logger.warning("_compute_hash: aiecc absent (%s)", exc)
+            logger.warning("_compute_artifact_hash: aiecc absent (%s)", exc)
             aiecc_mtime = "absent"
 
         h.update(
             f"target_arch={target_arch}|peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
         )
 
-    return h.hexdigest()[:24]
+    return h.hexdigest()
+
+
+def _compute_hash(
+    generator: Callable | Path,
+    compile_kwargs: Mapping[str, Any],
+    source_files: list[Path] | tuple[Path, ...],
+    object_files: list[Path] | tuple[Path, ...],
+    aiecc_flags: list[str] | tuple[str, ...],
+    compile_flags: list[str] | tuple[str, ...],
+) -> str:
+    """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
+    recipe = _compute_recipe_hash(generator, compile_kwargs, aiecc_flags, compile_flags)
+    artifact = _compute_artifact_hash(generator, source_files, object_files)
+    return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]
 
 
 class CompilableDesign:
@@ -363,12 +396,23 @@ class CompilableDesign:
     ):
         self.mlir_generator = mlir_generator
         self.use_cache = use_cache
-        self.compile_kwargs: dict[str, Any] = dict(compile_kwargs or {})
-        self.compile_flags: list[str] = list(compile_flags or [])
-        self.source_files: list[Path] = [Path(sf) for sf in (source_files or [])]
-        self.include_paths: list[Path] = [Path(p) for p in (include_paths or [])]
-        self.aiecc_flags: list[str] = list(aiecc_flags or [])
-        self.object_files: list[Path] = [Path(of) for of in (object_files or [])]
+        # Freeze all inputs so callers can't mutate config after construction
+        # (which would silently invalidate the cache hash). MappingProxyType +
+        # tuples are read-only views; equality with plain dict/list still works.
+        self.compile_kwargs: Mapping[str, Any] = MappingProxyType(
+            dict(compile_kwargs or {})
+        )
+        self.compile_flags: tuple[str, ...] = tuple(compile_flags or ())
+        self.source_files: tuple[Path, ...] = tuple(
+            Path(sf) for sf in (source_files or ())
+        )
+        self.include_paths: tuple[Path, ...] = tuple(
+            Path(p) for p in (include_paths or ())
+        )
+        self.aiecc_flags: tuple[str, ...] = tuple(aiecc_flags or ())
+        self.object_files: tuple[Path, ...] = tuple(
+            Path(of) for of in (object_files or ())
+        )
 
         # Cached artifact paths (set after compile()).
         self._xclbin_path: Path | None = None
@@ -395,7 +439,7 @@ class CompilableDesign:
     # Public API
     # ------------------------------------------------------------------
 
-    def specialized(self, **compile_kwargs) -> "CompilableDesign":
+    def specialize(self, **compile_kwargs) -> "CompilableDesign":
         """Return a new ``CompilableDesign`` with additional ``Compile[T]`` kwargs bound.
 
         The given kwargs are merged onto ``self.compile_kwargs`` with call-time
@@ -792,6 +836,33 @@ class CompilableDesign:
         if isinstance(self.mlir_generator, Path):
             return str(self.mlir_generator)
         return getattr(self.mlir_generator, "__name__", repr(self.mlir_generator))
+
+    @property
+    def recipe_hash(self) -> str:
+        """Hash of the design recipe: generator + Compile[T] kwargs + flags.
+
+        Stable across rebuilds; identifies the *what* of compilation. Two
+        designs with equal ``recipe_hash`` produce identical MLIR.
+        """
+        return _compute_recipe_hash(
+            self.mlir_generator,
+            self.compile_kwargs,
+            self.aiecc_flags,
+            self.compile_flags,
+        )
+
+    @property
+    def artifact_hash(self) -> str:
+        """Hash of the build environment: source/object mtimes + tool mtimes + arch.
+
+        Changes whenever a kernel ``.cc``, an ``.o``, Peano, aiecc, or the
+        target arch changes; identifies the *with what* of compilation.
+        """
+        return _compute_artifact_hash(
+            self.mlir_generator,
+            self.source_files,
+            self.object_files,
+        )
 
     def _compute_cache_hash(self) -> str:
         return _compute_hash(

@@ -156,7 +156,7 @@ def add_const_design(
 
 def test_aot_compile_then_run(input_array, N):
     """AOT: compile eagerly, then run via CallableDesign."""
-    design = add_const_design.specialized(N=N, add_value=3)
+    design = add_const_design.specialize(N=N, add_value=3)
     xclbin, insts = design.compile()
     assert xclbin.exists()
     assert insts.exists()
