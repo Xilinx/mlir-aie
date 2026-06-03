@@ -3001,6 +3001,11 @@ ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
     return argParseResult;
   }
 
+  // Optional `attributes { ... }` clause (before the body so it does not
+  // conflict with the `{` that opens the region).
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
   // Body
   auto *body = result.addRegion();
   ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
@@ -3031,6 +3036,10 @@ void RuntimeSequenceOp::print(OpAsmPrinter &printer) {
     printer.printRegionArgument(body.getArgument(i));
   }
   printer << ')';
+
+  printer.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      /*elidedAttrs=*/{mlir::SymbolTable::getSymbolAttrName()});
 
   printer << ' ';
   printer.printRegion(body, false, true);

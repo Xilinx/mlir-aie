@@ -38,10 +38,12 @@ module {
         }
 
         // Runtime sequence: parameter-sync preamble inserted by --aie-lower-parameters
-        aie.runtime_sequence @sequence(%out : memref<2xbf16>) {
+        aie.runtime_sequence @sequence(%out : memref<2xbf16>) attributes { emit_parameter_sync_preamble = false } {
 
             aiex.npu.load_pdi { device_ref = @empty }
             aiex.npu.load_pdi { device_ref = @test }
+
+            aiex.sync_parameters_from_host
 
             // Configure output DMA
             %t_out = aiex.dma_configure_task_for @objfifo_out {
@@ -51,7 +53,7 @@ module {
 
             aiex.dma_start_task(%t_out)
             aiex.dma_await_task(%t_out)
-        }
+        } 
 
     }
 }

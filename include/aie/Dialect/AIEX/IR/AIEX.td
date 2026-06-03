@@ -1468,6 +1468,38 @@ def AIEX_ReadParameterOp: AIEX_Op<"read_parameter", []> {
   let hasVerifier = 1;
 }
 
+def AIEX_SyncParametersFromHostOp: AIEX_Op<"sync_parameters_from_host",
+    [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Marker for where host-to-core parameter sync should be emitted";
+  let description = [{
+    Marker op indicating the point in a runtime sequence where the
+    host-to-core parameter synchronisation should be materialised.  Carries
+    no operands or attributes.  `--aie-lower-parameters` replaces each
+    occurrence (including a compiler-inserted preamble, controlled by the
+    parent `aie.runtime_sequence`'s `emit_parameter_sync_preamble` attribute)
+    with the lowered sequence:
+
+    1. `aiex.npu.create_scratchpad`
+    2. For each core-kind parameter of the enclosing `aie.device`:
+       a. `aiex.npu.write32` to zero the destination buffer
+       b. `aiex.npu.update_from_scratchpad` to copy the value
+    3. `aiex.set_lock(lock, 1)` for each parameter-sync lock in the device
+       (releasing the cores that read parameters)
+
+    Placement: users who manually emit `aiex.npu.load_pdi` should manually
+    place this op *after* the load_pdi, since PDI loading resets core state
+    (including lock values).
+
+    Example:
+    ```mlir
+    aiex.sync_parameters_from_host
+    ```
+  }];
+  let arguments = (ins);
+  let results = (outs);
+  let assemblyFormat = [{ attr-dict }];
+}
+
 // Include CERT operations
 include "aie/Dialect/AIEX/IR/CERTOps.td"
 

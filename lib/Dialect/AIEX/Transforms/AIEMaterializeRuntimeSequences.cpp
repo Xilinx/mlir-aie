@@ -497,8 +497,9 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     // definitions.
     //
     // npu.create_scratchpad ops are hoisted to the start of the calling
-    // runtime sequence instead of being placed at the call site, so they
-    // execute once before anything else.
+    // runtime sequence instead of being placed at the call site, so a single
+    // scratchpad is created per sequence regardless of how many callees were
+    // inlined.
     rewriter.setInsertionPoint(runOp);
     mlir::OpBuilder::InsertPoint clonedOpInsertionPoint =
         rewriter.saveInsertionPoint();
