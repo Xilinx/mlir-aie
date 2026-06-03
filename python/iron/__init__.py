@@ -38,7 +38,9 @@ from .dataflow import (
     ObjectFifo,
     PacketDest,
     PacketFlow,
+    PadDims,
     Release,
+    StreamDims,
     TileDma,
 )
 from .dtype import str_to_dtype, dtype_to_str
@@ -78,6 +80,8 @@ __all__ = [
     "WorkerRuntimeBarrier",
     "Runtime",
     "ObjectFifo",
+    "PadDims",
+    "StreamDims",
     # Lower-level explicit-routing primitives
     "Acquire",
     "Bd",

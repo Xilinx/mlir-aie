@@ -46,11 +46,11 @@ def test_bare_decorator_default_flags_are_empty():
     def gen(a: In):
         pass
 
-    assert gen.compile_flags == []
-    assert gen.aiecc_flags == []
-    assert gen.source_files == []
-    assert gen.include_paths == []
-    assert gen.object_files == []
+    assert gen.compile_flags == ()
+    assert gen.aiecc_flags == ()
+    assert gen.source_files == ()
+    assert gen.include_paths == ()
+    assert gen.object_files == ()
 
 
 def test_bare_decorator_does_not_bind_compile_kwargs():
@@ -245,7 +245,7 @@ def test_source_files_empty_list():
     def gen(a: In):
         pass
 
-    assert gen.source_files == []
+    assert gen.source_files == ()
 
 
 # ---------------------------------------------------------------------------

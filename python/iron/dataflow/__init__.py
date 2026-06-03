@@ -16,7 +16,14 @@ Lower-level (explicit routing + DMA programs; peers of the above):
     :class:`Acquire`, :class:`Release`
 """
 
-from .objectfifo import ObjectFifo, ObjectFifoHandle, ObjectFifoLink, ObjectFifoEndpoint
+from .objectfifo import (
+    ObjectFifo,
+    ObjectFifoHandle,
+    ObjectFifoLink,
+    ObjectFifoEndpoint,
+    PadDims,
+    StreamDims,
+)
 from .cascadeflow import CascadeFlow
 from .flow import Flow, PacketDest, PacketFlow
 from .tile_dma import Acquire, Bd, DmaChannel, Release, TileDma

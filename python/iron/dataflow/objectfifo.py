@@ -8,7 +8,15 @@
 from __future__ import annotations
 import itertools
 import numpy as np
-from typing import Sequence
+from typing import Sequence, TypeAlias
+
+# Named aliases for the (size, stride) pair-lists used by DMA stream
+# layout transforms and pad-then-stream descriptors. Both are list[(size,
+# stride)] from highest to lowest dimension; the names exist purely to
+# make signatures and docs self-documenting — they are not validated
+# types at runtime.
+StreamDims: TypeAlias = list[Sequence[int]]
+PadDims: TypeAlias = list[Sequence[int]]
 
 from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import AIETileType, ObjectFifoPort  # type: ignore
@@ -41,12 +49,13 @@ class ObjectFifo(Resolvable):
     def __init__(
         self,
         obj_type: type[np.ndarray],
+        *,
         depth: int | None = 2,
         name: str | None = None,
-        dims_to_stream: list[Sequence[int]] | None = None,
-        dims_from_stream_per_cons: list[Sequence[int]] | None = None,
+        dims_to_stream: StreamDims | None = None,
+        dims_from_stream_per_cons: StreamDims | None = None,
         plio: bool = False,
-        pad_dimensions: list[Sequence[int]] | None = None,
+        pad_dimensions: PadDims | None = None,
         disable_synchronization: bool = False,
         repeat_count: int | None = None,
         delegate_tile: PlacementTile | None = None,
@@ -110,12 +119,12 @@ class ObjectFifo(Resolvable):
         return self._depth
 
     @property
-    def dims_from_stream_per_cons(self) -> list[Sequence[int]]:
+    def dims_from_stream_per_cons(self) -> StreamDims:
         """The default dimensions from stream per consumer value. This may be overridden by an ObjectFifoHandle of type consumer."""
         return self._dims_from_stream_per_cons
 
     @property
-    def dims_to_stream(self) -> list[Sequence[int]]:
+    def dims_to_stream(self) -> StreamDims:
         """The dimensions to stream value. This will be shared by the ObjectFifoHandle of type producer."""
         return self._dims_to_stream
 
@@ -194,7 +203,7 @@ class ObjectFifo(Resolvable):
     def cons(
         self,
         depth: int | None = None,
-        dims_from_stream: list[Sequence[int]] | None = None,
+        dims_from_stream: StreamDims | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
         will return a new consumer handle every time it is called.
@@ -372,7 +381,7 @@ class ObjectFifoHandle(Resolvable):
         of: ObjectFifo,
         is_prod: bool,
         depth: int | None = None,
-        dims_from_stream: list[Sequence[int]] | None = None,
+        dims_from_stream: StreamDims | None = None,
     ):
         """Construct an ObjectFifoHandle
 
@@ -486,7 +495,7 @@ class ObjectFifoHandle(Resolvable):
         return self._depth
 
     @property
-    def dims_from_stream(self) -> list[Sequence[int]]:
+    def dims_from_stream(self) -> StreamDims:
         """The dimensions from stream of a consumer ObjectFifoHandle"""
         if self._is_prod:
             raise ValueError("prod ObjectFifoHandles cannot have dims_from_stream")
@@ -616,8 +625,8 @@ class ObjectFifoHandle(Resolvable):
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] = None,
         names: list[str] | None = None,
-        dims_to_stream: list[list[Sequence[int]]] | None = None,
-        dims_from_stream: list[list[Sequence[int]]] | None = None,
+        dims_to_stream: list[StreamDims] | None = None,
+        dims_from_stream: list[StreamDims] | None = None,
         plio: bool = False,
         repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
@@ -704,8 +713,8 @@ class ObjectFifoHandle(Resolvable):
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
         name: str | None = None,
-        dims_to_stream: list[Sequence[int]] | None = None,
-        dims_from_stream: list[Sequence[int]] | None = None,
+        dims_to_stream: StreamDims | None = None,
+        dims_from_stream: StreamDims | None = None,
         plio: bool = False,
         repeat_count: int | None = None,
     ) -> ObjectFifo:
