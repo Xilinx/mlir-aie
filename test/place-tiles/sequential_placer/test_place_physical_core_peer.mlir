@@ -31,8 +31,8 @@ module @shim_centroid_from_physical_core {
 
 // -----
 
-// Same regression via packet_flow: physical core at col 5, shim should
-// follow the centroid to col 5 instead of falling back to col 0.
+// Same regression via packet_flow: physical core at col 2, shim should
+// follow the centroid to col 2 instead of falling back to col 0.
 
 // CHECK-LABEL: @shim_centroid_from_physical_core_packet
 module @shim_centroid_from_physical_core_packet {
