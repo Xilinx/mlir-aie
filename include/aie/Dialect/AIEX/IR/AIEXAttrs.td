@@ -27,7 +27,11 @@ def ParameterKindCore : I32EnumAttrCase<"Core", 0, "core">;
 def ParameterKindAddr : I32EnumAttrCase<"Addr", 1, "addr">;
 
 def ParameterKind : I32EnumAttr<"ParameterKind",
-    "Usage kind of a scratchpad runtime parameter",
+    "Usage kind of a scratchpad runtime parameter: "
+    "`core` parameters are read by AIE cores via `aiex.read_parameter` "
+    "(values are shift-2 encoded); "
+    "`addr` parameters are used as BD address offsets via the "
+    "`offset_parameter` attribute on DMA ops (values written raw)",
     [ParameterKindCore, ParameterKindAddr]> {
   let cppNamespace = "::xilinx::AIEX";
 }

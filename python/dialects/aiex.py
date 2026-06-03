@@ -359,11 +359,11 @@ _orig_read_parameter = read_parameter
 
 
 def read_parameter(name: str, result_type: Type) -> _orig_read_parameter:
-    """Read a runtime parameter inside an ``aie.core`` body.
+    """Read a runtime parameter inside an `aie.core` body.
 
     Args:
-        name: The ``@sym_name`` of the ``aiex.parameter`` declaration.
-        result_type: The MLIR scalar type of the result (e.g. ``T.bf16()``, ``T.i32()``).
+        name: The `@sym_name` of the `aiex.parameter` declaration.
+        result_type: The MLIR scalar type of the result (e.g. `T.bf16()`, `T.i32()`).
 
     Returns:
         An SSA value of the given type.

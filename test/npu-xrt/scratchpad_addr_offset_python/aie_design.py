@@ -68,7 +68,6 @@ def design():
     with rt.sequence(in_ty, out_ty) as (in_tensor, out_tensor):
         rt.inline_ops(lambda: npu_load_pdi(device_ref="empty"), [])
         rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
-        rt.sync_parameters()
         rt.set_barrier(barrier, 1)
         rt.start(worker)
 

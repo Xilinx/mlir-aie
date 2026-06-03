@@ -817,21 +817,23 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
   // parent RuntimeSequenceOp to check; only report from the duplicate (i.e.
   // the op that is NOT the first occurrence) to avoid emitting the same error
   // twice.
-  if (auto runtimeSeq =
-          getOperation()->getParentOfType<AIE::RuntimeSequenceOp>()) {
-    NpuCreateScratchpadOp firstSeen;
-    runtimeSeq.walk([&](NpuCreateScratchpadOp op) {
-      if (!firstSeen)
-        firstSeen = op;
-    });
-    if (firstSeen != *this) {
-      InFlightDiagnostic diag =
-          emitOpError("only one 'aiex.npu.create_scratchpad' is allowed per "
-                      "runtime sequence");
-      diag.attachNote(firstSeen.getLoc())
-          << "previous 'aiex.npu.create_scratchpad' here";
-      return diag;
-    }
+  auto runtimeSeq =
+      getOperation()->getParentOfType<AIE::RuntimeSequenceOp>();
+  if (!runtimeSeq)
+    return success();
+
+  NpuCreateScratchpadOp firstSeen;
+  runtimeSeq.walk([&](NpuCreateScratchpadOp op) {
+    if (!firstSeen)
+      firstSeen = op;
+  });
+  if (firstSeen != *this) {
+    InFlightDiagnostic diag =
+        emitOpError("only one 'aiex.npu.create_scratchpad' is allowed per "
+                    "runtime sequence");
+    diag.attachNote(firstSeen.getLoc())
+        << "previous 'aiex.npu.create_scratchpad' here";
+    return diag;
   }
 
   return success();
@@ -1152,8 +1154,8 @@ LogicalResult AIEX::ReadParameterOp::verify() {
   if (!(*this)->getParentOfType<AIE::CoreOp>()) {
     return emitOpError("must be inside an aie.core");
   }
-  auto module = (*this)->getParentOfType<ModuleOp>();
-  if (!module || !module.lookupSymbol<AIEX::ParameterOp>(getParameter())) {
+  auto moduleOp = (*this)->getParentOfType<ModuleOp>();
+  if (!moduleOp || !moduleOp.lookupSymbol<AIEX::ParameterOp>(getParameter())) {
     return emitOpError("references unknown parameter '")
            << getParameter()
            << "' (aiex.parameter ops are declared at module scope)";

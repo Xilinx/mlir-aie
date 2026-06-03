@@ -7,23 +7,6 @@
 // (c) Copyright 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-//
-// This pass lowers aiex.parameter and aiex.read_parameter ops, and
-// automatically emits a parameter-sync preamble (lock + use_lock in each
-// qualifying core; create_scratchpad + write32 + update_from_scratchpad +
-// set_lock in each qualifying runtime sequence) driven by the
-// `emit_parameter_sync_preamble` attribute on aie.core and
-// aie.runtime_sequence.
-//
-// State table indices are assigned globally across the entire module: every
-// aiex.parameter in any aie.device gets a unique index in [0, 32).  This is
-// necessary because the scratchpad is a single hardware resource shared by all
-// PDIs loaded by a runtime sequence.
-//
-// A single params.txt file is emitted describing every parameter in the module
-// (name, global state_table_idx, type, and kind: "core" or "addr").
-//
-//===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -48,6 +31,45 @@ namespace xilinx::AIEX {
 
 namespace {
 
+/// Returns true iff the parameter-sync preamble (use_lock acquire) should be
+/// emitted for this core. Reads the explicit attribute if present; otherwise
+/// defaults to true iff any 'aiex.read_parameter' op is present in the core
+/// body.
+static bool shouldEmitParameterSyncPreamble(CoreOp coreOp) {
+  if (auto attr = coreOp.getEmitParameterSyncPreambleAttr()) {
+    return attr.getValue();
+  }
+  bool found = false;
+  coreOp.getBody().walk([&](ReadParameterOp) { found = true; });
+  return found;
+}
+
+/// Returns true iff the parameter-sync preamble (create_scratchpad + set_lock)
+/// should be emitted into this sequence. Reads the explicit attribute if
+/// present; otherwise defaults to true iff the parent device contains any
+/// ReadParameterOp in a core, or any 'offset_parameter' attribute on a DMA BD.
+static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
+  if (auto attr = seqOp.getEmitParameterSyncPreambleAttr()) {
+    return attr.getValue();
+  }
+  auto device = seqOp->getParentOfType<DeviceOp>();
+  if (!device) {
+    return false;
+  }
+  bool found = false;
+  device.walk([&](Operation *op) {
+    if (found) {
+      return;
+    }
+    if (llvm::isa<ReadParameterOp>(op)) {
+      found = true;
+    } else if (op->hasAttr("offset_parameter")) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 struct AIELowerParametersPass
     : public xilinx::AIEX::impl::AIELowerParametersBase<
           AIELowerParametersPass> {
@@ -67,29 +89,33 @@ struct AIELowerParametersPass
       StringRef paramName = readOp.getParameter();
       auto key = std::make_pair(paramName, tile.getOperation());
 
-      if (!seen.count(key)) {
-        builder.setInsertionPointAfter(tile);
-        // Buffer must be 8 bytes: update_from_scratchpad always writes a 48-bit
-        // value across two 32-bit registers at [RegOff] and [RegOff+4]. The
-        // firmware masks Reg[0] with 0xFFFFFFFC (lower 2 bits forced to 0)
-        // because it was designed for 4-byte-aligned DMA BD addresses. The host
-        // library's `ParameterScratchpad::write` left-shifts by 2 before
-        // writing to the scratchpad, and the core right-shifts by 2 after
-        // loading. Note that this limits effective parameter values to 30
-        // bits.
-        auto bufType = MemRefType::get({2}, builder.getI32Type());
-        std::string prefix =
-            ("__param_" + paramName + "_" + std::to_string(tile.getCol()) +
-             "_" + std::to_string(tile.getRow()) + "_")
-                .str();
-        std::string bufName =
-            AIE::generateUniqueSymbolName(device, prefix, uniquingCounter);
-        auto buf = BufferOp::create(
-            builder, readOp.getLoc(), bufType, tile,
-            builder.getStringAttr(bufName), /*address=*/nullptr,
-            /*initial_value=*/nullptr, /*mem_bank=*/nullptr);
-        seen[key] = buf;
+      if (seen.count(key)) {
+        readOp.setBufferAttr(
+            FlatSymbolRefAttr::get(ctx, *seen[key].getSymName()));
+        return;
       }
+
+      builder.setInsertionPointAfter(tile);
+      // Buffer must be 8 bytes: update_from_scratchpad always writes a 48-bit
+      // value across two 32-bit registers at [RegOff] and [RegOff+4]. The
+      // firmware masks Reg[0] with 0xFFFFFFFC (lower 2 bits forced to 0)
+      // because it was designed for 4-byte-aligned DMA BD addresses. The host
+      // library's `ParameterScratchpad::write` left-shifts by 2 before
+      // writing to the scratchpad, and the core right-shifts by 2 after
+      // loading. Note that this limits effective parameter values to 30
+      // bits.
+      auto bufType = MemRefType::get({2}, builder.getI32Type());
+      std::string prefix =
+          ("__param_" + paramName + "_" + std::to_string(tile.getCol()) +
+           "_" + std::to_string(tile.getRow()) + "_")
+              .str();
+      std::string bufName =
+          AIE::generateUniqueSymbolName(device, prefix, uniquingCounter);
+      auto buf = BufferOp::create(
+          builder, readOp.getLoc(), bufType, tile,
+          builder.getStringAttr(bufName), /*address=*/nullptr,
+          /*initial_value=*/nullptr, /*mem_bank=*/nullptr);
+      seen[key] = buf;
 
       readOp.setBufferAttr(
           FlatSymbolRefAttr::get(ctx, *seen[key].getSymName()));
@@ -116,19 +142,17 @@ struct AIELowerParametersPass
 
       Type resultType = readOp.getResult().getType();
       Value result = decoded;
-      if (resultType != builder.getI32Type()) {
-        if (resultType.isInteger()) {
-          result = builder.create<arith::TruncIOp>(readOp.getLoc(), resultType,
-                                                   decoded);
-        } else if (resultType.isBF16()) {
-          Value masked = builder.create<arith::TruncIOp>(
-              readOp.getLoc(), builder.getI16Type(), decoded);
-          result = builder.create<arith::BitcastOp>(readOp.getLoc(), resultType,
-                                                    masked);
-        } else if (resultType.isF32()) {
-          result = builder.create<arith::BitcastOp>(readOp.getLoc(), resultType,
-                                                    decoded);
-        }
+      if (resultType.isInteger() && resultType != builder.getI32Type()) {
+        result = builder.create<arith::TruncIOp>(readOp.getLoc(), resultType,
+                                                 decoded);
+      } else if (resultType.isBF16()) {
+        Value masked = builder.create<arith::TruncIOp>(
+            readOp.getLoc(), builder.getI16Type(), decoded);
+        result = builder.create<arith::BitcastOp>(readOp.getLoc(), resultType,
+                                                  masked);
+      } else if (resultType.isF32()) {
+        result = builder.create<arith::BitcastOp>(readOp.getLoc(), resultType,
+                                                  decoded);
       }
 
       readOp.getResult().replaceAllUsesWith(result);
@@ -143,10 +167,10 @@ struct AIELowerParametersPass
   SmallVector<Value> emitCorePreambles(DeviceOp device, OpBuilder &builder) {
     SmallVector<Value> syncLocks;
     device.walk([&](CoreOp coreOp) {
-      if (!coreOp.shouldEmitParameterSyncPreamble())
+      if (!shouldEmitParameterSyncPreamble(coreOp)) {
         return;
+      }
 
-      // Create aie.lock on the core's tile with no lockID (will be assigned).
       TileOp tile = coreOp.getTileOp();
       builder.setInsertionPointAfter(tile);
       auto lockOp = builder.create<LockOp>(
@@ -155,7 +179,6 @@ struct AIELowerParametersPass
           /*sym_name=*/StringAttr{});
       syncLocks.push_back(lockOp.getResult());
 
-      // Insert use_lock(lock, Acquire, 1) at the very start of the core body.
       Block &bodyBlock = coreOp.getBody().front();
       builder.setInsertionPointToStart(&bodyBlock);
       UseLockOp::create(builder, coreOp.getLoc(), lockOp.getResult(),
@@ -167,8 +190,9 @@ struct AIELowerParametersPass
     return syncLocks;
   }
 
-  // For each runtime sequence in `device` with shouldEmitParameterSyncPreamble
-  // ()==true, insert at the beginning of the sequence body:
+  // For each runtime sequence in `device` where
+  // shouldEmitParameterSyncPreamble() is true, insert at the beginning of the
+  // sequence body:
   //   1. NpuCreateScratchpadOp (size = scratchpadSlots * 4 bytes)
   //   2. For each core-kind parameter: NpuWrite32Op (reset) +
   //      NpuUpdateFromScratchpadOp (copy value from scratchpad)
@@ -178,8 +202,9 @@ struct AIELowerParametersPass
       const SmallVector<std::pair<uint8_t, FlatSymbolRefAttr>> &paramEntries,
       const SmallVector<Value> &syncLocks) {
     device.walk([&](RuntimeSequenceOp seqOp) {
-      if (!seqOp.shouldEmitParameterSyncPreamble())
+      if (!shouldEmitParameterSyncPreamble(seqOp)) {
         return;
+      }
 
       Block &body = seqOp.getBody().front();
       builder.setInsertionPointToStart(&body);
@@ -200,8 +225,9 @@ struct AIELowerParametersPass
             /*column=*/nullptr, /*row=*/nullptr);
       }
 
-      for (Value lock : syncLocks)
+      for (Value lock : syncLocks) {
         SetLockOp::create(builder, loc, lock, builder.getI32IntegerAttr(1));
+      }
 
       // Mark as done so the pass is idempotent.
       seqOp.setEmitParameterSyncPreambleAttr(builder.getBoolAttr(false));
@@ -222,10 +248,11 @@ struct AIELowerParametersPass
 
     std::error_code ec;
     llvm::raw_fd_ostream out(outputParamsFile, ec);
-    if (ec)
+    if (ec) {
       return emitError(UnknownLoc::get(&getContext()),
                        "failed to open params output file '")
              << outputParamsFile << "': " << ec.message();
+    }
 
     out << allParams.size() << "\n";
     for (auto p : allParams) {
@@ -242,16 +269,16 @@ struct AIELowerParametersPass
   }
 
   void runOnOperation() override {
-    ModuleOp module = getOperation();
+    ModuleOp moduleOp = getOperation();
     OpBuilder builder(&getContext());
 
     // Step 1: collect every parameter in the module.
     SmallVector<ParameterOp> allParams;
-    module.walk([&](ParameterOp p) { allParams.push_back(p); });
+    moduleOp.walk([&](ParameterOp p) { allParams.push_back(p); });
 
     if (allParams.size() > 32) {
       InFlightDiagnostic diag =
-          module.emitError("Module declares ")
+          moduleOp.emitError("Module declares ")
           << allParams.size()
           << " parameters but the scratchpad supports at most 32. The "
              "scratchpad is a single hardware resource shared by all PDIs "
@@ -267,17 +294,18 @@ struct AIELowerParametersPass
     // emit an error.
     DenseMap<StringRef, bool> usedAsCore;
     DenseMap<StringRef, bool> usedAsAddr;
-    module.walk(
+    moduleOp.walk(
         [&](ReadParameterOp op) { usedAsCore[op.getParameter()] = true; });
     auto markAddr = [&](Operation *op, FlatSymbolRefAttr ref) {
       if (ref)
         usedAsAddr[ref.getValue()] = true;
     };
-    module.walk([&](NpuDmaMemcpyNdOp op) {
+    moduleOp.walk([&](NpuDmaMemcpyNdOp op) {
       markAddr(op, op.getOffsetParameterAttr());
     });
-    module.walk(
-        [&](AIE::DMABDOp op) { markAddr(op, op.getOffsetParameterAttr()); });
+    moduleOp.walk([&](AIE::DMABDOp op) {
+      markAddr(op, op.getOffsetParameterAttr());
+    });
 
     for (auto p : allParams) {
       StringRef name = p.getSymName();
@@ -305,7 +333,7 @@ struct AIELowerParametersPass
 
     // Step 4: per-device lowering.
     SmallVector<DeviceOp> devices;
-    module.walk([&](DeviceOp d) { devices.push_back(d); });
+    moduleOp.walk([&](DeviceOp d) { devices.push_back(d); });
     for (auto d : devices) {
       allocateBuffers(d, builder);
 
@@ -317,7 +345,7 @@ struct AIELowerParametersPass
         FlatSymbolRefAttr bufRef = readOp.getBufferAttr();
         if (!seenBufs.insert(bufRef.getValue()).second)
           return;
-        auto paramOp = module.lookupSymbol<ParameterOp>(readOp.getParameter());
+        auto paramOp = moduleOp.lookupSymbol<ParameterOp>(readOp.getParameter());
         uint8_t stateIdx =
             static_cast<uint8_t>(paramOp.getStateTableIdx().value());
         paramEntries.push_back({stateIdx, bufRef});

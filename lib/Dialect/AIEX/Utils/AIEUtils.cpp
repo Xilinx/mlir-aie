@@ -14,7 +14,9 @@
 using namespace mlir;
 using namespace xilinx;
 
-static unsigned cachedId = 0;
+// Counter shared across calls to getOrCreateDataMemref so that
+// generateUniqueSymbolName can skip past previously used indices efficiently.
+static unsigned blockwriteDataCounter = 0;
 
 std::optional<AIEX::SubviewTraceResult>
 AIEX::traceSubviewToBlockArgument(Value value) {
@@ -146,10 +148,11 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
     break;
   }
   if (!global) {
-    std::string name = "blockwrite_data_";
-    while (dev.lookupSymbol(name + std::to_string(cachedId)))
-      cachedId++;
-    name += std::to_string(cachedId);
+    // Reuse the shared naming utility so that all buffer-name generation
+    // in the project follows the same pattern (see also AIEToConfiguration.cpp
+    // and AIELowerParameters.cpp).
+    std::string name = AIE::generateUniqueSymbolName(
+        dev, "blockwrite_data_", blockwriteDataCounter);
     global = memref::GlobalOp::create(builder, loc, name,
                                       builder.getStringAttr("private"),
                                       memrefType, initVal, true, nullptr);
@@ -161,15 +164,14 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
     uint64_t registerAddr) {
   auto paramRef = bdOp->getAttrOfType<FlatSymbolRefAttr>("offset_parameter");
-  if (!paramRef)
-    return bdOp->emitOpError(
-        "emitUpdateBdAddressFromOffsetParameter called without "
-        "offset_parameter attribute.");
+  assert(paramRef &&
+         "emitUpdateBdAddressFromOffsetParameter called without "
+         "offset_parameter attribute");
 
-  auto module = bdOp->getParentOfType<ModuleOp>();
-  if (!module)
+  auto moduleOp = bdOp->getParentOfType<ModuleOp>();
+  if (!moduleOp)
     return bdOp->emitOpError("not contained in a module.");
-  auto paramOp = module.lookupSymbol<AIEX::ParameterOp>(paramRef.getAttr());
+  auto paramOp = moduleOp.lookupSymbol<AIEX::ParameterOp>(paramRef.getAttr());
   if (!paramOp)
     return bdOp->emitOpError("offset_parameter '")
            << paramRef.getValue()
@@ -190,8 +192,7 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
   uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
   // Use func=mul with func_arg=elemBytes so the firmware computes
   // StateTable[idx] * elemBytes = byte offset, added into the BD address
-  // register. UpdateReg only reads from the state table (it never writes
-  // back), so this is safe to repeat across runtime sequence invocations.
+  // register.
   AIEX::NpuUpdateFromScratchpadOp::create(
       builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
       /*func_arg=*/elemBytes,

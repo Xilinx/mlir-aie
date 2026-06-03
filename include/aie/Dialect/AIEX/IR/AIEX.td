@@ -691,7 +691,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
         DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length,
-        // if set, the aiex.parameter that will override the BD's address
+        // if set, the aiex.parameter value added to the BD's address as an offset
         OptionalAttr<FlatSymbolRefAttr>:$offset_parameter
   );
 
@@ -1399,26 +1399,32 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
 def AIEX_ParameterOp: AIEX_Op<"parameter", [Symbol]> {
   let summary = "Declare a scratchpad runtime parameter";
   let description = [{
-    Declares a named runtime parameter that can be set from the host by writing to DDR and read by AIE cores using `aiex.read_parameter`. 
-    Parameters are communicated via the scratchpad memory mechanism (CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes).
+    The host writes a named runtime parameter to DDR, and AIE cores read it
+    using `aiex.read_parameter`. The scratchpad memory mechanism
+    (CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes) communicates
+    the values.
 
-    `aiex.parameter` ops are declared at **module scope** (outside any `aie.device`).  
-    The scratchpad is a single hardware resource shared by all PDIs loaded by a 
-    runtime sequence, so parameters are global to the whole module and may be 
+    `aiex.parameter` ops are declared at **module scope** (outside any `aie.device`).
+    The scratchpad is a single hardware resource shared by all PDIs loaded by a
+    runtime sequence, so parameters are global to the whole module and may be
     referenced from any device.
 
-    Parameters can alternatively also be used to offset BD addresses by using them as the `offset_parameter` attribute in `aiex.dma_bd` and `aiex.dma_memcpy_nd`.
-    The two kinds of use are exclusive. If used this way, they cannot also be read from the cores.
+    Parameters can alternatively offset BD addresses when used as the
+    `offset_parameter` attribute in `aiex.dma_bd` and `aiex.dma_memcpy_nd`.
+    The two kinds of use are exclusive: parameters used as BD address offsets
+    cannot also be read from cores.
     If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
 
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
-    The `--aie-lower-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage: 
-    `core` if read by a core via `aiex.read_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op). 
+    The `--aie-lower-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
+    `core` if read by a core via `aiex.read_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
     Indices are unique across the entire module.
 
-    The `type` attribute specifies the data type of the parameter (bf16, f32, or an integer type up to i32). 
+    The `type` attribute specifies the data type of the parameter (bf16, f32, or an integer type up to i32).
     For `kind == addr`, the `type` must be `i32`.
-    The actual encoding uses a 30-bit value range due to the firmware's 2-bit masking.
+    The actual encoding uses a 30-bit value range because the firmware masks
+    the lower 2 bits of the scratchpad register (see `aiex.read_parameter`
+    for details on how values are shifted to work around this).
 
     Example (at module scope):
     ```mlir
@@ -1442,7 +1448,6 @@ def AIEX_ReadParameterOp: AIEX_Op<"read_parameter", []> {
   let summary = "Read a scratchpad runtime parameter value on an AIE core";
   let description = [{
     Reads a runtime parameter previously declared with `aiex.parameter` in an `aie.core`.
-    You must first synchronize the scratchpad to the core buffers from the runtime sequence using `aiex.sync_parameters_from_host`.
 
     The `--aie-lower-parameters` creates an `aie.buffer` on the core for each unique parameter read, and then replaces each instance of this op with:
     1. A `memref.load` from that buffer

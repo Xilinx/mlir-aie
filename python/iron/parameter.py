@@ -39,7 +39,7 @@ class Parameter(Resolvable):
 
         rt = Runtime()
         with rt.sequence(output_type) as out:
-            # No sync_parameters() call needed — the compiler inserts it.
+            # The compiler automatically inserts the parameter-sync preamble.
             ...
     """
 

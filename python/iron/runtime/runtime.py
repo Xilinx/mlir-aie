@@ -319,15 +319,6 @@ class Runtime(Resolvable):
         """
         self._tasks.append(_BarrierSetOp(barrier, value))
 
-    def sync_parameters(self):
-        """Deprecated: parameter-sync preamble is now emitted automatically.
-
-        This method is a no-op. The ``--aie-lower-parameters`` pass
-        automatically inserts the necessary lock and scratchpad-sync ops into
-        every core and runtime sequence that uses parameters.
-        """
-        pass  # preamble is now emitted by --aie-lower-parameters
-
     @property
     def workers(self) -> list[Worker]:
         """The workers associated with the Runtime by calls to start()"""

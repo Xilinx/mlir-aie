@@ -10,7 +10,6 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -1827,19 +1826,6 @@ TileOp CoreOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();
 }
 
-bool CoreOp::shouldEmitParameterSyncPreamble() {
-  if (auto attr = getEmitParameterSyncPreambleAttr())
-    return attr.getValue();
-  // Default: true iff any 'aiex.read_parameter' op is present in the core
-  // body. Type-erased check to avoid circular dependency with AIEX dialect.
-  bool found = false;
-  getBody().walk([&](Operation *op) {
-    if (op->getName().getStringRef() == "aiex.read_parameter")
-      found = true;
-  });
-  return found;
-}
-
 //===----------------------------------------------------------------------===//
 // BufferOp
 //===----------------------------------------------------------------------===//
@@ -3103,6 +3089,11 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
         if (symbolDefOp) {
+          // ParameterOps (aiex.parameter) are intentionally kept alive
+          // after --aie-lower-parameters so that later DMA lowering passes
+          // can resolve offset_parameter symbol references.  Use a
+          // type-erased name check to avoid a circular header dependency
+          // on the AIEX dialect.
           if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
               !llvm::isa<DeviceOp>(symbolDefOp) &&
               !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
@@ -3113,8 +3104,8 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp, GlobalOp or ParameterOp, but "
-                   "got: "
+                   "RuntimeSequenceOp, BufferOp, GlobalOp, or ParameterOp, "
+                   "but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }
@@ -3141,27 +3132,6 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
   }
 
   return success();
-}
-
-bool RuntimeSequenceOp::shouldEmitParameterSyncPreamble() {
-  if (auto attr = getEmitParameterSyncPreambleAttr())
-    return attr.getValue();
-  // Default: true iff the parent device contains any 'aiex.read_parameter' op
-  // in a core, or any 'offset_parameter' attribute on a DMA BD.
-  // Type-erased check to avoid circular dependency with AIEX dialect.
-  auto device = getOperation()->getParentOfType<DeviceOp>();
-  if (!device)
-    return false;
-  bool found = false;
-  device.walk([&](Operation *op) {
-    if (found)
-      return;
-    if (op->getName().getStringRef() == "aiex.read_parameter")
-      found = true;
-    else if (op->hasAttr("offset_parameter"))
-      found = true;
-  });
-  return found;
 }
 
 // Include implementations for custom attributes

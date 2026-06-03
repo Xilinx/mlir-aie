@@ -473,11 +473,6 @@ def AIE_CoreOp: AIE_Op<"core", [
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }
-    /// Returns true iff the parameter-sync preamble (use_lock acquire) should
-    /// be emitted for this core. Reads the explicit attribute if present;
-    /// otherwise defaults to true iff any 'aiex.read_parameter' op is present
-    /// in the core body.
-    bool shouldEmitParameterSyncPreamble();
   }];
 
   let builders = [
@@ -1021,7 +1016,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
-        // if set, the aiex.parameter that will override the BD's address 
+        // if set, the aiex.parameter value added to the BD's address as an offset
         OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
@@ -2273,7 +2268,8 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
   let arguments = (
     ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name,
     // If set to false, suppresses automatic insertion of the parameter-sync
-    // preamble (create_scratchpad + set_lock) by `--aie-lower-parameters`.
+    // preamble (create_scratchpad + update_from_scratchpad + set_lock) by
+    // `--aie-lower-parameters`.
     // Defaults to true when any `aiex.read_parameter` is present in a core in
     // the parent device, or any `offset_parameter` attribute on a DMA BD.
     // Set to false automatically after the preamble has been emitted.
@@ -2289,12 +2285,6 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
     static RuntimeSequenceOp getForSymbolInDevice(DeviceOp module, llvm::StringRef symbol);
     static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp module, llvm::StringRef symbol);
     llvm::LogicalResult verifyBeforeMaterialization();
-    /// Returns true iff the parameter-sync preamble (create_scratchpad +
-    /// set_lock) should be emitted into this sequence. Reads the explicit
-    /// attribute if present; otherwise defaults to true iff the parent device
-    /// contains any 'aiex.read_parameter' op in a core, or any
-    /// 'offset_parameter' attribute on a DMA BD.
-    bool shouldEmitParameterSyncPreamble();
   }];
   let extraClassDefinition = [{
   }];
