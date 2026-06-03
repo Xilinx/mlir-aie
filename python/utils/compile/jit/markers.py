@@ -26,9 +26,12 @@ Three annotation categories are defined here (all exported from ``aie.iron``):
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
-Any parameter without one of these four annotations (e.g. ``alpha: float``) is
-treated as a runtime scalar: passed directly as a kernel argument each call,
-no DMA transfer, no recompile.
+Any parameter without one of these four annotations is currently rejected at
+``@iron.jit`` decoration time when the parameter has a default value — there
+is no runtime-scalar plumbing yet (tracked separately as future work), so the
+default would be baked into the compiled kernel and per-call overrides
+silently ignored.  Annotate as ``Compile[T]`` (recompiles on change) or
+``In``/``Out``/``InOut`` (DMA tensor) instead.
 """
 
 from __future__ import annotations

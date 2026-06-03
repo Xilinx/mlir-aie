@@ -8,10 +8,10 @@
 """Tile-wise bf16 softmax — IRON API design with ``@iron.jit`` compilation.
 
 Softmax is computed independently per 1024-element tile (no cross-tile
-reduction), so the design scales the same way as ml/relu: body delegates to
-``iron.algorithms.transform_parallel_typed`` with ``num_channels=2`` and
-``pass_size_to_kernel=True`` (the softmax kernel signature is
-``(in, out, line_size)``).
+reduction), so the design scales the same way as ml/eltwise_unary: body
+delegates to ``iron.algorithms.transform_parallel_typed`` with
+``num_channels=2`` and ``pass_size_to_kernel=True`` (the softmax kernel
+signature is ``(in, out, line_size)``).
 """
 
 import argparse

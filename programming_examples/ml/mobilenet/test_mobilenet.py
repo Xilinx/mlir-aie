@@ -18,7 +18,6 @@ from aie.utils import DefaultNPURuntime
 from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 import argparse
 from aie.utils.hostruntime.argparse import add_runtime_args
-from aie.utils.test import create_npu_kernel
 
 
 def convert_to_numpy(array):

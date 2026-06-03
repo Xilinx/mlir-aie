@@ -80,7 +80,7 @@ def _encode_kwarg(value: Any) -> Any:
 def _decode_kwarg(encoded: Any) -> Any:
     """Decode a compile_kwarg value from JSON storage."""
     if not isinstance(encoded, list) or len(encoded) != 2:
-        return encoded  # legacy plain value or unknown format
+        return encoded
     t, v = encoded
     converter = _KWARG_TYPE_MAP.get(t, str)
     return converter(v)
@@ -599,7 +599,7 @@ class CompilableDesign:
                         f"@iron.jit design ({self.generator_name!r}): "
                         f"chess={chess_funcs}, peano={peano_funcs}.  aiecc "
                         "can only invoke one front-end per compile; pick one "
-                        "toolchain consistently across all kernels.X helper "
+                        "toolchain consistently across all kernels.* helper "
                         "calls in this design."
                     )
                 use_chess = chess_uses == {True}

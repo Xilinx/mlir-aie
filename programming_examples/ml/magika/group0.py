@@ -14,9 +14,7 @@ over scalar (xid, cid) indices passed to the kernel; group0b consumes
 those and runs a 32-iter LUT-pair lookup to produce the final output.
 
 The .cc kernel is compiled once per worker with ``-DGROUPA`` / ``-DGROUPB``
-to select which entry point gets exported, matching the placed-dialect
-build.  The Makefile flips between this iron design and ``group0_placed.py``
-via ``use_placed=1`` (default placed).
+to select which entry point gets exported.
 """
 
 import argparse

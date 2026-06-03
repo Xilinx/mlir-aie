@@ -49,8 +49,6 @@ from __future__ import annotations
 
 import functools
 import inspect as _inspect
-import warnings
-from pathlib import Path
 from typing import Callable
 
 from aie.utils.callabledesign import CallableDesign as _CallableDesign

@@ -18,7 +18,6 @@ import numpy as np
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
 from aie.utils.hostruntime.argparse import add_runtime_args
-from aie.utils.test import create_npu_kernel
 
 
 def get_evm(array_len, gold, dut):

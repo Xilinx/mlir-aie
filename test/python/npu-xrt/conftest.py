@@ -7,7 +7,6 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 from contextlib import contextmanager
 
-import numpy as np
 import pytest
 
 

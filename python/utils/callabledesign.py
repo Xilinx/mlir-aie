@@ -295,22 +295,12 @@ class CallableDesign:
                     f"must be keyword arguments, not positional."
                 )
 
-        # --- Resolve trace_config ---
-        # Two patterns are supported:
-        #   1. JIT config: trace_config set on CallableDesign.__init__ (or via
-        #      @iron.jit(trace_config=...)).  trace_config.trace_size is
-        #      injected as a "trace_size" compile kwarg so generators can use
-        #      the simpler ``trace_size: Compile[int] = 0`` signature.
-        #   2. Compile kwarg (legacy): trace_config passed as a Compile[T]
-        #      param on the generator (``trace_config: Compile[... | None]``).
         trace_config = self.trace_config
         if trace_config is not None:
-            # Inject trace_size as a compile kwarg for the generator.
             if "trace_size" not in effective_compile_kwargs:
                 effective_compile_kwargs["trace_size"] = trace_config.trace_size
                 call_compile_kwargs["trace_size"] = trace_config.trace_size
         else:
-            # Legacy path: extract trace_config from compile kwargs.
             trace_config = effective_compile_kwargs.get("trace_config", None)
 
         # Build a separate dict for the cache key that excludes trace_config:
@@ -377,7 +367,7 @@ class CallableDesign:
         """Return a new ``CallableDesign`` with additional ``Compile[T]`` kwargs bound.
 
         The given kwargs are merged onto any pre-bound ``compile_kwargs`` with
-        call-time values winning — matching ``__call__`` / ``lower`` semantics.
+        call-time values winning — matching ``__call__`` / ``as_mlir`` semantics.
         Config (``source_files``, ``aiecc_flags``, etc.) is preserved.
 
         Use together with :meth:`compile` to perform ahead-of-time compilation
@@ -430,8 +420,7 @@ class CallableDesign:
 
         Returns:
             The MLIR module as a string (suitable for inspection, debugging,
-            or feeding to a separate aiecc invocation -- e.g. the legacy
-            vck5000 / Versal AIE1 flow).
+            or feeding to a separate aiecc invocation).
         """
         call_compile_kwargs, _scalar_runtime_kwargs, _ = self._extract_compile_kwargs(
             runtime_kwargs

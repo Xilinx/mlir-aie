@@ -23,6 +23,8 @@ import sys
 
 import numpy as np
 
+from aie.utils.benchmark import print_benchmark
+
 _DEFAULT_RTOL = 0.128
 
 
@@ -96,10 +98,6 @@ def assert_pass(
     print_pass: bool = True,
 ) -> None:
     """Verify ``actual`` matches ``expected``; print ``PASS!`` on success.
-
-    Replaces the ``if not np.array_equal(actual, expected):
-    sys.exit("FAIL! ..."); print("PASS!")`` idiom that the programming
-    examples used to repeat verbatim.
 
     Args:
         actual, expected: Array-likes (numpy arrays, scalars, lists).
@@ -179,9 +177,6 @@ def assert_close_with_benchmark(
     Raises:
         SystemExit: On mismatch (via :func:`assert_pass`).
     """
-    # Late import to avoid hoisting benchmark/dataclass at module load.
-    from aie.utils.benchmark import print_benchmark
-
     if np.issubdtype(np.asarray(expected).dtype, np.integer):
         if mismatch_indices and not bool(np.array_equal(actual, expected)):
             diffs = np.argwhere(np.asarray(actual) != np.asarray(expected))[:5]

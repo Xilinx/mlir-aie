@@ -1,4 +1,4 @@
-//===- test.cpp -------------------------------------------000---*- C++ -*-===//
+//===- test_runlist.cpp ----------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -119,7 +119,7 @@ int main(int argc, const char *argv[]) {
 
   unsigned int opcode = 3;
 
-  // Creating a runlist to contain two seperate runs
+  // Creating a runlist to contain two separate runs
   xrt::runlist runlist = xrt::runlist(context);
 
   // Creating the first run

@@ -151,9 +151,6 @@ def add_runtime_args(
     ``--instr``) used by ``test.py``-style host harnesses that load a
     pre-compiled xclbin and run it on the NPU.
 
-    Replaces the legacy ``aie.utils.test.create_default_argparser`` which
-    is now deprecated.
-
     Args:
         parser: Parser to mutate.
         with_io_sizes: When True, adds ``--in1-size`` / ``--in2-size`` /

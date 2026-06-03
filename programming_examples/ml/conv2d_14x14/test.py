@@ -15,7 +15,6 @@ import os
 import numpy as np
 import argparse
 from aie.utils.hostruntime.argparse import add_runtime_args
-from aie.utils.test import create_npu_kernel
 import aie.iron as iron
 from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 from pathlib import Path

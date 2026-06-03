@@ -17,7 +17,7 @@ uses the iron-level :class:`Flow` / :class:`Lock` / :class:`TileDma`
 primitives — peers of :class:`ObjectFifo` for designs that hand-wire
 routing + DMA + sync instead of letting ObjectFifo manage them.
 
-Three invocation modes (mirrors matrix_scalar_add):
+Two invocation modes (mirrors matrix_scalar_add):
 
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (NPU Makefile)
   * emit-MLIR:    ``... -d xcvc1902 --emit-mlir``               (vck5000)

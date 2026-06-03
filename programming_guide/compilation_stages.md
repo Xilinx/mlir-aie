@@ -185,7 +185,7 @@ objects.
 | Whether the next call will rebuild | `cd.compilable.artifact_hash != cached_artifact_hash` |
 
 For a tour of these same methods with timings, see the
-[`@iron.jit` notebook](./_whats_new_executed.md).
+[`@iron.jit` notebook](./whats_new_in_unify_compilation_workflow.ipynb).
 
 ## Related reading
 

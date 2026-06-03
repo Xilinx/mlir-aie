@@ -12,8 +12,10 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 subdir=matrix_vector
 targetname=matrix_vector
 
-# Currently does not accept reconfiguring size via these variables; must change
-# in source at <targetname>.py as well as here.
+# Sizes are fixed here to match matrix_vector.py's vectorized mv kernel
+# tile (m, k). The Python CLI accepts -M/-K but the kernel object is built
+# for the (m=32, k=32) tile dimensions; changing m or k requires also
+# editing matrix_vector.py.
 M=288
 K=288
 N=1
