@@ -340,7 +340,7 @@ jobs:
       id: build_native_tools_wheel
       run: |
         python -m pip install --upgrade pip
-        python -m pip install --require-hashes -r utils/mlir_wheels/requirements.lock
+        python -m pip install --require-hashes -r requirements.lock
 
         for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "llvm-config" "FileCheck"; do
           if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then

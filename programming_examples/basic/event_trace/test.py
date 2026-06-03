@@ -255,11 +255,10 @@ def main():
                 print("(Warmup iteration - not counted)")
             continue
 
-        # Read output buffer
-        # pyxrt read() returns numpy array directly; ascontiguousarray() guards
-        # against numpy 2.x's stricter contiguity check in frombuffer.
-        bufOut_bytes = bo_out.read(OUT_SIZE, 0)
-        bufOut = np.frombuffer(np.ascontiguousarray(bufOut_bytes), dtype=DATATYPE_OUT)
+        # Read output buffer via map(): bo.read() returns a numpy int8 ndarray
+        # that is corrupted under numpy 2.x (broadcasts the first byte across
+        # the result) because pyxrt's binding was compiled against numpy 1.x.
+        bufOut = np.frombuffer(bytes(bo_out.map()[:OUT_SIZE]), dtype=DATATYPE_OUT)
 
         # Verify results
         if args.verify:
@@ -280,12 +279,9 @@ def main():
 
         # Write trace on first non-warmup iteration
         if args.trace_sz > 0 and iter == args.warmup:
-            # Read trace buffer (buffer 7)
-            trace_data_bytes = bo_trace.read(args.trace_sz, 0)
-            # Convert to uint32 array for proper formatting (see bufOut above
-            # re: ascontiguousarray vs numpy 2.x).
+            # Read trace buffer (buffer 7) via map() — see note on bufOut above.
             trace_buffer = np.frombuffer(
-                np.ascontiguousarray(trace_data_bytes), dtype=np.uint32
+                bytes(bo_trace.map()[: args.trace_sz]), dtype=np.uint32
             )
 
             if args.verbosity >= 1:
