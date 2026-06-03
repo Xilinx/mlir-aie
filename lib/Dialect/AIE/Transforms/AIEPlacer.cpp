@@ -427,13 +427,6 @@ LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
     ArrayRef<PacketFlowOp> pktFlows,
     const llvm::DenseMap<Operation *, std::pair<int, int>>
         &channelRequirements) {
-  // Connectivity adjacencies (per-fifo and per-flow) drive the centroid
-  // BFS that picks the column near a non-core LTO's compute peers.
-  auto objectFifoAdjacency = buildObjectFifoAdjacency(objectFifos);
-  auto flowAdjacency = buildFlowAdjacency(flows, pktFlows);
-  SmallVector<const Adjacency *, 2> connectivityAdjacencies = {
-      &objectFifoAdjacency, &flowAdjacency};
-
   // Sort the unplaced non-core LTOs by descending channel demand so the
   // heaviest consumers (e.g. memtile joins that need many input channels)
   // get first pick of physical tiles before lighter pass-through fifos
@@ -458,8 +451,10 @@ LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
                      return demand(a) > demand(b);
                    });
 
+  FlowMembership flowIndex = buildFlowMembership(flows, pktFlows, objectFifos);
+
   for (auto logicalTile : nonCoreOrdered) {
-    if (failed(placeNonCoreTileByCentroid(logicalTile, connectivityAdjacencies,
+    if (failed(placeNonCoreTileByCentroid(logicalTile, flowIndex,
                                           channelRequirements)))
       return failure();
   }
@@ -1116,66 +1111,163 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
   }
 }
 
-int SequentialPlacer::computeCentroidColumn(
-    LogicalTileOp logicalTile,
-    ArrayRef<const Adjacency *> connectivityAdjacencies) {
-  // BFS the connected component, summing placed-core columns. Walks
-  // through unplaced LTO peers so the centroid sees cores reachable
-  // transitively. Cores are leaves because they don't relay between
-  // non-core peers via core-to-core fifos. Both physical TileOp cores
-  // (which AIR emits for placed herds) and placed LTO cores count
-  // toward the centroid.
-  llvm::DenseSet<Operation *> visited;
-  SmallVector<Operation *, 8> queue{logicalTile.getOperation()};
-  visited.insert(logicalTile.getOperation());
+SequentialPlacer::FlowMembership SequentialPlacer::buildFlowMembership(
+    ArrayRef<FlowOp> flows, ArrayRef<PacketFlowOp> pktFlows,
+    ArrayRef<ObjectFifoCreateOp> objectFifos) {
+  // packet_flow connectivity is sources x destinations -- destinations
+  // are never each other's peers. Same asymmetry for objectfifo
+  // producer/consumers.
+  FlowMembership idx;
+  auto isLto = [](Value v) {
+    return v && mlir::isa_and_nonnull<LogicalTileOp>(v.getDefiningOp());
+  };
+  auto addEntry = [&](Value lto, ArrayRef<Value> peers) {
+    if (!isLto(lto) || peers.empty())
+      return;
+    idx.ltoFlows[lto].push_back(SmallVector<Value>(peers.begin(), peers.end()));
+  };
 
-  int sumCols = 0;
-  int placedCoreCount = 0;
-  while (!queue.empty()) {
-    Operation *current = queue.pop_back_val();
-    for (const Adjacency *adj : connectivityAdjacencies) {
-      forEachPeer(current, *adj, [&](TileLike peer, bool /*thisIsFirst*/) {
-        Operation *peerOp = peer.getOperation();
-        if (!peerOp)
-          return;
-        if (!visited.insert(peerOp).second)
-          return;
-        // Physical core TileOp: count its column directly.
-        if (auto peerTileOp = dyn_cast<TileOp>(peerOp)) {
-          if (targetModel->getTileType(peerTileOp.getCol(),
-                                       peerTileOp.getRow()) ==
-              AIETileType::CoreTile) {
-            sumCols += peerTileOp.getCol();
-            ++placedCoreCount;
-          }
-          return; // Physical tile is always a leaf — don't BFS through.
-        }
-        auto peerLT = dyn_cast<LogicalTileOp>(peerOp);
-        if (!peerLT)
-          return;
-        if (peerLT.getTileType() == AIETileType::CoreTile) {
-          if (auto resIt = result.find(peerOp); resIt != result.end()) {
-            sumCols += resIt->second.col;
-            ++placedCoreCount;
-          }
-          return;
-        }
-        queue.push_back(peerOp);
-      });
+  for (auto flow : flows) {
+    Value s = flow.getSource(), d = flow.getDest();
+    addEntry(s, {d});
+    addEntry(d, {s});
+  }
+  for (auto pf : pktFlows) {
+    SmallVector<Value> srcs, dsts;
+    pf.walk([&](Operation *op) {
+      if (auto src = dyn_cast<PacketSourceOp>(op))
+        srcs.push_back(src.getTile());
+      else if (auto dst = dyn_cast<PacketDestOp>(op))
+        dsts.push_back(dst.getTile());
+    });
+    for (Value s : srcs)
+      addEntry(s, dsts);
+    for (Value d : dsts)
+      addEntry(d, srcs);
+  }
+  for (auto of : objectFifos) {
+    Value prod = of.getProducerTile();
+    auto cons = of.getConsumerTiles();
+    SmallVector<Value> consVec(cons.begin(), cons.end());
+    addEntry(prod, consVec);
+    for (Value c : consVec)
+      addEntry(c, {prod});
+  }
+  return idx;
+}
+
+int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
+                                            const FlowMembership &flowIndex) {
+  // Per-flow routing cost as a function of the LTO's column S:
+  //   single-dest flow to col D : cost(S) = |S - D|
+  //   N-dest flow spanning [lo, hi]:
+  //                cost(S) = 0       if lo <= S <= hi
+  //                        = lo - S  if S < lo
+  //                        = S - hi  if S > hi
+  // Inside a broadcast's span the cost is flat -- broadcasts constrain
+  // the LTO to stay within their reach but don't pull it to any column.
+  // Tiebreak by closest-to-mean-of-dests so a pure broadcast lands mid
+  // and two single-dest flows average to their midpoint.
+  Value ltoVal = logicalTile.getResult();
+  auto ltoIt = flowIndex.ltoFlows.find(ltoVal);
+  if (ltoIt == flowIndex.ltoFlows.end())
+    return 0;
+
+  auto resolveCoreCol = [&](Value v) -> std::optional<int> {
+    Operation *defOp = v.getDefiningOp();
+    if (!defOp)
+      return std::nullopt;
+    if (auto tileOp = dyn_cast<TileOp>(defOp)) {
+      if (targetModel->getTileType(tileOp.getCol(), tileOp.getRow()) ==
+          AIETileType::CoreTile)
+        return tileOp.getCol();
+      return std::nullopt;
+    }
+    if (auto lto = dyn_cast<LogicalTileOp>(defOp);
+        lto && lto.getTileType() == AIETileType::CoreTile) {
+      auto it = result.find(defOp);
+      if (it != result.end())
+        return it->second.col;
+    }
+    return std::nullopt;
+  };
+
+  // One level of indirection for shim->memtile->core. Multi-level memtile
+  // chains aren't currently produced by mlir-aie.
+  auto resolveLtoCoreCols = [&](Value v) {
+    SmallVector<int> out;
+    auto it = flowIndex.ltoFlows.find(v);
+    if (it == flowIndex.ltoFlows.end())
+      return out;
+    for (auto &peerList : it->second)
+      for (Value p : peerList)
+        if (auto col = resolveCoreCol(p))
+          out.push_back(*col);
+    return out;
+  };
+
+  SmallVector<SmallVector<int>> perFlowDests;
+  for (auto &peers : ltoIt->second) {
+    SmallVector<int> dests;
+    for (Value p : peers) {
+      if (auto col = resolveCoreCol(p)) {
+        dests.push_back(*col);
+        continue;
+      }
+      if (p == ltoVal)
+        continue;
+      for (int c : resolveLtoCoreCols(p))
+        dests.push_back(c);
+    }
+    if (!dests.empty())
+      perFlowDests.push_back(std::move(dests));
+  }
+
+  if (perFlowDests.empty())
+    return 0;
+
+  double meanDestCol = 0.0;
+  int destCount = 0;
+  for (auto &dests : perFlowDests)
+    for (int d : dests) {
+      meanDestCol += d;
+      ++destCount;
+    }
+  meanDestCol /= destCount;
+
+  int numCols = targetModel->columns();
+  int bestCol = 0;
+  int bestCost = std::numeric_limits<int>::max();
+  double bestTiebreak = std::numeric_limits<double>::infinity();
+  for (int S = 0; S < numCols; ++S) {
+    int cost = 0;
+    for (auto &dests : perFlowDests) {
+      if (dests.size() == 1) {
+        cost += std::abs(S - dests[0]);
+      } else {
+        int lo = *std::min_element(dests.begin(), dests.end());
+        int hi = *std::max_element(dests.begin(), dests.end());
+        if (S < lo)
+          cost += lo - S;
+        else if (S > hi)
+          cost += S - hi;
+      }
+    }
+    double tiebreak = std::abs(S - meanDestCol);
+    if (cost < bestCost || (cost == bestCost && tiebreak < bestTiebreak)) {
+      bestCost = cost;
+      bestTiebreak = tiebreak;
+      bestCol = S;
     }
   }
-  if (placedCoreCount == 0)
-    return 0;
-  // Round-to-nearest column: +half before truncating.
-  return (sumCols + placedCoreCount / 2) / placedCoreCount;
+  return bestCol;
 }
 
 LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
-    LogicalTileOp logicalTile,
-    ArrayRef<const Adjacency *> connectivityAdjacencies,
+    LogicalTileOp logicalTile, const FlowMembership &flowIndex,
     const llvm::DenseMap<Operation *, std::pair<int, int>>
         &channelRequirements) {
-  int centroidCol = computeCentroidColumn(logicalTile, connectivityAdjacencies);
+  int centroidCol = computeCentroidColumn(logicalTile, flowIndex);
   auto colConstraint = logicalTile.tryGetCol();
   int targetCol = colConstraint ? *colConstraint : centroidCol;
 
