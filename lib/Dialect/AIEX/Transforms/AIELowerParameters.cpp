@@ -48,7 +48,7 @@ static bool shouldEmitParameterSyncPreamble(CoreOp coreOp) {
 /// should be emitted into this sequence. Reads the explicit attribute if
 /// present; otherwise defaults to true iff the parent device contains any
 /// ReadParameterOp in a core, or any 'offset_parameter' attribute on a DMA BD,
-/// and the runtime sequence does not already contain a 
+/// and the runtime sequence does not already contain a
 // `aiex.sync_parameters_from_host` marker.
 static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
   if (auto attr = seqOp.getEmitParameterSyncPreambleAttr()) {
@@ -199,7 +199,7 @@ struct AIELowerParametersPass
 
   // For each runtime sequence in `device` with shouldEmitParameterSyncPreamble
   // ()==true, insert a marker SyncParametersFromHostOp at the start of the
-  // sequence body.  
+  // sequence body.
   void emitSequencePreambles(DeviceOp device, OpBuilder &builder) {
     device.walk([&](RuntimeSequenceOp seqOp) {
       if (!shouldEmitParameterSyncPreamble(seqOp)) {
