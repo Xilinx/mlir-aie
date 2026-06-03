@@ -1121,9 +1121,10 @@ int SequentialPlacer::computeCentroidColumn(
     ArrayRef<const Adjacency *> connectivityAdjacencies) {
   // BFS the connected component, summing placed-core columns. Walks
   // through unplaced LTO peers so the centroid sees cores reachable
-  // transitively; TileOp peers terminate the walk. Cores are leaves
-  // because they don't relay between non-core peers via core-to-core
-  // fifos.
+  // transitively. Cores are leaves because they don't relay between
+  // non-core peers via core-to-core fifos. Both physical TileOp cores
+  // (which AIR emits for placed herds) and placed LTO cores count
+  // toward the centroid.
   llvm::DenseSet<Operation *> visited;
   SmallVector<Operation *, 8> queue{logicalTile.getOperation()};
   visited.insert(logicalTile.getOperation());
@@ -1139,9 +1140,19 @@ int SequentialPlacer::computeCentroidColumn(
           return;
         if (!visited.insert(peerOp).second)
           return;
-        auto peerLT = dyn_cast_or_null<LogicalTileOp>(peerOp);
+        // Physical core TileOp: count its column directly.
+        if (auto peerTileOp = dyn_cast<TileOp>(peerOp)) {
+          if (targetModel->getTileType(peerTileOp.getCol(),
+                                       peerTileOp.getRow()) ==
+              AIETileType::CoreTile) {
+            sumCols += peerTileOp.getCol();
+            ++placedCoreCount;
+          }
+          return; // Physical tile is always a leaf — don't BFS through.
+        }
+        auto peerLT = dyn_cast<LogicalTileOp>(peerOp);
         if (!peerLT)
-          return; // TileOp peer: don't BFS through it.
+          return;
         if (peerLT.getTileType() == AIETileType::CoreTile) {
           if (auto resIt = result.find(peerOp); resIt != result.end()) {
             sumCols += resIt->second.col;
