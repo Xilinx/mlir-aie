@@ -163,31 +163,11 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
 LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
     uint64_t registerAddr) {
-  auto paramRef = bdOp->getAttrOfType<FlatSymbolRefAttr>("offset_parameter");
-  assert(paramRef && "emitUpdateBdAddressFromOffsetParameter called without "
-                     "offset_parameter attribute");
+  auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("offset_state_table_idx");
+  assert(idxAttr && "emitUpdateBdAddressFromOffsetParameter called without "
+                    "offset_state_table_idx attribute");
 
-  auto moduleOp = bdOp->getParentOfType<ModuleOp>();
-  if (!moduleOp)
-    return bdOp->emitOpError("not contained in a module.");
-  auto paramOp = moduleOp.lookupSymbol<AIEX::ParameterOp>(paramRef.getAttr());
-  if (!paramOp)
-    return bdOp->emitOpError("offset_parameter '")
-           << paramRef.getValue()
-           << "' not found. Declare it at module scope with aiex.parameter.";
-  if (!paramOp.getStateTableIdx().has_value())
-    return bdOp->emitOpError("offset_parameter '")
-           << paramRef.getValue()
-           << "' has no state_table_idx. Run --aie-lower-parameters first.";
-  if (!paramOp.getType().isInteger(32)) {
-    auto err = bdOp->emitOpError("offset_parameter '")
-               << paramRef.getValue() << "' must have type i32, got "
-               << paramOp.getType() << ".";
-    err.attachNote(paramOp.getLoc()) << "Parameter declared here.";
-    return err;
-  }
-
-  uint8_t stateIdx = static_cast<uint8_t>(paramOp.getStateTableIdx().value());
+  uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
   uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
   // Use func=mul with func_arg=elemBytes so the firmware computes
   // StateTable[idx] * elemBytes = byte offset, added into the BD address

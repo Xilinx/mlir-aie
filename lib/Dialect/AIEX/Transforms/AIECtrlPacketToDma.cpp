@@ -198,7 +198,8 @@ struct AIECtrlPacketToDmaPass
                                  ArrayRef(staticSizes), ArrayRef(staticStrides),
                                  nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0,
                                  /*burst_length=*/0,
-                                 /*offset_parameter=*/FlatSymbolRefAttr());
+                                 /*offset_parameter=*/FlatSymbolRefAttr(),
+                                 /*offset_state_table_idx=*/IntegerAttr());
 
         auto shimRow = builder.getI32IntegerAttr(0);
         auto shimCol = builder.getI32IntegerAttr(col);

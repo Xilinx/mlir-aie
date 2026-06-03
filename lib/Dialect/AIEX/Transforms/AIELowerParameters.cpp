@@ -354,6 +354,51 @@ struct AIELowerParametersPass
           builder.getIntegerType(8, /*isSigned=*/false), i));
     }
 
+    // Step 3b: rewrite DMA `offset_parameter` symbol references to a plain
+    // `offset_state_table_idx` integer attribute, so downstream `aie`-dialect
+    // passes do not need to resolve `aiex.parameter` symbols.
+    auto rewriteOffsetParam = [&](Operation *op, FlatSymbolRefAttr ref) {
+      if (!ref) {
+        return success();
+      }
+      auto paramOp = moduleOp.lookupSymbol<ParameterOp>(ref.getAttr());
+      if (!paramOp) {
+        op->emitOpError("offset_parameter '")
+            << ref.getValue()
+            << "' not found. Declare it at module scope with aiex.parameter.";
+        return failure();
+      }
+      if (!paramOp.getType().isInteger(32)) {
+        auto err = op->emitOpError("offset_parameter '")
+                   << ref.getValue() << "' must have type i32, got "
+                   << paramOp.getType() << ".";
+        err.attachNote(paramOp.getLoc()) << "Parameter declared here.";
+        return failure();
+      }
+      uint8_t stateIdx =
+          static_cast<uint8_t>(paramOp.getStateTableIdx().value());
+      op->setAttr("offset_state_table_idx",
+                  builder.getIntegerAttr(
+                      builder.getIntegerType(8, /*isSigned=*/false), stateIdx));
+      op->removeAttr("offset_parameter");
+      return success();
+    };
+    WalkResult rewriteResult = moduleOp.walk([&](Operation *op) {
+      if (auto dmaOp = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+        if (failed(rewriteOffsetParam(op, dmaOp.getOffsetParameterAttr()))) {
+          return WalkResult::interrupt();
+        }
+      } else if (auto bdOp = dyn_cast<AIE::DMABDOp>(op)) {
+        if (failed(rewriteOffsetParam(op, bdOp.getOffsetParameterAttr()))) {
+          return WalkResult::interrupt();
+        }
+      }
+      return WalkResult::advance();
+    });
+    if (rewriteResult.wasInterrupted()) {
+      return signalPassFailure();
+    }
+
     // Step 4: per-device lowering.
     SmallVector<DeviceOp> devices;
     moduleOp.walk([&](DeviceOp d) { devices.push_back(d); });
@@ -390,13 +435,9 @@ struct AIELowerParametersPass
     }
 
     // Step 5: emit the single params.txt for the module.
-    if (failed(emitParamsFile(allParams)))
+    if (failed(emitParamsFile(allParams))) {
       return signalPassFailure();
-
-    // ParameterOps are kept around so that later passes (e.g. DMA lowering)
-    // can resolve `offset_parameter` symbol references back to their
-    // state_table_idx / kind / type. `--aiex-standard-lowering` will remove
-    // them at the end of the pipeline.
+    }
   }
 };
 

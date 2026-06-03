@@ -483,7 +483,7 @@ struct LinearizeContiguousTransfer
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
-        op.getOffsetParameterAttr());
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
     return mlir::success();
   }
 };

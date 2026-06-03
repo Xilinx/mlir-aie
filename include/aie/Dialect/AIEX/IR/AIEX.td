@@ -692,7 +692,11 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
         DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length,
         // if set, the aiex.parameter value added to the BD's address as an offset
-        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter
+        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
+        // Set by --aie-lower-parameters from $offset_parameter: the scratchpad
+        // state-table index whose value is used as the BD address offset.
+        // After lowering, $offset_parameter is removed in favor of this attribute.
+        OptionalAttr<UI8Attr>:$offset_state_table_idx
   );
 
   let assemblyFormat = [{

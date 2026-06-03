@@ -3098,22 +3098,16 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
         if (symbolDefOp) {
-          // ParameterOps (aiex.parameter) are intentionally kept alive
-          // after --aie-lower-parameters so that later DMA lowering passes
-          // can resolve offset_parameter symbol references.  Use a
-          // type-erased name check to avoid a circular header dependency
-          // on the AIEX dialect.
           if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
               !llvm::isa<DeviceOp>(symbolDefOp) &&
               !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
               !llvm::isa<BufferOp>(symbolDefOp) &&
-              !llvm::isa<memref::GlobalOp>(symbolDefOp) &&
-              symbolDefOp->getName().getStringRef() != "aiex.parameter") {
+              !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
             op->emitOpError()
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp, GlobalOp, or ParameterOp, "
+                   "RuntimeSequenceOp, BufferOp, or GlobalOp, "
                    "but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();

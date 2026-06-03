@@ -38,14 +38,9 @@ struct SubviewTraceResult {
 std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
 
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
-// (held in the scratchpad slot referenced by `bdOp`'s `offset_parameter` /
-// `offset_state_table_idx` attributes, multiplied by the element size of
+// (held in the scratchpad slot referenced by `bdOp`'s
+// `offset_state_table_idx` attribute, multiplied by the element size of
 // `bufType`) into the BD address register at `registerAddr`.
-//
-// `bdOp` must carry both the `offset_parameter` (FlatSymbolRefAttr pointing at
-// an `aiex.parameter`) and `offset_state_table_idx` (IntegerAttr, set by
-// `--aie-lower-parameters`) attributes. The referenced parameter must have
-// type `i32`.
 LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
                                                      Operation *bdOp,
                                                      BaseMemRefType bufType,
