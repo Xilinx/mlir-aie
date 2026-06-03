@@ -1399,8 +1399,10 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
 def AIEX_ParameterOp: AIEX_Op<"parameter", [Symbol]> {
   let summary = "Declare a scratchpad runtime parameter";
   let description = [{
-    The host writes a named runtime parameter to DDR, and AIE cores read it
-    using `aiex.read_parameter`. The scratchpad memory mechanism
+    Declares a named runtime parameter that uses the scratchpad mechanism.
+    Using this declaration and the MLIR-AIE runtime library, the host can write
+    these named runtime parameters to DDR, and AIE cores read it using 
+    `aiex.read_parameter`. The scratchpad memory mechanism
     (CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes) communicates
     the values.
 
