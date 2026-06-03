@@ -20,6 +20,8 @@ and provides a ``__call__`` interface that:
      passed as kwargs at each call site; different values produce independently
      cached kernels.
 
+   When both are supplied for the same name, the call-time value wins.
+
 3. Splits runtime arguments into tensor args (``In``/``Out``/``InOut``
    annotated) and scalar kwargs (everything else) using the generator's type
    annotations — no heuristic type-checking needed.
@@ -29,21 +31,26 @@ and provides a ``__call__`` interface that:
 
 from __future__ import annotations
 
+import inspect as _inspect
 import logging
 from pathlib import Path
 from typing import Any, Callable
 
 from aie.utils.compile.cache.utils import _create_function_cache_key
-from aie.utils.npukernel import NPUKernel
-from aie.utils import DefaultNPURuntime
-
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
+
+# NPUKernel and DefaultNPURuntime pull in the XRT runtime stack on import.
+# Defer to first call so importing CallableDesign on machines without an NPU
+# (e.g. CI nodes that only need as_mlir / generate_mlir for inspection) does
+# not fail at module load.
 
 logger = logging.getLogger(__name__)
 
 
 def _evict_xrt_context(xclbin_path: Path) -> None:
     """Evict a stale XRT hw_context after IOCTL EINVAL so the retry gets a fresh one."""
+    from aie.utils import DefaultNPURuntime
+
     if DefaultNPURuntime is None or not hasattr(DefaultNPURuntime, "_context_cache"):
         return
     try:
@@ -151,8 +158,6 @@ class CallableDesign:
             and callable(self.compilable.mlir_generator)
             and not self.compilable.compile_kwargs
         ):
-            import inspect as _inspect
-
             sig = _inspect.signature(self.compilable.mlir_generator)
             unbound_required = [
                 name
@@ -187,11 +192,12 @@ class CallableDesign:
             else:
                 scalar_runtime_kwargs[name] = val
 
-        # Pre-bound compile_kwargs win: placed last in the merge so they
-        # overwrite any same-named call-time values.
+        # Call-time compile_kwargs win, matching Triton (and CompilableDesign
+        # .specialized() — pre-bound is the starting set, the call-site kwarg
+        # overrides). __call__ and as_mlir share these semantics.
         effective_compile_kwargs = {
-            **call_compile_kwargs,
             **self.compilable.compile_kwargs,
+            **call_compile_kwargs,
         }
 
         return call_compile_kwargs, scalar_runtime_kwargs, effective_compile_kwargs
@@ -216,6 +222,8 @@ class CallableDesign:
         cache_key,
         trace_config,
     ) -> NPUKernel:
+        from aie.utils.npukernel import NPUKernel
+
         xclbin_path, inst_path = compilable.compile()
         if trace_config is not None:
             physical_mlir = xclbin_path.parent / "input_with_addresses.mlir"
@@ -311,27 +319,6 @@ class CallableDesign:
         cache_compile_kwargs = {
             k: v for k, v in effective_compile_kwargs.items() if k != "trace_config"
         }
-
-        # Guard 3-B: raise if call-time value differs from a pre-bound value.
-        # Identical values are silently accepted.
-        prebound = set(self.compilable.compile_kwargs.keys())
-        overridden = {
-            k: (call_compile_kwargs[k], self.compilable.compile_kwargs[k])
-            for k in set(call_compile_kwargs.keys()) & prebound
-            if call_compile_kwargs[k] != self.compilable.compile_kwargs[k]
-        }
-        if overridden:
-            detail = ", ".join(
-                f"{k}={call!r} ignored, using pre-bound {pre!r}"
-                for k, (call, pre) in overridden.items()
-            )
-            raise TypeError(
-                f"{self.compilable.generator_name!r} has pre-bound "
-                f"Compile[T] value(s) that override call-site value(s): "
-                f"{detail}.\n"
-                f"  Pre-bound values always win. Use bare @iron.jit to "
-                f"allow per-call compile parameters.",
-            )
 
         compilable = self._build_compilable(call_compile_kwargs)
 
@@ -445,20 +432,11 @@ class CallableDesign:
             The MLIR module as a string (suitable for inspection, debugging,
             or feeding to a separate aiecc invocation -- e.g. the legacy
             vck5000 / Versal AIE1 flow).
-
-        Note:
-            Unlike ``__call__``, call-time ``Compile[T]`` kwargs **override**
-            pre-bound values so you can inspect what different configurations
-            produce without creating a new ``CallableDesign``.
         """
         call_compile_kwargs, _scalar_runtime_kwargs, _ = self._extract_compile_kwargs(
             runtime_kwargs
         )
-
-        # Call-time kwargs override pre-bound values so callers can inspect
-        # different configurations without creating a new design.
         compilable = self._build_compilable(call_compile_kwargs)
-
         return str(compilable.generate_mlir())
 
     def __repr__(self) -> str:
