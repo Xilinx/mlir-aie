@@ -29,3 +29,10 @@ utils/vitisVariables.config
 runtime_lib/xaiengine/src
 /ironenv
 /.cache
+
+# Local run/test artifacts under programming_examples/ and programming_guide/
+**/log/
+**/test_stx/
+**/trace.txt
+**/trace_*.json
+**/_whats_new_executed.*
