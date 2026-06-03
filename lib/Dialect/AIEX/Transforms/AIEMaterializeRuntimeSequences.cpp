@@ -503,15 +503,14 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     mlir::OpBuilder::InsertPoint clonedOpInsertionPoint =
         rewriter.saveInsertionPoint();
     for (Operation &op : calleeBody.getOps()) {
-      bool shouldHoist =
-          llvm::isa<NpuCreateScratchpadOp>(&op);
+      bool shouldHoist = llvm::isa<NpuCreateScratchpadOp>(&op);
       if (shouldHoist) {
         // Clone into the caller's RuntimeSequenceOp body before any
         // non-hoisted ops. No symbol definitions need inlining for these ops.
         rewriter.setInsertionPoint(&callerBodyBlock, hoistPos);
         rewriter.clone(op, argMap);
         continue;
-      } 
+      }
 
       rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
       Operation *clonedOp = rewriter.clone(op, argMap);

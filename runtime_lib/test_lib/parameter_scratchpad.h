@@ -86,7 +86,8 @@ public:
     uint8_t idx = it->second;
     uint32_t encoded = bits;
     if (coreParams.count(name)) {
-      // core parameters require shift-2 to survive masking of lowest bits by firmware op
+      // core parameters require shift-2 to survive masking of lowest bits by
+      // firmware op
       encoded = bits << 2;
     }
     boMap[idx] = encoded;
@@ -106,16 +107,15 @@ public:
 
 #ifdef TEST_UTILS_USE_XRT
   /// Sync the scratchpad buffer to device. Call after all writes for this run.
-  void sync() { 
-    scratchpadBo.sync(XCL_BO_SYNC_BO_TO_DEVICE); 
-  }
+  void sync() { scratchpadBo.sync(XCL_BO_SYNC_BO_TO_DEVICE); }
 #endif
 
   /// Read back a parameter's current encoded value (for debugging).
   uint32_t read(const std::string &name) const {
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
-      throw std::runtime_error("ParameterScratchpad: unknown parameter '" + name + "'");
+      throw std::runtime_error("ParameterScratchpad: unknown parameter '" +
+                               name + "'");
     }
     return boMap[it->second];
   }
@@ -138,7 +138,8 @@ private:
   void parseParams(const std::string &path) {
     std::ifstream file(path);
     if (!file.is_open()) {
-      throw std::runtime_error("ParameterScratchpad: cannot open '" + path + "'");
+      throw std::runtime_error("ParameterScratchpad: cannot open '" + path +
+                               "'");
     }
 
     // Format:
@@ -156,7 +157,8 @@ private:
       file >> name >> idx >> type >> kind;
       paramMap[name] = static_cast<uint8_t>(idx);
       if (kind != "core" && kind != "addr") {
-        throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind + "' for parameter '" + name + "'");
+        throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind +
+                                 "' for parameter '" + name + "'");
       } else if (kind == "core") {
         coreParams.insert(name);
       }

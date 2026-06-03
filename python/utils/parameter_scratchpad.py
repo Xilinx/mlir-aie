@@ -9,7 +9,7 @@
 scratchpad mechanism.
 
 Thin Python wrapper around the C++ ``test_utils::ParameterScratchpad``
-class (exposed via pybind11).  
+class (exposed via pybind11).
 
 Usage::
 

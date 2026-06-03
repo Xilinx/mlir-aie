@@ -185,8 +185,8 @@ struct AIELowerParametersPass
       builder.setInsertionPointToStart(&body);
       Location loc = seqOp.getLoc();
 
-      NpuCreateScratchpadOp::create(
-          builder, loc, static_cast<uint32_t>(scratchpadSlots * 4));
+      NpuCreateScratchpadOp::create(builder, loc,
+                                    static_cast<uint32_t>(scratchpadSlots * 4));
 
       for (auto &[stateIdx, bufRef] : paramEntries) {
         // Since UpdateScratchpad is additive, reset the destination buffer to
