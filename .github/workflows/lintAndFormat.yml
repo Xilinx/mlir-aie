@@ -143,6 +143,9 @@ jobs:
           pip install --upgrade pip
           pip install -r python/requirements_dev.txt
 
+      - name: Check filename case conflicts
+        run: pre-commit run check-case-conflict --all-files --color never
+
       - name: Run git-clang-format
         id: git-clang-format
         run: |
