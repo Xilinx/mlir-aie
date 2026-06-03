@@ -192,13 +192,29 @@ def chaining_channels(
             out_of_order_id=0,
             packet_id=0,
             packet_type=0,
-            d0_size=0, d0_stride=0, d0_zero_before=0, d0_zero_after=0,
-            d1_size=0, d1_stride=0, d1_zero_before=0, d1_zero_after=0,
-            d2_size=0, d2_stride=0, d2_zero_before=0, d2_zero_after=0,
-            iteration_current=0, iteration_size=0, iteration_stride=0,
-            lock_acq_enable=1, lock_acq_id=0, lock_acq_val=0,
-            lock_rel_id=1, lock_rel_val=1,
-            next_bd=0, use_next_bd=0, valid_bd=1,
+            d0_size=0,
+            d0_stride=0,
+            d0_zero_before=0,
+            d0_zero_after=0,
+            d1_size=0,
+            d1_stride=0,
+            d1_zero_before=0,
+            d1_zero_after=0,
+            d2_size=0,
+            d2_stride=0,
+            d2_zero_before=0,
+            d2_zero_after=0,
+            iteration_current=0,
+            iteration_size=0,
+            iteration_stride=0,
+            lock_acq_enable=1,
+            lock_acq_id=0,
+            lock_acq_val=0,
+            lock_rel_id=1,
+            lock_rel_val=1,
+            next_bd=0,
+            use_next_bd=0,
+            valid_bd=1,
         )
         npu_address_patch(addr=0x1D004, arg_idx=0, arg_plus=0)
 
@@ -213,25 +229,51 @@ def chaining_channels(
             out_of_order_id=0,
             packet_id=0,
             packet_type=0,
-            d0_size=0, d0_stride=0, d0_zero_before=0, d0_zero_after=0,
-            d1_size=0, d1_stride=0, d1_zero_before=0, d1_zero_after=0,
-            d2_size=0, d2_stride=0, d2_zero_before=0, d2_zero_after=0,
-            iteration_current=0, iteration_size=0, iteration_stride=0,
-            lock_acq_enable=1, lock_acq_id=1, lock_acq_val=1,
-            lock_rel_id=0, lock_rel_val=0,
-            next_bd=0, use_next_bd=0, valid_bd=1,
+            d0_size=0,
+            d0_stride=0,
+            d0_zero_before=0,
+            d0_zero_after=0,
+            d1_size=0,
+            d1_stride=0,
+            d1_zero_before=0,
+            d1_zero_after=0,
+            d2_size=0,
+            d2_stride=0,
+            d2_zero_before=0,
+            d2_zero_after=0,
+            iteration_current=0,
+            iteration_size=0,
+            iteration_stride=0,
+            lock_acq_enable=1,
+            lock_acq_id=1,
+            lock_acq_val=1,
+            lock_rel_id=0,
+            lock_rel_val=0,
+            next_bd=0,
+            use_next_bd=0,
+            valid_bd=1,
         )
         npu_address_patch(addr=0x1D024, arg_idx=1, arg_plus=0)
 
         # Kick the queues.  S2MM ch0 doesn't issue a token (we don't wait on it).
         npu_push_queue(
-            column=col, row=0, direction=0, channel=0,
-            bd_id=0, issue_token=False, repeat_count=0,
+            column=col,
+            row=0,
+            direction=0,
+            channel=0,
+            bd_id=0,
+            issue_token=False,
+            repeat_count=0,
         )
         # MM2S ch0 issues a token so we can sync on completion below.
         npu_push_queue(
-            column=col, row=0, direction=1, channel=0,
-            bd_id=1, issue_token=True, repeat_count=0,
+            column=col,
+            row=0,
+            direction=1,
+            channel=0,
+            bd_id=1,
+            issue_token=True,
+            repeat_count=0,
         )
         npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
@@ -251,8 +293,12 @@ def chaining_channels(
                 workers=[worker],
                 memtile_events=[
                     MemTileEvent.LOCK_SEL0_ACQ_GE,
-                    MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.South, 3, True),
-                    MemTilePortEvent(MemTileEvent.PORT_TLAST_0, WireBundle.South, 3, True),
+                    MemTilePortEvent(
+                        MemTileEvent.PORT_RUNNING_0, WireBundle.South, 3, True
+                    ),
+                    MemTilePortEvent(
+                        MemTileEvent.PORT_TLAST_0, WireBundle.South, 3, True
+                    ),
                     MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
                     MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
                     MemTileEvent.DMA_MM2S_SEL0_START_TASK,
@@ -266,8 +312,12 @@ def chaining_channels(
                     ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
                     ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
                     ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
-                    ShimTilePortEvent(ShimTileEvent.PORT_RUNNING_0, WireBundle.South, 2, True),
-                    ShimTilePortEvent(ShimTileEvent.PORT_RUNNING_1, WireBundle.South, 3, False),
+                    ShimTilePortEvent(
+                        ShimTileEvent.PORT_RUNNING_0, WireBundle.South, 2, True
+                    ),
+                    ShimTilePortEvent(
+                        ShimTileEvent.PORT_RUNNING_1, WireBundle.South, 3, False
+                    ),
                 ],
             )
         rt.start(worker)
@@ -295,7 +345,9 @@ def main():
     add_compile_args(p, dev_choices=("npu2",), default_dev="npu2", with_emit_mlir=True)
     p.add_argument("-n", "--length", type=int, default=1024, help="bytes (>=4)")
     p.add_argument("-c", "--col", type=int, default=0)
-    p.add_argument("-t", "--trace", type=int, default=0, help="trace size in bytes; 0 disables")
+    p.add_argument(
+        "-t", "--trace", type=int, default=0, help="trace size in bytes; 0 disables"
+    )
     opts = p.parse_args()
     if opts.length % 4 != 0 or opts.length < 4:
         sys.exit(f"--length ({opts.length}) must be a positive multiple of 4")

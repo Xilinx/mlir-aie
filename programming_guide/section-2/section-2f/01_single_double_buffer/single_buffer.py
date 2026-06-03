@@ -62,8 +62,11 @@ def single_buffer(c_out: Out):
 def _run_and_verify(opts):
     c_out = iron.zeros(16, dtype=np.int32, device="npu")
     single_buffer(c_out)
-    assert_pass(c_out.numpy(), np.ones(16, dtype=np.int32),
-                fail_msg="single_buffer output mismatch")
+    assert_pass(
+        c_out.numpy(),
+        np.ones(16, dtype=np.int32),
+        fail_msg="single_buffer output mismatch",
+    )
 
 
 def _emit_mlir(opts):
@@ -76,8 +79,11 @@ def main():
     add_compile_args(p, with_emit_mlir=True)
     opts = p.parse_args()
     run_design_cli(
-        single_buffer, opts, compile_kwargs={},
-        run_and_verify=_run_and_verify, emit_mlir=_emit_mlir,
+        single_buffer,
+        opts,
+        compile_kwargs={},
+        run_and_verify=_run_and_verify,
+        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

@@ -48,8 +48,12 @@ def main(opts):
         int_inp_hi = 20
         int_wt_lo, int_wt_hi = 50, 80
 
-    int_inp = torch.randint(1, int_inp_hi, (1, ci, height, width)).type(torch.FloatTensor)
-    int_weight = torch.randint(int_wt_lo, int_wt_hi, (co, ci, 1, 1)).type(torch.FloatTensor)
+    int_inp = torch.randint(1, int_inp_hi, (1, ci, height, width)).type(
+        torch.FloatTensor
+    )
+    int_weight = torch.randint(int_wt_lo, int_wt_hi, (co, ci, 1, 1)).type(
+        torch.FloatTensor
+    )
 
     class Conv2dInt(nn.Module):
         def __init__(self):
@@ -92,6 +96,9 @@ if __name__ == "__main__":
     p.add_argument("-ht", "--height", default=32, help="conv tile height")
     p.add_argument("-ic", "--in_channels", default=64, help="input channels")
     p.add_argument("-oc", "--out_channels", default=64, help="output channels")
-    p.add_argument("--fuse_relu", action="store_true",
-                   help="reference model includes ReLU + uses uint8 out dtype")
+    p.add_argument(
+        "--fuse_relu",
+        action="store_true",
+        help="reference model includes ReLU + uses uint8 out dtype",
+    )
     main(p.parse_args(sys.argv[1:]))

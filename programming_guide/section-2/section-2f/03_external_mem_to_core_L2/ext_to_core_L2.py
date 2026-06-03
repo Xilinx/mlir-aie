@@ -62,8 +62,11 @@ def _run_and_verify(opts):
     a_in = iron.tensor(np.ones(48, dtype=np.int32), dtype=np.int32, device="npu")
     c_out = iron.zeros(48, dtype=np.int32, device="npu")
     ext_to_core_L2(a_in, c_out)
-    assert_pass(c_out.numpy(), np.full(48, 2, dtype=np.int32),
-                fail_msg="ext_to_core_L2 output mismatch")
+    assert_pass(
+        c_out.numpy(),
+        np.full(48, 2, dtype=np.int32),
+        fail_msg="ext_to_core_L2 output mismatch",
+    )
 
 
 def _emit_mlir(opts):
@@ -77,8 +80,11 @@ def main():
     add_compile_args(p, with_emit_mlir=True)
     opts = p.parse_args()
     run_design_cli(
-        ext_to_core_L2, opts, compile_kwargs={},
-        run_and_verify=_run_and_verify, emit_mlir=_emit_mlir,
+        ext_to_core_L2,
+        opts,
+        compile_kwargs={},
+        run_and_verify=_run_and_verify,
+        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

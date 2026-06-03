@@ -29,7 +29,6 @@ from aie.utils.config import cxx_header_path
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
 
-
 _THIS_DIR = Path(__file__).parent
 _KERNEL_SRC = _THIS_DIR / "kernels" / "group2.cc"
 _KERNEL_INC = _THIS_DIR / "inc"
@@ -73,14 +72,30 @@ def group2(
     # LUTs live on the 4 neighbor tiles (compute tile reads N/S/W neighbors'
     # L1 directly via shared memory).  Worker preserves these explicit
     # placements; it only auto-pins Buffers that were created without a tile.
-    lut0_buf = Buffer(tile=west_tile, type=lut0_ty,
-                      initial_value=np.array(lut0_arr, dtype=np.int16), name="lut0_buf")
-    lut1_buf = Buffer(tile=north_tile, type=lut1_ty,
-                      initial_value=np.array(lut1_arr, dtype=np.int16), name="lut1_buf")
-    lut2_buf = Buffer(tile=south_tile, type=lut2_ty,
-                      initial_value=np.array(lut2_arr, dtype=np.int16), name="lut2_buf")
-    lut3_buf = Buffer(tile=compute_tile, type=lut3_ty,
-                      initial_value=np.array(lut3_arr, dtype=np.int16), name="lut3_buf")
+    lut0_buf = Buffer(
+        tile=west_tile,
+        type=lut0_ty,
+        initial_value=np.array(lut0_arr, dtype=np.int16),
+        name="lut0_buf",
+    )
+    lut1_buf = Buffer(
+        tile=north_tile,
+        type=lut1_ty,
+        initial_value=np.array(lut1_arr, dtype=np.int16),
+        name="lut1_buf",
+    )
+    lut2_buf = Buffer(
+        tile=south_tile,
+        type=lut2_ty,
+        initial_value=np.array(lut2_arr, dtype=np.int16),
+        name="lut2_buf",
+    )
+    lut3_buf = Buffer(
+        tile=compute_tile,
+        type=lut3_ty,
+        initial_value=np.array(lut3_arr, dtype=np.int16),
+        name="lut3_buf",
+    )
 
     group2_kernel = ExternalFunction(
         "group2_kernel",
@@ -96,9 +111,7 @@ def group2(
 
     # Output goes compute -> shim as a direct stream (no L1 buffer); the
     # kernel emits each element via put_ms() instead of acquire/release.
-    of_dout_L1L3 = ObjectFifo(
-        dout_ty, name="of_dout_L1L3", depth=2, aie_stream=(0, 0)
-    )
+    of_dout_L1L3 = ObjectFifo(dout_ty, name="of_dout_L1L3", depth=2, aie_stream=(0, 0))
 
     # Core body: kernel writes its output via put_ms() inside group2.cc, so
     # we don't acquire/release of_dout here.

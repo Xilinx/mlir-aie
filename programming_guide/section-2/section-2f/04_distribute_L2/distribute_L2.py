@@ -71,7 +71,9 @@ def main():
     if not getattr(opts, "emit_mlir", False):
         opts.emit_mlir = True
     run_design_cli(
-        distribute_L2, opts, compile_kwargs={},
+        distribute_L2,
+        opts,
+        compile_kwargs={},
         emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )

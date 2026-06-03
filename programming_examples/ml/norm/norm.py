@@ -37,7 +37,6 @@ from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
-
 _KERNEL_DIR = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p"
 _KERNEL_SPEC = {
     "rms": ("rms_norm", _KERNEL_DIR / "rms_norm.cc"),

@@ -77,9 +77,9 @@ def _run_and_verify(opts):
 
     eltwise(a_t, b_t, c_t, **_compile_kwargs(opts))
 
-    expected = _NP_OPS[opts.op](a_np.astype(np.float32), b_np.astype(np.float32)).astype(
-        bfloat16
-    )
+    expected = _NP_OPS[opts.op](
+        a_np.astype(np.float32), b_np.astype(np.float32)
+    ).astype(bfloat16)
     assert_pass(
         c_t.numpy(),
         expected,

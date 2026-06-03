@@ -132,10 +132,17 @@ def _make_argparser():
     p.add_argument("-ht", "--height", type=int, default=32)
     p.add_argument("-ic", "--in_channels", type=int, default=64)
     p.add_argument("-oc", "--out_channels", type=int, default=64)
-    p.add_argument("--scale", type=int, default=None,
-                   help="default 10 when fuse_relu=False, 1 when fuse_relu=True")
-    p.add_argument("--fuse_relu", action="store_true",
-                   help="emit uint8 output (unsigned saturation = fused ReLU)")
+    p.add_argument(
+        "--scale",
+        type=int,
+        default=None,
+        help="default 10 when fuse_relu=False, 1 when fuse_relu=True",
+    )
+    p.add_argument(
+        "--fuse_relu",
+        action="store_true",
+        help="emit uint8 output (unsigned saturation = fused ReLU)",
+    )
     return p
 
 

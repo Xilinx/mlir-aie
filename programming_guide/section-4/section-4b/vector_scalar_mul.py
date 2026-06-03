@@ -113,8 +113,9 @@ def _run_and_verify(opts):
     f_in = iron.tensor(f_np, dtype=np.int32, device="npu")
     c_out = iron.zeros(tensor_size, dtype=np.int32, device="npu")
     vector_scalar_mul(a_in, f_in, c_out, trace_size=opts.trace_size)
-    assert_pass(c_out.numpy(), a_np * f_np[0],
-                fail_msg="vector_scalar_mul output mismatch")
+    assert_pass(
+        c_out.numpy(), a_np * f_np[0], fail_msg="vector_scalar_mul output mismatch"
+    )
 
 
 def _emit_mlir(opts):
@@ -130,9 +131,11 @@ def main():
     add_trace_arg(p)
     opts = p.parse_args()
     run_design_cli(
-        vector_scalar_mul, opts,
+        vector_scalar_mul,
+        opts,
         compile_kwargs=lambda o: dict(trace_size=o.trace_size),
-        run_and_verify=_run_and_verify, emit_mlir=_emit_mlir,
+        run_and_verify=_run_and_verify,
+        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

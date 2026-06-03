@@ -61,8 +61,7 @@ def section_2e_multi(a_in: In, b_out: Out):
         of_out.release(1)
 
     workers = [
-        Worker(core_fn, [of_ins[w].cons(), of_outs[w].prod()])
-        for w in range(n_workers)
+        Worker(core_fn, [of_ins[w].cons(), of_outs[w].prod()]) for w in range(n_workers)
     ]
 
     rt = Runtime()
@@ -93,8 +92,11 @@ def main():
     add_compile_args(p, with_emit_mlir=True)
     opts = p.parse_args()
     run_design_cli(
-        section_2e_multi, opts, compile_kwargs={},
-        run_and_verify=_run_and_verify, emit_mlir=_emit_mlir,
+        section_2e_multi,
+        opts,
+        compile_kwargs={},
+        run_and_verify=_run_and_verify,
+        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 
