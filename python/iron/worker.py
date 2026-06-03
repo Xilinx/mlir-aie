@@ -65,7 +65,8 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
-        tile = tile.copy()
+        if tile is AnyComputeTile:
+            tile = tile.copy()
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
