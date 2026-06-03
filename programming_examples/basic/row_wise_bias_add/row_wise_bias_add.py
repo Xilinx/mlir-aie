@@ -118,14 +118,14 @@ def _run_and_verify(opts):
     bias_np = 3 * np.arange(opts.N, dtype=np.float32)
     out_np = np.zeros_like(in_np)
 
-    in_t = iron.tensor(in_np.reshape(-1), dtype=np.float32, device="npu")
+    in_t = iron.tensor(in_np, dtype=np.float32, device="npu")
     bias_t = iron.tensor(bias_np, dtype=np.float32, device="npu")
-    out_t = iron.tensor(out_np.reshape(-1), dtype=np.float32, device="npu")
+    out_t = iron.tensor(out_np, dtype=np.float32, device="npu")
 
     row_wise_bias_add(in_t, bias_t, out_t, **_compile_kwargs(opts))
 
-    expected = (in_np + bias_np[None, :]).reshape(-1)
-    actual = out_t.numpy()
+    expected = in_np + bias_np[None, :]
+    actual = out_t.numpy().reshape(in_np.shape)
     assert_pass(actual, expected, fail_msg="output does not match in + bias (per-row)")
 
 

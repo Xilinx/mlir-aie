@@ -38,7 +38,8 @@ def my_passthrough_kernel(
     trace_config: Compile[TraceConfig | None] = None,
 ):
     in1_dtype = np.uint8
-    line_size = n // 4
+    n_lines = 4
+    line_size = n // n_lines
     line_type = np.ndarray[(line_size,), np.dtype[in1_dtype]]
     vector_type = np.ndarray[(n,), np.dtype[in1_dtype]]
 

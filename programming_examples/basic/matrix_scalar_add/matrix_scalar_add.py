@@ -7,14 +7,16 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 """Matrix scalar add — IRON API design with ``@iron.jit`` compilation.
 
-A single AIE compute core reads ``TILE_HEIGHT x TILE_WIDTH`` tiles from a
-``MATRIX_HEIGHT x MATRIX_WIDTH`` matrix (via ``TensorTiler2D.simple_tiler``),
-adds 1 to each element, and writes the result back.  Default config:
-16x128 matrix, 8x16 tile.  Design body stays explicit (preserves the 2D TAP
-that strides through the input matrix); the algorithms library's
-``transform_typed`` would flatten to 1D and produce a different DMA stride
-pattern, which is why this primitive is unified the matvec / vector_scalar_mul
-way rather than the vector_vector_add way.
+A single AIE compute core reads one ``TILE_HEIGHT x TILE_WIDTH`` tile from
+the top-left corner of a ``MATRIX_HEIGHT x MATRIX_WIDTH`` matrix (via
+``TensorTiler2D.simple_tiler``), adds 1 to each element of that tile, and
+writes it back.  The rest of the matrix is untouched — this demonstrates
+subtile-region DMA access.  Default config: 16x128 matrix, 8x16 tile.
+Design body stays explicit (preserves the 2D TAP that strides through the
+input matrix); the algorithms library's ``transform_typed`` would flatten
+to 1D and produce a different DMA stride pattern, which is why this
+primitive is unified in the matvec / vector_scalar_mul way rather than the
+vector_vector_add way.
 
 Three invocation modes (mirrors vector_vector_modulo):
 
@@ -40,7 +42,6 @@ from aie.utils.verify import assert_pass
 @iron.jit
 def matrix_scalar_add(
     inp: In,
-    _b_unused: In,
     out: Out,
     *,
     matrix_height: Compile[int] = 16,
@@ -68,17 +69,10 @@ def matrix_scalar_add(
 
     worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
-    # One TAP that walks all tiles, so a single fill/drain DMA pair covers
-    # the full matrix (16 separate fill/drain pairs overflow the BD budget
-    # on Strix and fail tile placement).
-    n_row_tiles = matrix_height // tile_height
-    n_col_tiles = matrix_width // tile_width
-    tap = TensorTiler2D.group_tiler(
-        matrix_shape, tile_shape, tile_group_dims=(n_row_tiles, n_col_tiles)
-    )[0]
+    tap = TensorTiler2D.simple_tiler(matrix_shape, tile_shape)[0]
 
     rt = Runtime()
-    with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (in_tensor, _, out_tensor):
+    with rt.sequence(matrix_ty, matrix_ty) as (in_tensor, out_tensor):
         rt.start(worker)
         rt.fill(of_in.prod(), in_tensor, tap)
         rt.drain(of_out.cons(), out_tensor, tap, wait=True)
@@ -106,7 +100,7 @@ def _compile_kwargs(opts):
 
 
 def _emit_mlir(opts):
-    print(matrix_scalar_add.as_mlir(None, None, None, **_compile_kwargs(opts)))
+    print(matrix_scalar_add.as_mlir(None, None, **_compile_kwargs(opts)))
 
 
 def _run_and_verify(opts):
@@ -114,18 +108,21 @@ def _run_and_verify(opts):
     in_np = rng.integers(
         -1000, 1000, size=(opts.matrix_height, opts.matrix_width), dtype=np.int32
     )
-    b_np = np.zeros_like(in_np)  # unused 2nd buffer
     out_np = np.zeros_like(in_np)
 
-    in_t = iron.tensor(in_np.reshape(-1), dtype=np.int32, device="npu")
-    b_t = iron.tensor(b_np.reshape(-1), dtype=np.int32, device="npu")
-    out_t = iron.tensor(out_np.reshape(-1), dtype=np.int32, device="npu")
+    in_t = iron.tensor(in_np, dtype=np.int32, device="npu")
+    out_t = iron.tensor(out_np, dtype=np.int32, device="npu")
 
-    matrix_scalar_add(in_t, b_t, out_t, **_compile_kwargs(opts))
+    matrix_scalar_add(in_t, out_t, **_compile_kwargs(opts))
 
-    expected = (in_np + 1).reshape(-1)
-    actual = out_t.numpy()
-    assert_pass(actual, expected, fail_msg="output does not match in + 1")
+    expected = in_np.copy()
+    expected[: opts.tile_height, : opts.tile_width] += 1
+    actual = out_t.numpy().reshape(opts.matrix_height, opts.matrix_width)
+    assert_pass(
+        actual,
+        expected,
+        fail_msg="output does not match in + 1 on the top-left tile (subtile DMA)",
+    )
 
 
 def main():

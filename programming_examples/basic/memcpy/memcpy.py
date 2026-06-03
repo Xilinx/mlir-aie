@@ -141,7 +141,7 @@ def _validate(opts):
         sys.exit(f"--cols ({opts.cols}) exceeds {opts.dev} max ({max_cols})")
     if opts.chans not in (1, 2):
         sys.exit(f"--chans must be 1 or 2, got {opts.chans}")
-    if (opts.length % 1024) % opts.cols % opts.chans != 0:
+    if opts.length % (1024 * opts.cols * opts.chans) != 0:
         sys.exit(
             f"--length ({opts.length}) must be a multiple of 1024 and divisible by "
             f"--cols × --chans ({opts.cols} × {opts.chans})"

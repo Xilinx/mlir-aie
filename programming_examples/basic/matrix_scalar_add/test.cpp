@@ -116,10 +116,8 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out = xrt::bo(device, IMAGE_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -139,7 +137,7 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   run.wait();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -154,9 +152,18 @@ int main(int argc, const char *argv[]) {
     uint32_t s = bufInA[i];
     uint32_t d = bufOut[i];
 
-    if (d != s + 1) {
-      errors++;
-      printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
+    if (row < TILE_HEIGHT && col < TILE_WIDTH) {
+      if (d != s + 1) {
+        errors++;
+        printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
+      }
+    } else {
+      if (d == s + 1) {
+        errors++;
+        printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed "
+               "to be changed\n",
+               row, col, s, d);
+      }
     }
 
     printf("s[%d, %d] = 0x%x\n", row, col, s);

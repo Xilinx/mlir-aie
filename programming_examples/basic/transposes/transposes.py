@@ -69,7 +69,6 @@ _COMBINED_DTYPE_MACRO = {1: "DTYPE_i8", 2: "DTYPE_i16", 4: "DTYPE_i32"}
 @iron.jit
 def _transpose_dma(
     A: In,
-    _B_unused: In,
     C: Out,
     *,
     M: Compile[int] = 64,
@@ -87,7 +86,7 @@ def _transpose_dma(
     of_in = ObjectFifo(tensor_ty)
     of_out = of_in.cons().forward(AnyComputeTile)
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, c):
+    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
         rt.fill(of_in.prod(), a, tap_in)
         rt.drain(of_out.cons(), c, wait=True)
     return Program(iron.get_current_device(), rt).resolve_program()
@@ -96,7 +95,6 @@ def _transpose_dma(
 @iron.jit(aiecc_flags=["--packet-sw-objFifos"])
 def _transpose_dma_packet(
     A: In,
-    _B_unused: In,
     C: Out,
     *,
     M: Compile[int] = 64,
@@ -114,7 +112,7 @@ def _transpose_dma_packet(
     of_in = ObjectFifo(tensor_ty, name="in")
     of_out = of_in.cons().forward()
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, c):
+    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
         rt.fill(of_in.prod(), a, tap_in)
         rt.drain(of_out.cons(), c, wait=True)
     return Program(iron.get_current_device(), rt).resolve_program()
@@ -128,7 +126,6 @@ def _transpose_dma_packet(
 @iron.jit
 def _transpose_shuffle(
     A: In,
-    _B_unused: In,
     C: Out,
     *,
     M: Compile[int] = 16,
@@ -162,7 +159,7 @@ def _transpose_shuffle(
     worker = Worker(core_fn, fn_args=[in_fifo.cons(), out_fifo.prod(), kernel_func])
 
     rt = Runtime()
-    with rt.sequence(tile_ty, tile_ty, tile_ty) as (a, _, c):
+    with rt.sequence(tile_ty, tile_ty) as (a, c):
         rt.start(worker)
         rt.fill(in_fifo.prod(), a)
         rt.drain(out_fifo.cons(), c, wait=True)
@@ -177,7 +174,6 @@ def _transpose_shuffle(
 @iron.jit
 def _transpose_combined(
     A: In,
-    _B_unused: In,
     C: Out,
     *,
     M: Compile[int] = 64,
@@ -256,7 +252,7 @@ def _transpose_combined(
     )
 
     rt = Runtime()
-    with rt.sequence(matrix_ty, matrix_ty, matrix_ty) as (a, _, c):
+    with rt.sequence(matrix_ty, matrix_ty) as (a, c):
         rt.start(worker)
         rt.fill(in_L3L2_fifo.prod(), a, tap_in_L3L2)
         rt.drain(out_fifo.cons(), c, tap_out_L1L3, wait=True)
@@ -352,17 +348,15 @@ def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     info = np.iinfo(dtype)
     in_np = rng.integers(info.min, info.max + 1, size=(M, K), dtype=dtype)
-    b_np = np.zeros_like(in_np)
     out_np = np.zeros((K, M), dtype=dtype)
 
-    a_t = iron.tensor(in_np.reshape(-1), dtype=dtype, device="npu")
-    b_t = iron.tensor(b_np.reshape(-1), dtype=dtype, device="npu")
-    c_t = iron.tensor(out_np.reshape(-1), dtype=dtype, device="npu")
+    a_t = iron.tensor(in_np, dtype=dtype, device="npu")
+    c_t = iron.tensor(out_np, dtype=dtype, device="npu")
 
-    _STRATEGIES[opts.strategy](a_t, b_t, c_t, **_compile_kwargs(opts))
+    _STRATEGIES[opts.strategy](a_t, c_t, **_compile_kwargs(opts))
 
-    expected = in_np.T.reshape(-1)
-    actual = c_t.numpy()
+    expected = in_np.T
+    actual = c_t.numpy().reshape(K, M)
     assert_pass(actual, expected, fail_msg="output does not match transpose(in)")
 
 

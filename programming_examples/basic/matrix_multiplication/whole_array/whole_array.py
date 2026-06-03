@@ -144,8 +144,6 @@ def _build_design(
     A_l2_ty = np.ndarray[(m * k * n_A_tiles_per_shim,), np.dtype[dtype_in]]
     B_l2_ty = np.ndarray[(k * n,), np.dtype[dtype_in]]
     C_l2_ty = np.ndarray[(m * n * n_aie_rows,), np.dtype[dtype_out]]
-    # L1 ObjectFifo elements are 2D; BaseKernel.__call__ inserts a
-    # memref.collapse_shape to bridge to kernels.mm's 1D arg signature.
     A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
     B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
@@ -553,9 +551,9 @@ def _run_and_verify(opts):
         B_np = (rng.random(B_shape) * 4.0).astype(dtype_in)
     C_np = np.zeros((opts.M, opts.N), dtype=dtype_out)
 
-    A_t = iron.tensor(A_np.reshape(-1), dtype=dtype_in, device="npu")
-    B_t = iron.tensor(B_np.reshape(-1), dtype=dtype_in, device="npu")
-    C_t = iron.tensor(C_np.reshape(-1), dtype=dtype_out, device="npu")
+    A_t = iron.tensor(A_np, dtype=dtype_in, device="npu")
+    B_t = iron.tensor(B_np, dtype=dtype_in, device="npu")
+    C_t = iron.tensor(C_np, dtype=dtype_out, device="npu")
 
     bench = run_iters(
         whole_array,
