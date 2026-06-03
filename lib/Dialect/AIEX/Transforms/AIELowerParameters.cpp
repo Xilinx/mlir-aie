@@ -106,15 +106,15 @@ struct AIELowerParametersPass
       // bits.
       auto bufType = MemRefType::get({2}, builder.getI32Type());
       std::string prefix =
-          ("__param_" + paramName + "_" + std::to_string(tile.getCol()) +
-           "_" + std::to_string(tile.getRow()) + "_")
+          ("__param_" + paramName + "_" + std::to_string(tile.getCol()) + "_" +
+           std::to_string(tile.getRow()) + "_")
               .str();
       std::string bufName =
           AIE::generateUniqueSymbolName(device, prefix, uniquingCounter);
-      auto buf = BufferOp::create(
-          builder, readOp.getLoc(), bufType, tile,
-          builder.getStringAttr(bufName), /*address=*/nullptr,
-          /*initial_value=*/nullptr, /*mem_bank=*/nullptr);
+      auto buf =
+          BufferOp::create(builder, readOp.getLoc(), bufType, tile,
+                           builder.getStringAttr(bufName), /*address=*/nullptr,
+                           /*initial_value=*/nullptr, /*mem_bank=*/nullptr);
       seen[key] = buf;
 
       readOp.setBufferAttr(
@@ -303,9 +303,8 @@ struct AIELowerParametersPass
     moduleOp.walk([&](NpuDmaMemcpyNdOp op) {
       markAddr(op, op.getOffsetParameterAttr());
     });
-    moduleOp.walk([&](AIE::DMABDOp op) {
-      markAddr(op, op.getOffsetParameterAttr());
-    });
+    moduleOp.walk(
+        [&](AIE::DMABDOp op) { markAddr(op, op.getOffsetParameterAttr()); });
 
     for (auto p : allParams) {
       StringRef name = p.getSymName();
@@ -345,7 +344,8 @@ struct AIELowerParametersPass
         FlatSymbolRefAttr bufRef = readOp.getBufferAttr();
         if (!seenBufs.insert(bufRef.getValue()).second)
           return;
-        auto paramOp = moduleOp.lookupSymbol<ParameterOp>(readOp.getParameter());
+        auto paramOp =
+            moduleOp.lookupSymbol<ParameterOp>(readOp.getParameter());
         uint8_t stateIdx =
             static_cast<uint8_t>(paramOp.getStateTableIdx().value());
         paramEntries.push_back({stateIdx, bufRef});

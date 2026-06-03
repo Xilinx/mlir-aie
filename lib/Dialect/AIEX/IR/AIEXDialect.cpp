@@ -817,8 +817,7 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
   // parent RuntimeSequenceOp to check; only report from the duplicate (i.e.
   // the op that is NOT the first occurrence) to avoid emitting the same error
   // twice.
-  auto runtimeSeq =
-      getOperation()->getParentOfType<AIE::RuntimeSequenceOp>();
+  auto runtimeSeq = getOperation()->getParentOfType<AIE::RuntimeSequenceOp>();
   if (!runtimeSeq)
     return success();
 

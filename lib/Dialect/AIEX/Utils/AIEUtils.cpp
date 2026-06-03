@@ -151,8 +151,8 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
     // Reuse the shared naming utility so that all buffer-name generation
     // in the project follows the same pattern (see also AIEToConfiguration.cpp
     // and AIELowerParameters.cpp).
-    std::string name = AIE::generateUniqueSymbolName(
-        dev, "blockwrite_data_", blockwriteDataCounter);
+    std::string name = AIE::generateUniqueSymbolName(dev, "blockwrite_data_",
+                                                     blockwriteDataCounter);
     global = memref::GlobalOp::create(builder, loc, name,
                                       builder.getStringAttr("private"),
                                       memrefType, initVal, true, nullptr);
@@ -164,9 +164,8 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
     OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
     uint64_t registerAddr) {
   auto paramRef = bdOp->getAttrOfType<FlatSymbolRefAttr>("offset_parameter");
-  assert(paramRef &&
-         "emitUpdateBdAddressFromOffsetParameter called without "
-         "offset_parameter attribute");
+  assert(paramRef && "emitUpdateBdAddressFromOffsetParameter called without "
+                     "offset_parameter attribute");
 
   auto moduleOp = bdOp->getParentOfType<ModuleOp>();
   if (!moduleOp)
