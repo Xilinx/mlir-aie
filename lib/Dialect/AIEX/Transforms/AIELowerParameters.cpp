@@ -68,10 +68,8 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
     if (found) {
       return;
     }
-    if (llvm::isa<ReadParameterOp>(op)) {
-      found = true;
-    } else if (op->hasAttr("offset_parameter") ||
-               op->hasAttr("offset_state_table_idx")) {
+    if (llvm::isa<ReadParameterOp>(op) || op->hasAttr("offset_parameter") ||
+        op->hasAttr("offset_state_table_idx")) {
       found = true;
     }
   });
@@ -242,8 +240,9 @@ struct AIELowerParametersPass
           /*column=*/nullptr, /*row=*/nullptr);
     }
 
-    for (Value lock : syncLocks)
+    for (Value lock : syncLocks) {
       SetLockOp::create(builder, loc, lock, builder.getI32IntegerAttr(1));
+    }
 
     syncOp.erase();
   }
