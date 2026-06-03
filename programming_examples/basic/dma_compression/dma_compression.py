@@ -322,13 +322,6 @@ def dma_compression(
     if config == "regdump":
         return _build_regdump()
 
-    # @func caches its emitted FuncOp on the decorator instance, but each
-    # @iron.jit invocation builds in its own MLIR context. Reset the cache
-    # so passthrough_line emits a fresh FuncOp into THIS context (otherwise
-    # the second config in a multi-config sweep tries to reference a
-    # FuncOp owned by a now-dead context — KeyError at func call site).
-    passthrough_line._func_op = None
-
     vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
     # Cross-tile chains: CT(0,2) runs a copy Worker (not a link, because
