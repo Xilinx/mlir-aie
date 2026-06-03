@@ -114,11 +114,11 @@ run: ${targetname}.exe ${xclbin_target} ${insts_target}
 .PHONY: trace
 trace: ${targetname}.exe ${trace_xclbin_target} ${trace_insts_target}
 	${powershell} ./$< -x ${trace_xclbin_target} -i ${trace_insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs} -t ${trace_size}
-	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir build/input_with_addresses.mlir --output trace_mm.json
+	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir $(trace_xclbin_target:.xclbin=.prj)/input_with_addresses.mlir --output trace_mm.json
 
 .PHONY: parse_trace
 parse_trace:
-	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir build/input_with_addresses.mlir --output trace_mm.json
+	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir $(trace_xclbin_target:.xclbin=.prj)/input_with_addresses.mlir --output trace_mm.json
 
 .PHONY: clean clean_trace
 clean: clean_trace

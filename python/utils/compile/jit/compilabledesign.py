@@ -426,6 +426,7 @@ class CompilableDesign:
         # Cached artifact paths (set after compile()).
         self._xclbin_path: Path | None = None
         self._inst_path: Path | None = None
+        self._kernel_dir: Path | None = None
         self._expected_tensor_sizes: list[int] | None = None
 
         # Introspect generator signature to split param categories.  Cache
@@ -517,7 +518,10 @@ class CompilableDesign:
             inst_path = Path(inst_path).resolve()
             if elf_path is not None:
                 elf_path = Path(elf_path).resolve()
-            kernel_dir = xclbin_path.parent
+            # Per-xclbin scratch dir (mirrors aiecc's default <input>.prj
+            # naming) so two siblings sharing one build/ don't clobber each
+            # other's input_with_addresses.mlir / .o files.
+            kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
             lock_file_path = kernel_dir / ".lock"
         else:
             cache_hash = self._compute_cache_hash()
@@ -538,6 +542,7 @@ class CompilableDesign:
                 )
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
+                self._kernel_dir = kernel_dir
                 # Populate on cache hit too, else validate_tensor_args no-ops
                 # and callers see kernel garbage instead of a shape error.
                 if self._expected_tensor_sizes is None:
@@ -636,6 +641,7 @@ class CompilableDesign:
 
         self._xclbin_path = xclbin_path
         self._inst_path = inst_path
+        self._kernel_dir = kernel_dir
         # Parse expected tensor sizes for runtime validation.
         self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
         return xclbin_path, inst_path

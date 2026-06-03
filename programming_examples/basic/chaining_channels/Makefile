@@ -42,7 +42,7 @@ run: ${targetname}.exe ${xclbin_target} ${insts_target}
 
 .PHONY: parse_trace
 parse_trace: run
-	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/input_with_addresses.mlir --output trace_${targetname}.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir $(xclbin_target:.xclbin=.prj)/input_with_addresses.mlir --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
 .PHONY: clean_trace

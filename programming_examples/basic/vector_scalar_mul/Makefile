@@ -61,9 +61,7 @@ run: ${targetname}_${data_size}.exe ${xclbin_target} ${insts_target}
 run_py: ${xclbin_target} ${insts_target}
 	${powershell} python3 ${srcdir}/test.py --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE --in1-size ${in1_size} --in2-size ${in2_size} --out-size ${out_size}
 
-# input_with_addresses.mlir is dropped into the kernel_dir (= xclbin parent) by
-# @iron.jit's compile() in explicit-paths mode.
-trace_mlir = build/input_with_addresses.mlir
+trace_mlir = $(trace_xclbin_target:.xclbin=.prj)/input_with_addresses.mlir
 
 .PHONY: trace
 trace: ${targetname}_${data_size}.exe ${trace_xclbin_target} ${trace_insts_target}

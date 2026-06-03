@@ -87,10 +87,10 @@ Compiler lowering pipeline for declarative trace:
 Inspect intermediate IR for a `make`-built design:
 
 ```bash
-aie-opt -aie-insert-trace-flows build/input_with_addresses.mlir
-aie-opt -aie-insert-trace-flows -aie-trace-to-config build/input_with_addresses.mlir
-aie-opt -aie-insert-trace-flows -aie-trace-to-config -aie-trace-pack-reg-writes build/input_with_addresses.mlir
-aie-opt -aie-insert-trace-flows -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config build/input_with_addresses.mlir
+aie-opt -aie-insert-trace-flows build/final.prj/input_with_addresses.mlir
+aie-opt -aie-insert-trace-flows -aie-trace-to-config build/final.prj/input_with_addresses.mlir
+aie-opt -aie-insert-trace-flows -aie-trace-to-config -aie-trace-pack-reg-writes build/final.prj/input_with_addresses.mlir
+aie-opt -aie-insert-trace-flows -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config build/final.prj/input_with_addresses.mlir
 ```
 
 ## Example Visualization

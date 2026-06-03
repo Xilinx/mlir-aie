@@ -226,7 +226,7 @@ class CallableDesign:
 
         xclbin_path, inst_path = compilable.compile()
         if trace_config is not None:
-            physical_mlir = xclbin_path.parent / "input_with_addresses.mlir"
+            physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)
         kernel = NPUKernel(

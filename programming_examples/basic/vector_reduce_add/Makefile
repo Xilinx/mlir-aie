@@ -31,7 +31,7 @@ run: ${targetname}.exe ${xclbin_target} ${insts_target}
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
 trace:
-	../../../python/utils/trace/parse.py --input trace.txt --mlir build/input_with_addresses.mlir --output parse_eventIR_vs.json
+	../../../python/utils/trace/parse.py --input trace.txt --mlir $(xclbin_target:.xclbin=.prj)/input_with_addresses.mlir --output parse_eventIR_vs.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt

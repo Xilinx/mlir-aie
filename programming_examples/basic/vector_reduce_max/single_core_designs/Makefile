@@ -46,7 +46,7 @@ run: ${targetname}.exe ${xclbin_target} ${insts_target}
 run_py: ${xclbin_target} ${insts_target}
 	${powershell} python3 ${srcdir}/../test.py -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
 
-trace_mlir = build/input_with_addresses.mlir
+trace_mlir = $(trace_xclbin_target:.xclbin=.prj)/input_with_addresses.mlir
 
 trace: ${targetname}.exe ${trace_xclbin_target} ${trace_insts_target}
 	${powershell} ./$< -x ${trace_xclbin_target} -i ${trace_insts_target} -k MLIR_AIE -t ${trace_size}
