@@ -106,6 +106,12 @@ class Worker(ObjectFifoEndpoint):
                 arg.endpoint = self
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
+                if arg._owner_worker is not None and arg._owner_worker is not self:
+                    raise ValueError(
+                        f"Buffer '{arg._name}' is already placed on another "
+                        f"Worker; a Buffer cannot be shared across Workers."
+                    )
+                arg._owner_worker = self
                 self._buffers.append(arg)
                 # If the Buffer has no tile, pin it to the Worker's tile as a
                 # convenience.  If the user pinned it explicitly to a neighbor

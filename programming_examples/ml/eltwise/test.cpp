@@ -68,8 +68,7 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Eltwise Test");
   cxxopts::ParseResult vm;
   test_utils::add_default_options(options);
-  options.add_options()("o,op",
-                        "Binary op the kernel computes (add | mul)",
+  options.add_options()("o,op", "Binary op the kernel computes (add | mul)",
                         cxxopts::value<std::string>()->default_value("add"));
 
   test_utils::parse_options(argc, argv, options, vm);

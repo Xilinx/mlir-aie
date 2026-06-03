@@ -62,6 +62,7 @@ class Buffer(Resolvable):
             self._name = f"buf_{next(Buffer._gbuf_index)}"
         self._use_write_rtp = use_write_rtp
         self._tile = tile
+        self._owner_worker = None
 
     @property
     def tile(self) -> Tile | None:
