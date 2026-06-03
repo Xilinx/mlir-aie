@@ -24,9 +24,6 @@ module {
         %t00 = aie.tile(0, 0)
         %t02 = aie.tile(0, 2)
 
-        // Lock to gate the core until parameters are loaded
-        %sync_lock = aie.lock(%t02, 0) {init = 0 : i32, sym_name = "sync_lock"}
-
         // ObjectFIFOs
         aie.objectfifo @objfifo_in  (%t00, {%t02}, 1 : i32) : !aie.objectfifo<memref<8xi32>>
         aie.objectfifo @objfifo_out (%t02, {%t00}, 1 : i32) : !aie.objectfifo<memref<8xi32>>
@@ -36,10 +33,6 @@ module {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %c8 = arith.constant 8 : index
-
-            // Wait for parameters + DMA to be ready
-            aie.use_lock(%sync_lock, Acquire, 1)
-            aie.use_lock(%sync_lock, Release, 0)
 
             %in_view = aie.objectfifo.acquire @objfifo_in (Consume, 1) : !aie.objectfifosubview<memref<8xi32>>
             %in_buf  = aie.objectfifo.subview.access %in_view[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
@@ -64,9 +57,6 @@ module {
             aiex.npu.load_pdi { device_ref = @empty }
             aiex.npu.load_pdi { device_ref = @test }
 
-            // Unblock core
-            aiex.set_lock(%sync_lock, 1)
-
             // Input DMA — offset_parameter patches the BD address at runtime
             %t_in = aiex.dma_configure_task_for @objfifo_in {
                 aie.dma_bd(%in : memref<32xi32>, 0, 8) {offset_parameter = @input_offset}
@@ -82,8 +72,6 @@ module {
             aiex.dma_start_task(%t_in)
             aiex.dma_start_task(%t_out)
             aiex.dma_await_task(%t_out)
-
-            aiex.set_lock(%sync_lock, 0)
         }
     }
 }

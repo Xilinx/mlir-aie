@@ -70,7 +70,8 @@ static bool shouldEmitParameterSyncPreamble(RuntimeSequenceOp seqOp) {
     }
     if (llvm::isa<ReadParameterOp>(op)) {
       found = true;
-    } else if (op->hasAttr("offset_parameter")) {
+    } else if (op->hasAttr("offset_parameter") ||
+               op->hasAttr("offset_state_table_idx")) {
       found = true;
     }
   });

@@ -20,7 +20,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2Col1
 from aie.iron.parameter import Parameter
 from aie.dialects.aiex import npu_load_pdi
@@ -42,14 +42,8 @@ def design():
     of_in = ObjectFifo(tile_ty, name="objfifo_in")
     of_out = ObjectFifo(tile_ty, name="objfifo_out")
 
-    # Barrier to gate the core until parameters are loaded
-    barrier = WorkerRuntimeBarrier()
-
     # Core function: passthrough — copy input to output
-    def core_fn(of_in, of_out, barrier):
-        barrier.wait_for_value(1)
-        barrier.release_with_value(0)
-
+    def core_fn(of_in, of_out):
         in_elem = of_in.acquire(1)
         out_elem = of_out.acquire(1)
         for i in range(8):
@@ -59,7 +53,7 @@ def design():
 
     worker = Worker(
         core_fn,
-        [of_in.cons(), of_out.prod(), barrier],
+        [of_in.cons(), of_out.prod()],
         while_true=False,
     )
 
@@ -68,7 +62,6 @@ def design():
     with rt.sequence(in_ty, out_ty) as (in_tensor, out_tensor):
         rt.inline_ops(lambda: npu_load_pdi(device_ref="empty"), [])
         rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
-        rt.set_barrier(barrier, 1)
         rt.start(worker)
 
         # Input DMA — offset_parameter patches the BD address at runtime
@@ -79,8 +72,6 @@ def design():
 
         # Output DMA
         rt.drain(of_out.cons(), out_tensor, wait=True)
-
-        rt.set_barrier(barrier, 0)
 
     module = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
 
