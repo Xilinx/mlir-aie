@@ -15,7 +15,6 @@ import numpy as np
 from aie.extras.context import mlir_mod_ctx
 from .compile import compile_mlir_module, compile_external_kernel
 from .npukernel import NPUKernel
-from aie.dialects.aie import AIEDevice
 from .compile.cache.circular_cache import CircularCache
 from .compile.cache.utils import _create_function_cache_key, file_lock
 from .compile import NPU_CACHE_HOME
@@ -48,8 +47,10 @@ def jit(function=None, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
-        from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
+        from aie.iron.device import Device
         from aie.iron.kernel import ExternalFunction
+        from aie.dialects._aie_enum_gen import AIEArch
+        from aie.dialects.aie import get_target_model
         from . import DefaultNPURuntime
 
         if DefaultNPURuntime is None:
@@ -118,17 +119,17 @@ def jit(function=None, use_cache=True):
 
         current_device = DefaultNPURuntime.device()
 
-        # Determine target architecture based on device type
-        if isinstance(current_device, (NPU2, NPU2Col1)):
+        # Determine target architecture from the device's target model.
+        if isinstance(current_device, Device):
+            arch = current_device.arch
+        else:
+            arch = AIEArch(get_target_model(current_device).get_target_arch())
+        if arch == AIEArch.AIE2p:
             target_arch = "aie2p"
-        elif isinstance(current_device, (NPU1, NPU1Col1)):
-            target_arch = "aie2"
-        elif current_device in (AIEDevice.npu2, AIEDevice.npu2_1col):
-            target_arch = "aie2p"
-        elif current_device in (AIEDevice.npu1, AIEDevice.npu1_1col):
+        elif arch == AIEArch.AIE2:
             target_arch = "aie2"
         else:
-            raise RuntimeError(f"Unsupported device type: {type(current_device)}")
+            raise RuntimeError(f"Unsupported device arch: {arch}")
 
         # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)

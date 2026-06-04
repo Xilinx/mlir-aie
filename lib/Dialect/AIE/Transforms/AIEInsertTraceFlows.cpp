@@ -143,7 +143,86 @@ struct AIEInsertTraceFlowsPass
 
     // Phase 2: Analyze traces and allocate resources
     std::vector<TraceInfo> traceInfos;
-    int nextPacketId = clPacketIdStart;
+
+    // Precompute auto-allocated packet IDs in (col, row) order. Walking
+    // `traces` in IR order would make IDs depend on the order trace ops
+    // were emitted, which in turn depends on the placer's worker-to-tile
+    // mapping. Two placements that produce the same tile set would then
+    // get different trace overlays and exercise different routing-rule
+    // layouts -- a coupling that has produced false-match routing
+    // failures (e.g. mask=17 matching id 4 on a column-0 switch port).
+    // Sorting by (col, row) makes the id-to-tile binding a pure
+    // function of the active trace tile set.
+    llvm::DenseMap<Operation *, int> autoPacketIds;
+    {
+      // Hardware packet IDs are 5 bits (0..31). Silently wrapping past
+      // 31 would alias two traces onto the same id.
+      constexpr int kMaxPacketId = 31;
+
+      // First pass: bucket traces and collect explicit ids. An explicit
+      // id reserves a slot the auto-allocator must avoid, and two
+      // explicit traces pinning the same id is a silent alias today.
+      SmallVector<TraceOp> autoIdTraces;
+      llvm::DenseMap<int, TracePacketOp> explicitIdOwner;
+      for (auto trace : traces) {
+        TracePacketOp explicitPacket = nullptr;
+        for (auto &op : trace.getBody().getOps()) {
+          if (auto p = dyn_cast<TracePacketOp>(op)) {
+            if (p.getId().has_value()) {
+              explicitPacket = p;
+              break;
+            }
+          }
+        }
+        if (!explicitPacket) {
+          autoIdTraces.push_back(trace);
+          continue;
+        }
+        int id = *explicitPacket.getId();
+        auto [it, inserted] = explicitIdOwner.try_emplace(id, explicitPacket);
+        if (!inserted) {
+          InFlightDiagnostic err =
+              explicitPacket.emitError()
+              << "trace packet id " << id
+              << " is already used by another trace; explicit packet ids "
+                 "must be unique across the device";
+          err.attachNote(it->second.getLoc())
+              << "previous use of packet id " << id;
+          return signalPassFailure();
+        }
+      }
+      // stable_sort so that multiple traces on the same tile (e.g. core
+      // + mem trace on the same core tile) get ids in their IR-emission
+      // order rather than an unspecified order.
+      llvm::stable_sort(autoIdTraces, [](TraceOp a, TraceOp b) {
+        auto ta = cast<TileOp>(a.getTile().getDefiningOp());
+        auto tb = cast<TileOp>(b.getTile().getDefiningOp());
+        if (ta.getCol() != tb.getCol())
+          return ta.getCol() < tb.getCol();
+        return ta.getRow() < tb.getRow();
+      });
+      // Hand out ids from clPacketIdStart upward, skipping any value a
+      // user pinned explicitly so auto and explicit traces never alias.
+      int next = clPacketIdStart;
+      for (auto trace : autoIdTraces) {
+        while (next <= kMaxPacketId && explicitIdOwner.count(next))
+          ++next;
+        if (next > kMaxPacketId) {
+          device.emitError()
+              << "trace overlay needs " << autoIdTraces.size()
+              << " auto-allocated packet IDs starting at " << clPacketIdStart
+              << " (with " << explicitIdOwner.size()
+              << " id(s) reserved by explicit aie.trace.packet ops), but the "
+                 "hardware packet-id field is 5 bits (max "
+              << kMaxPacketId
+              << "); reduce the number of traced tiles, free up an explicit "
+                 "id, or raise -packet-id-start only if you can spare the "
+                 "lower IDs";
+          return signalPassFailure();
+        }
+        autoPacketIds[trace.getOperation()] = next++;
+      }
+    }
 
     for (auto trace : traces) {
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
@@ -155,7 +234,8 @@ struct AIEInsertTraceFlowsPass
       for (auto &op : trace.getBody().getOps()) {
         if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
           existingPacketOp = packetOp;
-          packetId = packetOp.getId();
+          if (auto explicitId = packetOp.getId())
+            packetId = *explicitId;
           packetType = packetOp.getType();
           break;
         }
@@ -173,18 +253,23 @@ struct AIEInsertTraceFlowsPass
         }
       }
 
-      // Allocate packet ID if not specified
-      if (!packetId) {
-        packetId = nextPacketId++;
-      }
+      // Allocate packet ID if not specified (precomputed in (col, row)
+      // order above).
+      if (!packetId)
+        packetId = autoPacketIds.lookup(trace.getOperation());
 
-      // If there was no explicit TracePacketOp, materialize one so that
-      // downstream passes (e.g., -aie-trace-to-config) see consistent info.
+      // Make sure the in-IR TracePacketOp carries the (possibly
+      // auto-allocated) id so downstream passes (e.g.,
+      // -aie-trace-to-config) see consistent info.
       if (!existingPacketOp) {
         OpBuilder traceBuilder(&trace.getBody().front(),
                                trace.getBody().front().begin());
-        TracePacketOp::create(traceBuilder, trace.getLoc(), *packetId,
+        TracePacketOp::create(traceBuilder, trace.getLoc(),
+                              traceBuilder.getI32IntegerAttr(*packetId),
                               *packetType);
+      } else if (!existingPacketOp.getId().has_value()) {
+        existingPacketOp.setIdAttr(
+            OpBuilder(existingPacketOp).getI32IntegerAttr(*packetId));
       }
 
       // Determine trace port based on packet type

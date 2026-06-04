@@ -67,7 +67,7 @@ jobs:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "true"
 
@@ -162,7 +162,7 @@ jobs:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: "true"
 
@@ -214,9 +214,26 @@ jobs:
           rm -rf $NPU_CACHE_HOME
           mkdir $NPU_CACHE_HOME
 
+          # TEMP(#3059): dump NPU stack versions to diagnose mobilenet/run_e2e.lit
+          # bn1 NPU timeout that reproduces on amdhx370 CI but not on the same
+          # HX 370 chip locally. Revert once the divergence is understood.
+          echo "===== NPU STACK VERSIONS (${{ matrix.runner_type }}) ====="
+          uname -a || true
+          xrt-smi examine 2>&1 | head -40 || true
+          echo "===== END NPU STACK VERSIONS ====="
+
           ninja install
-          ninja check-reference-designs
+
+          # gemm_asymmetric_tile_buffering chess builds peak ~8 GB RSS and
+          # ~9 min wall time alone on 32 GB. They run serialized via lit's
+          # atb_chess parallelism group and need a longer timeout than the
+          # rest of the suite. Split into two invocations so the timeout
+          # extension applies only to those tests.
+          LIT_FILTER_OUT="gemm_asymmetric_tile_buffering" ninja check-reference-designs
           ninja check-programming-guide
+          LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded" \
+            LIT_FILTER="gemm_asymmetric_tile_buffering" \
+            ninja check-reference-designs
           popd
 
       - name: Cleanup NPU_CACHE_HOME

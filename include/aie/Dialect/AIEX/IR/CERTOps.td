@@ -31,7 +31,7 @@ def AIE_CertUcDmaChainOp: AIEX_Op<"cert.uc_dma_chain", [Symbol,
   );
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{
-    $sym_name $body attr-dict
+    ($sym_name^)? $body attr-dict
   }];
 }
 

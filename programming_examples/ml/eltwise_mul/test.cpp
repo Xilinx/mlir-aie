@@ -8,8 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -25,9 +29,9 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using INOUT0_DATATYPE = std::bfloat16_t;
-using INOUT1_DATATYPE = std::bfloat16_t;
-using INOUT2_DATATYPE = std::bfloat16_t;
+using INOUT0_DATATYPE = test_utils::bfloat16_t;
+using INOUT1_DATATYPE = test_utils::bfloat16_t;
+using INOUT2_DATATYPE = test_utils::bfloat16_t;
 #endif
 
 // ----------------------------------------------------------------------------
@@ -38,11 +42,15 @@ int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
            int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < size; i++) {
-    T ref = A[i] * B[i];
-    if (!test_utils::nearly_equal(ref, C[i], 0.00390625)) {
+    const float a = test_utils::bfloat16_to_float(A[i]);
+    const float b = test_utils::bfloat16_to_float(B[i]);
+    const float actual = test_utils::bfloat16_to_float(C[i]);
+    const auto ref_bf16 = test_utils::bfloat16_mul(A[i], B[i]);
+    const float ref = test_utils::bfloat16_to_float(ref_bf16);
+    if (!test_utils::nearly_equal(ref, actual, 0.00390625)) {
       if (errors < 100) {
-        std::cout << "Error in output " << C[i] << " != " << ref << " from "
-                  << A[i] << " * " << B[i] << std::endl;
+        std::cout << "Error in output " << actual << " != " << ref << " from "
+                  << a << " * " << b << std::endl;
       } else if (errors == 100) {
         std::cout << "..." << std::endl;
         std::cout << "[Errors truncated]" << std::endl;
@@ -50,7 +58,7 @@ int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
       errors++;
     } else {
       if (verbosity > 1)
-        std::cout << "Correct output " << C[i] << " == " << ref << std::endl;
+        std::cout << "Correct output " << actual << " == " << ref << std::endl;
     }
   }
   return errors;
@@ -166,16 +174,18 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++)
-    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-                                            (std::bfloat16_t)-0.5);
+    AVec[i] =
+        test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(1.0f),
+                                      test_utils::bfloat16_from_float(-0.5f));
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
   // Initialize Inout buffer 1
   INOUT1_DATATYPE *bufInOut1 = bo_inout1.map<INOUT0_DATATYPE *>();
   std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
   for (int i = 0; i < INOUT1_VOLUME; i++)
-    BVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1.0,
-                                            (std::bfloat16_t)-0.5);
+    BVec[i] =
+        test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(1.0f),
+                                      test_utils::bfloat16_from_float(-0.5f));
   memcpy(bufInOut1, BVec.data(), (BVec.size() * sizeof(INOUT1_DATATYPE)));
 
   // Initialize Inout buffer 2

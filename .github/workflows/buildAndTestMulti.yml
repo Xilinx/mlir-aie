@@ -69,14 +69,14 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Install Python packages
         run: |
@@ -88,7 +88,7 @@ jobs:
           pip install -r python/requirements_dev.txt
 
       - name: Setup Cpp
-        uses: aminya/setup-cpp@1fd813945e55021261b381c59275db442da4082f
+        uses: aminya/setup-cpp@1f17f92d6a52bfcb1a25348e2c526c2e5cbb1134
         with:
           compiler: ${{ matrix.COMPILER }}
           vcvarsall: ${{ contains(matrix.OS, 'windows') }}

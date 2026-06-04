@@ -14,7 +14,7 @@
 #include "aie_api/aie.hpp"
 
 // The tables _ab and _cd are copies of each other
-// Also, each table has a copy of data seperated by 128-bit
+// Also, each table has a copy of data separated by 128-bit
 // This effectively creates 4 copies of the table (located in 4 (128-bit) banks)
 // This allows the user to use the "gather" read feature and read 4 values from
 // 4 different banks at once Tables entries are in BF16
@@ -228,7 +228,7 @@ alignas(aie::vector_decl_align) unsigned char m_inv_lut[128] = {
 
 // Tanh look up tables: Divides into 32 segments between [-4,4], bank size:
 // (32*2*2*4)*2=1k, one lut=512B
-float chess_storage(% chess_alignof(v32int8)) tanh_lut_ab[128] = {
+alignas(aie::vector_decl_align) float tanh_lut_ab[128] = {
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
     0.00283813476562500000000000000000, -0.98828125000000000000000000000000,
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
@@ -295,7 +295,7 @@ float chess_storage(% chess_alignof(v32int8)) tanh_lut_ab[128] = {
     0.00000000000000000000000000000000, 1.00000000000000000000000000000000,
 };
 
-float chess_storage(% chess_alignof(v32int8)) tanh_lut_cd[128] = {
+alignas(aie::vector_decl_align) float tanh_lut_cd[128] = {
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
     0.00283813476562500000000000000000, -0.98828125000000000000000000000000,
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,

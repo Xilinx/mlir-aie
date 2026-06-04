@@ -11,15 +11,15 @@
 // RUN: aie-opt --verify-diagnostics --split-input-file %s
 
 // Regression tests for issue #2583 verifier gap:
-// PacketFlowOp must have exactly one packet_source and at least one
-// packet_dest. Verify that the verifier rejects zero-source and
-// multiple-source flows.
+// PacketFlowOp must have at least one packet_source and at least one
+// packet_dest. Verify that the verifier rejects zero-source and zero-dest
+// flows. (Multi-source flows are valid; see multi_source_packet_flow.mlir.)
 
 // Test 1: zero sources — must be rejected by verifier.
 module {
   aie.device(xcvc1902) {
     %t11 = aie.tile(1, 1)
-    // expected-error@+1 {{must have exactly one aie.packet_source (got 0)}}
+    // expected-error@+1 {{must have at least one aie.packet_source}}
     aie.packet_flow(0x0) {
       aie.packet_dest<%t11, Core : 0>
     }
@@ -28,23 +28,7 @@ module {
 
 // -----
 
-// Test 2: multiple sources — must be rejected by verifier.
-module {
-  aie.device(xcvc1902) {
-    %t11 = aie.tile(1, 1)
-    %t12 = aie.tile(1, 2)
-    // expected-error@+1 {{must have exactly one aie.packet_source (got 2)}}
-    aie.packet_flow(0x0) {
-      aie.packet_source<%t11, West : 0>
-      aie.packet_source<%t12, West : 0>
-      aie.packet_dest<%t11, Core : 0>
-    }
-  }
-}
-
-// -----
-
-// Test 3: zero dests — must be rejected by verifier.
+// Test 2: zero dests — must be rejected by verifier.
 module {
   aie.device(xcvc1902) {
     %t11 = aie.tile(1, 1)

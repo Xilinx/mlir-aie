@@ -1876,6 +1876,41 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     }
     // Float types
     else {
+      // v8bf16: pad to v16bf16 via concat with zero, run the standard
+      // 16-wide UPS+AddElem+SRS path, extract the lower 8. Uses the same
+      // building blocks as the integer widen-by-zero-pad helper.
+      if (laneSize == 8 && scalarType.isBF16()) {
+        auto loc = srcOp.getLoc();
+        VectorType v16Ty = createVectorType(16, scalarType);
+        VectorType v8Ty = resultType;
+        auto zeroCst = arith::ConstantOp::create(
+            rewriter, loc, scalarType, rewriter.getZeroAttr(scalarType));
+        auto v16Zero = aievec::BroadcastScalarOp::create(rewriter, loc, v16Ty,
+                                                         zeroCst->getResult(0));
+        auto v8Zero = aievec::ExtOp::create(rewriter, loc, v8Ty,
+                                            v16Zero->getResult(0), 0);
+        auto lhs16 = aievec::ConcatOp::create(
+            rewriter, loc, v16Ty,
+            SmallVector<Value>{lhs, v8Zero->getResult(0)});
+        auto rhs16 = aievec::ConcatOp::create(
+            rewriter, loc, v16Ty,
+            SmallVector<Value>{rhs, v8Zero->getResult(0)});
+        Type accType = getVectorOpDestType(v16Ty, /*AIE2 =*/true);
+        auto lUpsOp =
+            aievec::UPSOp::create(rewriter, loc, accType, lhs16->getResult(0));
+        auto rUpsOp =
+            aievec::UPSOp::create(rewriter, loc, accType, rhs16->getResult(0));
+        auto elemOp =
+            DstOpTy::create(rewriter, loc, lUpsOp->getResult(0).getType(),
+                            lUpsOp->getResult(0), rUpsOp->getResult(0));
+        auto shiftParamOp = arith::ConstantOp::create(
+            rewriter, loc, rewriter.getI32IntegerAttr(0));
+        auto srsOp = aievec::SRSOp::create(
+            rewriter, loc, v16Ty, elemOp.getResult(), shiftParamOp.getResult());
+        rewriter.replaceOpWithNewOp<aievec::ExtOp>(srcOp, v8Ty,
+                                                   srsOp.getResult(), 0);
+        return success();
+      }
       if (laneSize != 16 && laneSize != 32)
         return failure();
 
@@ -3477,6 +3512,60 @@ struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
 using LowerExtFOpPattern = LowerExtOpPattern<arith::ExtFOp>;
 using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
 
+// Scalarize a vector arith int<->fp conversion (sitofp / uitofp / fptosi /
+// fptoui). The AIE2/AIE2P GISel legalizers only handle the scalar form of
+// these conversions (libcalls); there is no vector int<->fp instruction.
+// Vector forms reach the legalizer as G_SITOFP/G_FPTOSI on a vector type
+// and abort with "unable to legalize". Lower the vector form here into
+// per-lane extract -> scalar conversion -> insert so each lane goes through
+// the supported scalar path.
+template <typename SrcOpTy>
+struct ScalarizeVectorIntFpConversionOpPattern : OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(adaptor.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(op.getType());
+    if (!srcType || !dstType)
+      return failure(); // already scalar — let the standard path handle it
+    if (srcType.getRank() != 1 || dstType.getRank() != 1)
+      return failure(); // conservative: 1-D vectors only
+    if (srcType.getNumElements() != dstType.getNumElements())
+      return failure();
+
+    Location loc = op.getLoc();
+    Type scalarDstTy = dstType.getElementType();
+    int64_t lanes = srcType.getNumElements();
+
+    // Seed result with a zero vector of the destination type.
+    Value result = arith::ConstantOp::create(rewriter, loc, dstType,
+                                             rewriter.getZeroAttr(dstType));
+
+    for (int64_t i = 0; i < lanes; ++i) {
+      Value scalar = vector::ExtractOp::create(rewriter, loc, adaptor.getIn(),
+                                               ArrayRef<int64_t>{i});
+      Value cvt = SrcOpTy::create(rewriter, loc, scalarDstTy, scalar);
+      result = vector::InsertOp::create(rewriter, loc, cvt, result,
+                                        ArrayRef<int64_t>{i});
+    }
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+using ScalarizeVectorSIToFPOpPattern =
+    ScalarizeVectorIntFpConversionOpPattern<arith::SIToFPOp>;
+using ScalarizeVectorUIToFPOpPattern =
+    ScalarizeVectorIntFpConversionOpPattern<arith::UIToFPOp>;
+using ScalarizeVectorFPToSIOpPattern =
+    ScalarizeVectorIntFpConversionOpPattern<arith::FPToSIOp>;
+using ScalarizeVectorFPToUIOpPattern =
+    ScalarizeVectorIntFpConversionOpPattern<arith::FPToUIOp>;
+
 template <typename SrcOpTy>
 struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
@@ -3904,10 +3993,8 @@ struct ComputeBxorAndBnegOpPattern : OpConversionPattern<arith::XOrIOp> {
     if (laneSize * elWidth != 512)
       return failure();
 
-    auto lhsConstOp =
-        dyn_cast<arith::ConstantOp>(xorOp.getLhs().getDefiningOp());
-    auto rhsConstOp =
-        dyn_cast<arith::ConstantOp>(xorOp.getRhs().getDefiningOp());
+    auto lhsConstOp = xorOp.getLhs().getDefiningOp<arith::ConstantOp>();
+    auto rhsConstOp = xorOp.getRhs().getDefiningOp<arith::ConstantOp>();
 
     // If one of operands in xorOp is a constant -1, xorOp will be replaced with
     // aievec::BnegOp.
@@ -4683,12 +4770,22 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
-        LowerVectorSubIOpToAIEVecSubElemOp
+        LowerVectorSubIOpToAIEVecSubElemOp,
+        // CPP-only: AIEVecToLLVM has no lowering for aievec.{bxor,bor,band}.
+        ComputeBxorAndBnegOpPattern,
+        ComputeBorOpPattern,
+        ComputeBandOpPattern
       >(patterns.getContext());
-  } else if (backend == TargetBackend::LLVMIR){
-      patterns.add<
-      LowerVectorAddFOpToAIEVecAddElemOp,
-      LowerVectorSubFOpToAIEVecSubElemOp
+  } else if (backend == TargetBackend::LLVMIR) {
+    patterns.add<
+        LowerVectorAddFOpToAIEVecAddElemOp,
+        LowerVectorSubFOpToAIEVecSubElemOp,
+        // AIE2/AIE2P have no vector int<->fp instruction; scalarize so each
+        // lane reaches the supported scalar libcall path.
+        ScalarizeVectorSIToFPOpPattern,
+        ScalarizeVectorUIToFPOpPattern,
+        ScalarizeVectorFPToSIOpPattern,
+        ScalarizeVectorFPToUIOpPattern
       >(patterns.getContext());
   }
   // Add the compound shift+clamp+trunc→SRS pattern with higher benefit
@@ -4708,9 +4805,6 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       ComputeCeilOpPattern,
       ComputeFloorOpPattern,
       ComputeNegOpPattern,
-      ComputeBxorAndBnegOpPattern,
-      ComputeBorOpPattern,
-      ComputeBandOpPattern,
       ComputeSignedIntRightShiftOpPattern,
       LowerScalarShRSIToAIEVecUPSSRS,
       ConvertMulIToAIEVecMulElemOpPattern,
@@ -5122,33 +5216,22 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return laneSize != 16;
   });
 
-  target.addDynamicallyLegalOp<arith::XOrIOp>([](arith::XOrIOp xorOp) {
-    auto srcType = dyn_cast<VectorType>(xorOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-    return laneSize * elWidth != 512;
-  });
-
-  target.addDynamicallyLegalOp<arith::OrIOp>([](arith::OrIOp orOp) {
-    auto srcType = dyn_cast<VectorType>(orOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-    return laneSize * elWidth != 512;
-  });
+  // CPP-only: rewrite 512-bit int vector arith.{andi,ori,xori} to aievec.
+  if (backend == TargetBackend::CPP) {
+    auto isNon512BitIntVecBitwiseOp = [](Operation *op) {
+      auto srcType = dyn_cast<VectorType>(op->getOperand(0).getType());
+      if (!srcType)
+        return true;
+      if (!isa<IntegerType>(srcType.getElementType()))
+        return true;
+      unsigned laneSize = getVectorLaneSize(srcType);
+      unsigned elWidth = srcType.getElementTypeBitWidth();
+      return laneSize * elWidth != 512;
+    };
+    target.addDynamicallyLegalOp<arith::XOrIOp>(isNon512BitIntVecBitwiseOp);
+    target.addDynamicallyLegalOp<arith::OrIOp>(isNon512BitIntVecBitwiseOp);
+    target.addDynamicallyLegalOp<arith::AndIOp>(isNon512BitIntVecBitwiseOp);
+  }
 
   target.addDynamicallyLegalOp<arith::ShRSIOp>([](arith::ShRSIOp rsOp) {
     auto srcType = dyn_cast<VectorType>(rsOp.getLhs().getType());
@@ -5176,30 +5259,41 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return laneSize * elWidth != 512;
   });
 
-  target.addDynamicallyLegalOp<arith::AndIOp>([](arith::AndIOp andOp) {
-    auto srcType = dyn_cast<VectorType>(andOp.getLhs().getType());
-    if (!srcType)
-      return true;
-    Type scalarType = srcType.getElementType();
-    if (!isa<IntegerType>(scalarType))
-      return true;
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-    return laneSize * elWidth != 512;
-  });
-
   if (backend == TargetBackend::CPP) {
     target.addDynamicallyLegalOp<arith::AddIOp>(
         [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
+    target.addDynamicallyLegalOp<arith::SubIOp>(
+        [](arith::SubIOp op) { return !isa<VectorType>(op.getType()); });
   }
   target.addDynamicallyLegalOp<arith::AddFOp>(
       [](arith::AddFOp op) { return !isa<VectorType>(op.getType()); });
-  target.addDynamicallyLegalOp<arith::SubIOp>(
-      [](arith::SubIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::SubFOp>(
       [](arith::SubFOp op) { return !isa<VectorType>(op.getType()); });
+
+  // AIE2/AIE2P GISel legalize only the scalar form of int<->fp conversions
+  // (libcalls). Vector forms have no legalizer rule and abort with
+  // "unable to legalize G_SITOFP <N x sX>". Mark the vector forms that
+  // ScalarizeVectorIntFpConversionOpPattern can rewrite (1-D vectors) as
+  // illegal so the pattern fires. Scalar and >1-D vector forms stay legal:
+  // scalar reaches the supported libcall path directly, and >1-D forms
+  // pass through to surface a clearer error from a later stage instead of
+  // aborting this conversion. The scalarize pattern emits vector.extract /
+  // vector.insert / scalar conv sequences, so those ops must be legal too.
+  if (backend == TargetBackend::LLVMIR) {
+    auto isRank1Vector = [](Type t) {
+      auto vt = dyn_cast<VectorType>(t);
+      return vt && vt.getRank() == 1;
+    };
+    target.addDynamicallyLegalOp<arith::SIToFPOp>(
+        [=](arith::SIToFPOp op) { return !isRank1Vector(op.getType()); });
+    target.addDynamicallyLegalOp<arith::UIToFPOp>(
+        [=](arith::UIToFPOp op) { return !isRank1Vector(op.getType()); });
+    target.addDynamicallyLegalOp<arith::FPToSIOp>(
+        [=](arith::FPToSIOp op) { return !isRank1Vector(op.getType()); });
+    target.addDynamicallyLegalOp<arith::FPToUIOp>(
+        [=](arith::FPToUIOp op) { return !isRank1Vector(op.getType()); });
+    target.addLegalOp<vector::ExtractOp, vector::InsertOp>();
+  }
 }
 
 static void configureAIEVecV1Legalizations(ConversionTarget &target,
@@ -5424,7 +5518,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
   });
 
   // AIE2P-specific legalization: Override AddFOp to support laneSize==32 for
-  // float types
+  // float types. Also route v8bf16 through aievec (padded to v16bf16).
   target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType)
@@ -5433,7 +5527,13 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // For float types, support both laneSize==16 and laneSize==32
+    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32. Other
+    // 16-bit floats (e.g. f16) are not handled by the aievec lowering
+    // and must fall through to the default float predicate below.
+    if (scalarType.isBF16())
+      return laneSize != 8 && laneSize != 16 && laneSize != 32;
+
+    // For other float types, support both laneSize==16 and laneSize==32
     if (isa<FloatType>(scalarType))
       return laneSize != 16 && laneSize != 32;
 
@@ -5442,7 +5542,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
   });
 
   // AIE2P-specific legalization: Override SubFOp to support laneSize==32 for
-  // float types
+  // float types. Also route v8bf16 through aievec (padded to v16bf16).
   target.addDynamicallyLegalOp<arith::SubFOp>([](arith::SubFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType)
@@ -5451,7 +5551,13 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // For float types, support both laneSize==16 and laneSize==32
+    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32. Other
+    // 16-bit floats (e.g. f16) are not handled by the aievec lowering
+    // and must fall through to the default float predicate below.
+    if (scalarType.isBF16())
+      return laneSize != 8 && laneSize != 16 && laneSize != 32;
+
+    // For other float types, support both laneSize==16 and laneSize==32
     if (isa<FloatType>(scalarType))
       return laneSize != 16 && laneSize != 32;
 
@@ -5490,18 +5596,17 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
       return !laneSizeElWidthPairSet.count(
           std::make_pair(laneSize, resultElWidth));
     });
+    target.addDynamicallyLegalOp<arith::SubIOp>([=](arith::SubIOp op) {
+      auto resultType = dyn_cast<VectorType>(op.getType());
+      if (!resultType)
+        return true;
+      auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+      unsigned laneSize = getVectorLaneSize(resultType);
+
+      return !laneSizeElWidthPairSet.count(
+          std::make_pair(laneSize, resultElWidth));
+    });
   }
-
-  target.addDynamicallyLegalOp<arith::SubIOp>([=](arith::SubIOp op) {
-    auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType)
-      return true;
-    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(resultType);
-
-    return !laneSizeElWidthPairSet.count(
-        std::make_pair(laneSize, resultElWidth));
-  });
 
   target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());

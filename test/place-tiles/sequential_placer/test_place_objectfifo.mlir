@@ -327,6 +327,39 @@ module @memtile_partial_overflow {
 
 // -----
 
+// Channel overflow searches leftward when rightward columns are exhausted
+// CHECK-LABEL: @channel_overflow_leftward
+module @channel_overflow_leftward {
+  aie.device(npu1) {
+    // Cores in column 3 (last column on npu1, which has cols 0-3)
+    // CHECK-DAG: %[[CORE1:.*]] = aie.tile(3, 2)
+    %core1 = aie.logical_tile<CoreTile>(3, 2)
+    // CHECK-DAG: %[[CORE2:.*]] = aie.tile(3, 3)
+    %core2 = aie.logical_tile<CoreTile>(3, 3)
+    // CHECK-DAG: %[[CORE3:.*]] = aie.tile(3, 4)
+    %core3 = aie.logical_tile<CoreTile>(3, 4)
+
+    // First two shims merge to (3, 0), using 2 output channels
+    // CHECK-DAG: %[[SHIM1:.*]] = aie.tile(3, 0)
+    %shim1 = aie.logical_tile<ShimNOCTile>(?, ?)
+    %shim2 = aie.logical_tile<ShimNOCTile>(?, ?)
+    // Third shim overflows leftward to column 2 (no column 4 exists)
+    // CHECK-DAG: %[[SHIM2:.*]] = aie.tile(2, 0)
+    %shim3 = aie.logical_tile<ShimNOCTile>(?, ?)
+
+    aie.objectfifo @lof1 (%shim1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @lof2 (%shim2, {%core2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @lof3 (%shim3, {%core3}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    aie.core(%core1) { aie.end }
+    aie.core(%core2) { aie.end }
+    aie.core(%core3) { aie.end }
+    // CHECK-NOT: aie.logical_tile
+  }
+}
+
+// -----
+
 // Linked fifos: memtile placed at averaged column of connected cores
 // CHECK-LABEL: @linked_fifos_averaged_column
 module @linked_fifos_averaged_column {

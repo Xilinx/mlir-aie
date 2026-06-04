@@ -12,6 +12,7 @@
 #include "xrt_test_wrapper.h"
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -20,22 +21,23 @@
 // ------------------------------------------------------
 // Configure this to match your buffer data type
 // ------------------------------------------------------
-using DATATYPE_IN1 = std::bfloat16_t;
-using DATATYPE_OUT = std::bfloat16_t;
+using DATATYPE_IN1 = test_utils::bfloat16_t;
+using DATATYPE_OUT = test_utils::bfloat16_t;
 #endif
 
 // Initialize Input buffer 1
 void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int in_volume) {
   for (int i = 0; i < in_volume; i++) {
-    DATATYPE_IN1 val = static_cast<DATATYPE_IN1>(test_utils::random_bfloat16_t(
-        (std::bfloat16_t)8.0, (std::bfloat16_t)-4.0));
+    DATATYPE_IN1 val =
+        test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(8.0f),
+                                      test_utils::bfloat16_from_float(-4.0f));
     bufIn1[i] = val;
   }
 }
 
 // Initialize Output buffer
 void initialize_bufOut(DATATYPE_OUT *bufOut, int out_volume) {
-  memset(bufOut, 0, out_volume);
+  memset(bufOut, 0, out_volume * sizeof(DATATYPE_OUT));
 }
 
 int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
@@ -52,7 +54,7 @@ int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
     // Accumulate sum and sum of squares for each row
     for (int c = 0; c < COLS; c++) {
       int idx = r * COLS + c;
-      float val = static_cast<float>(bufIn1[idx]);
+      float val = test_utils::bfloat16_to_float(bufIn1[idx]);
       sum += val;
       sum_sq += val * val;
     }
@@ -63,7 +65,7 @@ int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
     // Compute expected output for the current row
     for (int c = 0; c < COLS; c++) {
       int idx = r * COLS + c;
-      float val = static_cast<float>(bufIn1[idx]);
+      float val = test_utils::bfloat16_to_float(bufIn1[idx]);
       float norm = (val - mean) * inv_std;
       float scaled = norm * gamma;
       float out_val = scaled + beta;
@@ -73,7 +75,7 @@ int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
   // Now compare the expected results with the computed results in bufOut
   for (int i = 0; i < (ROWS * COLS); i++) {
     float expected_val = expected[i];
-    float hw_val = static_cast<float>(bufOut[i]);
+    float hw_val = test_utils::bfloat16_to_float(bufOut[i]);
     float diff = std::abs(expected_val - hw_val);
     if (diff > 0.1) {
       std::cout << "Mismatch at index " << i << ": expected " << expected_val

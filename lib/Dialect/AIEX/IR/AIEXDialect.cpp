@@ -30,6 +30,8 @@ using namespace xilinx;
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.cpp.inc"
 
+#include "aie/Dialect/AIEX/IR/AIEXEnums.cpp.inc"
+
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
@@ -761,17 +763,47 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuUpdateFromScratchpadOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
+  constexpr uint32_t kMaxStateTableEntries = 32;
+  if (getStateTableIdx() >= kMaxStateTableEntries)
+    return emitOpError("state_table_idx ")
+           << static_cast<uint32_t>(getStateTableIdx())
+           << " exceeds maximum StateTable index ("
+           << (kMaxStateTableEntries - 1) << ").";
+
+  Block *block = (*this)->getBlock();
+  if (block) {
+    for (auto createOp : block->getOps<AIEX::NpuCreateScratchpadOp>()) {
+      uint32_t sizeBytes = createOp.getSize();
+      uint32_t numEntries = sizeBytes / 4;
+      if (getStateTableIdx() >= numEntries) {
+        return emitOpError("state_table_idx ")
+               << static_cast<uint32_t>(getStateTableIdx())
+               << " is out of bounds for scratchpad of size " << sizeBytes
+               << " bytes (" << numEntries << " entries) created by "
+               << createOp->getName() << ".";
+      }
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NpuWrite32Op parse/print/verify
 //===----------------------------------------------------------------------===//
 
-/// Parse: `aiex.npu.write32(%addr, %val) {attrs} : type, type`
-/// or:    `aiex.npu.write32 {attrs}`
 ParseResult AIEX::NpuWrite32Op::parse(OpAsmParser &parser,
                                       OperationState &result) {
   SmallVector<OpAsmParser::UnresolvedOperand, 2> dynOperands;
   SmallVector<Type, 2> dynTypes;
 
-  // Try to parse optional `(operands)` for dynamic form
   bool hasDynamic = false;
   if (succeeded(parser.parseOptionalLParen())) {
     hasDynamic = true;
@@ -795,7 +827,6 @@ ParseResult AIEX::NpuWrite32Op::parse(OpAsmParser &parser,
       return failure();
   }
 
-  // Set operand segment sizes: [dyn_address, dyn_value]
   result.addAttribute("operandSegmentSizes",
                       parser.getBuilder().getDenseI32ArrayAttr(
                           {hasDynamic ? 1 : 0, hasDynamic ? 1 : 0}));
@@ -837,17 +868,37 @@ LogicalResult AIEX::NpuWrite32Op::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuCreateScratchpadOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
+  if (getUsageType() != 0)
+    return emitOpError("usage_type must be 0 (got ")
+           << static_cast<uint32_t>(getUsageType())
+           << "); other layouts are not supported.";
+
+  constexpr uint32_t kMaxScratchpadSizeBytes = 128;
+  if (getSize() == 0)
+    return emitOpError("size must be greater than 0.");
+  if (getSize() % 4 != 0)
+    return emitOpError("size (")
+           << getSize() << ") must be a multiple of 4 bytes.";
+  if (getSize() > kMaxScratchpadSizeBytes)
+    return emitOpError("size (")
+           << getSize() << " bytes) exceeds maximum scratchpad size of "
+           << kMaxScratchpadSizeBytes << " bytes.";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NpuWriteRTPOp parse/print/verify
 //===----------------------------------------------------------------------===//
 
-/// Parse: `aiex.npu.rtp_write(@buffer, 0 : ui32, 42 : i32)` (static)
-/// or:    `aiex.npu.rtp_write(@buffer, 0 : ui32, %val) : i32` (dynamic)
 ParseResult AIEX::NpuWriteRTPOp::parse(OpAsmParser &parser,
                                        OperationState &result) {
   if (parser.parseLParen())
     return failure();
 
-  // Parse buffer symbol ref
   FlatSymbolRefAttr bufferAttr;
   if (parser.parseAttribute(bufferAttr))
     return failure();
@@ -856,7 +907,6 @@ ParseResult AIEX::NpuWriteRTPOp::parse(OpAsmParser &parser,
   if (parser.parseComma())
     return failure();
 
-  // Parse index attribute (ui32). Accepts both bare (0) and typed (0 : ui32).
   IntegerAttr indexAttr;
   if (parser.parseAttribute(indexAttr))
     return failure();
@@ -868,7 +918,6 @@ ParseResult AIEX::NpuWriteRTPOp::parse(OpAsmParser &parser,
   if (parser.parseComma())
     return failure();
 
-  // Try to parse dynamic value (SSA operand %val), else parse static attr.
   OpAsmParser::UnresolvedOperand dynVal;
   bool hasDynamic = false;
 
@@ -878,7 +927,6 @@ ParseResult AIEX::NpuWriteRTPOp::parse(OpAsmParser &parser,
       return failure();
     hasDynamic = true;
   } else {
-    // Static value. Accepts both bare (42) and typed (42 : i32).
     IntegerAttr valueAttr;
     if (parser.parseAttribute(valueAttr))
       return failure();
@@ -919,12 +967,10 @@ void AIEX::NpuWriteRTPOp::print(OpAsmPrinter &p) {
     p << ")";
   }
 
-  // Print type annotation for dynamic case (before attr-dict, matching parser)
   if (hasDynamicValue()) {
     p << " : " << getDynValue().getType();
   }
 
-  // Elide attributes that are printed inline or handled by traits
   SmallVector<StringRef> elidedAttrs = {"buffer", "index",
                                         "operandSegmentSizes"};
   if (!hasDynamicValue())

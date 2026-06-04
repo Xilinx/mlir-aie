@@ -40,7 +40,7 @@ class Worker(ObjectFifoEndpoint):
         allocation_scheme: str = None,
         trace: int = None,
         trace_events: list = None,
-        dynamic_objfifo_lowering: bool = None,
+        dynamic_objfifo_lowering: bool | None = None,
     ):
         """Construct a Worker
 
@@ -54,12 +54,19 @@ class Worker(ObjectFifoEndpoint):
                 Will override any allocation scheme set on the tile.
             trace (int, optional): If >0, enable tracing for this worker.
             trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.
-            dynamic_objfifo_lowering (bool, optional): If True, enables dynamic ObjectFifo lowering for runtime-parameterized loop bounds. Defaults to None.
+            dynamic_objfifo_lowering (bool | None, optional): Per-core override for the
+                ``aie-objectFifo-stateful-transform`` pass's lowering choice. ``True`` forces
+                dynamic (loop-preserving) lowering for this core; ``False`` forces static
+                LCM-based unrolling. ``None`` (default) leaves the choice to the compiler's
+                global ``--dynamic-objFifos`` flag. Note: the per-core attribute is only
+                honored when the global flag is ``false``; when global is ``true`` the
+                attribute is ignored. Defaults to None.
 
         Raises:
             ValueError: Parameters are validated.
         """
-        tile = tile.copy()
+        if tile is AnyComputeTile:
+            tile = tile.copy()
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
@@ -68,8 +75,8 @@ class Worker(ObjectFifoEndpoint):
         self._tile = tile
         self._while_true = while_true
         self.stack_size = stack_size
-        self.dynamic_objfifo_lowering = dynamic_objfifo_lowering
         self.allocation_scheme = allocation_scheme
+        self._dynamic_objfifo_lowering = dynamic_objfifo_lowering
         if allocation_scheme:
             self._tile.allocation_scheme = allocation_scheme
         self.trace = trace
@@ -89,6 +96,10 @@ class Worker(ObjectFifoEndpoint):
         self._fifos = []
         self._buffers = []
         self._barriers = []
+        # CascadeFlow objects whose source is this Worker. Populated by
+        # CascadeFlow(src, dst).__init__ and consumed by Program.resolve()
+        # to emit aie.cascade_flow ops after worker placement.
+        self._outgoing_cascades: list = []
 
         # Check arguments to the core. Some information is saved for resolution.
         for arg in self.fn_args:
@@ -154,10 +165,15 @@ class Worker(ObjectFifoEndpoint):
         @core(
             my_tile,
             stack_size=self.stack_size,
-            dynamic_objfifo_lowering=self.dynamic_objfifo_lowering,
+            dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
         )
         def core_body():
-            for _ in range_(sys.maxsize) if self._while_true else range(1):
+            # Always wrap in an scf.for so the lowered MLIR matches expectations
+            # downstream (placed-API uses the same pattern with bound=1 for
+            # single-shot workers). Using Python range(1) here would emit the
+            # body inline with no scf.for wrapper, which the dataflow lowerer
+            # treats differently and can cause runtime hangs.
+            for _ in range_(sys.maxsize if self._while_true else 1):
                 self.core_fn(*self.fn_args)
 
 

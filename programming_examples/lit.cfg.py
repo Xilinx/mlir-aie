@@ -62,6 +62,7 @@ xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_include_dir,
     config.xrt_bin_dir,
     config.aie_src_root,
+    llvm_config,
     config.vitis_components,
 )
 
@@ -148,3 +149,7 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
+
+# Opt-in serialization group for chess builds whose peak RSS is large enough
+# to OOM the CI runner under -j4. Tests opt in via a lit.local.cfg.
+lit_config.parallelism_groups["atb_chess"] = 1

@@ -10,3 +10,11 @@ add_mlir_doc(AIEX AIEXDialect ./ -gen-dialect-doc -dialect=aiex)
 
 # AIEX.td pulls in AIEAttrs.td which includes generated event enums
 add_dependencies(MLIRAIEXIncGen GenerateAIEEventsTD)
+
+# Add AIEX enums
+set(LLVM_TARGET_DEFINITIONS AIEXAttrs.td)
+mlir_tablegen(AIEXEnums.h.inc -gen-enum-decls)
+mlir_tablegen(AIEXEnums.cpp.inc -gen-enum-defs)
+add_public_tablegen_target(MLIRAIEXEnumsIncGen)
+add_dependencies(MLIRAIEXIncGen MLIRAIEXEnumsIncGen)
+add_dependencies(aie-headers MLIRAIEXEnumsIncGen)

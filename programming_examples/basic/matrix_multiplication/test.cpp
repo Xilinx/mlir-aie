@@ -18,7 +18,6 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <stdfloat>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -29,10 +28,10 @@
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
 #ifndef DTYPE_IN
-#define DTYPE_IN std::bfloat16_t
+#define DTYPE_IN test_utils::bfloat16_t
 #endif
 #ifndef DTYPE_OUT
-#define DTYPE_OUT std::bfloat16_t
+#define DTYPE_OUT test_utils::bfloat16_t
 #endif
 #ifndef DTYPE_ACC
 #define DTYPE_ACC float

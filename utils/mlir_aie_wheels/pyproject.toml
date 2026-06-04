@@ -1,23 +1,3 @@
-[project]
-name = "mlir-aie"
-description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
-readme = { text = """This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for Xilinx Versal
-AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the
-device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is
-included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with
-convenient low-level access to devices and enable the development of a wide variety of programming models
-from higher level abstractions.  As such, although it contains some examples, this project is not intended to
-represent end-to-end compilation flows or to be particularly easy to use for system design.
-""", content-type = "text/markdown" }
-dynamic = ["dependencies", "requires-python", "version", "license"]
-authors = [
-  { name="AMD Inc." },
-  { email="joseph.melber@amd.com" },
-]
-
-[project.urls]
-"Homepage" = "https://github.com/Xilinx/mlir-aie"
-
 [tool.cibuildwheel]
 build-verbosity = 3
 build = "cp312-* cp313-* cp314-*"
@@ -39,6 +19,8 @@ environment-pass = [
     "DATETIME",
     "HOST_CCACHE_DIR",
     "AIE_PROJECT_COMMIT",
+    "AIE_WHEEL_KEEP_LOCAL",
+    "AIE_WHEEL_VERSION",
     "MATRIX_OS",
     "PARALLEL_LEVEL",
     "PIP_FIND_LINKS",
@@ -68,17 +50,5 @@ before-build = [
 ]
 
 [build-system]
-requires = ["setuptools>=61.0", "nanobind", "pip>=22.1", 'ninja!=1.13.0; platform_system=="Windows"']
+requires = ["setuptools>=82.0.1", "nanobind", "pip>=26.1.2", 'ninja!=1.13.0; platform_system=="Windows"']
 build-backend = "setuptools.build_meta"
-
-[project.scripts]
-aie-lsp-server = "aie.tools:aie_lsp_server"
-aie-opt = "aie.tools:aie_opt"
-aie-reset = "aie.tools:aie_reset"
-aie-translate = "aie.tools:aie_translate"
-aie-visualize = "aie.tools:aie_visualize"
-aiecc = "aie.tools:aiecc"
-"aiecc.py" = "aie.compiler.aiecc.main:main"
-bootgen = "aie.tools:bootgen"
-"txn2mlir.py" = "aie.compiler.txn2mlir.main:main"
-xchesscc_wrapper = "aie.tools:xchesscc_wrapper"

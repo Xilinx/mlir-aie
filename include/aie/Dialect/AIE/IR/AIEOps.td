@@ -1056,20 +1056,21 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       auto bufferType = llvm::cast<mlir::BaseMemRefType>(getBuffer().getType());
       return dataLayout.getTypeSize(bufferType.getElementType());
     }
-    uint32_t getLenInBytes() {
+    uint64_t getLenInBytes() {
       assert(!getDynLen() && "getLenInBytes called on dma_bd with dynamic len; "
                              "the caller must take the dynamic-lowering path");
-      if (std::optional<uint32_t> len = getLen(); len.has_value())
-        return len.value() * getBufferElementTypeWidthInBytes();
+      if (std::optional<int32_t> len = getLen(); len.has_value())
+        return static_cast<uint64_t>(static_cast<uint32_t>(len.value())) *
+               static_cast<uint64_t>(getBufferElementTypeWidthInBytes());
       auto memrefType = llvm::dyn_cast<mlir::MemRefType>(getBuffer().getType());
       if (!memrefType)
         return 0; // Unranked memref without explicit len
-      return memrefType.getNumElements() * getBufferElementTypeWidthInBytes();
+      return static_cast<uint64_t>(memrefType.getNumElements()) *
+             static_cast<uint64_t>(getBufferElementTypeWidthInBytes());
     }
-    int32_t getOffsetInBytes() {
-      assert(!getDynOffset() && "getOffsetInBytes called on dma_bd with dynamic "
-                                "offset; the caller must take the dynamic-lowering path");
-      return getOffset() * getBufferElementTypeWidthInBytes();
+    int64_t getOffsetInBytes() {
+      return static_cast<int64_t>(getOffset()) *
+             static_cast<int64_t>(getBufferElementTypeWidthInBytes());
     }
   }];
 
@@ -1499,7 +1500,8 @@ def AIE_BufferOp: AIE_Op<"buffer", [
         OptionalAttr<StrAttr>:$sym_name,
         OptionalAttr<AIEI32Attr>:$address,
         OptionalAttr<ElementsAttr>:$initial_value,
-        OptionalAttr<AIEI32Attr>:$mem_bank
+        OptionalAttr<AIEI32Attr>:$mem_bank,
+        DefaultValuedAttr<BoolAttr, "true">:$aligned
   );
 
   let results = (outs AnyMemRef:$buffer);
@@ -1881,6 +1883,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        // Optional consumer element type for asymmetric transfer granularity.
+        // Producer sends elemType-sized transfers, consumer receives
+        // consumerElemType-sized transfers. Producer element size must be
+        // an integer multiple of consumer element size.
+        OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
@@ -1910,6 +1917,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `,`
         $elemNumber
     `)` attr-dict `:` $elemType
+    custom<ObjectFifoConsumerElemType>($consumerElemType)
     custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
   }];
 
@@ -1933,6 +1941,13 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     }
 
     AIE::BDDimLayoutArrayAttr getDimensionsFromStream(mlir::Value consumerTile);
+
+    /// Returns the consumer element type if set, otherwise the producer type.
+    mlir::Type getConsumerElemTypeOrDefault() {
+      if (auto ct = getConsumerElemType())
+        return ct.value();
+      return getElemType();
+    }
   }];
 
   let builders = [

@@ -55,7 +55,7 @@ jobs:
         run: |
           docker system prune -a -f
 
-      - uses: uraimo/run-on-arch-action@v2.5.0
+      - uses: uraimo/run-on-arch-action@v3
         name: Run commands
         id: runcmd
         with:
@@ -82,7 +82,7 @@ jobs:
 
             git submodule update --init --recursive
 
-            apt install python3.10-venv
+            apt install python3.12-venv
             python -m venv aie-venv
             source aie-venv/bin/activate
             pip install --upgrade pip
