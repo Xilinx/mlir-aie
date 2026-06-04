@@ -42,10 +42,10 @@ devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
 ifeq ($(dtype_in),bf16)
-	dtype_in_cpp=std::bfloat16_t
+	dtype_in_cpp=test_utils::bfloat16_t
 endif
 ifeq ($(dtype_out),bf16)
-	dtype_out_cpp=std::bfloat16_t
+	dtype_out_cpp=test_utils::bfloat16_t
 	dtype_acc_cpp=float
 endif
 ifeq ($(dtype_in),i16)
