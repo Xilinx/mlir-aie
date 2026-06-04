@@ -113,6 +113,9 @@ Functions</h2></td></tr>
 <tr class="memitem:a7d912a4e1d762dfa0a56b510d218a235" id="r_a7d912a4e1d762dfa0a56b510d218a235"><td class="memItemLeft" align="right" valign="top">MLIR_CAPI_EXPORTED <a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="TargetModel_8h.html#a7d912a4e1d762dfa0a56b510d218a235">aieTargetModelIsNPU</a> (AieTargetModel targetModel)</td></tr>
 <tr class="memdesc:a7d912a4e1d762dfa0a56b510d218a235"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns true if this is an NPU target model.  <br /></td></tr>
 <tr class="separator:a7d912a4e1d762dfa0a56b510d218a235"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ace5e6d38a65cb604973b9bb7894c6cab" id="r_ace5e6d38a65cb604973b9bb7894c6cab"><td class="memItemLeft" align="right" valign="top">MLIR_CAPI_EXPORTED uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="TargetModel_8h.html#ace5e6d38a65cb604973b9bb7894c6cab">aieTargetModelGetTargetArch</a> (AieTargetModel targetModel)</td></tr>
+<tr class="memdesc:ace5e6d38a65cb604973b9bb7894c6cab"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the AIE architecture (as the underlying value of xilinx::AIE::AIEArch: AIE1=1, AIE2=2, AIE2p=3).  <br /></td></tr>
+<tr class="separator:ace5e6d38a65cb604973b9bb7894c6cab"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9d7be135a6857143b2c68cd350de39c5" id="r_a9d7be135a6857143b2c68cd350de39c5"><td class="memItemLeft" align="right" valign="top">MLIR_CAPI_EXPORTED uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="TargetModel_8h.html#a9d7be135a6857143b2c68cd350de39c5">aieTargetModelGetTileType</a> (AieTargetModel targetModel, int col, int row)</td></tr>
 <tr class="memdesc:a9d7be135a6857143b2c68cd350de39c5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the tile type for the given coordinates.  <br /></td></tr>
 <tr class="separator:a9d7be135a6857143b2c68cd350de39c5"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -303,7 +306,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00204">204</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00208">208</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#acae8887d9d64be1a250a2f14eea3ec43">xilinx::AIE::AIETargetModel::getColumnShift()</a>.</p>
 
@@ -803,9 +806,33 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00208">208</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00212">212</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#af656587d8e0fb2cdf6a313aa7d52d986">xilinx::AIE::AIETargetModel::getRowShift()</a>.</p>
+
+</div>
+</div>
+<a id="ace5e6d38a65cb604973b9bb7894c6cab" name="ace5e6d38a65cb604973b9bb7894c6cab"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ace5e6d38a65cb604973b9bb7894c6cab">&#9670;&#160;</a></span>aieTargetModelGetTargetArch()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetTargetArch </td>
+          <td>(</td>
+          <td class="paramtype">AieTargetModel&#160;</td>
+          <td class="paramname"><em>targetModel</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Returns the AIE architecture (as the underlying value of xilinx::AIE::AIEArch: AIE1=1, AIE2=2, AIE2p=3). </p>
+
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00204">204</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a23aafee7ea4a623e8df922cdc3d4e8a7">xilinx::AIE::AIETargetModel::getTargetArch()</a>.</p>
 
 </div>
 </div>
@@ -1618,7 +1645,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Jun 4 2026 05:40:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jun 4 2026 14:40:08 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

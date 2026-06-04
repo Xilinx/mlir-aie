@@ -13,6 +13,7 @@ var searchData=
   ['anymemtile_10',['AnyMemTile',['../namespaceiron_1_1device_1_1tile.html#a6d419557ee8b784327c3b2bdeaee943d',1,'iron::device::tile']]],
   ['anyshimtile_11',['AnyShimTile',['../namespaceiron_1_1device_1_1tile.html#a78ad06e8f701004c6167760cbdc140d3',1,'iron::device::tile']]],
   ['arange_12',['arange',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a08e2d55b9975b73c703bc7c84ca9fa90',1,'utils.hostruntime.tensor_class.Tensor.arange()'],['../namespaceutils.html#acf2d302f79941de9b4c635dfe98dab56',1,'utils.arange()']]],
-  ['arg_5ftypes_13',['arg_types',['../classiron_1_1kernel_1_1BaseKernel.html#a2c43096f97c1f389cb593f24fe6a42d8',1,'iron::kernel::BaseKernel']]],
-  ['arr_5ftype_14',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#ab4aafe0b2e38225956d412252894b65d',1,'iron::runtime::data::RuntimeData']]]
+  ['arch_13',['arch',['../classiron_1_1device_1_1device_1_1Device.html#a8d788b4f9e7576f10356be77ae5c48e7',1,'iron::device::device::Device']]],
+  ['arg_5ftypes_14',['arg_types',['../classiron_1_1kernel_1_1BaseKernel.html#a2c43096f97c1f389cb593f24fe6a42d8',1,'iron::kernel::BaseKernel']]],
+  ['arr_5ftype_15',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#ab4aafe0b2e38225956d412252894b65d',1,'iron::runtime::data::RuntimeData']]]
 ];
