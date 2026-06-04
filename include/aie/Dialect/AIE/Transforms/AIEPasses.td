@@ -62,7 +62,7 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
            "llvm::cl::values("
              "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
                         "\"sequential_placer\", \"Sequential column-major placement\"), "
-             "clEnumValN(xilinx::AIE::PlacerType::SABasedPlacer, "
+             "clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "
                         "\"sa_placer\", \"Simulated annealing placement\"))">,
     Option<"clCoresPerCol", "cores-per-col", "int",
            /*default=*/"-1",

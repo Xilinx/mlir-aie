@@ -20,7 +20,7 @@
 namespace xilinx::AIE {
 
 /// Placement algorithm type for pass option
-enum class PlacerType { SequentialPlacer, SABasedPlacer };
+enum class PlacerType { SequentialPlacer, SAPlacer };
 
 /// Get DMA channel capacity (maxIn, maxOut) for a tile position.
 inline std::pair<int, int> getDMACapacity(const AIETargetModel &tm,
@@ -469,14 +469,14 @@ public:
   }
 
   void cool() {
-    // Adaptive cooling based on acceptance ratio (similar to VPR/npu-flow).
+    // Adaptive cooling based on acceptance ratio.
     // When stuck (low acceptance), slow cooling to give more exploration.
     // When progressing well, cool faster to converge.
     if (!inGreedyStage) {
       double ratio = getAcceptanceRatio();
       // Adaptive factors close to 1.0 since cool() is called per
-      // iteration (every movesPerIter moves). Target: ~60K iterations
-      // total, temperature should reach ~1 around 70% of iterations.
+      // iteration (every movesPerIter moves). Temperature should reach ~1
+      // around 70% of iterations.
       double adaptiveFactor;
       if (ratio > 0.96)
         adaptiveFactor = 0.995; // accepting too much → cool faster
@@ -546,9 +546,9 @@ struct NetInfo {
 // All tile types (compute, mem, shim) participate in SA moves. After SA
 // converges, a merge pass collapses mem/shim logical tiles that landed in the
 // same column onto a shared physical tile when DMA capacity permits.
-class SABasedPlacer : public Placer {
+class SAPlacer : public Placer {
 public:
-  explicit SABasedPlacer(unsigned seed = 0) : rngSeed(seed) {}
+  explicit SAPlacer(unsigned seed = 0) : rngSeed(seed) {}
 
   mlir::LogicalResult place(DeviceOp device) override;
   llvm::StringRef getName() const override { return "sa_placer"; }
@@ -630,9 +630,9 @@ private:
   int computeMemoryPressure() const;
   // Adjacency violation penalty: weighted Manhattan distance to nearest
   // valid offset for each edge. Used for cascade adjacency.
-  int computeAdjacencyPenalty(
-      const Adjacency &adj,
-      llvm::ArrayRef<std::pair<int, int>> validOffsets, int weight) const;
+  int computeAdjacencyPenalty(const Adjacency &adj,
+                              llvm::ArrayRef<std::pair<int, int>> validOffsets,
+                              int weight) const;
   // Generate objectfifo.allocate ops for:
   // (A) intratile fifos relocated to neighbor tiles (overflow resolution)
   // (B) shared-mem fifos where SA chose non-default buffer tile

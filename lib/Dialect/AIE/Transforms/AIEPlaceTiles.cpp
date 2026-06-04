@@ -80,8 +80,8 @@ struct AIEPlaceTilesPass
           std::make_shared<SequentialPlacer>(coresPerCol, clMergeLogicalTiles);
       break;
     }
-    case PlacerType::SABasedPlacer:
-      placer = std::make_shared<SABasedPlacer>(clSASeed);
+    case PlacerType::SAPlacer:
+      placer = std::make_shared<SAPlacer>(clSASeed);
       break;
     }
 
@@ -119,9 +119,8 @@ struct AIEPlaceTilesPass
         OpBuilder builder(ofOp->getContext());
         builder.setInsertionPointAfter(ofOp);
 
-        TileOp delegateTile =
-            TileOp::getOrCreate(builder, device, delegateTileID.col,
-                                delegateTileID.row);
+        TileOp delegateTile = TileOp::getOrCreate(
+            builder, device, delegateTileID.col, delegateTileID.row);
         ObjectFifoAllocateOp::create(
             builder, builder.getUnknownLoc(),
             SymbolRefAttr::get(builder.getContext(), ofOp.getSymName()),

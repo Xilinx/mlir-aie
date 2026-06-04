@@ -1,4 +1,4 @@
-//===- AIESABasedPlacer.cpp -------------------------------------*- C++ -*-===//
+//===- AIESAPlacer.cpp ------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -25,16 +25,15 @@ using namespace xilinx::AIE;
 static constexpr int kMemPenaltyFactor = 30; // per KB of unresolved overflow
 static constexpr int kDmaPenaltyFactor = 20; // per channel or BD over limit
 static constexpr int kCascadeWeight = 30;    // per Manhattan distance unit
-static constexpr int kPressureFactor = 3;    // soft pressure per KB over threshold
+static constexpr int kPressureFactor = 3; // soft pressure per KB over threshold
 static constexpr double kPressureThreshold = 0.75; // utilization threshold
 
 //===----------------------------------------------------------------------===//
 // Net model
 //===----------------------------------------------------------------------===//
 
-void SABasedPlacer::buildNetModel(
-    SmallVector<ObjectFifoCreateOp> &objectFifos,
-    SmallVector<ObjectFifoLinkOp> &objectFifoLinks) {
+void SAPlacer::buildNetModel(SmallVector<ObjectFifoCreateOp> &objectFifos,
+                             SmallVector<ObjectFifoLinkOp> &objectFifoLinks) {
   nets.clear();
   tileToNetIndices.clear();
 
@@ -67,7 +66,7 @@ void SABasedPlacer::buildNetModel(
   }
 }
 
-int SABasedPlacer::computeNetHPWL(const NetInfo &net) const {
+int SAPlacer::computeNetHPWL(const NetInfo &net) const {
   int spanCol = net.bb.maxCol - net.bb.minCol;
   int spanRow = net.bb.maxRow - net.bb.minRow;
   int hpwl = spanCol + spanRow;
@@ -80,14 +79,14 @@ int SABasedPlacer::computeNetHPWL(const NetInfo &net) const {
   return hpwl + area;
 }
 
-int SABasedPlacer::computeTotalHPWL() const {
+int SAPlacer::computeTotalHPWL() const {
   int total = 0;
   for (const auto &net : nets)
     total += computeNetHPWL(net);
   return total;
 }
 
-void SABasedPlacer::initBoundingBoxes() {
+void SAPlacer::initBoundingBoxes() {
   for (auto &net : nets) {
     if (net.endpoints.empty())
       continue;
@@ -133,7 +132,7 @@ void SABasedPlacer::initBoundingBoxes() {
 // Incremental move evaluation
 //===----------------------------------------------------------------------===//
 
-int SABasedPlacer::evaluateMove(
+int SAPlacer::evaluateMove(
     Operation *tile, TileID newPos,
     SmallVector<std::pair<size_t, NetBoundingBox>> &backups) {
   backups.clear();
@@ -191,7 +190,7 @@ int SABasedPlacer::evaluateMove(
   return deltaCost;
 }
 
-void SABasedPlacer::revertMove(
+void SAPlacer::revertMove(
     SmallVector<std::pair<size_t, NetBoundingBox>> &backups) {
   for (auto &[netIdx, savedBB] : backups)
     nets[netIdx].bb = savedBB;
@@ -201,7 +200,7 @@ void SABasedPlacer::revertMove(
 // Move generation
 //===----------------------------------------------------------------------===//
 
-bool SABasedPlacer::isLegalPosition(Operation *tile, TileID pos) const {
+bool SAPlacer::isLegalPosition(Operation *tile, TileID pos) const {
   auto it = tileTypes.find(tile);
   if (it == tileTypes.end())
     return false;
@@ -226,7 +225,7 @@ bool SABasedPlacer::isLegalPosition(Operation *tile, TileID pos) const {
 //===----------------------------------------------------------------------===//
 
 // Add a single fifo's contributions to memory and DMA usage maps.
-void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
+void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   const auto &fb = fifoBuffers[fifoIdx];
   Operation *prod = fb.producer;
   if (!prod)
@@ -374,7 +373,7 @@ void SABasedPlacer::addFifoContribution(size_t fifoIdx, int sign) {
     currentDMAUsage[prodPos].second += sign;
 }
 
-void SABasedPlacer::initResourceTracking() {
+void SAPlacer::initResourceTracking() {
   currentMemUsage.clear();
   currentDMAUsage.clear();
   sharedMemDestination.clear();
@@ -412,7 +411,7 @@ void SABasedPlacer::initResourceTracking() {
   cachedResourcePenalty = computePenaltyFromMaps();
 }
 
-int SABasedPlacer::computeMemoryPressure() const {
+int SAPlacer::computeMemoryPressure() const {
   int64_t coreCapacity = targetModel->getLocalMemorySize();
   int64_t memTileCapacity = targetModel->getMemTileSize();
   int pressure = 0;
@@ -434,7 +433,7 @@ int SABasedPlacer::computeMemoryPressure() const {
   return pressure;
 }
 
-int SABasedPlacer::computePenaltyFromMaps() const {
+int SAPlacer::computePenaltyFromMaps() const {
   return computeMemTileSpilloverPenalty() + computeCoreTileOverflowPenalty() +
          computeDMAChannelPenalty() + computeBDCountPenalty();
 }
@@ -445,7 +444,7 @@ int SABasedPlacer::computePenaltyFromMaps() const {
 // the home tile is full. We simulate this with per-buffer granularity
 // so that competing spills from adjacent MemTiles correctly consume
 // shared neighbor capacity.
-int SABasedPlacer::computeMemTileSpilloverPenalty() const {
+int SAPlacer::computeMemTileSpilloverPenalty() const {
   int64_t memTileCapacity = targetModel->getMemTileSize();
   int numCols = targetModel->columns();
   int penalty = 0;
@@ -546,7 +545,7 @@ int SABasedPlacer::computeMemTileSpilloverPenalty() const {
 
 // Penalizes core tiles whose buffer usage exceeds local memory, accounting
 // for intratile fifos that can be relocated to a neighbor via allocate.
-int SABasedPlacer::computeCoreTileOverflowPenalty() const {
+int SAPlacer::computeCoreTileOverflowPenalty() const {
   int64_t coreCapacity = targetModel->getLocalMemorySize();
   int penalty = 0;
 
@@ -632,7 +631,7 @@ int SABasedPlacer::computeCoreTileOverflowPenalty() const {
   return penalty;
 }
 
-int SABasedPlacer::computeDMAChannelPenalty() const {
+int SAPlacer::computeDMAChannelPenalty() const {
   int penalty = 0;
   for (auto &[tilePos, usage] : currentDMAUsage) {
     auto [maxIn, maxOut] = getDMACapacity(*targetModel, tilePos);
@@ -645,7 +644,7 @@ int SABasedPlacer::computeDMAChannelPenalty() const {
 }
 
 // Penalizes MemTiles that exceed their BD slot limit.
-int SABasedPlacer::computeBDCountPenalty() const {
+int SAPlacer::computeBDCountPenalty() const {
   int memTileBDMax = targetModel->getNumBDs(AIETileType::MemTile);
   int penalty = 0;
 
@@ -680,15 +679,14 @@ int SABasedPlacer::computeBDCountPenalty() const {
   return penalty;
 }
 
-int SABasedPlacer::computeAdjacencyPenalty(
+int SAPlacer::computeAdjacencyPenalty(
     const Adjacency &adj, ArrayRef<std::pair<int, int>> validOffsets,
     int weight) const {
   int penalty = 0;
   for (auto [first, second] : adj.edges) {
     auto firstIt = currentPlacement.find(first.getOperation());
     auto secondIt = currentPlacement.find(second.getOperation());
-    if (firstIt == currentPlacement.end() ||
-        secondIt == currentPlacement.end())
+    if (firstIt == currentPlacement.end() || secondIt == currentPlacement.end())
       continue;
 
     TileID firstPos = firstIt->second;
@@ -707,7 +705,7 @@ int SABasedPlacer::computeAdjacencyPenalty(
   return penalty;
 }
 
-void SABasedPlacer::generateAllocates() {
+void SAPlacer::generateAllocates() {
   int64_t coreCapacity = targetModel->getLocalMemorySize();
   DenseSet<size_t> emittedFifoIndices;
 
@@ -833,7 +831,7 @@ void SABasedPlacer::generateAllocates() {
   }
 }
 
-int SABasedPlacer::updateResourcePenalty(
+int SAPlacer::updateResourcePenalty(
     const SmallVector<std::pair<Operation *, TileID>> &oldPlacements) {
   // Collect all fifo indices affected by the moved tiles
   DenseSet<size_t> affectedFifos;
@@ -890,7 +888,7 @@ int SABasedPlacer::updateResourcePenalty(
 // Move generation
 //===----------------------------------------------------------------------===//
 
-bool SABasedPlacer::generateShiftMove(Operation *&tile, TileID &newPos) {
+bool SAPlacer::generateShiftMove(Operation *&tile, TileID &newPos) {
   if (movableTiles.empty())
     return false;
 
@@ -932,7 +930,7 @@ bool SABasedPlacer::generateShiftMove(Operation *&tile, TileID &newPos) {
   return false;
 }
 
-bool SABasedPlacer::generateSwapMove(Operation *&tile1, Operation *&tile2) {
+bool SAPlacer::generateSwapMove(Operation *&tile1, Operation *&tile2) {
   if (movableTiles.size() < 2)
     return false;
 
@@ -975,7 +973,7 @@ bool SABasedPlacer::generateSwapMove(Operation *&tile1, Operation *&tile2) {
 // Initial temperature estimation
 //===----------------------------------------------------------------------===//
 
-double SABasedPlacer::estimateInitialTemperature(int numSamples) {
+double SAPlacer::estimateInitialTemperature(int numSamples) {
   // Collect delta costs from random moves
   std::vector<double> deltaCosts;
   deltaCosts.reserve(numSamples);
@@ -1038,7 +1036,7 @@ double SABasedPlacer::estimateInitialTemperature(int numSamples) {
 // Memory weight estimation (for initial placement sorting)
 //===----------------------------------------------------------------------===//
 
-int64_t SABasedPlacer::computeTileMemoryWeight(Operation *tile) const {
+int64_t SAPlacer::computeTileMemoryWeight(Operation *tile) const {
   int64_t weight = 0;
 
   // Static buffers (aie.buffer ops)
@@ -1083,7 +1081,7 @@ int64_t SABasedPlacer::computeTileMemoryWeight(Operation *tile) const {
 // Post-SA mem/shim merge
 //===----------------------------------------------------------------------===//
 
-LogicalResult SABasedPlacer::mergeMemShimTiles(DeviceOp device) {
+LogicalResult SAPlacer::mergeMemShimTiles(DeviceOp device) {
   // After SA, each logical tile has its own physical position.
   // Mem/shim tiles in the same column and of the same type share a
   // physical tile. The SA's penalty model already enforces DMA capacity
@@ -1117,7 +1115,7 @@ LogicalResult SABasedPlacer::mergeMemShimTiles(DeviceOp device) {
 // SA placement
 //===----------------------------------------------------------------------===//
 
-LogicalResult SABasedPlacer::place(DeviceOp device) {
+LogicalResult SAPlacer::place(DeviceOp device) {
   startTime = std::chrono::steady_clock::now();
 
   // Seed RNG
@@ -1141,7 +1139,7 @@ LogicalResult SABasedPlacer::place(DeviceOp device) {
   return finalizePlacement(device);
 }
 
-LogicalResult SABasedPlacer::collectAndBuildModel(DeviceOp device) {
+LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   collected = collectOperations(device);
   auto &logicalTiles = collected.logicalTiles;
   auto &objectFifos = collected.objectFifos;
@@ -1180,9 +1178,9 @@ LogicalResult SABasedPlacer::collectAndBuildModel(DeviceOp device) {
   return success();
 }
 
-void SABasedPlacer::buildFifoBufferInfo(
-    DeviceOp device, ArrayRef<ObjectFifoCreateOp> objectFifos,
-    ArrayRef<ObjectFifoLinkOp> objectFifoLinks) {
+void SAPlacer::buildFifoBufferInfo(DeviceOp device,
+                                   ArrayRef<ObjectFifoCreateOp> objectFifos,
+                                   ArrayRef<ObjectFifoLinkOp> objectFifoLinks) {
   mlir::DataLayout dataLayout(device->getParentOfType<ModuleOp>());
 
   for (auto ofOp : objectFifos) {
@@ -1323,8 +1321,7 @@ void SABasedPlacer::buildFifoBufferInfo(
   }
 }
 
-
-LogicalResult SABasedPlacer::generateInitialPlacement() {
+LogicalResult SAPlacer::generateInitialPlacement() {
   auto &logicalTiles = collected.logicalTiles;
 
   // Classify available tiles by type
@@ -1481,11 +1478,12 @@ LogicalResult SABasedPlacer::generateInitialPlacement() {
   return success();
 }
 
-void SABasedPlacer::initializeSAState() {
+void SAPlacer::initializeSAState() {
   initBoundingBoxes();
   initResourceTracking();
 
-  cascadePen = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets, kCascadeWeight);
+  cascadePen = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
+                                       kCascadeWeight);
   int memPressure = computeMemoryPressure();
   totalCost =
       computeTotalHPWL() + getResourcePenalty() + cascadePen + memPressure;
@@ -1500,7 +1498,7 @@ void SABasedPlacer::initializeSAState() {
                           << ", fifos: " << fifoBuffers.size() << "\n");
 }
 
-void SABasedPlacer::runSAMainLoop() {
+void SAPlacer::runSAMainLoop() {
   // Skip SA when there is nothing to optimize.
   bool hasCostTerms =
       !nets.empty() || !fifoBuffers.empty() || !cascadeAdjacency.edges.empty();
@@ -1598,8 +1596,8 @@ void SABasedPlacer::runSAMainLoop() {
       LLVM_DEBUG(llvm::dbgs()
                  << "[SA] Iter " << schedule.getIteration()
                  << " T=" << llvm::format("%.3e", schedule.getTemperature())
-                 << " cost=" << totalCost << " best=" << bestCost
-                 << " accept=" << llvm::format("%.3f", schedule.getAcceptanceRatio())
+                 << " cost=" << totalCost << " best=" << bestCost << " accept="
+                 << llvm::format("%.3f", schedule.getAcceptanceRatio())
                  << " d0=" << zeroDeltaMoves << " d+=" << posDeltaMoves
                  << " d-=" << negDeltaMoves << " uphill=" << acceptedUphill
                  << " rej=" << rejectedMoves
@@ -1608,7 +1606,8 @@ void SABasedPlacer::runSAMainLoop() {
     // Periodic full recompute to reset incremental cost drift.
     if (schedule.getIteration() % 10000 == 0 && schedule.getIteration() > 0) {
       initResourceTracking();
-      cascadePen = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets, kCascadeWeight);
+      cascadePen = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
+                                           kCascadeWeight);
       totalCost = computeTotalHPWL() + getResourcePenalty() + cascadePen +
                   computeMemoryPressure();
     }
@@ -1621,7 +1620,7 @@ void SABasedPlacer::runSAMainLoop() {
 // Move acceptance
 //===----------------------------------------------------------------------===//
 
-void SABasedPlacer::tryMultiTileMove(
+void SAPlacer::tryMultiTileMove(
     SmallVector<std::pair<Operation *, TileID>> &moves) {
   // Snapshot state for revert on rejection.
   SmallVector<std::pair<Operation *, TileID>> oldPlacements;
@@ -1649,7 +1648,8 @@ void SABasedPlacer::tryMultiTileMove(
   int oldCascade = cascadePen;
   int oldPressure = computeMemoryPressure();
   int newResPenalty = updateResourcePenalty(oldPlacements);
-  int newCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets, kCascadeWeight);
+  int newCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
+                                           kCascadeWeight);
   int newPressure = computeMemoryPressure();
   int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
               (newCascade - oldCascade) + (newPressure - oldPressure);
@@ -1707,11 +1707,12 @@ void SABasedPlacer::tryMultiTileMove(
 // Debug output
 //===----------------------------------------------------------------------===//
 
-void SABasedPlacer::printPlacementStats(int64_t elapsedMs) const {
+void SAPlacer::printPlacementStats(int64_t elapsedMs) const {
   int finalHPWL = computeTotalHPWL();
   int finalHardPenalty = getResourcePenalty();
   int finalPressure = computeMemoryPressure();
-  int finalCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets, kCascadeWeight);
+  int finalCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets,
+                                             kCascadeWeight);
   bool isLegal = (finalHardPenalty == 0 && finalCascade == 0);
 
   llvm::dbgs() << "[SA] Final HPWL=" << finalHPWL
@@ -1781,7 +1782,7 @@ void SABasedPlacer::printPlacementStats(int64_t elapsedMs) const {
 // Post-SA finalization
 //===----------------------------------------------------------------------===//
 
-LogicalResult SABasedPlacer::finalizePlacement(DeviceOp device) {
+LogicalResult SAPlacer::finalizePlacement(DeviceOp device) {
   // Restore best placement found during SA. Skip if SA loop didn't run
   // (bestOverallCost stays at INT_MAX when runSAMainLoop returns early).
   if (bestOverallCost < INT_MAX) {
