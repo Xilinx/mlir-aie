@@ -55,7 +55,7 @@ def test_symmetric_depths_collapse_to_int():
     w_cons_b = Worker(cons_body, fn_args=[of_sym.cons()], tile=Tile(0, 4))
 
     rt = Runtime()
-    with rt.sequence() as ():
+    with rt.sequence():
         rt.start(w_prod, w_cons_a, w_cons_b)
 
     module = Program(dev, rt).resolve_program()
