@@ -1,4 +1,4 @@
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Test for DMA address offset patching via offset_parameter (IRON flow).
@@ -22,30 +22,30 @@ import sys
 import numpy as np
 import pyxrt
 
-from aie.utils.parameter_scratchpad import ParameterScratchpad
+from aie.utils.hostruntime.xrtruntime.hostruntime import XRTHostRuntime
+from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
+    ParameterScratchpad,
+)
+from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 
 
 def main():
     N_INPUT = 32
     N_OUTPUT = 8
 
-    device = pyxrt.device(0)
+    runtime = XRTHostRuntime()
+    device = runtime._device
     elf = pyxrt.elf("aie.elf")
     context = pyxrt.hw_context(device, elf)
     kernel = pyxrt.ext.kernel(context, "test:sequence")
 
     # Input buffer: [0, 1, 2, ..., 31] as i32
-    input_data = np.arange(N_INPUT, dtype=np.int32)
-    bo_in = pyxrt.ext.bo(device, N_INPUT * 4)
-    bo_in.write(input_data.tobytes(), 0)
-    bo_in.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
-
-    # Output buffer: 8 x i32
-    bo_out = pyxrt.ext.bo(device, N_OUTPUT * 4)
+    in_tensor = XRTTensor(np.arange(N_INPUT, dtype=np.int32), dtype=np.int32)
+    out_tensor = XRTTensor((N_OUTPUT,), dtype=np.int32)
 
     run = pyxrt.run(kernel)
-    run.set_arg(0, bo_in)
-    run.set_arg(1, bo_out)
+    run.set_arg(0, in_tensor.buffer_object())
+    run.set_arg(1, out_tensor.buffer_object())
 
     params = ParameterScratchpad(run, "params.txt")
 
@@ -58,8 +58,8 @@ def main():
     all_pass = True
     for run_idx, (offset, expected) in enumerate(test_cases, 1):
         # Clear output
-        bo_out.write(bytes(N_OUTPUT * 4), 0)
-        bo_out.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+        out_tensor.data.fill(0)
+        out_tensor.to("npu")
 
         # Write offset parameter (in elements)
         params.write("input_offset", np.int32(offset))
@@ -68,9 +68,8 @@ def main():
         run.start()
         run.wait2()
 
-        bo_out.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
-        mv = bo_out.map()
-        result = np.frombuffer(bytes(mv[: N_OUTPUT * 4]), dtype=np.int32).tolist()
+        out_tensor.to("cpu")
+        result = out_tensor.numpy().tolist()
 
         status = "PASS" if result == expected else "FAIL"
         if result != expected:

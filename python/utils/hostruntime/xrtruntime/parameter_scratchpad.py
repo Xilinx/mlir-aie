@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """Host-side runtime for writing named parameters to AIE cores via the
 scratchpad mechanism.
 
@@ -14,7 +14,7 @@ class (exposed via pybind11).
 Usage::
 
     import pyxrt
-    from aie.utils.parameter_scratchpad import ParameterScratchpad
+    from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import ParameterScratchpad
 
     # ... get kernel from ELF, etc., then:
     run = pyxrt.run(kernel)

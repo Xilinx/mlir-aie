@@ -1,10 +1,7 @@
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # IRON design: DMA address offset patching via offset_parameter.
-#
-# REQUIRES: dont_run
-# RUN: echo
 #
 # The host prepares an input buffer with monotonically increasing i32 values
 # [0, 1, 2, ..., 31].  The core does a simple passthrough of 8 elements.

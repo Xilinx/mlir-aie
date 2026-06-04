@@ -1,10 +1,7 @@
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # IRON design: generates the MLIR for the scratchpad parameter test.
-#
-# REQUIRES: dont_run
-# RUN: echo
 #
 # Core computes: output = foo * bar (bf16 parameters set at runtime).
 #
