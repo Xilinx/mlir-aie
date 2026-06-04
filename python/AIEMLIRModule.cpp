@@ -358,6 +358,10 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self) {
              return aieTargetModelIsNPU(self.get());
            })
+      .def("get_target_arch",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetTargetArch(self.get());
+           })
       .def("get_column_shift",
            [](PyAieTargetModel &self) {
              return aieTargetModelGetColumnShift(self.get());
