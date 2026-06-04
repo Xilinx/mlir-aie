@@ -53,11 +53,10 @@ public:
     scratchpadBo = run.get_ctrl_scratchpad_bo();
     boMap = scratchpadBo.map<uint32_t *>();
     if (scratchpadBo.size() < scratchpadSizeBytes)
-      throw std::runtime_error(
-          "ParameterScratchpad: BO size (" +
-          std::to_string(scratchpadBo.size()) +
-          ") < required scratchpad size (" +
-          std::to_string(scratchpadSizeBytes) + ")");
+      throw std::runtime_error("ParameterScratchpad: BO size (" +
+                               std::to_string(scratchpadBo.size()) +
+                               ") < required scratchpad size (" +
+                               std::to_string(scratchpadSizeBytes) + ")");
     clear();
   }
 #endif
@@ -165,9 +164,9 @@ private:
       unsigned idx;
       file >> name >> idx >> type >> kind;
       if (idx > 255)
-        throw std::runtime_error(
-            "ParameterScratchpad: state_table_idx " + std::to_string(idx) +
-            " for '" + name + "' exceeds uint8_t range");
+        throw std::runtime_error("ParameterScratchpad: state_table_idx " +
+                                 std::to_string(idx) + " for '" + name +
+                                 "' exceeds uint8_t range");
       if (paramMap.count(name))
         throw std::runtime_error(
             "ParameterScratchpad: duplicate parameter name '" + name + "'");
