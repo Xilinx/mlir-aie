@@ -36,15 +36,6 @@ from aie.ir import IndexType, IntegerType, InsertionPoint
 from aie.extras import types as T
 
 
-def make_port_event(code, channel: int, master: bool = True):
-    try:
-        return trace_utils.events.PortEvent(
-            code, WireBundle.DMA, channel, master=master
-        )
-    except TypeError:
-        return trace_utils.events.PortEvent(code, channel, master=master)
-
-
 def main():
     argparser = argparse.ArgumentParser(
         prog="AIE Dynamic Matrix Multiplication MLIR Design (Single Core, Placed)",
@@ -185,10 +176,10 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                 address=0x600,
             )
 
-            # Set up tracing
+            # Set up a packet-switched flow from core to shim for tracing information
             tiles_to_trace = [compute_tile2]
             if enable_tracing:
-                trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
+                trace_utils.configure_trace(tiles_to_trace)
 
             # Core body with dynamic loop bounds via RTP
             @core(compute_tile2, stack_size=0xD00, dynamic_objfifo_lowering=True)
@@ -270,33 +261,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
             )
             def sequence(A, B, C):
                 if enable_tracing:
-                    trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace=tiles_to_trace,
-                        shim=shim_tile,
-                        trace_size=trace_size,
-                        coretile_events=[
-                            make_port_event(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                                0,
-                                master=True,
-                            ),
-                            make_port_event(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                                1,
-                                master=True,
-                            ),
-                            make_port_event(
-                                trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                                0,
-                                master=False,
-                            ),
-                            trace_utils.events.CoreEvent.INSTR_EVENT_0,
-                            trace_utils.events.CoreEvent.INSTR_EVENT_1,
-                            trace_utils.events.CoreEvent.MEMORY_STALL,
-                            trace_utils.events.CoreEvent.LOCK_STALL,
-                            trace_utils.events.CoreEvent.INSTR_VECTOR,
-                        ],
-                    )
+                    trace_utils.start_trace(trace_size=trace_size)
 
                 # Write RTP values for the static compilation size
                 npu_rtp_write("rtp", 0, K_div_k)
@@ -366,7 +331,6 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
 
                 dma_await_task(c_tasks[-1])
 
-                trace_utils.gen_trace_done_aie2(shim_tile)
 
     print(ctx.module)
 
