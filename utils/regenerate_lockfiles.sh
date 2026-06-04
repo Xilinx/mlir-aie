@@ -21,12 +21,14 @@ set -euo pipefail
 
 UV_VERSION="0.11.17"
 
-# Locate uv: prefer the pinned version if available; otherwise fall through to
-# whichever uv is on PATH and warn. Hard-fails if no uv at all.
-if command -v uv >/dev/null 2>&1; then
-  UV=uv
-elif [ -x "$HOME/.local/bin/uv" ]; then
+# Locate uv: prefer `$HOME/.local/bin/uv` because `pip install --user uv==...`
+# typically lands there, and falling back to whatever's first on PATH would
+# silently use an unpinned version. Otherwise take whatever's on PATH and warn
+# below if the version differs. Hard-fails if no uv at all.
+if [ -x "$HOME/.local/bin/uv" ]; then
   UV="$HOME/.local/bin/uv"
+elif command -v uv >/dev/null 2>&1; then
+  UV=uv
 else
   echo "error: uv not found." >&2
   echo "       install with:  pip install 'uv==${UV_VERSION}'" >&2

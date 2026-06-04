@@ -31,6 +31,25 @@ for bin in [
 setup(
     version=version,
     name="mlir-native-tools",
+    description=(
+        "Host-architecture build of MLIR/LLVM TableGen and related "
+        "code-generation tools, used during cross-compiled MLIR distro builds."
+    ),
+    long_description=(
+        "Host-architecture build of MLIR/LLVM TableGen and related "
+        "code-generation tools (`llvm-tblgen`, `mlir-tblgen`, `mlir-pdll`, "
+        "`mlir-linalg-ods-yaml-gen`, `llvm-config`, `FileCheck`).\n\n"
+        "Consumed by the cross-compiled `mlir` wheel to provide a runnable "
+        "TableGen during the target build. Not intended for standalone use."
+    ),
+    long_description_content_type="text/markdown",
+    url="https://github.com/Xilinx/mlir-aie",
+    license="Apache-2.0 WITH LLVM-exception",
+    project_urls={
+        "Source": "https://github.com/Xilinx/mlir-aie",
+        "Upstream LLVM": "https://github.com/llvm/llvm-project",
+        "Issues": "https://github.com/Xilinx/mlir-aie/issues",
+    },
     include_package_data=True,
     data_files=[("bin", data_files)],
 )

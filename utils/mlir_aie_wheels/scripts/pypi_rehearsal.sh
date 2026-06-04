@@ -17,6 +17,10 @@ WHEELS_IN=${1:?input wheel dir}
 WHEELS_OUT=${2:?output stripped wheel dir}
 LABEL=${3:-rehearsal}
 
+# Default GITHUB_STEP_SUMMARY to stdout when not running under Actions so the
+# script is also useful locally (set -u would otherwise abort on first ref).
+: "${GITHUB_STEP_SUMMARY:=/dev/stdout}"
+
 PYPI_DEFAULT_CAP=$((100 * 1024 * 1024))
 PYPI_CLOSE_THRESH=$((80 * 1024 * 1024))
 

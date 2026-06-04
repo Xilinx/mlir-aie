@@ -179,7 +179,8 @@ lit_config.parallelism_groups["concurrency"] = 1
 # NPU XRT tests should run serially to avoid resource contention
 lit_config.parallelism_groups["npu-xrt"] = 1
 
-if os.path.exists(os.path.join(config.llvm_tools_dir, "aie-lsp-server")):
+_lsp_server_basename = "aie-lsp-server.exe" if os.name == "nt" else "aie-lsp-server"
+if os.path.exists(os.path.join(config.llvm_tools_dir, _lsp_server_basename)):
     config.available_features.add("aie-lsp-server")
 
 if config.python_passes:
