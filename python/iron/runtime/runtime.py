@@ -161,7 +161,7 @@ class Runtime(Resolvable):
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
-            offset_parameter (Parameter | str | None, optional): A Parameter (or its name) whose value is used as the byte offset for this DMA transfer. Defaults to None.
+            offset_parameter (Parameter | str | None, optional): A Parameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -211,7 +211,7 @@ class Runtime(Resolvable):
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
-            offset_parameter (Parameter | str | None, optional): A Parameter (or its name) whose value is used as the byte offset for this DMA transfer. Defaults to None.
+            offset_parameter (Parameter | str | None, optional): A Parameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.

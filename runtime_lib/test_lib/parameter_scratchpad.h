@@ -52,6 +52,12 @@ public:
     parseParams(paramsPath);
     scratchpadBo = run.get_ctrl_scratchpad_bo();
     boMap = scratchpadBo.map<uint32_t *>();
+    if (scratchpadBo.size() < scratchpadSizeBytes)
+      throw std::runtime_error(
+          "ParameterScratchpad: BO size (" +
+          std::to_string(scratchpadBo.size()) +
+          ") < required scratchpad size (" +
+          std::to_string(scratchpadSizeBytes) + ")");
     clear();
   }
 #endif
@@ -64,9 +70,9 @@ public:
   }
 
   /// Write raw bytes (up to 4) by name, interpreted as a little-endian
-  /// uint32.  The bits are left-shifted by 2 (firmware requirement) and
-  /// delta-encoded against the previous write.
-  /// For addr-kind parameters, the value is written raw (no shift, no delta).
+  /// uint32.  For core-kind parameters, the bits are left-shifted by 2
+  /// (firmware requirement).
+  /// For addr-kind parameters, the value is written raw (no shift).
   void writeBytes(const std::string &name, const void *data, size_t len) {
     uint32_t bits = 0;
     std::memcpy(&bits, data, std::min(len, sizeof(bits)));
@@ -74,9 +80,8 @@ public:
   }
 
   /// Write a raw 32-bit value by name.  For core-kind parameters, the bits
-  /// are left-shifted by 2 (firmware requirement) and delta-encoded against
-  /// the previous write.  For addr-kind parameters, the value is written
-  /// directly (no shift-2, no delta encoding).
+  /// are left-shifted by 2 (firmware requirement).  For addr-kind parameters,
+  /// the value is written directly (no shift).
   void writeBits(const std::string &name, uint32_t bits) {
     auto it = paramMap.find(name);
     if (it == paramMap.end()) {
@@ -93,8 +98,9 @@ public:
     boMap[idx] = encoded;
   }
 
-  /// Write a typed parameter value. The raw bits of the value are
-  /// left-shifted by 2 as required by the firmware's UPDATE_REG Incr mode.
+  /// Write a typed parameter value. For core-kind parameters, the raw bits
+  /// are left-shifted by 2 as required by the firmware's UPDATE_REG Incr mode,
+  /// which means the 2 least-significant bits are lost (lossy for f32).
   /// Supports any type up to 32 bits (uint32_t, int16_t, std::bfloat16_t,
   /// float, etc.).
   template <typename T>
@@ -155,6 +161,13 @@ private:
       std::string name, type, kind;
       unsigned idx;
       file >> name >> idx >> type >> kind;
+      if (idx > 255)
+        throw std::runtime_error(
+            "ParameterScratchpad: state_table_idx " + std::to_string(idx) +
+            " for '" + name + "' exceeds uint8_t range");
+      if (paramMap.count(name))
+        throw std::runtime_error(
+            "ParameterScratchpad: duplicate parameter name '" + name + "'");
       paramMap[name] = static_cast<uint8_t>(idx);
       if (kind != "core" && kind != "addr") {
         throw std::runtime_error("ParameterScratchpad: invalid kind '" + kind +

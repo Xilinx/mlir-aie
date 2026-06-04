@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <cstdint>
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -21,6 +23,12 @@ PYBIND11_MODULE(_parameter_scratchpad, m) {
   py::class_<test_utils::ParameterScratchpad>(m, "ParameterScratchpad")
       .def(py::init([](py::buffer buf, const std::string &paramsPath) {
              py::buffer_info info = buf.request(/*writable=*/true);
+             if (reinterpret_cast<uintptr_t>(info.ptr) % alignof(uint32_t) !=
+                 0)
+               throw py::value_error("buffer must be 4-byte aligned");
+             if (info.itemsize * info.size < 4)
+               throw py::value_error(
+                   "buffer too small: need at least 4 bytes");
              auto *ptr = static_cast<uint32_t *>(info.ptr);
              return new test_utils::ParameterScratchpad(ptr, paramsPath);
            }),

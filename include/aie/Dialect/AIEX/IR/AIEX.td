@@ -1428,13 +1428,14 @@ def AIEX_ParameterOp: AIEX_Op<"parameter", [Symbol]> {
 
     The `type` attribute specifies the data type of the parameter (bf16, f32, or an integer type up to i32).
     For `kind == addr`, the `type` must be `i32`.
-    The actual encoding uses a 30-bit value range because the firmware masks
+    For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
     the lower 2 bits of the scratchpad register (see `aiex.read_parameter`
     for details on how values are shifted to work around this).
+    This means f32 values lose their 2 least-significant mantissa bits (lossy).
 
     You can manually specify the parameter synchronization point inside the runtime sequence using the `aiex.sync_parameters_from_host` op.
 
-    On the host, you can write parameters using the runtime library's `scratchpad_parameter.h` header library.
+    On the host, you can write parameters using the runtime library's `parameter_scratchpad.h` header library.
 
     See `test/npu-xrt/scratchpad_params` and `test/npu-xrt/scratchpad_params_python` for a full usage example.
 

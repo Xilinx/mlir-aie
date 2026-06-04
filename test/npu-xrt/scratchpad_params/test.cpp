@@ -11,6 +11,7 @@
 //
 
 #include <chrono>
+#include <cstring>
 #include <iostream>
 #include <stdfloat>
 #include <string>

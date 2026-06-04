@@ -15,7 +15,7 @@
 #   1. aiecc.py compiles aie.mlir → aie.elf + params.txt
 #   2. This script loads the ELF, creates a ParameterScratchpad from params.txt,
 #      writes bf16 parameters, and verifies the core computes foo * bar.
-#   3. A second run with different values tests delta encoding.
+#   3. A second run with different values tests parameter re-use across runs.
 
 import struct
 import sys
