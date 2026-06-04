@@ -70,6 +70,7 @@ xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_include_dir,
     config.xrt_bin_dir,
     config.aie_src_root,
+    llvm_config,
     config.vitis_components,
 )
 
