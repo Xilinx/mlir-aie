@@ -25,10 +25,10 @@ from aie.dialects.aiex import *
 from aie.dialects import arith, memref
 from aie.helpers.dialects.scf import if_
 from aie.extras.dialects.arith import constant
-from aie.extras import types as T
 import aie.utils.trace as trace_utils
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
+from aie.extras import types as T
 
 microkernel_mac_dim_map = {
     "npu": {
