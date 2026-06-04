@@ -140,25 +140,26 @@ struct AIELowerParametersPass
       auto buf = device.lookupSymbol<BufferOp>(bufRef.getAttr());
 
       builder.setInsertionPoint(readOp);
-      Value c0 = builder.create<arith::ConstantIndexOp>(readOp.getLoc(), 0);
-      Value raw = builder.create<memref::LoadOp>(readOp.getLoc(), buf, c0);
-      Value c2 = builder.create<arith::ConstantOp>(
-          readOp.getLoc(), builder.getI32IntegerAttr(2));
-      Value decoded = builder.create<arith::ShRUIOp>(readOp.getLoc(), raw, c2);
+      Value c0 = arith::ConstantIndexOp::create(builder, readOp.getLoc(), 0);
+      Value raw = memref::LoadOp::create(builder, readOp.getLoc(), buf, c0);
+      Value c2 = arith::ConstantOp::create(
+          builder, readOp.getLoc(), builder.getI32IntegerAttr(2));
+      Value decoded =
+          arith::ShRUIOp::create(builder, readOp.getLoc(), raw, c2);
 
       Type resultType = readOp.getResult().getType();
       Value result = decoded;
       if (resultType.isInteger() && resultType != builder.getI32Type()) {
-        result = builder.create<arith::TruncIOp>(readOp.getLoc(), resultType,
-                                                 decoded);
+        result = arith::TruncIOp::create(builder, readOp.getLoc(), resultType,
+                                         decoded);
       } else if (resultType.isBF16()) {
-        Value masked = builder.create<arith::TruncIOp>(
-            readOp.getLoc(), builder.getI16Type(), decoded);
-        result = builder.create<arith::BitcastOp>(readOp.getLoc(), resultType,
-                                                  masked);
+        Value masked = arith::TruncIOp::create(
+            builder, readOp.getLoc(), builder.getI16Type(), decoded);
+        result = arith::BitcastOp::create(builder, readOp.getLoc(), resultType,
+                                          masked);
       } else if (resultType.isF32()) {
-        result = builder.create<arith::BitcastOp>(readOp.getLoc(), resultType,
-                                                  decoded);
+        result = arith::BitcastOp::create(builder, readOp.getLoc(), resultType,
+                                          decoded);
       }
 
       readOp.getResult().replaceAllUsesWith(result);
@@ -179,8 +180,8 @@ struct AIELowerParametersPass
 
       TileOp tile = coreOp.getTileOp();
       builder.setInsertionPointAfter(tile);
-      auto lockOp = builder.create<LockOp>(
-          coreOp.getLoc(), builder.getIndexType(), tile.getResult(),
+      auto lockOp = LockOp::create(
+          builder, coreOp.getLoc(), builder.getIndexType(), tile.getResult(),
           /*lockID=*/IntegerAttr{}, builder.getI32IntegerAttr(0),
           /*sym_name=*/StringAttr{});
       syncLocks.push_back(lockOp.getResult());
