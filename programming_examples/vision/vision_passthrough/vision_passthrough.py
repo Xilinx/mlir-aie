@@ -8,19 +8,8 @@
 """Vision passthrough -- ``@iron.jit`` line-based image copy.
 
 A single AIE core copies a ``width x height`` 8-bit image one line at a
-time.  The ``passThroughLine`` kernel (selected via ``-DBIT_WIDTH=8`` from
-``aie_kernels/generic/passThrough.cc``) does the per-line memcpy.
-
-``aiecc_flags=["--alloc-scheme=basic-sequential"]`` matches the pre-merge
-Makefile's aiecc invocation; this baseline allocator produces the existing
-single-bank buffer layout (vision pipelines do not benefit from the 4-bank
-distribution that the default allocator gives matmul-style designs).
-
-Two invocation modes:
-
-  * standalone:   ``python3 vision_passthrough.py``
-        (verifies in-Python that output bytes equal input bytes)
-  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)
+time via ``passThroughLine`` (``-DBIT_WIDTH=8`` from
+``aie_kernels/generic/passThrough.cc``).
 """
 
 import argparse

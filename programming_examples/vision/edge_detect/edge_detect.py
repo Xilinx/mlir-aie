@@ -7,33 +7,12 @@
 # (c) Copyright 2024-2026 AMD Inc.
 """Vision edge-detect pipeline -- ``@iron.jit`` design.
 
-A 4-stage line-based pipeline on a single column:
-
   shim --> rgba2gray --> filter2d (3x3 Laplacian) --> threshold -->
                                                      gray2rgba+addWeighted --> shim
 
-All five kernels are pulled from ``aie.iron.kernels.vision``.  The filter2d
-worker reuses an inner Buffer holding the constant Laplacian kernel
-(cross-stencil with -16384 center / 4096 edges).  The gray2rgba+addWeighted
-worker combines the thresholded edge map with the original RGBA input
-(forwarded down via ``inOF_L2L1``).
-
-``aiecc_flags=["--alloc-scheme=basic-sequential"]`` matches the pre-merge
-Makefile's aiecc invocation; the default 4-bank allocator would shift
-buffer addresses for no perf gain on this single-column line-based design.
-
-Two invocation modes:
-
-  * standalone:   ``python3 edge_detect.py``  (JIT-compile + run + verify
-                  against the same numpy port of ``test.cpp``'s OpenCV
-                  pipeline: cv::cvtColor RGBA -> gray (BT.470 weights),
-                  cv::filter2D with float Laplacian and BORDER_REPLICATE,
-                  cv::threshold BINARY, cv::cvtColor GRAY -> RGB,
-                  cv::addWeighted with alpha=beta=1.0 (sum + saturate)).
-                  PASS criterion mirrors test.cpp exactly:
-                  ``error_per_pixel = sum(|actual - golden|) / (W * H)``
-                  must be ``< 2.0``.
-  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile).
+The filter2d worker reuses an inner Buffer holding the constant Laplacian
+kernel.  The gray2rgba+addWeighted worker combines the thresholded edge
+map with the original RGBA input (forwarded via ``inOF_L2L1``).
 """
 
 import argparse
@@ -289,10 +268,8 @@ def _rgba2gray_ref(rgba_uint8, height, width):
 
 
 def _filter2d_cv_ref(gray_uint8, height, width):
-    """Numpy equivalent of cv::filter2D with the unscaled Laplacian kernel
-    ``[[0,1,0],[1,-4,1],[0,1,0]]`` and ``cv::BORDER_REPLICATE`` -- matches
-    the reference computation in test.cpp.
-    """
+    """Numpy equivalent of cv::filter2D with the unscaled Laplacian
+    ``[[0,1,0],[1,-4,1],[0,1,0]]`` + BORDER_REPLICATE."""
     img = gray_uint8.reshape(height, width).astype(np.float32)
     padded = np.pad(img, 1, mode="edge")
     out = (
@@ -311,12 +288,7 @@ def _threshold_binary_ref(arr_uint8, thresh, max_val):
 
 
 def _gray2rgba_ref(gray_uint8):
-    """Replicate gray to all 3 RGB channels; alpha = 255.
-
-    Matches ``gray2rgba_aie``.  (test.cpp uses cv::COLOR_GRAY2BGR which is
-    3-channel; here we keep the design's RGBA layout for the addWeighted
-    step that consumes 4 bytes per pixel.)
-    """
+    """Replicate gray to R/G/B with alpha=255 (matches ``gray2rgba_aie``)."""
     flat = gray_uint8.reshape(-1)
     out = np.zeros((flat.size, 4), dtype=np.uint8)
     out[:, 0] = flat
@@ -327,14 +299,9 @@ def _gray2rgba_ref(gray_uint8):
 
 
 def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
-    """Numpy equivalent of cv::addWeighted: saturated linear combination.
-
-    test.cpp passes alpha=beta=1.0, gamma=0.0 -- so the OpenCV golden is
-    ``saturate(a + b)``.  Note this differs from the AIE
-    ``addweighted_aie`` formula (which is fixed-point with alpha=beta=16384
-    and SRS_SHIFT=14, computing ``(a+b)/2`` -- the C++ test PASSes
-    despite the divergence because the diffs land under the
-    ``epsilon=2.0`` mean-L1 tolerance).
+    """Numpy equivalent of cv::addWeighted: ``saturate(alpha*a + beta*b + gamma)``.
+    test.cpp passes alpha=beta=1.0, gamma=0.0; the AIE kernel computes
+    ``(a+b)/2`` in fixed-point — the diffs land under ``_EPSILON``.
     """
     tmp = a_uint8.astype(np.int32) * alpha + b_uint8.astype(np.int32) * beta + gamma
     return np.clip(tmp, 0, 255).astype(np.uint8)
@@ -377,10 +344,11 @@ def _run_and_verify(opts):
     ) / (opts.width * opts.height)
     print(f"Number of differences: {n_diff}, average L1 error: {error_per_pixel:.6f}")
 
-    if error_per_pixel < _EPSILON:
-        print("PASS!")
-    else:
-        sys.exit(f"FAIL! error_per_pixel {error_per_pixel:.6f} >= epsilon {_EPSILON}")
+    assert_pass(
+        error_per_pixel < _EPSILON,
+        True,
+        fail_msg=f"error_per_pixel {error_per_pixel:.6f} >= epsilon {_EPSILON}",
+    )
 
 
 def main():

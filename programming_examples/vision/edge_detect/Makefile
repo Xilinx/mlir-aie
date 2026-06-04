@@ -12,7 +12,6 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 EDGEDETECT_WIDTH = 1920
 EDGEDETECT_HEIGHT = 1080
 

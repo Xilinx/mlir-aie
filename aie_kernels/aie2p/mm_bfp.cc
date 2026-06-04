@@ -29,10 +29,10 @@ void zero_vectorized_v64bfp16ebs8(bfp16ebs8 *__restrict cOut) {
 // There is a CPU version of this function in the helper.h file.
 // `static` so distinct ExternalFunction .o builds of this TU (e.g.
 // MATMUL_ONLY vs ZERO_ONLY) don't both emit the symbol and clash at link.
-static void scalarShuffleMatrixForBfp16ebs8(size_t tileWidth, size_t tileHeight,
-                                            uint8_t *inBfpMatrix,
-                                            uint8_t *outBfpMatrix,
-                                            bool unshuffle = false) {
+[[maybe_unused]] static void
+scalarShuffleMatrixForBfp16ebs8(size_t tileWidth, size_t tileHeight,
+                                uint8_t *inBfpMatrix, uint8_t *outBfpMatrix,
+                                bool unshuffle = false) {
 
   tileWidth = tileWidth * 1.125;
 

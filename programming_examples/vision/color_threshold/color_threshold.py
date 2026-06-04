@@ -13,18 +13,6 @@ thresholded channels are joined back into RGBA.  Threshold value/max/type
 are read at runtime from per-channel ``Buffer(use_write_rtp=True)`` RTPs,
 gated by ``WorkerRuntimeBarrier``s so each worker waits for the runtime
 sequence's ``set_rtps()`` before reading.
-
-``thresholdLine`` comes from ``iron.kernels.vision``.
-
-``aiecc_flags=["--alloc-scheme=basic-sequential"]`` matches the pre-merge
-Makefile's aiecc invocation.
-
-Two invocation modes:
-
-  * standalone:   ``python3 color_threshold.py``  (JIT-compile + run on
-                  random input; output not verified -- use the C++/OpenCV
-                  host for pixel-level checks).
-  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile).
 """
 
 import argparse

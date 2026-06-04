@@ -7,27 +7,8 @@
 # (c) Copyright 2024-2026 AMD Inc.
 """Color detect -- ``@iron.jit`` HSV-hue-mask + bitwise-blend pipeline.
 
-A 4-worker line-based pipeline on a single column:
-
-  shim --> rgba2hue --> (threshold-upper, threshold-lower in parallel) -->
-           bitwiseOR --> gray2rgba --> bitwiseAND(original_rgba, mask) --> shim
-
-The two threshold workers run in parallel on independent tiles with
-different thresholds; the OR of their outputs is then expanded to RGBA
-and AND-ed pixel-wise with the original input (carried forward via
-``inOF_L2L1``) to produce the color-detected output.  All 5 kernels are
-pulled from ``iron.kernels.vision``.
-
-``aiecc_flags=["--alloc-scheme=basic-sequential"]`` matches the pre-merge
-Makefile's aiecc invocation.
-
-Two invocation modes:
-
-  * standalone:   ``python3 color_detect.py``  (JIT-compile + run + verify
-                  against a per-stage numpy reference mirroring the scalar
-                  ``rgba2hue_aie_scalar`` formula plus threshold / OR /
-                  gray2rgba / AND).
-  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile).
+shim --> rgba2hue --> (threshold-upper, threshold-lower in parallel) -->
+         bitwiseOR --> gray2rgba --> bitwiseAND(original_rgba, mask) --> shim
 """
 
 import argparse
@@ -226,12 +207,7 @@ def _compile_kwargs(opts):
 
 
 def _rgba2hue_ref(rgba_uint8):
-    """Numpy port of ``rgba2hue_aie_scalar`` from aie_kernels/aie2/rgba2hue.cc.
-
-    The vectorized variant runs only on AIE2 (NPU1); AIE2P (NPU2) takes the
-    scalar fallback via ``#ifdef __AIE2__`` in the kernel.  This is the
-    scalar formula.
-    """
+    """Numpy port of the scalar formula in aie_kernels/aie2/rgba2hue.cc."""
     rgba = rgba_uint8.reshape(-1, 4)
     r = rgba[:, 0].astype(np.int32)
     g = rgba[:, 1].astype(np.int32)
@@ -263,11 +239,7 @@ def _rgba2hue_ref(rgba_uint8):
 
 
 def _threshold_ref(arr_uint8, thresh, max_val, mode):
-    """threshold.cc reference (BIT_WIDTH=8 variants).  Modes used here:
-
-    * mode 0 (BINARY):    ``out = (in > thresh) ? max : 0``
-    * mode 4 (TOZERO_INV): ``out = (in > thresh) ? 0 : in``
-    """
+    """Numpy reference for threshold.cc (modes 0=BINARY, 4=TOZERO_INV)."""
     if mode == 0:
         return np.where(arr_uint8 > thresh, np.uint8(max_val), np.uint8(0))
     if mode == 4:

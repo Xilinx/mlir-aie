@@ -22,8 +22,16 @@ from aie.utils.verify import assert_pass
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("-n", "--num-elements", type=int, default=1024)
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="print every output element"
+    )
+    parser.add_argument(
+        "-n",
+        "--num-elements",
+        type=int,
+        default=1024,
+        help="number of int32 elements per input tensor (default: %(default)s)",
+    )
     args = parser.parse_args()
 
     dtype = np.int32
@@ -44,7 +52,8 @@ def main():
     if args.verbose:
         print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
         print("-" * 34)
-        for idx, (a, b, c) in enumerate(zip(input0[:10], input1[:10], output[:10])):
+        n = args.num_elements
+        for idx, (a, b, c) in enumerate(zip(input0[:n], input1[:n], output[:n])):
             print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
 
     assert_pass(
