@@ -162,12 +162,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
             object_fifo_link(memC, outC)
 
             # RTP buffer: [0] = K_div_k, [1] = tiles (M_div_m * N_div_n)
-            rtp_buf = buffer(
-                compute_tile2,
-                T.memref(16, T.i32()),
-                name="rtp",
-                address=0x600,
-            )
+            rtp_buf = buffer(compute_tile2, T.memref(2, T.i32()), name="rtp")
 
             # Set up a packet-switched flow from core to shim for tracing information
             tiles_to_trace = [compute_tile2]
