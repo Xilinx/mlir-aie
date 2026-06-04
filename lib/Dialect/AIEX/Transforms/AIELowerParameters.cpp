@@ -156,9 +156,6 @@ struct AIELowerParametersPass
                                                builder.getI16Type(), decoded);
         result = arith::BitcastOp::create(builder, readOp.getLoc(), resultType,
                                           masked);
-      } else if (resultType.isF32()) {
-        result = arith::BitcastOp::create(builder, readOp.getLoc(), resultType,
-                                          decoded);
       }
 
       readOp.getResult().replaceAllUsesWith(result);

@@ -100,9 +100,12 @@ public:
 
   /// Write a typed parameter value. For core-kind parameters, the raw bits
   /// are left-shifted by 2 as required by the firmware's UPDATE_REG Incr mode,
-  /// which means the 2 least-significant bits are lost (lossy for f32).
-  /// Supports any type up to 32 bits (uint32_t, int16_t, std::bfloat16_t,
-  /// float, etc.).
+  /// and the core right-shifts (unsigned) by 2 after reading. The round trip
+  /// therefore zeroes the top 2 bits of the value (the bottom 2 bits are
+  /// preserved). Types that fit in 30 bits (e.g. uint16_t, int16_t,
+  /// std::bfloat16_t, and uint32_t values < 2^30) round-trip losslessly.
+  /// `float` is not supported as a core-kind parameter (the verifier in
+  /// `--aie-lower-parameters` rejects it).
   template <typename T>
   void write(const std::string &name, T value) {
     static_assert(sizeof(T) <= 4, "Parameter values must be at most 32 bits");

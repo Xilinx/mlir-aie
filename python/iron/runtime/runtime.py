@@ -21,7 +21,7 @@ from ...utils import trace as trace_utils
 from ... import ir  # type: ignore
 
 from ...dialects.aie import tile
-from ...dialects.aiex import runtime_sequence
+from ...dialects.aiex import runtime_sequence, sync_parameters_from_host
 from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
@@ -438,6 +438,4 @@ class _SyncParametersTask(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        from ...dialects.aiex import sync_parameters_from_host
-
         sync_parameters_from_host(loc=loc, ip=ip)

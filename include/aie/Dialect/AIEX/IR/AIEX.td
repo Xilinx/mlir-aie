@@ -1426,12 +1426,11 @@ def AIEX_ParameterOp: AIEX_Op<"parameter", [Symbol]> {
     `core` if read by a core via `aiex.read_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
     Indices are unique across the entire module.
 
-    The `type` attribute specifies the data type of the parameter (bf16, f32, or an integer type up to i32).
+    The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
     For `kind == addr`, the `type` must be `i32`.
     For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
     the lower 2 bits of the scratchpad register (see `aiex.read_parameter`
     for details on how values are shifted to work around this).
-    This means f32 values lose their 2 least-significant mantissa bits (lossy).
 
     You can manually specify the parameter synchronization point inside the runtime sequence using the `aiex.sync_parameters_from_host` op.
 

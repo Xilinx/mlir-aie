@@ -58,8 +58,8 @@ class ParameterScratchpad:
 
         Args:
             name: The parameter name (must match a name in the params file).
-            value: A scalar value — ``int``, ``float``, or any type with
-                   a ``tobytes()`` method (``np.float32``, ``bfloat16``, etc.).
+            value: A scalar value — ``int``, or any type with a ``tobytes()``
+                   method (``np.int32``, ``bfloat16``, etc.). 
         """
         self._impl.write_bytes(name, _to_bytes(value))
 

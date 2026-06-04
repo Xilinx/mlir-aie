@@ -49,8 +49,10 @@ class Parameter(Resolvable):
         Args:
             name: Symbol name for the parameter (must be unique within the
                   device).
-            dtype: The numpy scalar type (e.g. ``np.int32``, ``np.float32``,
-                   ``bfloat16``).
+            dtype: The numpy scalar type (e.g. ``np.int32``, ``np.int16``,
+                   ``bfloat16``).  ``np.float32`` is not supported -- the
+                   scratchpad encoding zeroes the top 2 bits of the value,
+                   which clobbers the sign and top exponent bits of an f32.
         """
         self._name = name
         self._dtype = dtype

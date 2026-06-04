@@ -23,3 +23,17 @@ aie.device(npu2) {
     aie.end
   }
 }
+
+// -----
+
+// Verify that read_parameter rejects f32 result type.
+
+aiex.parameter @foo : f32
+aie.device(npu2) {
+  %t = aie.tile(0, 2)
+  aie.core(%t) {
+    // expected-error @+1 {{'aiex.read_parameter' op f32 parameters are not supported}}
+    %x = aiex.read_parameter @foo : f32
+    aie.end
+  }
+}

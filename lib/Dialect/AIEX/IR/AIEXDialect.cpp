@@ -1165,6 +1165,12 @@ LogicalResult AIEX::ReadParameterOp::verify() {
            << getParameter()
            << "' (aiex.parameter ops are declared at module scope)";
   }
+  if (getResult().getType().isF32()) {
+    return emitOpError(
+        "f32 parameters are not supported: the scratchpad encoding zeroes "
+        "the top 2 bits, which clobbers the sign bit and top exponent bit "
+        "of an f32. Use bf16 or an integer type up to i32 instead.");
+  }
   return success();
 }
 
