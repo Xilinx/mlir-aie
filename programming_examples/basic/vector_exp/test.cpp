@@ -9,9 +9,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "cxxopts.hpp"
-#include <bits/stdc++.h>
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -26,8 +30,8 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using INOUT0_DATATYPE = std::bfloat16_t;
-using INOUT1_DATATYPE = std::bfloat16_t;
+using INOUT0_DATATYPE = test_utils::bfloat16_t;
+using INOUT1_DATATYPE = test_utils::bfloat16_t;
 #endif
 
 // ----------------------------------------------------------------------------
@@ -37,16 +41,19 @@ template <typename T>
 int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
   int errors = 0;
   for (uint32_t i = 0; i < CSize; i++) {
-    std::bfloat16_t ref = exp(A[i]);
+    const float input = test_utils::bfloat16_to_float(A[i]);
+    const float actual = test_utils::bfloat16_to_float(C[i]);
+    const auto ref_bf16 = test_utils::bfloat16_from_float(std::exp(input));
+    const float ref = test_utils::bfloat16_to_float(ref_bf16);
     // Let's check if they are inf or nan, and if so just pass because
     // comparisions will then fail, even for matches
-    if (std::isinf(ref) || std::isinf(C[i]))
+    if (std::isinf(ref) || std::isinf(actual))
       break;
-    if (std::isnan(ref) || std::isnan(C[i]))
+    if (std::isnan(ref) || std::isnan(actual))
       break;
-    if (!test_utils::nearly_equal(ref, C[i], 0.128)) {
+    if (!test_utils::nearly_equal(ref, actual, 0.128)) {
       if (errors < 100) {
-        std::cout << "Error in output " << C[i] << " != " << ref << std::endl;
+        std::cout << "Error in output " << actual << " != " << ref << std::endl;
       } else if (errors == 100) {
         std::cout << "..." << std::endl;
         std::cout << "[Errors truncated]" << std::endl;
@@ -54,7 +61,7 @@ int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
       errors++;
     } else {
       if (verbosity > 1)
-        std::cout << "Correct output " << C[i] << " == " << ref << std::endl;
+        std::cout << "Correct output " << actual << " == " << ref << std::endl;
     }
   }
   return errors;
@@ -161,9 +168,8 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    std::uint16_t u16 = (std::uint16_t)i;
-    std::bfloat16_t bf16 = *(std::bfloat16_t *)&u16;
-    AVec[i] = bf16;
+    const std::uint16_t bits = static_cast<std::uint16_t>(i);
+    AVec[i] = test_utils::bfloat16_from_bits(bits);
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
@@ -203,7 +209,7 @@ int main(int argc, const char *argv[]) {
       /* Warmup iterations do not count towards average runtime. */
       continue;
     }
-    std::bfloat16_t *bufOut = bo_inout1.map<std::bfloat16_t *>();
+    INOUT1_DATATYPE *bufOut = bo_inout1.map<INOUT1_DATATYPE *>();
 
     // Copy output results and verify they are correct
     std::vector<INOUT1_DATATYPE> CVec(INOUT1_VOLUME);

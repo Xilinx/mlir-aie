@@ -50,6 +50,39 @@ aie.device(xcve2302) {
    %tile12 = aie.tile(1, 2)
    %tile23 = aie.tile(2, 3)
 
-   aie.objectfifo @of0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[[4, 5], [6, 7]]> : memref<2x2xi32>, 
+   aie.objectfifo @of0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[[4, 5], [6, 7]]> : memref<2x2xi32>,
                                                                                           dense<[[0, 1, 2], [3, 4, 5]]> : memref<2x2xi32>]
+}
+
+// -----
+
+// CHECK: producer element size (35) must be an integer multiple of consumer element size (10)
+
+aie.device(npu2) {
+   %tile01 = aie.tile(0, 1)
+   %tile02 = aie.tile(0, 2)
+
+   aie.objectfifo @of0 (%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<35xi32>> -> !aie.objectfifo<memref<10xi32>>
+}
+
+// -----
+
+// CHECK: producer and consumer must have the same scalar element type
+
+aie.device(npu2) {
+   %tile01 = aie.tile(0, 1)
+   %tile02 = aie.tile(0, 2)
+
+   aie.objectfifo @of0 (%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<40xi32>> -> !aie.objectfifo<memref<10xf32>>
+}
+
+// -----
+
+// CHECK: consumer element count must be positive
+
+aie.device(npu2) {
+   %tile01 = aie.tile(0, 1)
+   %tile02 = aie.tile(0, 2)
+
+   aie.objectfifo @of0 (%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<40xi32>> -> !aie.objectfifo<memref<0xi32>>
 }
