@@ -2062,6 +2062,72 @@ ParseResult DMABDOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseRParen())
     return failure();
 
+  // Optional dynamic SSA-i64 overrides for offset/len/sizes/strides.
+  // Syntax (each independently optional, fixed order):
+  //   dyn_offset(%v : i64)
+  //   dyn_len(%v : i64)
+  //   dyn_sizes(%a, %b, ... : i64, i64, ...)
+  //   dyn_strides(%a, %b, ... : i64, i64, ...)
+  OpAsmParser::UnresolvedOperand dynOffsetRaw{};
+  bool hasDynOffset = false;
+  OpAsmParser::UnresolvedOperand dynLenRaw{};
+  bool hasDynLen = false;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> dynSizesRaw;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> dynStridesRaw;
+
+  auto i64Ty = parser.getBuilder().getIntegerType(64);
+
+  if (succeeded(parser.parseOptionalKeyword("dyn_offset"))) {
+    if (parser.parseLParen() || parser.parseOperand(dynOffsetRaw) ||
+        parser.parseColon() || parser.parseKeyword("i64") ||
+        parser.parseRParen())
+      return failure();
+    hasDynOffset = true;
+  }
+
+  if (succeeded(parser.parseOptionalKeyword("dyn_len"))) {
+    if (parser.parseLParen() || parser.parseOperand(dynLenRaw) ||
+        parser.parseColon() || parser.parseKeyword("i64") ||
+        parser.parseRParen())
+      return failure();
+    hasDynLen = true;
+  }
+
+  auto parseDynList =
+      [&](StringRef kw,
+          SmallVectorImpl<OpAsmParser::UnresolvedOperand> &dst) -> ParseResult {
+    if (failed(parser.parseOptionalKeyword(kw)))
+      return success();
+    if (parser.parseLParen())
+      return failure();
+    if (failed(parser.parseOptionalRParen())) {
+      do {
+        OpAsmParser::UnresolvedOperand v;
+        if (parser.parseOperand(v))
+          return failure();
+        dst.push_back(v);
+      } while (succeeded(parser.parseOptionalComma()));
+      // Type list: a single ": i64, i64, ..."
+      if (parser.parseColon())
+        return failure();
+      // Parse one or more "i64" tokens separated by commas, matching count.
+      for (size_t i = 0; i < dst.size(); ++i) {
+        if (parser.parseKeyword("i64"))
+          return failure();
+        if (i + 1 < dst.size() && parser.parseComma())
+          return failure();
+      }
+      if (parser.parseRParen())
+        return failure();
+    }
+    return success();
+  };
+
+  if (parseDynList("dyn_sizes", dynSizesRaw))
+    return failure();
+  if (parseDynList("dyn_strides", dynStridesRaw))
+    return failure();
+
   auto loc = parser.getCurrentLocation();
   if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
@@ -2074,6 +2140,31 @@ ParseResult DMABDOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.resolveOperands(bufferOperands, bufferTypes, bufferOperandsLoc,
                              result.operands))
     return failure();
+
+  if (hasDynOffset) {
+    if (parser.resolveOperand(dynOffsetRaw, i64Ty, result.operands))
+      return failure();
+  }
+  if (hasDynLen) {
+    if (parser.resolveOperand(dynLenRaw, i64Ty, result.operands))
+      return failure();
+  }
+  for (auto &v : dynSizesRaw) {
+    if (parser.resolveOperand(v, i64Ty, result.operands))
+      return failure();
+  }
+  for (auto &v : dynStridesRaw) {
+    if (parser.resolveOperand(v, i64Ty, result.operands))
+      return failure();
+  }
+
+  // Set the operand_segment_sizes attribute (required by AttrSizedOperandSegments).
+  result.addAttribute(
+      DMABDOp::getOperandSegmentSizeAttr(),
+      parser.getBuilder().getDenseI32ArrayAttr(
+          {1, hasDynOffset ? 1 : 0, hasDynLen ? 1 : 0,
+           static_cast<int32_t>(dynSizesRaw.size()),
+           static_cast<int32_t>(dynStridesRaw.size())}));
 
   return success();
 }
@@ -2128,12 +2219,39 @@ void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
     printer.printAttributeWithoutType(getPadValueAttr());
   }
   printer << ")";
-  ::llvm::SmallVector<::llvm::StringRef, 2> elidedAttrs;
+  if (auto v = getDynOffset()) {
+    printer << " dyn_offset(" << v << " : i64)";
+  }
+  if (auto v = getDynLen()) {
+    printer << " dyn_len(" << v << " : i64)";
+  }
+  if (!getDynSizes().empty()) {
+    printer << " dyn_sizes(";
+    llvm::interleaveComma(getDynSizes(), printer.getStream(),
+                          [&](mlir::Value v) { printer << v; });
+    printer << " : ";
+    llvm::interleaveComma(
+        getDynSizes(), printer.getStream(),
+        [&](mlir::Value /*v*/) { printer << "i64"; });
+    printer << ")";
+  }
+  if (!getDynStrides().empty()) {
+    printer << " dyn_strides(";
+    llvm::interleaveComma(getDynStrides(), printer.getStream(),
+                          [&](mlir::Value v) { printer << v; });
+    printer << " : ";
+    llvm::interleaveComma(
+        getDynStrides(), printer.getStream(),
+        [&](mlir::Value /*v*/) { printer << "i64"; });
+    printer << ")";
+  }
+  ::llvm::SmallVector<::llvm::StringRef, 4> elidedAttrs;
   elidedAttrs.push_back("offset");
   elidedAttrs.push_back("len");
   elidedAttrs.push_back("dimensions");
   elidedAttrs.push_back("pad_dimensions");
   elidedAttrs.push_back("pad_value");
+  elidedAttrs.push_back(getOperandSegmentSizeAttr());
   printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
 }
 
@@ -2159,9 +2277,26 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
 }
 
 LogicalResult DMABDOp::verify() {
-  // Skip verification of the BDOp outside of mem operations.
-  // BDOps may appear elsewhere and subsequent lowerings will place them in the
-  // correct mem ops.
+  // Dynamic operand consistency / mutual-exclusion checks are structural
+  // invariants of the op itself: they must run regardless of parent context.
+  // In particular, dma_bd inside aiex.dma_configure_task is the primary
+  // user of the dynamic operands and is not one of the mem-op parents
+  // checked below.
+  bool hasDynDims = !getDynSizes().empty() || !getDynStrides().empty();
+  if (getDynSizes().size() != getDynStrides().size())
+    return emitOpError(
+        "dyn_sizes and dyn_strides must have the same number of operands.");
+  if (hasDynDims && getDimensions().has_value())
+    return emitOpError("dyn_sizes/dyn_strides and the static `dimensions` "
+                       "attribute are mutually exclusive.");
+  if ((hasDynDims || getDynOffset() || getDynLen()) &&
+      getPadDimensions().has_value())
+    return emitOpError(
+        "pad_dimensions is incompatible with dynamic dma_bd operands.");
+
+  // Skip the remaining (mem-op-context-specific) verification of the BDOp
+  // outside of mem operations. BDOps may appear elsewhere and subsequent
+  // lowerings will place them in the correct mem ops.
   Operation *p = (*this)->getParentOp();
   if (!llvm::isa<MemOp, MemTileDMAOp, ShimDMAOp, DMAOp>(*p)) {
     return success();
@@ -2178,7 +2313,8 @@ LogicalResult DMABDOp::verify() {
           "BDs only support BufferOp or ExternalBufferOp operands.");
   }
 
-  if (getLenInBytes() % 4)
+  // The static len-divisibility check cannot be performed when len is SSA.
+  if (!getDynLen() && getLenInBytes() % 4)
     return emitOpError("transfer length must be multiple of 4 (i.e., represent "
                        "4 byte aligned address)");
 
@@ -2292,7 +2428,7 @@ LogicalResult DMABDOp::verify() {
                            << " padding in 32-bit words.";
   }
   if (!isUnrankedMemRef &&
-      (parentTile.isMemTile() || parentTile.isCoreTile())) {
+      (parentTile.isMemTile() || parentTile.isCoreTile()) && !getDynOffset()) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
       int offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
@@ -2308,7 +2444,7 @@ LogicalResult DMABDOp::verify() {
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
-  if (!getLen() && !getBuffer().getType().hasStaticShape())
+  if (!getLen() && !getDynLen() && !getBuffer().getType().hasStaticShape())
     return emitOpError() << "buffer with dynamic shape requires static length.";
 
   if (getBurstLength() != 0 && !parentTile.isShimNOCTile())
@@ -2412,6 +2548,11 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     bool parentIsShim = parentTileLike && parentTileLike.isShimTile();
     bool inShimDMA = (bool)op->getParentOfType<ShimDMAOp>();
     if (!bufferIsExternal && !parentIsShim && !inShimDMA)
+      return mlir::failure();
+
+    // Don't canonicalize ops that have any dynamic SSA operands; the static
+    // path that this pattern produces does not apply to them.
+    if (op.getDynOffset() || op.getDynLen() || !op.getDynSizes().empty())
       return mlir::failure();
 
     // Only when ND dimensions are present and contiguous.

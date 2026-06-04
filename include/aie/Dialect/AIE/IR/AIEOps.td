@@ -887,7 +887,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   }];
 }
 
-def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
+def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
     This operation describes a buffer descriptor for DMA operations. In particular, it specifies
@@ -997,10 +997,41 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes
     `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default
     is 0). All counts are expressed in multiples of the element width.
+
+    #### Dynamic operands (SSA `i64`)
+
+    `dma_bd` accepts optional SSA `i64` overrides for the offset, length, and the
+    sizes/strides of the data-layout transformation:
+
+      * `dyn_offset` overrides the static `offset` attribute (in element-width units).
+      * `dyn_len` overrides the static `len` attribute (in element-width units).
+      * `dyn_sizes` and `dyn_strides` together override the static `dimensions`
+        attribute. They are *all-or-nothing*: either both are empty (and
+        `dimensions` is used), or both have the same non-empty length and the
+        static `dimensions` attribute must be absent. To reuse a static value in
+        a dimension, the user passes an `arith.constant` SSA value, which the
+        downstream lowering folds back to a constant word field.
+
+    Dynamic operands are restricted to shim NOC tiles because the dynamic
+    lowering emits per-word `npu.write32` ops that target the runtime sequence
+    on the shim. The user is responsible for ensuring the inner-most stride is 1
+    (this cannot be checked statically when expressed via SSA), and for
+    respecting the hardware d0 wrap-size 10-bit limit.
+
+    `pad_dimensions` is incompatible with dynamic operands.
   }];
 
   let arguments = (
     ins AnyRankedOrUnrankedMemRef:$buffer,
+        // Optional SSA-i64 overrides for offset/len; all-or-nothing dynamic
+        // dim overrides via dyn_sizes / dyn_strides. i64 minimises churn vs.
+        // existing infra (runtime_sequence args, scf.for index_cast results,
+        // arith chains used by `npu.dma_memcpy_nd` callers); the dynamic
+        // lowering path truncates to i32 at the BD-word boundary.
+        Optional<I64>:$dyn_offset,
+        Optional<I64>:$dyn_len,
+        Variadic<I64>:$dyn_sizes,
+        Variadic<I64>:$dyn_strides,
         // in multiples of element width (not bytes)
         DefaultValuedAttr<AIEI32Attr, "0">:$offset,
         // in multiples of element width (not bytes)
@@ -1026,6 +1057,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
       return dataLayout.getTypeSize(bufferType.getElementType());
     }
     uint32_t getLenInBytes() {
+      assert(!getDynLen() && "getLenInBytes called on dma_bd with dynamic len; "
+                             "the caller must take the dynamic-lowering path");
       if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
       auto memrefType = llvm::dyn_cast<mlir::MemRefType>(getBuffer().getType());
@@ -1033,7 +1066,11 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         return 0; // Unranked memref without explicit len
       return memrefType.getNumElements() * getBufferElementTypeWidthInBytes();
     }
-    int32_t getOffsetInBytes() { return getOffset() * getBufferElementTypeWidthInBytes(); }
+    int32_t getOffsetInBytes() {
+      assert(!getDynOffset() && "getOffsetInBytes called on dma_bd with dynamic "
+                                "offset; the caller must take the dynamic-lowering path");
+      return getOffset() * getBufferElementTypeWidthInBytes();
+    }
   }];
 
   let hasVerifier = 1;
@@ -1041,23 +1078,31 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let builders = [
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
       $_state.addOperands(buffer);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0, 0, 0}));
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims), [{
       $_state.addOperands(buffer);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0, 0, 0}));
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("dimensions", dims);
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims), [{
       $_state.addOperands(buffer);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0, 0, 0}));
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("pad_dimensions", paddims);
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims), [{
       $_state.addOperands(buffer);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0, 0, 0}));
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("dimensions", dims);
@@ -1065,12 +1110,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "PacketInfoAttr":$pkt), [{
       $_state.addOperands(buffer);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0, 0, 0}));
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("packet", pkt);
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "PacketInfoAttr":$pkt), [{
       $_state.addOperands(buffer);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0, 0, 0}));
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("dimensions", dims);
@@ -1078,6 +1127,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
       $_state.addOperands(buffer);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0, 0, 0}));
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("pad_dimensions", paddims);
@@ -1085,6 +1136,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
       $_state.addOperands(buffer);
+      $_state.addAttribute(getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0, 0, 0}));
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
       $_state.addAttribute("dimensions", dims);

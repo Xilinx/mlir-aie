@@ -10,6 +10,55 @@ import numpy as np
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
+from ._aie_ops_gen import dma_bd as _dma_bd_raw
+
+
+def dma_bd(
+    buffer,
+    dyn_sizes=None,
+    dyn_strides=None,
+    *,
+    dyn_offset=None,
+    dyn_len=None,
+    offset=None,
+    len=None,
+    dimensions=None,
+    pad_dimensions=None,
+    pad_value=None,
+    bd_id=None,
+    packet=None,
+    burst_length=None,
+    next_bd_id=None,
+    loc=None,
+    ip=None,
+):
+    """Backward-compatible wrapper for the auto-generated `aie.dma_bd` op.
+
+    The TableGen op gained `Variadic<I32>` `dyn_sizes` / `dyn_strides`
+    operands, which the auto-generated builder exposes as required positional
+    arguments. To keep existing call-sites working (e.g. `dma_bd(buf,
+    offset=0, len=N, dimensions=[...])`) we default them to empty lists
+    here. SSA-driven dynamism is normally requested through the higher-level
+    wrapper in `aie.dialects.aiex`.
+    """
+    return _dma_bd_raw(
+        buffer,
+        [] if dyn_sizes is None else dyn_sizes,
+        [] if dyn_strides is None else dyn_strides,
+        dyn_offset=dyn_offset,
+        dyn_len=dyn_len,
+        offset=offset,
+        len=len,
+        dimensions=dimensions,
+        pad_dimensions=pad_dimensions,
+        pad_value=pad_value,
+        bd_id=bd_id,
+        packet=packet,
+        burst_length=burst_length,
+        next_bd_id=next_bd_id,
+        loc=loc,
+        ip=ip,
+    )
 
 
 # TraceShimRouting enum (from AIETraceAttrs.td, not yet auto-generated)
