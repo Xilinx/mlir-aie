@@ -1029,8 +1029,12 @@ LogicalResult verifyPackUnpackOp(T op) {
   unsigned resultLanes = getVectorLaneSize(resultType);
 
   Type stype = sourceType.getElementType();
-  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   Type rtype = resultType.getElementType();
+  // Pack/unpack are integer packing ops; reject non-integer element types
+  // (e.g. f16/bf16) even though they share bitwidths with the legal forms.
+  if (!isa<IntegerType>(stype) || !isa<IntegerType>(rtype))
+    return op.emitError("requires integer element types");
+  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
 
   if (isa<PackOp>(op)) {

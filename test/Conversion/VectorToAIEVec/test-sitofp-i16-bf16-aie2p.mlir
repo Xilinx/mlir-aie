@@ -56,8 +56,11 @@ func.func @sitofp_v16_i16_bf16(%v: vector<16xi16>) -> vector<16xbf16> {
 // CHECK-LABEL: @sitofp_v64_i16_bf16(
 // CHECK-SAME:  %[[A:.*]]: vector<64xi16>
 func.func @sitofp_v64_i16_bf16(%v: vector<64xi16>) -> vector<64xbf16> {
-  // CHECK:  %[[LO:.*]] = vector.shuffle %[[A]], %[[A]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<64xi16>, vector<64xi16>
-  // CHECK:  %[[HI:.*]] = vector.shuffle %[[A]], %[[A]] [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] : vector<64xi16>, vector<64xi16>
+  // The second operand of each split shuffle is unused; the canonicalizer
+  // (run by -convert-vector-to-aievec) rewrites it to ub.poison.
+  // CHECK:  %[[POISON:.*]] = ub.poison : vector<64xi16>
+  // CHECK:  %[[LO:.*]] = vector.shuffle %[[A]], %[[POISON]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<64xi16>, vector<64xi16>
+  // CHECK:  %[[HI:.*]] = vector.shuffle %[[A]], %[[POISON]] [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] : vector<64xi16>, vector<64xi16>
   // CHECK:  aievec.ups %[[LO]] {{.*}} : vector<32xi16>, vector<32xi32>
   // CHECK:  aievec.ups %[[HI]] {{.*}} : vector<32xi16>, vector<32xi32>
   // CHECK:  vector.shuffle %{{.*}}, %{{.*}} [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] : vector<32xbf16>, vector<32xbf16>

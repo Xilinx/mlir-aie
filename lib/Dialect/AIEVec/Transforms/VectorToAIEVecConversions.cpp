@@ -3540,8 +3540,7 @@ struct LowerVectorSIToFPI16BF16AIE2pPattern
       return failure();
     if (!srcTy.getElementType().isInteger(16))
       return failure();
-    auto dstEl = dyn_cast<FloatType>(dstTy.getElementType());
-    if (!dstEl || dstEl.getWidth() != 16)
+    if (!dstTy.getElementType().isBF16())
       return failure();
     unsigned lanes = srcTy.getNumElements();
     if (lanes != 16 && lanes != 32 && lanes != 64)
