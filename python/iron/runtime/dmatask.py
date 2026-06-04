@@ -26,6 +26,7 @@ class DMATask(RuntimeTask):
         tap: TensorAccessPattern,
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
+        offset_parameter: str | None = None,
     ):
         """A RuntimeTask that will resolve to a DMA Operation.
 
@@ -35,11 +36,13 @@ class DMATask(RuntimeTask):
             tap (TensorAccessPattern): The access pattern associated with the operation.
             task_group (RuntimeTaskGroup | None, optional): The task group associated with the operation. Defaults to None.
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
+            offset_parameter (str | None, optional): Name of a Parameter whose value is used as the byte offset for this DMA transfer. Defaults to None.
         """
         self._object_fifo = object_fifo
         self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
+        self._offset_parameter = offset_parameter
         self._task = None
         RuntimeTask.__init__(self, task_group)
 
@@ -70,5 +73,6 @@ class DMATask(RuntimeTask):
             self._rt_data.op,
             tap=self._tap,
             issue_token=self._wait,
+            offset_parameter=self._offset_parameter,
         )
         dma_start_task(self._task)

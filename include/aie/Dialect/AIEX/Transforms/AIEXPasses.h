@@ -58,6 +58,10 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEXInlineTraceConfigPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIELowerParametersPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIELowerParametersPass(AIELowerParametersOptions options);
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

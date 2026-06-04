@@ -196,7 +196,9 @@ struct AIECtrlPacketToDmaPass
                                  SmallVector<Value>{}, SmallVector<Value>{},
                                  SmallVector<Value>{}, ArrayRef(staticOffsets),
                                  ArrayRef(staticSizes), ArrayRef(staticStrides),
-                                 nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0);
+                                 nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0,
+                                 /*burst_length=*/0,
+                                 /*offset_parameter=*/FlatSymbolRefAttr());
 
         auto shimRow = builder.getI32IntegerAttr(0);
         auto shimCol = builder.getI32IntegerAttr(col);

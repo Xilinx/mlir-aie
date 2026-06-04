@@ -16,6 +16,7 @@ from ..dialects.aie import device
 
 from .device import Device
 from .runtime import Runtime
+from .parameter import Parameter
 from .resolvable import Resolvable
 from ..utils import trace as trace_utils
 
@@ -53,6 +54,16 @@ class Program:
             device_type = type(self._device)
             # For dynamically created device classes, the constructor takes no arguments
             self._device = device_type()
+
+            # Resolve parameters at module scope (before the aie.device).
+            # aiex.parameter ops are global across all devices because the
+            # scratchpad is a single hardware resource shared by all PDIs.
+            for w in self._rt.workers:
+                for arg in w.fn_args:
+                    if isinstance(arg, Parameter):
+                        arg.resolve()
+            for p in self._rt._parameters:
+                p.resolve()
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():

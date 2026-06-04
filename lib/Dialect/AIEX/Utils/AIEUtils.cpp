@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEX/AIEUtils.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -154,4 +155,48 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
                                       memrefType, initVal, true, nullptr);
   }
   return global;
+}
+
+LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
+    OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
+    uint64_t registerAddr) {
+  auto paramRef = bdOp->getAttrOfType<FlatSymbolRefAttr>("offset_parameter");
+  if (!paramRef)
+    return bdOp->emitOpError(
+        "emitUpdateBdAddressFromOffsetParameter called without "
+        "offset_parameter attribute.");
+
+  auto module = bdOp->getParentOfType<ModuleOp>();
+  if (!module)
+    return bdOp->emitOpError("not contained in a module.");
+  auto paramOp = module.lookupSymbol<AIEX::ParameterOp>(paramRef.getAttr());
+  if (!paramOp)
+    return bdOp->emitOpError("offset_parameter '")
+           << paramRef.getValue()
+           << "' not found. Declare it at module scope with aiex.parameter.";
+  if (!paramOp.getStateTableIdx().has_value())
+    return bdOp->emitOpError("offset_parameter '")
+           << paramRef.getValue()
+           << "' has no state_table_idx. Run --aie-lower-parameters first.";
+  if (!paramOp.getType().isInteger(32)) {
+    auto err = bdOp->emitOpError("offset_parameter '")
+               << paramRef.getValue() << "' must have type i32, got "
+               << paramOp.getType() << ".";
+    err.attachNote(paramOp.getLoc()) << "Parameter declared here.";
+    return err;
+  }
+
+  uint8_t stateIdx =
+      static_cast<uint8_t>(paramOp.getStateTableIdx().value());
+  uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
+  // Use func=mul with func_arg=elemBytes so the firmware computes
+  // StateTable[idx] * elemBytes = byte offset, added into the BD address
+  // register. UpdateReg only reads from the state table (it never writes
+  // back), so this is safe to repeat across runtime sequence invocations.
+  AIEX::NpuUpdateFromScratchpadOp::create(
+      builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
+      /*func_arg=*/elemBytes,
+      /*address=*/static_cast<uint32_t>(registerAddr),
+      /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  return success();
 }

@@ -23,4 +23,13 @@ def StateTableFunc : I32EnumAttr<"StateTableFunc",
   let cppNamespace = "::xilinx::AIEX";
 }
 
+def ParameterKindCore : I32EnumAttrCase<"Core", 0, "core">;
+def ParameterKindAddr : I32EnumAttrCase<"Addr", 1, "addr">;
+
+def ParameterKind : I32EnumAttr<"ParameterKind",
+    "Usage kind of a scratchpad runtime parameter",
+    [ParameterKindCore, ParameterKindAddr]> {
+  let cppNamespace = "::xilinx::AIEX";
+}
+
 #endif // AIEX_ATTRS

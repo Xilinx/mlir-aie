@@ -1494,15 +1494,34 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
     }
   }
 
+  // Lower parameter ops to scratchpad operations and create buffers.
+  // This pass is module-level so it can assign globally-unique state table
+  // indices across all devices.  It must run before address assignment so new
+  // buffers get addresses.
+  {
+    xilinx::AIEX::AIELowerParametersOptions paramOpts;
+    if (!tmpDirName.empty()) {
+      SmallString<128> paramsPath(tmpDirName);
+      sys::path::append(paramsPath, "params.txt");
+      paramOpts.outputParamsFile = paramsPath.str().str();
+    }
+    pm.addPass(
+        xilinx::AIEX::createAIELowerParametersPass(std::move(paramOpts)));
+  }
+
+  // Resume device-level passes after the module-level parameter lowering.
+  OpPassManager &devicePm2 = pm.nest<xilinx::AIE::DeviceOp>();
+
   // Create buffer address assignment pass with alloc-scheme option
   xilinx::AIE::AIEAssignBufferAddressesOptions bufferOpts;
   bufferOpts.clAllocScheme = allocScheme.getValue();
-  devicePm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
+  devicePm2.addPass(
+      xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
 
   // Infer per-core link_files from func-level link_with attributes
-  devicePm.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
+  devicePm2.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
 
-  devicePm.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
+  devicePm2.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
   // Step 5: Convert SCF to CF (module-level pass)
   pm.addPass(createSCFToControlFlowPass());

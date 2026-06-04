@@ -270,6 +270,35 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
   ];
 }
 
+def AIELowerParameters : Pass<"aie-lower-parameters", "mlir::ModuleOp"> {
+  let summary = "Lower parameter ops to scratchpad + update_from_scratchpad";
+  let description = [{
+    Assigns globally-unique state table indices to every `aiex.parameter` in the module, 
+    creates per-core buffers for each `aiex.read_parameter` usage on cores,
+    lowers `aiex.sync_parameters_from_host` to create_scratchpad + update_from_scratchpad sequences, 
+    and emits a single parameter layout file.
+
+    The scratchpad is a single hardware resource shared by all PDIs loaded by a runtime sequence, so all parameters in the module must occupy distinct indices.
+    The total parameter count is capped at 32.
+
+    The pass also sets a `kind` attribute on each `aiex.parameter` based on how it is used: `core` if read by `aiex.read_parameter`, `addr` if used as a DMA `offset_parameter`. 
+    A parameter may not be used as both.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIELowerParametersPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+  ];
+  let options = [
+    Option<"outputParamsFile", "output-params-file", "std::string",
+           /*default=*/"\"\"",
+           "Path to write the parameter layout file to.">
+  ];
+}
+
 def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
   let summary = "Transform bfp types to standard builtin types";
 

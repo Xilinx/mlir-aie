@@ -1011,6 +1011,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
+        // if set, the aiex.parameter that will override the BD's address 
+        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
   );

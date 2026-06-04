@@ -242,6 +242,14 @@ struct AIEDMATasksToNPUPass
                                 /*addr*/ register_addr,
                                 /*arg_idx*/ arg_idx,
                                 /*arg_plus*/ offset);
+      // If this BD has an offset_parameter, emit update_from_scratchpad to add
+      // the runtime offset to the BD address register.
+      if (bd_op.getOffsetParameterAttr()) {
+        auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
+        if (failed(emitUpdateBdAddressFromOffsetParameter(
+                builder, bd_op, bufType, register_addr)))
+          return failure();
+      }
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;

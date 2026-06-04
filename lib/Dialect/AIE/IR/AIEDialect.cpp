@@ -127,6 +127,17 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
   return getShimBurstLength(tm, burstLength).first;
 }
 
+std::string
+xilinx::AIE::generateUniqueSymbolName(mlir::Operation *symbolTableOp,
+                                      llvm::StringRef prefix,
+                                      unsigned &counter) {
+  std::string name;
+  do {
+    name = (prefix + llvm::Twine(counter++)).str();
+  } while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name));
+  return name;
+}
+
 LogicalResult
 xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   std::array<unsigned, 3> maxRanks = op.getArrayAttrMaxRanks();
@@ -3085,12 +3096,14 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
               !llvm::isa<DeviceOp>(symbolDefOp) &&
               !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
               !llvm::isa<BufferOp>(symbolDefOp) &&
-              !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
+              !llvm::isa<memref::GlobalOp>(symbolDefOp) &&
+              symbolDefOp->getName().getStringRef() != "aiex.parameter") {
             op->emitOpError()
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp or GlobalOp, but got: "
+                   "RuntimeSequenceOp, BufferOp, GlobalOp or ParameterOp, but "
+                   "got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }

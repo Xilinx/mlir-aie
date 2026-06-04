@@ -27,6 +27,7 @@ from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
 from ..device import Tile, AnyShimTile
 from ..resolvable import Resolvable
+from ..parameter import Parameter
 from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
 from .dmatask import DMATask
 from .data import RuntimeData
@@ -63,6 +64,7 @@ class Runtime(Resolvable):
         self._tasks: list[RuntimeTask] = []
         self._fifos = set()
         self._workers = []
+        self._parameters: list[Parameter] = []
         self._open_task_groups = []
         self._trace_size = None
         self._trace_workers = None
@@ -146,6 +148,7 @@ class Runtime(Resolvable):
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         tile: Tile = AnyShimTile,
+        offset_parameter: "Parameter | str | None" = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type producer) with data from a runtime buffer.
         This should be called within a Runtime.sequence() context.
@@ -158,6 +161,7 @@ class Runtime(Resolvable):
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
+            offset_parameter (Parameter | str | None, optional): A Parameter (or its name) whose value is used as the byte offset for this DMA transfer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -171,9 +175,18 @@ class Runtime(Resolvable):
         if tap is None:
             tap = source.default_tap()
 
+        offset_param_name = None
+        if offset_parameter is not None:
+            if isinstance(offset_parameter, Parameter):
+                offset_param_name = offset_parameter.name
+                if offset_parameter not in self._parameters:
+                    self._parameters.append(offset_parameter)
+            else:
+                offset_param_name = offset_parameter
+
         in_fifo.endpoint = rt_endpoint
         self._fifos.add(in_fifo)
-        self._tasks.append(DMATask(in_fifo, source, tap, task_group, wait))
+        self._tasks.append(DMATask(in_fifo, source, tap, task_group, wait, offset_param_name))
 
     def drain(
         self,
@@ -183,6 +196,7 @@ class Runtime(Resolvable):
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         tile: Tile = AnyShimTile,
+        offset_parameter: "Parameter | str | None" = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type consumer) of data and write that data to a runtime buffer.
         This should be called within a Runtime.sequence() context.
@@ -195,6 +209,7 @@ class Runtime(Resolvable):
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
+            offset_parameter (Parameter | str | None, optional): A Parameter (or its name) whose value is used as the byte offset for this DMA transfer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -208,9 +223,18 @@ class Runtime(Resolvable):
         if tap is None:
             tap = dest.default_tap()
 
+        offset_param_name = None
+        if offset_parameter is not None:
+            if isinstance(offset_parameter, Parameter):
+                offset_param_name = offset_parameter.name
+                if offset_parameter not in self._parameters:
+                    self._parameters.append(offset_parameter)
+            else:
+                offset_param_name = offset_parameter
+
         out_fifo.endpoint = rt_endpoint
         self._fifos.add(out_fifo)
-        self._tasks.append(DMATask(out_fifo, dest, tap, task_group, wait))
+        self._tasks.append(DMATask(out_fifo, dest, tap, task_group, wait, offset_param_name))
 
     def start(self, *args: Worker):
         """A placeholder operation to indicate that one or more Worker should be started on the device.
@@ -290,6 +314,15 @@ class Runtime(Resolvable):
             value (int): The value to set the barrier to.
         """
         self._tasks.append(_BarrierSetOp(barrier, value))
+
+    def sync_parameters(self):
+        """Emit ``aiex.sync_parameters_from_host`` in the runtime sequence.
+
+        Call this within a :meth:`sequence` context after all parameters have
+        been written on the host side and before starting workers that read
+        them.
+        """
+        self._tasks.append(_SyncParametersTask())
 
     @property
     def workers(self) -> list[Worker]:
@@ -391,3 +424,16 @@ class Runtime(Resolvable):
 
             if task_group_actions[default_task_group]:
                 finish_task_group(default_task_group, task_group_actions)
+
+
+class _SyncParametersTask(Resolvable):
+    """Emits ``aiex.sync_parameters_from_host`` during runtime sequence resolution."""
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        from ...dialects.aiex import sync_parameters_from_host
+
+        sync_parameters_from_host(loc=loc, ip=ip)

@@ -482,7 +482,8 @@ struct LinearizeContiguousTransfer
         op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr());
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
+        op.getOffsetParameterAttr());
     return mlir::success();
   }
 };
@@ -1115,6 +1116,27 @@ AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
     return nullptr;
   }
   return referencedDevice;
+}
+
+//===----------------------------------------------------------------------===//
+// ReadParameterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::ReadParameterOp::verify() {
+  auto device = (*this)->getParentOfType<AIE::DeviceOp>();
+  if (!device) {
+    return emitOpError("must be inside an aie.device");
+  }
+  if (!(*this)->getParentOfType<AIE::CoreOp>()) {
+    return emitOpError("must be inside an aie.core");
+  }
+  auto module = (*this)->getParentOfType<ModuleOp>();
+  if (!module || !module.lookupSymbol<AIEX::ParameterOp>(getParameter())) {
+    return emitOpError("references unknown parameter '")
+           << getParameter()
+           << "' (aiex.parameter ops are declared at module scope)";
+  }
+  return success();
 }
 
 LogicalResult AIEX::ConfigureOp::verify() {
