@@ -1876,6 +1876,41 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     }
     // Float types
     else {
+      // v8bf16: pad to v16bf16 via concat with zero, run the standard
+      // 16-wide UPS+AddElem+SRS path, extract the lower 8. Same building
+      // blocks as the int widen-by-zero-pad helper at L377-389.
+      if (laneSize == 8 && resultElWidth == 16) {
+        auto loc = srcOp.getLoc();
+        VectorType v16Ty = createVectorType(16, scalarType);
+        VectorType v8Ty = resultType;
+        auto zeroCst = arith::ConstantOp::create(
+            rewriter, loc, scalarType, rewriter.getZeroAttr(scalarType));
+        auto v16Zero = aievec::BroadcastScalarOp::create(rewriter, loc, v16Ty,
+                                                         zeroCst->getResult(0));
+        auto v8Zero = aievec::ExtOp::create(rewriter, loc, v8Ty,
+                                            v16Zero->getResult(0), 0);
+        auto lhs16 = aievec::ConcatOp::create(
+            rewriter, loc, v16Ty,
+            SmallVector<Value>{lhs, v8Zero->getResult(0)});
+        auto rhs16 = aievec::ConcatOp::create(
+            rewriter, loc, v16Ty,
+            SmallVector<Value>{rhs, v8Zero->getResult(0)});
+        Type accType = getVectorOpDestType(v16Ty, /*AIE2 =*/true);
+        auto lUpsOp =
+            aievec::UPSOp::create(rewriter, loc, accType, lhs16->getResult(0));
+        auto rUpsOp =
+            aievec::UPSOp::create(rewriter, loc, accType, rhs16->getResult(0));
+        auto elemOp =
+            DstOpTy::create(rewriter, loc, lUpsOp->getResult(0).getType(),
+                            lUpsOp->getResult(0), rUpsOp->getResult(0));
+        auto shiftParamOp = arith::ConstantOp::create(
+            rewriter, loc, rewriter.getI32IntegerAttr(0));
+        auto srsOp = aievec::SRSOp::create(
+            rewriter, loc, v16Ty, elemOp.getResult(), shiftParamOp.getResult());
+        rewriter.replaceOpWithNewOp<aievec::ExtOp>(srcOp, v8Ty,
+                                                   srsOp.getResult(), 0);
+        return success();
+      }
       if (laneSize != 16 && laneSize != 32)
         return failure();
 
@@ -5483,7 +5518,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
   });
 
   // AIE2P-specific legalization: Override AddFOp to support laneSize==32 for
-  // float types
+  // float types. Also route v8bf16 through aievec (padded to v16bf16).
   target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType)
@@ -5492,7 +5527,11 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // For float types, support both laneSize==16 and laneSize==32
+    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32
+    if (isa<FloatType>(scalarType) && scalarType.getIntOrFloatBitWidth() == 16)
+      return laneSize != 8 && laneSize != 16 && laneSize != 32;
+
+    // For other float types, support both laneSize==16 and laneSize==32
     if (isa<FloatType>(scalarType))
       return laneSize != 16 && laneSize != 32;
 
@@ -5501,7 +5540,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
   });
 
   // AIE2P-specific legalization: Override SubFOp to support laneSize==32 for
-  // float types
+  // float types. Also route v8bf16 through aievec (padded to v16bf16).
   target.addDynamicallyLegalOp<arith::SubFOp>([](arith::SubFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType)
@@ -5510,7 +5549,11 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // For float types, support both laneSize==16 and laneSize==32
+    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32
+    if (isa<FloatType>(scalarType) && scalarType.getIntOrFloatBitWidth() == 16)
+      return laneSize != 8 && laneSize != 16 && laneSize != 32;
+
+    // For other float types, support both laneSize==16 and laneSize==32
     if (isa<FloatType>(scalarType))
       return laneSize != 16 && laneSize != 32;
 
