@@ -13,7 +13,7 @@
 // for dynamic BD words. The subsequent aie-dma-to-npu pass converts the
 // NpuWriteBdOp to NpuBlockWriteOp.
 
-// RUN: aie-opt --split-input-file --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu --verify-diagnostics %s | FileCheck %s
 
 // All-static fast path: emits a single npu.writebd blockwrite (unchanged).
 // CHECK-LABEL: aie.device(npu1)
@@ -80,6 +80,23 @@ module {
       } {issue_token = true}
       aiex.dma_start_task(%t)
       aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+// Negative test: dynamic operands on MemTile should be rejected.
+module {
+  aie.device(npu2) {
+    %tile_0_1 = aie.tile(0, 1)
+    aie.runtime_sequence(%arg0: memref<128xi32>, %M: i64) {
+      %t = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
+        // expected-error @+1 {{dynamic operands on aie.dma_bd are only supported on shim NOC tiles.}}
+        aie.dma_bd(%arg0 : memref<128xi32>) dyn_len(%M : i64) dyn_sizes(%M, %M, %M, %M : i64, i64, i64, i64) dyn_strides(%M, %M, %M, %M : i64, i64, i64, i64) {bd_id = 0 : i32}
+        aie.end
+      }
+      aiex.dma_start_task(%t)
     }
   }
 }

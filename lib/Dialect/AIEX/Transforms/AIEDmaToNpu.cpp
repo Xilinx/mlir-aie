@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -214,50 +215,6 @@ public:
     return success();
   }
 };
-
-/// Get an OpFoldResult as an SSA Value of type intType, creating a constant
-/// if needed. If the SSA value has a different width, truncate or extend it.
-static Value getAsValue(OpBuilder &builder, Location loc, OpFoldResult ofr,
-                        Type intType) {
-  if (auto constVal = getConstantIntValue(ofr))
-    return arith::ConstantOp::create(builder, loc,
-                                     IntegerAttr::get(intType, *constVal));
-  Value val = cast<Value>(ofr);
-  if (val.getType() != intType) {
-    unsigned valBits = val.getType().getIntOrFloatBitWidth();
-    unsigned tgtBits = intType.getIntOrFloatBitWidth();
-    if (valBits > tgtBits)
-      val = arith::TruncIOp::create(builder, loc, intType, val);
-    else
-      val = arith::ExtUIOp::create(builder, loc, intType, val);
-  }
-  return val;
-}
-
-/// Build a BD word from a list of (value, mask, shift) tuples using arith ops.
-/// word = (field1 & mask1) << shift1 | (field2 & mask2) << shift2 | ...
-static Value
-buildBdWord(OpBuilder &builder, Location loc,
-            ArrayRef<std::tuple<Value, uint32_t, uint32_t>> fields) {
-  auto i32ty = IntegerType::get(builder.getContext(), 32);
-  Value result =
-      arith::ConstantOp::create(builder, loc, IntegerAttr::get(i32ty, 0));
-  for (auto &[val, mask, shift] : fields) {
-    Value masked = val;
-    if (mask != 0xFFFFFFFF) {
-      auto maskConst = arith::ConstantOp::create(builder, loc,
-                                                 IntegerAttr::get(i32ty, mask));
-      masked = arith::AndIOp::create(builder, loc, val, maskConst);
-    }
-    if (shift > 0) {
-      auto shiftConst = arith::ConstantOp::create(
-          builder, loc, IntegerAttr::get(i32ty, shift));
-      masked = arith::ShLIOp::create(builder, loc, masked, shiftConst);
-    }
-    result = arith::OrIOp::create(builder, loc, result, masked);
-  }
-  return result;
-}
 
 struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -664,161 +621,33 @@ public:
     SmallVector<OpFoldResult, 4> mixedStridesRev(
         llvm::reverse(buildMixed(adaptor.getStrides(), op.getStaticStrides())));
 
-    uint64_t elemWidth = op.getElementTypeBitwidth();
+    // --- Compute hardware sizes and strides as SSA Values via shared util ---
+    HwBdEncoding hw = emitDynamicHwBdEncoding(
+        rewriter, loc, targetModel, bufferType, mixedSizesRev, mixedStridesRev);
+    Value hwD0Size = hw.d0Size;
+    Value hwD0Stride = hw.d0Stride;
+    Value hwD1Size = hw.d1Size;
+    Value hwD1Stride = hw.d1Stride;
+    Value hwD2Stride = hw.d2Stride;
+    // hw.d2Size is not extracted: ShimNOC BDs always set d2_size=0 in the
+    // template and use bufLen (word[0]) instead.
+    Value hwIterSize = hw.iterSize;
+    Value hwIterStride = hw.iterStride;
+    Value bufLen = hw.bufLen;
+    Value repeatCount = hw.repeatCount;
+
+    // Element width / address-gen granularity are used by the static
+    // placeholder lambdas below to mirror the per-target scaling that
+    // emitDynamicHwBdEncoding performs SSA-side. Keep them in sync with
+    // BdLowering.cpp.
+    uint64_t elemWidth = bufferType.getElementType().getIntOrFloatBitWidth();
     uint32_t addrGran = targetModel.getAddressGenGranularity();
 
-    // --- Compute hardware sizes and strides as SSA Values ---
-    // This replicates getHardwareStridesWraps logic using arith ops for
-    // SSA values and folded constants for compile-time known values.
-
-    // Helper to create i32 constants
+    // Helper to create i32 constants (still used for static word values)
     auto cst = [&](int64_t val) -> Value {
       return arith::ConstantOp::create(rewriter, loc,
                                        IntegerAttr::get(i32ty, val));
     };
-
-    // Get each input size/stride as an SSA Value (i32)
-    Value inSize0 = getAsValue(rewriter, loc, mixedSizesRev[0], i32ty);
-    Value inSize1 = getAsValue(rewriter, loc, mixedSizesRev[1], i32ty);
-    Value inSize2 = getAsValue(rewriter, loc, mixedSizesRev[2], i32ty);
-    Value inSize3 = getAsValue(rewriter, loc, mixedSizesRev[3], i32ty);
-    Value inStride0 = getAsValue(rewriter, loc, mixedStridesRev[0], i32ty);
-    Value inStride1 = getAsValue(rewriter, loc, mixedStridesRev[1], i32ty);
-    Value inStride2 = getAsValue(rewriter, loc, mixedStridesRev[2], i32ty);
-    Value inStride3 = getAsValue(rewriter, loc, mixedStridesRev[3], i32ty);
-
-    // Hardware d0_size = inputSizes[0] * elemWidth / addrGran
-    // NOTE: Must multiply first, then divide to avoid integer truncation.
-    // For bf16 (elemWidth=16, addrGran=32): 32*16/32=16, NOT 32*(16/32)=0.
-    Value hwD0Size;
-    if (elemWidth == addrGran) {
-      hwD0Size = inSize0;
-    } else {
-      // Compute: inSize0 * elemWidth / addrGran
-      Value scaled =
-          arith::MulIOp::create(rewriter, loc, inSize0, cst(elemWidth));
-      hwD0Size = arith::DivUIOp::create(rewriter, loc, scaled, cst(addrGran));
-    }
-
-    // Hardware d0_stride: if elemWidth < addrGran or elemWidth > addrGran,
-    // stride = 0 (encoded as 1). Otherwise stride = inStride0 * elemWidth /
-    // addrGran - 1.
-    // For bf16 (elemWidth=16 < addrGran=32), hardware requires d0_stride=0
-    // because the address granularity exceeds the element width; the DMA
-    // always transfers full 32-bit words and cannot stride at sub-word level.
-    // The static verifier in NpuDmaMemcpyNdOp::verify() enforces this for
-    // constant strides; here in the dynamic path we set it unconditionally.
-    Value hwD0Stride;
-    if (elemWidth < addrGran || elemWidth > addrGran) {
-      hwD0Stride = cst(0);
-    } else {
-      // elemWidth == addrGran, so factor is 1
-      hwD0Stride = arith::SubIOp::create(rewriter, loc, inStride0, cst(1));
-    }
-
-    Value zeroVal = cst(0);
-    Value oneVal = cst(1);
-
-    // d1_size = inputSizes[1] (no conversion)
-    Value hwD1Size = inSize1;
-    // d1_stride = inputStrides[1] * elemWidth / addrGran - 1
-    // Only meaningful when d1_size > 1; set to 0 otherwise (matching static).
-    Value hwD1Stride;
-    {
-      Value scaled;
-      if (elemWidth != addrGran) {
-        Value s =
-            arith::MulIOp::create(rewriter, loc, inStride1, cst(elemWidth));
-        scaled = arith::DivUIOp::create(rewriter, loc, s, cst(addrGran));
-      } else {
-        scaled = inStride1;
-      }
-      Value strideMinusOne =
-          arith::SubIOp::create(rewriter, loc, scaled, oneVal);
-      // Guard: if size1 <= 1, stride = 0
-      Value sizeGt1 = arith::CmpIOp::create(
-          rewriter, loc, arith::CmpIPredicate::sgt, inSize1, oneVal);
-      hwD1Stride = arith::SelectOp::create(rewriter, loc, sizeGt1,
-                                           strideMinusOne, zeroVal);
-    }
-
-    // d2_size = inputSizes[2] (no conversion)
-    Value hwD2Size = inSize2;
-    // d2_stride = inputStrides[2] * elemWidth / addrGran - 1
-    // Only meaningful when d2_size > 1; set to 0 otherwise (matching static).
-    Value hwD2Stride;
-    {
-      Value scaled;
-      if (elemWidth != addrGran) {
-        Value s =
-            arith::MulIOp::create(rewriter, loc, inStride2, cst(elemWidth));
-        scaled = arith::DivUIOp::create(rewriter, loc, s, cst(addrGran));
-      } else {
-        scaled = inStride2;
-      }
-      Value strideMinusOne =
-          arith::SubIOp::create(rewriter, loc, scaled, oneVal);
-      // Guard: if size2 <= 1, stride = 0
-      Value sizeGt1 = arith::CmpIOp::create(
-          rewriter, loc, arith::CmpIPredicate::sgt, inSize2, oneVal);
-      hwD2Stride = arith::SelectOp::create(rewriter, loc, sizeGt1,
-                                           strideMinusOne, zeroVal);
-    }
-
-    // iteration_size = inputSizes[3] - 1 (when > 1, else 0)
-    Value hwIterSize;
-    {
-      Value sizeMinusOne =
-          arith::SubIOp::create(rewriter, loc, inSize3, oneVal);
-      // Clamp to 0: if inSize3 <= 1, iteration_size = 0
-      Value sizeGt1 = arith::CmpIOp::create(
-          rewriter, loc, arith::CmpIPredicate::sgt, inSize3, oneVal);
-      hwIterSize = arith::SelectOp::create(rewriter, loc, sizeGt1, sizeMinusOne,
-                                           zeroVal);
-    }
-
-    // iteration_stride = inputStrides[3] * elemWidth / addrGran - 1
-    // Only meaningful when size3 > 1 AND stride3 > 0.
-    Value hwIterStride;
-    {
-      Value scaled;
-      if (elemWidth != addrGran) {
-        Value s =
-            arith::MulIOp::create(rewriter, loc, inStride3, cst(elemWidth));
-        scaled = arith::DivUIOp::create(rewriter, loc, s, cst(addrGran));
-      } else {
-        scaled = inStride3;
-      }
-      Value strideMinusOne =
-          arith::SubIOp::create(rewriter, loc, scaled, oneVal);
-      // Guard: if size3 <= 1 or stride3 <= 0, both iterSize and iterStride = 0
-      Value sizeGt1 = arith::CmpIOp::create(
-          rewriter, loc, arith::CmpIPredicate::sgt, inSize3, oneVal);
-      Value strideGt0 = arith::CmpIOp::create(
-          rewriter, loc, arith::CmpIPredicate::sgt, inStride3, zeroVal);
-      Value active = arith::AndIOp::create(rewriter, loc, sizeGt1, strideGt0);
-      hwIterStride = arith::SelectOp::create(rewriter, loc, active,
-                                             strideMinusOne, zeroVal);
-      // Override iterSize to 0 when stride is 0 (repeat via push queue)
-      hwIterSize =
-          arith::SelectOp::create(rewriter, loc, active, hwIterSize, zeroVal);
-    }
-
-    // repeat_count for queue push = max(inputSizes[3] - 1, 0)
-    // The hardware queue push field encodes the number of *additional* repeats
-    // (i.e., total_count - 1), matching the static path's use of
-    // getHardwareStridesWraps which sets sizes[3] = inputSizes[3] - 1.
-    // Guard against underflow when sizes[3] == 0, matching the static path's
-    // `if (rcVal < 0) rcVal = 0` check.
-    Value rcSub = arith::SubIOp::create(rewriter, loc, inSize3, cst(1));
-    Value rcGtZero = arith::CmpIOp::create(
-        rewriter, loc, arith::CmpIPredicate::sgt, inSize3, cst(0));
-    Value repeatCount =
-        arith::SelectOp::create(rewriter, loc, rcGtZero, rcSub, cst(0));
-
-    // buffer_length = hwD0Size * d1_size * d2_size
-    Value bufLen = arith::MulIOp::create(rewriter, loc, hwD0Size, hwD1Size);
-    bufLen = arith::MulIOp::create(rewriter, loc, bufLen, hwD2Size);
 
     // --- Compute BD base address ---
     uint32_t bdId = op.getId();
