@@ -335,26 +335,16 @@ def my_matmul(
                 if enable_tracing:
                     trace_utils.start_trace(trace_size=trace_size)
 
-                # Tile counts: same Python expressions as in single_core.py.
-                # Here M, K, N are SSA i32, so eudsl operator overloads emit
-                # arith.floordivsi / arith.muli automatically.
                 M_div_m = M // m
                 K_div_k = K // k
                 N_div_n = N // n
                 tiles = M_div_m * N_div_n
 
-                # Push trip counts to the core via the RTP buffer.
                 npu_rtp_write("rtp", 0, K_div_k)
                 npu_rtp_write("rtp", 1, tiles)
 
-                # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
                 rows_per_block = 4
-                # The body below mirrors single_core.py's runtime_sequence,
-                # using shim_dma_single_bd_task (dma_task pattern) instead of
-                # npu_dma_memcpy_nd. BD IDs are auto-assigned by the compiler.
                 for tile_row_block in range_(ceildiv(M_div_m, rows_per_block)):
-                    # we only sync on half the BDs before reusing them, so the other half can concurrently keep running
-                    # that's what this loop is for
                     for pingpong in [0, 1]:
                         C_row_offset = (
                             tile_row_block * rows_per_block * m * N
@@ -364,51 +354,45 @@ def my_matmul(
                             tile_row_block * rows_per_block
                             + pingpong * rows_per_block // 2
                         )
+                        bd_id_base = 8 * pingpong
                         num_tile_rows = arith.minsi(
                             constant(rows_per_block // 2, T.i32()),
                             M_div_m - row_base,
                         )
                         with if_(num_tile_rows > 0, hasElse=False):
-                            c_task = shim_dma_single_bd_task(
-                                outC,
-                                C,
-                                offset=C_row_offset,
+                            npu_dma_memcpy_nd(
+                                metadata=outC,
+                                bd_id=bd_id_base,
+                                mem=C,
+                                offsets=[0, 0, 0, C_row_offset],
                                 sizes=[num_tile_rows, N_div_n, m, n],
                                 strides=[m * N, n, N, 1],
-                                transfer_len=N_div_n * m * n,
-                                issue_token=True,
                             )
-                            dma_start_task(c_task)
-
                             for tile_row in range(rows_per_block // 2):
                                 A_row_offset = (row_base + tile_row) * m * K
 
                                 def emit_ab():
-                                    a_task = shim_dma_single_bd_task(
-                                        inA,
-                                        A,
-                                        offset=A_row_offset,
+                                    npu_dma_memcpy_nd(
+                                        metadata=inA,
+                                        bd_id=bd_id_base + 2 * tile_row + 1,
+                                        mem=A,
+                                        offsets=[0, 0, 0, A_row_offset],
                                         sizes=[N_div_n, K_div_k, m, k],
                                         strides=[0, k, K, 1],
-                                        transfer_len=K_div_k * m * k,
                                     )
-                                    dma_start_task(a_task)
-
                                     if not b_col_maj:
                                         B_sizes = [N_div_n, K_div_k, k, n]
                                         B_strides = [n, k * N, N, 1]
                                     else:
                                         B_sizes = [N_div_n, K_div_k, n, k]
                                         B_strides = [n * K, k, K, 1]
-
-                                    b_task = shim_dma_single_bd_task(
-                                        inB,
-                                        B,
+                                    npu_dma_memcpy_nd(
+                                        metadata=inB,
+                                        bd_id=bd_id_base + 2 * tile_row + 2,
+                                        mem=B,
                                         sizes=B_sizes,
                                         strides=B_strides,
-                                        transfer_len=K_div_k * k * n,
                                     )
-                                    dma_start_task(b_task)
 
                                 if tile_row == 0:
                                     emit_ab()
@@ -416,18 +400,13 @@ def my_matmul(
                                     with if_(num_tile_rows > tile_row, hasElse=False):
                                         emit_ab()
 
-                            # Sync condition mirrors single_core.py:
-                            #   tile_row_block > 0 OR pingpong > 0
-                            # pingpong > 0 is always true at Python time, so
-                            # only the pingpong == 0 branch needs an SSA guard.
                             if pingpong > 0:
-                                npu_sync(column=0, row=0, direction=0, channel=0)
+                                dma_wait(outC)
                             else:
                                 with if_(tile_row_block > 0, hasElse=False):
-                                    npu_sync(column=0, row=0, direction=0, channel=0)
+                                    dma_wait(outC)
 
-                # Final sync.
-                npu_sync(column=0, row=0, direction=0, channel=0)
+                dma_wait(outC)
 
     print(ctx.module)
 

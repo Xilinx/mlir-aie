@@ -7,7 +7,7 @@
 #
 # Dynamic single-core GEMM design with placed runtime sequence (bf16->f32, 32x32x32 tiles).
 #
-# Uses the dynamic core body (RTP reads + scf.while loops) for compile-once-run-any-size,
+# Uses the dynamic core body (RTP reads + scf.for loops) for compile-once-run-any-size,
 # combined with the placed runtime sequence pattern (shim_dma_single_bd_task / dma_start_task
 # / npu_sync) instead of npu_dma_memcpy_nd.  M, K, N are SSA i32 inputs to the
 # runtime_sequence so the compiled XCLBIN handles any (multiple-of-tile) shape at runtime
@@ -20,22 +20,12 @@ import sys
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.dialects.scf import WhileOp, condition, yield_
-from aie.dialects.arith import (
-    constant as arith_constant,
-    CmpIOp,
-    CmpIPredicate,
-    AddIOp,
-    IndexCastOp,
-)
 from aie.dialects import arith, memref
-from aie.dialects.memref import LoadOp
 from aie.helpers.dialects.scf import if_
 from aie.extras.dialects.arith import constant
 import aie.utils.trace as trace_utils
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
-from aie.ir import IndexType, IntegerType, InsertionPoint
 from aie.extras import types as T
 
 
@@ -184,77 +174,23 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
             if enable_tracing:
                 trace_utils.configure_trace(tiles_to_trace)
 
-            # Core body with dynamic loop bounds via RTP
             @core(compute_tile2, stack_size=0xD00, dynamic_objfifo_lowering=True)
             def core_body():
-                i32_ty = IntegerType.get_signless(32)
-                idx_ty = IndexType.get()
-
-                c0 = arith_constant(i32_ty, 0)
-                c1 = arith_constant(i32_ty, 1)
                 c0_idx = constant(0, index=True)
                 c1_idx = constant(1, index=True)
-                cmax_idx = constant(0xFFFFFFFF, index=True)
-
-                # Infinite outer loop
-                for _ in range_(c0_idx, cmax_idx, c1_idx):
-
-                    # Read tiles count from RTP[1]
-                    tiles_i32 = LoadOp(rtp_buf, [c1_idx]).result
-                    tiles_idx = IndexCastOp(idx_ty, tiles_i32).result
-
-                    # Tile loop (scf.while for dynamic bounds)
-                    tile_while = WhileOp([idx_ty], [c0_idx])
-
-                    # "before" region: check condition
-                    before_block = tile_while.before.blocks.append(idx_ty)
-                    with InsertionPoint(before_block):
-                        tile_iter = before_block.arguments[0]
-                        tile_cond = CmpIOp(
-                            CmpIPredicate.slt, tile_iter, tiles_idx
-                        ).result
-                        condition(tile_cond, [tile_iter])
-
-                    # "after" region: loop body
-                    after_block = tile_while.after.blocks.append(idx_ty)
-                    with InsertionPoint(after_block):
-                        tile_iter = after_block.arguments[0]
-
+                for _ in range_(0xFFFFFFFF):
+                    tiles = memref.load(rtp_buf, [c1_idx])
+                    K_div_k = memref.load(rtp_buf, [c0_idx])
+                    for _ in range_(tiles):
                         elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
                         zero(elem_out)
-
-                        # Read K_div_k from RTP[0]
-                        k_iters_i32 = LoadOp(rtp_buf, [c0_idx]).result
-                        k_iters_idx = IndexCastOp(idx_ty, k_iters_i32).result
-
-                        # K accumulation loop (scf.while)
-                        k_while = WhileOp([idx_ty], [c0_idx])
-
-                        k_before = k_while.before.blocks.append(idx_ty)
-                        with InsertionPoint(k_before):
-                            k_iter = k_before.arguments[0]
-                            k_cond = CmpIOp(
-                                CmpIPredicate.slt, k_iter, k_iters_idx
-                            ).result
-                            condition(k_cond, [k_iter])
-
-                        k_after = k_while.after.blocks.append(idx_ty)
-                        with InsertionPoint(k_after):
-                            k_iter = k_after.arguments[0]
-
+                        for _ in range_(K_div_k):
                             elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
                             elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
                             matmul(elem_in_a, elem_in_b, elem_out)
                             memA.release(ObjectFifoPort.Consume, 1)
                             memB.release(ObjectFifoPort.Consume, 1)
-
-                            k_next = AddIOp(k_iter, c1_idx).result
-                            yield_([k_next])
-
                         memC.release(ObjectFifoPort.Produce, 1)
-
-                        tile_next = AddIOp(tile_iter, c1_idx).result
-                        yield_([tile_next])
 
             # Placed runtime_sequence using shim_dma_single_bd_task
             # M, K, N are SSA i32 inputs so the compiled XCLBIN is shape-agnostic.
