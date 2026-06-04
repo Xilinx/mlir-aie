@@ -24,6 +24,13 @@
 
 #include <vector>
 
+#ifndef XAIE_IO_CREATE_SCRATCHPAD
+#define XAIE_IO_CREATE_SCRATCHPAD 0x0A
+#endif
+#ifndef XAIE_IO_UPDATE_REG
+#define XAIE_IO_UPDATE_REG 0x0C
+#endif
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
