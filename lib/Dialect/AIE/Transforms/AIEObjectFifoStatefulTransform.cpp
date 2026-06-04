@@ -1496,12 +1496,10 @@ struct AIEObjectFifoStatefulTransformPass
   // the loop. The trailing release(carry) the user wrote after the loop
   // drains it. If any acq/rel of (fifo, port) is inside an scf.if in the
   // body, emit a diagnostic and skip the loop (analysis is unsound).
-  LogicalResult
-  hoistCyclostaticAcquires(CoreOp coreOp, OpBuilder &builder) {
+  LogicalResult hoistCyclostaticAcquires(CoreOp coreOp, OpBuilder &builder) {
     // Collect all scf.for ops in the core, innermost first.
     SmallVector<scf::ForOp> forOps;
-    coreOp.walk(
-        [&](scf::ForOp f) { forOps.push_back(f); });
+    coreOp.walk([&](scf::ForOp f) { forOps.push_back(f); });
     // walk() above is pre-order; reverse to get innermost-first.
     std::reverse(forOps.begin(), forOps.end());
 
@@ -1560,14 +1558,13 @@ struct AIEObjectFifoStatefulTransformPass
         // Insert `aie.objectfifo.acquire(fp, carry)` immediately before forOp.
         ObjectFifoCreateOp createOp = fp.first;
         ObjectFifoPort port = fp.second;
-        auto fifo =
-            llvm::cast<AIEObjectFifoType>(createOp.getElemType());
+        auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
         auto subviewTy = AIEObjectFifoSubviewType::get(fifo.getElementType());
         builder.setInsertionPoint(forOp);
         auto portAttr = ObjectFifoPortAttr::get(builder.getContext(), port);
         auto sizeAttr = builder.getI32IntegerAttr(carry);
-        auto nameRef = SymbolRefAttr::get(builder.getContext(),
-                                          createOp.name());
+        auto nameRef =
+            SymbolRefAttr::get(builder.getContext(), createOp.name());
         (void)ObjectFifoAcquireOp::create(builder, forOp.getLoc(), subviewTy,
                                           portAttr, nameRef, sizeAttr);
       }
