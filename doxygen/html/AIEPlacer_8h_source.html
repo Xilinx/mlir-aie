@@ -370,66 +370,72 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>      <span class="keyword">const</span> llvm::DenseMap&lt;mlir::Operation *, std::pair&lt;int, int&gt;&gt;</div>
 <div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span>          &amp;channelRequirements);</div>
 <div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span> </div>
-<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>  <span class="comment">// BFS the connectivity component of `logicalTile` through the given</span></div>
-<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>  <span class="comment">// adjacencies and return the column-average of every placed CoreTile</span></div>
-<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>  <span class="comment">// peer reached transitively. Returns 0 if no placed cores are</span></div>
-<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>  <span class="comment">// reachable (the caller then falls back to a user-supplied column</span></div>
-<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>  <span class="comment">// constraint or column 0).</span></div>
-<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>  <span class="keywordtype">int</span> computeCentroidColumn(</div>
-<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>      LogicalTileOp logicalTile,</div>
-<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>      llvm::ArrayRef&lt;const Adjacency *&gt; connectivityAdjacencies);</div>
-<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span> </div>
-<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>  <span class="comment">// Place a non-core (mem/shim) LTO near the centroid column of its placed</span></div>
-<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>  <span class="comment">// core peers, reached transitively through `connectivityAdjacencies`.</span></div>
-<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>  mlir::LogicalResult placeNonCoreTileByCentroid(</div>
-<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>      LogicalTileOp logicalTile,</div>
-<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>      llvm::ArrayRef&lt;const Adjacency *&gt; connectivityAdjacencies,</div>
-<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>      <span class="keyword">const</span> llvm::DenseMap&lt;mlir::Operation *, std::pair&lt;int, int&gt;&gt;</div>
-<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>          &amp;channelRequirements);</div>
-<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span> </div>
-<div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>  <span class="comment">// Pairwise legality check. `pred(firstPos, secondPos)` is evaluated for</span></div>
-<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>  <span class="comment">// every edge mentioning `logicalTile`; unplaced peers defer.</span></div>
-<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>  <span class="keywordtype">bool</span> satisfiesAdjacency(</div>
-<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>      LogicalTileOp logicalTile, <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> candidate, <span class="keyword">const</span> Adjacency &amp;adjacency,</div>
-<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>      llvm::function_ref&lt;<span class="keywordtype">bool</span>(<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> firstPos, <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> secondPos)&gt; pred) <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>  <span class="comment">// Per-LTO peer-Value lists, one list per flow that mentions the LTO.</span></div>
+<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>  <span class="comment">// Built once and shared so each centroid lookup is O(#flows on the LTO).</span></div>
+<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>  <span class="keyword">struct </span>FlowMembership {</div>
+<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>    llvm::DenseMap&lt;mlir::Value,</div>
+<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>                   llvm::SmallVector&lt;llvm::SmallVector&lt;mlir::Value&gt;&gt;&gt;</div>
+<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>        ltoFlows;</div>
+<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>  };</div>
+<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span> </div>
+<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>  FlowMembership</div>
+<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>  buildFlowMembership(llvm::ArrayRef&lt;FlowOp&gt; flows,</div>
+<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>                      llvm::ArrayRef&lt;PacketFlowOp&gt; pktFlows,</div>
+<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>                      llvm::ArrayRef&lt;ObjectFifoCreateOp&gt; objectFifos);</div>
+<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span> </div>
+<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>  <span class="comment">// Pick the column that minimizes total routing cost across the LTO&#39;s</span></div>
+<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>  <span class="comment">// flows. See AIEPlacer.cpp for the per-flow cost formulas and tiebreak.</span></div>
+<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>  <span class="keywordtype">int</span> computeCentroidColumn(LogicalTileOp logicalTile,</div>
+<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>                            <span class="keyword">const</span> FlowMembership &amp;flowIndex);</div>
+<div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span> </div>
+<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>  mlir::LogicalResult placeNonCoreTileByCentroid(</div>
+<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>      LogicalTileOp logicalTile, <span class="keyword">const</span> FlowMembership &amp;flowIndex,</div>
+<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>      <span class="keyword">const</span> llvm::DenseMap&lt;mlir::Operation *, std::pair&lt;int, int&gt;&gt;</div>
+<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>          &amp;channelRequirements);</div>
 <div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span> </div>
-<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>  <span class="comment">// Compute-peer DMA budget check. Returns true if placing `logicalTile` at</span></div>
-<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>  <span class="comment">// `candidate` keeps the compute-peer neighbor demand satisfiable for BOTH</span></div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>  <span class="comment">// the LTO being placed AND every already-placed compute peer of the LTO.</span></div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>  <span class="comment">// A compute LTO with peer demand N (N compute-peer fifos must use shared</span></div>
-<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>  <span class="comment">// neighbor memory to fit DMA budget) has slack (totalComputePeers − N): it</span></div>
-<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>  <span class="comment">// can afford at most that many non-neighbor compute peers. The check also</span></div>
-<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>  <span class="comment">// forward-looks: unplaced peers still need a free physical compute-tile</span></div>
-<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>  <span class="comment">// neighbor of `candidate` to land on.</span></div>
-<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>  <span class="keywordtype">bool</span> satisfiesComputePeer(</div>
-<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>      LogicalTileOp logicalTile, <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> candidate,</div>
-<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>      <span class="keyword">const</span> Adjacency &amp;computePeerAdjacency,</div>
-<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>      <span class="keyword">const</span> llvm::DenseMap&lt;mlir::Operation *, int&gt; &amp;needNeighborIn,</div>
-<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>      <span class="keyword">const</span> llvm::DenseMap&lt;mlir::Operation *, int&gt; &amp;needNeighborOut) <span class="keyword">const</span>;</div>
-<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span> </div>
-<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>  <span class="comment">// Compute-peer in/out edge counts for `op`, looked up from a prebuilt</span></div>
-<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>  <span class="comment">// `computePeerAdjacency`. Returns {0, 0} if `op` has no entry. Producer</span></div>
-<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>  <span class="comment">// is edges[idx].first, consumer is .second (per buildComputePeerAdjacency).</span></div>
-<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>  <span class="keyword">static</span> std::pair&lt;int, int&gt; totalComputePeers(mlir::Operation *op,</div>
-<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>                                               <span class="keyword">const</span> Adjacency &amp;adjacency);</div>
+<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>  <span class="comment">// Pairwise legality check. `pred(firstPos, secondPos)` is evaluated for</span></div>
+<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>  <span class="comment">// every edge mentioning `logicalTile`; unplaced peers defer.</span></div>
+<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>  <span class="keywordtype">bool</span> satisfiesAdjacency(</div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>      LogicalTileOp logicalTile, <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> candidate, <span class="keyword">const</span> Adjacency &amp;adjacency,</div>
+<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>      llvm::function_ref&lt;<span class="keywordtype">bool</span>(<a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> firstPos, <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> secondPos)&gt; pred) <span class="keyword">const</span>;</div>
+<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span> </div>
+<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>  <span class="comment">// Compute-peer DMA budget check. Returns true if placing `logicalTile` at</span></div>
+<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>  <span class="comment">// `candidate` keeps the compute-peer neighbor demand satisfiable for BOTH</span></div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>  <span class="comment">// the LTO being placed AND every already-placed compute peer of the LTO.</span></div>
+<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>  <span class="comment">// A compute LTO with peer demand N (N compute-peer fifos must use shared</span></div>
+<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>  <span class="comment">// neighbor memory to fit DMA budget) has slack (totalComputePeers − N): it</span></div>
+<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>  <span class="comment">// can afford at most that many non-neighbor compute peers. The check also</span></div>
+<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>  <span class="comment">// forward-looks: unplaced peers still need a free physical compute-tile</span></div>
+<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>  <span class="comment">// neighbor of `candidate` to land on.</span></div>
+<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>  <span class="keywordtype">bool</span> satisfiesComputePeer(</div>
+<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>      LogicalTileOp logicalTile, <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> candidate,</div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>      <span class="keyword">const</span> Adjacency &amp;computePeerAdjacency,</div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>      <span class="keyword">const</span> llvm::DenseMap&lt;mlir::Operation *, int&gt; &amp;needNeighborIn,</div>
+<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>      <span class="keyword">const</span> llvm::DenseMap&lt;mlir::Operation *, int&gt; &amp;needNeighborOut) <span class="keyword">const</span>;</div>
 <div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span> </div>
-<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>  <span class="comment">// Diagnostic peer notes. `labelPeer(thisIsFirst)` names the peer endpoint</span></div>
-<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>  <span class="comment">// role; the attached note reads &quot;&lt;label&gt; peer placed at (col, row)&quot;.</span></div>
-<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>  <span class="keywordtype">void</span> attachPeerNotes(</div>
-<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>      mlir::InFlightDiagnostic &amp;diag, LogicalTileOp logicalTile,</div>
-<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>      <span class="keyword">const</span> Adjacency &amp;adjacency,</div>
-<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>      llvm::function_ref&lt;llvm::StringRef(<span class="keywordtype">bool</span> thisIsFirst)&gt; labelPeer) <span class="keyword">const</span>;</div>
-<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span> </div>
-<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>  <span class="keywordtype">void</span> addChannelRequirementsFromFlows(</div>
-<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>      llvm::ArrayRef&lt;FlowOp&gt; flows, llvm::ArrayRef&lt;PacketFlowOp&gt; pktFlows,</div>
-<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>      llvm::DenseMap&lt;mlir::Operation *, std::pair&lt;int, int&gt;&gt;</div>
-<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>          &amp;channelRequirements);</div>
-<div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>};</div>
-</div>
+<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>  <span class="comment">// Compute-peer in/out edge counts for `op`, looked up from a prebuilt</span></div>
+<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>  <span class="comment">// `computePeerAdjacency`. Returns {0, 0} if `op` has no entry. Producer</span></div>
+<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>  <span class="comment">// is edges[idx].first, consumer is .second (per buildComputePeerAdjacency).</span></div>
+<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>  <span class="keyword">static</span> std::pair&lt;int, int&gt; totalComputePeers(mlir::Operation *op,</div>
+<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>                                               <span class="keyword">const</span> Adjacency &amp;adjacency);</div>
+<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span> </div>
+<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>  <span class="comment">// Diagnostic peer notes. `labelPeer(thisIsFirst)` names the peer endpoint</span></div>
+<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>  <span class="comment">// role; the attached note reads &quot;&lt;label&gt; peer placed at (col, row)&quot;.</span></div>
+<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>  <span class="keywordtype">void</span> attachPeerNotes(</div>
+<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>      mlir::InFlightDiagnostic &amp;diag, LogicalTileOp logicalTile,</div>
+<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>      <span class="keyword">const</span> Adjacency &amp;adjacency,</div>
+<div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>      llvm::function_ref&lt;llvm::StringRef(<span class="keywordtype">bool</span> thisIsFirst)&gt; labelPeer) <span class="keyword">const</span>;</div>
 <div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span> </div>
-<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>} <span class="comment">// namespace xilinx::AIE</span></div>
-<div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span> </div>
-<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span><span class="preprocessor">#endif </span><span class="comment">// AIE_PLACER_H</span></div>
+<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>  <span class="keywordtype">void</span> addChannelRequirementsFromFlows(</div>
+<div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span>      llvm::ArrayRef&lt;FlowOp&gt; flows, llvm::ArrayRef&lt;PacketFlowOp&gt; pktFlows,</div>
+<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>      llvm::DenseMap&lt;mlir::Operation *, std::pair&lt;int, int&gt;&gt;</div>
+<div class="line"><a id="l00359" name="l00359"></a><span class="lineno">  359</span>          &amp;channelRequirements);</div>
+<div class="line"><a id="l00360" name="l00360"></a><span class="lineno">  360</span>};</div>
+</div>
+<div class="line"><a id="l00361" name="l00361"></a><span class="lineno">  361</span> </div>
+<div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span> </div>
+<div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span><span class="preprocessor">#endif </span><span class="comment">// AIE_PLACER_H</span></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetModel_8h_html"><div class="ttname"><a href="AIETargetModel_8h.html">AIETargetModel.h</a></div></div>
 <div class="ttc" id="aclassbool_html"><div class="ttname"><a href="classbool.html">bool</a></div></div>
@@ -462,14 +468,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html">xilinx::AIE::TileAvailability</a></div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00026">AIEPlacer.h:26</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a05b6fa9b1aab34de73c9906eb1f49ae4"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a05b6fa9b1aab34de73c9906eb1f49ae4">xilinx::AIE::TileAvailability::compTiles</a></div><div class="ttdeci">std::vector&lt; TileID &gt; compTiles</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00027">AIEPlacer.h:27</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a111428d92a77fec0a8d3ddcb0663cb2f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a111428d92a77fec0a8d3ddcb0663cb2f">xilinx::AIE::TileAvailability::outputChannelsUsed</a></div><div class="ttdeci">llvm::DenseMap&lt; TileID, int &gt; outputChannelsUsed</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00040">AIEPlacer.h:40</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4855317fc91d90e59e40d0179d73c8d7"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">xilinx::AIE::TileAvailability::removeTile</a></div><div class="ttdeci">void removeTile(TileID tile, AIETileType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8cpp_source.html#l01286">AIEPlacer.cpp:1286</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4855317fc91d90e59e40d0179d73c8d7"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4855317fc91d90e59e40d0179d73c8d7">xilinx::AIE::TileAvailability::removeTile</a></div><div class="ttdeci">void removeTile(TileID tile, AIETileType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8cpp_source.html#l01389">AIEPlacer.cpp:1389</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a4ac3f889b8d756647a54a1fc942ad343"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a4ac3f889b8d756647a54a1fc942ad343">xilinx::AIE::TileAvailability::nonCompTiles</a></div><div class="ttdeci">std::vector&lt; TileID &gt; nonCompTiles</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00028">AIEPlacer.h:28</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_a975e4ca39708914c5fe54323f663af98"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#a975e4ca39708914c5fe54323f663af98">xilinx::AIE::TileAvailability::compTilesSet</a></div><div class="ttdeci">llvm::DenseSet&lt; TileID &gt; compTilesSet</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00037">AIEPlacer.h:37</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1TileAvailability_html_aa3ba079bbcb83e8aa50f0945909261a1"><div class="ttname"><a href="structxilinx_1_1AIE_1_1TileAvailability.html#aa3ba079bbcb83e8aa50f0945909261a1">xilinx::AIE::TileAvailability::inputChannelsUsed</a></div><div class="ttdeci">llvm::DenseMap&lt; TileID, int &gt; inputChannelsUsed</div><div class="ttdef"><b>Definition</b> <a href="AIEPlacer_8h_source.html#l00039">AIEPlacer.h:39</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Jun 4 2026 15:58:10 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jun 4 2026 16:56:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
