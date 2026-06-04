@@ -66,7 +66,7 @@ def main(opts):
     model.conv2.weight.data.copy_(int_weight2)
     model.conv3.weight.data.copy_(int_weight3)
 
-    run_conv_torch_test(
+    if not run_conv_torch_test(
         xclbin_path=opts.xclbin,
         insts_path=opts.instr,
         golden_model=model,
@@ -77,7 +77,8 @@ def main(opts):
         out_scale=inp_scale4,
         atol=inp_scale4,
         dtype_out=np.uint8,
-    )
+    ):
+        sys.exit(-1)
 
 
 if __name__ == "__main__":

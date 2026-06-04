@@ -7,6 +7,7 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """Shared helpers for the kernels submodules."""
 
+import hashlib
 import logging
 from pathlib import Path
 import numpy as np
@@ -234,8 +235,6 @@ def _make_extern(
         digest = None
         object_file_name = shared_object_file_name
     elif flags_tuple or arg_keys or str(source_path):
-        import hashlib
-
         # 8 hex chars of sha256 — short enough not to bloat MLIR strings,
         # wide enough that the chance of two distinct cache_keys colliding
         # is vanishingly small (~2^-32).

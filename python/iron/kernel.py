@@ -180,7 +180,7 @@ class BaseKernel(Resolvable):
         """Return a copy of the argument type list."""
         return self._arg_types.copy()
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         """Emit a func.call to this kernel, validating argument count.
 
         Each argument is passed through :func:`_maybe_collapse_to_match`
@@ -191,6 +191,9 @@ class BaseKernel(Resolvable):
         ``aie.iron.kernels.X`` helper declares a flat 1-D arg.  See that
         helper's docstring for the full set of conditions.  Real shape /
         dtype mismatches still fail at MLIR verification time.
+
+        ``**kwargs`` are forwarded to the underlying ``func.call`` builder
+        (typically ``loc=``, ``ip=`` for MLIR location / insertion point).
         """
         if not self._op:
             raise ValueError("Kernel must be resolved before it can be called.")
@@ -205,7 +208,7 @@ class BaseKernel(Resolvable):
             _maybe_collapse_to_match(a, expected_ty)
             for a, expected_ty in zip(arg_ops, expected_input_types)
         ]
-        call(self._op, adapted)
+        call(self._op, adapted, **kwargs)
 
 
 class Kernel(BaseKernel):
@@ -357,8 +360,12 @@ class ExternalFunction(Kernel):
                 break
         ExternalFunction._instances.add(self)
 
-    def __call__(self, *args):
-        """Call with argument count and type validation before emitting MLIR."""
+    def __call__(self, *args, **kwargs):
+        """Call with argument count and type validation before emitting MLIR.
+
+        ``**kwargs`` are forwarded to the base ``BaseKernel.__call__``
+        and ultimately to the MLIR ``func.call`` builder.
+        """
         if len(args) != len(self._arg_types):
             raise ValueError(
                 f"ExternalFunction '{self._name}' expects "
@@ -367,7 +374,7 @@ class ExternalFunction(Kernel):
             )
         for i, (arg, expected_ty) in enumerate(zip(args, self._arg_types)):
             self._validate_arg(i, arg, expected_ty)
-        super().__call__(*args)
+        super().__call__(*args, **kwargs)
 
     def _validate_arg(self, index: int, arg, expected_ty) -> None:
         """Validate a single argument against its expected type."""

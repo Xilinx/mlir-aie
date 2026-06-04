@@ -12,6 +12,10 @@ from typing import Protocol, runtime_checkable
 from .. import ir  # type: ignore
 
 
+# Structural typing via @runtime_checkable Protocol: any class with both
+# .resolve() and .tiles() passes isinstance(x, Resolvable).  The two-method
+# requirement is the safeguard against false positives from classes that
+# happen to define an unrelated .resolve() (e.g. pathlib.Path).
 @runtime_checkable
 class Resolvable(Protocol):
     def resolve(

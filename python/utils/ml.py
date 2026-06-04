@@ -369,13 +369,14 @@ def run_conv_torch_test(
     trace_size=0,
     trace_file=None,
     log_dir=None,
-):
+) -> bool:
     """Run a torch conv-style design on the NPU and compare against a golden model.
 
     Loads the JIT-built ``xclbin``/``insts``, feeds reshaped input + concatenated
     weights, executes via ``DefaultNPURuntime``, reshapes the output back to a
-    torch-compatible layout, and prints ``"PASS!"`` (exit 0) on match or
-    ``"Failed."`` (exit -1) on mismatch.
+    torch-compatible layout, prints ``"PASS!"`` / ``"Failed."``, and returns
+    ``True`` on match / ``False`` on mismatch.  The caller is responsible for
+    translating the bool into a process exit code if needed.
 
     Intended for the conv-style ``test.py`` harnesses under ``programming_examples/ml/``;
     those files collapse to building ``golden_model`` + computing ``int_inp`` and
@@ -494,7 +495,6 @@ def run_conv_torch_test(
         atol=atol,
     ):
         print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nFailed.\n")
-        sys.exit(-1)
+        return True
+    print("\nFailed.\n")
+    return False

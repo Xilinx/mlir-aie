@@ -72,7 +72,7 @@ def main(opts):
     model = Conv2dInt()
     model.conv.weight.data.copy_(int_weight)
 
-    run_conv_torch_test(
+    if not run_conv_torch_test(
         xclbin_path=opts.xclbin,
         insts_path=opts.instr,
         kernel_name=opts.kernel,
@@ -86,7 +86,8 @@ def main(opts):
         dtype_out=out_dtype,
         trace_size=opts.trace_size,
         trace_file="log/trace_conv2d.txt" if opts.trace_size else None,
-    )
+    ):
+        sys.exit(-1)
 
 
 if __name__ == "__main__":
