@@ -2942,6 +2942,54 @@ public:
   }
 };
 
+// AIE2P unpack int4-packed: source is vector<N/2 x i8> carrying N packed
+// nibbles, result is vector<N x i8> (one byte per nibble). Maps directly
+// to llvm.aie2p.unpack.I512.I8.I4 (N=64) or .I1024.I8.I4 (N=128).
+// AWQ packed weights are unsigned; the signed offset is folded into the
+// per-group zero point so the intrinsic is invoked with sign=0.
+class UnpackI4OpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::UnpackOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::UnpackOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::UnpackOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto srcTy = cast<VectorType>(op.getSource().getType());
+    auto dstTy = cast<VectorType>(op.getResult().getType());
+    if (!srcTy.getElementType().isInteger(8) ||
+        !dstTy.getElementType().isInteger(8))
+      return failure();
+
+    unsigned srcLanes = getVectorLaneSize(srcTy);
+    unsigned dstLanes = getVectorLaneSize(dstTy);
+    if (dstLanes != 2 * srcLanes)
+      return failure();
+    if (dstLanes != 64 && dstLanes != 128)
+      return failure();
+
+    auto signCst = LLVM::ConstantOp::create(
+        rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+
+    Value unpacked;
+    if (dstLanes == 64) {
+      unpacked = xllvm::UnpackI512I8I4AIE2pIntrOp::create(
+                     rewriter, loc, VectorType::get({64}, rewriter.getI8Type()),
+                     adaptor.getSource(), signCst)
+                     ->getResult(0);
+    } else {
+      unpacked =
+          xllvm::UnpackI1024I8I4AIE2pIntrOp::create(
+              rewriter, loc, VectorType::get({128}, rewriter.getI8Type()),
+              adaptor.getSource(), signCst)
+              ->getResult(0);
+    }
+    rewriter.replaceOp(op, unpacked);
+    return success();
+  }
+};
+
 class BroadcastOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::BroadcastOp> {
 public:
@@ -5651,6 +5699,9 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ExtOpAIE2pConversion>(converter);
   patterns.add<ExtractElemOpAIE2pConversion>(converter);
   patterns.add<ConcatOpAIE2pConversion>(converter);
+  // Higher benefit so it matches before the generic stub UnpackOpConversion
+  // returns failure for i4->i8 inputs.
+  patterns.add<UnpackI4OpAIE2pConversion>(converter, /*benefit=*/2);
   patterns.add<ExpOpAIE2pConversion>(converter);
   patterns.add<TanhOpAIE2pConversion>(converter);
   patterns.add<InvOpAIE2pConversion>(converter);
