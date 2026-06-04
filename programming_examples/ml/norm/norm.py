@@ -72,9 +72,8 @@ def norm(
         )
 
     rows_per_core = sequence_length // n_cores
-    total_volume = sequence_length * embedding_dim
 
-    tensor_ty = np.ndarray[(total_volume,), np.dtype[bfloat16]]
+    tensor_ty = np.ndarray[(sequence_length, embedding_dim), np.dtype[bfloat16]]
     chunk_ty = np.ndarray[(embedding_dim,), np.dtype[bfloat16]]
 
     of_ins = [ObjectFifo(chunk_ty, name=f"in_{i}") for i in range(n_cores)]
@@ -157,8 +156,8 @@ def _run_and_verify(opts):
     a_np = rng.uniform(-1.0, 1.0, size=(rows, cols)).astype(bfloat16)
     c_np = np.zeros_like(a_np)
 
-    a_t = iron.tensor(a_np.reshape(-1), dtype=bfloat16, device="npu")
-    c_t = iron.tensor(c_np.reshape(-1), dtype=bfloat16, device="npu")
+    a_t = iron.tensor(a_np, dtype=bfloat16, device="npu")
+    c_t = iron.tensor(c_np, dtype=bfloat16, device="npu")
 
     norm(a_t, c_t, **_compile_kwargs(opts))
 

@@ -5,14 +5,19 @@
 #
 # Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 
+import argparse
+import math
+import os
+import sys
+
+import numpy as np
 import torch
 import torch.nn as nn
-import sys
-import math
-from aie.utils.ml import DataShaper
-import os
-import numpy as np
+
 import aie.iron as iron
+from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.hostruntime.argparse import add_benchmark_args
+from aie.utils.ml import DataShaper
 
 from resnet import resnet_conv2_x
 
@@ -20,7 +25,7 @@ torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 
 
-def main():
+def main(opts):
     log_folder = "log/"
     if not os.path.exists(log_folder):
         os.makedirs(log_folder)
@@ -412,13 +417,14 @@ def main():
     # ------------------------------------------------------
     # Main run loop — JIT-compile + run the @iron.jit design directly
     # ------------------------------------------------------
-    in1 = iron.tensor(ifm_mem_fmt.reshape(-1), dtype=dtype_in)
-    in2 = iron.tensor(total_wts3.reshape(-1), dtype=dtype_wts)
-    out_size = int(np.prod(shape_out) * dtype_out.itemsize)
-    out = iron.zeros(out_size, dtype=dtype_out)
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(total_wts3, dtype=dtype_wts)
+    out = iron.zeros(shape_out, dtype=dtype_out)
 
-    resnet_conv2_x(in1, in2, out)
-    aie_output = out.numpy() * block_2_relu_3
+    bench = run_iters(
+        resnet_conv2_x, in1, in2, out, warmup=opts.warmup, iters=opts.iters
+    )
+    aie_output = out.numpy().reshape(-1) * block_2_relu_3
 
     # ------------------------------------------------------
     # Reorder output data-layout
@@ -434,6 +440,9 @@ def main():
     # ------------------------------------------------------
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
+    print()
+    print_benchmark(bench)
+
     if np.allclose(
         ofm_mem_fmt_out.detach().numpy(),
         golden_output.detach().numpy(),
@@ -448,4 +457,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    p = argparse.ArgumentParser(prog="ResNet conv2_x layers test")
+    add_benchmark_args(p)
+    main(p.parse_args())

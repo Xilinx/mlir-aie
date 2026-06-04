@@ -68,9 +68,8 @@ def rope(
         raise ValueError(f"embedding_dim ({embedding_dim}) must be even")
 
     rows_per_core = sequence_length // n_cores
-    total_volume = sequence_length * embedding_dim
 
-    tensor_ty = np.ndarray[(total_volume,), np.dtype[bfloat16]]
+    tensor_ty = np.ndarray[(sequence_length, embedding_dim), np.dtype[bfloat16]]
     chunk_ty = np.ndarray[(embedding_dim,), np.dtype[bfloat16]]
 
     of_ins = [ObjectFifo(chunk_ty, name=f"in_{i}") for i in range(n_cores)]
@@ -164,9 +163,9 @@ def _run_and_verify(opts):
     lut_np = _build_rope_lut(rows, cols)
     c_np = np.zeros_like(a_np)
 
-    a_t = iron.tensor(a_np.reshape(-1), dtype=bfloat16, device="npu")
-    lut_t = iron.tensor(lut_np.reshape(-1), dtype=bfloat16, device="npu")
-    c_t = iron.tensor(c_np.reshape(-1), dtype=bfloat16, device="npu")
+    a_t = iron.tensor(a_np, dtype=bfloat16, device="npu")
+    lut_t = iron.tensor(lut_np, dtype=bfloat16, device="npu")
+    c_t = iron.tensor(c_np, dtype=bfloat16, device="npu")
 
     rope(a_t, lut_t, c_t, **_compile_kwargs(opts))
 

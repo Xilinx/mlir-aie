@@ -12,11 +12,14 @@ import math
 from aie.utils.ml import DataShaper
 import time
 import os
-import numpy as np
-import aie.iron as iron
-from aie.utils import DefaultNPURuntime
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 import argparse
+import json
+
+import numpy as np
+import torch.nn.functional as F
+
+import aie.iron as iron
+from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
 
 
@@ -27,10 +30,6 @@ def convert_to_numpy(array):
         return array.cpu().numpy()
     else:
         raise TypeError("Unsupported array type")
-
-
-import json
-import torch.nn.functional as F
 
 
 def pad_tensor(tensor, target_shape):
