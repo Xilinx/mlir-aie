@@ -14,8 +14,8 @@
 using namespace mlir;
 using namespace xilinx;
 
-// Counter shared across calls to getOrCreateDataMemref so that
-// generateUniqueSymbolName can skip past previously used indices efficiently.
+// Counter shared across calls to getOrCreateDataMemref so that uniquing scans
+// can skip past previously used indices efficiently.
 static unsigned blockwriteDataCounter = 0;
 
 std::optional<AIEX::SubviewTraceResult>
@@ -148,11 +148,10 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
     break;
   }
   if (!global) {
-    // Reuse the shared naming utility so that all buffer-name generation
-    // in the project follows the same pattern (see also AIEToConfiguration.cpp
-    // and AIELowerParameters.cpp).
-    std::string name = AIE::generateUniqueSymbolName(dev, "blockwrite_data_",
-                                                     blockwriteDataCounter);
+    std::string name = "blockwrite_data_";
+    while (dev.lookupSymbol(name + std::to_string(blockwriteDataCounter)))
+      blockwriteDataCounter++;
+    name += std::to_string(blockwriteDataCounter);
     global = memref::GlobalOp::create(builder, loc, name,
                                       builder.getStringAttr("private"),
                                       memrefType, initVal, true, nullptr);

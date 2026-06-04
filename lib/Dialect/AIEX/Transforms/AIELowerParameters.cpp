@@ -142,10 +142,9 @@ struct AIELowerParametersPass
       builder.setInsertionPoint(readOp);
       Value c0 = arith::ConstantIndexOp::create(builder, readOp.getLoc(), 0);
       Value raw = memref::LoadOp::create(builder, readOp.getLoc(), buf, c0);
-      Value c2 = arith::ConstantOp::create(
-          builder, readOp.getLoc(), builder.getI32IntegerAttr(2));
-      Value decoded =
-          arith::ShRUIOp::create(builder, readOp.getLoc(), raw, c2);
+      Value c2 = arith::ConstantOp::create(builder, readOp.getLoc(),
+                                           builder.getI32IntegerAttr(2));
+      Value decoded = arith::ShRUIOp::create(builder, readOp.getLoc(), raw, c2);
 
       Type resultType = readOp.getResult().getType();
       Value result = decoded;
@@ -153,8 +152,8 @@ struct AIELowerParametersPass
         result = arith::TruncIOp::create(builder, readOp.getLoc(), resultType,
                                          decoded);
       } else if (resultType.isBF16()) {
-        Value masked = arith::TruncIOp::create(
-            builder, readOp.getLoc(), builder.getI16Type(), decoded);
+        Value masked = arith::TruncIOp::create(builder, readOp.getLoc(),
+                                               builder.getI16Type(), decoded);
         result = arith::BitcastOp::create(builder, readOp.getLoc(), resultType,
                                           masked);
       } else if (resultType.isF32()) {
