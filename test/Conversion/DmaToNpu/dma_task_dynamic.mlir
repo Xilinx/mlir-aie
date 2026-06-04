@@ -64,7 +64,36 @@ module {
 // placeholders for dynamic fields) + npu.write32 overrides for the dynamic
 // BD words (word[0]=bufLen, word[3..6]=sizes/strides), then address_patch
 // and push_queue.
+//
+// Verify the arith computation chain that feeds the dynamic BD words. For
+// memref<128xi32> on shim NOC (elemWidth==addrGran==32, so no scale/div):
+//   - d0_stride: subi(stride0,1) / cmpi sgt stride0,0 / select  (stride>0 guard)
+//   - d1_stride: subi(stride1,1) / cmpi sgt size1,1 / select    (size>1 guard)
+//   - d2_stride: subi(stride2,1) / cmpi sgt size2,1 / select    (size>1 guard)
+//   - iteration_stride: active = (size3>1 AND stride3>0) via arith.andi
+//   - bufLen = hwD0Size * hwD1Size * hwD2Size via two muli ops
+// All arith ops are emitted before aiex.npu.writebd; the dynamic BD words
+// are then patched in by aiex.npu.write32 overrides.
 // CHECK-LABEL: aie.device(npu1)
+//
+// d0_stride guard (stride0>0):
+// CHECK: arith.subi
+// CHECK: arith.cmpi sgt
+// CHECK: arith.select
+// d1_stride guard (size1>1):
+// CHECK: arith.subi
+// CHECK: arith.cmpi sgt
+// CHECK: arith.select
+// d2_stride guard (size2>1):
+// CHECK: arith.subi
+// CHECK: arith.cmpi sgt
+// CHECK: arith.select
+// iteration_stride: active = sizeGt1 AND strideGt0
+// CHECK: arith.andi
+// bufLen = d0_size * d1_size * d2_size:
+// CHECK: arith.muli
+// CHECK: arith.muli
+//
 // CHECK: aiex.npu.writebd
 // CHECK: aiex.npu.write32
 // CHECK: aiex.npu.address_patch

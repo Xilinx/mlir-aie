@@ -622,6 +622,10 @@ public:
         llvm::reverse(buildMixed(adaptor.getStrides(), op.getStaticStrides())));
 
     // --- Compute hardware sizes and strides as SSA Values via shared util ---
+    // NOTE: The hardware d0_size field is 10 bits wide (max 1023). The static
+    // lowering path applies a linear-mode optimization for contiguous transfers
+    // that avoids this limit, but the dynamic path does not. Dynamic d0_size
+    // values exceeding 1023 will be silently truncated by the hardware.
     HwBdEncoding hw = emitDynamicHwBdEncoding(
         rewriter, loc, targetModel, bufferType, mixedSizesRev, mixedStridesRev);
     Value hwD0Size = hw.d0Size;

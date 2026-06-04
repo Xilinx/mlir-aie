@@ -84,6 +84,10 @@ HwBdEncoding emitDynamicHwBdEncoding(OpBuilder &builder, Location loc,
 
   // Hardware d0_size = inputSizes[0] * elemWidth / addrGran
   // NOTE: Must multiply first, then divide to avoid integer truncation.
+  // NOTE: The hardware d0_size field is 10 bits wide (max 1023). The static
+  // lowering path applies a linear-mode optimization for contiguous transfers
+  // that avoids this limit, but the dynamic path does not. Dynamic d0_size
+  // values exceeding 1023 will be silently truncated by the hardware.
   Value hwD0Size;
   if (elemWidth == addrGran) {
     hwD0Size = inSize0;

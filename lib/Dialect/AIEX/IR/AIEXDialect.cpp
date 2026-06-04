@@ -551,6 +551,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   });
 
   // Skip detailed stride/size/offset verification when values are dynamic.
+  // When any size/stride/offset is a dynamic SSA value, compile-time
+  // validation of alignment, range, and stride constraints is not possible.
+  // These constraints are deferred to runtime — invalid values will cause
+  // hardware misbehavior rather than compile-time errors.
   if (!allSizesConstant || !allStridesConstant || !allOffsetsConstant)
     return success();
 
