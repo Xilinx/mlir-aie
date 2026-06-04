@@ -108,10 +108,15 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
             c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
             # AIE Core Function declarations
-            zero = external_func(f"zero_{dtype_out_str}", inputs=[c_ty])
+            zero = external_func(
+                f"zero_{dtype_out_str}",
+                inputs=[c_ty],
+                link_with=f"mm_{m}x{k}x{n}.o",
+            )
             matmul = external_func(
                 f"matmul_{dtype_in_str}_{dtype_out_str}",
                 inputs=[a_ty, b_ty, c_ty],
+                link_with=f"mm_{m}x{k}x{n}.o",
             )
 
             # Tile declarations
@@ -186,12 +191,7 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                 trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
             # Core body with dynamic loop bounds via RTP
-            @core(
-                compute_tile2,
-                f"mm_{m}x{k}x{n}.o",
-                stack_size=0xD00,
-                dynamic_objfifo_lowering=True,
-            )
+            @core(compute_tile2, stack_size=0xD00, dynamic_objfifo_lowering=True)
             def core_body():
                 i32_ty = IntegerType.get_signless(32)
                 idx_ty = IndexType.get()
