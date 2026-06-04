@@ -149,6 +149,9 @@ jobs:
       - name: Check filename case conflicts
         run: pre-commit run check-case-conflict --all-files --color never
 
+      - name: Check filename case conflicts
+        run: pre-commit run check-case-conflict --all-files --color never
+
       - name: Run git-clang-format
         id: git-clang-format
         run: |
