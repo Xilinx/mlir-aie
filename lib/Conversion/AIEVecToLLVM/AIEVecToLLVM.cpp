@@ -5103,7 +5103,13 @@ class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
   }
 };
 
-// AIE2p version of FoldAIECastOps
+// AIE2p version of FoldAIECastOps.
+// On AIE2P the int/float accumulators share the same physical register, so
+// aievec.cast between e.g. v32i32 (acc32) and v32f32 (accfloat) is a no-op
+// at hardware level. LLVM IR still needs a typed value, so emit an
+// llvm.bitcast when the source/destination LLVM types differ but have the
+// same bitwidth. Replace with the source value directly when types already
+// match (the cast becomes a pure type alias).
 class FoldAIECastOpsAIE2p
     : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
   using ConvertOpToLLVMPattern<aievec::CastOp>::ConvertOpToLLVMPattern;
@@ -5111,8 +5117,14 @@ class FoldAIECastOpsAIE2p
   LogicalResult
   matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // Fold the cast.
-    rewriter.replaceOp(castOp, adaptor.getSource());
+    Value src = adaptor.getSource();
+    Type srcTy = src.getType();
+    Type dstTy = getTypeConverter()->convertType(castOp.getResult().getType());
+    if (srcTy == dstTy) {
+      rewriter.replaceOp(castOp, src);
+      return success();
+    }
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(castOp, dstTy, src);
     return success();
   }
 };
