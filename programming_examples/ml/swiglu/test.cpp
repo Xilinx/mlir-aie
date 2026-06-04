@@ -9,8 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "cxxopts.hpp"
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -23,29 +27,27 @@
 
 #include "test_utils.h"
 
-// Silu reference implementation
-std::bfloat16_t silu_bf16(std::bfloat16_t &input) {
-  // Compute tanh approximation
-  std::bfloat16_t half_x = input * std::bfloat16_t(0.5f);
-  std::bfloat16_t tanh_half_x = std::tanh(half_x);
-  std::bfloat16_t sigmoid_approx =
-      std::bfloat16_t(0.5f) * (tanh_half_x + std::bfloat16_t(1.0f));
+// SwiGLU reference implementation.
+test_utils::bfloat16_t swiglu_bf16(test_utils::bfloat16_t input,
+                                   test_utils::bfloat16_t w1,
+                                   test_utils::bfloat16_t w2) {
+  const test_utils::bfloat16_t k0_5 = test_utils::bfloat16_from_float(0.5f);
+  const test_utils::bfloat16_t k1 = test_utils::bfloat16_from_float(1.0f);
 
-  // Compute output: x * tanh_approx
-  return input * sigmoid_approx;
-}
-
-// SwiGLU reference implementation
-std::bfloat16_t swiglu_bf16(std::bfloat16_t &input, std::bfloat16_t &w1,
-                            std::bfloat16_t &w2) {
-  // Compute the first part: x * w1
-  std::bfloat16_t x_w1 = input * w1;
-  // Compute the second part: x * w2
-  std::bfloat16_t x_w2 = input * w2;
-  // Apply the silu activation function to the second part
-  std::bfloat16_t silu_output = silu_bf16(x_w2);
-  // Compute the final output: x * w1 * silu_output
-  return x_w1 * silu_output;
+  const test_utils::bfloat16_t mul_input_weight_1 =
+      test_utils::bfloat16_mul(input, w1);
+  const test_utils::bfloat16_t mul_input_weight_2 =
+      test_utils::bfloat16_mul(input, w2);
+  const test_utils::bfloat16_t half_x =
+      test_utils::bfloat16_mul(mul_input_weight_2, k0_5);
+  const test_utils::bfloat16_t tanh_half_x = test_utils::bfloat16_tanh(half_x);
+  const test_utils::bfloat16_t tanh_half_x_approx =
+      test_utils::bfloat16_add(tanh_half_x, k1);
+  const test_utils::bfloat16_t sigmoid_approx =
+      test_utils::bfloat16_mul(tanh_half_x_approx, k0_5);
+  const test_utils::bfloat16_t silu_output =
+      test_utils::bfloat16_mul(mul_input_weight_2, sigmoid_approx);
+  return test_utils::bfloat16_mul(mul_input_weight_1, silu_output);
 }
 
 int main(int argc, const char *argv[]) {
@@ -62,7 +64,7 @@ int main(int argc, const char *argv[]) {
       "instr,i",
       "path of file containing userspace instructions to be sent to the LX6",
       cxxopts::value<std::string>())(
-      "length,l", "the length of the transfer in std::bfloat16_t",
+      "length,l", "the length of the transfer in bfloat16 elements",
       cxxopts::value<int>()->default_value("4096"));
 
   try {
@@ -142,31 +144,33 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, N * sizeof(std::bfloat16_t),
+  auto bo_inA = xrt::bo(device, N * sizeof(test_utils::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_weights = xrt::bo(device, 2 * N * sizeof(std::bfloat16_t),
+  auto bo_weights = xrt::bo(device, 2 * N * sizeof(test_utils::bfloat16_t),
                             XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-  auto bo_out = xrt::bo(device, N * sizeof(std::bfloat16_t),
+  auto bo_out = xrt::bo(device, N * sizeof(test_utils::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
 
-  std::bfloat16_t *bufInA = bo_inA.map<std::bfloat16_t *>();
-  std::vector<std::bfloat16_t> srcVecA;
+  test_utils::bfloat16_t *bufInA = bo_inA.map<test_utils::bfloat16_t *>();
+  std::vector<test_utils::bfloat16_t> srcVecA;
   for (int i = 0; i < N; i++)
-    srcVecA.push_back(std::bfloat16_t(i * 0.05f + -1.0f)); // Example data
-  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(std::bfloat16_t)));
+    srcVecA.push_back(
+        test_utils::bfloat16_from_float(i * 0.05f + -1.0f)); // Example data
+  memcpy(bufInA, srcVecA.data(),
+         (srcVecA.size() * sizeof(test_utils::bfloat16_t)));
 
   // Generate the W1 and W2 weights
-  std::vector<std::bfloat16_t> srcVecW1;
-  std::vector<std::bfloat16_t> srcVecW2;
+  std::vector<test_utils::bfloat16_t> srcVecW1;
+  std::vector<test_utils::bfloat16_t> srcVecW2;
   for (int i = 0; i < N; i++) {
     // Example weights, can be replaced with actual model weights
-    srcVecW1.push_back(std::bfloat16_t(0.1f * (i % 10) + 0.1f));
-    srcVecW2.push_back(std::bfloat16_t(0.2f * (i % 20) + 0.2f));
+    srcVecW1.push_back(test_utils::bfloat16_from_float(0.1f * (i % 10) + 0.1f));
+    srcVecW2.push_back(test_utils::bfloat16_from_float(0.2f * (i % 20) + 0.2f));
   }
-  std::vector<std::bfloat16_t> srcVecWeights;
+  std::vector<test_utils::bfloat16_t> srcVecWeights;
   // Interleave the weights into one vector in 1024 elements chunks
   // of each W1 and W2
   for (int i = 0; i < N; i += 1024) {
@@ -179,9 +183,9 @@ int main(int argc, const char *argv[]) {
   }
 
   // Write the weights to the buffer object
-  auto bufWeights = bo_weights.map<std::bfloat16_t *>();
+  auto bufWeights = bo_weights.map<test_utils::bfloat16_t *>();
   memcpy(bufWeights, srcVecWeights.data(),
-         srcVecWeights.size() * sizeof(std::bfloat16_t));
+         srcVecWeights.size() * sizeof(test_utils::bfloat16_t));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
@@ -212,24 +216,28 @@ int main(int argc, const char *argv[]) {
   std::cout << "Latency (us): " << npu_time << std::endl;
   std::cout << std::endl;
 
-  double total_bytes = 2.0 * N * sizeof(std::bfloat16_t); // input and output
+  double total_bytes =
+      2.0 * N * sizeof(test_utils::bfloat16_t); // input and output
   double bandwidth_GBps = total_bytes / (npu_time * 1e-6) / 1e9;
   std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s"
             << std::endl;
 
-  std::bfloat16_t *bufOut = bo_out.map<std::bfloat16_t *>();
+  test_utils::bfloat16_t *bufOut = bo_out.map<test_utils::bfloat16_t *>();
 
   int errors = 0;
 
   for (int i = 0; i < N; i++) {
-    std::bfloat16_t ref = swiglu_bf16(srcVecA[i], srcVecW1[i], srcVecW2[i]);
-    if (!test_utils::nearly_equal(*(bufOut + i), ref, 0.05f)) {
+    const test_utils::bfloat16_t ref =
+        swiglu_bf16(srcVecA[i], srcVecW1[i], srcVecW2[i]);
+    const float expected = test_utils::bfloat16_to_float(ref);
+    const float actual = test_utils::bfloat16_to_float(*(bufOut + i));
+    if (!test_utils::nearly_equal(actual, expected, 0.05f)) {
       errors++;
       // Print the first 100 mismatches
       if (errors <= 100) {
         std::cout << "Mismatch at index " << i << ": "
-                  << "Expected: " << ref << ", "
-                  << "Got: " << *(bufOut + i) << std::endl;
+                  << "Expected: " << expected << ", "
+                  << "Got: " << actual << std::endl;
       }
     }
   }
