@@ -21,14 +21,17 @@ set -euo pipefail
 
 UV_VERSION="0.11.17"
 
-# Locate uv: prefer `$HOME/.local/bin/uv` because `pip install --user uv==...`
-# typically lands there, and falling back to whatever's first on PATH would
-# silently use an unpinned version. Otherwise take whatever's on PATH and warn
-# below if the version differs. Hard-fails if no uv at all.
-if [ -x "$HOME/.local/bin/uv" ]; then
-  UV="$HOME/.local/bin/uv"
-elif command -v uv >/dev/null 2>&1; then
+# Locate uv: take whatever's first on PATH so callers control which uv runs
+# (this is what `pip install --user uv` expects via ~/.local/bin being on
+# PATH, and what CI runners expect via their own toolcache layout). The
+# version check below warns if the resolved uv doesn't match UV_VERSION.
+# As a convenience fallback, check ~/.local/bin directly so a user who
+# installed with `pip install --user` but hasn't yet rehashed their PATH
+# still gets a working invocation. Hard-fails if no uv at all.
+if command -v uv >/dev/null 2>&1; then
   UV=uv
+elif [ -x "$HOME/.local/bin/uv" ]; then
+  UV="$HOME/.local/bin/uv"
 else
   echo "error: uv not found." >&2
   echo "       install with:  pip install 'uv==${UV_VERSION}'" >&2
