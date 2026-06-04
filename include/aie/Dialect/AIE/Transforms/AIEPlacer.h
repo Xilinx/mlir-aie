@@ -524,16 +524,6 @@ private:
   }
 };
 
-// Cascade flows have two valid orientations:
-//   Horizontal: src at (col, row), dst at (col+1, row)
-//   Vertical:   src at (col, row), dst at (col, row-1)
-enum class CascadeOrientation { Horizontal, Vertical };
-
-struct CascadeGroup {
-  llvm::SmallVector<mlir::Operation *> tiles; // ordered: src first, then dst
-  CascadeOrientation orientation = CascadeOrientation::Horizontal;
-};
-
 // Per-net bounding box state for incremental HPWL updates.
 // countAt* tracks how many endpoints sit at each extreme so we can avoid
 // full rescans when an endpoint moves away from a non-unique extreme.
@@ -599,10 +589,10 @@ private:
   // assignment)
   llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
 
-  // Cascade groups: tiles connected by cascade_flow that move as a fixed unit
-  llvm::SmallVector<CascadeGroup> cascadeGroups;
-  // Maps a tile to its cascade group index (-1 if not in any group)
-  llvm::DenseMap<mlir::Operation *, int> cascadeGroupOf;
+  // Cascade adjacency edges from aie.cascade_flow ops.
+  Adjacency cascadeAdjacency;
+  // Valid offsets for cascade_flow(src, dst): dst at src+(col,row).
+  static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
 
   struct FifoBufferInfo {
     mlir::Operation *fifoOp;
@@ -638,8 +628,11 @@ private:
   int computeBDCountPenalty() const;
   // Soft memory pressure (guides optimization, not legality)
   int computeMemoryPressure() const;
-  // Cascade violation penalty (hard: blocks legality when > 0)
-  int computeCascadePenalty() const;
+  // Adjacency violation penalty: weighted Manhattan distance to nearest
+  // valid offset for each edge. Used for cascade adjacency.
+  int computeAdjacencyPenalty(
+      const Adjacency &adj,
+      llvm::ArrayRef<std::pair<int, int>> validOffsets, int weight) const;
   // Generate objectfifo.allocate ops for:
   // (A) intratile fifos relocated to neighbor tiles (overflow resolution)
   // (B) shared-mem fifos where SA chose non-default buffer tile
@@ -661,7 +654,6 @@ private:
   void buildFifoBufferInfo(DeviceOp device,
                            llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
                            llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
-  void buildCascadeGroups(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();

@@ -680,42 +680,30 @@ int SABasedPlacer::computeBDCountPenalty() const {
   return penalty;
 }
 
-int SABasedPlacer::computeCascadePenalty() const {
-  // Cascade penalty: each cascade_flow pair must be in valid adjacent
-  // positions. Penalty proportional to distance from valid configuration.
-  // This replaces rigid cascade group moves — tiles move independently
-  // and the penalty guides convergence to valid cascade adjacency.
-  //
-  // Valid positions for cascade_flow(src, dst):
-  //   Horizontal: dst at (src.col + 1, src.row)
-  //   Vertical:   dst at (src.col, src.row - 1)
-  //
-  // Penalty = kCascadeWeight × min distance to either valid config
+int SABasedPlacer::computeAdjacencyPenalty(
+    const Adjacency &adj, ArrayRef<std::pair<int, int>> validOffsets,
+    int weight) const {
   int penalty = 0;
-
-  for (const auto &group : cascadeGroups) {
-    if (group.tiles.size() < 2)
-      continue;
-    Operation *src = group.tiles[0];
-    Operation *dst = group.tiles[1];
-    auto srcIt = currentPlacement.find(src);
-    auto dstIt = currentPlacement.find(dst);
-    if (srcIt == currentPlacement.end() || dstIt == currentPlacement.end())
+  for (auto [first, second] : adj.edges) {
+    auto firstIt = currentPlacement.find(first.getOperation());
+    auto secondIt = currentPlacement.find(second.getOperation());
+    if (firstIt == currentPlacement.end() ||
+        secondIt == currentPlacement.end())
       continue;
 
-    TileID sp = srcIt->second;
-    TileID dp = dstIt->second;
+    TileID firstPos = firstIt->second;
+    TileID secondPos = secondIt->second;
 
-    // Distance from horizontal valid position (dst = src.col+1, src.row)
-    int hDist = std::abs(dp.col - (sp.col + 1)) + std::abs(dp.row - sp.row);
-    // Distance from vertical valid position (dst = src.col, src.row-1)
-    int vDist = std::abs(dp.col - sp.col) + std::abs(dp.row - (sp.row - 1));
-
-    int minDist = std::min(hDist, vDist);
+    // Find minimum Manhattan distance to any valid offset.
+    int minDist = INT_MAX;
+    for (auto [dc, dr] : validOffsets) {
+      int dist = std::abs(secondPos.col - (firstPos.col + dc)) +
+                 std::abs(secondPos.row - (firstPos.row + dr));
+      minDist = std::min(minDist, dist);
+    }
     if (minDist > 0)
-      penalty += kCascadeWeight * minDist;
+      penalty += weight * minDist;
   }
-
   return penalty;
 }
 
@@ -1185,7 +1173,9 @@ LogicalResult SABasedPlacer::collectAndBuildModel(DeviceOp device) {
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
-  buildCascadeGroups(collected.cascadeFlows);
+  cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
+  LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "
+                          << cascadeAdjacency.edges.size() << " edges\n");
 
   return success();
 }
@@ -1333,56 +1323,6 @@ void SABasedPlacer::buildFifoBufferInfo(
   }
 }
 
-void SABasedPlacer::buildCascadeGroups(ArrayRef<CascadeFlowOp> cascadeFlows) {
-  llvm::DenseMap<Operation *, Operation *> cascadeSrcToDst;
-  llvm::DenseMap<Operation *, Operation *> cascadeDstToSrc;
-
-  for (auto cascadeOp : cascadeFlows) {
-    Value srcTile = cascadeOp.getSourceTile();
-    Value dstTile = cascadeOp.getDestTile();
-    auto *srcOp = srcTile.getDefiningOp();
-    auto *dstOp = dstTile.getDefiningOp();
-    if (srcOp && dstOp && isa<LogicalTileOp>(srcOp) &&
-        isa<LogicalTileOp>(dstOp)) {
-      cascadeSrcToDst[srcOp] = dstOp;
-      cascadeDstToSrc[dstOp] = srcOp;
-    }
-  }
-
-  // Follow chains from head (source not destination) to build groups.
-  // Heads sorted in IR order for deterministic construction.
-  SmallVector<Operation *> chainHeads;
-  for (auto &[src, dst] : cascadeSrcToDst) {
-    if (!cascadeDstToSrc.count(src))
-      chainHeads.push_back(src);
-  }
-  llvm::sort(chainHeads,
-             [](Operation *a, Operation *b) { return a->isBeforeInBlock(b); });
-  llvm::DenseSet<Operation *> visited;
-  for (auto *src : chainHeads) {
-    if (visited.count(src))
-      continue;
-
-    CascadeGroup group;
-    Operation *current = src;
-    while (current) {
-      group.tiles.push_back(current);
-      visited.insert(current);
-      auto it = cascadeSrcToDst.find(current);
-      current = (it != cascadeSrcToDst.end()) ? it->second : nullptr;
-    }
-
-    if (group.tiles.size() >= 2) {
-      int groupIdx = cascadeGroups.size();
-      for (auto *t : group.tiles)
-        cascadeGroupOf[t] = groupIdx;
-      cascadeGroups.push_back(std::move(group));
-    }
-  }
-
-  LLVM_DEBUG(llvm::dbgs() << "[SA] Found " << cascadeGroups.size()
-                          << " cascade groups\n");
-}
 
 LogicalResult SABasedPlacer::generateInitialPlacement() {
   auto &logicalTiles = collected.logicalTiles;
@@ -1545,7 +1485,7 @@ void SABasedPlacer::initializeSAState() {
   initBoundingBoxes();
   initResourceTracking();
 
-  cascadePen = computeCascadePenalty();
+  cascadePen = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets, kCascadeWeight);
   int memPressure = computeMemoryPressure();
   totalCost =
       computeTotalHPWL() + getResourcePenalty() + cascadePen + memPressure;
@@ -1563,7 +1503,7 @@ void SABasedPlacer::initializeSAState() {
 void SABasedPlacer::runSAMainLoop() {
   // Skip SA when there is nothing to optimize.
   bool hasCostTerms =
-      !nets.empty() || !fifoBuffers.empty() || !cascadeGroups.empty();
+      !nets.empty() || !fifoBuffers.empty() || !cascadeAdjacency.edges.empty();
   if (movableTiles.empty() || !hasCostTerms)
     return;
 
@@ -1668,7 +1608,7 @@ void SABasedPlacer::runSAMainLoop() {
     // Periodic full recompute to reset incremental cost drift.
     if (schedule.getIteration() % 10000 == 0 && schedule.getIteration() > 0) {
       initResourceTracking();
-      cascadePen = computeCascadePenalty();
+      cascadePen = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets, kCascadeWeight);
       totalCost = computeTotalHPWL() + getResourcePenalty() + cascadePen +
                   computeMemoryPressure();
     }
@@ -1709,7 +1649,7 @@ void SABasedPlacer::tryMultiTileMove(
   int oldCascade = cascadePen;
   int oldPressure = computeMemoryPressure();
   int newResPenalty = updateResourcePenalty(oldPlacements);
-  int newCascade = computeCascadePenalty();
+  int newCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets, kCascadeWeight);
   int newPressure = computeMemoryPressure();
   int delta = hpwlDelta + (newResPenalty - oldResPenalty) +
               (newCascade - oldCascade) + (newPressure - oldPressure);
@@ -1771,7 +1711,7 @@ void SABasedPlacer::printPlacementStats(int64_t elapsedMs) const {
   int finalHPWL = computeTotalHPWL();
   int finalHardPenalty = getResourcePenalty();
   int finalPressure = computeMemoryPressure();
-  int finalCascade = computeCascadePenalty();
+  int finalCascade = computeAdjacencyPenalty(cascadeAdjacency, kCascadeOffsets, kCascadeWeight);
   bool isLegal = (finalHardPenalty == 0 && finalCascade == 0);
 
   llvm::dbgs() << "[SA] Final HPWL=" << finalHPWL
