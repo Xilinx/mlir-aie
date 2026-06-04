@@ -3477,6 +3477,108 @@ struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
 using LowerExtFOpPattern = LowerExtOpPattern<arith::ExtFOp>;
 using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
 
+// Vector arith.sitofp i16 -> bf16 on AIE2P via the classic "magic number"
+// trick that aie_api uses in detail/aie2p/elementary.hpp:
+//
+//   1. UPS the int16 input to acc32 (32-bit integer accumulator lanes).
+//   2. Add a per-lane "magic_l" constant to the acc32 vector. The constant
+//      is the bit pattern of bf16(0x4b01) (= 2^23 + 128) broadcast over the
+//      lanes and reinterpreted as i32 -- chosen so that the resulting acc32
+//      vector, when bit-reinterpreted as f32 and subtracted from the same
+//      magic constant in accfloat space, yields the float representation of
+//      the original signed int16 input.
+//   3. aievec.cast acc32 -> accfloat is a register bit-alias on AIE2P
+//      (the same physical accumulator register).
+//   4. accfloat subtract of the magic constant.
+//   5. SRS accfloat -> bf16.
+//
+// Lane width 16 or 32 maps directly to the native AIE2P 256/1024-bit
+// accumulator. 64 splits into two 32-wide halves and concats the results.
+struct LowerVectorSIToFPI16BF16AIE2pPattern
+    : OpConversionPattern<arith::SIToFPOp> {
+  using OpConversionPattern<arith::SIToFPOp>::OpConversionPattern;
+
+  static Value emitMagicSiToFp(ConversionPatternRewriter &rewriter,
+                               Location loc, Value srcI16, unsigned lanes) {
+    Type i16Ty = rewriter.getI16Type();
+    Type i32Ty = rewriter.getI32Type();
+    Type bf16Ty = rewriter.getBF16Type();
+    Type f32Ty = rewriter.getF32Type();
+    VectorType vecI16 = VectorType::get({lanes}, i16Ty);
+    VectorType vecI32 = VectorType::get({lanes}, i32Ty);
+    VectorType vecBF16 = VectorType::get({lanes}, bf16Ty);
+    VectorType vecF32 = VectorType::get({lanes}, f32Ty);
+
+    DenseElementsAttr magicI16Attr = DenseElementsAttr::get(
+        vecI16, rewriter.getI16IntegerAttr(static_cast<int16_t>(0x4b01)));
+    Value magicI16Vec =
+        arith::ConstantOp::create(rewriter, loc, vecI16, magicI16Attr);
+    Value magicBF16Vec =
+        vector::BitCastOp::create(rewriter, loc, vecBF16, magicI16Vec);
+    Value magicAccF =
+        aievec::UPSOp::create(rewriter, loc, vecF32, magicBF16Vec);
+    Value magicAccI = aievec::CastOp::create(rewriter, loc, vecI32, magicAccF,
+                                             /*isResAcc=*/true);
+    Value vAccI = aievec::UPSOp::create(rewriter, loc, vecI32, srcI16);
+    Value vSumI = arith::AddIOp::create(rewriter, loc, vAccI, magicAccI);
+    Value vSumAccF = aievec::CastOp::create(rewriter, loc, vecF32, vSumI,
+                                            /*isResAcc=*/true);
+    Value vDiffAccF =
+        aievec::SubElemOp::create(rewriter, loc, vecF32, vSumAccF, magicAccF);
+    Value shiftCst =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    return aievec::SRSOp::create(rewriter, loc, vecBF16, vDiffAccF, shiftCst)
+        .getResult();
+  }
+
+  LogicalResult
+  matchAndRewrite(arith::SIToFPOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcTy = dyn_cast<VectorType>(adaptor.getIn().getType());
+    auto dstTy = dyn_cast<VectorType>(op.getType());
+    if (!srcTy || !dstTy || srcTy.getRank() != 1 || dstTy.getRank() != 1)
+      return failure();
+    if (!srcTy.getElementType().isInteger(16))
+      return failure();
+    auto dstEl = dyn_cast<FloatType>(dstTy.getElementType());
+    if (!dstEl || dstEl.getWidth() != 16)
+      return failure();
+    unsigned lanes = srcTy.getNumElements();
+    if (lanes != 16 && lanes != 32 && lanes != 64)
+      return failure();
+
+    Location loc = op.getLoc();
+    if (lanes == 16 || lanes == 32) {
+      Value out = emitMagicSiToFp(rewriter, loc, adaptor.getIn(), lanes);
+      rewriter.replaceOp(op, out);
+      return success();
+    }
+
+    // 64-wide: split into two 32-wide halves via vector.shuffle
+    // (vector.extract_strided_slice is illegal in this conversion target).
+    SmallVector<int64_t> loMask, hiMask, catMask;
+    for (int64_t i = 0; i < 32; ++i)
+      loMask.push_back(i);
+    for (int64_t i = 32; i < 64; ++i)
+      hiMask.push_back(i);
+    for (int64_t i = 0; i < 64; ++i)
+      catMask.push_back(i);
+    Value lo = vector::ShuffleOp::create(rewriter, loc, adaptor.getIn(),
+                                         adaptor.getIn(), loMask)
+                   .getResult();
+    Value hi = vector::ShuffleOp::create(rewriter, loc, adaptor.getIn(),
+                                         adaptor.getIn(), hiMask)
+                   .getResult();
+    Value loBF16 = emitMagicSiToFp(rewriter, loc, lo, 32);
+    Value hiBF16 = emitMagicSiToFp(rewriter, loc, hi, 32);
+    Value cat =
+        vector::ShuffleOp::create(rewriter, loc, loBF16, hiBF16, catMask)
+            .getResult();
+    rewriter.replaceOp(op, cat);
+    return success();
+  }
+};
+
 // Match `arith.extui (vector.bitcast %x : vector<Mxi8> to vector<2Mxi4>)
 // to vector<2Mxi8>` and replace with `aievec.unpack %x` directly on the
 // byte-packed source. The vector<...xi4> intermediate never reaches Peano
@@ -4750,6 +4852,12 @@ static void populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns,
   // but only triggers for the i4-packed shape, so it is benign for AIE2.
   patterns.add<LowerExtUIOfBitcastI4ToUnpackPattern>(patterns.getContext(),
                                                      /*benefit=*/2);
+  // AIE2P magic-number lowering for arith.sitofp v16i16/v32i16 -> v16/v32
+  // bf16. Higher benefit than the generic per-lane scalarise pattern; runs
+  // on AIE2 too but only fires when the legality predicate marks the op
+  // illegal (currently AIE2P only).
+  patterns.add<LowerVectorSIToFPI16BF16AIE2pPattern>(patterns.getContext(),
+                                                     /*benefit=*/3);
   // clang-format on
 }
 
@@ -5600,6 +5708,14 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     // For other types, only laneSize==16 (same as AIE2)
     return laneSize != 16;
   });
+
+  // LowerVectorSIToFPI16BF16AIE2pPattern uses vector.shuffle to split
+  // 64-wide inputs into two 32-wide halves; mark shuffle legal so the
+  // pattern's replacement IR survives partial conversion. Rank-1
+  // arith.sitofp is already marked illegal by the common legality config
+  // (LLVMIR backend), so LowerVectorSIToFPI16BF16AIE2pPattern is tried
+  // ahead of the per-lane scalarize fallback by pattern benefit.
+  target.addLegalOp<vector::ShuffleOp>();
 }
 
 static void configureAIEVecV2Legalizations(ConversionTarget &target,
