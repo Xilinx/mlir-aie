@@ -1456,6 +1456,125 @@ struct AIEObjectFifoStatefulTransformPass
                             ValueRange(ArrayRef({index.getResult()})));
   }
 
+  // Helper for hoistCyclostaticAcquires: returns the innermost scf.for that
+  // contains op without crossing another scf.for boundary. Null if op is not
+  // inside any scf.for within the same core body.
+  scf::ForOp innermostEnclosingFor(Operation *op) {
+    Operation *cur = op->getParentOp();
+    while (cur) {
+      if (auto f = dyn_cast<scf::ForOp>(cur))
+        return f;
+      if (isa<CoreOp>(cur))
+        return nullptr;
+      cur = cur->getParentOp();
+    }
+    return nullptr;
+  }
+
+  // Helper for hoistCyclostaticAcquires: true if op is nested inside an
+  // scf.if anywhere strictly below the given for-loop body.
+  bool isInsideIfInsideFor(Operation *op, scf::ForOp forOp) {
+    Operation *cur = op->getParentOp();
+    while (cur && cur != forOp.getOperation()) {
+      if (isa<scf::IfOp>(cur))
+        return true;
+      cur = cur->getParentOp();
+    }
+    return false;
+  }
+
+  // Detect cyclostatic acquire/release patterns inside scf.for bodies and
+  // hoist a pre-acquire before the loop so that the in-body acquire's
+  // `AcquireGreaterEqual` value equals the per-iter release amount.
+  //
+  // For each scf.for body and each (fifo, port) used directly in that body
+  // (not via nested scf.for):
+  //   max_acq = max  acquire.size() over body acquires of (fifo, port)
+  //   sum_rel = sum  release.size() over body releases of (fifo, port)
+  //   carry   = max_acq - sum_rel
+  // If carry > 0, hoist `aie.objectfifo.acquire(fifo, port, carry)` before
+  // the loop. The trailing release(carry) the user wrote after the loop
+  // drains it. If any acq/rel of (fifo, port) is inside an scf.if in the
+  // body, emit a diagnostic and skip the loop (analysis is unsound).
+  LogicalResult
+  hoistCyclostaticAcquires(CoreOp coreOp, OpBuilder &builder) {
+    // Collect all scf.for ops in the core, innermost first.
+    SmallVector<scf::ForOp> forOps;
+    coreOp.walk(
+        [&](scf::ForOp f) { forOps.push_back(f); });
+    // walk() above is pre-order; reverse to get innermost-first.
+    std::reverse(forOps.begin(), forOps.end());
+
+    using FifoPort = std::pair<ObjectFifoCreateOp, ObjectFifoPort>;
+
+    LogicalResult overall = success();
+    for (scf::ForOp forOp : forOps) {
+      // Group all acquires/releases by (fifo, port) whose innermost
+      // enclosing for is this forOp (excludes ops in nested scf.for).
+      llvm::MapVector<FifoPort, SmallVector<ObjectFifoAcquireOp>> acqs;
+      llvm::MapVector<FifoPort, SmallVector<ObjectFifoReleaseOp>> rels;
+      llvm::SetVector<FifoPort> condFifos;
+
+      forOp.walk([&](Operation *op) {
+        if (auto a = dyn_cast<ObjectFifoAcquireOp>(op)) {
+          if (innermostEnclosingFor(a) != forOp)
+            return;
+          FifoPort fp{a.getObjectFifo(), a.getPort()};
+          if (isInsideIfInsideFor(a, forOp))
+            condFifos.insert(fp);
+          else
+            acqs[fp].push_back(a);
+        } else if (auto r = dyn_cast<ObjectFifoReleaseOp>(op)) {
+          if (innermostEnclosingFor(r) != forOp)
+            return;
+          FifoPort fp{r.getObjectFifo(), r.getPort()};
+          if (isInsideIfInsideFor(r, forOp))
+            condFifos.insert(fp);
+          else
+            rels[fp].push_back(r);
+        }
+      });
+
+      for (const auto &kv : acqs) {
+        const FifoPort &fp = kv.first;
+        if (condFifos.contains(fp)) {
+          // Find any in-body acquire of fp to attach the diagnostic to.
+          ObjectFifoAcquireOp diagOp = kv.second.front();
+          diagOp.emitOpError(
+              "cannot statically analyze cyclostatic acquire pattern: "
+              "release is inside a conditional");
+          overall = failure();
+          continue;
+        }
+        int maxAcq = 0;
+        for (auto a : kv.second)
+          maxAcq = std::max(maxAcq, a.acqNumber());
+        int sumRel = 0;
+        if (rels.count(fp))
+          for (auto r : rels[fp])
+            sumRel += r.relNumber();
+        int carry = maxAcq - sumRel;
+        if (carry <= 0)
+          continue;
+
+        // Insert `aie.objectfifo.acquire(fp, carry)` immediately before forOp.
+        ObjectFifoCreateOp createOp = fp.first;
+        ObjectFifoPort port = fp.second;
+        auto fifo =
+            llvm::cast<AIEObjectFifoType>(createOp.getElemType());
+        auto subviewTy = AIEObjectFifoSubviewType::get(fifo.getElementType());
+        builder.setInsertionPoint(forOp);
+        auto portAttr = ObjectFifoPortAttr::get(builder.getContext(), port);
+        auto sizeAttr = builder.getI32IntegerAttr(carry);
+        auto nameRef = SymbolRefAttr::get(builder.getContext(),
+                                          createOp.name());
+        (void)ObjectFifoAcquireOp::create(builder, forOp.getLoc(), subviewTy,
+                                          portAttr, nameRef, sizeAttr);
+      }
+    }
+    return overall;
+  }
+
   // Function that generates the IR for objectfifo accesses to be handled at
   // runtime.
   LogicalResult dynamicGlobalObjectFifos(DeviceOp &device, OpBuilder &builder,
@@ -1464,6 +1583,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) <= 0)
         continue;
+      if (failed(hoistCyclostaticAcquires(coreOp, builder)))
+        return failure();
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
         // For each core: count the number of objectFifos and create
         // a global buffer just before the core to track index of
