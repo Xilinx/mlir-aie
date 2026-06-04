@@ -66,6 +66,12 @@ def whole_array_matmul(
     assert K % k == 0
     assert N % (n * n_aie_cols) == 0, "N must be tileable into (k, n*n_aie_cols) blocks"
 
+    # bfp16ebs8 matmul mac unit is 8x8x8; m/k/n must be multiples of these.
+    r = s = t = 8
+    assert m % r == 0, f"m ({m}) must be a multiple of {r}"
+    assert k % s == 0, f"k ({k}) must be a multiple of {s}"
+    assert n % t == 0, f"n ({n}) must be a multiple of {t}"
+
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
 
     n_shim_mem_A = n_aie_rows if n_aie_cols > n_aie_rows else n_aie_cols

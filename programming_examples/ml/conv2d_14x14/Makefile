@@ -43,6 +43,8 @@ all: ${xclbin_target} ${insts_target}
 $(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
 
 .PHONY: run_py
+# -ic / -oc / -ksz are tied to the conv2dk14.cc kernel layer and are
+# hardcoded here; only -wd / -ht / -na / multi are tunable via make.
 run_py: ${xclbin_target} ${insts_target}
 	${powershell} python3 ${srcdir}/test.py --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE \
 		-wd ${width} -ht ${height} -ic 4 -oc 1152 -ksz 14 -na ${num_act}

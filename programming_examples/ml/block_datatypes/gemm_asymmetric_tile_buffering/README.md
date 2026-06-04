@@ -58,10 +58,10 @@ combined tradeoff) see Sections 3 – 5 of the paper.
 
 ## Examples
 
-These designs use IRON and currently require the **chess** compiler (the per-
-design Makefile already pulls in `xchesscc` via the shared `makefile_common`
-since Peano's AIE2P backend can't yet legalize the bfp16 mac kernels). Build
-any of them with:
+These designs use IRON and currently require the **chess** compiler (each
+`config*/n32_core.py` declares its bfp16 mac kernel with `use_chess=True`
+on the `ExternalFunction`, since Peano's AIE2P backend can't yet legalize
+those kernels). Build any of them with:
 
 ```shell
 cd <config_dir>

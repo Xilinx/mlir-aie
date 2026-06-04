@@ -61,7 +61,11 @@ def whole_array_mixed(
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
+    # bfp16ebs8 matmul mac unit is 8x8x8; m/k/n must be multiples of these.
     r, s, t = 8, 8, 8
+    assert m % r == 0, f"m ({m}) must be a multiple of {r}"
+    assert k % s == 0, f"k ({k}) must be a multiple of {s}"
+    assert n % t == 0, f"n ({n}) must be a multiple of {t}"
     fifo_depth = 2
 
     n_tiles_per_core = (M // m) * (N // n) // n_aie_cores
