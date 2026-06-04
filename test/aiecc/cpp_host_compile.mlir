@@ -17,9 +17,10 @@
 // RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s 2>&1 | FileCheck %s
 // RUN: aiecc --no-xchesscc --no-xbridge --compile-host --host-target=aarch64-linux-gnu -n --verbose %s 2>&1 | FileCheck %s --check-prefix=AARCH64
 
-// Test: full host compilation with -I/-L/-l/-o and host source file
-// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose \
-// RUN:   -I/some/include -L/some/lib -lsomelib %s /tmp/host_test.cpp -o host_out 2>&1 \
+// Test: full host compilation with -I/-L/-l/-o and host source file. Host
+// flags and host source files are passed after the `--` separator.
+// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s -- \
+// RUN:   -I/some/include -L/some/lib -lsomelib /tmp/host_test.cpp -o host_out 2>&1 \
 // RUN:   | FileCheck %s --check-prefix=HOSTFULL
 
 // CHECK: Generating aie_inc.cpp for device
