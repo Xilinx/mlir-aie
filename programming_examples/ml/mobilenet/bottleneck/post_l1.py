@@ -19,9 +19,9 @@ import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Worker
 from aie.iron.controlflow import range_
+from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 
 from bottleneck._common import i8, load_wts
-from lowlevel_dma import StaticWeightStream
 from network_spec import block as nsblock
 
 
@@ -49,7 +49,7 @@ def post_l1(act_in, sf, *, placement, data_dir):
     # Input:  (7,1,80) int8   Output: (1,1,960) int8
     # ------------------------------------------------------------------
     # 76800 B of L1 weights are too large for the compute tile. Stage them on
-    # MemTile(4,1) and stream 9600 B chunks via StaticWeightStream.
+    # MemTile(4,1) and stream 9600 B chunks via ObjectFifo.
     PostOutputSplit = 8
     PostRepeatChannels = post_L1_InH  # = 7
     post_l1_wts_full_sz = post_L1_OutC * post_L1_InC  # 76800 B on MemTile
@@ -57,17 +57,18 @@ def post_l1(act_in, sf, *, placement, data_dir):
 
     post_l1_wts_data = load_wts(data_dir, "post_conv_chain.txt", post_l1_wts_full_sz)
 
-    post_l1_pb = StaticWeightStream(
-        obj_type=i8((post_l1_wts_full_sz,)),
-        initial_value=post_l1_wts_data,
+    post_l1_wts_of = ObjectFifo(
+        i8((post_l1_wts_full_sz,)),
+        depth=1,
         name="post_L1_wts",
-        recv_type=i8((post_l1_wts_chunk,)),
+        consumer_obj_type=i8((post_l1_wts_chunk,)),
+        init_values=[post_l1_wts_data.reshape(post_l1_wts_full_sz)],
         repeat_count=PostRepeatChannels,
-        memtile_placement=placement["memtile"],
-        compute_placement=placement["compute"],
-        mem_lock_id=2,
-        comp_lock_id=0,
     )
+    # Pin the producer (source of weight data) to a MemTile. Normally a
+    # Worker sets its fifo endpoint implicitly, but this fifo has no
+    # producing Worker.
+    post_l1_wts_of.prod().endpoint = ObjectFifoEndpoint(placement["memtile"])
 
     # Round-trip avgpool output through L3 (DDR) so it can be re-broadcast to
     # all 4 PostL2 FC tiles — a direct compute→4-compute fan-out exceeds
@@ -138,7 +139,7 @@ def post_l1(act_in, sf, *, placement, data_dir):
         fn_args=[
             act_in.cons(),
             act_out_post_avgpool_shim.prod(),
-            post_l1_pb,
+            post_l1_wts_of.cons(),
             k_post_l1,
             post_L1_InW,
             post_L1_InH,
