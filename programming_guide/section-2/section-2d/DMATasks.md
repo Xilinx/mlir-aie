@@ -153,7 +153,7 @@ There are two advantages of using the DMA task operations over using `npu_dma_me
 * The user does not have to specify a BD number
 * DMA task operations are capable of *chaining* BD operations; however, this is an advance use-case beyond the scope of this guide. 
 
-All programming examples have an `*_placed.py` (dialect-direct) version that is written using DMA task operations.
+The dialect-direct lowering used by DMA task operations can be inspected for any `@iron.jit`-decorated design via `design.as_mlir(...)` (or by examining `aiecc`'s intermediate `input_with_addresses.mlir` under the build's `.prj/` directory).
 
 **Function Signature and Parameters**:
 ```python

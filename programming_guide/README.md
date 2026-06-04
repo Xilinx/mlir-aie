@@ -112,4 +112,12 @@ The guide tries to stick to one term per concept:
 | **`@iron.jit`** | The single recommended entry point. Decorates a Python function that returns a `Program`; the first call JIT-compiles and runs on the NPU. | The dialect-direct form (`from aie.dialects.aie import *`) is what the JIT compiles *to*; you rarely write it. |
 
 -----
+
+## Further reading
+
+* [Quick reference](./quick_reference.md) — IRON API cheat sheet.
+* AIE architecture manuals: [AIE1 (AM009)](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview), [AIE2 (AM020)](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview).
+* [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049) — IEEE Hot Chips paper.
+
+-----
 [Section 0 — Getting set up for IRON →](./section-0/)
