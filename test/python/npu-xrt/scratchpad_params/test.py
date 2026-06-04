@@ -22,11 +22,11 @@ import sys
 import pyxrt
 from ml_dtypes import bfloat16
 
+import aie.iron as iron
 from aie.utils.hostruntime.xrtruntime.hostruntime import XRTHostRuntime
 from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
     ParameterScratchpad,
 )
-from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
     kernel = pyxrt.ext.kernel(context, "test:sequence")
 
     # Output buffer: 2 x bf16 (only the first element is written by the core)
-    out_tensor = XRTTensor((2,), dtype=bfloat16)
+    out_tensor = iron.tensor((2,), dtype=bfloat16, device="cpu")
 
     run = pyxrt.run(kernel)
     run.set_arg(0, out_tensor.buffer_object())

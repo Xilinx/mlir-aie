@@ -22,11 +22,11 @@ import sys
 import numpy as np
 import pyxrt
 
+import aie.iron as iron
 from aie.utils.hostruntime.xrtruntime.hostruntime import XRTHostRuntime
 from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
     ParameterScratchpad,
 )
-from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 
 
 def main():
@@ -40,8 +40,8 @@ def main():
     kernel = pyxrt.ext.kernel(context, "test:sequence")
 
     # Input buffer: [0, 1, 2, ..., 31] as i32
-    in_tensor = XRTTensor(np.arange(N_INPUT, dtype=np.int32), dtype=np.int32)
-    out_tensor = XRTTensor((N_OUTPUT,), dtype=np.int32)
+    in_tensor = iron.arange(N_INPUT, dtype=np.int32, device="cpu")
+    out_tensor = iron.tensor((N_OUTPUT,), dtype=np.int32, device="cpu")
 
     run = pyxrt.run(kernel)
     run.set_arg(0, in_tensor.buffer_object())
@@ -60,6 +60,7 @@ def main():
         # Clear output
         out_tensor.data.fill(0)
         out_tensor.to("npu")
+        in_tensor.to("npu")
 
         # Write offset parameter (in elements)
         params.write("input_offset", np.int32(offset))
