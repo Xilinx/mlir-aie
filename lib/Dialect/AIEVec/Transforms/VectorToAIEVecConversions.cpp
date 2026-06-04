@@ -1877,9 +1877,9 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     // Float types
     else {
       // v8bf16: pad to v16bf16 via concat with zero, run the standard
-      // 16-wide UPS+AddElem+SRS path, extract the lower 8. Same building
-      // blocks as the int widen-by-zero-pad helper at L377-389.
-      if (laneSize == 8 && resultElWidth == 16) {
+      // 16-wide UPS+AddElem+SRS path, extract the lower 8. Uses the same
+      // building blocks as the integer widen-by-zero-pad helper.
+      if (laneSize == 8 && scalarType.isBF16()) {
         auto loc = srcOp.getLoc();
         VectorType v16Ty = createVectorType(16, scalarType);
         VectorType v8Ty = resultType;
@@ -5527,8 +5527,10 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32
-    if (isa<FloatType>(scalarType) && scalarType.getIntOrFloatBitWidth() == 16)
+    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32. Other
+    // 16-bit floats (e.g. f16) are not handled by the aievec lowering
+    // and must fall through to the default float predicate below.
+    if (scalarType.isBF16())
       return laneSize != 8 && laneSize != 16 && laneSize != 32;
 
     // For other float types, support both laneSize==16 and laneSize==32
@@ -5549,8 +5551,10 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32
-    if (isa<FloatType>(scalarType) && scalarType.getIntOrFloatBitWidth() == 16)
+    // For bf16, support laneSize 8 (via pad-to-16), 16, and 32. Other
+    // 16-bit floats (e.g. f16) are not handled by the aievec lowering
+    // and must fall through to the default float predicate below.
+    if (scalarType.isBF16())
       return laneSize != 8 && laneSize != 16 && laneSize != 32;
 
     // For other float types, support both laneSize==16 and laneSize==32
