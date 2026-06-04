@@ -9,7 +9,9 @@
 #
 # Uses the dynamic core body (RTP reads + scf.while loops) for compile-once-run-any-size,
 # combined with the placed runtime sequence pattern (shim_dma_single_bd_task / dma_start_task
-# / dma_await_task / dma_free_task) instead of npu_dma_memcpy_nd.
+# / npu_sync) instead of npu_dma_memcpy_nd.  M, K, N are SSA i32 inputs to the
+# runtime_sequence so the compiled XCLBIN handles any (multiple-of-tile) shape at runtime
+# and --aie-generate-txn-cpp produces a parameterizable C++ function.
 
 import argparse
 import numpy as np
@@ -26,10 +28,11 @@ from aie.dialects.arith import (
     AddIOp,
     IndexCastOp,
 )
+from aie.dialects import arith, memref
 from aie.dialects.memref import LoadOp
+from aie.helpers.dialects.scf import if_
 from aie.extras.dialects.arith import constant
 import aie.utils.trace as trace_utils
-from aie.helpers.taplib import TensorTiler2D
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
 from aie.ir import IndexType, IntegerType, InsertionPoint
@@ -254,83 +257,91 @@ def my_matmul(dev, M, K, N, dtype_in_str, dtype_out_str, trace_size):
                         yield_([tile_next])
 
             # Placed runtime_sequence using shim_dma_single_bd_task
+            # M, K, N are SSA i32 inputs so the compiled XCLBIN is shape-agnostic.
             @runtime_sequence(
                 np.ndarray[(A_sz,), np.dtype[dtype_in]],
                 np.ndarray[(B_sz,), np.dtype[dtype_in]],
                 np.ndarray[(C_sz,), np.dtype[dtype_out]],
+                T.i32(),  # M
+                T.i32(),  # K
+                T.i32(),  # N
             )
-            def sequence(A, B, C):
+            def sequence(A, B, C, M, K, N):
                 if enable_tracing:
                     trace_utils.start_trace(trace_size=trace_size)
 
-                # Write RTP values for the static compilation size
+                M_div_m = M // m
+                K_div_k = K // k
+                N_div_n = N // n
+                tiles = M_div_m * N_div_n
+
                 npu_rtp_write("rtp", 0, K_div_k)
                 npu_rtp_write("rtp", 1, tiles)
 
-                # Use 2 tile rows per block (placed style, prevents BD exhaustion)
-                rows_per_block = 2
+                rows_per_block = 4
 
-                # Define tensor access patterns using TensorTiler2D
-                A_taps = TensorTiler2D.group_tiler(
-                    (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
-                )
-                b_tap = TensorTiler2D.group_tiler(
-                    (K, N),
-                    (k, n),
-                    (K_div_k, N_div_n),
-                    tile_group_col_major=True,
-                )[0]
-                C_taps = TensorTiler2D.group_tiler(
-                    (M, N), (m, n), (rows_per_block // 2, N_div_n)
-                )
-                c_index = 0
-
-                a_tasks = []
-                b_tasks = []
-                c_tasks = []
-
-                for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
+                for tile_row_block in range_(ceildiv(M_div_m, rows_per_block)):
                     for pingpong in [0, 1]:
+                        C_row_offset = (
+                            tile_row_block * rows_per_block * m * N
+                            + pingpong * rows_per_block // 2 * m * N
+                        )
                         row_base = (
                             tile_row_block * rows_per_block
                             + pingpong * rows_per_block // 2
                         )
-                        num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
-                        if num_tile_rows <= 0:
-                            break
-
-                        # -- C --
-                        c_task = shim_dma_single_bd_task(
-                            outC,
-                            C,
-                            tap=C_taps[c_index],
-                            issue_token=True,
+                        num_tile_rows = arith.minsi(
+                            constant(rows_per_block // 2, T.i32()),
+                            M_div_m - row_base,
                         )
-                        c_index += 1
-                        dma_start_task(c_task)
-                        c_tasks.append(c_task)
-
-                        for tile_row in range(num_tile_rows):
-                            # -- A --
-                            tile_offset = (row_base + tile_row) % len(A_taps)
-                            a_task = shim_dma_single_bd_task(
-                                inA, A, tap=A_taps[tile_offset]
+                        with if_(num_tile_rows > 0, hasElse=False):
+                            c_task = shim_dma_single_bd_task(
+                                outC,
+                                C,
+                                offset=C_row_offset,
+                                sizes=[num_tile_rows, N_div_n, m, n],
+                                strides=[m * N, n, N, 1],
+                                transfer_len=N_div_n * m * n,
+                                issue_token=True,
                             )
-                            dma_start_task(a_task)
-                            a_tasks.append(a_task)
+                            dma_start_task(c_task)
 
-                            # -- B --
-                            b_task = shim_dma_single_bd_task(inB, B, tap=b_tap)
-                            dma_start_task(b_task)
-                            b_tasks.append(b_task)
+                            for tile_row in range(rows_per_block // 2):
+                                A_row_offset = (row_base + tile_row) * m * K
 
-                        if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                            dma_await_task(c_tasks[-2])
-                            dma_free_task(a_tasks[-2])
-                            dma_free_task(b_tasks[-2])
+                                def emit_ab():
+                                    a_task = shim_dma_single_bd_task(
+                                        inA,
+                                        A,
+                                        offset=A_row_offset,
+                                        sizes=[N_div_n, K_div_k, m, k],
+                                        strides=[0, k, K, 1],
+                                        transfer_len=K_div_k * m * k,
+                                    )
+                                    dma_start_task(a_task)
 
-                dma_await_task(c_tasks[-1])
+                                    b_task = shim_dma_single_bd_task(
+                                        inB,
+                                        B,
+                                        sizes=[N_div_n, K_div_k, k, n],
+                                        strides=[n, k * N, N, 1],
+                                        transfer_len=K_div_k * k * n,
+                                    )
+                                    dma_start_task(b_task)
 
+                                if tile_row == 0:
+                                    emit_ab()
+                                else:
+                                    with if_(num_tile_rows > tile_row, hasElse=False):
+                                        emit_ab()
+
+                            if pingpong > 0:
+                                npu_sync(column=0, row=0, direction=0, channel=0)
+                            else:
+                                with if_(tile_row_block > 0, hasElse=False):
+                                    npu_sync(column=0, row=0, direction=0, channel=0)
+
+                npu_sync(column=0, row=0, direction=0, channel=0)
 
     print(ctx.module)
 
