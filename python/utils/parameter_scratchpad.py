@@ -35,9 +35,14 @@ from aie._mlir_libs._parameter_scratchpad import (
 
 
 def _to_bytes(value) -> bytes:
-    """Convert any scalar to its little-endian in-memory bytes."""
+    """
+    Convert any scalar to its little-endian in-memory bytes.
+
+    This helper is required to support native Python `int` and convert them to the 4-byte little-endian format assumed on the cores.
+    """
     if isinstance(value, int):
-        return struct.pack("<I", value & 0xFFFFFFFF)
+        assert -0x80000000 <= value <= 0xFFFFFFFF
+        return value.to_bytes(4, "little", signed=value < 0)
     if isinstance(value, float):
         return struct.pack("<f", value)
     if hasattr(value, "tobytes"):
@@ -59,7 +64,7 @@ class ParameterScratchpad:
         Args:
             name: The parameter name (must match a name in the params file).
             value: A scalar value — ``int``, or any type with a ``tobytes()``
-                   method (``np.int32``, ``bfloat16``, etc.). 
+                   method (``np.int32``, ``bfloat16``, etc.).
         """
         self._impl.write_bytes(name, _to_bytes(value))
 
