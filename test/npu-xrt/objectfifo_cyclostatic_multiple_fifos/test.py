@@ -38,20 +38,21 @@ def main(opts):
     inY = iron.tensor(y, dtype=np.int8)
     out = iron.zeros(OUT_LEN, dtype=np.int8)
 
+    print("Running...\n")
     npu_opts = test_utils.create_npu_kernel(opts)
-    if not DefaultNPURuntime.run_test(
+    res = DefaultNPURuntime.run_test(
         npu_opts.npu_kernel,
         [inX, inY, out],
         {2: ref},
         verify=npu_opts.verify,
         verbosity=npu_opts.verbosity,
-    ):
-        print("PASS!")
-    else:
-        print("Failed.")
+    )
+    if res == 0:
+        print("\nPASS!\n")
+    sys.exit(res)
 
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
     opts = p.parse_args(sys.argv[1:])
-    sys.exit(main(opts))
+    main(opts)
