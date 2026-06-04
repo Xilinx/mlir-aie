@@ -3477,6 +3477,53 @@ struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
 using LowerExtFOpPattern = LowerExtOpPattern<arith::ExtFOp>;
 using LowerExtSIOpPattern = LowerExtOpPattern<arith::ExtSIOp>;
 
+// Match `arith.extui (vector.bitcast %x : vector<Mxi8> to vector<2Mxi4>)
+// to vector<2Mxi8>` and replace with `aievec.unpack %x` directly on the
+// byte-packed source. The vector<...xi4> intermediate never reaches Peano
+// llc, which cannot legalize llvm.bitcast on i4 vectors.
+//
+// This recognises the canonical standard-MLIR encoding of an AWQ int4
+// unpack: byte load of packed nibbles -> bitcast to i4 vector -> extui to
+// i8 vector. The aievec.unpack op then lowers to the AIE2P intrinsic
+// llvm.aie2p.unpack.I512.I8.I4 (or the I1024 variant) directly.
+struct LowerExtUIOfBitcastI4ToUnpackPattern
+    : OpConversionPattern<arith::ExtUIOp> {
+  using OpConversionPattern<arith::ExtUIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ExtUIOp extOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcTy = dyn_cast<VectorType>(adaptor.getIn().getType());
+    auto dstTy = dyn_cast<VectorType>(extOp.getType());
+    if (!srcTy || !dstTy)
+      return failure();
+    if (srcTy.getRank() != 1 || dstTy.getRank() != 1)
+      return failure();
+    if (!srcTy.getElementType().isInteger(4) ||
+        !dstTy.getElementType().isInteger(8))
+      return failure();
+    unsigned lanes = srcTy.getNumElements();
+    if (lanes != dstTy.getNumElements())
+      return failure();
+    if (lanes != 64 && lanes != 128)
+      return failure();
+
+    auto bitcastOp = adaptor.getIn().getDefiningOp<vector::BitCastOp>();
+    if (!bitcastOp)
+      return failure();
+    auto bitcastSrcTy = dyn_cast<VectorType>(bitcastOp.getSource().getType());
+    if (!bitcastSrcTy || bitcastSrcTy.getRank() != 1 ||
+        !bitcastSrcTy.getElementType().isInteger(8))
+      return failure();
+    if (bitcastSrcTy.getNumElements() * 2 != lanes)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<aievec::UnpackOp>(extOp, dstTy,
+                                                  bitcastOp.getSource());
+    return success();
+  }
+};
+
 // Scalarize a vector arith int<->fp conversion (sitofp / uitofp / fptosi /
 // fptoui). The AIE2/AIE2P GISel legalizers only handle the scalar form of
 // these conversions (libcalls); there is no vector int<->fp instruction.
@@ -4698,6 +4745,11 @@ static void populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns,
                LowerExtSIOpPattern,
                LowerTruncFOpPattern,
                LowerTruncIOpPattern>(patterns.getContext());
+  // Match canonical int4 unpack (vector.bitcast + arith.extui) ahead of the
+  // generic ExtUI/ExtSI handling; runs on both AIE2 and AIE2P call sites
+  // but only triggers for the i4-packed shape, so it is benign for AIE2.
+  patterns.add<LowerExtUIOfBitcastI4ToUnpackPattern>(patterns.getContext(),
+                                                     /*benefit=*/2);
   // clang-format on
 }
 
@@ -4988,6 +5040,37 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
     return srcLaneSize != 32 || (dstElWidth <= srcElWidth) ||
            (dstLaneSize != srcLaneSize);
+  });
+
+  // Mark `arith.extui vector<Nxi4> to vector<Nxi8>` illegal precisely when
+  // the producer is a `vector.bitcast vector<N/2xi8> to vector<Nxi4>` of a
+  // supported lane count (64 or 128 nibbles). That is the only shape
+  // LowerExtUIOfBitcastI4ToUnpackPattern can rewrite; stray ExtUI ops
+  // (including i4 ones not fed by a bitcast) stay legal and pass through
+  // to the standard arith-to-llvm path.
+  target.addDynamicallyLegalOp<arith::ExtUIOp>([](arith::ExtUIOp extuiOp) {
+    auto srcType = dyn_cast<VectorType>(extuiOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(extuiOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+    if (srcType.getRank() != 1 || dstType.getRank() != 1)
+      return true;
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!srcScalarType.isInteger(4) || !dstScalarType.isInteger(8))
+      return true;
+    unsigned lanes = srcType.getNumElements();
+    if (lanes != 64 && lanes != 128)
+      return true;
+    auto bitcastOp = extuiOp.getIn().getDefiningOp<vector::BitCastOp>();
+    if (!bitcastOp)
+      return true;
+    auto bitcastSrcType = dyn_cast<VectorType>(bitcastOp.getSource().getType());
+    if (!bitcastSrcType || bitcastSrcType.getRank() != 1 ||
+        !bitcastSrcType.getElementType().isInteger(8) ||
+        bitcastSrcType.getNumElements() * 2 != lanes)
+      return true;
+    return false;
   });
 
   target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
