@@ -8,9 +8,10 @@ from operator import itemgetter
 import numpy as np
 
 from ._aiex_ops_gen import *
-from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp, RuntimeSequenceOp
+from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
+    dma_bd,
     DMAChannelDir,
     LockAction,
     Neighbors,
@@ -68,10 +69,11 @@ def _cast_to_i64(v):
     canonical conversion at the call site so callers can pass in whatever
     SSA value falls out of their computation without manual casts.
 
-    TODO(future PR): switch this to _cast_to_i64 once AIEX.td tightens the
-    operand type to Variadic<I32> (matching the NPU descriptor register
-    width). AIEDmaToNpu's getAsValue already does width coercion in either
-    direction, so the lowering does not care which width the IR carries.
+    TODO(future PR): once AIEX.td tightens the operand type to
+    Variadic<I32> (matching the NPU descriptor register width), switch
+    this to cast to i32 instead. AIEDmaToNpu's getAsValue already does
+    width coercion in either direction, so the lowering does not care
+    which width the IR carries.
     """
     if not isinstance(v, Value):
         return v
@@ -159,8 +161,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
             strides
         )
-        # The op operands $offsets/$sizes/$strides are Variadic<I32> (matching
-        # the NPU descriptor register width). Whatever the user's SSA
+        # The op operands $offsets/$sizes/$strides are Variadic<I64>.
+        # Whatever the user's SSA
         # arithmetic produced (index from scf.for, i64 from a wider compute,
         # iN from a custom path), normalise it to i32 here so callers do not
         # have to insert arith.index_cast / trunci / extui themselves.
@@ -279,6 +281,138 @@ def runtime_sequence(*inputs: Type, sym_name=None, context=None):
     return decorator
 
 
+# Wrap auto-generated dma_bd to support SSA Value operands.
+#
+# The TableGen op exposes (in addition to the static offset/len/dimensions
+# attributes) optional SSA i64 operands `dyn_offset`, `dyn_len`, `dyn_sizes`,
+# `dyn_strides`. Whenever a caller passes an SSA `Value` for offset, len, or
+# any element of sizes/strides, we route it to the corresponding dynamic
+# operand and clear the conflicting static attribute. The static fast path is
+# preserved bit-identically for the all-static case so existing callers
+# (object FIFO lowering, static dma_task chains) emit the same IR they always
+# have.
+#
+# All-or-nothing dim semantics: as soon as any element of sizes/strides is an
+# SSA Value, every element of both lists is materialised as an SSA i64 (static
+# entries become `arith.constant`); the static `dimensions` attribute is then
+# omitted. This matches the verifier rule that `dimensions` and
+# `dyn_sizes`/`dyn_strides` are mutually exclusive.
+_orig_dma_bd = dma_bd
+_py_len = len  # capture builtin so the `len=` kwarg below does not shadow it
+
+
+def dma_bd(
+    buffer,
+    *,
+    offset=0,
+    len=None,
+    sizes=None,
+    strides=None,
+    dimensions=None,
+    **kwargs,
+):
+    i64 = IntegerType.get_signless(64)
+
+    # offset routing
+    if isinstance(offset, Value):
+        dyn_offset = _cast_to_i64(offset)
+        static_offset = 0
+    else:
+        dyn_offset = None
+        static_offset = offset
+
+    # len routing
+    if isinstance(len, Value):
+        dyn_len = _cast_to_i64(len)
+        static_len = None
+    else:
+        dyn_len = None
+        static_len = len
+
+    # Collect candidate (size, stride) pairs from either the explicit
+    # sizes/strides kwargs or a list of (size, stride) tuples in `dimensions`.
+    pairs = None
+    if sizes is not None:
+        if strides is None:
+            raise ValueError("dma_bd: when sizes is given, strides is required")
+        if _py_len(sizes) != _py_len(strides):
+            raise ValueError("dma_bd: sizes and strides must be the same length")
+        pairs = list(zip(sizes, strides))
+    elif dimensions is not None:
+        # `dimensions` may already be a BDDimLayoutArrayAttr (no SSA Values);
+        # in that case nothing to coerce.
+        if isinstance(dimensions, Attribute):
+            return _orig_dma_bd(
+                buffer,
+                [],
+                [],
+                offset=static_offset,
+                len=static_len,
+                dimensions=dimensions,
+                dyn_offset=dyn_offset,
+                dyn_len=dyn_len,
+                **kwargs,
+            )
+        pairs = [tuple(d) for d in dimensions]
+
+    if not pairs:
+        return _orig_dma_bd(
+            buffer,
+            [],
+            [],
+            offset=static_offset,
+            len=static_len,
+            dimensions=None,
+            dyn_offset=dyn_offset,
+            dyn_len=dyn_len,
+            **kwargs,
+        )
+
+    any_dyn_dim = any(isinstance(s, Value) or isinstance(t, Value) for s, t in pairs)
+    if not any_dyn_dim:
+        return _orig_dma_bd(
+            buffer,
+            [],
+            [],
+            offset=static_offset,
+            len=static_len,
+            dimensions=pairs,
+            dyn_offset=dyn_offset,
+            dyn_len=dyn_len,
+            **kwargs,
+        )
+
+    # Static dim values must be materialised as SSA i32 to feed the
+    # dyn_sizes/dyn_strides operands. The lowering pass rejects ops other
+    # than aie.dma_bd / aie.use_lock / aie.next_bd / aie.end inside the BD
+    # block, so we hoist the arith.constants out to live just before the
+    # enclosing dma_configure_task in the runtime_sequence body. SSA Values
+    # supplied by the caller are assumed to dominate the BD block already.
+    cur_block = InsertionPoint.current.block
+    bd_parent = cur_block.owner  # dma_configure_task / shim_dma_*_task op
+    hoist_ip = InsertionPoint(bd_parent)
+
+    def _coerce(v):
+        if isinstance(v, Value):
+            return _cast_to_i64(v)
+        with hoist_ip:
+            return _arith.constant(i64, int(v))
+
+    dyn_sizes = [_coerce(s) for s, _ in pairs]
+    dyn_strides = [_coerce(t) for _, t in pairs]
+    return _orig_dma_bd(
+        buffer,
+        dyn_sizes,
+        dyn_strides,
+        offset=static_offset,
+        len=static_len,
+        dimensions=None,
+        dyn_offset=dyn_offset,
+        dyn_len=dyn_len,
+        **kwargs,
+    )
+
+
 _orig_dma_configure_task = dma_configure_task
 
 
@@ -344,15 +478,24 @@ def shim_dma_bd(
     if strides is None:
         strides = [0] * 3 + [1]
 
+    # If any of sizes contains SSA Values, we cannot statically compute the
+    # transfer length via np.prod; the caller must supply transfer_len in
+    # that case (it may itself be an SSA Value).
     if transfer_len is None:
+        if any(isinstance(s, Value) for s in sizes):
+            raise ValueError(
+                "shim_dma_bd: transfer_len must be supplied when sizes contains SSA Values"
+            )
         transfer_len = np.prod(sizes[-3:])
 
-    dimensions = list(zip(sizes, strides))
+    # Pass sizes/strides through as parallel lists so the dma_bd wrapper can
+    # detect SSA Values and route them to dyn_sizes/dyn_strides as needed.
     dma_bd(
         mem,
         offset=offset,
         len=transfer_len,
-        dimensions=dimensions,
+        sizes=list(sizes),
+        strides=list(strides),
         burst_length=burst_length,
         packet=packet,
     )
@@ -405,8 +548,12 @@ def shim_dma_single_bd_task(
         offset = int(tap.offset)
 
     repeat_count = 0
-    if sizes and sizes[0] > 1:
-        repeat_count = sizes[0] - 1
+    if sizes:
+        # When sizes[0] is a static int we can derive a repeat_count to fold
+        # the outer dimension into BD repetition. With an SSA Value we leave
+        # repeat_count = 0 and let the BD's dyn_sizes encode the iteration.
+        if not isinstance(sizes[0], Value) and sizes[0] > 1:
+            repeat_count = sizes[0] - 1
     task = dma_configure_task_for(
         alloc, repeat_count=repeat_count, issue_token=issue_token
     )

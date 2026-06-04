@@ -128,7 +128,7 @@ def my_matmul(
     assert n % t == 0
 
     vectorized = True
-    enable_tracing = True if trace_size > 0 else False
+    enable_tracing = trace_size > 0
 
     dtype_in = str_to_dtype(dtype_in_str)
     dtype_out = str_to_dtype(dtype_out_str)
