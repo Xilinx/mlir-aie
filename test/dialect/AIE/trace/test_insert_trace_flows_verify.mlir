@@ -155,3 +155,23 @@ module @shim_full_no_lateral {
     }
   }
 }
+
+// -----
+
+// Test: egress_shim_col past device width is rejected by the lowering pass.
+module @invalid_egress_col_oob {
+  // expected-error@+1 {{egress_shim_col 5 is not a valid shim NOC tile (device has 1 columns)}}
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    aie.trace @trace0(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 8192 egress_shim_col = 5
+      aie.trace.start_config @trace0
+    }
+  }
+}
