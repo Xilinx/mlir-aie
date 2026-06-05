@@ -500,8 +500,8 @@ jobs:
         with:
           artifacts: wheels_on_flat/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: latest-wheels-3
-          name: latest-wheels-3
+          tag: latest-wheels-4
+          name: latest-wheels-4
           allowUpdates: true
           replacesArtifacts: false
           omitBodyDuringUpdate: true
