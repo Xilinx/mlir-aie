@@ -252,11 +252,9 @@ def _run_and_verify(opts):
         A_np = (rng.random((opts.M, opts.K)) * 4.0).astype(dtype_in)
         B_shape = (opts.N, opts.K) if opts.b_col_maj else (opts.K, opts.N)
         B_np = (rng.random(B_shape) * 4.0).astype(dtype_in)
-    C_np = np.zeros((opts.M, opts.N), dtype=dtype_out)
-
     A_t = iron.tensor(A_np.reshape(-1), dtype=dtype_in, device="npu")
     B_t = iron.tensor(B_np.reshape(-1), dtype=dtype_in, device="npu")
-    C_t = iron.tensor(C_np.reshape(-1), dtype=dtype_out, device="npu")
+    C_t = iron.zeros(opts.M * opts.N, dtype=dtype_out, device="npu")
 
     bench = run_iters(
         single_core,

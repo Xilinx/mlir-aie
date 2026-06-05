@@ -274,12 +274,9 @@ def _run_and_verify(opts):
     tensor_size = opts.width * opts.height * 4
     rng = np.random.default_rng(0)
     in_np = rng.integers(-128, 127, size=(tensor_size,), dtype=np.int8)
-    b_np = np.zeros((16 * 16,), dtype=np.int32)
-    out_np = np.zeros((tensor_size,), dtype=np.int8)
-
     in_t = iron.tensor(in_np, dtype=np.int8, device="npu")
-    b_t = iron.tensor(b_np, dtype=np.int32, device="npu")
-    out_t = iron.tensor(out_np, dtype=np.int8, device="npu")
+    b_t = iron.zeros(16 * 16, dtype=np.int32, device="npu")
+    out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
     color_detect(in_t, b_t, out_t, **_compile_kwargs(opts))
 

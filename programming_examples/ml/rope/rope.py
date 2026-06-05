@@ -161,11 +161,9 @@ def _run_and_verify(opts):
     # Match test.cpp input range: random bf16 in [-4, 8].
     a_np = rng.uniform(-4.0, 8.0, size=(rows, cols)).astype(bfloat16)
     lut_np = _build_rope_lut(rows, cols)
-    c_np = np.zeros_like(a_np)
-
     a_t = iron.tensor(a_np, dtype=bfloat16, device="npu")
     lut_t = iron.tensor(lut_np, dtype=bfloat16, device="npu")
-    c_t = iron.tensor(c_np, dtype=bfloat16, device="npu")
+    c_t = iron.zeros_like(a_t)
 
     rope(a_t, lut_t, c_t, **_compile_kwargs(opts))
 

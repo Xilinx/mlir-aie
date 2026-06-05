@@ -48,8 +48,7 @@ def main(opts):
     # Initialize data
     ref = np.arange(1, in1_volume + 1, dtype=in1_dtype)
     in1 = iron.tensor(ref, dtype=in1_dtype)
-    in2_data = np.array([scale_factor], dtype=in2_dtype)
-    in2 = iron.tensor(in2_data, dtype=in2_dtype)
+    in2 = iron.tensor([scale_factor], dtype=in2_dtype)
     out = iron.zeros([out_volume], dtype=out_dtype)
     ref = ref * scale_factor
 

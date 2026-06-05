@@ -108,10 +108,8 @@ def _run_and_verify(opts):
     in_np = rng.integers(
         -1000, 1000, size=(opts.matrix_height, opts.matrix_width), dtype=np.int32
     )
-    out_np = np.zeros_like(in_np)
-
     in_t = iron.tensor(in_np, dtype=np.int32, device="npu")
-    out_t = iron.tensor(out_np, dtype=np.int32, device="npu")
+    out_t = iron.zeros_like(in_t)
 
     matrix_scalar_add(in_t, out_t, **_compile_kwargs(opts))
 

@@ -348,10 +348,8 @@ def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     info = np.iinfo(dtype)
     in_np = rng.integers(info.min, info.max + 1, size=(M, K), dtype=dtype)
-    out_np = np.zeros((K, M), dtype=dtype)
-
     a_t = iron.tensor(in_np, dtype=dtype, device="npu")
-    c_t = iron.tensor(out_np, dtype=dtype, device="npu")
+    c_t = iron.zeros((K, M), dtype=dtype, device="npu")
 
     _STRATEGIES[opts.strategy](a_t, c_t, **_compile_kwargs(opts))
 

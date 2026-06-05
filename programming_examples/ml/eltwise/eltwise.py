@@ -69,11 +69,9 @@ def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     a_np = rng.uniform(-1.0, 1.0, size=(opts.length,)).astype(bfloat16)
     b_np = rng.uniform(-1.0, 1.0, size=(opts.length,)).astype(bfloat16)
-    c_np = np.zeros_like(a_np)
-
     a_t = iron.tensor(a_np, dtype=bfloat16, device="npu")
     b_t = iron.tensor(b_np, dtype=bfloat16, device="npu")
-    c_t = iron.tensor(c_np, dtype=bfloat16, device="npu")
+    c_t = iron.zeros_like(a_t)
 
     eltwise(a_t, b_t, c_t, **_compile_kwargs(opts))
 

@@ -70,8 +70,8 @@ def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
 The host side is just three tensors and one call:
 
 ```python
-a_in = iron.tensor(np.arange(1, tensor_size + 1, dtype=np.int32), device="npu")
-f_in = iron.tensor(np.array([3], dtype=np.int32), device="npu")
+a_in = iron.arange(1, tensor_size + 1, dtype=np.int32, device="npu")
+f_in = iron.tensor([3], dtype=np.int32, device="npu")
 c_out = iron.zeros(tensor_size, dtype=np.int32, device="npu")
 
 vector_scalar_mul(a_in, f_in, c_out)

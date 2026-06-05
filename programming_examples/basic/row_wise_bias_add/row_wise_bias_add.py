@@ -116,11 +116,9 @@ def _compile_kwargs(opts):
 def _run_and_verify(opts):
     in_np = np.arange(opts.M * opts.N, dtype=np.float32).reshape(opts.M, opts.N)
     bias_np = 3 * np.arange(opts.N, dtype=np.float32)
-    out_np = np.zeros_like(in_np)
-
     in_t = iron.tensor(in_np, dtype=np.float32, device="npu")
     bias_t = iron.tensor(bias_np, dtype=np.float32, device="npu")
-    out_t = iron.tensor(out_np, dtype=np.float32, device="npu")
+    out_t = iron.zeros_like(in_t)
 
     row_wise_bias_add(in_t, bias_t, out_t, **_compile_kwargs(opts))
 

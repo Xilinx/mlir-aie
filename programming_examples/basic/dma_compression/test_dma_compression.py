@@ -117,10 +117,11 @@ REGDUMP_INITIAL_INFO = [
 
 def run_one(config: str, verbose: bool = False, input_np=None) -> bool:
     if input_np is None:
-        input_np = np.arange(N, dtype=np.uint32)
+        in_tensor = iron.arange(N, dtype=np.uint32, device="npu")
+        input_np = in_tensor.numpy().copy()
+    else:
+        in_tensor = iron.tensor(input_np.copy(), dtype=np.uint32, device="npu")
     sentinel_np = np.full(N, SENTINEL, dtype=np.uint32)
-
-    in_tensor = iron.tensor(input_np.copy(), dtype=np.uint32, device="npu")
     out_tensor = iron.tensor(sentinel_np.copy(), dtype=np.uint32, device="npu")
 
     t0 = time.perf_counter()
@@ -231,10 +232,10 @@ def run_one(config: str, verbose: bool = False, input_np=None) -> bool:
 
 def run_roundtrip(verbose: bool = False) -> bool:
     """Two-dispatch host-orchestrated roundtrip: cmp_only -> dcmp_only -> arange."""
-    input_np = np.arange(N, dtype=np.uint32)
     sentinel_np = np.full(N, SENTINEL, dtype=np.uint32)
 
-    in_t = iron.tensor(input_np.copy(), dtype=np.uint32, device="npu")
+    in_t = iron.arange(N, dtype=np.uint32, device="npu")
+    input_np = in_t.numpy().copy()
     compressed_t = iron.tensor(sentinel_np.copy(), dtype=np.uint32, device="npu")
     t0 = time.perf_counter()
     dma_compression(in_t, compressed_t, config="cmp_only")
@@ -297,8 +298,7 @@ def main() -> int:
     if needs_compressed_input:
         _isolate_for_next_config()
         print("[ pre-compute cmp_only ] capturing compressed-arange for *both configs")
-        arange = np.arange(N, dtype=np.uint32)
-        in_t = iron.tensor(arange.copy(), dtype=np.uint32, device="npu")
+        in_t = iron.arange(N, dtype=np.uint32, device="npu")
         out_t = iron.tensor(
             np.full(N, SENTINEL, dtype=np.uint32), dtype=np.uint32, device="npu"
         )

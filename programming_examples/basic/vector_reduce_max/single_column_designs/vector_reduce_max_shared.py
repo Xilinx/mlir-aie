@@ -224,10 +224,8 @@ def _run_and_verify(opts):
         in_np = rng.integers(-1000, 1000, size=(num_elements,), dtype=np.int32)
     else:
         in_np = rng.uniform(-1000.0, 1000.0, size=(num_elements,)).astype(dtype)
-    out_np = np.zeros((out_num_elements,), dtype=dtype)
-
     in_t = iron.tensor(in_np, dtype=dtype, device="npu")
-    out_t = iron.tensor(out_np, dtype=dtype, device="npu")
+    out_t = iron.zeros(out_num_elements, dtype=dtype, device="npu")
 
     vector_reduce_max(in_t, out_t, **_compile_kwargs(opts))
 

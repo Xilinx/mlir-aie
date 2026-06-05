@@ -101,8 +101,7 @@ def _compile_kwargs(opts):
 def _run_and_verify(opts):
     dtype = np.int32
     tensor_size = opts.tensor_height * opts.tensor_width
-    out_np = np.zeros(tensor_size, dtype=dtype)
-    out_t = iron.tensor(out_np, dtype=dtype, device="npu")
+    out_t = iron.zeros(tensor_size, dtype=dtype, device="npu")
 
     per_tile(out_t, **_compile_kwargs(opts))
 

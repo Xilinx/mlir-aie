@@ -20,9 +20,9 @@ def main(opts):
     data_size = int(opts.size)
     dtype = np.uint8
 
-    input_data = np.arange(1, data_size + 1, dtype=dtype)
-    in1 = iron.tensor(input_data, dtype=dtype)
+    in1 = iron.arange(1, data_size + 1, dtype=dtype)
     out = iron.zeros(data_size, dtype=dtype)
+    input_data = in1.numpy()
 
     npu_opts = create_npu_kernel(opts)
     res = DefaultNPURuntime.run_test(

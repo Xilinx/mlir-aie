@@ -200,12 +200,10 @@ def _run_and_verify(opts):
     a_np = np.full((opts.length,), 4.0, dtype=bfloat16)
     b_np = np.full((opts.length,), 3.35, dtype=bfloat16)
     c_np = np.full((opts.length,), 0.77, dtype=bfloat16)
-    d_np = np.zeros_like(a_np)
-
     a_t = iron.tensor(a_np, dtype=bfloat16, device="npu")
     b_t = iron.tensor(b_np, dtype=bfloat16, device="npu")
     c_t = iron.tensor(c_np, dtype=bfloat16, device="npu")
-    d_t = iron.tensor(d_np, dtype=bfloat16, device="npu")
+    d_t = iron.zeros_like(a_t)
 
     scale_shift(a_t, b_t, c_t, d_t, **_compile_kwargs(opts))
 

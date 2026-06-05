@@ -169,12 +169,9 @@ def _run_and_verify(opts):
     tensor_size = opts.width * opts.height
     rng = np.random.default_rng(0)
     in_np = rng.integers(-128, 127, size=(tensor_size,), dtype=np.int8)
-    unused_np = np.zeros((32,), dtype=np.int32)
-    out_np = np.zeros((tensor_size,), dtype=np.int8)
-
     in_t = iron.tensor(in_np, dtype=np.int8, device="npu")
-    unused_t = iron.tensor(unused_np, dtype=np.int32, device="npu")
-    out_t = iron.tensor(out_np, dtype=np.int8, device="npu")
+    unused_t = iron.zeros(32, dtype=np.int32, device="npu")
+    out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
     color_threshold(in_t, unused_t, out_t, **_compile_kwargs(opts))
 

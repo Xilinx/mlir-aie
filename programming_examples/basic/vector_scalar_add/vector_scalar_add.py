@@ -103,15 +103,12 @@ def _compile_kwargs(opts):
 
 
 def _run_and_verify(opts):
-    in_np = np.arange(1, opts.problem_size + 1, dtype=np.int32)
-    out_np = np.zeros_like(in_np)
-
-    in_t = iron.tensor(in_np, dtype=np.int32, device="npu")
-    out_t = iron.tensor(out_np, dtype=np.int32, device="npu")
+    in_t = iron.arange(1, opts.problem_size + 1, dtype=np.int32, device="npu")
+    out_t = iron.zeros_like(in_t)
 
     vector_scalar_add(in_t, out_t, **_compile_kwargs(opts))
 
-    expected = in_np + 1
+    expected = in_t.numpy() + 1
     actual = out_t.numpy()
     assert_pass(actual, expected, fail_msg="output does not match in + 1")
 

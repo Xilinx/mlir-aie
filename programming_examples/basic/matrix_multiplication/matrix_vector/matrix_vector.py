@@ -147,11 +147,9 @@ def _run_and_verify(opts):
     rng = np.random.default_rng(1726250518)
     A_np = rng.integers(-1000, 1000, size=(opts.M, opts.K), dtype=np.int16)
     B_np = rng.integers(-1000, 1000, size=(opts.K,), dtype=np.int16)
-    C_np = np.zeros((opts.M,), dtype=np.int32)
-
     A_t = iron.tensor(A_np.reshape(-1), dtype=np.int16, device="npu")
     B_t = iron.tensor(B_np.reshape(-1), dtype=np.int16, device="npu")
-    C_t = iron.tensor(C_np.reshape(-1), dtype=np.int32, device="npu")
+    C_t = iron.zeros(opts.M, dtype=np.int32, device="npu")
 
     bench = run_iters(
         matrix_vector,

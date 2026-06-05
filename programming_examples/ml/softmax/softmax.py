@@ -72,10 +72,8 @@ def _softmax_ref_per_tile(x, tile_size=1024):
 def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     in_np = rng.uniform(-4.0, 8.0, size=(opts.length,)).astype(bfloat16)
-    out_np = np.zeros_like(in_np)
-
     a_t = iron.tensor(in_np, dtype=bfloat16, device="npu")
-    b_t = iron.tensor(out_np, dtype=bfloat16, device="npu")
+    b_t = iron.zeros_like(a_t)
 
     softmax(a_t, b_t, **_compile_kwargs(opts))
 

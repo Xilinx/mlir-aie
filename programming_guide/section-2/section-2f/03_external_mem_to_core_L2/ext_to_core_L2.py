@@ -59,7 +59,7 @@ def ext_to_core_L2(a_in: In, c_out: Out):
 
 
 def _run_and_verify(opts):
-    a_in = iron.tensor(np.ones(48, dtype=np.int32), dtype=np.int32, device="npu")
+    a_in = iron.ones(48, dtype=np.int32, device="npu")
     c_out = iron.zeros(48, dtype=np.int32, device="npu")
     ext_to_core_L2(a_in, c_out)
     assert_pass(

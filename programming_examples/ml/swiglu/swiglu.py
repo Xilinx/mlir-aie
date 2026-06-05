@@ -130,11 +130,9 @@ def _run_and_verify(opts):
         w_np[2 * i : 2 * i + 1024] = w1_np[i : i + 1024]
         w_np[2 * i + 1024 : 2 * i + 2048] = w2_np[i : i + 1024]
 
-    out_np = np.zeros_like(in_np)
-
     a_t = iron.tensor(in_np, dtype=bfloat16, device="npu")
     w_t = iron.tensor(w_np, dtype=bfloat16, device="npu")
-    b_t = iron.tensor(out_np, dtype=bfloat16, device="npu")
+    b_t = iron.zeros_like(a_t)
 
     swiglu(a_t, w_t, b_t, **_compile_kwargs(opts))
 

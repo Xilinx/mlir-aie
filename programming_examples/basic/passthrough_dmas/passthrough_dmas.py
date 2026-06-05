@@ -133,17 +133,13 @@ def _emit_mlir(opts):
 
 
 def _run_and_verify(opts):
-    in_np = np.arange(1, opts.length + 1, dtype=np.int32)
-    b_np = np.zeros_like(in_np)  # unused 2nd buffer
-    out_np = np.zeros_like(in_np)
-
-    a_t = iron.tensor(in_np, dtype=np.int32, device="npu")
-    b_t = iron.tensor(b_np, dtype=np.int32, device="npu")
-    c_t = iron.tensor(out_np, dtype=np.int32, device="npu")
+    a_t = iron.arange(1, opts.length + 1, dtype=np.int32, device="npu")
+    b_t = iron.zeros_like(a_t)  # unused 2nd buffer
+    c_t = iron.zeros_like(a_t)
 
     passthrough_dmas(a_t, b_t, c_t, **_compile_kwargs(opts))
 
-    assert_pass(c_t.numpy(), in_np, fail_msg="output does not match input")
+    assert_pass(c_t.numpy(), a_t.numpy(), fail_msg="output does not match input")
 
 
 def main():

@@ -164,12 +164,9 @@ def _compile_kwargs(opts):
 def _run_and_verify(opts):
     rng = np.random.default_rng(seed=42)
     a_np = rng.integers(1, 100, size=opts.tensor_size, dtype=np.int32)
-    f_np = np.array([3], dtype=np.int32)
-    c_np = np.zeros(opts.tensor_size, dtype=np.int32)
-
     a_t = iron.tensor(a_np, dtype=np.int32, device="npu")
-    f_t = iron.tensor(f_np, dtype=np.int32, device="npu")
-    c_t = iron.tensor(c_np, dtype=np.int32, device="npu")
+    f_t = iron.tensor([3], dtype=np.int32, device="npu")
+    c_t = iron.zeros(opts.tensor_size, dtype=np.int32, device="npu")
 
     aie_trace(a_t, f_t, c_t, **_compile_kwargs(opts))
 

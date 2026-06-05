@@ -154,10 +154,8 @@ def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     rows, cols = opts.sequence_length, opts.embedding_dim
     a_np = rng.uniform(-1.0, 1.0, size=(rows, cols)).astype(bfloat16)
-    c_np = np.zeros_like(a_np)
-
     a_t = iron.tensor(a_np, dtype=bfloat16, device="npu")
-    c_t = iron.tensor(c_np, dtype=bfloat16, device="npu")
+    c_t = iron.zeros_like(a_t)
 
     norm(a_t, c_t, **_compile_kwargs(opts))
 

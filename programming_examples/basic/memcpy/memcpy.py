@@ -162,15 +162,12 @@ def _compile_kwargs(opts):
 
 
 def _run_and_verify(opts):
-    in_np = np.arange(opts.length, dtype=np.int32)
-    out_np = np.zeros_like(in_np)
-
-    a_t = iron.tensor(in_np, dtype=np.int32, device="npu")
-    b_t = iron.tensor(out_np, dtype=np.int32, device="npu")
+    a_t = iron.arange(opts.length, dtype=np.int32, device="npu")
+    b_t = iron.zeros_like(a_t)
 
     memcpy(a_t, b_t, **_compile_kwargs(opts))
 
-    assert_pass(b_t.numpy(), in_np, fail_msg="output does not match input")
+    assert_pass(b_t.numpy(), a_t.numpy(), fail_msg="output does not match input")
 
 
 def main():

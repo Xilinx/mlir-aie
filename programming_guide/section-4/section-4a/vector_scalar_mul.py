@@ -92,10 +92,8 @@ def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
 
 
 def _run_and_verify(opts):
-    a_np = np.arange(1, tensor_size + 1, dtype=np.int32)
-    f_np = np.array([3], dtype=np.int32)
-    a_in = iron.tensor(a_np, dtype=np.int32, device="npu")
-    f_in = iron.tensor(f_np, dtype=np.int32, device="npu")
+    a_in = iron.arange(1, tensor_size + 1, dtype=np.int32, device="npu")
+    f_in = iron.tensor([3], dtype=np.int32, device="npu")
     c_out = iron.zeros(tensor_size, dtype=np.int32, device="npu")
 
     bench = run_iters(
@@ -108,7 +106,9 @@ def _run_and_verify(opts):
     )
 
     assert_pass(
-        c_out.numpy(), a_np * f_np[0], fail_msg="vector_scalar_mul output mismatch"
+        c_out.numpy(),
+        a_in.numpy() * f_in.numpy()[0],
+        fail_msg="vector_scalar_mul output mismatch",
     )
 
     print()

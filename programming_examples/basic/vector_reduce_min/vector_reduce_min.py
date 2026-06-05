@@ -55,10 +55,8 @@ def _make_argparser():
 def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     in_np = rng.integers(-1000, 1000, size=(opts.num_elements,), dtype=np.int32)
-    out_np = np.zeros((1,), dtype=np.int32)
-
     in_t = iron.tensor(in_np, dtype=np.int32, device="npu")
-    out_t = iron.tensor(out_np, dtype=np.int32, device="npu")
+    out_t = iron.zeros(1, dtype=np.int32, device="npu")
 
     vector_reduce_min(in_t, out_t, num_elements=opts.num_elements)
 

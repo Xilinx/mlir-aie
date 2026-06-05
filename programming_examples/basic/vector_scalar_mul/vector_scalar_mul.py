@@ -113,12 +113,10 @@ def _run_and_verify(opts):
 
     rng = np.random.default_rng(0)
     a_np = rng.integers(0, 100, size=(tensor_size,), dtype=in1_dtype)
-    f_np = np.array([3], dtype=np.int32)
-    c_np = np.zeros((tensor_size,), dtype=in1_dtype)
 
     a_t = iron.tensor(a_np, dtype=in1_dtype, device="npu")
-    f_t = iron.tensor(f_np, dtype=np.int32, device="npu")
-    c_t = iron.tensor(c_np, dtype=in1_dtype, device="npu")
+    f_t = iron.tensor([3], dtype=np.int32, device="npu")
+    c_t = iron.zeros(tensor_size, dtype=in1_dtype, device="npu")
 
     bench = run_iters(
         vector_scalar_mul,

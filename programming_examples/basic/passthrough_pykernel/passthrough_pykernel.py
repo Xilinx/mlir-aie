@@ -96,15 +96,12 @@ def _validate(opts):
 
 
 def _run_and_verify(opts):
-    in_np = np.arange(1, VECTOR_SIZE + 1, dtype=np.uint8)
-    zeros_np = np.zeros((VECTOR_SIZE,), dtype=np.uint8)
-
-    in_t = iron.tensor(in_np, device="npu")
-    out_t = iron.tensor(zeros_np, device="npu")
+    in_t = iron.arange(1, VECTOR_SIZE + 1, dtype=np.uint8, device="npu")
+    out_t = iron.zeros(VECTOR_SIZE, dtype=np.uint8, device="npu")
 
     passthrough_pykernel(in_t, out_t)
 
-    expected = in_np
+    expected = in_t.numpy()
     actual = out_t.numpy()
     assert_pass(actual, expected, fail_msg="output does not match input")
 
