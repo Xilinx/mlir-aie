@@ -297,20 +297,26 @@ private:
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
 
-  // BFS the connectivity component of `logicalTile` through the given
-  // adjacencies and return the column-average of every placed CoreTile
-  // peer reached transitively. Returns 0 if no placed cores are
-  // reachable (the caller then falls back to a user-supplied column
-  // constraint or column 0).
-  int computeCentroidColumn(
-      LogicalTileOp logicalTile,
-      llvm::ArrayRef<const Adjacency *> connectivityAdjacencies);
+  // Per-LTO peer-Value lists, one list per flow that mentions the LTO.
+  // Built once and shared so each centroid lookup is O(#flows on the LTO).
+  struct FlowMembership {
+    llvm::DenseMap<mlir::Value,
+                   llvm::SmallVector<llvm::SmallVector<mlir::Value>>>
+        ltoFlows;
+  };
 
-  // Place a non-core (mem/shim) LTO near the centroid column of its placed
-  // core peers, reached transitively through `connectivityAdjacencies`.
+  FlowMembership
+  buildFlowMembership(llvm::ArrayRef<FlowOp> flows,
+                      llvm::ArrayRef<PacketFlowOp> pktFlows,
+                      llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // Pick the column that minimizes total routing cost across the LTO's
+  // flows. See AIEPlacer.cpp for the per-flow cost formulas and tiebreak.
+  int computeCentroidColumn(LogicalTileOp logicalTile,
+                            const FlowMembership &flowIndex);
+
   mlir::LogicalResult placeNonCoreTileByCentroid(
-      LogicalTileOp logicalTile,
-      llvm::ArrayRef<const Adjacency *> connectivityAdjacencies,
+      LogicalTileOp logicalTile, const FlowMembership &flowIndex,
       const llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
 

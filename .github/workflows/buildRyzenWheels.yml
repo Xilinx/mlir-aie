@@ -213,7 +213,7 @@ jobs:
             auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_async_runtime.so --exclude libmlir_c_runner_utils.so --exclude libmlir_float16_utils.so --exclude libmlir_runner_utils.so --exclude libmlir_apfloat_wrappers.so
 
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
@@ -430,7 +430,7 @@ jobs:
           python -m delvewheel repair --ignore-existing --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
   
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_windows_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
@@ -448,14 +448,14 @@ jobs:
       actions: read
     steps:
       - name: Download wheels (RTTI ON)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: mlir_aie*_rtti_ON-*
           path: wheels_on
           merge-multiple: true
 
       - name: Download wheels (RTTI OFF)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: mlir_aie*_rtti_OFF-*
           path: wheels_off

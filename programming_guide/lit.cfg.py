@@ -58,6 +58,14 @@ LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
 early_peano_config = LitConfigHelper.detect_peano(
     early_peano_tools_dir, config.peano_install_dir, llvm_config
+# Detect XRT and Ryzen AI NPU devices
+xrt_config = LitConfigHelper.detect_xrt(
+    config.xrt_lib_dir,
+    config.xrt_include_dir,
+    config.xrt_bin_dir,
+    config.aie_src_root,
+    llvm_config,
+    config.vitis_components,
 )
 
 llvm_config.use_default_substitutions()

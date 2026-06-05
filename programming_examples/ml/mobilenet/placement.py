@@ -20,8 +20,7 @@ PLACEMENT = {
     "init": Tile(0, 2),
     "post_l1": {"compute": Tile(6, 4), "memtile": Tile(4, 1)},
     "post_l2": {
-        "fc1_memtiles": [Tile(0, 1), Tile(2, 1), Tile(4, 1), Tile(6, 1)],
-        "fc2_memtiles": [Tile(1, 1), Tile(3, 1), Tile(5, 1), Tile(7, 1)],
+        "wts_memtiles": [Tile(1, 1), Tile(3, 1), Tile(5, 1), Tile(7, 1)],
         "compute": [Tile(6, 3), Tile(7, 4), Tile(7, 3), Tile(7, 2)],
         "join_memtile": Tile(6, 1),
     },
