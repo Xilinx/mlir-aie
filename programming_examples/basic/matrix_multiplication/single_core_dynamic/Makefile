@@ -26,12 +26,9 @@ devicename?=npu2
 kernels=mm_${m}x${k}x${n}
 
 use_placed?=0
-use_iron?=0
 
 ifeq (${use_placed}, 1)
 aie_py_src=single_core_dynamic_placed.py
-else ifeq (${use_iron}, 1)
-aie_py_src=single_core_dynamic_iron.py
 else
 aie_py_src=single_core_dynamic.py
 endif
