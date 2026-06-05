@@ -1,0 +1,42 @@
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Minimal full-ELF flow example using unplaced IRON.
+#
+# The core writes a single i32 value (42) to an output ObjectFIFO. The runtime
+# sequence drains the FIFO into a 4-byte host buffer via a single DMA task.
+#
+# Usage:
+#   python3 aie_design.py > aie.mlir
+
+import numpy as np
+
+from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron.device import NPU2Col1
+from aie.dialects.aiex import npu_load_pdi
+
+
+def design():
+    device_name = "main"
+
+    out_ty = np.ndarray[(1,), np.dtype[np.int32]]
+
+    of_out = ObjectFifo(out_ty, name="objfifo_out")
+
+    def core_fn(of_out):
+        out_elem = of_out.acquire(1)
+        out_elem[0] = 42
+        of_out.release(1)
+
+    worker = Worker(core_fn, [of_out.prod()], while_true=False)
+
+    rt = Runtime()
+    with rt.sequence(out_ty) as out_tensor:
+        rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
+        rt.start(worker)
+        rt.drain(of_out.cons(), out_tensor, wait=True)
+
+    mlir = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
+    return str(mlir)
+
+print(design())
