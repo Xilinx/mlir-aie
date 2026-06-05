@@ -691,9 +691,9 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
         DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length,
-        // if set, the aiex.parameter value added to the BD's address as an offset
+        // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
         OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
-        // Set by --aie-lower-parameters from $offset_parameter: the scratchpad
+        // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
         // state-table index whose value is used as the BD address offset.
         // After lowering, $offset_parameter is removed in favor of this attribute.
         OptionalAttr<UI8Attr>:$offset_state_table_idx
@@ -1397,20 +1397,20 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
 }
 
 //===----------------------------------------------------------------------===//
-// Parameter ops
+// ScratchpadParameter ops
 //===----------------------------------------------------------------------===//
 
-def AIEX_ParameterOp: AIEX_Op<"parameter", [Symbol]> {
+def AIEX_ScratchpadParameterOp: AIEX_Op<"scratchpad_parameter", [Symbol]> {
   let summary = "Declare a scratchpad runtime parameter";
   let description = [{
     Declares a named runtime parameter that uses the scratchpad mechanism.
     Using this declaration and the MLIR-AIE runtime library, the host can write
     these named runtime parameters to DDR, and AIE cores read it using 
-    `aiex.read_parameter`. The scratchpad memory mechanism
+    `aiex.read_scratchpad_parameter`. The scratchpad memory mechanism
     (CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes) communicates
     the values.
 
-    `aiex.parameter` ops are declared at **module scope** (outside any `aie.device`).
+    `aiex.scratchpad_parameter` ops are declared at **module scope** (outside any `aie.device`).
     The scratchpad is a single hardware resource shared by all PDIs loaded by a
     runtime sequence, so parameters are global to the whole module and may be
     referenced from any device.
@@ -1422,17 +1422,17 @@ def AIEX_ParameterOp: AIEX_Op<"parameter", [Symbol]> {
     If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
 
     Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
-    The `--aie-lower-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
-    `core` if read by a core via `aiex.read_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
+    The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
+    `core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
     Indices are unique across the entire module.
 
     The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
     For `kind == addr`, the `type` must be `i32`.
     For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
-    the lower 2 bits of the scratchpad register (see `aiex.read_parameter`
+    the lower 2 bits of the scratchpad register (see `aiex.read_scratchpad_parameter`
     for details on how values are shifted to work around this).
 
-    You can manually specify the parameter synchronization point inside the runtime sequence using the `aiex.sync_parameters_from_host` op.
+    You can manually specify the parameter synchronization point inside the runtime sequence using the `aiex.sync_scratchpad_parameters_from_host` op.
 
     On the host, you can write parameters using the runtime library's `parameter_scratchpad.h` header library.
 
@@ -1440,39 +1440,39 @@ def AIEX_ParameterOp: AIEX_Op<"parameter", [Symbol]> {
 
     Example (at module scope):
     ```mlir
-    aiex.parameter @foo : i32
-    aiex.parameter @bar : bf16
+    aiex.scratchpad_parameter @foo : i32
+    aiex.scratchpad_parameter @bar : bf16
     aie.device(npu2) { ... }
     ```
   }];
   let arguments = (ins
     SymbolNameAttr:$sym_name,
     TypeAttr:$type,
-    // assigned by `--aie-lower-parameters` pass:
+    // assigned by `--aie-lower-scratchpad-parameters` pass:
     OptionalAttr<UI8Attr>:$state_table_idx,
-    OptionalAttr<ParameterKind>:$kind
+    OptionalAttr<ScratchpadParameterKind>:$kind
   );
   let results = (outs);
   let assemblyFormat = [{ $sym_name `:` $type attr-dict }];
 }
 
-def AIEX_ReadParameterOp: AIEX_Op<"read_parameter", []> {
+def AIEX_ReadScratchpadParameterOp: AIEX_Op<"read_scratchpad_parameter", []> {
   let summary = "Read a scratchpad runtime parameter value on an AIE core";
   let description = [{
-    Reads a runtime parameter previously declared with `aiex.parameter` in an `aie.core`.
+    Reads a runtime parameter previously declared with `aiex.scratchpad_parameter` in an `aie.core`.
 
-    The `--aie-lower-parameters` creates an `aie.buffer` on the core for each unique parameter read, and then replaces each instance of this op with:
+    The `--aie-lower-scratchpad-parameters` creates an `aie.buffer` on the core for each unique parameter read, and then replaces each instance of this op with:
     1. A `memref.load` from that buffer
     2. Arithmetic to decode the value (right-shift by 2 to undo firmware masking)
 
     Example:
     ```mlir
-    %val = aiex.read_parameter @foo : i32
+    %val = aiex.read_scratchpad_parameter @foo : i32
     ```
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$parameter,
-    // assigned by `--aie-lower-parameters` pass:
+    // assigned by `--aie-lower-scratchpad-parameters` pass:
     OptionalAttr<FlatSymbolRefAttr>:$buffer
   );
   let results = (outs AnyType:$result);
@@ -1480,16 +1480,16 @@ def AIEX_ReadParameterOp: AIEX_Op<"read_parameter", []> {
   let hasVerifier = 1;
 }
 
-def AIEX_SyncParametersFromHostOp: AIEX_Op<"sync_parameters_from_host",
+def AIEX_SyncScratchpadParametersFromHostOp: AIEX_Op<"sync_scratchpad_parameters_from_host",
     [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
-  let summary = "Marker for where host-to-core parameter sync should be emitted";
+  let summary = "Marker for where host-to-core scratchpad parameter sync should be emitted";
   let description = [{
     Marker op indicating the point in a runtime sequence where the
-    host-to-core parameter synchronisation should be materialised.  Carries
-    no operands or attributes.  `--aie-lower-parameters` replaces each
-    occurrence (including a compiler-inserted preamble, controlled by the
-    parent `aie.runtime_sequence`'s `emit_parameter_sync_preamble` attribute)
-    with the lowered sequence:
+    host-to-core scratchpad parameter synchronisation should be materialised.
+    Carries no operands or attributes.  `--aie-lower-scratchpad-parameters`
+    replaces each occurrence (including a compiler-inserted preamble,
+    controlled by the parent `aie.runtime_sequence`'s
+    `emit_parameter_sync_preamble` attribute) with the lowered sequence:
 
     1. `aiex.npu.create_scratchpad`
     2. For each core-kind parameter of the enclosing `aie.device`:
@@ -1504,7 +1504,7 @@ def AIEX_SyncParametersFromHostOp: AIEX_Op<"sync_parameters_from_host",
 
     Example:
     ```mlir
-    aiex.sync_parameters_from_host
+    aiex.sync_scratchpad_parameters_from_host
     ```
   }];
   let arguments = (ins);

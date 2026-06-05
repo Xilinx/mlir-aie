@@ -355,14 +355,16 @@ def set_lock_value(lock: aie.LockOp, value: int):
 
 # Parameter ops
 
-_orig_read_parameter = read_parameter
+_orig_read_scratchpad_parameter = read_scratchpad_parameter
 
 
-def read_parameter(name: str, result_type: Type) -> _orig_read_parameter:
-    """Read a runtime parameter inside an `aie.core` body.
+def read_scratchpad_parameter(
+    name: str, result_type: Type
+) -> _orig_read_scratchpad_parameter:
+    """Read a scratchpad runtime parameter inside an `aie.core` body.
 
     Args:
-        name: The `@sym_name` of the `aiex.parameter` declaration.
+        name: The `@sym_name` of the `aiex.scratchpad_parameter` declaration.
         result_type: The MLIR scalar type of the result (e.g. `T.bf16()`, `T.i32()`).
 
     Returns:
@@ -370,6 +372,6 @@ def read_parameter(name: str, result_type: Type) -> _orig_read_parameter:
 
     Example::
 
-        val = aiex.read_parameter("foo", T.bf16())
+        val = aiex.read_scratchpad_parameter("foo", T.bf16())
     """
-    return _orig_read_parameter(result_type, name)
+    return _orig_read_scratchpad_parameter(result_type, name)

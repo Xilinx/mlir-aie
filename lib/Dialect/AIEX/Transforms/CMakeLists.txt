@@ -22,7 +22,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIESubstituteShimDMAAllocations.cpp
   AIECtrlPacketToDma.cpp
   AIELowerSetLock.cpp
-  AIELowerParameters.cpp
+  AIELowerScratchpadParameters.cpp
   AIETransformBfpTypes.cpp
   AIETxnToControlPacket.cpp
   AIEExpandLoadPdi.cpp

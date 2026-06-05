@@ -1468,14 +1468,14 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // This must run before AIEAssignLockIDs so the newly created locks receive
   // IDs, and before address assignment so new buffers get addresses.
   {
-    xilinx::AIEX::AIELowerParametersOptions paramOpts;
+    xilinx::AIEX::AIELowerScratchpadParametersOptions paramOpts;
     if (!tmpDirName.empty()) {
       SmallString<128> paramsPath(tmpDirName);
       sys::path::append(paramsPath, "params.txt");
       paramOpts.outputParamsFile = paramsPath.str().str();
     }
-    pm.addPass(
-        xilinx::AIEX::createAIELowerParametersPass(std::move(paramOpts)));
+    pm.addPass(xilinx::AIEX::createAIELowerScratchpadParametersPass(
+        std::move(paramOpts)));
   }
 
   // Step 4: Device-level passes - use nest<DeviceOp>()

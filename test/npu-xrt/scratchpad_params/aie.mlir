@@ -3,8 +3,8 @@
 //
 module {
     // Parameters (declared at module scope; global across all devices)
-    aiex.parameter @foo : bf16
-    aiex.parameter @bar : bf16
+    aiex.scratchpad_parameter @foo : bf16
+    aiex.scratchpad_parameter @bar : bf16
 
     // Empty device needed to force load_pdi reconfiguration
     aie.device(npu2) @empty { }
@@ -18,13 +18,13 @@ module {
         // Output ObjectFIFO
         aie.objectfifo @objfifo_out (%t02, {%t00}, 1 : i32) : !aie.objectfifo<memref<2xbf16>>
 
-        // Core: blocked on parameter-sync lock inserted by --aie-lower-parameters
+        // Core: blocked on parameter-sync lock inserted by --aie-lower-scratchpad-parameters
         aie.core(%t02) {
             %c0 = arith.constant 0 : index
 
             // Read the bf16 parameters written by UPDATE_REG
-            %foo = aiex.read_parameter @foo : bf16
-            %bar = aiex.read_parameter @bar : bf16
+            %foo = aiex.read_scratchpad_parameter @foo : bf16
+            %bar = aiex.read_scratchpad_parameter @bar : bf16
 
             // Calculate result: foo * bar in bf16
             %val_bf16 = arith.mulf %foo, %bar : bf16
@@ -37,13 +37,13 @@ module {
             aie.end
         }
 
-        // Runtime sequence: parameter-sync preamble inserted by --aie-lower-parameters
+        // Runtime sequence: parameter-sync preamble inserted by --aie-lower-scratchpad-parameters
         aie.runtime_sequence @sequence(%out : memref<2xbf16>) attributes { emit_parameter_sync_preamble = false } {
 
             aiex.npu.load_pdi { device_ref = @empty }
             aiex.npu.load_pdi { device_ref = @test }
 
-            aiex.sync_parameters_from_host
+            aiex.sync_scratchpad_parameters_from_host
 
             // Configure output DMA
             %t_out = aiex.dma_configure_task_for @objfifo_out {

@@ -14,8 +14,8 @@
 //
 module {
     // Runtime parameter: element offset into the input buffer.
-    // aiex.parameter ops are declared at module scope (global across devices).
-    aiex.parameter @input_offset : i32
+    // aiex.scratchpad_parameter ops are declared at module scope (global across devices).
+    aiex.scratchpad_parameter @input_offset : i32
 
     aie.device(npu2) @empty { }
 

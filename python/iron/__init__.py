@@ -15,7 +15,7 @@ Provides the primary abstractions for describing NPU designs:
 
 from .buffer import Buffer
 from .kernel import ExternalFunction, Kernel
-from .parameter import Parameter
+from .scratchpad_parameter import ScratchpadParameter
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime

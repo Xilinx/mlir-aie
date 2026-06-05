@@ -16,7 +16,7 @@ from ..dialects.aie import device
 
 from .device import Device
 from .runtime import Runtime
-from .parameter import Parameter
+from .scratchpad_parameter import ScratchpadParameter
 from .resolvable import Resolvable
 from ..utils import trace as trace_utils
 
@@ -56,13 +56,13 @@ class Program:
             self._device = device_type()
 
             # Resolve parameters at module scope (before the aie.device).
-            # aiex.parameter ops are global across all devices because the
+            # aiex.scratchpad_parameter ops are global across all devices because the
             # scratchpad is a single hardware resource shared by all PDIs.
             for w in self._rt.workers:
                 for arg in w.fn_args:
-                    if isinstance(arg, Parameter):
+                    if isinstance(arg, ScratchpadParameter):
                         arg.resolve()
-            for p in self._rt._parameters:
+            for p in self._rt._scratchpad_parameters:
                 p.resolve()
 
             @device(self._device.resolve(), sym_name=device_name)

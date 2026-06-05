@@ -104,7 +104,7 @@ public:
   /// preserved). Types that fit in 30 bits (e.g. uint16_t, int16_t,
   /// std::bfloat16_t, and uint32_t values < 2^30) round-trip losslessly.
   /// `float` is not supported as a core-kind parameter (the verifier in
-  /// `--aie-lower-parameters` rejects it).
+  /// `--aie-lower-scratchpad-parameters` rejects it).
   template <typename T>
   void write(const std::string &name, T value) {
     static_assert(sizeof(T) <= 4, "Parameter values must be at most 32 bits");

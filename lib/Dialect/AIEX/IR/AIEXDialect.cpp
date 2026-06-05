@@ -1148,10 +1148,10 @@ AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
 }
 
 //===----------------------------------------------------------------------===//
-// ReadParameterOp
+// ReadScratchpadParameterOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AIEX::ReadParameterOp::verify() {
+LogicalResult AIEX::ReadScratchpadParameterOp::verify() {
   auto device = (*this)->getParentOfType<AIE::DeviceOp>();
   if (!device) {
     return emitOpError("must be inside an aie.device");
@@ -1160,10 +1160,11 @@ LogicalResult AIEX::ReadParameterOp::verify() {
     return emitOpError("must be inside an aie.core");
   }
   auto moduleOp = (*this)->getParentOfType<ModuleOp>();
-  if (!moduleOp || !moduleOp.lookupSymbol<AIEX::ParameterOp>(getParameter())) {
+  if (!moduleOp ||
+      !moduleOp.lookupSymbol<AIEX::ScratchpadParameterOp>(getParameter())) {
     return emitOpError("references unknown parameter '")
            << getParameter()
-           << "' (aiex.parameter ops are declared at module scope)";
+           << "' (aiex.scratchpad_parameter ops are declared at module scope)";
   }
   if (getResult().getType().isF32()) {
     return emitOpError(

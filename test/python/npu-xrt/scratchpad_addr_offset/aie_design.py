@@ -19,7 +19,7 @@ import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2Col1
-from aie.iron.parameter import Parameter
+from aie.iron.scratchpad_parameter import ScratchpadParameter
 from aie.dialects.aiex import npu_load_pdi
 from aie.helpers.taplib import TensorAccessPattern
 
@@ -33,7 +33,7 @@ def design():
     tile_ty = np.ndarray[(8,), np.dtype[np.int32]]
 
     # Parameter: element offset into the input buffer
-    input_offset = Parameter("input_offset", np.int32)
+    input_offset = ScratchpadParameter("input_offset", np.int32)
 
     # ObjectFIFOs
     of_in = ObjectFifo(tile_ty, name="objfifo_in")

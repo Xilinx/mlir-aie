@@ -13,7 +13,7 @@ from ml_dtypes import bfloat16
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2Col1
-from aie.iron.parameter import Parameter
+from aie.iron.scratchpad_parameter import ScratchpadParameter
 from aie.dialects.aiex import npu_load_pdi
 from aie.dialects.arith import ConstantOp, mulf
 from aie.dialects.memref import store
@@ -28,8 +28,8 @@ def design():
     out_ty = np.ndarray[(2,), np.dtype[bfloat16]]
 
     # Parameters
-    foo = Parameter("foo", bfloat16)
-    bar = Parameter("bar", bfloat16)
+    foo = ScratchpadParameter("foo", bfloat16)
+    bar = ScratchpadParameter("bar", bfloat16)
 
     # ObjectFIFO for output
     of_out = ObjectFifo(out_ty, name="objfifo_out")

@@ -1,11 +1,11 @@
-# parameter.py -*- Python -*-
+# scratchpad_parameter.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""Parameter: a named runtime value set from the host and read by Workers."""
+"""ScratchpadParameter: a named runtime value set from the host and read by Workers."""
 
 import numpy as np
 
@@ -15,21 +15,22 @@ from ..helpers.util import np_dtype_to_mlir_type, NpuDType
 from .resolvable import Resolvable
 
 
-class Parameter(Resolvable):
+class ScratchpadParameter(Resolvable):
     """A named runtime parameter communicated from host to AIE cores via the
     scratchpad mechanism.
 
-    Declare a ``Parameter`` at design time.  Pass it to a :class:`Worker` via
-    ``fn_args`` and call :meth:`read` inside the ``core_fn`` to obtain its
-    current value.  The ``--aie-lower-parameters`` pass automatically inserts
-    the necessary lock and scratchpad-sync preamble ops.
+    Declare a ``ScratchpadParameter`` at design time.  Pass it to a
+    :class:`Worker` via ``fn_args`` and call :meth:`read` inside the
+    ``core_fn`` to obtain its current value.  The ``--aie-lower-scratchpad-parameters``
+    pass automatically inserts the necessary lock and scratchpad-sync
+    preamble ops.
 
     Example::
 
         import numpy as np
-        from aie.iron import Parameter, Worker, Runtime, Program
+        from aie.iron import ScratchpadParameter, Worker, Runtime, Program
 
-        seq_len = Parameter("seq_len", np.int32)
+        seq_len = ScratchpadParameter("seq_len", np.int32)
 
         def core_body(p):
             v = p.read()
@@ -44,7 +45,7 @@ class Parameter(Resolvable):
     """
 
     def __init__(self, name: str, dtype: NpuDType):
-        """Create a Parameter.
+        """Create a ScratchpadParameter.
 
         Args:
             name: Symbol name for the parameter (must be unique within the
@@ -69,7 +70,7 @@ class Parameter(Resolvable):
         return self._dtype
 
     def read(self):
-        """Emit ``aiex.read_parameter`` inside a core body.
+        """Emit ``aiex.read_scratchpad_parameter`` inside a core body.
 
         Must be called within an active MLIR insertion point (i.e. inside a
         Worker's ``core_fn``).
@@ -78,15 +79,15 @@ class Parameter(Resolvable):
             An MLIR SSA value of the parameter's type.
         """
         mlir_type = np_dtype_to_mlir_type(self._dtype)
-        return aiex.read_parameter(self._name, mlir_type)
+        return aiex.read_scratchpad_parameter(self._name, mlir_type)
 
     def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        """Emit ``aiex.parameter @name : type`` at module scope."""
+        """Emit ``aiex.scratchpad_parameter @name : type`` at module scope."""
         if not self._resolved:
             mlir_type = np_dtype_to_mlir_type(self._dtype)
-            aiex.parameter(self._name, mlir_type, loc=loc, ip=ip)
+            aiex.scratchpad_parameter(self._name, mlir_type, loc=loc, ip=ip)
             self._resolved = True
