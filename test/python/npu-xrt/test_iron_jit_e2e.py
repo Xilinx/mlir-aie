@@ -252,3 +252,39 @@ def test_use_cache_false_recompiles_but_output_correct(input_array, N):
     add_four_nocache(input_array, out)
     out.to("cpu")
     np.testing.assert_array_equal(out.numpy(), input_array.numpy() + 4)
+
+
+# ---------------------------------------------------------------------------
+# 8. trace_config flows to NPUKernel.__init__, not to kernel.__call__
+# ---------------------------------------------------------------------------
+
+
+def test_trace_config_forwarded_to_kernel(input_array, N):
+    """A trace_config passed at call time must reach NPUKernel.__init__ and
+    be stripped from runtime kwargs (i.e. the design must still run)."""
+    from aie.utils.trace.config import TraceConfig
+
+    trace_cfg = TraceConfig(trace_size=65536)
+
+    @iron.jit
+    def add_traced(
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: Compile[int],
+        add_value: Compile[int],
+        trace_config: Compile[TraceConfig | None] = None,
+    ):
+        return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
+
+    out = iron.zeros(N, dtype=np.int32, device="npu")
+    add_traced(input_array, out, N=N, add_value=9, trace_config=trace_cfg)
+    out.to("cpu")
+    np.testing.assert_array_equal(out.numpy(), input_array.numpy() + 9)
+
+    # The kernel built during that call must hold the same trace_config.
+    cached_kernels = list(add_traced._kernel_cache.values())
+    assert cached_kernels, "expected at least one cached NPUKernel"
+    assert any(
+        k.trace_config is trace_cfg for k in cached_kernels
+    ), "trace_config was not forwarded to NPUKernel.__init__"

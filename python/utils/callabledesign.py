@@ -225,7 +225,7 @@ class CallableDesign:
         from aie.utils.npukernel import NPUKernel
 
         xclbin_path, inst_path = compilable.compile()
-        if trace_config is not None:
+        if trace_config is not None and compilable._kernel_dir is not None:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)

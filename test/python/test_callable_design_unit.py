@@ -325,50 +325,12 @@ def test_external_function_positional_not_in_tensor_args():
     ), "Kernel instance must not appear in scalar_kwargs"
 
 
-# ---------------------------------------------------------------------------
-# Fix 2: trace_config not forwarded to the NPU kernel as a kwarg
-# ---------------------------------------------------------------------------
-
-
-def test_trace_config_not_forwarded_to_kernel_as_kwarg():
-    """trace_config must be stripped from kwargs before reaching the NPU kernel."""
-    from aie.utils.trace.config import TraceConfig
-
-    trace_cfg = TraceConfig(trace_size=65536)
-
-    def gen(a: In, *, trace_config: Compile[object] = None):
-        pass
-
-    cd = CallableDesign(gen)
-
-    # Patch compile() so no real compilation happens, and capture NPUKernel calls.
-    fake_xclbin = Path("/fake/final.xclbin")
-    fake_insts = Path("/fake/insts.bin")
-    kernel_init_kwargs = {}
-
-    class FakeKernel:
-        def __init__(self, xclbin, insts, kernel_name="MLIR_AIE", trace_config=None):
-            kernel_init_kwargs["trace_config"] = trace_config
-            kernel_init_kwargs["kernel_name"] = kernel_name
-
-        def __call__(self, *args, **kwargs):
-            # Verify trace_config was not forwarded here as a kwarg.
-            assert (
-                "trace_config" not in kwargs
-            ), "trace_config must not be passed to kernel.__call__ as a kwarg"
-            return None
-
-    with patch.object(
-        CompilableDesign, "compile", return_value=(fake_xclbin, fake_insts)
-    ):
-        with patch("aie.utils.npukernel.NPUKernel", FakeKernel):
-            a = object()
-            cd(a, trace_config=trace_cfg)
-
-    # trace_config must have been forwarded to NPUKernel.__init__, not to __call__.
-    assert (
-        kernel_init_kwargs.get("trace_config") is trace_cfg
-    ), "trace_config must be passed to NPUKernel.__init__"
+# NOTE: trace_config end-to-end behaviour (forwarded to NPUKernel.__init__,
+# not to kernel.__call__) is covered by a real NPU run in
+# test/python/npu-xrt/test_iron_jit_e2e.py::test_trace_config_forwarded_to_kernel.
+# A pure-unit version was removed because it required mocking compile() in a
+# way that diverged from prod behaviour (left _kernel_dir unset, masking a
+# real defect).
 
 
 # ---------------------------------------------------------------------------
