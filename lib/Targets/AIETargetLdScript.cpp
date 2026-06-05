@@ -182,13 +182,11 @@ SECTIONS
         if (auto filesAttr = coreOp.getLinkFiles()) {
           // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-            if (!f.getValue().empty())
-              output << "INPUT(" << f.getValue() << ")\n";
+            output << "INPUT(" << f.getValue() << ")\n";
         } else if (auto fileAttr = coreOp.getLinkWith()) {
           // Deprecated fallback: core-level link_with was not migrated by
           // aie-assign-core-link-files (e.g., the pass was not run).
-          if (!fileAttr.value().empty())
-            output << "INPUT(" << fileAttr.value() << ")\n";
+          output << "INPUT(" << fileAttr.value().str() << ")\n";
         }
 
         output << "PROVIDE(main = core_" << tile.getCol() << "_"
