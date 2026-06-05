@@ -77,6 +77,7 @@ class Runtime(Resolvable):
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
         self._ddr_id = 4
+        self._egress_shim_col = 0
 
     def add_flow(self, flow) -> None:
         """Register an explicit :class:`Flow` (or :class:`PacketFlow`) so the
@@ -298,6 +299,7 @@ class Runtime(Resolvable):
         coremem_events: list | None = None,
         memtile_events: list | None = None,
         shimtile_events: list | None = None,
+        egress_shim_col: int = 0,
     ):
         """Enable hardware tracing for this program.
 
@@ -322,6 +324,8 @@ class Runtime(Resolvable):
                 Defaults to None (uses hardware defaults).
             shimtile_events (list | None, optional): List of up to 8 shim tile trace events.
                 Defaults to None (uses hardware defaults).
+            egress_shim_col (int, optional): Column of the shim tile used to
+                egress trace packets to DDR. Defaults to 0.
         """
         self._trace_size = trace_size
         self._trace_workers = workers
@@ -330,6 +334,7 @@ class Runtime(Resolvable):
         self._coremem_events = coremem_events
         self._memtile_events = memtile_events
         self._shimtile_events = shimtile_events
+        self._egress_shim_col = egress_shim_col
 
     def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
         """Set the value of a worker barrier.
@@ -378,6 +383,7 @@ class Runtime(Resolvable):
                     trace_size=self._trace_size,
                     ddr_id=self._ddr_id,
                     routing="single",
+                    egress_shim_col=self._egress_shim_col,
                 )
 
             for rt_data, rt_data_val in zip(self._rt_data, args):
