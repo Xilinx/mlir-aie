@@ -2459,12 +2459,14 @@ Attributes:
 - arg_idx (default=4): XRT argument index for trace buffer. Set to -1 to
   append trace data after the last tensor argument in the runtime_sequence.
 - routing (default=single): Shim routing strategy. Currently only 'single'
-  is supported, which routes all traces to column 0's shim.
+  is supported, which routes all traces to a single shim tile.
+- egress_shim_col (default=0): Column index of the shim tile that receives
+  the trace packet flows.
 
 Example:
 ```mlir
 aie.runtime_sequence(%arg0: memref<16xi32>) {
-  aie.trace.host_config buffer_size=65536
+  aie.trace.host_config buffer_size=65536 egress_shim_col=4
   aie.trace.start_config @trace1
 }
 ```
@@ -2481,6 +2483,7 @@ Traits: `HasParent<RuntimeSequenceOp>`
     Determines how traces are routed to shim tiles:
     - single: All traces route to a single shim tile (column 0)
   {{% /markdown %}}</details></td></tr>
+<tr><td><code>egress_shim_col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 
