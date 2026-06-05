@@ -8,17 +8,17 @@
 # RUN: %python %S/aie_design.py > aie.mlir
 # RUN: aiecc.py -v --generate-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos aie.mlir
 # RUN: cp aie.mlir.prj/params.txt .
-# RUN: %run_on_npu2% %python %s
+# RUN: %run_on_npu2% %pytest %s
 #
 # This is the Python equivalent of the C++ test in ../scratchpad_params/.
 # It exercises the full flow:
 #   1. aiecc.py compiles aie.mlir → aie.elf + params.txt
 #   2. This script loads the ELF, creates a ParameterScratchpad from params.txt,
 #      writes bf16 parameters, and verifies the core computes foo * bar.
-#   3. A second run with different values tests parameter re-use across runs.
+#   3. A second parametrized case with different values tests parameter re-use
+#      across runs.
 
-import sys
-
+import pytest
 import pyxrt
 from ml_dtypes import bfloat16
 
@@ -29,10 +29,8 @@ from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
 )
 
 
-def main():
-    FOO_1, BAR_1 = bfloat16(3.0), bfloat16(4.0)
-    FOO_2, BAR_2 = bfloat16(2.0), bfloat16(5.0)
-
+@pytest.fixture(scope="module")
+def kernel_setup():
     runtime = XRTHostRuntime()
     device = runtime._device
     elf = pyxrt.elf("aie.elf")
@@ -46,38 +44,34 @@ def main():
     run.set_arg(0, out_tensor.buffer_object())
 
     params = ParameterScratchpad(run, "params.txt")
+    return run, params, out_tensor
 
-    def run_once(foo, bar):
-        out_tensor.data.fill(0)
-        out_tensor.to("npu")
 
-        params.write("foo", foo)
-        params.write("bar", bar)
-        params.sync()
+@pytest.mark.parametrize(
+    "foo,bar",
+    [
+        (bfloat16(3.0), bfloat16(4.0)),
+        (bfloat16(2.0), bfloat16(5.0)),
+    ],
+)
+def test_scratchpad_param_multiply(kernel_setup, foo, bar):
+    run, params, out_tensor = kernel_setup
 
-        run.start()
-        run.wait2()
+    out_tensor.data.fill(0)
+    out_tensor.to("npu")
 
-        out_tensor.to("cpu")
-        return float(out_tensor.numpy()[0])
+    params.write("foo", foo)
+    params.write("bar", bar)
+    params.sync()
 
-    # --- Run 1: foo=3.0, bar=4.0 → expect 12.0 ---
-    result1 = run_once(FOO_1, BAR_1)
-    expected1 = float(FOO_1) * float(BAR_1)
-    print(f"Run 1 — Expected: {expected1}, Got: {result1}")
+    run.start()
+    run.wait2()
 
-    # --- Run 2: foo=2.0, bar=5.0 → expect 10.0 ---
-    result2 = run_once(FOO_2, BAR_2)
-    expected2 = float(FOO_2) * float(BAR_2)
-    print(f"Run 2 — Expected: {expected2}, Got: {result2}")
-
-    if result1 == expected1 and result2 == expected2:
-        print("PASS!")
-        return 0
-    else:
-        print("FAIL.")
-        return 1
+    out_tensor.to("cpu")
+    result = float(out_tensor.numpy()[0])
+    expected = float(foo) * float(bar)
+    assert result == expected
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    pytest.main([__file__, "-v"])

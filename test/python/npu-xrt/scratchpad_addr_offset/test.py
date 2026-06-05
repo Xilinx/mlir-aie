@@ -8,7 +8,7 @@
 # RUN: %python %S/aie_design.py > aie.mlir
 # RUN: aiecc.py -v --generate-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos aie.mlir
 # RUN: cp aie.mlir.prj/params.txt .
-# RUN: %run_on_npu2% %python %s
+# RUN: %run_on_npu2% %pytest %s
 #
 # Setup:
 #   - Input buffer: 32 i32 values [0, 1, 2, ..., 31]
@@ -17,9 +17,8 @@
 #
 # We run three times with different offsets and verify the output each time.
 
-import sys
-
 import numpy as np
+import pytest
 import pyxrt
 
 import aie.iron as iron
@@ -28,11 +27,12 @@ from aie.utils.hostruntime.xrtruntime.parameter_scratchpad import (
     ParameterScratchpad,
 )
 
+N_INPUT = 32
+N_OUTPUT = 8
 
-def main():
-    N_INPUT = 32
-    N_OUTPUT = 8
 
+@pytest.fixture(scope="module")
+def kernel_setup():
     runtime = XRTHostRuntime()
     device = runtime._device
     elf = pyxrt.elf("aie.elf")
@@ -48,44 +48,36 @@ def main():
     run.set_arg(1, out_tensor.buffer_object())
 
     params = ParameterScratchpad(run, "params.txt")
+    return run, params, in_tensor, out_tensor
 
-    test_cases = [
+
+@pytest.mark.parametrize(
+    "offset,expected",
+    [
         (0, list(range(0, 8))),
         (8, list(range(8, 16))),
         (16, list(range(16, 24))),
-    ]
+    ],
+)
+def test_input_offset(kernel_setup, offset, expected):
+    run, params, in_tensor, out_tensor = kernel_setup
 
-    all_pass = True
-    for run_idx, (offset, expected) in enumerate(test_cases, 1):
-        # Clear output
-        out_tensor.data.fill(0)
-        out_tensor.to("npu")
-        in_tensor.to("npu")
+    # Clear output
+    out_tensor.data.fill(0)
+    out_tensor.to("npu")
+    in_tensor.to("npu")
 
-        # Write offset parameter (in elements)
-        params.write("input_offset", np.int32(offset))
-        params.sync()
+    # Write offset parameter (in elements)
+    params.write("input_offset", np.int32(offset))
+    params.sync()
 
-        run.start()
-        run.wait2()
+    run.start()
+    run.wait2()
 
-        out_tensor.to("cpu")
-        result = out_tensor.numpy().tolist()
-
-        status = "PASS" if result == expected else "FAIL"
-        if result != expected:
-            all_pass = False
-        print(
-            f"Run {run_idx} — offset={offset:2d}  expected={expected}  got={result}  {status}"
-        )
-
-    if all_pass:
-        print("PASS!")
-        return 0
-    else:
-        print("FAIL.")
-        return 1
+    out_tensor.to("cpu")
+    result = out_tensor.numpy().tolist()
+    assert result == expected
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    pytest.main([__file__, "-v"])
