@@ -709,6 +709,7 @@ def trace_host_config(
     *,
     arg_idx=4,
     routing=TraceShimRouting.Single,
+    egress_shim_col=0,
     loc=None,
     ip=None,
 ):
@@ -721,6 +722,7 @@ def trace_host_config(
         buffer_size=buffer_size,
         arg_idx=arg_idx,
         routing=routing,
+        egress_shim_col=egress_shim_col,
         loc=loc,
         ip=ip,
     )

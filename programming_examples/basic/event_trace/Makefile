@@ -42,7 +42,7 @@ endif
 # Preprocess the MLIR: substitute NPUDEVICE with the target device string
 build/aie_trace.mlir: ${srcdir}/aie_trace.mlir
 	mkdir -p ${@D}
-	sed 's/NPUDEVICE/${devicename}_1col/g' $< > $@
+	sed 's/NPUDEVICE/${devicename}_2col/g' $< > $@
 
 # Generate MLIR from Python
 build/aie_trace_from_py.mlir: ${srcdir}/aie_trace.py
