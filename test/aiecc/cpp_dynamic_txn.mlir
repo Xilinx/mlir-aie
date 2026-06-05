@@ -27,7 +27,7 @@
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-txn-cpp \
 // RUN:   --txn-cpp-name=%t.h --no-compile --no-link --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: Compilation completed successfully
+// CHECK: NPU lowering pipeline completed successfully
 
 // Also test unified compilation (XCLBIN + TXN from same MLIR):
 // RUN: aiecc --no-xchesscc --no-xbridge --peano %PEANO_INSTALL_DIR \
@@ -35,7 +35,7 @@
 // RUN:   --aie-generate-txn-cpp --txn-cpp-name=%t_unified.h \
 // RUN:   --verbose %s 2>&1 | FileCheck %s --check-prefix=UNIFIED
 
-// UNIFIED: Compilation completed successfully
+// UNIFIED: NPU lowering pipeline completed successfully
 
 module {
   aie.device(npu2) {
