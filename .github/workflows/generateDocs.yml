@@ -115,7 +115,7 @@ jobs:
       - name: Publish to GitHub-Pages
         if: github.event_name != 'pull_request'
         # https://github.com/peaceiris/actions-gh-pages/releases/tag/v3.9.3
-        uses: peaceiris/actions-gh-pages@373f7f263a76c20808c831209c920827a82a2847  # v3.9.3
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453  # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build_release/docs
