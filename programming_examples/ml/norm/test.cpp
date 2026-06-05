@@ -18,8 +18,8 @@
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
-using DATATYPE_IN1 = std::bfloat16_t;
-using DATATYPE_OUT = std::bfloat16_t;
+using DATATYPE_IN1 = test_utils::bfloat16_t;
+using DATATYPE_OUT = test_utils::bfloat16_t;
 #endif
 
 // Op selector — populated from the `NORM_OP` env var so the linked-in
@@ -32,8 +32,9 @@ static std::string norm_op() {
 
 void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int in_volume) {
   for (int i = 0; i < in_volume; i++) {
-    bufIn1[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                                              (std::bfloat16_t)-4.0);
+    bufIn1[i] =
+        test_utils::random_bfloat16_t(test_utils::bfloat16_from_float(8.0f),
+                                      test_utils::bfloat16_from_float(-4.0f));
   }
 }
 
@@ -58,7 +59,7 @@ int verify_norm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
   for (int r = 0; r < ROWS; r++) {
     float sum = 0.0f, sum_sq = 0.0f;
     for (int c = 0; c < COLS; c++) {
-      float val = static_cast<float>(bufIn1[r * COLS + c]);
+      float val = test_utils::bfloat16_to_float(bufIn1[r * COLS + c]);
       sum += val;
       sum_sq += val * val;
     }
@@ -66,7 +67,7 @@ int verify_norm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
       float rms = std::sqrt(sum_sq / float(COLS) + epsilon);
       for (int c = 0; c < COLS; c++) {
         int idx = r * COLS + c;
-        float val = static_cast<float>(bufIn1[idx]);
+        float val = test_utils::bfloat16_to_float(bufIn1[idx]);
         expected[idx] = (val * gamma) / rms;
       }
     } else { // layer
@@ -75,7 +76,7 @@ int verify_norm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
       float inv_std = 1.0f / std::sqrt(variance + epsilon);
       for (int c = 0; c < COLS; c++) {
         int idx = r * COLS + c;
-        float val = static_cast<float>(bufIn1[idx]);
+        float val = test_utils::bfloat16_to_float(bufIn1[idx]);
         expected[idx] = (val - mean) * inv_std * gamma + beta;
       }
     }
@@ -84,7 +85,7 @@ int verify_norm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
   int errors = 0, pass = 0;
   for (int i = 0; i < (ROWS * COLS); i++) {
     float ev = expected[i];
-    float hv = static_cast<float>(bufOut[i]);
+    float hv = test_utils::bfloat16_to_float(bufOut[i]);
     float diff = std::abs(ev - hv);
     if (diff > tol) {
       std::cout << "Mismatch at index " << i << ": expected " << ev << ", got "
