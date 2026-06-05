@@ -829,7 +829,8 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", [AttrSizedOperandSegments]> {
         OptionalAttr<I32Attr>:$column,
         OptionalAttr<I32Attr>:$row,
         Optional<AnySignlessInteger>:$dyn_address,
-        Optional<AnySignlessInteger>:$dyn_value
+        Optional<AnySignlessInteger>:$dyn_value,
+        OptionalAttr<UI32Attr>:$bd_group
   );
   let results = (outs );
   let hasCustomAssemblyFormat = 1;
@@ -848,6 +849,10 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", [AttrSizedOperandSegments]> {
     the static attributes serve as placeholders (typically 0) and the SSA values
     are used instead.
 
+    When 'bd_group' is present, this write32 overrides a word within the BD at
+    the given base address. The EmitC conversion uses this to fuse the override
+    into the parent blockwrite, producing a single TXN blockwrite instruction.
+
     Static syntax: `aiex.npu.write32 {address = 123 : ui32, value = 456 : ui32}`
     Dynamic syntax: `aiex.npu.write32(%addr, %val) {address = 0 : ui32, value = 0 : ui32} : i32, i32`
   }];
@@ -863,7 +868,8 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", [AttrSizedOperandSegments]> {
             $_builder.getUI32IntegerAttr(address),
             $_builder.getUI32IntegerAttr(value),
             buffer, column, row,
-            /*dyn_address=*/Value(), /*dyn_value=*/Value());
+            /*dyn_address=*/Value(), /*dyn_value=*/Value(),
+            /*bd_group=*/mlir::IntegerAttr());
     }]>,
     OpBuilder<(ins "mlir::IntegerAttr":$address, "mlir::IntegerAttr":$value,
                "mlir::FlatSymbolRefAttr":$buffer,
@@ -871,7 +877,20 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", [AttrSizedOperandSegments]> {
       build($_builder, $_state,
             address, value,
             buffer, column, row,
-            /*dyn_address=*/Value(), /*dyn_value=*/Value());
+            /*dyn_address=*/Value(), /*dyn_value=*/Value(),
+            /*bd_group=*/mlir::IntegerAttr());
+    }]>,
+    OpBuilder<(ins "uint32_t":$address, "uint32_t":$value,
+               "mlir::FlatSymbolRefAttr":$buffer,
+               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row,
+               "mlir::Value":$dyn_address, "mlir::Value":$dyn_value,
+               "uint32_t":$bd_group_addr), [{
+      build($_builder, $_state,
+            $_builder.getUI32IntegerAttr(address),
+            $_builder.getUI32IntegerAttr(value),
+            buffer, column, row,
+            dyn_address, dyn_value,
+            $_builder.getUI32IntegerAttr(bd_group_addr));
     }]>
   ];
 }

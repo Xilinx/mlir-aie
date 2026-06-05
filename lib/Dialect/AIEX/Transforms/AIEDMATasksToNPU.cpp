@@ -133,7 +133,8 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
                            /*column=*/IntegerAttr{},
                            /*row=*/IntegerAttr{},
                            /*dyn_address=*/cst(queueOffset),
-                           /*dyn_value=*/cmd);
+                           /*dyn_value=*/cmd,
+                           /*bd_group=*/IntegerAttr{});
       rewriter.eraseOp(op);
       return success();
     }
@@ -666,8 +667,9 @@ struct AIEDMATasksToNPUPass
     uint64_t bdAddr =
         target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id);
 
+    uint32_t bdAddrU32 = static_cast<uint32_t>(bdAddr);
     auto emitDynBdWord = [&](uint32_t wordIdx, Value wordValue) {
-      uint32_t wordAddr = static_cast<uint32_t>(bdAddr) + wordIdx * 4;
+      uint32_t wordAddr = bdAddrU32 + wordIdx * 4;
       NpuWrite32Op::create(builder, loc,
                            /*address=*/static_cast<uint32_t>(0),
                            /*value=*/static_cast<uint32_t>(0),
@@ -675,7 +677,8 @@ struct AIEDMATasksToNPUPass
                            /*column=*/IntegerAttr{},
                            /*row=*/IntegerAttr{},
                            /*dyn_address=*/cst(wordAddr),
-                           /*dyn_value=*/wordValue);
+                           /*dyn_value=*/wordValue,
+                           /*bd_group=*/bdAddrU32);
     };
 
     // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic

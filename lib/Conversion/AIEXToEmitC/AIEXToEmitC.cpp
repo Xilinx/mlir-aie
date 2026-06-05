@@ -397,59 +397,55 @@ private:
       if (auto absAddr = blockWrite.getAbsoluteAddress())
         blockAddr = *absAddr;
 
-      // Scan forward for dynamic NpuWrite32Ops whose constant addresses
-      // target BD words within this blockwrite's range (blockAddr to
-      // blockAddr + 28), terminated by an NpuAddressPatchOp at
-      // blockAddr + 4.
+      // Collect dynamic NpuWrite32Ops that override words in this BD.
+      // Write32s are matched by their bd_group attribute (set by the
+      // lowering pass), not by adjacency or ordering — this is robust
+      // against op reordering or interleaving.
       //
-      // Pure (side-effect-free) ops are allowed in between, since the
-      // dma-to-npu lowering interleaves arith.constant / andi / shli /
-      // ori ops between the override write32s to compute their dynamic
-      // values. Any non-pure op or any other AIEX TXN op aborts the
-      // fusion attempt and we fall back to per-op emission.
-      auto scanIt = std::next(it);
+      // Also find the NpuAddressPatchOp for this BD (address at
+      // blockAddr + 4, the buffer-address word).
       SmallVector<std::pair<uint32_t, AIEX::NpuWrite32Op>> dynWrite32s;
       AIEX::NpuAddressPatchOp matchedPatch = nullptr;
+      auto scanIt = it; // default: no ops consumed beyond the blockwrite
 
-      while (scanIt != e) {
-        Operation *cur = &*scanIt;
+      for (auto fwdIt = std::next(it); fwdIt != e; ++fwdIt) {
+        Operation *cur = &*fwdIt;
 
         if (auto patch = dyn_cast<AIEX::NpuAddressPatchOp>(cur)) {
-          if (patch.getAddr() == blockAddr + 4)
+          if (patch.getAddr() == blockAddr + 4) {
             matchedPatch = patch;
+            scanIt = fwdIt;
+          }
           break;
         }
 
         if (auto w32 = dyn_cast<AIEX::NpuWrite32Op>(cur)) {
-          if (!w32.hasDynamicOperands())
+          auto bdGroupAttr = w32.getBdGroupAttr();
+          if (bdGroupAttr &&
+              bdGroupAttr.getValue().getZExtValue() == blockAddr) {
+            auto addrConst =
+                w32.getDynAddress().getDefiningOp<arith::ConstantOp>();
+            auto addrAttr = addrConst
+                                ? dyn_cast<IntegerAttr>(addrConst.getValue())
+                                : nullptr;
+            if (addrAttr) {
+              uint64_t w32Addr = addrAttr.getValue().getZExtValue();
+              uint32_t wordIdx =
+                  static_cast<uint32_t>((w32Addr - blockAddr) / 4);
+              dynWrite32s.push_back({wordIdx, w32});
+            }
+            scanIt = fwdIt;
+            continue;
+          }
+          if (!w32.getBdGroupAttr())
             break;
-          auto addrConst =
-              w32.getDynAddress().getDefiningOp<arith::ConstantOp>();
-          auto addrAttr =
-              addrConst ? dyn_cast<IntegerAttr>(addrConst.getValue()) : nullptr;
-          if (!addrAttr)
-            break;
-          uint64_t w32Addr = addrAttr.getValue().getZExtValue();
-          if (w32Addr < blockAddr || w32Addr > blockAddr + 28 ||
-              (w32Addr - blockAddr) % 4 != 0)
-            break;
-          uint32_t wordIdx = static_cast<uint32_t>((w32Addr - blockAddr) / 4);
-          dynWrite32s.push_back({wordIdx, w32});
-          ++scanIt;
-          continue;
         }
 
-        // Any other AIEX TXN op between blockwrite and its address_patch
-        // means this blockwrite is not part of a BD-with-overrides pattern.
-        if (cur->getDialect() && cur->getDialect()->getNamespace() == "aiex")
-          break;
-
-        // Allow only pure helper ops to be skipped; bail on anything else
-        // to preserve side effects.
-        if (!isPure(cur))
-          break;
-
-        ++scanIt;
+        if (isPure(cur)) {
+          scanIt = fwdIt;
+          continue;
+        }
+        break;
       }
 
       if (!matchedPatch || dynWrite32s.empty()) {

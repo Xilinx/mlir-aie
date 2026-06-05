@@ -150,7 +150,8 @@ struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
                            /*buffer=*/nullptr, /*column=*/nullptr,
                            /*row=*/nullptr,
                            /*dyn_address=*/addrConst.getResult(),
-                           /*dyn_value=*/adaptor.getDynValue());
+                           /*dyn_value=*/adaptor.getDynValue(),
+                           /*bd_group=*/IntegerAttr{});
     } else {
       // Static path
       NpuWrite32Op::create(rewriter, op->getLoc(), address,
@@ -812,9 +813,9 @@ public:
 
     // --- Emit NpuWrite32Op overrides for dynamic BD words ---
     // Only emit write32 for words that contain dynamic content.
-    // The address is the BD base + word_index * 4.
+    uint32_t bdAddrU32 = static_cast<uint32_t>(bdAddr);
     auto emitDynBdWord = [&](uint32_t wordIdx, Value wordValue) {
-      uint32_t wordAddr = static_cast<uint32_t>(bdAddr) + wordIdx * 4;
+      uint32_t wordAddr = bdAddrU32 + wordIdx * 4;
       Value addrSSA = cst(wordAddr);
       NpuWrite32Op::create(rewriter, loc,
                            /*address=*/static_cast<uint32_t>(0),
@@ -823,7 +824,8 @@ public:
                            /*column=*/IntegerAttr{},
                            /*row=*/IntegerAttr{},
                            /*dyn_address=*/addrSSA,
-                           /*dyn_value=*/wordValue);
+                           /*dyn_value=*/wordValue,
+                           /*bd_group=*/bdAddrU32);
     };
 
     // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic
@@ -936,7 +938,8 @@ public:
                            /*buffer=*/FlatSymbolRefAttr(),
                            /*column=*/IntegerAttr(),
                            /*row=*/IntegerAttr(),
-                           /*dyn_address=*/queueAddrSSA, /*dyn_value=*/cmd);
+                           /*dyn_address=*/queueAddrSSA, /*dyn_value=*/cmd,
+                           /*bd_group=*/IntegerAttr{});
     } else {
       // Static queue push
       auto columnAttr = IntegerAttr::get(i32ty, tileCol);
