@@ -10,14 +10,12 @@
 
 // Regression: previously the verifier crashed with SIGSEGV when an
 // !aie.objectfifosubview escaped an scf.for via iter_args / scf.yield,
-// because both the verifier and the downstream lowering pass assumed the
-// subview's defining op was always a direct aie.objectfifo.acquire. The
-// verifier now tolerates the missing defining op (the value can flow
-// through a region result legitimately for other consumers) and the
-// lowering pass emits a clean diagnostic when it actually needs to look
-// through the subview.
+// because the verifier assumed the subview's defining op was always a
+// direct aie.objectfifo.acquire. The verifier now rejects the construct
+// with a clean diagnostic at parse/verify time — downstream lowering
+// can rely on the direct-acquire invariant unconditionally.
 
-// RUN: aie-opt --verify-diagnostics --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s
+// RUN: aie-opt --verify-diagnostics %s
 
 module {
   aie.device(npu2) {

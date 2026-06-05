@@ -2884,14 +2884,10 @@ struct AIEObjectFifoStatefulTransformPass
       // Replace subview.access ops
       //===----------------------------------------------------------------===//
       res = coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
+        // Verifier guarantees the defining op is a direct acquire.
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-        if (!acqOp) {
-          accessOp.emitOpError("subview operand must be the direct result of "
-                               "an aie.objectfifo.acquire; flowing the "
-                               "subview through scf.yield / iter_args / "
-                               "region results is not supported");
-          return WalkResult::interrupt();
-        }
+        assert(acqOp && "ObjectFifoSubviewAccessOp verifier should reject "
+                        "non-direct subview operands");
         if (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {
           if (auto linkOp = getOptionalLinkOp(op); linkOp.has_value()) {
             if (!linkOp->isDistribute() && !linkOp->isJoin()) {
