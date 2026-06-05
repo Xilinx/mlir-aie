@@ -877,4 +877,20 @@ def VectorSel32AIE2pIntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
     AIE2I32SelElem;
 
+// AIE2P int4-unpack intrinsics: take a 32xi8 (= 64 packed nibbles) and
+// produce 64xi8 (one full int8 per nibble). The i32 `sign` argument
+// selects unsigned (0) vs signed (1) interpretation of the nibbles.
+// Maps to llvm.aie2p.unpack.I512.I8.I4 / llvm.aie2p.unpack.I1024.I8.I4.
+def UnpackI512I8I4AIE2pIntrOp :
+    AIEVec2p_IntrOp<"unpack.I512.I8.I4",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I8]>:$src,
+                   I32:$sign)>;
+
+def UnpackI1024I8I4AIE2pIntrOp :
+    AIEVec2p_IntrOp<"unpack.I1024.I8.I4",
+        [TypeIs<"res", VectorOfLengthAndType<[128], [I8]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$src,
+                   I32:$sign)>;
+
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD
