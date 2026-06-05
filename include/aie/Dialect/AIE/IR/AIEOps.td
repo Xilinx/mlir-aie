@@ -1023,11 +1023,6 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
   let arguments = (
     ins AnyRankedOrUnrankedMemRef:$buffer,
-        // Optional SSA-i64 overrides for offset/len; all-or-nothing dynamic
-        // dim overrides via dyn_sizes / dyn_strides. i64 minimises churn vs.
-        // existing infra (runtime_sequence args, scf.for index_cast results,
-        // arith chains used by `npu.dma_memcpy_nd` callers); the dynamic
-        // lowering path truncates to i32 at the BD-word boundary.
         Optional<I64>:$dyn_offset,
         Optional<I64>:$dyn_len,
         Variadic<I64>:$dyn_sizes,
@@ -2306,11 +2301,6 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
 
     Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
-
-    Note: This op is NOT `IsolatedFromAbove` — it can reference values defined
-    in the parent `DeviceOp`. However, the EmitC (C++ codegen) path only
-    supports capturing `arith.constant` values from the outer scope. Referencing
-    other external value types will produce errors during the EmitC conversion.
   }];
   let arguments = (
     ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name
