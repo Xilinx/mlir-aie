@@ -112,15 +112,19 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       uint32_t ctrlOffset = targetModel.getDmaControlAddress(
           tileCol, tileRow, channelIdx, channelDir);
       if (task_op.getIssueToken()) {
-        AIE::TileOp shimTile = AIE::TileOp::getOrCreate(
-            rewriter, op->getParentOfType<AIE::DeviceOp>(), tileCol, tileRow);
-        if (shimTile->hasAttr("controller_id")) {
-          auto controllerIdAttr =
-              shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-          uint32_t data = controllerIdAttr.getPktId() << 8;
-          uint32_t mask = 0x00001F00;
-          NpuMaskWrite32Op::create(rewriter, loc, ctrlOffset, data, mask,
-                                   nullptr, nullptr, nullptr);
+        auto device = op->getParentOfType<AIE::DeviceOp>();
+        for (auto t : device.getOps<AIE::TileOp>()) {
+          if (static_cast<uint32_t>(t.getCol()) == tileCol &&
+              static_cast<uint32_t>(t.getRow()) == tileRow &&
+              t->hasAttr("controller_id")) {
+            auto controllerIdAttr =
+                t->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+            uint32_t data = controllerIdAttr.getPktId() << 8;
+            uint32_t mask = 0x00001F00;
+            NpuMaskWrite32Op::create(rewriter, loc, ctrlOffset, data, mask,
+                                     nullptr, nullptr, nullptr);
+            break;
+          }
         }
       }
 
