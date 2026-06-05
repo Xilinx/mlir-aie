@@ -84,16 +84,25 @@ HwBdEncoding emitDynamicHwBdEncoding(OpBuilder &builder, Location loc,
 
   // Hardware d0_size = inputSizes[0] * elemWidth / addrGran
   // NOTE: Must multiply first, then divide to avoid integer truncation.
-  // NOTE: The hardware d0_size field is 10 bits wide (max 1023). The static
+  // The hardware d0_size field is 10 bits wide (max 1023). The static
   // lowering path applies a linear-mode optimization for contiguous transfers
-  // that avoids this limit, but the dynamic path does not. Dynamic d0_size
-  // values exceeding 1023 will be silently truncated by the hardware.
+  // that avoids this limit, but the dynamic path does not.
   Value hwD0Size;
   if (elemWidth == addrGran) {
     hwD0Size = inSize0;
   } else {
     Value scaled = arith::MulIOp::create(builder, loc, inSize0, cst(elemWidth));
     hwD0Size = arith::DivUIOp::create(builder, loc, scaled, cst(addrGran));
+  }
+
+  // Warn at compile time if a statically-known d0_size exceeds 10 bits.
+  if (auto d0Const = getConstantIntValue(mixedSizesRev[0])) {
+    uint64_t hwD0 = (*d0Const * elemWidth) / addrGran;
+    if (hwD0 > 1023)
+      mlir::emitWarning(loc)
+          << "hardware d0_size (" << hwD0
+          << ") exceeds 10-bit limit (1023); transfer will be truncated. "
+             "Consider restructuring to use smaller inner dimensions.";
   }
 
   // Hardware d0_stride: if elemWidth != addrGran, stride = 0; otherwise
