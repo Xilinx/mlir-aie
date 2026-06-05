@@ -24,6 +24,7 @@
 
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 #include <numeric>
 #include <set>
@@ -1456,26 +1457,35 @@ struct AIEObjectFifoStatefulTransformPass
                             ValueRange(ArrayRef({index.getResult()})));
   }
 
-  // Helper for hoistCyclostaticAcquires: returns the innermost scf.for that
-  // contains op without crossing another scf.for boundary. Null if op is not
-  // inside any scf.for within the same core body.
-  scf::ForOp innermostEnclosingFor(Operation *op) {
+  using FifoPort = std::pair<ObjectFifoCreateOp, ObjectFifoPort>;
+
+  // Returns the innermost enclosing scf.for / scf.while that contains op
+  // without crossing another loop boundary, or null. For scf.while, only
+  // matches if op is in the after-region (the body); the before-region
+  // (the condition) is not analyzed.
+  Operation *innermostEnclosingLoop(Operation *op) {
     Operation *cur = op->getParentOp();
+    Region *prev = op->getParentRegion();
     while (cur) {
-      if (auto f = dyn_cast<scf::ForOp>(cur))
-        return f;
+      if (isa<scf::ForOp>(cur))
+        return cur;
+      if (auto w = dyn_cast<scf::WhileOp>(cur)) {
+        if (prev == &w.getAfter())
+          return cur;
+        return nullptr;
+      }
       if (isa<CoreOp>(cur))
         return nullptr;
+      prev = cur->getParentRegion();
       cur = cur->getParentOp();
     }
     return nullptr;
   }
 
-  // Helper for hoistCyclostaticAcquires: true if op is nested inside an
-  // scf.if anywhere strictly below the given for-loop body.
-  bool isInsideIfInsideFor(Operation *op, scf::ForOp forOp) {
+  // True if op is nested inside an scf.if anywhere strictly below loopOp.
+  bool isInsideIfInsideLoop(Operation *op, Operation *loopOp) {
     Operation *cur = op->getParentOp();
-    while (cur && cur != forOp.getOperation()) {
+    while (cur && cur != loopOp) {
       if (isa<scf::IfOp>(cur))
         return true;
       cur = cur->getParentOp();
@@ -1483,93 +1493,381 @@ struct AIEObjectFifoStatefulTransformPass
     return false;
   }
 
-  // Detect cyclostatic acquire/release patterns inside scf.for bodies and
-  // hoist a pre-acquire before the loop so that the in-body acquire's
-  // `AcquireGreaterEqual` value equals the per-iter release amount.
+  // Conservative model of the lock-lowering's "currently held" count per
+  // (fifo, port) at the IR point immediately before `loopOp`.
   //
-  // For each scf.for body and each (fifo, port) used directly in that body
-  // (not via nested scf.for):
-  //   max_acq = max  acquire.size() over body acquires of (fifo, port)
-  //   sum_rel = sum  release.size() over body releases of (fifo, port)
-  //   carry   = max_acq - sum_rel
-  // If carry > 0, hoist `aie.objectfifo.acquire(fifo, port, carry)` before
-  // the loop. The trailing release(carry) the user wrote after the loop
-  // drains it. If any acq/rel of (fifo, port) is inside an scf.if in the
-  // body, emit a diagnostic and skip the loop (analysis is unsound).
-  LogicalResult hoistCyclostaticAcquires(CoreOp coreOp, OpBuilder &builder) {
-    // Collect all scf.for ops in the core, innermost first.
-    SmallVector<scf::ForOp> forOps;
-    coreOp.walk([&](scf::ForOp f) { forOps.push_back(f); });
-    // walk() above is pre-order; reverse to get innermost-first.
-    std::reverse(forOps.begin(), forOps.end());
-
-    using FifoPort = std::pair<ObjectFifoCreateOp, ObjectFifoPort>;
-
-    LogicalResult overall = success();
-    for (scf::ForOp forOp : forOps) {
-      // Group all acquires/releases by (fifo, port) whose innermost
-      // enclosing for is this forOp (excludes ops in nested scf.for).
-      llvm::MapVector<FifoPort, SmallVector<ObjectFifoAcquireOp>> acqs;
-      llvm::MapVector<FifoPort, SmallVector<ObjectFifoReleaseOp>> rels;
-      llvm::SetVector<FifoPort> condFifos;
-
-      forOp.walk([&](Operation *op) {
-        if (auto a = dyn_cast<ObjectFifoAcquireOp>(op)) {
-          if (innermostEnclosingFor(a) != forOp)
-            return;
-          FifoPort fp{a.getObjectFifo(), a.getPort()};
-          if (isInsideIfInsideFor(a, forOp))
-            condFifos.insert(fp);
-          else
-            acqs[fp].push_back(a);
-        } else if (auto r = dyn_cast<ObjectFifoReleaseOp>(op)) {
-          if (innermostEnclosingFor(r) != forOp)
-            return;
-          FifoPort fp{r.getObjectFifo(), r.getPort()};
-          if (isInsideIfInsideFor(r, forOp))
-            condFifos.insert(fp);
-          else
-            rels[fp].push_back(r);
+  // Straight-line acq/rel update the count as expected. For nested ops we
+  // model what the lock-lowering would leave behind:
+  //  - a nested loop body's net contribution to `held` is the body's
+  //    per-iteration peak acquire size minus the in-body release sum,
+  //    floored at 0. After the user's trailing-release drain (which
+  //    appears as straight-line ops later in this same walk) the count
+  //    returns to its true post-drain value.
+  //  - a nested scf.if takes the max of its branches.
+  //  - any other nested op containing acq/rel that we can't analyze
+  //    marks the (fifo, port) "tainted" — the caller will not peel it.
+  llvm::MapVector<FifoPort, int>
+  heldBeforeLoop(Operation *loopOp, llvm::SetVector<FifoPort> &tainted) {
+    llvm::MapVector<FifoPort, int> held;
+    std::function<void(Operation &)> step;
+    step = [&](Operation &op) {
+      if (auto a = dyn_cast<ObjectFifoAcquireOp>(&op)) {
+        FifoPort fp{a.getObjectFifo(), a.getPort()};
+        held[fp] = std::max(held.lookup(fp), a.acqNumber());
+        return;
+      }
+      if (auto r = dyn_cast<ObjectFifoReleaseOp>(&op)) {
+        FifoPort fp{r.getObjectFifo(), r.getPort()};
+        held[fp] = std::max(0, held.lookup(fp) - r.relNumber());
+        return;
+      }
+      if (isa<scf::ForOp, scf::WhileOp>(&op)) {
+        // Per (fifo, port) used directly in the body: post-loop held delta
+        // is max(max_acq - sum_rel, 0). Bail (taint) on anything we can't
+        // see straight through (conditionals, nested loops in the body).
+        Region *body = isa<scf::ForOp>(&op)
+                           ? &cast<scf::ForOp>(&op).getRegion()
+                           : &cast<scf::WhileOp>(&op).getAfter();
+        llvm::MapVector<FifoPort, int> maxAcq, sumRel;
+        bool clean = true;
+        body->walk([&](Operation *inner) {
+          if (auto a = dyn_cast<ObjectFifoAcquireOp>(inner)) {
+            if (innermostEnclosingLoop(a) != &op ||
+                isInsideIfInsideLoop(a, &op)) {
+              tainted.insert({a.getObjectFifo(), a.getPort()});
+              clean = false;
+              return;
+            }
+            FifoPort fp{a.getObjectFifo(), a.getPort()};
+            maxAcq[fp] = std::max(maxAcq.lookup(fp), a.acqNumber());
+          } else if (auto r = dyn_cast<ObjectFifoReleaseOp>(inner)) {
+            if (innermostEnclosingLoop(r) != &op ||
+                isInsideIfInsideLoop(r, &op)) {
+              tainted.insert({r.getObjectFifo(), r.getPort()});
+              clean = false;
+              return;
+            }
+            FifoPort fp{r.getObjectFifo(), r.getPort()};
+            sumRel[fp] = sumRel.lookup(fp) + r.relNumber();
+          }
+        });
+        if (!clean)
+          return;
+        for (const auto &kv : maxAcq) {
+          int delta = std::max(0, kv.second - sumRel.lookup(kv.first));
+          held[kv.first] = std::max(held.lookup(kv.first), delta);
+        }
+        return;
+      }
+      // Any other op carrying acq/rel is unanalyzable.
+      bool unanalyzable = false;
+      op.walk([&](Operation *inner) {
+        if (auto a = dyn_cast<ObjectFifoAcquireOp>(inner)) {
+          tainted.insert({a.getObjectFifo(), a.getPort()});
+          unanalyzable = true;
+        } else if (auto r = dyn_cast<ObjectFifoReleaseOp>(inner)) {
+          tainted.insert({r.getObjectFifo(), r.getPort()});
+          unanalyzable = true;
         }
       });
+      (void)unanalyzable;
+    };
+    for (Operation &op : *loopOp->getBlock()) {
+      if (&op == loopOp)
+        break;
+      step(op);
+    }
+    return held;
+  }
 
-      for (const auto &kv : acqs) {
-        const FifoPort &fp = kv.first;
-        if (condFifos.contains(fp)) {
-          // Find any in-body acquire of fp to attach the diagnostic to.
-          ObjectFifoAcquireOp diagOp = kv.second.front();
-          diagOp.emitOpError(
-              "cannot statically analyze cyclostatic acquire pattern: "
-              "release is inside a conditional");
-          overall = failure();
-          continue;
+  // Decide whether loopOp's body has positive cyclostatic carry on at least
+  // one (fifo, port). Diagnostics:
+  //   - any in-body acq/rel inside an scf.if -> *condDiag is set and we
+  //     return false (caller emits the diagnostic).
+  // Sets `taintedDiag` if peel must be skipped because a fifo's pre-loop
+  // held count cannot be analyzed (sibling loop / scf.if touched the same
+  // fifo) — this is silent, not an error, since the lowering still produces
+  // correct (just unoptimized) code.
+  bool bodyHasCyclostaticCarry(Region *bodyRegion, Operation *loopOp,
+                               Operation *&condDiag) {
+    llvm::MapVector<FifoPort, int> maxAcq;
+    llvm::MapVector<FifoPort, int> sumRel;
+    llvm::SetVector<FifoPort> condFifos;
+    condDiag = nullptr;
+
+    bodyRegion->walk([&](Operation *op) {
+      if (auto a = dyn_cast<ObjectFifoAcquireOp>(op)) {
+        if (innermostEnclosingLoop(a) != loopOp)
+          return;
+        FifoPort fp{a.getObjectFifo(), a.getPort()};
+        if (isInsideIfInsideLoop(a, loopOp)) {
+          condFifos.insert(fp);
+          if (!condDiag)
+            condDiag = a;
+        } else {
+          maxAcq[fp] = std::max(maxAcq.lookup(fp), a.acqNumber());
         }
-        int maxAcq = 0;
-        for (auto a : kv.second)
-          maxAcq = std::max(maxAcq, a.acqNumber());
-        int sumRel = 0;
-        if (rels.count(fp))
-          for (auto r : rels[fp])
-            sumRel += r.relNumber();
-        int carry = maxAcq - sumRel;
-        if (carry <= 0)
-          continue;
+      } else if (auto r = dyn_cast<ObjectFifoReleaseOp>(op)) {
+        if (innermostEnclosingLoop(r) != loopOp)
+          return;
+        FifoPort fp{r.getObjectFifo(), r.getPort()};
+        if (isInsideIfInsideLoop(r, loopOp)) {
+          condFifos.insert(fp);
+          if (!condDiag)
+            condDiag = r;
+        } else {
+          sumRel[fp] = sumRel.lookup(fp) + r.relNumber();
+        }
+      }
+    });
 
-        // Insert `aie.objectfifo.acquire(fp, carry)` immediately before forOp.
-        ObjectFifoCreateOp createOp = fp.first;
-        ObjectFifoPort port = fp.second;
-        auto fifo = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
-        auto subviewTy = AIEObjectFifoSubviewType::get(fifo.getElementType());
-        builder.setInsertionPoint(forOp);
-        auto portAttr = ObjectFifoPortAttr::get(builder.getContext(), port);
-        auto sizeAttr = builder.getI32IntegerAttr(carry);
-        auto nameRef =
-            SymbolRefAttr::get(builder.getContext(), createOp.name());
-        (void)ObjectFifoAcquireOp::create(builder, forOp.getLoc(), subviewTy,
-                                          portAttr, nameRef, sizeAttr);
+    // If a (fifo, port) has both conditional and unconditional acq/rel in
+    // the body, the straight-line carry computation is unsound — flag it.
+    // Pure-conditional fifos (no unconditional ops in the body) are well-
+    // formed: each conditional path is its own straight-line acq/rel
+    // sequence that the lock-lowering handles correctly without peeling.
+    for (const auto &fp : condFifos) {
+      if (maxAcq.count(fp) || sumRel.count(fp))
+        return false; // condDiag already attached above
+    }
+    condDiag = nullptr; // pure-conditional — no diagnostic
+
+    llvm::SetVector<FifoPort> tainted;
+    auto held = heldBeforeLoop(loopOp, tainted);
+    for (const auto &kv : maxAcq) {
+      if (tainted.contains(kv.first))
+        continue;
+      int carry = kv.second - sumRel.lookup(kv.first);
+      int peelCarry = carry - held.lookup(kv.first);
+      if (peelCarry > 0)
+        return true;
+    }
+    return false;
+  }
+
+  // Detect cyclostatic acquire/release patterns inside loop bodies and peel
+  // iteration 0 in place so that the in-body acquire's emitted
+  // `AcquireGreaterEqual` value naturally becomes the steady-state delta.
+  // Peeling preserves the user's body ordering between operations on
+  // different fifos — critical for cross-core sync correctness.
+  LogicalResult peelCyclostaticAcquires(CoreOp coreOp, OpBuilder &builder) {
+    SmallVector<Operation *> loopOps;
+    coreOp.walk([&](Operation *op) {
+      if (isa<scf::ForOp, scf::WhileOp>(op))
+        loopOps.push_back(op);
+    });
+
+    LogicalResult overall = success();
+    for (Operation *loopOp : loopOps) {
+      Region *bodyRegion;
+      if (auto f = dyn_cast<scf::ForOp>(loopOp))
+        bodyRegion = &f.getRegion();
+      else
+        bodyRegion = &cast<scf::WhileOp>(loopOp).getAfter();
+
+      Operation *condDiag = nullptr;
+      if (!bodyHasCyclostaticCarry(bodyRegion, loopOp, condDiag)) {
+        if (condDiag) {
+          condDiag->emitOpError(
+              "cannot statically analyze cyclostatic acquire pattern: "
+              "acquire/release is inside a conditional");
+          overall = failure();
+        }
+        continue;
+      }
+
+      if (auto forOp = dyn_cast<scf::ForOp>(loopOp)) {
+        if (failed(peelScfFor(forOp, builder)))
+          overall = failure();
+      } else {
+        if (failed(peelScfWhile(cast<scf::WhileOp>(loopOp), builder)))
+          overall = failure();
       }
     }
     return overall;
+  }
+
+  // Peel iteration 0 of `forOp` in place. The peeled body is inserted
+  // immediately before the loop; the loop's lb is advanced by step. When
+  // bounds are not statically known to execute at least once, the peeled
+  // body is wrapped in scf.if guarded by a runtime trip-count check.
+  LogicalResult peelScfFor(scf::ForOp forOp, OpBuilder &builder) {
+    Location loc = forOp.getLoc();
+    Value lb = forOp.getLowerBound();
+    Value ub = forOp.getUpperBound();
+    Value step = forOp.getStep();
+    OperandRange initArgs = forOp.getInitArgs();
+    Type ivTy = lb.getType();
+    assert(ivTy.isIndex() || ivTy.isSignlessInteger());
+
+    auto cLb = getConstantIntValue(lb);
+    auto cUb = getConstantIntValue(ub);
+    auto cStep = getConstantIntValue(step);
+
+    // scf.for requires step != 0 with consistent sign progression. We only
+    // generate the "provably >= 1" fast path for the well-defined positive-
+    // step case; everything else (negative step, non-constant bounds, or
+    // non-index integer types where wrap-around could fool the comparison)
+    // takes the guarded path.
+    bool provablyAtLeastOne = ivTy.isIndex() && cLb && cUb && cStep &&
+                              *cStep > 0 && (*cUb - *cLb) >= *cStep;
+
+    builder.setInsertionPoint(forOp);
+
+    auto cloneBody = [&](OpBuilder &b,
+                         ValueRange ivAndArgs) -> SmallVector<Value> {
+      IRMapping map;
+      Block &srcBlock = forOp.getRegion().front();
+      map.map(srcBlock.getArgument(0), ivAndArgs[0]);
+      for (unsigned i = 0; i < initArgs.size(); ++i)
+        map.map(srcBlock.getArgument(1 + i), ivAndArgs[1 + i]);
+      for (Operation &op : srcBlock.without_terminator())
+        b.clone(op, map);
+      auto yieldOp = cast<scf::YieldOp>(srcBlock.getTerminator());
+      SmallVector<Value> yielded;
+      for (Value v : yieldOp.getOperands())
+        yielded.push_back(map.lookupOrDefault(v));
+      return yielded;
+    };
+
+    SmallVector<Value> peelResults;
+    if (provablyAtLeastOne) {
+      SmallVector<Value> ivAndArgs{lb};
+      ivAndArgs.append(initArgs.begin(), initArgs.end());
+      peelResults = cloneBody(builder, ivAndArgs);
+    } else {
+      // Guard: (lb + step) does not pass ub. For positive step we want
+      // lb + step <= ub (sle); for negative step lb + step >= ub (sge).
+      // Without a known sign we conservatively use the positive-step form
+      // and rely on the user's loop being well-formed (sle). The cmp uses
+      // signed predicates which match scf.for's signed-or-index semantics.
+      Value diff = arith::SubIOp::create(builder, loc, ub, lb);
+      Value cond = arith::CmpIOp::create(builder, loc,
+                                         arith::CmpIPredicate::sge, diff, step);
+      SmallVector<Type> resultTypes(initArgs.getTypes());
+      auto ifOp = scf::IfOp::create(builder, loc, resultTypes, cond,
+                                    /*withElseRegion=*/true);
+      Block &thenBlock = ifOp.getThenRegion().front();
+      OpBuilder thenBuilder(&thenBlock, thenBlock.begin());
+      SmallVector<Value> ivAndArgs{lb};
+      ivAndArgs.append(initArgs.begin(), initArgs.end());
+      SmallVector<Value> y = cloneBody(thenBuilder, ivAndArgs);
+      thenBlock.getTerminator()->erase();
+      thenBuilder.setInsertionPointToEnd(&thenBlock);
+      scf::YieldOp::create(thenBuilder, loc, y);
+
+      Block &elseBlock = ifOp.getElseRegion().front();
+      elseBlock.getTerminator()->erase();
+      OpBuilder elseBuilder(&elseBlock, elseBlock.end());
+      scf::YieldOp::create(elseBuilder, loc, ValueRange(initArgs));
+
+      peelResults.assign(ifOp.getResults().begin(), ifOp.getResults().end());
+    }
+
+    Value newLb = arith::AddIOp::create(builder, loc, lb, step);
+    forOp.getLowerBoundMutable().assign(newLb);
+    if (!peelResults.empty()) {
+      assert(peelResults.size() == initArgs.size());
+      forOp.getInitArgsMutable().assign(peelResults);
+    }
+    return success();
+  }
+
+  // Peel iteration 0 of `whileOp`. Strategy: clone the before-region inline
+  // to get the iter-0 condition and forwarded values, then build an
+  // scf.if(iter0Cond) whose then-branch runs iter-0 of the after-region and
+  // re-enters a fresh clone of the while-loop for iterations 1..N. The
+  // original while is erased.
+  LogicalResult peelScfWhile(scf::WhileOp whileOp, OpBuilder &builder) {
+    Location loc = whileOp.getLoc();
+    Region &beforeRegion = whileOp.getBefore();
+    Region &afterRegion = whileOp.getAfter();
+    OperandRange initArgs = whileOp.getInits();
+
+    // Cloning the before-region twice would execute its side effects twice;
+    // bail out cleanly if any are present.
+    for (Operation &op : beforeRegion.front().without_terminator()) {
+      if (!isMemoryEffectFree(&op)) {
+        whileOp.emitWarning(
+            "cyclostatic acquire peel skipped: scf.while before-region has "
+            "side effects (duplicating it would change semantics); the loop "
+            "lowers correctly without the AcquireGreaterEqual delta "
+            "optimization. Rewrite as scf.for to enable it.");
+        return success();
+      }
+    }
+
+    builder.setInsertionPoint(whileOp);
+
+    // Iter-0 condition + forwarded values (clone of before-region).
+    IRMapping beforeMap;
+    for (unsigned i = 0; i < initArgs.size(); ++i)
+      beforeMap.map(beforeRegion.front().getArgument(i), initArgs[i]);
+    for (Operation &op : beforeRegion.front().without_terminator())
+      builder.clone(op, beforeMap);
+    auto beforeTerm =
+        cast<scf::ConditionOp>(beforeRegion.front().getTerminator());
+    Value iter0Cond = beforeMap.lookupOrDefault(beforeTerm.getCondition());
+    SmallVector<Value> iter0Vals;
+    for (Value v : beforeTerm.getArgs())
+      iter0Vals.push_back(beforeMap.lookupOrDefault(v));
+
+    SmallVector<Type> resultTypes(whileOp.getResultTypes());
+    auto ifOp = scf::IfOp::create(builder, loc, resultTypes, iter0Cond,
+                                  /*withElseRegion=*/!resultTypes.empty());
+
+    // Then branch: peeled iter-0 body, followed by a fresh while running
+    // iterations 1..N seeded by the after-region's yielded values.
+    OpBuilder thenBuilder = ifOp.getThenBodyBuilder();
+    IRMapping afterMap;
+    Block &abb = afterRegion.front();
+    for (unsigned i = 0; i < iter0Vals.size(); ++i)
+      afterMap.map(abb.getArgument(i), iter0Vals[i]);
+    for (Operation &op : abb.without_terminator())
+      thenBuilder.clone(op, afterMap);
+    auto afterYield = cast<scf::YieldOp>(abb.getTerminator());
+    SmallVector<Value> nextInits;
+    for (Value v : afterYield.getOperands())
+      nextInits.push_back(afterMap.lookupOrDefault(v));
+
+    auto trimmedWhile =
+        scf::WhileOp::create(thenBuilder, loc, resultTypes, nextInits);
+    {
+      IRMapping bMap;
+      trimmedWhile.getBefore().push_back(new Block());
+      Block &nb = trimmedWhile.getBefore().front();
+      for (auto t : initArgs.getTypes())
+        nb.addArgument(t, loc);
+      for (unsigned i = 0; i < initArgs.size(); ++i)
+        bMap.map(beforeRegion.front().getArgument(i), nb.getArgument(i));
+      OpBuilder b(&nb, nb.end());
+      for (Operation &op : beforeRegion.front())
+        b.clone(op, bMap);
+    }
+    {
+      IRMapping aMap;
+      trimmedWhile.getAfter().push_back(new Block());
+      Block &na = trimmedWhile.getAfter().front();
+      for (auto t : llvm::to_vector(beforeTerm.getArgs().getTypes()))
+        na.addArgument(t, loc);
+      for (unsigned i = 0; i < na.getNumArguments(); ++i)
+        aMap.map(afterRegion.front().getArgument(i), na.getArgument(i));
+      OpBuilder b(&na, na.end());
+      for (Operation &op : afterRegion.front())
+        b.clone(op, aMap);
+    }
+
+    if (!resultTypes.empty())
+      scf::YieldOp::create(thenBuilder, loc, trimmedWhile.getResults());
+
+    if (!resultTypes.empty()) {
+      OpBuilder elseBuilder = ifOp.getElseBodyBuilder();
+      scf::YieldOp::create(elseBuilder, loc, iter0Vals);
+    }
+
+    whileOp.replaceAllUsesWith(ifOp.getResults());
+    whileOp.erase();
+    return success();
   }
 
   // Function that generates the IR for objectfifo accesses to be handled at
@@ -1580,7 +1878,7 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) <= 0)
         continue;
-      if (failed(hoistCyclostaticAcquires(coreOp, builder)))
+      if (failed(peelCyclostaticAcquires(coreOp, builder)))
         return failure();
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
         // For each core: count the number of objectFifos and create
@@ -2587,6 +2885,13 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------===//
       res = coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+        if (!acqOp) {
+          accessOp.emitOpError("subview operand must be the direct result of "
+                               "an aie.objectfifo.acquire; flowing the "
+                               "subview through scf.yield / iter_args / "
+                               "region results is not supported");
+          return WalkResult::interrupt();
+        }
         if (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {
           if (auto linkOp = getOptionalLinkOp(op); linkOp.has_value()) {
             if (!linkOp->isDistribute() && !linkOp->isJoin()) {

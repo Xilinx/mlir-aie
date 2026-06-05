@@ -19,22 +19,24 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s | FileCheck %s
 
 // CHECK: aie.core
-// Outer-loop pre-acquire of W (carry 2 - 1 = 1).
-// CHECK: aie.use_lock(%inOF_W{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
-// CHECK: scf.for
-// Inside outer body: steady-state acquire delta on W is 1.
-// CHECK-NEXT: aie.use_lock(%inOF_W{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
-// Inner-loop pre-acquire of X (carry 3 - 1 = 2).
-// CHECK: aie.use_lock(%inOF_X{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 2)
-// CHECK: scf.for
-// CHECK-NEXT: aie.use_lock(%inOF_X{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
-// Body release of X.
+// Peeled outer iter-0 body: contains user's W acquire (full size 2), then
+// peeled inner iter-0 (X AcqGE(3), Release X 1), then trimmed inner for
+// (X AcqGE(1), Release X 1), then user's post-inner releases.
+// CHECK: aie.use_lock(%inOF_W{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 2)
+// Peeled inner iter-0 (inside peeled outer iter-0).
+// CHECK: aie.use_lock(%inOF_X{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 3)
 // CHECK: aie.use_lock(%inOF_X{{.*}}_cons_prod_lock_0, Release, 1)
-// Drain inner X carry.
+// Trimmed inner for inside peeled outer iter-0: per-iter delta of 1.
+// CHECK: scf.for
+// CHECK: aie.use_lock(%inOF_X{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK: aie.use_lock(%inOF_X{{.*}}_cons_prod_lock_0, Release, 1)
+// Post-inner X drain (release 2) and W release inside peeled outer iter-0.
 // CHECK: aie.use_lock(%inOF_X{{.*}}_cons_prod_lock_0, Release, 2)
-// Body release of W.
 // CHECK: aie.use_lock(%inOF_W{{.*}}_cons_prod_lock_0, Release, 1)
-// Drain outer W carry.
+// Trimmed outer for: per-iter W delta of 1.
+// CHECK: scf.for
+// CHECK: aie.use_lock(%inOF_W{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// Trailing drain release after the trimmed outer for.
 // CHECK: aie.use_lock(%inOF_W{{.*}}_cons_prod_lock_0, Release, 1)
 
 module {

@@ -16,19 +16,21 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s | FileCheck %s
 
 // CHECK: aie.core
-// First hoisted pre-acquire.
-// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 2)
-// First loop body.
-// CHECK: scf.for
-// CHECK-NEXT: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// First loop's peeled iter-0 (full acquire + release).
+// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 3)
 // CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 1)
-// First trailing drain.
-// CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 2)
-// Second hoisted pre-acquire.
-// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 2)
-// Second loop body.
+// First trimmed loop: per-iter delta.
 // CHECK: scf.for
-// CHECK-NEXT: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 1)
+// First trailing drain (user code).
+// CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 2)
+// Second loop's peeled iter-0.
+// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 3)
+// CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 1)
+// Second trimmed loop.
+// CHECK: scf.for
+// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 1)
 // CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 1)
 // Second trailing drain.
 // CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 2)

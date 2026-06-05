@@ -35,9 +35,9 @@ module {
       %c14 = arith.constant 14 : index
       %true = arith.constant true
       scf.for %arg0 = %c0 to %c14 step %c1 {
-        // expected-error@+1 {{cannot statically analyze cyclostatic acquire pattern: release is inside a conditional}}
         %x = aie.objectfifo.acquire @fifo(Consume, 3) : !aie.objectfifosubview<memref<8xi8>>
         scf.if %true {
+          // expected-error@+1 {{cannot statically analyze cyclostatic acquire pattern: acquire/release is inside a conditional}}
           aie.objectfifo.release @fifo(Consume, 1)
         }
       }

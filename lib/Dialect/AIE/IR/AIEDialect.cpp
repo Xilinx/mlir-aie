@@ -1124,8 +1124,13 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
       parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
 
-  if (auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-      getIndex() >= acqOp.acqNumber())
+  // The bounds check needs the defining acquire's size. If the subview
+  // flowed through a region boundary (scf.yield / iter_args / etc.) the
+  // defining op is not an ObjectFifoAcquireOp and we cannot size-check
+  // here; the lowering pass diagnoses that case separately. Avoid the
+  // null-deref the original code had.
+  auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+  if (acqOp && getIndex() >= acqOp.acqNumber())
     return emitOpError("accessed farther than number of acquired elements "
                        "(index out of bounds).");
 

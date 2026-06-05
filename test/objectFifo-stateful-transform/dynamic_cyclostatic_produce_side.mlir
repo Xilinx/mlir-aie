@@ -15,14 +15,15 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s | FileCheck %s
 
 // CHECK: aie.core
-// Producer-side prod_lock acquired with delta = max_acq - sum_rel = 3 - 1 = 2.
-// CHECK: aie.use_lock(%{{.*}}_prod_lock_0, AcquireGreaterEqual, 2)
-// CHECK: scf.for
-// In-body delta of 1 to refill from carry=2 back to acq=3.
-// CHECK-NEXT: aie.use_lock(%{{.*}}_prod_lock_0, AcquireGreaterEqual, 1)
-// Release into the consumer (cons_lock) per iter.
+// Peeled iter-0: producer-side prod_lock full acquire(3).
+// CHECK: aie.use_lock(%{{.*}}_prod_lock_0, AcquireGreaterEqual, 3)
+// Per-iter release into consumer.
 // CHECK: aie.use_lock(%{{.*}}_cons_lock_0, Release, 1)
-// Drain the producer-side carry into consumer at end.
+// Trimmed loop: per-iter delta of 1 (3 - carry=2).
+// CHECK: scf.for
+// CHECK: aie.use_lock(%{{.*}}_prod_lock_0, AcquireGreaterEqual, 1)
+// CHECK: aie.use_lock(%{{.*}}_cons_lock_0, Release, 1)
+// Trailing drain release(2).
 // CHECK: aie.use_lock(%{{.*}}_cons_lock_0, Release, 2)
 
 module {

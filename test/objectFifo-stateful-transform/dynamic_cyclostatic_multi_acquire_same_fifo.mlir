@@ -25,15 +25,15 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s | FileCheck %s
 
 // CHECK: aie.core
-// Hoisted pre-acquire of (max_acq - sum_rel) = 4.
-// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 4)
-// CHECK: scf.for
-// First in-body acquire: grow held from 4 -> max(3,5) = 5 - 4 = 1 if first
-// in-body acquire is acq(3), then 5 - 3 = 2 (which itself becomes AcqGE 2)?
-// The crisp invariant is: AcqGE values inside the loop must SUM to the per-
-// iter release amount (1), so the loop is in steady state.
-// CHECK-NEXT: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual,
+// Peeled iter-0: user's acq(3), then acq(5)'s incremental AcqGE(2), then rel(1).
+// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 3)
+// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, 2)
 // CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 1)
+// Trimmed loop: per-iter steady-state delta.
+// CHECK: scf.for
+// CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual,
+// CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 1)
+// Trailing user release(4).
 // CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, 4)
 
 module {

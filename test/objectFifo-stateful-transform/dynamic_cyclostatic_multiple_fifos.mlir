@@ -15,20 +15,21 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s | FileCheck %s
 
 // CHECK: aie.core
-// One pre-acquire per fifo before the loop (order is implementation-defined,
-// so check both pieces independently).
-// CHECK-DAG: aie.use_lock(%fifoX_cons_cons_lock_0, AcquireGreaterEqual, 2)
-// CHECK-DAG: aie.use_lock(%fifoY_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// Peeled iter-0 body: full-size acquires in source order (X before Y), then
+// releases in source order.
+// CHECK: aie.use_lock(%fifoX_cons_cons_lock_0, AcquireGreaterEqual, 3)
+// CHECK: aie.use_lock(%fifoY_cons_cons_lock_0, AcquireGreaterEqual, 2)
+// CHECK: aie.use_lock(%fifoX_cons_prod_lock_0, Release, 1)
+// CHECK: aie.use_lock(%fifoY_cons_prod_lock_0, Release, 1)
+// Trimmed loop: per-iter deltas (X: 3-2=1; Y: 2-1=1) in source order.
 // CHECK: scf.for
-// In-body deltas (1, 1).
-// CHECK-DAG: aie.use_lock(%fifoX_cons_cons_lock_0, AcquireGreaterEqual, 1)
-// CHECK-DAG: aie.use_lock(%fifoY_cons_cons_lock_0, AcquireGreaterEqual, 1)
-// In-body releases stay at 1.
-// CHECK-DAG: aie.use_lock(%fifoX_cons_prod_lock_0, Release, 1)
-// CHECK-DAG: aie.use_lock(%fifoY_cons_prod_lock_0, Release, 1)
-// Trailing drains of each carry.
-// CHECK-DAG: aie.use_lock(%fifoX_cons_prod_lock_0, Release, 2)
-// CHECK-DAG: aie.use_lock(%fifoY_cons_prod_lock_0, Release, 1)
+// CHECK: aie.use_lock(%fifoX_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK: aie.use_lock(%fifoY_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK: aie.use_lock(%fifoX_cons_prod_lock_0, Release, 1)
+// CHECK: aie.use_lock(%fifoY_cons_prod_lock_0, Release, 1)
+// Trailing user releases stay as written.
+// CHECK: aie.use_lock(%fifoX_cons_prod_lock_0, Release, 2)
+// CHECK: aie.use_lock(%fifoY_cons_prod_lock_0, Release, 1)
 
 module {
   aie.device(npu2) {
