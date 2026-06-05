@@ -197,18 +197,16 @@ def _run_and_verify(opts):
     # Constant inputs match the C++ test (4.0, 3.35, 0.77); the two-pass
     # mul-then-add with bf16 intermediate-store makes random inputs flaky
     # to mirror exactly in numpy.
-    a_np = np.full((opts.length,), 4.0, dtype=bfloat16)
-    b_np = np.full((opts.length,), 3.35, dtype=bfloat16)
-    c_np = np.full((opts.length,), 0.77, dtype=bfloat16)
-    a_t = iron.tensor(a_np, dtype=bfloat16, device="npu")
-    b_t = iron.tensor(b_np, dtype=bfloat16, device="npu")
-    c_t = iron.tensor(c_np, dtype=bfloat16, device="npu")
+    a_t = iron.full(opts.length, 4.0, dtype=bfloat16, device="npu")
+    b_t = iron.full(opts.length, 3.35, dtype=bfloat16, device="npu")
+    c_t = iron.full(opts.length, 0.77, dtype=bfloat16, device="npu")
     d_t = iron.zeros_like(a_t)
 
     scale_shift(a_t, b_t, c_t, d_t, **_compile_kwargs(opts))
 
     expected = (
-        a_np.astype(np.float32) * b_np.astype(np.float32) + c_np.astype(np.float32)
+        a_t.numpy().astype(np.float32) * b_t.numpy().astype(np.float32)
+        + c_t.numpy().astype(np.float32)
     ).astype(bfloat16)
     assert_pass(
         d_t.numpy(),

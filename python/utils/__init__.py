@@ -104,6 +104,20 @@ def zeros(*args, **kwargs):
     return DEFAULT_TENSOR_CLASS.zeros(*args, **kwargs)
 
 
+def full(*args, **kwargs):
+    """
+    Create a tensor filled with a scalar value using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the full method (size, fill_value).
+        **kwargs: Keyword arguments passed to the full method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
+    return DEFAULT_TENSOR_CLASS.full(*args, **kwargs)
+
+
 def randint(*args, **kwargs):
     """
     Create a tensor filled with random integers using the default tensor class.
