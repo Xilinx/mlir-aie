@@ -26,11 +26,10 @@ OUT_SIZE = 64
 
 
 def main(opts):
-    ref_data = np.arange(1, IN_SIZE + 1, dtype=np.uint32)
-    inA = iron.tensor(ref_data, dtype=np.uint32)
-    inB = iron.tensor(ref_data, dtype=np.uint32)
+    inA = iron.arange(1, IN_SIZE + 1, dtype=np.uint32)
+    inB = iron.arange(1, IN_SIZE + 1, dtype=np.uint32)
     out = iron.zeros((OUT_SIZE,), dtype=np.uint32)
-    ref_data = ref_data + 41
+    ref_data = inA.numpy() + 41
 
     npu_opts = test_utils.create_npu_kernel(opts)
     if not DefaultNPURuntime.run_test(

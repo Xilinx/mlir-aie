@@ -44,14 +44,12 @@ def main(opts):
     scale_factor = 3
 
     # Initialize data
-    ref = np.arange(1, in1_volume + 1, dtype=in1_dtype)
-    in1 = iron.tensor(ref, dtype=in1_dtype)
-
+    in1 = iron.arange(1, in1_volume + 1, dtype=in1_dtype)
     in2 = iron.tensor([scale_factor], dtype=in2_dtype)
     out = iron.zeros([out_volume], dtype=out_dtype)
 
     # Define reference data
-    ref = ref * scale_factor
+    ref = in1.numpy() * scale_factor
 
     # --------------------------------------------------------------------------
 
