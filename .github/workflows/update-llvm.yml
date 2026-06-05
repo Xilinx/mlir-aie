@@ -129,7 +129,7 @@ jobs:
               # Find the last assignee
               last_assignee=$(gh pr list --state all --search "Update LLVM version in:title" --limit 1 --json assignees --jq '.[0].assignees[0].login')
               echo "Last assignee: $last_assignee"
-              
+
               next_index=0
               if [ -n "$last_assignee" ]; then
                 for i in "${!users[@]}"; do
@@ -139,7 +139,7 @@ jobs:
                   fi
                 done
               fi
-              
+
               assignee=${users[$next_index]}
               echo "Selected assignee: $assignee"
               echo "assignee=$assignee" >> $GITHUB_OUTPUT
@@ -161,9 +161,9 @@ jobs:
           title: "Update LLVM version"
           body: |
             Updates LLVM version based on `triton-shared` or `torch-mlir`.
-            
+
             Reason: ${{ steps.update.outputs.bump_reason }}
-            
+
             Triggered by: ${{ github.event_name }}
           branch: update-llvm-version
           base: main

@@ -261,7 +261,7 @@ jobs:
       contents: write
       packages: read
       attestations: write
-  
+
     strategy:
       fail-fast: false
       matrix:
@@ -283,13 +283,13 @@ jobs:
 
           - python_version: "3.13"
             ENABLE_RTTI: OFF
-  
+
           - python_version: "3.14"
             ENABLE_RTTI: ON
-  
+
           - python_version: "3.14"
             ENABLE_RTTI: OFF
-  
+
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
@@ -388,32 +388,32 @@ jobs:
           CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF -DOPENSSL_USE_STATIC_LIBS=TRUE -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF
         run: |
           set -euo pipefail
-  
+
           # No Vitis on Windows!
           unset VITIS XILINXD_LICENSE_FILE || true
-  
+
           git config --global --add safe.directory "$PWD"
           MLIR_VERSION=$(git rev-parse --short HEAD)
           echo "Building mlir-aie version $MLIR_VERSION"
-  
+
           python -m venv aie-venv
           source aie-venv/Scripts/activate
-  
+
           python -m pip install --upgrade pip
           pip install -r python/requirements_ml.txt
           python -m pip install --require-hashes -r python/requirements_dev.lock
-  
+
           export ENABLE_RTTI="${ENABLE_RTTI}"
-  
+
           NO_RTTI=""  # Set a default value
           NO_RTTI_UNDERSCORE=""  # Set a default value
           if [ x"$ENABLE_RTTI" == x"OFF" ]; then
             NO_RTTI="-no-rtti"
             NO_RTTI_UNDERSCORE="_no_rtti"
           fi
-  
+
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-  
+
           # Grab the MLIR distro wheel and extract
           for attempt in 1 2 3; do
             rm -f mlir*.whl
@@ -427,14 +427,14 @@ jobs:
             sleep $((attempt * 5))
           done
           python -m zipfile -e mlir*.whl .
-  
+
           # Normalize timestamps on the unpacked MLIR wheel so ccache hashes stay stable
           # across runs. Per-file `find -exec touch ... \;` blows MSYS bash's env-block
           # limit on the Windows runner ("find: The environment is too large for exec()")
           # because each spawned `touch` inherits the giant Visual Studio INCLUDE/LIB/Path
           # block. One python process avoids the per-file fork and the env explosion.
           python -c "import os, pathlib; ts = 1314108314; [os.utime(p, (ts, ts)) for p in pathlib.Path('mlir${NO_RTTI_UNDERSCORE}').rglob('*')]"
-  
+
           # Match Linux wheel version metadata on non-tag builds.
           export DATETIME=$(date +"%Y%m%d%H")
           if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
@@ -453,16 +453,16 @@ jobs:
           export MLIR_AIE_SOURCE_DIR="${ROOT_WIN}"
           export WHEELHOUSE_DIR="${ROOT_WIN}/wheelhouse"
           export CMAKE_MODULE_PATH="${ROOT_WIN}/cmake/modulesXilinx"
-  
+
           mkdir -p "${WHEELHOUSE_DIR}"
           pushd utils/mlir_aie_wheels
 
           python -m pip install --require-hashes -r requirements.lock
           python -m pip install --require-hashes -r ci-tools.lock
           CIBW_ARCHS=AMD64 pip wheel . -v -w "${WHEELHOUSE_DIR}" --no-build-isolation
-  
+
           popd
-  
+
           # Try to repair the wheel on Windows using delvewheel (closest auditwheel equivalent).
           pip install delvewheel
           python -m delvewheel repair --ignore-existing --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
