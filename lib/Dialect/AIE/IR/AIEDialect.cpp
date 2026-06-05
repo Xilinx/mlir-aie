@@ -2217,13 +2217,13 @@ ParseResult DMABDOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
   }
 
-  // Set the operand_segment_sizes attribute (required by AttrSizedOperandSegments).
-  result.addAttribute(
-      DMABDOp::getOperandSegmentSizeAttr(),
-      parser.getBuilder().getDenseI32ArrayAttr(
-          {1, hasDynOffset ? 1 : 0, hasDynLen ? 1 : 0,
-           static_cast<int32_t>(dynSizesRaw.size()),
-           static_cast<int32_t>(dynStridesRaw.size())}));
+  // Set the operand_segment_sizes attribute (required by
+  // AttrSizedOperandSegments).
+  result.addAttribute(DMABDOp::getOperandSegmentSizeAttr(),
+                      parser.getBuilder().getDenseI32ArrayAttr(
+                          {1, hasDynOffset ? 1 : 0, hasDynLen ? 1 : 0,
+                           static_cast<int32_t>(dynSizesRaw.size()),
+                           static_cast<int32_t>(dynStridesRaw.size())}));
 
   return success();
 }
@@ -2289,9 +2289,8 @@ void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
     llvm::interleaveComma(getDynSizes(), printer.getStream(),
                           [&](mlir::Value v) { printer << v; });
     printer << " : ";
-    llvm::interleaveComma(
-        getDynSizes(), printer.getStream(),
-        [&](mlir::Value /*v*/) { printer << "i64"; });
+    llvm::interleaveComma(getDynSizes(), printer.getStream(),
+                          [&](mlir::Value /*v*/) { printer << "i64"; });
     printer << ")";
   }
   if (!getDynStrides().empty()) {
@@ -2299,9 +2298,8 @@ void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
     llvm::interleaveComma(getDynStrides(), printer.getStream(),
                           [&](mlir::Value v) { printer << v; });
     printer << " : ";
-    llvm::interleaveComma(
-        getDynStrides(), printer.getStream(),
-        [&](mlir::Value /*v*/) { printer << "i64"; });
+    llvm::interleaveComma(getDynStrides(), printer.getStream(),
+                          [&](mlir::Value /*v*/) { printer << "i64"; });
     printer << ")";
   }
   ::llvm::SmallVector<::llvm::StringRef, 4> elidedAttrs;

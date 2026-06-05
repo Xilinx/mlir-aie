@@ -54,12 +54,12 @@ struct HwBdEncoding {
   mlir::Value d0Stride;
   mlir::Value d1Size;
   mlir::Value d1Stride;
-  mlir::Value d2Size;  // valid only on memtile; on shim NOC always 0
+  mlir::Value d2Size; // valid only on memtile; on shim NOC always 0
   mlir::Value d2Stride;
   mlir::Value iterSize;
   mlir::Value iterStride;
-  mlir::Value bufLen;       // d0Size * d1Size * d2Size, in addr-gen units
-  mlir::Value repeatCount;  // for queue push (max(inSize3 - 1, 0))
+  mlir::Value bufLen;      // d0Size * d1Size * d2Size, in addr-gen units
+  mlir::Value repeatCount; // for queue push (max(inSize3 - 1, 0))
 };
 
 /// Emit the arith chain that converts the user-supplied sizes/strides into
@@ -67,11 +67,12 @@ struct HwBdEncoding {
 /// is used together with the target model's address-gen granularity to
 /// rescale d0 and stride fields. Currently dimensioned for shim-NOC tiles
 /// (matches the existing `npu.dma_memcpy_nd` dynamic path's restriction).
-HwBdEncoding emitDynamicHwBdEncoding(
-    mlir::OpBuilder &builder, mlir::Location loc,
-    const AIE::AIETargetModel &targetModel, mlir::BaseMemRefType bufType,
-    llvm::ArrayRef<mlir::OpFoldResult> mixedSizesRev,
-    llvm::ArrayRef<mlir::OpFoldResult> mixedStridesRev);
+HwBdEncoding
+emitDynamicHwBdEncoding(mlir::OpBuilder &builder, mlir::Location loc,
+                        const AIE::AIETargetModel &targetModel,
+                        mlir::BaseMemRefType bufType,
+                        llvm::ArrayRef<mlir::OpFoldResult> mixedSizesRev,
+                        llvm::ArrayRef<mlir::OpFoldResult> mixedStridesRev);
 
 } // namespace AIEX
 } // namespace xilinx
