@@ -1,5 +1,9 @@
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+#
 #
 # Minimal full-ELF flow example using unplaced IRON.
 #
@@ -8,6 +12,10 @@
 #
 # Usage:
 #   python3 aie_design.py > aie.mlir
+#
+# Since all .py files are picked up as a test, add this to not execute this design file
+# REQUIRES: dont_run
+# RUN: echo
 
 import numpy as np
 
@@ -38,5 +46,6 @@ def design():
 
     mlir = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
     return str(mlir)
+
 
 print(design())
