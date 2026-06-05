@@ -68,6 +68,8 @@ struct AIEVectorTransferLoweringPass
     // enclosing aie.device scope. Without this, the default cseConstants=true
     // can make aie.core bodies reference device-scope values, which breaks
     // AIECoreToStandardPass when it clones the core body into a func.func.
+    // The dynamic BD lowering path also depends on constants remaining local
+    // to their BD configuration blocks within aie.runtime_sequence regions.
     GreedyRewriteConfig config;
     config.enableConstantCSE(false);
 

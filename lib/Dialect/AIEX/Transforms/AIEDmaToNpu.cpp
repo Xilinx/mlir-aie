@@ -671,7 +671,10 @@ public:
     auto isConst = [](OpFoldResult ofr) {
       return getConstantIntValue(ofr).has_value();
     };
-    // Helper: get constant value or 0 as placeholder
+    // Returns the compile-time constant value of an OpFoldResult, or 0 as a
+    // placeholder for dynamic (SSA) values. The placeholder 0s are written
+    // into the NpuWriteBdOp template; dynamic fields are then overridden by
+    // selective NpuWrite32Op patches emitted below.
     auto getConstOr0 = [](OpFoldResult ofr) -> int64_t {
       if (auto v = getConstantIntValue(ofr))
         return *v;
