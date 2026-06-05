@@ -9,9 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "cxxopts.hpp"
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -28,28 +31,24 @@
 
 #include "test_utils.h"
 
-static std::bfloat16_t relu_bf16(std::bfloat16_t x) {
-  return (x > std::bfloat16_t(0.0f)) ? x : std::bfloat16_t(0.0f);
+static test_utils::bfloat16_t relu_bf16(test_utils::bfloat16_t x) {
+  return (test_utils::bfloat16_to_float(x) > 0.0f)
+             ? x
+             : test_utils::bfloat16_from_float(0.0f);
 }
 
-static std::bfloat16_t silu_bf16(std::bfloat16_t x) {
-  // tanh-based sigmoid approximation matching the LUT kernel
-  std::bfloat16_t half_x = x * std::bfloat16_t(0.5f);
-  std::bfloat16_t tanh_half_x = std::tanh(half_x);
-  std::bfloat16_t sigmoid_approx =
-      std::bfloat16_t(0.5f) * (tanh_half_x + std::bfloat16_t(1.0f));
-  return x * sigmoid_approx;
+static test_utils::bfloat16_t silu_bf16(test_utils::bfloat16_t x) {
+  const float xf = test_utils::bfloat16_to_float(x);
+  const float sigmoid_approx = 0.5f * (std::tanh(0.5f * xf) + 1.0f);
+  return test_utils::bfloat16_from_float(xf * sigmoid_approx);
 }
 
-static std::bfloat16_t gelu_bf16(std::bfloat16_t x) {
-  // tanh-approximation GELU computed in bf16 arithmetic so the precision
-  // loss path tracks the LUT-backed kernel.
-  constexpr auto sqrt_2_over_pi = std::bfloat16_t(0.79788456f);
-  constexpr auto beta = std::bfloat16_t(0.044715f);
-  std::bfloat16_t x3 = x * x * x;
-  std::bfloat16_t inner = sqrt_2_over_pi * (x + beta * x3);
-  std::bfloat16_t tanh_val = std::tanh(inner);
-  return std::bfloat16_t(0.5f) * x * (std::bfloat16_t(1.0f) + tanh_val);
+static test_utils::bfloat16_t gelu_bf16(test_utils::bfloat16_t x) {
+  const float xf = test_utils::bfloat16_to_float(x);
+  const float sqrt_2_over_pi = 0.79788456f;
+  const float beta = 0.044715f;
+  const float inner = sqrt_2_over_pi * (xf + beta * xf * xf * xf);
+  return test_utils::bfloat16_from_float(0.5f * xf * (1.0f + std::tanh(inner)));
 }
 
 int main(int argc, const char *argv[]) {
@@ -65,7 +64,7 @@ int main(int argc, const char *argv[]) {
       "instr,i",
       "path of file containing userspace instructions to be sent to the LX6",
       cxxopts::value<std::string>())(
-      "length,l", "the length of the transfer in std::bfloat16_t",
+      "length,l", "the length of the transfer in bfloat16 elements",
       cxxopts::value<int>()->default_value("4096"))(
       "op,o", "Unary op the kernel computes (relu | silu | gelu)",
       cxxopts::value<std::string>()->default_value("relu"));
@@ -90,7 +89,7 @@ int main(int argc, const char *argv[]) {
   }
 
   std::string op = vm["op"].as<std::string>();
-  std::bfloat16_t (*ref_fn)(std::bfloat16_t) = nullptr;
+  test_utils::bfloat16_t (*ref_fn)(test_utils::bfloat16_t) = nullptr;
   float rel_tol = 0.0f;
   // Larger abs_th lets the near-zero region pass when the LUT-backed
   // kernel rounds to 0 but the bf16-arith reference produces tiny
@@ -159,17 +158,18 @@ int main(int argc, const char *argv[]) {
     std::cout << "Getting handle to kernel:" << kernelName << std::endl;
   auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
-  xrt::bo bo_inA = xrt::ext::bo{device, N * sizeof(std::bfloat16_t)};
-  xrt::bo bo_out = xrt::ext::bo{device, N * sizeof(std::bfloat16_t)};
+  xrt::bo bo_inA = xrt::ext::bo{device, N * sizeof(test_utils::bfloat16_t)};
+  xrt::bo bo_out = xrt::ext::bo{device, N * sizeof(test_utils::bfloat16_t)};
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
 
-  std::bfloat16_t *bufInA = bo_inA.map<std::bfloat16_t *>();
-  std::vector<std::bfloat16_t> srcVecA;
+  test_utils::bfloat16_t *bufInA = bo_inA.map<test_utils::bfloat16_t *>();
+  std::vector<test_utils::bfloat16_t> srcVecA;
   for (int i = 0; i < N; i++)
-    srcVecA.push_back(std::bfloat16_t(i * 0.05f + -3.0f));
-  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(std::bfloat16_t)));
+    srcVecA.push_back(test_utils::bfloat16_from_float(i * 0.05f + -3.0f));
+  memcpy(bufInA, srcVecA.data(),
+         (srcVecA.size() * sizeof(test_utils::bfloat16_t)));
 
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
@@ -191,23 +191,25 @@ int main(int argc, const char *argv[]) {
   std::cout << "Latency (us): " << npu_time << std::endl;
   std::cout << std::endl;
 
-  double total_bytes = 2.0 * N * sizeof(std::bfloat16_t);
+  double total_bytes = 2.0 * N * sizeof(test_utils::bfloat16_t);
   double bandwidth_GBps = total_bytes / (npu_time * 1e-6) / 1e9;
   std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s"
             << std::endl;
 
-  std::bfloat16_t *bufOut = bo_out.map<std::bfloat16_t *>();
+  test_utils::bfloat16_t *bufOut = bo_out.map<test_utils::bfloat16_t *>();
 
   int errors = 0;
 
   for (int i = 0; i < N; i++) {
-    std::bfloat16_t ref = ref_fn(srcVecA[i]);
-    if (!test_utils::nearly_equal(*(bufOut + i), ref, rel_tol, abs_th)) {
+    test_utils::bfloat16_t ref = ref_fn(srcVecA[i]);
+    const float expected = test_utils::bfloat16_to_float(ref);
+    const float actual = test_utils::bfloat16_to_float(*(bufOut + i));
+    if (!test_utils::nearly_equal(actual, expected, rel_tol, abs_th)) {
       errors++;
       if (errors <= 100) {
         std::cout << "Mismatch at index " << i << ": "
-                  << "Expected: " << ref << ", "
-                  << "Got: " << *(bufOut + i) << std::endl;
+                  << "Expected: " << expected << ", "
+                  << "Got: " << actual << std::endl;
       }
     }
   }

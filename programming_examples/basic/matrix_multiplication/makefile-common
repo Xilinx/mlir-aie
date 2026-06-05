@@ -32,10 +32,10 @@ use_chess?=0
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 ifeq ($(dtype_in),bf16)
-	dtype_in_cpp=std::bfloat16_t
+	dtype_in_cpp=test_utils::bfloat16_t
 endif
 ifeq ($(dtype_out),bf16)
-	dtype_out_cpp=std::bfloat16_t
+	dtype_out_cpp=test_utils::bfloat16_t
 	dtype_acc_cpp=float
 endif
 ifeq ($(dtype_in),i16)

@@ -256,6 +256,7 @@ class LitConfigHelper:
         xrt_include_dir: str,
         xrt_bin_dir: str,
         aie_src_root: str,
+        llvm_config,
         vitis_components: Optional[List[str]] = None,
     ) -> HardwareConfig:
         """
@@ -409,6 +410,7 @@ class LitConfigHelper:
                         )
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
                         config.substitutions["%run_on_npu2%"] = run_on_npu2
+                        llvm_config.with_environment("NPU2", "1")
                         logger.info(
                             "Running tests on NPU2 with command line: %s", run_on_npu2
                         )

@@ -18,9 +18,9 @@ import numpy as np
 
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
+from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 
 from ._common import i8, load_wts
-from ..lowlevel_dma import StaticWeightStream
 from ..network_spec import block as nsblock
 
 
@@ -30,8 +30,8 @@ def post_l2(act_in, sf, *, tiles, data_dir):
     Args:
         act_in: ObjectFifo  — host-scratch fill of the avgpool output (uint16).
         sf: dict            — full scale-factor mapping; uses sf["POST"]["FC1"], ["FC2"].
-        tiles: dict         — PLACEMENT["post_l2"] with keys "fc1_memtiles",
-                              "fc2_memtiles", "compute", "join_memtile".
+        tiles: dict     — PLACEMENT["post_l2"] with keys "wts_memtiles",
+                              "compute", "join_memtile".
         data_dir: str       — directory holding FC{1,2}_{0..3}_chain.txt.
 
     Returns:
@@ -66,9 +66,6 @@ def post_l2(act_in, sf, *, tiles, data_dir):
         depth=2,
     )
 
-    # FC weights: ping-pong across two adjacent MemTiles per compute tile (FC1
-    # on the even-column MemTile, FC2 on the odd-column MemTile that hosts the
-    # MM2S DMA — keeps DMA off (4,1) which post_L1 owns).
     PostOutputSplitL2 = 40
     fc_full_per_tile = post_L2_InC * fc_out_per_tile  # 409600 B per FC half
     fc_recv_per_tile = fc_full_per_tile // PostOutputSplitL2  # 10240 B on compute
@@ -83,8 +80,7 @@ def post_l2(act_in, sf, *, tiles, data_dir):
         tile=tiles["join_memtile"],
     )
 
-    fc1_memtiles = tiles["fc1_memtiles"]
-    fc2_memtiles = tiles["fc2_memtiles"]
+    wts_memtiles = tiles["wts_memtiles"]
     fc_comptiles = tiles["compute"]
 
     def _u16(shape):
@@ -102,24 +98,22 @@ def post_l2(act_in, sf, *, tiles, data_dir):
         fc1_data = load_wts(data_dir, fc1_f, fc_full_per_tile)
         fc2_data = load_wts(data_dir, fc2_f, fc_full_per_tile)
 
-        # FC weights: ping-pong across two adjacent memtiles. Primary = FC1
-        # (consumed first), ping-pong = FC2. DMA + primary share fc2_memtiles[i]
-        # (odd column) to avoid colliding with post_L1's MM2S on (4,1).
-        fc_pb = StaticWeightStream(
-            obj_type=i8((fc_full_per_tile,)),
-            initial_value=fc1_data,
-            name=f"fc1_wts_{i}",
-            recv_type=i8((fc_recv_per_tile,)),
-            repeat_count=PostOutputSplitL2,
-            memtile_placement=fc2_memtiles[i],
-            compute_placement=fc_comptiles[i],
-            s2mm_channel=1,
-            ping_pong_buf=(i8((fc_full_per_tile,)), fc2_data, f"fc2_wts_{i}"),
-            ping_pong_memtile=fc1_memtiles[i],
-            mem_lock_id=0,
-            comp_lock_id=2,
-            pp_lock_id=0,
+        # FC weights: depth-2 ObjectFifo with both FC1 and FC2 weight sets
+        # as init_values. The consumer loops through buffer 0 (FC1) then
+        # buffer 1 (FC2), each split into PostOutputSplitL2 chunks.
+        fc_wts_of = ObjectFifo(
+            i8((fc_full_per_tile,)),
+            depth=2,
+            name=f"post_L2_wts_{i + 1}",
+            consumer_obj_type=i8((fc_recv_per_tile,)),
+            init_values=[
+                fc1_data.reshape(fc_full_per_tile),
+                fc2_data.reshape(fc_full_per_tile),
+            ],
         )
+        # Pin the producer to a MemTile. Normally a Worker sets its fifo
+        # endpoint implicitly, but this fifo has no producing Worker
+        fc_wts_of.prod().endpoint = ObjectFifoEndpoint(wts_memtiles[i])
 
         def post_l2_fn(
             act_in,
@@ -152,7 +146,7 @@ def post_l2(act_in, sf, *, tiles, data_dir):
             fn_args=[
                 act_in.cons(),
                 act_post_l2_tiles[i].prod(),
-                fc_pb,
+                fc_wts_of.cons(),
                 k_post_l2,
                 post_L1_OutC,
                 post_L2_InC,

@@ -19,7 +19,7 @@ trace_size ?= 1024
 dtype ?= i32
 
 ifeq ($(dtype),bf16)
-	dtype_cpp = std::bfloat16_t
+	dtype_cpp = test_utils::bfloat16_t
 endif
 ifeq ($(dtype),i32)
 	dtype_cpp = std::int32_t

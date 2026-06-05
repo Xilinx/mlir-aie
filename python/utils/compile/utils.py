@@ -22,24 +22,21 @@ def resolve_target_arch(device=None) -> str:
     """Return ``'aie2'`` or ``'aie2p'`` for the given device, or ``'aie2'`` if device is None."""
     if device is None:
         return "aie2"
-    from aie.dialects.aie import AIEDevice
+    from aie.dialects._aie_enum_gen import AIEArch
+    from aie.dialects.aie import get_target_model
+    from aie.iron.device import Device
 
-    # Normalise to AIEDevice enum if the device is an IRON device class instance.
-    device_enum = getattr(device, "_device", device)
-    try:
-        name = (
-            device_enum.name
-        )  # e.g. "npu1", "npu1_1col", "npu2", "npu2_1col", "npu2_4col"
-    except AttributeError:
-        raise RuntimeError(f"Unsupported device type: {type(device)}")
+    if isinstance(device, Device):
+        arch = device.arch
+    else:
+        arch = AIEArch(get_target_model(device).get_target_arch())
 
-    if name.startswith("npu2"):
+    if arch == AIEArch.AIE2p:
         return "aie2p"
-    if name.startswith("npu1"):
+    if arch == AIEArch.AIE2:
         return "aie2"
     raise RuntimeError(
-        f"Unsupported device type: {type(device)} (AIEDevice name={name!r}). "
-        f"Expected name starting with 'npu1' or 'npu2'."
+        f"Unsupported device arch: {arch} (device type: {type(device)})."
     )
 
 

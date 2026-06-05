@@ -32,7 +32,7 @@ aie_py_src = ${VARIANT}_${orig_targetname}.py
 targetname = ${VARIANT}_${orig_targetname}
 
 ifeq ($(dtype),bf16)
-  dtype_cpp = std::bfloat16_t
+  dtype_cpp = test_utils::bfloat16_t
 endif
 ifeq ($(dtype),i32)
   dtype_cpp = std::int32_t
