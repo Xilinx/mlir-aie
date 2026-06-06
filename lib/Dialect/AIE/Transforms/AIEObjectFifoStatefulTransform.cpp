@@ -1671,9 +1671,16 @@ struct AIEObjectFifoStatefulTransformPass
   // `AcquireGreaterEqual` value naturally becomes the steady-state delta.
   // Peeling preserves the user's body ordering between operations on
   // different fifos — critical for cross-core sync correctness.
+  //
+  // Walk order matters: peel inner loops first. `Operation::walk` defaults
+  // to post-order, so children are collected before their parents — relied
+  // on here. If an outer loop is peeled before its child, the cloned inner
+  // loop sitting in the peeled iter-0 body is not in `loopOps` and never
+  // gets peeled (the lock-lowering's AcquireGreaterEqual clamping keeps that
+  // correct, but the IR is redundant). Do not change to PreOrder.
   LogicalResult peelCyclostaticAcquires(CoreOp coreOp, OpBuilder &builder) {
     SmallVector<Operation *> loopOps;
-    coreOp.walk([&](Operation *op) {
+    coreOp.walk<WalkOrder::PostOrder>([&](Operation *op) {
       if (isa<scf::ForOp, scf::WhileOp>(op))
         loopOps.push_back(op);
     });
