@@ -115,7 +115,9 @@ def main():
 
     # --- cond=true path ---
     inA = iron.tensor(src.copy(), dtype=np.int8, device="npu")
-    trip = iron.tensor(np.array([N_LINES], dtype=np.int32), dtype=np.int32, device="npu")
+    trip = iron.tensor(
+        np.array([N_LINES], dtype=np.int32), dtype=np.int32, device="npu"
+    )
     out = iron.zeros((OUT_LEN,), dtype=np.int8, device="npu")
     done = iron.zeros((1,), dtype=np.int32, device="npu")
 
