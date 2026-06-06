@@ -128,10 +128,6 @@ def _compile_kwargs(opts):
     return dict(n=opts.length, plio_mode=opts.plio)
 
 
-def _emit_mlir(opts):
-    print(passthrough_dmas.as_mlir(None, None, None, **_compile_kwargs(opts)))
-
-
 def _run_and_verify(opts):
     a_t = iron.arange(1, opts.length + 1, dtype=np.int32, device="npu")
     b_t = iron.zeros_like(a_t)  # unused 2nd buffer
@@ -149,7 +145,6 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        emit_mlir=_emit_mlir,
         device=device_from_args,
         validate=_validate,
     )

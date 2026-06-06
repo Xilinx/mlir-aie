@@ -64,7 +64,6 @@ from aie.dialects.aiex import (
     dma_start_task,
     shim_dma_bd,
 )
-from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -464,11 +463,6 @@ def _compile_kwargs(opts):
     return dict(in_out_size=opts.length, input_packet_id=_OP_PACKET_ID[opts.op])
 
 
-def _emit_mlir(opts):
-    spec = CompilableDesign(packet_switch, compile_kwargs=_compile_kwargs(opts))
-    print(spec.as_mlir(spec.generator))
-
-
 def main():
     opts = _make_argparser().parse_args()
     run_design_cli(
@@ -476,7 +470,6 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         device=lambda o: _device_for(o.dev),
-        emit_mlir=_emit_mlir,
     )
 
 

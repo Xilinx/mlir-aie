@@ -84,10 +84,6 @@ def _compile_kwargs(opts):
     return dict(num_elements=opts.num_elements, dtype=np.int32)
 
 
-def _emit_mlir(opts):
-    print(vector_vector_mul.as_mlir(None, None, None, **_compile_kwargs(opts)))
-
-
 def _run_and_verify(opts):
     input0 = iron.randint(0, 100, (opts.num_elements,), dtype=np.int32, device="npu")
     input1 = iron.randint(0, 100, (opts.num_elements,), dtype=np.int32, device="npu")
@@ -134,7 +130,6 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

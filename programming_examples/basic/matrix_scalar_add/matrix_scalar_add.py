@@ -95,10 +95,6 @@ def _compile_kwargs(opts):
     )
 
 
-def _emit_mlir(opts):
-    print(matrix_scalar_add.as_mlir(None, None, **_compile_kwargs(opts)))
-
-
 def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     in_np = rng.integers(
@@ -126,7 +122,6 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
-        emit_mlir=_emit_mlir,
         device=device_from_args,
     )
 

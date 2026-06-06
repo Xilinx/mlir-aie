@@ -334,12 +334,6 @@ def _compile_kwargs(opts):
     )
 
 
-def _emit_mlir(opts):
-    a_in = iron.zeros(opts.length // 4, dtype=np.int32, device="npu")
-    b_out = iron.zeros(opts.length, dtype=np.int32, device="npu")
-    print(chaining_channels.as_mlir(a_in, b_out, **_compile_kwargs(opts)))
-
-
 def main():
     p = argparse.ArgumentParser(prog="AIE Chaining Channels")
     add_compile_args(p, dev_choices=("npu2",), default_dev="npu2", with_emit_mlir=True)
@@ -355,7 +349,6 @@ def main():
         chaining_channels,
         opts,
         compile_kwargs=_compile_kwargs,
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

@@ -243,10 +243,6 @@ def _compile_kwargs(opts):
     return dict(col=opts.col)
 
 
-def _emit_mlir(opts):
-    print(vector_vector_add.as_mlir(None, None, **_compile_kwargs(opts)))
-
-
 def main():
     opts = _make_argparser().parse_args()
     run_design_cli(
@@ -254,7 +250,6 @@ def main():
         opts,
         compile_kwargs=_compile_kwargs,
         device=device_from_args,
-        emit_mlir=_emit_mlir,
     )
 
 

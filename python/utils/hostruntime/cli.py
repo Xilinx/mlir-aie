@@ -12,7 +12,8 @@ Almost every basic/ design's ``main()`` is the same skeleton:
     def main():
         opts = _make_argparser().parse_args()
         # optional: _validate(opts)
-        # optional: if opts.emit_mlir: _emit_mlir(opts); return
+        if opts.emit_mlir:
+            print(design.specialize(**_compile_kwargs(opts)).as_mlir()); return
         if opts.xclbin_path:
             _compile_only(opts)
             return
@@ -23,10 +24,11 @@ Almost every basic/ design's ``main()`` is the same skeleton:
 .compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
 [, elf_path=opts.elf_path])``.
 
-This module wraps that skeleton so each design just declares the three
-pieces it actually owns (compile kwargs, the verify body, optional
-emit-MLIR body) and lets the dispatcher do the branching + the
-boilerplate around it.
+This module wraps that skeleton so each design just declares the two
+pieces it actually owns (compile kwargs, the verify body) and lets the
+dispatcher do the branching + the boilerplate around it.  An optional
+``emit_mlir=`` callback covers the rare design whose generator needs
+real ``iron.tensor`` instances at MLIR-gen time.
 """
 
 from __future__ import annotations
@@ -55,8 +57,15 @@ def run_design_cli(
     The standard branch tree (in order):
 
       1. If ``validate`` is given, call ``validate(opts)`` first.
-      2. If ``opts.emit_mlir`` is True, set the current device, then call
-         ``emit_mlir(opts)`` and return.
+      2. If ``opts.emit_mlir`` is True, set the current device, then:
+
+         * If an ``emit_mlir`` callback was supplied, call ``emit_mlir(opts)``.
+         * Otherwise print ``design.specialize(**compile_kwargs).as_mlir()``
+           — the right answer for almost every design (no tensor args needed
+           when shapes come from ``Compile[T]`` params).
+
+         Then return.
+
       3. If ``opts.xclbin_path`` is set:
 
          * Refuse if ``opts.insts_path`` is unset (``sys.exit`` with the
@@ -93,7 +102,13 @@ def run_design_cli(
             ``(opts.dev, opts.n_aie_cols)`` mapping.
         emit_mlir: Optional callable for the ``--emit-mlir`` branch.
             If ``opts.emit_mlir`` is True but this is None, the dispatcher
-            raises (treats as a design bug).
+            falls back to printing
+            ``design.specialize(**compile_kwargs).as_mlir()`` — sufficient
+            for any design whose generator reads its shapes from
+            ``Compile[T]`` params (i.e. doesn't read shape off the
+            passed-in tensor).  Pass an explicit callable when the
+            generator needs real ``iron.tensor`` instances at MLIR-gen
+            time.
         validate: Optional callable invoked before any branch — e.g. for
             shape / arg consistency checks that should fire in all modes.
     """
@@ -121,13 +136,12 @@ def run_design_cli(
         device = _default_device
 
     if getattr(opts, "emit_mlir", False):
-        if emit_mlir is None:
-            raise ValueError(
-                "run_design_cli: opts.emit_mlir is set but no emit_mlir "
-                "callback was provided."
-            )
         set_current_device(_resolve(device, opts))
-        emit_mlir(opts)
+        if emit_mlir is not None:
+            emit_mlir(opts)
+        else:
+            kwargs = _resolve(compile_kwargs, opts)
+            print(design.specialize(**kwargs).as_mlir())
         return
 
     if getattr(opts, "xclbin_path", None):

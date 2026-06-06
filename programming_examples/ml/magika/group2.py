@@ -160,17 +160,12 @@ def _compile_kwargs(opts):
     return dict(trace_size=opts.trace_size)
 
 
-def _emit_mlir(opts):
-    print(group2.as_mlir(None, None, None, **_compile_kwargs(opts)))
-
-
 def main():
     opts = _make_argparser().parse_args()
     run_design_cli(
         group2,
         opts,
         compile_kwargs=_compile_kwargs,
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=2),
     )
 

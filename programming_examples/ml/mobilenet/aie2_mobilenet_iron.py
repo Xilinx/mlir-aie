@@ -265,10 +265,6 @@ def _make_argparser():
     return p
 
 
-def _emit_mlir(opts):
-    print(mobilenet_iron.as_mlir(None, None, None))
-
-
 def _run_and_verify(opts):
     sys.exit(
         "aie2_mobilenet_iron.py has no built-in NPU host harness — "
@@ -285,7 +281,6 @@ def main():
         opts,
         compile_kwargs={},
         device=device_from_args,
-        emit_mlir=_emit_mlir,
         run_and_verify=_run_and_verify,
     )
 
