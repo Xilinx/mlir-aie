@@ -76,12 +76,13 @@ my_design(a, b)              # compile + run + sync back
 | The implicit-MLIR-context error you just hit | [`implicit_mlir_context.md`](./implicit_mlir_context.md) |
 | Knob-by-knob configuration (cache dir, tensor backend, log level) | [`iron_configuration.md`](./iron_configuration.md) |
 | What happens between `@iron.jit` and the NPU running | [`compilation_stages.md`](./compilation_stages.md) |
+| Ready-made compute kernels (matmul, conv, eltwise, vision) | [`kernels_library.md`](./kernels_library.md) |
 
 ## Sections
 
 * [Section 0 — Getting set up for IRON](./section-0/)
 * [Section 1 — Basic AI Engine building blocks](./section-1/) (Worker, Buffer, Runtime, Program, `@iron.jit`)
-* [Section 2 — Data movement (Object FIFOs)](./section-2/) (deep dive; 2a–2g)
+* [Section 2 — Data movement (Object FIFOs)](./section-2/) (deep dive; 2a–2h)
 * [Section 3 — My First Program](./section-3/) (end-to-end vector × scalar, JIT + decomposed XRT)
 * [Section 4 — Performance measurement & vector programming](./section-4/) (timers → trace → kernel vectorization)
 * [Section 5 — Example vector designs](./section-5/) (catalog)
