@@ -266,8 +266,112 @@ transferred (expected entry `0`) are also skipped.
 | The artifact hash (freshness key) | `cd.compilable.artifact_hash` |
 | Whether the next call will rebuild | `cd.compilable.artifact_hash != cached_artifact_hash` |
 
-For a tour of these same methods with timings, see the
-[`@iron.jit` notebook](./whats_new_in_unify_compilation_workflow.ipynb).
+### Progressive binding: chained `.specialize()`
+
+`specialize()` is *immutable-style* — it returns a new `CallableDesign`
+with the kwargs merged in, leaving the original untouched.  Binding
+compile params can be split across call sites without losing the
+unspecialised handle:
+
+```python
+@iron.jit
+def add_const(x: In, y: Out, *,
+              N: Compile[int], dtype: Compile[type]):
+    ...
+
+half  = add_const.specialize(N=4096)         # bind N now
+full  = half.specialize(dtype=np.int32)      # bind dtype later
+wider = full.specialize(N=8192)              # override an earlier bind
+
+add_const  # still unspecialised — half/full/wider didn't mutate it
+```
+
+Because `as_mlir` / `compile` / `__call__` are plain methods on the
+returned object, `functools.partial` works the same way for pinning
+*non-compile* kwargs:
+
+```python
+import functools
+as_mlir_N4096 = functools.partial(add_const.as_mlir, N=4096)
+mlir = as_mlir_N4096(dtype=np.int32)
+```
+
+### Watching the compile pipeline
+
+All compile-path subprocesses (`clang++` for `ExternalFunction`s,
+`aiecc` for the design itself) log through `aie.utils.compile.*` —
+setting the package root logger to `DEBUG` cascades to every child.
+Each line carries the exact command line invoked plus cache hit / miss
+messages, which is enough to copy the `clang++` invocation into a
+terminal and iterate on a kernel without running the full design:
+
+```python
+import logging
+logging.basicConfig(level=logging.WARNING,
+                    format="%(name)s | %(message)s", force=True)
+logging.getLogger("aie.utils.compile").setLevel(logging.DEBUG)
+
+# use_cache=False forces a fresh compile so every clang++ / aiecc
+# invocation lights up (a warm cache hit emits only one DEBUG line).
+@iron.jit(use_cache=False)
+def design(...): ...
+
+design.specialize(N=4096).compile()
+
+logging.getLogger("aie.utils.compile").setLevel(logging.WARNING)
+```
+
+## Appendix A: three ways to bind `Compile[T]` parameters
+
+`Compile[T]`-annotated parameters are part of the compile recipe (they
+participate in the recipe hash), so the value has to be known by
+stage 4.  Three places can supply it; later wins.  All three are
+keyword-only — `Compile[T]` params must sit after a `*,` in the
+signature (the framework rejects positional `Compile[T]` at decoration
+time with a fix-it `TypeError`).
+
+```python
+# A — bare decorator; params supplied at call time
+@iron.jit
+def gemm_a(a: In, b: In, c: Out, *,
+           M: Compile[int], N: Compile[int]):
+    ...
+gemm_a(a, b, c, M=512, N=512)            # call-time bind
+
+# B — pre-bound at decoration; call-time can still override
+@iron.jit(M=512, N=512)
+def gemm_b(a: In, b: In, c: Out, *,
+           M: Compile[int], N: Compile[int]):
+    ...
+gemm_b(a, b, c)                          # uses pre-bound 512×512
+gemm_b(a, b, c, M=1024)                  # call-time override wins → recompile
+
+# C — signature defaults; used at lowering time if not bound otherwise
+@iron.jit
+def gemm_c(a: In, b: In, c: Out, *,
+           M: Compile[int] = 256,
+           N: Compile[int] = 256):
+    ...
+gemm_c(a, b, c)                          # uses 256×256
+```
+
+Two fail-fast guards run at decoration time so misuse surfaces
+immediately rather than silently running a kernel with the wrong value
+baked in:
+
+- **Unknown kwargs to `@iron.jit`** raise `TypeError` listing the valid
+  `Compile[T]` params and the recognised config keys
+  (`aiecc_flags`, `source_files`, `use_cache`, …).  Catches typos like
+  `@jit(NN=512)` instead of `@jit(N=512)`.
+- **Unannotated scalar params with default values** raise `TypeError`
+  with a fix-it message pointing at either `Compile[T] = default`
+  (recompile on per-call change) or `In / Out / InOut` (tensor).
+  Prevents silently baking a default into the compiled MLIR while a
+  per-call override is ignored.
+
+A defaulted *and* call-time-overridden `Compile[T]` recompiles for the
+new value; the cache key includes the resolved value, not the source
+default.
 
 ## Related reading
 
