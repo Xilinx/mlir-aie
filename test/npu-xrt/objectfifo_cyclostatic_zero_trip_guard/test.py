@@ -96,36 +96,11 @@ def cyclostatic_normal(in_tensor, trip_tensor, out_tensor, done_tensor):
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
-@iron.jit
-def cyclostatic_zero(trip_tensor, done_tensor):
-    trip_ty = TRIP_TY
-    done_ty = DONE_TY
-
-    of_in_l3l2 = ObjectFifo(LINE_TY, depth=FIFO_DEPTH, name="in_l3l2")
-    of_in_l2l1 = of_in_l3l2.cons().forward(name="in_l2l1", depth=FIFO_DEPTH)
-    of_out_l1l2 = ObjectFifo(LINE_TY, depth=FIFO_DEPTH, name="out_l1l2")
-    of_out_l2l3 = of_out_l1l2.cons().forward(name="out_l2l3", depth=FIFO_DEPTH)
-    of_trip = ObjectFifo(TRIP_TY, depth=1, name="trip_fifo")
-    of_done_l1l2 = ObjectFifo(DONE_TY, depth=1, name="done_l1l2")
-    of_done_l2l3 = of_done_l1l2.cons().forward(name="done_l2l3", depth=1)
-
-    worker = Worker(
-        core_body,
-        fn_args=[
-            of_in_l2l1.cons(),
-            of_out_l1l2.prod(),
-            of_trip.cons(),
-            of_done_l1l2.prod(),
-        ],
-    )
-
-    rt = Runtime()
-    with rt.sequence(trip_ty, done_ty) as (trip, done):
-        rt.start(worker)
-        rt.fill(of_trip.prod(), trip)
-        rt.drain(of_done_l2l3.cons(), done, wait=True)
-
-    return Program(iron.get_current_device(), rt).resolve_program()
+# The zero-trip path reuses the same @iron.jit'd cyclostatic_normal: it sends
+# trip=0 alongside a dummy input window and a throwaway output buffer. The
+# core body's `for _ in range_(trip)` runs zero iterations and the scf.if
+# guard around the trailing release fires. The point of the test is that the
+# producer-side lock doesn't deadlock and `done` still reaches the shim.
 
 
 def main():
@@ -140,7 +115,7 @@ def main():
 
     # --- cond=true path ---
     inA = iron.tensor(src.copy(), dtype=np.int8, device="npu")
-    trip = iron.tensor(np.array([N_LINES], dtype=np.int32), device="npu")
+    trip = iron.tensor(np.array([N_LINES], dtype=np.int32), dtype=np.int32, device="npu")
     out = iron.zeros((OUT_LEN,), dtype=np.int8, device="npu")
     done = iron.zeros((1,), dtype=np.int32, device="npu")
 
@@ -153,9 +128,11 @@ def main():
         sys.exit(1)
 
     # --- cond=false path (the actual point of this test) ---
-    trip0 = iron.tensor(np.array([0], dtype=np.int32), device="npu")
+    inA0 = iron.zeros((IN_LEN,), dtype=np.int8, device="npu")
+    trip0 = iron.tensor(np.array([0], dtype=np.int32), dtype=np.int32, device="npu")
+    out0 = iron.zeros((OUT_LEN,), dtype=np.int8, device="npu")
     done0 = iron.zeros((1,), dtype=np.int32, device="npu")
-    cyclostatic_zero(trip0, done0)
+    cyclostatic_normal(inA0, trip0, out0, done0)
     if int(done0.numpy()[0]) != 0:
         print(f"FAIL: zero done {int(done0.numpy()[0])} != 0")
         sys.exit(1)
