@@ -76,6 +76,7 @@ from aie.utils import (
     rand,
     arange,
     zeros_like,
+    ceildiv,
     set_tensor_class,
     get_current_device,
 )
@@ -122,6 +123,7 @@ __all__ = [
     "rand",
     "arange",
     "zeros_like",
+    "ceildiv",
     "set_tensor_class",
     "get_current_device",
     # dtype helpers

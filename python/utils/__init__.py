@@ -47,6 +47,11 @@ else:
     DEFAULT_TENSOR_CLASS = CPUOnlyTensor
 
 
+def ceildiv(a, b):
+    """Ceiling division: smallest integer >= a/b."""
+    return -(a // -b)
+
+
 def tensor(*args, **kwargs):
     """
     Create a tensor using the default tensor class.

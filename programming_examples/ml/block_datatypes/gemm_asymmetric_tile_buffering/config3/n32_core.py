@@ -43,10 +43,6 @@ _AIE_KERNELS_INC = Path(__file__).resolve().parents[5] / "aie_kernels"
 DIV = 4
 
 
-def ceildiv(a, b):
-    return (a + b - 1) // b
-
-
 @iron.jit(aiecc_flags=["--dynamic-objFifos", "--alloc-scheme=basic-sequential"])
 def n32_core_gemm(
     A: In,

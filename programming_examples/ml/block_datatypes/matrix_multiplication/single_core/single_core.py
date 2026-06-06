@@ -42,10 +42,6 @@ _KERNEL_SRC = (
 )
 
 
-def ceildiv(a, b):
-    return (a + b - 1) // b
-
-
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
 def single_core_matmul(
     A: In,
@@ -138,7 +134,7 @@ def single_core_matmul(
     with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
         rt.start(worker)
         tgs = []
-        for tile_row_block in range(ceildiv(M_div_m, rows_per_block)):
+        for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
             for pingpong in [0, 1]:
                 row_base = (
                     tile_row_block * rows_per_block + pingpong * rows_per_block // 2

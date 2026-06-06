@@ -50,10 +50,6 @@ def _device_for(dev_str, n_aie_cols):
     return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
 
 
-def ceildiv(a, b):
-    return (a + b - 1) // b
-
-
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
 def cascade(
     A: In,
@@ -317,7 +313,7 @@ def cascade(
         rt.start(*flat_workers)
 
         c_index = 0
-        for tb in range(ceildiv(M // m, tb_max_n_rows)):
+        for tb in range(iron.ceildiv(M // m, tb_max_n_rows)):
             tb_n_rows = min([tb_max_n_rows, M // m - tb * tb_max_n_rows])
             tg = rt.task_group()
             for col in range(n_aie_cols):

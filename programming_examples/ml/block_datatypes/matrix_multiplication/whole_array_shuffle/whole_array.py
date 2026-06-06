@@ -41,10 +41,6 @@ _KERNEL_SRC = (
 )
 
 
-def ceildiv(a, b):
-    return (a + b - 1) // b
-
-
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
 def whole_array_shuffle(
     A: In,
@@ -207,7 +203,7 @@ def whole_array_shuffle(
     with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
         rt.start(*[w for row in workers for w in row])
         tg = rt.task_group()
-        for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
+        for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
                 if c_index >= len(C_tiles):
                     break

@@ -4,7 +4,9 @@ import numpy as np
 from typing import Sequence
 
 from .tas import TensorAccessSequence
-from .utils import ceildiv, validate_and_clean_sizes_strides, validate_tensor_dims
+from aie.utils import ceildiv
+
+from .utils import validate_and_clean_sizes_strides, validate_tensor_dims
 
 
 class TensorTiler2D:

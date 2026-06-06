@@ -52,10 +52,6 @@ def _device_for(dev_str, n_aie_cols):
     return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
 
 
-def ceildiv(a, b):
-    return (a + b - 1) // b
-
-
 def _build_design(
     dev,
     M,
@@ -310,7 +306,7 @@ def _build_design(
         rt.start(*[w for row in workers for w in row])
 
         tg = rt.task_group()
-        for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
+        for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
                 if c_index >= len(C_tiles):
                     break
