@@ -1645,6 +1645,40 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `xllvm.intr.aie2p.unpack.I1024.I8.I4` (::xilinx::xllvm::UnpackI1024I8I4AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 8-bit signless integer values of length 64 |
+| `sign` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.unpack.I512.I8.I4` (::xilinx::xllvm::UnpackI512I8I4AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 8-bit signless integer values of length 32 |
+| `sign` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2p.v16accfloat.to.v16bf16` (::xilinx::xllvm::Vector16AccFloatToV16BF16AIE2pIntrOp)
 
 Traits: `AlwaysSpeculatableImplTrait`
