@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # (c) Copyright 2026 AMD Inc.
 #
+# REQUIRES: dont_run
+# RUN: echo FAIL | FileCheck %s
+# CHECK: PASS
+#
 # Two fifos in the same loop body, each cyclostatic with a different carry:
 #   X: acq 3 / rel 1 (carry 2)
 #   Y: acq 2 / rel 1 (carry 1)

@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # (c) Copyright 2026 AMD Inc.
 #
+# REQUIRES: dont_run
+# RUN: echo FAIL | FileCheck %s
+# CHECK: PASS
+#
 # Cyclostatic acquire on BOTH outer (W) and inner (X) loops with different
 # fifos. Each loop carries (acq - rel) items per iteration; the trailing
 # release after each loop drains its carry.

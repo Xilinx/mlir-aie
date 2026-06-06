@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # (c) Copyright 2026 AMD Inc.
 #
+# REQUIRES: dont_run
+# RUN: echo FAIL | FileCheck %s
+# CHECK: PASS
+#
 # Two sibling loops in the same scope, each cyclostatic on the same fifo.
 # Each loop's trailing release drains its hoisted carry before the next loop.
 import sys

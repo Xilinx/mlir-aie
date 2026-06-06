@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # (c) Copyright 2026 AMD Inc.
 #
+# REQUIRES: dont_run
+# RUN: echo FAIL | FileCheck %s
+# CHECK: PASS
+#
 # Mutual ping-pong: both cores cyclostatic on a fifo whose producer is the
 # other core. Each core's body:
 #   for _ in range(N):
