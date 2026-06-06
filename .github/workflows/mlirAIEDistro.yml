@@ -1,5 +1,8 @@
 name: MLIR AIE Distro
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
@@ -82,6 +85,11 @@ jobs:
 
     runs-on: ${{ matrix.OS }}
 
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
     outputs:
       MLIR_AIE_WHEEL_VERSION: ${{ steps.get_wheel_version.outputs.MLIR_AIE_WHEEL_VERSION }}
 
@@ -156,7 +164,7 @@ jobs:
         echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
@@ -178,7 +186,7 @@ jobs:
       # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
     - name: Enable vcpkg binary caching
       if: ${{ runner.os == 'Windows' }}
-      uses: actions/github-script@v9
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
       with:
         script: |
           core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
@@ -303,7 +311,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
         python -m pip install --upgrade pip
-        pip install delvewheel
+        python -m pip install --require-hashes -r ci-tools.lock
 
         $opensslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
         New-Item -ItemType Directory -Force -Path wheelhouse\repaired_wheel | Out-Null
@@ -328,9 +336,8 @@ jobs:
         export PIP_NO_BUILD_ISOLATION=false
 
         pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r python/requirements_dev.txt
-        pip install importlib-metadata
+        python -m pip install --require-hashes -r requirements.lock
+        python -m pip install --require-hashes -r python/requirements_dev.lock
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
@@ -341,7 +348,20 @@ jobs:
         AIE_WHEEL_VERSION=${{ steps.wheel_version.outputs.version }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
-        pip wheel . -v -w wheelhouse
+        pip wheel . -v -w wheelhouse --no-build-isolation
+
+    - name: Validate wheel metadata
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        python -m pip install --require-hashes -r ci-tools.lock
+        python -m twine check --strict wheelhouse/*.whl
+
+    - name: Generate build provenance attestation
+      if: github.event_name != 'pull_request'
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+      with:
+        subject-path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
 
     - name: Clean
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
@@ -364,7 +384,7 @@ jobs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        pip install pkginfo
+        python -m pip install --require-hashes -r ci-tools.lock
         WHL=$(ls wheelhouse/mlir_aie*whl)
         echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
@@ -385,7 +405,13 @@ jobs:
     # are some amount ahead in time (maybe 12 hours?). that means if you try to rebuild at any point
     # within that window ccache will not hit because the timestamps of the cached objects are ahead of
     # your build time. I'm not 100% sure about this explanation/mechanism but this fixed ccache misses for me.
+    #
+    # Windows cibuildwheel doesn't use a Linux docker container, so the timestamp drift doesn't
+    # happen there. Also, the per-file `-exec ... \;` blows MSYS bash's env-block limit on the
+    # Windows runner ("find: The environment is too large for exec()") because each spawned
+    # `touch` inherits the giant Visual Studio INCLUDE/LIB/Path block. Skip on Windows.
     - name: Reset datetime ccache
+      if: runner.os != 'Windows'
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -417,7 +443,7 @@ jobs:
         ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp312-cp312', 'py3-none' }
 
     - name: Upload distro wheels
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
@@ -451,19 +477,20 @@ jobs:
 
     steps:
       - name: Checkout reqs
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           sparse-checkout: |
             python/requirements.txt
             python/requirements_dev.txt
+            python/requirements_dev.lock
             utils/mlir_aie_wheels/vendor_eudsl.py
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: '3.12'
 
@@ -474,7 +501,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
             --requirements python/requirements.txt \
             --install-non-eudsl
-          pip install -r python/requirements_dev.txt
+          python -m pip install --require-hashes -r python/requirements_dev.lock
           unzip -o -q dist/mlir_aie*py3-none*.whl
 
           export PYTHONPATH=mlir_aie/python
@@ -522,7 +549,14 @@ jobs:
             ENABLE_RTTI: OFF
 
     steps:
-      - uses: actions/download-artifact@v8
+      - name: Checkout rehearsal script + ci-tools.lock
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          sparse-checkout: |
+            utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh
+            utils/mlir_aie_wheels/ci-tools.lock
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
@@ -551,9 +585,20 @@ jobs:
           done
           ls -la
 
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: '3.12'
+
+      - name: PyPI publish rehearsal
+        shell: bash
+        run: |
+          python -m pip install --require-hashes -r utils/mlir_aie_wheels/ci-tools.lock
+          bash utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh dist dist_stripped \
+            'mlirAIEDistro / ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}'
+
       - name: Release current commit
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: ncipollo/release-action@v1.21.0
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           artifacts: "dist/*.whl"
           token: "${{ secrets.GITHUB_TOKEN }}"

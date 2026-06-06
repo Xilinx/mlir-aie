@@ -5,6 +5,9 @@ name: MLIR Distro
 # `gh run list --json displayTitle` instead of guessing by timestamp.
 run-name: ${{ inputs.DISPATCH_NONCE && format('MLIR Distro [{0}]', inputs.DISPATCH_NONCE) || 'MLIR Distro' }}
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
@@ -124,6 +127,11 @@ jobs:
 
     runs-on: ${{ matrix.OS }}
 
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
     strategy:
       fail-fast: false
       matrix:
@@ -157,7 +165,7 @@ jobs:
     - name: set ENV
       shell: bash
       run: |
-        
+
         PIP_FIND_LINKS_URL="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
         if [ x"${{ github.event_name }}" == x"pull_request" ]; then
           PIP_FIND_LINKS_URL="$PIP_FIND_LINKS_URL https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels"
@@ -166,7 +174,7 @@ jobs:
         echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base)
@@ -191,7 +199,7 @@ jobs:
         MATRIX_ARCH: ${{ matrix.ARCH }}
         EXTRA_KEY: mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
 
-    - uses: actions/setup-python@v6
+    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
       with:
         python-version: '3.12'
 
@@ -202,15 +210,15 @@ jobs:
       shell: bash
       working-directory: ${{ env.TEMP }}
       run: |
-        
+
         ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
-        
+
         if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_wheels"
         else
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_wheels"
         fi
-        
+
         echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
 
       # setup llvm
@@ -219,7 +227,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
+
         curl -s https://codeload.github.com/llvm/llvm-project/zip/${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} -o llvm.zip
         unzip -q llvm.zip
         rm -rf llvm.zip
@@ -233,7 +241,7 @@ jobs:
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
-        
+
         APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
@@ -249,12 +257,12 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
+
         export APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }}
         ./scripts/apply_patches.sh
-        
+
         pip install --upgrade pip
-        
+
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
@@ -267,7 +275,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
+
         rm -rf llvm-project
         rm -rf build
 
@@ -275,7 +283,7 @@ jobs:
       if: contains(inputs.MATRIX_OS, 'ubuntu')
       shell: bash
       run: |
-        
+
         docker system prune -a -f
 
     - name: Get wheel version
@@ -284,7 +292,7 @@ jobs:
       shell: bash
       run: |
         python -m pip install --upgrade pip
-        pip install pkginfo
+        python -m pip install --require-hashes -r ci-tools.lock
         WHL=$(ls wheelhouse/mlir*whl)
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
@@ -293,7 +301,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
+
         ccache -s
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
         rm -rf $HOST_CCACHE_DIR
@@ -305,11 +313,17 @@ jobs:
     # are some amount ahead in time (maybe 12 hours?). that means if you try to rebuild at any point
     # within that window ccache will not hit because the timestamps of the cached objects are ahead of
     # your build time. I'm not 100% sure about this explanation/mechanism but this fixed ccache misses for me.
+    #
+    # Windows cibuildwheel doesn't use a Linux docker container, so the timestamp drift doesn't
+    # happen there. Also, the per-file `-exec ... \;` blows MSYS bash's env-block limit on the
+    # Windows runner ("find: The environment is too large for exec()") because each spawned
+    # `touch` inherits the giant Visual Studio INCLUDE/LIB/Path block. Skip on Windows.
     - name: Reset datetime ccache
+      if: runner.os != 'Windows'
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
+
         ccache --print-stats
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
         # Set the timestamp to the beginning of the current hour.
@@ -326,7 +340,7 @@ jobs:
       id: build_native_tools_wheel
       run: |
         python -m pip install --upgrade pip
-        pip install setuptools
+        python -m pip install --require-hashes -r requirements.lock
 
         for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "llvm-config" "FileCheck"; do
           if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
@@ -334,26 +348,40 @@ jobs:
           fi
           unzip -j wheelhouse/mlir*whl "mlir/bin/$TOOL" -d native_tools/
         done
-        
+
         if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ]; then
           PLAT="linux"
         elif [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           PLAT="win"
         fi
-        
+
         PLAT=${PLAT}_$(echo ${{ matrix.ARCH }} | tr '[:upper:]' '[:lower:]')
         pushd native_tools
 
         MLIR_WHEEL_VERSION=${{ steps.get_wheel_version.outputs.MLIR_WHEEL_VERSION }} \
         python setup.py bdist_wheel --dist-dir ../wheelhouse --plat $PLAT
-        
+
         popd
 
     # done
 
+    - name: Validate wheel metadata
+      if: github.event_name != 'schedule'
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        python -m pip install --require-hashes -r ci-tools.lock
+        python -m twine check --strict wheelhouse/*.whl
+
+    - name: Generate build provenance attestation
+      if: github.event_name != 'pull_request' && github.event_name != 'schedule'
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+      with:
+        subject-path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
+
     - name: Upload wheels
       if: github.event_name != 'schedule'
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
@@ -388,12 +416,12 @@ jobs:
             ENABLE_RTTI: OFF
 
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: '3.12'
 
@@ -454,7 +482,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
@@ -488,7 +516,7 @@ jobs:
 
       - name: Release current commit
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: ncipollo/release-action@v1.21.0
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           artifacts: "dist/*.whl"
           token: "${{ secrets.GITHUB_TOKEN }}"
