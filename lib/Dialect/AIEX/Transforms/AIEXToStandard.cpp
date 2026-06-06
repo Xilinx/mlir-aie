@@ -65,6 +65,9 @@ struct AIEXToStandardPass
     removepatterns.add<AIEXOpRemoval<NpuCreateScratchpadOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<NpuUpdateFromScratchpadOp>>(m.getContext(),
                                                                  m);
+    removepatterns.add<AIEXOpRemoval<ScratchpadParameterOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<SyncScratchpadParametersFromHostOp>>(
+        m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();

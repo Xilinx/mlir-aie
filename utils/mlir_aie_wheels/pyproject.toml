@@ -4,12 +4,15 @@ build = "cp312-* cp313-* cp314-*"
 skip = ["*-manylinux_i686", "*-musllinux*"]
 manylinux-aarch64-image = "manylinux_2_28"
 manylinux-x86_64-image = "manylinux_2_28"
+# Hash-required deps installed in before-build; --no-build-isolation makes
+# pip reuse them instead of re-fetching [build-system].requires fresh.
+build-frontend = { name = "pip", args = ["--no-build-isolation"] }
 
 [tool.cibuildwheel.linux]
 environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$PATH", PIP_NO_BUILD_ISOLATION = "false" }
 before-build = [
     "{project}/scripts/docker_prepare_ccache.sh",
-    "pip install -r requirements.txt",
+    "python -m pip install --require-hashes -r requirements.lock",
     "{project}/scripts/download_mlir.sh",
 ]
 environment-pass = [
@@ -34,7 +37,7 @@ repair-wheel-command = [
 [tool.cibuildwheel.macos]
 environment = { PATH = "/usr/local/opt/ccache/libexec:$PATH", PIP_NO_BUILD_ISOLATION = "false" }
 before-build = [
-    "pip install -r requirements.txt",
+    "python -m pip install --require-hashes -r requirements.lock",
     "{project}/scripts/download_mlir.sh",
 ]
 repair-wheel-command = [
@@ -44,8 +47,8 @@ repair-wheel-command = [
 [tool.cibuildwheel.windows]
 environment = { PIP_NO_BUILD_ISOLATION = "false" }
 before-build = [
-    "pip install delvewheel",
-    "pip install -r requirements.txt",
+    "python -m pip install --require-hashes -r ci-tools.lock",
+    "python -m pip install --require-hashes -r requirements.lock",
     'python "{project}/scripts/download_mlir.py"',
 ]
 

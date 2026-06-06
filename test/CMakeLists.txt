@@ -110,10 +110,12 @@ set(TEST_DEPENDS
   FileCheck count not
   AIEPythonModules
   aiecc
-  aie-lsp-server
   aie-opt
   aie-translate
 )
+if(AIE_BUILD_LSP_SERVER)
+  list(APPEND TEST_DEPENDS aie-lsp-server)
+endif()
 
 add_lit_testsuite(check-aie "Running the aie regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}

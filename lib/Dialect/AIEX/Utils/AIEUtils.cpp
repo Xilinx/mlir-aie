@@ -9,11 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEX/AIEUtils.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 using namespace mlir;
 using namespace xilinx;
 
-static unsigned cachedId = 0;
+// Counter shared across calls to getOrCreateDataMemref so that uniquing scans
+// can skip past previously used indices efficiently.
+static unsigned blockwriteDataCounter = 0;
 
 std::optional<AIEX::SubviewTraceResult>
 AIEX::traceSubviewToBlockArgument(Value value) {
@@ -146,12 +149,32 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
   }
   if (!global) {
     std::string name = "blockwrite_data_";
-    while (dev.lookupSymbol(name + std::to_string(cachedId)))
-      cachedId++;
-    name += std::to_string(cachedId);
+    while (dev.lookupSymbol(name + std::to_string(blockwriteDataCounter)))
+      blockwriteDataCounter++;
+    name += std::to_string(blockwriteDataCounter);
     global = memref::GlobalOp::create(builder, loc, name,
                                       builder.getStringAttr("private"),
                                       memrefType, initVal, true, nullptr);
   }
   return global;
+}
+
+LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
+    OpBuilder &builder, Operation *bdOp, BaseMemRefType bufType,
+    uint64_t registerAddr) {
+  auto idxAttr = bdOp->getAttrOfType<IntegerAttr>("offset_state_table_idx");
+  assert(idxAttr && "emitUpdateBdAddressFromOffsetParameter called without "
+                    "offset_state_table_idx attribute");
+
+  uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
+  uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
+  // Use func=mul with func_arg=elemBytes so the firmware computes
+  // StateTable[idx] * elemBytes = byte offset, added into the BD address
+  // register.
+  AIEX::NpuUpdateFromScratchpadOp::create(
+      builder, bdOp->getLoc(), stateIdx, AIEX::StateTableFunc::Mul,
+      /*func_arg=*/elemBytes,
+      /*address=*/static_cast<uint32_t>(registerAddr),
+      /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
+  return success();
 }

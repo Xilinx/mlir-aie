@@ -47,6 +47,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/tensor_class.py
     utils/hostruntime/xrtruntime/__init__.py
     utils/hostruntime/xrtruntime/hostruntime.py
+    utils/hostruntime/xrtruntime/parameter_scratchpad.py
     utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
@@ -394,6 +395,27 @@ else ()
 
 
 endif ()
+
+################################################################################
+# ParameterScratchpad pybind11 module (no MLIR/XRT deps — uses buffer pointer)
+################################################################################
+find_package(pybind11 CONFIG QUIET)
+if(pybind11_FOUND)
+  pybind11_add_module(_parameter_scratchpad
+    ${CMAKE_CURRENT_SOURCE_DIR}/ParameterScratchpadModule.cpp
+  )
+  target_include_directories(_parameter_scratchpad PRIVATE
+    ${AIE_SOURCE_DIR}/runtime_lib/test_lib
+  )
+  set_target_properties(_parameter_scratchpad PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+  )
+  add_dependencies(AIEPythonModules _parameter_scratchpad)
+  install(TARGETS _parameter_scratchpad
+    LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+    COMPONENT aie-python
+  )
+endif()
 
 target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
 

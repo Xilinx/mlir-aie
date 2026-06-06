@@ -1,5 +1,8 @@
 name: Build and Test with Vitis 2025.1
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
@@ -63,7 +66,7 @@ jobs:
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           submodules: "true"
 
@@ -71,7 +74,7 @@ jobs:
       # for debug. This seems to live for 35 min max
       # https://github.com/mxschmitt/action-tmate
       - name: Setup tmate session
-        uses: mxschmitt/action-tmate@v3
+        uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101  # v3
         # To run this, launch it manually on the default branch and
         # click on "launch_tmate_terminal_for_debug"
         if: github.event_name == 'workflow_dispatch'
@@ -90,7 +93,7 @@ jobs:
               --install-non-eudsl
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
-          pip install -r python/requirements_dev.txt
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
           # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code
           pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly

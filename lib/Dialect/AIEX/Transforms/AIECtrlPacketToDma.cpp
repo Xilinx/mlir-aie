@@ -83,8 +83,8 @@ struct AIECtrlPacketToDmaPass
 
       IRMapping mapping;
 
-      auto newSeq =
-          AIE::RuntimeSequenceOp::create(builder, loc, f.getSymNameAttr());
+      auto newSeq = AIE::RuntimeSequenceOp::create(
+          builder, loc, f.getSymNameAttr(), BoolAttr{});
       newSeq.getBody().push_back(new Block);
 
       // Copy the arguments from the old sequence to the new one.
@@ -196,7 +196,10 @@ struct AIECtrlPacketToDmaPass
                                  SmallVector<Value>{}, SmallVector<Value>{},
                                  SmallVector<Value>{}, ArrayRef(staticOffsets),
                                  ArrayRef(staticSizes), ArrayRef(staticStrides),
-                                 nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0);
+                                 nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0,
+                                 /*burst_length=*/0,
+                                 /*offset_parameter=*/FlatSymbolRefAttr(),
+                                 /*offset_state_table_idx=*/IntegerAttr());
 
         auto shimRow = builder.getI32IntegerAttr(0);
         auto shimCol = builder.getI32IntegerAttr(col);

@@ -1025,29 +1025,43 @@ LogicalResult verifyPackUnpackOp(T op) {
   if (!sourceType || !resultType)
     return op.emitError("requires vector type");
 
-  // The number of lanes must match
   unsigned sourceLanes = getVectorLaneSize(sourceType);
   unsigned resultLanes = getVectorLaneSize(resultType);
-  if (sourceLanes != resultLanes)
-    return op.emitError("The number of lanes in input and "
-                        "output vector must match");
 
   Type stype = sourceType.getElementType();
-  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   Type rtype = resultType.getElementType();
+  // Pack/unpack are integer packing ops; reject non-integer element types
+  // (e.g. f16/bf16) even though they share bitwidths with the legal forms.
+  if (!isa<IntegerType>(stype) || !isa<IntegerType>(rtype))
+    return op.emitError("requires integer element types");
+  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
 
   if (isa<PackOp>(op)) {
-    // The datatype of source must be i16, and datatype of result must be i8
-    if (stypeWidth != 16)
-      return op.emitError("input must be an int16 vector");
-    if (rtypeWidth != 8)
-      return op.emitError("output must be an int8 vector");
+    // Pack: i16 -> i8 with matching lane count (existing AIE2 path) OR
+    // i8 -> i8 with input lanes = 2 * output lanes (AIE2P int4 path; the
+    // result carries 2 packed nibbles per byte).
+    bool legalI16I8 =
+        stypeWidth == 16 && rtypeWidth == 8 && sourceLanes == resultLanes;
+    bool legalI8I4Packed =
+        stypeWidth == 8 && rtypeWidth == 8 && sourceLanes == 2 * resultLanes;
+    if (!legalI16I8 && !legalI8I4Packed)
+      return op.emitError(
+          "pack must narrow i16->i8 (same lanes) or i8->i8 (input lanes = "
+          "2 * output lanes, int4-packed)");
   } else {
-    if (stypeWidth != 8)
-      return op.emitError("input must be an int8 vector");
-    if (rtypeWidth != 16)
-      return op.emitError("output must be an int16 vector");
+    // Unpack: i8 -> i16 with matching lane count (existing AIE2 path) OR
+    // i8 -> i8 with output lanes = 2 * input lanes (AIE2P int4 path; the
+    // input carries 2 packed nibbles per byte and the output expands each
+    // nibble into a full byte).
+    bool legalI8I16 =
+        stypeWidth == 8 && rtypeWidth == 16 && sourceLanes == resultLanes;
+    bool legalI4PackedI8 =
+        stypeWidth == 8 && rtypeWidth == 8 && resultLanes == 2 * sourceLanes;
+    if (!legalI8I16 && !legalI4PackedI8)
+      return op.emitError(
+          "unpack must widen i8->i16 (same lanes) or i8->i8 (output lanes = "
+          "2 * input lanes, int4-packed)");
   }
 
   return success();

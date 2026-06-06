@@ -10,7 +10,6 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -125,6 +124,15 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                                  uint32_t burstLength) {
 
   return getShimBurstLength(tm, burstLength).first;
+}
+
+std::string xilinx::AIE::generateUniqueSymbolName(
+    mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
+  std::string name;
+  do {
+    name = (prefix + llvm::Twine(counter++)).str();
+  } while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name));
+  return name;
 }
 
 LogicalResult
@@ -2993,6 +3001,11 @@ ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
     return argParseResult;
   }
 
+  // Optional `attributes { ... }` clause (before the body so it does not
+  // conflict with the `{` that opens the region).
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
   // Body
   auto *body = result.addRegion();
   ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
@@ -3023,6 +3036,10 @@ void RuntimeSequenceOp::print(OpAsmPrinter &printer) {
     printer.printRegionArgument(body.getArgument(i));
   }
   printer << ')';
+
+  printer.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      /*elidedAttrs=*/{mlir::SymbolTable::getSymbolAttrName()});
 
   printer << ' ';
   printer.printRegion(body, false, true);
@@ -3090,7 +3107,8 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp or GlobalOp, but got: "
+                   "RuntimeSequenceOp, BufferOp, or GlobalOp, "
+                   "but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }
