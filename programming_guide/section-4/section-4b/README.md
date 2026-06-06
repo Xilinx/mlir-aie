@@ -262,7 +262,7 @@ res = DefaultNPURuntime.run_test(npu_opts.npu_kernel, ...)
 ```
 
 The relevant CLI arguments (added by `aie.utils.hostruntime.argparse.add_runtime_args`) are:
-- `--trace-sz` (`-t`): Trace buffer size in bytes. Tracing is enabled when this is > 0.
+- `-t` / `--trace_size`: Trace buffer size in bytes. Tracing is enabled when this is > 0.
 - `--trace-file`: Path to write raw trace data (default: `trace.txt`).
 - `--ddr-id`: DDR buffer index for trace (0-4, or -1 to append after last tensor). Default is 4.
 
@@ -289,6 +289,83 @@ npu_kernel = NPUKernel(
 ```
 
 Under the hood, the [DefaultNPURuntime](../../../python/utils/hostruntime/hostruntime.py) uses `TraceConfig` to allocate the trace XRT buffer, synchronize it after execution, and write the trace data to the output file -- similar to the C++ `write_out_trace` function and `setup_and_run_aie` wrapper in [xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h).
+
+#### `@iron.jit` integration
+
+For designs using `@iron.jit`, `TraceConfig` can travel as a
+`Compile[T]`-style argument and be evaluated **inside** the generator,
+so the trace-vs-no-trace decision lives in the design itself instead
+of the host:
+
+```python
+from aie.utils.trace import TraceConfig
+
+@iron.jit
+def passthrough_with_trace(
+    x: In,
+    y: Out,
+    *,
+    N: Compile[int],
+    trace_config: Compile[TraceConfig | None] = None,
+):
+    line_size = N // 4
+    line_ty = np.ndarray[(line_size,), np.dtype[np.uint8]]
+    of_in = ObjectFifo(line_ty, name="in")
+    of_out = ObjectFifo(line_ty, name="out")
+    pt = kernels.passthrough(tile_size=line_size, dtype=np.uint8)
+
+    def core_fn(of_in, of_out, pt):
+        for _ in range_(4):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            pt(elem_in, elem_out, line_size)
+            of_in.release(1)
+            of_out.release(1)
+
+    # Enable per-worker trace instrumentation only when a config is bound.
+    worker = Worker(
+        core_fn, [of_in.cons(), of_out.prod(), pt],
+        trace=1 if trace_config else 0,
+    )
+
+    rt = Runtime()
+    tensor_ty = np.ndarray[(N,), np.dtype[np.uint8]]
+    with rt.sequence(tensor_ty, tensor_ty) as (a_in, b_out):
+        if trace_config:
+            rt.enable_trace(trace_config.trace_size, workers=[worker])
+        rt.start(worker)
+        rt.fill(of_in.prod(), a_in)
+        rt.drain(of_out.cons(), b_out, wait=True)
+    return Program(iron.get_current_device(), rt).resolve_program()
+```
+
+Two equivalent ways to drive it from the caller:
+
+```python
+# No trace — trace_config defaults to None, so trace plumbing is omitted
+# from the lowered MLIR entirely (clean cache hit on the same recipe).
+passthrough_with_trace(in_t, out_t, N=4096)
+
+# With trace — pass a TraceConfig, then read parsed output back out.
+trace_cfg = TraceConfig(trace_size=8192)
+passthrough_with_trace(in_t, out_t, N=4096, trace_config=trace_cfg)
+trace_cfg.trace_to_json(trace_cfg.physical_mlir_path, "trace.json")
+```
+
+Two side effects of the call worth knowing about:
+
+- `trace_config.physical_mlir_path` is auto-populated with the
+  per-design `input_with_addresses.mlir` path (under
+  `$NPU_CACHE_HOME/<hash>/` — see
+  [compilation_stages.md](../../compilation_stages.md) §Lowering).
+  Pass it straight into `trace_config.trace_to_json(mlir, "out.json")`
+  to parse `trace.txt` into Chrome-tracing JSON without locating the
+  cache dir yourself.
+- `aie.utils.trace.utils.print_cycles_summary(json_path)` walks the
+  generated JSON and prints per-event cycle counts.  Most useful with
+  kernels whose C++ body brackets work with `event0()` / `event1()`
+  (the `kernels.*` library helpers do) so the summary can pair entry
+  and exit timestamps.
 
 ## <u>3. Parse text file to generate a waveform json file</u>
 Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse.py](../../../python/utils/trace/parse.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.

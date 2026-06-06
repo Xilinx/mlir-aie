@@ -92,6 +92,50 @@ We can then compute and print the actual average, minimum and maximum run times 
 
 In addition, if you have an estimate of the number of MACs each kernel execution takes, you can report additional performance data such as GFLOPs as can be seen in the matrix multiplication example [test.cpp](../../../programming_examples/basic/matrix_multiplication/test.cpp#L295).
 
+## <ins>Verifying NPU output: `aie.utils.verify`</ins>
+
+Benchmarking is paired with a correctness check.  AIE kernels are
+often LUT approximations or use saturating arithmetic, so the canonical
+host comparator is not `np.array_equal` — too strict for bf16 or LUT
+outputs — but a tolerance-aware sibling in
+[`aie.utils.verify`](../../../python/utils/verify.py):
+
+```python
+from aie.utils.verify import count_mismatches, nearly_equal
+
+# Count tolerance violations; stop on the first inf/nan from either side
+# (the LUT's behaviour outside its defined input range is not part of
+# the contract).
+errors, n_checked = count_mismatches(actual, ref, rtol=0.05)
+print(f"{errors} / {n_checked} samples outside tolerance")
+
+# Same comparator, boolean mask form — useful when you want to inspect
+# exactly which entries failed.
+mask = nearly_equal(actual, ref, rtol=0.05)
+```
+
+`nearly_equal(a, b, *, rtol=0.128, atol=None)` returns a boolean
+ndarray with `True` where `|a - b| < max(atol, rtol * (|a| + |b|))`.
+Both inputs are coerced to `float32` (enough headroom for bf16); `NaN`
+on either side yields `False` (matches IEEE semantics).  Defaults to
+`rtol=0.128` (12.8%) to match the `test_utils::nearly_equal` C++
+helper that `test.cpp` testbenches use, so Python and C++ host harnesses
+agree on what counts as a passing run.
+
+`count_mismatches(actual, ref, *, rtol=0.128, atol=None, stop_at_nonfinite=True)`
+returns `(errors, n_checked)`.  `n_checked` is less than `len(ref)`
+when `stop_at_nonfinite=True` (the default) and an `inf`/`nan` appears
+— the verification halts there rather than counting every saturated
+sample as a violation.  Pass `stop_at_nonfinite=False` to count
+everything.
+
+`aie.utils.verify` also exposes `assert_pass(actual, expected, *, rtol=None, atol=None, fail_msg=None)`
+— a one-liner that runs the comparison, prints `PASS!` on success, and
+`sys.exit("FAIL!")` on mismatch.  With both `rtol` and `atol` set to
+`None` (the default), it uses `np.array_equal` for exact compare (the
+right choice for integer / bit-exact pipelines); passing `rtol=` opts
+into the tolerance comparator above.
+
 ## <u>Exercises</u>
 1. Build + run the `@iron.jit` design with `make run` and note the reported NPU + end-to-end averages. (The defaults are `--warmup 4 --iters 10`; override via `--warmup N --iters M` on the python command line.) What did you see?
 
