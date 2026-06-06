@@ -103,7 +103,7 @@ def vector_scalar_mul(
 
 def _make_inputs():
     a_in = iron.arange(1, tensor_size + 1, dtype=np.int32, device="npu")
-    f_in = iron.tensor([3], dtype=np.int32, device="npu")
+    f_in = iron.full((1,), 3, dtype=np.int32, device="npu")
     return a_in, f_in
 
 

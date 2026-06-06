@@ -93,7 +93,7 @@ def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
 
 def _run_and_verify(opts):
     a_in = iron.arange(1, tensor_size + 1, dtype=np.int32, device="npu")
-    f_in = iron.tensor([3], dtype=np.int32, device="npu")
+    f_in = iron.full((1,), 3, dtype=np.int32, device="npu")
     c_out = iron.zeros(tensor_size, dtype=np.int32, device="npu")
 
     bench = run_iters(

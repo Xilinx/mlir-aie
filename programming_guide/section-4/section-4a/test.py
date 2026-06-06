@@ -25,7 +25,7 @@ def main(opts):
     # Initialize data buffers and reference for verification
     in_buffer = iron.arange(1, 4096 + 1, dtype=np.int32)
     scale_factor = 3
-    in_factor = iron.tensor([scale_factor], dtype=np.int32)
+    in_factor = iron.full((1,), scale_factor, dtype=np.int32)
     out = iron.zeros(4096, dtype=np.int32)
     ref_buffer = in_buffer.numpy() * scale_factor
 

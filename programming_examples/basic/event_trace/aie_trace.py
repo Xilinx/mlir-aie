@@ -165,7 +165,7 @@ def _run_and_verify(opts):
     rng = np.random.default_rng(seed=42)
     a_np = rng.integers(1, 100, size=opts.tensor_size, dtype=np.int32)
     a_t = iron.tensor(a_np, dtype=np.int32, device="npu")
-    f_t = iron.tensor([3], dtype=np.int32, device="npu")
+    f_t = iron.full((1,), 3, dtype=np.int32, device="npu")
     c_t = iron.zeros(opts.tensor_size, dtype=np.int32, device="npu")
 
     aie_trace(a_t, f_t, c_t, **_compile_kwargs(opts))

@@ -115,7 +115,7 @@ def _run_and_verify(opts):
     a_np = rng.integers(0, 100, size=(tensor_size,), dtype=in1_dtype)
 
     a_t = iron.tensor(a_np, dtype=in1_dtype, device="npu")
-    f_t = iron.tensor([3], dtype=np.int32, device="npu")
+    f_t = iron.full((1,), 3, dtype=np.int32, device="npu")
     c_t = iron.zeros(tensor_size, dtype=in1_dtype, device="npu")
 
     bench = run_iters(

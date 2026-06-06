@@ -45,7 +45,7 @@ def main(opts):
 
     # Initialize data
     in1 = iron.arange(1, in1_volume + 1, dtype=in1_dtype)
-    in2 = iron.tensor([scale_factor], dtype=in2_dtype)
+    in2 = iron.full((1,), scale_factor, dtype=in2_dtype)
     out = iron.zeros([out_volume], dtype=out_dtype)
 
     # Define reference data
