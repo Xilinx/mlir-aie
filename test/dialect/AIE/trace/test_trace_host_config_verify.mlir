@@ -51,3 +51,15 @@ module @invalid_buffer_size_negative {
     }
   }
 }
+
+// -----
+
+// Test: egress_shim_col cannot be negative.
+module @invalid_egress_shim_col_negative {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      // expected-error@+1 {{'aie.trace.host_config' op egress_shim_col must be >= 0}}
+      aie.trace.host_config buffer_size = 8192 egress_shim_col = -1
+    }
+  }
+}

@@ -487,12 +487,14 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
     - arg_idx (default=4): XRT argument index for trace buffer. Set to -1 to
       append trace data after the last tensor argument in the runtime_sequence.
     - routing (default=single): Shim routing strategy. Currently only 'single'
-      is supported, which routes all traces to column 0's shim.
+      is supported, which routes all traces to a single shim tile.
+    - egress_shim_col (default=0): Column index of the shim tile that receives
+      the trace packet flows.
 
     Example:
     ```mlir
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size=65536
+      aie.trace.host_config buffer_size=65536 egress_shim_col=4
       aie.trace.start_config @trace1
     }
     ```
@@ -501,7 +503,8 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
   let arguments = (ins
     AIEI32Attr:$buffer_size,
     DefaultValuedAttr<AIEI32Attr, "4">:$arg_idx,
-    DefaultValuedAttr<TraceShimRoutingAttr, "TraceShimRouting::Single">:$routing
+    DefaultValuedAttr<TraceShimRoutingAttr, "TraceShimRouting::Single">:$routing,
+    DefaultValuedAttr<AIEI32Attr, "0">:$egress_shim_col
   );
 
   let hasCustomAssemblyFormat = 1;

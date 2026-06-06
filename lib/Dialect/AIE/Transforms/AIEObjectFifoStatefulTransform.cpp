@@ -870,7 +870,18 @@ struct AIEObjectFifoStatefulTransformPass
     int acqMode = 1;
     int relMode = 1;
     auto acqLockAction = LockAction::Acquire;
-    if (state.locksPerFifo[op].size() > 0) {
+    // Static-init producer cycled via iter_count > 1 with no upstream link:
+    // skip source-side locks. The BD chain restarts via the channel's
+    // task_count, but the per-BD lock state never gets replenished (no
+    // upstream S2MM refills the buffers) so the chain would deadlock on
+    // the second pass. Back-pressure to the downstream consumer is handled
+    // by the DMA stream's flow control; source-side locking is unnecessary
+    // for correctness in this configuration.
+    bool isCycledStaticInitProducer =
+        channelDir == DMAChannelDir::MM2S && op.getInitValues().has_value() &&
+        op.getIterCount().has_value() && op.getIterCount().value() > 1 &&
+        !getOptionalLinkOp(op).has_value();
+    if (state.locksPerFifo[op].size() > 0 && !isCycledStaticInitProducer) {
       auto dev = op->getParentOfType<DeviceOp>();
       if (auto &target = dev.getTargetModel();
           target.getTargetArch() == AIEArch::AIE1) {

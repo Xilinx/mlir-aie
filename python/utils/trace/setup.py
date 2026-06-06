@@ -523,6 +523,7 @@ def start_trace(
     trace_size=8192,
     ddr_id=4,
     routing="single",
+    egress_shim_col=0,
 ):
     """Start tracing and configure trace output buffer.
 
@@ -542,6 +543,7 @@ def start_trace(
         buffer_size=trace_size,
         arg_idx=ddr_id,
         routing=routing,
+        egress_shim_col=egress_shim_col,
     )
 
     # Emit start_config for each configured trace
