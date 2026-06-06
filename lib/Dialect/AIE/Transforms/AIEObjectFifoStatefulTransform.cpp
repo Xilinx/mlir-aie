@@ -1496,6 +1496,16 @@ struct AIEObjectFifoStatefulTransformPass
   // Conservative model of the lock-lowering's "currently held" count per
   // (fifo, port) at the IR point immediately before `loopOp`.
   //
+  // Scope: only the loop's immediate parent block is walked. Earlier
+  // peeled siblings show up correctly, but acq/rel in enclosing scopes
+  // outside the parent block are invisible. This relies on a contract
+  // with the lock-lowering: AcquireGreaterEqual semantics make it
+  // tolerant of an over-estimated peel-acquire (the runtime clamps
+  // against currently-held instead of acquiring redundantly), so a
+  // missed enclosing-scope acq/rel produces redundant IR rather than
+  // a producer-pool deadlock. If that lowering ever changes, this scope
+  // must be widened.
+  //
   // Straight-line acq/rel update the count as expected. For nested ops we
   // model what the lock-lowering would leave behind:
   //  - a nested loop body's net contribution to `held` is the body's
@@ -1691,6 +1701,11 @@ struct AIEObjectFifoStatefulTransformPass
   // immediately before the loop; the loop's lb is advanced by step. When
   // bounds are not statically known to execute at least once, the peeled
   // body is wrapped in scf.if guarded by a runtime trip-count check.
+  //
+  // Returns success without peeling (a no-op) if the step sign cannot be
+  // determined at compile time, since the runtime guard predicate is
+  // sign-dependent. The loop still lowers correctly via the unoptimized
+  // path; only the AcquireGreaterEqual delta optimization is skipped.
   LogicalResult peelScfFor(scf::ForOp forOp, OpBuilder &builder) {
     Location loc = forOp.getLoc();
     Value lb = forOp.getLowerBound();
@@ -1704,13 +1719,16 @@ struct AIEObjectFifoStatefulTransformPass
     auto cUb = getConstantIntValue(ub);
     auto cStep = getConstantIntValue(step);
 
-    // scf.for requires step != 0 with consistent sign progression. We only
-    // generate the "provably >= 1" fast path for the well-defined positive-
-    // step case; everything else (negative step, non-constant bounds, or
-    // non-index integer types where wrap-around could fool the comparison)
-    // takes the guarded path.
-    bool provablyAtLeastOne = ivTy.isIndex() && cLb && cUb && cStep &&
-                              *cStep > 0 && (*cUb - *cLb) >= *cStep;
+    // scf.for requires step != 0 with consistent sign progression. Without
+    // a known step sign we can't pick the right runtime guard predicate
+    // (positive: lb+step <= ub; negative: lb+step >= ub), so bail out.
+    // This is correctness, not just optimization: the wrong predicate on
+    // a negative-step loop would skip the entire trimmed loop body.
+    if (!cStep)
+      return success();
+    bool positiveStep = *cStep > 0;
+    bool provablyAtLeastOne =
+        ivTy.isIndex() && cLb && cUb && positiveStep && (*cUb - *cLb) >= *cStep;
 
     builder.setInsertionPoint(forOp);
 
@@ -1736,14 +1754,25 @@ struct AIEObjectFifoStatefulTransformPass
       ivAndArgs.append(initArgs.begin(), initArgs.end());
       peelResults = cloneBody(builder, ivAndArgs);
     } else {
-      // Guard: (lb + step) does not pass ub. For positive step we want
-      // lb + step <= ub (sle); for negative step lb + step >= ub (sge).
-      // Without a known sign we conservatively use the positive-step form
-      // and rely on the user's loop being well-formed (sle). The cmp uses
-      // signed predicates which match scf.for's signed-or-index semantics.
-      Value diff = arith::SubIOp::create(builder, loc, ub, lb);
-      Value cond = arith::CmpIOp::create(builder, loc,
-                                         arith::CmpIPredicate::sge, diff, step);
+      // Guard: (lb + step) does not pass ub. For positive step that's
+      // ub - lb >= step (sge); for negative step lb - ub >= -step (sge,
+      // with both sides flipped). step's sign is known at this point —
+      // the early return above bails out otherwise.
+      Value diff = positiveStep ? arith::SubIOp::create(builder, loc, ub, lb)
+                                : arith::SubIOp::create(builder, loc, lb, ub);
+      Value absStep =
+          positiveStep
+              ? step
+              : arith::SubIOp::create(
+                    builder, loc,
+                    arith::ConstantOp::create(
+                        builder, loc,
+                        ivTy.isIndex()
+                            ? cast<TypedAttr>(builder.getIndexAttr(0))
+                            : cast<TypedAttr>(builder.getIntegerAttr(ivTy, 0))),
+                    step);
+      Value cond = arith::CmpIOp::create(
+          builder, loc, arith::CmpIPredicate::sge, diff, absStep);
       SmallVector<Type> resultTypes(initArgs.getTypes());
       auto ifOp = scf::IfOp::create(builder, loc, resultTypes, cond,
                                     /*withElseRegion=*/true);
