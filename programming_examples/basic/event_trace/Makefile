@@ -48,7 +48,7 @@ run_trace: ${targetname}.exe ${xclbin_target} ${insts_target}
 .PHONY: run_trace_py
 run_trace_py: ${xclbin_target} ${insts_target}
 	@echo "Running Python test with custom-event trace..."
-	python3 ${srcdir}/test.py --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE --verbosity 1 --trace-sz ${trace_size} --trace-file trace.txt
+	python3 ${srcdir}/test.py --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE --verbosity 1 --trace_size ${trace_size} --trace-file trace.txt
 	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir $(xclbin_target:.xclbin=.prj)/input_with_addresses.mlir --output trace.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace.json
 	@echo ""
