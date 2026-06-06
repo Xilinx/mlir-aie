@@ -35,4 +35,3 @@ runtime_lib/xaiengine/src
 **/test_stx/
 **/trace.txt
 **/trace_*.json
-**/_whats_new_executed.*
