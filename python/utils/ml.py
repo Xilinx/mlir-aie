@@ -484,8 +484,8 @@ def run_conv_torch_test(
         ofm_mem_fmt.tofile(os.path.join(log_dir, "after_ofm.txt"), sep=",", format="%d")
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 
-    # npu_time is in nanoseconds in the runtime; the legacy harnesses
-    # divide by 1000 to print microseconds.
+    # npu_time is in nanoseconds in the runtime; harnesses divide by 1000
+    # to print microseconds.
     print(f"\nAvg NPU time: {int(ret.npu_time / 1000)}us.")
 
     if np.allclose(

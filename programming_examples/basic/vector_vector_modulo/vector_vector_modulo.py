@@ -10,7 +10,7 @@
 The design body delegates to ``aie.iron.algorithms.transform_binary_typed``,
 which handles the ObjectFifo / Worker / Runtime plumbing.  The entry point
 supports three invocation modes so the same file drives both the Ryzen AI
-NPU @iron.jit pipeline and the legacy aiecc-based vck5000 (Versal AIE1) flow:
+NPU @iron.jit pipeline and the aiecc-based vck5000 (Versal AIE1) flow:
 
   * standalone:  ``python3 vector_vector_modulo.py``
         JIT-compile + run + verify via ``iron.tensor``.
@@ -20,7 +20,7 @@ NPU @iron.jit pipeline and the legacy aiecc-based vck5000 (Versal AIE1) flow:
         hand the artifacts to the C++ ``test.cpp`` host.
 
   * emit-MLIR:  ``... -d {npu,npu2,xcvc1902} --emit-mlir``
-        Print the resolved MLIR module to stdout for the legacy aiecc
+        Print the resolved MLIR module to stdout for the aiecc
         Makefile rule (used by the vck5000 path; aiecc consumes the
         printed MLIR and produces ``test.elf`` via Chess + HSA).
 """

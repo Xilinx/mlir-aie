@@ -20,7 +20,7 @@ It demonstrates a number of features that scale to more realistic designs:
 
 ## Source Files Overview
 
-`matrix_scalar_add.py`: An `@iron.jit`-decorated design covering both the Ryzen AI NPU pipeline and the legacy aiecc-based VCK5000 (Versal AIE1) flow. Three invocation modes:
+`matrix_scalar_add.py`: An `@iron.jit`-decorated design covering both the Ryzen AI NPU pipeline and the aiecc-based VCK5000 (Versal AIE1) flow. Three invocation modes:
 
 * standalone — `python3 matrix_scalar_add.py`
 * compile-only — `... --xclbin-path=PATH --insts-path=PATH` (used by the NPU `Makefile`)

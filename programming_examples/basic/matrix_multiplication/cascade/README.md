@@ -14,9 +14,9 @@ A 4xN_cols AIE array computes `C = A @ B` using AIE hardware **cascade streams**
 
 Default config: `int16` inputs / `int32` outputs, `M`=`K`=`N` = `512`, kernel tile `m`=`k`=`n` = `64`, scalar cascade kernel.
 
-> Different from the [whole-array design](../whole_array/README.md): cascade distributes the K accumulation across the four cores in a column (each row does `K // n_aie_rows` iterations), reducing per-core work but adding cascade-stream coordination.
+> The cascade design distributes the K accumulation across the four cores in a column (each row does `K // n_aie_rows` iterations), reducing per-core work but adding cascade-stream coordination.
 
-The cascade kernel is currently scalar-only and the design is single-buffered (`fifo_depth=1` to avoid CDO program-memory blowup).  Compared to the vectorized whole-array design, cascade has a structurally lower performance ceiling — see the [perf comparison gist](https://gist.github.com/Yu-Zhewen/da3fed9feb278b973f35fb78c2d3a484).
+The cascade kernel is currently scalar-only and the design is single-buffered (`fifo_depth=1` to avoid CDO program-memory blowup), giving a structurally lower performance ceiling than vectorized whole-array designs.
 
 ## Building and Running the Design
 

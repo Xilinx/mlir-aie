@@ -13,7 +13,7 @@ README's two-stage tiling story: ``MEM_TILE_WIDTH``-element tiles flow shim →
 memtile, get split into ``AIE_TILE_WIDTH``-element tiles for the compute
 core, then join back to ``MEM_TILE_WIDTH``-element tiles on the way out.
 
-Two invocation modes (mirrors vector_scalar_mul):
+Two invocation modes:
 
   * standalone:   ``python3 vector_scalar_add.py``
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (NPU Makefile)

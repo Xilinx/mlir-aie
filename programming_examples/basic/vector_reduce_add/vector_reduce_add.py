@@ -13,7 +13,7 @@ output.  The design body delegates to
 ObjectFifo / Worker / Runtime plumbing for the reduce shape (whole-input
 single-kernel-call).
 
-Two invocation modes (mirrors vector_vector_add):
+Two invocation modes:
 
   * standalone:   ``python3 vector_reduce_add.py``
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)

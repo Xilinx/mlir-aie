@@ -16,7 +16,7 @@ In the [design](./passthrough_dmas.py) data is brought from external memory to a
 
 The implicit copy is performed using the ObjectFifo `forward()` function that specifies how input data arriving via `of_in` should be sent further via `of_out` by leveraging the fowarding tile's DMA. 
 
-The single [passthrough_dmas.py](./passthrough_dmas.py) design uses `@iron.jit` and runs on both NPU and VCK5000 (the latter via the legacy print-MLIR + `aiecc` flow).
+The single [passthrough_dmas.py](./passthrough_dmas.py) design uses `@iron.jit` and runs on both NPU and VCK5000 (the latter via the print-MLIR + `aiecc` flow).
 
 To compile and run the design for NPU:
 ```shell

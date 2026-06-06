@@ -75,8 +75,7 @@ def vector_exp(
 
 
 def main():
-    # Test every possible bfloat16 value by reinterpreting each uint16 as bf16
-    # — matches the C++ testbench this design previously shipped with.
+    # Test every possible bfloat16 value by reinterpreting each uint16 as bf16.
     N = 65536
     a_np = np.arange(N, dtype=np.uint16).view(bfloat16)
 

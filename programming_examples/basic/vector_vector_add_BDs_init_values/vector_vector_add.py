@@ -23,7 +23,7 @@ Two pedagogical points, both visible in the design body:
      ``programming_examples/basic/custom_dma/`` for a richer user-side
      :class:`Resolvable` example.
 
-Two invocation modes (mirrors matrix_scalar_add):
+Two invocation modes:
 
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (NPU Makefile)
   * emit-MLIR:    ``... -d xcvc1902 --emit-mlir``               (vck5000)

@@ -12,7 +12,7 @@
 
 A simple binary operator: a single AIE compute tile multiplies two `int32` vectors element-wise. The default vector size is `256`, fed into the core in sub-tiles of `16` via three depth-2 ObjectFifos (two consumer-side, one producer-side). Because the multiply is expressed as an inline Python loop on `int32`, no external compiled C++ kernel is bound — the operation lives entirely inside the IRON design.
 
-The example targets the Ryzen™ AI NPU through the IRON `@iron.jit` host runtime, and the VCK5000 PCIe card through the legacy `aiecc` + HSA toolchain. Both paths share the same design body.
+The example targets the Ryzen™ AI NPU through the IRON `@iron.jit` host runtime, and the VCK5000 PCIe card through the `aiecc` + HSA toolchain. Both paths share the same design body.
 
 ## Source Files
 
@@ -45,7 +45,7 @@ Run `python3 vector_vector_mul.py --help` for the full flag list.
 
 ## VCK5000 Usage
 
-The VCK5000 path bypasses `@iron.jit` (which is NPU-only) and uses the legacy MLIR-to-HSA flow:
+The VCK5000 path bypasses `@iron.jit` (which is NPU-only) and uses the MLIR-to-HSA flow:
 
 ```shell
 make vck5000    # emits MLIR via --emit-mlir-vck5000, then aiecc + test_vck5000.cpp

@@ -10,7 +10,7 @@
 Almost every basic/ design repeats the same handful of CLI flags:
 ``-d/--dev`` (device selector), ``--xclbin-path``/``--insts-path``
 (compile-only output paths), optionally ``--elf-path`` (xrt::elf
-testbench) and ``--emit-mlir`` (legacy aiecc / vck5000 path), and the
+testbench) and ``--emit-mlir`` (aiecc / vck5000 path), and the
 benchmark/trace pair ``-w/--warmup`` / ``-i/--iters`` / ``-t/--trace_size``.
 
 The helpers in this module mutate an existing ``argparse.ArgumentParser``
@@ -67,7 +67,7 @@ def add_compile_args(
         parser.add_argument(
             "--emit-mlir",
             action="store_true",
-            help="print the resolved MLIR module to stdout (legacy aiecc / vck5000 path)",
+            help="print the resolved MLIR module to stdout (aiecc / vck5000 path)",
         )
     parser.add_argument(
         "--xclbin-path",

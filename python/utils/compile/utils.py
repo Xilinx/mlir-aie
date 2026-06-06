@@ -62,7 +62,7 @@ def compile_cxx_core_function(
             forwarded verbatim to the chosen compiler.
         cwd (str, optional): Overrides the current working directory.
         use_chess (bool): When True, invoke ``xchesscc_wrapper`` instead of
-            ``clang++`` (Peano).  Mirrors the legacy makefile-common
+            ``clang++`` (Peano).  Equivalent to the makefile-common
             ``KERNEL_CC=xchesscc_wrapper`` path used by the matmul examples'
             ``use_chess=1`` configurations.  ``xchesscc_wrapper`` reads
             ``AIETOOLS_DIR`` (or auto-detects from the path of ``xchesscc``)
@@ -177,7 +177,7 @@ def compile_mlir_module(
     if use_chess:
         # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
         # in a single Chess process to amortise startup cost; matches the
-        # legacy makefile-common ``aiecc_chess_flags=--unified`` recipe.
+        # makefile-common ``aiecc_chess_flags=--unified`` recipe.
         args = [
             "--no-compile-host",
             "--unified",

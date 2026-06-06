@@ -14,7 +14,7 @@ showing that the high-level IRON Runtime API also accepts the same
 ``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
 ``shimtile_events`` knobs as the lower-level ``configure_trace``.
 
-Two invocation modes (mirrors the @iron.jit ports):
+Two invocation modes:
 
   * standalone:   ``python3 aie_trace.py``
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)

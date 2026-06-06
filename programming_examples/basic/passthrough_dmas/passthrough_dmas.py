@@ -16,10 +16,10 @@ Three target/topology modes:
   * ``--plio input``:           PLIO ObjectFifo on the input side, forwarded
                                 through a compute tile to a non-PLIO shim.
                                 VCK5000 only.
-  * ``--plio output``:          mirror of above — non-PLIO input, PLIO output.
-                                VCK5000 only.
+  * ``--plio output``:          non-PLIO input, PLIO ObjectFifo on the
+                                output side.  VCK5000 only.
 
-Three invocation modes (mirrors matrix_scalar_add):
+Three invocation modes:
 
   * standalone:   ``python3 passthrough_dmas.py``
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``       (NPU)

@@ -158,10 +158,10 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
 
     # Use the gemm-style "one task_group at a time" pattern. Each task_group
     # holds a batch of fills + a wait=True drain, and finish_task_group()
-    # awaits the drain AND frees every task in the group atomically. This
-    # avoids the previous bug of `dma_free_task` being emitted for tasks
-    # that were never awaited (act_in, weights, FC fills) — which deallocated
-    # their BD IDs while their DMAs were potentially still in flight.
+    # awaits the drain AND frees every task in the group atomically. Required
+    # so `dma_free_task` is not emitted for tasks that were never awaited
+    # (act_in, weights, FC fills) — otherwise their BD IDs would be
+    # deallocated while their DMAs were potentially still in flight.
     rt = Runtime()
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)

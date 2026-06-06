@@ -10,15 +10,11 @@
 A single AIE compute core reads one ``TILE_HEIGHT x TILE_WIDTH`` tile from
 the top-left corner of a ``MATRIX_HEIGHT x MATRIX_WIDTH`` matrix (via
 ``TensorTiler2D.simple_tiler``), adds 1 to each element of that tile, and
-writes it back.  The rest of the matrix is untouched — this demonstrates
-subtile-region DMA access.  Default config: 16x128 matrix, 8x16 tile.
-Design body stays explicit (preserves the 2D TAP that strides through the
-input matrix); the algorithms library's ``transform_typed`` would flatten
-to 1D and produce a different DMA stride pattern, which is why this
-primitive is unified in the matvec / vector_scalar_mul way rather than the
-vector_vector_add way.
+writes it back, leaving the rest of the matrix unchanged — a
+subtile-region DMA access pattern.  Default config: 16x128 matrix,
+8x16 tile.
 
-Three invocation modes (mirrors vector_vector_modulo):
+Three invocation modes:
 
   * standalone:   ``python3 matrix_scalar_add.py``
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (NPU Makefile)

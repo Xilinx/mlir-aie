@@ -52,17 +52,6 @@ make STRATEGY=shuffle run                       # uint8 16x16
 make STRATEGY=combined M=128 K=128 run          # int32 128x128 with built-in m=n=32, s=8
 ```
 
-## What replaces this directory
-
-This directory consolidates four earlier examples:
-
-- `basic/dma_transpose/`           → `--strategy=dma`
-- `basic/dma_transpose_packet/`    → `--strategy=dma_packet`
-- `basic/shuffle_transpose/`       → `--strategy=shuffle`
-- `basic/combined_transpose/`      → `--strategy=combined`
-
-All four are removed in favour of this single dispatcher.
-
 ## DMA strategy: `--strategy dma`
 
 The `dma` strategy reads a 2-D `M × K` row-major array from external
