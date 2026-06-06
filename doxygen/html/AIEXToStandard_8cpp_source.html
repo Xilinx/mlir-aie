@@ -133,18 +133,21 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    removepatterns.add&lt;<a class="code hl_struct" href="structAIEXOpRemoval.html">AIEXOpRemoval&lt;NpuCreateScratchpadOp&gt;</a>&gt;(m.getContext(), m);</div>
 <div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    removepatterns.add&lt;<a class="code hl_struct" href="structAIEXOpRemoval.html">AIEXOpRemoval&lt;NpuUpdateFromScratchpadOp&gt;</a>&gt;(m.getContext(),</div>
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>                                                                 m);</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span> </div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(m, target, std::move(removepatterns))))</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>      signalPassFailure();</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>  }</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    removepatterns.add&lt;<a class="code hl_struct" href="structAIEXOpRemoval.html">AIEXOpRemoval&lt;ScratchpadParameterOp&gt;</a>&gt;(m.getContext(), m);</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    removepatterns.add&lt;<a class="code hl_struct" href="structAIEXOpRemoval.html">AIEXOpRemoval&lt;SyncScratchpadParametersFromHostOp&gt;</a>&gt;(</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>        m.getContext(), m);</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span> </div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(m, target, std::move(removepatterns))))</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>      signalPassFailure();</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>  }</div>
 </div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>};</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>};</div>
 </div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span> </div>
-<div class="foldopen" id="foldopen00074" data-start="{" data-end="}">
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a73e51897bc846e1c548d5a93fb83a0cb">   74</a></span>std::unique_ptr&lt;OperationPass&lt;ModuleOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a73e51897bc846e1c548d5a93fb83a0cb">AIEX::createAIEXToStandardPass</a>() {</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEXToStandardPass&gt;();</div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>}</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span> </div>
+<div class="foldopen" id="foldopen00077" data-start="{" data-end="}">
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a73e51897bc846e1c548d5a93fb83a0cb">   77</a></span>std::unique_ptr&lt;OperationPass&lt;ModuleOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a73e51897bc846e1c548d5a93fb83a0cb">AIEX::createAIEXToStandardPass</a>() {</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEXToStandardPass&gt;();</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEXDialect_8h_html"><div class="ttname"><a href="AIEXDialect_8h.html">AIEXDialect.h</a></div></div>
@@ -153,7 +156,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIEX_1_1impl_1_1AIEXToStandardBase_html"><div class="ttname"><a href="classxilinx_1_1AIEX_1_1impl_1_1AIEXToStandardBase.html">xilinx::AIEX::impl::AIEXToStandardBase</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a73e51897bc846e1c548d5a93fb83a0cb"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a73e51897bc846e1c548d5a93fb83a0cb">xilinx::AIEX::createAIEXToStandardPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt; createAIEXToStandardPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEXToStandard_8cpp_source.html#l00074">AIEXToStandard.cpp:74</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a73e51897bc846e1c548d5a93fb83a0cb"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a73e51897bc846e1c548d5a93fb83a0cb">xilinx::AIEX::createAIEXToStandardPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt; createAIEXToStandardPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEXToStandard_8cpp_source.html#l00077">AIEXToStandard.cpp:77</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructAIEXOpRemoval_html"><div class="ttname"><a href="structAIEXOpRemoval.html">AIEXOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIEXToStandard_8cpp_source.html#l00032">AIEXToStandard.cpp:32</a></div></div>
@@ -165,7 +168,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Jun 6 2026 03:09:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sat Jun 6 2026 04:37:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

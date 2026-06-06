@@ -8,7 +8,8 @@ var searchData=
   ['utils_3a_3ahostruntime_3a_3atensor_5fclass_5',['tensor_class',['../namespaceutils_1_1hostruntime_1_1tensor__class.html',1,'utils::hostruntime']]],
   ['utils_3a_3ahostruntime_3a_3axrtruntime_6',['xrtruntime',['../namespaceutils_1_1hostruntime_1_1xrtruntime.html',1,'utils::hostruntime']]],
   ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3ahostruntime_7',['hostruntime',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime.html',1,'utils::hostruntime::xrtruntime']]],
-  ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3atensor_8',['tensor',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1tensor.html',1,'utils::hostruntime::xrtruntime']]],
-  ['utils_3a_3ajit_9',['jit',['../namespaceutils_1_1jit.html',1,'utils']]],
-  ['utils_3a_3anpukernel_10',['npukernel',['../namespaceutils_1_1npukernel.html',1,'utils']]]
+  ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3aparameter_5fscratchpad_8',['parameter_scratchpad',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1parameter__scratchpad.html',1,'utils::hostruntime::xrtruntime']]],
+  ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3atensor_9',['tensor',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1tensor.html',1,'utils::hostruntime::xrtruntime']]],
+  ['utils_3a_3ajit_10',['jit',['../namespaceutils_1_1jit.html',1,'utils']]],
+  ['utils_3a_3anpukernel_11',['npukernel',['../namespaceutils_1_1npukernel.html',1,'utils']]]
 ];

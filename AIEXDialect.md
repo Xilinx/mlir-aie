@@ -1270,6 +1270,8 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 <tr><td><code>d1_zero_after</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>d2_zero_after</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>burst_length</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>offset_parameter</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>offset_state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
 </table>
 
 #### Operands:
@@ -1689,6 +1691,43 @@ A place operation that specifies the relative placement (XY) of one herd to anot
 
 
 
+### `aiex.read_scratchpad_parameter` (::xilinx::AIEX::ReadScratchpadParameterOp)
+
+_Read a scratchpad runtime parameter value on an AIE core_
+
+Syntax:
+
+```
+operation ::= `aiex.read_scratchpad_parameter` $parameter `:` type($result) attr-dict
+```
+
+Reads a runtime parameter previously declared with `aiex.scratchpad_parameter` in an `aie.core`.
+
+The `--aie-lower-scratchpad-parameters` creates an `aie.buffer` on the core for each unique parameter read, and then replaces each instance of this op with:
+1. A `memref.load` from that buffer
+2. Arithmetic to decode the value (right-shift by 2 to undo firmware masking)
+
+Example:
+```mlir
+%val = aiex.read_scratchpad_parameter @foo : i32
+```
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>parameter</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | any type |
+
+
+
 ### `aiex.route` (::xilinx::AIEX::RouteOp)
 
 _A route operation that routes one herd to another_
@@ -1747,6 +1786,72 @@ Traits: `HasParent<ConfigureOp>`
 | Operand | Description |
 | :-----: | ----------- |
 | `args` | variadic of any type |
+
+
+
+### `aiex.scratchpad_parameter` (::xilinx::AIEX::ScratchpadParameterOp)
+
+_Declare a scratchpad runtime parameter_
+
+Syntax:
+
+```
+operation ::= `aiex.scratchpad_parameter` $sym_name `:` $type attr-dict
+```
+
+Declares a named runtime parameter that uses the scratchpad mechanism.
+Using this declaration and the MLIR-AIE runtime library, the host can write
+these named runtime parameters to DDR, and AIE cores read it using 
+`aiex.read_scratchpad_parameter`. The scratchpad memory mechanism
+(CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes) communicates
+the values.
+
+`aiex.scratchpad_parameter` ops are declared at **module scope** (outside any `aie.device`).
+The scratchpad is a single hardware resource shared by all PDIs loaded by a
+runtime sequence, so parameters are global to the whole module and may be
+referenced from any device.
+
+Parameters can alternatively offset BD addresses when used as the
+`offset_parameter` attribute in `aiex.dma_bd` and `aiex.dma_memcpy_nd`.
+The two kinds of use are exclusive: parameters used as BD address offsets
+cannot also be read from cores.
+If used as an address offset on a BD, the parameter is a multiple of the BD's element size.
+
+Each parameter occupies one StateTable entry (4 bytes in the scratchpad) in DDR.
+The `--aie-lower-scratchpad-parameters` pass assigns the `state_table_idx` and the `kind` attribute (derived from the parameter's usage:
+`core` if read by a core via `aiex.read_scratchpad_parameter`, `addr` if used as a DMA offset via the `offset_parameter` attribute on a DMA op).
+Indices are unique across the entire module.
+
+The `type` attribute specifies the data type of the parameter (`bf16` or an integer type up to `i32`).
+For `kind == addr`, the `type` must be `i32`.
+For `kind == core`, the encoding uses a 30-bit value range because the firmware masks
+the lower 2 bits of the scratchpad register (see `aiex.read_scratchpad_parameter`
+for details on how values are shifted to work around this).
+
+You can manually specify the parameter synchronization point inside the runtime sequence using the `aiex.sync_scratchpad_parameters_from_host` op.
+
+On the host, you can write parameters using the runtime library's `parameter_scratchpad.h` header library.
+
+See `test/npu-xrt/scratchpad_params` and `test/npu-xrt/scratchpad_params_python` for a full usage example.
+
+Example (at module scope):
+```mlir
+aiex.scratchpad_parameter @foo : i32
+aiex.scratchpad_parameter @bar : bf16
+aie.device(npu2) { ... }
+```
+
+Interfaces: `Symbol`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>type</code></td><td>::mlir::TypeAttr</td><td>any type attribute</td></tr>
+<tr><td><code>state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
+<tr><td><code>kind</code></td><td>::xilinx::AIEX::ScratchpadParameterKindAttr</td><td>Usage kind of a scratchpad runtime parameter: `core` parameters are read by AIE cores via `aiex.read_scratchpad_parameter` (values are shift-2 encoded); `addr` parameters are used as BD address offsets via the `offset_parameter` attribute on DMA ops (values written raw)</td></tr>
+</table>
 
 
 
@@ -1826,6 +1931,43 @@ Traits: `HasParent<AIE::RuntimeSequenceOp>`, `SkipAccessibilityCheckTrait`
 | Operand | Description |
 | :-----: | ----------- |
 | `lock` | index |
+
+
+
+### `aiex.sync_scratchpad_parameters_from_host` (::xilinx::AIEX::SyncScratchpadParametersFromHostOp)
+
+_Marker for where host-to-core scratchpad parameter sync should be emitted_
+
+Syntax:
+
+```
+operation ::= `aiex.sync_scratchpad_parameters_from_host` attr-dict
+```
+
+Marker op indicating the point in a runtime sequence where the
+host-to-core scratchpad parameter synchronisation should be materialised.
+Carries no operands or attributes.  `--aie-lower-scratchpad-parameters`
+replaces each occurrence (including a compiler-inserted preamble,
+controlled by the parent `aie.runtime_sequence`'s
+`emit_parameter_sync_preamble` attribute) with the lowered sequence:
+
+1. `aiex.npu.create_scratchpad`
+2. For each core-kind parameter of the enclosing `aie.device`:
+   a. `aiex.npu.write32` to zero the destination buffer
+   b. `aiex.npu.update_from_scratchpad` to copy the value
+3. `aiex.set_lock(lock, 1)` for each parameter-sync lock in the device
+   (releasing the cores that read parameters)
+
+Placement: users who manually emit `aiex.npu.load_pdi` should manually
+place this op *after* the load_pdi, since PDI loading resets core state
+(including lock values).
+
+Example:
+```mlir
+aiex.sync_scratchpad_parameters_from_host
+```
+
+Traits: `HasParent<AIE::RuntimeSequenceOp>`, `SkipAccessibilityCheckTrait`
 
 
 
@@ -3189,6 +3331,17 @@ _Ports of an object FIFO_
 | :----: | :---: | ------ |
 | Produce | `0` | Produce |
 | Consume | `1` | Consume |
+
+### ScratchpadParameterKind
+
+_Usage kind of a scratchpad runtime parameter: `core` parameters are read by AIE cores via `aiex.read_scratchpad_parameter` (values are shift-2 encoded); `addr` parameters are used as BD address offsets via the `offset_parameter` attribute on DMA ops (values written raw)_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| Core | `0` | core |
+| Addr | `1` | addr |
 
 ### ShimTileEventAIE
 

@@ -34,7 +34,8 @@ var searchData=
   ['iron_3a_3aruntime_3a_3aruntime_31',['runtime',['../namespaceiron_1_1runtime_1_1runtime.html',1,'iron::runtime']]],
   ['iron_3a_3aruntime_3a_3atask_32',['task',['../namespaceiron_1_1runtime_1_1task.html',1,'iron::runtime']]],
   ['iron_3a_3aruntime_3a_3ataskgroup_33',['taskgroup',['../namespaceiron_1_1runtime_1_1taskgroup.html',1,'iron::runtime']]],
-  ['iron_3a_3aworker_34',['worker',['../namespaceiron_1_1worker.html',1,'iron']]],
-  ['is_5fmem_5faccessible_35',['is_mem_accessible',['../classiron_1_1device_1_1device_1_1Device.html#a1d138bfd235611c9db379c05ab22336a',1,'iron::device::device::Device']]],
-  ['is_5fsuccess_36',['is_success',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#a47e5044d1418240eebebf824911ee627',1,'utils.hostruntime.hostruntime.KernelResult.is_success()'],['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelResult.html#a21ca00f5118155efe6cc66ef21ed48a6',1,'utils.hostruntime.xrtruntime.hostruntime.XRTKernelResult.is_success()']]]
+  ['iron_3a_3ascratchpad_5fparameter_34',['scratchpad_parameter',['../namespaceiron_1_1scratchpad__parameter.html',1,'iron']]],
+  ['iron_3a_3aworker_35',['worker',['../namespaceiron_1_1worker.html',1,'iron']]],
+  ['is_5fmem_5faccessible_36',['is_mem_accessible',['../classiron_1_1device_1_1device_1_1Device.html#a1d138bfd235611c9db379c05ab22336a',1,'iron::device::device::Device']]],
+  ['is_5fsuccess_37',['is_success',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#a47e5044d1418240eebebf824911ee627',1,'utils.hostruntime.hostruntime.KernelResult.is_success()'],['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelResult.html#a21ca00f5118155efe6cc66ef21ed48a6',1,'utils.hostruntime.xrtruntime.hostruntime.XRTKernelResult.is_success()']]]
 ];

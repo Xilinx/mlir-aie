@@ -320,6 +320,7 @@ Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 <tr><td><code>link_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
 <tr><td><code>elf_file</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>dynamic_objfifo_lowering</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>emit_parameter_sync_preamble</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 #### Operands:
@@ -563,6 +564,8 @@ is 0). All counts are expressed in multiples of the element width.
     Tuple encoding the type and header of a packet;
   </td></tr>
 <tr><td><code>burst_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>offset_parameter</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>offset_state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
 <tr><td><code>next_bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
@@ -1879,6 +1882,7 @@ Interfaces: `Symbol`
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>emit_parameter_sync_preamble</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
 

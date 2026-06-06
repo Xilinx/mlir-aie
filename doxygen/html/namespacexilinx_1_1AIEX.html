@@ -70,6 +70,8 @@ Functions</h2></td></tr>
 <tr class="separator:afa4b7d3cc349d42315b2c37bfd175cb8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3b2e98a3f17d246b71b572b061a36d66" id="r_a3b2e98a3f17d246b71b572b061a36d66"><td class="memItemLeft" align="right" valign="top">std::optional&lt; <a class="el" href="structxilinx_1_1AIEX_1_1SubviewTraceResult.html">SubviewTraceResult</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a3b2e98a3f17d246b71b572b061a36d66">traceSubviewToBlockArgument</a> (Value value)</td></tr>
 <tr class="separator:a3b2e98a3f17d246b71b572b061a36d66"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af0913805167cbc69610907cb0ca57f86" id="r_af0913805167cbc69610907cb0ca57f86"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#af0913805167cbc69610907cb0ca57f86">emitUpdateBdAddressFromOffsetParameter</a> (OpBuilder &amp;builder, Operation *bdOp, BaseMemRefType bufType, uint64_t registerAddr)</td></tr>
+<tr class="separator:af0913805167cbc69610907cb0ca57f86"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa8da22224cb11f459ecc40327807bb57" id="r_aa8da22224cb11f459ecc40327807bb57"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#aa8da22224cb11f459ecc40327807bb57">getHardwareStridesWraps</a> (const <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIE::AIETargetModel</a> &amp;targetModel, mlir::Operation *op, mlir::BaseMemRefType referencedBufType, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;sizes, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;strides)</td></tr>
 <tr class="separator:aa8da22224cb11f459ecc40327807bb57"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acd8bb70bd4615d3c251a2ab8176e4973" id="r_acd8bb70bd4615d3c251a2ab8176e4973"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">verifyStridesWraps</a> (mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareSizes, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareStrides, <a class="el" href="classbool.html">bool</a> skipTransformationChecks=false)</td></tr>
@@ -124,6 +126,10 @@ Functions</h2></td></tr>
 <tr class="separator:a7221cf1fcee889bbee476412cb727dda"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a64e67f6c2d1af3dcad7489bf06ef34a4" id="r_a64e67f6c2d1af3dcad7489bf06ef34a4"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a64e67f6c2d1af3dcad7489bf06ef34a4">createAIEXInlineTraceConfigPass</a> ()</td></tr>
 <tr class="separator:a64e67f6c2d1af3dcad7489bf06ef34a4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9018a5bd18ab48976522e31de189dc49" id="r_a9018a5bd18ab48976522e31de189dc49"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a9018a5bd18ab48976522e31de189dc49">createAIELowerScratchpadParametersPass</a> ()</td></tr>
+<tr class="separator:a9018a5bd18ab48976522e31de189dc49"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a07a229ddf7f75a2bae31e41ff7262952" id="r_a07a229ddf7f75a2bae31e41ff7262952"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a07a229ddf7f75a2bae31e41ff7262952">createAIELowerScratchpadParametersPass</a> (AIELowerScratchpadParametersOptions options)</td></tr>
+<tr class="separator:a07a229ddf7f75a2bae31e41ff7262952"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
 <a id="ae8a75a918c01877ae01686160fe90489" name="ae8a75a918c01877ae01686160fe90489"></a>
@@ -236,7 +242,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00221">221</a> of file <a class="el" href="AIECtrlPacketToDma_8cpp_source.html">AIECtrlPacketToDma.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00224">224</a> of file <a class="el" href="AIECtrlPacketToDma_8cpp_source.html">AIECtrlPacketToDma.cpp</a>.</p>
 
 </div>
 </div>
@@ -255,7 +261,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00224">224</a> of file <a class="el" href="AIECtrlPacketToDma_8cpp_source.html">AIECtrlPacketToDma.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00227">227</a> of file <a class="el" href="AIECtrlPacketToDma_8cpp_source.html">AIECtrlPacketToDma.cpp</a>.</p>
 
 </div>
 </div>
@@ -274,7 +280,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00678">678</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00692">692</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
 </div>
 </div>
@@ -293,7 +299,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDmaToNpu_8cpp_source.html#l00756">756</a> of file <a class="el" href="AIEDmaToNpu_8cpp_source.html">AIEDmaToNpu.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDmaToNpu_8cpp_source.html#l00766">766</a> of file <a class="el" href="AIEDmaToNpu_8cpp_source.html">AIEDmaToNpu.cpp</a>.</p>
 
 </div>
 </div>
@@ -392,6 +398,45 @@ Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="a9018a5bd18ab48976522e31de189dc49" name="a9018a5bd18ab48976522e31de189dc49"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9018a5bd18ab48976522e31de189dc49">&#9670;&#160;</a></span>createAIELowerScratchpadParametersPass() <span class="overload">[1/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; ModuleOp &gt; &gt; xilinx::AIEX::createAIELowerScratchpadParametersPass </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIELowerScratchpadParameters_8cpp_source.html#l00454">454</a> of file <a class="el" href="AIELowerScratchpadParameters_8cpp_source.html">AIELowerScratchpadParameters.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a07a229ddf7f75a2bae31e41ff7262952" name="a07a229ddf7f75a2bae31e41ff7262952"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a07a229ddf7f75a2bae31e41ff7262952">&#9670;&#160;</a></span>createAIELowerScratchpadParametersPass() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; ModuleOp &gt; &gt; xilinx::AIEX::createAIELowerScratchpadParametersPass </td>
+          <td>(</td>
+          <td class="paramtype">AIELowerScratchpadParametersOptions&#160;</td>
+          <td class="paramname"><em>options</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIELowerScratchpadParameters_8cpp_source.html#l00459">459</a> of file <a class="el" href="AIELowerScratchpadParameters_8cpp_source.html">AIELowerScratchpadParameters.cpp</a>.</p>
+
+</div>
+</div>
 <a id="a2dbd961c6a84a34fe14387e7e944caa1" name="a2dbd961c6a84a34fe14387e7e944caa1"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a2dbd961c6a84a34fe14387e7e944caa1">&#9670;&#160;</a></span>createAIELowerSetLockPass()</h2>
 
@@ -445,7 +490,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00697">697</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00762">762</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
 
 </div>
 </div>
@@ -559,7 +604,51 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEXToStandard_8cpp_source.html#l00074">74</a> of file <a class="el" href="AIEXToStandard_8cpp_source.html">AIEXToStandard.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEXToStandard_8cpp_source.html#l00077">77</a> of file <a class="el" href="AIEXToStandard_8cpp_source.html">AIEXToStandard.cpp</a>.</p>
+
+</div>
+</div>
+<a id="af0913805167cbc69610907cb0ca57f86" name="af0913805167cbc69610907cb0ca57f86"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af0913805167cbc69610907cb0ca57f86">&#9670;&#160;</a></span>emitUpdateBdAddressFromOffsetParameter()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">LogicalResult xilinx::AIEX::emitUpdateBdAddressFromOffsetParameter </td>
+          <td>(</td>
+          <td class="paramtype">OpBuilder &amp;&#160;</td>
+          <td class="paramname"><em>builder</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">Operation *&#160;</td>
+          <td class="paramname"><em>bdOp</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">BaseMemRefType&#160;</td>
+          <td class="paramname"><em>bufType</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint64_t&#160;</td>
+          <td class="paramname"><em>registerAddr</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEUtils_8cpp_source.html#l00162">162</a> of file <a class="el" href="AIEUtils_8cpp_source.html">AIEUtils.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00208">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>.</p>
 
 </div>
 </div>
@@ -623,7 +712,7 @@ Functions</h2></td></tr>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afdfb265758bbfe09f19dd1f07f525ca1">xilinx::AIE::AIETargetModel::getAddressGenGranularity()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00290">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00304">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
 
 </div>
 </div>
@@ -665,7 +754,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEUtils_8cpp_source.html#l00125">125</a> of file <a class="el" href="AIEUtils_8cpp_source.html">AIEUtils.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEUtils_8cpp_source.html#l00128">128</a> of file <a class="el" href="AIEUtils_8cpp_source.html">AIEUtils.cpp</a>.</p>
 
 </div>
 </div>
@@ -697,7 +786,7 @@ Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEXDialect_8cpp_source.html#l00363">363</a> of file <a class="el" href="AIEXDialect_8cpp_source.html">AIEXDialect.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00290">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00304">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
 
 </div>
 </div>
@@ -729,7 +818,7 @@ Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEXDialect_8cpp_source.html#l00351">351</a> of file <a class="el" href="AIEXDialect_8cpp_source.html">AIEXDialect.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00290">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00304">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
 
 </div>
 </div>
@@ -749,7 +838,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEUtils_8cpp_source.html#l00019">19</a> of file <a class="el" href="AIEUtils_8cpp_source.html">AIEUtils.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEUtils_8cpp_source.html#l00022">22</a> of file <a class="el" href="AIEUtils_8cpp_source.html">AIEUtils.cpp</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00208">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>.</p>
 
@@ -827,14 +916,14 @@ Functions</h2></td></tr>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00290">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00304">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Jun 6 2026 03:09:17 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sat Jun 6 2026 04:37:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

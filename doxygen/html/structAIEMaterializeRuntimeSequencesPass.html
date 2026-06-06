@@ -79,13 +79,45 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
+<tr class="memitem:a3e3cd0ebceaf8dfce6d7142ebedb042c" id="r_a3e3cd0ebceaf8dfce6d7142ebedb042c"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEMaterializeRuntimeSequencesPass.html#a3e3cd0ebceaf8dfce6d7142ebedb042c">deduplicateCreateScratchpadOps</a> (AIE::RuntimeSequenceOp runtimeSeqOp)</td></tr>
+<tr class="separator:a3e3cd0ebceaf8dfce6d7142ebedb042c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a11c4fd094925be145550454124b92204" id="r_a11c4fd094925be145550454124b92204"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEMaterializeRuntimeSequencesPass.html#a11c4fd094925be145550454124b92204">runOnOperation</a> () override</td></tr>
 <tr class="separator:a11c4fd094925be145550454124b92204"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00557">557</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00581">581</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
 </div><h2 class="groupheader">Member Function Documentation</h2>
+<a id="a3e3cd0ebceaf8dfce6d7142ebedb042c" name="a3e3cd0ebceaf8dfce6d7142ebedb042c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3e3cd0ebceaf8dfce6d7142ebedb042c">&#9670;&#160;</a></span>deduplicateCreateScratchpadOps()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">LogicalResult AIEMaterializeRuntimeSequencesPass::deduplicateCreateScratchpadOps </td>
+          <td>(</td>
+          <td class="paramtype">AIE::RuntimeSequenceOp&#160;</td>
+          <td class="paramname"><em>runtimeSeqOp</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00591">591</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00618">runOnOperation()</a>.</p>
+
+</div>
+</div>
 <a id="a11c4fd094925be145550454124b92204" name="a11c4fd094925be145550454124b92204"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a11c4fd094925be145550454124b92204">&#9670;&#160;</a></span>runOnOperation()</h2>
 
@@ -109,9 +141,9 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00560">560</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00618">618</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00045">RuntimeCallGraphCyclicityAnalysis::isCyclic</a>, and <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00042">RuntimeCallGraphCyclicityAnalysis::isValid</a>.</p>
+<p class="reference">References <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00591">deduplicateCreateScratchpadOps()</a>, <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00045">RuntimeCallGraphCyclicityAnalysis::isCyclic</a>, and <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00042">RuntimeCallGraphCyclicityAnalysis::isValid</a>.</p>
 
 </div>
 </div>
@@ -121,7 +153,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Jun 6 2026 03:09:17 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sat Jun 6 2026 04:37:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

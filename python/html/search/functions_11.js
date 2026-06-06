@@ -13,5 +13,7 @@ var searchData=
   ['start_10',['start',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a374badc82bbd7649468f72f637818399',1,'iron::runtime::runtime::Runtime']]],
   ['step_5ftiler_11',['step_tiler',['../classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html#a5b7a54728fe1267f03bb9debf9a8c9ea',1,'taplib::tensortiler2d::TensorTiler2D']]],
   ['str_5fto_5fdtype_12',['str_to_dtype',['../namespaceiron_1_1dtype.html#aa67bf27f9800951c43102d184b73fae0',1,'iron::dtype']]],
-  ['strides_13',['strides',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a65e95e762442c88b58ae46e52c39c58b',1,'taplib::tap::TensorAccessPattern']]]
+  ['strides_13',['strides',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a65e95e762442c88b58ae46e52c39c58b',1,'taplib::tap::TensorAccessPattern']]],
+  ['sync_14',['sync',['../classutils_1_1hostruntime_1_1xrtruntime_1_1parameter__scratchpad_1_1ParameterScratchpad.html#a101d9a1aa5232de9215b796684840c80',1,'utils::hostruntime::xrtruntime::parameter_scratchpad::ParameterScratchpad']]],
+  ['sync_5fparameters_15',['sync_parameters',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a2a676afff2e0489e38a6752fb41c6c54',1,'iron::runtime::runtime::Runtime']]]
 ];

@@ -98,12 +98,22 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><span class="comment">//</span></div>
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="comment">// This function checks that all subviews remain static and contiguous.</span></div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>std::optional&lt;SubviewTraceResult&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a3b2e98a3f17d246b71b572b061a36d66">traceSubviewToBlockArgument</a>(Value value);</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>}</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>} <span class="comment">// namespace xilinx</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="comment">// Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset</span></div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="comment">// (held in the scratchpad slot referenced by `bdOp`&#39;s</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="comment">// `offset_state_table_idx` attribute, multiplied by the element size of</span></div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span><span class="comment">// `bufType`) into the BD address register at `registerAddr`.</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#af0913805167cbc69610907cb0ca57f86">emitUpdateBdAddressFromOffsetParameter</a>(OpBuilder &amp;builder,</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>                                                     Operation *bdOp,</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>                                                     BaseMemRefType bufType,</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>                                                     uint64_t registerAddr);</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>}</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>} <span class="comment">// namespace xilinx</span></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a3b2e98a3f17d246b71b572b061a36d66"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a3b2e98a3f17d246b71b572b061a36d66">xilinx::AIEX::traceSubviewToBlockArgument</a></div><div class="ttdeci">std::optional&lt; SubviewTraceResult &gt; traceSubviewToBlockArgument(Value value)</div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8cpp_source.html#l00019">AIEUtils.cpp:19</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_afa4b7d3cc349d42315b2c37bfd175cb8"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">xilinx::AIEX::getOrCreateDataMemref</a></div><div class="ttdeci">memref::GlobalOp getOrCreateDataMemref(OpBuilder &amp;builder, AIE::DeviceOp dev, mlir::Location loc, ArrayRef&lt; uint32_t &gt; words)</div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8cpp_source.html#l00125">AIEUtils.cpp:125</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a3b2e98a3f17d246b71b572b061a36d66"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a3b2e98a3f17d246b71b572b061a36d66">xilinx::AIEX::traceSubviewToBlockArgument</a></div><div class="ttdeci">std::optional&lt; SubviewTraceResult &gt; traceSubviewToBlockArgument(Value value)</div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8cpp_source.html#l00022">AIEUtils.cpp:22</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_af0913805167cbc69610907cb0ca57f86"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#af0913805167cbc69610907cb0ca57f86">xilinx::AIEX::emitUpdateBdAddressFromOffsetParameter</a></div><div class="ttdeci">LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &amp;builder, Operation *bdOp, BaseMemRefType bufType, uint64_t registerAddr)</div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8cpp_source.html#l00162">AIEUtils.cpp:162</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_afa4b7d3cc349d42315b2c37bfd175cb8"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">xilinx::AIEX::getOrCreateDataMemref</a></div><div class="ttdeci">memref::GlobalOp getOrCreateDataMemref(OpBuilder &amp;builder, AIE::DeviceOp dev, mlir::Location loc, ArrayRef&lt; uint32_t &gt; words)</div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8cpp_source.html#l00128">AIEUtils.cpp:128</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIEX_1_1SubviewTraceResult_html"><div class="ttname"><a href="structxilinx_1_1AIEX_1_1SubviewTraceResult.html">xilinx::AIEX::SubviewTraceResult</a></div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8h_source.html#l00026">AIEUtils.h:26</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIEX_1_1SubviewTraceResult_html_a1fdd8a46f2d8ff937017deddc68c4436"><div class="ttname"><a href="structxilinx_1_1AIEX_1_1SubviewTraceResult.html#a1fdd8a46f2d8ff937017deddc68c4436">xilinx::AIEX::SubviewTraceResult::offsetInBytes</a></div><div class="ttdeci">int64_t offsetInBytes</div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8h_source.html#l00028">AIEUtils.h:28</a></div></div>
@@ -111,7 +121,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Jun 6 2026 03:09:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sat Jun 6 2026 04:37:53 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
