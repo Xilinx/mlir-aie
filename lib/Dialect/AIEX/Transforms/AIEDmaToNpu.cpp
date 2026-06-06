@@ -461,6 +461,16 @@ public:
                     targetModel.getDmaBdAddressOffset(tileCol, tileRow);
     NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, offset);
 
+    // If this DMA op has an offset_state_table_idx, emit an
+    // update_from_scratchpad to add the runtime offset to the BD address
+    // register.
+    if (op.getOffsetStateTableIdxAttr()) {
+      auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
+      if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op, bufType,
+                                                        addr)))
+        return failure();
+    }
+
     // push the patched bd onto the dma task queue
     NpuPushQueueOp::create(
         rewriter, op->getLoc(), column, row, infoOp.getChannelDirAttr(),

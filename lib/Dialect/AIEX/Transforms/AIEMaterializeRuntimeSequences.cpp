@@ -480,13 +480,37 @@ struct InlineRuntimeCallsPattern : RewritePattern {
       return failure();
     }
 
+    // Find the calling runtime sequence so we can hoist certain ops to its
+    // start instead of placing them at the call site.
+    AIE::RuntimeSequenceOp callerRuntimeSequence =
+        runOp.getOperation()->getParentOfType<AIE::RuntimeSequenceOp>();
+    if (!callerRuntimeSequence) {
+      runOp.emitError() << "needs to be (transitively) inside a "
+                           "aie.runtime_sequence operation";
+      return failure();
+    }
+    Block &callerBodyBlock = callerRuntimeSequence.getBody().front();
+    mlir::Block::iterator hoistPos = callerBodyBlock.begin();
+
     // Now, also inline symbol definitions referenced in the callee body;
     // this may pull in additional SSA values referenced by the symbol
     // definitions.
+    //
+    // npu.create_scratchpad ops are hoisted to the start of the calling
+    // runtime sequence instead of being placed at the call site, so a single
+    // scratchpad is created per sequence regardless of how many callees were
+    // inlined.
     rewriter.setInsertionPoint(runOp);
     mlir::OpBuilder::InsertPoint clonedOpInsertionPoint =
         rewriter.saveInsertionPoint();
     for (Operation &op : calleeBody.getOps()) {
+      bool shouldHoist = llvm::isa<NpuCreateScratchpadOp>(&op);
+      if (shouldHoist) {
+        rewriter.setInsertionPoint(&callerBodyBlock, hoistPos);
+        rewriter.clone(op, argMap);
+        continue;
+      }
+
       rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
       Operation *clonedOp = rewriter.clone(op, argMap);
       clonedOpInsertionPoint = rewriter.saveInsertionPoint();
@@ -557,6 +581,40 @@ static LogicalResult verifyRunOpsInConfigureOp(ConfigureOp configureOp,
 struct AIEMaterializeRuntimeSequencesPass
     : xilinx::AIEX::impl::AIEMaterializeRuntimeSequencesBase<
           AIEMaterializeRuntimeSequencesPass> {
+
+  // After inlining, a runtime sequence may contain multiple
+  // npu.create_scratchpad ops (one from the sequence itself and one from each
+  // inlined callee).  Keep only the first; all must agree on size because the
+  // scratchpad size is a module-level property.  Returns failure if a size
+  // mismatch is detected.
+  LogicalResult
+  deduplicateCreateScratchpadOps(AIE::RuntimeSequenceOp runtimeSeqOp) {
+    if (runtimeSeqOp.getBody().empty())
+      return success();
+
+    Block &body = runtimeSeqOp.getBody().front();
+    NpuCreateScratchpadOp firstScratchpad;
+    SmallVector<NpuCreateScratchpadOp> duplicates;
+    for (NpuCreateScratchpadOp scratchpadOp :
+         body.getOps<NpuCreateScratchpadOp>()) {
+      if (!firstScratchpad) {
+        firstScratchpad = scratchpadOp;
+        continue;
+      }
+      if (firstScratchpad.getSize() != scratchpadOp.getSize()) {
+        scratchpadOp.emitError(
+            "create_scratchpad size mismatch after inlining: ")
+            << scratchpadOp.getSize() << " != " << firstScratchpad.getSize();
+        return failure();
+      }
+      duplicates.push_back(scratchpadOp);
+    }
+    for (NpuCreateScratchpadOp dup : duplicates)
+      dup.erase();
+
+    return success();
+  }
+
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
 
@@ -641,6 +699,13 @@ struct AIEMaterializeRuntimeSequencesPass
       if (failed(applyPatternsGreedily(deviceOp, std::move(patterns_0),
                                        rewriter_config))) {
         return signalPassFailure();
+      }
+
+      // Deduplicate create_scratchpad ops that were hoisted during inlining.
+      for (AIE::RuntimeSequenceOp runtimeSeqOp :
+           deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
+        if (failed(deduplicateCreateScratchpadOps(runtimeSeqOp)))
+          return signalPassFailure();
       }
 
       // Insert LoadPDI ops for each aiex.configure op
