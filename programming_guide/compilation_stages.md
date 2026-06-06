@@ -38,7 +38,7 @@ lives at which stage.
         │
         │  aiecc.main: aie-opt → aie-translate → peano/chess → bootgen
         ▼
-   xclbin + insts(.bin|.elf)  ◄── on-disk artifacts (under $NPU_CACHE_DIR)
+   xclbin + insts(.bin|.elf)  ◄── on-disk artifacts (under $NPU_CACHE_HOME)
         │
         ▼
    CallableDesign             ◄── runtime callable
@@ -127,7 +127,7 @@ the recipe hash (used to name the work directory).
 `aiecc` runs the usual sequence — `aie-opt` passes → `aie-translate` →
 peano or chess for the kernel `.o` → linker → `bootgen` for the
 xclbin — and writes the final `xclbin` and `insts.bin` (and optionally
-`insts.elf` when `elf_path=` is set) under `$NPU_CACHE_DIR`.
+`insts.elf` when `elf_path=` is set) under `$NPU_CACHE_HOME`.
 
 If the cache directory already has an `xclbin` + insts matching both
 the recipe hash *and* the artifact hash, `aiecc` is **not invoked** at
@@ -138,7 +138,56 @@ To force a rebuild, decorate with `@iron.jit(..., use_cache=False)` or
 remove the cache directory:
 
 ```bash
-rm -rf "${NPU_CACHE_DIR:-$HOME/.npu/cache}"
+rm -rf "${NPU_CACHE_HOME:-$HOME/.npu/cache}"
+```
+
+#### Per-design cache directory contents
+
+Each cache directory `$NPU_CACHE_HOME/<recipe_hash>/` keeps every
+artifact `aiecc` produced for that design, not just the two the runtime
+loads.  This is useful when you need to inspect the lowered MLIR, the
+post-placement IR, the per-core LLVM IR, or the actual `.o` files that
+linked into the final xclbin.
+
+| File | What it is |
+|---|---|
+| `.lock` | cross-process flock so concurrent compiles of the same recipe don't collide |
+| `aie.mlir` | input MLIR your generator produced (post-`resolve_program`) — the same text `cd.as_mlir(...)` returns |
+| `input_with_addresses.mlir` | lowered MLIR with shim / memtile DMA addresses bound; the last MLIR form before `aie-translate` |
+| `final.xclbin` | the binary XRT loads onto the NPU |
+| `insts.bin` | NPU runtime instruction stream paired with the xclbin |
+| `insts.elf` | only present when `@iron.jit(elf_path=...)` is set — `xrt::elf` variant of `insts.bin` |
+| `main.pdi` | Programmable Device Image — config data packed by `bootgen` |
+| `main_aie_partition.json` | AIE partition manifest (which tiles, kernels, memory regions) |
+| `main_aie_cdo_init.bin` | CDO blob initialising tile / DMA registers |
+| `main_aie_cdo_elfs.bin` | CDO blob carrying the per-core ELFs to the device |
+| `main_aie_cdo_enable.bin` | CDO blob enabling tiles after init |
+| `main_design.bif` | Bootgen Image Format spec used to assemble `main.pdi` |
+| `main_kernels.json` | kernel metadata XRT consumes alongside the xclbin |
+| `main_mem_topology.json` | memory-topology descriptor embedded into the xclbin |
+| `main_core_<col>_<row>.elf` | per-core final ELF the AIE tile actually runs |
+| `main_core_<col>_<row>.ld.script` | linker script Peano used to lay out that ELF |
+| `main_core_<col>_<row>.ll` | per-core LLVM IR before `opt` |
+| `main_core_<col>_<row>.opt.ll` | per-core LLVM IR after `opt` |
+| `main_core_<col>_<row>.peanohack.ll` | Peano workaround IR (vector-intrinsic fixups) |
+| `main_core_<col>_<row>.o` | per-core compiled object that links into the `.elf` |
+| `<kernel>.cc` | `ExternalFunction` kernel source, copied in for `clang` |
+| `<kernel>_<hash>.o` | `clang`'s compiled `.o` for that `ExternalFunction` |
+
+Designs that pin a single Worker (e.g. `Tile(0, 2)`) produce one set
+of `main_core_*` files; multi-Worker designs like the `whole_array`
+matmul produce one set per `(col, row)` the placer landed on.
+
+To list what a freshly compiled design wrote out:
+
+```python
+from pathlib import Path
+from aie.utils.compile import NPU_CACHE_HOME
+
+xclbin, _ = my_design.specialize(N=4096).compile()
+kernel_dir = Path(xclbin).parent
+for p in sorted(kernel_dir.iterdir()):
+    print(p.name)
 ```
 
 ### 5. Runtime binding — `CallableDesign.__call__`
@@ -158,6 +207,39 @@ The `NPUKernel` is cached per-recipe, so subsequent calls with the
 same compile kwargs reuse the same XRT `hw_context` and `kernel`
 objects.
 
+#### Tensor-arg validation
+
+Before any DMAs run, each positional tensor argument is checked against
+the corresponding entry in the compiled `aie.runtime_sequence`'s
+signature.  The runtime_sequence in `input_with_addresses.mlir` carries
+fully resolved memref types — `parse_dma_sizes` reads the per-arg
+element count straight off the signature, so fan-outs, repeated
+transfers (matmul B reloaded each tile-row), and InOut fill+drain pairs
+on the same arg all give the host-tensor size directly without
+re-folding multi-DMA patterns.
+
+A mismatch raises `RuntimeError` *before* the kernel runs, naming the
+parameter and the `Compile[T]` settings that produced the expected
+size:
+
+```python
+wrong_size = iron.zeros(99, dtype=np.uint8)
+try:
+    passthrough(wrong_size, out_t, N=4096)
+except RuntimeError as e:
+    print(e)
+# Tensor argument 'a_in' has 99 elements but the kernel was compiled
+# for 4096 elements.
+# Compile[T] parameters used at compile time: {'N': 4096}
+```
+
+The check runs on both fresh compiles and cache hits.  It is silently
+skipped when the expected sizes cannot be determined — for example,
+modules with several `aie.runtime_sequence`s and no unique call-graph
+root (multi-device programs that route through `aiex.run` from several
+top-level sequences).  Args wired only to runtime params and never DMA-
+transferred (expected entry `0`) are also skipped.
+
 ## Knob → stage cheat-sheet
 
 | Knob | Set at | Affects |
@@ -170,7 +252,7 @@ objects.
 | `@iron.jit(object_files=[...])` | decoration | pre-built kernel `.o` files linked into the design (stage 4) |
 | `@iron.jit(use_cache=False)` | decoration | bypass on-disk cache; always rebuild (stage 4) |
 | `@iron.jit(elf_path=...)` | decoration | also emit `insts.elf` for the `xrt::elf` testbench flow (stage 4) |
-| `$NPU_CACHE_DIR` env var | process-wide | where `aiecc` reads/writes artifacts (stage 4) |
+| `$NPU_CACHE_HOME` env var | process-wide | where `aiecc` reads/writes artifacts (stage 4) |
 | `trace_config=` kwarg at call-time | each call | forwarded to `NPUKernel.__init__` (stage 5); **not** a Compile[T] kwarg |
 | `iron.set_current_device(...)` | before generator runs | target architecture baked into the generator's `Program` (stage 3) |
 

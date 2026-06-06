@@ -91,8 +91,8 @@ my_design(a, b)              # compile + run + sync back
 
 `@iron.jit` caches compiled artifacts by `(MLIR bytecode + compile-time kwargs)`. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.
 
-* Cache directory: `${NPU_CACHE_DIR:-~/.npu/cache}`. Set `NPU_CACHE_DIR=/tmp/iron_cache` (or anywhere) to override.
-* To force a clean build, `rm -rf "$NPU_CACHE_DIR"` (or the per-design `build/` directory the Makefile writes to).
+* Cache directory: `${NPU_CACHE_HOME:-~/.npu/cache}`. Set `NPU_CACHE_HOME=/tmp/iron_cache` (or anywhere) to override.
+* To force a clean build, `rm -rf "$NPU_CACHE_HOME"` (or the per-design `build/` directory the Makefile writes to).
 * First-call compile time depends on design complexity. A simple vector_scalar_mul-style design compiles in single-digit seconds; multi-core matmul or convolution can take 30s+. Subsequent calls with a warm cache are essentially instant.
 
 More configuration knobs (tensor backend, XRT context cache, log level) are in [`iron_configuration.md`](./iron_configuration.md).

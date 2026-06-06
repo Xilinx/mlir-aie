@@ -43,7 +43,7 @@ If the IRON device is not set, many designs will fetch it on demand from the [`D
 
 ## IRON Cache Location
 
-The IRON jit feature caches compiled objects in a directory defined by ```NPU_CACHE_DIR```. By default this value is the user's home directory.
+The IRON jit feature caches compiled objects in a directory defined by ```NPU_CACHE_HOME```. By default this value is the user's home directory.
 
 ## IRON XRT Runtime Cache Size
 
