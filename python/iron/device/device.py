@@ -9,7 +9,7 @@
 from typing import Generator
 
 from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import AIETileType, WireBundle  # type: ignore
+from ...dialects._aie_enum_gen import AIEArch, AIETileType, WireBundle  # type: ignore
 from ...dialects.aie import (
     AIEDevice,
     logical_tile,
@@ -44,6 +44,11 @@ class Device(Resolvable):
     def rows(self) -> int:
         """Number of rows in the device tile array."""
         return self._tm.rows()
+
+    @property
+    def arch(self) -> AIEArch:
+        """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
+        return AIEArch(self._tm.get_target_arch())
 
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""

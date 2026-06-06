@@ -9,8 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "cxxopts.hpp"
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -23,20 +27,28 @@
 
 #include "test_utils.h"
 
-// gelu reference implementation
-std::bfloat16_t gelu_bf16(std::bfloat16_t &input) {
+// GELU reference implementation.
+test_utils::bfloat16_t gelu_bf16(test_utils::bfloat16_t input) {
   // Approximate GELU: 0.5 * x * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))
-  constexpr auto sqrt_2_over_pi = std::bfloat16_t(0.79788456f);
-  constexpr auto beta = std::bfloat16_t(0.044715f);
+  const test_utils::bfloat16_t k0_5 = test_utils::bfloat16_from_float(0.5f);
+  const test_utils::bfloat16_t k1 = test_utils::bfloat16_from_float(1.0f);
+  const test_utils::bfloat16_t sqrt_2_over_pi =
+      test_utils::bfloat16_from_float(0.79788456f);
+  const test_utils::bfloat16_t beta =
+      test_utils::bfloat16_from_float(0.044715f);
 
-  std::bfloat16_t x = input;
-  std::bfloat16_t x3 = x * x * x;
-  std::bfloat16_t inner = sqrt_2_over_pi * (x + beta * x3);
-  std::bfloat16_t tanh_val = std::tanh(inner);
-  std::bfloat16_t gelu =
-      std::bfloat16_t(0.5f) * x * (std::bfloat16_t(1.0f) + tanh_val);
-
-  return std::bfloat16_t(gelu);
+  const test_utils::bfloat16_t x2 = test_utils::bfloat16_mul(input, input);
+  const test_utils::bfloat16_t x3 = test_utils::bfloat16_mul(input, x2);
+  const test_utils::bfloat16_t x3_beta = test_utils::bfloat16_mul(x3, beta);
+  const test_utils::bfloat16_t inner = test_utils::bfloat16_add(input, x3_beta);
+  const test_utils::bfloat16_t inner1 =
+      test_utils::bfloat16_mul(inner, sqrt_2_over_pi);
+  const test_utils::bfloat16_t tanh_out = test_utils::bfloat16_tanh(inner1);
+  const test_utils::bfloat16_t one_plus_tanh =
+      test_utils::bfloat16_add(tanh_out, k1);
+  const test_utils::bfloat16_t mul_v05 =
+      test_utils::bfloat16_mul(k0_5, one_plus_tanh);
+  return test_utils::bfloat16_mul(input, mul_v05);
 }
 
 int main(int argc, const char *argv[]) {
@@ -53,7 +65,7 @@ int main(int argc, const char *argv[]) {
       "instr,i",
       "path of file containing userspace instructions to be sent to the LX6",
       cxxopts::value<std::string>())(
-      "length,l", "the length of the transfer in std::bfloat16_t",
+      "length,l", "the length of the transfer in bfloat16 elements",
       cxxopts::value<int>()->default_value("4096"));
 
   try {
@@ -133,19 +145,21 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, N * sizeof(std::bfloat16_t),
+  auto bo_inA = xrt::bo(device, N * sizeof(test_utils::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, N * sizeof(std::bfloat16_t),
+  auto bo_out = xrt::bo(device, N * sizeof(test_utils::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
 
-  std::bfloat16_t *bufInA = bo_inA.map<std::bfloat16_t *>();
-  std::vector<std::bfloat16_t> srcVecA;
+  test_utils::bfloat16_t *bufInA = bo_inA.map<test_utils::bfloat16_t *>();
+  std::vector<test_utils::bfloat16_t> srcVecA;
   for (int i = 0; i < N; i++)
-    srcVecA.push_back(std::bfloat16_t(i * 0.05f + -2.0f)); // Example data
-  memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(std::bfloat16_t)));
+    srcVecA.push_back(
+        test_utils::bfloat16_from_float(i * 0.05f + -2.0f)); // Example data
+  memcpy(bufInA, srcVecA.data(),
+         (srcVecA.size() * sizeof(test_utils::bfloat16_t)));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
@@ -173,24 +187,27 @@ int main(int argc, const char *argv[]) {
   std::cout << "Latency (us): " << npu_time << std::endl;
   std::cout << std::endl;
 
-  double total_bytes = 2.0 * N * sizeof(std::bfloat16_t); // input and output
+  double total_bytes =
+      2.0 * N * sizeof(test_utils::bfloat16_t); // input and output
   double bandwidth_GBps = total_bytes / (npu_time * 1e-6) / 1e9;
   std::cout << "Effective Bandwidth: " << bandwidth_GBps << " GB/s"
             << std::endl;
 
-  std::bfloat16_t *bufOut = bo_out.map<std::bfloat16_t *>();
+  test_utils::bfloat16_t *bufOut = bo_out.map<test_utils::bfloat16_t *>();
 
   int errors = 0;
 
   for (int i = 0; i < N; i++) {
-    std::bfloat16_t ref = gelu_bf16(srcVecA[i]);
-    if (!test_utils::nearly_equal(*(bufOut + i), ref, 0.1)) {
+    const test_utils::bfloat16_t ref = gelu_bf16(srcVecA[i]);
+    const float expected = test_utils::bfloat16_to_float(ref);
+    const float actual = test_utils::bfloat16_to_float(*(bufOut + i));
+    if (!test_utils::nearly_equal(actual, expected, 0.1)) {
       errors++;
       // Print the first 100 mismatches
       if (errors <= 100) {
         std::cout << "Mismatch at index " << i << ": "
-                  << "Expected: " << ref << ", "
-                  << "Got: " << *(bufOut + i) << std::endl;
+                  << "Expected: " << expected << ", "
+                  << "Got: " << actual << std::endl;
       }
     }
   }

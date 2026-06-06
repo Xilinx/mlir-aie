@@ -41,7 +41,7 @@ def build_aie_trace():
     tile_size = 1024
     num_sub_vectors = 4
 
-    @device(AIEDevice.npu1_1col)
+    @device(AIEDevice.npu1_2col)
     def device_body():
         tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
         scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
@@ -149,7 +149,7 @@ def build_aie_trace():
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             # Start trace configuration
-            trace_utils.start_trace(trace_size=8192)
+            trace_utils.start_trace(trace_size=8192, egress_shim_col=1)
 
             # Configure DMA tasks for input, factor, and output
             in_task = shim_dma_single_bd_task(
