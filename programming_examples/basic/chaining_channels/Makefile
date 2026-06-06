@@ -8,7 +8,7 @@
 #
 ##===----------------------------------------------------------------------===##
 #
-# Low-level placed IRON design (see chaining_channels.py docstring).
+# Low-level IRON design (Flow / Lock / TileDma primitives — see chaining_channels.py docstring).
 # The script's --xclbin-path / --insts-path mode drives
 # compile_mlir_module directly, so the Makefile shape matches the
 # @iron.jit ports.

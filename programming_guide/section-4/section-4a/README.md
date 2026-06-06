@@ -93,7 +93,7 @@ We can then compute and print the actual average, minimum and maximum run times 
 In addition, if you have an estimate of the number of MACs each kernel execution takes, you can report additional performance data such as GFLOPs as can be seen in the matrix multiplication example [test.cpp](../../../programming_examples/basic/matrix_multiplication/test.cpp#L295).
 
 ## <u>Exercises</u>
-1. Build + run the higher-level `@iron.jit` design with `make run` and note the reported NPU + end-to-end averages. (The defaults are `--warmup 4 --iters 10`; override via `--warmup N --iters M` on the python command line.) What did you see?
+1. Build + run the `@iron.jit` design with `make run` and note the reported NPU + end-to-end averages. (The defaults are `--warmup 4 --iters 10`; override via `--warmup N --iters M` on the python command line.) What did you see?
 
 1. Build the xclbin + insts pair via `make all`, then run the explicit C++ host with `make run_cpp` and note the reported "wall clock" time. <img src="../../../mlir_exercises/images/answer1.jpg" title="Answer can be anywhere from 300-600us" height=25>
 

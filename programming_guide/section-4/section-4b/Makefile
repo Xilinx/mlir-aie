@@ -8,7 +8,7 @@
 #
 ##===----------------------------------------------------------------------===##
 #
-# Higher-level (@iron.jit) path:
+# @iron.jit path:
 #   make run        — JIT-compile + run + verify on the attached NPU.
 #   make emit-mlir  — print the lowered MLIR (build/aie.mlir).
 #

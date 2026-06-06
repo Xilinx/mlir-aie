@@ -6,8 +6,8 @@
 #
 ##===----------------------------------------------------------------------===##
 #
-# Higher-level path (default): `make run` JIT-compiles + runs the
-# @iron.jit design on the attached NPU. `make emit-mlir` prints the
+# @iron.jit path (default): `make run` JIT-compiles + runs the
+# design on the attached NPU. `make emit-mlir` prints the
 # lowered MLIR without touching the NPU.
 #
 # Decomposed-XRT walkthrough: `make all` drops the xclbin + insts pair

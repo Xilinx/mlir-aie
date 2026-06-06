@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
-"""Section-1 minimal IRON design — higher-level (``@iron.jit``) entry point.
+"""Section-1 minimal IRON design — ``@iron.jit`` entry point.
 
 A single ``Worker`` placed on tile (0, 2) writes zeros into a local
 ``Buffer``.  The runtime sequence has one tensor argument (the host-

@@ -360,7 +360,7 @@ The same configuration steps in the C++ host code is also required for the pytho
 
 ## Running the Program
 
-Higher-level (`@iron.jit`) end-to-end run:
+`@iron.jit` end-to-end run:
 
 ```sh
 make run                # JIT-compile + run vector_scalar_mul.py on the attached NPU

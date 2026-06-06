@@ -266,7 +266,7 @@ The relevant CLI arguments (added by `aie.utils.hostruntime.argparse.add_runtime
 - `--trace-file`: Path to write raw trace data (default: `trace.txt`).
 - `--ddr-id`: DDR buffer index for trace (0-4, or -1 to append after last tensor). Default is 4.
 
-> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` (higher-level) / `start_trace()` (lower-level) call, or buffer allocation will be incorrect.
+> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` / `start_trace()` call, or buffer allocation will be incorrect.
 
 #### TraceConfig (manual setup)
 
