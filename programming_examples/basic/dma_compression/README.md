@@ -238,13 +238,17 @@ python3 test_dma_compression.py both -v
 python3 -c "
 from aie.iron.device import NPU1Col1
 from aie.utils.hostruntime import set_current_device
-from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from dma_compression import dma_compression
 set_current_device(NPU1Col1())
-spec = CompilableDesign(dma_compression, compile_kwargs={'config': 'both'})
-print(spec.as_mlir(spec.generator))
+print(dma_compression.as_mlir(config='both'))
 "
 ```
+
+`dma_compression` is a ``@iron.jit``-decorated ``CallableDesign``;
+its ``.as_mlir(**compile_kwargs)`` runs the generator and returns the
+serialised MLIR without any aiecc work.  See
+[`compilation_stages.md`](../../../programming_guide/compilation_stages.md)
+§Inspecting an intermediate stage for the other introspection knobs.
 
 ## Strix npu2 (AIE2P) support
 
