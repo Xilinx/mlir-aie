@@ -195,8 +195,12 @@ def _transpose_combined(
             f"combined requires m | M, n | K, s | m, s | n; got "
             f"M={M}, K={K}, m={m}, n={n}, s={s}."
         )
-    if s == 8 and (m <= 8 or n <= 8):
-        raise ValueError("s=8 requires m, n > 8 (kernel constraint)")
+    if s == 8 and (m < 32 or n < 32):
+        # The s=8 kernel uses an interleave_unzip(32) stage internally, so
+        # it needs min(m, n) >= 32 — m,n > 8 compiles but silently produces
+        # wrong output.  The matching static_assert lives in
+        # aie_kernels/transpose.cc:transpose_8x8.
+        raise ValueError("s=8 requires m, n >= 32 (kernel constraint)")
 
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     matrix_ty = np.ndarray[(M, K), np.dtype[dtype]]

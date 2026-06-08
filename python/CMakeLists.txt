@@ -58,6 +58,9 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/compile/jit/__init__.py
     utils/compile/jit/compilabledesign.py
     utils/compile/jit/_dma_size_parser.py
+    utils/compile/jit/_hash.py
+    utils/compile/jit/_introspect.py
+    utils/compile/jit/_serialization.py
     utils/compile/jit/markers.py
     utils/compile/jit/context.py
     utils/compile/jit/compileconfig.py
