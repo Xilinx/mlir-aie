@@ -5,12 +5,21 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""Iron-level Flow primitive — an explicit AXI-stream route between two tile ports.
+"""Iron-level circuit- and packet-switched route primitives.
 
-Peer of :class:`ObjectFifo` in the dataflow namespace.  ObjectFifo wraps
-*route + buffers + locks + DMA* into one circular-buffer abstraction; a
-Flow is the lower-level "just declare the route" primitive, paired with
-explicit :class:`TileDma` programs (and :class:`Buffer` / :class:`Lock`
+Two classes live here: :class:`Flow` (circuit-switched) and
+:class:`PacketFlow` (packet-switched, with explicit packet IDs), plus
+the small :class:`PacketDest` dataclass PacketFlow uses for its
+destination list.  They share a private ``_emit_shim_dma_alloc``
+helper and are treated as a sibling pair by ``dataflow/__init__.py``;
+splitting them across two modules would either duplicate the helper
+or require a third file to hold it.
+
+Both are peers of :class:`ObjectFifo` in the dataflow namespace.
+ObjectFifo wraps *route + buffers + locks + DMA* into one
+circular-buffer abstraction; ``Flow`` / ``PacketFlow`` are the
+lower-level "just declare the route" primitives, paired with explicit
+:class:`TileDma` programs (and :class:`Buffer` / :class:`Lock`
 shared state) for designs that need direct control.
 """
 
