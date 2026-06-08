@@ -649,7 +649,7 @@ static LogicalResult convertTransactionOpsToMLIR(
     }
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(device.getBody());
-    int id = 0;
+    unsigned id = 0;
     for (auto &op : operations) {
       if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
         global_data.push_back(nullptr);
@@ -659,10 +659,8 @@ static LogicalResult convertTransactionOpsToMLIR(
       const uint32_t *d = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
       std::vector<uint32_t> data32(d, d + size);
 
-      std::string name = blockwrite_prefix;
-      do {
-        name = blockwrite_prefix + std::to_string(id++);
-      } while (device.lookupSymbol(name));
+      std::string name =
+          AIE::generateUniqueSymbolName(device, blockwrite_prefix, id);
 
       MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
       TensorType tensorType =
@@ -795,7 +793,8 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
     while (device.lookupSymbol(seq_name))
       seq_name = "configure" + std::to_string(id++);
     StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
+    auto seq =
+        AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name, BoolAttr{});
     seq.getBody().push_back(new Block);
     builder.setInsertionPointToStart(&seq.getBody().front());
   } else {

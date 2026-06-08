@@ -118,6 +118,14 @@ void transpose_4x4(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
 
 /* As transpose_4, but transposes 8x8 submatrices. */
 void transpose_8x8(DTYPE *__restrict__ in_ptr, DTYPE *__restrict__ out_ptr) {
+  // The unzip(32) stage below requires VECTOR_SIZE >= 32, otherwise the
+  // shuffle indices alias and the kernel silently produces wrong output.
+  // Gated on DIM_s == 8 since the same .cc is built for DIM_s == 4 with
+  // smaller m,n that never call transpose_8x8.
+#if defined(DIM_s) && DIM_s == 8
+  static_assert(VECTOR_SIZE >= 32,
+                "transpose_8x8 requires min(DIM_m, DIM_n) >= 32");
+#endif
   for (unsigned col = 0; col < DIM_m; col += VECTOR_SIZE) {
     for (unsigned row = 0; row < DIM_n; row += 8) {
       aie::vector<DTYPE, VECTOR_SIZE> row_0 =

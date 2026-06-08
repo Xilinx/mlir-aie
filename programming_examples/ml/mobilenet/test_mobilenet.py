@@ -425,7 +425,7 @@ def main(opts):
     ds = DataShaper()
 
     before_input = np.loadtxt(
-        data_dir + "before_ifm_mem_fmt_1x1.txt", delimiter=",", dtype="uint8"
+        data_dir + "before_ifm_mem_fmt_1x1.txt", delimiter=",", dtype="int8"
     )
     before_input = before_input.reshape(tensorInC, tensorInH, tensorInW)
 

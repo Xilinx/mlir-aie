@@ -482,7 +482,8 @@ struct LinearizeContiguousTransfer
         op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr());
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
     return mlir::success();
   }
 };
@@ -794,23 +795,52 @@ LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
 
 LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
   // Only usage_type == 0 is currently supported by firmware.
-  if (getUsageType() != 0)
+  if (getUsageType() != 0) {
     return emitOpError("usage_type must be 0 (got ")
            << static_cast<uint32_t>(getUsageType())
            << "); other layouts are not supported.";
+  }
 
   // The StateTable layout (usage_type 0) has a max of 32 32-bit-word entries,
   // i.e. a maximum total scratchpad size of 128 bytes.
   constexpr uint32_t kMaxScratchpadSizeBytes = 128;
-  if (getSize() == 0)
+  if (getSize() == 0) {
     return emitOpError("size must be greater than 0.");
-  if (getSize() % 4 != 0)
+  }
+  if (getSize() % 4 != 0) {
     return emitOpError("size (")
            << getSize() << ") must be a multiple of 4 bytes.";
-  if (getSize() > kMaxScratchpadSizeBytes)
+  }
+  if (getSize() > kMaxScratchpadSizeBytes) {
     return emitOpError("size (")
            << getSize() << " bytes) exceeds maximum scratchpad size of "
            << kMaxScratchpadSizeBytes << " bytes.";
+  }
+
+  // At most one create_scratchpad may appear per runtime sequence. Walk the
+  // parent RuntimeSequenceOp to check; only report from the duplicate (i.e.
+  // the op that is NOT the first occurrence) to avoid emitting the same error
+  // twice.
+  auto runtimeSeq = getOperation()->getParentOfType<AIE::RuntimeSequenceOp>();
+  if (!runtimeSeq) {
+    return success();
+  }
+
+  NpuCreateScratchpadOp firstSeen;
+  runtimeSeq.walk([&](NpuCreateScratchpadOp op) {
+    if (!firstSeen) {
+      firstSeen = op;
+    }
+  });
+  if (firstSeen != *this) {
+    InFlightDiagnostic diag =
+        emitOpError("only one 'aiex.npu.create_scratchpad' is allowed per "
+                    "runtime sequence");
+    diag.attachNote(firstSeen.getLoc())
+        << "previous 'aiex.npu.create_scratchpad' here";
+    return diag;
+  }
+
   return success();
 }
 
@@ -1115,6 +1145,34 @@ AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
     return nullptr;
   }
   return referencedDevice;
+}
+
+//===----------------------------------------------------------------------===//
+// ReadScratchpadParameterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::ReadScratchpadParameterOp::verify() {
+  auto device = (*this)->getParentOfType<AIE::DeviceOp>();
+  if (!device) {
+    return emitOpError("must be inside an aie.device");
+  }
+  if (!(*this)->getParentOfType<AIE::CoreOp>()) {
+    return emitOpError("must be inside an aie.core");
+  }
+  auto moduleOp = (*this)->getParentOfType<ModuleOp>();
+  if (!moduleOp ||
+      !moduleOp.lookupSymbol<AIEX::ScratchpadParameterOp>(getParameter())) {
+    return emitOpError("references unknown parameter '")
+           << getParameter()
+           << "' (aiex.scratchpad_parameter ops are declared at module scope)";
+  }
+  if (getResult().getType().isF32()) {
+    return emitOpError(
+        "f32 parameters are not supported: the scratchpad encoding zeroes "
+        "the top 2 bits, which clobbers the sign bit and top exponent bit "
+        "of an f32. Use bf16 or an integer type up to i32 instead.");
+  }
+  return success();
 }
 
 LogicalResult AIEX::ConfigureOp::verify() {

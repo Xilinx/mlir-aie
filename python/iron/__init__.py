@@ -36,6 +36,7 @@ Provides the primary abstractions for describing NPU designs:
 from .buffer import Buffer
 from .kernel import ExternalFunction, Kernel
 from .lock import Lock
+from .scratchpad_parameter import ScratchpadParameter
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
@@ -100,6 +101,7 @@ __all__ = [
     "DmaChannel",
     "Flow",
     "Lock",
+    "ScratchpadParameter",
     "PacketDest",
     "PacketFlow",
     "Release",

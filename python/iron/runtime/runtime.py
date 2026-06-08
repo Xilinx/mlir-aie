@@ -22,12 +22,13 @@ from ...utils import trace as trace_utils
 from ... import ir  # type: ignore
 
 from ...dialects.aie import tile
-from ...dialects.aiex import runtime_sequence
+from ...dialects.aiex import runtime_sequence, sync_scratchpad_parameters_from_host
 from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
 from ..device import Tile, AnyShimTile
 from ..resolvable import Resolvable
+from ..scratchpad_parameter import ScratchpadParameter
 from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
 from .dmatask import DMATask
 from .data import RuntimeData
@@ -71,6 +72,7 @@ class Runtime(Resolvable):
         self._flows = []
         self._locks = []
         self._tile_dmas = []
+        self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._open_task_groups = []
         self._trace_size = None
         self._trace_workers = None
@@ -182,6 +184,7 @@ class Runtime(Resolvable):
         wait: bool = False,
         tile: Tile = AnyShimTile,
         packet: tuple[int, int] | None = None,
+        offset_parameter: "ScratchpadParameter | str | None" = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type producer) with data from a runtime buffer.
         This should be called within a Runtime.sequence() context.
@@ -199,6 +202,7 @@ class Runtime(Resolvable):
                 downstream packet-switched routing (e.g. ObjectFifos lowered
                 with ``--packet-sw-objFifos`` or an explicit
                 :class:`~aie.iron.PacketFlow`).  Defaults to None.
+            offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -212,10 +216,27 @@ class Runtime(Resolvable):
         if tap is None:
             tap = source.default_tap()
 
+        offset_param_name = None
+        if offset_parameter is not None:
+            if isinstance(offset_parameter, ScratchpadParameter):
+                offset_param_name = offset_parameter.name
+                if offset_parameter not in self._scratchpad_parameters:
+                    self._scratchpad_parameters.append(offset_parameter)
+            else:
+                offset_param_name = offset_parameter
+
         in_fifo.endpoint = rt_endpoint
         self._fifos.add(in_fifo)
         self._tasks.append(
-            DMATask(in_fifo, source, tap, task_group, wait, packet=packet)
+            DMATask(
+                in_fifo,
+                source,
+                tap,
+                task_group,
+                wait,
+                offset_param_name,
+                packet=packet,
+            )
         )
 
     def drain(
@@ -227,6 +248,7 @@ class Runtime(Resolvable):
         wait: bool = False,
         tile: Tile = AnyShimTile,
         packet: tuple[int, int] | None = None,
+        offset_parameter: "ScratchpadParameter | str | None" = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type consumer) of data and write that data to a runtime buffer.
         This should be called within a Runtime.sequence() context.
@@ -244,6 +266,7 @@ class Runtime(Resolvable):
                 downstream packet-switched routing (e.g. ObjectFifos lowered
                 with ``--packet-sw-objFifos`` or an explicit
                 :class:`~aie.iron.PacketFlow`).  Defaults to None.
+            offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -257,10 +280,27 @@ class Runtime(Resolvable):
         if tap is None:
             tap = dest.default_tap()
 
+        offset_param_name = None
+        if offset_parameter is not None:
+            if isinstance(offset_parameter, ScratchpadParameter):
+                offset_param_name = offset_parameter.name
+                if offset_parameter not in self._scratchpad_parameters:
+                    self._scratchpad_parameters.append(offset_parameter)
+            else:
+                offset_param_name = offset_parameter
+
         out_fifo.endpoint = rt_endpoint
         self._fifos.add(out_fifo)
         self._tasks.append(
-            DMATask(out_fifo, dest, tap, task_group, wait, packet=packet)
+            DMATask(
+                out_fifo,
+                dest,
+                tap,
+                task_group,
+                wait,
+                offset_param_name,
+                packet=packet,
+            )
         )
 
     def start(self, *args: Worker):
@@ -345,6 +385,15 @@ class Runtime(Resolvable):
             value (int): The value to set the barrier to.
         """
         self._tasks.append(_BarrierSetOp(barrier, value))
+
+    def sync_parameters(self):
+        """Emit ``aiex.sync_scratchpad_parameters_from_host`` in the runtime sequence.
+
+        Call this within a :meth:`sequence` context after all parameters have
+        been written on the host side and before starting workers that read
+        them.
+        """
+        self._tasks.append(_SyncParametersTask())
 
     @property
     def workers(self) -> list[Worker]:
@@ -447,3 +496,14 @@ class Runtime(Resolvable):
 
             if task_group_actions[default_task_group]:
                 finish_task_group(default_task_group, task_group_actions)
+
+
+class _SyncParametersTask(Resolvable):
+    """Emits ``aiex.sync_scratchpad_parameters_from_host`` during runtime sequence resolution."""
+
+    def resolve(
+        self,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        sync_scratchpad_parameters_from_host(loc=loc, ip=ip)

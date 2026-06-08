@@ -26,6 +26,7 @@ class DMATask(RuntimeTask):
         tap: TensorAccessPattern,
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
+        offset_parameter: str | None = None,
         packet: tuple[int, int] | None = None,
     ):
         """A RuntimeTask that will resolve to a DMA Operation.
@@ -36,6 +37,7 @@ class DMATask(RuntimeTask):
             tap (TensorAccessPattern): The access pattern associated with the operation.
             task_group (RuntimeTaskGroup | None, optional): The task group associated with the operation. Defaults to None.
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
+            offset_parameter (str | None, optional): Name of a ScratchpadParameter whose value is used as the element offset for this DMA transfer. Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
                 BD with a packet header ``(pkt_type, pkt_id)``.  Pairs with
                 downstream packet-switched routing (e.g. ObjectFifos
@@ -46,6 +48,7 @@ class DMATask(RuntimeTask):
         self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
+        self._offset_parameter = offset_parameter
         self._packet = packet
         self._task = None
         RuntimeTask.__init__(self, task_group)
@@ -77,6 +80,7 @@ class DMATask(RuntimeTask):
             self._rt_data.op,
             tap=self._tap,
             issue_token=self._wait,
+            offset_parameter=self._offset_parameter,
             packet=self._packet,
         )
         dma_start_task(self._task)

@@ -1,0 +1,16 @@
+# Build-time dependencies for the mlir distro wheel.
+# Mirror of [build-system].requires in pyproject.toml.
+#
+# Source for utils/mlir_wheels/requirements.lock. After editing this file,
+# regenerate the .lock with:
+#   utils/regenerate_lockfiles.sh
+setuptools>=82.0.1
+wheel
+ninja!=1.13.0
+cmake==4.3.2
+pybind11[global]>=3.0.4
+numpy>=2.3
+# mlir-native-tools is intentionally NOT hash-pinned here: it lives on an
+# internal index reached via PIP_FIND_LINKS at build time, not on PyPI, so
+# pip-compile can't resolve it. mlirDistro.yml installs it separately.
+nanobind>=2.12.0
