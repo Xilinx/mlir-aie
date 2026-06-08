@@ -36,18 +36,18 @@ namespace AIE {
 struct TxnLocEntry {
   uint32_t byteOffset = 0;
   uint32_t byteSize = 0;
-  std::string opcodeName;     // "WRITE32", "BLOCKWRITE", etc.
-  std::string sourceOpName;   // "aiex.npu.write32", etc.
+  std::string opcodeName;          // "WRITE32", "BLOCKWRITE", etc.
+  std::string sourceOpName;        // "aiex.npu.write32", etc.
   std::optional<uint64_t> address; // absolute device address when applicable
-  std::string registerName;   // regdb-resolved register name; empty if unknown
-  std::string registerModule; // regdb module: "core", "memory", "memory_tile", "shim"
+  std::string registerName; // regdb-resolved register name; empty if unknown
+  std::string
+      registerModule; // regdb module: "core", "memory", "memory_tile", "shim"
   std::optional<mlir::Location> loc;
 };
 
 // Serialize a vector of TxnLocEntry as JSON to `output`, with the given
 // device name and binary file basename for the JSON header.
-void emitNpuLocmapJSON(llvm::raw_ostream &output,
-                       llvm::StringRef deviceName,
+void emitNpuLocmapJSON(llvm::raw_ostream &output, llvm::StringRef deviceName,
                        llvm::StringRef binaryName,
                        const std::vector<TxnLocEntry> &locmap);
 
@@ -70,11 +70,11 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &, llvm::StringRef);
-mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp,
-                                            std::vector<uint32_t> &,
-                                            llvm::StringRef deviceName = "",
-                                            llvm::StringRef sequenceName = "",
-                                            std::vector<TxnLocEntry> *locmap = nullptr);
+mlir::LogicalResult
+AIETranslateNpuToBinary(mlir::ModuleOp, std::vector<uint32_t> &,
+                        llvm::StringRef deviceName = "",
+                        llvm::StringRef sequenceName = "",
+                        std::vector<TxnLocEntry> *locmap = nullptr);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp, std::string &assembly);

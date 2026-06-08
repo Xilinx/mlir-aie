@@ -1095,7 +1095,8 @@ void xilinx::AIE::AIERTControl::recordTxnLocRange(uint32_t startCmds,
   if (endCmds <= startCmds)
     return;
   if (aiert->txnInstrLocs.size() < endCmds)
-    aiert->txnInstrLocs.resize(endCmds, mlir::UnknownLoc::get(loc.getContext()));
+    aiert->txnInstrLocs.resize(endCmds,
+                               mlir::UnknownLoc::get(loc.getContext()));
   for (uint32_t i = startCmds; i < endCmds; ++i)
     aiert->txnInstrLocs[i] = loc;
 }

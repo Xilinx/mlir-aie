@@ -105,9 +105,8 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
-  output << "_symbol " << bufName << " "
-         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes
-         << '\n';
+  output << "_symbol " << bufName << " " << "0x"
+         << llvm::utohexstr(offset + bufferBaseAddr) << " " << numBytes << '\n';
 }
 
 LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output,
@@ -393,9 +392,9 @@ void registerAIETranslations() {
           for (auto w : instructions)
             output << llvm::format("%08X\n", w);
         }
-        // With -aie-npu-emit-locmap=<file>, additionally write the JSON location
-        // sidecar (mapping each transaction word's byte offset to its source
-        // MLIR Location) to that file.
+        // With -aie-npu-emit-locmap=<file>, additionally write the JSON
+        // location sidecar (mapping each transaction word's byte offset to its
+        // source MLIR Location) to that file.
         if (emitLocmap) {
           std::error_code ec;
           llvm::raw_fd_ostream locFile(npuEmitLocmap, ec,
