@@ -19,11 +19,15 @@ The design body is a single `aie.iron.algorithms.reduce_typed(reduce_min_vector,
 1. `vector_reduce_min.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.reduce_typed`. Two invocation modes:
 
    * standalone — `python3 vector_reduce_min.py`
-   * compile-only — `... --xclbin-path=PATH --insts-path=PATH` (used by the `Makefile`)
+   * compile-only — drops the compiled artifacts the C++ testbench loads.  Two flavours, depending on which XRT load path the testbench uses:
+     * `--xclbin-path=PATH --insts-path=PATH` for the classic XCLBIN + `insts.bin` pair.
+     * `--xclbin-path=PATH --insts-path=PATH --elf-path=PATH` to also emit `insts.elf` for the `xrt::elf` + `xrt::module` load path.
+
+   The Makefile drives the XCLBIN + `insts.bin` flavour today.
 
 1. `reduce_min.cc`: A C++ implementation of a vectorized `min` reduction for AIE cores. The kernel uses the AIE API ([docs](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html)). Source: [here](../../../aie_kernels/aie2/reduce_min.cc).
 
-1. `test.cpp`: C++ testbench. Loads the compiled XCLBIN, supplies input, runs on the NPU, and verifies the result.
+1. `test.cpp`: C++ testbench. Loads the compiled artifacts (XCLBIN + `insts.bin` today; `xrt::elf` + `xrt::module` is the alternative path) and runs the kernel on the NPU.
 
 ## Ryzen™ AI Usage
 

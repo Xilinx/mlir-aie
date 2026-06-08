@@ -93,7 +93,7 @@ The rest of this section walks down through what `@iron.jit` is doing for you �
 
 ## What `@iron.jit` Does For You
 
-The `@iron.jit`-decorated function builds a complete IRON `Program` (see [section-1](../section-1)) and then hands the resulting MLIR to the AIE compiler.  The next subsections look at each piece in turn — the AIE-array structural description (the body of the decorated function), the external kernel (the `.cc` source the `ExternalFunction(source_file=...)` factory points at), and the host code that loads + runs the compiled xclbin/insts pair when you don't go through the `@iron.jit` call.
+The `@iron.jit`-decorated function builds a complete IRON `Program` (see [section-1](../section-1)) and then hands the resulting MLIR to the AIE compiler.  The next subsections look at each piece in turn — the AIE-array structural description (the body of the decorated function), the external kernel (the `.cc` source the `ExternalFunction(source_file=...)` factory points at), and the host code that loads + runs the compiled artifacts (XCLBIN + `insts.bin`, or XCLBIN + `xrt::elf`) when you don't go through the `@iron.jit` call.
 
 ### AIE-array Structural Description
 
@@ -187,7 +187,23 @@ Note that since the scalar factor is communicated through an object, it is provi
 
 ### Host Code
 
-When you don't call `vector_scalar_mul()` directly (the `@iron.jit` path), the host code takes over: it loads the compiled XCLBIN, configures the AIE module, provides input data, and kicks off execution.  After running, it verifies the results and optionally outputs trace data (covered in [section-4b](../section-4/section-4b/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants are available — they consume the xclbin + insts pair produced by the compile-only path (`make` runs `vector_scalar_mul.py --xclbin-path ... --insts-path ...`).
+When you don't call `vector_scalar_mul()` directly (the `@iron.jit` path), the host code takes over: it loads the compiled artifacts, configures the AIE module, provides input data, and kicks off execution.  After running, it verifies the results and optionally outputs trace data (covered in [section-4b](../section-4/section-4b/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants are available — they consume the xclbin + insts pair produced by the compile-only path (`make` runs `vector_scalar_mul.py --xclbin-path ... --insts-path ...`).
+
+There are two compiled-artifact shapes the host code can load:
+
+* **XCLBIN + `insts.bin`** — the classic path; the host opens the
+  xclbin via `xrt::xclbin` and reads instructions out of `insts.bin`
+  separately.  Driven by `@iron.jit(..., --xclbin-path ... --insts-path ...)`.
+  This is what the examples in this section use.
+* **XCLBIN + `xrt::elf`** — a newer load path where instructions are
+  wrapped into an ELF via `aiebu-asm` and loaded through `xrt::elf` +
+  `xrt::module`.  Opt in via `@iron.jit(elf_path=...)` (see
+  [compilation_stages.md](../compilation_stages.md) §Knob →
+  stage cheat-sheet); `programming_examples/ml/eltwise_unary` is the
+  canonical demo.
+
+Either path uses the same XCLBIN — they differ only in how the host
+loads instructions.
 
 For convenience, a set of test utilities support common elements of command line parsing, the XRT-based environment setup and testbench functionality: [test_utils.h](../../runtime_lib/test_lib/test_utils.h) or [test.py](../../python/utils/test.py).   
 

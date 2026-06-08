@@ -22,7 +22,7 @@ Other available datatypes can be consulted [here](https://xilinx.github.io/aie_a
 
 1. `kernel.cc`: The bf16→bfp16 conversion + bfp16 matmul core functions (Peano-compiled by `ExternalFunction` at design-build time).
 
-1. `test.cpp`: C++ host harness — loads the XCLBIN, runs it on the NPU, verifies output.
+1. `test.cpp`: C++ host harness — loads the XCLBIN + `insts.bin`, runs it on the NPU, verifies output.
 
 ## Ryzen™ AI Usage
 

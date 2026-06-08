@@ -24,7 +24,7 @@ The kernel executes on AIE tile (`col`, 2).  The value of `col` is dependent on 
 
 1. `vector_vector_add.py`: defines the IRON design using the BD-level primitives (`Flow` / `Lock` / `TileDma` / `DmaChannel` / `Bd`).  Contains `PreInitializedConstantBuffer` (a thin `Buffer` subclass) and the `@iron.jit`-decorated `vector_vector_add` generator.  On NPU the Makefile drives `compile_mlir_module` (via `--xclbin-path` / `--insts-path`) to produce the XCLBIN and `insts.bin`; the VCK5000 path still goes through `aiecc`.
 
-1. `test.cpp`: This C++ code is a testbench for the design example targeting Ryzen™ AI (AIE-ML). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
+1. `test.cpp`: This C++ code is a testbench for the design example targeting Ryzen™ AI (AIE-ML). The code is responsible for loading the compiled XCLBIN + `insts.bin`, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 
 1. `test_vck5000.cpp`: This C++ code is a testbench for the design example targeting the VCK5000 PCIe card (AIE). The code is responsible for configuring the AIEs, allocating memory, providing input data, and executing the AIE design on the VCK5000. After executing, the program verifies the results.
 

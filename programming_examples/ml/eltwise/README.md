@@ -21,7 +21,7 @@ The op is selected at compile time via the `op` knob (`add` or `mul`); the struc
 
 1. `add.cc` / `mul.cc`: Vectorized AIE kernels for vector add / multiply, pulled from the IRON kernel library. Sources live under [`aie_kernels/aie2/add.cc`](../../../aie_kernels/aie2/add.cc) and [`mul.cc`](../../../aie_kernels/aie2/mul.cc).
 
-1. `test.cpp`: C++ testbench that loads the compiled XCLBIN, runs the kernel, and verifies the output against a CPU reference. Pass `--op add` or `--op mul` to match the compiled design.
+1. `test.cpp`: C++ testbench that loads the compiled XCLBIN + `insts.bin`, runs the kernel, and verifies the output against a CPU reference. Pass `--op add` or `--op mul` to match the compiled design.
 
 
 ## Usage

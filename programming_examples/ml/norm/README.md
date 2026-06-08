@@ -24,7 +24,7 @@ Per row:
 
 1. `rms_norm.cc` / `layer_norm.cc`: AIE2P kernels pulled from [`aie_kernels/aie2p/`](../../../aie_kernels/aie2p/).
 
-1. `test.cpp`: C++ testbench that loads the compiled XCLBIN via `setup_and_run_aie`, computes the per-row reference, and reports pass/fail with a per-op tolerance. The op is selected via the `NORM_OP` env var (set by the Makefile's `run` target).
+1. `test.cpp`: C++ testbench that loads the compiled XCLBIN + `insts.bin` via `setup_and_run_aie`, computes the per-row reference, and reports pass/fail with a per-op tolerance. The op is selected via the `NORM_OP` env var (set by the Makefile's `run` target).
 
 
 ## Usage

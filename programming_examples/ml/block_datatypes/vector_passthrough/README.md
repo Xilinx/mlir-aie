@@ -18,7 +18,7 @@ A simple AIE implementation for a vectorized memcpy using block floating point. 
 
 1. `kernel.cc`: The bfp16 vectorized passthrough core function (Peano-compiled by `ExternalFunction` at design-build time).
 
-1. `test.cpp`: C++ host harness — loads the XCLBIN, runs it on the NPU, verifies output.
+1. `test.cpp`: C++ host harness — loads the XCLBIN + `insts.bin`, runs it on the NPU, verifies output.
 
 ## Ryzen™ AI Usage
 

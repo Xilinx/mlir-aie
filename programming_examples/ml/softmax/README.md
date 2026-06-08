@@ -41,7 +41,7 @@ Softmax is computed independently per 1024-element tile (no cross-tile reduction
 
 1. `softmax.py`: IRON design driven by `@iron.jit`; one `transform_parallel_typed` call over `kernels.softmax(tile_size=1024)`.
 
-1. `test.cpp`: C++ testbench that loads the compiled XCLBIN, runs the kernel, and verifies the output against a CPU reference.
+1. `test.cpp`: C++ testbench that loads the compiled XCLBIN + `insts.bin`, runs the kernel, and verifies the output against a CPU reference.
 
 
 ## Usage
