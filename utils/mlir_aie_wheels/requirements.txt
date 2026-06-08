@@ -2,7 +2,6 @@
 # cibuildwheel before-build). After editing this file, regenerate the .lock with:
 #   utils/regenerate_lockfiles.sh
 cmake>=4.3.2
-dataclasses
 importlib-metadata
 ninja!=1.13.0; platform_system=="Windows"
 numpy>=2.3

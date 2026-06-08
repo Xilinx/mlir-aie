@@ -13,6 +13,7 @@ from importlib_metadata import files
 from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
+from setuptools.command.egg_info import egg_info
 from setuptools.command.install import install
 
 sys.path.append(os.path.dirname(__file__))
@@ -236,6 +237,30 @@ class CMakeBuild(build_ext):
                 "-DLLVM_USE_CRT_MINSIZEREL=MT",
                 "-DLLVM_USE_CRT_RELEASE=MT",
             ]
+        elif platform.system() == "Linux":
+            # MSVC's Release default is /OPT:REF + /OPT:ICF, which strips
+            # unreferenced functions/data and folds identical COMDATs.
+            # Mirror that on Linux: per-section emission + gc-sections +
+            # safe ICF. lld is gated to native x86_64; aarch64 cross uses
+            # the aarch64-linux-gnu-gcc driver's default linker.
+            size_cflags = "-ffunction-sections -fdata-sections"
+            cmake_args += [
+                f"-DCMAKE_C_FLAGS={size_cflags}",
+                f"-DCMAKE_CXX_FLAGS={size_cflags}",
+            ]
+            if os.getenv("CIBW_ARCHS") in {"x86_64", "AMD64"}:
+                cmake_args += [
+                    "-DLLVM_USE_LINKER=lld",
+                    "-DCMAKE_EXE_LINKER_FLAGS=-Wl,--gc-sections -Wl,--icf=safe",
+                    "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -Wl,--icf=safe",
+                    "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,--gc-sections -Wl,--icf=safe",
+                ]
+            else:
+                cmake_args += [
+                    "-DCMAKE_EXE_LINKER_FLAGS=-Wl,--gc-sections",
+                    "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections",
+                    "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,--gc-sections",
+                ]
 
         cmake_args_dict = get_cross_cmake_args()
         cmake_args += [f"-D{k}={v}" for k, v in cmake_args_dict.items()]
@@ -308,7 +333,11 @@ class CMakeBuild(build_ext):
             # C++-developer-only content: anyone pip installing this wheel
             # reaches the toolchain through Python, never through native
             # linking. aie_api/ and aie_kernels/ headers stay — user AIE
-            # kernels #include those at compile time.
+            # kernels #include those at compile time. *.lib on Windows is
+            # the MSVC equivalent of Linux *.a — static linker artifacts
+            # produced by the LLVM/MLIR install rules that nothing in the
+            # runtime path links against (verified: aiecc.exe / aie-opt.exe
+            # / AIEAggregateCAPI.dll are self-contained).
             dev_paths = [
                 Path(install_dir) / "include" / "aie",
                 Path(install_dir) / "include" / "aie-c",
@@ -316,6 +345,7 @@ class CMakeBuild(build_ext):
                 Path(install_dir) / "include" / "xaienginecdo_static",
                 Path(install_dir) / "lib" / "cmake",
                 *(Path(install_dir) / "lib").glob("*.a"),
+                *(Path(install_dir) / "lib").glob("*.lib"),
             ]
             for p in dev_paths:
                 if p.is_dir():
@@ -334,6 +364,34 @@ class CMakeBuild(build_ext):
                     shutil.rmtree(leaked)
             for pycache in Path(install_dir).rglob("__pycache__"):
                 shutil.rmtree(pycache, ignore_errors=True)
+
+            # Upstream MLIR's Python install ships bindings for every dialect
+            # it knows about. Prune the ones nothing in the AIE Python tree
+            # imports (verified via grep across the install). pdl / irdl /
+            # nvgpu are kept — they're pulled in transitively by extras /
+            # dialects.ext.
+            unused_dialects = (
+                "spirv",
+                "omp",
+                "smt",
+                "shard",
+                "sparse_tensor",
+                "x86",
+                "amdgpu",
+                "shape",
+                "emitc",
+            )
+            dialects_dirs = list(Path(install_dir).rglob("mlir/dialects"))
+            for d in dialects_dirs:
+                for stem in unused_dialects:
+                    for f in d.glob(f"_{stem}_*.py"):
+                        f.unlink()
+                    front = d / f"{stem}.py"
+                    if front.exists():
+                        front.unlink()
+                async_pkg = d / "async_dialect"
+                if async_pkg.is_dir():
+                    shutil.rmtree(async_pkg)
 
             # Vendor eudsl-python-extras
             # Install eudsl to install_dir/python so it merges with mlir-aie's package structure (aie/extras).
@@ -395,6 +453,22 @@ class InstallWithPth(install):
             pth_file.write("mlir_aie/python")
 
 
+class EggInfoWithTopLevel(egg_info):
+    """Override the auto-derived top_level.txt.
+
+    setuptools derives top_level.txt from the CMakeExtension's name
+    (``_mlir_aie``), which is just a placeholder — the wheel actually
+    installs the ``mlir_aie`` package tree. Fix the metadata so
+    ``pip uninstall`` and other top-level scanners see reality.
+    """
+
+    def run(self):
+        super().run()
+        top_level_path = os.path.join(self.egg_info, "top_level.txt")
+        with open(top_level_path, "w") as f:
+            f.write("mlir_aie\n")
+
+
 MLIR_AIE_SOURCE_DIR = Path(
     os.getenv(
         "MLIR_AIE_SOURCE_DIR",
@@ -453,7 +527,6 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Topic :: Software Development :: Compilers",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
@@ -479,6 +552,7 @@ setup(
     cmdclass={
         "build_ext": CMakeBuild,
         "develop": DevelopWithPth,
+        "egg_info": EggInfoWithTopLevel,
         "install": InstallWithPth,
     },
     zip_safe=False,
