@@ -9,6 +9,8 @@
 // RUN: make -f %S/Makefile devicename=npu2
 // RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run
 // RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile devicename=npu2 TRACE=1
-// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run TRACE=1
-// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 parse_trace
+// RUN: make -f %S/Makefile devicename=npu2 TRACE=8192
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run TRACE=8192
+// parse_trace depends on `run`; pass TRACE=8192 so the dependent re-invocation
+// produces actual trace data rather than overwriting with TRACE=0 (default).
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 TRACE=8192 parse_trace

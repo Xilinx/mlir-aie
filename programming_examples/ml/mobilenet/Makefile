@@ -7,7 +7,7 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
-PYTHONPATH := $(PYTHONPATH):$(shell cd .. && pwd)
+PYTHONPATH := $(PYTHONPATH):$(realpath $(srcdir)/..)
 export PYTHONPATH
 
 MLIR_FILE = aie2_mobilenet_iron

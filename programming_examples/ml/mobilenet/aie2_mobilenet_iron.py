@@ -280,7 +280,7 @@ def main():
         mobilenet_iron,
         opts,
         compile_kwargs={},
-        device=device_from_args,
+        device=lambda o: device_from_args(o, n_cols=None),
         run_and_verify=_run_and_verify,
     )
 

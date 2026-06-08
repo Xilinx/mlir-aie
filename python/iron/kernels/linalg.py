@@ -26,12 +26,20 @@ _CASCADE_COMBOS = {
 # scalar-block geometry the compiled cascade kernel expects.  cascade_mm
 # only ships an aie2 .cc today; if an aie2p variant lands the table
 # needs the new arch added.
+#
+# The cascade_mm.cc kernel is fully scalar — `a[row * colA + i]` walks A
+# element-by-element with no SIMD tiling — so the L2->L1 buffer must be
+# plain row-major.  mac_dims (1, 1, 1) yields the identity dim_to_stream
+# pattern when designs build it as [(m//r, r*k), (k//s, s), (r, k), (s, 1)].
+# Larger values would shuffle A/B into a tiled layout the scalar kernel
+# does not understand, producing garbage outputs (262144-element mismatch
+# observed in CI with the previous (4, 4, 4) entries).
 _CASCADE_MM_MAC_DIMS = {
     "aie2": {
-        (np.int16, np.int16): (4, 4, 4),
-        (np.int16, np.int32): (4, 4, 4),
-        (bfloat16, bfloat16): (4, 8, 4),
-        (bfloat16, np.float32): (4, 8, 4),
+        (np.int16, np.int16): (1, 1, 1),
+        (np.int16, np.int32): (1, 1, 1),
+        (bfloat16, bfloat16): (1, 1, 1),
+        (bfloat16, np.float32): (1, 1, 1),
     },
 }
 

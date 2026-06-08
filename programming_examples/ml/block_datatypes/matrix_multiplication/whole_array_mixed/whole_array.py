@@ -285,7 +285,7 @@ def main():
         whole_array_mixed,
         opts,
         compile_kwargs=_compile_kwargs,
-        device=device_from_args,
+        device=lambda o: device_from_args(o, n_cols=o.n_aie_cols),
     )
 
 
