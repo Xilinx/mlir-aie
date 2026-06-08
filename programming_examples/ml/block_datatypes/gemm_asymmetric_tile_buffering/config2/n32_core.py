@@ -249,7 +249,7 @@ def main():
         n32_core_gemm,
         opts,
         compile_kwargs=_compile_kwargs,
-        device=device_from_args,
+        device=lambda o: device_from_args(o, n_cols=None),
     )
 
 
