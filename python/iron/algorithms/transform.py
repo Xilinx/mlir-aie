@@ -16,10 +16,15 @@ import aie.iron as iron
 
 
 def _check_num_channels(num_channels: int) -> None:
+    # Validates the user-supplied ``num_channels=`` kwarg, not a device fact:
+    # AIE2 (Phoenix) and AIE2p (Strix) both have 2 shim DMA channels per
+    # direction per column.  The C++ target model (Device._tm) does not yet
+    # expose this; if a future arch breaks the 2-channels-per-direction
+    # invariant this check should read off the device model instead.
     if num_channels not in (1, 2):
         raise ValueError(
             f"num_channels must be 1 or 2 (shim DMA has 2 channels per "
-            f"direction per column); got {num_channels}"
+            f"direction per column on AIE2 / AIE2p); got {num_channels}"
         )
 
 
