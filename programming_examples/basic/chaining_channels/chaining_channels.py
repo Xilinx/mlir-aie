@@ -45,7 +45,8 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile, device_from_args
+from aie.iron.device import Tile
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.dialects.aiex import (
     npu_address_patch,

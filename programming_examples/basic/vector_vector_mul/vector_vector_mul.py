@@ -26,7 +26,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out
 from aie.iron.algorithms import transform_binary_typed
-from aie.iron.device import device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,

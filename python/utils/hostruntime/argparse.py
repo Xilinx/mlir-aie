@@ -236,3 +236,50 @@ def add_runtime_args(
         )
     if with_benchmark:
         add_benchmark_args(parser)
+
+
+def device_from_args(
+    args,
+    *,
+    dev_attr: str = "dev",
+    n_cols: "int | None | str" = "auto",
+):
+    """Resolve a parsed-argparse namespace to a :class:`aie.iron.device.Device`.
+
+    Collapses the boilerplate variants the example suite used to repeat
+    across ~30 sites::
+
+        from_name(args.dev, n_cols=None)   # "use all cols"
+        from_name(args.dev, n_cols=1)      # "single col"
+
+    into one helper with an explicit ``n_cols`` knob.
+
+    Args:
+        args: An ``argparse.Namespace`` with a ``.dev`` attribute (or
+            whatever ``dev_attr`` names).  When ``n_cols="auto"`` and
+            ``args`` also has an ``.n_cols`` attribute, that attribute
+            overrides the default.
+        dev_attr: Name of the device-string attribute on ``args``.
+            Defaults to ``"dev"``.
+        n_cols: Column-count selector.  ``"auto"`` (default) means
+            single column on every NPU family — the dominant pattern
+            across the example suite and the safest "I haven't thought
+            about this yet" choice.  Pass an explicit ``int`` (``2``,
+            ``4``, ...) or ``None`` (full width) to override.  An
+            ``.n_cols`` attribute on ``args`` (e.g. from a future CLI
+            flag) takes precedence over the default when
+            ``n_cols="auto"``.
+
+    Returns:
+        Device instance.
+    """
+    # Lazy import: argparse.py is otherwise pure-stdlib and avoids the
+    # aie.iron import edge until a caller actually needs to resolve a Device.
+    from aie.iron.device import from_name
+
+    dev = getattr(args, dev_attr)
+    if n_cols == "auto":
+        n_cols = getattr(args, "n_cols", None)
+        if n_cols is None:
+            n_cols = 1
+    return from_name(dev, n_cols=n_cols)

@@ -27,7 +27,7 @@ from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorTiler2D

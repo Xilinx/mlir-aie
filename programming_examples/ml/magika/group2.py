@@ -22,7 +22,8 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Buffer, Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile, device_from_args
+from aie.iron.device import Tile
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.config import cxx_header_path

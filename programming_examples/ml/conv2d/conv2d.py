@@ -31,8 +31,10 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
-from aie.iron.device import device_from_args
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import (
+    device_from_args,
+    add_compile_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 
 

@@ -148,7 +148,7 @@ has a docstring; `help(obj)` or `print(obj.__doc__)` shows it.
 
 | Helper | What it does |
 |--------|--------------|
-| `aie.iron.device.device_from_args(args)` | Resolve a parsed argparse `Namespace` to a `Device` — collapses `from_name(args.dev, n_cols=...)` boilerplate.  `n_cols="auto"` reads `args.n_cols` if present, otherwise defaults to 1. |
+| `aie.utils.hostruntime.argparse.device_from_args(args)` | Resolve a parsed argparse `Namespace` to a `Device` — collapses `from_name(args.dev, n_cols=...)` boilerplate.  `n_cols="auto"` reads `args.n_cols` if present, otherwise defaults to 1.  Lives next to the `add_*_args` family that produces the `Namespace` it consumes. |
 | `aie.utils.DefaultNPURuntime` | Module-level `CachedXRTRuntime` instance; auto-detects NPU1 / NPU2 via XRT.  Used by `iron.tensor(..., device="npu")` and `@iron.jit` runtime binding. |
 | `aie.utils.hostruntime.argparse.{add_compile_args, add_runtime_args}` | Add the standard `--xclbin-path`/`--insts-path` and `--xclbin`/`--instr`/`-k`/`--trace_size` flags to a parser. |
 | `aie.utils.test.create_npu_kernel(opts)` | Build an `NPUKernel` (plus optional `TraceConfig`) from a parsed `argparse.Namespace`.  See `programming_examples/basic/vector_scalar_mul/test.py` for the canonical use pattern. |

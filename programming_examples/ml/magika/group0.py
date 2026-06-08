@@ -27,7 +27,7 @@ from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import Buffer, Compile, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
 from aie.utils.config import cxx_header_path
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg

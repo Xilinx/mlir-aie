@@ -32,8 +32,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     kernels,
 )
-from aie.iron.device import device_from_args
-
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.extras.dialects import arith
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.dialects.aie import T

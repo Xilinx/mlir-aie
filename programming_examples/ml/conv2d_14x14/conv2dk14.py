@@ -45,7 +45,8 @@ import aie.iron as iron
 from aie.utils.ml import DataShaper
 from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile, device_from_args
+from aie.iron.device import Tile
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
 from aie.helpers.taplib import TensorAccessPattern
 from aie.utils import config

@@ -30,8 +30,10 @@ from aie.iron import (
     Runtime,
     Worker,
 )
-from aie.iron.device import device_from_args
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import (
+    device_from_args,
+    add_compile_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 
 _KERNEL_SRC = (

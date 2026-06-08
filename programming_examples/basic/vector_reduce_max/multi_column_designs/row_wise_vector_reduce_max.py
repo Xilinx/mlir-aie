@@ -40,7 +40,7 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.iron.device import device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli

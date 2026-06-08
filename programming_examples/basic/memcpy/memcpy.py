@@ -23,7 +23,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
-from aie.iron.device import device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli

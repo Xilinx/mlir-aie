@@ -33,7 +33,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import In, ObjectFifo, Out, Program, Runtime
-from aie.iron.device import device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib import TensorAccessPattern
 from aie.utils.hostruntime import set_current_device
 from aie.utils.hostruntime.argparse import add_compile_args
