@@ -58,7 +58,10 @@ class XRTTensor(Tensor):
         else:
             # TODO(efficiency): Extra data copy here (when necessary)
             # so we can borrow verification of array-like things from numpy.
-            np_data = np.array(shape_or_data, dtype=dtype, copy=False)
+            # `np.asarray` is the NumPy-2.x-safe form of the old
+            # `np.array(..., copy=False)`: avoid copy when possible, copy
+            # when necessary, identical semantics on both 1.x and 2.x.
+            np_data = np.asarray(shape_or_data, dtype=dtype)
             self._shape = np_data.shape
 
         # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currently.

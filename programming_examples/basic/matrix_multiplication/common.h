@@ -21,7 +21,7 @@
 #include <iostream>
 #include <optional>
 #include <ostream>
-#include <stdfloat>
+#include <type_traits>
 
 #include "test_utils.h"
 
@@ -92,6 +92,52 @@ void parse_options(int argc, const char *argv[], cxxopts::Options &options,
 template <typename T>
 static inline T get_random();
 
+template <typename T>
+static inline auto scalar_to_arithmetic(T value) {
+  if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
+    return test_utils::bfloat16_to_float(value);
+  } else {
+    return value;
+  }
+}
+
+template <typename T>
+static inline float scalar_to_float(T value) {
+  return static_cast<float>(scalar_to_arithmetic(value));
+}
+
+template <typename T, typename Tacc>
+static inline T scalar_from_accum(Tacc value) {
+  auto arithmetic_value = scalar_to_arithmetic(value);
+  if constexpr (std::is_same_v<T, test_utils::bfloat16_t>) {
+    return test_utils::bfloat16_from_float(
+        static_cast<float>(arithmetic_value));
+  } else {
+    return static_cast<T>(arithmetic_value);
+  }
+}
+
+template <typename Tacc>
+static inline Tacc zero_accum() {
+  if constexpr (std::is_same_v<Tacc, test_utils::bfloat16_t>) {
+    return test_utils::bfloat16_from_float(0.0f);
+  } else {
+    return Tacc(0);
+  }
+}
+
+template <typename Tacc, typename Tin>
+static inline Tacc accum_add_product(Tacc running_sum, Tin lhs, Tin rhs) {
+  auto product = scalar_to_arithmetic(lhs) * scalar_to_arithmetic(rhs);
+  if constexpr (std::is_same_v<Tacc, test_utils::bfloat16_t>) {
+    return test_utils::bfloat16_add(
+        running_sum,
+        test_utils::bfloat16_from_float(static_cast<float>(product)));
+  } else {
+    return running_sum + Tacc(product);
+  }
+}
+
 template <>
 std::int16_t get_random<std::int16_t>() {
   return (std::int16_t)rand() % 0x10000;
@@ -103,10 +149,11 @@ int8_t get_random<int8_t>() {
 }
 
 template <>
-std::bfloat16_t get_random<std::bfloat16_t>() {
+test_utils::bfloat16_t get_random<test_utils::bfloat16_t>() {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
-  return std::bfloat16_t(4.0 * (float)rand() / (float)(RAND_MAX));
+  return test_utils::bfloat16_from_float(4.0f * (float)rand() /
+                                         (float)(RAND_MAX));
 }
 
 template <typename Tin, typename Tout, typename Tacc>
@@ -115,18 +162,20 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
             int c_col_maj) {
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
-      Tacc running_sum = 0;
+      Tacc running_sum = zero_accum<Tacc>();
       for (int k = 0; k < K; k++) {
         if (!b_col_maj) {
-          running_sum += Tacc(A[row * K + k] * B[k * N + col]);
+          running_sum = accum_add_product<Tacc>(running_sum, A[row * K + k],
+                                                B[k * N + col]);
         } else {
-          running_sum += Tacc(A[row * K + k] * B[k + col * K]);
+          running_sum = accum_add_product<Tacc>(running_sum, A[row * K + k],
+                                                B[k + col * K]);
         }
       }
       if (!c_col_maj) {
-        C[row * N + col] = Tout(running_sum);
+        C[row * N + col] = scalar_from_accum<Tout>(running_sum);
       } else {
-        C[row + col * M] = Tout(running_sum);
+        C[row + col * M] = scalar_from_accum<Tout>(running_sum);
       }
     }
   }
@@ -135,15 +184,17 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
 template <typename Tin, typename Tout, typename Tacc>
 Tout mul_acc(int M, int N, int K, int row, int col, const std::vector<Tin> A,
              const std::vector<Tin> B, int b_col_maj) {
-  Tacc running_sum = 0;
+  Tacc running_sum = zero_accum<Tacc>();
   for (int k = 0; k < K; k++) {
     if (!b_col_maj) {
-      running_sum += Tacc(A[row * K + k] * B[k * N + col]);
+      running_sum =
+          accum_add_product<Tacc>(running_sum, A[row * K + k], B[k * N + col]);
     } else {
-      running_sum += Tacc(A[row * K + k] * B[k + col * K]);
+      running_sum =
+          accum_add_product<Tacc>(running_sum, A[row * K + k], B[k + col * K]);
     }
   }
-  return (Tout)running_sum;
+  return scalar_from_accum<Tout>(running_sum);
 }
 
 // nearly_equal function adapted from Stack Overflow, License CC BY-SA 4.0
@@ -184,7 +235,7 @@ float get_abs_tol<std::int32_t>() {
 }
 
 template <>
-float get_abs_tol<std::bfloat16_t>() {
+float get_abs_tol<test_utils::bfloat16_t>() {
   return 0.5;
 }
 
@@ -209,7 +260,7 @@ float get_rel_tol<std::int32_t>() {
 }
 
 template <>
-float get_rel_tol<std::bfloat16_t>() {
+float get_rel_tol<test_utils::bfloat16_t>() {
   return 0.05;
 }
 
@@ -314,8 +365,9 @@ verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual,
               float abs_tol, float rel_tol) {
   bool match = expected == actual;
   if (abs_tol > 0 || rel_tol > 0) {
-    // Allow for some tolerance for float data types
-    match = nearly_equal(expected, actual, rel_tol, abs_tol);
+    // Allow for some tolerance for float and host-side bfloat16 data types.
+    match = nearly_equal(scalar_to_float(expected), scalar_to_float(actual),
+                         rel_tol, abs_tol);
   }
   if (!match) {
     return (struct error<Tout>){row, col, expected, actual};
@@ -326,12 +378,13 @@ verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual,
 template <typename Tout>
 void print_error_summary(std::ostream &os, int n_errors,
                          std::vector<struct error<Tout>> &errors,
-                         Tout max_rel_error) {
+                         float max_rel_error) {
   for (struct error<Tout> &err : errors) {
     os << "[" << std::setw(5) << err.row << ", " << std::setw(5) << err.col
        << "] " << std::setw(4) << std::setprecision(2) << std::fixed
-       << (float)err.actual << " =!= " << std::setw(4) << std::setprecision(2)
-       << std::fixed << (float)err.expected << std::endl;
+       << scalar_to_float(err.actual) << " =!= " << std::setw(4)
+       << std::setprecision(2) << std::fixed << scalar_to_float(err.expected)
+       << std::endl;
   }
   if (n_errors > max_printable_errors) {
     os << "...and " << std::setw(0) << n_errors - max_printable_errors
@@ -357,7 +410,7 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
            float rel_tol = 0.05, int b_col_maj = 0, int c_col_maj = 0) {
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
-  Tout max_rel_error = (Tout)0.0f;
+  float max_rel_error = 0.0f;
   struct error<Tout> max_error;
 
   std::vector<Tout> CRef(M * N);
@@ -372,9 +425,11 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
         if (n_errors < max_printable_errors) {
           errors.push_back(*error);
         }
-        Tout rel_error =
-            std::abs(error->actual - error->expected) /
-            std::max(std::abs(error->actual), std::abs(error->expected));
+        float actual_value = scalar_to_float(error->actual);
+        float expected_value = scalar_to_float(error->expected);
+        float rel_error =
+            std::abs(actual_value - expected_value) /
+            std::max(std::abs(actual_value), std::abs(expected_value));
         if (rel_error > max_rel_error) {
           max_rel_error = rel_error;
           max_error = *error;
@@ -414,7 +469,7 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
 
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
-  Tout max_rel_error = (Tout)0.0f;
+  float max_rel_error = 0.0f;
   double progress = 0;
   for (std::tuple<size_t, std::tuple<int &, int &>> cell :
        std::views::enumerate(std::views::zip(sampled_rows, sampled_cols))) {
@@ -440,9 +495,11 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
       if (n_errors < max_printable_errors) {
         errors.push_back(*error);
       }
-      Tout rel_error =
-          std::abs(error->actual - error->expected) /
-          std::max(std::abs(error->actual), std::abs(error->expected));
+      float actual_value = scalar_to_float(error->actual);
+      float expected_value = scalar_to_float(error->expected);
+      float rel_error =
+          std::abs(actual_value - expected_value) /
+          std::max(std::abs(actual_value), std::abs(expected_value));
       if (rel_error > max_rel_error) {
         max_rel_error = rel_error;
       }

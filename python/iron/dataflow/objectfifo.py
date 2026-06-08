@@ -53,6 +53,7 @@ class ObjectFifo(Resolvable):
         init_values: list[np.ndarray] | None = None,
         producer_mem_bank=None,
         consumer_mem_banks=None,
+        consumer_obj_type: type[np.ndarray] | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -67,6 +68,7 @@ class ObjectFifo(Resolvable):
             repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the buffer descriptor this many times without a new DMA transfer from L3. Distinct from ``iter_count`` (BD-chain iteration count). Defaults to None.
             delegate_tile (PlacementTile | None, optional): Shared-memory delegate tile. When set, the ObjectFifo's underlying buffer pool is allocated on this tile's memory module instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only valid when both producer and consumer have shared-memory access to the delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between adjacent tiles spilling to a neighboring MemTile). The delegate is the storage location, not a producer- or consumer-side concept; the underlying op verifier rejects this if either endpoint cannot share memory with the delegate. Defaults to None.
             init_values (list[np.ndarray] | None, optional): Per-buffer static initial values for the producer endpoint. One ndarray per producer-side buffer; the producer tile must be able to hold static data at design startup (e.g. a MemTile). Lowers to the ``initValues`` attribute on the underlying ``aie.objectfifo`` op. Defaults to None.
+            consumer_obj_type (type[np.ndarray] | None, optional): Consumer element type for asymmetric transfer granularity. When set, the producer sends obj_type-sized transfers and the consumer receives consumer_obj_type-sized transfers. Producer element count must be an integer multiple of consumer element count. Defaults to None.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
@@ -100,6 +102,7 @@ class ObjectFifo(Resolvable):
         self._init_values: list[np.ndarray] | None = init_values
         self._producer_mem_bank = producer_mem_bank
         self._consumer_mem_banks = consumer_mem_banks
+        self._consumer_obj_type: type[np.ndarray] | None = consumer_obj_type
 
     @classmethod
     def __get_index(cls) -> int:
@@ -310,6 +313,12 @@ class ObjectFifo(Resolvable):
             # designs where one consumer must buffer ahead of the others.
             depths = [self._prod.depth] + [con.depth for con in self._cons]
 
+            consumer_datatype = (
+                np_ndarray_type_to_memref_type(self._consumer_obj_type)
+                if self._consumer_obj_type is not None
+                else None
+            )
+
             self._op = object_fifo(
                 self.name,
                 self._prod_tile_op(),
@@ -326,6 +335,7 @@ class ObjectFifo(Resolvable):
                 initValues=self._init_values,
                 producer_mem_bank=self._producer_mem_bank,
                 consumer_mem_banks=self._consumer_mem_banks,
+                consumer_datatype=consumer_datatype,
             )
 
             if self._repeat_count is not None:

@@ -25,10 +25,10 @@ jobs:
     # Cap total runtime: mlirDistro can take ~1h, leave headroom for the rest.
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: '3.x'
 
@@ -129,7 +129,7 @@ jobs:
               # Find the last assignee
               last_assignee=$(gh pr list --state all --search "Update LLVM version in:title" --limit 1 --json assignees --jq '.[0].assignees[0].login')
               echo "Last assignee: $last_assignee"
-              
+
               next_index=0
               if [ -n "$last_assignee" ]; then
                 for i in "${!users[@]}"; do
@@ -139,7 +139,7 @@ jobs:
                   fi
                 done
               fi
-              
+
               assignee=${users[$next_index]}
               echo "Selected assignee: $assignee"
               echo "assignee=$assignee" >> $GITHUB_OUTPUT
@@ -154,16 +154,16 @@ jobs:
 
       - name: Create Pull Request
         if: steps.check_changes.outputs.changes == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "Update LLVM version"
           title: "Update LLVM version"
           body: |
             Updates LLVM version based on `triton-shared` or `torch-mlir`.
-            
+
             Reason: ${{ steps.update.outputs.bump_reason }}
-            
+
             Triggered by: ${{ github.event_name }}
           branch: update-llvm-version
           base: main

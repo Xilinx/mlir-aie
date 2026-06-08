@@ -7,6 +7,7 @@
 ![GitHub Downloads](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue&cacheSeconds=86400)
 ![GitHub Downloads 2](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-2/total?color=blue&cacheSeconds=86400)
 ![GitHub Downloads 3](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-3/total?color=blue&cacheSeconds=86400)
+![GitHub Downloads 4](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-4/total?color=blue&cacheSeconds=86400)
 ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie?cacheSeconds=86400)
 
 _Note: Badge values are cached for up to 24 hours (`cacheSeconds=86400`) to reduce load on Shields.io and GitHub, so counts may lag behind real-time activity._
@@ -103,7 +104,7 @@ xrt-smi examine
 1. Install the following packages needed for MLIR-AIE:
 
     ```bash
-    # Python versions 3.10, 3.11, 3.12, 3.13 and 3.14 are currently supported by our wheels
+    # Python versions 3.11, 3.12, 3.13, and 3.14 are currently supported by our wheels
     sudo apt install \
     build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
     ```
@@ -147,7 +148,7 @@ xrt-smi examine
    1. **Latest:** For the latest wheels (not necessarily a release):
       ```bash
       # Install IRON library and mlir-aie from the latest wheel
-      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3
+      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
       ```
 
    1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.
@@ -182,12 +183,9 @@ xrt-smi examine
    # Install Python requirements for development and testing
    python3 -m pip install -r python/requirements_dev.txt
 
-   # This installs the pre-commit hooks defined in .pre-commit-config.yaml
+   # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
+   # (pre-push runs clang-format/black to catch formatting issues before CI)
    pre-commit install
-
-   # Install pre-push hooks for formatting (clang-format, black)
-   # These run before push to catch formatting issues before CI
-   pre-commit install --hook-type pre-push
    ```
 
 1. Setup environment

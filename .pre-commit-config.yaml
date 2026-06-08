@@ -1,20 +1,23 @@
+minimum_pre_commit_version: '4.6.0'
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
 - repo: https://github.com/kynan/nbstripout
-  rev: 0.8.0
+  rev: 34071b78c181af3bf5af955c1426466e096fc3db  # frozen: 0.9.1
   hooks:
     - id: nbstripout
       args: [--drop-empty-cells]
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: v17.0.6
+  rev: dd18dad857d6133e90bbe478f4f2f22ec0030269  # frozen: v22.1.5
   hooks:
     - id: clang-format
       types_or: [c, c++]
       stages: [pre-push]
 
 - repo: https://github.com/psf/black
-  rev: 24.10.0
+  rev: 87928e6d6761a4a6d22250e1fee5601b3998086e  # frozen: 26.5.1
   hooks:
     - id: black
       stages: [pre-push]
@@ -22,6 +25,54 @@ repos:
       exclude: |
         (?x)^(
           third_party/.*|
-          build/.*|
+          (_)?build.*/.*|
+          (my_)?install.*/.*|
+          sandbox.*/.*|
+          llvm.*/.*|
+          cmakeModules.*/.*|
           ironenv/.*
         )$
+
+# Baseline hygiene: validators run on every commit, fixers gated to pre-push
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+  hooks:
+    - id: check-yaml
+      exclude: &generated_exclude |
+        (?x)^(
+          third_party/.*|
+          (_)?build.*/.*|
+          (my_)?install.*/.*|
+          sandbox.*/.*|
+          llvm.*/.*|
+          cmakeModules.*/.*|
+          ironenv/.*
+        )$
+    - id: check-toml
+    - id: check-json
+    - id: check-merge-conflict
+    - id: check-case-conflict
+    - id: check-added-large-files
+      args: [--maxkb=1024]
+    - id: end-of-file-fixer
+      stages: [pre-push]
+      exclude: *generated_exclude
+    - id: trailing-whitespace
+      stages: [pre-push]
+      exclude: *generated_exclude
+    - id: mixed-line-ending
+      stages: [pre-push]
+      args: [--fix=lf]
+      exclude: *generated_exclude
+
+# Regenerate hash-pinned lockfiles when their source manifests change.
+# Only fires if you've staged one of the source files below; if uv is missing
+# locally the hook fails with a clear install hint (the script does the check).
+- repo: local
+  hooks:
+    - id: regenerate-lockfiles
+      name: Regenerate hash-pinned lockfiles
+      language: script
+      entry: utils/regenerate_lockfiles.sh
+      pass_filenames: false
+      files: ^(python/requirements_dev\.txt|utils/mlir_(aie_)?wheels/(requirements|ci-tools)\.(in|txt))$

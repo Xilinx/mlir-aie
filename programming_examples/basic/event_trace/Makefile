@@ -1,11 +1,11 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2026, Advanced Micro Devices, Inc.
-# 
+#
 ##===----------------------------------------------------------------------===##
 #
 # Makefile for MLIR trace example
@@ -42,7 +42,7 @@ endif
 # Preprocess the MLIR: substitute NPUDEVICE with the target device string
 build/aie_trace.mlir: ${srcdir}/aie_trace.mlir
 	mkdir -p ${@D}
-	sed 's/NPUDEVICE/${devicename}_1col/g' $< > $@
+	sed 's/NPUDEVICE/${devicename}_2col/g' $< > $@
 
 # Generate MLIR from Python
 build/aie_trace_from_py.mlir: ${srcdir}/aie_trace.py
@@ -74,7 +74,7 @@ ${targetname}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
 # Build and run with the new trace syntax

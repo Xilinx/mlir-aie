@@ -201,6 +201,10 @@ bool aieTargetModelIsNPU(AieTargetModel targetModel) {
   return unwrap(targetModel).hasProperty(xilinx::AIE::AIETargetModel::IsNPU);
 }
 
+uint32_t aieTargetModelGetTargetArch(AieTargetModel targetModel) {
+  return static_cast<uint32_t>(unwrap(targetModel).getTargetArch());
+}
+
 uint32_t aieTargetModelGetColumnShift(AieTargetModel targetModel) {
   return unwrap(targetModel).getColumnShift();
 }

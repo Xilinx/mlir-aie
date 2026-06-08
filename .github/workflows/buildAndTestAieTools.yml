@@ -1,5 +1,9 @@
 name: Build and Test with AIE tools
 
+permissions:
+  contents: read
+  packages: read
+
 on:
   push:
     branches:
@@ -41,7 +45,7 @@ jobs:
     steps:
 
       - name: Free disk space
-        uses: descriptinc/free-disk-space@main
+        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
         with:
           tool-cache: true
           android: true
@@ -55,7 +59,7 @@ jobs:
         run: |
           docker system prune -a -f
 
-      - uses: uraimo/run-on-arch-action@v3
+      - uses: uraimo/run-on-arch-action@fd7aa8593480287702b446a273a68f788a9bad3a  # v3
         name: Run commands
         id: runcmd
         with:
@@ -82,7 +86,7 @@ jobs:
 
             git submodule update --init --recursive
 
-            apt install python3.10-venv
+            apt install python3.12-venv
             python -m venv aie-venv
             source aie-venv/bin/activate
             pip install --upgrade pip
@@ -90,7 +94,7 @@ jobs:
                 --requirements python/requirements.txt \
                 --install-non-eudsl
             pip install -r python/requirements_notebook.txt
-            pip install -r python/requirements_dev.txt
+            python -m pip install --require-hashes -r python/requirements_dev.lock
 
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir==$VERSION \

@@ -457,8 +457,11 @@ static cl::opt<std::string>
     outputFilename("o", cl::desc("Output filename for host compilation"),
                    cl::init(""), cl::cat(aieCompilerOptions));
 
-// Sink for unrecognized host compilation flags (e.g. -Wl,... -lstdc++)
-static cl::list<std::string> sinkArgs(cl::Sink, cl::desc("Additional flags"));
+// Host-compiler passthrough captured after the `--` separator on the command
+// line, preserved in user-specified order. Anything before `--` must be a
+// recognized aiecc option (or a positional input file); unknown flags there
+// are rejected by ParseCommandLineOptions.
+static std::vector<std::string> hostExtraArgs;
 
 //===----------------------------------------------------------------------===//
 // Thread-safe output
@@ -516,13 +519,17 @@ static std::string getInputFilename() {
   return "";
 }
 
-// Get host source files from positional arguments.
+// Get host source files: positional args (before `--`) plus any host source
+// files appearing among the post-`--` passthrough args.
 static std::vector<std::string> getHostSourceFiles() {
   std::string mlirFile = getInputFilename();
   std::vector<std::string> hostFiles;
-  hostFiles.reserve(positionalArgs.size());
   for (const auto &arg : positionalArgs) {
     if (arg != mlirFile && isHostSourceFile(arg))
+      hostFiles.push_back(arg);
+  }
+  for (const auto &arg : hostExtraArgs) {
+    if (isHostSourceFile(arg))
       hostFiles.push_back(arg);
   }
   return hostFiles;
@@ -1455,6 +1462,22 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // Step 3: Canonicalize device (module-level pass)
   pm.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
 
+  // Lower parameter ops to scratchpad operations, create core buffers, and
+  // emit the parameter-sync preamble (lock + use_lock in each core that reads
+  // parameters; create_scratchpad + set_lock in each runtime sequence).
+  // This must run before AIEAssignLockIDs so the newly created locks receive
+  // IDs, and before address assignment so new buffers get addresses.
+  {
+    xilinx::AIEX::AIELowerScratchpadParametersOptions paramOpts;
+    if (!tmpDirName.empty()) {
+      SmallString<128> paramsPath(tmpDirName);
+      sys::path::append(paramsPath, "params.txt");
+      paramOpts.outputParamsFile = paramsPath.str().str();
+    }
+    pm.addPass(xilinx::AIEX::createAIELowerScratchpadParametersPass(
+        std::move(paramOpts)));
+  }
+
   // Step 4: Device-level passes - use nest<DeviceOp>()
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   // Note: Trace lowering runs in a separate guarded pipeline
@@ -1487,15 +1510,20 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
     }
   }
 
+  // Resume device-level passes after the module-level parameter lowering
+  // (which already ran before the first devicePm, see above).
+  OpPassManager &devicePm2 = pm.nest<xilinx::AIE::DeviceOp>();
+
   // Create buffer address assignment pass with alloc-scheme option
   xilinx::AIE::AIEAssignBufferAddressesOptions bufferOpts;
   bufferOpts.clAllocScheme = allocScheme.getValue();
-  devicePm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
+  devicePm2.addPass(
+      xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
 
   // Infer per-core link_files from func-level link_with attributes
-  devicePm.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
+  devicePm2.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
 
-  devicePm.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
+  devicePm2.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
   // Step 5: Convert SCF to CF (module-level pass)
   pm.addPass(createSCFToControlFlowPass());
@@ -5079,14 +5107,17 @@ static LogicalResult compileHostProgram(StringRef tmpDirName,
     cmd.push_back("-l" + lib);
   }
 
-  // Any additional unrecognized flags (e.g. -Wl,... -lstdc++)
-  for (const auto &arg : sinkArgs) {
+  // Post-`--` passthrough, in user-specified order. Host source files mixed
+  // in here are already included.
+  for (const auto &arg : hostExtraArgs) {
     cmd.push_back(arg);
   }
 
-  // Host source files
-  for (const auto &src : hostSourceFiles) {
-    cmd.push_back(src);
+  // Positional host source files (pre-`--` legacy form)
+  std::string mlirFile = getInputFilename();
+  for (const auto &arg : positionalArgs) {
+    if (arg != mlirFile && isHostSourceFile(arg))
+      cmd.push_back(arg);
   }
 
   // Output filename
@@ -5621,8 +5652,28 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
 int main(int argc, char **argv) {
   InitLLVM y(argc, argv);
 
+  // Split argv on the first standalone `--`. Everything after is forwarded
+  // verbatim to the host compiler (host-source files are routed separately
+  // via getHostSourceFiles()). Everything before must be a recognized aiecc
+  // option or input file; unknown flags there are rejected by LLVM.
+  std::vector<char *> frontArgv;
+  frontArgv.reserve(argc);
+  bool sawSeparator = false;
+  for (int i = 0; i < argc; ++i) {
+    if (i > 0 && !sawSeparator && std::strcmp(argv[i], "--") == 0) {
+      sawSeparator = true;
+      continue;
+    }
+    if (sawSeparator) {
+      hostExtraArgs.emplace_back(argv[i]);
+    } else {
+      frontArgv.push_back(argv[i]);
+    }
+  }
+
   cl::AddExtraVersionPrinter(printVersion);
-  cl::ParseCommandLineOptions(argc, argv, "AIE Compiler Driver\n");
+  cl::ParseCommandLineOptions(static_cast<int>(frontArgv.size()),
+                              frontArgv.data(), "AIE Compiler Driver\n");
 
   if (showVersion) {
     printVersion(llvm::outs());

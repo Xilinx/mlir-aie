@@ -277,6 +277,9 @@ struct AIEObjectFifoStatefulTransformPass
     if (createOp.getAieStream())
       return true;
 
+    if (createOp.getConsumerElemType().has_value())
+      return true;
+
     if (createOp.getConsumerTiles().size() == 1 &&
         createOp.getDimensionsToStream().empty()) {
 
@@ -770,10 +773,16 @@ struct AIEObjectFifoStatefulTransformPass
               }
             }
 
-            // try to allocate on neighbor tiles
+            // Try neighbor with more remaining capacity first to avoid
+            // blocking adjacent MemTiles that also need spill space.
             if (!neighborTiles.empty()) {
+              llvm::stable_sort(neighborTiles, [&](TileOp a, TileOp b) {
+                return calculateCurrentUsedMemory(a, state.buffersPerFifo,
+                                                  buffers) <
+                       calculateCurrentUsedMemory(b, state.buffersPerFifo,
+                                                  buffers);
+              });
               for (auto &tile : neighborTiles) {
-                // Try to allocate on this neighbor tile
                 int neighborUsedMemory = calculateCurrentUsedMemory(
                     tile, state.buffersPerFifo, buffers);
                 if (static_cast<int>(neighborUsedMemory + totalSizeBytes) <=
@@ -896,7 +905,18 @@ struct AIEObjectFifoStatefulTransformPass
     int acqMode = 1;
     int relMode = 1;
     auto acqLockAction = LockAction::Acquire;
-    if (state.locksPerFifo[op].size() > 0) {
+    // Static-init producer cycled via iter_count > 1 with no upstream link:
+    // skip source-side locks. The BD chain restarts via the channel's
+    // task_count, but the per-BD lock state never gets replenished (no
+    // upstream S2MM refills the buffers) so the chain would deadlock on
+    // the second pass. Back-pressure to the downstream consumer is handled
+    // by the DMA stream's flow control; source-side locking is unnecessary
+    // for correctness in this configuration.
+    bool isCycledStaticInitProducer =
+        channelDir == DMAChannelDir::MM2S && op.getInitValues().has_value() &&
+        op.getIterCount().has_value() && op.getIterCount().value() > 1 &&
+        !getOptionalLinkOp(op).has_value();
+    if (state.locksPerFifo[op].size() > 0 && !isCycledStaticInitProducer) {
       auto dev = op->getParentOfType<DeviceOp>();
       if (auto &target = dev.getTargetModel();
           target.getTargetArch() == AIEArch::AIE1) {
@@ -1016,9 +1036,14 @@ struct AIEObjectFifoStatefulTransformPass
     Block *bdBlock = builder.createBlock(endBlock);
 
     // create DMA channel
+    // With a single buffer, the DMA hardware repeat_count avoids
+    // duplicating identical BDs.
+    bool useHwRepeat = (repeatCount > 1 && numBlocks == 1);
+    int dmaRepeatCount = useHwRepeat ? repeatCount - 1 : 0;
+    int bdRepeatCount = useHwRepeat ? 1 : repeatCount;
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, builder.getUnknownLoc(), channelDir,
-                       channelIndex, /*repeatCout*/ 0, bdBlock, endBlock);
+                       channelIndex, dmaRepeatCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1030,8 +1055,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (size_t i = 0; i < numBlocks; i++) {
       if (elemIndex >= state.buffersPerFifo[target].size())
         break;
-      for (int r = 0; r < repeatCount; r++) {
-        if (totalBlocks == numBlocks * repeatCount - 1)
+      for (int r = 0; r < bdRepeatCount; r++) {
+        if (totalBlocks == numBlocks * bdRepeatCount - 1)
           succ = bdBlock;
         else
           succ = builder.createBlock(endBlock);
@@ -1257,13 +1282,19 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
 
-    // Use iter_count if available, otherwise default to 0
     int taskCount = 0;
     bool isBdChainMode = false;
     if (bdChainIterCount.has_value()) {
       taskCount = bdChainIterCount.value() - 1;
       isBdChainMode = true;
     }
+    // With a single buffer and no join/distribute, the DMA hardware
+    // repeat_count avoids duplicating identical BDs.
+    bool useHwRepeat = (repeatCount > 1 && numBlocks == 1 &&
+                        joinDistribFactor == 1 && !isBdChainMode);
+    if (useHwRepeat)
+      taskCount = repeatCount - 1;
+    int bdRepeatFactor = useHwRepeat ? 1 : repeatCount;
     DMAStartOp::create(builder, builder.getUnknownLoc(), channelDir,
                        channelIndex, taskCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
@@ -1280,8 +1311,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (size_t i = 0; i < numBlocks; i++) {
       if (elemIndex >= state.buffersPerFifo[target].size())
         break;
-      for (int r = 0; r < repeatCount * joinDistribFactor; r++) {
-        if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1) {
+      for (int r = 0; r < bdRepeatFactor * joinDistribFactor; r++) {
+        if (totalBlocks == numBlocks * bdRepeatFactor * joinDistribFactor - 1) {
           // If iter_count attribute is set (BD chain mode), create a
           // dedicated terminating block
           if (isBdChainMode) {
@@ -1934,7 +1965,9 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         builder.setInsertionPointAfter(createOp);
-        auto datatype = llvm::cast<AIEObjectFifoType>(createOp.getElemType());
+        // Use consumer element type if specified (asymmetric transfer)
+        auto datatype = llvm::cast<AIEObjectFifoType>(
+            createOp.getConsumerElemTypeOrDefault());
         auto consumerObjFifoSize =
             builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
         // rename and replace split objectFifo
@@ -2013,7 +2046,39 @@ struct AIEObjectFifoStatefulTransformPass
     //   the acquires/releases (uses of the FIFO).
     // - Global release counter tracker to keep track of the objectFifo state
     //===------------------------------------------------------------------===//
-    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+    // Process MemTile ObjectFifos largest-first so large buffers get
+    // priority for home placement and spill targets are chosen before
+    // smaller fifos consume neighbor capacity.
+    SmallVector<ObjectFifoCreateOp> sortedCreateOps(
+        device.getOps<ObjectFifoCreateOp>());
+    if (!sortedCreateOps.empty()) {
+      DataLayout dataLayout = DataLayout::closest(sortedCreateOps[0]);
+      // Sort only among MemTile-producer fifos by buffer size descending.
+      // Non-MemTile fifos keep their IR-order positions undisturbed.
+      auto getBufSize = [&](ObjectFifoCreateOp op) -> int64_t {
+        auto fifoType = llvm::cast<AIEObjectFifoType>(op.getElemType());
+        auto elemType = llvm::cast<MemRefType>(fifoType.getElementType());
+        int64_t bits = dataLayout.getTypeSizeInBits(elemType.getElementType());
+        return elemType.getNumElements() * bits / 8;
+      };
+      SmallVector<size_t> memTileSlots;
+      SmallVector<ObjectFifoCreateOp> memTileFifos;
+      for (size_t i = 0; i < sortedCreateOps.size(); i++) {
+        auto prodTile = dyn_cast<TileOp>(
+            sortedCreateOps[i].getProducerTile().getDefiningOp());
+        if (prodTile && prodTile.isMemTile()) {
+          memTileSlots.push_back(i);
+          memTileFifos.push_back(sortedCreateOps[i]);
+        }
+      }
+      llvm::stable_sort(memTileFifos,
+                        [&](ObjectFifoCreateOp a, ObjectFifoCreateOp b) {
+                          return getBufSize(a) > getBufSize(b);
+                        });
+      for (size_t i = 0; i < memTileSlots.size(); i++)
+        sortedCreateOps[memTileSlots[i]] = memTileFifos[i];
+    }
+    for (auto createOp : sortedCreateOps) {
 
       int share_direction = 0;
       bool shared = !requiresDMAs(createOp, share_direction, state);

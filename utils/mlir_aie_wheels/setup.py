@@ -210,6 +210,8 @@ class CMakeBuild(build_ext):
             f"-DAIE_VITIS_COMPONENTS={os.getenv('AIE_VITIS_COMPONENTS', 'AIE2')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             "-DAIE_ENABLE_PYTHON_PASSES=OFF",
+            "-DAIE_BUILD_LSP_SERVER=OFF",
+            "-DAIE_BUILD_VISUALIZE=OFF",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
             # not used on MSVC, but no harm
         ]
@@ -303,6 +305,36 @@ class CMakeBuild(build_ext):
                 check=True,
             )
 
+            # C++-developer-only content: anyone pip installing this wheel
+            # reaches the toolchain through Python, never through native
+            # linking. aie_api/ and aie_kernels/ headers stay — user AIE
+            # kernels #include those at compile time.
+            dev_paths = [
+                Path(install_dir) / "include" / "aie",
+                Path(install_dir) / "include" / "aie-c",
+                Path(install_dir) / "include" / "bootgen_c_api.h",
+                Path(install_dir) / "include" / "xaienginecdo_static",
+                Path(install_dir) / "lib" / "cmake",
+                *(Path(install_dir) / "lib").glob("*.a"),
+            ]
+            for p in dev_paths:
+                if p.is_dir():
+                    shutil.rmtree(p)
+                elif p.exists():
+                    p.unlink()
+
+            # CMake leaks staging directories, intermediate .o files, and
+            # __pycache__ caches into the install prefix; none belong in a
+            # shipped wheel.
+            for leaked in [
+                Path(install_dir) / "src",
+                Path(install_dir) / "lib" / "objects-Release",
+            ]:
+                if leaked.exists():
+                    shutil.rmtree(leaked)
+            for pycache in Path(install_dir).rglob("__pycache__"):
+                shutil.rmtree(pycache, ignore_errors=True)
+
             # Vendor eudsl-python-extras
             # Install eudsl to install_dir/python so it merges with mlir-aie's package structure (aie/extras).
             target_dir = Path(install_dir) / "python"
@@ -391,6 +423,10 @@ def parse_requirements(filename):
         return requirements
 
 
+_license = MLIR_AIE_SOURCE_DIR / "LICENSE"
+if _license.exists():
+    shutil.copy(_license, Path(__file__).parent / "LICENSE")
+
 setup(
     name="mlir-aie" if check_env("ENABLE_RTTI", 1) else "mlir-aie-no-rtti",
     version=get_version(),
@@ -406,6 +442,12 @@ setup(
     author_email="joseph.melber@amd.com",
     url="https://github.com/Xilinx/mlir-aie",
     license="Apache-2.0 WITH LLVM-exception",
+    license_files=["LICENSE"],
+    project_urls={
+        "Source": "https://github.com/Xilinx/mlir-aie",
+        "Issues": "https://github.com/Xilinx/mlir-aie/issues",
+        "Documentation": "https://xilinx.github.io/mlir-aie/",
+    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "License :: OSI Approved :: Apache Software License",
@@ -422,11 +464,9 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "aie-lsp-server = aie.tools:aie_lsp_server",
             "aie-opt = aie.tools:aie_opt",
             "aie-reset = aie.tools:aie_reset",
             "aie-translate = aie.tools:aie_translate",
-            "aie-visualize = aie.tools:aie_visualize",
             "aiecc = aie.tools:aiecc",
             "aiecc.py = aie.compiler.aiecc.main:main",
             "bootgen = aie.tools:bootgen",
@@ -443,7 +483,7 @@ setup(
     },
     zip_safe=False,
     packages=find_packages(exclude=["wheelhouse", "python_bindings", "mlir-aie"]),
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     install_requires=parse_requirements(
         Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
     ),

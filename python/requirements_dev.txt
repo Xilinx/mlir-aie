@@ -1,10 +1,17 @@
+# Source for python/requirements_dev.lock (hash-pinned, --require-hashes-installed in CI).
+# After editing this file, regenerate the .lock with:
+#   utils/regenerate_lockfiles.sh
 cmake>=4.3.2, <5.0
 pybind11>=3.0.4
 setuptools>=82.0.1
 wheel
 ninja!=1.13.0
 cibuildwheel
-pre-commit
+# cibuildwheel pulls patchelf transitively via auditwheel. patchelf has
+# no Windows binary wheel and falls over building from source; gate the
+# marker explicitly so pip-compile carries it through to the lockfile.
+patchelf; platform_system == "Linux"
+pre-commit>=4.6.0,<5.0
 nanobind>=2.12.0
 lit
 matplotlib

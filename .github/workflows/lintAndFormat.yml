@@ -1,5 +1,8 @@
 name: Lint and Format
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
@@ -27,7 +30,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           fetch-depth: 2
           submodules: "true"
@@ -37,9 +40,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-tidy ninja-build clang libelf-dev
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Install Python packages
         run: |
@@ -47,7 +50,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_dev.txt
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Get MLIR
         id: mlir-wheels
@@ -102,7 +105,7 @@ jobs:
 
       - name: Upload clang-tidy fixes
         if: ${{ steps.clang-tidy-fixes.outputs.FIXES }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           path: fixes.yml
           name: clang-tidy-fixes.yml
@@ -120,28 +123,34 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           fetch-depth: 2
           submodules: "true"
 
       - name: Install clang-format
-        uses: aminya/setup-cpp@v1
+        uses: aminya/setup-cpp@1f17f92d6a52bfcb1a25348e2c526c2e5cbb1134  # v1.8.0
         with:
           clangformat: 17.0.1
 
       - name: Setup Python env
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Check Liquid Syntax
         run: python3 utils/check_liquid_syntax.py
 
-      - name: Install black
+      - name: Install pre-commit
         run: |
-          pip install --upgrade pip
-          pip install black[jupyter]
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+
+      - name: Check filename case conflicts
+        run: pre-commit run check-case-conflict --all-files --color never
+
+      - name: Check filename case conflicts
+        run: pre-commit run check-case-conflict --all-files --color never
 
       - name: Run git-clang-format
         id: git-clang-format
@@ -153,13 +162,13 @@ jobs:
           cat clang-format.diff
 
       - name: Upload clang-format
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           path: clang-format.diff
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@v1.22
+        uses: reviewdog/action-suggester@aa38384ceb608d00f84b4690cacc83a5aba307ff  # v1.24
         with:
           tool_name: clang-format
           level: error
@@ -170,19 +179,19 @@ jobs:
         if: success() || failure()
         id: black-format
         run: |
-          black . || true
+          pre-commit run black --hook-stage pre-push --all-files --color never || true
           git diff > black-format.diff
           cat black-format.diff
 
       - name: Upload black-format
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           path: black-format.diff
           name: black_format_diffs
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@v1.22
+        uses: reviewdog/action-suggester@aa38384ceb608d00f84b4690cacc83a5aba307ff  # v1.24
         with:
           tool_name: black
           level: error
@@ -203,7 +212,7 @@ jobs:
     steps:
 
       - name: Free disk space
-        uses: descriptinc/free-disk-space@main
+        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
         with:
           tool-cache: true
           android: true
@@ -213,14 +222,14 @@ jobs:
           swap-storage: false
 
       - name: Get the project repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         with:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Install Python and other packages
         run: |
@@ -228,7 +237,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_dev.txt
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Install packages
         run: |
@@ -254,7 +263,7 @@ jobs:
 
       - name: Ccache for C++ compilation
         if: steps.changed-files.outputs.changed-files != ''
-        uses: hendrikmuhs/ccache-action@v1.2
+        uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639  # v1.2
         with:
           key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
           max-size: 1G
@@ -266,7 +275,7 @@ jobs:
           python utils/mlir_aie_wheels/vendor_eudsl.py \
               --requirements python/requirements.txt \
               --install-non-eudsl
-          pip install -r python/requirements_dev.txt
+          python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Build and generate coverage (Release)
         if: steps.changed-files.outputs.changed-files != ''
@@ -322,7 +331,7 @@ jobs:
 
       - name: Update PR with coverage results
         if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: edumserrano/find-create-or-update-comment@v3
+        uses: edumserrano/find-create-or-update-comment@82880b65c8a3a6e4c70aa05a204995b6c9696f53  # v3
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body-includes: '<!--<!doctype codecov html>-->'

@@ -77,7 +77,7 @@ module {
 
       // Packet routing configuration:
       // - id is optional; if omitted, auto-allocated by trace pass
-      // - type is inferred based on tile type except for core tiles, since both 
+      // - type is inferred based on tile type except for core tiles, since both
       //   trace units exist; defaults to type=core for core tiles
       aie.trace.packet id=1 type=core
 
@@ -183,8 +183,9 @@ module {
       // TRACE INITIALIZATION
       // ========================================================================
 
-      // Configure trace output buffer (8192 bytes, default arg_idx=4)
-      aie.trace.host_config buffer_size = 8192
+      // Configure trace output buffer (8192 bytes, default arg_idx=4).
+      // Select which shim should be used by the egress trace transfer (default is the shim tile from column 0).
+      aie.trace.host_config buffer_size = 8192 egress_shim_col = 1
 
       // Start trace configuration
       aie.trace.start_config @core_trace
@@ -211,7 +212,7 @@ module {
         aie.dma_bd(%arg2 : memref<4096xi32>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
-      
+
       aiex.dma_start_task(%0)
       aiex.dma_start_task(%1)
       aiex.dma_start_task(%2)

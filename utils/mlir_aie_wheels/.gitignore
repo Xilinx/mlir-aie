@@ -6,3 +6,5 @@ _generate/
 *.py[cod]
 *.egg-info
 *env*
+# Materialized at build time from the source repo's top-level LICENSE.
+LICENSE

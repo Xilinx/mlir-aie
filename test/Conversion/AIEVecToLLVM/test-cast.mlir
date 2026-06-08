@@ -52,3 +52,24 @@ func.func @test_cast_non_acc() -> vector<16xf32> {
   %0 = aievec.cast %cst {isResAcc = false} : vector<16xf32>, vector<16xf32>
   return %0 : vector<16xf32>
 }
+
+// aievec.cast between v32i32 (acc32) and v32f32 (accfloat) is a no-op at
+// AIE2P hardware level (shared accumulator register). Lowering must emit
+// llvm.bitcast so the value survives translation to LLVM IR rather than
+// dropping to a stranded unrealized_conversion_cast.
+// CHECK-AIE2P-LABEL: @test_cast_acc32_to_accfloat_aie2p
+func.func @test_cast_acc32_to_accfloat_aie2p(%arg0: vector<32xi32>) -> vector<32xf32> {
+  // CHECK-AIE2P: %[[BC:.*]] = llvm.bitcast %arg0 : vector<32xi32> to vector<32xf32>
+  // CHECK-AIE2P: return %[[BC]] : vector<32xf32>
+  %0 = aievec.cast %arg0 {isResAcc = true} : vector<32xi32>, vector<32xf32>
+  return %0 : vector<32xf32>
+}
+
+// And the reverse direction (accfloat -> acc32) symmetric.
+// CHECK-AIE2P-LABEL: @test_cast_accfloat_to_acc32_aie2p
+func.func @test_cast_accfloat_to_acc32_aie2p(%arg0: vector<32xf32>) -> vector<32xi32> {
+  // CHECK-AIE2P: %[[BC:.*]] = llvm.bitcast %arg0 : vector<32xf32> to vector<32xi32>
+  // CHECK-AIE2P: return %[[BC]] : vector<32xi32>
+  %0 = aievec.cast %arg0 {isResAcc = true} : vector<32xf32>, vector<32xi32>
+  return %0 : vector<32xi32>
+}
