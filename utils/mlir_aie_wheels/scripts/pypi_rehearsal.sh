@@ -11,7 +11,7 @@
 # flagged in the summary but does not fail the build, so we accumulate
 # data before deciding whether to ask PyPI for a per-project cap raise).
 
-set -euo pipefail
+set -euxo pipefail
 
 WHEELS_IN=${1:?input wheel dir}
 WHEELS_OUT=${2:?output stripped wheel dir}
@@ -20,6 +20,12 @@ LABEL=${3:-rehearsal}
 # Default GITHUB_STEP_SUMMARY to stdout when not running under Actions so the
 # script is also useful locally (set -u would otherwise abort on first ref).
 : "${GITHUB_STEP_SUMMARY:=/dev/stdout}"
+
+# DIAGNOSTIC: verify wheels were found and summary path is set + writable.
+echo "DIAG: GITHUB_STEP_SUMMARY=${GITHUB_STEP_SUMMARY}"
+echo "DIAG: WHEELS_IN=${WHEELS_IN}; contents:"
+ls -la "$WHEELS_IN" || true
+echo "DIAG: wheel count: $(find "$WHEELS_IN" -maxdepth 1 -name '*.whl' | wc -l)"
 
 PYPI_DEFAULT_CAP=$((100 * 1024 * 1024))
 PYPI_CLOSE_THRESH=$((80 * 1024 * 1024))
@@ -55,7 +61,7 @@ twine_failed=0
   echo ""
   echo "| wheel | unstripped | stripped | reduction | twine | vs 100 MB cap |"
   echo "|---|---:|---:|---:|---|---|"
-} >> "$GITHUB_STEP_SUMMARY"
+} | tee -a "$GITHUB_STEP_SUMMARY"
 
 for whl in "$WHEELS_IN"/*.whl; do
   [ -e "$whl" ] || { echo "no wheels in $WHEELS_IN"; exit 0; }
@@ -111,11 +117,17 @@ for whl in "$WHEELS_IN"/*.whl; do
   fi
 
   echo "| \`$name\` | ${orig_mb} MB | ${strip_mb} MB | -${reduction}% | $twine_status | $cap_status |" \
-    >> "$GITHUB_STEP_SUMMARY"
+    | tee -a "$GITHUB_STEP_SUMMARY"
 done
 
-echo "" >> "$GITHUB_STEP_SUMMARY"
+echo "" | tee -a "$GITHUB_STEP_SUMMARY"
 echo "_Stripped variants are produced only to measure size and validate \`twine check\`; the GitHub release continues to receive the unstripped wheels._" \
-  >> "$GITHUB_STEP_SUMMARY"
+  | tee -a "$GITHUB_STEP_SUMMARY"
+
+echo "DIAG: final summary file size:"
+wc -c "$GITHUB_STEP_SUMMARY" || true
+echo "DIAG: first 500 bytes of summary file:"
+head -c 500 "$GITHUB_STEP_SUMMARY" || true
+echo ""
 
 exit "$twine_failed"
