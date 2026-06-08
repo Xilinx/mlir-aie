@@ -6,21 +6,19 @@
 
 # RUN: %python %s | FileCheck %s
 
-# Pins down the IRON-side contract for `aie.objectfifo` depth emission, which
-# mirrors the `AIE_ObjectFifoCreateOp` description in AIEOps.td and the
-# programming guide section 2a ("Specifying the Object FIFO Depth as an
-# Array") / section 2b ("Broadcast with Skip-Connection"):
+# Pins down the IRON-side contract for `aie.objectfifo` depth emission:
+# IRON always emits the per-handle ArrayAttr [prod_depth, *cons_depths],
+# even when all depths are equal. The previous "collapse to single int when
+# symmetric" path triggered the stateful-transform's auto-minimize behavior,
+# which sized each consumer's pool from max-acquire instead of honoring the
+# user's declared depth -- silently deadlocking multi-consumer fanout
+# designs where one consumer must buffer ahead of the others.
 #
-#   * Symmetric per-handle depths -> emit a single int; the stateful
-#     transform is free to shrink each tile's pool to (max_acquire + 1).
-#   * Asymmetric per-handle depths -> emit an ArrayAttr
-#     [prod_depth, *cons_depths]; the stateful transform honors each
-#     declared depth verbatim (the documented override path).
-#
-# This is the IRON surface for the PG section-2b skip-connection pattern:
-# the user writes `cons(depth=N)` on the consumer that needs extra buffering
-# and a plain `cons()` on the peer, and the resulting ArrayAttr makes the
-# asymmetry explicit to the lowering.
+# This is the IRON surface for the programming-guide section-2b
+# skip-connection pattern: `cons(depth=N)` on the consumer that needs extra
+# buffering plus a plain `cons()` on the peer produces an ArrayAttr where
+# the asymmetry is explicit to the lowering. The symmetric case (all peers
+# at the same depth) emits the same ArrayAttr shape for consistency.
 
 import numpy as np
 
@@ -29,11 +27,12 @@ from aie.iron.controlflow import range_
 from aie.iron.device import NPU1Col1, Tile
 
 
-# CHECK-DAG: aie.objectfifo @of_sym({{.*}}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-def test_symmetric_depths_collapse_to_int():
-    """All handles default to ObjectFifo(depth=2). _get_depths() collapses
-    [2, 2, 2] to a single int so the lowering takes the auto-minimize path
-    documented in AIEOps.td for single-int elemNumber."""
+# CHECK-DAG: aie.objectfifo @of_sym({{.*}}, [2 : i32, 2 : i32, 2 : i32]) : !aie.objectfifo<memref<16xi32>>
+def test_symmetric_depths_still_emit_array():
+    """All handles default to ObjectFifo(depth=2). IRON emits the per-handle
+    ArrayAttr [2, 2, 2] verbatim rather than collapsing to a single int, so
+    the stateful transform doesn't silently shrink consumer pools via its
+    auto-minimize path."""
 
     dev = NPU1Col1()
     tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
@@ -63,7 +62,7 @@ def test_symmetric_depths_collapse_to_int():
 
 
 # CHECK-DAG: aie.objectfifo @of_skip({{.*}}, [1 : i32, 1 : i32, 2 : i32]) : !aie.objectfifo<memref<16xi32>>
-# CHECK-DAG: aie.objectfifo @of_bc({{.*}}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+# CHECK-DAG: aie.objectfifo @of_bc({{.*}}, [1 : i32, 1 : i32]) : !aie.objectfifo<memref<16xi32>>
 def test_skip_connection_emits_array():
     """Programming guide section 2b: producer A broadcasts to B and C, and
     C also depends on data from B via a separate fifo. C needs an extra
@@ -118,5 +117,5 @@ def test_skip_connection_emits_array():
 
 
 if __name__ == "__main__":
-    test_symmetric_depths_collapse_to_int()
+    test_symmetric_depths_still_emit_array()
     test_skip_connection_emits_array()
