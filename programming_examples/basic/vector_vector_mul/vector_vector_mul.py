@@ -24,8 +24,8 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
-from aie.iron.controlflow import range_
+from aie.iron import Compile, In, Out
+from aie.iron.algorithms import transform_binary_typed
 from aie.iron.device import device_from_args
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime.argparse import (
@@ -44,40 +44,10 @@ def vector_vector_mul(
     *,
     num_elements: Compile[int],
     dtype: Compile[type] = np.int32,
+    tile_size: Compile[int] = 16,
 ):
-    n = 16
-    if num_elements % n != 0:
-        raise ValueError(f"num_elements ({num_elements}) must be a multiple of {n}")
-    n_tiles = num_elements // n
-
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    tile_ty = np.ndarray[(n,), np.dtype[dtype]]
-
-    of_in1 = ObjectFifo(tile_ty, name="in1")
-    of_in2 = ObjectFifo(tile_ty, name="in2")
-    of_out = ObjectFifo(tile_ty, name="out")
-
-    def core_body(of_in1, of_in2, of_out):
-        for _ in range_(n_tiles):
-            elem_in1 = of_in1.acquire(1)
-            elem_in2 = of_in2.acquire(1)
-            elem_out = of_out.acquire(1)
-            for i in range_(n):
-                elem_out[i] = elem_in1[i] * elem_in2[i]
-            of_in1.release(1)
-            of_in2.release(1)
-            of_out.release(1)
-
-    worker = Worker(core_body, fn_args=[of_in1.cons(), of_in2.cons(), of_out.prod()])
-
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
-        rt.start(worker)
-        rt.fill(of_in1.prod(), A)
-        rt.fill(of_in2.prod(), B)
-        rt.drain(of_out.cons(), C, wait=True)
-
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return transform_binary_typed(lambda a, b: a * b, tensor_ty, tile_size=tile_size)
 
 
 def _compile_kwargs(opts):
