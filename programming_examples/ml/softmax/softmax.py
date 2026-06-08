@@ -61,16 +61,6 @@ def _compile_kwargs(opts):
     return dict(size=opts.length, num_channels=opts.channels)
 
 
-def _softmax_ref_per_tile(x, tile_size=1024):
-    out = np.empty_like(x, dtype=np.float32)
-    x_f32 = x.astype(np.float32)
-    for t in range(0, x.size, tile_size):
-        tile = x_f32[t : t + tile_size]
-        e = np.exp(tile - tile.max())
-        out[t : t + tile_size] = e / e.sum()
-    return out.astype(bfloat16)
-
-
 def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     in_np = rng.uniform(-4.0, 8.0, size=(opts.length,)).astype(bfloat16)
@@ -79,7 +69,7 @@ def _run_and_verify(opts):
 
     softmax(a_t, b_t, **_compile_kwargs(opts))
 
-    expected = _softmax_ref_per_tile(in_np, tile_size=1024)
+    expected = kernels.softmax_ref(in_np, tile_size=1024)
     assert_pass(
         b_t.numpy(),
         expected,

@@ -28,7 +28,18 @@ from .vision import (
     filter2d,
     add_weighted,
 )
-from .activation import softmax, gelu, silu, swiglu, bf16_exp
+from .activation import (
+    softmax,
+    gelu,
+    silu,
+    swiglu,
+    bf16_exp,
+    relu_ref,
+    silu_ref,
+    gelu_ref,
+    bf16_exp_ref,
+    softmax_ref,
+)
 from .linalg import mm, mv, cascade_mm
 from .conv import (
     conv2dk1,
@@ -74,6 +85,11 @@ __all__ = [
     "silu",
     "swiglu",
     "bf16_exp",
+    "relu_ref",
+    "silu_ref",
+    "gelu_ref",
+    "bf16_exp_ref",
+    "softmax_ref",
     "mm",
     "mv",
     "cascade_mm",

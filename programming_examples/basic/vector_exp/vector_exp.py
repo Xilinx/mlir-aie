@@ -87,8 +87,7 @@ def main():
     # The AIE kernel is a LUT approximation; verify with the canonical
     # 12.8% relative tolerance, stopping at the first inf/nan (the LUT's
     # behaviour outside its defined input range isn't part of the contract).
-    with np.errstate(over="ignore", invalid="ignore"):
-        ref = np.exp(a_np.astype(np.float32))
+    ref = kernels.bf16_exp_ref(a_np)
     errors, n_checked = count_mismatches(c.numpy(), ref)
 
     if errors:

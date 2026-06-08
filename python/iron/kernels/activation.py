@@ -5,7 +5,20 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""Activation kernel factories: softmax, gelu, silu, swiglu, bf16_exp."""
+"""Activation kernel factories + numpy reference implementations.
+
+Factories (each returns an :class:`ExternalFunction`):
+  softmax, gelu, silu, swiglu, bf16_exp.
+
+Companion numpy reference implementations for host-side verification:
+  :func:`relu_ref`, :func:`silu_ref`, :func:`gelu_ref`,
+  :func:`bf16_exp_ref`, :func:`softmax_ref`.  These compute the AIE
+  kernel's op in float32 so designs don't each reimplement the math
+  in their verify path.  Pair with
+  :func:`aie.utils.verify.count_mismatches` (rtol=0.128 is the
+  canonical LUT-tolerance default; see each ref's docstring for
+  per-op recommendations).
+"""
 
 from pathlib import Path
 import numpy as np
@@ -120,3 +133,81 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
     return _bf16_lut_factory(
         "bf16_exp", "exp_bf16_1024", "bf16_exp.cc", tile_size, arg_arity=2
     )
+
+
+# ---------------------------------------------------------------------------
+# Reference (numpy) implementations
+# ---------------------------------------------------------------------------
+# The kernels above are LUT approximations.  The functions below compute the
+# corresponding op in float32 numpy so host harnesses can verify the AIE
+# output without each design re-implementing the math.  Output dtype matches
+# the input (so a bf16 input yields a bf16 reference, comparable to the AIE
+# kernel output via ``aie.utils.verify.{nearly_equal, count_mismatches}``).
+
+
+def relu_ref(x):
+    """numpy reference for :func:`relu` — element-wise ``max(x, 0)``.
+
+    Exact; tolerance comparison is not needed.  See ``aie.utils.verify``
+    for the relaxed bf16/LUT-style comparators most kernels here want.
+    """
+    return np.maximum(x.astype(np.float32), 0.0).astype(x.dtype)
+
+
+def silu_ref(x):
+    """numpy reference for :func:`silu` (Swish) — ``x * sigmoid(x)``.
+
+    LUT-approximation territory; pair with ``rtol=0.128`` (the default
+    in :func:`aie.utils.verify.count_mismatches`) when verifying.
+    """
+    xf = x.astype(np.float32)
+    return (xf / (1.0 + np.exp(-xf))).astype(x.dtype)
+
+
+def gelu_ref(x):
+    """numpy reference for :func:`gelu` — tanh approximation
+    ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
+
+    Matches the C++ kernel's tanh-GELU formula; pair with ``rtol=0.128,
+    atol=0.05`` when verifying.
+    """
+    import math as _math
+
+    xf = x.astype(np.float32)
+    return (
+        0.5 * xf * (1.0 + np.tanh(_math.sqrt(2.0 / _math.pi) * (xf + 0.044715 * xf**3)))
+    ).astype(x.dtype)
+
+
+def bf16_exp_ref(x):
+    """numpy reference for :func:`bf16_exp` — element-wise ``exp(x)``.
+
+    LUT approximation territory; the AIE kernel saturates on large inputs.
+    Pair with the canonical 12.8% relative tolerance and ``stop_at_
+    nonfinite=True`` (the default in
+    :func:`aie.utils.verify.count_mismatches`) when verifying.
+    """
+    xf = x.astype(np.float32)
+    with np.errstate(over="ignore", invalid="ignore"):
+        return np.exp(xf).astype(x.dtype)
+
+
+def softmax_ref(x, *, tile_size: int = 1024):
+    """numpy reference for :func:`softmax`.
+
+    The AIE kernel computes softmax independently per ``tile_size``-element
+    tile (no cross-tile reduction), so the reference splits ``x`` the same
+    way before applying the float32 softmax.  ``x.size`` must be a
+    multiple of ``tile_size``.
+    """
+    xf = x.astype(np.float32)
+    if xf.size % tile_size != 0:
+        raise ValueError(
+            f"softmax_ref: x has {xf.size} elements; not a multiple of "
+            f"tile_size={tile_size}"
+        )
+    flat = xf.reshape(-1, tile_size)
+    flat = flat - flat.max(axis=1, keepdims=True)
+    exp = np.exp(flat)
+    out = exp / exp.sum(axis=1, keepdims=True)
+    return out.reshape(x.shape).astype(x.dtype)

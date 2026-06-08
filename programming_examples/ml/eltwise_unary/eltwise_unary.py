@@ -14,7 +14,6 @@ per-tile kernel is selected by the ``op`` Compile knob and pulled from
 """
 
 import argparse
-import math
 
 import numpy as np
 from ml_dtypes import bfloat16
@@ -31,36 +30,21 @@ from aie.utils.verify import assert_pass
 
 _KERNEL_FACTORIES = {"relu": kernels.relu, "silu": kernels.silu, "gelu": kernels.gelu}
 
-
-def _relu_ref_f32(x):
-    return np.maximum(x.astype(np.float32), 0.0)
-
-
-def _silu_ref_f32(x):
-    x = x.astype(np.float32)
-    return x / (1.0 + np.exp(-x))
-
-
-def _gelu_ref_f32(x):
-    x = x.astype(np.float32)
-    return 0.5 * x * (1.0 + np.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x**3)))
-
-
-# Tolerances picked per-op to match the LUT-backed kernel: relu is exact,
-# silu/gelu are LUT approximations.
+# Reference numpy implementations + the AIE-kernel-appropriate tolerance for
+# each op live alongside the kernel factories in aie.iron.kernels (relu is
+# exact, silu/gelu are LUT approximations).
 _VERIFY_CFG = {
-    "relu": (_relu_ref_f32, dict(fail_msg="relu output does not match max(in, 0)")),
+    "relu": (
+        kernels.relu_ref,
+        dict(fail_msg="relu output does not match max(in, 0)"),
+    ),
     "silu": (
-        _silu_ref_f32,
+        kernels.silu_ref,
         dict(rtol=0.128, fail_msg="silu output outside LUT tolerance"),
     ),
     "gelu": (
-        _gelu_ref_f32,
-        dict(
-            rtol=0.128,
-            atol=0.05,
-            fail_msg="gelu output outside LUT tolerance",
-        ),
+        kernels.gelu_ref,
+        dict(rtol=0.128, atol=0.05, fail_msg="gelu output outside LUT tolerance"),
     ),
 }
 
