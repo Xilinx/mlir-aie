@@ -1,1 +1,1 @@
-notebook
+notebook>=7.5.7
