@@ -9,7 +9,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.iron as iron
@@ -723,6 +723,174 @@ def transform_parallel_binary_typed(
         func,
         [fake_tensor, fake_tensor],
         fake_tensor,
+        tile_size=tile_size,
+        trace_size=trace_size,
+        num_channels=num_channels,
+        pass_size_to_kernel=pass_size_to_kernel,
+    )
+
+
+def transform(
+    input: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+    trace_size: Compile[int] = 0,
+):
+    """Apply ``func`` to ``input`` and write results to ``output`` using tiled
+    processing on a single AIE core.  JIT-friendly: pass to ``iron.jit`` and
+    call with positional tensors plus the compile-time kwargs::
+
+        iron.jit(transform)(
+            input, output, func=lambda a: a + 1,
+            N=input.shape[0], dtype=input.dtype, tile_size=16,
+        )
+
+    Args:
+        input: Input tensor placeholder (``In`` marker).
+        output: Output tensor placeholder (``Out`` marker, same shape/dtype as
+            ``input``).
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        N: Number of elements in the (1-D) input/output tensors.
+        dtype: Element dtype shared by input and output.
+        tile_size: Number of elements per tile. Defaults to 16.
+        trace_size: When > 0, enable Worker core trace and a runtime trace
+            buffer of this size in bytes. Defaults to 0 (off).
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return transform_typed(func, tensor_ty, tile_size=tile_size, trace_size=trace_size)
+
+
+def transform_binary(
+    first: In,
+    second: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+    trace_size: Compile[int] = 0,
+):
+    """Apply ``func`` to ``first`` and ``second`` and write results to
+    ``output`` using tiled processing on a single AIE core.  JIT-friendly.
+
+    Args:
+        first: First input tensor placeholder (``In``).
+        second: Second input tensor placeholder (``In``, same shape/dtype as
+            ``first``).
+        output: Output tensor placeholder (``Out``, same shape/dtype as inputs).
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        N: Number of elements in each tensor.
+        dtype: Element dtype shared by all three tensors.
+        tile_size: Number of elements per tile. Defaults to 16.
+        trace_size: When > 0, enable Worker core trace and a runtime trace
+            buffer of this size in bytes. Defaults to 0 (off).
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return transform_binary_typed(
+        func, tensor_ty, tile_size=tile_size, trace_size=trace_size
+    )
+
+
+def transform_parallel(
+    input: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+    trace_size: Compile[int] = 0,
+    num_channels: Compile[int] = 1,
+    pass_size_to_kernel: Compile[bool] = True,
+):
+    """Apply ``func`` to ``input`` in parallel across all available NPU
+    columns.  JIT-friendly.
+
+    Distributes the input tensor evenly across columns (and, when
+    ``num_channels=2``, both shim channels per column); each worker processes
+    ``tile_size`` elements per iteration.
+
+    Args:
+        input: Input tensor placeholder (``In``).
+        output: Output tensor placeholder (``Out``, same shape/dtype as
+            ``input``).
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        N: Number of elements in the (1-D) tensors.
+        dtype: Element dtype shared by input and output.
+        tile_size: Number of elements per tile per worker. Defaults to 16.
+        trace_size: When > 0, enable per-column Worker core trace and a
+            runtime trace buffer of this size in bytes. Defaults to 0 (off).
+        num_channels: Shim DMA channels per column, 1 or 2.  Use 2 for
+            DDR-bandwidth-bound element-wise kernels (relu/gelu/silu/eltwise_*)
+            so both shim channels per column run a worker.  Defaults to 1.
+        pass_size_to_kernel: When True (default), the kernel receives an extra
+            trailing ``int`` arg equal to ``tile_size``.  Set False for
+            ``(in, out)``-only kernels.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return transform_parallel_typed(
+        func,
+        tensor_ty,
+        tile_size=tile_size,
+        trace_size=trace_size,
+        num_channels=num_channels,
+        pass_size_to_kernel=pass_size_to_kernel,
+    )
+
+
+def transform_parallel_binary(
+    first: In,
+    second: In,
+    output: Out,
+    *,
+    func: Compile[object],
+    N: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+    trace_size: Compile[int] = 0,
+    num_channels: Compile[int] = 1,
+    pass_size_to_kernel: Compile[bool] = True,
+):
+    """Apply ``func`` to ``first`` and ``second`` in parallel across all
+    available NPU columns.  JIT-friendly.
+
+    Args:
+        first: First input tensor placeholder (``In``).
+        second: Second input tensor placeholder (``In``, same shape/dtype as
+            ``first``).
+        output: Output tensor placeholder (``Out``, same shape/dtype as inputs).
+        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        N: Number of elements in each tensor.
+        dtype: Element dtype shared by all three tensors.
+        tile_size: Number of elements per tile per worker. Defaults to 16.
+        trace_size: When > 0, enable per-column Worker core trace and a
+            runtime trace buffer of this size in bytes. Defaults to 0 (off).
+        num_channels: Shim DMA channels per column, 1 or 2.  Defaults to 1.
+            See :func:`transform_parallel`.
+        pass_size_to_kernel: Append ``tile_size`` as a trailing ``int`` arg
+            on every kernel call.  Defaults to True.
+
+    Returns:
+        mlir.ir.Module: The compiled MLIR module.
+    """
+    tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
+    return transform_parallel_binary_typed(
+        func,
+        tensor_ty,
         tile_size=tile_size,
         trace_size=trace_size,
         num_channels=num_channels,
