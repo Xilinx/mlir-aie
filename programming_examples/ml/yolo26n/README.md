@@ -732,7 +732,7 @@ yolo26n/
 ├── placement.py                       # PLACEMENT[block_name] → tile coords + design rules
 ├── tile_layout.py                     # ASCII tile-map + per-block sizing
 ├── lowlevel_dma.py                    # StaticWeightStream helper for chunked weight DMA
-├── kernels/                           # 30 .cc + 2 .h AIE2P kernel files. Every active kernel has been audited against the playbook in `## Performance` (constexpr trip counts, bias-init mmul, vec to_vector<int8>(rs) SRS, AIE_LOOP_RANGE hints, shape macros). The pack utilities (yolo_m9_{qkv,qk,v}_pack.cc) are scalar strided-copy transposes — no mmul, no vec primitive applies.
+├── kernels/                           # 30 .cc + 3 .h AIE2P kernel files — see kernels/README.md for the per-block index.
 ├── scripts/
 │   ├── m8_megakernel_2tile.py         # m8 megakernel — 2-tile topology
 │   ├── m8_megakernel_4tile.py         # m8 megakernel — 4-tile topology (default; M8_TILES=4)
