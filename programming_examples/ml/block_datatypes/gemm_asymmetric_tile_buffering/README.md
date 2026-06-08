@@ -60,8 +60,16 @@ combined tradeoff) see Sections 3 – 5 of the paper.
 
 These designs use IRON and currently require the **chess** compiler (each
 `config*/n32_core.py` declares its bfp16 mac kernel with `use_chess=True`
-on the `ExternalFunction`, since Peano's AIE2P backend can't yet legalize
-those kernels). Build any of them with:
+on the `ExternalFunction`).  Peano's AIE2P backend still crashes on the
+bfp16 matmul kernels — verified June 2026 with `llvm-aie 21.0.0.2026052701+9e603b76`:
+
+```
+fatal error: error in backend: unable to legalize instruction:
+  %242:_(<8 x s8>) = G_BUILD_VECTOR %243:_(s8), %243:_(s8), ...
+  (in function: matmul_vectorized_bfp16)
+```
+
+Build any of them with:
 
 ```shell
 cd <config_dir>
