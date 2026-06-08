@@ -21,6 +21,20 @@ _CASCADE_COMBOS = {
     (bfloat16, np.float32): "bf16_f32",
 }
 
+# Mirror of the ``combos(X)`` macro in aie_kernels/aie2/cascade_mm.cc.
+# Designs use ``kernels.cascade_mm(...).mac_dims`` to look up the
+# scalar-block geometry the compiled cascade kernel expects.  cascade_mm
+# only ships an aie2 .cc today; if an aie2p variant lands the table
+# needs the new arch added.
+_CASCADE_MM_MAC_DIMS = {
+    "aie2": {
+        (np.int16, np.int16): (4, 4, 4),
+        (np.int16, np.int32): (4, 4, 4),
+        (bfloat16, bfloat16): (4, 8, 4),
+        (bfloat16, np.float32): (4, 8, 4),
+    },
+}
+
 _MM_COMBOS = {
     (np.int8, np.int8): ("i8_i8", "i8_i8_ONLY"),
     (np.int8, np.int16): ("i8_i16", "i8_i16_ONLY"),
@@ -299,4 +313,11 @@ def cascade_mm(
         extern.object_file_name,
         [c_ty],
     )
+    arch = _detect_arch()
+    if arch not in _CASCADE_MM_MAC_DIMS:
+        raise ValueError(
+            f"cascade_mm(): unsupported arch {arch!r}; "
+            f"cascade_mm.cc only ships for {sorted(_CASCADE_MM_MAC_DIMS)}."
+        )
+    extern.mac_dims = _CASCADE_MM_MAC_DIMS[arch][key]
     return extern

@@ -118,7 +118,7 @@ on each submodule's `__doc__`:
 | [`kernels.eltwise`](../python/iron/kernels/eltwise.py)       | element-wise: passthrough, scale, add, mul, relu |
 | [`kernels.reduce`](../python/iron/kernels/reduce.py)         | reductions: reduce_add, reduce_min, reduce_max, compute_max |
 | [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, gelu, silu, swiglu, bf16_exp |
-| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.zero`, `.mac_dims`), mv (+ `.zero`), cascade_mm |
+| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.zero`, `.mac_dims`), mv (+ `.zero`), cascade_mm (+ `.{get_only,put_only,put_get,zero}`, `.mac_dims`) |
 | [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), bn_* bottleneck variants for MobileNet/ResNet |
 | [`kernels.vision`](../python/iron/kernels/vision.py)         | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted |
 

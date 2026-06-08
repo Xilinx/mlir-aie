@@ -80,12 +80,7 @@ def cascade(
     matmul_put_get = cascade_kernel.put_get
     zero_kernel = cascade_kernel.zero
 
-    if dtype_in_str == "bf16":
-        r, s, t = 4, 8, 4
-    elif dtype_in_str == "i16":
-        r, s, t = 1, 1, 1
-    else:
-        raise ValueError(f"unsupported dtype_in={dtype_in_str!r}")
+    r, s, t = cascade_kernel.mac_dims
 
     assert M % m == 0
     assert K % (k * n_aie_rows) == 0
