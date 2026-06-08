@@ -1,6 +1,12 @@
 //===- yolo_c3k2_small_m0_cv2_skip_vec.cc --------------------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized 3x3 stride-1 INT8 conv + SiLU LUT + int8-saturating skip-add.
 // Drop-in .o-level replacement for yolo_c3k2_small_m0_cv2_skip.cc.
 //
@@ -170,8 +176,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
       for (int i = 0; i < 32; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       aie::vector<int8, 32> silu_v8 = aie::load_v<32>(silu_buf);
-      aie::vector<int8, 32> skip_v8 = aie::load_v<32>(
-          skip_row + oc_t * kOutOcStride + x_tile * 32);
+      aie::vector<int8, 32> skip_v8 =
+          aie::load_v<32>(skip_row + oc_t * kOutOcStride + x_tile * 32);
       aie::vector<int16, 32> silu_v16 = aie::unpack(silu_v8);
       aie::vector<int16, 32> skip_v16 = aie::unpack(skip_v8);
       aie::vector<int16, 32> sum16 = aie::add(silu_v16, skip_v16);
@@ -181,7 +187,6 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv2_skip_silu_bias_i8_i8)(
 
       aie::store_v(output + oc_t * kOutOcStride + x_tile * 32, out_v);
     }
-
   }
 
   event1();

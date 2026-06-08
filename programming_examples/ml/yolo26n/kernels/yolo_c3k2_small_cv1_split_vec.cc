@@ -1,6 +1,12 @@
 //===- yolo_c3k2_small_cv1_split_vec.cc ---------------------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized 1x1 INT8 conv with channel-wise output split. Drop-in
 // .o-level replacement for yolo_c3k2_small_cv1_split.cc.
 //
@@ -61,8 +67,8 @@ make_bias_acc(const int32_t *bias_8) {
 // reads via vec_load<32> instead of 32 scalar lda.s8.
 static __attribute__((always_inline)) inline void
 write_x_tile_result_vec(aie::mmul<4, 8, 8, int8, int8> &acc, int8_t *silu_lut,
-                        int8_t *dst, int local_oc_t, int x_tile,
-                        int kXTiles4, int32_t rs) {
+                        int8_t *dst, int local_oc_t, int x_tile, int kXTiles4,
+                        int32_t rs) {
   aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(rs);
   alignas(32) int8_t silu_buf[32];
   for (int i = 0; i < 32; ++i)
@@ -141,10 +147,9 @@ void KERNEL_NAME(yolo_c3k2_small_cv1_split_silu_bias_i8_i8)(
         acc.mac(in_a, in_b);
       }
 
-      write_x_tile_result_vec(acc, silu_lut, dst, local_oc_t, x_tile,
-                              kXTiles4, right_shift);
+      write_x_tile_result_vec(acc, silu_lut, dst, local_oc_t, x_tile, kXTiles4,
+                              right_shift);
     }
-
   }
 
   event1();

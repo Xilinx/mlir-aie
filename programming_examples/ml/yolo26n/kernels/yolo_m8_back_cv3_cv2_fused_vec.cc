@@ -1,5 +1,11 @@
 //===- yolo_m8_back_cv3_cv2_fused_vec.cc ---------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Fused cv3 + cv2 kernel for the m8 megakernel design. Combines:
 //   - cv3 (1x1, 2-input concat: inner1 + split_b -> 128 ch)
 //   - cv2 (1x1, 3-input concat: top + bot_to_cv2 + cv3_out -> 256 ch, chunked)
@@ -93,7 +99,8 @@ static inline void cv3_compute_row(int8_t *inner1, int8_t *split_b, int8_t *wts,
       acc = bias_acc;
       const int x_base = x_tile * MMUL_M;
 
-      // inner1 (packed, from pair_cv2_skip output, ic_t = 0..ic_tiles_per_src-1)
+      // inner1 (packed, from pair_cv2_skip output, ic_t =
+      // 0..ic_tiles_per_src-1)
       AIE_LOOP_RANGE(ic_tiles_per_src, ic_tiles_per_src)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
         aie::vector<int8, 64> in_a = aie::load_v<64>(
@@ -191,8 +198,8 @@ static inline void cv2_compute_chunk(int8_t *in_top, int8_t *in_bot,
       // in_m0 = cv3 scratch (packed, ic_t = 2*ic_tiles_per_src..)
       AIE_LOOP_RANGE(ic_tiles_per_src, ic_tiles_per_src)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
-        aie::vector<int8, 64> in_a = aie::load_v<64>(
-            in_m0 + local_ic_t * kPackedIcStride + x_tile * 64);
+        aie::vector<int8, 64> in_a =
+            aie::load_v<64>(in_m0 + local_ic_t * kPackedIcStride + x_tile * 64);
         int ic_t = kPackedIcTiles + local_ic_t;
         int wts_off = wts_tile_off_1x1(chunk_oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts_chunk[wts_off]);

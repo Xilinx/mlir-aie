@@ -1,5 +1,11 @@
 //===- yolo_m10_concat_pool.cc -------------------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Tiny i8 concatenation helper for the m10 2-tile split: concat(lo[N], hi[M])
 // → full[N+M]. Used on the gemm tile to merge the two pool halves produced
 // by the conv_pool tiles before feeding the 1280→2 Gemm. Vectorized 32-byte

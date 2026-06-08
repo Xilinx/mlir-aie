@@ -1,3 +1,11 @@
+# m8_megakernel_6tile.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """m8 megakernel — 6-tile real split.
 
 One inner conv per tile, snake-shaped pipeline through cols 5+6. All
@@ -114,12 +122,12 @@ def build(act_in_external=None, return_program: bool = True):
     cp = L_m0c1.out_shape[2]
     out_c = L_cv2.out_shape[2]
 
-    t_a  = Tile(5, 3)
+    t_a = Tile(5, 3)
     t_b1 = Tile(5, 4)
     t_b2 = Tile(5, 5)
     t_c1 = Tile(6, 5)
     t_c2 = Tile(6, 4)
-    t_d  = Tile(6, 3)
+    t_d = Tile(6, 3)
 
     m_m0c1 = B._op_meta(manifest, L_m0c1.manifest_name)
     m_m0c2 = B._op_meta(manifest, L_m0c2.manifest_name)
@@ -269,16 +277,16 @@ def build(act_in_external=None, return_program: bool = True):
         B._i8((in_w, 1, out_c)), depth=2, via_DMA=True, name="block_out"
     )
 
-    top_xt        = ObjectFifo(B._i8((in_w, 1, c)),  depth=5, name="m8_6t_top_xt")
-    bot_to_cv2_xt = ObjectFifo(B._i8((in_w, 1, c)),  depth=5, name="m8_6t_bot_xt")
-    split_b_xt    = ObjectFifo(B._i8((in_w, 1, cp)), depth=5, name="m8_6t_split_b_xt")
-    split_a_xt    = ObjectFifo(B._i8((in_w, 1, cp)), depth=4, name="m8_6t_split_a_xt")
-    pair0_mid_xt  = ObjectFifo(B._i8((in_w, 1, cp)), depth=10, name="m8_6t_p0_mid_xt")
-    pair0_skip_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=8,  name="m8_6t_p0_skip_xt")
-    inner_0_xt    = ObjectFifo(B._i8((in_w, 1, cp)), depth=10, name="m8_6t_inner0_xt")
-    pair1_mid_xt  = ObjectFifo(B._i8((in_w, 1, cp)), depth=10, name="m8_6t_p1_mid_xt")
-    pair1_skip_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=8,  name="m8_6t_p1_skip_xt")
-    inner_1_xt    = ObjectFifo(B._i8((in_w, 1, cp)), depth=3, name="m8_6t_inner1_xt")
+    top_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=5, name="m8_6t_top_xt")
+    bot_to_cv2_xt = ObjectFifo(B._i8((in_w, 1, c)), depth=5, name="m8_6t_bot_xt")
+    split_b_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=5, name="m8_6t_split_b_xt")
+    split_a_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=4, name="m8_6t_split_a_xt")
+    pair0_mid_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=10, name="m8_6t_p0_mid_xt")
+    pair0_skip_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=8, name="m8_6t_p0_skip_xt")
+    inner_0_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=10, name="m8_6t_inner0_xt")
+    pair1_mid_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=10, name="m8_6t_p1_mid_xt")
+    pair1_skip_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=8, name="m8_6t_p1_skip_xt")
+    inner_1_xt = ObjectFifo(B._i8((in_w, 1, cp)), depth=3, name="m8_6t_inner1_xt")
 
     k_m8_front = Kernel(
         f"yolo_m8_front_cv1_split_fused_i8_i8_{BLOCK}",
@@ -343,13 +351,21 @@ def build(act_in_external=None, return_program: bool = True):
     )
 
     def worker_a_fn(
-        act_in_c, ws_cv1,
-        wts_m0c1, wts_m0c2,
-        bias_cv1, lut_cv1,
-        bias_m0c1, lut_m0c1,
-        bias_m0c2, lut_m0c2,
+        act_in_c,
+        ws_cv1,
+        wts_m0c1,
+        wts_m0c2,
+        bias_cv1,
+        lut_cv1,
+        bias_m0c1,
+        lut_m0c1,
+        bias_m0c2,
+        lut_m0c2,
         scratch,
-        top_xt_p, bot_xt_p, split_b_xt_p, split_a_xt_p,
+        top_xt_p,
+        bot_xt_p,
+        split_b_xt_p,
+        split_a_xt_p,
         k_m8_front,
     ):
         for it in range_(in_h):
@@ -361,14 +377,30 @@ def build(act_in_external=None, return_program: bool = True):
             for wi in range_(N_CV1_CHUNKS):
                 ck = ws_cv1.acquire(1)
                 k_m8_front(
-                    in_row, ck, bias_cv1, lut_cv1,
-                    t_r, bb_r,
-                    wts_m0c1, bias_m0c1, lut_m0c1,
-                    wts_m0c2, bias_m0c2, lut_m0c2,
-                    sa_r, sb_r, scratch,
-                    in_w, in_c, twoc, cp,
-                    N_CV1_CHUNKS, wi,
-                    rs_cv1, rs_m0c1, rs_m0c2,
+                    in_row,
+                    ck,
+                    bias_cv1,
+                    lut_cv1,
+                    t_r,
+                    bb_r,
+                    wts_m0c1,
+                    bias_m0c1,
+                    lut_m0c1,
+                    wts_m0c2,
+                    bias_m0c2,
+                    lut_m0c2,
+                    sa_r,
+                    sb_r,
+                    scratch,
+                    in_w,
+                    in_c,
+                    twoc,
+                    cp,
+                    N_CV1_CHUNKS,
+                    wi,
+                    rs_cv1,
+                    rs_m0c1,
+                    rs_m0c2,
                 )
                 ws_cv1.release(1)
             act_in_c.release(1)
@@ -380,14 +412,21 @@ def build(act_in_external=None, return_program: bool = True):
     worker_a = Worker(
         worker_a_fn,
         fn_args=[
-            act_in.cons(), ws_cv1,
-            wts_m0c1_buf, wts_m0c2_buf,
-            bias_cv1, lut_cv1,
-            bias_m0c1, lut_m0c1,
-            bias_m0c2, lut_m0c2,
+            act_in.cons(),
+            ws_cv1,
+            wts_m0c1_buf,
+            wts_m0c2_buf,
+            bias_cv1,
+            lut_cv1,
+            bias_m0c1,
+            lut_m0c1,
+            bias_m0c2,
+            lut_m0c2,
             scratch_a,
-            top_xt.prod(), bot_to_cv2_xt.prod(),
-            split_b_xt.prod(), split_a_xt.prod(),
+            top_xt.prod(),
+            bot_to_cv2_xt.prod(),
+            split_b_xt.prod(),
+            split_a_xt.prod(),
             k_m8_front,
         ],
         tile=t_a,
@@ -397,8 +436,11 @@ def build(act_in_external=None, return_program: bool = True):
     def _make_cv1_worker(
         in_xt_cons,
         ws_cv1_stream,
-        bias, lut, rshift,
-        mid_xt_prod, skip_xt_prod,
+        bias,
+        lut,
+        rshift,
+        mid_xt_prod,
+        skip_xt_prod,
         k,
     ):
         def fn(in_c, ws, bi, lt, mid_p, sk_p, kk):
@@ -408,10 +450,22 @@ def build(act_in_external=None, return_program: bool = True):
                 for wi in range_(N_PAIR_CHUNKS):
                     ck = ws.acquire(1)
                     kk(
-                        top, mid, bot, ck,
-                        bi, lt, mid_r,
-                        in_w, cp, cp, 3, 3,
-                        border, rshift, N_PAIR_CHUNKS, wi,
+                        top,
+                        mid,
+                        bot,
+                        ck,
+                        bi,
+                        lt,
+                        mid_r,
+                        in_w,
+                        cp,
+                        cp,
+                        3,
+                        3,
+                        border,
+                        rshift,
+                        N_PAIR_CHUNKS,
+                        wi,
                     )
                     ws.release(1)
                 for x in range_(in_w):
@@ -433,9 +487,12 @@ def build(act_in_external=None, return_program: bool = True):
         return fn, [in_xt_cons, ws_cv1_stream, bias, lut, mid_xt_prod, skip_xt_prod, k]
 
     def _make_cv2_worker(
-        mid_xt_cons, skip_xt_cons,
+        mid_xt_cons,
+        skip_xt_cons,
         ws_cv2_stream,
-        bias, lut, rshift,
+        bias,
+        lut,
+        rshift,
         out_xt_prod,
         k,
     ):
@@ -445,11 +502,26 @@ def build(act_in_external=None, return_program: bool = True):
                 for wi in range_(N_PAIR_CHUNKS):
                     ck = ws.acquire(1)
                     kk(
-                        top, mid, bot, ck,
-                        bi, lt, skip, out_r,
-                        in_w, cp, cp, 3, 3,
-                        border, rshift, N_PAIR_CHUNKS, wi,
-                        SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH,
+                        top,
+                        mid,
+                        bot,
+                        ck,
+                        bi,
+                        lt,
+                        skip,
+                        out_r,
+                        in_w,
+                        cp,
+                        cp,
+                        3,
+                        3,
+                        border,
+                        rshift,
+                        N_PAIR_CHUNKS,
+                        wi,
+                        SKIP_Y_MULT,
+                        SKIP_CV2_MULT,
+                        SKIP_RSH,
                     )
                     ws.release(1)
                 out_p.release(1)
@@ -473,45 +545,65 @@ def build(act_in_external=None, return_program: bool = True):
         return fn, [mid_xt_cons, skip_xt_cons, ws_cv2_stream, bias, lut, out_xt_prod, k]
 
     b1_fn, b1_args = _make_cv1_worker(
-        split_a_xt.cons(), ws_pair0_cv1,
-        bias_p0c1, lut_p0c1, rs_p0c1,
-        pair0_mid_xt.prod(), pair0_skip_xt.prod(),
+        split_a_xt.cons(),
+        ws_pair0_cv1,
+        bias_p0c1,
+        lut_p0c1,
+        rs_p0c1,
+        pair0_mid_xt.prod(),
+        pair0_skip_xt.prod(),
         k_pair_cv1,
     )
     worker_b1 = Worker(b1_fn, fn_args=b1_args, tile=t_b1, dynamic_objfifo_lowering=True)
 
     b2_fn, b2_args = _make_cv2_worker(
-        pair0_mid_xt.cons(), pair0_skip_xt.cons(),
+        pair0_mid_xt.cons(),
+        pair0_skip_xt.cons(),
         ws_pair0_cv2,
-        bias_p0c2, lut_p0c2, rs_p0c2,
+        bias_p0c2,
+        lut_p0c2,
+        rs_p0c2,
         inner_0_xt.prod(),
         k_pair_cv2,
     )
     worker_b2 = Worker(b2_fn, fn_args=b2_args, tile=t_b2, dynamic_objfifo_lowering=True)
 
     c1_fn, c1_args = _make_cv1_worker(
-        inner_0_xt.cons(), ws_pair1_cv1,
-        bias_p1c1, lut_p1c1, rs_p1c1,
-        pair1_mid_xt.prod(), pair1_skip_xt.prod(),
+        inner_0_xt.cons(),
+        ws_pair1_cv1,
+        bias_p1c1,
+        lut_p1c1,
+        rs_p1c1,
+        pair1_mid_xt.prod(),
+        pair1_skip_xt.prod(),
         k_pair_cv1,
     )
     worker_c1 = Worker(c1_fn, fn_args=c1_args, tile=t_c1, dynamic_objfifo_lowering=True)
 
     c2_fn, c2_args = _make_cv2_worker(
-        pair1_mid_xt.cons(), pair1_skip_xt.cons(),
+        pair1_mid_xt.cons(),
+        pair1_skip_xt.cons(),
         ws_pair1_cv2,
-        bias_p1c2, lut_p1c2, rs_p1c2,
+        bias_p1c2,
+        lut_p1c2,
+        rs_p1c2,
         inner_1_xt.prod(),
         k_pair_cv2,
     )
     worker_c2 = Worker(c2_fn, fn_args=c2_args, tile=t_c2, dynamic_objfifo_lowering=True)
 
     def worker_d_fn(
-        top_xt_c, bot_xt_c, split_b_xt_c, inner_1_xt_c,
-        block_out_p, ws_cv2,
+        top_xt_c,
+        bot_xt_c,
+        split_b_xt_c,
+        inner_1_xt_c,
+        block_out_p,
+        ws_cv2,
         wts_m0c3,
-        bias_m0c3, lut_m0c3,
-        bias_cv2, lut_cv2,
+        bias_m0c3,
+        lut_m0c3,
+        bias_cv2,
+        lut_cv2,
         scratch,
         k_m8_back,
     ):
@@ -524,12 +616,26 @@ def build(act_in_external=None, return_program: bool = True):
             for wi in range_(N_CV2_CHUNKS):
                 ck = ws_cv2.acquire(1)
                 k_m8_back(
-                    i1_r, sb_r, wts_m0c3, bias_m0c3, lut_m0c3,
-                    top_r, bb_r, ck, bias_cv2, lut_cv2,
-                    out_r, scratch,
-                    in_w, cp, c, out_c,
-                    N_CV2_CHUNKS, wi,
-                    rs_m0c3, rs_cv2,
+                    i1_r,
+                    sb_r,
+                    wts_m0c3,
+                    bias_m0c3,
+                    lut_m0c3,
+                    top_r,
+                    bb_r,
+                    ck,
+                    bias_cv2,
+                    lut_cv2,
+                    out_r,
+                    scratch,
+                    in_w,
+                    cp,
+                    c,
+                    out_c,
+                    N_CV2_CHUNKS,
+                    wi,
+                    rs_m0c3,
+                    rs_cv2,
                 )
                 ws_cv2.release(1)
             inner_1_xt_c.release(1)
@@ -541,12 +647,17 @@ def build(act_in_external=None, return_program: bool = True):
     worker_d = Worker(
         worker_d_fn,
         fn_args=[
-            top_xt.cons(), bot_to_cv2_xt.cons(),
-            split_b_xt.cons(), inner_1_xt.cons(),
-            block_out.prod(), ws_cv2,
+            top_xt.cons(),
+            bot_to_cv2_xt.cons(),
+            split_b_xt.cons(),
+            inner_1_xt.cons(),
+            block_out.prod(),
+            ws_cv2,
             wts_m0c3_buf,
-            bias_m0c3, lut_m0c3,
-            bias_cv2, lut_cv2,
+            bias_m0c3,
+            lut_m0c3,
+            bias_cv2,
+            lut_cv2,
             scratch_d,
             k_m8_back,
         ],

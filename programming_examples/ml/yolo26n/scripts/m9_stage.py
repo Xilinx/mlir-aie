@@ -1,3 +1,11 @@
+# m9_stage.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """Linear build-up of m9 PSA. 5-tile design for the PSA topology.
 
 Stages 1..10 are wired (stage 10 is the full m9 block as it ships in the

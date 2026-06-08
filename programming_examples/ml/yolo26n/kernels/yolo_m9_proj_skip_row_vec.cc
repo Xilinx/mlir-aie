@@ -1,6 +1,12 @@
 //===- yolo_m9_proj_skip_row_vec.cc ------------------------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized fused attn/proj 1x1 + cross-scale skip-add (b) for the PSA
 // pipe. Drop-in .o-level replacement for yolo_m9_proj_skip_row.cc.
 //
@@ -61,14 +67,11 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 
 extern "C" {
 
-void yolo_m9_proj_skip_row_i8_i8(int8_t *in_row, int8_t *b_cache, int8_t *wts,
-                                 int32_t *bias, int8_t *out_row,
-                                 const int32_t yi,
-                                 const int32_t /*input_width*/,
-                                 const int32_t /*input_channels*/,
-                                 const int32_t /*output_channels*/,
-                                 const int32_t right_shift,
-                                 const int32_t skip_shift) {
+void yolo_m9_proj_skip_row_i8_i8(
+    int8_t *in_row, int8_t *b_cache, int8_t *wts, int32_t *bias,
+    int8_t *out_row, const int32_t yi, const int32_t /*input_width*/,
+    const int32_t /*input_channels*/, const int32_t /*output_channels*/,
+    const int32_t right_shift, const int32_t skip_shift) {
 #ifdef NOOP_KERNEL
   return;
 #endif
@@ -160,8 +163,7 @@ void yolo_m9_proj_skip_row_i8_i8(int8_t *in_row, int8_t *b_cache, int8_t *wts,
             add_i8 = I8_MIN;
           pix_buf[j] = (int8_t)add_i8;
         }
-        *reinterpret_cast<uint64_t *>(
-            &out_row[x_out * kOutC + oc_t * 8]) =
+        *reinterpret_cast<uint64_t *>(&out_row[x_out * kOutC + oc_t * 8]) =
             *reinterpret_cast<const uint64_t *>(pix_buf);
       }
     }

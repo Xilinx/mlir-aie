@@ -1,5 +1,11 @@
 //===- yolo_m9_pe_add_row.cc ---------------------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Stage 7 fused kernel: compute one (c=128, x=in_w=16) row of pe (dw3x3
 // stride-1 with zero-padding) PLUS the cross-channel addition with sv,
 // emitting a chunk of (chunk_cols=in_w, c) i8 values.

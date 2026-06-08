@@ -1,5 +1,11 @@
 //===- yolo_m9_attn_score_fused_vec.cc -----------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Fused qk_row + attn_scale + softmax_row kernel for the PSA attention.
 // Per (head, query_idx) call:
 //   1. qk:    scores_i32[j] = sum_{k} Q[k, query_idx] * K[k, j]
@@ -145,10 +151,14 @@ void yolo_m9_attn_score_fused_i8_i8(
     int32_t s1 = (int32_t)scores_row[j + 1] - row_max;
     int32_t s2 = (int32_t)scores_row[j + 2] - row_max;
     int32_t s3 = (int32_t)scores_row[j + 3] - row_max;
-    if (s0 < -128) s0 = -128;
-    if (s1 < -128) s1 = -128;
-    if (s2 < -128) s2 = -128;
-    if (s3 < -128) s3 = -128;
+    if (s0 < -128)
+      s0 = -128;
+    if (s1 < -128)
+      s1 = -128;
+    if (s2 < -128)
+      s2 = -128;
+    if (s3 < -128)
+      s3 = -128;
     float e0 = exp_lut[s0 + 128];
     float e1 = exp_lut[s1 + 128];
     float e2 = exp_lut[s2 + 128];
@@ -175,7 +185,8 @@ void yolo_m9_attn_score_fused_i8_i8(
   constexpr int kFVec = 16;
   aie::vector<float, kFVec> scale_v = aie::broadcast<float, kFVec>(scale);
   aie::vector<float, kFVec> zero_f = aie::zeros<float, kFVec>();
-  aie::vector<float, kFVec> max_f = aie::broadcast<float, kFVec>((float)I8_SMAX);
+  aie::vector<float, kFVec> max_f =
+      aie::broadcast<float, kFVec>((float)I8_SMAX);
 
   AIE_LOOP_RANGE(kN / kFVec, kN / kFVec)
   for (int j = 0; j < kN; j += kFVec) {

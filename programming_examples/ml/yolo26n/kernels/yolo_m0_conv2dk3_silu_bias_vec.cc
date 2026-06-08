@@ -1,6 +1,12 @@
 //===- yolo_m0_conv2dk3_silu_bias_vec.cc ---------------------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Deep-opt vectorized stem kernel for m0: 3x3 stride-2 INT8 conv. Weights
 // arrive host-pre-packed as [oc_tile][ky][kx][ic_inner=8][oc_inner=8] (the
 // mmul.B layout), so the kernel does aie::load_v<64> at the right offset
@@ -68,9 +74,9 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 
 using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
-// Weights are pre-packed host-side as [oc_tile][ky][kx][ic_inner=8][oc_inner=8],
-// so the per-(ky,kx) mmul.B vector is at byte offset
-// (oc_tile * 9 + ky * 3 + kx) * 64 in the input buffer.
+// Weights are pre-packed host-side as
+// [oc_tile][ky][kx][ic_inner=8][oc_inner=8], so the per-(ky,kx) mmul.B vector
+// is at byte offset (oc_tile * 9 + ky * 3 + kx) * 64 in the input buffer.
 static constexpr int kWtsBytesPerOcTile = 9 * 64; // 576
 
 // DMA-deinterleaved layout: each row is [even_half (kInW/2 pixels),
@@ -138,8 +144,8 @@ make_bias_acc(const int32_t *__restrict bias_8) {
 // then ONE aie::store_v<64> instead of 64 scalar stores.
 static __attribute__((always_inline)) inline void
 emit_16_lanes(aie::vector<int8, 32> srs_a, aie::vector<int8, 32> srs_b,
-              const int8_t *__restrict silu_lut,
-              int8_t *__restrict output, int x_out_base) {
+              const int8_t *__restrict silu_lut, int8_t *__restrict output,
+              int x_out_base) {
   auto [lo, hi] = aie::interleave_zip(srs_a, srs_b, 8u);
   aie::vector<int8, 64> combined = aie::concat(lo, hi);
   alignas(64) int8_t silu_buf[64];
@@ -192,8 +198,10 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
   // keeps the body amenable to oc_tiles=4 (out_c=32) callers in the future.
   AIE_LOOP_RANGE(kOcTiles / 2, kOcTiles / 2)
   for (int oc_pair = 0; oc_pair < kOcTiles / 2; ++oc_pair) {
-    const int8_t *__restrict wts_a = wts + (oc_pair * 2 + 0) * kWtsBytesPerOcTile;
-    const int8_t *__restrict wts_b = wts + (oc_pair * 2 + 1) * kWtsBytesPerOcTile;
+    const int8_t *__restrict wts_a =
+        wts + (oc_pair * 2 + 0) * kWtsBytesPerOcTile;
+    const int8_t *__restrict wts_b =
+        wts + (oc_pair * 2 + 1) * kWtsBytesPerOcTile;
     const int oc_full_base_a = (oc_pair * 2 + 0) * 8;
     const int oc_full_base_b = (oc_pair * 2 + 1) * 8;
 
@@ -213,8 +221,7 @@ static void yolo_m0_conv2dk3_i8_stride2_silu_bias_vec(
         const int8_t *__restrict line_ptr = line[ky];
         AIE_LOOP_UNROLL_FULL
         for (int kx = 0; kx < kKW; ++kx) {
-          aie::vector<int8, 32> in_a =
-              load_a_deinterleaved_left(line_ptr, kx);
+          aie::vector<int8, 32> in_a = load_a_deinterleaved_left(line_ptr, kx);
           int wt_off = (ky * kKW + kx) * 64;
           acc_a.mac(in_a, aie::load_v<64>(&wts_a[wt_off]));
           acc_b.mac(in_a, aie::load_v<64>(&wts_b[wt_off]));

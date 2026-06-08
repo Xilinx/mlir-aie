@@ -1,3 +1,11 @@
+# gen_yolo_data.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """
 gen_yolo_data.py — extract INT8 weights, biases, and quant params from the
 Quark-quantized XINT8 ONNX into the layout AIE bottleneck kernels expect.

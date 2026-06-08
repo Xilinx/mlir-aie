@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 # trace_m8.sh — build + run + parse a HW trace of the m8 2-tile megakernel.
 #
 # Usage:

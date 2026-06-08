@@ -1,6 +1,12 @@
 //===- yolo_c3k2_heavy_inner_pair_cv2_skip_vec.cc -----------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized 3x3 stride-1 INT8 conv + SiLU LUT + CROSS-SCALE skip-add.
 // Drop-in .o-level replacement for yolo_c3k2_heavy_inner_pair_cv2_skip.cc.
 //
@@ -140,15 +146,16 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
         }
       }
 
-      aie::vector<int8, MMUL_MN> srs_v = acc.template to_vector<int8>(right_shift);
+      aie::vector<int8, MMUL_MN> srs_v =
+          acc.template to_vector<int8>(right_shift);
       alignas(64) int8_t silu_buf[64];
       for (int i = 0; i < 64; ++i)
         silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
       aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
       // skip_row producer (m_0_split's split_a / pair_cv2's output) now also
       // mmul-packed; one vec_load instead of 64 scalar gathers.
-      aie::vector<int8, 64> skip_v = aie::load_v<64>(
-          skip_row + oc_t * (kXTiles8 * 64) + x_tile * 64);
+      aie::vector<int8, 64> skip_v =
+          aie::load_v<64>(skip_row + oc_t * (kXTiles8 * 64) + x_tile * 64);
 
       aie::accum<acc32, 64> add_acc = aie::mul(skip_v, (int16)skip_y_mult);
       add_acc = aie::mac(add_acc, silu_v, (int16)skip_cv2_mult);
@@ -159,7 +166,6 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv2_skip_silu_bias_i8_i8)(
       // in_b) reads via vec_load.
       aie::store_v(output + oc_t * (kXTiles8 * 64) + x_tile * 64, out_v);
     }
-
   }
 
   event1();

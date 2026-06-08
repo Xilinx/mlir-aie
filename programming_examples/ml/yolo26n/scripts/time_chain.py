@@ -1,3 +1,11 @@
+# time_chain.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """Quick HW timing for a built chain xclbin (m0..m10).
 
 Sizes input/output buffers from CHAIN_N_SAMPLES (must match what the xclbin

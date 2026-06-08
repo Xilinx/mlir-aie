@@ -1,3 +1,11 @@
+# placement.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """yolo26n-cls on NPU2 Strix Point — physical tile placement.
 
 Algorithm/mapping split per the mobilenet-py pattern: this file is the ONLY

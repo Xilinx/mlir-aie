@@ -1,5 +1,11 @@
 //===- yolo_c3k2_heavy_m_0_split_vec.cc -----------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized 1x1 INT8 conv with two parallel-branch outputs (same input,
 // two independent weight sets / biases / LUTs / right-shifts). Drop-in
 // .o-level replacement for yolo_c3k2_heavy_m_0_split.cc.

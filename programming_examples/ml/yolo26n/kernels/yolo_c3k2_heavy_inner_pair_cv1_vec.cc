@@ -1,6 +1,12 @@
 //===- yolo_c3k2_heavy_inner_pair_cv1_vec.cc -------------------------------*-
 // C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized 3x3 stride-1 INT8 conv with OIYXI8O8 weight layout. Drop-in
 // .o-level replacement for yolo_c3k2_small_m0_cv1.cc on AIE2P.
 //
@@ -70,8 +76,7 @@ extern "C" {
 void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
     int8_t __aie_dm_resource_b *line0, int8_t __aie_dm_resource_b *line1,
     int8_t __aie_dm_resource_b *line2, int8_t __aie_dm_resource_a *wts,
-    int32_t *bias, int8_t *silu_lut, int8_t *output,
-    const int32_t input_width,
+    int32_t *bias, int8_t *silu_lut, int8_t *output, const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t border, const int32_t right_shift,
@@ -157,7 +162,8 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
         }
       }
 
-      aie::vector<int8, MMUL_MN> srs_v = acc.template to_vector<int8>(right_shift);
+      aie::vector<int8, MMUL_MN> srs_v =
+          acc.template to_vector<int8>(right_shift);
       // mmul-packed output: vec_store consumed by pair_cv2_skip vec_load.
       alignas(64) int8_t silu_buf[64];
       for (int i = 0; i < 64; ++i)
@@ -165,7 +171,6 @@ void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
       aie::vector<int8, 64> silu_v = aie::load_v<64>(silu_buf);
       aie::store_v(output + oc_t * (kXTiles8 * 64) + x_tile * 64, silu_v);
     }
-
   }
 
   event1();

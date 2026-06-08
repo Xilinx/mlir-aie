@@ -1,3 +1,11 @@
+# m8_megakernel_4tile.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """m8 megakernel — 4-tile split.
 
 Splits m8's 8 sub-ops across 4 compute tiles, one per stacked-conv stage.
@@ -385,14 +393,30 @@ def build(act_in_external=None, return_program: bool = True):
             for wi in range_(N_CV1_CHUNKS):
                 ck = ws_cv1.acquire(1)
                 k_m8_front(
-                    in_row, ck, bias_cv1, lut_cv1,
-                    t_r, bb_r,
-                    wts_m0c1, bias_m0c1, lut_m0c1,
-                    wts_m0c2, bias_m0c2, lut_m0c2,
-                    sa_r, sb_r, scratch,
-                    in_w, in_c, twoc, cp,
-                    N_CV1_CHUNKS, wi,
-                    rs_cv1, rs_m0c1, rs_m0c2,
+                    in_row,
+                    ck,
+                    bias_cv1,
+                    lut_cv1,
+                    t_r,
+                    bb_r,
+                    wts_m0c1,
+                    bias_m0c1,
+                    lut_m0c1,
+                    wts_m0c2,
+                    bias_m0c2,
+                    lut_m0c2,
+                    sa_r,
+                    sb_r,
+                    scratch,
+                    in_w,
+                    in_c,
+                    twoc,
+                    cp,
+                    N_CV1_CHUNKS,
+                    wi,
+                    rs_cv1,
+                    rs_m0c1,
+                    rs_m0c2,
                 )
                 ws_cv1.release(1)
             act_in_c.release(1)
@@ -408,9 +432,12 @@ def build(act_in_external=None, return_program: bool = True):
             ws_cv1,
             wts_m0c1_buf,
             wts_m0c2_buf,
-            bias_cv1, lut_cv1,
-            bias_m0c1, lut_m0c1,
-            bias_m0c2, lut_m0c2,
+            bias_cv1,
+            lut_cv1,
+            bias_m0c1,
+            lut_m0c1,
+            bias_m0c2,
+            lut_m0c2,
             scratch_a,
             top_xt.prod(),
             bot_to_cv2_xt.prod(),
@@ -428,12 +455,17 @@ def build(act_in_external=None, return_program: bool = True):
     def worker_b_fn(
         split_a_c,
         ws_pair0,
-        bias_p0c1, lut_p0c1,
-        bias_p0c2, lut_p0c2,
-        p0_mid_p, p0_mid_c,
-        p0_skip_p, p0_skip_c,
+        bias_p0c1,
+        lut_p0c1,
+        bias_p0c2,
+        lut_p0c2,
+        p0_mid_p,
+        p0_mid_c,
+        p0_skip_p,
+        p0_skip_c,
         inner_0_xt_p,
-        k_pair_cv1, k_pair_cv2,
+        k_pair_cv1,
+        k_pair_cv2,
     ):
         from aie.helpers.dialects.scf import if_
         from aie.extras.dialects.arith import constant
@@ -449,10 +481,22 @@ def build(act_in_external=None, return_program: bool = True):
             for wi in range_(N_PAIR_CHUNKS):
                 ck = ws_pair0.acquire(1)
                 k_pair_cv1(
-                    sa_top, sa_mid, sa_bot, ck,
-                    bias_p0c1, lut_p0c1, mid_r,
-                    in_w, cp, cp, 3, 3,
-                    border, rs_p0c1, N_PAIR_CHUNKS, wi,
+                    sa_top,
+                    sa_mid,
+                    sa_bot,
+                    ck,
+                    bias_p0c1,
+                    lut_p0c1,
+                    mid_r,
+                    in_w,
+                    cp,
+                    cp,
+                    3,
+                    3,
+                    border,
+                    rs_p0c1,
+                    N_PAIR_CHUNKS,
+                    wi,
                 )
                 ws_pair0.release(1)
             # Forward middle row of split_a as the skip path for cv2.
@@ -467,11 +511,26 @@ def build(act_in_external=None, return_program: bool = True):
             for wi in range_(N_PAIR_CHUNKS):
                 ck = ws_pair0.acquire(1)
                 k_pair_cv2(
-                    mid_top, mid_mid, mid_bot, ck,
-                    bias_p0c2, lut_p0c2, skip, out_r,
-                    in_w, cp, cp, 3, 3,
-                    border, rs_p0c2, N_PAIR_CHUNKS, wi,
-                    SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH,
+                    mid_top,
+                    mid_mid,
+                    mid_bot,
+                    ck,
+                    bias_p0c2,
+                    lut_p0c2,
+                    skip,
+                    out_r,
+                    in_w,
+                    cp,
+                    cp,
+                    3,
+                    3,
+                    border,
+                    rs_p0c2,
+                    N_PAIR_CHUNKS,
+                    wi,
+                    SKIP_Y_MULT,
+                    SKIP_CV2_MULT,
+                    SKIP_RSH,
                 )
                 ws_pair0.release(1)
             inner_0_xt_p.release(1)
@@ -527,12 +586,17 @@ def build(act_in_external=None, return_program: bool = True):
         fn_args=[
             split_a_xt.cons(),
             ws_pair0,
-            bias_p0c1, lut_p0c1,
-            bias_p0c2, lut_p0c2,
-            pair0_mid_of.prod(), pair0_mid_of.cons(),
-            pair0_skip_of.prod(), pair0_skip_of.cons(),
+            bias_p0c1,
+            lut_p0c1,
+            bias_p0c2,
+            lut_p0c2,
+            pair0_mid_of.prod(),
+            pair0_mid_of.cons(),
+            pair0_skip_of.prod(),
+            pair0_skip_of.cons(),
             inner_0_xt.prod(),
-            k_pair_cv1, k_pair_cv2,
+            k_pair_cv1,
+            k_pair_cv2,
         ],
         tile=t_b,
         dynamic_objfifo_lowering=True,
@@ -544,12 +608,17 @@ def build(act_in_external=None, return_program: bool = True):
     def worker_c_fn(
         inner_0_xt_c,
         ws_pair1,
-        bias_p1c1, lut_p1c1,
-        bias_p1c2, lut_p1c2,
-        p1_mid_p, p1_mid_c,
-        p1_skip_p, p1_skip_c,
+        bias_p1c1,
+        lut_p1c1,
+        bias_p1c2,
+        lut_p1c2,
+        p1_mid_p,
+        p1_mid_c,
+        p1_skip_p,
+        p1_skip_c,
         inner_1_xt_p,
-        k_pair_cv1, k_pair_cv2,
+        k_pair_cv1,
+        k_pair_cv2,
     ):
         from aie.helpers.dialects.scf import if_
         from aie.extras.dialects.arith import constant
@@ -566,10 +635,22 @@ def build(act_in_external=None, return_program: bool = True):
             for wi in range_(N_PAIR_CHUNKS):
                 ck = ws_pair1.acquire(1)
                 k_pair_cv1(
-                    po_top, po_mid, po_bot, ck,
-                    bias_p1c1, lut_p1c1, mid_r,
-                    in_w, cp, cp, 3, 3,
-                    border, rs_p1c1, N_PAIR_CHUNKS, wi,
+                    po_top,
+                    po_mid,
+                    po_bot,
+                    ck,
+                    bias_p1c1,
+                    lut_p1c1,
+                    mid_r,
+                    in_w,
+                    cp,
+                    cp,
+                    3,
+                    3,
+                    border,
+                    rs_p1c1,
+                    N_PAIR_CHUNKS,
+                    wi,
                 )
                 ws_pair1.release(1)
             for x in range_(in_w):
@@ -583,11 +664,26 @@ def build(act_in_external=None, return_program: bool = True):
             for wi in range_(N_PAIR_CHUNKS):
                 ck = ws_pair1.acquire(1)
                 k_pair_cv2(
-                    p1m_top, p1m_mid, p1m_bot, ck,
-                    bias_p1c2, lut_p1c2, skip, out_r,
-                    in_w, cp, cp, 3, 3,
-                    border, rs_p1c2, N_PAIR_CHUNKS, wi,
-                    SKIP_Y_MULT, SKIP_CV2_MULT, SKIP_RSH,
+                    p1m_top,
+                    p1m_mid,
+                    p1m_bot,
+                    ck,
+                    bias_p1c2,
+                    lut_p1c2,
+                    skip,
+                    out_r,
+                    in_w,
+                    cp,
+                    cp,
+                    3,
+                    3,
+                    border,
+                    rs_p1c2,
+                    N_PAIR_CHUNKS,
+                    wi,
+                    SKIP_Y_MULT,
+                    SKIP_CV2_MULT,
+                    SKIP_RSH,
                 )
                 ws_pair1.release(1)
             inner_1_xt_p.release(1)
@@ -641,12 +737,17 @@ def build(act_in_external=None, return_program: bool = True):
         fn_args=[
             inner_0_xt.cons(),
             ws_pair1,
-            bias_p1c1, lut_p1c1,
-            bias_p1c2, lut_p1c2,
-            pair1_mid_of.prod(), pair1_mid_of.cons(),
-            pair1_skip_of.prod(), pair1_skip_of.cons(),
+            bias_p1c1,
+            lut_p1c1,
+            bias_p1c2,
+            lut_p1c2,
+            pair1_mid_of.prod(),
+            pair1_mid_of.cons(),
+            pair1_skip_of.prod(),
+            pair1_skip_of.cons(),
             inner_1_xt.prod(),
-            k_pair_cv1, k_pair_cv2,
+            k_pair_cv1,
+            k_pair_cv2,
         ],
         tile=t_c,
         dynamic_objfifo_lowering=True,
@@ -663,8 +764,10 @@ def build(act_in_external=None, return_program: bool = True):
         block_out_p,
         ws_cv2,
         wts_m0c3,
-        bias_m0c3, lut_m0c3,
-        bias_cv2, lut_cv2,
+        bias_m0c3,
+        lut_m0c3,
+        bias_cv2,
+        lut_cv2,
         scratch,
         k_m8_back,
     ):
@@ -677,12 +780,26 @@ def build(act_in_external=None, return_program: bool = True):
             for wi in range_(N_CV2_CHUNKS):
                 ck = ws_cv2.acquire(1)
                 k_m8_back(
-                    i1_r, sb_r, wts_m0c3, bias_m0c3, lut_m0c3,
-                    top_r, bb_r, ck, bias_cv2, lut_cv2,
-                    out_r, scratch,
-                    in_w, cp, c, out_c,
-                    N_CV2_CHUNKS, wi,
-                    rs_m0c3, rs_cv2,
+                    i1_r,
+                    sb_r,
+                    wts_m0c3,
+                    bias_m0c3,
+                    lut_m0c3,
+                    top_r,
+                    bb_r,
+                    ck,
+                    bias_cv2,
+                    lut_cv2,
+                    out_r,
+                    scratch,
+                    in_w,
+                    cp,
+                    c,
+                    out_c,
+                    N_CV2_CHUNKS,
+                    wi,
+                    rs_m0c3,
+                    rs_cv2,
                 )
                 ws_cv2.release(1)
             inner_1_xt_c.release(1)
@@ -701,8 +818,10 @@ def build(act_in_external=None, return_program: bool = True):
             block_out.prod(),
             ws_cv2,
             wts_m0c3_buf,
-            bias_m0c3, lut_m0c3,
-            bias_cv2, lut_cv2,
+            bias_m0c3,
+            lut_m0c3,
+            bias_cv2,
+            lut_cv2,
             scratch_b,
             k_m8_back,
         ],

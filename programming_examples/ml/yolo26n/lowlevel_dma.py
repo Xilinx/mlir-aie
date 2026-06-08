@@ -372,24 +372,36 @@ class PairedStaticWeightStream(Resolvable):
         self.hi._cons_lock = cons_hi
         self.hi._recv_buf = recv_hi
 
-        flow(memtile_op, WireBundle.DMA, self._mm2s_lo,
-             comp_lo_op, WireBundle.DMA, self._s2mm_lo)
-        flow(memtile_op, WireBundle.DMA, self._mm2s_hi,
-             comp_hi_op, WireBundle.DMA, self._s2mm_hi)
+        flow(
+            memtile_op,
+            WireBundle.DMA,
+            self._mm2s_lo,
+            comp_lo_op,
+            WireBundle.DMA,
+            self._s2mm_lo,
+        )
+        flow(
+            memtile_op,
+            WireBundle.DMA,
+            self._mm2s_hi,
+            comp_hi_op,
+            WireBundle.DMA,
+            self._s2mm_hi,
+        )
 
         # ONE memtile_dma region, two dma_start blocks, one per channel.
         @memtile_dma(memtile_op)
         def _mtdma(block):
             # block[0]: entry. block[1..2]: lo BD + end-chain.
             # block[3..4]: hi BD + end-chain.
-            dma_start(DMAChannelDir.MM2S, self._mm2s_lo,
-                      dest=block[1], chain=block[3])
+            dma_start(DMAChannelDir.MM2S, self._mm2s_lo, dest=block[1], chain=block[3])
             with block[1]:
                 dma_bd(buf_lo)
                 next_bd(block[1])
             with block[3]:
-                dma_start(DMAChannelDir.MM2S, self._mm2s_hi,
-                          dest=block[4], chain=block[2])
+                dma_start(
+                    DMAChannelDir.MM2S, self._mm2s_hi, dest=block[4], chain=block[2]
+                )
             with block[4]:
                 dma_bd(buf_hi)
                 next_bd(block[4])
@@ -398,8 +410,7 @@ class PairedStaticWeightStream(Resolvable):
 
         @mem(comp_lo_op)
         def _cdma_lo(block):
-            dma_start(DMAChannelDir.S2MM, self._s2mm_lo,
-                      dest=block[1], chain=block[2])
+            dma_start(DMAChannelDir.S2MM, self._s2mm_lo, dest=block[1], chain=block[2])
             with block[1]:
                 use_lock(prod_lo, LockAction.AcquireGreaterEqual)
                 dma_bd(recv_lo)
@@ -410,8 +421,7 @@ class PairedStaticWeightStream(Resolvable):
 
         @mem(comp_hi_op)
         def _cdma_hi(block):
-            dma_start(DMAChannelDir.S2MM, self._s2mm_hi,
-                      dest=block[1], chain=block[2])
+            dma_start(DMAChannelDir.S2MM, self._s2mm_hi, dest=block[1], chain=block[2])
             with block[1]:
                 use_lock(prod_hi, LockAction.AcquireGreaterEqual)
                 dma_bd(recv_hi)

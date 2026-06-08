@@ -1,6 +1,12 @@
 //===- yolo_m9_cv2_concat2_streamed_vec.cc -----------------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized streamed (chunked-OC) cv2 1x1 conv for the final m9 mixing
 // layer. Drop-in .o-level replacement.
 //

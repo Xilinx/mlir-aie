@@ -1,5 +1,11 @@
 //===- yolo_c3k2_heavy_inner_pair_cv1_streamed_vec.cc ---------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized chunked-OC 3x3 stride-1 conv + SiLU LUT. Drop-in .o-level
 // replacement for yolo_c3k2_heavy_inner_pair_cv1_streamed.cc.
 //
@@ -179,7 +185,6 @@ void KERNEL_NAME(
       aie::store_v(output + chunk_oc_t_full * (kXTiles8 * 64) + x_tile * 64,
                    silu_v);
     }
-
   }
 
   event1();

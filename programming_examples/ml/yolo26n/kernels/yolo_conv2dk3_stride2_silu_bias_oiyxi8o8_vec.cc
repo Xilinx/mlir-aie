@@ -1,6 +1,12 @@
 //===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc -----------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Deep-opt vectorized 3x3 stride-2 INT8 conv with OIYXI8O8 weight layout.
 // Drop-in for the m1 conv_stride block; bit-exact with the prior naive vec.
 //
@@ -113,10 +119,10 @@ static __attribute__((always_inline)) inline void write_x_tile_result(
 // chans. Scalar SiLU LUT then 4 vec_store<16> per pixel at offset
 // (x_out + p) * kOutC + oc_pair_base. Replaces 64 scalar stores per call
 // pair.
-static __attribute__((always_inline)) inline void emit_oc_pair(
-    aie::vector<int8, 32> srs_a, aie::vector<int8, 32> srs_b,
-    const int8_t *__restrict silu_lut, int8_t *__restrict output,
-    int oc_pair_base, int x_out_base) {
+static __attribute__((always_inline)) inline void
+emit_oc_pair(aie::vector<int8, 32> srs_a, aie::vector<int8, 32> srs_b,
+             const int8_t *__restrict silu_lut, int8_t *__restrict output,
+             int oc_pair_base, int x_out_base) {
   auto [lo, hi] = aie::interleave_zip(srs_a, srs_b, 8u);
   aie::vector<int8, 64> combined = aie::concat(lo, hi);
   alignas(64) int8_t silu_buf[64];

@@ -1,5 +1,11 @@
 //===- yolo_m9_pack.cc ----------------------------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Unified per-head packer for the PSA attention pipe. Reads one natural-
 // layout (in_w, twoc=256) qkv-conv output row and copies a configurable
 // slice of channels into a destination per-head (slots, N) buffer in
@@ -50,13 +56,12 @@ static constexpr int kExtraOffset = YOLO_M9_PACK_EXTRA_OFFSET;
 extern "C" {
 
 void YOLO_M9_PACK_SYMBOL(
-    int8_t *__restrict in_row,  // (in_w, twoc) natural-layout qkv row
-    int8_t *__restrict dst,     // (kSlots, kN) destination per-head buffer
+    int8_t *__restrict in_row, // (in_w, twoc) natural-layout qkv row
+    int8_t *__restrict dst,    // (kSlots, kN) destination per-head buffer
     const int32_t /*input_width*/, const int32_t /*twoc*/,
-    const int32_t /*slots*/, const int32_t /*head_stride*/,
-    const int32_t /*N*/,
-    const int32_t head_idx,    // 0 or 1
-    const int32_t row_idx) {   // 0..in_h-1
+    const int32_t /*slots*/, const int32_t /*head_stride*/, const int32_t /*N*/,
+    const int32_t head_idx,  // 0 or 1
+    const int32_t row_idx) { // 0..in_h-1
 #ifdef NOOP_KERNEL
   return;
 #endif

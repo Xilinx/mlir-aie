@@ -1,5 +1,11 @@
 //===- yolo_m10_softmax.cc -------------------------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Tiny i8 softmax (n_classes typically = 2 for the yolo26n-cls binary
 // classifier head). Uses a precomputed fp32 exp LUT keyed by the i8
 // (logit - row_max). Output is i8 at scale 2^-7 (probability * 128).

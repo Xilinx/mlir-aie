@@ -1,5 +1,11 @@
 //===- yolo_m9_sv_row_vec.cc ---------------------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized sv-matmul column kernel for the PSA attention. Drop-in
 // .o-level replacement for yolo_m9_sv_row.cc — exports BOTH
 // `yolo_m9_sv_row_i8_i8` and `yolo_m9_sv_row_acc_i8_i8` (same body, one

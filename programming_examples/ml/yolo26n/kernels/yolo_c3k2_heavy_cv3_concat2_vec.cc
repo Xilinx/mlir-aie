@@ -1,5 +1,11 @@
 //===- yolo_c3k2_heavy_cv3_concat2_vec.cc ---------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized 1x1 INT8 conv on TWO concatenated input rows + SiLU LUT.
 // Drop-in .o-level replacement for yolo_c3k2_heavy_cv3_concat2.cc.
 //
@@ -99,18 +105,18 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
 
       // in_a (src_idx=0, ic_t = 0..ic_tiles_per_src-1)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
-        aie::vector<int8, 32> in_a_vec = aie::load_v<32>(
-            in_a + local_ic_t * kPackedIcStride + (x_tile >> 1) * 64 +
-            (x_tile & 1) * 32);
+        aie::vector<int8, 32> in_a_vec =
+            aie::load_v<32>(in_a + local_ic_t * kPackedIcStride +
+                            (x_tile >> 1) * 64 + (x_tile & 1) * 32);
         int wts_off = wts_tile_off_1x1(oc_t, local_ic_t, ic_tiles);
         aie::vector<int8, 64> in_b_vec = aie::load_v<64>(&wts[wts_off]);
         acc.mac(in_a_vec, in_b_vec);
       }
       // in_b (src_idx=1, ic_t = ic_tiles_per_src..2*ic_tiles_per_src-1)
       for (int local_ic_t = 0; local_ic_t < ic_tiles_per_src; ++local_ic_t) {
-        aie::vector<int8, 32> in_a_vec = aie::load_v<32>(
-            in_b + local_ic_t * kPackedIcStride + (x_tile >> 1) * 64 +
-            (x_tile & 1) * 32);
+        aie::vector<int8, 32> in_a_vec =
+            aie::load_v<32>(in_b + local_ic_t * kPackedIcStride +
+                            (x_tile >> 1) * 64 + (x_tile & 1) * 32);
         int ic_t = ic_tiles_per_src + local_ic_t;
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b_vec = aie::load_v<64>(&wts[wts_off]);
@@ -126,7 +132,6 @@ void KERNEL_NAME(yolo_c3k2_heavy_cv3_concat2_silu_bias_i8_i8)(
       aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
       aie::store_v(output + oc_t * (x_tiles * 32) + x_tile * 32, silu_v);
     }
-
   }
 
   event1();

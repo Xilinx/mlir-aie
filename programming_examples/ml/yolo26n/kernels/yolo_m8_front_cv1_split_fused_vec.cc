@@ -1,5 +1,11 @@
 //===- yolo_m8_front_cv1_split_fused_vec.cc -----------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Fused cv1 + m_0_split kernel for the m8 megakernel design. Combines:
 //   - cv1 (1x1 split, 256 ic -> 128 top + 128 bot, chunked over oc)
 //   - m_0_split (1x1x2 on bot: 128 ic -> 64 split_a + 64 split_b)
@@ -135,8 +141,8 @@ static inline void cv1_chunk_compute(int8_t *in_row, int8_t *wts_chunk,
       aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
       constexpr int kXTiles8 = 2; // 16W / 8 pixels per back-side block
       const int packed_oc_t = dst_oc_full_base >> 3;
-      const int packed_off = packed_oc_t * (kXTiles8 * 64) + (x_tile >> 1) * 64 +
-                             (x_tile & 1) * 32;
+      const int packed_off = packed_oc_t * (kXTiles8 * 64) +
+                             (x_tile >> 1) * 64 + (x_tile & 1) * 32;
       if (is_top) {
         aie::store_v(out_top + packed_off, silu_v);
       } else {
@@ -181,9 +187,9 @@ static inline void m0_split_branch(int8_t *in_bot, int8_t *wts, int32_t *bias,
       constexpr int kXTiles8_in = 2; // 16W / 8 pixels per back-side block
       AIE_LOOP_RANGE(ic_tiles, ic_tiles)
       for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        aie::vector<int8, 32> in_a = aie::load_v<32>(
-            in_bot + ic_t * (kXTiles8_in * 64) + (x_tile >> 1) * 64 +
-            (x_tile & 1) * 32);
+        aie::vector<int8, 32> in_a =
+            aie::load_v<32>(in_bot + ic_t * (kXTiles8_in * 64) +
+                            (x_tile >> 1) * 64 + (x_tile & 1) * 32);
 
         int wts_off = wts_tile_off_1x1(oc_t, ic_t, ic_tiles);
         aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);

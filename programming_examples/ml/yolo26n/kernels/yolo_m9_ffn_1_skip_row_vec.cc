@@ -1,6 +1,12 @@
 //===- yolo_m9_ffn_1_skip_row_vec.cc -----------------------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Deep-opt vectorized 1x1 i8 conv 256 -> 128 + plain (same-scale)
 // skip-add with attn_block_out. Drop-in .o-level replacement.
 //

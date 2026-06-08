@@ -1,6 +1,12 @@
 //===- yolo_c3k2_small_m0_cv1_vec.cc -------------------------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized 3x3 stride-1 INT8 conv with OIYXI8O8 weight layout. Drop-in
 // .o-level replacement for yolo_c3k2_small_m0_cv1.cc on AIE2P.
 //
@@ -148,7 +154,7 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   // conv_even rounding matches scalar banker_srs semantics.
-    ::aie::set_rounding(aie::rounding_mode::conv_even);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 
@@ -247,10 +253,14 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
       aie::vector<int8, 32> v1 = acc1.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> v2 = acc2.template to_vector<int8>(right_shift);
       aie::vector<int8, 32> v3 = acc3.template to_vector<int8>(right_shift);
-      write_x_tile_result(v0, silu_lut, output, oc_t, x_tile_base + 0, kOcStride);
-      write_x_tile_result(v1, silu_lut, output, oc_t, x_tile_base + 1, kOcStride);
-      write_x_tile_result(v2, silu_lut, output, oc_t, x_tile_base + 2, kOcStride);
-      write_x_tile_result(v3, silu_lut, output, oc_t, x_tile_base + 3, kOcStride);
+      write_x_tile_result(v0, silu_lut, output, oc_t, x_tile_base + 0,
+                          kOcStride);
+      write_x_tile_result(v1, silu_lut, output, oc_t, x_tile_base + 1,
+                          kOcStride);
+      write_x_tile_result(v2, silu_lut, output, oc_t, x_tile_base + 2,
+                          kOcStride);
+      write_x_tile_result(v3, silu_lut, output, oc_t, x_tile_base + 3,
+                          kOcStride);
     }
 
     // --- Interior tail (leftover x_tiles when kInteriorN % 4 != 0) ------
@@ -285,8 +295,8 @@ void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
           int8_t *line_ptr = line[ky];
           AIE_LOOP_UNROLL_FULL
           for (int kx = 0; kx < 3; ++kx) {
-            aie::vector<int8, 32> in_a = load_a_mmul_kx_4p<IN_C, IN_W>(
-                line_ptr, ic_t, kXTiles - 1, kx);
+            aie::vector<int8, 32> in_a =
+                load_a_mmul_kx_4p<IN_C, IN_W>(line_ptr, ic_t, kXTiles - 1, kx);
             int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
             aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
             acc.mac(in_a, in_b);

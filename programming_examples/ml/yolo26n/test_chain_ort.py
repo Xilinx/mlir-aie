@@ -1,3 +1,11 @@
+# test_chain_ort.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """End-to-end chain NPU-vs-ORT bit-exact check for the full m0..m10 chain.
 
 Feeds the same (4, 3, 512, 512) RGB int8 input that test_block_ort.py uses,

@@ -1,6 +1,12 @@
 //===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked_vec.cc -----*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Vectorized chunked variant of the OIYXI8O8 stride-2 conv. Same math as
 // the non-chunked vec kernel (yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_vec.cc),
 // but the weight buffer holds only one chunk of output channels and the
@@ -250,8 +256,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
 
   // DEBUG: stub emit_oc_pair to call write_x_tile_result twice — should be
   // bit-exact baseline.
-  auto emit_oc_pair = [&](MMUL4x8x8 &acc_a, MMUL4x8x8 &acc_b,
-                          int x_out_base, int oc_pair_base) {
+  auto emit_oc_pair = [&](MMUL4x8x8 &acc_a, MMUL4x8x8 &acc_b, int x_out_base,
+                          int oc_pair_base) {
     write_x_tile_result(acc_a, x_out_base, oc_pair_base + 0);
     write_x_tile_result(acc_b, x_out_base, oc_pair_base + 8);
   };
@@ -426,174 +432,179 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       const int oc_full_base_1 = oc_offset + oc_pair_idx * 16 + 8;
       auto bias_acc_oc0 = make_bias_acc(&bias[oc_full_base_0]);
       auto bias_acc_oc1 = make_bias_acc(&bias[oc_full_base_1]);
-      const int wts_oc_pair_base = (oc_pair_idx * 2) *
-                                   (kIcTiles * kKernelH * kKernelW * 64);
+      const int wts_oc_pair_base =
+          (oc_pair_idx * 2) * (kIcTiles * kKernelH * kKernelW * 64);
 
-    // 2X×2OC pair loop. m3 → 7 pairs, m5 → 3 pairs.
-    AIE_LOOP_RANGE(1, 7)
-    for (int x_pair = 0; x_pair < n_x_pairs; ++x_pair) {
-      const int x_tile_a = 1 + 2 * x_pair;
-      const int x_out_base_a = x_tile_a * 4;
-      const int x_out_base_b = x_out_base_a + 4;
-      const int x_in_base_a = 2 * x_out_base_a - 1; // = 1 when x_pair=0
-      // x_tile_b's input base is +8 cols (stride-2 over 4 output cols).
+      // 2X×2OC pair loop. m3 → 7 pairs, m5 → 3 pairs.
+      AIE_LOOP_RANGE(1, 7)
+      for (int x_pair = 0; x_pair < n_x_pairs; ++x_pair) {
+        const int x_tile_a = 1 + 2 * x_pair;
+        const int x_out_base_a = x_tile_a * 4;
+        const int x_out_base_b = x_out_base_a + 4;
+        const int x_in_base_a = 2 * x_out_base_a - 1; // = 1 when x_pair=0
+        // x_tile_b's input base is +8 cols (stride-2 over 4 output cols).
 
-      MMUL4x8x8 acc_a0, acc_a1, acc_b0, acc_b1;
-      acc_a0 = bias_acc_oc0; // x_a + oc0
-      acc_a1 = bias_acc_oc1; // x_a + oc1
-      acc_b0 = bias_acc_oc0; // x_b + oc0
-      acc_b1 = bias_acc_oc1; // x_b + oc1
+        MMUL4x8x8 acc_a0, acc_a1, acc_b0, acc_b1;
+        acc_a0 = bias_acc_oc0; // x_a + oc0
+        acc_a1 = bias_acc_oc1; // x_a + oc1
+        acc_b0 = bias_acc_oc0; // x_b + oc0
+        acc_b1 = bias_acc_oc1; // x_b + oc1
 
-      AIE_LOOP_RANGE(8, 16)
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        AIE_LOOP_RANGE(2, 3)
-        for (int ky = ky_start; ky < ky_end; ++ky) {
-          int8_t *line_ptr = line[ky];
+        AIE_LOOP_RANGE(8, 16)
+        for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+          AIE_LOOP_RANGE(2, 3)
+          for (int ky = ky_start; ky < ky_end; ++ky) {
+            int8_t *line_ptr = line[ky];
 
-          AIE_LOOP_UNROLL_FULL
-          for (int kx = 0; kx < 3; ++kx) {
+            AIE_LOOP_UNROLL_FULL
+            for (int kx = 0; kx < 3; ++kx) {
 #ifdef M5_PREPACK_LAYOUT
-            aie::vector<int8, 32> in_a_a =
-                load_a_prepacked_interior(line_ptr, ic_t, x_tile_a, kx);
-            aie::vector<int8, 32> in_a_b =
-                load_a_prepacked_interior(line_ptr, ic_t, x_tile_a + 1, kx);
+              aie::vector<int8, 32> in_a_a =
+                  load_a_prepacked_interior(line_ptr, ic_t, x_tile_a, kx);
+              aie::vector<int8, 32> in_a_b =
+                  load_a_prepacked_interior(line_ptr, ic_t, x_tile_a + 1, kx);
 #else
-            // Gather x_tile_a inputs: 4 cols × 8 ic-bytes, 64-bit word copies.
-            alignas(32) int8_t a_buf_a[32];
-            int8_t *sa0 =
-                line_ptr + (x_in_base_a + kx) * input_channels + ic_t * 8;
-            int8_t *sa1 = sa0 + 2 * input_channels;
-            int8_t *sa2 = sa0 + 4 * input_channels;
-            int8_t *sa3 = sa0 + 6 * input_channels;
-            *(reinterpret_cast<uint64_t *>(&a_buf_a[0])) =
-                *reinterpret_cast<const uint64_t *>(sa0);
-            *(reinterpret_cast<uint64_t *>(&a_buf_a[8])) =
-                *reinterpret_cast<const uint64_t *>(sa1);
-            *(reinterpret_cast<uint64_t *>(&a_buf_a[16])) =
-                *reinterpret_cast<const uint64_t *>(sa2);
-            *(reinterpret_cast<uint64_t *>(&a_buf_a[24])) =
-                *reinterpret_cast<const uint64_t *>(sa3);
+              // Gather x_tile_a inputs: 4 cols × 8 ic-bytes, 64-bit word
+              // copies.
+              alignas(32) int8_t a_buf_a[32];
+              int8_t *sa0 =
+                  line_ptr + (x_in_base_a + kx) * input_channels + ic_t * 8;
+              int8_t *sa1 = sa0 + 2 * input_channels;
+              int8_t *sa2 = sa0 + 4 * input_channels;
+              int8_t *sa3 = sa0 + 6 * input_channels;
+              *(reinterpret_cast<uint64_t *>(&a_buf_a[0])) =
+                  *reinterpret_cast<const uint64_t *>(sa0);
+              *(reinterpret_cast<uint64_t *>(&a_buf_a[8])) =
+                  *reinterpret_cast<const uint64_t *>(sa1);
+              *(reinterpret_cast<uint64_t *>(&a_buf_a[16])) =
+                  *reinterpret_cast<const uint64_t *>(sa2);
+              *(reinterpret_cast<uint64_t *>(&a_buf_a[24])) =
+                  *reinterpret_cast<const uint64_t *>(sa3);
 
-            // Gather x_tile_b inputs: shifted +8 input cols from x_tile_a.
-            alignas(32) int8_t a_buf_b[32];
-            int8_t *sb0 = sa0 + 8 * input_channels;
-            int8_t *sb1 = sb0 + 2 * input_channels;
-            int8_t *sb2 = sb0 + 4 * input_channels;
-            int8_t *sb3 = sb0 + 6 * input_channels;
-            *(reinterpret_cast<uint64_t *>(&a_buf_b[0])) =
-                *reinterpret_cast<const uint64_t *>(sb0);
-            *(reinterpret_cast<uint64_t *>(&a_buf_b[8])) =
-                *reinterpret_cast<const uint64_t *>(sb1);
-            *(reinterpret_cast<uint64_t *>(&a_buf_b[16])) =
-                *reinterpret_cast<const uint64_t *>(sb2);
-            *(reinterpret_cast<uint64_t *>(&a_buf_b[24])) =
-                *reinterpret_cast<const uint64_t *>(sb3);
+              // Gather x_tile_b inputs: shifted +8 input cols from x_tile_a.
+              alignas(32) int8_t a_buf_b[32];
+              int8_t *sb0 = sa0 + 8 * input_channels;
+              int8_t *sb1 = sb0 + 2 * input_channels;
+              int8_t *sb2 = sb0 + 4 * input_channels;
+              int8_t *sb3 = sb0 + 6 * input_channels;
+              *(reinterpret_cast<uint64_t *>(&a_buf_b[0])) =
+                  *reinterpret_cast<const uint64_t *>(sb0);
+              *(reinterpret_cast<uint64_t *>(&a_buf_b[8])) =
+                  *reinterpret_cast<const uint64_t *>(sb1);
+              *(reinterpret_cast<uint64_t *>(&a_buf_b[16])) =
+                  *reinterpret_cast<const uint64_t *>(sb2);
+              *(reinterpret_cast<uint64_t *>(&a_buf_b[24])) =
+                  *reinterpret_cast<const uint64_t *>(sb3);
 
-            aie::vector<int8, 32> in_a_a = aie::load_v<32>(a_buf_a);
-            aie::vector<int8, 32> in_a_b = aie::load_v<32>(a_buf_b);
+              aie::vector<int8, 32> in_a_a = aie::load_v<32>(a_buf_a);
+              aie::vector<int8, 32> in_a_b = aie::load_v<32>(a_buf_b);
 #endif
 
-            // Two weight banks, each shared across both X positions.
-            int wts_off_0 = wts_oc_pair_base +
-                            wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
-                                               kernel_height, kernel_width);
-            aie::vector<int8, 64> in_b_0 =
-                aie::load_v<64>(&wts_chunk[wts_off_0]);
-            aie::vector<int8, 64> in_b_1 =
-                aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
+              // Two weight banks, each shared across both X positions.
+              int wts_off_0 = wts_oc_pair_base +
+                              wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
+                                                 kernel_height, kernel_width);
+              aie::vector<int8, 64> in_b_0 =
+                  aie::load_v<64>(&wts_chunk[wts_off_0]);
+              aie::vector<int8, 64> in_b_1 =
+                  aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
 
-            // 4 macs: 2 X × 2 OC. One gather per X, one weight per OC.
-            acc_a0.mac(in_a_a, in_b_0);
-            acc_a1.mac(in_a_a, in_b_1);
-            acc_b0.mac(in_a_b, in_b_0);
-            acc_b1.mac(in_a_b, in_b_1);
+              // 4 macs: 2 X × 2 OC. One gather per X, one weight per OC.
+              acc_a0.mac(in_a_a, in_b_0);
+              acc_a1.mac(in_a_a, in_b_1);
+              acc_b0.mac(in_a_b, in_b_0);
+              acc_b1.mac(in_a_b, in_b_1);
+            }
+          }
+        }
+        // Inline vec output -- per-pixel 16-byte buffer + vec_store<16>.
+        // Smaller scratch (16B/pix instead of 64B/4pix) keeps register
+        // pressure low enough to not disturb the 4-acc 2X×2OC mac scheduling.
+        {
+          aie::vector<int8, 32> sa0 =
+              acc_a0.template to_vector<int8>(right_shift);
+          aie::vector<int8, 32> sa1 =
+              acc_a1.template to_vector<int8>(right_shift);
+          for (int p = 0; p < 4; ++p) {
+            alignas(16) int8_t pix_buf[16];
+            for (int j = 0; j < 8; ++j) {
+              pix_buf[j] = silu_lut[int(sa0[p * 8 + j]) + 128];
+              pix_buf[8 + j] = silu_lut[int(sa1[p * 8 + j]) + 128];
+            }
+            aie::vector<int8, 16> chunk = aie::load_v<16>(pix_buf);
+            aie::store_v(output + (x_out_base_a + p) * output_channels +
+                             oc_full_base_0,
+                         chunk);
+          }
+        }
+        {
+          aie::vector<int8, 32> sb0 =
+              acc_b0.template to_vector<int8>(right_shift);
+          aie::vector<int8, 32> sb1 =
+              acc_b1.template to_vector<int8>(right_shift);
+          for (int p = 0; p < 4; ++p) {
+            alignas(16) int8_t pix_buf[16];
+            for (int j = 0; j < 8; ++j) {
+              pix_buf[j] = silu_lut[int(sb0[p * 8 + j]) + 128];
+              pix_buf[8 + j] = silu_lut[int(sb1[p * 8 + j]) + 128];
+            }
+            aie::vector<int8, 16> chunk = aie::load_v<16>(pix_buf);
+            aie::store_v(output + (x_out_base_b + p) * output_channels +
+                             oc_full_base_0,
+                         chunk);
           }
         }
       }
-      // Inline vec output -- per-pixel 16-byte buffer + vec_store<16>.
-      // Smaller scratch (16B/pix instead of 64B/4pix) keeps register
-      // pressure low enough to not disturb the 4-acc 2X×2OC mac scheduling.
-      {
-        aie::vector<int8, 32> sa0 = acc_a0.template to_vector<int8>(right_shift);
-        aie::vector<int8, 32> sa1 = acc_a1.template to_vector<int8>(right_shift);
-        for (int p = 0; p < 4; ++p) {
-          alignas(16) int8_t pix_buf[16];
-          for (int j = 0; j < 8; ++j) {
-            pix_buf[j] = silu_lut[int(sa0[p * 8 + j]) + 128];
-            pix_buf[8 + j] = silu_lut[int(sa1[p * 8 + j]) + 128];
-          }
-          aie::vector<int8, 16> chunk = aie::load_v<16>(pix_buf);
-          aie::store_v(output + (x_out_base_a + p) * output_channels +
-                           oc_full_base_0,
-                       chunk);
-        }
-      }
-      {
-        aie::vector<int8, 32> sb0 = acc_b0.template to_vector<int8>(right_shift);
-        aie::vector<int8, 32> sb1 = acc_b1.template to_vector<int8>(right_shift);
-        for (int p = 0; p < 4; ++p) {
-          alignas(16) int8_t pix_buf[16];
-          for (int j = 0; j < 8; ++j) {
-            pix_buf[j] = silu_lut[int(sb0[p * 8 + j]) + 128];
-            pix_buf[8 + j] = silu_lut[int(sb1[p * 8 + j]) + 128];
-          }
-          aie::vector<int8, 16> chunk = aie::load_v<16>(pix_buf);
-          aie::store_v(output + (x_out_base_b + p) * output_channels +
-                           oc_full_base_0,
-                       chunk);
-        }
-      }
-    }
 
-    // Odd-x_tile tail (dead-stripped when n_interior is even, which it is
-    // for all current chunked-conv shapes). Single-X OC×2 form, 2 accs.
-    if constexpr (has_x_tail) {
-      constexpr int x_tile = 1 + 2 * n_x_pairs;
-      constexpr int x_out_base = x_tile * 4;
-      constexpr int x_in_base = 2 * x_out_base - 1;
+      // Odd-x_tile tail (dead-stripped when n_interior is even, which it is
+      // for all current chunked-conv shapes). Single-X OC×2 form, 2 accs.
+      if constexpr (has_x_tail) {
+        constexpr int x_tile = 1 + 2 * n_x_pairs;
+        constexpr int x_out_base = x_tile * 4;
+        constexpr int x_in_base = 2 * x_out_base - 1;
 
-      MMUL4x8x8 acc_0;
-      MMUL4x8x8 acc_1;
-      acc_0 = bias_acc_oc0;
-      acc_1 = bias_acc_oc1;
+        MMUL4x8x8 acc_0;
+        MMUL4x8x8 acc_1;
+        acc_0 = bias_acc_oc0;
+        acc_1 = bias_acc_oc1;
 
-      AIE_LOOP_RANGE(8, 16)
-      for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
-        AIE_LOOP_RANGE(2, 3)
-        for (int ky = ky_start; ky < ky_end; ++ky) {
-          int8_t *line_ptr = line[ky];
-          AIE_LOOP_UNROLL_FULL
-          for (int kx = 0; kx < 3; ++kx) {
-            alignas(32) int8_t a_buf[32];
-            int8_t *src0 =
-                line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
-            int8_t *src1 = src0 + 2 * input_channels;
-            int8_t *src2 = src0 + 4 * input_channels;
-            int8_t *src3 = src0 + 6 * input_channels;
-            *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
-                *reinterpret_cast<const uint64_t *>(src0);
-            *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
-                *reinterpret_cast<const uint64_t *>(src1);
-            *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
-                *reinterpret_cast<const uint64_t *>(src2);
-            *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
-                *reinterpret_cast<const uint64_t *>(src3);
-            aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
-            int wts_off_0 = wts_oc_pair_base +
-                            wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
-                                               kernel_height, kernel_width);
-            aie::vector<int8, 64> in_b_0 =
-                aie::load_v<64>(&wts_chunk[wts_off_0]);
-            aie::vector<int8, 64> in_b_1 =
-                aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
-            acc_0.mac(in_a, in_b_0);
-            acc_1.mac(in_a, in_b_1);
+        AIE_LOOP_RANGE(8, 16)
+        for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
+          AIE_LOOP_RANGE(2, 3)
+          for (int ky = ky_start; ky < ky_end; ++ky) {
+            int8_t *line_ptr = line[ky];
+            AIE_LOOP_UNROLL_FULL
+            for (int kx = 0; kx < 3; ++kx) {
+              alignas(32) int8_t a_buf[32];
+              int8_t *src0 =
+                  line_ptr + (x_in_base + kx) * input_channels + ic_t * 8;
+              int8_t *src1 = src0 + 2 * input_channels;
+              int8_t *src2 = src0 + 4 * input_channels;
+              int8_t *src3 = src0 + 6 * input_channels;
+              *(reinterpret_cast<uint64_t *>(&a_buf[0])) =
+                  *reinterpret_cast<const uint64_t *>(src0);
+              *(reinterpret_cast<uint64_t *>(&a_buf[8])) =
+                  *reinterpret_cast<const uint64_t *>(src1);
+              *(reinterpret_cast<uint64_t *>(&a_buf[16])) =
+                  *reinterpret_cast<const uint64_t *>(src2);
+              *(reinterpret_cast<uint64_t *>(&a_buf[24])) =
+                  *reinterpret_cast<const uint64_t *>(src3);
+              aie::vector<int8, 32> in_a = aie::load_v<32>(a_buf);
+              int wts_off_0 = wts_oc_pair_base +
+                              wts_chunk_tile_off(0, ic_t, ky, kx, ic_tiles,
+                                                 kernel_height, kernel_width);
+              aie::vector<int8, 64> in_b_0 =
+                  aie::load_v<64>(&wts_chunk[wts_off_0]);
+              aie::vector<int8, 64> in_b_1 =
+                  aie::load_v<64>(&wts_chunk[wts_off_0 + wts_oc_bank_stride]);
+              acc_0.mac(in_a, in_b_0);
+              acc_1.mac(in_a, in_b_1);
+            }
           }
         }
+        write_x_tile_result(acc_0, x_out_base, oc_full_base_0);
+        write_x_tile_result(acc_1, x_out_base, oc_full_base_1);
       }
-      write_x_tile_result(acc_0, x_out_base, oc_full_base_0);
-      write_x_tile_result(acc_1, x_out_base, oc_full_base_1);
-    }
     } // end OC-pair loop
   } else {
     // ----- OC×2 single-X interior (m7) -----
@@ -603,8 +614,8 @@ static void yolo_conv2dk3_i8_stride2_silu_bias_oiyxi8o8_chunked_vec(
       const int oc_full_base_1 = oc_offset + oc_pair_idx * 16 + 8;
       auto bias_acc_oc0 = make_bias_acc(&bias[oc_full_base_0]);
       auto bias_acc_oc1 = make_bias_acc(&bias[oc_full_base_1]);
-      const int wts_oc_pair_base = (oc_pair_idx * 2) *
-                                   (kIcTiles * kKernelH * kKernelW * 64);
+      const int wts_oc_pair_base =
+          (oc_pair_idx * 2) * (kIcTiles * kKernelH * kKernelW * 64);
 
       AIE_LOOP_RANGE(2, 14)
       for (int x_tile = 1; x_tile < x_tiles - 1; ++x_tile) {

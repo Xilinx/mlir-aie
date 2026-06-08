@@ -1,3 +1,11 @@
+# aie2_yolo_per_block.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """Per-block standalone IRON design for yolo26n-cls.
 
 Compile a single block to MLIR:
@@ -1196,9 +1204,14 @@ def _build_head(block_name, act_in, manifest):
             _i8((256,)),
             _i32((expand_c_local,)),  # local accum (640)
             _i8((expand_c_local,)),  # local pool out (640)
-            np.int32, np.int32, np.int32, np.int32,  # in_w, in_c, expand_c, in_h
+            np.int32,
+            np.int32,
+            np.int32,
+            np.int32,  # in_w, in_c, expand_c, in_h
             np.int32,  # right_shift
-            np.int32, np.int32, np.int32,  # yi, n_splits, wi
+            np.int32,
+            np.int32,
+            np.int32,  # yi, n_splits, wi
         ],
     )
 
@@ -1216,7 +1229,8 @@ def _build_head(block_name, act_in, manifest):
             _i8((expand_c * out_c,)),
             _i32((out_c,)),
             _i8((out_c,)),
-            np.int32, np.int32,
+            np.int32,
+            np.int32,
             np.int32,
         ],
     )
@@ -1238,7 +1252,8 @@ def _build_head(block_name, act_in, manifest):
             _i8((out_c,)),
             _f32((256,)),
             _i8((OUT_PAD,)),
-            np.int32, np.int32,
+            np.int32,
+            np.int32,
         ],
     )
 
@@ -1250,8 +1265,9 @@ def _build_head(block_name, act_in, manifest):
         [
             _i8((expand_c_local,)),  # lo (640)
             _i8((expand_c_local,)),  # hi (640)
-            _i8((expand_c,)),        # full (1280)
-            np.int32, np.int32,
+            _i8((expand_c,)),  # full (1280)
+            np.int32,
+            np.int32,
         ],
     )
 
@@ -1273,9 +1289,14 @@ def _build_head(block_name, act_in, manifest):
                     silu,
                     accum,
                     pool_lo_buf,
-                    in_w, in_c, expand_c_local, in_h,
+                    in_w,
+                    in_c,
+                    expand_c_local,
+                    in_h,
                     rs_conv,
-                    yi, n_splits_local, wi,
+                    yi,
+                    n_splits_local,
+                    wi,
                 )
                 wts_pb.release(1)
             act_in_x.release(1)
@@ -1283,9 +1304,23 @@ def _build_head(block_name, act_in, manifest):
 
     # ----- tile_y worker: conv for hi half, concat, gemm, softmax -----
     def conv_hi_tail_fn(
-        act_in_y, wts_pb, bias, silu, accum, pool_hi, pool_lo_c, pool_full,
-        lin_wts, lin_bias, gemm_out, sm_lut, out_p,
-        k_conv, k_concat, k_gemm_, k_softmax_,
+        act_in_y,
+        wts_pb,
+        bias,
+        silu,
+        accum,
+        pool_hi,
+        pool_lo_c,
+        pool_full,
+        lin_wts,
+        lin_bias,
+        gemm_out,
+        sm_lut,
+        out_p,
+        k_conv,
+        k_concat,
+        k_gemm_,
+        k_softmax_,
     ):
         for yi in range_(in_h):
             elem_in = act_in_y.acquire(1)
@@ -1298,9 +1333,14 @@ def _build_head(block_name, act_in, manifest):
                     silu,
                     accum,
                     pool_hi,
-                    in_w, in_c, expand_c_local, in_h,
+                    in_w,
+                    in_c,
+                    expand_c_local,
+                    in_h,
                     rs_conv,
-                    yi, n_splits_local, wi,
+                    yi,
+                    n_splits_local,
+                    wi,
                 )
                 wts_pb.release(1)
             act_in_y.release(1)
@@ -2826,7 +2866,9 @@ _BUILDERS = {
     # m3/m5/m7: weights exceed AIE2P tile budget — stream chunked from MemTile
     # via chunked_dma.ChunkedWeightStream (fork of StaticWeightStream that
     # actually emits N source BDs, one per chunk).
-    "m3": lambda act_in, m: _build_conv_stride_block_streamed("m3", act_in, m, out_depth=1),
+    "m3": lambda act_in, m: _build_conv_stride_block_streamed(
+        "m3", act_in, m, out_depth=1
+    ),
     "m5": lambda act_in, m: _build_conv_stride_block_streamed(
         "m5", act_in, m, out_depth=1
     ),
@@ -2835,7 +2877,9 @@ _BUILDERS = {
     # element). depth=1 → 4KB cons buffer, matches m8 standalone act_in
     # sizing. Per-block ablation says m7 contributes 0.41ms to chain so the
     # depth-1 lack of slack is no risk of pipeline starvation.
-    "m7": lambda act_in, m: _build_conv_stride_block_streamed("m7", act_in, m, out_depth=1),
+    "m7": lambda act_in, m: _build_conv_stride_block_streamed(
+        "m7", act_in, m, out_depth=1
+    ),
     "m2": lambda act_in, m: _build_c3k2_small("m2", act_in, m),
     "m4": lambda act_in, m: _build_c3k2_small("m4", act_in, m),
     "m6": lambda act_in, m: _build_c3k2_heavy("m6", act_in, m),

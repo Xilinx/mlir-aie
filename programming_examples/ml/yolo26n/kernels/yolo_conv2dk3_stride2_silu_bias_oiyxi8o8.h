@@ -1,6 +1,12 @@
 //===- yolo_conv2dk3_stride2_silu_bias_oiyxi8o8.h ------------------*- C++
 //-*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // 3x3 stride-2 INT8 conv with INT32 bias accumulator-init + INT8 SiLU LUT.
 // Weights are OIYXI8O8 packed (shared by yolo26n m1/m3/m5/m7 — every
 // conv_stride block except m0 whose in_c=3 isn't 8-aligned).

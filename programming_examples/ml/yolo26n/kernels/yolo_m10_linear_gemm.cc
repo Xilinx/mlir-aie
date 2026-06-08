@@ -1,5 +1,11 @@
 //===- yolo_m10_linear_gemm.cc ---------------------------------*- C++ -*-===//
 //
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
 // Scalar i8 Gemm 1280 → 2 for the yolo26n-cls binary classifier head.
 // Weights are stored in raw `shape_2x1280` layout (row-major, no OIYX
 // packing — manifest weights_layout="shape_2x1280"). Each output is
