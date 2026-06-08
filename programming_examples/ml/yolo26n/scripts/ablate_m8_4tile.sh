@@ -1,10 +1,17 @@
 #!/bin/bash
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 # Per-tile ablation for M8_TILES=4 standalone — which worker is the gate?
 # NOOP each kernel file in turn; m8 4-tile pipeline still runs locks/DMA so
 # wall-time drop = that tile's contribution to the steady-state bottleneck.
 set -uo pipefail
 
-cd /scratch/ehunhoff/mlir-aie
+cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 source /opt/xilinx/xrt/setup.sh >/dev/null 2>&1
 source ironenv/bin/activate
 source utils/env_setup.sh install >/dev/null 2>&1

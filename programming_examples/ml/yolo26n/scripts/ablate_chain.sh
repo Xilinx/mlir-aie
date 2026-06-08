@@ -1,4 +1,11 @@
 #!/bin/bash
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 # Per-block chain ablation @ CHAIN_N_SAMPLES=15.
 # For each block: rm its .o(s), clean_chain (wipes xclbin/mlir), rebuild with
 # -DNOOP_KERNEL on that block's kernels, time the chain, log result.
@@ -6,7 +13,7 @@
 
 set -uo pipefail
 
-cd /scratch/ehunhoff/mlir-aie
+cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 source /opt/xilinx/xrt/setup.sh >/dev/null 2>&1
 source ironenv/bin/activate
 source utils/env_setup.sh install >/dev/null 2>&1

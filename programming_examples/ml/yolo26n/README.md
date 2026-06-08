@@ -734,10 +734,16 @@ yolo26n/
 ├── lowlevel_dma.py                    # StaticWeightStream helper for chunked weight DMA
 ├── kernels/                           # 30 .cc + 2 .h AIE2P kernel files. Every active kernel has been audited against the playbook in `## Performance` (constexpr trip counts, bias-init mmul, vec to_vector<int8>(rs) SRS, AIE_LOOP_RANGE hints, shape macros). The pack utilities (yolo_m9_{qkv,qk,v}_pack.cc) are scalar strided-copy transposes — no mmul, no vec primitive applies.
 ├── scripts/
-│   ├── m8_megakernel_2tile.py         # m8 2-tile megakernel (the only m8 path)
+│   ├── m8_megakernel_2tile.py         # m8 megakernel — 2-tile topology
+│   ├── m8_megakernel_4tile.py         # m8 megakernel — 4-tile topology (default; M8_TILES=4)
+│   ├── m8_megakernel_6tile.py         # m8 megakernel — 6-tile topology (standalone-only)
 │   ├── m9_stage.py                    # m9 PSA staged builder (stages 1..10)
 │   ├── time_block.py                  # per-block timing harness
 │   ├── time_chain.py                  # chain timing harness
+│   ├── ablate_chain.sh                # per-block NOOP ablation @ chain N=15
+│   ├── ablate_chain_combos.sh         # multi-block NOOP combinations
+│   ├── ablate_m8_4tile.sh             # m8 4-tile ablation driver
+│   ├── ablate_m8_6tile.sh             # m8 6-tile ablation driver
 │   └── trace_m8.sh                    # m8 HW packet-trace driver
 ├── gen_yolo_data.py                   # XINT8 ONNX → data/manifest.json + per-Conv bins
 ├── gen_yolo_silu_luts.py              # XINT8 ONNX → per-Conv 256-byte SiLU LUTs
@@ -745,11 +751,10 @@ yolo26n/
 ├── test_block_ort.py                  # per-block (m0..m8) NPU vs ORT bit-exact host driver
 ├── test_chain_ort.py                  # full chain NPU vs ORT (N=1 or N>1) bit-exact host driver
 ├── notebooks/
-│   ├── quark_quantization.ipynb       # full int8 recipe (FP32 → XINT8)
+│   ├── quark_quantization.ipynb       # full int8 recipe (FP32 → XINT8); requires `ultralytics`
 │   └── yoloexploration.ipynb          # upstream YOLO26n context + COCO val
 ├── models/
-│   ├── phase1_25k_acc0.9424.pt        # FP32 PyTorch source (3.1 MB)
-│   └── phase1_25k_xint8_acc0.8968.onnx # Quark XINT8 deployment artifact (1.7 MB)
+│   └── phase1_25k_xint8_acc0.8968.onnx # Quark XINT8 deployment artifact (1.7 MB; used by `make data` + CI)
 └── run_strix_makefile.lit             # lit test (m0 per-block + full chain end-to-end)
 ```
 

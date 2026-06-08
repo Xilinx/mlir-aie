@@ -1,3 +1,11 @@
+# m8_megakernel_2tile.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2026, Advanced Micro Devices, Inc.
+#
 """m8 megakernel — 2-tile split.
 
 Splits m8's 8 sub-ops across 2 vertically-adjacent compute tiles:
@@ -22,9 +30,10 @@ Streamed weights spread similarly to 1-tile design (cross-tile DMA
 via compute_placement to neighbors) since we still have 4 weight
 streams plus 2 act_in/none on tile A.
 
-Wired into the chain and per-block builds as the (only) m8 path via
+One of three m8 topologies selected by `M8_TILES` (2 / 4 / 6); the
+4-tile variant (m8_megakernel_4tile.py) is the default. See
 aie2_yolo_per_block.py:_build_m8_chain and the m8 branch of
-per_block_iron.
+per_block_iron for dispatch.
 """
 
 from __future__ import annotations
