@@ -8,8 +8,8 @@
 """Tutorial: parallel two-input tile-by-tile transform on the NPU.
 
 Same shape as ``transform_binary.py`` but distributes the work across
-all available NPU columns via
-:func:`aie.iron.algorithms.transform_parallel_binary`.
+all available NPU columns.  The design body delegates to
+:func:`aie.iron.algorithms.transform_parallel_binary_typed`.
 """
 
 import argparse
@@ -17,8 +17,25 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron.algorithms import transform_parallel_binary
+from aie.iron import Compile, In, Out
+from aie.iron.algorithms import transform_parallel_binary_typed
 from aie.utils.verify import assert_pass
+
+
+@iron.jit
+def transform_parallel_binary(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    num_elements: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+):
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    return transform_parallel_binary_typed(
+        lambda a, b: a + b, tensor_ty, tile_size=tile_size
+    )
 
 
 def main():
@@ -40,14 +57,8 @@ def main():
     input1 = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input0)
 
-    iron.jit(transform_parallel_binary)(
-        input0,
-        input1,
-        output,
-        func=lambda a, b: a + b,
-        N=int(input0.shape[0]),
-        dtype=input0.dtype,
-        tile_size=16,
+    transform_parallel_binary(
+        input0, input1, output, num_elements=int(input0.shape[0]), dtype=dtype
     )
 
     if args.verbose:

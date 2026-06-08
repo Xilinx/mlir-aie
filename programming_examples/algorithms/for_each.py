@@ -8,7 +8,8 @@
 """Tutorial: in-place tile-by-tile transform on the NPU.
 
 Applies ``lambda a: a + 1`` to each ``tile_size``-element tile of a
-single 1-D int32 tensor in place via :func:`aie.iron.algorithms.for_each`.
+single 1-D int32 tensor in place.  The design body delegates to
+:func:`aie.iron.algorithms.for_each_typed`.
 """
 
 import argparse
@@ -16,8 +17,21 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron.algorithms import for_each
+from aie.iron import Compile, InOut
+from aie.iron.algorithms import for_each_typed
 from aie.utils.verify import assert_pass
+
+
+@iron.jit
+def for_each(
+    tensor: InOut,
+    *,
+    num_elements: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+):
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    return for_each_typed(lambda a: a + 1, tensor_ty, tile_size=tile_size)
 
 
 def main():
@@ -38,13 +52,7 @@ def main():
     tensor = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
     initial = tensor.numpy().copy()
 
-    iron.jit(for_each)(
-        tensor,
-        func=lambda a: a + 1,
-        N=int(tensor.shape[0]),
-        dtype=tensor.dtype,
-        tile_size=16,
-    )
+    for_each(tensor, num_elements=int(tensor.shape[0]), dtype=dtype)
 
     if args.verbose:
         print(f"{'input':>6} + 1 = {'output':>6}")

@@ -8,7 +8,8 @@
 """Tutorial: parallel tile-by-tile elementwise transform on the NPU.
 
 Same shape as ``transform.py`` but distributes the work across all
-available NPU columns via :func:`aie.iron.algorithms.transform_parallel`.
+available NPU columns.  The design body delegates to
+:func:`aie.iron.algorithms.transform_parallel_typed`.
 """
 
 import argparse
@@ -16,8 +17,22 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron.algorithms import transform_parallel
+from aie.iron import Compile, In, Out
+from aie.iron.algorithms import transform_parallel_typed
 from aie.utils.verify import assert_pass
+
+
+@iron.jit
+def transform_parallel(
+    input: In,
+    output: Out,
+    *,
+    num_elements: Compile[int],
+    dtype: Compile[type],
+    tile_size: Compile[int] = 16,
+):
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    return transform_parallel_typed(lambda a: a + 1, tensor_ty, tile_size=tile_size)
 
 
 def main():
@@ -38,14 +53,7 @@ def main():
     input = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input)
 
-    iron.jit(transform_parallel)(
-        input,
-        output,
-        func=lambda a: a + 1,
-        N=int(input.shape[0]),
-        dtype=input.dtype,
-        tile_size=16,
-    )
+    transform_parallel(input, output, num_elements=int(input.shape[0]), dtype=dtype)
 
     if args.verbose:
         print(f"{'input':>6} + 1 = {'output':>6}")

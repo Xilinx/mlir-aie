@@ -21,7 +21,7 @@ Reductions differ from :mod:`~aie.iron.algorithms.transform` in two ways:
 
 import numpy as np
 
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 import aie.iron as iron
 
 from .transform import make_param_descriptor
@@ -119,37 +119,3 @@ def reduce_typed(func, input_ty, output_ty, *, trace_size=0):
     input_desc = make_param_descriptor(input_ty)
     output_desc = make_param_descriptor(output_ty)
     return _reduce_gen(func, input_desc, output_desc, trace_size=trace_size)
-
-
-def reduce(
-    input: In,
-    output: Out,
-    *,
-    func: Compile[object],
-    N: Compile[int],
-    dtype: Compile[type],
-    out_dtype: Compile[type] = None,
-    trace_size: Compile[int] = 0,
-):
-    """Apply reduction ``func`` to an N-element input tensor producing a
-    1-element output.  JIT-friendly: pass to ``iron.jit`` and call with
-    positional tensors plus the compile-time kwargs.
-
-    Args:
-        input: Input tensor placeholder (``In``).
-        output: Output tensor placeholder (``Out``, single-element).
-        func: :class:`~aie.iron.kernel.ExternalFunction` to apply.
-        N: Number of elements in the input tensor.
-        dtype: Element dtype of the input tensor.
-        out_dtype: Element dtype of the output (defaults to ``dtype``).
-        trace_size: When > 0, enable Worker core trace and a runtime trace
-            buffer of this size in bytes. Defaults to 0 (off).
-
-    Returns:
-        mlir.ir.Module: The compiled MLIR module.
-    """
-    if out_dtype is None:
-        out_dtype = dtype
-    input_ty = np.ndarray[(N,), np.dtype[dtype]]
-    output_ty = np.ndarray[(1,), np.dtype[out_dtype]]
-    return reduce_typed(func, input_ty, output_ty, trace_size=trace_size)
