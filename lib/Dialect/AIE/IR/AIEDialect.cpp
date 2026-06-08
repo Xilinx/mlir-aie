@@ -570,8 +570,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
       if (!intAttr)
         return emitOpError(
             "`consumer_mem_banks` entries must be 32-bit integers");
-      auto consTileOp =
-          dyn_cast<TileOp>(getConsumerTiles()[i].getDefiningOp());
+      auto consTileOp = dyn_cast<TileOp>(getConsumerTiles()[i].getDefiningOp());
       if (!consTileOp)
         continue;
       uint32_t nBanks =
