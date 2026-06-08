@@ -238,29 +238,20 @@ class CMakeBuild(build_ext):
                 "-DLLVM_USE_CRT_RELEASE=MT",
             ]
         elif platform.system() == "Linux":
-            # MSVC's Release default is /OPT:REF + /OPT:ICF, which strips
-            # unreferenced functions/data and folds identical COMDATs.
-            # Mirror that on Linux: per-section emission + gc-sections +
-            # safe ICF. lld is gated to native x86_64; aarch64 cross uses
-            # the aarch64-linux-gnu-gcc driver's default linker.
+            # MSVC's Release default is /OPT:REF, which strips unreferenced
+            # functions and data. Mirror that on Linux with per-section
+            # emission + gc-sections. (MSVC's /OPT:ICF equivalent would be
+            # lld's --icf=safe, but GNU ld in the cibuildwheel manylinux
+            # container doesn't understand that flag and the configure-time
+            # try-compile aborts before lld is even built.)
             size_cflags = "-ffunction-sections -fdata-sections"
             cmake_args += [
                 f"-DCMAKE_C_FLAGS={size_cflags}",
                 f"-DCMAKE_CXX_FLAGS={size_cflags}",
+                "-DCMAKE_EXE_LINKER_FLAGS=-Wl,--gc-sections",
+                "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections",
+                "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,--gc-sections",
             ]
-            if os.getenv("CIBW_ARCHS") in {"x86_64", "AMD64"}:
-                cmake_args += [
-                    "-DLLVM_USE_LINKER=lld",
-                    "-DCMAKE_EXE_LINKER_FLAGS=-Wl,--gc-sections -Wl,--icf=safe",
-                    "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -Wl,--icf=safe",
-                    "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,--gc-sections -Wl,--icf=safe",
-                ]
-            else:
-                cmake_args += [
-                    "-DCMAKE_EXE_LINKER_FLAGS=-Wl,--gc-sections",
-                    "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections",
-                    "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,--gc-sections",
-                ]
 
         cmake_args_dict = get_cross_cmake_args()
         cmake_args += [f"-D{k}={v}" for k, v in cmake_args_dict.items()]
