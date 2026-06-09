@@ -1548,9 +1548,6 @@ void SAPlacer::runSAMainLoop() {
 
   std::uniform_real_distribution<double> moveDist(0.0, 1.0);
 
-  int swapAttempts = 0, swapSuccess = 0;
-  int shiftAttempts = 0, shiftSuccess = 0;
-
   while (!schedule.limitReached()) {
     for (int m = 0; m < schedule.getMovesPerIter(); m++) {
 
@@ -1567,11 +1564,9 @@ void SAPlacer::runSAMainLoop() {
       double shiftProb = (1.0 - coreOccupancy) + nonCoreFrac * 0.2;
 
       if (r < 1.0 - shiftProb) {
-        swapAttempts++;
         Operation *tile1 = nullptr, *tile2 = nullptr;
         if (!generateSwapMove(tile1, tile2))
           continue;
-        swapSuccess++;
 
         SmallVector<std::pair<Operation *, TileID>> moves;
         moves.push_back({tile1, currentPlacement[tile2]});
@@ -1579,12 +1574,10 @@ void SAPlacer::runSAMainLoop() {
         tryMultiTileMove(moves);
 
       } else {
-        shiftAttempts++;
         Operation *tile = nullptr;
         TileID newPos;
         if (!generateShiftMove(tile, newPos))
           continue;
-        shiftSuccess++;
 
         SmallVector<std::pair<Operation *, TileID>> moves;
         moves.push_back({tile, newPos});
