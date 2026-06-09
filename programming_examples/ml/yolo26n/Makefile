@@ -25,10 +25,14 @@ ONNX   := $(SRCDIR)/models/phase1_25k_xint8_acc0.8968.onnx
 
 # Peano flags — same shape as programming_examples/makefile-common's
 # PEANOWRAP2P_FLAGS, inlined so the example is self-contained.
+# MLIR_AIE_DIR is resolved from the installed aie package (works for both
+# env_setup.sh installs and the wheel-based CI ironenv); MLIR_AIE_INSTALL_DIR
+# only exists when env_setup.sh has been sourced.
+MLIR_AIE_DIR ?= $(shell python3 -c "from aie.utils.config import root_path; print(root_path())")
 PEANOWRAP2P_FLAGS := -O2 -std=c++20 --target=aie2p-none-unknown-elf \
     -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body \
     -Wno-missing-template-arg-list-after-template-kw \
-    -DNDEBUG -I $(MLIR_AIE_INSTALL_DIR)/include
+    -DNDEBUG -I $(MLIR_AIE_DIR)/include
 
 # Kernel objects:
 #   m0          -> yolo_m0_conv2dk3_silu_bias.o     (OIYX raw, in_c=3 padded)

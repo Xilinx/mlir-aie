@@ -305,13 +305,23 @@ class ObjectFifo(Resolvable):
                 raise ValueError(
                     f"ObjectFifo {self.name}: no consumer handles created."
                 )
-            # Always emit the per-handle ArrayAttr [prod_depth, *cons_depths].
-            # Collapsing to a single int when all are equal triggers the
-            # stateful-transform's auto-minimize path, which sizes each
-            # consumer's ping-pong from max-acquire instead of honoring the
-            # declared depth -- silently deadlocking multi-consumer fanout
-            # designs where one consumer must buffer ahead of the others.
-            depths = [self._prod.depth] + [con.depth for con in self._cons]
+            # Depth encoding controls the stateful-transform's auto-minimize:
+            #   - single int  -> per-endpoint depth is pruned to the kernel's
+            #     actual max-acquire (findObjectFifoSize), the true minimum.
+            #   - ArrayAttr    -> declared per-handle depths are honored verbatim,
+            #     no pruning.
+            #
+            # For a single consumer the declared depth is redundant with the
+            # kernel's acquire pattern, so pruning is always safe -- collapse
+            # to a single int (when prod/cons depths match) to reclaim L1.
+            # For multi-consumer fanout, keep the ArrayAttr: one consumer may
+            # need to buffer ahead of the others (a cross-consumer dependency
+            # the auto-minimize cannot infer), so its declared depth must be
+            # honored or the fanout silently deadlocks.
+            cons_depths = [con.depth for con in self._cons]
+            depths = [self._prod.depth] + cons_depths
+            if len(self._cons) == 1 and self._prod.depth == cons_depths[0]:
+                depths = self._prod.depth
 
             consumer_datatype = (
                 np_ndarray_type_to_memref_type(self._consumer_obj_type)

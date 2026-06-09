@@ -6,19 +6,25 @@
 
 # RUN: %python %s | FileCheck %s
 
-# Pins down the IRON-side contract for `aie.objectfifo` depth emission:
-# IRON always emits the per-handle ArrayAttr [prod_depth, *cons_depths],
-# even when all depths are equal. The previous "collapse to single int when
-# symmetric" path triggered the stateful-transform's auto-minimize behavior,
-# which sized each consumer's pool from max-acquire instead of honoring the
-# user's declared depth -- silently deadlocking multi-consumer fanout
-# designs where one consumer must buffer ahead of the others.
+# Pins down the IRON-side contract for `aie.objectfifo` depth emission.
+# Per the op's .td contract, a single-int depth lets the stateful transform
+# minimize each pool to the kernel's max-acquire (+1 for prefetch), while a
+# per-handle ArrayAttr [prod_depth, *cons_depths] overrides that analysis and
+# is honored verbatim. IRON selects the form by need:
+#   - multi-consumer fanout  -> ArrayAttr (one consumer may buffer ahead of
+#     the others, a cross-consumer dependency the auto-minimize cannot infer,
+#     so the declared per-handle depths must be honored or the fanout
+#     silently deadlocks).
+#   - single consumer w/ matching prod/cons depth -> single int (the declared
+#     depth is redundant with the kernel's acquire pattern; collapsing lets
+#     the transform reclaim L1 via minimization, which is always safe here).
+#   - single consumer w/ differing prod/cons depth -> ArrayAttr (the asymmetry
+#     can only be expressed by the override form).
 #
 # This is the IRON surface for the programming-guide section-2b
 # skip-connection pattern: `cons(depth=N)` on the consumer that needs extra
 # buffering plus a plain `cons()` on the peer produces an ArrayAttr where
-# the asymmetry is explicit to the lowering. The symmetric case (all peers
-# at the same depth) emits the same ArrayAttr shape for consistency.
+# the asymmetry is explicit to the lowering.
 
 import numpy as np
 
@@ -29,10 +35,11 @@ from aie.iron.device import NPU1Col1, Tile
 
 # CHECK-DAG: aie.objectfifo @of_sym({{.*}}, [2 : i32, 2 : i32, 2 : i32]) : !aie.objectfifo<memref<16xi32>>
 def test_symmetric_depths_still_emit_array():
-    """All handles default to ObjectFifo(depth=2). IRON emits the per-handle
-    ArrayAttr [2, 2, 2] verbatim rather than collapsing to a single int, so
-    the stateful transform doesn't silently shrink consumer pools via its
-    auto-minimize path."""
+    """One producer, two consumers, all default to ObjectFifo(depth=2).
+    Multi-consumer fanout always emits the per-handle ArrayAttr [2, 2, 2]
+    verbatim rather than collapsing to a single int, so the stateful transform
+    doesn't silently shrink consumer pools via its auto-minimize path (a peer
+    consumer may need to buffer ahead)."""
 
     dev = NPU1Col1()
     tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
@@ -62,14 +69,16 @@ def test_symmetric_depths_still_emit_array():
 
 
 # CHECK-DAG: aie.objectfifo @of_skip({{.*}}, [1 : i32, 1 : i32, 2 : i32]) : !aie.objectfifo<memref<16xi32>>
-# CHECK-DAG: aie.objectfifo @of_bc({{.*}}, [1 : i32, 1 : i32]) : !aie.objectfifo<memref<16xi32>>
+# CHECK-DAG: aie.objectfifo @of_bc({{.*}}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
 def test_skip_connection_emits_array():
     """Programming guide section 2b: producer A broadcasts to B and C, and
     C also depends on data from B via a separate fifo. C needs an extra
     buffer on the broadcast to avoid back-pressuring A. The user expresses
     this with `cons(depth=2)` on C while B keeps the default depth=1, and
-    IRON must emit ArrayAttr [1, 1, 2] so the lowering allocates per-handle
-    pools exactly as declared."""
+    IRON must emit ArrayAttr [1, 1, 2] for the broadcast so the lowering
+    allocates per-handle pools exactly as declared. The separate B->C fifo
+    `of_bc` is a plain single-consumer link with matching depths, so it
+    collapses to a single int (1) and is free to be minimized."""
 
     dev = NPU1Col1()
     tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
