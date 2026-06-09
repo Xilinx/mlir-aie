@@ -36,7 +36,7 @@ build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	python3 -m mobilenet.${MLIR_FILE} --emit-mlir -d ${devicename} > $@
 
 run_py: build/final_mobilenet.xclbin
-	${powershell} python3 -m mobilenet.${TEST_FILE} -x build/final_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} python3 -m mobilenet.${TEST_FILE} --xclbin build/final_mobilenet.xclbin --instr build/insts.bin -k MLIR_AIE
 
 shallow_clean:
 	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin

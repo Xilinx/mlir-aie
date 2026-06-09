@@ -26,13 +26,13 @@ case "$MODE:$TARGET" in
         cp "${FIX}/bn${TARGET#bn}_single.txt" "${STAGE}/bn${TARGET#bn}_chain.txt"
         DATA_DIR="$STAGE"
         SCALES="${FIX}/scale_factors_per_bn.json"
-        BUILDER="aie2_iron_per_block.py ${TARGET}"
+        BUILDER="aie2_iron_per_block ${TARGET}"
         ;;
     chain:regular)
         FIX="${SRCDIR}/bottleneck_A/data"
         DATA_DIR="$FIX"
         SCALES="${FIX}/scale_factors_fused.json"
-        BUILDER="aie2_iron_chain.py regular"
+        BUILDER="aie2_iron_chain regular"
         # Original placed-API chain test (test_bottleneckA.py) accepted atol=14
         # — same known-acceptable drift tracked in mlir-aie issue #3009.
         ATOL=14
@@ -41,13 +41,13 @@ case "$MODE:$TARGET" in
         FIX="${SRCDIR}/bottleneck_B/data"
         DATA_DIR="$FIX"
         SCALES="${FIX}/scale_factors.json"
-        BUILDER="aie2_iron_chain.py pipeline"
+        BUILDER="aie2_iron_chain pipeline"
         ;;
     chain:cascade)
         FIX="${SRCDIR}/bottleneck_C/data"
         DATA_DIR="$FIX"
         SCALES="${FIX}/scale_factors.json"
-        BUILDER="aie2_iron_chain.py cascade"
+        BUILDER="aie2_iron_chain cascade"
         ;;
     *)
         echo "FAIL_E2E ${MODE}:${TARGET}: unknown target"
@@ -57,9 +57,9 @@ esac
 
 # 1. Generate IRON MLIR for this design.
 mkdir -p "build_${TAG}"
-python3 ${SRCDIR}/${BUILDER} \
+(cd "${SRCDIR}/.." && python3 -m mobilenet.${BUILDER} \
     --data-dir "${DATA_DIR}" \
-    --scales-json "${SCALES}" \
+    --scales-json "${SCALES}") \
     > "build_${TAG}/${TAG}.mlir"
 
 # 2. Compile MLIR -> xclbin (link the .o files from main mobilenet build).
