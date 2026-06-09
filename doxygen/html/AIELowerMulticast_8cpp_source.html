@@ -133,7 +133,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>          TileOp destTile =</div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>              dyn_cast&lt;TileOp&gt;(multiDest.getTile().getDefiningOp());</div>
 <div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>          <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> destPort = multiDest.port();</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>          FlowOp::create(builder, builder.getUnknownLoc(), srcTile,</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>          FlowOp::create(builder, multiDest.getLoc(), srcTile,</div>
 <div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>                         sourcePort.bundle, sourcePort.channel, destTile,</div>
 <div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>                         destPort.bundle, destPort.channel);</div>
 <div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>        }</div>
@@ -179,7 +179,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jun 9 2026 18:50:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jun 9 2026 19:06:36 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

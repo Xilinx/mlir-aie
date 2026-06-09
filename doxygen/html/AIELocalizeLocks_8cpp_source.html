@@ -144,7 +144,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>                OpBuilder::atBlockBegin(&amp;coreOp.getBody().front());</div>
 <div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>            Value coreLockIDValue = arith::ConstantIndexOp::create(</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>                builder, builder.getUnknownLoc(), localLockIndex);</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>                builder, lock.getLoc(), localLockIndex);</div>
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>            lock.getResult().replaceUsesWithIf(</div>
 <div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>                coreLockIDValue, [&amp;](OpOperand &amp;opOperand) {</div>
 <div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>                  <span class="keywordflow">return</span> opOperand.getOwner()-&gt;getParentOp() == coreOp;</div>
@@ -178,7 +178,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jun 9 2026 18:50:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jun 9 2026 19:06:36 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

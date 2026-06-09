@@ -1,7 +1,9 @@
 <map id="xilinx::AIE::AIERTControl::AIERtImpl" name="xilinx::AIE::AIERTControl::AIERtImpl">
-<area shape="rect" id="Node000001" title=" " alt="" coords="30,93,209,133"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="95,93,274,133"/>
 <area shape="rect" id="Node000002" title=" " alt="" coords="5,5,105,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="73,41,109,92,104,95,69,44"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="81,37,120,67,156,91,153,96,116,71,78,42"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="130,5,239,31"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="174,44,158,71,139,95,134,91,153,68,170,42"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="187,44,187,93,182,93,182,44"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="264,5,447,31"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="324,39,221,95,218,91,321,35"/>
 </map>

@@ -104,15 +104,15 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>          AIEObjectFifoRegisterProcessPass&gt; {</div>
 <div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span> </div>
 <div class="foldopen" id="foldopen00045" data-start="{" data-end="}">
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno"><a class="line" href="structAIEObjectFifoRegisterProcessPass.html#aefbca0fd975c6f5aecef4ec1c487b744">   45</a></span>  scf::ForOp <a class="code hl_function" href="structAIEObjectFifoRegisterProcessPass.html#aefbca0fd975c6f5aecef4ec1c487b744">createForLoop</a>(OpBuilder &amp;builder, <span class="keywordtype">int</span> length) {</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">auto</span> lowerBound = arith::ConstantOp::create(</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        builder, builder.getUnknownLoc(), builder.getIndexAttr(0));</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="keyword">auto</span> upperBound = arith::ConstantOp::create(</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        builder, builder.getUnknownLoc(), builder.getIndexAttr(length));</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    <span class="keyword">auto</span> step = arith::ConstantOp::create(builder, builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>                                          builder.getIndexAttr(1));</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="keyword">auto</span> forLoop = scf::ForOp::create(builder, builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>                                      lowerBound, upperBound, step);</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno"><a class="line" href="structAIEObjectFifoRegisterProcessPass.html#afdb116843c6925946fa07949fbc4d372">   45</a></span>  scf::ForOp <a class="code hl_function" href="structAIEObjectFifoRegisterProcessPass.html#afdb116843c6925946fa07949fbc4d372">createForLoop</a>(OpBuilder &amp;builder, Location loc, <span class="keywordtype">int</span> length) {</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">auto</span> lowerBound =</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        arith::ConstantOp::create(builder, loc, builder.getIndexAttr(0));</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="keyword">auto</span> upperBound =</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        arith::ConstantOp::create(builder, loc, builder.getIndexAttr(length));</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    <span class="keyword">auto</span> step =</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        arith::ConstantOp::create(builder, loc, builder.getIndexAttr(1));</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="keyword">auto</span> forLoop =</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>        scf::ForOp::create(builder, loc, lowerBound, upperBound, step);</div>
 <div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    <span class="keywordflow">return</span> forLoop;</div>
 <div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>  }</div>
 </div>
@@ -122,43 +122,43 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>                     ObjectFifoRegisterProcessOp regOp, MemRefType elementType,</div>
 <div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>                     IntegerAttr acqNumber, IntegerAttr relNumber, <span class="keywordtype">int</span> length) {</div>
 <div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    <span class="keyword">auto</span> ctx = device-&gt;getContext();</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <span class="comment">// create for loop</span></div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    scf::ForOp forLoop;</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    <span class="keywordflow">if</span> (length &gt; 1) {</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>      forLoop = <a class="code hl_function" href="structAIEObjectFifoRegisterProcessPass.html#aefbca0fd975c6f5aecef4ec1c487b744">createForLoop</a>(builder, length);</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>      Region &amp;forRegion = forLoop.getRegion();</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>      builder.setInsertionPointToStart(&amp;forRegion.back());</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    }</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span> </div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    <span class="comment">// acquires</span></div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>    <span class="keywordflow">if</span> (acqNumber.getInt() &gt; 0) {</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>      <span class="keyword">auto</span> acqType = AIEObjectFifoSubviewType::get(elementType);</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>      <span class="keyword">auto</span> acqOp = ObjectFifoAcquireOp::create(</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>          builder, builder.getUnknownLoc(), acqType, regOp.getPortAttr(),</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span> </div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>      <span class="comment">// subview accesses</span></div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; acqNumber.getInt(); i++)</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>        (<span class="keywordtype">void</span>)ObjectFifoSubviewAccessOp::create(</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>            builder, builder.getUnknownLoc(), elementType, acqOp.getSubview(),</div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>            builder.getIntegerAttr(builder.getI32Type(), i));</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>      <span class="comment">// apply kernel</span></div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>      func::FuncOp func;</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> funcOp : device.getOps&lt;func::FuncOp&gt;()) {</div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>        <span class="keywordflow">if</span> (funcOp.getSymName() == regOp.getCallee()) {</div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>          func = funcOp;</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>          <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>        }</div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>      }</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>      func::CallOp::create(builder, builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>                           func <span class="comment">/*, acc.output()*/</span>);</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    Location loc = regOp.getLoc();</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    <span class="comment">// create for loop</span></div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    scf::ForOp forLoop;</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>    <span class="keywordflow">if</span> (length &gt; 1) {</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>      forLoop = <a class="code hl_function" href="structAIEObjectFifoRegisterProcessPass.html#afdb116843c6925946fa07949fbc4d372">createForLoop</a>(builder, loc, length);</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>      Region &amp;forRegion = forLoop.getRegion();</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>      builder.setInsertionPointToStart(&amp;forRegion.back());</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    }</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>    <span class="comment">// acquires</span></div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>    <span class="keywordflow">if</span> (acqNumber.getInt() &gt; 0) {</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>      <span class="keyword">auto</span> acqType = AIEObjectFifoSubviewType::get(elementType);</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>      <span class="keyword">auto</span> acqOp = ObjectFifoAcquireOp::create(</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>          builder, loc, acqType, regOp.getPortAttr(),</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span> </div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>      <span class="comment">// subview accesses</span></div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; acqNumber.getInt(); i++)</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>        (<span class="keywordtype">void</span>)ObjectFifoSubviewAccessOp::create(</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>            builder, loc, elementType, acqOp.getSubview(),</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>            builder.getIntegerAttr(builder.getI32Type(), i));</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span> </div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>      <span class="comment">// apply kernel</span></div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>      func::FuncOp func;</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> funcOp : device.getOps&lt;func::FuncOp&gt;()) {</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>        <span class="keywordflow">if</span> (funcOp.getSymName() == regOp.getCallee()) {</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>          func = funcOp;</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>          <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>        }</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>      }</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>      func::CallOp::create(builder, loc, func <span class="comment">/*, acc.output()*/</span>);</div>
 <div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>    }</div>
 <div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span> </div>
 <div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    <span class="comment">// releases</span></div>
 <div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>    <span class="keywordflow">if</span> (relNumber.getInt() &gt; 0) {</div>
 <div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>      <span class="keyword">auto</span> relOp = ObjectFifoReleaseOp::create(</div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>          builder, builder.getUnknownLoc(), regOp.getPortAttr(),</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>          builder, loc, regOp.getPortAttr(),</div>
 <div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), relNumber);</div>
 <div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>      builder.setInsertionPointAfter(relOp);</div>
 <div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>    }</div>
@@ -209,13 +209,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>          <span class="comment">/*AllowRepeats=*/</span><span class="keyword">false</span>);</div>
 <div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>      <span class="comment">// retrieve core associated to above tile or create new one</span></div>
 <div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>      <span class="keywordflow">if</span> (!op) {</div>
-<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>        CoreOp coreOp = CoreOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>        CoreOp coreOp = CoreOp::create(builder, registerOp.getLoc(),</div>
 <div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>                                       builder.getIndexType(), tile);</div>
 <div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>        Region &amp;r = coreOp.getBody();</div>
 <div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>        r.push_back(<span class="keyword">new</span> Block);</div>
 <div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>        Block &amp;block = r.back();</div>
 <div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>        builder.setInsertionPointToStart(&amp;block);</div>
-<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>        EndOp::create(builder, builder.getUnknownLoc());</div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>        EndOp::create(builder, registerOp.getLoc());</div>
 <div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>        builder.setInsertionPointToStart(&amp;block);</div>
 <div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>      } <span class="keywordflow">else</span> {</div>
 <div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>        CoreOp coreOp = llvm::dyn_cast&lt;CoreOp&gt;(op);</div>
@@ -316,11 +316,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructAIEObjectFifoRegisterProcessPass_html"><div class="ttname"><a href="structAIEObjectFifoRegisterProcessPass.html">AIEObjectFifoRegisterProcessPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEObjectFifoRegisterProcess_8cpp_source.html#l00041">AIEObjectFifoRegisterProcess.cpp:43</a></div></div>
 <div class="ttc" id="astructAIEObjectFifoRegisterProcessPass_html_a3b9a6c43af10966c166957a558be02bb"><div class="ttname"><a href="structAIEObjectFifoRegisterProcessPass.html#a3b9a6c43af10966c166957a558be02bb">AIEObjectFifoRegisterProcessPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEObjectFifoRegisterProcess_8cpp_source.html#l00106">AIEObjectFifoRegisterProcess.cpp:106</a></div></div>
 <div class="ttc" id="astructAIEObjectFifoRegisterProcessPass_html_aec9e507efa67ea290c9f6dc678da5caf"><div class="ttname"><a href="structAIEObjectFifoRegisterProcessPass.html#aec9e507efa67ea290c9f6dc678da5caf">AIEObjectFifoRegisterProcessPass::createPattern</a></div><div class="ttdeci">void createPattern(OpBuilder &amp;builder, DeviceOp &amp;device, ObjectFifoRegisterProcessOp regOp, MemRefType elementType, IntegerAttr acqNumber, IntegerAttr relNumber, int length)</div><div class="ttdef"><b>Definition</b> <a href="AIEObjectFifoRegisterProcess_8cpp_source.html#l00057">AIEObjectFifoRegisterProcess.cpp:57</a></div></div>
-<div class="ttc" id="astructAIEObjectFifoRegisterProcessPass_html_aefbca0fd975c6f5aecef4ec1c487b744"><div class="ttname"><a href="structAIEObjectFifoRegisterProcessPass.html#aefbca0fd975c6f5aecef4ec1c487b744">AIEObjectFifoRegisterProcessPass::createForLoop</a></div><div class="ttdeci">scf::ForOp createForLoop(OpBuilder &amp;builder, int length)</div><div class="ttdef"><b>Definition</b> <a href="AIEObjectFifoRegisterProcess_8cpp_source.html#l00045">AIEObjectFifoRegisterProcess.cpp:45</a></div></div>
+<div class="ttc" id="astructAIEObjectFifoRegisterProcessPass_html_afdb116843c6925946fa07949fbc4d372"><div class="ttname"><a href="structAIEObjectFifoRegisterProcessPass.html#afdb116843c6925946fa07949fbc4d372">AIEObjectFifoRegisterProcessPass::createForLoop</a></div><div class="ttdeci">scf::ForOp createForLoop(OpBuilder &amp;builder, Location loc, int length)</div><div class="ttdef"><b>Definition</b> <a href="AIEObjectFifoRegisterProcess_8cpp_source.html#l00045">AIEObjectFifoRegisterProcess.cpp:45</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jun 9 2026 18:50:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jun 9 2026 19:06:36 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -374,46 +374,43 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span> </div>
 <div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>      builder.setInsertionPoint(device.getBody()-&gt;getTerminator());</div>
 <div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span> </div>
-<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>      <span class="keyword">auto</span> iterx =</div>
-<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>          IterOp::create(builder, builder.getUnknownLoc(), x, x + 1, 1);</div>
-<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>      <span class="keyword">auto</span> itery =</div>
-<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>          IterOp::create(builder, builder.getUnknownLoc(), y, y + 1, 1);</div>
-<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>      <span class="keyword">auto</span> sel = SelectOp::create(builder, builder.getUnknownLoc(), herd, iterx,</div>
-<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>                                  itery);</div>
-<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>      <span class="keyword">auto</span> swbox = SwitchboxOp::create(builder, builder.getUnknownLoc(), sel);</div>
-<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>      SwitchboxOp::ensureTerminator(swbox.getConnections(), builder,</div>
-<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>                                    builder.getUnknownLoc());</div>
-<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>      Block &amp;b = swbox.getConnections().front();</div>
-<div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>      builder.setInsertionPoint(b.getTerminator());</div>
-<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span> </div>
-<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> [sourcePort, destPort] : connects) {</div>
-<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>        WireBundle sourceBundle = sourcePort.bundle;</div>
-<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>        <span class="keywordtype">int</span> sourceChannel = sourcePort.channel;</div>
-<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>        WireBundle destBundle = destPort.bundle;</div>
-<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>        <span class="keywordtype">int</span> destChannel = destPort.channel;</div>
-<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span> </div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>        ConnectOp::create(builder, builder.getUnknownLoc(), sourceBundle,</div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>                          sourceChannel, destBundle, destChannel);</div>
-<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>      }</div>
-<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>    }</div>
-<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span> </div>
-<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>    ConversionTarget target(getContext());</div>
-<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span> </div>
-<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>    RewritePatternSet patterns(&amp;getContext());</div>
-<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>    patterns.insert&lt;<a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">AIEOpRemoval&lt;PlaceOp&gt;</a>, <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">AIEOpRemoval&lt;RouteOp&gt;</a>&gt;(</div>
-<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>        device.getContext());</div>
-<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span> </div>
-<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
-<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>      signalPassFailure();</div>
-<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>  }</div>
+<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>      Location loc = herdOp-&gt;getLoc();</div>
+<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>      <span class="keyword">auto</span> iterx = IterOp::create(builder, loc, x, x + 1, 1);</div>
+<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>      <span class="keyword">auto</span> itery = IterOp::create(builder, loc, y, y + 1, 1);</div>
+<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>      <span class="keyword">auto</span> sel = SelectOp::create(builder, loc, herd, iterx, itery);</div>
+<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>      <span class="keyword">auto</span> swbox = SwitchboxOp::create(builder, loc, sel);</div>
+<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>      SwitchboxOp::ensureTerminator(swbox.getConnections(), builder, loc);</div>
+<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>      Block &amp;b = swbox.getConnections().front();</div>
+<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>      builder.setInsertionPoint(b.getTerminator());</div>
+<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span> </div>
+<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> [sourcePort, destPort] : connects) {</div>
+<div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>        WireBundle sourceBundle = sourcePort.bundle;</div>
+<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>        <span class="keywordtype">int</span> sourceChannel = sourcePort.channel;</div>
+<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>        WireBundle destBundle = destPort.bundle;</div>
+<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>        <span class="keywordtype">int</span> destChannel = destPort.channel;</div>
+<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span> </div>
+<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>        ConnectOp::create(builder, loc, sourceBundle, sourceChannel, destBundle,</div>
+<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>                          destChannel);</div>
+<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>      }</div>
+<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>    }</div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span> </div>
+<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>    ConversionTarget target(getContext());</div>
+<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span> </div>
+<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>    RewritePatternSet patterns(&amp;getContext());</div>
+<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>    patterns.insert&lt;<a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">AIEOpRemoval&lt;PlaceOp&gt;</a>, <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">AIEOpRemoval&lt;RouteOp&gt;</a>&gt;(</div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>        device.getContext());</div>
+<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span> </div>
+<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
+<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>      signalPassFailure();</div>
+<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>  }</div>
 </div>
-<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>};</div>
+<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>};</div>
 </div>
-<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span> </div>
-<div class="foldopen" id="foldopen00341" data-start="{" data-end="}">
-<div class="line"><a id="l00341" name="l00341"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a8d2d5115e35a27fbbeb005607f0ec798">  341</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a8d2d5115e35a27fbbeb005607f0ec798">AIEX::createAIEHerdRoutingPass</a>() {</div>
-<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEHerdRoutingPass&gt;();</div>
-<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>}</div>
+<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span> </div>
+<div class="foldopen" id="foldopen00338" data-start="{" data-end="}">
+<div class="line"><a id="l00338" name="l00338"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a8d2d5115e35a27fbbeb005607f0ec798">  338</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a8d2d5115e35a27fbbeb005607f0ec798">AIEX::createAIEHerdRoutingPass</a>() {</div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEHerdRoutingPass&gt;();</div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEHerdRouting_8cpp_html_a58698f2227255039aecefee2efbd5533"><div class="ttname"><a href="AIEHerdRouting_8cpp.html#a58698f2227255039aecefee2efbd5533">getAvailableDestChannel</a></div><div class="ttdeci">std::optional&lt; int &gt; getAvailableDestChannel(SmallVector&lt; Connect, 8 &gt; &amp;connects, Port sourcePort, WireBundle destBundle)</div><div class="ttdef"><b>Definition</b> <a href="AIEHerdRouting_8cpp_source.html#l00050">AIEHerdRouting.cpp:50</a></div></div>
@@ -424,7 +421,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIEX_1_1impl_1_1AIEHerdRoutingBase_html"><div class="ttname"><a href="classxilinx_1_1AIEX_1_1impl_1_1AIEHerdRoutingBase.html">xilinx::AIEX::impl::AIEHerdRoutingBase</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a8d2d5115e35a27fbbeb005607f0ec798"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a8d2d5115e35a27fbbeb005607f0ec798">xilinx::AIEX::createAIEHerdRoutingPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEHerdRoutingPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEHerdRouting_8cpp_source.html#l00341">AIEHerdRouting.cpp:341</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a8d2d5115e35a27fbbeb005607f0ec798"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a8d2d5115e35a27fbbeb005607f0ec798">xilinx::AIEX::createAIEHerdRoutingPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEHerdRoutingPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEHerdRouting_8cpp_source.html#l00338">AIEHerdRouting.cpp:338</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a317230cd90915177026dc79a8b30df49"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a317230cd90915177026dc79a8b30df49">xilinx::AIE::Connect</a></div><div class="ttdeci">Connect { Port src Connect</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00167">AIEDialect.h:168</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a5075ab7e34c319a0cf5dbe049e6848f7"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a5075ab7e34c319a0cf5dbe049e6848f7">xilinx::AIE::dst</a></div><div class="ttdeci">Port dst</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00169">AIEDialect.h:169</a></div></div>
@@ -443,7 +440,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jun 9 2026 18:50:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jun 9 2026 19:06:36 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

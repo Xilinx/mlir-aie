@@ -81,8 +81,8 @@ $(function() {
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a286dd86eb412571bb293c10c5aed9975" id="r_a286dd86eb412571bb293c10c5aed9975"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerAIEMemcpy.html#a286dd86eb412571bb293c10c5aed9975">LowerAIEMemcpy</a> (MLIRContext *context, PatternBenefit benefit=1)</td></tr>
 <tr class="separator:a286dd86eb412571bb293c10c5aed9975"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ab7f4ded70c8142c3165215deb5d7c370" id="r_ab7f4ded70c8142c3165215deb5d7c370"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerAIEMemcpy.html#ab7f4ded70c8142c3165215deb5d7c370">createDMABlocksAndOps</a> (MemOp &amp;mem, StringRef tokenName, int acquireTknVal, int releaseTknVal, Value buf, int offset, int len, DMAChannelDir dmaDir, int channelIndex, ConversionPatternRewriter &amp;rewriter) const</td></tr>
-<tr class="separator:ab7f4ded70c8142c3165215deb5d7c370"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acd851ed3dc2b1e3303c3e3b93f4242e6" id="r_acd851ed3dc2b1e3303c3e3b93f4242e6"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerAIEMemcpy.html#acd851ed3dc2b1e3303c3e3b93f4242e6">createDMABlocksAndOps</a> (MemOp &amp;mem, Location loc, StringRef tokenName, int acquireTknVal, int releaseTknVal, Value buf, int offset, int len, DMAChannelDir dmaDir, int channelIndex, ConversionPatternRewriter &amp;rewriter) const</td></tr>
+<tr class="separator:acd851ed3dc2b1e3303c3e3b93f4242e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a76dc31fafc8e632732bfd4c2aaa4ac87" id="r_a76dc31fafc8e632732bfd4c2aaa4ac87"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerAIEMemcpy.html#a76dc31fafc8e632732bfd4c2aaa4ac87">matchAndRewrite</a> (MemcpyOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</td></tr>
 <tr class="separator:a76dc31fafc8e632732bfd4c2aaa4ac87"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
@@ -129,8 +129,8 @@ Public Member Functions</h2></td></tr>
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
-<a id="ab7f4ded70c8142c3165215deb5d7c370" name="ab7f4ded70c8142c3165215deb5d7c370"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab7f4ded70c8142c3165215deb5d7c370">&#9670;&#160;</a></span>createDMABlocksAndOps()</h2>
+<a id="acd851ed3dc2b1e3303c3e3b93f4242e6" name="acd851ed3dc2b1e3303c3e3b93f4242e6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acd851ed3dc2b1e3303c3e3b93f4242e6">&#9670;&#160;</a></span>createDMABlocksAndOps()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -143,6 +143,12 @@ Public Member Functions</h2></td></tr>
           <td>(</td>
           <td class="paramtype">MemOp &amp;&#160;</td>
           <td class="paramname"><em>mem</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">Location&#160;</td>
+          <td class="paramname"><em>loc</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -213,7 +219,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIELowerMemcpy_8cpp_source.html#l00049">49</a> of file <a class="el" href="AIELowerMemcpy_8cpp_source.html">AIELowerMemcpy.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIELowerMemcpy_8cpp_source.html#l00077">matchAndRewrite()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIELowerMemcpy_8cpp_source.html#l00078">matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -257,7 +263,7 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIELowerMemcpy_8cpp_source.html#l00077">77</a> of file <a class="el" href="AIELowerMemcpy_8cpp_source.html">AIELowerMemcpy.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIELowerMemcpy_8cpp_source.html#l00078">78</a> of file <a class="el" href="AIELowerMemcpy_8cpp_source.html">AIELowerMemcpy.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIELowerMemcpy_8cpp_source.html#l00049">createDMABlocksAndOps()</a>.</p>
 
@@ -269,7 +275,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jun 9 2026 18:50:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jun 9 2026 19:06:36 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -97,6 +97,12 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a28aa7b5b96dcb15f9a349eb0a5b677ab"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a62b08315999e529536a4a099783baeee" id="r_a62b08315999e529536a4a099783baeee"><td class="memItemLeft" align="right" valign="top">std::vector&lt; uint8_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">exportSerializedTransaction</a> ()</td></tr>
 <tr class="separator:a62b08315999e529536a4a099783baeee"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac18f68c5215d2c81ccc5c5e7e67545f6" id="r_ac18f68c5215d2c81ccc5c5e7e67545f6"><td class="memItemLeft" align="right" valign="top">const std::vector&lt; mlir::Location &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIERTControl.html#ac18f68c5215d2c81ccc5c5e7e67545f6">getTxnInstrLocs</a> () const</td></tr>
+<tr class="separator:ac18f68c5215d2c81ccc5c5e7e67545f6"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6271112520e8ed4c338820ce18e8aca2" id="r_a6271112520e8ed4c338820ce18e8aca2"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6271112520e8ed4c338820ce18e8aca2">getCurrentTxnNumCmds</a> () const</td></tr>
+<tr class="separator:a6271112520e8ed4c338820ce18e8aca2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abb8f00f569770d3ed487624204a5d66f" id="r_abb8f00f569770d3ed487624204a5d66f"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIERTControl.html#abb8f00f569770d3ed487624204a5d66f">recordTxnLocRange</a> (uint32_t startCmds, uint32_t endCmds, mlir::Location loc)</td></tr>
+<tr class="separator:abb8f00f569770d3ed487624204a5d66f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3603ca98d6e48a9f5a3ba6084c9a75f0" id="r_a3603ca98d6e48a9f5a3ba6084c9a75f0"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIERTControl.html#a3603ca98d6e48a9f5a3ba6084c9a75f0">resetPartition</a> ()</td></tr>
 <tr class="separator:a3603ca98d6e48a9f5a3ba6084c9a75f0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6f94d408ec9da78b3db58addac4c4a9f" id="r_a6f94d408ec9da78b3db58addac4c4a9f"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6f94d408ec9da78b3db58addac4c4a9f">resetDMA</a> (int <a class="el" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, int <a class="el" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <a class="el" href="classbool.html">bool</a> on)</td></tr>
@@ -116,7 +122,7 @@ Public Member Functions</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIERT_8h_source.html#l00025">25</a> of file <a class="el" href="AIERT_8h_source.html">AIERT.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8h_source.html#l00048">48</a> of file <a class="el" href="AIERT_8h_source.html">AIERT.h</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a654d3cfc17cb49814d12737498099558" name="a654d3cfc17cb49814d12737498099558"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a654d3cfc17cb49814d12737498099558">&#9670;&#160;</a></span>AIERTControl()</h2>
@@ -134,7 +140,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00206">206</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00239">239</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">xilinx::AIE2</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">xilinx::AIE::AIETargetModel::columns()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#acae8887d9d64be1a250a2f14eea3ec43">xilinx::AIE::AIETargetModel::getColumnShift()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae3dbb309666278a8166c8e9f29e5f0e1">xilinx::AIE::AIETargetModel::getNumMemTileRows()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#af656587d8e0fb2cdf6a313aa7d52d986">xilinx::AIE::AIETargetModel::getRowShift()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a23aafee7ea4a623e8df922cdc3d4e8a7">xilinx::AIE::AIETargetModel::getTargetArch()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00381">xilinx::AIE::AIETargetModel::hasProperty()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00093">xilinx::AIE::AIETargetModel::IsVirtualized</a>, <a class="el" href="AIERT_8cpp_source.html#l00194">NPI_ADDR</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8d6f3c31d960dbc32fcc569919b536aa">xilinx::AIE::AIETargetModel::rows()</a>, <a class="el" href="AIERT_8cpp_source.html#l00110">TRY_XAIE_API_FATAL_ERROR</a>, <a class="el" href="AIERT_8cpp_source.html#l00189">XAIE_BASE_ADDR</a>, <a class="el" href="AIERT_8cpp_source.html#l00191">XAIE_MEM_TILE_ROW_START</a>, <a class="el" href="AIERT_8cpp_source.html#l00192">XAIE_PARTITION_BASE_ADDR</a>, and <a class="el" href="AIERT_8cpp_source.html#l00190">XAIE_SHIM_ROW</a>.</p>
 
@@ -204,7 +210,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00826">826</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00874">874</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00129">TRY_XAIE_API_LOGICAL_RESULT</a>.</p>
 
@@ -242,7 +248,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00979">979</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01027">1027</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
@@ -264,7 +270,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00815">815</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00861">861</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00120">TRY_XAIE_API_EMIT_ERROR</a>.</p>
 
@@ -286,7 +292,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00743">743</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00789">789</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="namespacexilinx_1_1AIE.html#adc0152d67a00ff81b174cea51ac928fb">xilinx::AIE::getOrderedChainOfBlocks()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
@@ -324,9 +330,9 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00512">512</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00546">546</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIERT_8cpp_source.html#l00328">configureBdInBlock()</a>, <a class="el" href="AIERT_8cpp_source.html#l00275">configureLocksInBdBlock()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00120">TRY_XAIE_API_EMIT_ERROR</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIERT_8cpp_source.html#l00361">configureBdInBlock()</a>, <a class="el" href="AIERT_8cpp_source.html#l00308">configureLocksInBdBlock()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00120">TRY_XAIE_API_EMIT_ERROR</a>.</p>
 
 </div>
 </div>
@@ -346,7 +352,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00616">616</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00654">654</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00090">xilinx::AIE::AIETargetModel::IsNPU</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00120">TRY_XAIE_API_EMIT_ERROR</a>.</p>
 
@@ -390,7 +396,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01014">1014</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01062">1062</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00110">TRY_XAIE_API_FATAL_ERROR</a>.</p>
 
@@ -413,9 +419,47 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01026">1026</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01075">1075</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00205">aieRtExportSerializedTransaction()</a>.</p>
+
+</div>
+</div>
+<a id="a6271112520e8ed4c338820ce18e8aca2" name="a6271112520e8ed4c338820ce18e8aca2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a6271112520e8ed4c338820ce18e8aca2">&#9670;&#160;</a></span>getCurrentTxnNumCmds()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">uint32_t xilinx::AIE::AIERTControl::getCurrentTxnNumCmds </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01088">1088</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+
+</div>
+</div>
+<a id="ac18f68c5215d2c81ccc5c5e7e67545f6" name="ac18f68c5215d2c81ccc5c5e7e67545f6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac18f68c5215d2c81ccc5c5e7e67545f6">&#9670;&#160;</a></span>getTxnInstrLocs()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">const std::vector&lt; mlir::Location &gt; &amp; xilinx::AIE::AIERTControl::getTxnInstrLocs </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01084">1084</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -435,7 +479,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00564">564</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00601">601</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00110">TRY_XAIE_API_FATAL_ERROR</a>.</p>
 
@@ -457,7 +501,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00533">533</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00568">568</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00195">NUM_LOCKS</a>, <a class="el" href="AIERT_8cpp_source.html#l00120">TRY_XAIE_API_EMIT_ERROR</a>, and <a class="el" href="AIERT_8cpp_source.html#l00110">TRY_XAIE_API_FATAL_ERROR</a>.</p>
 
@@ -519,9 +563,45 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00494">494</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00527">527</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00120">TRY_XAIE_API_EMIT_ERROR</a>.</p>
+
+</div>
+</div>
+<a id="abb8f00f569770d3ed487624204a5d66f" name="abb8f00f569770d3ed487624204a5d66f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abb8f00f569770d3ed487624204a5d66f">&#9670;&#160;</a></span>recordTxnLocRange()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void xilinx::AIE::AIERTControl::recordTxnLocRange </td>
+          <td>(</td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>startCmds</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>endCmds</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">mlir::Location&#160;</td>
+          <td class="paramname"><em>loc</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01092">1092</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -551,7 +631,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00865">865</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00913">913</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00129">TRY_XAIE_API_LOGICAL_RESULT</a>.</p>
 
@@ -583,7 +663,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00899">899</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00947">947</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00129">TRY_XAIE_API_LOGICAL_RESULT</a>.</p>
 
@@ -621,7 +701,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00853">853</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00901">901</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00129">TRY_XAIE_API_LOGICAL_RESULT</a>.</p>
 
@@ -659,7 +739,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00905">905</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00953">953</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00129">TRY_XAIE_API_LOGICAL_RESULT</a>.</p>
 
@@ -680,7 +760,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00848">848</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00896">896</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00129">TRY_XAIE_API_LOGICAL_RESULT</a>.</p>
 
@@ -712,7 +792,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00957">957</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01005">1005</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
@@ -744,7 +824,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00871">871</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00919">919</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00110">TRY_XAIE_API_FATAL_ERROR</a>.</p>
 
@@ -800,7 +880,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00917">917</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00965">965</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00129">TRY_XAIE_API_LOGICAL_RESULT</a>.</p>
 
@@ -832,7 +912,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00257">257</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00290">290</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00110">TRY_XAIE_API_FATAL_ERROR</a>.</p>
 
@@ -853,7 +933,7 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01021">1021</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l01069">1069</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00110">TRY_XAIE_API_FATAL_ERROR</a>.</p>
 
@@ -868,7 +948,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jun 9 2026 18:50:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jun 9 2026 19:06:37 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

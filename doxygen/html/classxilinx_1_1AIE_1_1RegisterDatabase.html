@@ -68,6 +68,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:aa46884d7bb3f7c2258e9796125c3df8a" id="r_aa46884d7bb3f7c2258e9796125c3df8a"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1RegisterDatabase.html#aa46884d7bb3f7c2258e9796125c3df8a">lookupRegister</a> (llvm::StringRef name, llvm::StringRef module) const</td></tr>
 <tr class="memdesc:aa46884d7bb3f7c2258e9796125c3df8a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Lookup register by name and module.  <br /></td></tr>
 <tr class="separator:aa46884d7bb3f7c2258e9796125c3df8a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab306768cfba09be54c3d885ba41f846d" id="r_ab306768cfba09be54c3d885ba41f846d"><td class="memItemLeft" align="right" valign="top">const <a class="el" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1RegisterDatabase.html#ab306768cfba09be54c3d885ba41f846d">lookupRegisterByOffset</a> (uint32_t offset, llvm::StringRef module) const</td></tr>
+<tr class="memdesc:ab306768cfba09be54c3d885ba41f846d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Lookup register by tile-relative offset and module name.  <br /></td></tr>
+<tr class="separator:ab306768cfba09be54c3d885ba41f846d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aad2dadb453bbcc0f1cf60c8b4caef4b3" id="r_aad2dadb453bbcc0f1cf60c8b4caef4b3"><td class="memItemLeft" align="right" valign="top">std::optional&lt; uint32_t &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1RegisterDatabase.html#aad2dadb453bbcc0f1cf60c8b4caef4b3">lookupEvent</a> (llvm::StringRef name, llvm::StringRef module) const</td></tr>
 <tr class="memdesc:aad2dadb453bbcc0f1cf60c8b4caef4b3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Lookup event by name and module.  <br /></td></tr>
 <tr class="separator:aad2dadb453bbcc0f1cf60c8b4caef4b3"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -84,7 +87,7 @@ Static Public Member Functions</h2></td></tr>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Register and event database for a specific architecture. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8h_source.html#l00062">62</a> of file <a class="el" href="AIERegisterDatabase_8h_source.html">AIERegisterDatabase.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8h_source.html#l00063">63</a> of file <a class="el" href="AIERegisterDatabase_8h_source.html">AIERegisterDatabase.h</a>.</p>
 </div><h2 class="groupheader">Member Function Documentation</h2>
 <a id="a033d2e1ca08dee9bee3eaaf27496b8d5" name="a033d2e1ca08dee9bee3eaaf27496b8d5"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a033d2e1ca08dee9bee3eaaf27496b8d5">&#9670;&#160;</a></span>encodeFieldValue()</h2>
@@ -114,9 +117,9 @@ Static Public Member Functions</h2></td></tr>
 
 <p>Encode a value for a specific bitfield. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8cpp_source.html#l00275">275</a> of file <a class="el" href="AIERegisterDatabase_8cpp_source.html">AIERegisterDatabase.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8cpp_source.html#l00300">300</a> of file <a class="el" href="AIERegisterDatabase_8cpp_source.html">AIERegisterDatabase.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIERegisterDatabase_8h_source.html#l00031">xilinx::AIE::BitFieldInfo::bit_start</a>, and <a class="el" href="AIERegisterDatabase_8h_source.html#l00037">xilinx::AIE::BitFieldInfo::getWidth()</a>.</p>
+<p class="reference">References <a class="el" href="AIERegisterDatabase_8h_source.html#l00032">xilinx::AIE::BitFieldInfo::bit_start</a>, and <a class="el" href="AIERegisterDatabase_8h_source.html#l00038">xilinx::AIE::BitFieldInfo::getWidth()</a>.</p>
 
 </div>
 </div>
@@ -179,7 +182,7 @@ Static Public Member Functions</h2></td></tr>
 
 <p>Lookup event by name and module. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8cpp_source.html#l00264">264</a> of file <a class="el" href="AIERegisterDatabase_8cpp_source.html">AIERegisterDatabase.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8cpp_source.html#l00289">289</a> of file <a class="el" href="AIERegisterDatabase_8cpp_source.html">AIERegisterDatabase.cpp</a>.</p>
 
 </div>
 </div>
@@ -211,7 +214,40 @@ Static Public Member Functions</h2></td></tr>
 
 <p>Lookup register by name and module. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8cpp_source.html#l00256">256</a> of file <a class="el" href="AIERegisterDatabase_8cpp_source.html">AIERegisterDatabase.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8cpp_source.html#l00257">257</a> of file <a class="el" href="AIERegisterDatabase_8cpp_source.html">AIERegisterDatabase.cpp</a>.</p>
+
+</div>
+</div>
+<a id="ab306768cfba09be54c3d885ba41f846d" name="ab306768cfba09be54c3d885ba41f846d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab306768cfba09be54c3d885ba41f846d">&#9670;&#160;</a></span>lookupRegisterByOffset()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">const <a class="el" href="structxilinx_1_1AIE_1_1RegisterInfo.html">RegisterInfo</a> * RegisterDatabase::lookupRegisterByOffset </td>
+          <td>(</td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>offset</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">llvm::StringRef&#160;</td>
+          <td class="paramname"><em>module</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Lookup register by tile-relative offset and module name. </p>
+<p>Used by the transaction-binary locmap to decorate each transaction word with its semantic register name. Module names are the JSON keys in aie_registers_aie2.json: "core", "memory", "memory_tile", "shim". Returns nullptr if no register matches. </p>
+
+<p class="definition">Definition at line <a class="el" href="AIERegisterDatabase_8cpp_source.html#l00277">277</a> of file <a class="el" href="AIERegisterDatabase_8cpp_source.html">AIERegisterDatabase.cpp</a>.</p>
 
 </div>
 </div>
@@ -222,7 +258,7 @@ Static Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jun 9 2026 18:50:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jun 9 2026 19:06:37 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
