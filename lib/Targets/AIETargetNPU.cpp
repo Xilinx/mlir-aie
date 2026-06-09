@@ -525,9 +525,9 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
   return success();
 }
 
-// Render an mlir::Location as a JSON object, recursing into NameLoc and
-// FusedLoc to recover the file:line:col + IRON name structure produced by
-// Phase-1 capture (see python/iron/_loc.py).
+// Render an mlir::Location as a JSON object, recursing into NameLoc, FusedLoc,
+// and CallSiteLoc so a consumer can reconstruct the file:line:col + named
+// location structure carried by the source op.
 static llvm::json::Value locToJSON(mlir::Location loc) {
   using namespace llvm;
   if (auto f = dyn_cast<mlir::FileLineColLoc>(loc))

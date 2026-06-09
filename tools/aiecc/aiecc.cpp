@@ -378,9 +378,10 @@ static cl::opt<bool> dumpIntermediates(
 static cl::opt<bool> keepLoc(
     "keep-loc",
     cl::desc("Emit a <bin>.locmap.json sidecar next to each NPU instruction "
-             "binary, mapping each transaction word back to its IRON Python "
-             "source location. Also keeps debug-info on intermediate MLIR "
-             "dumps. Off by default."),
+             "binary, mapping each transaction word back to the MLIR Location "
+             "of the op that produced it (and its regdb register name where "
+             "applicable). Also keeps debug-info on intermediate MLIR dumps. "
+             "Off by default."),
     cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<unsigned> numThreads(

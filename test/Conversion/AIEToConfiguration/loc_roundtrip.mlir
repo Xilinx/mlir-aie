@@ -27,7 +27,7 @@ aie.device(npu1_1col) {
 } loc(#device_loc)
 
 // At least one synthesized aiex.npu.write32 (from XAie_LockSetValue) carries
-// the IRON-style NameLoc pointing at user_program.py:17, NOT the device loc
+// the LockOp's NameLoc pointing at user_program.py:17, NOT the device loc
 // fallback. The bracketing in AIERT::initLocks attributes the cmds produced
 // by the explicit-init lock walk to the LockOp's loc.
 // CHECK-DAG: #[[USERLOC:loc[0-9]*]] = loc("user_program.py":17:8)

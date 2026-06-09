@@ -32,7 +32,7 @@ namespace AIE {
 // aiex.npu.* op's MLIR Location, and an optional regdb register name resolved
 // from (address, tile-module). The vector is written alongside the .bin as a
 // JSON sidecar (see emitNpuLocmapJSON) so consumers can correlate transaction
-// words back to IRON Python source.
+// words back to the source op's MLIR Location.
 struct TxnLocEntry {
   uint32_t byteOffset = 0;
   uint32_t byteSize = 0;

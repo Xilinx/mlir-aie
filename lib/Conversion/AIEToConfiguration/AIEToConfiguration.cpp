@@ -779,6 +779,14 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   // (or where no bracket fired) keep std::nullopt and inherit the device
   // fallback location at emit time.
   const std::vector<mlir::Location> &instrLocs = ctl.getTxnInstrLocs();
+  // Sharp edge: index alignment relies on the recorder's XAie_TxnCmd count
+  // (instrLocs) and the parser's op count (operations) covering the same set
+  // of opcodes. instrLocs may be shorter (trailing cmds with no bracket), but
+  // if it is *longer* the recorder saw a command the parser dropped and every
+  // index past that point is mislabeled -- fail loudly instead of silently.
+  assert(instrLocs.size() <= operations.size() &&
+         "txn loc/op count mismatch: aie-rt recorded more commands than the "
+         "transaction parser reproduced; opcode coverage has drifted");
   for (size_t i = 0, e = operations.size(); i < e; ++i) {
     if (i < instrLocs.size())
       operations[i].sourceLoc = instrLocs[i];

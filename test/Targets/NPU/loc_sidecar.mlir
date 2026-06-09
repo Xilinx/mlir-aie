@@ -8,8 +8,8 @@
 
 // Verifies aie-translate --aie-npu-to-binary --aie-npu-emit-locmap=<file> writes
 // a JSON sidecar (to <file>) keying each transaction word's byte_offset to the
-// source aiex.npu.* op's MLIR Location, including IRON-style NameLoc names from
-// Phase 1 capture. The main output still holds the binary.
+// source aiex.npu.* op's MLIR Location, including NameLoc names when the source
+// op carries one. The main output still holds the binary.
 
 // RUN: aie-translate --aie-npu-to-binary --aie-npu-emit-locmap=%t.json %s
 // RUN: FileCheck %s < %t.json
@@ -39,7 +39,7 @@ module {
 // CHECK-DAG: "operations":
 
 // Per-op entries: opcode, source op name, address, source location with
-// the IRON NameLoc carrying the user file:line.
+// the NameLoc carrying the user file:line.
 // CHECK-DAG: "opcode": "WRITE32"
 // CHECK-DAG: "source_op": "aiex.npu.write32"
 // CHECK-DAG: "address": "0xABC00DEF"
