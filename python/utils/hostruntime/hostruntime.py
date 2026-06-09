@@ -100,18 +100,28 @@ class HostRuntime(ABC):
 
     def check_device_consistency(self):
         """
-        Check if the overridden device matches the runtime device.
+        Check if the overridden device is loadable on the runtime device.
+
+        A 1- or N-column variant of a generation (e.g. NPU1Col1) is loadable
+        on a wider device of the same generation (e.g. a 4-column NPU1), so we
+        accept any override whose arch matches and whose column count is <=
+        the runtime device's column count.
         """
         mod = sys.modules[__package__]
         override = getattr(mod, "_CURRENT_DEVICE", None)
-        if override:
-            runtime_device = self.device()
-            if getattr(override, "_device", None) != getattr(
-                runtime_device, "_device", None
-            ):
-                raise RuntimeError(
-                    f"Overridden device {override} does not match runtime device {runtime_device}"
-                )
+        if override is None:
+            return
+        runtime_device = self.device()
+        try:
+            same_arch = override.arch == runtime_device.arch
+            fits = override.cols <= runtime_device.cols
+        except AttributeError:
+            same_arch = fits = False
+        if not (same_arch and fits):
+            raise RuntimeError(
+                f"Overridden device {override} is not loadable on runtime "
+                f"device {runtime_device}"
+            )
 
     @abstractmethod
     def load(self, npu_kernel: NPUKernel, **kwargs) -> KernelHandle:

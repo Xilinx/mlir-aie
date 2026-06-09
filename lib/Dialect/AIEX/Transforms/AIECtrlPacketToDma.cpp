@@ -192,7 +192,7 @@ struct AIECtrlPacketToDmaPass
 
         SymbolRefAttr metadata =
             SymbolRefAttr::get(builder.getContext(), batchIt->shimDmaAllocName);
-        NpuDmaMemcpyNdOp::create(builder, builder.getUnknownLoc(), newBlockArg,
+        NpuDmaMemcpyNdOp::create(builder, loc, newBlockArg,
                                  SmallVector<Value>{}, SmallVector<Value>{},
                                  SmallVector<Value>{}, ArrayRef(staticOffsets),
                                  ArrayRef(staticSizes), ArrayRef(staticStrides),

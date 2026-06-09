@@ -211,7 +211,7 @@ struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
              << funcName;
     SmallVector<Value, 1> args;
     args.push_back(op.getArg());
-    func::CallOp::create(rewriter, rewriter.getUnknownLoc(), func, args);
+    func::CallOp::create(rewriter, op.getLoc(), func, args);
     rewriter.eraseOp(op);
     return success();
   }
@@ -259,7 +259,7 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
           rewriter, op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(0))); // tlast
     }
-    func::CallOp::create(rewriter, rewriter.getUnknownLoc(), putMSFunc, args);
+    func::CallOp::create(rewriter, op.getLoc(), putMSFunc, args);
     rewriter.eraseOp(op);
     return success();
   }
@@ -300,8 +300,8 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
     SmallVector<Value, 2> args;
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       args.push_back(op.getChannel());
-    auto getSSCall = func::CallOp::create(rewriter, rewriter.getUnknownLoc(),
-                                          getSSFunc, args);
+    auto getSSCall =
+        func::CallOp::create(rewriter, op.getLoc(), getSSFunc, args);
     rewriter.replaceOp(op, getSSCall.getResult(0));
     // Capture TLAST in AIEv2?
     return success();
@@ -352,7 +352,7 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
           rewriter, op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
 
-    func::CallOp::create(rewriter, rewriter.getUnknownLoc(), putMCDFunc, args);
+    func::CallOp::create(rewriter, op.getLoc(), putMCDFunc, args);
     rewriter.eraseOp(op);
     return success();
   }
@@ -388,8 +388,8 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
           rewriter, op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
 
-    auto getSCDCall = func::CallOp::create(rewriter, rewriter.getUnknownLoc(),
-                                           getSCDFunc, args);
+    auto getSCDCall =
+        func::CallOp::create(rewriter, op.getLoc(), getSCDFunc, args);
     Value result = getSCDCall.getResult(0);
 
     // Check if we need a bitcast
@@ -459,8 +459,7 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
                                     IntegerType::get(rewriter.getContext(), 32),
                                     rewriter.getI32IntegerAttr(lockValue)));
 
-      func::CallOp::create(rewriter, rewriter.getUnknownLoc(), useLockFunc,
-                           args);
+      func::CallOp::create(rewriter, useLock.getLoc(), useLockFunc, args);
     }
     rewriter.eraseOp(useLock);
     return success();
@@ -490,7 +489,7 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     // prevent duplication in the data section of the elf/object file)
     if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
       initValue = nullptr;
-    memref::GlobalOp::create(rewriter, rewriter.getUnknownLoc(), symName,
+    memref::GlobalOp::create(rewriter, buffer.getLoc(), symName,
                              rewriter.getStringAttr("public"), buffer.getType(),
                              initValue, /*constant*/ false,
                              /*alignment*/ nullptr);
@@ -498,11 +497,11 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
       Operation *user = use.getOwner();
       rewriter.setInsertionPoint(user);
-      auto allocated = memref::GetGlobalOp::create(
-          rewriter, rewriter.getUnknownLoc(), t, symName);
+      auto allocated =
+          memref::GetGlobalOp::create(rewriter, buffer.getLoc(), t, symName);
       // Assume that buffers are aligned so they can be vectorized.
-      memref::AssumeAlignmentOp::create(rewriter, rewriter.getUnknownLoc(),
-                                        allocated, 32);
+      memref::AssumeAlignmentOp::create(rewriter, buffer.getLoc(), allocated,
+                                        32);
 
       use.set(allocated.getResult());
     }
@@ -547,7 +546,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     std::string coreName("core_" + std::to_string(col) + "_" +
                          std::to_string(row));
     auto coreFunc =
-        func::FuncOp::create(rewriter, rewriter.getUnknownLoc(), coreName,
+        func::FuncOp::create(rewriter, op.getLoc(), coreName,
                              FunctionType::get(rewriter.getContext(), {}, {}));
 
     rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
@@ -641,8 +640,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
       rewriter.setInsertionPointAfter(childOp);
 
       if (isa<EndOp>(childOp)) {
-        func::ReturnOp::create(rewriter, rewriter.getUnknownLoc(),
-                               ValueRange({}));
+        func::ReturnOp::create(rewriter, childOp->getLoc(), ValueRange({}));
         rewriter.eraseOp(childOp);
       }
     });
@@ -701,7 +699,7 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
     if (!eventFunc)
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
-    func::CallOp::create(rewriter, rewriter.getUnknownLoc(), eventFunc, args);
+    func::CallOp::create(rewriter, op.getLoc(), eventFunc, args);
     rewriter.eraseOp(op);
     return success();
   }

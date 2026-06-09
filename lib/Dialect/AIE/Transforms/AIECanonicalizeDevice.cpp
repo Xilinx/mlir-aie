@@ -42,7 +42,7 @@ struct AIECanonicalizeDevicePass
     // the new op quite yet.
     OpBuilder builder(moduleOp->getContext());
 
-    Location location = builder.getUnknownLoc();
+    Location location = moduleOp.getLoc();
     auto deviceOp = DeviceOp::create(
         builder, location,
         AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902),
