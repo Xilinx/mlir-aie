@@ -1132,8 +1132,19 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
       parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
 
-  if (auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-      getIndex() >= acqOp.acqNumber())
+  // The subview operand must be the direct SSA result of an
+  // aie.objectfifo.acquire. Flowing it through scf.yield / iter_args / any
+  // other region boundary loses the link to the originating acquire that
+  // every downstream pass needs (the acquire's size for the bounds check
+  // here, and the (fifo, port) identity for lock lowering). Reject here
+  // rather than crashing on a null defining op later.
+  auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+  if (!acqOp)
+    return emitOpError("subview operand must be the direct result of an "
+                       "aie.objectfifo.acquire; flowing the subview through "
+                       "scf.yield / iter_args / region results is not "
+                       "supported");
+  if (getIndex() >= acqOp.acqNumber())
     return emitOpError("accessed farther than number of acquired elements "
                        "(index out of bounds).");
 
