@@ -68,7 +68,7 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   AIE::DeviceOp emptyDevice = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName);
   if (!emptyDevice) {
     auto deviceType = referencedDevice.getDevice();
-    auto loc = builder.getUnknownLoc();
+    auto loc = loadPdiOp.getLoc();
     emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
                                         builder.getStringAttr(emptyName));
     emptyDevice.getRegion().emplaceBlock();
