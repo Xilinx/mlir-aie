@@ -59,11 +59,6 @@ def distribute_L2(a_in: In):
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def _emit_mlir(opts):
-    a_in = iron.zeros(48, dtype=np.int32, device="npu")
-    print(distribute_L2.as_mlir(a_in))
-
-
 def main():
     p = argparse.ArgumentParser(prog="distribute (L2 split) structural example")
     add_compile_args(p, with_emit_mlir=True)
@@ -76,7 +71,6 @@ def main():
         distribute_L2,
         opts,
         compile_kwargs={},
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

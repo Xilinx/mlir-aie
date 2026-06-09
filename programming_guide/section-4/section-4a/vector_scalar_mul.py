@@ -116,13 +116,6 @@ def _run_and_verify(opts):
     print("\nPASS!")
 
 
-def _emit_mlir(opts):
-    a_in = iron.zeros(tensor_size, dtype=np.int32, device="npu")
-    f_in = iron.zeros(1, dtype=np.int32, device="npu")
-    c_out = iron.zeros(tensor_size, dtype=np.int32, device="npu")
-    print(vector_scalar_mul.as_mlir(a_in, f_in, c_out))
-
-
 def main():
     p = argparse.ArgumentParser(prog="Section 4a timing example")
     add_compile_args(p, with_emit_mlir=True)
@@ -133,7 +126,6 @@ def main():
         opts,
         compile_kwargs={},
         run_and_verify=_run_and_verify,
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

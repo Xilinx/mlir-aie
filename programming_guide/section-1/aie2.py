@@ -57,11 +57,6 @@ def _run_and_verify(opts):
     print("PASS!")
 
 
-def _emit_mlir(opts):
-    out = iron.zeros(data_size, dtype=np.int32, device="npu")
-    print(section_one.as_mlir(out))
-
-
 def main():
     p = argparse.ArgumentParser(prog="Section 1 minimal IRON design")
     add_compile_args(p, with_emit_mlir=True)
@@ -71,7 +66,6 @@ def main():
         opts,
         compile_kwargs={},
         run_and_verify=_run_and_verify,
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

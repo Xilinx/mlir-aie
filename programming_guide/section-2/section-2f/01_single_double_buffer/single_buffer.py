@@ -71,11 +71,6 @@ def _run_and_verify(opts):
     )
 
 
-def _emit_mlir(opts):
-    c_out = iron.zeros(16, dtype=np.int32, device="npu")
-    print(single_buffer.as_mlir(c_out))
-
-
 def main():
     p = argparse.ArgumentParser(prog="single_buffer (depth=1) example")
     add_compile_args(p, with_emit_mlir=True)
@@ -85,7 +80,6 @@ def main():
         opts,
         compile_kwargs={},
         run_and_verify=_run_and_verify,
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

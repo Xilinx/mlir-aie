@@ -83,12 +83,6 @@ def _run_and_verify(opts):
     assert_pass(b_out.numpy(), expected, fail_msg="section_2e_multi output mismatch")
 
 
-def _emit_mlir(opts):
-    a_in = iron.zeros(data_size, dtype=np.int32, device="npu")
-    b_out = iron.zeros(data_size, dtype=np.int32, device="npu")
-    print(section_2e_multi.as_mlir(a_in, b_out))
-
-
 def main():
     p = argparse.ArgumentParser(prog="Section 2e multi-core example")
     add_compile_args(p, with_emit_mlir=True)
@@ -98,7 +92,6 @@ def main():
         opts,
         compile_kwargs={},
         run_and_verify=_run_and_verify,
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

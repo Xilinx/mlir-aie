@@ -73,12 +73,6 @@ def _run_and_verify(opts):
     assert_pass(c_out.numpy(), _expected_output(), fail_msg="from_stream mismatch")
 
 
-def _emit_mlir(opts):
-    a_in = iron.zeros(24, dtype=np.int32, device="npu")
-    c_out = iron.zeros(24, dtype=np.int32, device="npu")
-    print(from_stream.as_mlir(a_in, c_out))
-
-
 def main():
     p = argparse.ArgumentParser(prog="dims_from_stream example")
     add_compile_args(p, with_emit_mlir=True)
@@ -88,7 +82,6 @@ def main():
         opts,
         compile_kwargs={},
         run_and_verify=_run_and_verify,
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 

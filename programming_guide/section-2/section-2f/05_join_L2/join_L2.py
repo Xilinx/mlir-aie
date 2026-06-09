@@ -59,11 +59,6 @@ def join_L2(c_out: Out):
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def _emit_mlir(opts):
-    c_out = iron.zeros(48, dtype=np.int32, device="npu")
-    print(join_L2.as_mlir(c_out))
-
-
 def main():
     p = argparse.ArgumentParser(prog="join (L2 join) structural example")
     add_compile_args(p, with_emit_mlir=True)
@@ -74,7 +69,6 @@ def main():
         join_L2,
         opts,
         compile_kwargs={},
-        emit_mlir=_emit_mlir,
         device=lambda o: device_from_args(o, n_cols=1),
     )
 
