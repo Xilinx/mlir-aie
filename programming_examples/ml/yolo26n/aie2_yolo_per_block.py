@@ -1520,7 +1520,14 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
     n_cv1_chunks = 8 if _stream_outer else 1
     n_cv2_chunks = 8 if _stream_outer else 1
 
-    top_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=4)
+    # m6's single-consumer activation fifos carry deliberate run-ahead depths
+    # (a downstream tile must stay several rows ahead) that the per-endpoint
+    # max-acquire analysis cannot infer. Pin them with exact_depth so the
+    # lowering honors the declared depth instead of minimizing to ping-pong
+    # and deadlocking. m8 (_stream_outer) uses streamed placement and fits
+    # without the pins.
+    _exact = (block_name == "m6") and (not _stream_outer)
+    top_fifo = ObjectFifo(_i8((in_w, 1, c)), depth=4, exact_depth=_exact)
     # bot_fifo is fanned out to TWO consumers (m_0_split's 3x3 sliding window
     # AcquireGE(3) AND cv3_cv2's 1-row read for the concat). Each .cons() asks
     # for depth=6; the producer also needs depth=6 so it can stay 6 rows
@@ -1548,10 +1555,14 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
     # non-aliasing on its own.
     _bank_aware_pair = (block_name == "m6") and (not _stream_outer)
     _act_bank_kwargs = {"consumer_mem_banks": [1]} if _bank_aware_pair else {}
-    split_a = ObjectFifo(_i8((in_w, 1, cp)), depth=4, **_act_bank_kwargs)
-    split_b = ObjectFifo(_i8((in_w, 1, cp)), depth=in_h)
-    inner_0_out = ObjectFifo(_i8((in_w, 1, cp)), depth=4, **_act_bank_kwargs)
-    inner_1_out = ObjectFifo(_i8((in_w, 1, cp)), depth=2)
+    split_a = ObjectFifo(
+        _i8((in_w, 1, cp)), depth=4, exact_depth=_exact, **_act_bank_kwargs
+    )
+    split_b = ObjectFifo(_i8((in_w, 1, cp)), depth=in_h, exact_depth=_exact)
+    inner_0_out = ObjectFifo(
+        _i8((in_w, 1, cp)), depth=4, exact_depth=_exact, **_act_bank_kwargs
+    )
+    inner_1_out = ObjectFifo(_i8((in_w, 1, cp)), depth=2, exact_depth=_exact)
     out_fifo = ObjectFifo(_i8((in_w, 1, out_c)), depth=2, via_DMA=True)
 
     # m6/m8 cross-scale skip-add ratios: s_y/s_add = 0.5, s_cv2/s_add = 1.0

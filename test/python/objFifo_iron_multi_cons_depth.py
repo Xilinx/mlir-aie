@@ -125,6 +125,44 @@ def test_skip_connection_emits_array():
     print(module)
 
 
+# CHECK-DAG: aie.objectfifo @of_exact({{.*}}, [4 : i32, 4 : i32]) : !aie.objectfifo<memref<16xi32>>
+def test_exact_depth_pins_single_consumer():
+    """A single-consumer fifo with matching prod/cons depth normally collapses
+    to a single int so the lowering can minimize it. Passing exact_depth=True on
+    an endpoint forces the per-handle ArrayAttr [4, 4] instead, pinning the
+    declared depth -- for pipeline run-ahead the max-acquire analysis cannot
+    infer."""
+
+    dev = NPU1Col1()
+    tile_ty = np.ndarray[(16,), np.dtype[np.int32]]
+
+    of_exact = ObjectFifo(tile_ty, depth=4, name="of_exact")
+
+    def prod_body(p):
+        for _ in range_(4):
+            p.acquire(1)
+            p.release(1)
+
+    def cons_body(c):
+        for _ in range_(4):
+            c.acquire(1)
+            c.release(1)
+
+    w_prod = Worker(prod_body, fn_args=[of_exact.prod()], tile=Tile(0, 2))
+    w_cons = Worker(
+        cons_body, fn_args=[of_exact.cons(depth=4, exact_depth=True)], tile=Tile(0, 3)
+    )
+
+    rt = Runtime()
+    with rt.sequence():
+        rt.start(w_prod, w_cons)
+
+    module = Program(dev, rt).resolve_program()
+    print(module)
+
+
 if __name__ == "__main__":
     test_symmetric_depths_still_emit_array()
+    test_skip_connection_emits_array()
+    test_exact_depth_pins_single_consumer()
     test_skip_connection_emits_array()
