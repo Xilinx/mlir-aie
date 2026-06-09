@@ -1571,6 +1571,11 @@ Example:
 In this example, `%elem` is the first object of the subview. Note that this may not correspond to the first element of
 the `objectFifo` if other acquire operations took place beforehand.
 
+The `$subview` operand must be the direct SSA result of an
+`aie.objectfifo.acquire`; flowing the subview through region results
+(e.g. `scf.yield` / `iter_args`) drops the link to the originating
+acquire that downstream lowering requires, and is rejected by the
+verifier.
 
 #### Attributes:
 
