@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;cbac2516cf9b511ab71829453100d19665276128</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;61545eece02bcceac0f548f71b3554d3e8d1dadb</span>
    </div>
   </td>
  </tr>
@@ -211,7 +211,12 @@ Returns:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Check if the overridden device matches the runtime device.
+<pre class="fragment">Check if the overridden device is loadable on the runtime device.
+
+A 1- or N-column variant of a generation (e.g. NPU1Col1) is loadable
+on a wider device of the same generation (e.g. a 4-column NPU1), so we
+accept any override whose arch matches and whose column count is &lt;=
+the runtime device's column count.
 </pre> 
 </div>
 </div>
