@@ -74,6 +74,7 @@ struct TransactionBinaryOperation {
   std::optional<SyncPayload> sync;
   std::optional<LoadPdiPayload> loadPdi;
   std::optional<AddressPatchPayload> addressPatch;
+  std::optional<mlir::Location> sourceLoc;
 
   TransactionBinaryOperation() = default;
 
@@ -448,16 +449,17 @@ static LogicalResult generateTransactions(AIERTControl &ctl,
 }
 
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
-// ops (npu.write32, npu.maskwrite32, npu.blockwrite).
+// ops (npu.write32, npu.maskwrite32, npu.blockwrite). Each emitted op gets the
+// per-op `sourceLoc` from AIERT's instruction-range bracketing if available;
+// otherwise it falls back to `fallbackLoc` (typically the device location).
 static LogicalResult
-emitTransactionOps(OpBuilder &builder,
+emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
                    std::vector<TransactionBinaryOperation> &operations,
                    std::vector<memref::GlobalOp> &global_data) {
 
-  auto loc = builder.getUnknownLoc();
-
   // create the txn ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
+    Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
@@ -529,17 +531,19 @@ emitTransactionOps(OpBuilder &builder,
 }
 
 // Translate vector of TransactionBinaryOperation to a sequence of control
-// packet ops.
+// packet ops. Each emitted op gets the per-op `sourceLoc` from AIERT's
+// instruction-range bracketing if available; otherwise it falls back to
+// `fallbackLoc`.
 static LogicalResult
-emitControlPacketOps(OpBuilder &builder,
+emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
                      std::vector<TransactionBinaryOperation> &operations,
                      std::vector<memref::GlobalOp> &global_data) {
 
-  auto loc = builder.getUnknownLoc();
   auto ctx = builder.getContext();
 
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
+    Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       AIEX::NpuControlPacketOp::create(
@@ -636,17 +640,21 @@ static LogicalResult convertTransactionOpsToMLIR(
     std::vector<TransactionBinaryOperation> &operations,
     std::string blockwrite_prefix = "config_blockwrite_data_") {
 
-  auto loc = builder.getUnknownLoc();
-
   // for each blockwrite in the binary, create a GlobalOp with the data at the
   // device level
   std::vector<memref::GlobalOp> global_data;
+  Operation *parentOp = builder.getBlock()->getParentOp();
+  DeviceOp device = llvm::dyn_cast<DeviceOp>(parentOp);
+  if (!device) {
+    device = parentOp->getParentOfType<DeviceOp>();
+  }
+  if (!device) {
+    parentOp->emitError(
+        "expected insertion point to be nested under an aie.device op");
+    return failure();
+  }
+  Location loc = device.getLoc();
   {
-    DeviceOp device =
-        llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
-    if (!device) {
-      device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
-    }
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(device.getBody());
     unsigned id = 0;
@@ -674,10 +682,10 @@ static LogicalResult convertTransactionOpsToMLIR(
 
   // create the txn ops
   if (outputType == AIE::AIEToConfigurationOutputType::Transaction) {
-    if (failed(emitTransactionOps(builder, operations, global_data)))
+    if (failed(emitTransactionOps(builder, loc, operations, global_data)))
       return failure();
   } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
-    if (failed(emitControlPacketOps(builder, operations, global_data)))
+    if (failed(emitControlPacketOps(builder, loc, operations, global_data)))
       return failure();
     // resolve mask writes; control packet doesn't natively support mask write.
     if (failed(orConsecutiveWritesOnSameAddr(builder.getBlock())))
@@ -765,6 +773,25 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     return failure();
   }
 
+  // Attach per-op source locations from AIERT's instruction-range bracketing.
+  // The aie-rt TxnList records one XAie_TxnCmd per serialized binary
+  // operation, so the indices align. Operations beyond the recorded range
+  // (or where no bracket fired) keep std::nullopt and inherit the device
+  // fallback location at emit time.
+  const std::vector<mlir::Location> &instrLocs = ctl.getTxnInstrLocs();
+  // Sharp edge: index alignment relies on the recorder's XAie_TxnCmd count
+  // (instrLocs) and the parser's op count (operations) covering the same set
+  // of opcodes. instrLocs may be shorter (trailing cmds with no bracket), but
+  // if it is *longer* the recorder saw a command the parser dropped and every
+  // index past that point is mislabeled -- fail loudly instead of silently.
+  assert(instrLocs.size() <= operations.size() &&
+         "txn loc/op count mismatch: aie-rt recorded more commands than the "
+         "transaction parser reproduced; opcode coverage has drifted");
+  for (size_t i = 0, e = operations.size(); i < e; ++i) {
+    if (i < instrLocs.size())
+      operations[i].sourceLoc = instrLocs[i];
+  }
+
   if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
                                          blockwrite_prefix))) {
     return failure();
@@ -782,7 +809,7 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
   // and collect them in a vector. If there are none, create a new runtime
   // sequence. Otherwise assume the insertion point is the first
   // aiex.configure op.
-  auto loc = builder.getUnknownLoc();
+  auto loc = device.getLoc();
   SmallVector<AIEX::ConfigureOp> configureOps;
   device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
 
