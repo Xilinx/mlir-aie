@@ -201,8 +201,8 @@ struct AIEGenerateColumnControlOverlayPass
     }
   }
 
-  AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, int &flowID,
-                                       Value source,
+  AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,
+                                       int &flowID, Value source,
                                        xilinx::AIE::WireBundle sourceBundle,
                                        uint32_t sourceChannel, Value dest,
                                        xilinx::AIE::WireBundle destBundle,
@@ -211,17 +211,15 @@ struct AIEGenerateColumnControlOverlayPass
                                        mlir::BoolAttr ctrl_pkt_flow = nullptr) {
     OpBuilder::InsertionGuard guard(builder);
 
-    AIE::PacketFlowOp pktFlow =
-        AIE::PacketFlowOp::create(builder, builder.getUnknownLoc(), flowID++,
-                                  keep_pkt_header, ctrl_pkt_flow);
+    AIE::PacketFlowOp pktFlow = AIE::PacketFlowOp::create(
+        builder, loc, flowID++, keep_pkt_header, ctrl_pkt_flow);
     Region &r_pktFlow = pktFlow.getPorts();
     Block *b_pktFlow = builder.createBlock(&r_pktFlow);
     builder.setInsertionPointToStart(b_pktFlow);
-    AIE::PacketSourceOp::create(builder, builder.getUnknownLoc(), source,
-                                sourceBundle, sourceChannel);
-    AIE::PacketDestOp::create(builder, builder.getUnknownLoc(), dest,
-                              destBundle, destChannel);
-    AIE::EndOp::create(builder, builder.getUnknownLoc());
+    AIE::PacketSourceOp::create(builder, loc, source, sourceBundle,
+                                sourceChannel);
+    AIE::PacketDestOp::create(builder, loc, dest, destBundle, destChannel);
+    AIE::EndOp::create(builder, loc);
     return pktFlow;
   }
 
@@ -299,14 +297,14 @@ struct AIEGenerateColumnControlOverlayPass
       auto ctrl_pkt_flow = builder.getBoolAttr(true);
       if (isShimMM2S)
         (void)createPacketFlowOp(
-            builder, ctrlPktFlowID, shimTile, shimWireBundle,
+            builder, tOp.getLoc(), ctrlPktFlowID, shimTile, shimWireBundle,
             rowToShimChanMap[tOp.rowIndex()], tOp, ctrlWireBundle,
             coreOrMemChanId, keep_pkt_header, ctrl_pkt_flow);
       else
-        (void)createPacketFlowOp(builder, ctrlPktFlowID, tOp, ctrlWireBundle,
-                                 coreOrMemChanId, shimTile, shimWireBundle,
-                                 rowToShimChanMap[tOp.rowIndex()],
-                                 keep_pkt_header, ctrl_pkt_flow);
+        (void)createPacketFlowOp(
+            builder, tOp.getLoc(), ctrlPktFlowID, tOp, ctrlWireBundle,
+            coreOrMemChanId, shimTile, shimWireBundle,
+            rowToShimChanMap[tOp.rowIndex()], keep_pkt_header, ctrl_pkt_flow);
 
       // Generate shim dma alloc ops as handle for runtime sequence to pickup,
       // when issuing control packets
@@ -327,9 +325,8 @@ struct AIEGenerateColumnControlOverlayPass
         continue;
 
       AIE::ShimDMAAllocationOp::create(
-          builder, builder.getUnknownLoc(), StringRef(dma_name),
-          shimTile.getResult(), dir, rowToShimChanMap[tOp.rowIndex()], false,
-          nullptr);
+          builder, tOp.getLoc(), StringRef(dma_name), shimTile.getResult(), dir,
+          rowToShimChanMap[tOp.rowIndex()], false, nullptr);
     }
   }
 
