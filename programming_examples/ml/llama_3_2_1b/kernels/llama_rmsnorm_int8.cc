@@ -126,4 +126,67 @@ void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
   event1();
 }
 
+// Dynamic-output-scale variant: computes per-token absmax of the fp32
+// rmsnorm output, requants to int8 with inv_dyn = 127/absmax, and writes
+// the fp32 dynamic scale (absmax/127) into bytes y[kCols..kCols+4]. The
+// downstream gemm reads the scale from the activation-buffer tail (mirror
+// of the existing weight-blob "downstream scales" pattern in
+// llama_gemm_int8_srs_tiled_layer.cc).
+//
+// Two-pass-no-intermediate-buffer: we recompute the fp32 chain twice
+// (once to find absmax, once to requant) rather than buffering 2048 fp32
+// between loops — Peano AIE2P corrupts stack-allocated fp32 arrays kept
+// across loops. The 2x scalar fp32 cost is negligible vs the gemms.
+//
+// Caller must allocate y as int8[kCols + 8] (8 B tail for 4 B scale +
+// 4 B pad to keep the next 64 B-aligned slot start clean).
+void llama_rmsnorm_int8_dyn(int8_t *restrict x, bfloat16 *restrict gamma,
+                            int8_t *restrict y, float act_scale_in) {
+  event0();
+
+  constexpr int kCols = LLAMA_RMSNORM_COLS;
+
+  int32_t sum_sq_i32 = 0;
+  for (int i = 0; i < kCols; i++) {
+    int32_t xi = x[i];
+    sum_sq_i32 += xi * xi;
+  }
+  float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
+  float inv_rms = sw_invsqrt(var + kEps);
+  float pre = act_scale_in * inv_rms;   // x_i8 * pre * gamma = y_f (pre-requant)
+
+  // Pass A: scan fp32 y_f, find absmax. No fp32 array kept across loops.
+  float absmax = 0.0f;
+  for (int i = 0; i < kCols; i++) {
+    float xf = (float)x[i];
+    float gf = (float)gamma[i];
+    float vf = xf * pre * gf;
+    float a  = vf >= 0.0f ? vf : -vf;
+    if (a > absmax) absmax = a;
+  }
+
+  // Guard against all-zero rows (avoid div-by-zero); 1e-12 matches the
+  // numpy reference's floor in cautious-eureka quant_act.
+  if (absmax < 1e-12f) absmax = 1e-12f;
+  float scale_dyn = absmax * (1.0f / 127.0f);   // fp32 const; literal /127 is fine
+  float inv_dyn   = sw_recip(scale_dyn);
+  float combined  = pre * inv_dyn;
+
+  // Pass B: recompute the same chain, round to int8 with the dynamic scale.
+  for (int i = 0; i < kCols; i++) {
+    float xf = (float)x[i];
+    float gf = (float)gamma[i];
+    float vf = xf * combined * gf;
+    y[i] = round_to_i8(vf);
+  }
+
+  // Write the fp32 scale to the tail. memcpy avoids strict-aliasing UB.
+  memcpy(y + kCols, &scale_dyn, 4);
+  // Zero the 4 B pad so deterministic byte-compares pass.
+  int32_t zero = 0;
+  memcpy(y + kCols + 4, &zero, 4);
+
+  event1();
+}
+
 } // extern "C"

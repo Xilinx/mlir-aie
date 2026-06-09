@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh
 
 all: gemm_pt
 
@@ -247,6 +247,28 @@ run_rmsnorm_int8: rmsnorm_int8
 	cd ${srcdir} && python3 test_rmsnorm_int8.py \
 		-x ${BUILD}/final_rmsnorm_int8_${RMSI8_D}.xclbin \
 		-i ${BUILD}/insts_rmsnorm_int8_${RMSI8_D}.bin \
+		-k MLIR_AIE -D ${RMSI8_D}
+
+# Dynamic-output-scale variant (same .o; different IRON design).
+${BUILD}/aie_rmsnorm_int8_dyn_${RMSI8_D}.mlir: ${srcdir}/aie2_rmsnorm_int8_dyn.py
+	mkdir -p ${@D}
+	python3 $< -D ${RMSI8_D} > $@
+
+${BUILD}/final_rmsnorm_int8_dyn_${RMSI8_D}.xclbin: ${BUILD}/aie_rmsnorm_int8_dyn_${RMSI8_D}.mlir \
+                                                   ${BUILD}/llama_rmsnorm_int8.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_rmsnorm_int8_dyn_${RMSI8_D}.bin \
+		$(notdir $<)
+
+rmsnorm_int8_dyn: ${BUILD}/final_rmsnorm_int8_dyn_${RMSI8_D}.xclbin
+
+run_rmsnorm_int8_dyn: rmsnorm_int8_dyn
+	cd ${srcdir} && python3 test_rmsnorm_int8_dyn.py \
+		-x ${BUILD}/final_rmsnorm_int8_dyn_${RMSI8_D}.xclbin \
+		-i ${BUILD}/insts_rmsnorm_int8_dyn_${RMSI8_D}.bin \
 		-k MLIR_AIE -D ${RMSI8_D}
 
 # ---------- real gemm_int8_srs (Phase 2 GEMV path) ----------
