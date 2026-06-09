@@ -21,10 +21,6 @@ cmake==4.3.2 \
     --hash=sha256:ea95db137fd27f420d5e149c41e1f7621e786869afa3ca0fe18301df9e066607 \
     --hash=sha256:f8f570813753ed4564928cf45c4c13c31e46b3e66b1a07fe695cb9f7b7af185e
     # via -r requirements.in
-dataclasses==0.6 \
-    --hash=sha256:454a69d788c7fda44efd71e259be79577822f5e3f53f029a22d08004e951dc9f \
-    --hash=sha256:6988bd2b895eef432d562370bb707d540f32f7360ab13da45340101bc2307d84
-    # via -r requirements.in
 nanobind==2.12.0 \
     --hash=sha256:0ae77c1a88f27153fa57045ee00f7b0a7b06b1cd3df942e95a34b38c5d0a5bee \
     --hash=sha256:a10d3d88e691dcdf22696f9acd893fda3c5a05635763aea238829d274fcad480

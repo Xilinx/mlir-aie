@@ -20,9 +20,12 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
     assert m % s == 0
     assert n % s == 0
 
-    # Minimum tile sizes required by the two kernels
+    # Minimum tile sizes required by the two kernels.
+    # The s=8 kernel uses an interleave_unzip(32) stage internally, so it
+    # needs min(m, n) >= 32 -- m,n > 8 compiles but silently produces wrong
+    # output. The matching static_assert lives in transpose.cc:transpose_8x8.
     if s == 8:
-        assert m > 8 and n > 8
+        assert m >= 32 and n >= 32
     elif s == 16:
         assert m > 32 and n > 32
 
