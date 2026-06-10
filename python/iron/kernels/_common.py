@@ -264,7 +264,38 @@ def _make_extern(
     # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
     # When ``digest`` is None (unparameterized default-name kernel, or a pinned
     # ``shared_object_file_name``) this leaves the symbol unprefixed.
-    symbol_prefix = digest
+    #
+    # Chess exception: the symbol prefix is applied post-compile via
+    # ``llvm-objcopy --redefine-sym`` (see compile_external_kernel), which only
+    # understands ELF — it corrupts xchesscc-produced objects ("Invalid section
+    # index ... when converting EOL-table").  So a chess kernel must NOT carry a
+    # symbol_prefix; it keeps the bare symbol baked into its .cc.  That is safe
+    # only while at most one variant of a given chess kernel name exists in a
+    # design (two would export the same bare symbol and collide at link).  Guard
+    # that invariant loudly here rather than letting it surface as an opaque
+    # duplicate-symbol link error.  The .o *filename* stays the deterministic
+    # suffix form regardless — only the symbol rename is skipped.
+    if use_chess:
+        # ``cache_key`` layout: (func_name, source_path, arg_keys, flags, chess).
+        # A prior chess entry with the same func_name but any other field
+        # different is a genuine second variant that we cannot disambiguate.
+        for other_key in _EXTERN_CACHE:
+            if (
+                other_key[0] == func_name
+                and other_key[-1] is True
+                and other_key != cache_key
+            ):
+                raise ValueError(
+                    f"Chess kernel '{func_name}' already has a different "
+                    f"parameterization registered.  Chess (.o) objects cannot "
+                    f"be symbol-renamed (llvm-objcopy corrupts them), so two "
+                    f"variants of the same chess kernel name would export the "
+                    f"same symbol and collide at link.  Give one a distinct "
+                    f"`name=` (or build it with Peano)."
+                )
+        symbol_prefix = None
+    else:
+        symbol_prefix = digest
 
     extern = ExternalFunction(
         func_name,

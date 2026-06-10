@@ -109,21 +109,25 @@ def test_kernels_mm_chess_memoized_same_params():
     assert ef1 is ef2
 
 
-def test_kernels_mm_chess_triggers_auto_symbol_prefix():
-    """Chess and peano variants of the same kernel must get distinct symbols —
-    otherwise both .o files export the same symbol and the linker rejects the
-    duplicate.  use_chess is part of the cache key, so the two variants carry
-    different deterministic digest prefixes.
+def test_kernels_mm_chess_kernel_keeps_bare_symbol():
+    """A chess kernel never carries a symbol_prefix: the prefix is applied via
+    llvm-objcopy, which corrupts xchesscc-produced objects.  It keeps the bare
+    symbol baked into its .cc.  (Its .o filename still gets the deterministic
+    digest suffix so distinct parameterizations don't share a file.)"""
+    ef = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
+    assert ef._symbol_prefix is None
+    assert ef._name == ef._original_name == "matmul_i16_i16"
+    assert ef.object_file_name.endswith(".o")
+    assert "matmul_i16_i16" in ef.object_file_name
 
-    Mirrors the existing two-versions test but along the use_chess axis
-    instead of c_col_maj.
-    """
-    ef_first = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
-    ef_second = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
-    assert ef_first._name != ef_second._name
-    for ef in (ef_first, ef_second):
-        assert ef._symbol_prefix is not None and len(ef._symbol_prefix) == 8
-        assert ef._name == f"{ef._symbol_prefix}_{ef._original_name}"
+
+def test_kernels_mm_two_chess_variants_raise():
+    """Two different parameterizations of the same chess kernel name cannot be
+    disambiguated (chess .o can't be symbol-renamed), so the second raises a
+    loud error rather than silently colliding on the same exported symbol."""
+    kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False, use_chess=True)
+    with pytest.raises(ValueError, match="Chess kernel 'matmul_i16_i16'"):
+        kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True, use_chess=True)
 
 
 @pytest.mark.parametrize(
