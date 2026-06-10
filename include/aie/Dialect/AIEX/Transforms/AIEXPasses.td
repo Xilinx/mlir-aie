@@ -168,14 +168,22 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
-def AIENpuToCert : Pass<"aie-npu-to-cert", "AIE::DeviceOp"> {
+def AIENpuToCert : Pass<"aie-npu-to-cert", "mlir::ModuleOp"> {
   let summary = "transform aiex.npu operations to aiex.cert operations";
   let description = [{
     This pass transforms low level aiex.npu operations contained in
     aie.runtime_sequence operations into aiex.cert operations enclosed in
     aiex.cert.job operations. The write32, maskwrite32, blockwrite and sync
     operations are supported.
+
+    Referenced devices are absorbed into cert.section operations and removed
+    from the output, keeping only the main device.
   }];
+
+  let options = [
+    Option<"deviceName", "device-name", "std::string", /*default=*/"\"main\"",
+           "Name of the main device to emit (other devices are removed after absorption)">
+  ];
 
   let constructor = "xilinx::AIEX::createAIENpuToCertPass()";
   let dependentDialects = [
